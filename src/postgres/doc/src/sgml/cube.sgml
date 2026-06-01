@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/cube.sgml -->
 
 <sect1 id="cube" xreflabel="cube">
- <title>cube</title>
+ <title>cube &mdash; a multi-dimensional cube data type</title>
 
  <indexterm zone="cube">
   <primary>cube (extension)</primary>
@@ -18,7 +18,7 @@
   on the current database.
  </para>
 
- <sect2>
+ <sect2 id="cube-syntax">
   <title>Syntax</title>
 
   <para>
@@ -99,7 +99,7 @@
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="cube-precision">
   <title>Precision</title>
 
   <para>
@@ -108,7 +108,7 @@
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="cube-usage">
   <title>Usage</title>
 
   <para>
@@ -249,7 +249,7 @@
    For example, the nearest neighbor of the 3-D point (0.5, 0.5, 0.5)
    could be found efficiently with:
 <programlisting>
-SELECT c FROM test ORDER BY c &lt;-&gt; cube(array[0.5,0.5,0.5]) LIMIT 1;
+SELECT c FROM test ORDER BY c &lt;-&gt; cube(ARRAY[0.5, 0.5, 0.5]) LIMIT 1;
 </programlisting>
   </para>
 
@@ -533,14 +533,14 @@ SELECT c FROM test ORDER BY c ~&gt; 3 DESC LIMIT 5;
   </table>
  </sect2>
 
- <sect2>
+ <sect2 id="cube-defaults">
   <title>Defaults</title>
 
   <para>
-   I believe this union:
+   This union:
   </para>
 <programlisting>
-select cube_union('(0,5,2),(2,3,1)', '0');
+SELECT cube_union('(0,5,2),(2,3,1)', '0');
 cube_union
 -------------------
 (0, 0, 0),(2, 5, 2)
@@ -548,11 +548,11 @@ cube_union
 </programlisting>
 
    <para>
-    does not contradict common sense, neither does the intersection
+    does not contradict common sense, neither does the intersection:
    </para>
 
 <programlisting>
-select cube_inter('(0,-1),(1,1)', '(-2),(2)');
+SELECT cube_inter('(0,-1),(1,1)', '(-2),(2)');
 cube_inter
 -------------
 (0, 0),(1, 0)
@@ -560,8 +560,8 @@ cube_inter
 </programlisting>
 
    <para>
-    In all binary operations on differently-dimensioned cubes, I assume the
-    lower-dimensional one to be a Cartesian projection, i. e., having zeroes
+    In all binary operations on differently-dimensioned cubes,
+    the lower-dimensional one is assumed to be a Cartesian projection, i. e., having zeroes
     in place of coordinates omitted in the string representation. The above
     examples are equivalent to:
    </para>
@@ -579,7 +579,7 @@ cube_inter('(0,-1),(1,1)','(-2,0),(2,0)');
    </para>
 
 <programlisting>
-select cube_contains('(0,0),(1,1)', '0.5,0.5');
+SELECT cube_contains('(0,0),(1,1)', '0.5,0.5');
 cube_contains
 --------------
 t
@@ -587,7 +587,7 @@ t
 </programlisting>
  </sect2>
 
- <sect2>
+ <sect2 id="cube-notes">
   <title>Notes</title>
 
   <para>
@@ -601,7 +601,7 @@ t
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="cube-credits">
   <title>Credits</title>
 
   <para>

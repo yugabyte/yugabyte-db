@@ -5,7 +5,7 @@
  *
  * This should only be used if code is compiled with OpenSSL support.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -31,21 +31,16 @@
 #ifndef FRONTEND
 #include "utils/memutils.h"
 #include "utils/resowner.h"
-#include "utils/resowner_private.h"
 #endif
 
 /*
  * In backend, use an allocation in TopMemoryContext to count for resowner
- * cleanup handling if necessary.  For versions of OpenSSL where HMAC_CTX is
- * known, just use palloc().  In frontend, use malloc to be able to return
+ * cleanup handling if necessary.  In frontend, use malloc to be able to return
  * a failure status back to the caller.
  */
 #ifndef FRONTEND
-#ifdef HAVE_HMAC_CTX_NEW
+#define USE_RESOWNER_FOR_HMAC
 #define ALLOC(size) MemoryContextAlloc(TopMemoryContext, size)
-#else
-#define ALLOC(size) palloc(size)
-#endif
 #define FREE(ptr) pfree(ptr)
 #else							/* FRONTEND */
 #define ALLOC(size) malloc(size)
@@ -57,7 +52,7 @@ typedef enum pg_hmac_errno
 {
 	PG_HMAC_ERROR_NONE = 0,
 	PG_HMAC_ERROR_DEST_LEN,
-	PG_HMAC_ERROR_OPENSSL
+	PG_HMAC_ERROR_OPENSSL,
 } pg_hmac_errno;
 
 /* Internal pg_hmac_ctx structure */
@@ -68,10 +63,36 @@ struct pg_hmac_ctx
 	pg_hmac_errno error;
 	const char *errreason;
 
-#ifndef FRONTEND
+#ifdef USE_RESOWNER_FOR_HMAC
 	ResourceOwner resowner;
 #endif
 };
+
+/* ResourceOwner callbacks to hold HMAC contexts */
+#ifdef USE_RESOWNER_FOR_HMAC
+static void ResOwnerReleaseHMAC(Datum res);
+
+static const ResourceOwnerDesc hmac_resowner_desc =
+{
+	.name = "OpenSSL HMAC context",
+	.release_phase = RESOURCE_RELEASE_BEFORE_LOCKS,
+	.release_priority = RELEASE_PRIO_HMAC_CONTEXTS,
+	.ReleaseResource = ResOwnerReleaseHMAC,
+	.DebugPrint = NULL			/* the default message is fine */
+};
+
+/* Convenience wrappers over ResourceOwnerRemember/Forget */
+static inline void
+ResourceOwnerRememberHMAC(ResourceOwner owner, pg_hmac_ctx *ctx)
+{
+	ResourceOwnerRemember(owner, PointerGetDatum(ctx), &hmac_resowner_desc);
+}
+static inline void
+ResourceOwnerForgetHMAC(ResourceOwner owner, pg_hmac_ctx *ctx)
+{
+	ResourceOwnerForget(owner, PointerGetDatum(ctx), &hmac_resowner_desc);
+}
+#endif
 
 static const char *
 SSLerrmessage(unsigned long ecode)
@@ -113,14 +134,12 @@ pg_hmac_create(pg_cryptohash_type type)
 	 * previous runs.
 	 */
 	ERR_clear_error();
-#ifdef HAVE_HMAC_CTX_NEW
-#ifndef FRONTEND
-	ResourceOwnerEnlargeHMAC(CurrentResourceOwner);
+
+#ifdef USE_RESOWNER_FOR_HMAC
+	ResourceOwnerEnlarge(CurrentResourceOwner);
 #endif
+
 	ctx->hmacctx = HMAC_CTX_new();
-#else
-	ctx->hmacctx = ALLOC(sizeof(HMAC_CTX));
-#endif
 
 	if (ctx->hmacctx == NULL)
 	{
@@ -134,14 +153,11 @@ pg_hmac_create(pg_cryptohash_type type)
 		return NULL;
 	}
 
-#ifdef HAVE_HMAC_CTX_NEW
-#ifndef FRONTEND
+
+#ifdef USE_RESOWNER_FOR_HMAC
 	ctx->resowner = CurrentResourceOwner;
-	ResourceOwnerRememberHMAC(CurrentResourceOwner, PointerGetDatum(ctx));
+	ResourceOwnerRememberHMAC(CurrentResourceOwner, ctx);
 #endif
-#else
-	memset(ctx->hmacctx, 0, sizeof(HMAC_CTX));
-#endif							/* HAVE_HMAC_CTX_NEW */
 
 	return ctx;
 }
@@ -300,14 +316,10 @@ pg_hmac_free(pg_hmac_ctx *ctx)
 	if (ctx == NULL)
 		return;
 
-#ifdef HAVE_HMAC_CTX_FREE
 	HMAC_CTX_free(ctx->hmacctx);
-#ifndef FRONTEND
-	ResourceOwnerForgetHMAC(ctx->resowner, PointerGetDatum(ctx));
-#endif
-#else
-	explicit_bzero(ctx->hmacctx, sizeof(HMAC_CTX));
-	FREE(ctx->hmacctx);
+#ifdef USE_RESOWNER_FOR_HMAC
+	if (ctx->resowner)
+		ResourceOwnerForgetHMAC(ctx->resowner, ctx);
 #endif
 
 	explicit_bzero(ctx, sizeof(pg_hmac_ctx));
@@ -346,3 +358,16 @@ pg_hmac_error(pg_hmac_ctx *ctx)
 	Assert(false);				/* cannot be reached */
 	return _("success");
 }
+
+/* ResourceOwner callbacks */
+
+#ifdef USE_RESOWNER_FOR_HMAC
+static void
+ResOwnerReleaseHMAC(Datum res)
+{
+	pg_hmac_ctx *ctx = (pg_hmac_ctx *) DatumGetPointer(res);
+
+	ctx->resowner = NULL;
+	pg_hmac_free(ctx);
+}
+#endif

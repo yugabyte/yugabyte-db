@@ -18,7 +18,7 @@
  * some don't pay attention to non-default functions at all.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_amproc.h
@@ -33,13 +33,15 @@
 #define PG_AMPROC_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_amproc_d.h"
+#include "catalog/pg_amproc_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_amproc definition.  cpp turns this into
  *		typedef struct FormData_pg_amproc
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_amproc,2603,AccessMethodProcedureRelationId)
 {
 	Oid			oid;			/* oid */
@@ -60,6 +62,8 @@ CATALOG(pg_amproc,2603,AccessMethodProcedureRelationId)
 	regproc		amproc BKI_LOOKUP(pg_proc);
 } FormData_pg_amproc;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_amproc corresponds to a pointer to a tuple with
  *		the format of pg_amproc relation.
@@ -67,7 +71,9 @@ CATALOG(pg_amproc,2603,AccessMethodProcedureRelationId)
  */
 typedef FormData_pg_amproc *Form_pg_amproc;
 
-DECLARE_UNIQUE_INDEX(pg_amproc_fam_proc_index, 2655, AccessMethodProcedureIndexId, on pg_amproc using btree(amprocfamily oid_ops, amproclefttype oid_ops, amprocrighttype oid_ops, amprocnum int2_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_amproc_oid_index, 2757, AccessMethodProcedureOidIndexId, on pg_amproc using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_amproc_fam_proc_index, 2655, AccessMethodProcedureIndexId, pg_amproc, btree(amprocfamily oid_ops, amproclefttype oid_ops, amprocrighttype oid_ops, amprocnum int2_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_amproc_oid_index, 2757, AccessMethodProcedureOidIndexId, pg_amproc, btree(oid oid_ops));
+
+MAKE_SYSCACHE(AMPROCNUM, pg_amproc_fam_proc_index, 16);
 
 #endif							/* PG_AMPROC_H */

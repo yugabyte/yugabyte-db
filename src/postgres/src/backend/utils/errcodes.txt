@@ -2,7 +2,7 @@
 # errcodes.txt
 #      PostgreSQL error codes
 #
-# Copyright (c) 2003-2022, PostgreSQL Global Development Group
+# Copyright (c) 2003-2026, PostgreSQL Global Development Group
 #
 # This list serves as the basis for generating source files containing error
 # codes. It is kept in a common format to make sure all these source files have
@@ -141,6 +141,12 @@ Section: Class 0Z - Diagnostics Exception
 0Z000    E    ERRCODE_DIAGNOSTICS_EXCEPTION                                  diagnostics_exception
 0Z002    E    ERRCODE_STACKED_DIAGNOSTICS_ACCESSED_WITHOUT_ACTIVE_HANDLER    stacked_diagnostics_accessed_without_active_handler
 
+Section: Class 10 - XQuery Error
+
+# recent SQL versions define quite a few codes in this class, but for now
+# we are only using this generic one
+10608    E    ERRCODE_INVALID_ARGUMENT_FOR_XQUERY                            invalid_argument_for_xquery
+
 Section: Class 20 - Case Not Found
 
 20000    E    ERRCODE_CASE_NOT_FOUND                                         case_not_found
@@ -252,6 +258,7 @@ Section: Class 25 - Invalid Transaction State
 25P01    E    ERRCODE_NO_ACTIVE_SQL_TRANSACTION                              no_active_sql_transaction
 25P02    E    ERRCODE_IN_FAILED_SQL_TRANSACTION                              in_failed_sql_transaction
 25P03    E    ERRCODE_IDLE_IN_TRANSACTION_SESSION_TIMEOUT                    idle_in_transaction_session_timeout
+25P04    E    ERRCODE_TRANSACTION_TIMEOUT                                    transaction_timeout
 
 Section: Class 26 - Invalid SQL Statement Name
 
@@ -438,10 +445,7 @@ Section: Class 58 - System Error (errors external to PostgreSQL itself)
 58030    E    ERRCODE_IO_ERROR                                               io_error
 58P01    E    ERRCODE_UNDEFINED_FILE                                         undefined_file
 58P02    E    ERRCODE_DUPLICATE_FILE                                         duplicate_file
-
-Section: Class 72 - Snapshot Failure
-# (class borrowed from Oracle)
-72000    E    ERRCODE_SNAPSHOT_TOO_OLD                                       snapshot_too_old
+58P03    E    ERRCODE_FILE_NAME_TOO_LONG                                     file_name_too_long
 
 Section: Class F0 - Configuration File Error
 

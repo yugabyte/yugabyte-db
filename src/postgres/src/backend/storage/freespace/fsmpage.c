@@ -4,7 +4,7 @@
  *	  routines to search and manipulate one FSM page.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -268,13 +268,13 @@ restart:
 			 *
 			 * Fix the corruption and restart.
 			 */
-			RelFileNode rnode;
+			RelFileLocator rlocator;
 			ForkNumber	forknum;
 			BlockNumber blknum;
 
-			BufferGetTag(buf, &rnode, &forknum, &blknum);
+			BufferGetTag(buf, &rlocator, &forknum, &blknum);
 			elog(DEBUG1, "fixing corrupt FSM block %u, relation %u/%u/%u",
-				 blknum, rnode.spcNode, rnode.dbNode, rnode.relNode);
+				 blknum, rlocator.spcOid, rlocator.dbOid, rlocator.relNumber);
 
 			/* make sure we hold an exclusive lock */
 			if (!exclusive_lock_held)
@@ -298,9 +298,18 @@ restart:
 	 * lock and get a garbled next pointer every now and then, than take the
 	 * concurrency hit of an exclusive lock.
 	 *
+	 * Without an exclusive lock, we need to use the hint bit infrastructure
+	 * to be allowed to modify the page.
+	 *
 	 * Wrap-around is handled at the beginning of this function.
 	 */
-	fsmpage->fp_next_slot = slot + (advancenext ? 1 : 0);
+	if (exclusive_lock_held || BufferBeginSetHintBits(buf))
+	{
+		fsmpage->fp_next_slot = slot + (advancenext ? 1 : 0);
+
+		if (!exclusive_lock_held)
+			BufferFinishSetHintBits(buf, false, false);
+	}
 
 	return slot;
 }

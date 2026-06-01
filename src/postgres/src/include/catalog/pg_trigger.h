@@ -4,7 +4,7 @@
  *	  definition of the "trigger" system catalog (pg_trigger)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_trigger.h
@@ -19,7 +19,7 @@
 #define PG_TRIGGER_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_trigger_d.h"
+#include "catalog/pg_trigger_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_trigger definition.  cpp turns this into
@@ -31,6 +31,8 @@
  * to be associated with a deferrable constraint.
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_trigger,2620,TriggerRelationId)
 {
 	Oid			oid;			/* oid */
@@ -72,6 +74,8 @@ CATALOG(pg_trigger,2620,TriggerRelationId)
 #endif
 } FormData_pg_trigger;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_trigger corresponds to a pointer to a tuple with
  *		the format of pg_trigger relation.
@@ -81,9 +85,9 @@ typedef FormData_pg_trigger *Form_pg_trigger;
 
 DECLARE_TOAST(pg_trigger, 2336, 2337);
 
-DECLARE_INDEX(pg_trigger_tgconstraint_index, 2699, TriggerConstraintIndexId, on pg_trigger using btree(tgconstraint oid_ops));
-DECLARE_UNIQUE_INDEX(pg_trigger_tgrelid_tgname_index, 2701, TriggerRelidNameIndexId, on pg_trigger using btree(tgrelid oid_ops, tgname name_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_trigger_oid_index, 2702, TriggerOidIndexId, on pg_trigger using btree(oid oid_ops));
+DECLARE_INDEX(pg_trigger_tgconstraint_index, 2699, TriggerConstraintIndexId, pg_trigger, btree(tgconstraint oid_ops));
+DECLARE_UNIQUE_INDEX(pg_trigger_tgrelid_tgname_index, 2701, TriggerRelidNameIndexId, pg_trigger, btree(tgrelid oid_ops, tgname name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_trigger_oid_index, 2702, TriggerOidIndexId, pg_trigger, btree(oid oid_ops));
 
 DECLARE_ARRAY_FOREIGN_KEY((tgrelid, tgattr), pg_attribute, (attrelid, attnum));
 

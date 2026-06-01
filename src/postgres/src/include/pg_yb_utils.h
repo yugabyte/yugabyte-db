@@ -1404,7 +1404,7 @@ YbOptSplit *YbGetSplitOptions(Relation rel);
 				if (yb_debug_log_docdb_error_backtrace) \
 					errbacktrace(); \
 				yb_errlocation_from_status(filename, lineno, funcname); \
-				errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
+				errfinish(__FILE__, __LINE__, __func__); \
 				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 					pg_unreachable(); \
 			} \

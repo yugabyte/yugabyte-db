@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/unaccent.sgml -->
 
 <sect1 id="unaccent" xreflabel="unaccent">
- <title>unaccent</title>
+ <title>unaccent &mdash; a text search dictionary which removes diacritics</title>
 
  <indexterm zone="unaccent">
   <primary>unaccent</primary>
@@ -27,7 +27,7 @@
   on the current database.
  </para>
 
- <sect2>
+ <sect2 id="unaccent-configuration">
   <title>Configuration</title>
 
   <para>
@@ -86,6 +86,22 @@
 
    <listitem>
     <para>
+     Some characters, like numeric symbols, may require whitespaces in their
+     translation rule. It is possible to use double quotes around the translated
+     characters in this case. A double quote needs to be escaped with a second
+     double quote when including one in the translated character. For example:
+<programlisting>
+&frac14;      " 1/4"
+&frac12;      " 1/2"
+&frac34;      " 3/4"
+&ldquo;       """"
+&rdquo;       """"
+</programlisting>
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
      As with other <productname>PostgreSQL</productname> text search configuration files,
      the rules file must be stored in UTF-8 encoding.  The data is
      automatically translated into the current database's encoding when
@@ -107,7 +123,7 @@
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="unaccent-usage">
   <title>Usage</title>
 
   <para>
@@ -128,7 +144,7 @@ mydb=# ALTER TEXT SEARCH DICTIONARY unaccent (RULES='my_rules');
   <para>
    To test the dictionary, you can try:
 <programlisting>
-mydb=# select ts_lexize('unaccent','H&ocirc;tel');
+mydb=# SELECT ts_lexize('unaccent', 'H&ocirc;tel');
  ts_lexize
 -----------
  {Hotel}
@@ -144,19 +160,19 @@ mydb=# CREATE TEXT SEARCH CONFIGURATION fr ( COPY = french );
 mydb=# ALTER TEXT SEARCH CONFIGURATION fr
         ALTER MAPPING FOR hword, hword_part, word
         WITH unaccent, french_stem;
-mydb=# select to_tsvector('fr','H&ocirc;tels de la Mer');
+mydb=# SELECT to_tsvector('fr', 'H&ocirc;tels de la Mer');
     to_tsvector
 -------------------
  'hotel':1 'mer':4
 (1 row)
 
-mydb=# select to_tsvector('fr','H&ocirc;tel de la Mer') @@ to_tsquery('fr','Hotels');
+mydb=# SELECT to_tsvector('fr', 'H&ocirc;tel de la Mer') @@ to_tsquery('fr', 'Hotels');
  ?column?
 ----------
  t
 (1 row)
 
-mydb=# select ts_headline('fr','H&ocirc;tel de la Mer',to_tsquery('fr','Hotels'));
+mydb=# SELECT ts_headline('fr', 'H&ocirc;tel de la Mer', to_tsquery('fr', 'Hotels'));
       ts_headline
 ------------------------
  &lt;b&gt;H&ocirc;tel&lt;/b&gt; de la Mer
@@ -165,7 +181,7 @@ mydb=# select ts_headline('fr','H&ocirc;tel de la Mer',to_tsquery('fr','Hotels')
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="unaccent-functions">
  <title>Functions</title>
 
  <para>

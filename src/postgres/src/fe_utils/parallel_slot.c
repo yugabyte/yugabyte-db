@@ -4,7 +4,7 @@
  *		Parallel support for front-end parallel database connections
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/fe_utils/parallel_slot.c
@@ -12,15 +12,13 @@
  *-------------------------------------------------------------------------
  */
 
-#ifdef WIN32
-#define FD_SETSIZE 1024			/* must set before winsock2.h is included */
+#if defined(WIN32) && FD_SETSIZE < 1024
+#error FD_SETSIZE needs to have been increased
 #endif
 
 #include "postgres_fe.h"
 
-#ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
-#endif
 
 #include "common/logging.h"
 #include "fe_utils/cancel.h"
@@ -271,8 +269,7 @@ wait_on_slots(ParallelSlotArray *sa)
 			else
 			{
 				/* This connection has become idle */
-				sa->slots[i].inUse = false;
-				ParallelSlotClearHandler(&sa->slots[i]);
+				ParallelSlotSetIdle(&sa->slots[i]);
 				break;
 			}
 		}
@@ -349,11 +346,11 @@ connect_slot(ParallelSlotArray *sa, int slotno, const char *dbname)
  * returned allowing the connection to be reused.
  *
  * Otherwise, if any idle slot is not yet connected to any database, the slot
- * will be returned with it's connection opened using the stored cparams and
+ * will be returned with its connection opened using the stored cparams and
  * optionally the given dbname if not null.
  *
  * Otherwise, if any idle slot exists, an idle slot will be chosen and returned
- * after having it's connection disconnected and reconnected using the stored
+ * after having its connection disconnected and reconnected using the stored
  * cparams and optionally the given dbname if not null.
  *
  * Otherwise, if any slots have connections that are busy, we loop on select()
@@ -510,6 +507,8 @@ ParallelSlotsWaitCompletion(ParallelSlotArray *sa)
 			continue;
 		if (!consumeQueryResult(&sa->slots[i]))
 			return false;
+		/* Mark connection as idle */
+		ParallelSlotSetIdle(&sa->slots[i]);
 	}
 
 	return true;

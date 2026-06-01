@@ -3,7 +3,7 @@
  * basebackup_copy.c
  *	  send basebackup archives using COPY OUT
  *
- * We send a result set with information about the tabelspaces to be included
+ * We send a result set with information about the tablespaces to be included
  * in the backup before starting COPY OUT. Then, we start a single COPY OUT
  * operation and transmits all the archives and the manifest if present during
  * the course of that single COPY OUT. Each CopyData message begins with a
@@ -16,7 +16,7 @@
  * An older method that sent each archive using a separate COPY OUT
  * operation is no longer supported.
  *
- * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/backup/basebackup_copy.c
@@ -25,11 +25,15 @@
  */
 #include "postgres.h"
 
+#include "access/tupdesc.h"
 #include "backup/basebackup.h"
 #include "backup/basebackup_sink.h"
 #include "catalog/pg_type_d.h"
+#include "executor/executor.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
+#include "tcop/dest.h"
+#include "utils/builtins.h"
 #include "utils/timestamp.h"
 
 typedef struct bbsink_copystream
@@ -62,7 +66,7 @@ typedef struct bbsink_copystream
  * frequently. Ideally, we'd like to send a message when the time since the
  * last message reaches PROGRESS_REPORT_MILLISECOND_THRESHOLD, but checking
  * the system time every time we send a tiny bit of data seems too expensive.
- * So we only check it after the number of bytes sine the last check reaches
+ * So we only check it after the number of bytes since the last check reaches
  * PROGRESS_REPORT_BYTE_INTERVAL.
  */
 #define	PROGRESS_REPORT_BYTE_INTERVAL				65536
@@ -84,7 +88,6 @@ static void SendCopyOutResponse(void);
 static void SendCopyDone(void);
 static void SendXlogRecPtrResult(XLogRecPtr ptr, TimeLineID tli);
 static void SendTablespaceList(List *tablespaces);
-static void send_int8_string(StringInfoData *buf, int64 intval);
 
 static const bbsink_ops bbsink_copystream_ops = {
 	.begin_backup = bbsink_copystream_begin_backup,
@@ -104,7 +107,7 @@ static const bbsink_ops bbsink_copystream_ops = {
 bbsink *
 bbsink_copystream_new(bool send_to_client)
 {
-	bbsink_copystream *sink = palloc0(sizeof(bbsink_copystream));
+	bbsink_copystream *sink = palloc0_object(bbsink_copystream);
 
 	*((const bbsink_ops **) &sink->base.bbs_ops) = &bbsink_copystream_ops;
 	sink->send_to_client = send_to_client;
@@ -140,7 +143,7 @@ bbsink_copystream_begin_backup(bbsink *sink)
 	buf = palloc(mysink->base.bbs_buffer_length + MAXIMUM_ALIGNOF);
 	mysink->msgbuffer = buf + (MAXIMUM_ALIGNOF - 1);
 	mysink->base.bbs_buffer = buf + MAXIMUM_ALIGNOF;
-	mysink->msgbuffer[0] = 'd'; /* archive or manifest data */
+	mysink->msgbuffer[0] = PqMsg_CopyData;	/* archive or manifest data */
 
 	/* Tell client the backup start location. */
 	SendXlogRecPtrResult(state->startptr, state->starttli);
@@ -149,7 +152,7 @@ bbsink_copystream_begin_backup(bbsink *sink)
 	SendTablespaceList(state->tablespaces);
 
 	/* Send a CommandComplete message */
-	pq_puttextmessage('C', "SELECT");
+	pq_puttextmessage(PqMsg_CommandComplete, "SELECT");
 
 	/* Begin COPY stream. This will be used for all archives + manifest. */
 	SendCopyOutResponse();
@@ -166,8 +169,8 @@ bbsink_copystream_begin_archive(bbsink *sink, const char *archive_name)
 	StringInfoData buf;
 
 	ti = list_nth(state->tablespaces, state->tablespace_num);
-	pq_beginmessage(&buf, 'd'); /* CopyData */
-	pq_sendbyte(&buf, 'n');		/* New archive */
+	pq_beginmessage(&buf, PqMsg_CopyData);
+	pq_sendbyte(&buf, PqBackupMsg_NewArchive);
 	pq_sendstring(&buf, archive_name);
 	pq_sendstring(&buf, ti->path == NULL ? "" : ti->path);
 	pq_endmessage(&buf);
@@ -188,7 +191,7 @@ bbsink_copystream_archive_contents(bbsink *sink, size_t len)
 	if (mysink->send_to_client)
 	{
 		/* Add one because we're also sending a leading type byte. */
-		pq_putmessage('d', mysink->msgbuffer, len + 1);
+		pq_putmessage(PqMsg_CopyData, mysink->msgbuffer, len + 1);
 	}
 
 	/* Consider whether to send a progress report to the client. */
@@ -212,12 +215,13 @@ bbsink_copystream_archive_contents(bbsink *sink, size_t len)
 		 * the system clock was set backward, so that such occurrences don't
 		 * have the effect of suppressing further progress messages.
 		 */
-		if (ms < 0 || ms >= PROGRESS_REPORT_MILLISECOND_THRESHOLD)
+		if (ms >= PROGRESS_REPORT_MILLISECOND_THRESHOLD ||
+			now < mysink->last_progress_report_time)
 		{
 			mysink->last_progress_report_time = now;
 
-			pq_beginmessage(&buf, 'd'); /* CopyData */
-			pq_sendbyte(&buf, 'p'); /* Progress report */
+			pq_beginmessage(&buf, PqMsg_CopyData);
+			pq_sendbyte(&buf, PqBackupMsg_ProgressReport);
 			pq_sendint64(&buf, state->bytes_done);
 			pq_endmessage(&buf);
 			pq_flush_if_writable();
@@ -242,8 +246,8 @@ bbsink_copystream_end_archive(bbsink *sink)
 
 	mysink->bytes_done_at_last_time_check = state->bytes_done;
 	mysink->last_progress_report_time = GetCurrentTimestamp();
-	pq_beginmessage(&buf, 'd'); /* CopyData */
-	pq_sendbyte(&buf, 'p');		/* Progress report */
+	pq_beginmessage(&buf, PqMsg_CopyData);
+	pq_sendbyte(&buf, PqBackupMsg_ProgressReport);
 	pq_sendint64(&buf, state->bytes_done);
 	pq_endmessage(&buf);
 	pq_flush_if_writable();
@@ -257,8 +261,8 @@ bbsink_copystream_begin_manifest(bbsink *sink)
 {
 	StringInfoData buf;
 
-	pq_beginmessage(&buf, 'd'); /* CopyData */
-	pq_sendbyte(&buf, 'm');		/* Manifest */
+	pq_beginmessage(&buf, PqMsg_CopyData);
+	pq_sendbyte(&buf, PqBackupMsg_Manifest);
 	pq_endmessage(&buf);
 }
 
@@ -273,7 +277,7 @@ bbsink_copystream_manifest_contents(bbsink *sink, size_t len)
 	if (mysink->send_to_client)
 	{
 		/* Add one because we're also sending a leading type byte. */
-		pq_putmessage('d', mysink->msgbuffer, len + 1);
+		pq_putmessage(PqMsg_CopyData, mysink->msgbuffer, len + 1);
 	}
 }
 
@@ -314,7 +318,7 @@ SendCopyOutResponse(void)
 {
 	StringInfoData buf;
 
-	pq_beginmessage(&buf, 'H');
+	pq_beginmessage(&buf, PqMsg_CopyOutResponse);
 	pq_sendbyte(&buf, 0);		/* overall format */
 	pq_sendint16(&buf, 0);		/* natts */
 	pq_endmessage(&buf);
@@ -326,7 +330,7 @@ SendCopyOutResponse(void)
 static void
 SendCopyDone(void)
 {
-	pq_putemptymessage('c');
+	pq_putemptymessage(PqMsg_CopyDone);
 }
 
 /*
@@ -336,53 +340,37 @@ SendCopyDone(void)
 static void
 SendXlogRecPtrResult(XLogRecPtr ptr, TimeLineID tli)
 {
-	StringInfoData buf;
-	char		str[MAXFNAMELEN];
-	Size		len;
+	DestReceiver *dest;
+	TupOutputState *tstate;
+	TupleDesc	tupdesc;
+	Datum		values[2];
+	bool		nulls[2] = {0};
 
-	pq_beginmessage(&buf, 'T'); /* RowDescription */
-	pq_sendint16(&buf, 2);		/* 2 fields */
+	dest = CreateDestReceiver(DestRemoteSimple);
 
-	/* Field headers */
-	pq_sendstring(&buf, "recptr");
-	pq_sendint32(&buf, 0);		/* table oid */
-	pq_sendint16(&buf, 0);		/* attnum */
-	pq_sendint32(&buf, TEXTOID);	/* type oid */
-	pq_sendint16(&buf, -1);
-	pq_sendint32(&buf, 0);
-	pq_sendint16(&buf, 0);
-
-	pq_sendstring(&buf, "tli");
-	pq_sendint32(&buf, 0);		/* table oid */
-	pq_sendint16(&buf, 0);		/* attnum */
+	tupdesc = CreateTemplateTupleDesc(2);
+	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 1, "recptr", TEXTOID, -1, 0);
 
 	/*
 	 * int8 may seem like a surprising data type for this, but in theory int4
 	 * would not be wide enough for this, as TimeLineID is unsigned.
 	 */
-	pq_sendint32(&buf, INT8OID);	/* type oid */
-	pq_sendint16(&buf, -1);
-	pq_sendint32(&buf, 0);
-	pq_sendint16(&buf, 0);
-	pq_endmessage(&buf);
+	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 2, "tli", INT8OID, -1, 0);
+
+	TupleDescFinalize(tupdesc);
+
+	/* send RowDescription */
+	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
 
 	/* Data row */
-	pq_beginmessage(&buf, 'D');
-	pq_sendint16(&buf, 2);		/* number of columns */
+	values[0] = CStringGetTextDatum(psprintf("%X/%08X", LSN_FORMAT_ARGS(ptr)));
+	values[1] = Int64GetDatum(tli);
+	do_tup_output(tstate, values, nulls);
 
-	len = snprintf(str, sizeof(str),
-				   "%X/%X", LSN_FORMAT_ARGS(ptr));
-	pq_sendint32(&buf, len);
-	pq_sendbytes(&buf, str, len);
-
-	len = snprintf(str, sizeof(str), "%u", tli);
-	pq_sendint32(&buf, len);
-	pq_sendbytes(&buf, str, len);
-
-	pq_endmessage(&buf);
+	end_tup_output(tstate);
 
 	/* Send a CommandComplete message */
-	pq_puttextmessage('C', "SELECT");
+	pq_puttextmessage(PqMsg_CommandComplete, "SELECT");
 }
 
 /*
@@ -391,83 +379,47 @@ SendXlogRecPtrResult(XLogRecPtr ptr, TimeLineID tli)
 static void
 SendTablespaceList(List *tablespaces)
 {
-	StringInfoData buf;
+	DestReceiver *dest;
+	TupOutputState *tstate;
+	TupleDesc	tupdesc;
 	ListCell   *lc;
 
+	dest = CreateDestReceiver(DestRemoteSimple);
+
+	tupdesc = CreateTemplateTupleDesc(3);
+	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 1, "spcoid", OIDOID, -1, 0);
+	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 2, "spclocation", TEXTOID, -1, 0);
+	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 3, "size", INT8OID, -1, 0);
+	TupleDescFinalize(tupdesc);
+
+	/* send RowDescription */
+	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
+
 	/* Construct and send the directory information */
-	pq_beginmessage(&buf, 'T'); /* RowDescription */
-	pq_sendint16(&buf, 3);		/* 3 fields */
-
-	/* First field - spcoid */
-	pq_sendstring(&buf, "spcoid");
-	pq_sendint32(&buf, 0);		/* table oid */
-	pq_sendint16(&buf, 0);		/* attnum */
-	pq_sendint32(&buf, OIDOID); /* type oid */
-	pq_sendint16(&buf, 4);		/* typlen */
-	pq_sendint32(&buf, 0);		/* typmod */
-	pq_sendint16(&buf, 0);		/* format code */
-
-	/* Second field - spclocation */
-	pq_sendstring(&buf, "spclocation");
-	pq_sendint32(&buf, 0);
-	pq_sendint16(&buf, 0);
-	pq_sendint32(&buf, TEXTOID);
-	pq_sendint16(&buf, -1);
-	pq_sendint32(&buf, 0);
-	pq_sendint16(&buf, 0);
-
-	/* Third field - size */
-	pq_sendstring(&buf, "size");
-	pq_sendint32(&buf, 0);
-	pq_sendint16(&buf, 0);
-	pq_sendint32(&buf, INT8OID);
-	pq_sendint16(&buf, 8);
-	pq_sendint32(&buf, 0);
-	pq_sendint16(&buf, 0);
-	pq_endmessage(&buf);
-
 	foreach(lc, tablespaces)
 	{
 		tablespaceinfo *ti = lfirst(lc);
+		Datum		values[3];
+		bool		nulls[3] = {0};
 
 		/* Send one datarow message */
-		pq_beginmessage(&buf, 'D');
-		pq_sendint16(&buf, 3);	/* number of columns */
 		if (ti->path == NULL)
 		{
-			pq_sendint32(&buf, -1); /* Length = -1 ==> NULL */
-			pq_sendint32(&buf, -1);
+			nulls[0] = true;
+			nulls[1] = true;
 		}
 		else
 		{
-			Size		len;
-
-			len = strlen(ti->oid);
-			pq_sendint32(&buf, len);
-			pq_sendbytes(&buf, ti->oid, len);
-
-			len = strlen(ti->path);
-			pq_sendint32(&buf, len);
-			pq_sendbytes(&buf, ti->path, len);
+			values[0] = ObjectIdGetDatum(ti->oid);
+			values[1] = CStringGetTextDatum(ti->path);
 		}
 		if (ti->size >= 0)
-			send_int8_string(&buf, ti->size / 1024);
+			values[2] = Int64GetDatum(ti->size / 1024);
 		else
-			pq_sendint32(&buf, -1); /* NULL */
+			nulls[2] = true;
 
-		pq_endmessage(&buf);
+		do_tup_output(tstate, values, nulls);
 	}
-}
 
-/*
- * Send a 64-bit integer as a string via the wire protocol.
- */
-static void
-send_int8_string(StringInfoData *buf, int64 intval)
-{
-	char		is[32];
-
-	sprintf(is, INT64_FORMAT, intval);
-	pq_sendint32(buf, strlen(is));
-	pq_sendbytes(buf, is, strlen(is));
+	end_tup_output(tstate);
 }

@@ -310,7 +310,7 @@ ALTER OPERATOR FAMILY alt_opf4 USING btree ADD OPERATOR 6 < (int4, int2); -- ope
 ALTER OPERATOR FAMILY alt_opf4 USING btree ADD OPERATOR 0 < (int4, int2); -- operator number should be between 1 and 5
 ALTER OPERATOR FAMILY alt_opf4 USING btree ADD OPERATOR 1 < ; -- operator without argument types
 ALTER OPERATOR FAMILY alt_opf4 USING btree ADD FUNCTION 0 btint42cmp(int4, int2); -- invalid options parsing function
-ALTER OPERATOR FAMILY alt_opf4 USING btree ADD FUNCTION 6 btint42cmp(int4, int2); -- function number should be between 1 and 5
+ALTER OPERATOR FAMILY alt_opf4 USING btree ADD FUNCTION 7 btint42cmp(int4, int2); -- function number should be between 1 and 6
 ALTER OPERATOR FAMILY alt_opf4 USING btree ADD STORAGE invalid_storage; -- Ensure STORAGE is not a part of ALTER OPERATOR FAMILY
 DROP OPERATOR FAMILY alt_opf4 USING btree;
 
@@ -444,6 +444,9 @@ ALTER OPERATOR FAMILY alt_opf18 USING btree ADD
 -- Should fail. Not allowed to have cross-type equalimage function.
 ALTER OPERATOR FAMILY alt_opf18 USING btree
   ADD FUNCTION 4 (int4, int2) btequalimage(oid);
+-- Should fail. Not allowed to have cross-type skip support function.
+ALTER OPERATOR FAMILY alt_opf18 USING btree
+  ADD FUNCTION 6 (int4, int2) btint4skipsupport(internal);
 ALTER OPERATOR FAMILY alt_opf18 USING btree DROP FUNCTION 2 (int4, int4);
 DROP OPERATOR FAMILY alt_opf18 USING btree;
 
@@ -455,6 +458,40 @@ ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4, int2) btint42c
 ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4) test_opclass_options_func(internal); -- Ok
 ALTER OPERATOR FAMILY alt_opf19 USING btree DROP FUNCTION 5 (int4, int4);
 DROP OPERATOR FAMILY alt_opf19 USING btree;
+
+--
+-- Property Graph
+--
+SET SESSION AUTHORIZATION regress_alter_generic_user1;
+CREATE PROPERTY GRAPH alt_graph1;
+CREATE PROPERTY GRAPH alt_graph2;
+CREATE PROPERTY GRAPH alt_graph3;
+
+ALTER PROPERTY GRAPH alt_graph1 RENAME TO alt_graph2; -- failed (name conflict)
+ALTER PROPERTY GRAPH alt_graph1 RENAME TO alt_graph4; -- OK
+ALTER PROPERTY GRAPH alt_graph2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ALTER PROPERTY GRAPH alt_graph2 OWNER TO regress_alter_generic_user3;  -- OK
+ALTER PROPERTY GRAPH alt_graph4 SET SCHEMA alt_nsp2;  -- OK
+ALTER PROPERTY GRAPH alt_nsp2.alt_graph4 RENAME TO alt_graph2;  -- OK
+ALTER PROPERTY GRAPH alt_graph2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
+
+SET SESSION AUTHORIZATION regress_alter_generic_user2;
+CREATE PROPERTY GRAPH alt_graph5;
+
+ALTER PROPERTY GRAPH alt_graph3 RENAME TO alt_graph5;  -- failed (not owner)
+ALTER PROPERTY GRAPH alt_graph5 RENAME TO alt_graph6;  -- OK
+ALTER PROPERTY GRAPH alt_graph3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+ALTER PROPERTY GRAPH alt_graph6 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+ALTER PROPERTY GRAPH alt_graph3 SET SCHEMA alt_nsp2;  -- failed (not owner)
+
+RESET SESSION AUTHORIZATION;
+
+SELECT nspname, relname, rolname
+  FROM pg_class c, pg_namespace n, pg_authid a
+  WHERE c.relnamespace = n.oid AND c.relowner = a.oid
+    AND n.nspname in ('alt_nsp1', 'alt_nsp2')
+    AND c.relkind = 'g'
+  ORDER BY nspname, relname;
 
 --
 -- Statistics

@@ -86,7 +86,7 @@ IsProfileHandlingRequired(UserAuth auth_method)
 		case uaBSD:
 		case uaLDAP:
 		case uaCert:
-		case uaRADIUS:
+		case uaOAuth:
 		case uaYbJWT:
 			return true;
 	}

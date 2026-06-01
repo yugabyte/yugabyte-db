@@ -2,7 +2,7 @@
  *
  * UUID generation functions using the BSD, E2FS or OSSP UUID library
  *
- * Copyright (c) 2007-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2026, PostgreSQL Global Development Group
  *
  * Portions Copyright (c) 2009 Andrew Gierth
  *
@@ -13,12 +13,13 @@
 
 #include "postgres.h"
 
-#include "fmgr.h"
 #include "common/cryptohash.h"
 #include "common/sha1.h"
+#include "fmgr.h"
 #include "port/pg_bswap.h"
 #include "utils/builtins.h"
 #include "utils/uuid.h"
+#include "varatt.h"
 
 /*
  * It's possible that there's more than one uuid.h header file present.
@@ -101,7 +102,10 @@ do { \
 
 #endif							/* !HAVE_UUID_OSSP */
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "uuid-ossp",
+					.version = PG_VERSION
+);
 
 PG_FUNCTION_INFO_V1(uuid_nil);
 PG_FUNCTION_INFO_V1(uuid_ns_dns);
@@ -304,8 +308,7 @@ uuid_generate_internal(int v, unsigned char *ns, const char *ptr, int len)
 						if (ptr && len <= 36)
 							strcpy(strbuf + (36 - len), ptr);
 					}
-					if (str)
-						free(str);
+					free(str);
 				}
 
 				if (status != uuid_s_ok)
@@ -334,7 +337,7 @@ uuid_generate_internal(int v, unsigned char *ns, const char *ptr, int len)
 						elog(ERROR, "could not initialize %s context: %s", "MD5",
 							 pg_cryptohash_error(ctx));
 					if (pg_cryptohash_update(ctx, ns, sizeof(uu)) < 0 ||
-						pg_cryptohash_update(ctx, (unsigned char *) ptr, len) < 0)
+						pg_cryptohash_update(ctx, (const unsigned char *) ptr, len) < 0)
 						elog(ERROR, "could not update %s context: %s", "MD5",
 							 pg_cryptohash_error(ctx));
 					/* we assume sizeof MD5 result is 16, same as UUID size */
@@ -353,7 +356,7 @@ uuid_generate_internal(int v, unsigned char *ns, const char *ptr, int len)
 						elog(ERROR, "could not initialize %s context: %s", "SHA1",
 							 pg_cryptohash_error(ctx));
 					if (pg_cryptohash_update(ctx, ns, sizeof(uu)) < 0 ||
-						pg_cryptohash_update(ctx, (unsigned char *) ptr, len) < 0)
+						pg_cryptohash_update(ctx, (const unsigned char *) ptr, len) < 0)
 						elog(ERROR, "could not update %s context: %s", "SHA1",
 							 pg_cryptohash_error(ctx));
 					if (pg_cryptohash_final(ctx, sha1result, sizeof(sha1result)) < 0)
@@ -378,8 +381,7 @@ uuid_generate_internal(int v, unsigned char *ns, const char *ptr, int len)
 				if (status == uuid_s_ok)
 					strlcpy(strbuf, str, 37);
 
-				if (str)
-					free(str);
+				free(str);
 
 				if (status != uuid_s_ok)
 					ereport(ERROR,

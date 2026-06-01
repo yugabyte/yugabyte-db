@@ -9,12 +9,18 @@
 -- ensure consistent test output regardless of the default bytea format
 SET bytea_output TO escape;
 
--- Test ALTER LARGE OBJECT OWNER, GRANT, COMMENT
+-- Test ALTER LARGE OBJECT OWNER
 CREATE ROLE regress_lo_user;
 SELECT lo_create(42);
 ALTER LARGE OBJECT 42 OWNER TO regress_lo_user;
+
+-- Test GRANT, COMMENT as non-superuser
+SET SESSION AUTHORIZATION regress_lo_user;
+
 GRANT SELECT ON LARGE OBJECT 42 TO public;
 COMMENT ON LARGE OBJECT 42 IS 'the ultimate answer';
+
+RESET SESSION AUTHORIZATION;
 
 -- Test psql's \lo_list et al (we assume no other LOs exist yet)
 \lo_list
@@ -244,7 +250,7 @@ TRUNCATE lotest_stash_values;
 SELECT lo_from_bytea(0, lo_get(:newloid_1)) AS newloid_2
 \gset
 
-SELECT md5(lo_get(:newloid_1)) = md5(lo_get(:newloid_2));
+SELECT fipshash(lo_get(:newloid_1)) = fipshash(lo_get(:newloid_2));
 
 SELECT lo_get(:newloid_1, 0, 20);
 SELECT lo_get(:newloid_1, 10, 20);
@@ -270,6 +276,50 @@ SELECT lo_get(:newloid);
 SELECT lo_create(2121);
 
 COMMENT ON LARGE OBJECT 2121 IS 'testing comments';
+
+-- Test writes on large objects in read-only transactions
+START TRANSACTION READ ONLY;
+-- INV_READ ... ok
+SELECT lo_open(2121, x'40000'::int);
+-- INV_WRITE ... error
+SELECT lo_open(2121, x'20000'::int);
+ROLLBACK;
+
+START TRANSACTION READ ONLY;
+SELECT lo_create(42);
+ROLLBACK;
+
+START TRANSACTION READ ONLY;
+SELECT lo_creat(42);
+ROLLBACK;
+
+START TRANSACTION READ ONLY;
+SELECT lo_unlink(42);
+ROLLBACK;
+
+START TRANSACTION READ ONLY;
+SELECT lowrite(42, 'x');
+ROLLBACK;
+
+START TRANSACTION READ ONLY;
+SELECT lo_import(:'filename');
+ROLLBACK;
+
+START TRANSACTION READ ONLY;
+SELECT lo_truncate(42, 0);
+ROLLBACK;
+
+START TRANSACTION READ ONLY;
+SELECT lo_truncate64(42, 0);
+ROLLBACK;
+
+START TRANSACTION READ ONLY;
+SELECT lo_from_bytea(0, 'x');
+ROLLBACK;
+
+START TRANSACTION READ ONLY;
+SELECT lo_put(42, 0, 'x');
+ROLLBACK;
 
 -- Clean up
 DROP TABLE lotest_stash_values;

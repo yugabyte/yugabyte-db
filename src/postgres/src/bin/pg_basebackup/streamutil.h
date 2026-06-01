@@ -2,7 +2,7 @@
  *
  * streamutil.h
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/streamutil.h
@@ -24,7 +24,7 @@ extern char *dbuser;
 extern char *dbport;
 extern char *dbname;
 extern int	dbgetpassword;
-extern uint32 WalSegSz;
+extern int	WalSegSz;
 
 /* Connection kept global so we can disconnect easily */
 extern PGconn *conn;
@@ -35,7 +35,8 @@ extern PGconn *GetConnection(void);
 extern bool CreateReplicationSlot(PGconn *conn, const char *slot_name,
 								  const char *plugin, bool is_temporary,
 								  bool is_physical, bool reserve_wal,
-								  bool slot_exists_ok, bool two_phase);
+								  bool slot_exists_ok, bool two_phase,
+								  bool failover);
 extern bool DropReplicationSlot(PGconn *conn, const char *slot_name);
 extern bool RunIdentifySystem(PGconn *conn, char **sysid,
 							  TimeLineID *starttli,
@@ -44,7 +45,7 @@ extern bool RunIdentifySystem(PGconn *conn, char **sysid,
 
 extern void AppendPlainCommandOption(PQExpBuffer buf,
 									 bool use_new_option_syntax,
-									 char *option_value);
+									 char *option_name);
 extern void AppendStringCommandOption(PQExpBuffer buf,
 									  bool use_new_option_syntax,
 									  char *option_name, char *option_value);

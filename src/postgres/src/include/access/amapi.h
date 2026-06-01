@@ -3,7 +3,7 @@
  * amapi.h
  *	  API for Postgres index access methods.
  *
- * Copyright (c) 2015-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2026, PostgreSQL Global Development Group
  *
  * src/include/access/amapi.h
  *
@@ -12,18 +12,22 @@
 #ifndef AMAPI_H
 #define AMAPI_H
 
+#include "access/cmptype.h"
 #include "access/genam.h"
+#include "access/stratnum.h"
+#include "nodes/nodes.h"
+#include "nodes/pg_list.h"
 
 /*
  * We don't wish to include planner header files here, since most of an index
  * AM's implementation isn't concerned with those data structures.  To allow
  * declaring amcostestimate_function here, use forward struct references.
  */
-struct PlannerInfo;
-struct IndexPath;
+typedef struct PlannerInfo PlannerInfo;
+typedef struct IndexPath IndexPath;
 
 /* Likewise, this file shouldn't depend on execnodes.h. */
-struct IndexInfo;
+typedef struct IndexInfo IndexInfo;
 
 /*
  * YB: BACKFILL input and output nodes.
@@ -57,7 +61,7 @@ typedef enum IndexAMProperty
 	AMPROP_CAN_UNIQUE,
 	AMPROP_CAN_MULTI_COL,
 	AMPROP_CAN_EXCLUDE,
-	AMPROP_CAN_INCLUDE
+	AMPROP_CAN_INCLUDE,
 } IndexAMProperty;
 
 /*
@@ -105,10 +109,16 @@ typedef struct OpFamilyMember
  * Callback function signatures --- see indexam.sgml for more info.
  */
 
+/* translate AM-specific strategies to general operator types */
+typedef CompareType (*amtranslate_strategy_function) (StrategyNumber strategy, Oid opfamily);
+
+/* translate general operator types to AM-specific strategies */
+typedef StrategyNumber (*amtranslate_cmptype_function) (CompareType cmptype, Oid opfamily);
+
 /* build new index */
 typedef IndexBuildResult *(*ambuild_function) (Relation heapRelation,
 											   Relation indexRelation,
-											   struct IndexInfo *indexInfo);
+											   IndexInfo *indexInfo);
 
 /* build empty index */
 typedef void (*ambuildempty_function) (Relation indexRelation);
@@ -121,7 +131,11 @@ typedef bool (*aminsert_function) (Relation indexRelation,
 								   Relation heapRelation,
 								   IndexUniqueCheck checkUnique,
 								   bool indexUnchanged,
-								   struct IndexInfo *indexInfo);
+								   IndexInfo *indexInfo);
+
+/* cleanup after insert */
+typedef void (*aminsertcleanup_function) (Relation indexRelation,
+										  IndexInfo *indexInfo);
 
 /* alternate insert callback for YugaByte-based index that passs ybctid instead of ctid */
 typedef bool (*yb_aminsert_function) (Relation indexRelation,
@@ -179,14 +193,21 @@ typedef IndexBulkDeleteResult *(*amvacuumcleanup_function) (IndexVacuumInfo *inf
 typedef bool (*amcanreturn_function) (Relation indexRelation, int attno);
 
 /* estimate cost of an indexscan */
-typedef void (*amcostestimate_function) (struct PlannerInfo *root,
-										 struct IndexPath *path,
+typedef void (*amcostestimate_function) (PlannerInfo *root,
+										 IndexPath *path,
 										 double loop_count,
 										 Cost *indexStartupCost,
 										 Cost *indexTotalCost,
 										 Selectivity *indexSelectivity,
 										 double *indexCorrelation,
 										 double *indexPages);
+
+/* estimate height of a tree-structured index
+ *
+ * XXX This just computes a value that is later used by amcostestimate.  This
+ * API could be expanded to support passing more values if the need arises.
+ */
+typedef int (*amgettreeheight_function) (Relation rel);
 
 /* parse index reloptions */
 typedef bytea *(*amoptions_function) (Datum reloptions,
@@ -236,8 +257,8 @@ typedef int64 (*yb_amgetbitmap_function) (IndexScanDesc scan,
 typedef void (*yb_ambindschema_function) (YbcPgStatement handle,
 										  struct IndexInfo *indexInfo,
 										  TupleDesc indexTupleDesc,
-										  int16 *coloptions,
-										  Oid *opclassOids,
+										  const int16 *coloptions,
+										  const Oid *opclassOids,
 										  Datum reloptions);
 
 /* end index scan */
@@ -254,7 +275,8 @@ typedef void (*amrestrpos_function) (IndexScanDesc scan);
  */
 
 /* estimate size of parallel scan descriptor */
-typedef Size (*amestimateparallelscan_function) (void);
+typedef Size (*amestimateparallelscan_function) (Relation indexRelation,
+												 int nkeys, int norderbys);
 
 /* prepare for parallel index scan */
 typedef void (*aminitparallelscan_function) (void *target);
@@ -263,8 +285,8 @@ typedef void (*aminitparallelscan_function) (void *target);
 typedef void (*amparallelrescan_function) (IndexScanDesc scan);
 
 /*
- * API struct for an index AM.  Note this must be stored in a single palloc'd
- * chunk of memory.
+ * API struct for an index AM.  Note we expect index AMs to allocate these
+ * structs statically; the core code never copies nor frees them.
  */
 typedef struct IndexAmRoutine
 {
@@ -283,6 +305,12 @@ typedef struct IndexAmRoutine
 	bool		amcanorder;
 	/* does AM support ORDER BY result of an operator on indexed column? */
 	bool		amcanorderbyop;
+	/* does AM support hashing using API consistent with the hash AM? */
+	bool		amcanhash;
+	/* do operators within an opfamily have consistent equality semantics? */
+	bool		amconsistentequality;
+	/* do operators within an opfamily have consistent ordering semantics? */
+	bool		amconsistentordering;
 	/* does AM support backward scanning? */
 	bool		amcanbackward;
 	/* does AM support UNIQUE indexes? */
@@ -303,10 +331,14 @@ typedef struct IndexAmRoutine
 	bool		ampredlocks;
 	/* does AM support parallel scan? */
 	bool		amcanparallel;
+	/* does AM support parallel build? */
+	bool		amcanbuildparallel;
 	/* does AM support columns included with clause INCLUDE? */
 	bool		amcaninclude;
 	/* does AM use maintenance_work_mem? */
 	bool		amusemaintenanceworkmem;
+	/* does AM store tuple information only at block granularity? */
+	bool		amsummarizing;
 	/* OR of parallel vacuum flags.  See vacuum.h for flags. */
 	uint8		amparallelvacuumoptions;
 	/* YB: does AM support in-place update of non-key columns? */
@@ -324,10 +356,12 @@ typedef struct IndexAmRoutine
 	ambuild_function ambuild;
 	ambuildempty_function ambuildempty;
 	aminsert_function aminsert;
+	aminsertcleanup_function aminsertcleanup;	/* can be NULL */
 	ambulkdelete_function ambulkdelete;
 	amvacuumcleanup_function amvacuumcleanup;
 	amcanreturn_function amcanreturn;	/* can be NULL */
 	amcostestimate_function amcostestimate;
+	amgettreeheight_function amgettreeheight;	/* can be NULL */
 	amoptions_function amoptions;
 	amproperty_function amproperty; /* can be NULL */
 	ambuildphasename_function ambuildphasename; /* can be NULL */
@@ -345,6 +379,10 @@ typedef struct IndexAmRoutine
 	amestimateparallelscan_function amestimateparallelscan; /* can be NULL */
 	aminitparallelscan_function aminitparallelscan; /* can be NULL */
 	amparallelrescan_function amparallelrescan; /* can be NULL */
+
+	/* interface functions to support planning */
+	amtranslate_strategy_function amtranslatestrategy;	/* can be NULL */
+	amtranslate_cmptype_function amtranslatecmptype;	/* can be NULL */
 
 	/* YB properties */
 	/* Whether this AM is for YB relations. */
@@ -388,12 +426,13 @@ typedef struct IndexAmRoutine
 	 * additional metadata to the index creation statement.
 	 */
 	yb_ambindschema_function yb_ambindschema;
-
 } IndexAmRoutine;
 
 
 /* Functions in access/index/amapi.c */
-extern IndexAmRoutine *GetIndexAmRoutine(Oid amhandler);
-extern IndexAmRoutine *GetIndexAmRoutineByAmId(Oid amoid, bool noerror);
+extern const IndexAmRoutine *GetIndexAmRoutine(Oid amhandler);
+extern const IndexAmRoutine *GetIndexAmRoutineByAmId(Oid amoid, bool noerror);
+extern CompareType IndexAmTranslateStrategy(StrategyNumber strategy, Oid amoid, Oid opfamily, bool missing_ok);
+extern StrategyNumber IndexAmTranslateCompareType(CompareType cmptype, Oid amoid, Oid opfamily, bool missing_ok);
 
 #endif							/* AMAPI_H */

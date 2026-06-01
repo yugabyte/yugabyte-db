@@ -2,30 +2,27 @@
  * brinfuncs.c
  *		Functions to investigate BRIN indexes
  *
- * Copyright (c) 2014-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		contrib/pageinspect/brinfuncs.c
  */
 #include "postgres.h"
 
-#include "access/brin.h"
 #include "access/brin_internal.h"
 #include "access/brin_page.h"
-#include "access/brin_revmap.h"
 #include "access/brin_tuple.h"
 #include "access/htup_details.h"
-#include "catalog/index.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "pageinspect.h"
-#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/tuplestore.h"
 
 PG_FUNCTION_INFO_V1(brin_page_type);
 PG_FUNCTION_INFO_V1(brin_page_items);
@@ -121,6 +118,8 @@ verify_brin_page(bytea *raw_page, uint16 type, const char *strtype)
 	return page;
 }
 
+/* Number of output arguments (columns) for brin_page_items() */
+#define BRIN_PAGE_ITEMS_V1_12	8
 
 /*
  * Extract all item values from a BRIN index page
@@ -149,6 +148,21 @@ brin_page_items(PG_FUNCTION_ARGS)
 
 	InitMaterializedSRF(fcinfo, 0);
 
+	/*
+	 * Version 1.12 added a new output column for the empty range flag. But as
+	 * it was added in the middle, it may cause crashes with function
+	 * definitions from older versions of the extension.
+	 *
+	 * There is no way to reliably avoid the problems created by the old
+	 * function definition at this point, so insist that the user update the
+	 * extension.
+	 */
+	if (rsinfo->setDesc->natts < BRIN_PAGE_ITEMS_V1_12)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("function has wrong number of declared columns"),
+				 errhint("To resolve the problem, update the \"pageinspect\" extension to the latest version.")));
+
 	indexRel = index_open(indexRelid, AccessShareLock);
 
 	if (!IS_BRIN(indexRel))
@@ -173,7 +187,7 @@ brin_page_items(PG_FUNCTION_ARGS)
 	 * Initialize output functions for all indexed datatypes; simplifies
 	 * calling them later.
 	 */
-	columns = palloc(sizeof(brin_column_state *) * RelationGetDescr(indexRel)->natts);
+	columns = palloc_array(brin_column_state *, RelationGetDescr(indexRel)->natts);
 	for (attno = 1; attno <= bdesc->bd_tupdesc->natts; attno++)
 	{
 		Oid			output;
@@ -201,8 +215,8 @@ brin_page_items(PG_FUNCTION_ARGS)
 	dtup = NULL;
 	for (;;)
 	{
-		Datum		values[7];
-		bool		nulls[7];
+		Datum		values[8];
+		bool		nulls[8] = {0};
 
 		/*
 		 * This loop is called once for every attribute of every tuple in the
@@ -230,8 +244,6 @@ brin_page_items(PG_FUNCTION_ARGS)
 		else
 			attno++;
 
-		MemSet(nulls, 0, sizeof(nulls));
-
 		if (unusedItem)
 		{
 			values[0] = UInt16GetDatum(offset);
@@ -241,6 +253,7 @@ brin_page_items(PG_FUNCTION_ARGS)
 			nulls[4] = true;
 			nulls[5] = true;
 			nulls[6] = true;
+			nulls[7] = true;
 		}
 		else
 		{
@@ -263,6 +276,7 @@ brin_page_items(PG_FUNCTION_ARGS)
 			values[3] = BoolGetDatum(dtup->bt_columns[att].bv_allnulls);
 			values[4] = BoolGetDatum(dtup->bt_columns[att].bv_hasnulls);
 			values[5] = BoolGetDatum(dtup->bt_placeholder);
+			values[6] = BoolGetDatum(dtup->bt_empty_range);
 			if (!dtup->bt_columns[att].bv_allnulls)
 			{
 				BrinValues *bvalues = &dtup->bt_columns[att];
@@ -288,12 +302,12 @@ brin_page_items(PG_FUNCTION_ARGS)
 				}
 				appendStringInfoChar(&s, '}');
 
-				values[6] = CStringGetTextDatum(s.data);
+				values[7] = CStringGetTextDatum(s.data);
 				pfree(s.data);
 			}
 			else
 			{
-				nulls[6] = true;
+				nulls[7] = true;
 			}
 		}
 
@@ -334,7 +348,7 @@ brin_metapage_info(PG_FUNCTION_ARGS)
 	BrinMetaPageData *meta;
 	TupleDesc	tupdesc;
 	Datum		values[4];
-	bool		nulls[4];
+	bool		nulls[4] = {0};
 	HeapTuple	htup;
 
 	if (!superuser())
@@ -354,7 +368,6 @@ brin_metapage_info(PG_FUNCTION_ARGS)
 
 	/* Extract values from the metapage */
 	meta = (BrinMetaPageData *) PageGetContents(page);
-	MemSet(nulls, 0, sizeof(nulls));
 	values[0] = CStringGetTextDatum(psprintf("0x%08X", meta->brinMagic));
 	values[1] = Int32GetDatum(meta->brinVersion);
 	values[2] = Int32GetDatum(meta->pagesPerRange);

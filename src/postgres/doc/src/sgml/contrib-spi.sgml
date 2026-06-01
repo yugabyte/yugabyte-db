@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/contrib-spi.sgml -->
 
 <sect1 id="contrib-spi" xreflabel="spi">
- <title>spi</title>
+ <title>spi &mdash; Server Programming Interface features/examples</title>
 
  <indexterm zone="contrib-spi">
   <primary>SPI</primary>
@@ -24,7 +24,7 @@
   separately-installable extension.
  </para>
 
- <sect2>
+ <sect2 id="contrib-spi-refint">
   <title>refint &mdash; Functions for Implementing Referential Integrity</title>
 
   <para>
@@ -36,7 +36,7 @@
 
   <para>
    <function>check_primary_key()</function> checks the referencing table.
-   To use, create a <literal>BEFORE INSERT OR UPDATE</literal> trigger using this
+   To use, create an <literal>AFTER INSERT OR UPDATE</literal> trigger using this
    function on a table referencing another table. Specify as the trigger
    arguments: the referencing table's column name(s) which form the foreign
    key, the referenced table name, and the column names in the referenced table
@@ -46,7 +46,7 @@
 
   <para>
    <function>check_foreign_key()</function> checks the referenced table.
-   To use, create a <literal>BEFORE DELETE OR UPDATE</literal> trigger using this
+   To use, create an <literal>AFTER DELETE OR UPDATE</literal> trigger using this
    function on a table referenced by other table(s).  Specify as the trigger
    arguments: the number of referencing tables for which the function has to
    perform checking, the action if a referencing key is found
@@ -61,20 +61,32 @@
   </para>
 
   <para>
+   Note that if these triggers are executed from
+   another <literal>BEFORE</literal> trigger, they can fail unexpectedly. For
+   example, if a user inserts row1 and then the <literal>BEFORE</literal>
+   trigger inserts row2 and calls a trigger with the
+   <function>check_foreign_key()</function>,
+   the <function>check_foreign_key()</function>
+   function will not see row1 and will fail.
+  </para>
+
+  <para>
    There are examples in <filename>refint.example</filename>.
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="contrib-spi-autoinc">
   <title>autoinc &mdash; Functions for Autoincrementing Fields</title>
 
   <para>
    <function>autoinc()</function> is a trigger that stores the next value of
    a sequence into an integer field.  This has some overlap with the
-   built-in <quote>serial column</quote> feature, but it is not the same:
-   <function>autoinc()</function> will override attempts to substitute a
-   different field value during inserts, and optionally it can be
-   used to increment the field during updates, too.
+   built-in <quote>serial column</quote> feature, but it is not the same.
+   The trigger will replace the field's value only if that value is
+   initially zero or null (after the action of the SQL statement that
+   inserted or updated the row).  Also, if the sequence's next value is
+   zero, <function>nextval()</function> will be called a second time in
+   order to obtain a non-zero value.
   </para>
 
   <para>
@@ -92,7 +104,7 @@
 
  </sect2>
 
- <sect2>
+ <sect2 id="contrib-spi-insert-username">
   <title>insert_username &mdash; Functions for Tracking Who Changed a Table</title>
 
   <para>
@@ -113,7 +125,7 @@
 
  </sect2>
 
- <sect2>
+ <sect2 id="contrib-spi-moddatetime">
   <title>moddatetime &mdash; Functions for Tracking Last Modification Time</title>
 
   <para>

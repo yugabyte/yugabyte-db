@@ -8,13 +8,14 @@
  * postgres.h.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1995, Regents of the University of California
  *
  * src/include/postgres_fe.h
  *
  *-------------------------------------------------------------------------
  */
+/* IWYU pragma: always_keep */
 #ifndef POSTGRES_FE_H
 #define POSTGRES_FE_H
 
@@ -22,8 +23,12 @@
 #define FRONTEND 1
 #endif
 
+/* IWYU pragma: begin_exports */
+
 #include "c.h"
 
 #include "common/fe_memutils.h"
+
+/* IWYU pragma: end_exports */
 
 #endif							/* POSTGRES_FE_H */

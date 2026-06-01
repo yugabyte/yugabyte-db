@@ -3,7 +3,7 @@
  * pg_dump.h
  *	  Common header file for the pg_dump utility
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_dump/pg_dump.h
@@ -15,6 +15,7 @@
 #define PG_DUMP_H
 
 #include "pg_backup.h"
+#include "catalog/pg_publication_d.h"
 
 
 #define oidcmp(x,y) ( ((x) < (y) ? -1 : ((x) > (y)) ?  1 : 0) )
@@ -72,8 +73,8 @@ typedef enum
 	DO_FOREIGN_SERVER,
 	DO_DEFAULT_ACL,
 	DO_TRANSFORM,
-	DO_BLOB,
-	DO_BLOB_DATA,
+	DO_LARGE_OBJECT,
+	DO_LARGE_OBJECT_DATA,
 	DO_PRE_DATA_BOUNDARY,
 	DO_POST_DATA_BOUNDARY,
 	DO_EVENT_TRIGGER,
@@ -84,6 +85,7 @@ typedef enum
 	DO_PUBLICATION_TABLE_IN_SCHEMA,
 	DO_REL_STATS,
 	DO_SUBSCRIPTION,
+	DO_SUBSCRIPTION_REL,		/* see note for SubRelInfo */
 	DO_TABLEGROUP
 } DumpableObjectType;
 
@@ -213,6 +215,7 @@ typedef struct _typeInfo
 	const char *rolname;
 	Oid			typelem;
 	Oid			typrelid;
+	Oid			typarray;
 	char		typrelkind;		/* 'r', 'v', 'c', etc */
 	char		typtype;		/* 'b', 'c', etc */
 	bool		isArray;		/* true if auto-generated array type */
@@ -220,7 +223,9 @@ typedef struct _typeInfo
 	bool		isDefined;		/* true if typisdefined */
 	/* If needed, we'll create a "shell type" entry for it; link that here: */
 	struct _shellTypeInfo *shellType;	/* shell-type entry, or NULL */
-	/* If it's a domain, we store links to its constraints here: */
+	/* If it's a domain, its not-null constraint is here: */
+	struct _constraintInfo *notnull;
+	/* If it's a domain, we store links to its CHECK constraints here: */
 	int			nDomChecks;
 	struct _constraintInfo *domChecks;
 } TypeInfo;
@@ -256,6 +261,8 @@ typedef struct _oprInfo
 	DumpableObject dobj;
 	const char *rolname;
 	char		oprkind;
+	Oid			oprleft;
+	Oid			oprright;
 	Oid			oprcode;
 } OprInfo;
 
@@ -269,12 +276,14 @@ typedef struct _accessMethodInfo
 typedef struct _opclassInfo
 {
 	DumpableObject dobj;
+	Oid			opcmethod;
 	const char *rolname;
 } OpclassInfo;
 
 typedef struct _opfamilyInfo
 {
 	DumpableObject dobj;
+	Oid			opfmethod;
 	const char *rolname;
 } OpfamilyInfo;
 
@@ -282,6 +291,7 @@ typedef struct _collInfo
 {
 	DumpableObject dobj;
 	const char *rolname;
+	int			collencoding;
 } CollInfo;
 
 typedef struct _convInfo
@@ -335,6 +345,9 @@ typedef struct _tableInfo
 	bool		ispartition;	/* is table a partition? */
 	bool		unsafe_partitions;	/* is it an unsafe partitioned table? */
 
+	int			numParents;		/* number of (immediate) parent tables */
+	struct _tableInfo **parents;	/* TableInfos of immediate parents */
+
 	/*
 	 * These fields are computed only if we decide the table is interesting
 	 * (it's either a table to dump, or a direct parent of a dumpable table).
@@ -342,7 +355,6 @@ typedef struct _tableInfo
 	int			numatts;		/* number of attributes */
 	char	  **attnames;		/* the attribute names */
 	char	  **atttypnames;	/* attribute type names */
-	int		   *atttypmod;		/* type-specific type modifiers */
 	int		   *attstattarget;	/* attribute statistics targets */
 	char	   *attstorage;		/* attribute storage scheme */
 	char	   *typstorage;		/* type storage scheme */
@@ -357,8 +369,14 @@ typedef struct _tableInfo
 	char	   *attcompression; /* per-attribute compression method */
 	char	  **attfdwoptions;	/* per-attribute fdw options */
 	char	  **attmissingval;	/* per attribute missing value */
-	bool	   *notnull;		/* NOT NULL constraints on attributes */
-	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
+	char	  **notnull_constrs;	/* NOT NULL constraint names. If null,
+									 * there isn't one on this column. If
+									 * empty string, unnamed constraint
+									 * (pre-v17) */
+	char	  **notnull_comment;	/* comment thereof */
+	bool	   *notnull_invalid;	/* true for NOT NULL NOT VALID */
+	bool	   *notnull_noinh;	/* NOT NULL is NO INHERIT */
+	bool	   *notnull_islocal;	/* true if NOT NULL has local definition */
 	struct _attrDefInfo **attrdefs; /* DEFAULT expressions */
 	struct _constraintInfo *checkexprs; /* CHECK constraints */
 	struct _relStatsInfo *stats;	/* only set for matviews */
@@ -368,8 +386,6 @@ typedef struct _tableInfo
 	/*
 	 * Stuff computed only for dumpable tables.
 	 */
-	int			numParents;		/* number of (immediate) parent tables */
-	struct _tableInfo **parents;	/* TableInfos of immediate parents */
 	int			numIndexes;		/* number of indexes */
 	struct _indxInfo *indexes;	/* indexes */
 	struct _tableDataInfo *dataObj; /* TableDataInfo, if dumping its data */
@@ -452,9 +468,11 @@ typedef struct _indexAttachInfo
 typedef struct _relStatsInfo
 {
 	DumpableObject dobj;
+	Oid			relid;
 	int32		relpages;
 	char	   *reltuples;
 	int32		relallvisible;
+	int32		relallfrozen;
 	char		relkind;		/* 'r', 'm', 'i', etc */
 
 	/*
@@ -489,18 +507,8 @@ typedef struct _triggerInfo
 {
 	DumpableObject dobj;
 	TableInfo  *tgtable;		/* link to table the trigger is for */
-	char	   *tgfname;
-	int			tgtype;
-	int			tgnargs;
-	char	   *tgargs;
-	bool		tgisconstraint;
-	char	   *tgconstrname;
-	Oid			tgconstrrelid;
-	char	   *tgconstrrelname;
 	char		tgenabled;
 	bool		tgispartition;
-	bool		tgdeferrable;
-	bool		tginitdeferred;
 	char	   *tgdef;
 } TriggerInfo;
 
@@ -520,6 +528,8 @@ typedef struct _evttriggerInfo
  * use a different objType for foreign key constraints, to make it easier
  * to sort them the way we want.
  *
+ * Not-null constraints don't need this, unless they are NOT VALID.
+ *
  * Note: condeferrable and condeferred are currently only valid for
  * unique/primary-key constraints.  Otherwise that info is in condef.
  */
@@ -534,6 +544,7 @@ typedef struct _constraintInfo
 	DumpId		conindex;		/* identifies associated index if any */
 	bool		condeferrable;	/* true if constraint is DEFERRABLE */
 	bool		condeferred;	/* true if constraint is INITIALLY DEFERRED */
+	bool		conperiod;		/* true if the constraint is WITHOUT OVERLAPS */
 	bool		conislocal;		/* true if constraint has local definition */
 	bool		separate;		/* true if must dump as separate item */
 } ConstraintInfo;
@@ -614,6 +625,7 @@ typedef struct _fdwInfo
 	const char *rolname;
 	char	   *fdwhandler;
 	char	   *fdwvalidator;
+	char	   *fdwconnection;
 	char	   *fdwoptions;
 } FdwInfo;
 
@@ -636,12 +648,22 @@ typedef struct _defaultACLInfo
 	char		defaclobjtype;
 } DefaultACLInfo;
 
-typedef struct _blobInfo
+/*
+ * LoInfo represents a group of large objects (blobs) that share the same
+ * owner and ACL setting.  dobj.components has the DUMP_COMPONENT_COMMENT bit
+ * set if any blob in the group has a comment; similarly for sec labels.
+ * If there are many blobs with the same owner/ACL, we can divide them into
+ * multiple LoInfo groups, which will each spawn a BLOB METADATA and a BLOBS
+ * (data) TOC entry.  This allows more parallelism during restore.
+ */
+typedef struct _loInfo
 {
 	DumpableObject dobj;
 	DumpableAcl dacl;
 	const char *rolname;
-} BlobInfo;
+	int			numlos;
+	Oid			looids[FLEXIBLE_ARRAY_MEMBER];
+} LoInfo;
 
 /*
  * The PolicyInfo struct is used to represent policies on a table and
@@ -669,11 +691,14 @@ typedef struct _PublicationInfo
 	DumpableObject dobj;
 	const char *rolname;
 	bool		puballtables;
+	bool		puballsequences;
 	bool		pubinsert;
 	bool		pubupdate;
 	bool		pubdelete;
 	bool		pubtruncate;
 	bool		pubviaroot;
+	PublishGencolsType pubgencols_type;
+	SimplePtrList except_tables;
 } PublicationInfo;
 
 /*
@@ -707,15 +732,44 @@ typedef struct _SubscriptionInfo
 {
 	DumpableObject dobj;
 	const char *rolname;
+	bool		subenabled;
+	bool		subbinary;
+	char		substream;
+	char		subtwophasestate;
+	bool		subdisableonerr;
+	bool		subpasswordrequired;
+	bool		subrunasowner;
+	bool		subfailover;
+	bool		subretaindeadtuples;
+	int			submaxretention;
+	char	   *subservername;
 	char	   *subconninfo;
 	char	   *subslotname;
-	char	   *subbinary;
-	char	   *substream;
-	char	   *subtwophasestate;
-	char	   *subdisableonerr;
 	char	   *subsynccommit;
+	char	   *subwalrcvtimeout;
 	char	   *subpublications;
+	char	   *suborigin;
+	char	   *suboriginremotelsn;
 } SubscriptionInfo;
+
+/*
+ * The SubRelInfo struct is used to represent a subscription relation.
+ *
+ * XXX Currently, the subscription tables are added to the subscription after
+ * enabling the subscription in binary-upgrade mode. As the apply workers will
+ * not be started in binary_upgrade mode the ordering of enable subscription
+ * does not matter. The order of adding the subscription tables to the
+ * subscription and enabling the subscription should be taken care of if this
+ * feature will be supported in a non-binary-upgrade mode in the future.
+ */
+typedef struct _SubRelInfo
+{
+	DumpableObject dobj;
+	SubscriptionInfo *subinfo;
+	TableInfo  *tblinfo;
+	char		srsubstate;
+	char	   *srsublsn;
+} SubRelInfo;
 
 /*
  *	common utility functions
@@ -724,6 +778,7 @@ typedef struct _SubscriptionInfo
 extern TableInfo *getSchemaData(Archive *fout, int *numTablesPtr);
 
 extern void AssignDumpId(DumpableObject *dobj);
+extern void recordAdditionalCatalogID(CatalogId catId, DumpableObject *dobj);
 extern DumpId createDumpId(void);
 extern DumpId getMaxDumpId(void);
 extern DumpableObject *findObjectByDumpId(DumpId dumpId);
@@ -737,10 +792,12 @@ extern TableInfo *findTableByOid(Oid oid);
 extern TypeInfo *findTypeByOid(Oid oid);
 extern FuncInfo *findFuncByOid(Oid oid);
 extern OprInfo *findOprByOid(Oid oid);
+extern AccessMethodInfo *findAccessMethodByOid(Oid oid);
 extern CollInfo *findCollationByOid(Oid oid);
 extern NamespaceInfo *findNamespaceByOid(Oid oid);
 extern ExtensionInfo *findExtensionByOid(Oid oid);
 extern PublicationInfo *findPublicationByOid(Oid oid);
+extern SubscriptionInfo *findSubscriptionByOid(Oid oid);
 
 extern void recordExtensionMembership(CatalogId catId, ExtensionInfo *ext);
 extern ExtensionInfo *findOwningExtension(CatalogId catalogId);
@@ -754,17 +811,17 @@ extern void sortDumpableObjectsByTypeName(DumpableObject **objs, int numObjs);
 /*
  * version specific routines
  */
-extern NamespaceInfo *getNamespaces(Archive *fout, int *numNamespaces);
+extern void getNamespaces(Archive *fout);
 extern ExtensionInfo *getExtensions(Archive *fout, int *numExtensions);
-extern TypeInfo *getTypes(Archive *fout, int *numTypes);
-extern FuncInfo *getFuncs(Archive *fout, int *numFuncs);
-extern AggInfo *getAggregates(Archive *fout, int *numAggregates);
-extern OprInfo *getOperators(Archive *fout, int *numOperators);
-extern AccessMethodInfo *getAccessMethods(Archive *fout, int *numAccessMethods);
-extern OpclassInfo *getOpclasses(Archive *fout, int *numOpclasses);
-extern OpfamilyInfo *getOpfamilies(Archive *fout, int *numOpfamilies);
-extern CollInfo *getCollations(Archive *fout, int *numCollations);
-extern ConvInfo *getConversions(Archive *fout, int *numConversions);
+extern void getTypes(Archive *fout);
+extern void getFuncs(Archive *fout);
+extern void getAggregates(Archive *fout);
+extern void getOperators(Archive *fout);
+extern void getAccessMethods(Archive *fout);
+extern void getOpclasses(Archive *fout);
+extern void getOpfamilies(Archive *fout);
+extern void getCollations(Archive *fout);
+extern void getConversions(Archive *fout);
 extern TableInfo *getTables(Archive *fout, int *numTables);
 extern void getOwnedSeqs(Archive *fout, TableInfo tblinfo[], int numTables);
 extern InhInfo *getInherits(Archive *fout, int *numInherits);
@@ -772,34 +829,32 @@ extern void getPartitioningInfo(Archive *fout);
 extern void getIndexes(Archive *fout, TableInfo tblinfo[], int numTables);
 extern void getExtendedStatistics(Archive *fout);
 extern void getConstraints(Archive *fout, TableInfo tblinfo[], int numTables);
-extern RuleInfo *getRules(Archive *fout, int *numRules);
+extern void getRules(Archive *fout);
 extern void getTriggers(Archive *fout, TableInfo tblinfo[], int numTables);
-extern ProcLangInfo *getProcLangs(Archive *fout, int *numProcLangs);
-extern CastInfo *getCasts(Archive *fout, int *numCasts);
-extern TransformInfo *getTransforms(Archive *fout, int *numTransforms);
-extern void getTableAttrs(Archive *fout, TableInfo *tbinfo, int numTables);
+extern void getProcLangs(Archive *fout);
+extern void getCasts(Archive *fout);
+extern void getTransforms(Archive *fout);
+extern void getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables);
 extern bool shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno);
-extern TSParserInfo *getTSParsers(Archive *fout, int *numTSParsers);
-extern TSDictInfo *getTSDictionaries(Archive *fout, int *numTSDicts);
-extern TSTemplateInfo *getTSTemplates(Archive *fout, int *numTSTemplates);
-extern TSConfigInfo *getTSConfigurations(Archive *fout, int *numTSConfigs);
-extern FdwInfo *getForeignDataWrappers(Archive *fout,
-									   int *numForeignDataWrappers);
-extern ForeignServerInfo *getForeignServers(Archive *fout,
-											int *numForeignServers);
-extern DefaultACLInfo *getDefaultACLs(Archive *fout, int *numDefaultACLs);
+extern void getTSParsers(Archive *fout);
+extern void getTSDictionaries(Archive *fout);
+extern void getTSTemplates(Archive *fout);
+extern void getTSConfigurations(Archive *fout);
+extern void getForeignDataWrappers(Archive *fout);
+extern void getForeignServers(Archive *fout);
+extern void getDefaultACLs(Archive *fout);
 extern void getExtensionMembership(Archive *fout, ExtensionInfo extinfo[],
 								   int numExtensions);
 extern void processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 								   int numExtensions);
-extern EventTriggerInfo *getEventTriggers(Archive *fout, int *numEventTriggers);
+extern void getEventTriggers(Archive *fout);
 extern void getPolicies(Archive *fout, TableInfo tblinfo[], int numTables);
-extern PublicationInfo *getPublications(Archive *fout,
-										int *numPublications);
+extern void getPublications(Archive *fout);
 extern void getPublicationNamespaces(Archive *fout);
 extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);
 extern void getSubscriptions(Archive *fout);
+extern void getSubscriptionRelations(Archive *fout);
 
 /* YB */
 extern YbTablegroupInfo *findTablegroupByOid(Oid oid);

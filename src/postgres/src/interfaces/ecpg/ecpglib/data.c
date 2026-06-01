@@ -69,33 +69,22 @@ garbage_left(enum ARRAY_TYPE isarray, char **scan_length, enum COMPAT_MODE compa
 	return false;
 }
 
-/* stolen code from src/backend/utils/adt/float.c */
-#if defined(WIN32) && !defined(NAN)
-static const uint32 nan[2] = {0xffffffff, 0x7fffffff};
 
-#define NAN (*(const double *) nan)
-#endif
-
+/*
+ * Portability wrappers borrowed from src/include/utils/float.h
+ */
 static double
 get_float8_infinity(void)
 {
-#ifdef INFINITY
 	return (double) INFINITY;
-#else
-	return (double) (HUGE_VAL * HUGE_VAL);
-#endif
 }
 
 static double
 get_float8_nan(void)
 {
-	/* (double) NAN doesn't work on some NetBSD/MIPS releases */
-#if defined(NAN) && !(defined(__NetBSD__) && defined(__mips__))
 	return (double) NAN;
-#else
-	return (double) (0.0 / 0.0);
-#endif
 }
+
 
 static bool
 check_special_value(char *ptr, double *retval, char **endptr)
@@ -438,7 +427,6 @@ ecpg_get_data(const PGresult *results, int act_tuple, int act_field, int lineno,
 					}
 					break;
 
-#ifdef HAVE_STRTOLL
 				case ECPGt_long_long:
 					*((long long int *) (var + offset * act_tuple)) = strtoll(pval, &scan_length, 10);
 					if (garbage_left(isarray, &scan_length, compat))
@@ -449,8 +437,7 @@ ecpg_get_data(const PGresult *results, int act_tuple, int act_field, int lineno,
 					pval = scan_length;
 
 					break;
-#endif							/* HAVE_STRTOLL */
-#ifdef HAVE_STRTOULL
+
 				case ECPGt_unsigned_long_long:
 					*((unsigned long long int *) (var + offset * act_tuple)) = strtoull(pval, &scan_length, 10);
 					if (garbage_left(isarray, &scan_length, compat))
@@ -461,7 +448,6 @@ ecpg_get_data(const PGresult *results, int act_tuple, int act_field, int lineno,
 					pval = scan_length;
 
 					break;
-#endif							/* HAVE_STRTOULL */
 
 				case ECPGt_float:
 				case ECPGt_double:

@@ -117,7 +117,7 @@
 
       <row>
        <entry><type>double precision</type></entry>
-       <entry><type>float8</type></entry>
+       <entry><type>float</type>, <type>float8</type></entry>
        <entry>double precision floating-point number (8 bytes)</entry>
       </row>
 
@@ -315,6 +315,7 @@
     <type>character varying</type>, <type>character</type>,
     <type>varchar</type>, <type>date</type>, <type>double
     precision</type>, <type>integer</type>, <type>interval</type>,
+    <type>json</type>,
     <type>numeric</type>, <type>decimal</type>, <type>real</type>,
     <type>smallint</type>, <type>time</type> (with or without time zone),
     <type>timestamp</type> (with or without time zone),
@@ -717,7 +718,7 @@ NUMERIC(3, 5)
 SELECT x,
   round(x::numeric) AS num_round,
   round(x::double precision) AS dbl_round
-FROM generate_series(-3.5, 3.5, 1) as x;
+FROM generate_series(-3.5, 3.5, 1) AS x;
   x   | num_round | dbl_round
 ------+-----------+-----------
  -3.5 |        -4 |        -4
@@ -955,7 +956,7 @@ FROM generate_series(-3.5, 3.5, 1) as x;
      <para>
       This section describes a PostgreSQL-specific way to create an
       autoincrementing column.  Another way is to use the SQL-standard
-      identity column feature, described at <xref linkend="sql-createtable"/>.
+      identity column feature, described at <xref linkend="ddl-identity-columns"/>.
      </para>
     </note>
 
@@ -1154,6 +1155,10 @@ SELECT '52093.89'::money::numeric::float8;
     <primary>varchar</primary>
    </indexterm>
 
+   <indexterm zone="datatype-character">
+    <primary>bpchar</primary>
+   </indexterm>
+
     <table id="datatype-character-table">
      <title>Character Types</title>
      <tgroup cols="2">
@@ -1169,8 +1174,12 @@ SELECT '52093.89'::money::numeric::float8;
         <entry>variable-length with limit</entry>
        </row>
        <row>
-        <entry><type>character(<replaceable>n</replaceable>)</type>, <type>char(<replaceable>n</replaceable>)</type></entry>
-        <entry>fixed-length, blank padded</entry>
+        <entry><type>character(<replaceable>n</replaceable>)</type>, <type>char(<replaceable>n</replaceable>)</type>, <type>bpchar(<replaceable>n</replaceable>)</type></entry>
+        <entry>fixed-length, blank-padded</entry>
+       </row>
+       <row>
+        <entry><type>bpchar</type></entry>
+        <entry>variable unlimited length, blank-trimmed</entry>
        </row>
        <row>
         <entry><type>text</type></entry>
@@ -1196,7 +1205,14 @@ SELECT '52093.89'::money::numeric::float8;
     error, unless the excess characters are all spaces, in which case
     the string will be truncated to the maximum length. (This somewhat
     bizarre exception is required by the <acronym>SQL</acronym>
-    standard.) If the string to be stored is shorter than the declared
+    standard.)
+    However, if one explicitly casts a value to <type>character
+    varying(<replaceable>n</replaceable>)</type> or
+    <type>character(<replaceable>n</replaceable>)</type>, then an over-length
+    value will be truncated to <replaceable>n</replaceable> characters without
+    raising an error. (This too is required by the
+    <acronym>SQL</acronym> standard.)
+    If the string to be stored is shorter than the declared
     length, values of type <type>character</type> will be space-padded;
     values of type <type>character varying</type> will simply store the
     shorter
@@ -1204,33 +1220,37 @@ SELECT '52093.89'::money::numeric::float8;
    </para>
 
    <para>
-    If one explicitly casts a value to <type>character
-    varying(<replaceable>n</replaceable>)</type> or
-    <type>character(<replaceable>n</replaceable>)</type>, then an over-length
-    value will be truncated to <replaceable>n</replaceable> characters without
-    raising an error. (This too is required by the
-    <acronym>SQL</acronym> standard.)
-   </para>
-
-   <para>
-    The notations <type>varchar(<replaceable>n</replaceable>)</type> and
-    <type>char(<replaceable>n</replaceable>)</type> are aliases for <type>character
-    varying(<replaceable>n</replaceable>)</type> and
-    <type>character(<replaceable>n</replaceable>)</type>, respectively.
-    If specified, the length must be greater than zero and cannot exceed
-    10485760.
-    <type>character</type> without length specifier is equivalent to
-    <type>character(1)</type>. If <type>character varying</type> is used
-    without length specifier, the type accepts strings of any size. The
-    latter is a <productname>PostgreSQL</productname> extension.
-   </para>
-
-   <para>
     In addition, <productname>PostgreSQL</productname> provides the
     <type>text</type> type, which stores strings of any length.
-    Although the type <type>text</type> is not in the
+    Although the <type>text</type> type is not in the
     <acronym>SQL</acronym> standard, several other SQL database
     management systems have it as well.
+    <type>text</type> is <productname>PostgreSQL</productname>'s native
+    string data type, in that most built-in functions operating on strings
+    are declared to take or return <type>text</type> not <type>character
+    varying</type>.  For many purposes, <type>character varying</type>
+    acts as though it were a <link linkend="domains">domain</link>
+    over <type>text</type>.
+   </para>
+
+   <para>
+    The type name <type>varchar</type> is an alias for <type>character
+    varying</type>, while <type>bpchar</type> (with length specifier) and
+    <type>char</type> are aliases for <type>character</type>.  The
+    <type>varchar</type> and <type>char</type> aliases are defined in the
+    <acronym>SQL</acronym> standard;  <type>bpchar</type> is a
+    <productname>PostgreSQL</productname> extension.
+   </para>
+
+   <para>
+    If specified, the length <replaceable>n</replaceable> must be greater
+    than zero and cannot exceed 10,485,760.  If <type>character
+    varying</type> (or <type>varchar</type>) is used without
+    length specifier, the type accepts strings of any length. If
+    <type>bpchar</type> lacks a length specifier, it also accepts strings
+    of any length, but trailing spaces are semantically insignificant.
+    If <type>character</type> (or <type>char</type>) lacks a specifier,
+    it is equivalent to <type>character(1)</type>.
    </para>
 
    <para>
@@ -1240,7 +1260,7 @@ SELECT '52093.89'::money::numeric::float8;
     semantically insignificant and disregarded when comparing two values
     of type <type>character</type>.  In collations where whitespace
     is significant, this behavior can produce unexpected results;
-    for example <command>SELECT 'a '::CHAR(2) collate "C" &lt;
+    for example <command>SELECT 'a '::CHAR(2) COLLATE "C" &lt;
     E'a\n'::CHAR(2)</command> returns true, even though <literal>C</literal>
     locale would consider a space to be greater than a newline.
     Trailing spaces are removed when converting a <type>character</type> value
@@ -1458,7 +1478,7 @@ SELECT b, char_length(b) FROM test2;
     mostly the same.
    </para>
 
-  <sect2>
+  <sect2 id="datatype-binary-bytea-hex-format">
    <title><type>bytea</type> Hex Format</title>
 
    <para>
@@ -1490,7 +1510,7 @@ SELECT '\xDEADBEEF'::bytea;
    </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="datatype-binary-bytea-escape-format">
    <title><type>bytea</type> Escape Format</title>
 
    <para>
@@ -1896,7 +1916,7 @@ MINUTE TO SECOND
      more than 6 digits).
     </para>
 
-    <sect3>
+    <sect3 id="datatype-datetime-input-dates">
     <title>Dates</title>
 
     <indexterm>
@@ -1995,7 +2015,7 @@ MINUTE TO SECOND
      </table>
     </sect3>
 
-    <sect3>
+    <sect3 id="datatype-datetime-input-times">
      <title>Times</title>
 
      <indexterm>
@@ -2035,8 +2055,6 @@ MINUTE TO SECOND
       <table id="datatype-datetime-time-table">
        <title>Time Input</title>
        <tgroup cols="2">
-        <colspec colname="col1" colwidth="3*"/>
-        <colspec colname="col2" colwidth="2*"/>
         <thead>
          <row>
           <entry>Example</entry>
@@ -2160,7 +2178,7 @@ MINUTE TO SECOND
     </para>
     </sect3>
 
-    <sect3>
+    <sect3 id="datatype-datetime-input-time-stamps">
     <title>Time Stamps</title>
 
     <indexterm>
@@ -2312,12 +2330,12 @@ TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02'
          </row>
          <row>
           <entry><literal>infinity</literal></entry>
-          <entry><type>date</type>, <type>timestamp</type></entry>
+          <entry><type>date</type>, <type>timestamp</type>, <type>interval</type></entry>
           <entry>later than all other time stamps</entry>
          </row>
          <row>
           <entry><literal>-infinity</literal></entry>
-          <entry><type>date</type>, <type>timestamp</type></entry>
+          <entry><type>date</type>, <type>timestamp</type>, <type>interval</type></entry>
           <entry>earlier than all other time stamps</entry>
          </row>
          <row>
@@ -2518,6 +2536,10 @@ TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02'
      abbreviation if one is in common use in the current zone.  Otherwise
      it appears as a signed numeric offset in ISO 8601 basic format
      (<replaceable>hh</replaceable> or <replaceable>hhmm</replaceable>).
+     The alphabetic abbreviations shown in these styles are taken from the
+     IANA time zone database entry currently selected by the
+     <xref linkend="guc-timezone"/> run-time parameter; they are not
+     affected by the <xref linkend="guc-timezone-abbreviations"/> setting.
     </para>
 
     <para>
@@ -2659,11 +2681,19 @@ TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02'
      savings was nominally in effect on that date.
     </para>
 
+    <note>
+     <para>
+      The sign in POSIX-style time zone specifications has the opposite meaning
+      of the sign in ISO-8601 datetime values.  For example, the POSIX time zone
+      for <literal>2014-06-04 12:00+04</literal> would be UTC-4.
+     </para>
+    </note>
+
     <para>
      To complicate matters, some jurisdictions have used the same timezone
      abbreviation to mean different UTC offsets at different times; for
      example, in Moscow <literal>MSK</literal> has meant UTC+3 in some years and
-     UTC+4 in others.  <application>PostgreSQL</application> interprets such
+     UTC+4 in others.  <productname>PostgreSQL</productname> interprets such
      abbreviations according to whatever they meant (or had most recently
      meant) on the specified date; but, as with the <literal>EST</literal> example
      above, this is not necessarily the same as local civil time on that date.
@@ -3179,7 +3209,7 @@ SELECT * FROM test1 WHERE a;
     a piece of data.
    </para>
 
-   <sect2>
+   <sect2 id="datatype-enum-declaration">
     <title>Declaration of Enumerated Types</title>
 
     <para>
@@ -3209,7 +3239,7 @@ SELECT * FROM person WHERE current_mood = 'happy';
     </para>
     </sect2>
 
-    <sect2>
+    <sect2 id="datatype-enum-ordering">
      <title>Ordering</title>
 
      <para>
@@ -3246,7 +3276,7 @@ WHERE current_mood = (SELECT MIN(current_mood) FROM person);
      </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="datatype-enum-type-safety">
     <title>Type Safety</title>
 
     <para>
@@ -3286,7 +3316,7 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="datatype-enum-implementation-details">
     <title>Implementation Details</title>
 
     <para>
@@ -3361,13 +3391,13 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
         <entry><type>lseg</type></entry>
         <entry>32 bytes</entry>
         <entry>Finite line segment</entry>
-        <entry>((x1,y1),(x2,y2))</entry>
+        <entry>[(x1,y1),(x2,y2)]</entry>
        </row>
        <row>
         <entry><type>box</type></entry>
         <entry>32 bytes</entry>
         <entry>Rectangular box</entry>
-        <entry>((x1,y1),(x2,y2))</entry>
+        <entry>(x1,y1),(x2,y2)</entry>
        </row>
        <row>
         <entry><type>path</type></entry>
@@ -3408,7 +3438,7 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     intersections.  They are explained in <xref linkend="functions-geometry"/>.
    </para>
 
-   <sect2>
+   <sect2 id="datatype-geometric-points">
     <title>Points</title>
 
     <indexterm>
@@ -3502,7 +3532,7 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="datatype-geometric-boxes">
     <title>Boxes</title>
 
     <indexterm>
@@ -3543,7 +3573,7 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="datatype-geometric-paths">
     <title>Paths</title>
 
     <indexterm>
@@ -3590,7 +3620,7 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     </indexterm>
 
     <para>
-     Polygons are represented by lists of points (the vertexes of the
+     Polygons are represented by lists of points (the vertices of the
      polygon). Polygons are very similar to closed paths; the essential
      semantic difference is that a polygon is considered to include the
      area within it, while a path is not.
@@ -4364,7 +4394,7 @@ SELECT to_tsvector( 'postgraduate' ), to_tsquery( 'postgres:*' );
 
    <para>
     The data type <type>uuid</type> stores Universally Unique Identifiers
-    (UUID) as defined by <ulink url="https://datatracker.ietf.org/doc/html/rfc4122">RFC 4122</ulink>,
+    (UUID) as defined by <ulink url="https://datatracker.ietf.org/doc/html/rfc9562">RFC 9562</ulink>,
     ISO/IEC 9834-8:2005, and related standards.
     (Some systems refer to this data type as a globally unique identifier, or
     GUID,<indexterm><primary>GUID</primary></indexterm> instead.)  This
@@ -4374,6 +4404,15 @@ SELECT to_tsvector( 'postgraduate' ), to_tsquery( 'postgres:*' );
     for distributed systems, these identifiers provide a better uniqueness
     guarantee than sequence generators, which
     are only unique within a single database.
+   </para>
+
+   <para>
+    RFC 9562 defines 8 different UUID versions.  Each version has specific requirements
+    for generating new UUID values, and each version provides distinct benefits and drawbacks.
+    <productname>PostgreSQL</productname> provides native support for generating UUIDs
+    using the UUIDv4 and UUIDv7 algorithms.  Alternatively, UUID values can be generated
+    outside of the database using any algorithm.  The data type <type>uuid</type> can be used
+    to store any UUID, regardless of the origin and the UUID version.
    </para>
 
    <para>
@@ -4398,6 +4437,17 @@ a0ee-bc99-9c0b-4ef8-bb6d-6bb9-bd38-0a11
 {a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}
 </programlisting>
     Output is always in the standard form.
+   </para>
+
+   <para>
+    It is possible to cast <type>uuid</type> values to and from type
+    <type>bytea</type>. This is useful for using functions such as
+    <function>encode()</function> and <function>decode()</function>
+    with UUID values. For example:
+<programlisting>
+encode('1ea3d64c-bc40-4cc3-84bb-6b11ee31e5c2'::uuid::bytea, 'base64')
+decode('HqPWTLxATMOEu2sR7jHlwg==', 'base64')::uuid
+</programlisting>
    </para>
 
    <para>
@@ -4442,7 +4492,7 @@ a0ee-bc99-9c0b-4ef8-bb6d-6bb9-bd38-0a11
     can be found in <xref linkend="xml-limits-conformance"/>.
    </para>
 
-   <sect2>
+   <sect2 id="datatype-xml-creating">
     <title>Creating XML Values</title>
    <para>
     To produce a value of type <type>xml</type> from character data,
@@ -4480,7 +4530,7 @@ xml '<foo>bar</foo>'
     <type>xml</type>, uses the function
     <function>xmlserialize</function>:<indexterm><primary>xmlserialize</primary></indexterm>
 <synopsis>
-XMLSERIALIZE ( { DOCUMENT | CONTENT } <replaceable>value</replaceable> AS <replaceable>type</replaceable> )
+XMLSERIALIZE ( { DOCUMENT | CONTENT } <replaceable>value</replaceable> AS <replaceable>type</replaceable> [ [ NO ] INDENT ] )
 </synopsis>
     <replaceable>type</replaceable> can be
     <type>character</type>, <type>character varying</type>, or
@@ -4488,6 +4538,13 @@ XMLSERIALIZE ( { DOCUMENT | CONTENT } <replaceable>value</replaceable> AS <repla
     to the SQL standard, this is the only way to convert between type
     <type>xml</type> and character types, but PostgreSQL also allows
     you to simply cast the value.
+   </para>
+
+   <para>
+    The <literal>INDENT</literal> option causes the result to be
+    pretty-printed, while <literal>NO INDENT</literal> (which is the
+    default) just emits the original input string.  Casting to a character
+    type likewise produces the original string.
    </para>
 
    <para>
@@ -4512,7 +4569,7 @@ SET xmloption TO { DOCUMENT | CONTENT };
 
    </sect2>
 
-   <sect2>
+   <sect2 id="datatype-xml-encoding-handling">
     <title>Encoding Handling</title>
    <para>
     Care must be taken when dealing with multiple character encodings
@@ -4570,7 +4627,7 @@ SET xmloption TO { DOCUMENT | CONTENT };
    </caution>
    </sect2>
 
-   <sect2>
+   <sect2 id="datatype-xml-accessing-xml-values">
    <title>Accessing XML Values</title>
 
    <para>
@@ -4679,6 +4736,10 @@ INSERT INTO mytable VALUES(-1);  -- fails
    </indexterm>
 
    <indexterm zone="datatype-oid">
+    <primary>oid8</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-oid">
     <primary>regclass</primary>
    </indexterm>
 
@@ -4688,6 +4749,10 @@ INSERT INTO mytable VALUES(-1);  -- fails
 
    <indexterm zone="datatype-oid">
     <primary>regconfig</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-oid">
+    <primary>regdatabase</primary>
    </indexterm>
 
    <indexterm zone="datatype-oid">
@@ -4757,8 +4822,16 @@ INSERT INTO mytable VALUES(-1);  -- fails
    </para>
 
    <para>
-    The <type>oid</type> type itself has few operations beyond comparison.
-    It can be cast to integer, however, and then manipulated using the
+    In some contexts, a 64-bit variant <type>oid8</type> can be used.
+    It is implemented as an unsigned eight-byte integer. Unlike its
+    <type>oid</type> counterpart, it can ensure uniqueness in large
+    individual tables.
+   </para>
+
+   <para>
+    The <type>oid</type> and <type>oid8</type> types themselves have
+    few operations beyond comparison.
+    They can be cast to integer, however, and then manipulated using the
     standard integer operators.  (Beware of possible
     signed-versus-unsigned confusion if you do this.)
    </para>
@@ -4829,6 +4902,13 @@ SELECT * FROM pg_attribute
         <entry><structname>pg_ts_config</structname></entry>
         <entry>text search configuration</entry>
         <entry><literal>english</literal></entry>
+       </row>
+
+       <row>
+        <entry><type>regdatabase</type></entry>
+        <entry><structname>pg_database</structname></entry>
+        <entry>database name</entry>
+        <entry><literal>template1</literal></entry>
        </row>
 
        <row>
@@ -5002,8 +5082,8 @@ WHERE ...
     be dropped without first removing the default expression.  The
     alternative of <literal>nextval('my_seq'::text)</literal> does not
     create a dependency.
-    (<type>regrole</type> is an exception to this property. Constants of this
-    type are not allowed in stored expressions.)
+    (<type>regdatabase</type> and <type>regrole</type> are exceptions to this
+    property.  Constants of these types are not allowed in stored expressions.)
    </para>
 
    <para>
@@ -5012,7 +5092,8 @@ WHERE ...
     <structfield>xmin</structfield> and <structfield>xmax</structfield>.  Transaction identifiers are 32-bit quantities.
     In some contexts, a 64-bit variant <type>xid8</type> is used.  Unlike
     <type>xid</type> values, <type>xid8</type> values increase strictly
-    monotonically and cannot be reused in the lifetime of a database cluster.
+    monotonically and cannot be reused in the lifetime of a database
+    cluster.  See <xref linkend="transaction-id"/> for more details.
    </para>
 
    <para>
@@ -5062,7 +5143,7 @@ WHERE ...
     <literal>+(pg_lsn,numeric)</literal> and
     <literal>-(pg_lsn,numeric)</literal> operators, respectively. Note that
     the calculated LSN should be in the range of <type>pg_lsn</type> type,
-    i.e., between <literal>0/0</literal> and
+    i.e., between <literal>0/00000000</literal> and
     <literal>FFFFFFFF/FFFFFFFF</literal>.
    </para>
   </sect1>
@@ -5186,8 +5267,8 @@ WHERE ...
     <table id="datatype-pseudotypes-table">
      <title>Pseudo-Types</title>
      <tgroup cols="2">
-      <colspec colname="col1" colwidth="2*"/>
-      <colspec colname="col2" colwidth="3*"/>
+      <colspec colname="col1" colwidth="1*"/>
+      <colspec colname="col2" colwidth="2*"/>
       <thead>
        <row>
         <entry>Name</entry>

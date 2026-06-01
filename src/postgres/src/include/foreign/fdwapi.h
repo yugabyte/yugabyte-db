@@ -3,7 +3,7 @@
  * fdwapi.h
  *	  API for foreign-data wrappers
  *
- * Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * src/include/foreign/fdwapi.h
  *
@@ -16,8 +16,8 @@
 #include "nodes/execnodes.h"
 #include "nodes/pathnodes.h"
 
-/* To avoid including explain.h here, reference ExplainState thus: */
-struct ExplainState;
+/* avoid including explain_state.h here */
+typedef struct ExplainState ExplainState;
 
 
 /*
@@ -137,16 +137,16 @@ typedef void (*RefetchForeignRow_function) (EState *estate,
 											bool *updated);
 
 typedef void (*ExplainForeignScan_function) (ForeignScanState *node,
-											 struct ExplainState *es);
+											 ExplainState *es);
 
 typedef void (*ExplainForeignModify_function) (ModifyTableState *mtstate,
 											   ResultRelInfo *rinfo,
 											   List *fdw_private,
 											   int subplan_index,
-											   struct ExplainState *es);
+											   ExplainState *es);
 
 typedef void (*ExplainDirectModify_function) (ForeignScanState *node,
-											  struct ExplainState *es);
+											  ExplainState *es);
 
 typedef int (*AcquireSampleRowsFunc) (Relation relation, int elevel,
 									  HeapTuple *rows, int targrows,
@@ -156,6 +156,10 @@ typedef int (*AcquireSampleRowsFunc) (Relation relation, int elevel,
 typedef bool (*AnalyzeForeignTable_function) (Relation relation,
 											  AcquireSampleRowsFunc *func,
 											  BlockNumber *totalpages);
+
+typedef bool (*ImportForeignStatistics_function) (Relation relation,
+												  List *va_cols,
+												  int elevel);
 
 typedef List *(*ImportForeignSchema_function) (ImportForeignSchemaStmt *stmt,
 											   Oid serverOid);
@@ -255,6 +259,7 @@ typedef struct FdwRoutine
 
 	/* Support functions for ANALYZE */
 	AnalyzeForeignTable_function AnalyzeForeignTable;
+	ImportForeignStatistics_function ImportForeignStatistics;
 
 	/* Support functions for IMPORT FOREIGN SCHEMA */
 	ImportForeignSchema_function ImportForeignSchema;

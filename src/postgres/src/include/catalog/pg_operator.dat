@@ -3,7 +3,7 @@
 # pg_operator.dat
 #    Initial contents of the pg_operator system catalog.
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_operator.dat
@@ -3150,7 +3150,8 @@
 { oid => '3899', descr => 'range difference',
   oprname => '-', oprleft => 'anyrange', oprright => 'anyrange',
   oprresult => 'anyrange', oprcode => 'range_minus' },
-{ oid => '3900', descr => 'range intersection',
+{ oid => '3900', oid_symbol => 'OID_RANGE_INTERSECT_RANGE_OP',
+  descr => 'range intersection',
   oprname => '*', oprleft => 'anyrange', oprright => 'anyrange',
   oprresult => 'anyrange', oprcom => '*(anyrange,anyrange)',
   oprcode => 'range_intersect' },
@@ -3417,7 +3418,8 @@
 { oid => '4393', descr => 'multirange minus',
   oprname => '-', oprleft => 'anymultirange', oprright => 'anymultirange',
   oprresult => 'anymultirange', oprcode => 'multirange_minus' },
-{ oid => '4394', descr => 'multirange intersect',
+{ oid => '4394', oid_symbol => 'OID_MULTIRANGE_INTERSECT_MULTIRANGE_OP',
+  descr => 'multirange intersect',
   oprname => '*', oprleft => 'anymultirange', oprright => 'anymultirange',
   oprresult => 'anymultirange', oprcom => '*(anymultirange,anymultirange)',
   oprcode => 'multirange_intersect' },
@@ -3457,5 +3459,31 @@
   oprresult => 'bool', oprcom => '<<(anymultirange,anymultirange)',
   oprcode => 'multirange_after_multirange', oprrest => 'multirangesel',
   oprjoin => 'scalargtjoinsel' },
+
+{ oid => '8262', descr => 'equal',
+  oprname => '=', oprcanmerge => 't', oprcanhash => 't', oprleft => 'oid8',
+  oprright => 'oid8', oprresult => 'bool', oprcom => '=(oid8,oid8)',
+  oprnegate => '<>(oid8,oid8)', oprcode => 'oid8eq', oprrest => 'eqsel',
+  oprjoin => 'eqjoinsel' },
+{ oid => '8263', descr => 'not equal',
+  oprname => '<>', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '<>(oid8,oid8)', oprnegate => '=(oid8,oid8)', oprcode => 'oid8ne',
+  oprrest => 'neqsel', oprjoin => 'neqjoinsel' },
+{ oid => '8264', descr => 'less than',
+  oprname => '<', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '>(oid8,oid8)', oprnegate => '>=(oid8,oid8)', oprcode => 'oid8lt',
+  oprrest => 'scalarltsel', oprjoin => 'scalarltjoinsel' },
+{ oid => '8265', descr => 'greater than',
+  oprname => '>', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '<(oid8,oid8)', oprnegate => '<=(oid8,oid8)', oprcode => 'oid8gt',
+  oprrest => 'scalargtsel', oprjoin => 'scalargtjoinsel' },
+{ oid => '8266', descr => 'less than or equal',
+  oprname => '<=', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '>=(oid8,oid8)', oprnegate => '>(oid8,oid8)', oprcode => 'oid8le',
+  oprrest => 'scalarlesel', oprjoin => 'scalarlejoinsel' },
+{ oid => '8267', descr => 'greater than or equal',
+  oprname => '>=', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '<=(oid8,oid8)', oprnegate => '<(oid8,oid8)', oprcode => 'oid8ge',
+  oprrest => 'scalargesel', oprjoin => 'scalargejoinsel' },
 
 ]

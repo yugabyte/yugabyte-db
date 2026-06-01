@@ -7,7 +7,7 @@
  * it's all we need in, eg, pg_dump.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/fe_utils/simple_list.c
@@ -27,7 +27,7 @@ simple_oid_list_append(SimpleOidList *list, Oid val)
 {
 	SimpleOidListCell *cell;
 
-	cell = (SimpleOidListCell *) pg_malloc(sizeof(SimpleOidListCell));
+	cell = pg_malloc_object(SimpleOidListCell);
 	cell->next = NULL;
 	cell->val = val;
 
@@ -163,7 +163,7 @@ simple_ptr_list_append(SimplePtrList *list, void *ptr)
 {
 	SimplePtrListCell *cell;
 
-	cell = (SimplePtrListCell *) pg_malloc(sizeof(SimplePtrListCell));
+	cell = pg_malloc_object(SimplePtrListCell);
 	cell->next = NULL;
 	cell->ptr = ptr;
 
@@ -172,4 +172,23 @@ simple_ptr_list_append(SimplePtrList *list, void *ptr)
 	else
 		list->head = cell;
 	list->tail = cell;
+}
+
+/*
+ * Destroy only pointer list and not the pointed-to element
+ */
+void
+simple_ptr_list_destroy(SimplePtrList *list)
+{
+	SimplePtrListCell *cell;
+
+	cell = list->head;
+	while (cell != NULL)
+	{
+		SimplePtrListCell *next;
+
+		next = cell->next;
+		pg_free(cell);
+		cell = next;
+	}
 }

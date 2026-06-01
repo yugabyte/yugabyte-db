@@ -120,7 +120,7 @@
     types, container types, domains, and pseudo-types.
    </para>
 
-   <sect2>
+   <sect2 id="extend-type-system-base">
     <title>Base Types</title>
 
     <para>
@@ -143,7 +143,7 @@
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="extend-type-system-container">
     <title>Container Types</title>
 
     <para>
@@ -193,7 +193,7 @@
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="extend-type-system-pseudo">
     <title>Pseudo-Types</title>
 
     <para>
@@ -628,7 +628,7 @@ RETURNS anycompatible AS ...
     dropping the whole extension.
    </para>
 
-   <sect2>
+   <sect2 id="extend-extensions-files">
     <title>Extension Files</title>
 
    <indexterm>
@@ -650,6 +650,11 @@ RETURNS anycompatible AS ...
     </para>
 
     <para>
+     Additional locations for extension control files can be configured using
+     the parameter <xref linkend="guc-extension-control-path"/>.
+    </para>
+
+    <para>
      The file format for an extension control file is the same as for the
      <filename>postgresql.conf</filename> file, namely a list of
      <replaceable>parameter_name</replaceable> <literal>=</literal> <replaceable>value</replaceable>
@@ -663,20 +668,20 @@ RETURNS anycompatible AS ...
     </para>
 
     <variablelist>
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-directory">
       <term><varname>directory</varname> (<type>string</type>)</term>
       <listitem>
        <para>
         The directory containing the extension's <acronym>SQL</acronym> script
         file(s).  Unless an absolute path is given, the name is relative to
-        the installation's <literal>SHAREDIR</literal> directory.  The
-        default behavior is equivalent to specifying
-        <literal>directory = 'extension'</literal>.
+        the directory where the control file was found.  By default,
+        the script files are looked for in the same directory where the
+        control file was found.
        </para>
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-default-version">
       <term><varname>default_version</varname> (<type>string</type>)</term>
       <listitem>
        <para>
@@ -689,7 +694,7 @@ RETURNS anycompatible AS ...
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-comment">
       <term><varname>comment</varname> (<type>string</type>)</term>
       <listitem>
        <para>
@@ -702,7 +707,7 @@ RETURNS anycompatible AS ...
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-encoding">
       <term><varname>encoding</varname> (<type>string</type>)</term>
       <listitem>
        <para>
@@ -713,14 +718,14 @@ RETURNS anycompatible AS ...
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-module-pathname">
       <term><varname>module_pathname</varname> (<type>string</type>)</term>
       <listitem>
        <para>
         The value of this parameter will be substituted for each occurrence
         of <literal>MODULE_PATHNAME</literal> in the script file(s).  If it is not
-        set, no substitution is made.  Typically, this is set to
-        <literal>$libdir/<replaceable>shared_library_name</replaceable></literal> and
+        set, no substitution is made.  Typically, this is set to just
+        <literal><replaceable>shared_library_name</replaceable></literal> and
         then <literal>MODULE_PATHNAME</literal> is used in <command>CREATE
         FUNCTION</command> commands for C-language functions, so that the script
         files do not need to hard-wire the name of the shared library.
@@ -728,7 +733,7 @@ RETURNS anycompatible AS ...
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-requires">
       <term><varname>requires</varname> (<type>string</type>)</term>
       <listitem>
        <para>
@@ -739,7 +744,22 @@ RETURNS anycompatible AS ...
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-no-relocate">
+      <term><varname>no_relocate</varname> (<type>string</type>)</term>
+      <listitem>
+       <para>
+        A list of names of extensions that this extension depends on that
+        should be barred from changing their schemas via <command>ALTER
+        EXTENSION ... SET SCHEMA</command>.
+        This is needed if this extension's script references the name
+        of a required extension's schema (using
+        the <literal>@extschema:<replaceable>name</replaceable>@</literal>
+        syntax) in a way that cannot track renames.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="extend-extensions-files-superuser">
       <term><varname>superuser</varname> (<type>boolean</type>)</term>
       <listitem>
        <para>
@@ -756,7 +776,7 @@ RETURNS anycompatible AS ...
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-trusted">
       <term><varname>trusted</varname> (<type>boolean</type>)</term>
       <listitem>
        <para>
@@ -781,7 +801,7 @@ RETURNS anycompatible AS ...
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-relocatable">
       <term><varname>relocatable</varname> (<type>boolean</type>)</term>
       <listitem>
        <para>
@@ -794,7 +814,7 @@ RETURNS anycompatible AS ...
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-extensions-files-schema">
       <term><varname>schema</varname> (<type>string</type>)</term>
       <listitem>
        <para>
@@ -902,8 +922,9 @@ RETURNS anycompatible AS ...
        For such an extension, set <literal>relocatable = false</literal> in its
        control file, and use <literal>@extschema@</literal> to refer to the target
        schema in the script file.  All occurrences of this string will be
-       replaced by the actual target schema's name before the script is
-       executed.  The user can set the target schema using the
+       replaced by the actual target schema's name (double-quoted if
+       necessary) before the script is executed.  The user can set the
+       target schema using the
        <literal>SCHEMA</literal> option of <command>CREATE EXTENSION</command>.
       </para>
      </listitem>
@@ -916,7 +937,7 @@ RETURNS anycompatible AS ...
        will prevent use of the <literal>SCHEMA</literal> option of <command>CREATE
        EXTENSION</command>, unless it specifies the same schema named in the control
        file.  This choice is typically necessary if the extension contains
-       internal assumptions about schema names that can't be replaced by
+       internal assumptions about its schema name that can't be replaced by
        uses of <literal>@extschema@</literal>.  The <literal>@extschema@</literal>
        substitution mechanism is available in this case too, although it is
        of limited use since the schema name is determined by the control file.
@@ -968,6 +989,29 @@ SET LOCAL search_path TO @extschema@, pg_temp;
      target schema.  Such an arrangement works conveniently with the default
      setting of <varname>search_path</varname> during creation of dependent
      extensions.
+    </para>
+
+    <para>
+     If an extension references objects belonging to another extension,
+     it is recommended to schema-qualify those references.  To do that,
+     write <literal>@extschema:<replaceable>name</replaceable>@</literal>
+     in the extension's script file, where <replaceable>name</replaceable>
+     is the name of the other extension (which must be listed in this
+     extension's <literal>requires</literal> list).  This string will be
+     replaced by the name (double-quoted if necessary) of that extension's
+     target schema.
+     Although this notation avoids the need to make hard-wired assumptions
+     about schema names in the extension's script file, its use may embed
+     the other extension's schema name into the installed objects of this
+     extension.  (Typically, that happens
+     when <literal>@extschema:<replaceable>name</replaceable>@</literal> is
+     used inside a string literal, such as a function body or
+     a <varname>search_path</varname> setting.  In other cases, the object
+     reference is reduced to an OID during parsing and does not require
+     subsequent lookups.)  If the other extension's schema name is so
+     embedded, you should prevent the other extension from being relocated
+     after yours is installed, by adding the name of the other extension to
+     this one's <literal>no_relocate</literal> list.
     </para>
    </sect2>
 
@@ -1063,7 +1107,7 @@ SELECT pg_catalog.pg_extension_config_dump('my_config', 'WHERE NOT standard_entr
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="extend-extensions-updates">
     <title>Extension Updates</title>
 
     <para>
@@ -1144,7 +1188,7 @@ SELECT * FROM pg_extension_update_paths('<replaceable>extension_name</replaceabl
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="extend-extensions-update-scripts">
     <title>Installing Extensions Using Update Scripts</title>
 
     <para>
@@ -1300,8 +1344,8 @@ SELECT * FROM pg_extension_update_paths('<replaceable>extension_name</replaceabl
       secure <varname>search_path</varname>; do <emphasis>not</emphasis>
       trust the path provided by <command>CREATE/ALTER EXTENSION</command>
       to be secure.  Best practice is to temporarily
-      set <varname>search_path</varname> to <literal>'pg_catalog,
-      pg_temp'</literal> and insert references to the extension's
+      set <varname>search_path</varname> to <literal>pg_catalog,
+      pg_temp</literal> and insert references to the extension's
       installation schema explicitly where needed.  (This practice might
       also be helpful for creating views.)  Examples can be found in
       the <filename>contrib</filename> modules in
@@ -1309,15 +1353,11 @@ SELECT * FROM pg_extension_update_paths('<replaceable>extension_name</replaceabl
      </para>
 
      <para>
-      Cross-extension references are extremely difficult to make fully
-      secure, partially because of uncertainty about which schema the other
-      extension is in.  The hazards are reduced if both extensions are
-      installed in the same schema, because then a hostile object cannot be
-      placed ahead of the referenced extension in the installation-time
-      <varname>search_path</varname>.  However, no mechanism currently exists
-      to require that.  For now, best practice is to not mark an extension
-      trusted if it depends on another one, unless that other one is always
-      installed in <literal>pg_catalog</literal>.
+      Secure cross-extension references typically require schema-qualification
+      of the names of the other extension's objects, using the
+      <literal>@extschema:<replaceable>name</replaceable>@</literal>
+      syntax, in addition to careful matching of argument types for functions
+      and operators.
      </para>
     </sect3>
    </sect2>
@@ -1453,7 +1493,7 @@ include $(PGXS)
     Set one of these three variables to specify what is built:
 
     <variablelist>
-     <varlistentry>
+     <varlistentry id="extend-pgxs-modules">
       <term><varname>MODULES</varname></term>
       <listitem>
        <para>
@@ -1463,7 +1503,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-module-big">
       <term><varname>MODULE_big</varname></term>
       <listitem>
        <para>
@@ -1473,7 +1513,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-program">
       <term><varname>PROGRAM</varname></term>
       <listitem>
        <para>
@@ -1487,7 +1527,7 @@ include $(PGXS)
     The following variables can also be set:
 
     <variablelist>
-     <varlistentry>
+     <varlistentry id="extend-pgxs-extension">
       <term><varname>EXTENSION</varname></term>
       <listitem>
        <para>
@@ -1499,7 +1539,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-moduledir">
       <term><varname>MODULEDIR</varname></term>
       <listitem>
        <para>
@@ -1512,7 +1552,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-data">
       <term><varname>DATA</varname></term>
       <listitem>
        <para>
@@ -1521,7 +1561,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-data-built">
       <term><varname>DATA_built</varname></term>
       <listitem>
        <para>
@@ -1532,7 +1572,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-data-tsearch">
       <term><varname>DATA_TSEARCH</varname></term>
       <listitem>
        <para>
@@ -1542,7 +1582,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-docs">
       <term><varname>DOCS</varname></term>
       <listitem>
        <para>
@@ -1552,7 +1592,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-headers">
       <term><varname>HEADERS</varname></term>
       <term><varname>HEADERS_built</varname></term>
       <listitem>
@@ -1568,7 +1608,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-headers-module">
       <term><varname>HEADERS_$MODULE</varname></term>
       <term><varname>HEADERS_built_$MODULE</varname></term>
       <listitem>
@@ -1594,7 +1634,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-scripts">
       <term><varname>SCRIPTS</varname></term>
       <listitem>
        <para>
@@ -1604,7 +1644,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-scripts-built">
       <term><varname>SCRIPTS_built</varname></term>
       <listitem>
        <para>
@@ -1615,7 +1655,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-regress">
       <term><varname>REGRESS</varname></term>
       <listitem>
        <para>
@@ -1624,7 +1664,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-regress-opts">
       <term><varname>REGRESS_OPTS</varname></term>
       <listitem>
        <para>
@@ -1633,7 +1673,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-isolation">
       <term><varname>ISOLATION</varname></term>
       <listitem>
        <para>
@@ -1642,7 +1682,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-isolation-opts">
       <term><varname>ISOLATION_OPTS</varname></term>
       <listitem>
        <para>
@@ -1652,7 +1692,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-tap-tests">
       <term><varname>TAP_TESTS</varname></term>
       <listitem>
        <para>
@@ -1661,7 +1701,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-no-install">
       <term><varname>NO_INSTALL</varname></term>
       <listitem>
        <para>
@@ -1671,7 +1711,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-no-installcheck">
       <term><varname>NO_INSTALLCHECK</varname></term>
       <listitem>
        <para>
@@ -1680,7 +1720,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-extra-clean">
       <term><varname>EXTRA_CLEAN</varname></term>
       <listitem>
        <para>
@@ -1689,7 +1729,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-pg-cppflags">
       <term><varname>PG_CPPFLAGS</varname></term>
       <listitem>
        <para>
@@ -1698,7 +1738,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-pg-cflags">
       <term><varname>PG_CFLAGS</varname></term>
       <listitem>
        <para>
@@ -1707,7 +1747,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-pg-cxxflags">
       <term><varname>PG_CXXFLAGS</varname></term>
       <listitem>
        <para>
@@ -1716,7 +1756,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-pg-ldflags">
       <term><varname>PG_LDFLAGS</varname></term>
       <listitem>
        <para>
@@ -1725,7 +1765,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-pg-libs">
       <term><varname>PG_LIBS</varname></term>
       <listitem>
        <para>
@@ -1734,7 +1774,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-shlib-link">
       <term><varname>SHLIB_LINK</varname></term>
       <listitem>
        <para>
@@ -1743,7 +1783,7 @@ include $(PGXS)
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="extend-pgxs-pg-config">
       <term><varname>PG_CONFIG</varname></term>
       <listitem>
        <para>
@@ -1769,6 +1809,36 @@ include $(PGXS)
     setting <varname>PG_CONFIG</varname> to point to its
     <command>pg_config</command> program, either within the makefile
     or on the <literal>make</literal> command line.
+   </para>
+
+   <para>
+    You can select a separate directory prefix in which to install your
+    extension's files, by setting the <command>make</command> variable
+    <varname>prefix</varname> when executing <literal>make install</literal>
+    like so:
+<programlisting>
+make install prefix=/usr/local/postgresql
+</programlisting>
+    This will install the extension control and SQL files into
+    <filename>/usr/local/postgresql/share</filename> and the shared modules into
+    <filename>/usr/local/postgresql/lib</filename>.  If the prefix does not
+    include the strings <literal>postgres</literal> or
+    <literal>pgsql</literal>, such as
+<programlisting>
+make install prefix=/usr/local/extras
+</programlisting>
+    then <literal>postgresql</literal> will be appended to the directory
+    names, installing the control and SQL files into
+    <filename>/usr/local/extras/share/postgresql/extension</filename> and the
+    shared modules into <filename>/usr/local/extras/lib/postgresql</filename>.
+    Either way, you'll need to set <xref
+    linkend="guc-extension-control-path"/> and <xref
+    linkend="guc-dynamic-library-path"/> to enable the
+    <productname>PostgreSQL</productname> server to find the files:
+<programlisting>
+extension_control_path = '/usr/local/extras/share/postgresql:$system'
+dynamic_library_path = '/usr/local/extras/lib/postgresql:$libdir'
+</programlisting>
    </para>
 
    <para>

@@ -4,7 +4,7 @@
  *	  Private declarations for SP-GiST access method.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/spgist_private.h
@@ -157,7 +157,7 @@ typedef struct SpGistState
 
 	char	   *deadTupleStorage;	/* workspace for spgFormDeadTuple */
 
-	TransactionId myXid;		/* XID to use when creating a redirect tuple */
+	TransactionId redirectXid;	/* XID to use when creating a redirect tuple */
 	bool		isBuild;		/* true if doing index build */
 } SpGistState;
 
@@ -285,10 +285,12 @@ typedef struct SpGistCache
  * If the prefix datum is of a pass-by-value type, it is stored in its
  * Datum representation, that is its on-disk representation is of length
  * sizeof(Datum).  This is a fairly unfortunate choice, because in no other
- * place does Postgres use Datum as an on-disk representation; it creates
- * an unnecessary incompatibility between 32-bit and 64-bit builds.  But the
- * compatibility loss is mostly theoretical since MAXIMUM_ALIGNOF typically
- * differs between such builds, too.  Anyway we're stuck with it now.
+ * place does Postgres use Datum as an on-disk representation.  Formerly it
+ * meant an unnecessary incompatibility between 32-bit and 64-bit builds, and
+ * as of v19 it instead creates a hazard for binary upgrades on 32-bit builds.
+ * Fortunately, that hazard seems mostly theoretical for lack of affected
+ * opclasses.  Going forward, we will be using a fixed size of Datum so that
+ * there's no longer any pressing reason to change this.
  */
 typedef struct SpGistInnerTupleData
 {
@@ -377,8 +379,8 @@ typedef SpGistNodeTupleData *SpGistNodeTuple;
  *
  * size must be a multiple of MAXALIGN; also, it must be at least SGDTSIZE
  * so that the tuple can be converted to REDIRECT status later.  (This
- * restriction only adds bytes for a NULL leaf datum stored on a 32-bit
- * machine; otherwise alignment restrictions force it anyway.)
+ * restriction only adds bytes for a NULL leaf datum; otherwise alignment
+ * restrictions force it anyway.)
  */
 typedef struct SpGistLeafTupleData
 {
@@ -465,7 +467,7 @@ typedef SpGistDeadTupleData *SpGistDeadTuple;
 
 #define STORE_STATE(s, d)  \
 	do { \
-		(d).myXid = (s)->myXid; \
+		(d).redirectXid = (s)->redirectXid; \
 		(d).isBuild = (s)->isBuild; \
 	} while(0)
 
@@ -507,10 +509,10 @@ extern void SpGistInitBuffer(Buffer b, uint16 f);
 extern void SpGistInitMetapage(Page page);
 extern unsigned int SpGistGetInnerTypeSize(SpGistTypeDesc *att, Datum datum);
 extern Size SpGistGetLeafTupleSize(TupleDesc tupleDescriptor,
-								   Datum *datums, bool *isnulls);
+								   const Datum *datums, const bool *isnulls);
 extern SpGistLeafTuple spgFormLeafTuple(SpGistState *state,
-										ItemPointer heapPtr,
-										Datum *datums, bool *isnulls);
+										const ItemPointerData *heapPtr,
+										const Datum *datums, const bool *isnulls);
 extern SpGistNodeTuple spgFormNodeTuple(SpGistState *state,
 										Datum label, bool isnull);
 extern SpGistInnerTuple spgFormInnerTuple(SpGistState *state,
@@ -524,7 +526,7 @@ extern void spgDeformLeafTuple(SpGistLeafTuple tup, TupleDesc tupleDescriptor,
 extern Datum *spgExtractNodeLabels(SpGistState *state,
 								   SpGistInnerTuple innerTuple);
 extern OffsetNumber SpGistPageAddNewItem(SpGistState *state, Page page,
-										 Item item, Size size,
+										 const void *item, Size size,
 										 OffsetNumber *startOffset,
 										 bool errorOK);
 extern bool spgproperty(Oid index_oid, int attno,
@@ -539,7 +541,7 @@ extern void spgPageIndexMultiDelete(SpGistState *state, Page page,
 									int firststate, int reststate,
 									BlockNumber blkno, OffsetNumber offnum);
 extern bool spgdoinsert(Relation index, SpGistState *state,
-						ItemPointer heapPtr, Datum *datums, bool *isnulls);
+						const ItemPointerData *heapPtr, const Datum *datums, const bool *isnulls);
 
 /* spgproc.c */
 extern double *spg_key_orderbys_distances(Datum key, bool isLeaf,

@@ -4,7 +4,7 @@
  *	  Heap-specific definitions for external and compressed storage
  *	  of variable size attributes.
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -98,7 +98,7 @@ heap_toast_delete(Relation rel, HeapTuple oldtup, bool is_speculative)
  */
 HeapTuple
 heap_toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
-							int options)
+							uint32 options)
 {
 	HeapTuple	result_tuple;
 	TupleDesc	tupleDesc;
@@ -373,11 +373,11 @@ toast_flatten_tuple(HeapTuple tup, TupleDesc tupleDesc)
 		/*
 		 * Look at non-null varlena attributes
 		 */
-		if (!toast_isnull[i] && TupleDescAttr(tupleDesc, i)->attlen == -1)
+		if (!toast_isnull[i] && TupleDescCompactAttr(tupleDesc, i)->attlen == -1)
 		{
-			struct varlena *new_value;
+			varlena    *new_value;
 
-			new_value = (struct varlena *) DatumGetPointer(toast_values[i]);
+			new_value = (varlena *) DatumGetPointer(toast_values[i]);
 			if (VARATT_IS_EXTERNAL(new_value))
 			{
 				new_value = detoast_external_attr(new_value);
@@ -572,11 +572,11 @@ toast_flatten_tuple_to_datum(HeapTupleHeader tup,
 		 */
 		if (toast_isnull[i])
 			has_nulls = true;
-		else if (TupleDescAttr(tupleDesc, i)->attlen == -1)
+		else if (TupleDescCompactAttr(tupleDesc, i)->attlen == -1)
 		{
-			struct varlena *new_value;
+			varlena    *new_value;
 
-			new_value = (struct varlena *) DatumGetPointer(toast_values[i]);
+			new_value = (varlena *) DatumGetPointer(toast_values[i]);
 			if (VARATT_IS_EXTERNAL(new_value) ||
 				VARATT_IS_COMPRESSED(new_value))
 			{
@@ -650,15 +650,15 @@ toast_flatten_tuple_to_datum(HeapTupleHeader tup,
  */
 HeapTuple
 toast_build_flattened_tuple(TupleDesc tupleDesc,
-							Datum *values,
-							bool *isnull)
+							const Datum *values,
+							const bool *isnull)
 {
 	HeapTuple	new_tuple;
 	int			numAttrs = tupleDesc->natts;
 	int			num_to_free;
 	int			i;
 	Datum		new_values[MaxTupleAttributeNumber];
-	Pointer		freeable_values[MaxTupleAttributeNumber];
+	void	   *freeable_values[MaxTupleAttributeNumber];
 
 	/*
 	 * We can pass the caller's isnull array directly to heap_form_tuple, but
@@ -673,16 +673,16 @@ toast_build_flattened_tuple(TupleDesc tupleDesc,
 		/*
 		 * Look at non-null varlena attributes
 		 */
-		if (!isnull[i] && TupleDescAttr(tupleDesc, i)->attlen == -1)
+		if (!isnull[i] && TupleDescCompactAttr(tupleDesc, i)->attlen == -1)
 		{
-			struct varlena *new_value;
+			varlena    *new_value;
 
-			new_value = (struct varlena *) DatumGetPointer(new_values[i]);
+			new_value = (varlena *) DatumGetPointer(new_values[i]);
 			if (VARATT_IS_EXTERNAL(new_value))
 			{
 				new_value = detoast_external_attr(new_value);
 				new_values[i] = PointerGetDatum(new_value);
-				freeable_values[num_to_free++] = (Pointer) new_value;
+				freeable_values[num_to_free++] = new_value;
 			}
 		}
 	}
@@ -714,7 +714,7 @@ toast_build_flattened_tuple(TupleDesc tupleDesc,
 void
 heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 					   int32 sliceoffset, int32 slicelength,
-					   struct varlena *result)
+					   varlena *result)
 {
 	Relation   *toastidxs;
 	ScanKeyData toastkey[3];
@@ -728,7 +728,6 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 	int			endchunk;
 	int			num_indexes;
 	int			validIndex;
-	SnapshotData SnapshotToast;
 
 	/* Look for the valid index of toast relation */
 	validIndex = toast_open_indexes(toastrel,
@@ -774,9 +773,8 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 	}
 
 	/* Prepare for scan */
-	init_toast_snapshot(&SnapshotToast);
 	toastscan = systable_beginscan_ordered(toastrel, toastidxs[validIndex],
-										   &SnapshotToast, nscankeys, toastkey);
+										   get_toast_snapshot(), nscankeys, toastkey);
 
 	/*
 	 * Read the chunks by index

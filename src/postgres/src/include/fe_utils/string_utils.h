@@ -6,7 +6,7 @@
  * assorted contexts.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/fe_utils/string_utils.h
@@ -24,8 +24,8 @@ extern PGDLLIMPORT int quote_all_identifiers;
 extern PQExpBuffer (*getLocalPQExpBuffer) (void);
 
 /* Functions */
-extern const char *fmtId(const char *identifier);
-extern const char *fmtIdEnc(const char *identifier, int encoding);
+extern const char *fmtId(const char *rawid);
+extern const char *fmtIdEnc(const char *rawid, int encoding);
 extern const char *fmtQualifiedId(const char *schema, const char *id);
 extern const char *fmtQualifiedIdEnc(const char *schema, const char *id, int encoding);
 extern void setFmtEncoding(int encoding);

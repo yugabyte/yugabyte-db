@@ -8,7 +8,7 @@
  * storage implementation and the details about individual types of
  * statistics.
  *
- * Copyright (c) 2001-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat_bgwriter.c
@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include "utils/memutils.h"
 #include "utils/pgstat_internal.h"
 
 
@@ -24,13 +25,12 @@ PgStat_BgWriterStats PendingBgWriterStats = {0};
 
 
 /*
- * Report bgwriter statistics
+ * Report bgwriter and IO statistics
  */
 void
 pgstat_report_bgwriter(void)
 {
 	PgStatShared_BgWriter *stats_shmem = &pgStatLocal.shmem->bgwriter;
-	static const PgStat_BgWriterStats all_zeroes;
 
 	Assert(!pgStatLocal.shmem->is_shutdown);
 	pgstat_assert_is_up();
@@ -39,7 +39,8 @@ pgstat_report_bgwriter(void)
 	 * This function can be called even if nothing at all has happened. In
 	 * this case, avoid unnecessarily modifying the stats entry.
 	 */
-	if (memcmp(&PendingBgWriterStats, &all_zeroes, sizeof(all_zeroes)) == 0)
+	if (pg_memory_is_all_zeros(&PendingBgWriterStats,
+							   sizeof(struct PgStat_BgWriterStats)))
 		return;
 
 	pgstat_begin_changecount_write(&stats_shmem->changecount);
@@ -56,6 +57,11 @@ pgstat_report_bgwriter(void)
 	 * Clear out the statistics buffer, so it can be re-used.
 	 */
 	MemSet(&PendingBgWriterStats, 0, sizeof(PendingBgWriterStats));
+
+	/*
+	 * Report IO statistics
+	 */
+	pgstat_flush_io(false);
 }
 
 /*
@@ -68,6 +74,14 @@ pgstat_fetch_stat_bgwriter(void)
 	pgstat_snapshot_fixed(PGSTAT_KIND_BGWRITER);
 
 	return &pgStatLocal.snapshot.bgwriter;
+}
+
+void
+pgstat_bgwriter_init_shmem_cb(void *stats)
+{
+	PgStatShared_BgWriter *stats_shmem = (PgStatShared_BgWriter *) stats;
+
+	LWLockInitialize(&stats_shmem->lock, LWTRANCHE_PGSTATS_DATA);
 }
 
 void

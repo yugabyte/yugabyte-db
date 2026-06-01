@@ -1,10 +1,10 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Test replay of tablespace/database creation/drop
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -37,13 +37,11 @@ sub test_tablespace
 		has_streaming => 1);
 	$node_standby->append_conf('postgresql.conf',
 		"allow_in_place_tablespaces = on");
-	$node_standby->append_conf('postgresql.conf',
-		"primary_slot_name = slot");
+	$node_standby->append_conf('postgresql.conf', "primary_slot_name = slot");
 	$node_standby->start;
 
 	# Make sure the connection is made
-	$node_primary->wait_for_catchup($node_standby, 'write',
-		$node_primary->lsn('write'));
+	$node_primary->wait_for_catchup($node_standby, 'write');
 
 	# Do immediate shutdown just after a sequence of CREATE DATABASE / DROP
 	# DATABASE / DROP TABLESPACE. This causes CREATE DATABASE WAL records
@@ -65,8 +63,7 @@ sub test_tablespace
 	$query =~ s/<STRATEGY>/$strategy/g;
 
 	$node_primary->safe_psql('postgres', $query);
-	$node_primary->wait_for_catchup($node_standby, 'write',
-		$node_primary->lsn('write'));
+	$node_primary->wait_for_catchup($node_standby, 'write');
 
 	# show "create missing directory" log message
 	$node_standby->safe_psql('postgres',

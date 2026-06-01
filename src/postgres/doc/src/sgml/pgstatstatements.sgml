@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/pgstatstatements.sgml -->
 
 <sect1 id="pgstatstatements" xreflabel="pg_stat_statements">
- <title>pg_stat_statements</title>
+ <title>pg_stat_statements &mdash; track statistics of SQL planning and execution</title>
 
  <indexterm zone="pgstatstatements">
   <primary>pg_stat_statements</primary>
@@ -36,7 +36,7 @@
    <command>CREATE EXTENSION pg_stat_statements</command>.
  </para>
 
- <sect2>
+ <sect2 id="pgstatstatements-pg-stat-statements">
   <title>The <structname>pg_stat_statements</structname> View</title>
 
   <para>
@@ -140,9 +140,12 @@
        <structfield>min_plan_time</structfield> <type>double precision</type>
       </para>
       <para>
-       Minimum time spent planning the statement, in milliseconds
-       (if <varname>pg_stat_statements.track_planning</varname> is enabled,
-       otherwise zero)
+       Minimum time spent planning the statement, in milliseconds.
+       This field will be zero if <varname>pg_stat_statements.track_planning</varname>
+       is disabled, or if the counter has been reset using the
+       <function>pg_stat_statements_reset</function> function with the
+       <structfield>minmax_only</structfield> parameter set to <literal>true</literal>
+       and never been planned since.
       </para></entry>
      </row>
 
@@ -151,9 +154,12 @@
        <structfield>max_plan_time</structfield> <type>double precision</type>
       </para>
       <para>
-       Maximum time spent planning the statement, in milliseconds
-       (if <varname>pg_stat_statements.track_planning</varname> is enabled,
-       otherwise zero)
+       Maximum time spent planning the statement, in milliseconds.
+       This field will be zero if <varname>pg_stat_statements.track_planning</varname>
+       is disabled, or if the counter has been reset using the
+       <function>pg_stat_statements_reset</function> function with the
+       <structfield>minmax_only</structfield> parameter set to <literal>true</literal>
+       and never been planned since.
       </para></entry>
      </row>
 
@@ -203,7 +209,11 @@
        <structfield>min_exec_time</structfield> <type>double precision</type>
       </para>
       <para>
-       Minimum time spent executing the statement, in milliseconds
+       Minimum time spent executing the statement, in milliseconds,
+       this field will be zero until this statement
+       is executed first time after reset performed by the
+       <function>pg_stat_statements_reset</function> function with the
+       <structfield>minmax_only</structfield> parameter set to <literal>true</literal>
       </para></entry>
      </row>
 
@@ -212,7 +222,11 @@
        <structfield>max_exec_time</structfield> <type>double precision</type>
       </para>
       <para>
-       Maximum time spent executing the statement, in milliseconds
+       Maximum time spent executing the statement, in milliseconds,
+       this field will be zero until this statement
+       is executed first time after reset performed by the
+       <function>pg_stat_statements_reset</function> function with the
+       <structfield>minmax_only</structfield> parameter set to <literal>true</literal>
       </para></entry>
      </row>
 
@@ -335,20 +349,40 @@
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>blk_read_time</structfield> <type>double precision</type>
+       <structfield>shared_blk_read_time</structfield> <type>double precision</type>
       </para>
       <para>
-       Total time the statement spent reading data file blocks, in milliseconds
+       Total time the statement spent reading shared blocks, in milliseconds
        (if <xref linkend="guc-track-io-timing"/> is enabled, otherwise zero)
       </para></entry>
      </row>
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>blk_write_time</structfield> <type>double precision</type>
+       <structfield>shared_blk_write_time</structfield> <type>double precision</type>
       </para>
       <para>
-       Total time the statement spent writing data file blocks, in milliseconds
+       Total time the statement spent writing shared blocks, in milliseconds
+       (if <xref linkend="guc-track-io-timing"/> is enabled, otherwise zero)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>local_blk_read_time</structfield> <type>double precision</type>
+      </para>
+      <para>
+       Total time the statement spent reading local blocks, in milliseconds
+       (if <xref linkend="guc-track-io-timing"/> is enabled, otherwise zero)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>local_blk_write_time</structfield> <type>double precision</type>
+      </para>
+      <para>
+       Total time the statement spent writing local blocks, in milliseconds
        (if <xref linkend="guc-track-io-timing"/> is enabled, otherwise zero)
       </para></entry>
      </row>
@@ -399,6 +433,15 @@
       </para>
       <para>
        Total amount of WAL generated by the statement in bytes
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>wal_buffers_full</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Number of times the WAL buffers became full
       </para></entry>
      </row>
 
@@ -473,6 +516,83 @@
        Total time spent by the statement on emitting code, in milliseconds
       </para></entry>
      </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>jit_deform_count</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Total number of tuple deform functions JIT-compiled by the statement
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>jit_deform_time</structfield> <type>double precision</type>
+      </para>
+      <para>
+       Total time spent by the statement on JIT-compiling tuple deform
+       functions, in milliseconds
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>parallel_workers_to_launch</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Number of parallel workers planned to be launched
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>parallel_workers_launched</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Number of parallel workers actually launched
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>generic_plan_calls</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Number of times the statement has been executed using a generic plan
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>custom_plan_calls</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Number of times the statement has been executed using a custom plan
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>stats_since</structfield> <type>timestamp with time zone</type>
+      </para>
+      <para>
+       Time at which statistics gathering started for this statement
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>minmax_stats_since</structfield> <type>timestamp with time zone</type>
+      </para>
+      <para>
+       Time at which min/max statistics gathering started for this
+       statement (fields <structfield>min_plan_time</structfield>,
+       <structfield>max_plan_time</structfield>,
+       <structfield>min_exec_time</structfield> and
+       <structfield>max_exec_time</structfield>)
+      </para></entry>
+     </row>
     </tbody>
    </tgroup>
   </table>
@@ -487,13 +607,13 @@
 
   <para>
    Plannable queries (that is, <command>SELECT</command>, <command>INSERT</command>,
-   <command>UPDATE</command>, <command>DELETE</command>, and <command>MERGE</command>) are combined into a single
+   <command>UPDATE</command>, <command>DELETE</command>, and <command>MERGE</command>)
+   and utility commands are combined into a single
    <structname>pg_stat_statements</structname> entry whenever they have identical query
    structures according to an internal hash calculation.  Typically, two
    queries will be considered the same for this purpose if they are
    semantically equivalent except for the values of literal constants
-   appearing in the query.  Utility commands (that is, all other commands)
-   are compared strictly on the basis of their textual query strings, however.
+   appearing in the query.
   </para>
 
   <note>
@@ -517,10 +637,36 @@
   </para>
 
   <para>
+   Queries on which normalization can be applied may be observed with constant
+   values in <structname>pg_stat_statements</structname>, especially when there
+   is a high rate of entry deallocations. To reduce the likelihood of this
+   happening, consider increasing <varname>pg_stat_statements.max</varname>.
+   The <structname>pg_stat_statements_info</structname> view, discussed below
+   in <xref linkend="pgstatstatements-pg-stat-statements-info"/>,
+   provides statistics about entry deallocations.
+  </para>
+
+  <para>
    In some cases, queries with visibly different texts might get merged into a
-   single <structname>pg_stat_statements</structname> entry.  Normally this will happen
-   only for semantically equivalent queries, but there is a small chance of
-   hash collisions causing unrelated queries to be merged into one entry.
+   single <structname>pg_stat_statements</structname> entry; as explained above,
+   this is expected to happen for semantically equivalent queries.
+   In addition, if the only difference between queries is the number of elements
+   in a list of constants, the list will get squashed down to a single element but shown
+   with a commented-out list indicator:
+
+<screen>
+=# SELECT pg_stat_statements_reset();
+=# SELECT * FROM test WHERE a IN (1, 2, 3, 4, 5, 6, 7);
+=# SELECT * FROM test WHERE a IN (1, 2, 3, 4, 5, 6, 7, 8);
+=# SELECT query, calls FROM pg_stat_statements
+   WHERE query LIKE 'SELECT%';
+-[ RECORD 1 ]------------------------------
+query | SELECT * FROM test WHERE a IN ($1 /*, ... */)
+calls | 2
+</screen>
+
+   In addition to these cases, there is a small chance of hash collisions
+   causing unrelated queries to be merged into one entry.
    (This cannot happen for queries belonging to different users or databases,
    however.)
   </para>
@@ -545,8 +691,13 @@
    things, the internal object identifiers appearing in this representation.
    This has some counterintuitive implications.  For example,
    <filename>pg_stat_statements</filename> will consider two apparently-identical
-   queries to be distinct, if they reference a table that was dropped
-   and recreated between the executions of the two queries.
+   queries to be distinct, if they reference for example a function that was
+   dropped and recreated between the executions of the two queries.
+   Conversely, if a table is dropped and recreated between the
+   executions of queries, two apparently-identical queries may be
+   considered the same. However, if the alias for a table is different
+   for otherwise-similar queries, these queries will be considered
+   distinct.
    The hashing process is also sensitive to differences in
    machine architecture and other facets of the platform.
    Furthermore, it is not safe to assume that <structfield>queryid</structfield>
@@ -608,7 +759,7 @@
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="pgstatstatements-pg-stat-statements-info">
   <title>The <structname>pg_stat_statements_info</structname> View</title>
 
   <indexterm>
@@ -664,13 +815,14 @@
   </table>
  </sect2>
 
- <sect2>
+ <sect2 id="pgstatstatements-funcs">
   <title>Functions</title>
 
   <variablelist>
    <varlistentry>
     <term>
-     <function>pg_stat_statements_reset(userid Oid, dbid Oid, queryid bigint) returns void</function>
+     <function>pg_stat_statements_reset(userid Oid, dbid Oid, queryid
+     bigint, minmax_only boolean) returns timestamp with time zone</function>
      <indexterm>
       <primary>pg_stat_statements_reset</primary>
      </indexterm>
@@ -689,6 +841,20 @@
       If all statistics in the <filename>pg_stat_statements</filename>
       view are discarded, it will also reset the statistics in the
       <structname>pg_stat_statements_info</structname> view.
+      When <structfield>minmax_only</structfield> is <literal>true</literal> only the
+      values of minimum and maximum planning and execution time will be reset (i.e.
+      <structfield>min_plan_time</structfield>, <structfield>max_plan_time</structfield>,
+      <structfield>min_exec_time</structfield> and <structfield>max_exec_time</structfield>
+      fields). The default value for <structfield>minmax_only</structfield> parameter is
+      <literal>false</literal>. Time of last min/max reset performed is shown in
+      <structfield>minmax_stats_since</structfield> field of the
+      <structname>pg_stat_statements</structname> view.
+      This function returns the time of a reset. This time is saved to
+      <structfield>stats_reset</structfield> field of
+      <structname>pg_stat_statements_info</structname> view or to
+      <structfield>minmax_stats_since</structfield> field of the
+      <structname>pg_stat_statements</structname> view if the corresponding reset was
+      actually performed.
       By default, this function can only be executed by superusers.
       Access may be granted to others using <command>GRANT</command>.
      </para>
@@ -727,7 +893,7 @@
   </variablelist>
  </sect2>
 
- <sect2>
+ <sect2 id="pgstatstatements-config-params">
   <title>Configuration Parameters</title>
 
   <variablelist>
@@ -862,7 +1028,7 @@ pg_stat_statements.track = all
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="pgstatstatements-sample-output">
   <title>Sample Output</title>
 
 <screen>
@@ -967,7 +1133,7 @@ hit_percent     |
 </screen>
  </sect2>
 
- <sect2>
+ <sect2 id="pgstatstatements-authors">
   <title>Authors</title>
 
   <para>

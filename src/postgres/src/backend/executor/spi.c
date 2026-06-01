@@ -3,7 +3,7 @@
  * spi.c
  *				Server Programming Interface
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -23,7 +23,6 @@
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/spi_priv.h"
-#include "miscadmin.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -33,6 +32,7 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "utils/tuplestore.h"
 #include "utils/typcache.h"
 
 /* YB includes */
@@ -72,7 +72,7 @@ static int	_SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 							  bool fire_triggers);
 
 static ParamListInfo _SPI_convert_params(int nargs, Oid *argtypes,
-										 Datum *Values, const char *Nulls);
+										 const Datum *Values, const char *Nulls);
 
 static int	_SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount);
 
@@ -448,7 +448,7 @@ AtEOXact_SPI(bool isCommit)
 
 	/*
 	 * Pop stack entries, stopping if we find one marked internal_xact (that
-	 * one belongs to the caller of SPI_commit or SPI_abort).
+	 * one belongs to the caller of SPI_commit or SPI_rollback).
 	 */
 	while (_SPI_connected >= 0)
 	{
@@ -563,7 +563,7 @@ AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid)
 		if (_SPI_current->execSubid >= mySubid)
 		{
 			_SPI_current->execSubid = InvalidSubTransactionId;
-			MemoryContextResetAndDeleteChildren(_SPI_current->execCxt);
+			MemoryContextReset(_SPI_current->execCxt);
 		}
 
 		/* throw away any tuple tables created within current subxact */
@@ -686,7 +686,7 @@ SPI_execute_extended(const char *src,
 
 /* Execute a previously prepared plan */
 int
-SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
+SPI_execute_plan(SPIPlanPtr plan, const Datum *Values, const char *Nulls,
 				 bool read_only, long tcount)
 {
 	SPIExecuteOptions options;
@@ -788,7 +788,7 @@ SPI_execute_plan_with_paramlist(SPIPlanPtr plan, ParamListInfo params,
  */
 int
 SPI_execute_snapshot(SPIPlanPtr plan,
-					 Datum *Values, const char *Nulls,
+					 const Datum *Values, const char *Nulls,
 					 Snapshot snapshot, Snapshot crosscheck_snapshot,
 					 bool read_only, bool fire_triggers, long tcount)
 {
@@ -828,7 +828,7 @@ SPI_execute_snapshot(SPIPlanPtr plan,
 int
 SPI_execute_with_args(const char *src,
 					  int nargs, Oid *argtypes,
-					  Datum *Values, const char *Nulls,
+					  const Datum *Values, const char *Nulls,
 					  bool read_only, long tcount)
 {
 	int			res;
@@ -1147,8 +1147,8 @@ SPI_modifytuple(Relation rel, HeapTuple tuple, int natts, int *attnum,
 	SPI_result = 0;
 
 	numberOfAttributes = rel->rd_att->natts;
-	v = (Datum *) palloc(numberOfAttributes * sizeof(Datum));
-	n = (bool *) palloc(numberOfAttributes * sizeof(bool));
+	v = palloc_array(Datum, numberOfAttributes);
+	n = palloc_array(bool, numberOfAttributes);
 
 	/* fetch old values and nulls */
 	heap_deform_tuple(tuple, rel->rd_att, v, n);
@@ -1276,7 +1276,7 @@ SPI_getbinval(HeapTuple tuple, TupleDesc tupdesc, int fnumber, bool *isnull)
 	{
 		SPI_result = SPI_ERROR_NOATTRIBUTE;
 		*isnull = true;
-		return (Datum) NULL;
+		return (Datum) 0;
 	}
 
 	return heap_getattr(tuple, fnumber, tupdesc, isnull);
@@ -1461,7 +1461,7 @@ SPI_freetuptable(SPITupleTable *tuptable)
  */
 Portal
 SPI_cursor_open(const char *name, SPIPlanPtr plan,
-				Datum *Values, const char *Nulls,
+				const Datum *Values, const char *Nulls,
 				bool read_only)
 {
 	Portal		portal;
@@ -2053,6 +2053,8 @@ SPI_result_code_string(int code)
 			return "SPI_OK_TD_REGISTER";
 		case SPI_OK_MERGE:
 			return "SPI_OK_MERGE";
+		case SPI_OK_MERGE_RETURNING:
+			return "SPI_OK_MERGE_RETURNING";
 	}
 	/* Unrecognized code ... return something useful ... */
 	sprintf(buf, "Unrecognized SPI code %d", code);
@@ -2157,8 +2159,7 @@ spi_dest_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 									  ALLOCSET_DEFAULT_SIZES);
 	MemoryContextSwitchTo(tuptabcxt);
 
-	_SPI_current->tuptable = tuptable = (SPITupleTable *)
-		palloc0(sizeof(SPITupleTable));
+	_SPI_current->tuptable = tuptable = palloc0_object(SPITupleTable);
 	tuptable->tuptabcxt = tuptabcxt;
 	tuptable->subid = GetCurrentSubTransactionId();
 
@@ -2171,7 +2172,7 @@ spi_dest_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 
 	/* set up initial allocations */
 	tuptable->alloced = 128;
-	tuptable->vals = (HeapTuple *) palloc(tuptable->alloced * sizeof(HeapTuple));
+	tuptable->vals = palloc_array(HeapTuple, tuptable->alloced);
 	tuptable->numvals = 0;
 	tuptable->tupdesc = CreateTupleDescCopy(typeinfo);
 
@@ -2535,35 +2536,35 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 		{
 			RawStmt    *parsetree = plansource->raw_parse_tree;
 			const char *src = plansource->query_string;
-			List	   *stmt_list;
+			List	   *querytree_list;
 
 			/*
 			 * Parameter datatypes are driven by parserSetup hook if provided,
 			 * otherwise we use the fixed parameter list.
 			 */
 			if (parsetree == NULL)
-				stmt_list = NIL;
+				querytree_list = NIL;
 			else if (plan->parserSetup != NULL)
 			{
 				Assert(plan->nargs == 0);
-				stmt_list = pg_analyze_and_rewrite_withcb(parsetree,
-														  src,
-														  plan->parserSetup,
-														  plan->parserSetupArg,
-														  _SPI_current->queryEnv);
+				querytree_list = pg_analyze_and_rewrite_withcb(parsetree,
+															   src,
+															   plan->parserSetup,
+															   plan->parserSetupArg,
+															   _SPI_current->queryEnv);
 			}
 			else
 			{
-				stmt_list = pg_analyze_and_rewrite_fixedparams(parsetree,
-															   src,
-															   plan->argtypes,
-															   plan->nargs,
-															   _SPI_current->queryEnv);
+				querytree_list = pg_analyze_and_rewrite_fixedparams(parsetree,
+																	src,
+																	plan->argtypes,
+																	plan->nargs,
+																	_SPI_current->queryEnv);
 			}
 
 			/* Finish filling in the CachedPlanSource */
 			CompleteCachedPlan(plansource,
-							   stmt_list,
+							   querytree_list,
 							   NULL,
 							   plan->argtypes,
 							   plan->nargs,
@@ -2884,7 +2885,7 @@ fail:
  */
 static ParamListInfo
 _SPI_convert_params(int nargs, Oid *argtypes,
-					Datum *Values, const char *Nulls)
+					const Datum *Values, const char *Nulls)
 {
 	ParamListInfo paramLI;
 
@@ -2944,7 +2945,10 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 				res = SPI_OK_UPDATE;
 			break;
 		case CMD_MERGE:
-			res = SPI_OK_MERGE;
+			if (queryDesc->plannedstmt->hasReturning)
+				res = SPI_OK_MERGE_RETURNING;
+			else
+				res = SPI_OK_MERGE;
 			break;
 		default:
 			return SPI_ERROR_OPUNKNOWN;
@@ -2963,7 +2967,7 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 
 	ExecutorStart(queryDesc, eflags);
 
-	ExecutorRun(queryDesc, ForwardScanDirection, tcount, true);
+	ExecutorRun(queryDesc, ForwardScanDirection, tcount);
 
 	_SPI_current->processed = queryDesc->estate->es_processed;
 
@@ -3018,7 +3022,7 @@ _SPI_error_callback(void *arg)
 		switch (carg->mode)
 		{
 			case RAW_PARSE_PLPGSQL_EXPR:
-				errcontext("SQL expression \"%s\"", query);
+				errcontext("PL/pgSQL expression \"%s\"", query);
 				break;
 			case RAW_PARSE_PLPGSQL_ASSIGN1:
 			case RAW_PARSE_PLPGSQL_ASSIGN2:
@@ -3141,7 +3145,7 @@ _SPI_end_call(bool use_exec)
 		/* mark Executor context no longer in use */
 		_SPI_current->execSubid = InvalidSubTransactionId;
 		/* and free Executor memory */
-		MemoryContextResetAndDeleteChildren(_SPI_current->execCxt);
+		MemoryContextReset(_SPI_current->execCxt);
 	}
 
 	return 0;
@@ -3196,7 +3200,7 @@ _SPI_make_plan_non_temp(SPIPlanPtr plan)
 	oldcxt = MemoryContextSwitchTo(plancxt);
 
 	/* Copy the _SPI_plan struct and subsidiary data into the new context */
-	newplan = (SPIPlanPtr) palloc0(sizeof(_SPI_plan));
+	newplan = palloc0_object(_SPI_plan);
 	newplan->magic = _SPI_PLAN_MAGIC;
 	newplan->plancxt = plancxt;
 	newplan->parse_mode = plan->parse_mode;
@@ -3204,7 +3208,7 @@ _SPI_make_plan_non_temp(SPIPlanPtr plan)
 	newplan->nargs = plan->nargs;
 	if (plan->nargs > 0)
 	{
-		newplan->argtypes = (Oid *) palloc(plan->nargs * sizeof(Oid));
+		newplan->argtypes = palloc_array(Oid, plan->nargs);
 		memcpy(newplan->argtypes, plan->argtypes, plan->nargs * sizeof(Oid));
 	}
 	else
@@ -3261,7 +3265,7 @@ _SPI_save_plan(SPIPlanPtr plan)
 	oldcxt = MemoryContextSwitchTo(plancxt);
 
 	/* Copy the SPI plan into its own context */
-	newplan = (SPIPlanPtr) palloc0(sizeof(_SPI_plan));
+	newplan = palloc0_object(_SPI_plan);
 	newplan->magic = _SPI_PLAN_MAGIC;
 	newplan->plancxt = plancxt;
 	newplan->parse_mode = plan->parse_mode;
@@ -3269,7 +3273,7 @@ _SPI_save_plan(SPIPlanPtr plan)
 	newplan->nargs = plan->nargs;
 	if (plan->nargs > 0)
 	{
-		newplan->argtypes = (Oid *) palloc(plan->nargs * sizeof(Oid));
+		newplan->argtypes = palloc_array(Oid, plan->nargs);
 		memcpy(newplan->argtypes, plan->argtypes, plan->nargs * sizeof(Oid));
 	}
 	else
@@ -3403,7 +3407,7 @@ SPI_register_trigger_data(TriggerData *tdata)
 	if (tdata->tg_newtable)
 	{
 		EphemeralNamedRelation enr =
-			palloc(sizeof(EphemeralNamedRelationData));
+			palloc_object(EphemeralNamedRelationData);
 		int			rc;
 
 		enr->md.name = tdata->tg_trigger->tgnewtable;
@@ -3420,7 +3424,7 @@ SPI_register_trigger_data(TriggerData *tdata)
 	if (tdata->tg_oldtable)
 	{
 		EphemeralNamedRelation enr =
-			palloc(sizeof(EphemeralNamedRelationData));
+			palloc_object(EphemeralNamedRelationData);
 		int			rc;
 
 		enr->md.name = tdata->tg_trigger->tgoldtable;

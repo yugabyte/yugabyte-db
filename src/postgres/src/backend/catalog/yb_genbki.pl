@@ -135,9 +135,10 @@ foreach my $header (@ARGV)
 	foreach my $index (@{ $catalog->{indexing} })
 	{
 		push @index_decls,
-		  sprintf "declare %sindex %s %s %s\n",
+		  sprintf "declare %sindex %s %s on %s using %s\n",
 		  $index->{is_unique} ? 'unique ' : '',
 		  $index->{index_name}, $index->{index_oid},
+		  $index->{table_name},
 		  $index->{index_decl};
 		$oidcounts{ $index->{index_oid} }++;
 

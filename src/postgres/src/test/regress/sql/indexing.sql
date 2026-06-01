@@ -483,8 +483,27 @@ create table idxpart (a int, b int primary key) partition by range (b, a);
 create table idxpart (a int, b int, c text, primary key  (a, b, c)) partition by range (b, c, a);
 drop table idxpart;
 
--- not other types of index-based constraints
-create table idxpart (a int, exclude (a with = )) partition by range (a);
+-- OK to add an exclusion constraint if partitioning by its equal column
+create table idxpart (a int4range, exclude USING GIST (a with = )) partition by range (a);
+drop table idxpart;
+-- OK more than one equal column
+create table idxpart (a int4range, b int4range, exclude USING GIST (a with =, b with =)) partition by range (a, b);
+drop table idxpart;
+-- OK with more than one equal column: constraint is a proper superset of partition key
+create table idxpart (a int4range, b int4range, exclude USING GIST (a with =, b with =)) partition by range (a);
+drop table idxpart;
+-- Not OK more than one equal column: partition keys are a proper superset of constraint
+create table idxpart (a int4range, b int4range, exclude USING GIST (a with = )) partition by range (a, b);
+-- Not OK with just -|-
+create table idxpart (a int4range, exclude USING GIST (a with -|- )) partition by range (a);
+-- OK with equals and &&, and equals is the partition key
+create table idxpart (a int4range, b int4range, exclude USING GIST (a with =, b with &&)) partition by range (a);
+drop table idxpart;
+-- Not OK with equals and &&, and equals is not the partition key
+create table idxpart (a int4range, b int4range, c int4range, exclude USING GIST (b with =, c with &&)) partition by range (a);
+-- OK more than one equal column and a && column
+create table idxpart (a int4range, b int4range, c int4range, exclude USING GIST (a with =, b with =, c with &&)) partition by range (a, b);
+drop table idxpart;
 
 -- no expressions in partition key for PK/UNIQUE
 create table idxpart (a int primary key, b int) partition by range ((b + a));
@@ -506,9 +525,37 @@ alter table idxpart add unique (b, a);		-- this works
 \d idxpart
 drop table idxpart;
 
--- Exclusion constraints cannot be added
-create table idxpart (a int, b int) partition by range (a);
-alter table idxpart add exclude (a with =);
+-- Exclusion constraints can be added if partitioning by their equal column
+create table idxpart (a int4range, b int4range) partition by range (a);
+alter table idxpart add exclude USING GIST (a with =);
+drop table idxpart;
+-- OK more than one equal column
+create table idxpart (a int4range, b int4range) partition by range (a, b);
+alter table idxpart add exclude USING GIST (a with =, b with =);
+drop table idxpart;
+-- OK with more than one equal column: constraint is a proper superset of partition key
+create table idxpart (a int4range, b int4range) partition by range (a);
+alter table idxpart add exclude USING GIST (a with =, b with =);
+drop table idxpart;
+-- Not OK more than one equal column: partition keys are a proper superset of constraint
+create table idxpart (a int4range, b int4range) partition by range (a, b);
+alter table idxpart add exclude USING GIST (a with =);
+drop table idxpart;
+-- Not OK with just -|-
+create table idxpart (a int4range, b int4range) partition by range (a, b);
+alter table idxpart add exclude USING GIST (a with -|-);
+drop table idxpart;
+-- OK with equals and &&, and equals is the partition key
+create table idxpart (a int4range, b int4range) partition by range (a);
+alter table idxpart add exclude USING GIST (a with =, b with &&);
+drop table idxpart;
+-- Not OK with equals and &&, and equals is not the partition key
+create table idxpart (a int4range, b int4range, c int4range) partition by range (a);
+alter table idxpart add exclude USING GIST (b with =, c with &&);
+drop table idxpart;
+-- OK more than one equal column and a && column
+create table idxpart (a int4range, b int4range, c int4range) partition by range (a, b);
+alter table idxpart add exclude USING GIST (a with =, b with =, c with &&);
 drop table idxpart;
 
 -- When (sub)partitions are created, they also contain the constraint
@@ -522,7 +569,7 @@ create table idxpart3 (b int not null, a int not null);
 alter table idxpart attach partition idxpart3 for values from (20, 20) to (30, 30);
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
-  order by conname;
+  order by conrelid::regclass::text, conname;
 drop table idxpart;
 
 -- Verify that multi-layer partitioning honors the requirement that all
@@ -545,7 +592,7 @@ create table idxpart2 partition of idxpart for values from (0) to (1000) partiti
 create table idxpart21 partition of idxpart2 for values from (0) to (1000);
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
-  order by conname;
+  order by conrelid::regclass::text, conname;
 drop table idxpart;
 
 -- If a partitioned table has a unique/PK constraint, then it's not possible
@@ -620,10 +667,10 @@ create table idxpart (a int) partition by range (a);
 create table idxpart0 (like idxpart);
 alter table idxpart0 add unique (a);
 alter table idxpart attach partition idxpart0 default;
-alter table only idxpart add primary key (a);  -- fail, no NOT NULL constraint
+alter table only idxpart add primary key (a);  -- fail, no not-null constraint
 alter table idxpart0 alter column a set not null;
 alter table only idxpart add primary key (a);  -- now it works
-alter table idxpart0 alter column a drop not null;  -- fail, pkey needs it
+alter index idxpart_pkey attach partition idxpart0_a_key;
 drop table idxpart;
 
 -- if a partition has a unique index without a constraint, does not attach
@@ -871,3 +918,31 @@ select indexrelid::regclass, indisvalid, indisreplident,
   where indexrelid::regclass::text like 'parted_replica%'
   order by indexrelid::regclass::text collate "C";
 drop table parted_replica_tab;
+
+-- test that indexing commands work with TOASTed values in pg_index
+create table test_pg_index_toast_table (a int);
+create or replace function test_pg_index_toast_func (a int, b int[])
+  returns bool as $$ select true $$ language sql immutable;
+select array_agg(n) b from generate_series(1, 10000) n \gset
+create index concurrently test_pg_index_toast_index
+  on test_pg_index_toast_table (test_pg_index_toast_func(a, :'b'));
+reindex index concurrently test_pg_index_toast_index;
+drop index concurrently test_pg_index_toast_index;
+create index test_pg_index_toast_index
+  on test_pg_index_toast_table (test_pg_index_toast_func(a, :'b'));
+reindex index test_pg_index_toast_index;
+drop index test_pg_index_toast_index;
+drop function test_pg_index_toast_func;
+drop table test_pg_index_toast_table;
+
+-- test creation of an index involving a whole-row expression
+create table test_pg_wholerow_index (a int, b text, c numeric);
+create or replace function row_image(test_pg_wholerow_index)
+    returns test_pg_wholerow_index as $$select $1$$ language sql immutable;
+insert into test_pg_wholerow_index values (1, 'multiplication', 1.0);
+create index row_image_index
+    on test_pg_wholerow_index ((row_image(test_pg_wholerow_index)));
+insert into test_pg_wholerow_index values (2, 'addition', 0);
+drop index row_image_index;
+drop function row_image(test_pg_wholerow_index);
+drop table test_pg_wholerow_index;

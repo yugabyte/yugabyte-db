@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * This implements a sort of variable repository.  One could also think of it
  * as a cheap version of an associative array.  Each variable has a string
@@ -80,6 +80,9 @@ bool		ParseVariableBool(const char *value, const char *name,
 
 bool		ParseVariableNum(const char *value, const char *name,
 							 int *result);
+
+bool		ParseVariableDouble(const char *value, const char *name,
+								double *result, double min, double max);
 
 void		PrintVariables(VariableSpace space);
 

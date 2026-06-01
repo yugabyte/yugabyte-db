@@ -1,5 +1,5 @@
 /*
- * This is a copy LLVM source code modified by the PostgreSQL project.
+ * This is a copy of LLVM source code modified by the PostgreSQL project.
  * See SectionMemoryManager.cpp for notes on provenance and license.
  */
 
@@ -19,10 +19,10 @@
 #ifndef LLVM_EXECUTIONENGINE_BACKPORT_SECTIONMEMORYMANAGER_H
 #define LLVM_EXECUTIONENGINE_BACKPORT_SECTIONMEMORYMANAGER_H
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
-#include "llvm/Support/Alignment.h"
-#include "llvm/Support/Memory.h"
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ExecutionEngine/RTDyldMemoryManager.h>
+#include <llvm/Support/Alignment.h>
+#include <llvm/Support/Memory.h>
 #include <cstdint>
 #include <string>
 #include <system_error>
@@ -153,7 +153,7 @@ public:
   /// a default alignment of 16 will be used.
   uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment,
                                unsigned SectionID, StringRef SectionName,
-                               bool isReadOnly) override;
+                               bool IsReadOnly) override;
 
   /// Update section-specific memory permissions and other attributes.
   ///
@@ -182,7 +182,7 @@ private:
     // The actual block of free memory
     sys::MemoryBlock Free;
     // If there is a pending allocation from the same reservation right before
-    // this block, store it's index in PendingMem, to be able to update the
+    // this block, store its index in PendingMem, to be able to update the
     // pending region if part of this block is allocated, rather than having to
     // create a new one
     unsigned PendingPrefixIndex;

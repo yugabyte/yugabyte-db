@@ -12,9 +12,9 @@
  * Otherwise, a compression specification is a comma-separated list of items,
  * each having the form keyword or keyword=value.
  *
- * Currently, the only supported keywords are "level" and "workers".
+ * Currently, the supported keywords are "level", "long", and "workers".
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/common/compression.c
@@ -38,6 +38,38 @@
 
 static int	expect_integer_value(char *keyword, char *value,
 								 pg_compress_specification *result);
+static bool expect_boolean_value(char *keyword, char *value,
+								 pg_compress_specification *result);
+
+/*
+ * Look up a compression algorithm by archive file extension. Returns true and
+ * sets *algorithm if the extension is recognized. Otherwise returns false.
+ */
+bool
+parse_tar_compress_algorithm(const char *fname, pg_compress_algorithm *algorithm)
+{
+	size_t		fname_len = strlen(fname);
+
+	if (fname_len >= 4 &&
+		strcmp(fname + fname_len - 4, ".tar") == 0)
+		*algorithm = PG_COMPRESSION_NONE;
+	else if (fname_len >= 4 &&
+			 strcmp(fname + fname_len - 4, ".tgz") == 0)
+		*algorithm = PG_COMPRESSION_GZIP;
+	else if (fname_len >= 7 &&
+			 strcmp(fname + fname_len - 7, ".tar.gz") == 0)
+		*algorithm = PG_COMPRESSION_GZIP;
+	else if (fname_len >= 8 &&
+			 strcmp(fname + fname_len - 8, ".tar.lz4") == 0)
+		*algorithm = PG_COMPRESSION_LZ4;
+	else if (fname_len >= 8 &&
+			 strcmp(fname + fname_len - 8, ".tar.zst") == 0)
+		*algorithm = PG_COMPRESSION_ZSTD;
+	else
+		return false;
+
+	return true;
+}
 
 /*
  * Look up a compression algorithm by name. Returns true and sets *algorithm
@@ -232,6 +264,11 @@ parse_compress_specification(pg_compress_algorithm algorithm, char *specificatio
 			result->workers = expect_integer_value(keyword, value, result);
 			result->options |= PG_COMPRESSION_OPTION_WORKERS;
 		}
+		else if (strcmp(keyword, "long") == 0)
+		{
+			result->long_distance = expect_boolean_value(keyword, value, result);
+			result->options |= PG_COMPRESSION_OPTION_LONG_DISTANCE;
+		}
 		else
 			result->parse_error =
 				psprintf(_("unrecognized compression option: \"%s\""), keyword);
@@ -287,6 +324,43 @@ expect_integer_value(char *keyword, char *value, pg_compress_specification *resu
 		return -1;
 	}
 	return ivalue;
+}
+
+/*
+ * Parse 'value' as a boolean and return the result.
+ *
+ * If parsing fails, set result->parse_error to an appropriate message
+ * and return -1.  The caller must check result->parse_error to determine if
+ * the call was successful.
+ *
+ * Valid values are: yes, no, on, off, 1, 0.
+ *
+ * Inspired by ParseVariableBool().
+ */
+static bool
+expect_boolean_value(char *keyword, char *value, pg_compress_specification *result)
+{
+	if (value == NULL)
+		return true;
+
+	if (pg_strcasecmp(value, "yes") == 0)
+		return true;
+	if (pg_strcasecmp(value, "on") == 0)
+		return true;
+	if (pg_strcasecmp(value, "1") == 0)
+		return true;
+
+	if (pg_strcasecmp(value, "no") == 0)
+		return false;
+	if (pg_strcasecmp(value, "off") == 0)
+		return false;
+	if (pg_strcasecmp(value, "0") == 0)
+		return false;
+
+	result->parse_error =
+		psprintf(_("value for compression option \"%s\" must be a Boolean value"),
+				 keyword);
+	return false;
 }
 
 /*
@@ -354,5 +428,79 @@ validate_compress_specification(pg_compress_specification *spec)
 						get_compress_algorithm_name(spec->algorithm));
 	}
 
+	/*
+	 * Of the compression algorithms that we currently support, only zstd
+	 * supports long-distance mode.
+	 */
+	if ((spec->options & PG_COMPRESSION_OPTION_LONG_DISTANCE) != 0 &&
+		(spec->algorithm != PG_COMPRESSION_ZSTD))
+	{
+		return psprintf(_("compression algorithm \"%s\" does not support long-distance mode"),
+						get_compress_algorithm_name(spec->algorithm));
+	}
+
 	return NULL;
 }
+
+#ifdef FRONTEND
+
+/*
+ * Basic parsing of a value specified through a command-line option, commonly
+ * -Z/--compress.
+ *
+ * The parsing consists of a METHOD:DETAIL string fed later to
+ * parse_compress_specification().  This only extracts METHOD and DETAIL.
+ * If only an integer is found, the method is implied by the value specified.
+ */
+void
+parse_compress_options(const char *option, char **algorithm, char **detail)
+{
+	const char *sep;
+	char	   *endp;
+	long		result;
+
+	/*
+	 * Check whether the compression specification consists of a bare integer.
+	 *
+	 * For backward-compatibility, assume "none" if the integer found is zero
+	 * and "gzip" otherwise.
+	 */
+	result = strtol(option, &endp, 10);
+	if (*endp == '\0')
+	{
+		if (result == 0)
+		{
+			*algorithm = pstrdup("none");
+			*detail = NULL;
+		}
+		else
+		{
+			*algorithm = pstrdup("gzip");
+			*detail = pstrdup(option);
+		}
+		return;
+	}
+
+	/*
+	 * Check whether there is a compression detail following the algorithm
+	 * name.
+	 */
+	sep = strchr(option, ':');
+	if (sep == NULL)
+	{
+		*algorithm = pstrdup(option);
+		*detail = NULL;
+	}
+	else
+	{
+		char	   *alg;
+
+		alg = palloc((sep - option) + 1);
+		memcpy(alg, option, sep - option);
+		alg[sep - option] = '\0';
+
+		*algorithm = alg;
+		*detail = pstrdup(sep + 1);
+	}
+}
+#endif							/* FRONTEND */

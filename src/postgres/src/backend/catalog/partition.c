@@ -3,7 +3,7 @@
  * partition.c
  *		  Partitioning related data structures and functions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -25,7 +25,6 @@
 #include "catalog/pg_partitioned_table.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/optimizer.h"
-#include "partitioning/partbounds.h"
 #include "rewrite/rewriteManip.h"
 #include "utils/fmgroids.h"
 #include "utils/partcache.h"
@@ -126,7 +125,9 @@ get_partition_parent_worker(Relation inhRel, Oid relid, bool *detach_pending)
  * get_partition_ancestors
  *		Obtain ancestors of given relation
  *
- * Returns a list of ancestors of the given relation.
+ * Returns a list of ancestors of the given relation.  The list is ordered:
+ * The first element is the immediate parent and the last one is the topmost
+ * parent in the partition hierarchy.
  *
  * Note: Because this function assumes that the relation whose OID is passed
  * as an argument and each ancestor will have precisely one parent, it should
@@ -231,8 +232,8 @@ map_partition_varattnos(List *expr, int fromrel_varno,
 
 		part_attmap = build_attrmap_by_name(RelationGetDescr(to_rel),
 											RelationGetDescr(from_rel),
+											false,
 											false /* yb_ignore_type_mismatch */ );
-
 		expr = (List *) map_variable_attnos((Node *) expr,
 											fromrel_varno, 0,
 											part_attmap,

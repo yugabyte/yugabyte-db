@@ -5,7 +5,7 @@
  *	  and related modules.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/execdesc.h
@@ -42,6 +42,8 @@ typedef struct QueryDesc
 	ParamListInfo params;		/* param values being passed in */
 	QueryEnvironment *queryEnv; /* query environment passed in */
 	int			instrument_options; /* OR of InstrumentOption flags */
+	int			query_instr_options;	/* OR of InstrumentOption flags for
+										 * query_instr */
 
 	/* These fields are set by ExecutorStart */
 	TupleDesc	tupDesc;		/* descriptor for result tuples */
@@ -51,9 +53,14 @@ typedef struct QueryDesc
 	/* This field is set by ExecutePlan */
 	bool		already_executed;	/* true if previously executed */
 
-	/* This is always set NULL by the core system, but plugins can change it */
-	struct Instrumentation *totaltime;	/* total time spent in ExecutorRun */
+	/* This field is allocated by ExecutorStart if needed */
+	struct Instrumentation *query_instr;	/* query level instrumentation */
 
+	/*
+	 * YB_TODO_PG19MERGE: PG removed totaltime, added query_instr. Verify
+	 * if the YB comment below is still accurate and if any other changes are
+	 * needed.
+	 */
 	/*
 	 * YB: An additional instrumentation field to collect async RPC stats. This
 	 * needs to be a separate field because its life cycle is distinct from

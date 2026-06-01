@@ -17,7 +17,7 @@
  * the backend's "backend/libpq" is quite separate from "interfaces/libpq".
  * All that remains is similarities of names to trap the unwary...
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/libpq/pqcomm.c
@@ -29,11 +29,10 @@
  * INTERFACE ROUTINES
  *
  * setup/teardown:
- *		StreamServerPort	- Open postmaster's server port
- *		StreamConnection	- Create new connection with client
- *		StreamClose			- Close a client/backend connection
+ *		ListenServerPort	- Open postmaster's server port
+ *		AcceptConnection	- Accept new connection with client
  *		TouchSocketFiles	- Protect socket files against /tmp cleaners
- *		pq_init			- initialize libpq at backend startup
+ *		pq_init				- initialize libpq at backend startup
  *		socket_comm_reset	- reset libpq during error recovery
  *		socket_close		- shutdown libpq at backend exit
  *
@@ -67,11 +66,9 @@
 #include <sys/time.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#ifdef HAVE_NETINET_TCP_H
 #include <netinet/tcp.h>
-#endif
 #include <utime.h>
-#ifdef _MSC_VER					/* mstcpip.h is missing on mingw */
+#ifdef WIN32
 #include <mstcpip.h>
 #endif
 
@@ -79,8 +76,10 @@
 #include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "port/pg_bswap.h"
+#include "postmaster/postmaster.h"
 #include "storage/ipc.h"
-#include "utils/guc.h"
+#include "storage/latch.h"
+#include "utils/guc_hooks.h"
 #include "utils/memutils.h"
 
 /* YB includes */
@@ -130,9 +129,9 @@ static List *sock_paths = NIL;
 
 static char *PqSendBuffer;
 static int	PqSendBufferSize;	/* Size send buffer */
-static int	PqSendPointer;		/* Next index to store a byte in PqSendBuffer */
-static int	PqSendStart;		/* Next index to send a byte in PqSendBuffer */
-static int	PqSendYbSavedBufPos;	/* Value of PqSendPointer to restore
+static size_t PqSendPointer;	/* Next index to store a byte in PqSendBuffer */
+static size_t PqSendStart;		/* Next index to send a byte in PqSendBuffer */
+static size_t PqSendYbSavedBufPos;	/* Value of PqSendPointer to restore
 									 * during statement restart */
 static bool PqSendYbNonRestartableData; /* Indicates whether data sent to user
 										 * should be treated as preventing
@@ -159,21 +158,21 @@ static int	socket_flush_if_writable(void);
 static bool socket_is_send_pending(void);
 static int	socket_putmessage(char msgtype, const char *s, size_t len);
 static void socket_putmessage_noblock(char msgtype, const char *s, size_t len);
-static int	internal_putbytes(const char *s, size_t len);
-static int	internal_flush(void);
+static inline int internal_putbytes(const void *b, size_t len);
+static inline int internal_flush(void);
+static pg_noinline int internal_flush_buffer(const char *buf, size_t *start,
+											 size_t *end);
 
-#ifdef HAVE_UNIX_SOCKETS
 static int	Lock_AF_UNIX(const char *unixSocketDir, const char *unixSocketPath);
 static int	Setup_AF_UNIX(const char *sock_path);
-#endif							/* HAVE_UNIX_SOCKETS */
 
 static const PQcommMethods PqCommSocketMethods = {
-	socket_comm_reset,
-	socket_flush,
-	socket_flush_if_writable,
-	socket_is_send_pending,
-	socket_putmessage,
-	socket_putmessage_noblock
+	.comm_reset = socket_comm_reset,
+	.flush = socket_flush,
+	.flush_if_writable = socket_flush_if_writable,
+	.is_send_pending = socket_is_send_pending,
+	.putmessage = socket_putmessage,
+	.putmessage_noblock = socket_putmessage_noblock
 };
 
 const PQcommMethods *PqCommMethods = &PqCommSocketMethods;
@@ -185,11 +184,112 @@ WaitEventSet *FeBeWaitSet;
  *		pq_init - initialize libpq at backend startup
  * --------------------------------
  */
-void
-pq_init(void)
+Port *
+pq_init(ClientSocket *client_sock)
 {
+	Port	   *port;
 	int			socket_pos PG_USED_FOR_ASSERTS_ONLY;
 	int			latch_pos PG_USED_FOR_ASSERTS_ONLY;
+
+	/* allocate the Port struct and copy the ClientSocket contents to it */
+	port = palloc0_object(Port);
+	port->sock = client_sock->sock;
+	memcpy(&port->raddr.addr, &client_sock->raddr.addr, client_sock->raddr.salen);
+	port->raddr.salen = client_sock->raddr.salen;
+
+	/* fill in the server (local) address */
+	port->laddr.salen = sizeof(port->laddr.addr);
+	if (getsockname(port->sock,
+					(struct sockaddr *) &port->laddr.addr,
+					&port->laddr.salen) < 0)
+	{
+		ereport(FATAL,
+				(errmsg("%s() failed: %m", "getsockname")));
+	}
+
+	/* select NODELAY and KEEPALIVE options if it's a TCP connection */
+	if (port->laddr.addr.ss_family != AF_UNIX)
+	{
+		int			on;
+#ifdef WIN32
+		int			oldopt;
+		int			optlen;
+		int			newopt;
+#endif
+
+#ifdef	TCP_NODELAY
+		on = 1;
+		if (setsockopt(port->sock, IPPROTO_TCP, TCP_NODELAY,
+					   (char *) &on, sizeof(on)) < 0)
+		{
+			ereport(FATAL,
+					(errmsg("%s(%s) failed: %m", "setsockopt", "TCP_NODELAY")));
+		}
+#endif
+		on = 1;
+		if (setsockopt(port->sock, SOL_SOCKET, SO_KEEPALIVE,
+					   (char *) &on, sizeof(on)) < 0)
+		{
+			ereport(FATAL,
+					(errmsg("%s(%s) failed: %m", "setsockopt", "SO_KEEPALIVE")));
+		}
+
+#ifdef WIN32
+
+#define PQ_SEND_BUFFER_SIZE 8192
+
+		/*
+		 * This is a Win32 socket optimization.  The OS send buffer should be
+		 * large enough to send the whole Postgres send buffer in one go, or
+		 * performance suffers.  The Postgres send buffer can be enlarged if a
+		 * very large message needs to be sent, but we won't attempt to
+		 * enlarge the OS buffer if that happens, so somewhat arbitrarily
+		 * ensure that the OS buffer is at least PQ_SEND_BUFFER_SIZE * 4.
+		 * (That's 32kB with the current default).
+		 *
+		 * The default OS buffer size used to be 8kB in earlier Windows
+		 * versions, but was raised to 64kB in Windows 2012.  So it shouldn't
+		 * be necessary to change it in later versions anymore.  Changing it
+		 * unnecessarily can even reduce performance, because setting
+		 * SO_SNDBUF in the application disables the "dynamic send buffering"
+		 * feature that was introduced in Windows 7.  So before fiddling with
+		 * SO_SNDBUF, check if the current buffer size is already large enough
+		 * and only increase it if necessary.
+		 *
+		 * See https://support.microsoft.com/kb/823764/EN-US/ and
+		 * https://msdn.microsoft.com/en-us/library/bb736549%28v=vs.85%29.aspx
+		 */
+		optlen = sizeof(oldopt);
+		if (getsockopt(port->sock, SOL_SOCKET, SO_SNDBUF, (char *) &oldopt,
+					   &optlen) < 0)
+		{
+			ereport(FATAL,
+					(errmsg("%s(%s) failed: %m", "getsockopt", "SO_SNDBUF")));
+		}
+		newopt = PQ_SEND_BUFFER_SIZE * 4;
+		if (oldopt < newopt)
+		{
+			if (setsockopt(port->sock, SOL_SOCKET, SO_SNDBUF, (char *) &newopt,
+						   sizeof(newopt)) < 0)
+			{
+				ereport(FATAL,
+						(errmsg("%s(%s) failed: %m", "setsockopt", "SO_SNDBUF")));
+			}
+		}
+#endif
+
+		/*
+		 * Also apply the current keepalive parameters.  If we fail to set a
+		 * parameter, don't error out, because these aren't universally
+		 * supported.  (Note: you might think we need to reset the GUC
+		 * variables to 0 in such a case, but it's not necessary because the
+		 * show hooks for these variables report the truth anyway.)
+		 */
+		(void) pq_setkeepalivesidle(tcp_keepalives_idle, port);
+		(void) pq_setkeepalivesinterval(tcp_keepalives_interval, port);
+		(void) pq_setkeepalivescount(tcp_keepalives_count, port);
+		(void) pq_settcpusertimeout(tcp_user_timeout, port);
+	}
 
 	/* initialize state variables */
 	PqSendBufferSize = YBGetYsqlOutputBufferSize();
@@ -210,14 +310,21 @@ pq_init(void)
 	 * writes.
 	 */
 #ifndef WIN32
-	if (!pg_set_noblock(MyProcPort->sock))
+	if (!pg_set_noblock(port->sock))
 		ereport(FATAL,
 				(errmsg("could not set socket to nonblocking mode: %m")));
 #endif
 
-	FeBeWaitSet = CreateWaitEventSet(TopMemoryContext, FeBeWaitSetNEvents);
+#ifndef WIN32
+
+	/* Don't give the socket to any subprograms we execute. */
+	if (fcntl(port->sock, F_SETFD, FD_CLOEXEC) < 0)
+		elog(FATAL, "fcntl(F_SETFD) failed on socket: %m");
+#endif
+
+	FeBeWaitSet = CreateWaitEventSet(NULL, FeBeWaitSetNEvents);
 	socket_pos = AddWaitEventToSet(FeBeWaitSet, WL_SOCKET_WRITEABLE,
-								   MyProcPort->sock, NULL, NULL);
+								   port->sock, NULL, NULL);
 	latch_pos = AddWaitEventToSet(FeBeWaitSet, WL_LATCH_SET, PGINVALID_SOCKET,
 								  MyLatch, NULL);
 	AddWaitEventToSet(FeBeWaitSet, WL_POSTMASTER_DEATH, PGINVALID_SOCKET,
@@ -229,6 +336,8 @@ pq_init(void)
 	 */
 	Assert(socket_pos == FeBeWaitSetSocketPos);
 	Assert(latch_pos == FeBeWaitSetLatchPos);
+
+	return port;
 }
 
 /* --------------------------------
@@ -332,32 +441,30 @@ YBRestoreOutputBufferPosition(void)
 
 
 
-/*
- * Streams -- wrapper around Unix socket system calls
- *
- *
- *		Stream functions are used for vanilla TCP connection protocol.
+/* --------------------------------
+ * Postmaster functions to handle sockets.
+ * --------------------------------
  */
 
-
 /*
- * StreamServerPort -- open a "listening" port to accept connections.
+ * ListenServerPort -- open a "listening" port to accept connections.
  *
  * family should be AF_UNIX or AF_UNSPEC; portNumber is the port number.
  * For AF_UNIX ports, hostName should be NULL and unixSocketDir must be
  * specified.  For TCP ports, hostName is either NULL for all interfaces or
  * the interface to listen on, and unixSocketDir is ignored (can be NULL).
  *
- * Successfully opened sockets are added to the ListenSocket[] array (of
- * length MaxListen), at the first position that isn't PGINVALID_SOCKET.
+ * Successfully opened sockets are appended to the ListenSockets[] array.  On
+ * entry, *NumListenSockets holds the number of elements currently in the
+ * array, and it is updated to reflect the opened sockets.  MaxListen is the
+ * allocated size of the array.
  *
  * RETURNS: STATUS_OK or STATUS_ERROR
  */
-
 int
-StreamServerPort(int family, const char *hostName, unsigned short portNumber,
+ListenServerPort(int family, const char *hostName, unsigned short portNumber,
 				 const char *unixSocketDir,
-				 pgsocket ListenSocket[], int MaxListen)
+				 pgsocket ListenSockets[], int *NumListenSockets, int MaxListen)
 {
 	pgsocket	fd;
 	int			err;
@@ -372,12 +479,8 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 	struct addrinfo *addrs = NULL,
 			   *addr;
 	struct addrinfo hint;
-	int			listen_index = 0;
 	int			added = 0;
-
-#ifdef HAVE_UNIX_SOCKETS
 	char		unixSocketPath[MAXPGPATH];
-#endif
 #if !defined(WIN32) || defined(IPV6_V6ONLY)
 	int			one = 1;
 #endif
@@ -388,7 +491,6 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 	hint.ai_flags = AI_PASSIVE;
 	hint.ai_socktype = SOCK_STREAM;
 
-#ifdef HAVE_UNIX_SOCKETS
 	if (family == AF_UNIX)
 	{
 		/*
@@ -399,9 +501,9 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 		if (strlen(unixSocketPath) >= UNIXSOCK_PATH_BUFLEN)
 		{
 			ereport(LOG,
-					(errmsg("Unix-domain socket path \"%s\" is too long (maximum %d bytes)",
+					(errmsg("Unix-domain socket path \"%s\" is too long (maximum %zu bytes)",
 							unixSocketPath,
-							(int) (UNIXSOCK_PATH_BUFLEN - 1))));
+							(UNIXSOCK_PATH_BUFLEN - 1))));
 			return STATUS_ERROR;
 		}
 		if (Lock_AF_UNIX(unixSocketDir, unixSocketPath) != STATUS_OK)
@@ -409,7 +511,6 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 		service = unixSocketPath;
 	}
 	else
-#endif							/* HAVE_UNIX_SOCKETS */
 	{
 		snprintf(portNumberStr, sizeof(portNumberStr), "%d", portNumber);
 		service = portNumberStr;
@@ -443,12 +544,7 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 		}
 
 		/* See if there is still room to add 1 more socket. */
-		for (; listen_index < MaxListen; listen_index++)
-		{
-			if (ListenSocket[listen_index] == PGINVALID_SOCKET)
-				break;
-		}
-		if (listen_index >= MaxListen)
+		if (*NumListenSockets == MaxListen)
 		{
 			ereport(LOG,
 					(errmsg("could not bind to all requested addresses: MAXLISTEN (%d) exceeded",
@@ -462,16 +558,12 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 			case AF_INET:
 				familyDesc = _("IPv4");
 				break;
-#ifdef HAVE_IPV6
 			case AF_INET6:
 				familyDesc = _("IPv6");
 				break;
-#endif
-#ifdef HAVE_UNIX_SOCKETS
 			case AF_UNIX:
 				familyDesc = _("Unix");
 				break;
-#endif
 			default:
 				snprintf(familyDescBuf, sizeof(familyDescBuf),
 						 _("unrecognized address family %d"),
@@ -481,11 +573,9 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 		}
 
 		/* set up text form of address for log messages */
-#ifdef HAVE_UNIX_SOCKETS
 		if (addr->ai_family == AF_UNIX)
 			addrDesc = unixSocketPath;
 		else
-#endif
 		{
 			pg_getnameinfo_all((const struct sockaddr_storage *) addr->ai_addr,
 							   addr->ai_addrlen,
@@ -506,6 +596,9 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 		}
 
 #ifndef WIN32
+		/* Don't give the listen socket to any subprograms we execute. */
+		if (fcntl(fd, F_SETFD, FD_CLOEXEC) < 0)
+			elog(FATAL, "fcntl(F_SETFD) failed on socket: %m");
 
 		/*
 		 * Without the SO_REUSEADDR flag, a new postmaster can't be started
@@ -525,7 +618,7 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 			{
 				ereport(LOG,
 						(errcode_for_socket_access(),
-				/* translator: third %s is IPv4, IPv6, or Unix */
+				/* translator: third %s is IPv4 or IPv6 */
 						 errmsg("%s(%s) failed for %s address \"%s\": %m",
 								"setsockopt", "SO_REUSEADDR",
 								familyDesc, addrDesc)));
@@ -543,7 +636,7 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 			{
 				ereport(LOG,
 						(errcode_for_socket_access(),
-				/* translator: third %s is IPv4, IPv6, or Unix */
+				/* translator: third %s is IPv6 */
 						 errmsg("%s(%s) failed for %s address \"%s\": %m",
 								"setsockopt", "IPV6_V6ONLY",
 								familyDesc, addrDesc)));
@@ -572,15 +665,14 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 					 saved_errno == EADDRINUSE ?
 					 (addr->ai_family == AF_UNIX ?
 					  errhint("Is another postmaster already running on port %d?",
-							  (int) portNumber) :
+							  portNumber) :
 					  errhint("Is another postmaster already running on port %d?"
 							  " If not, wait a few seconds and retry.",
-							  (int) portNumber)) : 0));
+							  portNumber)) : 0));
 			closesocket(fd);
 			continue;
 		}
 
-#ifdef HAVE_UNIX_SOCKETS
 		if (addr->ai_family == AF_UNIX)
 		{
 			if (Setup_AF_UNIX(service) != STATUS_OK)
@@ -589,16 +681,13 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 				break;
 			}
 		}
-#endif
 
 		/*
-		 * Select appropriate accept-queue length limit.  PG_SOMAXCONN is only
-		 * intended to provide a clamp on the request on platforms where an
-		 * overly large request provokes a kernel error (are there any?).
+		 * Select appropriate accept-queue length limit.  It seems reasonable
+		 * to use a value similar to the maximum number of child processes
+		 * that the postmaster will permit.
 		 */
-		maxconn = MaxBackends * 2;
-		if (maxconn > PG_SOMAXCONN)
-			maxconn = PG_SOMAXCONN;
+		maxconn = MaxConnections * 2;
 
 		err = listen(fd, maxconn);
 		if (err < 0)
@@ -612,19 +701,18 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 			continue;
 		}
 
-#ifdef HAVE_UNIX_SOCKETS
 		if (addr->ai_family == AF_UNIX)
 			ereport(LOG,
 					(errmsg("listening on Unix socket \"%s\"",
 							addrDesc)));
 		else
-#endif
 			ereport(LOG,
 			/* translator: first %s is IPv4 or IPv6 */
 					(errmsg("listening on %s address \"%s\", port %d",
-							familyDesc, addrDesc, (int) portNumber)));
+							familyDesc, addrDesc, portNumber)));
 
-		ListenSocket[listen_index] = fd;
+		ListenSockets[*NumListenSockets] = fd;
+		(*NumListenSockets)++;
 		added++;
 	}
 
@@ -636,8 +724,6 @@ StreamServerPort(int family, const char *hostName, unsigned short portNumber,
 	return STATUS_OK;
 }
 
-
-#ifdef HAVE_UNIX_SOCKETS
 
 /*
  * Lock_AF_UNIX -- configure unix socket file path
@@ -693,7 +779,7 @@ Setup_AF_UNIX(const char *sock_path)
 	if (Unix_socket_group[0] != '\0')
 	{
 #ifdef WIN32
-		elog(WARNING, "configuration item unix_socket_group is not supported on this platform");
+		elog(WARNING, "configuration item \"unix_socket_group\" is not supported on this platform");
 #else
 		char	   *endptr;
 		unsigned long val;
@@ -739,27 +825,26 @@ Setup_AF_UNIX(const char *sock_path)
 	}
 	return STATUS_OK;
 }
-#endif							/* HAVE_UNIX_SOCKETS */
 
 
 /*
- * StreamConnection -- create a new connection with client using
- *		server port.  Set port->sock to the FD of the new connection.
+ * AcceptConnection -- accept a new connection with client using
+ *		server port.  Fills *client_sock with the FD and endpoint info
+ *		of the new connection.
  *
  * ASSUME: that this doesn't need to be non-blocking because
- *		the Postmaster uses select() to tell when the socket is ready for
- *		accept().
+ *		the Postmaster waits for the socket to be ready to accept().
  *
  * RETURNS: STATUS_OK or STATUS_ERROR
  */
 int
-StreamConnection(pgsocket server_fd, Port *port)
+AcceptConnection(pgsocket server_fd, ClientSocket *client_sock)
 {
 	/* accept connection and fill in the client (remote) address */
-	port->raddr.salen = sizeof(port->raddr.addr);
-	if ((port->sock = accept(server_fd,
-							 (struct sockaddr *) &port->raddr.addr,
-							 &port->raddr.salen)) == PGINVALID_SOCKET)
+	client_sock->raddr.salen = sizeof(client_sock->raddr.addr);
+	if ((client_sock->sock = accept(server_fd,
+									(struct sockaddr *) &client_sock->raddr.addr,
+									&client_sock->raddr.salen)) == PGINVALID_SOCKET)
 	{
 		ereport(LOG,
 				(errcode_for_socket_access(),
@@ -776,122 +861,7 @@ StreamConnection(pgsocket server_fd, Port *port)
 		return STATUS_ERROR;
 	}
 
-	/* fill in the server (local) address */
-	port->laddr.salen = sizeof(port->laddr.addr);
-	if (getsockname(port->sock,
-					(struct sockaddr *) &port->laddr.addr,
-					&port->laddr.salen) < 0)
-	{
-		ereport(LOG,
-				(errmsg("%s() failed: %m", "getsockname")));
-		return STATUS_ERROR;
-	}
-
-	/* select NODELAY and KEEPALIVE options if it's a TCP connection */
-	if (port->laddr.addr.ss_family != AF_UNIX)
-	{
-		int			on;
-#ifdef WIN32
-		int			oldopt;
-		int			optlen;
-		int			newopt;
-#endif
-
-#ifdef	TCP_NODELAY
-		on = 1;
-		if (setsockopt(port->sock, IPPROTO_TCP, TCP_NODELAY,
-					   (char *) &on, sizeof(on)) < 0)
-		{
-			ereport(LOG,
-					(errmsg("%s(%s) failed: %m", "setsockopt", "TCP_NODELAY")));
-			return STATUS_ERROR;
-		}
-#endif
-		on = 1;
-		if (setsockopt(port->sock, SOL_SOCKET, SO_KEEPALIVE,
-					   (char *) &on, sizeof(on)) < 0)
-		{
-			ereport(LOG,
-					(errmsg("%s(%s) failed: %m", "setsockopt", "SO_KEEPALIVE")));
-			return STATUS_ERROR;
-		}
-
-#ifdef WIN32
-
-#define PQ_SEND_BUFFER_SIZE 8192
-
-		/*
-		 * This is a Win32 socket optimization.  The OS send buffer should be
-		 * large enough to send the whole Postgres send buffer in one go, or
-		 * performance suffers.  The Postgres send buffer can be enlarged if a
-		 * very large message needs to be sent, but we won't attempt to
-		 * enlarge the OS buffer if that happens, so somewhat arbitrarily
-		 * ensure that the OS buffer is at least PQ_SEND_BUFFER_SIZE * 4.
-		 * (That's 32kB with the current default).
-		 *
-		 * The default OS buffer size used to be 8kB in earlier Windows
-		 * versions, but was raised to 64kB in Windows 2012.  So it shouldn't
-		 * be necessary to change it in later versions anymore.  Changing it
-		 * unnecessarily can even reduce performance, because setting
-		 * SO_SNDBUF in the application disables the "dynamic send buffering"
-		 * feature that was introduced in Windows 7.  So before fiddling with
-		 * SO_SNDBUF, check if the current buffer size is already large enough
-		 * and only increase it if necessary.
-		 *
-		 * See https://support.microsoft.com/kb/823764/EN-US/ and
-		 * https://msdn.microsoft.com/en-us/library/bb736549%28v=vs.85%29.aspx
-		 */
-		optlen = sizeof(oldopt);
-		if (getsockopt(port->sock, SOL_SOCKET, SO_SNDBUF, (char *) &oldopt,
-					   &optlen) < 0)
-		{
-			ereport(LOG,
-					(errmsg("%s(%s) failed: %m", "getsockopt", "SO_SNDBUF")));
-			return STATUS_ERROR;
-		}
-		newopt = PQ_SEND_BUFFER_SIZE * 4;
-		if (oldopt < newopt)
-		{
-			if (setsockopt(port->sock, SOL_SOCKET, SO_SNDBUF, (char *) &newopt,
-						   sizeof(newopt)) < 0)
-			{
-				ereport(LOG,
-						(errmsg("%s(%s) failed: %m", "setsockopt", "SO_SNDBUF")));
-				return STATUS_ERROR;
-			}
-		}
-#endif
-
-		/*
-		 * Also apply the current keepalive parameters.  If we fail to set a
-		 * parameter, don't error out, because these aren't universally
-		 * supported.  (Note: you might think we need to reset the GUC
-		 * variables to 0 in such a case, but it's not necessary because the
-		 * show hooks for these variables report the truth anyway.)
-		 */
-		(void) pq_setkeepalivesidle(tcp_keepalives_idle, port);
-		(void) pq_setkeepalivesinterval(tcp_keepalives_interval, port);
-		(void) pq_setkeepalivescount(tcp_keepalives_count, port);
-		(void) pq_settcpusertimeout(tcp_user_timeout, port);
-	}
-
 	return STATUS_OK;
-}
-
-/*
- * StreamClose -- close a client/backend connection
- *
- * NOTE: this is NOT used to terminate a session; it is just used to release
- * the file descriptor in a process that should no longer have the socket
- * open.  (For example, the postmaster calls this after passing ownership
- * of the connection to a child process.)  It is expected that someone else
- * still has the socket open.  So, we only want to close the descriptor,
- * we do NOT want to send anything to the far end.
- */
-void
-StreamClose(pgsocket sock)
-{
-	closesocket(sock);
 }
 
 /*
@@ -935,7 +905,6 @@ RemoveSocketFiles(void)
 		(void) unlink(sock_path);
 	}
 	/* Since we're about to exit, no need to reclaim storage */
-	sock_paths = NIL;
 }
 
 
@@ -1149,8 +1118,9 @@ pq_getbyte_if_available(unsigned char *c)
  * --------------------------------
  */
 int
-pq_getbytes(char *s, size_t len)
+pq_getbytes(void *b, size_t len)
 {
+	char	   *s = b;
 	size_t		amount;
 
 	Assert(PqCommReadingMsg);
@@ -1206,15 +1176,17 @@ pq_discardbytes(size_t len)
 }
 
 /* --------------------------------
- *		pq_buffer_has_data		- is any buffered data available to read?
+ *		pq_buffer_remaining_data	- return number of bytes in receive buffer
  *
- * This will *not* attempt to read more data.
+ * This will *not* attempt to read more data. And reading up to that number of
+ * bytes should not cause reading any more data either.
  * --------------------------------
  */
-bool
-pq_buffer_has_data(void)
+ssize_t
+pq_buffer_remaining_data(void)
 {
-	return (PqRecvPointer < PqRecvLength);
+	Assert(PqRecvLength >= PqRecvPointer);
+	return (PqRecvLength - PqRecvPointer);
 }
 
 
@@ -1296,7 +1268,7 @@ pq_getmessage(StringInfo s, int maxlen)
 	resetStringInfo(s);
 
 	/* Read message length word */
-	if (pq_getbytes((char *) &len, 4) == EOF)
+	if (pq_getbytes(&len, 4) == EOF)
 	{
 		ereport(COMMERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -1360,10 +1332,10 @@ pq_getmessage(StringInfo s, int maxlen)
 }
 
 
-static int
-internal_putbytes(const char *s, size_t len)
+static inline int
+internal_putbytes(const void *b, size_t len)
 {
-	size_t		amount;
+	const char *s = b;
 
 	while (len > 0)
 	{
@@ -1374,14 +1346,33 @@ internal_putbytes(const char *s, size_t len)
 			if (internal_flush())
 				return EOF;
 		}
-		amount = PqSendBufferSize - PqSendPointer;
-		if (amount > len)
-			amount = len;
-		memcpy(PqSendBuffer + PqSendPointer, s, amount);
-		PqSendPointer += amount;
-		s += amount;
-		len -= amount;
+
+		/*
+		 * If the buffer is empty and data length is larger than the buffer
+		 * size, send it without buffering.  Otherwise, copy as much data as
+		 * possible into the buffer.
+		 */
+		if (len >= PqSendBufferSize && PqSendStart == PqSendPointer)
+		{
+			size_t		start = 0;
+
+			socket_set_nonblocking(false);
+			if (internal_flush_buffer(s, &start, &len))
+				return EOF;
+		}
+		else
+		{
+			size_t		amount = PqSendBufferSize - PqSendPointer;
+
+			if (amount > len)
+				amount = len;
+			memcpy(PqSendBuffer + PqSendPointer, s, amount);
+			PqSendPointer += amount;
+			s += amount;
+			len -= amount;
+		}
 	}
+
 	return 0;
 }
 
@@ -1413,8 +1404,21 @@ socket_flush(void)
  * and the socket is in non-blocking mode), or EOF if trouble.
  * --------------------------------
  */
-static int
+static inline int
 internal_flush(void)
+{
+	return internal_flush_buffer(PqSendBuffer, &PqSendStart, &PqSendPointer);
+}
+
+/* --------------------------------
+ *		internal_flush_buffer - flush the given buffer content
+ *
+ * Returns 0 if OK (meaning everything was sent, or operation would block
+ * and the socket is in non-blocking mode), or EOF if trouble.
+ * --------------------------------
+ */
+static pg_noinline int
+internal_flush_buffer(const char *buf, size_t *start, size_t *end)
 {
 	if (PqSendYbNonRestartableData)
 	{
@@ -1423,8 +1427,8 @@ internal_flush(void)
 
 	static int	last_reported_send_errno = 0;
 
-	char	   *bufptr = PqSendBuffer + PqSendStart;
-	char	   *bufend = PqSendBuffer + PqSendPointer;
+	const char *bufptr = buf + *start;
+	const char *bufend = buf + *end;
 
 	while (bufptr < bufend)
 	{
@@ -1474,7 +1478,7 @@ internal_flush(void)
 			 * flag that'll cause the next CHECK_FOR_INTERRUPTS to terminate
 			 * the connection.
 			 */
-			PqSendStart = PqSendPointer = 0;
+			*start = *end = 0;
 			PqSendYbSavedBufPos = 0;
 			ClientConnectionLost = 1;
 			InterruptPending = 1;
@@ -1483,10 +1487,10 @@ internal_flush(void)
 
 		last_reported_send_errno = 0;	/* reset after any successful send */
 		bufptr += r;
-		PqSendStart += r;
+		*start += r;
 	}
 
-	PqSendStart = PqSendPointer = 0;
+	*start = *end = 0;
 	PqSendYbSavedBufPos = 0;
 	return 0;
 }
@@ -1567,7 +1571,7 @@ socket_putmessage(char msgtype, const char *s, size_t len)
 		goto fail;
 
 	n32 = pg_hton32((uint32) (len + 4));
-	if (internal_putbytes((char *) &n32, 4))
+	if (internal_putbytes(&n32, 4))
 		goto fail;
 
 	if (internal_putbytes(s, len))
@@ -2011,6 +2015,108 @@ pq_settcpusertimeout(int timeout, Port *port)
 #endif
 
 	return STATUS_OK;
+}
+
+/*
+ * GUC assign_hook for tcp_keepalives_idle
+ */
+void
+assign_tcp_keepalives_idle(int newval, void *extra)
+{
+	/*
+	 * The kernel API provides no way to test a value without setting it; and
+	 * once we set it we might fail to unset it.  So there seems little point
+	 * in fully implementing the check-then-assign GUC API for these
+	 * variables.  Instead we just do the assignment on demand.
+	 * pq_setkeepalivesidle reports any problems via ereport(LOG).
+	 *
+	 * This approach means that the GUC value might have little to do with the
+	 * actual kernel value, so we use a show_hook that retrieves the kernel
+	 * value rather than trusting GUC's copy.
+	 */
+	(void) pq_setkeepalivesidle(newval, MyProcPort);
+}
+
+/*
+ * GUC show_hook for tcp_keepalives_idle
+ */
+const char *
+show_tcp_keepalives_idle(void)
+{
+	/* See comments in assign_tcp_keepalives_idle */
+	static char nbuf[16];
+
+	snprintf(nbuf, sizeof(nbuf), "%d", pq_getkeepalivesidle(MyProcPort));
+	return nbuf;
+}
+
+/*
+ * GUC assign_hook for tcp_keepalives_interval
+ */
+void
+assign_tcp_keepalives_interval(int newval, void *extra)
+{
+	/* See comments in assign_tcp_keepalives_idle */
+	(void) pq_setkeepalivesinterval(newval, MyProcPort);
+}
+
+/*
+ * GUC show_hook for tcp_keepalives_interval
+ */
+const char *
+show_tcp_keepalives_interval(void)
+{
+	/* See comments in assign_tcp_keepalives_idle */
+	static char nbuf[16];
+
+	snprintf(nbuf, sizeof(nbuf), "%d", pq_getkeepalivesinterval(MyProcPort));
+	return nbuf;
+}
+
+/*
+ * GUC assign_hook for tcp_keepalives_count
+ */
+void
+assign_tcp_keepalives_count(int newval, void *extra)
+{
+	/* See comments in assign_tcp_keepalives_idle */
+	(void) pq_setkeepalivescount(newval, MyProcPort);
+}
+
+/*
+ * GUC show_hook for tcp_keepalives_count
+ */
+const char *
+show_tcp_keepalives_count(void)
+{
+	/* See comments in assign_tcp_keepalives_idle */
+	static char nbuf[16];
+
+	snprintf(nbuf, sizeof(nbuf), "%d", pq_getkeepalivescount(MyProcPort));
+	return nbuf;
+}
+
+/*
+ * GUC assign_hook for tcp_user_timeout
+ */
+void
+assign_tcp_user_timeout(int newval, void *extra)
+{
+	/* See comments in assign_tcp_keepalives_idle */
+	(void) pq_settcpusertimeout(newval, MyProcPort);
+}
+
+/*
+ * GUC show_hook for tcp_user_timeout
+ */
+const char *
+show_tcp_user_timeout(void)
+{
+	/* See comments in assign_tcp_keepalives_idle */
+	static char nbuf[16];
+
+	snprintf(nbuf, sizeof(nbuf), "%d", pq_gettcpusertimeout(MyProcPort));
+	return nbuf;
 }
 
 /*

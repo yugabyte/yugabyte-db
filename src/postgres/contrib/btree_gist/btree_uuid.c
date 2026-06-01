@@ -6,6 +6,8 @@
 #include "btree_gist.h"
 #include "btree_utils_num.h"
 #include "port/pg_bswap.h"
+#include "utils/rel.h"
+#include "utils/sortsupport.h"
 #include "utils/uuid.h"
 
 typedef struct
@@ -15,9 +17,7 @@ typedef struct
 } uuidKEY;
 
 
-/*
- * UUID ops
- */
+/* GiST support functions */
 PG_FUNCTION_INFO_V1(gbt_uuid_compress);
 PG_FUNCTION_INFO_V1(gbt_uuid_fetch);
 PG_FUNCTION_INFO_V1(gbt_uuid_union);
@@ -25,6 +25,7 @@ PG_FUNCTION_INFO_V1(gbt_uuid_picksplit);
 PG_FUNCTION_INFO_V1(gbt_uuid_consistent);
 PG_FUNCTION_INFO_V1(gbt_uuid_penalty);
 PG_FUNCTION_INFO_V1(gbt_uuid_same);
+PG_FUNCTION_INFO_V1(gbt_uuid_sortsupport);
 
 
 static int
@@ -93,9 +94,8 @@ static const gbtree_ninfo tinfo =
 
 
 /**************************************************
- * uuid ops
+ * GiST support functions
  **************************************************/
-
 
 Datum
 gbt_uuid_compress(PG_FUNCTION_ARGS)
@@ -108,10 +108,10 @@ gbt_uuid_compress(PG_FUNCTION_ARGS)
 		char	   *r = (char *) palloc(2 * UUID_LEN);
 		pg_uuid_t  *key = DatumGetUUIDP(entry->key);
 
-		retval = palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 
-		memcpy((void *) r, (void *) key, UUID_LEN);
-		memcpy((void *) (r + UUID_LEN), (void *) key, UUID_LEN);
+		memcpy(r, key, UUID_LEN);
+		memcpy(r + UUID_LEN, key, UUID_LEN);
 		gistentryinit(*retval, PointerGetDatum(r),
 					  entry->rel, entry->page,
 					  entry->offset, false);
@@ -136,8 +136,9 @@ gbt_uuid_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	pg_uuid_t  *query = PG_GETARG_UUID_P(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	uuidKEY    *kkk = (uuidKEY *) DatumGetPointer(entry->key);
 	GBT_NUMKEY_R key;
@@ -148,7 +149,7 @@ gbt_uuid_consistent(PG_FUNCTION_ARGS)
 	key.lower = (GBT_NUMKEY *) &kkk->lower;
 	key.upper = (GBT_NUMKEY *) &kkk->upper;
 
-	PG_RETURN_BOOL(gbt_num_consistent(&key, (void *) query, &strategy,
+	PG_RETURN_BOOL(gbt_num_consistent(&key, query, &strategy,
 									  GIST_LEAF(entry), &tinfo,
 									  fcinfo->flinfo));
 }
@@ -160,7 +161,7 @@ gbt_uuid_union(PG_FUNCTION_ARGS)
 	void	   *out = palloc(sizeof(uuidKEY));
 
 	*(int *) PG_GETARG_POINTER(1) = sizeof(uuidKEY);
-	PG_RETURN_POINTER(gbt_num_union((void *) out, entryvec, &tinfo, fcinfo->flinfo));
+	PG_RETURN_POINTER(gbt_num_union(out, entryvec, &tinfo, fcinfo->flinfo));
 }
 
 /*
@@ -232,4 +233,25 @@ gbt_uuid_same(PG_FUNCTION_ARGS)
 
 	*result = gbt_num_same((void *) b1, (void *) b2, &tinfo, fcinfo->flinfo);
 	PG_RETURN_POINTER(result);
+}
+
+static int
+gbt_uuid_ssup_cmp(Datum x, Datum y, SortSupport ssup)
+{
+	uuidKEY    *arg1 = (uuidKEY *) DatumGetPointer(x);
+	uuidKEY    *arg2 = (uuidKEY *) DatumGetPointer(y);
+
+	/* for leaf items we expect lower == upper, so only compare lower */
+	return uuid_internal_cmp(&arg1->lower, &arg2->lower);
+}
+
+Datum
+gbt_uuid_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	ssup->comparator = gbt_uuid_ssup_cmp;
+	ssup->ssup_extra = NULL;
+
+	PG_RETURN_VOID();
 }

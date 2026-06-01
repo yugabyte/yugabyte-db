@@ -8,7 +8,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/test/regress/pg_regress_main.c
@@ -18,6 +18,7 @@
 
 #include "postgres_fe.h"
 
+#include "lib/stringinfo.h"
 #include "pg_regress.h"
 
 /*
@@ -34,8 +35,7 @@ ysqlsh_start_test(const char *testname,
 	char		infile[MAXPGPATH];
 	char		outfile[MAXPGPATH];
 	char		expectfile[MAXPGPATH];
-	char		ysqlsh_cmd[MAXPGPATH * 3];
-	size_t		offset = 0;
+	StringInfoData ysqlsh_cmd;
 	char	   *appnameenv;
 
 	/*
@@ -54,7 +54,7 @@ ysqlsh_start_test(const char *testname,
 			 outputdir, testname);
 
 	snprintf(expectfile, sizeof(expectfile), "%s/expected/%s.out",
-			 outputdir, testname);
+			 expecteddir, testname);
 	if (!file_exists(expectfile))
 		snprintf(expectfile, sizeof(expectfile), "%s/expected/%s.out",
 				 inputdir, testname);
@@ -62,40 +62,29 @@ ysqlsh_start_test(const char *testname,
 	add_stringlist_item(resultfiles, outfile);
 	add_stringlist_item(expectfiles, expectfile);
 
+	initStringInfo(&ysqlsh_cmd);
+
 	if (launcher)
-	{
-		offset += snprintf(ysqlsh_cmd + offset, sizeof(ysqlsh_cmd) - offset,
-						   "%s ", launcher);
-		if (offset >= sizeof(ysqlsh_cmd))
-		{
-			fprintf(stderr, _("command too long\n"));
-			exit(2);
-		}
-	}
+		appendStringInfo(&ysqlsh_cmd, "%s ", launcher);
 
 	/*
 	 * Use HIDE_TABLEAM to hide different AMs to allow to use regression tests
 	 * against different AMs without unnecessary differences.
 	 */
-	offset += snprintf(ysqlsh_cmd + offset, sizeof(ysqlsh_cmd) - offset,
-					   "\"%s%sysqlsh\" -X -a -q -d \"%s\" %s < \"%s\" > \"%s\" 2>&1",
-					   bindir ? bindir : "",
-					   bindir ? "/" : "",
-					   dblist->str,
-					   "-v HIDE_TABLEAM=on -v HIDE_TOAST_COMPRESSION=on",
-					   infile,
-					   outfile);
-	if (offset >= sizeof(ysqlsh_cmd))
-	{
-		fprintf(stderr, _("command too long\n"));
-		exit(2);
-	}
+	appendStringInfo(&ysqlsh_cmd,
+					 "\"%s%sysqlsh\" -X -a -q -d \"%s\" %s < \"%s\" > \"%s\" 2>&1",
+					 bindir ? bindir : "",
+					 bindir ? "/" : "",
+					 dblist->str,
+					 "-v HIDE_TABLEAM=on -v HIDE_TOAST_COMPRESSION=on",
+					 infile,
+					 outfile);
 
 	appnameenv = psprintf("pg_regress/%s", testname);
 	setenv("PGAPPNAME", appnameenv, 1);
 	free(appnameenv);
 
-	pid = spawn_process(ysqlsh_cmd);
+	pid = spawn_process(ysqlsh_cmd.data);
 
 	if (pid == INVALID_PID)
 	{
@@ -105,6 +94,8 @@ ysqlsh_start_test(const char *testname,
 	}
 
 	unsetenv("PGAPPNAME");
+
+	pfree(ysqlsh_cmd.data);
 
 	return pid;
 }

@@ -49,7 +49,7 @@ CLUSTER vaccluster;
 CREATE FUNCTION do_analyze() RETURNS VOID VOLATILE LANGUAGE SQL
 	AS 'ANALYZE pg_am';
 CREATE FUNCTION wrap_do_analyze(c INT) RETURNS INT IMMUTABLE LANGUAGE SQL
-	AS 'SELECT $1 FROM do_analyze()';
+	AS 'SELECT $1 FROM public.do_analyze()';
 CREATE INDEX ON vaccluster(wrap_do_analyze(i));
 INSERT INTO vaccluster VALUES (1), (2);
 ANALYZE vaccluster;
@@ -113,6 +113,10 @@ CREATE INDEX brin_pvactst ON pvactst USING brin (i);
 CREATE INDEX gin_pvactst ON pvactst USING gin (a);
 CREATE INDEX gist_pvactst ON pvactst USING gist (p);
 CREATE INDEX spgist_pvactst ON pvactst USING spgist (p);
+CREATE TABLE pvactst2 (i INT) WITH (autovacuum_enabled = off);
+INSERT INTO pvactst2 SELECT generate_series(1, 1000);
+CREATE INDEX ON pvactst2 (i);
+CREATE INDEX ON pvactst2 (i);
 
 -- VACUUM invokes parallel index cleanup
 SET min_parallel_index_scan_size to 0;
@@ -130,6 +134,14 @@ VACUUM (PARALLEL 2, INDEX_CLEANUP FALSE) pvactst;
 VACUUM (PARALLEL 2, FULL TRUE) pvactst; -- error, cannot use both PARALLEL and FULL
 VACUUM (PARALLEL) pvactst; -- error, cannot use PARALLEL option without parallel degree
 
+-- Test parallel vacuum using the minimum maintenance_work_mem with and without
+-- dead tuples.
+SET maintenance_work_mem TO 64;
+VACUUM (PARALLEL 2) pvactst2;
+DELETE FROM pvactst2 WHERE i < 1000;
+VACUUM (PARALLEL 2) pvactst2;
+RESET maintenance_work_mem;
+
 -- Test different combinations of parallel and full options for temporary tables
 CREATE TEMPORARY TABLE tmp (a int PRIMARY KEY);
 CREATE INDEX tmp_idx1 ON tmp (a);
@@ -137,6 +149,7 @@ VACUUM (PARALLEL 1, FULL FALSE) tmp; -- parallel vacuum disabled for temp tables
 VACUUM (PARALLEL 0, FULL TRUE) tmp; -- can specify parallel disabled (even though that's implied by FULL)
 RESET min_parallel_index_scan_size;
 DROP TABLE pvactst;
+DROP TABLE pvactst2;
 
 -- INDEX_CLEANUP option
 CREATE TABLE no_index_cleanup (i INT PRIMARY KEY, t TEXT);
@@ -181,9 +194,19 @@ CREATE TEMP TABLE vac_truncate_test(i INT NOT NULL, j text)
 INSERT INTO vac_truncate_test VALUES (1, NULL), (NULL, NULL);
 VACUUM (TRUNCATE FALSE, DISABLE_PAGE_SKIPPING) vac_truncate_test;
 SELECT pg_relation_size('vac_truncate_test') > 0;
+SET vacuum_truncate = false;
 VACUUM (DISABLE_PAGE_SKIPPING) vac_truncate_test;
 SELECT pg_relation_size('vac_truncate_test') = 0;
 VACUUM (TRUNCATE FALSE, FULL TRUE) vac_truncate_test;
+ALTER TABLE vac_truncate_test RESET (vacuum_truncate);
+INSERT INTO vac_truncate_test VALUES (1, NULL), (NULL, NULL);
+VACUUM (DISABLE_PAGE_SKIPPING) vac_truncate_test;
+SELECT pg_relation_size('vac_truncate_test') > 0;
+RESET vacuum_truncate;
+VACUUM (TRUNCATE FALSE, DISABLE_PAGE_SKIPPING) vac_truncate_test;
+SELECT pg_relation_size('vac_truncate_test') > 0;
+VACUUM (DISABLE_PAGE_SKIPPING) vac_truncate_test;
+SELECT pg_relation_size('vac_truncate_test') = 0;
 DROP TABLE vac_truncate_test;
 
 -- partitioned table
@@ -233,6 +256,72 @@ BEGIN;  -- ANALYZE behaves differently inside a transaction block
 ANALYZE vactst, vactst;
 COMMIT;
 
+--
+-- Tests for ANALYZE ONLY / VACUUM ONLY on partitioned tables
+--
+CREATE TABLE only_parted (a int, b text) PARTITION BY LIST (a);
+CREATE TABLE only_parted1 PARTITION OF only_parted FOR VALUES IN (1);
+INSERT INTO only_parted VALUES (1, 'a');
+
+-- Ensure only the partitioned table is analyzed
+ANALYZE ONLY only_parted;
+SELECT relname, last_analyze IS NOT NULL AS analyzed, last_vacuum IS NOT NULL AS vacuumed
+  FROM pg_stat_user_tables
+  WHERE relid IN ('only_parted'::regclass, 'only_parted1'::regclass)
+  ORDER BY relname;
+
+-- Ensure partitioned table and the partitions are analyzed
+ANALYZE only_parted;
+SELECT relname, last_analyze IS NOT NULL AS analyzed, last_vacuum IS NOT NULL AS vacuumed
+  FROM pg_stat_user_tables
+  WHERE relid IN ('only_parted'::regclass, 'only_parted1'::regclass)
+  ORDER BY relname;
+
+DROP TABLE only_parted;
+
+-- VACUUM ONLY on a partitioned table does nothing, ensure we get a warning.
+VACUUM ONLY vacparted;
+
+-- Try ANALYZE ONLY with a column list
+ANALYZE ONLY vacparted(a,b);
+
+--
+-- Tests for VACUUM ONLY / ANALYZE ONLY on inheritance tables
+--
+CREATE TABLE only_inh_parent (a int primary key, b TEXT);
+CREATE TABLE only_inh_child () INHERITS (only_inh_parent);
+INSERT INTO only_inh_child(a,b) VALUES (1, 'aaa'), (2, 'bbb'), (3, 'ccc');
+
+-- Ensure only parent is analyzed
+ANALYZE ONLY only_inh_parent;
+SELECT relname, last_analyze IS NOT NULL AS analyzed, last_vacuum IS NOT NULL AS vacuumed
+  FROM pg_stat_user_tables
+  WHERE relid IN ('only_inh_parent'::regclass, 'only_inh_child'::regclass)
+  ORDER BY relname;
+
+-- Ensure the parent and child are analyzed
+ANALYZE only_inh_parent;
+SELECT relname, last_analyze IS NOT NULL AS analyzed, last_vacuum IS NOT NULL AS vacuumed
+  FROM pg_stat_user_tables
+  WHERE relid IN ('only_inh_parent'::regclass, 'only_inh_child'::regclass)
+  ORDER BY relname;
+
+-- Ensure only the parent is vacuumed
+VACUUM ONLY only_inh_parent;
+SELECT relname, last_analyze IS NOT NULL AS analyzed, last_vacuum IS NOT NULL AS vacuumed
+  FROM pg_stat_user_tables
+  WHERE relid IN ('only_inh_parent'::regclass, 'only_inh_child'::regclass)
+  ORDER BY relname;
+
+-- Ensure parent and child are vacuumed
+VACUUM only_inh_parent;
+SELECT relname, last_analyze IS NOT NULL AS analyzed, last_vacuum IS NOT NULL AS vacuumed
+  FROM pg_stat_user_tables
+  WHERE relid IN ('only_inh_parent'::regclass, 'only_inh_child'::regclass)
+  ORDER BY relname;
+
+DROP TABLE only_inh_parent CASCADE;
+
 -- parenthesized syntax for ANALYZE
 ANALYZE (VERBOSE) does_not_exist;
 ANALYZE (nonexistent-arg) does_not_exist;
@@ -261,11 +350,70 @@ ANALYZE vactst;
 COMMIT;
 
 -- PROCESS_TOAST option
-ALTER TABLE vactst ADD COLUMN t TEXT;
-ALTER TABLE vactst ALTER COLUMN t SET STORAGE EXTERNAL;
-VACUUM (PROCESS_TOAST FALSE) vactst;
-VACUUM (PROCESS_TOAST FALSE, FULL) vactst;
+CREATE TABLE vac_option_tab (a INT, t TEXT);
+INSERT INTO vac_option_tab SELECT a, 't' || a FROM generate_series(1, 10) AS a;
+ALTER TABLE vac_option_tab ALTER COLUMN t SET STORAGE EXTERNAL;
+-- Check the number of vacuums done on table vac_option_tab and on its
+-- toast relation, to check that PROCESS_TOAST and PROCESS_MAIN work on
+-- what they should.
+CREATE VIEW vac_option_tab_counts AS
+  SELECT CASE WHEN c.relname IS NULL
+    THEN 'main' ELSE 'toast' END as rel,
+  s.vacuum_count
+  FROM pg_stat_all_tables s
+  LEFT JOIN pg_class c ON s.relid = c.reltoastrelid
+  WHERE c.relname = 'vac_option_tab' OR s.relname = 'vac_option_tab'
+  ORDER BY rel;
+VACUUM (PROCESS_TOAST TRUE) vac_option_tab;
+SELECT * FROM vac_option_tab_counts;
+VACUUM (PROCESS_TOAST FALSE) vac_option_tab;
+SELECT * FROM vac_option_tab_counts;
+VACUUM (PROCESS_TOAST FALSE, FULL) vac_option_tab; -- error
 
+-- PROCESS_MAIN option
+-- Only the toast table is processed.
+VACUUM (PROCESS_MAIN FALSE) vac_option_tab;
+SELECT * FROM vac_option_tab_counts;
+-- Nothing is processed.
+VACUUM (PROCESS_MAIN FALSE, PROCESS_TOAST FALSE) vac_option_tab;
+SELECT * FROM vac_option_tab_counts;
+-- Check if the filenodes nodes have been updated as wanted after FULL.
+SELECT relfilenode AS main_filenode FROM pg_class
+  WHERE relname = 'vac_option_tab' \gset
+SELECT t.relfilenode AS toast_filenode FROM pg_class c, pg_class t
+  WHERE c.reltoastrelid = t.oid AND c.relname = 'vac_option_tab' \gset
+-- Only the toast relation is processed.
+VACUUM (PROCESS_MAIN FALSE, FULL) vac_option_tab;
+SELECT relfilenode = :main_filenode AS is_same_main_filenode
+  FROM pg_class WHERE relname = 'vac_option_tab';
+SELECT t.relfilenode = :toast_filenode AS is_same_toast_filenode
+  FROM pg_class c, pg_class t
+  WHERE c.reltoastrelid = t.oid AND c.relname = 'vac_option_tab';
+
+-- BUFFER_USAGE_LIMIT option
+VACUUM (BUFFER_USAGE_LIMIT '512 kB') vac_option_tab;
+ANALYZE (BUFFER_USAGE_LIMIT '512 kB') vac_option_tab;
+-- try disabling the buffer usage limit
+VACUUM (BUFFER_USAGE_LIMIT 0) vac_option_tab;
+ANALYZE (BUFFER_USAGE_LIMIT 0) vac_option_tab;
+-- value exceeds max size error
+VACUUM (BUFFER_USAGE_LIMIT 16777220) vac_option_tab;
+-- value is less than min size error
+VACUUM (BUFFER_USAGE_LIMIT 120) vac_option_tab;
+-- integer overflow error
+VACUUM (BUFFER_USAGE_LIMIT 10000000000) vac_option_tab;
+-- incompatible with VACUUM FULL error
+VACUUM (BUFFER_USAGE_LIMIT '512 kB', FULL) vac_option_tab;
+
+-- SKIP_DATABASE_STATS option
+VACUUM (SKIP_DATABASE_STATS) vactst;
+
+-- ONLY_DATABASE_STATS option
+VACUUM (ONLY_DATABASE_STATS);
+VACUUM (ONLY_DATABASE_STATS) vactst;  -- error
+
+DROP VIEW vac_option_tab_counts;
+DROP TABLE vac_option_tab;
 DROP TABLE vaccluster;
 DROP TABLE vactst;
 DROP TABLE vacparted;
@@ -347,3 +495,33 @@ RESET ROLE;
 DROP TABLE vacowned;
 DROP TABLE vacowned_parted;
 DROP ROLE regress_vacuum;
+
+-- Test checking how new toast values are allocated on rewrite.
+-- Create table with plain storage (forces inline storage initially).
+CREATE TABLE vac_rewrite_toast (id int, f1 TEXT STORAGE plain);
+-- Insert tuple large enough to trigger toast storage on rewrite, still
+-- small enough to fit on a page.
+INSERT INTO vac_rewrite_toast values (1, repeat('a', 7000));
+-- Switch to external storage to force toast table usage.
+ALTER TABLE vac_rewrite_toast ALTER COLUMN f1 SET STORAGE EXTERNAL;
+-- This second tuple is toasted, its value should still be the
+-- same after rewrite.
+INSERT INTO vac_rewrite_toast values (2, repeat('a', 7000));
+SELECT pg_column_toast_chunk_id(f1) AS id_2_chunk FROM vac_rewrite_toast
+  WHERE id = 2 \gset
+-- Check initial state of the data.
+SELECT id, pg_column_toast_chunk_id(f1) IS NULL AS f1_chunk_null,
+  substr(f1, 5, 10) AS f1_data,
+  pg_column_compression(f1) AS f1_comp
+  FROM vac_rewrite_toast ORDER BY id;
+-- VACUUM FULL forces toast data rewrite.
+VACUUM FULL vac_rewrite_toast;
+-- Check after rewrite.
+SELECT id, pg_column_toast_chunk_id(f1) IS NULL AS f1_chunk_null,
+  substr(f1, 5, 10) AS f1_data,
+  pg_column_compression(f1) AS f1_comp
+  FROM vac_rewrite_toast ORDER BY id;
+-- The same value is reused for the tuple toasted before the rewrite.
+SELECT pg_column_toast_chunk_id(f1) = :'id_2_chunk' AS same_chunk
+  FROM vac_rewrite_toast WHERE id = 2;
+DROP TABLE vac_rewrite_toast;

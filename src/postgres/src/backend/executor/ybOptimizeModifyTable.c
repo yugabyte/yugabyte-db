@@ -58,7 +58,7 @@ static void
 YbLogOptimizationSummary(const struct YbUpdateEntity *entity_list,
 						 Bitmapset *modified_entities, int nentities)
 {
-	if (log_min_messages >= DEBUG1)
+	if (log_min_messages[MyBackendType] >= DEBUG1)
 		return;
 
 	for (int i = 0; i < nentities; i++)
@@ -109,7 +109,7 @@ YbLogInspectedColumns(Relation rel, const Bitmapset *updated_cols,
 					  const Bitmapset *modified_cols,
 					  const Bitmapset *unmodified_cols)
 {
-	if (log_min_messages >= DEBUG1)
+	if (log_min_messages[MyBackendType] >= DEBUG1)
 		return;
 
 	YbLogColumnList(rel, modified_cols,

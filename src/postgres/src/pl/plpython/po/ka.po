@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: plpython (PostgreSQL) 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2023-08-23 22:55+0000\n"
+"POT-Creation-Date: 2023-05-17 01:38+0000\n"
 "PO-Revision-Date: 2022-09-25 19:18+0200\n"
 "Last-Translator: Temuri Doghonadze <temuri.doghonadze@gmail.com>\n"
 "Language-Team: Georgian <nothing>\n"
@@ -105,7 +105,7 @@ msgstr "PL/Python -ის პროცედურამ None არ დაა�
 msgid "PL/Python function with return type \"void\" did not return None"
 msgstr "PL/Python -ის ფუნქციამ, რომელიც აბრუნებს ტიპს \"void\", რაღაც დააბრუნა"
 
-#: plpy_exec.c:369 plpy_exec.c:395
+#: plpy_exec.c:369 plpy_exec.c:393
 #, c-format
 msgid "unexpected return value from trigger procedure"
 msgstr "ტრიგერის პროცედურის მოულოდნელი დაბრუნებული მნიშვნელობა"
@@ -115,112 +115,112 @@ msgstr "ტრიგერის პროცედურის მოულო�
 msgid "Expected None or a string."
 msgstr "ველოდებოდი არაფერს ან სტრიქონს."
 
-#: plpy_exec.c:385
+#: plpy_exec.c:383
 #, c-format
 msgid "PL/Python trigger function returned \"MODIFY\" in a DELETE trigger -- ignored"
 msgstr "PL/Python -ის ტრიგერმა ფუნქციამ DELETE ტრიგერში \"MODIFY\" დააბრუნა. -- იგნორირებულია"
 
-#: plpy_exec.c:396
+#: plpy_exec.c:394
 #, c-format
 msgid "Expected None, \"OK\", \"SKIP\", or \"MODIFY\"."
 msgstr "მოსალოდნელია არცერთი, \"OK\", \"SKIP\", ან \"MODIFY\"."
 
-#: plpy_exec.c:446
+#: plpy_exec.c:444
 #, c-format
 msgid "PyList_SetItem() failed, while setting up arguments"
 msgstr "PyList_SetItem() -ის შეცდომა არგუმენტების მორგებისას"
 
-#: plpy_exec.c:450
+#: plpy_exec.c:448
 #, c-format
 msgid "PyDict_SetItemString() failed, while setting up arguments"
 msgstr "PyDict_SetItemString() -ის შეცდომა არგუმენტების მორგებისას"
 
-#: plpy_exec.c:462
+#: plpy_exec.c:460
 #, c-format
 msgid "function returning record called in context that cannot accept type record"
 msgstr "ფუნქცია, რომელიც ჩანაწერს აბრუნებს, გამოძახებულია კონტექსტში, რომელსაც ჩანაწერის მიღება არ შეუძლია"
 
-#: plpy_exec.c:679
+#: plpy_exec.c:677
 #, c-format
 msgid "while creating return value"
 msgstr "დასაბრუნებელი მნიშვნელობის შექმნისას"
 
-#: plpy_exec.c:926
+#: plpy_exec.c:924
 #, c-format
 msgid "TD[\"new\"] deleted, cannot modify row"
 msgstr "TD[\"new\"] წაშლილია, მწკრივის შეცვლა შეუძლებელია"
 
-#: plpy_exec.c:931
+#: plpy_exec.c:929
 #, c-format
 msgid "TD[\"new\"] is not a dictionary"
 msgstr "TD[\"new\"] ლექსიკონი არაა"
 
-#: plpy_exec.c:956
+#: plpy_exec.c:954
 #, c-format
 msgid "TD[\"new\"] dictionary key at ordinal position %d is not a string"
 msgstr "TD[\"new\"] ლექსიკონის გასაღები ორდინალურ მდებარეობაზე %d სტრიქონს არ წარმოადგენს"
 
-#: plpy_exec.c:963
+#: plpy_exec.c:961
 #, c-format
 msgid "key \"%s\" found in TD[\"new\"] does not exist as a column in the triggering row"
 msgstr "\"TD[\"new\"]-ში ნაპოვნი გასაღები (%s) დამატრიგერებელი მწკრივის სვეტად არ არსებობს"
 
-#: plpy_exec.c:968
+#: plpy_exec.c:966
 #, c-format
 msgid "cannot set system attribute \"%s\""
 msgstr "სისტემური ატრიბუტის დაყენების შეცდომა: \"%s\""
 
-#: plpy_exec.c:973
+#: plpy_exec.c:971
 #, c-format
 msgid "cannot set generated column \"%s\""
 msgstr "გენერირებული სვეტის დაყენება შეუძლებელია: %s"
 
-#: plpy_exec.c:1031
+#: plpy_exec.c:1029
 #, c-format
 msgid "while modifying trigger row"
 msgstr "ტრიგერის მწკრივის შეცვლისას"
 
-#: plpy_exec.c:1089
+#: plpy_exec.c:1087
 #, c-format
 msgid "forcibly aborting a subtransaction that has not been exited"
 msgstr "ქვეტრანზაქცია, რომელიც ჯერ არ დასრულებულა, ძალით დასრულდება"
 
-#: plpy_main.c:111
+#: plpy_main.c:109
 #, c-format
 msgid "multiple Python libraries are present in session"
 msgstr "სესია Python-ის ერთზე მეტ ბიბლიოთეკას შეიცავს"
 
-#: plpy_main.c:112
+#: plpy_main.c:110
 #, c-format
 msgid "Only one Python major version can be used in one session."
 msgstr "ერთ სესიაში Python-ის მხოლოდ ერთი ძირითადი ვერსია შეგიძლიათ გამოიყენოთ."
 
-#: plpy_main.c:124
+#: plpy_main.c:122
 #, c-format
 msgid "untrapped error in initialization"
 msgstr "დაუჭერელი შეცდომა ინიციალიზაციისას"
 
-#: plpy_main.c:147
+#: plpy_main.c:145
 #, c-format
 msgid "could not import \"__main__\" module"
 msgstr "\"__main__\" მოდულის შემოტანის შეცდომა"
 
-#: plpy_main.c:156
+#: plpy_main.c:154
 #, c-format
 msgid "could not initialize globals"
 msgstr "გლობალების ინიციალიზაციის შეცდომა"
 
-#: plpy_main.c:354
+#: plpy_main.c:352
 #, c-format
 msgid "PL/Python procedure \"%s\""
 msgstr "PL/Python -ის პროცედურა \"%s\""
 
-#: plpy_main.c:357
+#: plpy_main.c:355
 #, c-format
 msgid "PL/Python function \"%s\""
 msgstr "PL/Python -ის ფუნქცია \"%s\""
 
-#: plpy_main.c:365
+#: plpy_main.c:363
 #, c-format
 msgid "PL/Python anonymous code block"
 msgstr "PL/Python -ის ანონიმური კოდის ბლოკი"
@@ -284,12 +284,12 @@ msgstr "PL/Python ფუნქციებს ამ ტიპის დაბ�
 msgid "PL/Python functions cannot accept type %s"
 msgstr "PL/Python ფუნქციებს ამ ტიპის მიღება არ შეუძლიათ: %s"
 
-#: plpy_procedure.c:397
+#: plpy_procedure.c:395
 #, c-format
 msgid "could not compile PL/Python function \"%s\""
 msgstr "\"PL/Python\"-ის ფუნქციის კომპილაციის შეცდომა: \"%s\""
 
-#: plpy_procedure.c:400
+#: plpy_procedure.c:398
 #, c-format
 msgid "could not compile anonymous PL/Python code block"
 msgstr "\"PL/Python\"-ის კოდის ანონიმური ბლოკის კომპილაციის შეცდომა"

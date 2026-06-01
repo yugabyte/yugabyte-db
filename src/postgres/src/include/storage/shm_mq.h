@@ -3,7 +3,7 @@
  * shm_mq.h
  *	  single-reader, single-writer shared memory message queue
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/shm_mq.h
@@ -15,7 +15,9 @@
 
 #include "postmaster/bgworker.h"
 #include "storage/dsm.h"
-#include "storage/proc.h"
+
+/* avoid including storage/proc.h */
+typedef struct PGPROC PGPROC;
 
 /* The queue itself, in shared memory. */
 struct shm_mq;
@@ -37,7 +39,7 @@ typedef enum
 {
 	SHM_MQ_SUCCESS,				/* Sent or received a message. */
 	SHM_MQ_WOULD_BLOCK,			/* Not completed; retry later. */
-	SHM_MQ_DETACHED				/* Other process has detached queue. */
+	SHM_MQ_DETACHED,			/* Other process has detached queue. */
 } shm_mq_result;
 
 /*

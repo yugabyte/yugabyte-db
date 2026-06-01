@@ -32,14 +32,16 @@
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
-#ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
-#endif
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#ifdef USE_ICU
+#include <unicode/ucol.h>
+#endif
 #include <unistd.h>
 
+#include "access/attmap.h"
 #include "access/heaptoast.h"
 #include "access/htup.h"
 #include "access/htup_details.h"
@@ -113,9 +115,7 @@
 #include "pgstat.h"
 #include "postmaster/interrupt.h"
 #include "replication/origin.h"
-#ifndef HAVE_GETRUSAGE
-#include "rusagestub.h"
-#endif
+#include "storage/fd.h"
 #include "storage/procarray.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -131,6 +131,7 @@
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/uuid.h"
+#include "utils/wait_event.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
@@ -1185,7 +1186,10 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 static uint16_t
 YbGetSessionReplicationOriginId(void)
 {
-	return replorigin_session_origin;
+	/*
+	 * YB_TODO_PG19MERGE: PG made replorigin_session_origin static-internal.
+	 * Need to expose it. Stub to InvalidReplOriginId (0) for now. */
+	return InvalidReplOriginId;
 }
 
 void
@@ -2410,7 +2414,7 @@ YbHeapTupleToStringWithIsOmitted(HeapTuple tuple, TupleDesc tupleDesc,
 	Assert(tuple != NULL);
 
 	const char *result;
-	TupleTableSlot *slot = MakeTupleTableSlot(tupleDesc, &TTSOpsHeapTuple);
+	TupleTableSlot *slot = MakeTupleTableSlot(tupleDesc, &TTSOpsHeapTuple, 0);
 
 	ExecStoreHeapTuple(tuple, slot, false);
 	result = YbSlotToStringWithIsOmitted(slot, is_omitted);
@@ -2526,7 +2530,7 @@ YBResetEnableSpecialDDLMode()
 static YbcStatus
 YbMemCtxReset(MemoryContext context)
 {
-	AssertArg(MemoryContextIsValid(context));
+	Assert(MemoryContextIsValid(context));
 	for (MemoryContext child = context->firstchild;
 		 child != NULL;
 		 child = child->nextchild)
@@ -2932,7 +2936,7 @@ YbTrackPgTxnInvalMessagesForAnalyze()
 		memcpy(currentInvalMessages + numCatCacheMsgs,
 			   relCacheInvalMessages,
 			   numRelCacheMsgs * sizeof(SharedInvalidationMessage));
-	if (log_min_messages <= DEBUG1 || yb_debug_log_catcache_events)
+	if (log_min_messages[MyBackendType] <= DEBUG1 || yb_debug_log_catcache_events)
 		YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 	YbCatalogMessageList *current = (YbCatalogMessageList *)
 		MemoryContextAlloc(ddl_transaction_state.mem_context,
@@ -3293,7 +3297,7 @@ YBCommitTransactionContainingDDL()
 
 				msg->yb_header.yb_sender_pid = 0;
 			}
-		if (currentInvalMessages && log_min_messages <= DEBUG1)
+		if (currentInvalMessages && log_min_messages[MyBackendType] <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
 		CommandTag ddl_cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
@@ -5262,9 +5266,6 @@ yb_database_clones(PG_FUNCTION_ARGS)
 
 #undef YB_DATABASE_CLONES_COLS
 
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-
 	MemoryContextSwitchTo(oldcontext);
 
 	return (Datum) 0;
@@ -5484,7 +5485,7 @@ getSplitPointsInfo(Oid relid, YbcPgTableDesc yb_tabledesc,
 	bool		is_table = rel->rd_rel->relkind == RELKIND_RELATION ||
 		rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE;
 	Relation	index_rel = (is_table ?
-							 relation_open(RelationGetPrimaryKeyIndex(rel),
+							 relation_open(RelationGetPrimaryKeyIndex(rel, false),
 										   AccessShareLock) :
 							 rel);
 	Form_pg_index rd_index = index_rel->rd_index;
@@ -6079,9 +6080,6 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 #undef YB_TABLET_INFO_COLS_V1
 #undef YB_TABLET_INFO_COLS_V2
 
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-
 	MemoryContextSwitchTo(oldcontext);
 
 	return (Datum) 0;
@@ -6090,8 +6088,7 @@ yb_local_tablets(PG_FUNCTION_ARGS)
 static Datum
 GetMetricsAsJsonbDatum(YbcMetricsInfo *metrics, size_t metricsCount)
 {
-	JsonbParseState *state = NULL;
-	JsonbValue	result;
+	JsonbInState state = {0};
 	JsonbValue	key;
 	JsonbValue	value;
 
@@ -6108,8 +6105,8 @@ GetMetricsAsJsonbDatum(YbcMetricsInfo *metrics, size_t metricsCount)
 		value.val.string.len = strlen(metrics[j].value);
 		pushJsonbValue(&state, WJB_VALUE, &value);
 	}
-	result = *pushJsonbValue(&state, WJB_END_OBJECT, NULL);
-	Jsonb	   *jsonb = JsonbValueToJsonb(&result);
+	pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	Jsonb	   *jsonb = JsonbValueToJsonb(state.result);
 
 	return JsonbPGetDatum(jsonb);
 }
@@ -6183,9 +6180,6 @@ yb_servers_metrics(PG_FUNCTION_ARGS)
 	}
 
 #undef YB_SERVERS_METRICS_COLS
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -6329,6 +6323,11 @@ YBComputeNonCSortKey(Oid collation_id, const char *value, int64_t bytes)
 	memcpy(buf1, value, bytes);
 	buf1[buflen1] = '\0';
 
+	/* YB_TODO_PG19MERGE: code below needs to be reworked. */
+	(void) locale;
+	(void) bsize;
+	(void) buflen2;
+#if 0
 #ifdef USE_ICU
 	int32_t		ulen = -1;
 	UChar	   *uchar = NULL;
@@ -6381,6 +6380,7 @@ YBComputeNonCSortKey(Oid collation_id, const char *value, int64_t bytes)
 #ifdef USE_ICU
 	if (uchar)
 		pfree(uchar);
+#endif
 #endif
 
 	pfree(buf1);
@@ -6520,9 +6520,11 @@ YBIsCollationValidNonC(Oid collation_id)
 		   collation_id == C_COLLATION_OID);
 
 	bool		is_valid_non_c = (YBIsCollationEnabled() &&
-								  OidIsValid(collation_id) &&
-								  !lc_collate_is_c(collation_id));
-
+								  OidIsValid(collation_id));
+	/* YB_TODO_PG19MERGE: function doesn't exist*/
+#if 0
+								   && !lc_collate_is_c(collation_id));
+#endif
 	return is_valid_non_c;
 }
 
@@ -6536,8 +6538,12 @@ YBRequiresCacheToCheckLocale(Oid collation)
 	 * not push down collations where DocDB would need to access the cache to
 	 * get information about the locale.
 	 */
+	/*
+	 * YB_TODO_PG19MERGE: PG commit 51edc4ca54f826cfac012c7306eee479f07a5dc7
+	 * removed POSIX_COLLATION_OID
+	 */
 	return OidIsValid(collation) && collation != DEFAULT_COLLATION_OID
-		&& collation != C_COLLATION_OID && collation != POSIX_COLLATION_OID;
+		&& collation != C_COLLATION_OID;
 }
 
 bool
@@ -7438,7 +7444,7 @@ YbGetSplitOptions(Relation rel)
 		rel->yb_table_properties->num_hash_key_columns > 0 ||
 		((rel->rd_rel->relkind == RELKIND_RELATION ||
 		  rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE) &&
-		 RelationGetPrimaryKeyIndex(rel) == InvalidOid) ? NUM_TABLETS :
+		 RelationGetPrimaryKeyIndex(rel, false) == InvalidOid) ? NUM_TABLETS :
 		SPLIT_POINTS;
 	split_options->num_tablets = rel->yb_table_properties->num_tablets;
 
@@ -7541,7 +7547,7 @@ YbIsConnectionMadeStickyUsingGUC()
 	 * priority.
 	 */
 	yb_ysql_conn_mgr_superuser_existed = yb_ysql_conn_mgr_superuser_existed ||
-		session_auth_is_superuser;
+		current_role_is_superuser;
 	return yb_ysql_conn_mgr_sticky_guc = yb_ysql_conn_mgr_sticky_guc ||
 		(YbIsSuperuserConnSticky() && yb_ysql_conn_mgr_superuser_existed);
 }
@@ -7715,7 +7721,8 @@ YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
 					 */
 					AttrMap    *att_map = build_attrmap_by_name(RelationGetDescr(rel),
 																RelationGetDescr(rel),
-																false /* yb_ignore_type_mismatch */ );
+																false /* missing_ok */,
+																false /* yb_ignore_type_mismatch */);
 
 					Relation	idx_rel =
 						index_open(con_form->conindid, AccessShareLock);
@@ -8283,7 +8290,7 @@ YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists)
 
 		size_t		nmsgs = msglist->num_bytes / sizeof(SharedInvalidationMessage);
 
-		if (log_min_messages <= DEBUG1 || yb_debug_log_catcache_events)
+		if (log_min_messages[MyBackendType] <= DEBUG1 || yb_debug_log_catcache_events)
 			YbLogInvalidationMessages(invalMessages, nmsgs);
 		for (size_t i = 0; i < nmsgs; ++i)
 			/*
@@ -8417,9 +8424,9 @@ YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum)
 										target_cols,
 										NULL /* yb_generated_cols_source */ ,
 										rel);
-	int			bms_index;
+	int			bms_index = -1;
 
-	while ((bms_index = bms_first_member(dependent_generated_cols)) >= 0)
+	while ((bms_index = bms_next_member(dependent_generated_cols, bms_index)) >= 0)
 	{
 		AttrNumber	dependent_attnum = bms_index + offset;
 
@@ -8629,9 +8636,6 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 
 	MemoryContextSwitchTo(oldcontext);
 	return (Datum) 0;

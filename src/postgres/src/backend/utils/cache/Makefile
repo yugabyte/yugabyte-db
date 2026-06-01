@@ -19,12 +19,13 @@ OBJS = \
 	attoptcache.o \
 	catcache.o \
 	evtcache.o \
+	funccache.o \
 	inval.o \
 	lsyscache.o \
 	partcache.o \
 	plancache.o \
 	relcache.o \
-	relfilenodemap.o \
+	relfilenumbermap.o \
 	relmapper.o \
 	spccache.o \
 	syscache.o \

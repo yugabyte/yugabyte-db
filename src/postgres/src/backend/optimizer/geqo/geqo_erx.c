@@ -32,10 +32,12 @@
 
 
 #include "postgres.h"
-#include "optimizer/geqo_random.h"
-#include "optimizer/geqo_recombination.h"
+#include "optimizer/geqo.h"
 
 #if defined(ERX)
+
+#include "optimizer/geqo_random.h"
+#include "optimizer/geqo_recombination.h"
 
 static int	gimme_edge(PlannerInfo *root, Gene gene1, Gene gene2, Edge *edge_table);
 static void remove_gene(PlannerInfo *root, Gene gene, Edge edge, Edge *edge_table);
@@ -60,7 +62,7 @@ alloc_edge_table(PlannerInfo *root, int num_gene)
 	 * directly; 0 will not be used
 	 */
 
-	edge_table = (Edge *) palloc((num_gene + 1) * sizeof(Edge));
+	edge_table = palloc_array(Edge, num_gene + 1);
 
 	return edge_table;
 }
@@ -162,7 +164,7 @@ gimme_edge(PlannerInfo *root, Gene gene1, Gene gene2, Edge *edge_table)
 
 	for (i = 0; i < edges; i++)
 	{
-		if ((Gene) Abs(edge_table[city1].edge_list[i]) == city2)
+		if ((Gene) abs(edge_table[city1].edge_list[i]) == city2)
 		{
 
 			/* mark shared edges as negative */
@@ -249,14 +251,14 @@ remove_gene(PlannerInfo *root, Gene gene, Edge edge, Edge *edge_table)
 
 	for (i = 0; i < edge.unused_edges; i++)
 	{
-		possess_edge = (int) Abs(edge.edge_list[i]);
+		possess_edge = abs(edge.edge_list[i]);
 		genes_remaining = edge_table[possess_edge].unused_edges;
 
 		/* find the input gene in all edge_lists and delete it */
 		for (j = 0; j < genes_remaining; j++)
 		{
 
-			if ((Gene) Abs(edge_table[possess_edge].edge_list[j]) == gene)
+			if ((Gene) abs(edge_table[possess_edge].edge_list[j]) == gene)
 			{
 
 				edge_table[possess_edge].unused_edges--;
@@ -307,7 +309,7 @@ gimme_gene(PlannerInfo *root, Edge edge, Edge *edge_table)
 		 * converting to absolute values
 		 */
 		if (friend < 0)
-			return (Gene) Abs(friend);
+			return (Gene) abs(friend);
 
 
 		/*

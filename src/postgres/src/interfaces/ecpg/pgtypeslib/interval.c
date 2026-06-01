@@ -6,10 +6,6 @@
 #include <math.h>
 #include <limits.h>
 
-#ifdef __FAST_MATH__
-#error -ffast-math is known to break this code
-#endif
-
 #include "common/string.h"
 #include "dt.h"
 #include "pgtypes_error.h"
@@ -184,8 +180,7 @@ DecodeISO8601Interval(char *str,
 						continue;
 					}
 					/* Else fall through to extended alternative format */
-					/* FALLTHROUGH */
-					yb_switch_fallthrough();
+					pg_fallthrough;
 				case '-':		/* ISO 8601 4.4.3.3 Alternative Format,
 								 * Extended */
 					if (havefield)
@@ -264,8 +259,7 @@ DecodeISO8601Interval(char *str,
 						return 0;
 					}
 					/* Else fall through to extended alternative format */
-					/* FALLTHROUGH */
-					yb_switch_fallthrough();
+					pg_fallthrough;
 				case ':':		/* ISO 8601 4.4.3.3 Alternative Format,
 								 * Extended */
 					if (havefield)
@@ -393,8 +387,7 @@ DecodeInterval(char **field, int *ftype, int nf,	/* int range, */
 					tmask = DTK_M(TZ);
 					break;
 				}
-				/* FALL THROUGH */
-				yb_switch_fallthrough();
+				pg_fallthrough;
 
 			case DTK_DATE:
 			case DTK_NUMBER:
@@ -745,9 +738,9 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 	else
 	{
 		if (fillzeros)
-			sprintf(cp, "%02d.%0*d", abs(sec), precision, (int) Abs(fsec));
+			sprintf(cp, "%02d.%0*d", abs(sec), precision, abs(fsec));
 		else
-			sprintf(cp, "%d.%0*d", abs(sec), precision, (int) Abs(fsec));
+			sprintf(cp, "%d.%0*d", abs(sec), precision, abs(fsec));
 		TrimTrailingZeros(cp);
 	}
 }

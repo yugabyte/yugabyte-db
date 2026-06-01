@@ -3,7 +3,7 @@
  * replorigindesc.c
  *	  rmgr descriptor routines for replication/logical/origin.c
  *
- * Portions Copyright (c) 2015-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2015-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -29,7 +29,7 @@ replorigin_desc(StringInfo buf, XLogReaderState *record)
 
 				xlrec = (xl_replorigin_set *) rec;
 
-				appendStringInfo(buf, "set %u; lsn %X/%X; force: %d",
+				appendStringInfo(buf, "set %u; lsn %X/%08X; force: %d",
 								 xlrec->node_id,
 								 LSN_FORMAT_ARGS(xlrec->remote_lsn),
 								 xlrec->force);

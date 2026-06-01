@@ -2,7 +2,7 @@
  *
  *	  ISO 8859 2-16 <--> UTF8
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -41,7 +41,10 @@
 #include "../../Unicode/utf8_to_iso8859_9.map"
 #include "../../Unicode/iso8859_16_to_utf8.map"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "utf8_and_iso8859",
+					.version = PG_VERSION
+);
 
 PG_FUNCTION_INFO_V1(iso8859_to_utf8);
 PG_FUNCTION_INFO_V1(utf8_to_iso8859);

@@ -4,7 +4,7 @@
  * bootparse.y
  *	  yacc grammar for the "bootstrap" mode (BKI file format)
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -32,6 +32,8 @@
 #include "nodes/makefuncs.h"
 #include "utils/memutils.h"
 
+#include "bootparse.h"
+
 /* YB includes */
 #include "bootstrap/yb_bootstrap.h"
 #include "catalog/pg_proc.h"
@@ -43,10 +45,7 @@
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
  * so we can easily have it use palloc instead of malloc.  This prevents
- * memory leaks if we error out during parsing.  Note this only works with
- * bison >= 2.0.  However, in bison 1.875 the default is to use alloca()
- * if possible, so there's not really much problem anyhow, at least if
- * you're building with gcc.
+ * memory leaks if we error out during parsing.
  */
 #define YYMALLOC palloc
 #define YYFREE   pfree
@@ -85,6 +84,9 @@ static int num_columns_read = 0;
 
 %}
 
+%parse-param {yyscan_t yyscanner}
+%lex-param   {yyscan_t yyscanner}
+%pure-parser
 %expect 0
 %name-prefix="boot_yy"
 
@@ -150,6 +152,8 @@ Boot_OpenStmt:
 					do_start();
 					boot_openrel($2);
 					do_end();
+
+					(void) yynerrs; /* suppress compiler warning */
 				}
 		;
 
@@ -180,7 +184,7 @@ Boot_YBIndex:
 					stmt->excludeOpNames = NIL;
 					stmt->idxcomment = NULL;
 					stmt->indexOid = $5;
-					stmt->oldNode = InvalidOid;
+					stmt->oldNumber = InvalidRelFileNumber;
 					stmt->unique = true;
 					stmt->primary = true;
 					stmt->isconstraint = false;
@@ -342,9 +346,9 @@ Boot_DeclareIndexStmt:
 					stmt->excludeOpNames = NIL;
 					stmt->idxcomment = NULL;
 					stmt->indexOid = InvalidOid;
-					stmt->oldNode = InvalidOid;
+					stmt->oldNumber = InvalidRelFileNumber;
 					stmt->oldCreateSubid = InvalidSubTransactionId;
-					stmt->oldFirstRelfilenodeSubid = InvalidSubTransactionId;
+					stmt->oldFirstRelfilelocatorSubid = InvalidSubTransactionId;
 					stmt->unique = false;
 					stmt->primary = false;
 					stmt->isconstraint = false;
@@ -359,11 +363,13 @@ Boot_DeclareIndexStmt:
 					relationId = RangeVarGetRelid(stmt->relation, NoLock,
 												  false);
 
-					DefineIndex(relationId,
+					DefineIndex(NULL,
+								relationId,
 								stmt,
 								$4,
 								InvalidOid,
 								InvalidOid,
+								-1,
 								false,
 								false,
 								false,
@@ -394,9 +400,9 @@ Boot_DeclareUniqueIndexStmt:
 					stmt->excludeOpNames = NIL;
 					stmt->idxcomment = NULL;
 					stmt->indexOid = InvalidOid;
-					stmt->oldNode = InvalidOid;
+					stmt->oldNumber = InvalidRelFileNumber;
 					stmt->oldCreateSubid = InvalidSubTransactionId;
-					stmt->oldFirstRelfilenodeSubid = InvalidSubTransactionId;
+					stmt->oldFirstRelfilelocatorSubid = InvalidSubTransactionId;
 					stmt->unique = true;
 					stmt->primary = false;
 					stmt->isconstraint = false;
@@ -411,11 +417,13 @@ Boot_DeclareUniqueIndexStmt:
 					relationId = RangeVarGetRelid(stmt->relation, NoLock,
 												  false);
 
-					DefineIndex(relationId,
+					DefineIndex(NULL,
+								relationId,
 								stmt,
 								$5,
 								InvalidOid,
 								InvalidOid,
+								-1,
 								false,
 								false,
 								false,
@@ -443,7 +451,7 @@ Boot_DeclarePrimaryIndexStmt:
 					stmt->excludeOpNames = NIL;
 					stmt->idxcomment = NULL;
 					stmt->indexOid = InvalidOid;
-					stmt->oldNode = InvalidOid;
+					stmt->oldNumber = InvalidRelFileNumber;
 					stmt->unique = true;
 					stmt->primary = true;
 					stmt->isconstraint = false;
@@ -457,11 +465,13 @@ Boot_DeclarePrimaryIndexStmt:
 					relationId = RangeVarGetRelid(stmt->relation, NoLock,
 												  false);
 
-					DefineIndex(relationId,
+					DefineIndex(NULL,
+								relationId,
 								stmt,
 								$5,
 								InvalidOid,
 								InvalidOid,
+								-1,
 								false,
 								false,
 								false,
@@ -510,6 +520,7 @@ boot_index_param:
 					n->opclass = list_make1(makeString($2));
 					n->ordering = SORTBY_DEFAULT;
 					n->nulls_ordering = SORTBY_NULLS_DEFAULT;
+					n->location = -1;
 					$$ = n;
 				}
 		;
@@ -603,5 +614,3 @@ boot_ident:
 		| YBCHECKINITDBDONE { $$ = pstrdup($1); }
 		;
 %%
-
-#include "bootscanner.c"

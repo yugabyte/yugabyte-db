@@ -9,7 +9,7 @@
  *		but it should be possible to use much of the control logic just
  *		as presented here.
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_shm_mq/worker.c
@@ -21,6 +21,8 @@
 
 #include "miscadmin.h"
 #include "storage/ipc.h"
+#include "storage/latch.h"
+#include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/shm_mq.h"
 #include "storage/shm_toc.h"
@@ -54,13 +56,7 @@ test_shm_mq_main(Datum main_arg)
 	int			myworkernumber;
 	PGPROC	   *registrant;
 
-	/*
-	 * Establish signal handlers.
-	 *
-	 * We want CHECK_FOR_INTERRUPTS() to kill off this worker process just as
-	 * it would a normal user backend.  To make that happen, we use die().
-	 */
-	pqsignal(SIGTERM, die);
+	/* Unblock signals.  The standard signal handlers are OK for us. */
 	BackgroundWorkerUnblockSignals();
 
 	/*
@@ -77,7 +73,7 @@ test_shm_mq_main(Datum main_arg)
 	 * exit, which is fine.  If there were a ResourceOwner, it would acquire
 	 * ownership of the mapping, but we have no need for that.
 	 */
-	seg = dsm_attach(DatumGetInt32(main_arg));
+	seg = dsm_attach(DatumGetUInt32(main_arg));
 	if (seg == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),

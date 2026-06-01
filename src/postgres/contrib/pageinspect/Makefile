@@ -13,7 +13,8 @@ OBJS = \
 	rawpage.o
 
 EXTENSION = pageinspect
-DATA =  pageinspect--1.10--1.11.sql \
+DATA =  pageinspect--1.12--1.13.sql \
+	pageinspect--1.11--1.12.sql pageinspect--1.10--1.11.sql \
 	pageinspect--1.9--1.10.sql pageinspect--1.8--1.9.sql \
 	pageinspect--1.7--1.8.sql pageinspect--1.6--1.7.sql \
 	pageinspect--1.5.sql pageinspect--1.5--1.6.sql \
@@ -22,7 +23,16 @@ DATA =  pageinspect--1.10--1.11.sql \
 	pageinspect--1.0--1.1.sql
 PGFILEDESC = "pageinspect - functions to inspect contents of database pages"
 
-REGRESS = page btree brin gin gist hash checksum oldextversions
+# "page" is first because it creates the extension.
+REGRESS = \
+	page \
+	brin \
+	btree \
+	checksum \
+	gin \
+	gist \
+	hash \
+	oldextversions
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

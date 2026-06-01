@@ -3,7 +3,7 @@
  * win32stat.c
  *	  Replacements for <sys/stat.h> functions using GetFileInformationByHandle
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -12,10 +12,6 @@
  *
  *-------------------------------------------------------------------------
  */
-
-#ifdef WIN32
-
-#define UMDF_USING_NTSTATUS
 
 #include "c.h"
 #include "port/win32ntdll.h"
@@ -304,5 +300,3 @@ _pgfstat64(int fileno, struct stat *buf)
 	buf->st_nlink = 1;
 	return 0;
 }
-
-#endif							/* WIN32 */

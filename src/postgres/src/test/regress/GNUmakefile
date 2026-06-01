@@ -3,7 +3,7 @@
 # GNUmakefile--
 #    Makefile for src/test/regress (the regression tests)
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/test/regress/GNUmakefile
@@ -36,11 +36,11 @@ EXTRADEFS = '-DHOST_TUPLE="$(host_tuple)"' \
 all: pg_regress$(X)
 
 pg_regress$(X): pg_regress.o pg_regress_main.o $(WIN32RES) | submake-libpgport
-	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@
+	$(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@
 
 # dependencies ensure that path changes propagate
 pg_regress.o: pg_regress.c $(top_builddir)/src/port/pg_config_paths.h
-pg_regress.o: override CPPFLAGS += -I$(top_builddir)/src/port $(EXTRADEFS)
+pg_regress.o: override CPPFLAGS := -I$(top_builddir)/src/port -I$(libpq_srcdir) $(EXTRADEFS) $(CPPFLAGS)
 
 # note: because of the submake dependency, this rule's action is really a no-op
 $(top_builddir)/src/port/pg_config_paths.h: | submake-libpgport
@@ -87,28 +87,6 @@ installdirs-tests: installdirs
 	$(MKDIR_P)  $(patsubst $(srcdir)/%/,'$(DESTDIR)$(pkglibdir)/regress/%',$(sort $(dir $(regress_data_files))))
 
 
-# Get some extra C modules from contrib/spi
-
-ifneq ($(YB_BUILD_TYPE), compilecmds)
-all: refint$(DLSUFFIX) autoinc$(DLSUFFIX)
-
-refint$(DLSUFFIX): $(top_builddir)/contrib/spi/refint$(DLSUFFIX)
-	cp $< $@
-
-autoinc$(DLSUFFIX): $(top_builddir)/contrib/spi/autoinc$(DLSUFFIX)
-	cp $< $@
-
-$(top_builddir)/contrib/spi/refint$(DLSUFFIX): | submake-contrib-spi ;
-
-$(top_builddir)/contrib/spi/autoinc$(DLSUFFIX): | submake-contrib-spi ;
-
-submake-contrib-spi: | submake-libpgport submake-generated-headers
-	$(MAKE) -C $(top_builddir)/contrib/spi
-
-.PHONY: submake-contrib-spi
-endif	# YB
-
-
 ##
 ## Run tests
 ##
@@ -148,9 +126,9 @@ bigcheck: all | temp-install
 ## Clean up
 ##
 
-clean distclean maintainer-clean: clean-lib
+clean distclean: clean-lib
 # things built by `all' target
-	rm -f $(OBJS) refint$(DLSUFFIX) autoinc$(DLSUFFIX)
+	rm -f $(OBJS)
 	rm -f pg_regress_main.o pg_regress.o pg_regress$(X)
 # things created by various check targets
 	rm -rf $(pg_regress_clean_files)

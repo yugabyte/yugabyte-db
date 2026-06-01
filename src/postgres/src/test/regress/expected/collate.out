@@ -73,6 +73,8 @@ LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "P...
 CREATE DOMAIN testdomain_p AS text COLLATE "POSIX";
 CREATE DOMAIN testdomain_i AS int COLLATE "POSIX"; -- fail
 ERROR:  collations are not supported by type integer
+LINE 1: CREATE DOMAIN testdomain_i AS int COLLATE "POSIX";
+                                      ^
 CREATE TABLE collate_test4 (
     a int,
     b testdomain_p
@@ -194,18 +196,18 @@ CREATE VIEW collview2 AS SELECT a, b FROM collate_test1 ORDER BY b COLLATE "C";
 CREATE VIEW collview3 AS SELECT a, lower((x || x) COLLATE "POSIX") FROM collate_test10;
 SELECT table_name, view_definition FROM information_schema.views
   WHERE table_name LIKE 'collview%' ORDER BY 1;
- table_name |                               view_definition                                
-------------+------------------------------------------------------------------------------
- collview1  |  SELECT collate_test1.a,                                                    +
-            |     collate_test1.b                                                         +
-            |    FROM collate_test1                                                       +
-            |   WHERE ((collate_test1.b COLLATE "C") >= 'bbc'::text);
- collview2  |  SELECT collate_test1.a,                                                    +
-            |     collate_test1.b                                                         +
-            |    FROM collate_test1                                                       +
-            |   ORDER BY (collate_test1.b COLLATE "C");
- collview3  |  SELECT collate_test10.a,                                                   +
-            |     lower(((collate_test10.x || collate_test10.x) COLLATE "POSIX")) AS lower+
+ table_name |                view_definition                 
+------------+------------------------------------------------
+ collview1  |  SELECT a,                                    +
+            |     b                                         +
+            |    FROM collate_test1                         +
+            |   WHERE ((b COLLATE "C") >= 'bbc'::text);
+ collview2  |  SELECT a,                                    +
+            |     b                                         +
+            |    FROM collate_test1                         +
+            |   ORDER BY (b COLLATE "C");
+ collview3  |  SELECT a,                                    +
+            |     lower(((x || x) COLLATE "POSIX")) AS lower+
             |    FROM collate_test10;
 (3 rows)
 
@@ -594,6 +596,8 @@ CREATE INDEX collate_test1_idx3 ON collate_test1 ((b COLLATE "POSIX")); -- this 
 CREATE INDEX collate_test1_idx4 ON collate_test1 (((b||'foo') COLLATE "POSIX"));
 CREATE INDEX collate_test1_idx5 ON collate_test1 (a COLLATE "POSIX"); -- fail
 ERROR:  collations are not supported by type integer
+LINE 1: CREATE INDEX collate_test1_idx5 ON collate_test1 (a COLLATE ...
+                                                          ^
 CREATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "POSIX")); -- fail
 ERROR:  collations are not supported by type integer
 LINE 1: ...ATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "P...
@@ -650,6 +654,22 @@ EXPLAIN (COSTS OFF)
 (3 rows)
 
 -- CREATE/DROP COLLATION
+CREATE COLLATION builtin_c ( PROVIDER = builtin, LOCALE = "C" );
+SELECT b FROM collate_test1 ORDER BY b COLLATE builtin_c;
+  b  
+-----
+ ABD
+ Abc
+ abc
+ bbc
+(4 rows)
+
+CREATE COLLATION builtin2 ( PROVIDER = builtin ); -- fails
+ERROR:  parameter "locale" must be specified
+CREATE COLLATION builtin2 ( PROVIDER = builtin, LOCALE = "en_US" ); -- fails
+ERROR:  invalid locale name "en_US" for builtin provider
+CREATE COLLATION builtin2 ( PROVIDER = builtin, LC_CTYPE = "C", LC_COLLATE = "C" ); -- fails
+ERROR:  parameter "locale" must be specified
 CREATE COLLATION mycoll1 FROM "C";
 CREATE COLLATION mycoll2 ( LC_COLLATE = "POSIX", LC_CTYPE = "POSIX" );
 CREATE COLLATION mycoll3 FROM "default";  -- intentionally unsupported
@@ -698,7 +718,7 @@ SELECT c1+1 AS c1p FROM
 --------+---------+-----------+----------+---------+---------+-------------
  c1p    | integer |           |          |         | plain   | 
 View definition:
- SELECT ss.c1 + 1 AS c1p
+ SELECT c1 + 1 AS c1p
    FROM ( SELECT 4 AS c1) ss;
 
 -- Check conflicting or redundant options in CREATE COLLATION
@@ -754,7 +774,7 @@ DETAIL:  FROM cannot be specified together with any other options.
 -- must get rid of them.
 --
 DROP SCHEMA collate_tests CASCADE;
-NOTICE:  drop cascades to 19 other objects
+NOTICE:  drop cascades to 20 other objects
 DETAIL:  drop cascades to table collate_test1
 drop cascades to table collate_test_like
 drop cascades to table collate_test2
@@ -771,6 +791,7 @@ drop cascades to function dup(anyelement)
 drop cascades to table collate_test20
 drop cascades to table collate_test21
 drop cascades to table collate_test22
+drop cascades to collation builtin_c
 drop cascades to collation mycoll2
 drop cascades to table collate_test23
 drop cascades to view collate_on_int

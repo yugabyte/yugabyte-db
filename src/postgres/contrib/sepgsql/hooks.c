@@ -4,7 +4,7 @@
  *
  * Entrypoints of the hooks in PostgreSQL, and dispatches the callbacks.
  *
- * Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * -------------------------------------------------------------------------
  */
@@ -25,12 +25,14 @@
 #include "utils/guc.h"
 #include "utils/queryenvironment.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "sepgsql",
+					.version = PG_VERSION
+);
 
 /*
  * Declarations
  */
-void		_PG_init(void);
 
 /*
  * Saved hook entries (if stacked)
@@ -51,14 +53,14 @@ typedef struct
 	 * command. Elsewhere (including the case of default) NULL.
 	 */
 	const char *createdb_dtemplate;
-}			sepgsql_context_info_t;
+} sepgsql_context_info_t;
 
 static sepgsql_context_info_t sepgsql_context_info;
 
 /*
  * GUC: sepgsql.permissive = (on|off)
  */
-static bool sepgsql_permissive;
+static bool sepgsql_permissive = false;
 
 bool
 sepgsql_get_permissive(void)
@@ -69,7 +71,7 @@ sepgsql_get_permissive(void)
 /*
  * GUC: sepgsql.debug_audit = (on|off)
  */
-static bool sepgsql_debug_audit;
+static bool sepgsql_debug_audit = false;
 
 bool
 sepgsql_get_debug_audit(void)
@@ -288,17 +290,17 @@ sepgsql_object_access(ObjectAccessType access,
  * Entrypoint of DML permissions
  */
 static bool
-sepgsql_exec_check_perms(List *rangeTabls, bool abort)
+sepgsql_exec_check_perms(List *rangeTbls, List *rteperminfos, bool abort)
 {
 	/*
 	 * If security provider is stacking and one of them replied 'false' at
 	 * least, we don't need to check any more.
 	 */
 	if (next_exec_check_perms_hook &&
-		!(*next_exec_check_perms_hook) (rangeTabls, abort))
+		!(*next_exec_check_perms_hook) (rangeTbls, rteperminfos, abort))
 		return false;
 
-	if (!sepgsql_dml_privileges(rangeTabls, abort))
+	if (!sepgsql_dml_privileges(rangeTbls, rteperminfos, abort))
 		return false;
 
 	return true;
@@ -395,7 +397,7 @@ sepgsql_utility_command(PlannedStmt *pstmt,
 }
 
 /*
- * Module load/unload callback
+ * Module load callback
  */
 void
 _PG_init(void)
@@ -407,7 +409,7 @@ _PG_init(void)
 	if (IsUnderPostmaster)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("sepgsql must be loaded via shared_preload_libraries")));
+				 errmsg("sepgsql must be loaded via \"shared_preload_libraries\"")));
 
 	/*
 	 * Check availability of SELinux on the platform. If disabled, we cannot

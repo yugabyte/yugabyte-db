@@ -8,10 +8,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: pg_config (PostgreSQL) 15\n"
+"Project-Id-Version: pg_config (PostgreSQL) 17\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2025-02-16 20:20+0000\n"
-"PO-Revision-Date: 2022-10-20 09:06+0200\n"
+"POT-Creation-Date: 2025-02-16 19:48+0000\n"
+"PO-Revision-Date: 2024-11-16 14:23+0100\n"
 "Last-Translator: Carlos Chapi <carloswaldo@babelruins.org>\n"
 "Language-Team: PgSQL-es-Ayuda <pgsql-es-ayuda@lists.postgresql.org>\n"
 "Language: es\n"
@@ -27,44 +27,60 @@ msgstr ""
 msgid "not recorded"
 msgstr "no registrado"
 
-#: ../../common/exec.c:149 ../../common/exec.c:266 ../../common/exec.c:312
+#: ../../common/exec.c:174
 #, c-format
-msgid "could not identify current directory: %m"
-msgstr "no se pudo identificar el directorio actual: %m"
+msgid "invalid binary \"%s\": %m"
+msgstr "binario «%s» no válido: %m"
 
-#: ../../common/exec.c:168
+#: ../../common/exec.c:217
 #, c-format
-msgid "invalid binary \"%s\""
-msgstr "el binario «%s» no es válido"
+msgid "could not read binary \"%s\": %m"
+msgstr "no se pudo leer el binario «%s»: %m"
 
-#: ../../common/exec.c:218
-#, c-format
-msgid "could not read binary \"%s\""
-msgstr "no se pudo leer el binario «%s»"
-
-#: ../../common/exec.c:226
+#: ../../common/exec.c:225
 #, c-format
 msgid "could not find a \"%s\" to execute"
 msgstr "no se pudo encontrar un «%s» para ejecutar"
 
-#: ../../common/exec.c:282 ../../common/exec.c:321
+#: ../../common/exec.c:252
 #, c-format
-msgid "could not change directory to \"%s\": %m"
-msgstr "no se pudo cambiar al directorio «%s»: %m"
+msgid "could not resolve path \"%s\" to absolute form: %m"
+msgstr "no se pudo resolver la ruta «%s» a forma absoluta: %m"
 
-#: ../../common/exec.c:299
+#: ../../common/exec.c:382
 #, c-format
-msgid "could not read symbolic link \"%s\": %m"
-msgstr "no se pudo leer el enlace simbólico «%s»: %m"
+msgid "could not execute command \"%s\": %m"
+msgstr "no se pudo ejecutar la orden «%s»: %m"
 
-#: ../../common/exec.c:422
+#: ../../common/exec.c:394
+#, c-format
+msgid "could not read from command \"%s\": %m"
+msgstr "no se pudo leer desde la orden «%s»: %m"
+
+#: ../../common/exec.c:397
+#, c-format
+msgid "no data was returned by command \"%s\""
+msgstr "la orden «%s» no retornó datos"
+
+#: ../../common/exec.c:424
 #, c-format
 msgid "%s() failed: %m"
 msgstr "%s() falló: %m"
 
-#: ../../common/exec.c:560 ../../common/exec.c:605 ../../common/exec.c:697
+#: ../../common/exec.c:562 ../../common/exec.c:607 ../../common/exec.c:699
 msgid "out of memory"
 msgstr "memoria agotada"
+
+#: ../../common/fe_memutils.c:35 ../../common/fe_memutils.c:75
+#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:161
+#, c-format
+msgid "out of memory\n"
+msgstr "memoria agotada\n"
+
+#: ../../common/fe_memutils.c:92 ../../common/fe_memutils.c:153
+#, c-format
+msgid "cannot duplicate null pointer (internal error)\n"
+msgstr "no se puede duplicar un puntero nulo (error interno)\n"
 
 #: pg_config.c:74
 #, c-format

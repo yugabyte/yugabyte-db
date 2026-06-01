@@ -4,7 +4,7 @@
  *	  Helper functions for table AMs implementing compressed or
  *    out-of-line storage of varlena attributes.
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/include/access/toast_helper.h
  *
@@ -29,7 +29,7 @@
  */
 typedef struct
 {
-	struct varlena *tai_oldexternal;
+	varlena    *tai_oldexternal;
 	int32		tai_size;
 	uint8		tai_colflags;
 	char		tai_compression;
@@ -43,7 +43,7 @@ typedef struct
 	/*
 	 * Before calling toast_tuple_init, the caller must initialize the
 	 * following fields.  Each array must have a length equal to
-	 * ttc_rel->rd_att->natts.  The tts_oldvalues and tts_oldisnull fields
+	 * ttc_rel->rd_att->natts.  The ttc_oldvalues and ttc_oldisnull fields
 	 * should be NULL in the case of an insert.
 	 */
 	Relation	ttc_rel;		/* the relation that contains the tuple */
@@ -53,9 +53,9 @@ typedef struct
 	bool	   *ttc_oldisnull;	/* null flags from previous tuple */
 
 	/*
-	 * Before calling toast_tuple_init, the caller should set tts_attr to
+	 * Before calling toast_tuple_init, the caller should set ttc_attr to
 	 * point to an array of ToastAttrInfo structures of a length equal to
-	 * tts_rel->rd_att->natts.  The contents of the array need not be
+	 * ttc_rel->rd_att->natts.  The contents of the array need not be
 	 * initialized.  ttc_flags also does not need to be initialized.
 	 */
 	uint8		ttc_flags;
@@ -107,10 +107,10 @@ extern int	toast_tuple_find_biggest_attribute(ToastTupleContext *ttc,
 											   bool check_main);
 extern void toast_tuple_try_compression(ToastTupleContext *ttc, int attribute);
 extern void toast_tuple_externalize(ToastTupleContext *ttc, int attribute,
-									int options);
+									uint32 options);
 extern void toast_tuple_cleanup(ToastTupleContext *ttc);
 
-extern void toast_delete_external(Relation rel, Datum *values, bool *isnull,
+extern void toast_delete_external(Relation rel, const Datum *values, const bool *isnull,
 								  bool is_speculative);
 
 #endif

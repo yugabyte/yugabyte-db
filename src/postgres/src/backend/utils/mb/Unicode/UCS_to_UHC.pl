@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# Copyright (c) 2007-2022, PostgreSQL Global Development Group
+# Copyright (c) 2007-2026, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/UCS_to_GB18030.pl
 #
@@ -14,7 +14,7 @@
 # and the "b" field is the hex byte sequence for UHC
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use convutils;
 
@@ -33,7 +33,7 @@ while (<$in>)
 	next if (!m/<a u="([0-9A-F]+)" b="([0-9A-F ]+)"/);
 	my ($u, $c) = ($1, $2);
 	$c =~ s/ //g;
-	my $ucs  = hex($u);
+	my $ucs = hex($u);
 	my $code = hex($c);
 
 	next if ($code == 0x0080 || $code == 0x00FF);
@@ -42,11 +42,11 @@ while (<$in>)
 	{
 		push @mapping,
 		  {
-			ucs       => $ucs,
-			code      => $code,
+			ucs => $ucs,
+			code => $code,
 			direction => BOTH,
-			f         => $in_file,
-			l         => $.
+			f => $in_file,
+			l => $.
 		  };
 	}
 }
@@ -56,11 +56,11 @@ close($in);
 push @mapping,
   {
 	direction => BOTH,
-	code      => 0xa2e8,
-	ucs       => 0x327e,
-	comment   => 'CIRCLED HANGUL IEUNG U',
-	f         => $this_script,
-	l         => __LINE__
+	code => 0xa2e8,
+	ucs => 0x327e,
+	comment => 'CIRCLED HANGUL IEUNG U',
+	f => $this_script,
+	l => __LINE__
   };
 
 print_conversion_tables($this_script, "UHC", \@mapping);

@@ -11,7 +11,7 @@
  * PG_TRY if necessary.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -26,6 +26,7 @@
 
 #include "miscadmin.h"
 #include "storage/fd.h"
+#include "utils/datetime.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/tzparser.h"
@@ -66,8 +67,8 @@ validateTzEntry(tzEntry *tzentry)
 	/*
 	 * Sanity-check the offset: shouldn't exceed 14 hours
 	 */
-	if (tzentry->offset > 14 * 60 * 60 ||
-		tzentry->offset < -14 * 60 * 60)
+	if (tzentry->offset > 14 * SECS_PER_HOUR ||
+		tzentry->offset < -14 * SECS_PER_HOUR)
 	{
 		GUC_check_errmsg("time zone offset %d is out of range in time zone file \"%s\", line %d",
 						 tzentry->offset,
@@ -96,6 +97,7 @@ validateTzEntry(tzEntry *tzentry)
 static bool
 splitTzLine(const char *filename, int lineno, char *line, tzEntry *tzentry)
 {
+	char	   *brkl;
 	char	   *abbrev;
 	char	   *offset;
 	char	   *offset_endptr;
@@ -105,7 +107,7 @@ splitTzLine(const char *filename, int lineno, char *line, tzEntry *tzentry)
 	tzentry->lineno = lineno;
 	tzentry->filename = filename;
 
-	abbrev = strtok(line, WHITESPACE);
+	abbrev = strtok_r(line, WHITESPACE, &brkl);
 	if (!abbrev)
 	{
 		GUC_check_errmsg("missing time zone abbreviation in time zone file \"%s\", line %d",
@@ -114,7 +116,7 @@ splitTzLine(const char *filename, int lineno, char *line, tzEntry *tzentry)
 	}
 	tzentry->abbrev = pstrdup(abbrev);
 
-	offset = strtok(NULL, WHITESPACE);
+	offset = strtok_r(NULL, WHITESPACE, &brkl);
 	if (!offset)
 	{
 		GUC_check_errmsg("missing time zone offset in time zone file \"%s\", line %d",
@@ -134,11 +136,11 @@ splitTzLine(const char *filename, int lineno, char *line, tzEntry *tzentry)
 			return false;
 		}
 
-		is_dst = strtok(NULL, WHITESPACE);
+		is_dst = strtok_r(NULL, WHITESPACE, &brkl);
 		if (is_dst && pg_strcasecmp(is_dst, "D") == 0)
 		{
 			tzentry->is_dst = true;
-			remain = strtok(NULL, WHITESPACE);
+			remain = strtok_r(NULL, WHITESPACE, &brkl);
 		}
 		else
 		{
@@ -155,9 +157,9 @@ splitTzLine(const char *filename, int lineno, char *line, tzEntry *tzentry)
 		 * zones that probably will never be used in the current session.
 		 */
 		tzentry->zone = pstrdup(offset);
-		tzentry->offset = 0;
+		tzentry->offset = 0 * SECS_PER_HOUR;
 		tzentry->is_dst = false;
-		remain = strtok(NULL, WHITESPACE);
+		remain = strtok_r(NULL, WHITESPACE, &brkl);
 	}
 
 	if (!remain)				/* no more non-whitespace chars */
@@ -393,8 +395,9 @@ ParseTzFile(const char *filename, int depth,
 		{
 			/* pstrdup so we can use filename in result data structure */
 			char	   *includeFile = pstrdup(line + strlen("@INCLUDE"));
+			char	   *brki;
 
-			includeFile = strtok(includeFile, WHITESPACE);
+			includeFile = strtok_r(includeFile, WHITESPACE, &brki);
 			if (!includeFile || !*includeFile)
 			{
 				GUC_check_errmsg("@INCLUDE without file name in time zone file \"%s\", line %d",
@@ -439,7 +442,7 @@ ParseTzFile(const char *filename, int depth,
  * load_tzoffsets --- read and parse the specified timezone offset file
  *
  * On success, return a filled-in TimeZoneAbbrevTable, which must have been
- * malloc'd not palloc'd.  On failure, return NULL, using GUC_check_errmsg
+ * guc_malloc'd not palloc'd.  On failure, return NULL, using GUC_check_errmsg
  * and friends to give details of the problem.
  */
 TimeZoneAbbrevTable *
@@ -463,7 +466,7 @@ load_tzoffsets(const char *filename)
 
 	/* Initialize array at a reasonable size */
 	arraysize = 128;
-	array = (tzEntry *) palloc(arraysize * sizeof(tzEntry));
+	array = palloc_array(tzEntry, arraysize);
 
 	/* Parse the file(s) */
 	n = ParseTzFile(filename, 0, &array, &arraysize, 0);

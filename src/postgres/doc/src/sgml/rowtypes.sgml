@@ -91,7 +91,7 @@ CREATE TABLE inventory_item (
  </para>
  </sect2>
 
- <sect2>
+ <sect2 id="rowtypes-constructing">
   <title>Constructing Composite Values</title>
 
   <indexterm>
@@ -209,7 +209,7 @@ SELECT (my_func(...)).field FROM ...
  </para>
  </sect2>
 
- <sect2>
+ <sect2 id="rowtypes-modifying">
   <title>Modifying Composite Types</title>
 
  <para>
@@ -348,7 +348,7 @@ SELECT m.* FROM some_table, LATERAL myfunc(x) AS m;
    column expansion of this kind when it appears at the top level of
    a <link linkend="queries-select-lists"><command>SELECT</command> output
    list</link>, a <link linkend="dml-returning"><literal>RETURNING</literal>
-   list</link> in <command>INSERT</command>/<command>UPDATE</command>/<command>DELETE</command>,
+   list</link> in <command>INSERT</command>/<command>UPDATE</command>/<command>DELETE</command>/<command>MERGE</command>,
    a <link linkend="queries-values"><literal>VALUES</literal> clause</link>, or
    a <link linkend="sql-syntax-row-constructors">row constructor</link>.
    In all other contexts (including when nested inside one of those
@@ -501,30 +501,6 @@ SELECT c.somefunc FROM inventory_item c;
    is not essential, but aids legibility.)  Double quotes and backslashes
    embedded in field values will be doubled.
   </para>
-
- <note>
-  <para>
-   Remember that what you write in an SQL command will first be interpreted
-   as a string literal, and then as a composite.  This doubles the number of
-   backslashes you need (assuming escape string syntax is used).
-   For example, to insert a <type>text</type> field
-   containing a double quote and a backslash in a composite
-   value, you'd need to write:
-<programlisting>
-INSERT ... VALUES ('("\"\\")');
-</programlisting>
-   The string-literal processor removes one level of backslashes, so that
-   what arrives at the composite-value parser looks like
-   <literal>("\"\\")</literal>.  In turn, the string
-   fed to the <type>text</type> data type's input routine
-   becomes <literal>"\</literal>.  (If we were working
-   with a data type whose input routine also treated backslashes specially,
-   <type>bytea</type> for example, we might need as many as eight backslashes
-   in the command to get one backslash into the stored composite field.)
-   Dollar quoting (see <xref linkend="sql-syntax-dollar-quoting"/>) can be
-   used to avoid the need to double backslashes.
-  </para>
- </note>
 
  <tip>
   <para>

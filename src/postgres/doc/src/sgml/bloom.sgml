@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/bloom.sgml -->
 
 <sect1 id="bloom" xreflabel="bloom">
- <title>bloom</title>
+ <title>bloom &mdash; bloom filter index access method</title>
 
  <indexterm zone="bloom">
   <primary>bloom</primary>
@@ -38,7 +38,7 @@
   indexes can also perform inequality and range searches.
  </para>
 
- <sect2>
+ <sect2 id="bloom-parameters">
   <title>Parameters</title>
 
   <para>
@@ -73,7 +73,7 @@
    </variablelist>
  </sect2>
 
- <sect2>
+ <sect2 id="bloom-examples">
   <title>Examples</title>
 
   <para>
@@ -101,12 +101,12 @@ CREATE INDEX bloomidx ON tbloom USING bloom (i1,i2,i3)
 <programlisting>
 =# CREATE TABLE tbloom AS
    SELECT
-     (random() * 1000000)::int as i1,
-     (random() * 1000000)::int as i2,
-     (random() * 1000000)::int as i3,
-     (random() * 1000000)::int as i4,
-     (random() * 1000000)::int as i5,
-     (random() * 1000000)::int as i6
+     (random() * 1000000)::int AS i1,
+     (random() * 1000000)::int AS i2,
+     (random() * 1000000)::int AS i3,
+     (random() * 1000000)::int AS i4,
+     (random() * 1000000)::int AS i5,
+     (random() * 1000000)::int AS i6
    FROM
   generate_series(1,10000000);
 SELECT 10000000
@@ -118,12 +118,13 @@ SELECT 10000000
 =# EXPLAIN ANALYZE SELECT * FROM tbloom WHERE i2 = 898732 AND i5 = 123451;
                                               QUERY PLAN
 -------------------------------------------------------------------&zwsp;-----------------------------------
- Seq Scan on tbloom  (cost=0.00..213744.00 rows=250 width=24) (actual time=357.059..357.059 rows=0 loops=1)
+ Seq Scan on tbloom  (cost=0.00..213744.00 rows=250 width=24) (actual time=357.059..357.059 rows=0.00 loops=1)
    Filter: ((i2 = 898732) AND (i5 = 123451))
    Rows Removed by Filter: 10000000
+   Buffers: shared hit=63744
  Planning Time: 0.346 ms
  Execution Time: 357.076 ms
-(5 rows)
+(6 rows)
 </programlisting>
   </para>
 
@@ -141,12 +142,13 @@ CREATE INDEX
 =# EXPLAIN ANALYZE SELECT * FROM tbloom WHERE i2 = 898732 AND i5 = 123451;
                                               QUERY PLAN
 -------------------------------------------------------------------&zwsp;-----------------------------------
- Seq Scan on tbloom  (cost=0.00..213744.00 rows=2 width=24) (actual time=351.016..351.017 rows=0 loops=1)
+ Seq Scan on tbloom  (cost=0.00..213744.00 rows=2 width=24) (actual time=351.016..351.017 rows=0.00 loops=1)
    Filter: ((i2 = 898732) AND (i5 = 123451))
    Rows Removed by Filter: 10000000
+   Buffers: shared hit=63744
  Planning Time: 0.138 ms
  Execution Time: 351.035 ms
-(5 rows)
+(6 rows)
 </programlisting>
   </para>
 
@@ -164,15 +166,18 @@ CREATE INDEX
 =# EXPLAIN ANALYZE SELECT * FROM tbloom WHERE i2 = 898732 AND i5 = 123451;
                                                      QUERY PLAN
 -------------------------------------------------------------------&zwsp;--------------------------------------------------
- Bitmap Heap Scan on tbloom  (cost=1792.00..1799.69 rows=2 width=24) (actual time=22.605..22.606 rows=0 loops=1)
+ Bitmap Heap Scan on tbloom  (cost=1792.00..1799.69 rows=2 width=24) (actual time=22.605..22.606 rows=0.00 loops=1)
    Recheck Cond: ((i2 = 898732) AND (i5 = 123451))
    Rows Removed by Index Recheck: 2300
    Heap Blocks: exact=2256
-   -&gt;  Bitmap Index Scan on bloomidx  (cost=0.00..178436.00 rows=1 width=0) (actual time=20.005..20.005 rows=2300 loops=1)
+   Buffers: shared hit=21864
+   -&gt;  Bitmap Index Scan on bloomidx  (cost=0.00..178436.00 rows=1 width=0) (actual time=20.005..20.005 rows=2300.00 loops=1)
          Index Cond: ((i2 = 898732) AND (i5 = 123451))
+         Index Searches: 1
+         Buffers: shared hit=19608
  Planning Time: 0.099 ms
  Execution Time: 22.632 ms
-(8 rows)
+(11 rows)
 </programlisting>
   </para>
 
@@ -197,16 +202,22 @@ CREATE INDEX
 =# EXPLAIN ANALYZE SELECT * FROM tbloom WHERE i2 = 898732 AND i5 = 123451;
                                                         QUERY PLAN
 -------------------------------------------------------------------&zwsp;--------------------------------------------------------
- Bitmap Heap Scan on tbloom  (cost=9.29..13.30 rows=1 width=24) (actual time=0.032..0.033 rows=0 loops=1)
+ Bitmap Heap Scan on tbloom  (cost=9.29..13.30 rows=1 width=24) (actual time=0.032..0.033 rows=0.00 loops=1)
    Recheck Cond: ((i5 = 123451) AND (i2 = 898732))
-   -&gt;  BitmapAnd  (cost=9.29..9.29 rows=1 width=0) (actual time=0.047..0.047 rows=0 loops=1)
-         -&gt;  Bitmap Index Scan on btreeidx5  (cost=0.00..4.52 rows=11 width=0) (actual time=0.026..0.026 rows=7 loops=1)
+   Buffers: shared read=6
+   -&gt;  BitmapAnd  (cost=9.29..9.29 rows=1 width=0) (actual time=0.047..0.047 rows=0.00 loops=1)
+         Buffers: shared hit=6
+         -&gt;  Bitmap Index Scan on btreeidx5  (cost=0.00..4.52 rows=11 width=0) (actual time=0.026..0.026 rows=7.00 loops=1)
                Index Cond: (i5 = 123451)
-         -&gt;  Bitmap Index Scan on btreeidx2  (cost=0.00..4.52 rows=11 width=0) (actual time=0.007..0.007 rows=8 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=3
+         -&gt;  Bitmap Index Scan on btreeidx2  (cost=0.00..4.52 rows=11 width=0) (actual time=0.007..0.007 rows=8.00 loops=1)
                Index Cond: (i2 = 898732)
+               Index Searches: 1
+               Buffers: shared hit=3
  Planning Time: 0.264 ms
  Execution Time: 0.047 ms
-(9 rows)
+(15 rows)
 </programlisting>
    Although this query runs much faster than with either of the single
    indexes, we pay a penalty in index size.  Each of the single-column
@@ -215,7 +226,7 @@ CREATE INDEX
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="bloom-operator-class-interface">
   <title>Operator Class Interface</title>
 
   <para>
@@ -232,7 +243,7 @@ DEFAULT FOR TYPE text USING bloom AS
 </programlisting>
  </sect2>
 
- <sect2>
+ <sect2 id="bloom-limitations">
   <title>Limitations</title>
   <para>
    <itemizedlist>
@@ -268,7 +279,7 @@ DEFAULT FOR TYPE text USING bloom AS
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="bloom-authors">
   <title>Authors</title>
 
   <para>

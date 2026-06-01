@@ -181,7 +181,7 @@
  * 7) Mark state 3 final because state 5 of source NFA is marked as final.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -191,11 +191,14 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_collation_d.h"
 #include "regex/regexport.h"
 #include "trgm.h"
 #include "tsearch/ts_locale.h"
+#include "utils/formatting.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
+#include "varatt.h"
 
 /* YB includes */
 #include "common/pg_yb_common.h"
@@ -483,7 +486,7 @@ static TRGM *createTrgmNFAInternal(regex_t *regex, TrgmPackedGraph **graph,
 static void RE_compile(regex_t *regex, text *text_re,
 					   int cflags, Oid collation);
 static void getColorInfo(regex_t *regex, TrgmNFA *trgmNFA);
-static bool convertPgWchar(pg_wchar c, trgm_mb_char *result);
+static int	convertPgWchar(pg_wchar c, trgm_mb_char *result);
 static void transformGraph(TrgmNFA *trgmNFA);
 static void processState(TrgmNFA *trgmNFA, TrgmState *state);
 static void addKey(TrgmNFA *trgmNFA, TrgmState *state, TrgmStateKey *key);
@@ -551,22 +554,9 @@ createTrgmNFA(text *text_re, Oid collation,
 			   REG_ADVANCED | REG_NOSUB, collation);
 #endif
 
-	/*
-	 * Since the regexp library allocates its internal data structures with
-	 * malloc, we need to use a PG_TRY block to ensure that pg_regfree() gets
-	 * done even if there's an error.
-	 */
-	PG_TRY();
-	{
-		trg = createTrgmNFAInternal(&regex, graph, rcontext);
-	}
-	PG_FINALLY();
-	{
-		pg_regfree(&regex);
-	}
-	PG_END_TRY();
+	trg = createTrgmNFAInternal(&regex, graph, rcontext);
 
-	/* Clean up all the cruft we created */
+	/* Clean up all the cruft we created (including regex) */
 	MemoryContextSwitchTo(oldcontext);
 	MemoryContextDelete(tmpcontext);
 
@@ -804,12 +794,11 @@ getColorInfo(regex_t *regex, TrgmNFA *trgmNFA)
 
 		colorInfo->expandable = true;
 		colorInfo->containsNonWord = false;
-		colorInfo->wordChars = (trgm_mb_char *)
-			palloc(sizeof(trgm_mb_char) * charsCount);
+		colorInfo->wordChars = palloc_array(trgm_mb_char, charsCount);
 		colorInfo->wordCharsCount = 0;
 
 		/* Extract all the chars in this color */
-		chars = (pg_wchar *) palloc(sizeof(pg_wchar) * charsCount);
+		chars = palloc_array(pg_wchar, charsCount);
 		pg_reg_getcharacters(regex, i, chars, charsCount);
 
 		/*
@@ -821,10 +810,11 @@ getColorInfo(regex_t *regex, TrgmNFA *trgmNFA)
 		for (j = 0; j < charsCount; j++)
 		{
 			trgm_mb_char c;
+			int			clen = convertPgWchar(chars[j], &c);
 
-			if (!convertPgWchar(chars[j], &c))
+			if (!clen)
 				continue;		/* ok to ignore it altogether */
-			if (ISWORDCHR(c.bytes))
+			if (ISWORDCHR(c.bytes, clen))
 				colorInfo->wordChars[colorInfo->wordCharsCount++] = c;
 			else
 				colorInfo->containsNonWord = true;
@@ -836,13 +826,15 @@ getColorInfo(regex_t *regex, TrgmNFA *trgmNFA)
 
 /*
  * Convert pg_wchar to multibyte format.
- * Returns false if the character should be ignored completely.
+ * Returns 0 if the character should be ignored completely, else returns its
+ * byte length.
  */
-static bool
+static int
 convertPgWchar(pg_wchar c, trgm_mb_char *result)
 {
 	/* "s" has enough space for a multibyte character and a trailing NUL */
 	char		s[MAX_MULTIBYTE_CHAR_LEN + 1];
+	int			clen;
 
 	/*
 	 * We can ignore the NUL character, since it can never appear in a PG text
@@ -850,11 +842,11 @@ convertPgWchar(pg_wchar c, trgm_mb_char *result)
 	 * reconstructing trigrams.
 	 */
 	if (c == 0)
-		return false;
+		return 0;
 
 	/* Do the conversion, making sure the result is NUL-terminated */
 	memset(s, 0, sizeof(s));
-	pg_wchar2mb_with_len(&c, s, 1);
+	clen = pg_wchar2mb_with_len(&c, s, 1);
 
 	/*
 	 * In IGNORECASE mode, we can ignore uppercase characters.  We assume that
@@ -862,21 +854,21 @@ convertPgWchar(pg_wchar c, trgm_mb_char *result)
 	 * within each color, since we used the REG_ICASE option; so there's no
 	 * need to process the uppercase version.
 	 *
-	 * XXX this code is dependent on the assumption that lowerstr() works the
-	 * same as the regex engine's internal case folding machinery.  Might be
-	 * wiser to expose pg_wc_tolower and test whether c == pg_wc_tolower(c).
-	 * On the other hand, the trigrams in the index were created using
-	 * lowerstr(), so we're probably screwed if there's any incompatibility
-	 * anyway.
+	 * XXX this code is dependent on the assumption that str_tolower() works
+	 * the same as the regex engine's internal case folding machinery.  Might
+	 * be wiser to expose pg_wc_tolower and test whether c ==
+	 * pg_wc_tolower(c). On the other hand, the trigrams in the index were
+	 * created using str_tolower(), so we're probably screwed if there's any
+	 * incompatibility anyway.
 	 */
 #ifdef IGNORECASE
 	{
-		char	   *lowerCased = lowerstr(s);
+		char	   *lowerCased = str_tolower(s, clen, DEFAULT_COLLATION_OID);
 
 		if (strcmp(lowerCased, s) != 0)
 		{
 			pfree(lowerCased);
-			return false;
+			return 0;
 		}
 		pfree(lowerCased);
 	}
@@ -884,7 +876,7 @@ convertPgWchar(pg_wchar c, trgm_mb_char *result)
 
 	/* Fill result with exactly MAX_MULTIBYTE_CHAR_LEN bytes */
 	memcpy(result->bytes, s, MAX_MULTIBYTE_CHAR_LEN);
-	return true;
+	return clen;
 }
 
 
@@ -1076,7 +1068,7 @@ addKey(TrgmNFA *trgmNFA, TrgmState *state, TrgmStateKey *key)
 	 * original NFA.
 	 */
 	arcsCount = pg_reg_getnumoutarcs(trgmNFA->regex, key->nstate);
-	arcs = (regex_arc_t *) palloc(sizeof(regex_arc_t) * arcsCount);
+	arcs = palloc_array(regex_arc_t, arcsCount);
 	pg_reg_getoutarcs(trgmNFA->regex, key->nstate, arcs, arcsCount);
 
 	for (i = 0; i < arcsCount; i++)
@@ -1190,7 +1182,7 @@ addKey(TrgmNFA *trgmNFA, TrgmState *state, TrgmStateKey *key)
 static void
 addKeyToQueue(TrgmNFA *trgmNFA, TrgmStateKey *key)
 {
-	TrgmStateKey *keyCopy = (TrgmStateKey *) palloc(sizeof(TrgmStateKey));
+	TrgmStateKey *keyCopy = palloc_object(TrgmStateKey);
 
 	memcpy(keyCopy, key, sizeof(TrgmStateKey));
 	trgmNFA->keysQueue = lappend(trgmNFA->keysQueue, keyCopy);
@@ -1228,7 +1220,7 @@ addArcs(TrgmNFA *trgmNFA, TrgmState *state)
 		TrgmStateKey *key = (TrgmStateKey *) lfirst(cell);
 
 		arcsCount = pg_reg_getnumoutarcs(trgmNFA->regex, key->nstate);
-		arcs = (regex_arc_t *) palloc(sizeof(regex_arc_t) * arcsCount);
+		arcs = palloc_array(regex_arc_t, arcsCount);
 		pg_reg_getoutarcs(trgmNFA->regex, key->nstate, arcs, arcsCount);
 
 		for (i = 0; i < arcsCount; i++)
@@ -1324,7 +1316,7 @@ addArc(TrgmNFA *trgmNFA, TrgmState *state, TrgmStateKey *key,
 	}
 
 	/* Checks were successful, add new arc */
-	arc = (TrgmArc *) palloc(sizeof(TrgmArc));
+	arc = palloc_object(TrgmArc);
 	arc->target = getState(trgmNFA, destKey);
 	arc->ctrgm.colors[0] = key->prefix.colors[0];
 	arc->ctrgm.colors[1] = key->prefix.colors[1];
@@ -1480,7 +1472,7 @@ selectColorTrigrams(TrgmNFA *trgmNFA)
 	int			cnumber;
 
 	/* Collect color trigrams from all arcs */
-	colorTrgms = (ColorTrgmInfo *) palloc0(sizeof(ColorTrgmInfo) * arcsCount);
+	colorTrgms = palloc0_array(ColorTrgmInfo, arcsCount);
 	trgmNFA->colorTrgms = colorTrgms;
 
 	i = 0;
@@ -1492,7 +1484,7 @@ selectColorTrigrams(TrgmNFA *trgmNFA)
 		foreach(cell, state->arcs)
 		{
 			TrgmArc    *arc = (TrgmArc *) lfirst(cell);
-			TrgmArcInfo *arcInfo = (TrgmArcInfo *) palloc(sizeof(TrgmArcInfo));
+			TrgmArcInfo *arcInfo = palloc_object(TrgmArcInfo);
 			ColorTrgmInfo *trgmInfo = &colorTrgms[i];
 
 			arcInfo->source = state;
@@ -1977,8 +1969,7 @@ packGraph(TrgmNFA *trgmNFA, MemoryContext rcontext)
 	}
 
 	/* Collect array of all arcs */
-	arcs = (TrgmPackArcInfo *)
-		palloc(sizeof(TrgmPackArcInfo) * trgmNFA->arcsCount);
+	arcs = palloc_array(TrgmPackArcInfo, trgmNFA->arcsCount);
 	arcIndex = 0;
 	hash_seq_init(&scan_status, trgmNFA->states);
 	while ((state = (TrgmState *) hash_seq_search(&scan_status)) != NULL)
@@ -2141,19 +2132,16 @@ printSourceNFA(regex_t *regex, TrgmColorInfo *colors, int ncolors)
 {
 	StringInfoData buf;
 	int			nstates = pg_reg_getnumstates(regex);
-	int			state;
-	int			i;
 	const char *yb_tmp_dir = YbGetTmpDir();
 
 	initStringInfo(&buf);
 
 	appendStringInfoString(&buf, "\ndigraph sourceNFA {\n");
 
-	for (state = 0; state < nstates; state++)
+	for (int state = 0; state < nstates; state++)
 	{
 		regex_arc_t *arcs;
-		int			i,
-					arcsCount;
+		int			arcsCount;
 
 		appendStringInfo(&buf, "s%d", state);
 		if (pg_reg_getfinalstate(regex) == state)
@@ -2161,10 +2149,10 @@ printSourceNFA(regex_t *regex, TrgmColorInfo *colors, int ncolors)
 		appendStringInfoString(&buf, ";\n");
 
 		arcsCount = pg_reg_getnumoutarcs(regex, state);
-		arcs = (regex_arc_t *) palloc(sizeof(regex_arc_t) * arcsCount);
+		arcs = palloc_array(regex_arc_t, arcsCount);
 		pg_reg_getoutarcs(regex, state, arcs, arcsCount);
 
-		for (i = 0; i < arcsCount; i++)
+		for (int i = 0; i < arcsCount; i++)
 		{
 			appendStringInfo(&buf, "  s%d -> s%d [label = \"%d\"];\n",
 							 state, arcs[i].to, arcs[i].co);
@@ -2181,15 +2169,14 @@ printSourceNFA(regex_t *regex, TrgmColorInfo *colors, int ncolors)
 	appendStringInfoString(&buf, " { rank = sink;\n");
 	appendStringInfoString(&buf, "  Colors [shape = none, margin=0, label=<\n");
 
-	for (i = 0; i < ncolors; i++)
+	for (int i = 0; i < ncolors; i++)
 	{
 		TrgmColorInfo *color = &colors[i];
-		int			j;
 
 		appendStringInfo(&buf, "<br/>Color %d: ", i);
 		if (color->expandable)
 		{
-			for (j = 0; j < color->wordCharsCount; j++)
+			for (int j = 0; j < color->wordCharsCount; j++)
 			{
 				char		s[MAX_MULTIBYTE_CHAR_LEN + 1];
 

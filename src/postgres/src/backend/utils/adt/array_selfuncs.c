@@ -3,7 +3,7 @@
  * array_selfuncs.c
  *	  Functions for selectivity estimation of array operators
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,11 +17,10 @@
 #include <math.h>
 
 #include "access/htup_details.h"
-#include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_statistic.h"
 #include "utils/array.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
 #include "utils/typcache.h"
@@ -40,25 +39,25 @@
 
 static Selectivity calc_arraycontsel(VariableStatData *vardata, Datum constval,
 									 Oid elemtype, Oid operator);
-static Selectivity mcelem_array_selec(ArrayType *array,
+static Selectivity mcelem_array_selec(const ArrayType *array,
 									  TypeCacheEntry *typentry,
-									  Datum *mcelem, int nmcelem,
-									  float4 *numbers, int nnumbers,
-									  float4 *hist, int nhist,
+									  const Datum *mcelem, int nmcelem,
+									  const float4 *numbers, int nnumbers,
+									  const float4 *hist, int nhist,
 									  Oid operator);
-static Selectivity mcelem_array_contain_overlap_selec(Datum *mcelem, int nmcelem,
-													  float4 *numbers, int nnumbers,
-													  Datum *array_data, int nitems,
+static Selectivity mcelem_array_contain_overlap_selec(const Datum *mcelem, int nmcelem,
+													  const float4 *numbers, int nnumbers,
+													  const Datum *array_data, int nitems,
 													  Oid operator, TypeCacheEntry *typentry);
-static Selectivity mcelem_array_contained_selec(Datum *mcelem, int nmcelem,
-												float4 *numbers, int nnumbers,
-												Datum *array_data, int nitems,
-												float4 *hist, int nhist,
+static Selectivity mcelem_array_contained_selec(const Datum *mcelem, int nmcelem,
+												const float4 *numbers, int nnumbers,
+												const Datum *array_data, int nitems,
+												const float4 *hist, int nhist,
 												Oid operator, TypeCacheEntry *typentry);
 static float *calc_hist(const float4 *hist, int nhist, int n);
 static float *calc_distr(const float *p, int n, int m, float rest);
 static int	floor_log2(uint32 n);
-static bool find_next_mcelem(Datum *mcelem, int nmcelem, Datum value,
+static bool find_next_mcelem(const Datum *mcelem, int nmcelem, Datum value,
 							 int *index, TypeCacheEntry *typentry);
 static int	element_compare(const void *key1, const void *key2, void *arg);
 static int	float_compare_desc(const void *key1, const void *key2);
@@ -426,10 +425,10 @@ calc_arraycontsel(VariableStatData *vardata, Datum constval,
  * mcelem_array_contained_selec depending on the operator.
  */
 static Selectivity
-mcelem_array_selec(ArrayType *array, TypeCacheEntry *typentry,
-				   Datum *mcelem, int nmcelem,
-				   float4 *numbers, int nnumbers,
-				   float4 *hist, int nhist,
+mcelem_array_selec(const ArrayType *array, TypeCacheEntry *typentry,
+				   const Datum *mcelem, int nmcelem,
+				   const float4 *numbers, int nnumbers,
+				   const float4 *hist, int nhist,
 				   Oid operator)
 {
 	Selectivity selec;
@@ -519,9 +518,9 @@ mcelem_array_selec(ArrayType *array, TypeCacheEntry *typentry,
  * fraction of nonempty arrays in the column.
  */
 static Selectivity
-mcelem_array_contain_overlap_selec(Datum *mcelem, int nmcelem,
-								   float4 *numbers, int nnumbers,
-								   Datum *array_data, int nitems,
+mcelem_array_contain_overlap_selec(const Datum *mcelem, int nmcelem,
+								   const float4 *numbers, int nnumbers,
+								   const Datum *array_data, int nitems,
 								   Oid operator, TypeCacheEntry *typentry)
 {
 	Selectivity selec,
@@ -545,12 +544,15 @@ mcelem_array_contain_overlap_selec(Datum *mcelem, int nmcelem,
 
 	if (numbers)
 	{
-		/* Grab the lowest observed frequency */
+		/* Grab the minimal MCE frequency */
 		minfreq = numbers[nmcelem];
 	}
 	else
 	{
-		/* Without statistics make some default assumptions */
+		/*
+		 * Without statistics, use DEFAULT_CONTAIN_SEL (the factor of 2 will
+		 * be removed again below).
+		 */
 		minfreq = 2 * (float4) DEFAULT_CONTAIN_SEL;
 	}
 
@@ -622,8 +624,11 @@ mcelem_array_contain_overlap_selec(Datum *mcelem, int nmcelem,
 		else
 		{
 			/*
-			 * The element is not in MCELEM.  Punt, but assume that the
-			 * selectivity cannot be more than minfreq / 2.
+			 * The element is not in MCELEM.  Estimate its frequency as half
+			 * that of the least-frequent MCE.  (We know it cannot be more
+			 * than minfreq, and it could be a great deal less.  Half seems
+			 * like a good compromise.)  For probably-historical reasons,
+			 * clamp to not more than DEFAULT_CONTAIN_SEL.
 			 */
 			elem_selec = Min(DEFAULT_CONTAIN_SEL, minfreq / 2);
 		}
@@ -694,10 +699,10 @@ mcelem_array_contain_overlap_selec(Datum *mcelem, int nmcelem,
  * ... * fn^on * (1 - fn)^(1 - on), o1, o2, ..., on) | o1 + o2 + .. on = m
  */
 static Selectivity
-mcelem_array_contained_selec(Datum *mcelem, int nmcelem,
-							 float4 *numbers, int nnumbers,
-							 Datum *array_data, int nitems,
-							 float4 *hist, int nhist,
+mcelem_array_contained_selec(const Datum *mcelem, int nmcelem,
+							 const float4 *numbers, int nnumbers,
+							 const Datum *array_data, int nitems,
+							 const float4 *hist, int nhist,
 							 Oid operator, TypeCacheEntry *typentry)
 {
 	int			mcelem_index,
@@ -729,7 +734,7 @@ mcelem_array_contained_selec(Datum *mcelem, int nmcelem,
 
 	/*
 	 * Grab some of the summary statistics that compute_array_stats() stores:
-	 * lowest frequency, frequency of null elements, and average distinct
+	 * lowest MCE frequency, frequency of null elements, and average distinct
 	 * element count.
 	 */
 	minfreq = numbers[nmcelem];
@@ -754,7 +759,7 @@ mcelem_array_contained_selec(Datum *mcelem, int nmcelem,
 	 * elem_selec is array of estimated frequencies for elements in the
 	 * constant.
 	 */
-	elem_selec = (float *) palloc(sizeof(float) * nitems);
+	elem_selec = palloc_array(float, nitems);
 
 	/* Scan mcelem and array in parallel. */
 	mcelem_index = 0;
@@ -803,8 +808,11 @@ mcelem_array_contained_selec(Datum *mcelem, int nmcelem,
 		else
 		{
 			/*
-			 * The element is not in MCELEM.  Punt, but assume that the
-			 * selectivity cannot be more than minfreq / 2.
+			 * The element is not in MCELEM.  Estimate its frequency as half
+			 * that of the least-frequent MCE.  (We know it cannot be more
+			 * than minfreq, and it could be a great deal less.  Half seems
+			 * like a good compromise.)  For probably-historical reasons,
+			 * clamp to not more than DEFAULT_CONTAIN_SEL.
 			 */
 			elem_selec[unique_nitems] = Min(DEFAULT_CONTAIN_SEL,
 											minfreq / 2);
@@ -928,7 +936,7 @@ calc_hist(const float4 *hist, int nhist, int n)
 				next_interval;
 	float		frac;
 
-	hist_part = (float *) palloc((n + 1) * sizeof(float));
+	hist_part = palloc_array(float, n + 1);
 
 	/*
 	 * frac is a probability contribution for each interval between histogram
@@ -1020,8 +1028,8 @@ calc_distr(const float *p, int n, int m, float rest)
 	 * Since we return only the last row of the matrix and need only the
 	 * current and previous row for calculations, allocate two rows.
 	 */
-	row = (float *) palloc((m + 1) * sizeof(float));
-	prev_row = (float *) palloc((m + 1) * sizeof(float));
+	row = palloc_array(float, m + 1);
+	prev_row = palloc_array(float, m + 1);
 
 	/* M[0,0] = 1 */
 	row[0] = 1.0f;
@@ -1128,7 +1136,7 @@ floor_log2(uint32 n)
  * exact match.)
  */
 static bool
-find_next_mcelem(Datum *mcelem, int nmcelem, Datum value, int *index,
+find_next_mcelem(const Datum *mcelem, int nmcelem, Datum value, int *index,
 				 TypeCacheEntry *typentry)
 {
 	int			l = *index,

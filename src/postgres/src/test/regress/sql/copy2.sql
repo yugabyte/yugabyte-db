@@ -66,6 +66,40 @@ COPY x from stdin (force_not_null (a), force_not_null (b));
 COPY x from stdin (force_null (a), force_null (b));
 COPY x from stdin (convert_selectively (a), convert_selectively (b));
 COPY x from stdin (encoding 'sql_ascii', encoding 'sql_ascii');
+COPY x from stdin (on_error ignore, on_error ignore);
+COPY x from stdin (on_error set_null, on_error set_null);
+COPY x from stdin (log_verbosity default, log_verbosity verbose);
+
+-- incorrect options
+COPY x from stdin (format BINARY, delimiter ',');
+COPY x from stdin (format BINARY, null 'x');
+COPY x from stdin (format BINARY, on_error ignore);
+COPY x from stdin (format BINARY, on_error set_null);
+COPY x from stdin (on_error set_null, reject_limit 2);
+COPY x from stdin (on_error unsupported);
+COPY x from stdin (format TEXT, force_quote(a));
+COPY x from stdin (format TEXT, force_quote *);
+COPY x from stdin (format CSV, force_quote(a));
+COPY x from stdin (format CSV, force_quote *);
+COPY x from stdin (format TEXT, force_not_null(a));
+COPY x from stdin (format TEXT, force_not_null *);
+COPY x to stdout (format CSV, force_not_null(a));
+COPY x to stdout (format CSV, force_not_null *);
+COPY x from stdin (format TEXT, force_null(a));
+COPY x from stdin (format TEXT, force_null *);
+COPY x to stdout (format CSV, force_null(a));
+COPY x to stdout (format CSV, force_null *);
+COPY x to stdout (format BINARY, on_error unsupported);
+COPY x to stdout (on_error set_null);
+COPY x from stdin (log_verbosity unsupported);
+COPY x from stdin with (reject_limit 1);
+COPY x from stdin with (on_error ignore, reject_limit 0);
+COPY x from stdin with (header -1);
+COPY x from stdin with (header 2.5);
+COPY x to stdout with (header 2);
+COPY x to stdout with (header '-1');
+COPY x from stdin with (header '2.5');
+COPY x to stdout with (header '2');
 
 -- too many columns in column list: should fail
 COPY x (a, b, c, d, e, d, c) from stdin;
@@ -133,6 +167,8 @@ COPY x from stdin WHERE a IN (SELECT 1 FROM x);
 COPY x from stdin WHERE a IN (generate_series(1,5));
 
 COPY x from stdin WHERE a = row_number() over(b);
+
+COPY x from stdin WHERE tableoid = 'x'::regclass;
 
 
 -- check results of copy in
@@ -334,6 +370,36 @@ ROLLBACK;
 BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NULL(b));
 ROLLBACK;
+-- should succeed with no effect ("b" remains an empty string, "c" remains NULL)
+BEGIN;
+COPY forcetest (a, b, c) FROM STDIN WITH (FORMAT csv, FORCE_NOT_NULL *, FORCE_NULL *);
+4,,""
+\.
+COMMIT;
+SELECT b, c FROM forcetest WHERE a = 4;
+-- should succeed with effect ("b" remains an empty string)
+BEGIN;
+COPY forcetest (a, b, c) FROM STDIN WITH (FORMAT csv, FORCE_NOT_NULL *);
+5,,""
+\.
+COMMIT;
+SELECT b, c FROM forcetest WHERE a = 5;
+-- should succeed with effect ("c" remains NULL)
+BEGIN;
+COPY forcetest (a, b, c) FROM STDIN WITH (FORMAT csv, FORCE_NULL *);
+6,"b",""
+\.
+COMMIT;
+SELECT b, c FROM forcetest WHERE a = 6;
+-- should fail with "conflicting or redundant options" error
+BEGIN;
+COPY forcetest (a, b, c) FROM STDIN WITH (FORMAT csv, FORCE_NOT_NULL *, FORCE_NOT_NULL(b));
+ROLLBACK;
+-- should fail with "conflicting or redundant options" error
+BEGIN;
+COPY forcetest (a, b, c) FROM STDIN WITH (FORMAT csv, FORCE_NULL *, FORCE_NULL(b));
+ROLLBACK;
+
 \pset null ''
 
 -- test case with whole-row Var in a check constraint
@@ -454,6 +520,122 @@ test1
 SELECT * FROM instead_of_insert_tbl;
 COMMIT;
 
+-- tests for on_error option
+CREATE TABLE check_ign_err (n int, m int[], k int);
+COPY check_ign_err FROM STDIN WITH (on_error stop);
+1	{1}	1
+a	{2}	2
+3	{3}	3333333333
+4	{a, 4}	4
+
+5	{5}	5
+\.
+
+-- want context for notices
+\set SHOW_CONTEXT always
+
+COPY check_ign_err FROM STDIN WITH (on_error ignore, log_verbosity verbose);
+1	{1}	1
+a	{2}	2
+3	{3}	3333333333
+4	{a, 4}	4
+
+5	{5}	5
+6	a
+7	{7}	a
+8	{8}	8
+\.
+
+CREATE DOMAIN d_int_not_null AS integer NOT NULL CHECK (value > 0);
+CREATE DOMAIN d_int_positive_maybe_null AS integer CHECK (value > 0);
+CREATE TABLE t_on_error_null (a d_int_not_null, b d_int_positive_maybe_null, c integer);
+
+\pset null NULL
+COPY t_on_error_null FROM STDIN WITH (on_error set_null); -- fail
+\N	11	13
+\.
+
+COPY t_on_error_null FROM STDIN WITH (on_error set_null); -- fail
+ss	11	14
+\.
+
+COPY t_on_error_null FROM STDIN WITH (on_error set_null); -- fail
+-1	11	13
+\.
+
+-- fail, less data.
+COPY t_on_error_null FROM STDIN WITH (delimiter ',', on_error set_null);
+1,1
+\.
+-- fail, extra data.
+COPY t_on_error_null FROM STDIN WITH (delimiter ',', on_error set_null);
+1,2,3,4
+\.
+
+COPY t_on_error_null FROM STDIN WITH (on_error set_null, log_verbosity verbose); -- ok
+10	x1	yx
+11	zx	12
+13	14	ea
+\.
+
+SELECT * FROM t_on_error_null ORDER BY a;
+
+\pset null ''
+
+-- tests for on_error option with log_verbosity and null constraint via domain
+CREATE DOMAIN dcheck_ign_err2 varchar(15) NOT NULL;
+CREATE TABLE check_ign_err2 (n int, m int[], k int, l dcheck_ign_err2);
+COPY check_ign_err2 FROM STDIN WITH (on_error ignore, log_verbosity verbose);
+1	{1}	1	'foo'
+2	{2}	2	\N
+\.
+COPY check_ign_err2 FROM STDIN WITH (on_error ignore, log_verbosity silent);
+3	{3}	3	'bar'
+4	{4}	4	\N
+\.
+
+-- reset context choice
+\set SHOW_CONTEXT errors
+
+SELECT * FROM check_ign_err;
+
+SELECT * FROM check_ign_err2;
+
+-- test datatype error that can't be handled as soft: should fail
+CREATE TABLE hard_err(foo widget);
+COPY hard_err FROM STDIN WITH (on_error ignore);
+1
+\.
+
+-- test missing data: should fail
+COPY check_ign_err FROM STDIN WITH (on_error ignore);
+1	{1}
+\.
+
+-- test extra data: should fail
+COPY check_ign_err FROM STDIN WITH (on_error ignore);
+1	{1}	3	abc
+\.
+
+-- tests for reject_limit option
+COPY check_ign_err FROM STDIN WITH (on_error ignore, reject_limit 3);
+6	{6}	6
+a	{7}	7
+8	{8}	8888888888
+9	{a, 9}	9
+
+10	{10}	10
+\.
+
+COPY check_ign_err FROM STDIN WITH (on_error ignore, reject_limit 4);
+6	{6}	6
+a	{7}	7
+8	{8}	8888888888
+9	{a, 9}	9
+
+10	{10}	10
+\.
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE vistest;
@@ -468,3 +650,111 @@ DROP TABLE instead_of_insert_tbl;
 DROP VIEW instead_of_insert_tbl_view;
 DROP VIEW instead_of_insert_tbl_view_2;
 DROP FUNCTION fun_instead_of_insert_tbl();
+DROP TABLE check_ign_err;
+DROP TABLE t_on_error_null;
+DROP DOMAIN d_int_not_null;
+DROP DOMAIN d_int_positive_maybe_null;
+DROP TABLE check_ign_err2;
+DROP DOMAIN dcheck_ign_err2;
+DROP TABLE hard_err;
+
+--
+-- COPY FROM ... DEFAULT
+--
+
+create temp table copy_default (
+	id integer primary key,
+	text_value text not null default 'test',
+	ts_value timestamp without time zone not null default '2022-07-05'
+);
+
+-- if DEFAULT is not specified, then the marker will be regular data
+copy copy_default from stdin;
+1	value	'2022-07-04'
+2	\D	'2022-07-05'
+\.
+
+select id, text_value, ts_value from copy_default;
+
+truncate copy_default;
+
+copy copy_default from stdin with (format csv);
+1,value,2022-07-04
+2,\D,2022-07-05
+\.
+
+select id, text_value, ts_value from copy_default;
+
+truncate copy_default;
+
+-- DEFAULT cannot be used in binary mode
+copy copy_default from stdin with (format binary, default '\D');
+
+-- DEFAULT cannot be new line nor carriage return
+copy copy_default from stdin with (default E'\n');
+copy copy_default from stdin with (default E'\r');
+
+-- DELIMITER cannot appear in DEFAULT spec
+copy copy_default from stdin with (delimiter ';', default 'test;test');
+
+-- CSV quote cannot appear in DEFAULT spec
+copy copy_default from stdin with (format csv, quote '"', default 'test"test');
+
+-- NULL and DEFAULT spec must be different
+copy copy_default from stdin with (default '\N');
+
+-- cannot use DEFAULT marker in column that has no DEFAULT value
+copy copy_default from stdin with (default '\D');
+\D	value	'2022-07-04'
+2	\D	'2022-07-05'
+\.
+
+copy copy_default from stdin with (format csv, default '\D');
+\D,value,2022-07-04
+2,\D,2022-07-05
+\.
+
+-- The DEFAULT marker must be unquoted and unescaped or it's not recognized
+copy copy_default from stdin with (default '\D');
+1	\D	'2022-07-04'
+2	\\D	'2022-07-04'
+3	"\D"	'2022-07-04'
+\.
+
+select id, text_value, ts_value from copy_default;
+
+truncate copy_default;
+
+copy copy_default from stdin with (format csv, default '\D');
+1,\D,2022-07-04
+2,\\D,2022-07-04
+3,"\D",2022-07-04
+\.
+
+select id, text_value, ts_value from copy_default;
+
+truncate copy_default;
+
+-- successful usage of DEFAULT option in COPY
+copy copy_default from stdin with (default '\D');
+1	value	'2022-07-04'
+2	\D	'2022-07-03'
+3	\D	\D
+\.
+
+select id, text_value, ts_value from copy_default;
+
+truncate copy_default;
+
+copy copy_default from stdin with (format csv, default '\D');
+1,value,2022-07-04
+2,\D,2022-07-03
+3,\D,\D
+\.
+
+select id, text_value, ts_value from copy_default;
+
+truncate copy_default;
+
+-- DEFAULT cannot be used in COPY TO
+copy (select 1 as test) TO stdout with (default '\D');

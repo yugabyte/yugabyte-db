@@ -7,7 +7,7 @@
  * empty definitions for Valgrind client request macros we use.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/memdebug.h
@@ -29,6 +29,7 @@
 #define VALGRIND_MEMPOOL_ALLOC(context, addr, size)			do {} while (0)
 #define VALGRIND_MEMPOOL_FREE(context, addr)				do {} while (0)
 #define VALGRIND_MEMPOOL_CHANGE(context, optr, nptr, size)	do {} while (0)
+#define VALGRIND_MEMPOOL_TRIM(context, addr, size)			do {} while (0)
 #endif
 
 

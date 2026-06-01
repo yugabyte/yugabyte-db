@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/auto-explain.sgml -->
 
 <sect1 id="auto-explain" xreflabel="auto_explain">
- <title>auto_explain</title>
+ <title>auto_explain &mdash; log execution plans of slow queries</title>
 
  <indexterm zone="auto-explain">
   <primary>auto_explain</primary>
@@ -32,7 +32,7 @@ LOAD 'auto_explain';
   that.
  </para>
 
- <sect2>
+ <sect2 id="auto-explain-configuration-parameters">
   <title>Configuration Parameters</title>
 
  <para>
@@ -43,7 +43,7 @@ LOAD 'auto_explain';
  </para>
 
   <variablelist>
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-min-duration">
     <term>
      <varname>auto_explain.log_min_duration</varname> (<type>integer</type>)
      <indexterm>
@@ -63,7 +63,26 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-parameter-max-length">
+    <term>
+     <varname>auto_explain.log_parameter_max_length</varname> (<type>integer</type>)
+     <indexterm>
+      <primary><varname>auto_explain.log_parameter_max_length</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      <varname>auto_explain.log_parameter_max_length</varname> controls the
+      logging of query parameter values. A value of <literal>-1</literal> (the
+      default) logs the parameter values in full. <literal>0</literal> disables
+      logging of parameter values. A value greater than zero truncates each
+      parameter value to that many bytes. Only superusers can change this
+      setting.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="auto-explain-configuration-parameters-log-analyze">
     <term>
      <varname>auto_explain.log_analyze</varname> (<type>boolean</type>)
      <indexterm>
@@ -89,7 +108,7 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-buffers">
     <term>
      <varname>auto_explain.log_buffers</varname> (<type>boolean</type>)
      <indexterm>
@@ -109,7 +128,27 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-io">
+    <term>
+     <varname>auto_explain.log_io</varname> (<type>boolean</type>)
+     <indexterm>
+      <primary><varname>auto_explain.log_io</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      <varname>auto_explain.log_io</varname> controls whether I/O usage
+      statistics are printed when an execution plan is logged; it's
+      equivalent to the <literal>IO</literal> option of <command>EXPLAIN</command>.
+      This parameter has no effect
+      unless <varname>auto_explain.log_analyze</varname> is enabled.
+      This parameter is off by default.
+      Only superusers can change this setting.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="auto-explain-configuration-parameters-log-wal">
     <term>
      <varname>auto_explain.log_wal</varname> (<type>boolean</type>)
      <indexterm>
@@ -129,7 +168,7 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-timing">
     <term>
      <varname>auto_explain.log_timing</varname> (<type>boolean</type>)
      <indexterm>
@@ -153,7 +192,7 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-triggers">
     <term>
      <varname>auto_explain.log_triggers</varname> (<type>boolean</type>)
      <indexterm>
@@ -172,7 +211,7 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-verbose">
     <term>
      <varname>auto_explain.log_verbose</varname> (<type>boolean</type>)
      <indexterm>
@@ -190,7 +229,7 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-settings">
     <term>
      <varname>auto_explain.log_settings</varname> (<type>boolean</type>)
      <indexterm>
@@ -208,7 +247,7 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-format">
     <term>
      <varname>auto_explain.log_format</varname> (<type>enum</type>)
      <indexterm>
@@ -226,7 +265,30 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-extension-options">
+    <term>
+     <varname>auto_explain.log_extension_options</varname> (<type>string</type>)
+     <indexterm>
+      <primary><varname>auto_explain.log_extension_options</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      Loadable modules can extend the <literal>EXPLAIN</literal> command with
+      additional options that affect the output format. Such options can also
+      be specified here. The value of this parameter is a comma-separated
+      list of options, each of which is an option name followed optionally by
+      an associated value. The module that provides the
+      <literal>EXPLAIN</literal> option, such as
+      <link linkend="pgplanadvice"><literal>pg_plan_advice</literal></link> or
+      <link linkend="pgoverexplain"><literal>pg_overexplain</literal></link>,
+      should be loaded before this parameter is set.
+      Only superusers can change this setting.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="auto-explain-configuration-parameters-log-level">
     <term>
      <varname>auto_explain.log_level</varname> (<type>enum</type>)
      <indexterm>
@@ -247,7 +309,7 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-log-nested-statements">
     <term>
      <varname>auto_explain.log_nested_statements</varname> (<type>boolean</type>)
      <indexterm>
@@ -264,7 +326,7 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="auto-explain-configuration-parameters-sample-rate">
     <term>
      <varname>auto_explain.sample_rate</varname> (<type>real</type>)
      <indexterm>
@@ -297,7 +359,7 @@ auto_explain.log_min_duration = '3s'
 </programlisting>
  </sect2>
 
- <sect2>
+ <sect2 id="auto-explain-example">
   <title>Example</title>
 
 <programlisting>
@@ -318,18 +380,18 @@ LOG:  duration: 3.651 ms  plan:
   Query Text: SELECT count(*)
               FROM pg_class, pg_index
               WHERE oid = indrelid AND indisunique;
-  Aggregate  (cost=16.79..16.80 rows=1 width=0) (actual time=3.626..3.627 rows=1 loops=1)
-    ->  Hash Join  (cost=4.17..16.55 rows=92 width=0) (actual time=3.349..3.594 rows=92 loops=1)
+  Aggregate  (cost=16.79..16.80 rows=1 width=0) (actual time=3.626..3.627 rows=1.00 loops=1)
+    ->  Hash Join  (cost=4.17..16.55 rows=92 width=0) (actual time=3.349..3.594 rows=92.00 loops=1)
           Hash Cond: (pg_class.oid = pg_index.indrelid)
-          ->  Seq Scan on pg_class  (cost=0.00..9.55 rows=255 width=4) (actual time=0.016..0.140 rows=255 loops=1)
-          ->  Hash  (cost=3.02..3.02 rows=92 width=4) (actual time=3.238..3.238 rows=92 loops=1)
+          ->  Seq Scan on pg_class  (cost=0.00..9.55 rows=255 width=4) (actual time=0.016..0.140 rows=255.00 loops=1)
+          ->  Hash  (cost=3.02..3.02 rows=92 width=4) (actual time=3.238..3.238 rows=92.00 loops=1)
                 Buckets: 1024  Batches: 1  Memory Usage: 4kB
-                ->  Seq Scan on pg_index  (cost=0.00..3.02 rows=92 width=4) (actual time=0.008..3.187 rows=92 loops=1)
+                ->  Seq Scan on pg_index  (cost=0.00..3.02 rows=92 width=4) (actual time=0.008..3.187 rows=92.00 loops=1)
                       Filter: indisunique
 ]]></screen>
  </sect2>
 
- <sect2>
+ <sect2 id="auto-explain-author">
   <title>Author</title>
 
   <para>

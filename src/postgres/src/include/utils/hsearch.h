@@ -4,7 +4,7 @@
  *	  exported definitions for utils/hash/dynahash.c; see notes therein
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/hsearch.h
@@ -37,11 +37,10 @@ typedef int (*HashCompareFunc) (const void *key1, const void *key2,
 typedef void *(*HashCopyFunc) (void *dest, const void *src, Size keysize);
 
 /*
- * Space allocation function for a hashtable --- designed to match malloc().
- * Note: there is no free function API; can't destroy a hashtable unless you
- * use the default allocator.
+ * Space allocation function for a hashtable.  Note: there is no free function
+ * API; can't destroy a hashtable unless you use the default allocator.
  */
-typedef void *(*HashAllocFunc) (Size request);
+typedef void *(*HashAllocFunc) (Size request, void *alloc_arg);
 
 /*
  * HASHELEMENT is the private part of a hashtable entry.  The caller's data
@@ -65,12 +64,7 @@ typedef struct HTAB HTAB;
 typedef struct HASHCTL
 {
 	/* Used if HASH_PARTITION flag is set: */
-	long		num_partitions; /* # partitions (must be power of 2) */
-	/* Used if HASH_SEGMENT flag is set: */
-	long		ssize;			/* segment size */
-	/* Used if HASH_DIRSIZE flag is set: */
-	long		dsize;			/* (initial) directory size */
-	long		max_dsize;		/* limit to dsize if dir size is limited */
+	int64		num_partitions; /* # partitions (must be power of 2) */
 	/* Used if HASH_ELEM flag is set (which is now required): */
 	Size		keysize;		/* hash key length in bytes */
 	Size		entrysize;		/* total user element size in bytes */
@@ -82,16 +76,17 @@ typedef struct HASHCTL
 	HashCopyFunc keycopy;		/* key copying function */
 	/* Used if HASH_ALLOC flag is set: */
 	HashAllocFunc alloc;		/* memory allocator */
+	void	   *alloc_arg;		/* opaque argument passed to allocator */
 	/* Used if HASH_CONTEXT flag is set: */
 	MemoryContext hcxt;			/* memory context to use for allocations */
-	/* Used if HASH_SHARED_MEM flag is set: */
+	/* Used if HASH_ATTACH flag is set: */
 	HASHHDR    *hctl;			/* location of header in shared mem */
 } HASHCTL;
 
 /* Flag bits for hash_create; most indicate which parameters are supplied */
 #define HASH_PARTITION	0x0001	/* Hashtable is used w/partitioned locking */
-#define HASH_SEGMENT	0x0002	/* Set segment size */
-#define HASH_DIRSIZE	0x0004	/* Set directory size (initial and max) */
+/* 0x0002 is unused */
+/* 0x0004 is unused */
 #define HASH_ELEM		0x0008	/* Set keysize and entrysize (now required!) */
 #define HASH_STRINGS	0x0010	/* Select support functions for string keys */
 #define HASH_BLOBS		0x0020	/* Select support functions for binary keys */
@@ -113,7 +108,7 @@ typedef enum
 	HASH_FIND,
 	HASH_ENTER,
 	HASH_REMOVE,
-	HASH_ENTER_NULL
+	HASH_ENTER_NULL,
 } HASHACTION;
 
 /* hash_seq status (should be considered an opaque type by callers) */
@@ -122,15 +117,17 @@ typedef struct
 	HTAB	   *hashp;
 	uint32		curBucket;		/* index of current bucket */
 	HASHELEMENT *curEntry;		/* current entry in bucket */
+	bool		hasHashvalue;	/* true if hashvalue was provided */
+	uint32		hashvalue;		/* hashvalue to start seqscan over hash */
 } HASH_SEQ_STATUS;
 
 /*
  * prototypes for functions in dynahash.c
  */
-extern HTAB *hash_create(const char *tabname, long nelem,
+extern HTAB *hash_create(const char *tabname, int64 nelem,
 						 const HASHCTL *info, int flags);
 extern void hash_destroy(HTAB *hashp);
-extern void hash_stats(const char *where, HTAB *hashp);
+extern void hash_stats(const char *caller, HTAB *hashp);
 extern void *hash_search(HTAB *hashp, const void *keyPtr, HASHACTION action,
 						 bool *foundPtr);
 extern uint32 get_hash_value(HTAB *hashp, const void *keyPtr);
@@ -139,14 +136,15 @@ extern void *hash_search_with_hash_value(HTAB *hashp, const void *keyPtr,
 										 bool *foundPtr);
 extern bool hash_update_hash_key(HTAB *hashp, void *existingEntry,
 								 const void *newKeyPtr);
-extern long hash_get_num_entries(HTAB *hashp);
+extern int64 hash_get_num_entries(HTAB *hashp);
 extern void hash_seq_init(HASH_SEQ_STATUS *status, HTAB *hashp);
+extern void hash_seq_init_with_hash_value(HASH_SEQ_STATUS *status,
+										  HTAB *hashp,
+										  uint32 hashvalue);
 extern void *hash_seq_search(HASH_SEQ_STATUS *status);
 extern void hash_seq_term(HASH_SEQ_STATUS *status);
 extern void hash_freeze(HTAB *hashp);
-extern Size hash_estimate_size(long num_entries, Size entrysize);
-extern long hash_select_dirsize(long num_entries);
-extern Size hash_get_shared_size(HASHCTL *info, int flags);
+extern Size hash_estimate_size(int64 num_entries, Size entrysize);
 extern void AtEOXact_HashTables(bool isCommit);
 extern void AtEOSubXact_HashTables(bool isCommit, int nestDepth);
 

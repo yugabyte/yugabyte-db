@@ -9,7 +9,7 @@
  * storage management for portals (but doesn't run any queries in them).
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -28,6 +28,8 @@
 #include "executor/executor.h"
 #include "executor/tstoreReceiver.h"
 #include "miscadmin.h"
+#include "nodes/queryjumble.h"
+#include "parser/analyze.h"
 #include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
@@ -47,6 +49,7 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
 				  bool isTopLevel)
 {
 	Query	   *query = castNode(Query, cstmt->query);
+	JumbleState *jstate = NULL;
 	List	   *rewritten;
 	PlannedStmt *plan;
 	Portal		portal;
@@ -74,6 +77,13 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("cannot create a cursor WITH HOLD within security-restricted operation")));
 
+	/* Query contained by DeclareCursor needs to be jumbled if requested */
+	if (IsQueryIdEnabled())
+		jstate = JumbleQuery(query);
+
+	if (post_parse_analyze_hook)
+		(*post_parse_analyze_hook) (pstate, query, jstate);
+
 	/*
 	 * Parse analysis was done already, but we still have to run the rule
 	 * rewriter.  We do not do AcquireRewriteLocks: we assume the query either
@@ -92,7 +102,8 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
 		elog(ERROR, "non-SELECT statement in DECLARE CURSOR");
 
 	/* Plan the query, applying the specified options */
-	plan = pg_plan_query(query, pstate->p_sourcetext, cstmt->options, params);
+	plan = pg_plan_query(query, pstate->p_sourcetext, cstmt->options, params,
+						 NULL);
 
 	/*
 	 * Create a portal and copy the plan and query string into its memory.
@@ -277,8 +288,8 @@ PortalCleanup(Portal portal)
 	/*
 	 * sanity checks
 	 */
-	AssertArg(PortalIsValid(portal));
-	AssertArg(portal->cleanup == PortalCleanup);
+	Assert(PortalIsValid(portal));
+	Assert(portal->cleanup == PortalCleanup);
 
 	/*
 	 * Shut down executor, if still running.  We skip this during error abort,
@@ -437,7 +448,7 @@ PersistHoldablePortal(Portal portal)
 										NULL);
 
 		/* Fetch the result set into the tuplestore */
-		ExecutorRun(queryDesc, direction, 0L, false);
+		ExecutorRun(queryDesc, direction, 0);
 
 		queryDesc->dest->rDestroy(queryDesc->dest);
 		queryDesc->dest = NULL;

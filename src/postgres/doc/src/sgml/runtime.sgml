@@ -490,6 +490,7 @@ ExecStart=/usr/local/pgsql/bin/postgres -D /usr/local/pgsql/data
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 KillSignal=SIGINT
+Restart=on-failure
 TimeoutSec=infinity
 
 [Install]
@@ -637,7 +638,8 @@ psql: error: connection to server at "server.joe.com" (123.123.123.123), port 54
      This is the generic <quote>I couldn't find a server to talk
      to</quote> failure. It looks like the above when TCP/IP
      communication is attempted. A common mistake is to forget to
-     configure the server to allow TCP/IP connections.
+     configure <xref linkend="guc-listen-addresses"/> so that the server
+     accepts remote TCP connections.
     </para>
 
     <para>
@@ -781,13 +783,13 @@ psql: error: connection to server on socket "/tmp/.s.PGSQL.5432" failed: No such
        <row>
         <entry><varname>SEMMNI</varname></entry>
         <entry>Maximum number of semaphore identifiers (i.e., sets)</entry>
-        <entry>at least <literal>ceil((max_connections + autovacuum_max_workers + max_wal_senders + max_worker_processes + 6) / 16)</literal> plus room for other applications</entry>
+        <entry>at least <literal>ceil(num_os_semaphores / 16)</literal> plus room for other applications</entry>
        </row>
 
        <row>
         <entry><varname>SEMMNS</varname></entry>
         <entry>Maximum number of semaphores system-wide</entry>
-        <entry><literal>ceil((max_connections + autovacuum_max_workers + max_wal_senders + max_worker_processes + 6) / 16) * 17</literal> plus room for other applications</entry>
+        <entry><literal>ceil(num_os_semaphores / 16) * 17</literal> plus room for other applications</entry>
        </row>
 
        <row>
@@ -838,22 +840,29 @@ psql: error: connection to server on socket "/tmp/.s.PGSQL.5432" failed: No such
     When using System V semaphores,
     <productname>PostgreSQL</productname> uses one semaphore per allowed connection
     (<xref linkend="guc-max-connections"/>), allowed autovacuum worker process
-    (<xref linkend="guc-autovacuum-max-workers"/>), allowed WAL sender process
-    (<xref linkend="guc-max-wal-senders"/>), and allowed background
-    process (<xref linkend="guc-max-worker-processes"/>), in sets of 16.
-    Each such set will
+    (<xref linkend="guc-autovacuum-worker-slots"/>), allowed WAL sender process
+    (<xref linkend="guc-max-wal-senders"/>), allowed background
+    process (<xref linkend="guc-max-worker-processes"/>), etc., in sets of 16.
+    The runtime-computed parameter <xref linkend="guc-num-os-semaphores"/>
+    reports the number of semaphores required.  This parameter can be viewed
+    before starting the server with a <command>postgres</command> command like:
+<programlisting>
+$ <userinput>postgres -D $PGDATA -C num_os_semaphores</userinput>
+</programlisting>
+   </para>
+
+   <para>
+    Each set of 16 semaphores will
     also contain a 17th semaphore which contains a <quote>magic
     number</quote>, to detect collision with semaphore sets used by
     other applications. The maximum number of semaphores in the system
     is set by <varname>SEMMNS</varname>, which consequently must be at least
-    as high as <varname>max_connections</varname> plus
-    <varname>autovacuum_max_workers</varname> plus <varname>max_wal_senders</varname>,
-    plus <varname>max_worker_processes</varname>, plus one extra for each 16
-    allowed connections plus workers (see the formula in <xref
+    as high as <literal>num_os_semaphores</literal> plus one extra for
+    each set of 16 required semaphores (see the formula in <xref
     linkend="sysvipc-parameters"/>).  The parameter <varname>SEMMNI</varname>
     determines the limit on the number of semaphore sets that can
     exist on the system at one time.  Hence this parameter must be at
-    least <literal>ceil((max_connections + autovacuum_max_workers + max_wal_senders + max_worker_processes + 6) / 16)</literal>.
+    least <literal>ceil(num_os_semaphores / 16)</literal>.
     Lowering the number
     of allowed connections is a temporary workaround for failures,
     which are usually confusingly worded <quote>No space
@@ -884,9 +893,9 @@ psql: error: connection to server on socket "/tmp/.s.PGSQL.5432" failed: No such
     When using POSIX semaphores, the number of semaphores needed is the
     same as for System V, that is one semaphore per allowed connection
     (<xref linkend="guc-max-connections"/>), allowed autovacuum worker process
-    (<xref linkend="guc-autovacuum-max-workers"/>), allowed WAL sender process
-    (<xref linkend="guc-max-wal-senders"/>), and allowed background
-    process (<xref linkend="guc-max-worker-processes"/>).
+    (<xref linkend="guc-autovacuum-worker-slots"/>), allowed WAL sender process
+    (<xref linkend="guc-max-wal-senders"/>), allowed background
+    process (<xref linkend="guc-max-worker-processes"/>), etc.
     On the platforms where this option is preferred, there is no specific
     kernel limit on the number of POSIX semaphores.
    </para>
@@ -968,10 +977,10 @@ psql: error: connection to server on socket "/tmp/.s.PGSQL.5432" failed: No such
        <para>
         The default shared memory settings are usually good enough, unless
         you have set <literal>shared_memory_type</literal> to <literal>sysv</literal>.
-        You will usually want to increase <literal>kern.ipc.semmni</literal>
+        However, you will need to increase <literal>kern.ipc.semmni</literal>
         and <literal>kern.ipc.semmns</literal>,
         as <systemitem class="osname">NetBSD</systemitem>'s default settings
-        for these are uncomfortably small.
+        for these are unworkably small.
        </para>
 
        <para>
@@ -1002,11 +1011,11 @@ psql: error: connection to server on socket "/tmp/.s.PGSQL.5432" failed: No such
        <para>
         The default shared memory settings are usually good enough, unless
         you have set <literal>shared_memory_type</literal> to <literal>sysv</literal>.
-        You will usually want to
+        However, you will need to
         increase <literal>kern.seminfo.semmni</literal>
         and <literal>kern.seminfo.semmns</literal>,
         as <systemitem class="osname">OpenBSD</systemitem>'s default settings
-        for these are uncomfortably small.
+        for these are unworkably small.
        </para>
 
        <para>
@@ -1021,25 +1030,6 @@ psql: error: connection to server on socket "/tmp/.s.PGSQL.5432" failed: No such
 
       </listitem>
      </varlistentry>
-
-     <varlistentry>
-      <term><systemitem class="osname">HP-UX</systemitem>
-      <indexterm><primary>HP-UX</primary><secondary>IPC configuration</secondary></indexterm>
-      </term>
-      <listitem>
-       <para>
-        The default settings tend to suffice for normal installations.
-       </para>
-       <para>
-        <acronym>IPC</acronym> parameters can be set in the <application>System
-        Administration Manager</application> (<acronym>SAM</acronym>) under
-        <menuchoice><guimenu>Kernel
-        Configuration</guimenu><guimenuitem>Configurable Parameters</guimenuitem></menuchoice>. Choose
-        <guibutton>Create A New Kernel</guibutton> when you're done.
-       </para>
-      </listitem>
-     </varlistentry>
-
 
      <varlistentry>
       <term><systemitem class="osname">Linux</systemitem>
@@ -1138,13 +1128,8 @@ projadd -c "PostgreSQL DB User" -K "project.max-shm-memory=(privileged,8GB,deny)
        </para>
 
        <para>
-        Other recommended kernel setting changes for database servers which will
-        have a large number of connections are:
-<programlisting>
-project.max-shm-ids=(priv,32768,deny)
-project.max-sem-ids=(priv,4096,deny)
-project.max-msg-ids=(priv,4096,deny)
-</programlisting>
+        To run a very large server, or multiple servers concurrently, you
+        might also need to raise <literal>project.max-shm-ids</literal>.
        </para>
 
        <para>
@@ -1241,7 +1226,7 @@ RemoveIPC=no
    </caution>
   </sect2>
 
-  <sect2>
+  <sect2 id="kernel-resources-limits">
    <title>Resource Limits</title>
 
    <para>
@@ -1327,12 +1312,12 @@ default:\
     Another kernel limit that may be of concern when supporting large
     numbers of client connections is the maximum socket connection queue
     length.  If more than that many connection requests arrive within a very
-    short period, some may get rejected before the postmaster can service
+    short period, some may get rejected before the <productname>PostgreSQL</productname> server can service
     the requests, with those clients receiving unhelpful connection failure
     errors such as <quote>Resource temporarily unavailable</quote> or
     <quote>Connection refused</quote>.  The default queue length limit is 128
     on many platforms.  To raise it, adjust the appropriate kernel parameter
-    via <application>sysctl</application>, then restart the postmaster.
+    via <application>sysctl</application>, then restart the <productname>PostgreSQL</productname> server.
     The parameter is variously named <varname>net.core.somaxconn</varname>
     on Linux, <varname>kern.ipc.soacceptqueue</varname> on newer FreeBSD,
     and <varname>kern.ipc.somaxconn</varname> on macOS and other BSD
@@ -1430,11 +1415,12 @@ sysctl -w vm.overcommit_memory=2
 <programlisting>
 echo -1000 > /proc/self/oom_score_adj
 </programlisting>
-    in the postmaster's startup script just before invoking the postmaster.
+    in the <productname>PostgreSQL</productname> startup script just before
+    invoking <filename>postgres</filename>.
     Note that this action must be done as root, or it will have no effect;
     so a root-owned startup script is the easiest place to do it.  If you
     do this, you should also set these environment variables in the startup
-    script before invoking the postmaster:
+    script before invoking <filename>postgres</filename>:
 <programlisting>
 export PG_OOM_ADJUST_FILE=/proc/self/oom_score_adj
 export PG_OOM_ADJUST_VALUE=0
@@ -1877,7 +1863,7 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
     <step>
      <para>
       Install the new version of <productname>PostgreSQL</productname> as
-      outlined in <xref linkend="install-procedure"/>.
+      outlined in <xref linkend="installation"/>.
      </para>
     </step>
 
@@ -2026,7 +2012,25 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    (<xref linkend="ssl-tcp"/>). The TCP client must connect using
    <literal>sslmode=verify-ca</literal> or
    <literal>verify-full</literal> and have the appropriate root certificate
-   file installed (<xref linkend="libq-ssl-certificates"/>).
+   file installed (<xref linkend="libq-ssl-certificates"/>). Alternatively the
+   <link linkend="libpq-connect-sslrootcert">system CA pool</link>, as defined
+   by the SSL implementation, can be used using <literal>sslrootcert=system</literal>; in
+   this case, <literal>sslmode=verify-full</literal> is forced for safety, since
+   it is generally trivial to obtain certificates which are signed by a public
+   CA.
+  </para>
+
+  <para>
+   To prevent server spoofing from occurring when using
+   <link linkend="auth-password">scram-sha-256</link> password authentication
+   over a network, you should ensure that you connect to the server using SSL
+   and with one of the anti-spoofing methods described in the previous
+   paragraph. Additionally, the SCRAM implementation in
+   <application>libpq</application> cannot protect the entire authentication
+   exchange, but using the <literal>channel_binding=require</literal> connection
+   parameter provides a mitigation against server spoofing. An attacker that
+   uses a rogue server to intercept a SCRAM exchange can use offline analysis to
+   potentially determine the hashed password from the client.
   </para>
 
   <para>
@@ -2069,6 +2073,16 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
      is an Internet standard and is more secure than the PostgreSQL-specific
      MD5 authentication protocol.
     </para>
+
+    <warning>
+     <para>
+      Support for MD5-encrypted passwords is deprecated and will be removed in
+      a future release of <productname>PostgreSQL</productname>.  Refer to
+      <xref linkend="auth-password"/> for details about migrating to another
+      password type.
+     </para>
+    </warning>
+
    </listitem>
   </varlistentry>
 
@@ -2450,6 +2464,12 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
       <entry>client certificate must not be on this list</entry>
      </row>
 
+     <row>
+      <entry><filename>$PGDATA/pg_hosts.conf</filename></entry>
+      <entry>SNI configuration</entry>
+      <entry>defines which certificates to use for which server hostname</entry>
+     </row>
+
     </tbody>
    </tgroup>
   </table>
@@ -2577,6 +2597,124 @@ openssl x509 -req -in server.csr -text -days 365 \
    </para>
   </sect2>
 
+  <sect2 id="ssl-sni">
+   <title>SNI Configuration</title>
+
+   <para>
+    <productname>PostgreSQL</productname> can be configured for Server Name
+    Indication, <acronym>SNI</acronym>, using the <filename>pg_hosts.conf</filename>
+    configuration file. <productname>PostgreSQL</productname> inspects the TLS
+    hostname extension in the SSL connection handshake, and selects the right
+    TLS certificate, key and CA certificate to use for the connection based on
+    entries in the configuration file <filename>pg_hosts.conf</filename>.
+   </para>
+
+   <para>
+    SNI configuration is defined in the hosts configuration file,
+    <filename>pg_hosts.conf</filename>, which is stored in the cluster's
+    data directory.  The hosts configuration file contains lines of these
+    general forms:
+<synopsis>
+<replaceable>hostname</replaceable> <replaceable>SSL_certificate</replaceable> <replaceable>SSL_key</replaceable> <optional> <replaceable>SSL_CA_certificate</replaceable> <optional> <replaceable>SSL_passphrase_cmd</replaceable> <optional> <replaceable>SSL_passphrase_cmd_reload</replaceable> </optional> </optional> </optional>
+<literal>include</literal> <replaceable>file</replaceable>
+<literal>include_if_exists</literal> <replaceable>file</replaceable>
+<literal>include_dir</literal> <replaceable>directory</replaceable>
+</synopsis>
+    Comments, whitespace, line continuations, and inclusion directives are
+    handled in the same way as
+    in <filename>pg_hba.conf</filename>.  <replaceable>hostname</replaceable>
+    is matched against the hostname TLS extension in the SSL handshake.
+    <replaceable>SSL_certificate</replaceable>,
+    <replaceable>SSL_key</replaceable>,
+    <replaceable>SSL_CA_certificate</replaceable>,
+    <replaceable>SSL_passphrase_cmd</replaceable>, and
+    <replaceable>SSL_passphrase_cmd_reload</replaceable>
+    are treated like
+    <xref linkend="guc-ssl-cert-file"/>,
+    <xref linkend="guc-ssl-key-file"/>,
+    <xref linkend="guc-ssl-ca-file"/>,
+    <xref linkend="guc-ssl-passphrase-command"/>, and
+    <xref linkend="guc-ssl-passphrase-command-supports-reload"/> respectively.
+    All fields except <replaceable>SSL_CA_certificate</replaceable>,
+    <replaceable>SSL_passphrase_cmd</replaceable>, and
+    <replaceable>SSL_passphrase_cmd_reload</replaceable> are required. If
+    <replaceable>SSL_passphrase_cmd</replaceable> is provided but not
+    <replaceable>SSL_passphrase_cmd_reload</replaceable>, then the default
+    value for <replaceable>SSL_passphrase_cmd_reload</replaceable> is
+    <literal>off</literal>.
+   </para>
+
+   <para>
+    <replaceable>hostname</replaceable> can be either the literal
+    hostname for the connection, <literal>/no_sni/</literal>, or <literal>*</literal>.
+    <xref linkend="hostname-values"/> contains details on how these values are
+    used.
+    <table id="hostname-values">
+     <title>Hostname field values</title>
+     <tgroup cols="3">
+      <thead>
+       <row>
+        <entry>Host Entry</entry>
+        <entry>sslsni</entry>
+        <entry>Description</entry>
+       </row>
+      </thead>
+
+      <tbody>
+       <row>
+        <entry><replaceable>hostname</replaceable></entry>
+        <entry>Required</entry>
+        <entry>
+         Certificate and key to use for connections to the host specified in
+         the connection.  Multiple hostnames can be defined by using a comma
+         separated list. The certificate and key will be used for connections
+         to all hosts in the list.
+        </entry>
+       </row>
+
+       <row>
+        <entry><literal>/no_sni/</literal></entry>
+        <entry>Not allowed</entry>
+        <entry>
+         Certificate and key to use for connections with no
+         <literal>sslsni</literal> defined.
+        </entry>
+       </row>
+
+       <row>
+        <entry><literal>*</literal></entry>
+        <entry>Not required</entry>
+        <entry>
+         Default host, matches all connections.
+        </entry>
+       </row>
+      </tbody>
+
+     </tgroup>
+    </table>
+   </para>
+
+   <para>
+    If <filename>pg_hosts.conf</filename> is empty or missing, then the SSL
+    configuration in <filename>postgresql.conf</filename> will be used for all
+    connections. If <filename>pg_hosts.conf</filename> is non-empty then it
+    will take precedence over certificate and key settings in
+    <filename>postgresql.conf</filename>.
+   </para>
+
+   <para>
+    It is currently not possible to set different <literal>clientname</literal>
+    values for the different certificates.  Any <literal>clientname</literal>
+    setting in <filename>pg_hba.conf</filename> will be applied during
+    authentication regardless of which set of certificates have been loaded
+    via an SNI enabled connection.
+   </para>
+
+   <para>
+    The CRL configuration in <filename>postgresql.conf</filename> is applied
+    to all connections regardless of whether they use SNI or not.
+   </para>
+  </sect2>
  </sect1>
 
  <sect1 id="gssapi-enc">

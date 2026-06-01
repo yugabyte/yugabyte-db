@@ -5,22 +5,28 @@
 
 #include <ctype.h>
 
+#include "catalog/pg_collation_d.h"
 #include "catalog/pg_type.h"
+#include "common/int.h"
 #include "lib/qunique.h"
+#include "miscadmin.h"
 #include "trgm.h"
 #include "tsearch/ts_locale.h"
+#include "utils/formatting.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_crc.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_trgm",
+					.version = PG_VERSION
+);
 
 /* GUC variables */
 double		similarity_threshold = 0.3f;
 double		word_similarity_threshold = 0.6f;
 double		strict_word_similarity_threshold = 0.5f;
-
-void		_PG_init(void);
 
 PG_FUNCTION_INFO_V1(set_limit);
 PG_FUNCTION_INFO_V1(show_limit);
@@ -38,6 +44,9 @@ PG_FUNCTION_INFO_V1(strict_word_similarity_op);
 PG_FUNCTION_INFO_V1(strict_word_similarity_commutator_op);
 PG_FUNCTION_INFO_V1(strict_word_similarity_dist_op);
 PG_FUNCTION_INFO_V1(strict_word_similarity_dist_commutator_op);
+
+static int	CMPTRGM_CHOOSE(const void *a, const void *b);
+int			(*CMPTRGM) (const void *a, const void *b) = CMPTRGM_CHOOSE;
 
 /* Trigram with position */
 typedef struct
@@ -58,6 +67,78 @@ typedef uint8 TrgmBound;
 											 * word bounds */
 
 /*
+ * A growable array of trigrams
+ *
+ * The actual array of trigrams is in 'datum'.  Note that the other fields in
+ * 'datum', i.e. datum->flags and the varlena length, are not kept up to date
+ * when items are added to the growable array.  We merely reserve the space
+ * for them here.  You must fill those other fields before using 'datum' as a
+ * proper TRGM datum.
+ */
+typedef struct
+{
+	TRGM	   *datum;			/* trigram array */
+	int			length;			/* number of trigrams in the array */
+	int			allocated;		/* allocated size of 'datum' (# of trigrams) */
+} growable_trgm_array;
+
+/*
+ * Allocate a new growable array.
+ *
+ * 'slen' is the size of the source string that we're extracting the trigrams
+ * from.  It is used to choose the initial size of the array.
+ */
+static void
+init_trgm_array(growable_trgm_array *arr, int slen)
+{
+	size_t		init_size;
+
+	/*
+	 * In the extreme case, the input string consists entirely of one
+	 * character words, like "a b c", where each word is expanded to two
+	 * trigrams.  This is not a strict upper bound though, because when
+	 * IGNORECASE is defined, we convert the input string to lowercase before
+	 * extracting the trigrams, which in rare cases can expand one input
+	 * character into multiple characters.
+	 */
+	init_size = (size_t) slen + 1;
+
+	/*
+	 * Guard against possible overflow in the palloc request.  (We don't worry
+	 * about the additive constants, since palloc can detect requests that are
+	 * a little above MaxAllocSize --- we just need to prevent integer
+	 * overflow in the multiplications.)
+	 */
+	if (init_size > MaxAllocSize / sizeof(trgm))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("out of memory")));
+
+	arr->datum = palloc(CALCGTSIZE(ARRKEY, init_size));
+	arr->allocated = init_size;
+	arr->length = 0;
+}
+
+/* Make sure the array can hold at least 'needed' more trigrams */
+static void
+enlarge_trgm_array(growable_trgm_array *arr, int needed)
+{
+	size_t		new_needed = (size_t) arr->length + needed;
+
+	if (new_needed > arr->allocated)
+	{
+		/* Guard against possible overflow, like in init_trgm_array */
+		if (new_needed > MaxAllocSize / sizeof(trgm))
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("out of memory")));
+
+		arr->datum = repalloc(arr->datum, CALCGTSIZE(ARRKEY, new_needed));
+		arr->allocated = new_needed;
+	}
+}
+
+/*
  * Module load callback
  */
 void
@@ -68,7 +149,7 @@ _PG_init(void)
 							 "Sets the threshold used by the % operator.",
 							 "Valid range is 0.0 .. 1.0.",
 							 &similarity_threshold,
-							 0.3,
+							 0.3f,
 							 0.0,
 							 1.0,
 							 PGC_USERSET,
@@ -80,7 +161,7 @@ _PG_init(void)
 							 "Sets the threshold used by the <% operator.",
 							 "Valid range is 0.0 .. 1.0.",
 							 &word_similarity_threshold,
-							 0.6,
+							 0.6f,
 							 0.0,
 							 1.0,
 							 PGC_USERSET,
@@ -92,7 +173,7 @@ _PG_init(void)
 							 "Sets the threshold used by the <<% operator.",
 							 "Valid range is 0.0 .. 1.0.",
 							 &strict_word_similarity_threshold,
-							 0.5,
+							 0.5f,
 							 0.0,
 							 1.0,
 							 PGC_USERSET,
@@ -102,6 +183,96 @@ _PG_init(void)
 							 NULL);
 
 	MarkGUCPrefixReserved("pg_trgm");
+}
+
+#define CMPCHAR(a,b) ( ((a)==(b)) ? 0 : ( ((a)<(b)) ? -1 : 1 ) )
+
+/*
+ * Functions for comparing two trgms while treating each char as "signed char" or
+ * "unsigned char".
+ */
+static inline int
+CMPTRGM_SIGNED(const void *a, const void *b)
+{
+#define CMPPCHAR_S(a,b,i)  CMPCHAR( *(((const signed char*)(a))+i), *(((const signed char*)(b))+i) )
+
+	return CMPPCHAR_S(a, b, 0) ? CMPPCHAR_S(a, b, 0)
+		: (CMPPCHAR_S(a, b, 1) ? CMPPCHAR_S(a, b, 1)
+		   : CMPPCHAR_S(a, b, 2));
+}
+
+static inline int
+CMPTRGM_UNSIGNED(const void *a, const void *b)
+{
+#define CMPPCHAR_UNS(a,b,i)  CMPCHAR( *(((const unsigned char*)(a))+i), *(((const unsigned char*)(b))+i) )
+
+	return CMPPCHAR_UNS(a, b, 0) ? CMPPCHAR_UNS(a, b, 0)
+		: (CMPPCHAR_UNS(a, b, 1) ? CMPPCHAR_UNS(a, b, 1)
+		   : CMPPCHAR_UNS(a, b, 2));
+}
+
+/*
+ * This gets called on the first call. It replaces the function pointer so
+ * that subsequent calls are routed directly to the chosen implementation.
+ */
+static int
+CMPTRGM_CHOOSE(const void *a, const void *b)
+{
+	if (GetDefaultCharSignedness())
+		CMPTRGM = CMPTRGM_SIGNED;
+	else
+		CMPTRGM = CMPTRGM_UNSIGNED;
+
+	return CMPTRGM(a, b);
+}
+
+#define ST_SORT trigram_qsort_signed
+#define ST_ELEMENT_TYPE_VOID
+#define ST_COMPARE(a, b) CMPTRGM_SIGNED(a, b)
+#define ST_SCOPE static
+#define ST_DEFINE
+#define ST_DECLARE
+#include "lib/sort_template.h"
+
+#define ST_SORT trigram_qsort_unsigned
+#define ST_ELEMENT_TYPE_VOID
+#define ST_COMPARE(a, b) CMPTRGM_UNSIGNED(a, b)
+#define ST_SCOPE static
+#define ST_DEFINE
+#define ST_DECLARE
+#include "lib/sort_template.h"
+
+/* Sort an array of trigrams, handling signedess correctly */
+static void
+trigram_qsort(trgm *array, size_t n)
+{
+	if (GetDefaultCharSignedness())
+		trigram_qsort_signed(array, n, sizeof(trgm));
+	else
+		trigram_qsort_unsigned(array, n, sizeof(trgm));
+}
+
+
+/*
+ * Compare two trigrams for equality.  This has the same signature as
+ * comparison functions used for sorting, so that this can be used with
+ * qunique().  This doesn't need separate versions for "signed char" and "
+ * unsigned char" because equality is the same for both.
+ */
+static inline int
+CMPTRGM_EQ(const void *a, const void *b)
+{
+	char	   *aa = (char *) a;
+	char	   *bb = (char *) b;
+
+	return aa[0] != bb[0] || aa[1] != bb[1] || aa[2] != bb[2] ? 1 : 0;
+}
+
+/* Deduplicate an array of trigrams */
+static size_t
+trigram_qunique(trgm *array, size_t n)
+{
+	return qunique(array, n, sizeof(trgm), CMPTRGM_EQ);
 }
 
 /*
@@ -159,33 +330,36 @@ show_limit(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT4(similarity_threshold);
 }
 
-static int
-comp_trgm(const void *a, const void *b)
-{
-	return CMPTRGM(a, b);
-}
-
 /*
  * Finds first word in string, returns pointer to the word,
  * endword points to the character after word
  */
 static char *
-find_word(char *str, int lenstr, char **endword, int *charlen)
+find_word(char *str, int lenstr, char **endword)
 {
 	char	   *beginword = str;
+	const char *endstr = str + lenstr;
 
-	while (beginword - str < lenstr && !ISWORDCHR(beginword))
-		beginword += pg_mblen(beginword);
+	while (beginword < endstr)
+	{
+		int			clen = pg_mblen_range(beginword, endstr);
 
-	if (beginword - str >= lenstr)
+		if (ISWORDCHR(beginword, clen))
+			break;
+		beginword += clen;
+	}
+
+	if (beginword >= endstr)
 		return NULL;
 
 	*endword = beginword;
-	*charlen = 0;
-	while (*endword - str < lenstr && ISWORDCHR(*endword))
+	while (*endword < endstr)
 	{
-		*endword += pg_mblen(*endword);
-		(*charlen)++;
+		int			clen = pg_mblen_range(*endword, endstr);
+
+		if (!ISWORDCHR(*endword, clen))
+			break;
+		*endword += clen;
 	}
 
 	return beginword;
@@ -219,78 +393,138 @@ compact_trigram(trgm *tptr, char *str, int bytelen)
 }
 
 /*
- * Adds trigrams from words (already padded).
+ * Adds trigrams from the word in 'str' (already padded if necessary).
  */
-static trgm *
-make_trigrams(trgm *tptr, char *str, int bytelen, int charlen)
+static void
+make_trigrams(growable_trgm_array *dst, char *str, int bytelen)
 {
+	trgm	   *tptr;
 	char	   *ptr = str;
 
-	if (charlen < 3)
-		return tptr;
+	if (bytelen < 3)
+		return;
 
-	if (bytelen > charlen)
+	/* max number of trigrams = strlen - 2 */
+	enlarge_trgm_array(dst, bytelen - 2);
+	tptr = GETARR(dst->datum) + dst->length;
+
+	if (pg_encoding_max_length(GetDatabaseEncoding()) == 1)
 	{
-		/* Find multibyte character boundaries and apply compact_trigram */
-		int			lenfirst = pg_mblen(str),
-					lenmiddle = pg_mblen(str + lenfirst),
-					lenlast = pg_mblen(str + lenfirst + lenmiddle);
-
-		while ((ptr - str) + lenfirst + lenmiddle + lenlast <= bytelen)
-		{
-			compact_trigram(tptr, ptr, lenfirst + lenmiddle + lenlast);
-
-			ptr += lenfirst;
-			tptr++;
-
-			lenfirst = lenmiddle;
-			lenmiddle = lenlast;
-			lenlast = pg_mblen(ptr + lenfirst + lenmiddle);
-		}
-	}
-	else
-	{
-		/* Fast path when there are no multibyte characters */
-		Assert(bytelen == charlen);
-
-		while (ptr - str < bytelen - 2 /* number of trigrams = strlen - 2 */ )
+		while (ptr < str + bytelen - 2)
 		{
 			CPTRGM(tptr, ptr);
 			ptr++;
 			tptr++;
 		}
 	}
+	else
+	{
+		int			lenfirst,
+					lenmiddle,
+					lenlast;
+		char	   *endptr;
 
-	return tptr;
+		/*
+		 * Fast path as long as there are no multibyte characters
+		 */
+		if (!IS_HIGHBIT_SET(ptr[0]) && !IS_HIGHBIT_SET(ptr[1]))
+		{
+			while (!IS_HIGHBIT_SET(ptr[2]))
+			{
+				CPTRGM(tptr, ptr);
+				ptr++;
+				tptr++;
+
+				if (ptr == str + bytelen - 2)
+					goto done;
+			}
+
+			lenfirst = 1;
+			lenmiddle = 1;
+			lenlast = pg_mblen_unbounded(ptr + 2);
+		}
+		else
+		{
+			lenfirst = pg_mblen_unbounded(ptr);
+			if (ptr + lenfirst >= str + bytelen)
+				goto done;
+			lenmiddle = pg_mblen_unbounded(ptr + lenfirst);
+			if (ptr + lenfirst + lenmiddle >= str + bytelen)
+				goto done;
+			lenlast = pg_mblen_unbounded(ptr + lenfirst + lenmiddle);
+		}
+
+		/*
+		 * Slow path to handle any remaining multibyte characters
+		 *
+		 * As we go, 'ptr' points to the beginning of the current
+		 * three-character string and 'endptr' points to just past it.
+		 */
+		endptr = ptr + lenfirst + lenmiddle + lenlast;
+		while (endptr <= str + bytelen)
+		{
+			compact_trigram(tptr, ptr, endptr - ptr);
+			tptr++;
+
+			/* Advance to the next character */
+			if (endptr == str + bytelen)
+				break;
+			ptr += lenfirst;
+			lenfirst = lenmiddle;
+			lenmiddle = lenlast;
+			lenlast = pg_mblen_unbounded(endptr);
+			endptr += lenlast;
+		}
+	}
+
+done:
+	dst->length = tptr - GETARR(dst->datum);
+	Assert(dst->length <= dst->allocated);
 }
 
 /*
  * Make array of trigrams without sorting and removing duplicate items.
  *
- * trg: where to return the array of trigrams.
+ * dst: where to return the array of trigrams.
  * str: source string, of length slen bytes.
- * bounds: where to return bounds of trigrams (if needed).
- *
- * Returns length of the generated array.
+ * bounds_p: where to return bounds of trigrams (if needed).
  */
-static int
-generate_trgm_only(trgm *trg, char *str, int slen, TrgmBound *bounds)
+static void
+generate_trgm_only(growable_trgm_array *dst, char *str, int slen, TrgmBound **bounds_p)
 {
-	trgm	   *tptr;
+	size_t		buflen;
 	char	   *buf;
-	int			charlen,
-				bytelen;
+	int			bytelen;
 	char	   *bword,
 			   *eword;
+	TrgmBound  *bounds = NULL;
+	int			bounds_allocated = 0;
+
+	init_trgm_array(dst, slen);
+
+	/*
+	 * If requested, allocate an array for the bounds, with the same size as
+	 * the trigram array.
+	 */
+	if (bounds_p)
+	{
+		bounds_allocated = dst->allocated;
+		bounds = *bounds_p = palloc0_array(TrgmBound, bounds_allocated);
+	}
 
 	if (slen + LPADDING + RPADDING < 3 || slen == 0)
-		return 0;
+		return;
 
-	tptr = trg;
-
-	/* Allocate a buffer for case-folded, blank-padded words */
-	buf = (char *) palloc(slen * pg_database_encoding_max_length() + 4);
-
+	/*
+	 * Allocate a buffer for case-folded, blank-padded words.
+	 *
+	 * As an initial guess, allocate a buffer large enough to hold the
+	 * original string with padding, which is always enough when compiled with
+	 * !IGNORECASE.  If the case-folding produces a string longer than the
+	 * original, we'll grow the buffer.
+	 */
+	buflen = (size_t) slen + 4;
+	buf = (char *) palloc(buflen);
 	if (LPADDING > 0)
 	{
 		*buf = ' ';
@@ -299,52 +533,59 @@ generate_trgm_only(trgm *trg, char *str, int slen, TrgmBound *bounds)
 	}
 
 	eword = str;
-	while ((bword = find_word(eword, slen - (eword - str), &eword, &charlen)) != NULL)
+	while ((bword = find_word(eword, slen - (eword - str), &eword)) != NULL)
 	{
+		int			oldlen;
+
+		/* Convert word to lower case before extracting trigrams from it */
 #ifdef IGNORECASE
-		bword = lowerstr_with_len(bword, eword - bword);
-		bytelen = strlen(bword);
+		{
+			char	   *lowered;
+
+			lowered = str_tolower(bword, eword - bword, DEFAULT_COLLATION_OID);
+			bytelen = strlen(lowered);
+
+			/* grow the buffer if necessary */
+			if (bytelen > buflen - 4)
+			{
+				pfree(buf);
+				buflen = (size_t) bytelen + 4;
+				buf = (char *) palloc(buflen);
+				if (LPADDING > 0)
+				{
+					*buf = ' ';
+					if (LPADDING > 1)
+						*(buf + 1) = ' ';
+				}
+			}
+			memcpy(buf + LPADDING, lowered, bytelen);
+			pfree(lowered);
+		}
 #else
 		bytelen = eword - bword;
-#endif
-
 		memcpy(buf + LPADDING, bword, bytelen);
-
-#ifdef IGNORECASE
-		pfree(bword);
 #endif
 
 		buf[LPADDING + bytelen] = ' ';
 		buf[LPADDING + bytelen + 1] = ' ';
 
 		/* Calculate trigrams marking their bounds if needed */
+		oldlen = dst->length;
+		make_trigrams(dst, buf, bytelen + LPADDING + RPADDING);
 		if (bounds)
-			bounds[tptr - trg] |= TRGM_BOUND_LEFT;
-		tptr = make_trigrams(tptr, buf, bytelen + LPADDING + RPADDING,
-							 charlen + LPADDING + RPADDING);
-		if (bounds)
-			bounds[tptr - trg - 1] |= TRGM_BOUND_RIGHT;
+		{
+			if (bounds_allocated < dst->length)
+			{
+				bounds = *bounds_p = repalloc0_array(bounds, TrgmBound, bounds_allocated, dst->allocated);
+				bounds_allocated = dst->allocated;
+			}
+
+			bounds[oldlen] |= TRGM_BOUND_LEFT;
+			bounds[dst->length - 1] |= TRGM_BOUND_RIGHT;
+		}
 	}
 
 	pfree(buf);
-
-	return tptr - trg;
-}
-
-/*
- * Guard against possible overflow in the palloc requests below.  (We
- * don't worry about the additive constants, since palloc can detect
- * requests that are a little above MaxAllocSize --- we just need to
- * prevent integer overflow in the multiplications.)
- */
-static void
-protect_out_of_mem(int slen)
-{
-	if ((Size) (slen / 2) >= (MaxAllocSize / (sizeof(trgm) * 3)) ||
-		(Size) slen >= (MaxAllocSize / pg_database_encoding_max_length()))
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("out of memory")));
 }
 
 /*
@@ -358,26 +599,21 @@ TRGM *
 generate_trgm(char *str, int slen)
 {
 	TRGM	   *trg;
+	growable_trgm_array arr;
 	int			len;
 
-	protect_out_of_mem(slen);
-
-	trg = (TRGM *) palloc(TRGMHDRSIZE + sizeof(trgm) * (slen / 2 + 1) * 3);
+	generate_trgm_only(&arr, str, slen, NULL);
+	len = arr.length;
+	trg = arr.datum;
 	trg->flag = ARRKEY;
-
-	len = generate_trgm_only(GETARR(trg), str, slen, NULL);
-	SET_VARSIZE(trg, CALCGTSIZE(ARRKEY, len));
-
-	if (len == 0)
-		return trg;
 
 	/*
 	 * Make trigrams unique.
 	 */
 	if (len > 1)
 	{
-		qsort((void *) GETARR(trg), len, sizeof(trgm), comp_trgm);
-		len = qunique(GETARR(trg), len, sizeof(trgm), comp_trgm);
+		trigram_qsort(GETARR(trg), len);
+		len = trigram_qunique(GETARR(trg), len);
 	}
 
 	SET_VARSIZE(trg, CALCGTSIZE(ARRKEY, len));
@@ -402,7 +638,7 @@ make_positional_trgm(trgm *trg1, int len1, trgm *trg2, int len2)
 	int			i,
 				len = len1 + len2;
 
-	result = (pos_trgm *) palloc(sizeof(pos_trgm) * len);
+	result = palloc_array(pos_trgm, len);
 
 	for (i = 0; i < len1; i++)
 	{
@@ -433,24 +669,20 @@ comp_ptrgm(const void *v1, const void *v2)
 	if (cmp != 0)
 		return cmp;
 
-	if (p1->index < p2->index)
-		return -1;
-	else if (p1->index == p2->index)
-		return 0;
-	else
-		return 1;
+	return pg_cmp_s32(p1->index, p2->index);
 }
 
 /*
  * Iterative search function which calculates maximum similarity with word in
- * the string. But maximum similarity is calculated only if check_only == false.
+ * the string. Maximum similarity is only calculated only if the flag
+ * WORD_SIMILARITY_CHECK_ONLY isn't set.
  *
  * trg2indexes: array which stores indexes of the array "found".
  * found: array which stores true of false values.
  * ulen1: count of unique trigrams of array "trg1".
  * len2: length of array "trg2" and array "trg2indexes".
  * len: length of the array "found".
- * lags: set of boolean flags parameterizing similarity calculation.
+ * flags: set of boolean flags parameterizing similarity calculation.
  * bounds: whether each trigram is left/right bound of word.
  *
  * Returns word similarity.
@@ -489,13 +721,17 @@ iterate_word_similarity(int *trg2indexes,
 	lower = (flags & WORD_SIMILARITY_STRICT) ? 0 : -1;
 
 	/* Memorise last position of each trigram */
-	lastpos = (int *) palloc(sizeof(int) * len);
+	lastpos = palloc_array(int, len);
 	memset(lastpos, -1, sizeof(int) * len);
 
 	for (i = 0; i < len2; i++)
 	{
+		int			trgindex;
+
+		CHECK_FOR_INTERRUPTS();
+
 		/* Get index of next trigram */
-		int			trgindex = trg2indexes[i];
+		trgindex = trg2indexes[i];
 
 		/* Update last position of this trigram */
 		if (lower >= 0 || found[trgindex])
@@ -625,8 +861,8 @@ calc_word_similarity(char *str1, int slen1, char *str2, int slen2,
 {
 	bool	   *found;
 	pos_trgm   *ptrg;
-	trgm	   *trg1;
-	trgm	   *trg2;
+	growable_trgm_array trg1;
+	growable_trgm_array trg2;
 	int			len1,
 				len2,
 				len,
@@ -635,34 +871,28 @@ calc_word_similarity(char *str1, int slen1, char *str2, int slen2,
 				ulen1;
 	int		   *trg2indexes;
 	float4		result;
-	TrgmBound  *bounds;
-
-	protect_out_of_mem(slen1 + slen2);
+	TrgmBound  *bounds = NULL;
 
 	/* Make positional trigrams */
-	trg1 = (trgm *) palloc(sizeof(trgm) * (slen1 / 2 + 1) * 3);
-	trg2 = (trgm *) palloc(sizeof(trgm) * (slen2 / 2 + 1) * 3);
-	if (flags & WORD_SIMILARITY_STRICT)
-		bounds = (TrgmBound *) palloc0(sizeof(TrgmBound) * (slen2 / 2 + 1) * 3);
-	else
-		bounds = NULL;
 
-	len1 = generate_trgm_only(trg1, str1, slen1, NULL);
-	len2 = generate_trgm_only(trg2, str2, slen2, bounds);
+	generate_trgm_only(&trg1, str1, slen1, NULL);
+	len1 = trg1.length;
+	generate_trgm_only(&trg2, str2, slen2, (flags & WORD_SIMILARITY_STRICT) ? &bounds : NULL);
+	len2 = trg2.length;
 
-	ptrg = make_positional_trgm(trg1, len1, trg2, len2);
+	ptrg = make_positional_trgm(GETARR(trg1.datum), len1, GETARR(trg2.datum), len2);
 	len = len1 + len2;
 	qsort(ptrg, len, sizeof(pos_trgm), comp_ptrgm);
 
-	pfree(trg1);
-	pfree(trg2);
+	pfree(trg1.datum);
+	pfree(trg2.datum);
 
 	/*
 	 * Merge positional trigrams array: enumerate each trigram and find its
 	 * presence in required word.
 	 */
-	trg2indexes = (int *) palloc(sizeof(int) * len2);
-	found = (bool *) palloc0(sizeof(bool) * len);
+	trg2indexes = palloc_array(int, len2);
+	found = palloc0_array(bool, len);
 
 	ulen1 = 0;
 	j = 0;
@@ -711,20 +941,20 @@ calc_word_similarity(char *str1, int slen1, char *str2, int slen2,
  * str: source string, of length lenstr bytes (need not be null-terminated)
  * buf: where to return the substring (must be long enough)
  * *bytelen: receives byte length of the found substring
- * *charlen: receives character length of the found substring
  *
  * Returns pointer to end+1 of the found substring in the source string.
- * Returns NULL if no word found (in which case buf, bytelen, charlen not set)
+ * Returns NULL if no word found (in which case buf, bytelen is not set)
  *
  * If the found word is bounded by non-word characters or string boundaries
  * then this function will include corresponding padding spaces into buf.
  */
 static const char *
 get_wildcard_part(const char *str, int lenstr,
-				  char *buf, int *bytelen, int *charlen)
+				  char *buf, int *bytelen)
 {
 	const char *beginword = str;
 	const char *endword;
+	const char *endstr = str + lenstr;
 	char	   *s = buf;
 	bool		in_leading_wildcard_meta = false;
 	bool		in_trailing_wildcard_meta = false;
@@ -737,11 +967,13 @@ get_wildcard_part(const char *str, int lenstr,
 	 * from this loop to the next one, since we may exit at a word character
 	 * that is in_escape.
 	 */
-	while (beginword - str < lenstr)
+	while (beginword < endstr)
 	{
+		clen = pg_mblen_range(beginword, endstr);
+
 		if (in_escape)
 		{
-			if (ISWORDCHR(beginword))
+			if (ISWORDCHR(beginword, clen))
 				break;
 			in_escape = false;
 			in_leading_wildcard_meta = false;
@@ -752,12 +984,12 @@ get_wildcard_part(const char *str, int lenstr,
 				in_escape = true;
 			else if (ISWILDCARDCHAR(beginword))
 				in_leading_wildcard_meta = true;
-			else if (ISWORDCHR(beginword))
+			else if (ISWORDCHR(beginword, clen))
 				break;
 			else
 				in_leading_wildcard_meta = false;
 		}
-		beginword += pg_mblen(beginword);
+		beginword += clen;
 	}
 
 	/*
@@ -770,18 +1002,13 @@ get_wildcard_part(const char *str, int lenstr,
 	 * Add left padding spaces if preceding character wasn't wildcard
 	 * meta-character.
 	 */
-	*charlen = 0;
 	if (!in_leading_wildcard_meta)
 	{
 		if (LPADDING > 0)
 		{
 			*s++ = ' ';
-			(*charlen)++;
 			if (LPADDING > 1)
-			{
 				*s++ = ' ';
-				(*charlen)++;
-			}
 		}
 	}
 
@@ -790,15 +1017,14 @@ get_wildcard_part(const char *str, int lenstr,
 	 * string boundary.  Strip escapes during copy.
 	 */
 	endword = beginword;
-	while (endword - str < lenstr)
+	while (endword < endstr)
 	{
-		clen = pg_mblen(endword);
+		clen = pg_mblen_range(endword, endstr);
 		if (in_escape)
 		{
-			if (ISWORDCHR(endword))
+			if (ISWORDCHR(endword, clen))
 			{
 				memcpy(s, endword, clen);
-				(*charlen)++;
 				s += clen;
 			}
 			else
@@ -823,10 +1049,9 @@ get_wildcard_part(const char *str, int lenstr,
 				in_trailing_wildcard_meta = true;
 				break;
 			}
-			else if (ISWORDCHR(endword))
+			else if (ISWORDCHR(endword, clen))
 			{
 				memcpy(s, endword, clen);
-				(*charlen)++;
 				s += clen;
 			}
 			else
@@ -844,12 +1069,8 @@ get_wildcard_part(const char *str, int lenstr,
 		if (RPADDING > 0)
 		{
 			*s++ = ' ';
-			(*charlen)++;
 			if (RPADDING > 1)
-			{
 				*s++ = ' ';
-				(*charlen)++;
-			}
 		}
 	}
 
@@ -868,66 +1089,65 @@ TRGM *
 generate_wildcard_trgm(const char *str, int slen)
 {
 	TRGM	   *trg;
-	char	   *buf,
-			   *buf2;
-	trgm	   *tptr;
+	growable_trgm_array arr;
+	char	   *buf;
 	int			len,
-				charlen,
 				bytelen;
 	const char *eword;
 
-	protect_out_of_mem(slen);
-
-	trg = (TRGM *) palloc(TRGMHDRSIZE + sizeof(trgm) * (slen / 2 + 1) * 3);
-	trg->flag = ARRKEY;
-	SET_VARSIZE(trg, TRGMHDRSIZE);
-
 	if (slen + LPADDING + RPADDING < 3 || slen == 0)
+	{
+		trg = (TRGM *) palloc(TRGMHDRSIZE);
+		trg->flag = ARRKEY;
+		SET_VARSIZE(trg, TRGMHDRSIZE);
 		return trg;
+	}
 
-	tptr = GETARR(trg);
+	init_trgm_array(&arr, slen);
 
 	/* Allocate a buffer for blank-padded, but not yet case-folded, words */
-	buf = palloc(sizeof(char) * (slen + 4));
+	buf = palloc_array(char, slen + 4);
 
 	/*
 	 * Extract trigrams from each substring extracted by get_wildcard_part.
 	 */
 	eword = str;
 	while ((eword = get_wildcard_part(eword, slen - (eword - str),
-									  buf, &bytelen, &charlen)) != NULL)
+									  buf, &bytelen)) != NULL)
 	{
+		char	   *word;
+
 #ifdef IGNORECASE
-		buf2 = lowerstr_with_len(buf, bytelen);
-		bytelen = strlen(buf2);
+		word = str_tolower(buf, bytelen, DEFAULT_COLLATION_OID);
+		bytelen = strlen(word);
 #else
-		buf2 = buf;
+		word = buf;
 #endif
 
 		/*
 		 * count trigrams
 		 */
-		tptr = make_trigrams(tptr, buf2, bytelen, charlen);
+		make_trigrams(&arr, word, bytelen);
 
 #ifdef IGNORECASE
-		pfree(buf2);
+		pfree(word);
 #endif
 	}
 
 	pfree(buf);
 
-	if ((len = tptr - GETARR(trg)) == 0)
-		return trg;
-
 	/*
 	 * Make trigrams unique.
 	 */
+	trg = arr.datum;
+	len = arr.length;
 	if (len > 1)
 	{
-		qsort((void *) GETARR(trg), len, sizeof(trgm), comp_trgm);
-		len = qunique(GETARR(trg), len, sizeof(trgm), comp_trgm);
+		trigram_qsort(GETARR(trg), len);
+		len = trigram_qunique(GETARR(trg), len);
 	}
 
+	trg->flag = ARRKEY;
 	SET_VARSIZE(trg, CALCGTSIZE(ARRKEY, len));
 
 	return trg;
@@ -958,7 +1178,7 @@ show_trgm(PG_FUNCTION_ARGS)
 	int			i;
 
 	trg = generate_trgm(VARDATA_ANY(in), VARSIZE_ANY_EXHDR(in));
-	d = (Datum *) palloc(sizeof(Datum) * (1 + ARRNELEM(trg)));
+	d = palloc_array(Datum, 1 + ARRNELEM(trg));
 
 	for (i = 0, ptr = GETARR(trg); i < ARRNELEM(trg); i++, ptr++)
 	{
@@ -977,12 +1197,7 @@ show_trgm(PG_FUNCTION_ARGS)
 		d[i] = PointerGetDatum(item);
 	}
 
-	a = construct_array(d,
-						ARRNELEM(trg),
-						TEXTOID,
-						-1,
-						false,
-						TYPALIGN_INT);
+	a = construct_array_builtin(d, ARRNELEM(trg), TEXTOID);
 
 	for (i = 0; i < ARRNELEM(trg); i++)
 		pfree(DatumGetPointer(d[i]));
@@ -1091,7 +1306,7 @@ trgm_presence_map(TRGM *query, TRGM *key)
 				lenk = ARRNELEM(key),
 				i;
 
-	result = (bool *) palloc0(lenq * sizeof(bool));
+	result = palloc0_array(bool, lenq);
 
 	/* for each query trigram, do a binary search in the key array */
 	for (i = 0; i < lenq; i++)

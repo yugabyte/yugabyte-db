@@ -8,7 +8,7 @@
  * storage implementation and the details about individual types of
  * statistics.
  *
- * Copyright (c) 2001-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat_subscription.c
@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include "replication/worker_internal.h"
 #include "utils/pgstat_internal.h"
 
 
@@ -24,7 +25,42 @@
  * Report a subscription error.
  */
 void
-pgstat_report_subscription_error(Oid subid, bool is_apply_error)
+pgstat_report_subscription_error(Oid subid)
+{
+	PgStat_EntryRef *entry_ref;
+	PgStat_BackendSubEntry *pending;
+	LogicalRepWorkerType wtype = get_logical_worker_type();
+
+	entry_ref = pgstat_prep_pending_entry(PGSTAT_KIND_SUBSCRIPTION,
+										  InvalidOid, subid, NULL);
+	pending = entry_ref->pending;
+
+	switch (wtype)
+	{
+		case WORKERTYPE_APPLY:
+			pending->apply_error_count++;
+			break;
+
+		case WORKERTYPE_SEQUENCESYNC:
+			pending->sync_seq_error_count++;
+			break;
+
+		case WORKERTYPE_TABLESYNC:
+			pending->sync_table_error_count++;
+			break;
+
+		default:
+			/* Should never happen. */
+			Assert(0);
+			break;
+	}
+}
+
+/*
+ * Report a subscription conflict.
+ */
+void
+pgstat_report_subscription_conflict(Oid subid, ConflictType type)
 {
 	PgStat_EntryRef *entry_ref;
 	PgStat_BackendSubEntry *pending;
@@ -32,23 +68,23 @@ pgstat_report_subscription_error(Oid subid, bool is_apply_error)
 	entry_ref = pgstat_prep_pending_entry(PGSTAT_KIND_SUBSCRIPTION,
 										  InvalidOid, subid, NULL);
 	pending = entry_ref->pending;
-
-	if (is_apply_error)
-		pending->apply_error_count++;
-	else
-		pending->sync_error_count++;
+	pending->conflict_count[type]++;
 }
 
 /*
  * Report creating the subscription.
- *
- * Ensures that stats are dropped if transaction rolls back.
  */
 void
 pgstat_create_subscription(Oid subid)
 {
+	/* Ensures that stats are dropped if transaction rolls back */
 	pgstat_create_transactional(PGSTAT_KIND_SUBSCRIPTION,
 								InvalidOid, subid);
+
+	/* Create and initialize the subscription stats entry */
+	pgstat_get_entry_ref(PGSTAT_KIND_SUBSCRIPTION, InvalidOid, subid,
+						 true, NULL);
+	pgstat_reset_entry(PGSTAT_KIND_SUBSCRIPTION, InvalidOid, subid, 0);
 }
 
 /*
@@ -71,14 +107,14 @@ PgStat_StatSubEntry *
 pgstat_fetch_stat_subscription(Oid subid)
 {
 	return (PgStat_StatSubEntry *)
-		pgstat_fetch_entry(PGSTAT_KIND_SUBSCRIPTION, InvalidOid, subid);
+		pgstat_fetch_entry(PGSTAT_KIND_SUBSCRIPTION, InvalidOid, subid, NULL);
 }
 
 /*
  * Flush out pending stats for the entry
  *
- * If nowait is true, this function returns false if lock could not
- * immediately acquired, otherwise true is returned.
+ * If nowait is true and the lock could not be immediately acquired, returns
+ * false without flushing the entry.  Otherwise returns true.
  */
 bool
 pgstat_subscription_flush_cb(PgStat_EntryRef *entry_ref, bool nowait)
@@ -96,7 +132,10 @@ pgstat_subscription_flush_cb(PgStat_EntryRef *entry_ref, bool nowait)
 
 #define SUB_ACC(fld) shsubent->stats.fld += localent->fld
 	SUB_ACC(apply_error_count);
-	SUB_ACC(sync_error_count);
+	SUB_ACC(sync_seq_error_count);
+	SUB_ACC(sync_table_error_count);
+	for (int i = 0; i < CONFLICT_NUM_TYPES; i++)
+		SUB_ACC(conflict_count[i]);
 #undef SUB_ACC
 
 	pgstat_unlock_entry(entry_ref);

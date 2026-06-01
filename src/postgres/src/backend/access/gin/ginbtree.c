@@ -4,7 +4,7 @@
  *	  page utilities routines for the postgres inverted index access method.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,6 +19,7 @@
 #include "access/xloginsert.h"
 #include "miscadmin.h"
 #include "storage/predicate.h"
+#include "utils/injection_point.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
@@ -80,11 +81,11 @@ ginTraverseLock(Buffer buffer, bool searchMode)
  */
 GinBtreeStack *
 ginFindLeafPage(GinBtree btree, bool searchMode,
-				bool rootConflictCheck, Snapshot snapshot)
+				bool rootConflictCheck)
 {
 	GinBtreeStack *stack;
 
-	stack = (GinBtreeStack *) palloc(sizeof(GinBtreeStack));
+	stack = palloc_object(GinBtreeStack);
 	stack->blkno = btree->rootBlkno;
 	stack->buffer = ReadBuffer(btree->index, btree->rootBlkno);
 	stack->parent = NULL;
@@ -102,7 +103,6 @@ ginFindLeafPage(GinBtree btree, bool searchMode,
 		stack->off = InvalidOffsetNumber;
 
 		page = BufferGetPage(stack->buffer);
-		TestForOldSnapshot(snapshot, btree->index, page);
 
 		access = ginTraverseLock(stack->buffer, searchMode);
 
@@ -129,7 +129,6 @@ ginFindLeafPage(GinBtree btree, bool searchMode,
 			stack->buffer = ginStepRight(stack->buffer, btree->index, access);
 			stack->blkno = rightlink;
 			page = BufferGetPage(stack->buffer);
-			TestForOldSnapshot(snapshot, btree->index, page);
 
 			if (!searchMode && GinPageIsIncompleteSplit(page))
 				ginFinishOldSplit(btree, stack, NULL, access);
@@ -153,7 +152,7 @@ ginFindLeafPage(GinBtree btree, bool searchMode,
 		}
 		else
 		{
-			GinBtreeStack *ptr = (GinBtreeStack *) palloc(sizeof(GinBtreeStack));
+			GinBtreeStack *ptr = palloc_object(GinBtreeStack);
 
 			ptr->parent = stack;
 			stack = ptr;
@@ -247,7 +246,7 @@ ginFindParents(GinBtree btree, GinBtreeStack *stack)
 	blkno = root->blkno;
 	buffer = root->buffer;
 
-	ptr = (GinBtreeStack *) palloc(sizeof(GinBtreeStack));
+	ptr = palloc_object(GinBtreeStack);
 
 	for (;;)
 	{
@@ -398,24 +397,22 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 		START_CRIT_SECTION();
 
 		if (RelationNeedsWAL(btree->index) && !btree->isBuild)
-		{
 			XLogBeginInsert();
-			XLogRegisterBuffer(0, stack->buffer, REGBUF_STANDARD);
-			if (BufferIsValid(childbuf))
-				XLogRegisterBuffer(1, childbuf, REGBUF_STANDARD);
-		}
 
-		/* Perform the page update, and register any extra WAL data */
+		/*
+		 * Perform the page update, dirty and register stack->buffer, and
+		 * register any extra WAL data.
+		 */
 		btree->execPlaceToPage(btree, stack->buffer, stack,
 							   insertdata, updateblkno, ptp_workspace);
-
-		MarkBufferDirty(stack->buffer);
 
 		/* An insert to an internal page finishes the split of the child. */
 		if (BufferIsValid(childbuf))
 		{
 			GinPageGetOpaque(childpage)->flags &= ~GIN_INCOMPLETE_SPLIT;
 			MarkBufferDirty(childbuf);
+			if (RelationNeedsWAL(btree->index) && !btree->isBuild)
+				XLogRegisterBuffer(1, childbuf, REGBUF_STANDARD);
 		}
 
 		if (RelationNeedsWAL(btree->index) && !btree->isBuild)
@@ -426,7 +423,7 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 
 			xlrec.flags = xlflags;
 
-			XLogRegisterData((char *) &xlrec, sizeof(ginxlogInsert));
+			XLogRegisterData(&xlrec, sizeof(ginxlogInsert));
 
 			/*
 			 * Log information about child if this was an insertion of a
@@ -436,7 +433,7 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 			{
 				BlockIdSet(&childblknos[0], BufferGetBlockNumber(childbuf));
 				BlockIdSet(&childblknos[1], GinPageGetOpaque(childpage)->rightlink);
-				XLogRegisterData((char *) childblknos,
+				XLogRegisterData(childblknos,
 								 sizeof(BlockIdData) * 2);
 			}
 
@@ -479,7 +476,7 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 		savedRightLink = GinPageGetOpaque(page)->rightlink;
 
 		/* Begin setting up WAL record */
-		data.node = btree->index->rd_node;
+		data.locator = btree->index->rd_locator;
 		data.flags = xlflags;
 		if (BufferIsValid(childbuf))
 		{
@@ -620,7 +617,7 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 			if (BufferIsValid(childbuf))
 				XLogRegisterBuffer(3, childbuf, REGBUF_STANDARD);
 
-			XLogRegisterData((char *) &data, sizeof(ginxlogSplit));
+			XLogRegisterData(&data, sizeof(ginxlogSplit));
 
 			recptr = XLogInsert(RM_GIN_ID, XLOG_GIN_SPLIT);
 
@@ -685,6 +682,13 @@ ginFinishSplit(GinBtree btree, GinBtreeStack *stack, bool freestack,
 		GinBtreeStack *parent = stack->parent;
 		void	   *insertdata;
 		BlockNumber updateblkno;
+
+#ifdef USE_INJECTION_POINTS
+		if (GinPageIsLeaf(BufferGetPage(stack->buffer)))
+			INJECTION_POINT("gin-leave-leaf-split-incomplete", NULL);
+		else
+			INJECTION_POINT("gin-leave-internal-split-incomplete", NULL);
+#endif
 
 		/* search parent to lock */
 		LockBuffer(parent->buffer, GIN_EXCLUSIVE);
@@ -762,7 +766,7 @@ ginFinishSplit(GinBtree btree, GinBtreeStack *stack, bool freestack,
 /*
  * An entry point to ginFinishSplit() that is used when we stumble upon an
  * existing incompletely split page in the tree, as opposed to completing a
- * split that we just made outselves. The difference is that stack->buffer may
+ * split that we just made ourselves. The difference is that stack->buffer may
  * be merely share-locked on entry, and will be upgraded to exclusive mode.
  *
  * Note: Upgrading the lock momentarily releases it. Doing that in a scan
@@ -774,6 +778,7 @@ ginFinishSplit(GinBtree btree, GinBtreeStack *stack, bool freestack,
 static void
 ginFinishOldSplit(GinBtree btree, GinBtreeStack *stack, GinStatsData *buildStats, int access)
 {
+	INJECTION_POINT("gin-finish-incomplete-split", NULL);
 	elog(DEBUG1, "finishing incomplete split of block %u in gin index \"%s\"",
 		 stack->blkno, RelationGetRelationName(btree->index));
 

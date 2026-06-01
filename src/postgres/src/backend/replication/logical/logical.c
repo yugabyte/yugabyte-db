@@ -2,7 +2,7 @@
  * logical.c
  *	   PostgreSQL logical decoding coordination
  *
- * Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/logical.c
@@ -30,17 +30,20 @@
 
 #include "access/xact.h"
 #include "access/xlog_internal.h"
+#include "access/xlogutils.h"
 #include "fmgr.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "replication/decode.h"
 #include "replication/logical.h"
-#include "replication/origin.h"
 #include "replication/reorderbuffer.h"
+#include "replication/slotsync.h"
 #include "replication/snapbuild.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "utils/builtins.h"
+#include "utils/injection_point.h"
+#include "utils/inval.h"
 #include "utils/memutils.h"
 
 /* YB includes */
@@ -99,6 +102,11 @@ static void stream_message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *tx
 static void stream_truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 									   int nrelations, Relation relations[], ReorderBufferChange *change);
 
+/* callback to update txn's progress */
+static void update_progress_txn_cb_wrapper(ReorderBuffer *cache,
+										   ReorderBufferTXN *txn,
+										   XLogRecPtr lsn);
+
 static void LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugin);
 
 static void yb_schema_change_cb_wrapper(ReorderBuffer *cache, Oid relid);
@@ -108,46 +116,29 @@ static void yb_schema_change_cb_wrapper(ReorderBuffer *cache, Oid relid);
  * decoding.
  */
 void
-CheckLogicalDecodingRequirements(void)
+CheckLogicalDecodingRequirements(bool repack)
 {
-	CheckSlotRequirements();
+	CheckSlotRequirements(repack);
 
 	/*
 	 * NB: Adding a new requirement likely means that RestoreSlotFromDisk()
 	 * needs the same check.
 	 */
 
-	/* wal_level is not applicable to YSQL. */
-	if (!IsYugaByteEnabled())
-	{
-		if (wal_level < WAL_LEVEL_LOGICAL)
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					 errmsg("logical decoding requires wal_level >= logical")));
-	}
-
 	if (MyDatabaseId == InvalidOid)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("logical decoding requires a database connection")));
 
-	/* ----
-	 * TODO: We got to change that someday soon...
-	 *
-	 * There's basically three things missing to allow this:
-	 * 1) We need to be able to correctly and quickly identify the timeline a
-	 *	  LSN belongs to
-	 * 2) We need to force hot_standby_feedback to be enabled at all times so
-	 *	  the primary cannot remove rows we need.
-	 * 3) support dropping replication slots referring to a database, in
-	 *	  dbase_redo. There can't be any active ones due to HS recovery
-	 *	  conflicts, so that should be relatively easy.
-	 * ----
-	 */
-	if (RecoveryInProgress())
+	/* CheckSlotRequirements() has already checked if wal_level >= 'replica' */
+	Assert(wal_level >= WAL_LEVEL_REPLICA);
+
+	/* Check if logical decoding is available on standby */
+	if (RecoveryInProgress() && !IsLogicalDecodingEnabled())
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("logical decoding cannot be used while in recovery")));
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("logical decoding on standby requires \"effective_wal_level\" >= \"logical\" on the primary"),
+				 errhint("Set \"wal_level\" >= \"logical\" or create at least one logical slot when \"wal_level\" = \"replica\".")));
 }
 
 /*
@@ -178,7 +169,7 @@ StartupDecodingContext(List *output_plugin_options,
 									"Logical decoding context",
 									ALLOCSET_DEFAULT_SIZES);
 	old_context = MemoryContextSwitchTo(context);
-	ctx = palloc0(sizeof(LogicalDecodingContext));
+	ctx = palloc0_object(LogicalDecodingContext);
 
 	ctx->context = context;
 
@@ -221,7 +212,7 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->reorder = ReorderBufferAllocate();
 	ctx->snapshot_builder =
 		AllocateSnapshotBuilder(ctx->reorder, xmin_horizon, start_lsn,
-								need_full_snapshot, slot->data.two_phase_at);
+								need_full_snapshot, in_create, slot->data.two_phase_at);
 
 	if (IsYugaByteEnabled())
 		ctx->yb_start_decoding_at = start_lsn;
@@ -294,6 +285,12 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->reorder->commit_prepared = commit_prepared_cb_wrapper;
 	ctx->reorder->rollback_prepared = rollback_prepared_cb_wrapper;
 
+	/*
+	 * Callback to support updating progress during sending data of a
+	 * transaction (and its subtransactions) to the output plugin.
+	 */
+	ctx->reorder->update_progress_txn = update_progress_txn_cb_wrapper;
+
 	if (IsYugaByteEnabled())
 		ctx->reorder->yb_schema_change = yb_schema_change_cb_wrapper;
 
@@ -302,11 +299,12 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->write = do_write;
 	ctx->update_progress = update_progress;
 
+	/* Assume shared catalog access. The startup callback can change it. */
+	ctx->options.need_shared_catalogs = true;
+
 	ctx->output_plugin_options = output_plugin_options;
 
 	ctx->fast_forward = fast_forward;
-
-	ctx->in_create = in_create;
 
 	/*
 	 * YB: Mark that we need to invalidate the relcache as part of the startup.
@@ -351,6 +349,7 @@ StartupDecodingContext(List *output_plugin_options,
  * output_plugin_options -- contains options passed to the output plugin
  * need_full_snapshot -- if true, must obtain a snapshot able to read all
  *		tables; if false, one that can read only catalogs is acceptable.
+ * for_repack -- if true, we're going to be decoding for REPACK.
  * restart_lsn -- if given as invalid, it's this routine's responsibility to
  *		mark WAL as reserved by setting a convenient restart_lsn for the slot.
  *		Otherwise, we set for decoding to start from the given LSN without
@@ -371,6 +370,7 @@ LogicalDecodingContext *
 CreateInitDecodingContext(const char *plugin,
 						  List *output_plugin_options,
 						  bool need_full_snapshot,
+						  bool for_repack,
 						  XLogRecPtr restart_lsn,
 						  XLogReaderRoutine *xl_routine,
 						  LogicalOutputPluginWriterPrepareWrite prepare_write,
@@ -382,6 +382,12 @@ CreateInitDecodingContext(const char *plugin,
 	NameData	plugin_name;
 	LogicalDecodingContext *ctx;
 	MemoryContext old_context;
+
+	/*
+	 * On a standby, this check is also required while creating the slot.
+	 * Check the comments in the function.
+	 */
+	CheckLogicalDecodingRequirements(for_repack);
 
 	/* shorter lines... */
 	slot = MyReplicationSlot;
@@ -421,7 +427,7 @@ CreateInitDecodingContext(const char *plugin,
 	slot->data.plugin = plugin_name;
 	SpinLockRelease(&slot->mutex);
 
-	if (XLogRecPtrIsInvalid(restart_lsn))
+	if (!XLogRecPtrIsValid(restart_lsn))
 		ReplicationSlotReserveWal();
 	else
 	{
@@ -438,11 +444,11 @@ CreateInitDecodingContext(const char *plugin,
 	 * without further interlock its return value might immediately be out of
 	 * date.
 	 *
-	 * So we have to acquire the ProcArrayLock to prevent computation of new
-	 * xmin horizons by other backends, get the safe decoding xid, and inform
-	 * the slot machinery about the new limit. Once that's done the
-	 * ProcArrayLock can be released as the slot machinery now is
-	 * protecting against vacuum.
+	 * So we have to acquire both the ReplicationSlotControlLock and the
+	 * ProcArrayLock to prevent concurrent computation and update of new xmin
+	 * horizons by other backends, get the safe decoding xid, and inform the
+	 * slot machinery about the new limit. Once that's done both locks can be
+	 * released as the slot machinery now is protecting against vacuum.
 	 *
 	 * Note that, temporarily, the data, not just the catalog, xmin has to be
 	 * reserved if a data snapshot is to be exported.  Otherwise the initial
@@ -455,6 +461,7 @@ CreateInitDecodingContext(const char *plugin,
 	 *
 	 * ----
 	 */
+	LWLockAcquire(ReplicationSlotControlLock, LW_EXCLUSIVE);
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
 	xmin_horizon = GetOldestSafeDecodingTransactionId(!need_full_snapshot);
@@ -469,6 +476,7 @@ CreateInitDecodingContext(const char *plugin,
 	ReplicationSlotsComputeRequiredXmin(true);
 
 	LWLockRelease(ProcArrayLock);
+	LWLockRelease(ReplicationSlotControlLock);
 
 	ReplicationSlotMarkDirty();
 	ReplicationSlotSave();
@@ -553,13 +561,35 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("cannot use physical replication slot for logical decoding")));
 
-	if (slot->data.database != MyDatabaseId)
+	/*
+	 * We need to access the system tables during decoding to build the
+	 * logical changes unless we are in fast_forward mode where no changes are
+	 * generated.
+	 */
+	if (slot->data.database != MyDatabaseId && !fast_forward)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("replication slot \"%s\" was not created in this database",
 						NameStr(slot->data.name))));
 
-	if (start_lsn == InvalidXLogRecPtr)
+	/*
+	 * The slots being synced from the primary can't be used for decoding as
+	 * they are used after failover. However, we do allow advancing the LSNs
+	 * during the synchronization of slots. See update_local_synced_slot.
+	 */
+	if (RecoveryInProgress() && slot->data.synced && !IsSyncingReplicationSlots())
+		ereport(ERROR,
+				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				errmsg("cannot use replication slot \"%s\" for logical decoding",
+					   NameStr(slot->data.name)),
+				errdetail("This replication slot is being synchronized from the primary server."),
+				errhint("Specify another replication slot."));
+
+	/* slot must be valid to allow decoding */
+	Assert(slot->data.invalidated == RS_INVAL_NONE);
+	Assert(XLogRecPtrIsValid(slot->data.restart_lsn));
+
+	if (!XLogRecPtrIsValid(start_lsn))
 	{
 		/* continue from last position */
 		start_lsn = slot->data.confirmed_flush;
@@ -578,7 +608,7 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 		 * kinds of client errors; so the client may wish to check that
 		 * confirmed_flush_lsn matches its expectations.
 		 */
-		elog(LOG, "%X/%X has been already streamed, forwarding to %X/%X",
+		elog(LOG, "%X/%08X has been already streamed, forwarding to %X/%08X",
 			 LSN_FORMAT_ARGS(start_lsn),
 			 LSN_FORMAT_ARGS(slot->data.confirmed_flush));
 
@@ -618,10 +648,10 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 
 	ctx->reorder->output_rewrites = ctx->options.receive_rewrites;
 
-	ereport(LOG,
+	ereport(DEBUG1,
 			(errmsg("starting logical decoding for slot \"%s\"",
 					NameStr(slot->data.name)),
-			 errdetail("Streaming transactions committing after %X/%X, reading WAL from %X/%X.",
+			 errdetail("Streaming transactions committing after %X/%08X, reading WAL from %X/%08X.",
 					   LSN_FORMAT_ARGS(slot->data.confirmed_flush),
 					   LSN_FORMAT_ARGS(slot->data.restart_lsn))));
 
@@ -648,7 +678,7 @@ DecodingContextFindStartpoint(LogicalDecodingContext *ctx)
 	/* Initialize from where to start reading WAL. */
 	XLogBeginRead(ctx->reader, slot->data.restart_lsn);
 
-	elog(DEBUG1, "searching for logical decoding starting point, starting at %X/%X",
+	elog(DEBUG1, "searching for logical decoding starting point, starting at %X/%08X",
 		 LSN_FORMAT_ARGS(slot->data.restart_lsn));
 
 	/* Wait for a consistent starting point */
@@ -832,8 +862,8 @@ output_plugin_error_callback(void *arg)
 	LogicalErrorCallbackState *state = (LogicalErrorCallbackState *) arg;
 
 	/* not all callbacks have an associated LSN  */
-	if (state->report_location != InvalidXLogRecPtr)
-		errcontext("slot \"%s\", output plugin \"%s\", in the %s callback, associated LSN %X/%X",
+	if (XLogRecPtrIsValid(state->report_location))
+		errcontext("slot \"%s\", output plugin \"%s\", in the %s callback, associated LSN %X/%08X",
 				   NameStr(state->ctx->slot->data.name),
 				   NameStr(state->ctx->slot->data.plugin),
 				   state->callback_name,
@@ -858,7 +888,7 @@ startup_cb_wrapper(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool i
 	state.callback_name = "startup";
 	state.report_location = InvalidXLogRecPtr;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -886,7 +916,7 @@ shutdown_cb_wrapper(LogicalDecodingContext *ctx)
 	state.callback_name = "shutdown";
 	state.report_location = InvalidXLogRecPtr;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -920,7 +950,7 @@ begin_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn)
 	state.callback_name = "begin";
 	state.report_location = txn->first_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -952,7 +982,7 @@ commit_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "commit";
 	state.report_location = txn->final_lsn; /* beginning of commit record */
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -993,7 +1023,7 @@ begin_prepare_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn)
 	state.callback_name = "begin_prepare";
 	state.report_location = txn->first_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1038,7 +1068,7 @@ prepare_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "prepare";
 	state.report_location = txn->final_lsn; /* beginning of prepare record */
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1083,7 +1113,7 @@ commit_prepared_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "commit_prepared";
 	state.report_location = txn->final_lsn; /* beginning of commit record */
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1129,7 +1159,7 @@ rollback_prepared_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "rollback_prepared";
 	state.report_location = txn->final_lsn; /* beginning of commit record */
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1172,7 +1202,7 @@ change_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "change";
 	state.report_location = change->lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1214,7 +1244,7 @@ truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "truncate";
 	state.report_location = change->lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1253,7 +1283,7 @@ filter_prepare_cb_wrapper(LogicalDecodingContext *ctx, TransactionId xid,
 	state.callback_name = "filter_prepare";
 	state.report_location = InvalidXLogRecPtr;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1271,7 +1301,7 @@ filter_prepare_cb_wrapper(LogicalDecodingContext *ctx, TransactionId xid,
 }
 
 bool
-filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, RepOriginId origin_id)
+filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, ReplOriginId origin_id)
 {
 	LogicalErrorCallbackState state;
 	ErrorContextCallback errcallback;
@@ -1284,7 +1314,7 @@ filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, RepOriginId origin_id)
 	state.callback_name = "filter_by_origin";
 	state.report_location = InvalidXLogRecPtr;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1320,7 +1350,7 @@ message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "message";
 	state.report_location = message_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1356,7 +1386,7 @@ stream_start_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_start";
 	state.report_location = first_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1405,7 +1435,7 @@ stream_stop_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_stop";
 	state.report_location = last_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1454,7 +1484,7 @@ stream_abort_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_abort";
 	state.report_location = abort_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1499,7 +1529,7 @@ stream_prepare_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_prepare";
 	state.report_location = txn->final_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1540,7 +1570,7 @@ stream_commit_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_commit";
 	state.report_location = txn->final_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1581,7 +1611,7 @@ stream_change_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_change";
 	state.report_location = change->lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1635,7 +1665,7 @@ stream_message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_message";
 	state.report_location = message_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1676,7 +1706,7 @@ stream_truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_truncate";
 	state.report_location = change->lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1695,6 +1725,45 @@ stream_truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->end_xact = false;
 
 	ctx->callbacks.stream_truncate_cb(ctx, txn, nrelations, relations, change);
+
+	/* Pop the error context stack */
+	error_context_stack = errcallback.previous;
+}
+
+static void
+update_progress_txn_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
+							   XLogRecPtr lsn)
+{
+	LogicalDecodingContext *ctx = cache->private_data;
+	LogicalErrorCallbackState state;
+	ErrorContextCallback errcallback;
+
+	Assert(!ctx->fast_forward);
+
+	/* Push callback + info on the error context stack */
+	state.ctx = ctx;
+	state.callback_name = "update_progress_txn";
+	state.report_location = lsn;
+	errcallback.callback = output_plugin_error_callback;
+	errcallback.arg = &state;
+	errcallback.previous = error_context_stack;
+	error_context_stack = &errcallback;
+
+	/* set output state */
+	ctx->accept_writes = false;
+	ctx->write_xid = txn->xid;
+
+	/*
+	 * Report this change's lsn so replies from clients can give an up-to-date
+	 * answer. This won't ever be enough (and shouldn't be!) to confirm
+	 * receipt of this transaction, but it might allow another transaction's
+	 * commit to be confirmed with one message.
+	 */
+	ctx->write_location = lsn;
+
+	ctx->end_xact = false;
+
+	OutputPluginUpdateProgress(ctx, false);
 
 	/* Pop the error context stack */
 	error_context_stack = errcallback.previous;
@@ -1775,7 +1844,7 @@ LogicalIncreaseXminForSlot(XLogRecPtr current_lsn, TransactionId xmin)
 	 * Only increase if the previous values have been applied, otherwise we
 	 * might never end up updating if the receiver acks too slowly.
 	 */
-	else if (slot->candidate_xmin_lsn == InvalidXLogRecPtr)
+	else if (!XLogRecPtrIsValid(slot->candidate_xmin_lsn))
 	{
 		slot->candidate_catalog_xmin = xmin;
 		slot->candidate_xmin_lsn = current_lsn;
@@ -1789,7 +1858,7 @@ LogicalIncreaseXminForSlot(XLogRecPtr current_lsn, TransactionId xmin)
 	SpinLockRelease(&slot->mutex);
 
 	if (got_new_xmin)
-		elog(DEBUG1, "got new catalog xmin %u at %X/%X", xmin,
+		elog(DEBUG1, "got new catalog xmin %u at %X/%08X", xmin,
 			 LSN_FORMAT_ARGS(current_lsn));
 
 	/* candidate already valid with the current flush position, apply */
@@ -1813,8 +1882,8 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	slot = MyReplicationSlot;
 
 	Assert(slot != NULL);
-	Assert(restart_lsn != InvalidXLogRecPtr);
-	Assert(current_lsn != InvalidXLogRecPtr);
+	Assert(XLogRecPtrIsValid(restart_lsn));
+	Assert(XLogRecPtrIsValid(current_lsn));
 
 	SpinLockAcquire(&slot->mutex);
 
@@ -1843,13 +1912,13 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	 * might never end up updating if the receiver acks too slowly. A missed
 	 * value here will just cause some extra effort after reconnecting.
 	 */
-	else if (slot->candidate_restart_valid == InvalidXLogRecPtr)
+	else if (!XLogRecPtrIsValid(slot->candidate_restart_valid))
 	{
 		slot->candidate_restart_valid = current_lsn;
 		slot->candidate_restart_lsn = restart_lsn;
 		SpinLockRelease(&slot->mutex);
 
-		elog(DEBUG1, "got new restart lsn %X/%X at %X/%X",
+		elog(DEBUG1, "got new restart lsn %X/%08X at %X/%08X",
 			 LSN_FORMAT_ARGS(restart_lsn),
 			 LSN_FORMAT_ARGS(current_lsn));
 	}
@@ -1864,7 +1933,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 		confirmed_flush = slot->data.confirmed_flush;
 		SpinLockRelease(&slot->mutex);
 
-		elog(DEBUG1, "failed to increase restart lsn: proposed %X/%X, after %X/%X, current candidate %X/%X, current after %X/%X, flushed up to %X/%X",
+		elog(DEBUG1, "failed to increase restart lsn: proposed %X/%08X, after %X/%08X, current candidate %X/%08X, current after %X/%08X, flushed up to %X/%08X",
 			 LSN_FORMAT_ARGS(restart_lsn),
 			 LSN_FORMAT_ARGS(current_lsn),
 			 LSN_FORMAT_ARGS(candidate_restart_lsn),
@@ -1883,7 +1952,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 void
 LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 {
-	Assert(lsn != InvalidXLogRecPtr);
+	Assert(XLogRecPtrIsValid(lsn));
 
 	/*
 	 * YB Note: The mechanism of updating restart lsn is different in YSQL. We
@@ -1892,18 +1961,34 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 	 */
 	/* Do an unlocked check for candidate_lsn first. */
 	if (!IsYugaByteEnabled() &&
-		(MyReplicationSlot->candidate_xmin_lsn != InvalidXLogRecPtr ||
-		 MyReplicationSlot->candidate_restart_valid != InvalidXLogRecPtr))
+		(XLogRecPtrIsValid(MyReplicationSlot->candidate_xmin_lsn) ||
+		 XLogRecPtrIsValid(MyReplicationSlot->candidate_restart_valid)))
 	{
 		bool		updated_xmin = false;
 		bool		updated_restart = false;
+		XLogRecPtr	restart_lsn pg_attribute_unused();
 
 		SpinLockAcquire(&MyReplicationSlot->mutex);
 
-		MyReplicationSlot->data.confirmed_flush = lsn;
+		/* remember the old restart lsn */
+		restart_lsn = MyReplicationSlot->data.restart_lsn;
+
+		/*
+		 * Prevent moving the confirmed_flush backwards, as this could lead to
+		 * data duplication issues caused by replicating already replicated
+		 * changes.
+		 *
+		 * This can happen when a client acknowledges an LSN it doesn't have
+		 * to do anything for, and thus didn't store persistently. After a
+		 * restart, the client can send the prior LSN that it stored
+		 * persistently as an acknowledgement, but we need to ignore such an
+		 * LSN. See similar case handling in CreateDecodingContext.
+		 */
+		if (lsn > MyReplicationSlot->data.confirmed_flush)
+			MyReplicationSlot->data.confirmed_flush = lsn;
 
 		/* if we're past the location required for bumping xmin, do so */
-		if (MyReplicationSlot->candidate_xmin_lsn != InvalidXLogRecPtr &&
+		if (XLogRecPtrIsValid(MyReplicationSlot->candidate_xmin_lsn) &&
 			MyReplicationSlot->candidate_xmin_lsn <= lsn)
 		{
 			/*
@@ -1925,10 +2010,10 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 			}
 		}
 
-		if (MyReplicationSlot->candidate_restart_valid != InvalidXLogRecPtr &&
+		if (XLogRecPtrIsValid(MyReplicationSlot->candidate_restart_valid) &&
 			MyReplicationSlot->candidate_restart_valid <= lsn)
 		{
-			Assert(MyReplicationSlot->candidate_restart_lsn != InvalidXLogRecPtr);
+			Assert(XLogRecPtrIsValid(MyReplicationSlot->candidate_restart_lsn));
 
 			MyReplicationSlot->data.restart_lsn = MyReplicationSlot->candidate_restart_lsn;
 			MyReplicationSlot->candidate_restart_lsn = InvalidXLogRecPtr;
@@ -1941,6 +2026,18 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 		/* first write new xmin to disk, so we know what's up after a crash */
 		if (updated_xmin || updated_restart)
 		{
+#ifdef USE_INJECTION_POINTS
+			XLogSegNo	seg1,
+						seg2;
+
+			XLByteToSeg(restart_lsn, seg1, wal_segment_size);
+			XLByteToSeg(MyReplicationSlot->data.restart_lsn, seg2, wal_segment_size);
+
+			/* trigger injection point, but only if segment changes */
+			if (seg1 != seg2)
+				INJECTION_POINT("logical-replication-slot-advance-segment", NULL);
+#endif
+
 			ReplicationSlotMarkDirty();
 			ReplicationSlotSave();
 			elog(DEBUG1, "updated xmin: %u restart: %u", updated_xmin, updated_restart);
@@ -1970,9 +2067,17 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 			yb_restart_lsn = YBCCalculatePersistAndGetRestartLSN(lsn);
 
 		SpinLockAcquire(&MyReplicationSlot->mutex);
-		MyReplicationSlot->data.confirmed_flush = lsn;
+
+		/*
+		 * Prevent moving the confirmed_flush backwards. See comments above
+		 * for the details.
+		 */
+		if (lsn > MyReplicationSlot->data.confirmed_flush)
+			MyReplicationSlot->data.confirmed_flush = lsn;
+
 		if (IsYugaByteEnabled() && yb_restart_lsn != InvalidXLogRecPtr)
 			MyReplicationSlot->data.restart_lsn = yb_restart_lsn;
+
 		SpinLockRelease(&MyReplicationSlot->mutex);
 	}
 }
@@ -1997,19 +2102,21 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	PgStat_StatReplSlotEntry repSlotStat;
 
 	/* Nothing to do if we don't have any replication stats to be sent. */
-	if (rb->spillBytes <= 0 && rb->streamBytes <= 0 && rb->totalBytes <= 0)
+	if (rb->spillBytes <= 0 && rb->streamBytes <= 0 && rb->totalBytes <= 0 &&
+		rb->memExceededCount <= 0)
 		return;
 
-	elog(DEBUG2, "UpdateDecodingStats: updating stats %p %lld %lld %lld %lld %lld %lld %lld %lld",
+	elog(DEBUG2, "UpdateDecodingStats: updating stats %p %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
 		 rb,
-		 (long long) rb->spillTxns,
-		 (long long) rb->spillCount,
-		 (long long) rb->spillBytes,
-		 (long long) rb->streamTxns,
-		 (long long) rb->streamCount,
-		 (long long) rb->streamBytes,
-		 (long long) rb->totalTxns,
-		 (long long) rb->totalBytes);
+		 rb->spillTxns,
+		 rb->spillCount,
+		 rb->spillBytes,
+		 rb->streamTxns,
+		 rb->streamCount,
+		 rb->streamBytes,
+		 rb->memExceededCount,
+		 rb->totalTxns,
+		 rb->totalBytes);
 
 	repSlotStat.spill_txns = rb->spillTxns;
 	repSlotStat.spill_count = rb->spillCount;
@@ -2017,6 +2124,7 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	repSlotStat.stream_txns = rb->streamTxns;
 	repSlotStat.stream_count = rb->streamCount;
 	repSlotStat.stream_bytes = rb->streamBytes;
+	repSlotStat.mem_exceeded_count = rb->memExceededCount;
 	repSlotStat.total_txns = rb->totalTxns;
 	repSlotStat.total_bytes = rb->totalBytes;
 
@@ -2028,6 +2136,233 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	rb->streamTxns = 0;
 	rb->streamCount = 0;
 	rb->streamBytes = 0;
+	rb->memExceededCount = 0;
 	rb->totalTxns = 0;
 	rb->totalBytes = 0;
+}
+
+/*
+ * Read up to the end of WAL starting from the decoding slot's restart_lsn
+ * to end_of_wal in order to check if any meaningful/decodable WAL records
+ * are encountered. scan_cutoff_lsn is the LSN, where we can terminate the
+ * WAL scan early if we find a decodable WAL record after this LSN.
+ *
+ * Returns the last LSN decodable WAL record's LSN if found, otherwise
+ * returns InvalidXLogRecPtr.
+ */
+XLogRecPtr
+LogicalReplicationSlotCheckPendingWal(XLogRecPtr end_of_wal,
+									  XLogRecPtr scan_cutoff_lsn)
+{
+	XLogRecPtr	last_pending_wal = InvalidXLogRecPtr;
+
+	Assert(MyReplicationSlot);
+	Assert(end_of_wal >= scan_cutoff_lsn);
+
+	PG_TRY();
+	{
+		LogicalDecodingContext *ctx;
+
+		/*
+		 * Create our decoding context in fast_forward mode, passing start_lsn
+		 * as InvalidXLogRecPtr, so that we start processing from the slot's
+		 * confirmed_flush.
+		 */
+		ctx = CreateDecodingContext(InvalidXLogRecPtr,
+									NIL,
+									true,	/* fast_forward */
+									XL_ROUTINE(.page_read = read_local_xlog_page,
+											   .segment_open = wal_segment_open,
+											   .segment_close = wal_segment_close),
+									NULL, NULL, NULL);
+
+		/*
+		 * Start reading at the slot's restart_lsn, which we know points to a
+		 * valid record.
+		 */
+		XLogBeginRead(ctx->reader, MyReplicationSlot->data.restart_lsn);
+
+		/* Invalidate non-timetravel entries */
+		InvalidateSystemCaches();
+
+		while (ctx->reader->EndRecPtr < end_of_wal)
+		{
+			XLogRecord *record;
+			char	   *errm = NULL;
+
+			record = XLogReadRecord(ctx->reader, &errm);
+
+			if (errm)
+				elog(ERROR, "could not find record for logical decoding: %s", errm);
+
+			if (record != NULL)
+				LogicalDecodingProcessRecord(ctx, ctx->reader);
+
+			if (ctx->processing_required)
+			{
+				last_pending_wal = ctx->reader->ReadRecPtr;
+
+				/*
+				 * If we find a decodable WAL after the scan_cutoff_lsn point,
+				 * we can terminate the scan early.
+				 */
+				if (last_pending_wal >= scan_cutoff_lsn)
+					break;
+
+				/* Reset the flag and continue checking */
+				ctx->processing_required = false;
+			}
+
+			CHECK_FOR_INTERRUPTS();
+		}
+
+		/* Clean up */
+		FreeDecodingContext(ctx);
+		InvalidateSystemCaches();
+	}
+	PG_CATCH();
+	{
+		/* clear all timetravel entries */
+		InvalidateSystemCaches();
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	return last_pending_wal;
+}
+
+/*
+ * Helper function for advancing our logical replication slot forward.
+ *
+ * The slot's restart_lsn is used as start point for reading records, while
+ * confirmed_flush is used as base point for the decoding context.
+ *
+ * We cannot just do LogicalConfirmReceivedLocation to update confirmed_flush,
+ * because we need to digest WAL to advance restart_lsn allowing to recycle
+ * WAL and removal of old catalog tuples.  As decoding is done in fast_forward
+ * mode, no changes are generated anyway.
+ *
+ * *found_consistent_snapshot will be true if the initial decoding snapshot has
+ * been built; Otherwise, it will be false.
+ */
+XLogRecPtr
+LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
+									bool *found_consistent_snapshot)
+{
+	LogicalDecodingContext *ctx;
+	ResourceOwner old_resowner PG_USED_FOR_ASSERTS_ONLY = CurrentResourceOwner;
+	XLogRecPtr	retlsn;
+
+	Assert(XLogRecPtrIsValid(moveto));
+
+	if (found_consistent_snapshot)
+		*found_consistent_snapshot = false;
+
+	PG_TRY();
+	{
+		/*
+		 * Create our decoding context in fast_forward mode, passing start_lsn
+		 * as InvalidXLogRecPtr, so that we start processing from my slot's
+		 * confirmed_flush.
+		 */
+		ctx = CreateDecodingContext(InvalidXLogRecPtr,
+									NIL,
+									true,	/* fast_forward */
+									XL_ROUTINE(.page_read = read_local_xlog_page,
+											   .segment_open = wal_segment_open,
+											   .segment_close = wal_segment_close),
+									NULL, NULL, NULL);
+
+		/*
+		 * Wait for specified streaming replication standby servers (if any)
+		 * to confirm receipt of WAL up to moveto lsn.
+		 */
+		WaitForStandbyConfirmation(moveto);
+
+		/*
+		 * Start reading at the slot's restart_lsn, which we know to point to
+		 * a valid record.
+		 */
+		XLogBeginRead(ctx->reader, MyReplicationSlot->data.restart_lsn);
+
+		/* invalidate non-timetravel entries */
+		InvalidateSystemCaches();
+
+		/* Decode records until we reach the requested target */
+		while (ctx->reader->EndRecPtr < moveto)
+		{
+			char	   *errm = NULL;
+			XLogRecord *record;
+
+			/*
+			 * Read records.  No changes are generated in fast_forward mode,
+			 * but snapbuilder/slot statuses are updated properly.
+			 */
+			record = XLogReadRecord(ctx->reader, &errm);
+			if (errm)
+				elog(ERROR, "could not find record while advancing replication slot: %s",
+					 errm);
+
+			/*
+			 * Process the record.  Storage-level changes are ignored in
+			 * fast_forward mode, but other modules (such as snapbuilder)
+			 * might still have critical updates to do.
+			 */
+			if (record)
+			{
+				LogicalDecodingProcessRecord(ctx, ctx->reader);
+
+				/*
+				 * We used to have bugs where logical decoding would fail to
+				 * preserve the resource owner.  That's important here, so
+				 * verify that that doesn't happen anymore.  XXX this could be
+				 * removed once it's been battle-tested.
+				 */
+				Assert(CurrentResourceOwner == old_resowner);
+			}
+
+			CHECK_FOR_INTERRUPTS();
+		}
+
+		if (found_consistent_snapshot && DecodingContextReady(ctx))
+			*found_consistent_snapshot = true;
+
+		if (XLogRecPtrIsValid(ctx->reader->EndRecPtr))
+		{
+			LogicalConfirmReceivedLocation(moveto);
+
+			/*
+			 * If only the confirmed_flush LSN has changed the slot won't get
+			 * marked as dirty by the above. Callers on the walsender
+			 * interface are expected to keep track of their own progress and
+			 * don't need it written out. But SQL-interface users cannot
+			 * specify their own start positions and it's harder for them to
+			 * keep track of their progress, so we should make more of an
+			 * effort to save it for them.
+			 *
+			 * Dirty the slot so it is written out at the next checkpoint. The
+			 * LSN position advanced to may still be lost on a crash but this
+			 * makes the data consistent after a clean shutdown.
+			 */
+			ReplicationSlotMarkDirty();
+		}
+
+		retlsn = MyReplicationSlot->data.confirmed_flush;
+
+		/* free context, call shutdown callback */
+		FreeDecodingContext(ctx);
+
+		InvalidateSystemCaches();
+	}
+	PG_CATCH();
+	{
+		/* clear all timetravel entries */
+		InvalidateSystemCaches();
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	return retlsn;
 }

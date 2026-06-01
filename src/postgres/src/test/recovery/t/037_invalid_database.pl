@@ -1,9 +1,9 @@
-# Copyright (c) 2023, PostgreSQL Global Development Group
+# Copyright (c) 2023-2026, PostgreSQL Global Development Group
 #
 # Test we handle interrupted DROP DATABASE correctly.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -15,7 +15,7 @@ $node->append_conf(
 autovacuum = off
 max_prepared_transactions=5
 log_min_duration_statement=0
-log_connections=on
+log_connections=receipt
 log_disconnections=on
 ));
 
@@ -42,11 +42,15 @@ like(
 	qr/FATAL:\s+cannot connect to invalid database "regression_invalid"/,
 	"can't connect to invalid database - error message");
 
-is($node->psql('postgres', 'ALTER DATABASE regression_invalid CONNECTION LIMIT 10'),
-	2, "can't ALTER invalid database");
+is( $node->psql(
+		'postgres', 'ALTER DATABASE regression_invalid CONNECTION LIMIT 10'),
+	2,
+	"can't ALTER invalid database");
 
 # check invalid database can't be used as a template
-is( $node->psql('postgres', 'CREATE DATABASE copy_invalid TEMPLATE regression_invalid'),
+is( $node->psql(
+		'postgres',
+		'CREATE DATABASE copy_invalid TEMPLATE regression_invalid'),
 	3,
 	"can't use invalid database as template");
 
@@ -92,13 +96,12 @@ my $bgpsql = $node->background_psql('postgres', on_error_stop => 0);
 my $pid = $bgpsql->query('SELECT pg_backend_pid()');
 
 # create the database, prevent drop database via lock held by a 2PC transaction
-ok( $bgpsql->query_safe(
-		qq(
+$bgpsql->query_safe(
+	qq(
   CREATE DATABASE regression_invalid_interrupt;
   BEGIN;
   LOCK pg_tablespace;
-  PREPARE TRANSACTION 'lock_tblspc';)),
-	"blocked DROP DATABASE completion");
+  PREPARE TRANSACTION 'lock_tblspc';));
 
 # Try to drop. This will wait due to the still held lock.
 $bgpsql->query_until(qr//, "DROP DATABASE regression_invalid_interrupt;\n");
@@ -131,11 +134,8 @@ is($node->psql('regression_invalid_interrupt', ''),
 
 # To properly drop the database, we need to release the lock previously preventing
 # doing so.
-ok($bgpsql->query_safe(qq(ROLLBACK PREPARED 'lock_tblspc')),
-	"unblock DROP DATABASE");
-
-ok($bgpsql->query(qq(DROP DATABASE regression_invalid_interrupt)),
-	"DROP DATABASE invalid_interrupt");
+$bgpsql->query_safe(qq(ROLLBACK PREPARED 'lock_tblspc'));
+$bgpsql->query_safe(qq(DROP DATABASE regression_invalid_interrupt));
 
 $bgpsql->quit();
 

@@ -304,9 +304,9 @@ FROM abbrev_abort_uuids
 ORDER BY ctid DESC LIMIT 5;
   id   |           abort_increasing           |           abort_decreasing           |          noabort_increasing          |          noabort_decreasing          
 -------+--------------------------------------+--------------------------------------+--------------------------------------+--------------------------------------
-     0 |                                      |                                      |                                      | 
  20002 |                                      |                                      |                                      | 
  20003 |                                      |                                      |                                      | 
+     0 |                                      |                                      |                                      | 
  10009 | 00000000-0000-0000-0000-000000010008 | 00000000-0000-0000-0000-000000009992 | 00010008-0000-0000-0000-000000010008 | 00009992-0000-0000-0000-000000009992
  10008 | 00000000-0000-0000-0000-000000010007 | 00000000-0000-0000-0000-000000009993 | 00010007-0000-0000-0000-000000010007 | 00009993-0000-0000-0000-000000009993
 (5 rows)
@@ -335,14 +335,27 @@ FROM abbrev_abort_uuids
 ORDER BY ctid DESC LIMIT 5;
   id   |           abort_increasing           |           abort_decreasing           |          noabort_increasing          |          noabort_decreasing          
 -------+--------------------------------------+--------------------------------------+--------------------------------------+--------------------------------------
-     0 |                                      |                                      |                                      | 
- 20003 |                                      |                                      |                                      | 
  20002 |                                      |                                      |                                      | 
+ 20003 |                                      |                                      |                                      | 
+     0 |                                      |                                      |                                      | 
   9993 | 00000000-0000-0000-0000-000000009992 | 00000000-0000-0000-0000-000000010008 | 00009992-0000-0000-0000-000000009992 | 00010008-0000-0000-0000-000000010008
   9994 | 00000000-0000-0000-0000-000000009993 | 00000000-0000-0000-0000-000000010007 | 00009993-0000-0000-0000-000000009993 | 00010007-0000-0000-0000-000000010007
 (5 rows)
 
 ROLLBACK;
+----
+-- test sorting of large datums VALUES
+----
+-- Ensure the order is correct and values look intact
+SELECT LEFT(a,10),b FROM
+    (VALUES(REPEAT('a', 512 * 1024),1),(REPEAT('b', 512 * 1024),2)) v(a,b)
+ORDER BY v.a DESC;
+    left    | b 
+------------+---
+ bbbbbbbbbb | 2
+ aaaaaaaaaa | 1
+(2 rows)
+
 ----
 -- test forward and backward scans for in-memory and disk based tuplesort
 ----
@@ -401,7 +414,7 @@ FETCH NEXT FROM c;
  00000000-0000-0000-0000-000000000000
 (1 row)
 
--- scroll beyond end end
+-- scroll beyond end
 FETCH LAST FROM c;
  noabort_decreasing 
 --------------------
@@ -498,7 +511,7 @@ FETCH NEXT FROM c;
  00000000-0000-0000-0000-000000000000
 (1 row)
 
--- scroll beyond end end
+-- scroll beyond end
 FETCH LAST FROM c;
  noabort_decreasing 
 --------------------
@@ -622,15 +635,18 @@ EXPLAIN (COSTS OFF) :qry;
          ->  GroupAggregate
                Group Key: a.col12
                Filter: (count(*) > 1)
-               ->  Merge Join
-                     Merge Cond: (a.col12 = b.col12)
-                     ->  Sort
-                           Sort Key: a.col12 DESC
-                           ->  Seq Scan on test_mark_restore a
-                     ->  Sort
-                           Sort Key: b.col12 DESC
-                           ->  Seq Scan on test_mark_restore b
-(14 rows)
+               ->  Incremental Sort
+                     Sort Key: a.col12 DESC, a.col1
+                     Presorted Key: a.col12
+                     ->  Merge Join
+                           Merge Cond: (a.col12 = b.col12)
+                           ->  Sort
+                                 Sort Key: a.col12 DESC
+                                 ->  Seq Scan on test_mark_restore a
+                           ->  Sort
+                                 Sort Key: b.col12 DESC
+                                 ->  Seq Scan on test_mark_restore b
+(17 rows)
 
 :qry;
  col12 | count | count | count | count | count 
@@ -658,15 +674,18 @@ EXPLAIN (COSTS OFF) :qry;
          ->  GroupAggregate
                Group Key: a.col12
                Filter: (count(*) > 1)
-               ->  Merge Join
-                     Merge Cond: (a.col12 = b.col12)
-                     ->  Sort
-                           Sort Key: a.col12 DESC
-                           ->  Seq Scan on test_mark_restore a
-                     ->  Sort
-                           Sort Key: b.col12 DESC
-                           ->  Seq Scan on test_mark_restore b
-(14 rows)
+               ->  Incremental Sort
+                     Sort Key: a.col12 DESC, a.col1
+                     Presorted Key: a.col12
+                     ->  Merge Join
+                           Merge Cond: (a.col12 = b.col12)
+                           ->  Sort
+                                 Sort Key: a.col12 DESC
+                                 ->  Seq Scan on test_mark_restore a
+                           ->  Sort
+                                 Sort Key: b.col12 DESC
+                                 ->  Seq Scan on test_mark_restore b
+(17 rows)
 
 :qry;
  col12 | count | count | count | count | count 

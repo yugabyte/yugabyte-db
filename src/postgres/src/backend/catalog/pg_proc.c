@@ -3,7 +3,7 @@
  * pg_proc.c
  *	  routines to support manipulation of the pg_proc relation
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -20,21 +20,19 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
-#include "commands/defrem.h"
 #include "executor/functions.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
-#include "parser/analyze.h"
 #include "parser/parse_coerce.h"
-#include "parser/parse_type.h"
 #include "pgstat.h"
 #include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"
@@ -62,6 +60,35 @@ static bool match_prosrc_to_literal(const char *prosrc, const char *literal,
 
 /* ----------------------------------------------------------------
  *		ProcedureCreate
+ *
+ *	procedureName: string name of routine (proname)
+ *	procNamespace: OID of namespace (pronamespace)
+ *	replace: true to allow replacement of an existing pg_proc entry
+ *	returnsSet: returns set? (proretset)
+ *	returnType: OID of result type (prorettype)
+ *	proowner: OID of owner role (proowner)
+ *	languageObjectId: OID of function language (prolang)
+ *	languageValidator: OID of validator function to apply, if any
+ *	prosrc: string form of function definition (prosrc)
+ *	probin: string form of binary reference, or NULL (probin)
+ *	prosqlbody: Node tree of pre-parsed SQL body, or NULL (prosqlbody)
+ *	prokind: function/aggregate/procedure/etc code (prokind)
+ *	security_definer: security definer? (prosecdef)
+ *	isLeakProof: leak proof? (proleakproof)
+ *	isStrict: strict? (proisstrict)
+ *	volatility: volatility code (provolatile)
+ *	parallel: parallel safety code (proparallel)
+ *	parameterTypes: input parameter types, as an oidvector (proargtypes)
+ *	allParameterTypes: all parameter types, as an OID array (proallargtypes)
+ *	parameterModes: parameter modes, as a "char" array (proargmodes)
+ *	parameterNames: parameter names, as a text array (proargnames)
+ *	parameterDefaults: defaults, as a List of Node trees (proargdefaults)
+ *	trftypes: transformable type OIDs, as an OID array (protrftypes)
+ *	trfoids: List of transform OIDs that routine should depend on
+ *	proconfig: GUC set clauses, as a text array (proconfig)
+ *	prosupport: OID of support function, if any (prosupport)
+ *	procost: cost factor (procost)
+ *	prorows: estimated output rows for a SRF (prorows)
  *
  * Note: allParameterTypes, parameterModes, parameterNames, trftypes, and proconfig
  * are either arrays of the proper types or NULL.  We declare them Datum,
@@ -92,6 +119,7 @@ ProcedureCreate(const char *procedureName,
 				Datum parameterNames,
 				List *parameterDefaults,
 				Datum trftypes,
+				List *trfoids,
 				Datum proconfig,
 				Oid prosupport,
 				float4 procost,
@@ -114,16 +142,16 @@ ProcedureCreate(const char *procedureName,
 	TupleDesc	tupDesc;
 	bool		is_update;
 	ObjectAddress myself,
-				referenced;
+				referenced,
+				temp_object;
 	char	   *detailmsg;
 	int			i;
-	Oid			trfid;
 	ObjectAddresses *addrs;
 
 	/*
 	 * sanity checks
 	 */
-	Assert(PointerIsValid(prosrc));
+	Assert(prosrc);
 
 	parameterCount = parameterTypes->dim1;
 	if (parameterCount < 0 || parameterCount > FUNC_MAX_ARGS)
@@ -375,7 +403,7 @@ ProcedureCreate(const char *procedureName,
 					(errcode(ERRCODE_DUPLICATE_FUNCTION),
 					 errmsg("function \"%s\" already exists with same argument types",
 							procedureName)));
-		if (!pg_proc_ownercheck(oldproc->oid, proowner))
+		if (!object_ownercheck(ProcedureRelationId, oldproc->oid, proowner))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 						   procedureName);
 
@@ -439,7 +467,7 @@ ProcedureCreate(const char *procedureName,
 			if (olddesc == NULL && newdesc == NULL)
 				 /* ok, both are runtime-defined RECORDs */ ;
 			else if (olddesc == NULL || newdesc == NULL ||
-					 !equalTupleDescs(olddesc, newdesc))
+					 !equalRowTypes(olddesc, newdesc))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						 errmsg("cannot change return type of existing function"),
@@ -520,10 +548,8 @@ ProcedureCreate(const char *procedureName,
 								 dropcmd,
 								 format_procedure(oldproc->oid))));
 
-			proargdefaults = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
-											 Anum_pg_proc_proargdefaults,
-											 &isnull);
-			Assert(!isnull);
+			proargdefaults = SysCacheGetAttrNotNull(PROCNAMEARGSNSP, oldtup,
+													Anum_pg_proc_proargdefaults);
 			oldDefaults = castNode(List, stringToNode(TextDatumGetCString(proargdefaults)));
 			Assert(list_length(oldDefaults) == oldproc->pronargdefaults);
 
@@ -613,25 +639,18 @@ ProcedureCreate(const char *procedureName,
 	ObjectAddressSet(referenced, TypeRelationId, returnType);
 	add_exact_object_address(&referenced, addrs);
 
-	/* dependency on transform used by return type, if any */
-	if ((trfid = get_transform_oid(returnType, languageObjectId, true)))
-	{
-		ObjectAddressSet(referenced, TransformRelationId, trfid);
-		add_exact_object_address(&referenced, addrs);
-	}
-
 	/* dependency on parameter types */
 	for (i = 0; i < allParamCount; i++)
 	{
 		ObjectAddressSet(referenced, TypeRelationId, allParams[i]);
 		add_exact_object_address(&referenced, addrs);
+	}
 
-		/* dependency on transform used by parameter type, if any */
-		if ((trfid = get_transform_oid(allParams[i], languageObjectId, true)))
-		{
-			ObjectAddressSet(referenced, TransformRelationId, trfid);
-			add_exact_object_address(&referenced, addrs);
-		}
+	/* dependency on transforms, if any */
+	foreach_oid(transformid, trfoids)
+	{
+		ObjectAddressSet(referenced, TransformRelationId, transformid);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* dependency on support function, if any */
@@ -641,17 +660,40 @@ ProcedureCreate(const char *procedureName,
 		add_exact_object_address(&referenced, addrs);
 	}
 
-	record_object_address_dependencies(&myself, addrs, DEPENDENCY_NORMAL);
-	free_object_addresses(addrs);
-
-	/* dependency on SQL routine body */
+	/* dependencies appearing in new-style SQL routine body */
 	if (languageObjectId == SQLlanguageId && prosqlbody)
-		recordDependencyOnExpr(&myself, prosqlbody, NIL, DEPENDENCY_NORMAL);
+		collectDependenciesOfExpr(addrs, prosqlbody, NIL);
 
 	/* dependency on parameter default expressions */
 	if (parameterDefaults)
-		recordDependencyOnExpr(&myself, (Node *) parameterDefaults,
-							   NIL, DEPENDENCY_NORMAL);
+		collectDependenciesOfExpr(addrs, (Node *) parameterDefaults, NIL);
+
+	/*
+	 * Now that we have all the normal dependencies, thumb through them and
+	 * warn if any are to temporary objects.  This informs the user if their
+	 * supposedly non-temp function will silently go away at session exit, due
+	 * to a dependency on a temp object.  However, do not complain when a
+	 * function created in our own pg_temp namespace refers to other objects
+	 * in that namespace, since then they'll have similar lifespans anyway.
+	 */
+	if (find_temp_object(addrs, isTempNamespace(procNamespace), &temp_object))
+		ereport(NOTICE,
+				(errmsg("function \"%s\" will be effectively temporary",
+						procedureName),
+				 errdetail("It depends on temporary %s.",
+						   getObjectDescription(&temp_object, false))));
+
+	/*
+	 * Now record all normal dependencies at once.  This will also remove any
+	 * duplicates in the list.  (Role and extension dependencies are handled
+	 * separately below.  Role dependencies would have to be separate anyway
+	 * since they are shared dependencies.  An extension dependency could be
+	 * folded into the addrs list, but pg_depend.c doesn't make that easy, and
+	 * it won't duplicate anything we've collected so far anyway.)
+	 */
+	record_object_address_dependencies(&myself, addrs, DEPENDENCY_NORMAL);
+
+	free_object_addresses(addrs);
 
 	/* dependency on owner */
 	if (!is_update)
@@ -730,7 +772,6 @@ fmgr_internal_validator(PG_FUNCTION_ARGS)
 {
 	Oid			funcoid = PG_GETARG_OID(0);
 	HeapTuple	tuple;
-	bool		isnull;
 	Datum		tmp;
 	char	   *prosrc;
 
@@ -746,9 +787,7 @@ fmgr_internal_validator(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 
-	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
-	if (isnull)
-		elog(ERROR, "null prosrc");
+	tmp = SysCacheGetAttrNotNull(PROCOID, tuple, Anum_pg_proc_prosrc);
 	prosrc = TextDatumGetCString(tmp);
 
 	if (fmgr_internal_function(prosrc) == InvalidOid)
@@ -777,7 +816,6 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 	Oid			funcoid = PG_GETARG_OID(0);
 	void	   *libraryhandle;
 	HeapTuple	tuple;
-	bool		isnull;
 	Datum		tmp;
 	char	   *prosrc;
 	char	   *probin;
@@ -795,14 +833,10 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcoid);
 
-	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
-	if (isnull)
-		elog(ERROR, "null prosrc for C function %u", funcoid);
+	tmp = SysCacheGetAttrNotNull(PROCOID, tuple, Anum_pg_proc_prosrc);
 	prosrc = TextDatumGetCString(tmp);
 
-	tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_probin, &isnull);
-	if (isnull)
-		elog(ERROR, "null probin for C function %u", funcoid);
+	tmp = SysCacheGetAttrNotNull(PROCOID, tuple, Anum_pg_proc_probin);
 	probin = TextDatumGetCString(tmp);
 
 	(void) load_external_function(probin, prosrc, true, &libraryhandle);
@@ -875,10 +909,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 	/* Postpone body checks if !check_function_bodies */
 	if (check_function_bodies)
 	{
-		tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prosrc, &isnull);
-		if (isnull)
-			elog(ERROR, "null prosrc");
-
+		tmp = SysCacheGetAttrNotNull(PROCOID, tuple, Anum_pg_proc_prosrc);
 		prosrc = TextDatumGetCString(tmp);
 
 		/*
@@ -888,7 +919,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 		callback_arg.prosrc = prosrc;
 
 		sqlerrcontext.callback = sql_function_parse_error_callback;
-		sqlerrcontext.arg = (void *) &callback_arg;
+		sqlerrcontext.arg = &callback_arg;
 		sqlerrcontext.previous = error_context_stack;
 		error_context_stack = &sqlerrcontext;
 
@@ -972,10 +1003,10 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 
 			(void) get_func_result_type(funcoid, &rettype, &rettupdesc);
 
-			(void) check_sql_fn_retval_ext(querytree_list,
-										   rettype, rettupdesc,
-										   proc->prokind,
-										   false, NULL);
+			(void) check_sql_fn_retval(querytree_list,
+									   rettype, rettupdesc,
+									   proc->prokind,
+									   false);
 		}
 
 		error_context_stack = sqlerrcontext.previous;
@@ -1175,7 +1206,7 @@ match_prosrc_to_literal(const char *prosrc, const char *literal,
 			if (cursorpos > 0)
 				newcp++;
 		}
-		chlen = pg_mblen(prosrc);
+		chlen = pg_mblen_cstr(prosrc);
 		if (strncmp(prosrc, literal, chlen) != 0)
 			goto fail;
 		prosrc += chlen;
@@ -1204,11 +1235,8 @@ oid_array_to_list(Datum datum)
 	int			i;
 	List	   *result = NIL;
 
-	deconstruct_array(array,
-					  OIDOID,
-					  sizeof(Oid), true, TYPALIGN_INT,
-					  &values, NULL, &nelems);
+	deconstruct_array_builtin(array, OIDOID, &values, NULL, &nelems);
 	for (i = 0; i < nelems; i++)
-		result = lappend_oid(result, values[i]);
+		result = lappend_oid(result, DatumGetObjectId(values[i]));
 	return result;
 }

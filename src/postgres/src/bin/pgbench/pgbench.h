@@ -2,7 +2,7 @@
  *
  * pgbench.h
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
@@ -16,11 +16,11 @@
 /*
  * This file is included outside exprscan.l, in places where we can't see
  * flex's definition of typedef yyscan_t.  Fortunately, it's documented as
- * being "void *", so we can use a macro to keep the function declarations
+ * being "void *", so we can use typedef to keep the function declarations
  * here looking like the definitions in exprscan.l.  exprparse.y and
  * pgbench.c also use this to be able to declare things as "yyscan_t".
  */
-#define yyscan_t  void *
+typedef void *yyscan_t;
 
 /*
  * Likewise, we can't see exprparse.y's definition of union YYSTYPE here,
@@ -33,11 +33,11 @@ union YYSTYPE;
  */
 typedef enum
 {
-	PGBT_NO_VALUE,
+	PGBT_NO_VALUE = 0,
 	PGBT_NULL,
 	PGBT_INT,
 	PGBT_DOUBLE,
-	PGBT_BOOLEAN
+	PGBT_BOOLEAN,
 	/* add other types here */
 } PgBenchValueType;
 
@@ -58,7 +58,7 @@ typedef enum PgBenchExprType
 {
 	ENODE_CONSTANT,
 	ENODE_VARIABLE,
-	ENODE_FUNCTION
+	ENODE_FUNCTION,
 } PgBenchExprType;
 
 /* List of operators and callable functions */
@@ -100,7 +100,7 @@ typedef enum PgBenchFunction
 	PGBENCH_CASE,
 	PGBENCH_HASH_FNV1A,
 	PGBENCH_HASH_MURMUR2,
-	PGBENCH_PERMUTE
+	PGBENCH_PERMUTE,
 } PgBenchFunction;
 
 typedef struct PgBenchExpr PgBenchExpr;
@@ -138,30 +138,26 @@ struct PgBenchExprList
 	PgBenchExprLink *tail;
 };
 
-extern PgBenchExpr *expr_parse_result;
-
-extern int	expr_yyparse(yyscan_t yyscanner);
-extern int	expr_yylex(union YYSTYPE *lvalp, yyscan_t yyscanner);
-extern void expr_yyerror(yyscan_t yyscanner, const char *str) pg_attribute_noreturn();
-extern void expr_yyerror_more(yyscan_t yyscanner, const char *str,
-							  const char *more) pg_attribute_noreturn();
+extern int	expr_yyparse(PgBenchExpr **expr_parse_result_p, yyscan_t yyscanner);
+extern int	expr_yylex(union YYSTYPE *yylval_param, yyscan_t yyscanner);
+pg_noreturn extern void expr_yyerror(PgBenchExpr **expr_parse_result_p, yyscan_t yyscanner, const char *message);
+pg_noreturn extern void expr_yyerror_more(yyscan_t yyscanner, const char *message,
+										  const char *more);
 extern bool expr_lex_one_word(PsqlScanState state, PQExpBuffer word_buf,
 							  int *offset);
 extern yyscan_t expr_scanner_init(PsqlScanState state,
 								  const char *source, int lineno, int start_offset,
 								  const char *command);
 extern void expr_scanner_finish(yyscan_t yyscanner);
-extern int	expr_scanner_offset(PsqlScanState state);
 extern char *expr_scanner_get_substring(PsqlScanState state,
-										int start_offset, int end_offset,
+										int start_offset,
 										bool chomp);
-extern int	expr_scanner_get_lineno(PsqlScanState state, int offset);
 
-extern void syntax_error(const char *source, int lineno, const char *line,
-						 const char *cmd, const char *msg,
-						 const char *more, int col) pg_attribute_noreturn();
+pg_noreturn extern void syntax_error(const char *source, int lineno, const char *line,
+									 const char *command, const char *msg,
+									 const char *more, int column);
 
-extern bool strtoint64(const char *str, bool errorOK, int64 *pi);
-extern bool strtodouble(const char *str, bool errorOK, double *pd);
+extern bool strtoint64(const char *str, bool errorOK, int64 *result);
+extern bool strtodouble(const char *str, bool errorOK, double *dv);
 
 #endif							/* PGBENCH_H */

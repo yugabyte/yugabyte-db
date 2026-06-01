@@ -10,6 +10,7 @@
 #include "postgres.h"
 
 #include <float.h>
+#include <math.h>
 
 #include "access/gist.h"
 #include "access/stratnum.h"
@@ -27,7 +28,10 @@
 #define GIST_QUERY_DEBUG
 */
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "seg",
+					.version = PG_VERSION
+);
 
 /*
  * Auxiliary data structure for picksplit method.
@@ -92,7 +96,7 @@ PG_FUNCTION_INFO_V1(seg_different);
 /*
 ** Auxiliary functions
 */
-static int	restore(char *s, float val, int n);
+static int	restore(char *result, float val, int n);
 
 
 /*****************************************************************************
@@ -103,14 +107,15 @@ Datum
 seg_in(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
-	SEG		   *result = palloc(sizeof(SEG));
+	SEG		   *result = palloc_object(SEG);
+	yyscan_t	scanner;
 
-	seg_scanner_init(str);
+	seg_scanner_init(str, &scanner);
 
-	if (seg_yyparse(result) != 0)
-		seg_yyerror(result, "bogus input");
+	if (seg_yyparse(result, fcinfo->context, scanner) != 0)
+		seg_yyerror(result, fcinfo->context, scanner, "bogus input");
 
-	seg_scanner_finish();
+	seg_scanner_finish(scanner);
 
 	PG_RETURN_POINTER(result);
 }
@@ -197,8 +202,9 @@ gseg_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	Datum		query = PG_GETARG_DATUM(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 
 	/* All cases served by this function are exact */
@@ -365,7 +371,7 @@ gseg_picksplit(PG_FUNCTION_ARGS)
 	/*
 	 * Emit segments to the left output page, and compute its bounding box.
 	 */
-	seg_l = (SEG *) palloc(sizeof(SEG));
+	seg_l = palloc_object(SEG);
 	memcpy(seg_l, sort_items[0].data, sizeof(SEG));
 	*left++ = sort_items[0].index;
 	v->spl_nleft++;
@@ -383,7 +389,7 @@ gseg_picksplit(PG_FUNCTION_ARGS)
 	/*
 	 * Likewise for the right page.
 	 */
-	seg_r = (SEG *) palloc(sizeof(SEG));
+	seg_r = palloc_object(SEG);
 	memcpy(seg_r, sort_items[firstright].data, sizeof(SEG));
 	*right++ = sort_items[firstright].index;
 	v->spl_nright++;
@@ -412,7 +418,7 @@ gseg_same(PG_FUNCTION_ARGS)
 {
 	bool	   *result = (bool *) PG_GETARG_POINTER(2);
 
-	if (DirectFunctionCall2(seg_same, PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)))
+	if (DatumGetBool(DirectFunctionCall2(seg_same, PG_GETARG_DATUM(0), PG_GETARG_DATUM(1))))
 		*result = true;
 	else
 		*result = false;
@@ -465,7 +471,7 @@ gseg_leaf_consistent(Datum key, Datum query, StrategyNumber strategy)
 			retval = DirectFunctionCall2(seg_contained, key, query);
 			break;
 		default:
-			retval = false;
+			retval = BoolGetDatum(false);
 	}
 
 	PG_RETURN_DATUM(retval);
@@ -627,7 +633,7 @@ seg_union(PG_FUNCTION_ARGS)
 	SEG		   *b = PG_GETARG_SEG_P(1);
 	SEG		   *n;
 
-	n = (SEG *) palloc(sizeof(*n));
+	n = palloc_object(SEG);
 
 	/* take max of upper endpoints */
 	if (a->upper > b->upper)
@@ -667,7 +673,7 @@ seg_inter(PG_FUNCTION_ARGS)
 	SEG		   *b = PG_GETARG_SEG_P(1);
 	SEG		   *n;
 
-	n = (SEG *) palloc(sizeof(*n));
+	n = palloc_object(SEG);
 
 	/* take min of upper endpoints */
 	if (a->upper < b->upper)
@@ -706,7 +712,7 @@ rt_seg_size(SEG *a, float *size)
 	if (a == (SEG *) NULL || a->upper <= a->lower)
 		*size = 0.0;
 	else
-		*size = (float) Abs(a->upper - a->lower);
+		*size = fabsf(a->upper - a->lower);
 }
 
 Datum
@@ -714,7 +720,7 @@ seg_size(PG_FUNCTION_ARGS)
 {
 	SEG		   *seg = PG_GETARG_SEG_P(0);
 
-	PG_RETURN_FLOAT4((float) Abs(seg->upper - seg->lower));
+	PG_RETURN_FLOAT4(fabsf(seg->upper - seg->lower));
 }
 
 
@@ -964,7 +970,7 @@ restore(char *result, float val, int n)
 	}
 	else
 	{
-		if (Abs(exp) <= 4)
+		if (abs(exp) <= 4)
 		{
 			/*
 			 * remove the decimal point from the mantissa and write the digits
@@ -1051,7 +1057,7 @@ restore(char *result, float val, int n)
 			}
 		}
 
-		/* do nothing for Abs(exp) > 4; %e must be OK */
+		/* do nothing for abs(exp) > 4; %e must be OK */
 		/* just get rid of zeroes after [eE]- and +zeroes after [Ee]. */
 
 		/* ... this is not done yet. */

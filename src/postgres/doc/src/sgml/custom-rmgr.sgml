@@ -1,10 +1,10 @@
 <!-- doc/src/sgml/custom-rmgr.sgml -->
 
-<chapter id="custom-rmgr">
+<sect1 id="custom-rmgr">
  <title>Custom WAL Resource Managers</title>
 
  <para>
-  This chapter explains the interface between the core
+  This section explains the interface between the core
   <productname>PostgreSQL</productname> system and custom WAL resource
   managers, which enable extensions to integrate directly with the <link
   linkend="wal"><acronym>WAL</acronym></link>.
@@ -13,10 +13,7 @@
   An extension, especially a <link linkend="tableam">Table Access
   Method</link> or <link linkend="indexam">Index Access Method</link>, may
   need to use WAL for recovery, replication, and/or <link
-  linkend="logicaldecoding">Logical Decoding</link>. Custom resource managers
-  are a more flexible alternative to <link linkend="generic-wal">Generic
-  WAL</link> (which does not support logical decoding), but more complex for
-  an extension to implement.
+  linkend="logicaldecoding">Logical Decoding</link>.
  </para>
  <para>
   To create a new custom WAL resource manager, first define an
@@ -57,6 +54,13 @@ typedef struct RmgrData
 } RmgrData;
 </programlisting>
  </para>
+
+  <para>
+   The <filename>src/test/modules/test_custom_rmgrs</filename> module
+   contains a working example, which demonstrates usage of custom WAL
+   resource managers.
+  </para>
+
  <para>
   Then, register your new resource
   manager.
@@ -71,7 +75,7 @@ typedef struct RmgrData
  * developers. During development, use RM_EXPERIMENTAL_ID to avoid needlessly
  * reserving a new ID.
  */
-extern void RegisterCustomRmgr(RmgrId rmid, RmgrData *rmgr);
+extern void RegisterCustomRmgr(RmgrId rmid, const RmgrData *rmgr);
 </programlisting>
   <function>RegisterCustomRmgr</function> must be called from the
   extension module's <link linkend="xfunc-c-dynload">_PG_init</link> function.
@@ -89,10 +93,10 @@ extern void RegisterCustomRmgr(RmgrId rmid, RmgrData *rmgr);
  </para>
  <note>
    <para>
-    The extension must remain in shared_preload_libraries as long as any
-    custom WAL records may exist in the system. Otherwise
+    The extension must remain in <varname>shared_preload_libraries</varname>
+    as long as any custom WAL records may exist in the system. Otherwise
     <productname>PostgreSQL</productname> will not be able to apply or decode
     the custom WAL records, which may prevent the server from starting.
    </para>
  </note>
-</chapter>
+</sect1>

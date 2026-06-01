@@ -496,9 +496,25 @@
     When that happens, <command>VACUUM</command> will eventually need to perform an
     <firstterm>aggressive vacuum</firstterm>, which will freeze all eligible unfrozen
     XID and MXID values, including those from all-visible but not all-frozen pages.
-    In practice most tables require periodic aggressive vacuuming.
+   </para>
+
+   <para>
+    If a table is building up a backlog of all-visible but not all-frozen
+    pages, a normal vacuum may choose to scan skippable pages in an effort to
+    freeze them. Doing so decreases the number of pages the next aggressive
+    vacuum must scan. These are referred to as <firstterm>eagerly
+    scanned</firstterm> pages. Eager scanning can be tuned to attempt to freeze
+    more all-visible pages by increasing <xref
+    linkend="guc-vacuum-max-eager-freeze-failure-rate"/>. Even if eager
+    scanning has kept the number of all-visible but not all-frozen pages to a
+    minimum, most tables still require periodic aggressive vacuuming. However,
+    any pages successfully eager frozen may be skipped during an aggressive
+    vacuum, so eager freezing may minimize the overhead of aggressive vacuums.
+   </para>
+
+   <para>
     <xref linkend="guc-vacuum-freeze-table-age"/>
-    controls when <command>VACUUM</command> does that: all-visible but not all-frozen
+    controls when a table is aggressively vacuumed. All all-visible but not all-frozen
     pages are scanned if the number of transactions that have passed since the
     last such scan is greater than <varname>vacuum_freeze_table_age</varname> minus
     <varname>vacuum_freeze_min_age</varname>. Setting
@@ -598,8 +614,8 @@
     examine this information is to execute queries such as:
 
 <programlisting>
-SELECT c.oid::regclass as table_name,
-       greatest(age(c.relfrozenxid),age(t.relfrozenxid)) as age
+SELECT c.oid::regclass AS table_name,
+       greatest(age(c.relfrozenxid), age(t.relfrozenxid)) AS age
 FROM pg_class c
 LEFT JOIN pg_class t ON c.reltoastrelid = t.oid
 WHERE c.relkind IN ('r', 'm');
@@ -617,18 +633,21 @@ SELECT datname, age(datfrozenxid) FROM pg_database;
      parameter is specified, <command>VACUUM</command> prints various
      statistics about the table.  This includes information about how
      <structfield>relfrozenxid</structfield> and
-     <structfield>relminmxid</structfield> advanced.  The same details appear
-     in the server log when autovacuum logging (controlled by <xref
+     <structfield>relminmxid</structfield> advanced, and the number of
+     newly frozen pages.  The same details appear in the server log when
+     autovacuum logging (controlled by <xref
       linkend="guc-log-autovacuum-min-duration"/>) reports on a
      <command>VACUUM</command> operation executed by autovacuum.
     </para>
    </tip>
 
    <para>
-    <command>VACUUM</command> normally only scans pages that have been modified
-    since the last vacuum, but <structfield>relfrozenxid</structfield> can only be
-    advanced when every page of the table
-    that might contain unfrozen XIDs is scanned.  This happens when
+    While <command>VACUUM</command> scans mostly pages that have been
+    modified since the last vacuum, it may also eagerly scan some
+    all-visible but not all-frozen pages in an attempt to freeze them, but
+    the <structfield>relfrozenxid</structfield> will only be advanced when
+    every page of the table that might contain unfrozen XIDs is scanned.
+    This happens when
     <structfield>relfrozenxid</structfield> is more than
     <varname>vacuum_freeze_table_age</varname> transactions old, when
     <command>VACUUM</command>'s <literal>FREEZE</literal> option is used, or when all
@@ -651,11 +670,12 @@ SELECT datname, age(datfrozenxid) FROM pg_database;
    <para>
     If for some reason autovacuum fails to clear old XIDs from a table, the
     system will begin to emit warning messages like this when the database's
-    oldest XIDs reach forty million transactions from the wraparound point:
+    oldest XIDs reach one hundred million transactions from the wraparound point:
 
 <programlisting>
-WARNING:  database "mydb" must be vacuumed within 39985967 transactions
-HINT:  To avoid a database shutdown, execute a database-wide VACUUM in that database.
+WARNING:  database "mydb" must be vacuumed within 99985967 transactions
+DETAIL:  Approximately 4.66% of transaction IDs are available for use.
+HINT:  To avoid XID assignment failures, execute a database-wide VACUUM in that database.
 </programlisting>
 
     (A manual <command>VACUUM</command> should fix the problem, as suggested by the
@@ -666,16 +686,17 @@ HINT:  To avoid a database shutdown, execute a database-wide VACUUM in that data
     there are fewer than three million transactions left until wraparound:
 
 <programlisting>
-ERROR:  database is not accepting commands to avoid wraparound data loss in database "mydb"
-HINT:  Stop the postmaster and vacuum that database in single-user mode.
+ERROR:  database is not accepting commands that assign new XIDs to avoid wraparound data loss in database "mydb"
+HINT:  Execute a database-wide VACUUM in that database.
 </programlisting>
 
     In this condition any transactions already in progress can continue,
     but only read-only transactions can be started. Operations that
     modify database records or truncate relations will fail.
     The <command>VACUUM</command> command can still be run normally.
-    Contrary to what the hint states, it is not necessary or desirable to stop the
-    postmaster or enter single user-mode in order to restore normal operation.
+    Note that, contrary to what was sometimes recommended in earlier releases,
+    it is not necessary or desirable to stop the postmaster or enter single
+    user-mode in order to restore normal operation.
     Instead, follow these steps:
 
     <orderedlist>
@@ -759,7 +780,10 @@ HINT:  Stop the postmaster and vacuum that database in single-user mode.
      careful aging management, storage cleanup, and wraparound handling.
      There is a separate storage area which holds the list of members in
      each multixact, which also uses a 32-bit counter and which must also
-     be managed.
+     be managed.  The system function
+     <function>pg_get_multixact_members()</function> described in
+     <xref linkend="functions-pg-snapshot"/> can be used to examine the
+     transaction IDs associated with a multixact ID.
     </para>
 
     <para>
@@ -790,17 +814,47 @@ HINT:  Stop the postmaster and vacuum that database in single-user mode.
     <para>
      As a safety device, an aggressive vacuum scan will
      occur for any table whose multixact-age is greater than <xref
-     linkend="guc-autovacuum-multixact-freeze-max-age"/>.  Also, if the
-     storage occupied by multixacts members exceeds 2GB, aggressive vacuum
+     linkend="guc-autovacuum-multixact-freeze-max-age"/>. Also, if the number
+     of multixact member entries created exceeds approximately 2 billion
+     entries (occupying roughly 10GB in the
+     <literal>pg_multixact/members</literal> directory), aggressive vacuum
      scans will occur more often for all tables, starting with those that
-     have the oldest multixact-age.  Both of these kinds of aggressive
-     scans will occur even if autovacuum is nominally disabled.
+     have the oldest multixact-age. Both of these kinds of aggressive
+     scans will occur even if autovacuum is nominally disabled. At approximately
+     4 billion entries (occupying roughly 20GB in the
+     <literal>pg_multixact/members</literal> directory), even more aggressive
+     vacuum scans are triggered to reclaim member storage space.
+    </para>
+
+    <para>
+     The <function>pg_get_multixact_stats()</function> function described in
+     <xref linkend="functions-pg-snapshot"/> provides a way to monitor
+     multixact allocation and usage patterns in real time, for example:
+     <programlisting>
+=# SELECT *, pg_size_pretty(members_size) members_size_pretty
+     FROM pg_catalog.pg_get_multixact_stats();
+ num_mxids | num_members | members_size | oldest_multixact | members_size_pretty
+-----------+-------------+--------------+------------------+---------------------
+ 311740299 |  2785241176 |  13926205880 |                2 | 13 GB
+(1 row)
+     </programlisting>
+     This output shows a system with significant multixact activity: about
+     312 million multixact IDs and about 2.8 billion member entries consuming
+     13 GB of storage space.
+     A spike in <literal>num_mxids</literal> might indicate multiple sessions
+     running <literal>UPDATE</literal> statements with foreign key checks,
+     concurrent <literal>SELECT FOR SHARE</literal> operations, or frequent
+     use of savepoints causing lock contention.
+     If <literal>oldest_multixact</literal> value remains unchanged while
+     <literal>num_members</literal> grows, it could indicate that long-running
+     transactions are preventing cleanup, or autovacuum is
+     not keeping up with the workload.
     </para>
 
     <para>
      Similar to the XID case, if autovacuum fails to clear old MXIDs from a table, the
-     system will begin to emit warning messages when the database's oldest MXIDs reach forty
-     million transactions from the wraparound point.  And, just as an the XID case, if these
+     system will begin to emit warning messages when the database's oldest MXIDs reach one hundred
+     million transactions from the wraparound point.  And, just as in the XID case, if these
      warnings are ignored, the system will refuse to generate new MXIDs once there are fewer
      than three million left until wraparound.
     </para>
@@ -868,7 +922,8 @@ HINT:  Stop the postmaster and vacuum that database in single-user mode.
     the next database will be processed as soon as the first worker finishes.
     Each worker process will check each table within its database and
     execute <command>VACUUM</command> and/or <command>ANALYZE</command> as needed.
-    <xref linkend="guc-log-autovacuum-min-duration"/> can be set to monitor
+    <xref linkend="guc-log-autovacuum-min-duration"/> and
+    <xref linkend="guc-log-autoanalyze-min-duration"/> can be set to monitor
     autovacuum workers' activity.
    </para>
 
@@ -893,9 +948,11 @@ HINT:  Stop the postmaster and vacuum that database in single-user mode.
     <command>VACUUM</command> exceeds the <quote>vacuum threshold</quote>, the
     table is vacuumed.  The vacuum threshold is defined as:
 <programlisting>
-vacuum threshold = vacuum base threshold + vacuum scale factor * number of tuples
+vacuum threshold = Minimum(vacuum max threshold, vacuum base threshold + vacuum scale factor * number of tuples)
 </programlisting>
-    where the vacuum base threshold is
+    where the vacuum max threshold is
+    <xref linkend="guc-autovacuum-vacuum-max-threshold"/>,
+    the vacuum base threshold is
     <xref linkend="guc-autovacuum-vacuum-threshold"/>,
     the vacuum scale factor is
     <xref linkend="guc-autovacuum-vacuum-scale-factor"/>,
@@ -907,12 +964,16 @@ vacuum threshold = vacuum base threshold + vacuum scale factor * number of tuple
     The table is also vacuumed if the number of tuples inserted since the last
     vacuum has exceeded the defined insert threshold, which is defined as:
 <programlisting>
-vacuum insert threshold = vacuum base insert threshold + vacuum insert scale factor * number of tuples
+vacuum insert threshold = vacuum base insert threshold + vacuum insert scale factor * number of tuples * percent of table not frozen
 </programlisting>
     where the vacuum insert base threshold is
     <xref linkend="guc-autovacuum-vacuum-insert-threshold"/>,
-    and vacuum insert scale factor is
-    <xref linkend="guc-autovacuum-vacuum-insert-scale-factor"/>.
+    the vacuum insert scale factor is
+    <xref linkend="guc-autovacuum-vacuum-insert-scale-factor"/>,
+    the number of tuples is
+    <structname>pg_class</structname>.<structfield>reltuples</structfield>,
+    and the percent of the table not frozen is
+    <literal>1 - pg_class.relallfrozen / pg_class.relpages</literal>.
     Such vacuums may allow portions of the table to be marked as
     <firstterm>all visible</firstterm> and also allow tuples to be frozen, which
     can reduce the work required in subsequent vacuums.
@@ -922,14 +983,12 @@ vacuum insert threshold = vacuum base insert threshold + vacuum insert scale fac
     <xref linkend="reloption-autovacuum-freeze-min-age"/> as this may allow
     tuples to be frozen by earlier vacuums.  The number of obsolete tuples and
     the number of inserted tuples are obtained from the cumulative statistics system;
-    it is a semi-accurate count updated by each <command>UPDATE</command>,
-    <command>DELETE</command> and <command>INSERT</command> operation.  (It is
-    only semi-accurate because some information might be lost under heavy
-    load.)  If the <structfield>relfrozenxid</structfield> value of the table
+    it is an eventually-consistent count updated by each <command>UPDATE</command>,
+    <command>DELETE</command> and <command>INSERT</command> operation.
+    If the <structfield>relfrozenxid</structfield> value of the table
     is more than <varname>vacuum_freeze_table_age</varname> transactions old,
     an aggressive vacuum is performed to freeze old tuples and advance
-    <structfield>relfrozenxid</structfield>; otherwise, only pages that have been modified
-    since the last vacuum are scanned.
+    <structfield>relfrozenxid</structfield>.
    </para>
 
    <para>
@@ -979,6 +1038,10 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
     per-table <literal>autovacuum_vacuum_cost_delay</literal> or
     <literal>autovacuum_vacuum_cost_limit</literal> storage parameters have been set
     are not considered in the balancing algorithm.
+    Parallel workers launched for <xref linkend="parallel-vacuum"/> are using
+    the same cost delay parameters as the leader worker. If any of these
+    parameters are changed in the leader worker, it will propagate the new
+    parameter values to all of its parallel workers.
    </para>
 
    <para>
@@ -989,8 +1052,11 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
     see <xref linkend="table-lock-compatibility"/>.  However, if the autovacuum
     is running to prevent transaction ID wraparound (i.e., the autovacuum query
     name in the <structname>pg_stat_activity</structname> view ends with
-    <literal>(to prevent wraparound)</literal>), the autovacuum is not
-    automatically interrupted.
+    <literal>(to prevent wraparound)</literal> or the
+    <structfield>started_by</structfield> column in the
+    <structname>pg_stat_progress_vacuum</structname> view shows
+    <literal>autovacuum_wraparound</literal> value), the autovacuum is
+    not automatically interrupted.
    </para>
 
    <warning>
@@ -1000,6 +1066,145 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
      effectively prevent autovacuums from ever completing.
     </para>
    </warning>
+
+   <sect3 id="autovacuum-priority">
+    <title>Autovacuum Prioritization</title>
+
+    <para>
+     Autovacuum decides what to process in two steps: first it chooses a
+     database, then it chooses the tables within that database.  The autovacuum
+     launcher process prioritizes databases at risk of transaction ID or
+     multixact ID wraparound, else it chooses the database processed least
+     recently.  As an exception, it skips databases with no connections or no
+     activity since the last statistics reset, unless at risk of wraparound.
+    </para>
+
+    <para>
+     Within a database, the autovacuum worker process builds a list of tables
+     that require vacuum or analyze and sorts them using a scoring system.  It
+     scores each table by taking the maximum value of several component scores
+     representing various criteria important to vacuum or analyze.  Those
+     components are as follows:
+    </para>
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       The <emphasis>transaction ID</emphasis> component measures the age in
+       transactions of the table's
+       <structname>pg_class</structname>.<structfield>relfrozenxid</structfield>
+       field as compared to <xref linkend="guc-autovacuum-freeze-max-age"/>.
+       Furthermore, this component increases greatly once the age surpasses
+       <xref linkend="guc-vacuum-failsafe-age"/>.  The final value for this
+       component can be adjusted via
+       <xref linkend="guc-autovacuum-freeze-score-weight"/>.  Note that
+       increasing this parameter's value also lowers the age at which this
+       component begins scaling aggressively, i.e., the scaling age is divided
+       by its value if greater than <literal>1.0</literal>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The <emphasis>multixact ID</emphasis> component measures the age in
+       multixacts of the table's
+       <structname>pg_class</structname>.<structfield>relminmxid</structfield>
+       field as compared to
+       <xref linkend="guc-autovacuum-multixact-freeze-max-age"/>.  Furthermore,
+       this component increases greatly once the age surpasses
+       <xref linkend="guc-vacuum-multixact-failsafe-age"/>.  The final value
+       for this component can be adjusted via
+       <xref linkend="guc-autovacuum-multixact-freeze-score-weight"/>.  Note
+       that increasing this parameter's value also lowers the age at which this
+       component begins scaling aggressively, i.e., the scaling age is divided
+       by its value if greater than <literal>1.0</literal>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The <emphasis>vacuum</emphasis> component measures the number of updated
+       or deleted tuples as compared to the threshold calculated with
+       <xref linkend="guc-autovacuum-vacuum-threshold"/>,
+       <xref linkend="guc-autovacuum-vacuum-scale-factor"/>, and
+       <xref linkend="guc-autovacuum-vacuum-max-threshold"/>.  The final value
+       for this component can be adjusted via
+       <xref linkend="guc-autovacuum-vacuum-score-weight"/>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The <emphasis>vacuum insert</emphasis> component measures the number of
+       inserted tuples as compared to the threshold calculated with
+       <xref linkend="guc-autovacuum-vacuum-insert-threshold"/> and
+       <xref linkend="guc-autovacuum-vacuum-insert-scale-factor"/>.  The final
+       value for this component can be adjusted via
+       <xref linkend="guc-autovacuum-vacuum-insert-score-weight"/>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The <emphasis>analyze</emphasis> component measures the number of
+       inserted, updated, or deleted tuples as compared to the threshold
+       calculated with
+       <xref linkend="guc-autovacuum-analyze-threshold"/> and
+       <xref linkend="guc-autovacuum-analyze-scale-factor"/>.  The final value
+       for this component can be adjusted via
+       <xref linkend="guc-autovacuum-analyze-score-weight"/>.
+      </para>
+     </listitem>
+    </itemizedlist>
+
+    <para>
+     To revert to the prioritization strategy used before
+     <productname>PostgreSQL</productname> 19 (i.e., the order the tables are
+     listed in the <literal>pg_class</literal> system catalog), set all of the
+     aforementioned "weight" parameters to <literal>0.0</literal>.  Otherwise,
+     these "weight" parameters are multiplied to their respective component
+     scores.  For example, raising
+     <xref linkend="guc-autovacuum-analyze-score-weight"/> to
+     <literal>2.0</literal> effectively doubles the
+     <emphasis>analyze</emphasis> component score.
+    </para>
+
+    <para>
+     The <link linkend="monitoring-pg-stat-autovacuum-scores-view">
+     <structname>pg_stat_autovacuum_scores</structname></link>
+     view shows the current scores of all tables in the current database.
+    </para>
+   </sect3>
+  </sect2>
+
+  <sect2 id="parallel-vacuum" xreflabel="Parallel Vacuum">
+   <title>Parallel Vacuum</title>
+
+   <para>
+    <command>VACUUM</command> can perform index vacuuming and index cleanup
+    phases in parallel using background workers (for the details of each
+    vacuum phase, please refer to <xref linkend="vacuum-phases"/>).  The
+    degree of parallelism is determined by the number of indexes on the
+    relation that support parallel vacuum.  For manual <command>VACUUM</command>,
+    this is limited by the <literal>PARALLEL</literal> option, which is
+    further capped by <xref linkend="guc-max-parallel-maintenance-workers"/>.
+    For autovacuum, it is limited by the table's
+    <xref linkend="reloption-autovacuum-parallel-workers"/> if any which is
+    capped limited by
+    <xref linkend="guc-autovacuum-max-parallel-workers"/> parameter.  Please
+    note that it is not guaranteed that the number of parallel workers that was
+    calculated will be used during execution.  It is possible for a vacuum to
+    run with fewer workers than specified, or even with no workers at all.
+   </para>
+
+   <para>
+    An index can participate in parallel vacuum if and only if the size of the
+    index is more than <xref linkend="guc-min-parallel-index-scan-size"/>.
+    Only one worker can be used per index.  So parallel workers are launched
+    only when there are at least <literal>2</literal> indexes in the table.
+    Workers for vacuum are launched before the start of each phase and exit at
+    the end of the phase.  These behaviors might change in a future release.
+   </para>
   </sect2>
  </sect1>
 

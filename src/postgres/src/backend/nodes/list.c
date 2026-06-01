@@ -6,7 +6,7 @@
  * See comments in pg_list.h.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,6 +17,7 @@
  */
 #include "postgres.h"
 
+#include "common/int.h"
 #include "nodes/pg_list.h"
 #include "port/pg_bitutils.h"
 #include "utils/memdebug.h"
@@ -54,6 +55,7 @@
 #define IsPointerList(l)		((l) == NIL || IsA((l), List))
 #define IsIntegerList(l)		((l) == NIL || IsA((l), IntList))
 #define IsOidList(l)			((l) == NIL || IsA((l), OidList))
+#define IsXidList(l)			((l) == NIL || IsA((l), XidList))
 
 #ifdef USE_ASSERT_CHECKING
 /*
@@ -71,7 +73,8 @@ check_list_invariants(const List *list)
 
 	Assert(list->type == T_List ||
 		   list->type == T_IntList ||
-		   list->type == T_OidList);
+		   list->type == T_OidList ||
+		   list->type == T_XidList);
 }
 #else
 #define check_list_invariants(l)  ((void) 0)
@@ -379,6 +382,24 @@ lappend_oid(List *list, Oid datum)
 		new_tail_cell(list);
 
 	llast_oid(list) = datum;
+	check_list_invariants(list);
+	return list;
+}
+
+/*
+ * Append a TransactionId to the specified list. See lappend()
+ */
+List *
+lappend_xid(List *list, TransactionId datum)
+{
+	Assert(IsXidList(list));
+
+	if (list == NIL)
+		list = new_list(T_XidList, 1);
+	else
+		new_tail_cell(list);
+
+	llast_xid(list) = datum;
 	check_list_invariants(list);
 	return list;
 }
@@ -708,6 +729,26 @@ list_member_oid(const List *list, Oid datum)
 	foreach(cell, list)
 	{
 		if (lfirst_oid(cell) == datum)
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * Return true iff the TransactionId 'datum' is a member of the list.
+ */
+bool
+list_member_xid(const List *list, TransactionId datum)
+{
+	const ListCell *cell;
+
+	Assert(IsXidList(list));
+	check_list_invariants(list);
+
+	foreach(cell, list)
+	{
+		if (lfirst_xid(cell) == datum)
 			return true;
 	}
 
@@ -1652,11 +1693,7 @@ list_int_cmp(const ListCell *p1, const ListCell *p2)
 	int			v1 = lfirst_int(p1);
 	int			v2 = lfirst_int(p2);
 
-	if (v1 < v2)
-		return -1;
-	if (v1 > v2)
-		return 1;
-	return 0;
+	return pg_cmp_s32(v1, v2);
 }
 
 /*
@@ -1668,9 +1705,5 @@ list_oid_cmp(const ListCell *p1, const ListCell *p2)
 	Oid			v1 = lfirst_oid(p1);
 	Oid			v2 = lfirst_oid(p2);
 
-	if (v1 < v2)
-		return -1;
-	if (v1 > v2)
-		return 1;
-	return 0;
+	return pg_cmp_u32(v1, v2);
 }

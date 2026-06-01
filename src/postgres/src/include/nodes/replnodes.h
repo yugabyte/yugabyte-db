@@ -4,7 +4,7 @@
  *	  definitions for replication grammar parse nodes
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/replnodes.h
@@ -20,7 +20,7 @@
 typedef enum ReplicationKind
 {
 	REPLICATION_KIND_PHYSICAL,
-	REPLICATION_KIND_LOGICAL
+	REPLICATION_KIND_LOGICAL,
 } ReplicationKind;
 
 
@@ -73,6 +73,18 @@ typedef struct DropReplicationSlotCmd
 
 
 /* ----------------------
+ *		ALTER_REPLICATION_SLOT command
+ * ----------------------
+ */
+typedef struct AlterReplicationSlotCmd
+{
+	NodeTag		type;
+	char	   *slotname;
+	List	   *options;
+} AlterReplicationSlotCmd;
+
+
+/* ----------------------
  *		START_REPLICATION command
  * ----------------------
  */
@@ -107,5 +119,14 @@ typedef struct TimeLineHistoryCmd
 	NodeTag		type;
 	TimeLineID	timeline;
 } TimeLineHistoryCmd;
+
+/* ----------------------
+ *		UPLOAD_MANIFEST command
+ * ----------------------
+ */
+typedef struct UploadManifestCmd
+{
+	NodeTag		type;
+} UploadManifestCmd;
 
 #endif							/* REPLNODES_H */

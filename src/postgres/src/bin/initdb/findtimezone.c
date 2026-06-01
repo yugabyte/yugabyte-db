@@ -3,7 +3,7 @@
  * findtimezone.c
  *	  Functions for determining the default timezone to use.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/bin/initdb/findtimezone.c
@@ -680,8 +680,8 @@ scan_available_timezones(char *tzdir, char *tzdirsub, struct tztry *tt,
 		if (stat(tzdir, &statbuf) != 0)
 		{
 #ifdef DEBUG_IDENTIFY_TIMEZONE
-			fprintf(stderr, "could not stat \"%s\": %s\n",
-					tzdir, strerror(errno));
+			fprintf(stderr, "could not stat \"%s\": %m\n",
+					tzdir);
 #endif
 			tzdir[tzdir_orig_len] = '\0';
 			continue;

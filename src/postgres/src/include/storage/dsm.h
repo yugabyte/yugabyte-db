@@ -3,7 +3,7 @@
  * dsm.h
  *	  manage dynamic shared memory segments
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/dsm.h
@@ -19,18 +19,12 @@ typedef struct dsm_segment dsm_segment;
 
 #define DSM_CREATE_NULL_IF_MAXSEGMENTS			0x0001
 
-/* A sentinel value for an invalid DSM handle. */
-#define DSM_HANDLE_INVALID 0
-
 /* Startup and shutdown functions. */
-struct PGShmemHeader;			/* avoid including pg_shmem.h */
+typedef struct PGShmemHeader PGShmemHeader; /* avoid including pg_shmem.h */
 extern void dsm_cleanup_using_control_segment(dsm_handle old_control_handle);
-extern void dsm_postmaster_startup(struct PGShmemHeader *);
+extern void dsm_postmaster_startup(PGShmemHeader *);
 extern void dsm_backend_shutdown(void);
 extern void dsm_detach_all(void);
-
-extern size_t dsm_estimate_size(void);
-extern void dsm_shmem_init(void);
 
 #ifdef EXEC_BACKEND
 extern void dsm_set_control_handle(dsm_handle h);
@@ -45,8 +39,8 @@ extern void dsm_detach(dsm_segment *seg);
 extern void dsm_pin_mapping(dsm_segment *seg);
 extern void dsm_unpin_mapping(dsm_segment *seg);
 extern void dsm_pin_segment(dsm_segment *seg);
-extern void dsm_unpin_segment(dsm_handle h);
-extern dsm_segment *dsm_find_mapping(dsm_handle h);
+extern void dsm_unpin_segment(dsm_handle handle);
+extern dsm_segment *dsm_find_mapping(dsm_handle handle);
 
 /* Informational functions. */
 extern void *dsm_segment_address(dsm_segment *seg);

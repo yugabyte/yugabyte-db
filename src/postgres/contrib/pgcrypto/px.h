@@ -75,7 +75,7 @@
 /* -108 is unused */
 #define PXE_PGP_MATH_FAILED			-109
 #define PXE_PGP_SHORT_ELGAMAL_KEY	-110
-/* -111 is unused */
+#define PXE_PGP_KEY_TOO_BIG			-111
 #define PXE_PGP_UNKNOWN_PUBALGO		-112
 #define PXE_PGP_WRONG_KEY			-113
 #define PXE_PGP_MULTIPLE_KEYS		-114
@@ -89,12 +89,20 @@
 #define PXE_PGP_UNSUPPORTED_PUBALGO -122
 #define PXE_PGP_MULTIPLE_SUBKEYS	-123
 
+typedef enum BuiltinCryptoOptions
+{
+	BC_ON,
+	BC_OFF,
+	BC_FIPS,
+}			BuiltinCryptoOptions;
 
 typedef struct px_digest PX_MD;
 typedef struct px_alias PX_Alias;
 typedef struct px_hmac PX_HMAC;
 typedef struct px_cipher PX_Cipher;
 typedef struct px_combo PX_Combo;
+
+extern int	builtin_crypto_enabled;
 
 struct px_digest
 {
@@ -173,14 +181,17 @@ int			px_find_hmac(const char *name, PX_HMAC **res);
 int			px_find_cipher(const char *name, PX_Cipher **res);
 int			px_find_combo(const char *name, PX_Combo **res);
 
-void		px_THROW_ERROR(int err) pg_attribute_noreturn();
+pg_noreturn void px_THROW_ERROR(int err);
 const char *px_strerror(int err);
 
-const char *px_resolve_alias(const PX_Alias *aliases, const char *name);
+const char *px_resolve_alias(const PX_Alias *list, const char *name);
 
 void		px_set_debug_handler(void (*handler) (const char *));
 
 void		px_memset(void *ptr, int c, size_t len);
+
+bool		CheckFIPSMode(void);
+void		CheckBuiltinCryptoMode(void);
 
 #ifdef PX_DEBUG
 void		px_debug(const char *fmt,...) pg_attribute_printf(1, 2);

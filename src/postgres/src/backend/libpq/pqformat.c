@@ -21,7 +21,7 @@
  * are different.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/libpq/pqformat.c
@@ -77,6 +77,7 @@
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
 #include "port/pg_bswap.h"
+#include "varatt.h"
 
 
 /* --------------------------------
@@ -122,7 +123,7 @@ pq_beginmessage_reuse(StringInfo buf, char msgtype)
  * --------------------------------
  */
 void
-pq_sendbytes(StringInfo buf, const char *data, int datalen)
+pq_sendbytes(StringInfo buf, const void *data, int datalen)
 {
 	/* use variant that maintains a trailing null-byte, out of caution */
 	appendBinaryStringInfo(buf, data, datalen);
@@ -132,30 +133,27 @@ pq_sendbytes(StringInfo buf, const char *data, int datalen)
  *		pq_sendcountedtext - append a counted text string (with character set conversion)
  *
  * The data sent to the frontend by this routine is a 4-byte count field
- * followed by the string.  The count includes itself or not, as per the
- * countincludesself flag (pre-3.0 protocol requires it to include itself).
- * The passed text string need not be null-terminated, and the data sent
- * to the frontend isn't either.
+ * followed by the string.  The count does not include itself, as required by
+ * protocol version 3.0.  The passed text string need not be null-terminated,
+ * and the data sent to the frontend isn't either.
  * --------------------------------
  */
 void
-pq_sendcountedtext(StringInfo buf, const char *str, int slen,
-				   bool countincludesself)
+pq_sendcountedtext(StringInfo buf, const char *str, int slen)
 {
-	int			extra = countincludesself ? 4 : 0;
 	char	   *p;
 
 	p = pg_server_to_client(str, slen);
 	if (p != str)				/* actual conversion has been done? */
 	{
 		slen = strlen(p);
-		pq_sendint32(buf, slen + extra);
+		pq_sendint32(buf, slen);
 		appendBinaryStringInfoNT(buf, p, slen);
 		pfree(p);
 	}
 	else
 	{
-		pq_sendint32(buf, slen + extra);
+		pq_sendint32(buf, slen);
 		appendBinaryStringInfoNT(buf, str, slen);
 	}
 }
@@ -309,9 +307,8 @@ pq_endmessage(StringInfo buf)
  *
  * The data buffer is *not* freed, allowing to reuse the buffer with
  * pq_beginmessage_reuse.
- --------------------------------
+ * --------------------------------
  */
-
 void
 pq_endmessage_reuse(StringInfo buf)
 {
@@ -424,15 +421,15 @@ pq_getmsgint(StringInfo msg, int b)
 	switch (b)
 	{
 		case 1:
-			pq_copymsgbytes(msg, (char *) &n8, 1);
+			pq_copymsgbytes(msg, &n8, 1);
 			result = n8;
 			break;
 		case 2:
-			pq_copymsgbytes(msg, (char *) &n16, 2);
+			pq_copymsgbytes(msg, &n16, 2);
 			result = pg_ntoh16(n16);
 			break;
 		case 4:
-			pq_copymsgbytes(msg, (char *) &n32, 4);
+			pq_copymsgbytes(msg, &n32, 4);
 			result = pg_ntoh32(n32);
 			break;
 		default:
@@ -456,7 +453,7 @@ pq_getmsgint64(StringInfo msg)
 {
 	uint64		n64;
 
-	pq_copymsgbytes(msg, (char *) &n64, sizeof(n64));
+	pq_copymsgbytes(msg, &n64, sizeof(n64));
 
 	return pg_ntoh64(n64);
 }
@@ -527,7 +524,7 @@ pq_getmsgbytes(StringInfo msg, int datalen)
  * --------------------------------
  */
 void
-pq_copymsgbytes(StringInfo msg, char *buf, int datalen)
+pq_copymsgbytes(StringInfo msg, void *buf, int datalen)
 {
 	if (datalen < 0 || datalen > (msg->len - msg->cursor))
 		ereport(ERROR,

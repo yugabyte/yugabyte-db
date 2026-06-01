@@ -5,15 +5,15 @@
 #
 # NormalizationTest.txt is part of the Unicode Character Database.
 #
-# Copyright (c) 2000-2022, PostgreSQL Global Development Group
+# Copyright (c) 2000-2026, PostgreSQL Global Development Group
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use File::Basename;
 
 die "Usage: $0 INPUT_FILE OUTPUT_FILE\n" if @ARGV != 2;
-my $input_file  = $ARGV[0];
+my $input_file = $ARGV[0];
 my $output_file = $ARGV[1];
 my $output_base = basename($output_file);
 
@@ -30,7 +30,7 @@ print $OUTPUT <<HEADER;
  * norm_test_table.h
  *	  Test strings for Unicode normalization.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/common/unicode/norm_test_table.h
@@ -47,8 +47,8 @@ print $OUTPUT <<HEADER;
 typedef struct
 {
 	int			linenum;
-	pg_wchar	input[50];
-	pg_wchar	output[4][50];
+	char32_t	input[50];
+	char32_t	output[4][50];
 } pg_unicode_test;
 
 /* test table */
@@ -66,7 +66,7 @@ sub codepoint_string_to_hex
 
 	foreach (split(' ', $codepoint_string))
 	{
-		my $cp   = $_;
+		my $cp = $_;
 		my $utf8 = "0x$cp, ";
 		$result .= $utf8;
 	}
@@ -89,10 +89,10 @@ while (my $line = <$INPUT>)
 	my ($source, $nfc, $nfd, $nfkc, $nfkd) = split(';', $line);
 
 	my $source_utf8 = codepoint_string_to_hex($source);
-	my $nfc_utf8    = codepoint_string_to_hex($nfc);
-	my $nfd_utf8    = codepoint_string_to_hex($nfd);
-	my $nfkc_utf8   = codepoint_string_to_hex($nfkc);
-	my $nfkd_utf8   = codepoint_string_to_hex($nfkd);
+	my $nfc_utf8 = codepoint_string_to_hex($nfc);
+	my $nfd_utf8 = codepoint_string_to_hex($nfd);
+	my $nfkc_utf8 = codepoint_string_to_hex($nfkc);
+	my $nfkd_utf8 = codepoint_string_to_hex($nfkd);
 
 	print $OUTPUT
 	  "\t{ $linenum, { $source_utf8 }, { { $nfc_utf8 }, { $nfd_utf8 }, { $nfkc_utf8 }, { $nfkd_utf8 } } },\n";

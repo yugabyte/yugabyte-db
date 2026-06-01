@@ -17,9 +17,9 @@ The basic Lehman & Yao Algorithm
 Compared to a classic B-tree, L&Y adds a right-link pointer to each page,
 to the page's right sibling.  It also adds a "high key" to each page, which
 is an upper bound on the keys that are allowed on that page.  These two
-additions make it possible detect a concurrent page split, which allows the
-tree to be searched without holding any read locks (except to keep a single
-page from being modified while reading it).
+additions make it possible to detect a concurrent page split, which allows
+the tree to be searched without holding any read locks (except to keep a
+single page from being modified while reading it).
 
 When a search follows a downlink to a child page, it compares the page's
 high key with the search key.  If the search key is greater than the high
@@ -99,9 +99,9 @@ cannot miss any items it should have seen, nor accidentally return the same
 item twice.  The scan must remember the page's right-link at the time it
 was scanned, since that is the page to move right to; if we move right to
 the current right-link then we'd re-scan any items moved by a page split.
-We don't similarly remember the left-link, since it's best to use the most
-up-to-date left-link when trying to move left (see detailed move-left
-algorithm below).
+We also remember the left-link, and follow it when the scan moves backwards
+(though this requires extra handling to account for concurrent splits of
+the left sibling; see detailed move-left algorithm below).
 
 In most cases we release our lock and pin on a page before attempting
 to acquire pin and lock on the page we are moving to.  In a few places
@@ -485,9 +485,8 @@ We handle this kill_prior_tuple race condition by having affected index
 scans conservatively assume that any change to the leaf page at all
 implies that it was reached by btbulkdelete in the interim period when no
 buffer pin was held.  This is implemented by not setting any LP_DEAD bits
-on the leaf page at all when the page's LSN has changed.  (That won't work
-with an unlogged index, so for now we don't ever apply the "don't hold
-onto pin" optimization there.)
+on the leaf page at all when the page's LSN has changed.  (This is why we
+implement "fake" LSNs for unlogged index relations.)
 
 Fastpath For Index Insertion
 ----------------------------
@@ -528,17 +527,17 @@ from the index immediately; since index scans only stop "between" pages,
 no scan can lose its place from such a deletion.  We separate the steps
 because we allow LP_DEAD to be set with only a share lock (it's like a
 hint bit for a heap tuple), but physically deleting tuples requires an
-exclusive lock.  We also need to generate a latestRemovedXid value for
+exclusive lock.  We also need to generate a snapshotConflictHorizon for
 each deletion operation's WAL record, which requires additional
 coordinating with the tableam when the deletion actually takes place.
-(This latestRemovedXid value may be used to generate a recovery conflict
-during subsequent REDO of the record by a standby.)
+(snapshotConflictHorizon value may be used to generate a conflict during
+subsequent REDO of the record by a standby.)
 
 Delaying and batching index tuple deletion like this enables a further
 optimization: opportunistic checking of "extra" nearby index tuples
 (tuples that are not LP_DEAD-set) when they happen to be very cheap to
 check in passing (because we already know that the tableam will be
-visiting their table block to generate a latestRemovedXid value).  Any
+visiting their table block to generate a snapshotConflictHorizon).  Any
 index tuples that turn out to be safe to delete will also be deleted.
 Simple deletion will behave as if the extra tuples that actually turn
 out to be delete-safe had their LP_DEAD bits set right from the start.

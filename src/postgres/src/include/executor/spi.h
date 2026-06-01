@@ -3,7 +3,7 @@
  * spi.h
  *				Server Programming Interface public declarations
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/spi.h
@@ -98,15 +98,9 @@ typedef struct _SPI_plan *SPIPlanPtr;
 #define SPI_OK_REL_UNREGISTER	16
 #define SPI_OK_TD_REGISTER		17
 #define SPI_OK_MERGE			18
+#define SPI_OK_MERGE_RETURNING	19
 
 #define SPI_OPT_NONATOMIC		(1 << 0)
-
-/* These used to be functions, now just no-ops for backwards compatibility */
-#define SPI_push()	((void) 0)
-#define SPI_pop()	((void) 0)
-#define SPI_push_conditional()	false
-#define SPI_pop_conditional(pushed) ((void) 0)
-#define SPI_restore_connection()	((void) 0)
 
 extern PGDLLIMPORT uint64 SPI_processed;
 extern PGDLLIMPORT SPITupleTable *SPI_tuptable;
@@ -118,7 +112,7 @@ extern int	SPI_finish(void);
 extern int	SPI_execute(const char *src, bool read_only, long tcount);
 extern int	SPI_execute_extended(const char *src,
 								 const SPIExecuteOptions *options);
-extern int	SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
+extern int	SPI_execute_plan(SPIPlanPtr plan, const Datum *Values, const char *Nulls,
 							 bool read_only, long tcount);
 extern int	SPI_execute_plan_extended(SPIPlanPtr plan,
 									  const SPIExecuteOptions *options);
@@ -129,13 +123,13 @@ extern int	SPI_exec(const char *src, long tcount);
 extern int	SPI_execp(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 					  long tcount);
 extern int	SPI_execute_snapshot(SPIPlanPtr plan,
-								 Datum *Values, const char *Nulls,
+								 const Datum *Values, const char *Nulls,
 								 Snapshot snapshot,
 								 Snapshot crosscheck_snapshot,
 								 bool read_only, bool fire_triggers, long tcount);
 extern int	SPI_execute_with_args(const char *src,
 								  int nargs, Oid *argtypes,
-								  Datum *Values, const char *Nulls,
+								  const Datum *Values, const char *Nulls,
 								  bool read_only, long tcount);
 extern SPIPlanPtr SPI_prepare(const char *src, int nargs, Oid *argtypes);
 extern SPIPlanPtr SPI_prepare_cursor(const char *src, int nargs, Oid *argtypes,
@@ -175,11 +169,11 @@ extern void *SPI_palloc(Size size);
 extern void *SPI_repalloc(void *pointer, Size size);
 extern void SPI_pfree(void *pointer);
 extern Datum SPI_datumTransfer(Datum value, bool typByVal, int typLen);
-extern void SPI_freetuple(HeapTuple pointer);
+extern void SPI_freetuple(HeapTuple tuple);
 extern void SPI_freetuptable(SPITupleTable *tuptable);
 
 extern Portal SPI_cursor_open(const char *name, SPIPlanPtr plan,
-							  Datum *Values, const char *Nulls, bool read_only);
+							  const Datum *Values, const char *Nulls, bool read_only);
 extern Portal SPI_cursor_open_with_args(const char *name,
 										const char *src,
 										int nargs, Oid *argtypes,

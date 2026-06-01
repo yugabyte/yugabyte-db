@@ -4,7 +4,7 @@
  *	  Builtin functions for useful trigger support.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/utils/adt/trigfuncs.c
@@ -15,8 +15,7 @@
 
 #include "access/htup_details.h"
 #include "commands/trigger.h"
-#include "utils/builtins.h"
-#include "utils/rel.h"
+#include "utils/fmgrprotos.h"
 
 
 /*

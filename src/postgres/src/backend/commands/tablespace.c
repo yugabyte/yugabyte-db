@@ -12,12 +12,12 @@
  * remove the possibility of having file name conflicts, we isolate
  * files within a tablespace into database-specific subdirectories.
  *
- * To support file access via the information given in RelFileNode, we
+ * To support file access via the information given in RelFileLocator, we
  * maintain a symbolic-link map in $PGDATA/pg_tblspc. The symlinks are
  * named by tablespace OIDs and point to the actual tablespace directories.
  * There is also a per-cluster version directory in each tablespace.
  * Thus the full path to an arbitrary file is
- *			$PGDATA/pg_tblspc/spcoid/PG_MAJORVER_CATVER/dboid/relfilenode
+ *			$PGDATA/pg_tblspc/spcoid/PG_MAJORVER_CATVER/dboid/relfilenumber
  * e.g.
  *			$PGDATA/pg_tblspc/20981/PG_9.0_201002161/719849/83292814
  *
@@ -25,8 +25,8 @@
  * tables) and pg_default (for everything else).  For backwards compatibility
  * and to remain functional on platforms without symlinks, these tablespaces
  * are accessed specially: they are respectively
- *			$PGDATA/global/relfilenode
- *			$PGDATA/base/dboid/relfilenode
+ *			$PGDATA/global/relfilenumber
+ *			$PGDATA/base/dboid/relfilenumber
  *
  * To allow CREATE DATABASE to give a new database a default tablespace
  * that's different from the template database's default, we make the
@@ -38,7 +38,7 @@
  * location on disk, rather the tablespace options specify the replication
  * factor and the location of the data as cloud, region, zone blocks.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -56,7 +56,6 @@
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/reloptions.h"
-#include "access/sysattr.h"
 #include "access/tableam.h"
 #include "access/xact.h"
 #include "access/xloginsert.h"
@@ -65,25 +64,22 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
-#include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
 #include "commands/comment.h"
 #include "commands/seclabel.h"
-#include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "common/file_perm.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"
 #include "storage/fd.h"
-#include "storage/lmgr.h"
+#include "storage/lwlock.h"
+#include "storage/procsignal.h"
 #include "storage/standby.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "utils/guc.h"
-#include "utils/lsyscache.h"
+#include "utils/guc_hooks.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/varlena.h"
@@ -144,7 +140,7 @@ validatePlacementConfigurations(const char *live_placement,
  * re-create a database subdirectory (of $PGDATA/base) during WAL replay.
  */
 void
-TablespaceCreateDbspace(Oid spcNode, Oid dbNode, bool isRedo)
+TablespaceCreateDbspace(Oid spcOid, Oid dbOid, bool isRedo)
 {
 	struct stat st;
 	char	   *dir;
@@ -153,13 +149,13 @@ TablespaceCreateDbspace(Oid spcNode, Oid dbNode, bool isRedo)
 	 * The global tablespace doesn't have per-database subdirectories, so
 	 * nothing to do for it.
 	 */
-	if (spcNode == GLOBALTABLESPACE_OID)
+	if (spcOid == GLOBALTABLESPACE_OID)
 		return;
 
-	Assert(OidIsValid(spcNode));
-	Assert(OidIsValid(dbNode));
+	Assert(OidIsValid(spcOid));
+	Assert(OidIsValid(dbOid));
 
-	dir = GetDatabasePath(dbNode, spcNode);
+	dir = GetDatabasePath(dbOid, spcOid);
 
 	if (stat(dir, &st) < 0)
 	{
@@ -242,10 +238,9 @@ TablespaceCreateDbspace(Oid spcNode, Oid dbNode, bool isRedo)
 Oid
 CreateTableSpace(CreateTableSpaceStmt *stmt)
 {
-#ifdef HAVE_SYMLINK
 	Relation	rel;
 	Datum		values[Natts_pg_tablespace];
-	bool		nulls[Natts_pg_tablespace];
+	bool		nulls[Natts_pg_tablespace] = {0};
 	HeapTuple	tuple;
 	Oid			tablespaceoid;
 	char	   *location;
@@ -283,6 +278,12 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_NAME),
 					 errmsg("tablespace location cannot contain single quotes")));
+
+		/* Report error if name has \n or \r character. */
+		if (strpbrk(stmt->tablespacename, "\n\r"))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("tablespace name \"%s\" contains a newline or carriage return character", stmt->tablespacename)));
 
 		in_place = allow_in_place_tablespaces && strlen(location) == 0;
 
@@ -355,8 +356,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 */
 	rel = table_open(TableSpaceRelationId, RowExclusiveLock);
 
-	MemSet(nulls, false, sizeof(nulls));
-
 	if (IsBinaryUpgrade)
 	{
 		/* Use binary-upgrade override for tablespace oid */
@@ -416,9 +415,9 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 			xlrec.ts_id = tablespaceoid;
 
 			XLogBeginInsert();
-			XLogRegisterData((char *) &xlrec,
+			XLogRegisterData(&xlrec,
 							 offsetof(xl_tblspc_create_rec, ts_path));
-			XLogRegisterData((char *) location, strlen(location) + 1);
+			XLogRegisterData(location, strlen(location) + 1);
 
 			(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_CREATE);
 		}
@@ -441,12 +440,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	table_close(rel, NoLock);
 
 	return tablespaceoid;
-#else							/* !HAVE_SYMLINK */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("tablespaces are not supported on this platform")));
-	return InvalidOid;			/* keep compiler quiet */
-#endif							/* HAVE_SYMLINK */
 }
 
 /*
@@ -457,7 +450,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 void
 DropTableSpace(DropTableSpaceStmt *stmt)
 {
-#ifdef HAVE_SYMLINK
 	char	   *tablespacename = stmt->tablespacename;
 	TableScanDesc scandesc;
 	Relation	rel;
@@ -504,7 +496,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	tablespaceoid = spcform->oid;
 
 	/* Must be tablespace owner */
-	if (!pg_tablespace_ownercheck(tablespaceoid, GetUserId()))
+	if (!object_ownercheck(TableSpaceRelationId, tablespaceoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TABLESPACE,
 					   tablespacename);
 
@@ -594,7 +586,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 			 * mustn't delete.  So instead, we force a checkpoint which will clean
 			 * out any lingering files, and try again.
 			 */
-			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
+			RequestCheckpoint(CHECKPOINT_FAST | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 
 			/*
 			 * On Windows, an unlinked file persists in the directory listing
@@ -627,7 +619,7 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 			xlrec.ts_id = tablespaceoid;
 
 			XLogBeginInsert();
-			XLogRegisterData((char *) &xlrec, sizeof(xl_tblspc_drop_rec));
+			XLogRegisterData(&xlrec, sizeof(xl_tblspc_drop_rec));
 
 			(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP);
 		}
@@ -654,11 +646,6 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 
 	/* We keep the lock on pg_tablespace until commit */
 	table_close(rel, NoLock);
-#else							/* !HAVE_SYMLINK */
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("tablespaces are not supported on this platform")));
-#endif							/* HAVE_SYMLINK */
 }
 
 
@@ -676,7 +663,7 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 	struct stat st;
 	bool		in_place;
 
-	linkloc = psprintf("pg_tblspc/%u", tablespaceoid);
+	linkloc = psprintf("%s/%u", PG_TBLSPC_DIR, tablespaceoid);
 
 	/*
 	 * If we're asked to make an 'in place' tablespace, create the directory
@@ -802,7 +789,7 @@ destroy_tablespace_directories(Oid tablespaceoid, bool redo)
 	char	   *subfile;
 	struct stat st;
 
-	linkloc_with_version_dir = psprintf("pg_tblspc/%u/%s", tablespaceoid,
+	linkloc_with_version_dir = psprintf("%s/%u/%s", PG_TBLSPC_DIR, tablespaceoid,
 										TABLESPACE_VERSION_DIRECTORY);
 
 	/*
@@ -1070,7 +1057,7 @@ RenameTableSpace(const char *oldname, const char *newname)
 	table_endscan(scan);
 
 	/* Must be owner */
-	if (!pg_tablespace_ownercheck(tspId, GetUserId()))
+	if (!object_ownercheck(TableSpaceRelationId, tspId, GetUserId()))
 		aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_TABLESPACE, oldname);
 
 	/* Validate new name */
@@ -1079,6 +1066,12 @@ RenameTableSpace(const char *oldname, const char *newname)
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable tablespace name \"%s\"", newname),
 				 errdetail("The prefix \"pg_\" is reserved for system tablespaces.")));
+
+	/* Report error if name has \n or \r character. */
+	if (strpbrk(newname, "\n\r"))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("tablespace name \"%s\" contains a newline or carriage return character", newname)));
 
 	/*
 	 * If built with appropriate switch, whine when regression-testing
@@ -1155,7 +1148,7 @@ AlterTableSpaceOptions(AlterTableSpaceOptionsStmt *stmt)
 	tablespaceoid = ((Form_pg_tablespace) GETSTRUCT(tup))->oid;
 
 	/* Must be owner of the existing object */
-	if (!pg_tablespace_ownercheck(tablespaceoid, GetUserId()))
+	if (!object_ownercheck(TableSpaceRelationId, tablespaceoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TABLESPACE,
 					   stmt->tablespacename);
 
@@ -1394,8 +1387,8 @@ check_temp_tablespaces(char **newval, void **extra, GucSource source)
 			}
 
 			/* Check permissions, similarly complaining only if interactive */
-			aclresult = pg_tablespace_aclcheck(curoid, GetUserId(),
-											   ACL_CREATE);
+			aclresult = object_aclcheck(TableSpaceRelationId, curoid, GetUserId(),
+										ACL_CREATE);
 			if (aclresult != ACLCHECK_OK)
 			{
 				if (source >= PGC_S_INTERACTIVE)
@@ -1407,13 +1400,13 @@ check_temp_tablespaces(char **newval, void **extra, GucSource source)
 		}
 
 		/* Now prepare an "extra" struct for assign_temp_tablespaces */
-		myextra = malloc(offsetof(temp_tablespaces_extra, tblSpcs) +
-						 numSpcs * sizeof(Oid));
+		myextra = guc_malloc(LOG, offsetof(temp_tablespaces_extra, tblSpcs) +
+							 numSpcs * sizeof(Oid));
 		if (!myextra)
 			return false;
 		myextra->numSpcs = numSpcs;
 		memcpy(myextra->tblSpcs, tblSpcs, numSpcs * sizeof(Oid));
-		*extra = (void *) myextra;
+		*extra = myextra;
 
 		pfree(tblSpcs);
 	}
@@ -1533,8 +1526,8 @@ PrepareTempTablespaces(void)
 		}
 
 		/* Check permissions similarly */
-		aclresult = pg_tablespace_aclcheck(curoid, GetUserId(),
-										   ACL_CREATE);
+		aclresult = object_aclcheck(TableSpaceRelationId, curoid, GetUserId(),
+									ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			continue;
 
@@ -1659,7 +1652,7 @@ yb_get_tablespace_options(Datum **options, int *num_options, Oid spc_oid)
 								Anum_pg_tablespace_spcoptions, &isnull);
 		if (!isnull)
 		{
-			Assert(PointerIsValid(DatumGetPointer(datum)));
+			Assert(DatumGetPointer(datum) != NULL);
 			ArrayType  *array = DatumGetArrayTypeP(datum);
 
 			deconstruct_array(array, TEXTOID, -1, false, 'i',

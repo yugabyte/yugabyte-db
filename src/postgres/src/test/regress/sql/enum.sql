@@ -15,6 +15,17 @@ SELECT COUNT(*) FROM pg_enum WHERE enumtypid = 'rainbow'::regtype;
 SELECT 'red'::rainbow;
 SELECT 'mauve'::rainbow;
 
+-- Also try it with non-error-throwing API
+SELECT pg_input_is_valid('red', 'rainbow');
+SELECT pg_input_is_valid('mauve', 'rainbow');
+SELECT * FROM pg_input_error_info('mauve', 'rainbow');
+\x
+SELECT * FROM pg_input_error_info(repeat('too_long', 32), 'rainbow');
+\x
+
+-- check for duplicate enum entries
+CREATE TYPE dup_enum AS ENUM ('foo','bar','foo');
+
 --
 -- adding new values
 --
@@ -315,14 +326,13 @@ ALTER TYPE bogus RENAME TO bogon;
 select enum_range(null::bogon);
 ROLLBACK;
 
--- ideally, we'd allow this usage; but it requires keeping track of whether
--- the enum type was created in the current transaction, which is expensive
+-- we must allow this usage to support pg_dump in binary upgrade mode
 BEGIN;
 CREATE TYPE bogus AS ENUM('good');
 ALTER TYPE bogus RENAME TO bogon;
 ALTER TYPE bogon ADD VALUE 'bad';
 ALTER TYPE bogon ADD VALUE 'ugly';
-select enum_range(null::bogon);  -- fails
+select enum_range(null::bogon);
 ROLLBACK;
 
 --

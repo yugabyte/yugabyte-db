@@ -25,6 +25,9 @@
 #include "lib/stringinfo.h"
 #include "utils/guc.h"
 
+/*
+ * YB_TODO_PG19MERGE: port PG19 changes to passwordcheck.c
+ */
 PG_MODULE_MAGIC;
 
 /* GUC variables */
@@ -90,7 +93,7 @@ check_password(const char *username,
 			 *
 			 * We only check for username = password.
 			 */
-			if (!pg_md5_encrypt(username, username, namelen, encrypted, &errstr))
+			if (!pg_md5_encrypt(username, (const uint8 *) username, namelen, encrypted, &errstr))
 				elog(ERROR, "password encryption failed: %s", errstr);
 			if (strcmp(password, encrypted) == 0)
 				ereport(ERROR,

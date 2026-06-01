@@ -305,7 +305,6 @@ ifndef haslibarule
 $(stlib): $(call expand_subsys,$(OBJS)) | $(SHLIB_PREREQS)
 	rm -f $@
 	$(LINK.static) $@ $^
-	$(RANLIB) $@
 	touch $@
 endif #haslibarule
 
@@ -467,10 +466,6 @@ install-lib-pc: lib$(NAME).pc installdirs-lib
 
 install-lib-static: $(stlib) installdirs-lib
 	$(INSTALL_STLIB) $< '$(DESTDIR)$(libdir)/$(stlib)'
-ifeq ($(PORTNAME), darwin)
-	cd '$(DESTDIR)$(libdir)' && \
-	$(RANLIB) $(stlib)
-endif
 
 install-lib-shared: $(shlib) installdirs-lib
 ifdef soname

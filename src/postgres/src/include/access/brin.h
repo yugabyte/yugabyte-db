@@ -1,7 +1,7 @@
 /*
  * AM-callable functions for BRIN indexes
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -10,7 +10,9 @@
 #ifndef BRIN_H
 #define BRIN_H
 
-#include "nodes/execnodes.h"
+#include "storage/block.h"
+#include "storage/dsm.h"
+#include "storage/shm_toc.h"
 #include "utils/relcache.h"
 
 
@@ -51,5 +53,7 @@ typedef struct BrinStatsData
 
 
 extern void brinGetStats(Relation index, BrinStatsData *stats);
+
+extern void _brin_parallel_build_main(dsm_segment *seg, shm_toc *toc);
 
 #endif							/* BRIN_H */

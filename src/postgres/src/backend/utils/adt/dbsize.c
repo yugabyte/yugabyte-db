@@ -2,7 +2,7 @@
  * dbsize.c
  *		Database object size functions, and related inquiries
  *
- * Copyright (c) 2002-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/dbsize.c
@@ -15,19 +15,19 @@
 
 #include "access/htup_details.h"
 #include "access/relation.h"
-#include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_tablespace.h"
-#include "commands/dbcommands.h"
 #include "commands/tablespace.h"
 #include "miscadmin.h"
 #include "storage/fd.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/numeric.h"
 #include "utils/rel.h"
-#include "utils/relfilenodemap.h"
+#include "utils/relfilenumbermap.h"
 #include "utils/relmapper.h"
 #include "utils/syscache.h"
 
@@ -49,7 +49,7 @@ struct size_pretty_unit
 								 * unit */
 };
 
-/* When adding units here also update the error message in pg_size_bytes */
+/* When adding units here also update the docs and the error message in pg_size_bytes */
 static const struct size_pretty_unit size_pretty_units[] = {
 	{"bytes", 10 * 1024, false, 0},
 	{"kB", 20 * 1024 - 1, true, 10},
@@ -58,6 +58,19 @@ static const struct size_pretty_unit size_pretty_units[] = {
 	{"TB", 20 * 1024 - 1, true, 40},
 	{"PB", 20 * 1024 - 1, true, 50},
 	{NULL, 0, false, 0}
+};
+
+/* Additional unit aliases accepted by pg_size_bytes */
+struct size_bytes_unit_alias
+{
+	const char *alias;
+	int			unit_index;		/* corresponding size_pretty_units element */
+};
+
+/* When adding units here also update the docs and the error message in pg_size_bytes */
+static const struct size_bytes_unit_alias size_bytes_aliases[] = {
+	{"B", 0},
+	{NULL}
 };
 
 /* Return physical size of directory contents, or 0 if dir doesn't exist */
@@ -119,7 +132,7 @@ calculate_database_size(Oid dbOid)
 	 * User must have connect privilege for target database or have privileges
 	 * of pg_read_all_stats
 	 */
-	aclresult = pg_database_aclcheck(dbOid, GetUserId(), ACL_CONNECT);
+	aclresult = object_aclcheck(DatabaseRelationId, dbOid, GetUserId(), ACL_CONNECT);
 	if (aclresult != ACLCHECK_OK &&
 		!has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS))
 	{
@@ -134,7 +147,7 @@ calculate_database_size(Oid dbOid)
 	totalsize = db_dir_size(pathname);
 
 	/* Scan the non-default tablespaces */
-	snprintf(dirpath, MAXPGPATH, "pg_tblspc");
+	snprintf(dirpath, MAXPGPATH, PG_TBLSPC_DIR);
 	dirdesc = AllocateDir(dirpath);
 
 	while ((direntry = ReadDir(dirdesc, dirpath)) != NULL)
@@ -145,8 +158,8 @@ calculate_database_size(Oid dbOid)
 			strcmp(direntry->d_name, "..") == 0)
 			continue;
 
-		snprintf(pathname, sizeof(pathname), "pg_tblspc/%s/%s/%u",
-				 direntry->d_name, TABLESPACE_VERSION_DIRECTORY, dbOid);
+		snprintf(pathname, sizeof(pathname), "%s/%s/%s/%u",
+				 PG_TBLSPC_DIR, direntry->d_name, TABLESPACE_VERSION_DIRECTORY, dbOid);
 		totalsize += db_dir_size(pathname);
 	}
 
@@ -160,6 +173,15 @@ pg_database_size_oid(PG_FUNCTION_ARGS)
 {
 	Oid			dbOid = PG_GETARG_OID(0);
 	int64		size;
+
+	/*
+	 * Not needed for correctness, but avoid non-user-facing error message
+	 * later if the database doesn't exist.
+	 */
+	if (!SearchSysCacheExists1(DATABASEOID, ObjectIdGetDatum(dbOid)))
+		ereport(ERROR,
+				errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("database with OID %u does not exist", dbOid));
 
 	size = calculate_database_size(dbOid);
 
@@ -207,7 +229,7 @@ calculate_tablespace_size(Oid tblspcOid)
 	if (tblspcOid != MyDatabaseTableSpace &&
 		!has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS))
 	{
-		aclresult = pg_tablespace_aclcheck(tblspcOid, GetUserId(), ACL_CREATE);
+		aclresult = object_aclcheck(TableSpaceRelationId, tblspcOid, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_TABLESPACE,
 						   get_tablespace_name(tblspcOid));
@@ -218,7 +240,7 @@ calculate_tablespace_size(Oid tblspcOid)
 	else if (tblspcOid == GLOBALTABLESPACE_OID)
 		snprintf(tblspcPath, MAXPGPATH, "global");
 	else
-		snprintf(tblspcPath, MAXPGPATH, "pg_tblspc/%u/%s", tblspcOid,
+		snprintf(tblspcPath, MAXPGPATH, "%s/%u/%s", PG_TBLSPC_DIR, tblspcOid,
 				 TABLESPACE_VERSION_DIRECTORY);
 
 	dirdesc = AllocateDir(tblspcPath);
@@ -265,6 +287,15 @@ pg_tablespace_size_oid(PG_FUNCTION_ARGS)
 	Oid			tblspcOid = PG_GETARG_OID(0);
 	int64		size;
 
+	/*
+	 * Not needed for correctness, but avoid non-user-facing error message
+	 * later if the tablespace doesn't exist.
+	 */
+	if (!SearchSysCacheExists1(TABLESPACEOID, ObjectIdGetDatum(tblspcOid)))
+		ereport(ERROR,
+				errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("tablespace with OID %u does not exist", tblspcOid));
+
 	size = calculate_tablespace_size(tblspcOid);
 
 	if (size < 0)
@@ -296,10 +327,10 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
  * is no check here or at the call sites for that.
  */
 static int64
-calculate_relation_size(RelFileNode *rfn, BackendId backend, ForkNumber forknum)
+calculate_relation_size(RelFileLocator *rfn, ProcNumber backend, ForkNumber forknum)
 {
 	int64		totalsize = 0;
-	char	   *relationpath;
+	RelPathStr	relationpath;
 	char		pathname[MAXPGPATH];
 	unsigned int segcount = 0;
 
@@ -313,10 +344,10 @@ calculate_relation_size(RelFileNode *rfn, BackendId backend, ForkNumber forknum)
 
 		if (segcount == 0)
 			snprintf(pathname, MAXPGPATH, "%s",
-					 relationpath);
+					 relationpath.str);
 		else
 			snprintf(pathname, MAXPGPATH, "%s.%u",
-					 relationpath, segcount);
+					 relationpath.str, segcount);
 
 		if (stat(pathname, &fst) < 0)
 		{
@@ -353,7 +384,7 @@ pg_relation_size(PG_FUNCTION_ARGS)
 	if (rel == NULL)
 		PG_RETURN_NULL();
 
-	size = calculate_relation_size(&(rel->rd_node), rel->rd_backend,
+	size = calculate_relation_size(&(rel->rd_locator), rel->rd_backend,
 								   forkname_to_number(text_to_cstring(forkName)));
 
 	relation_close(rel, AccessShareLock);
@@ -378,7 +409,7 @@ calculate_toast_table_size(Oid toastrelid)
 
 	/* toast heap size, including FSM and VM size */
 	for (forkNum = 0; forkNum <= MAX_FORKNUM; forkNum++)
-		size += calculate_relation_size(&(toastRel->rd_node),
+		size += calculate_relation_size(&(toastRel->rd_locator),
 										toastRel->rd_backend, forkNum);
 
 	/* toast index size, including FSM and VM size */
@@ -392,7 +423,7 @@ calculate_toast_table_size(Oid toastrelid)
 		toastIdxRel = relation_open(lfirst_oid(lc),
 									AccessShareLock);
 		for (forkNum = 0; forkNum <= MAX_FORKNUM; forkNum++)
-			size += calculate_relation_size(&(toastIdxRel->rd_node),
+			size += calculate_relation_size(&(toastIdxRel->rd_locator),
 											toastIdxRel->rd_backend, forkNum);
 
 		relation_close(toastIdxRel, AccessShareLock);
@@ -447,7 +478,7 @@ calculate_table_size(Relation rel)
 	 * heap size, including FSM and VM
 	 */
 	for (forkNum = 0; forkNum <= MAX_FORKNUM; forkNum++)
-		size += calculate_relation_size(&(rel->rd_node), rel->rd_backend,
+		size += calculate_relation_size(&(rel->rd_locator), rel->rd_backend,
 										forkNum);
 
 	/*
@@ -522,7 +553,7 @@ calculate_indexes_size(Relation rel)
 				ForkNumber	forkNum;
 
 				for (forkNum = 0; forkNum <= MAX_FORKNUM; forkNum++)
-					size += calculate_relation_size(&(idxRel->rd_node),
+					size += calculate_relation_size(&(idxRel->rd_locator),
 													idxRel->rd_backend,
 													forkNum);
 			}
@@ -888,9 +919,19 @@ pg_size_bytes(PG_FUNCTION_ARGS)
 		{
 			/* Parse the unit case-insensitively */
 			if (pg_strcasecmp(strptr, unit->name) == 0)
-			{
-				multiplier = ((int64) 1) << unit->unitbits;
 				break;
+		}
+
+		/* If not found, look in table of aliases */
+		if (unit->name == NULL)
+		{
+			for (const struct size_bytes_unit_alias *a = size_bytes_aliases; a->alias != NULL; a++)
+			{
+				if (pg_strcasecmp(strptr, a->alias) == 0)
+				{
+					unit = &size_pretty_units[a->unit_index];
+					break;
+				}
 			}
 		}
 
@@ -900,7 +941,9 @@ pg_size_bytes(PG_FUNCTION_ARGS)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid size: \"%s\"", text_to_cstring(arg)),
 					 errdetail("Invalid size unit: \"%s\".", strptr),
-					 errhint("Valid units are \"bytes\", \"kB\", \"MB\", \"GB\", \"TB\", and \"PB\".")));
+					 errhint("Valid units are \"bytes\", \"B\", \"kB\", \"MB\", \"GB\", \"TB\", and \"PB\".")));
+
+		multiplier = ((int64) 1) << unit->unitbits;
 
 		if (multiplier > 1)
 		{
@@ -938,7 +981,7 @@ Datum
 pg_relation_filenode(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
-	Oid			result;
+	RelFileNumber result;
 	HeapTuple	tuple;
 	Form_pg_class relform;
 
@@ -952,32 +995,35 @@ pg_relation_filenode(PG_FUNCTION_ARGS)
 		if (relform->relfilenode)
 			result = relform->relfilenode;
 		else					/* Consult the relation mapper */
-			result = RelationMapOidToFilenode(relid,
-											  relform->relisshared);
+			result = RelationMapOidToFilenumber(relid,
+												relform->relisshared);
 	}
 	else
 	{
 		/* no storage, return NULL */
-		result = InvalidOid;
+		result = InvalidRelFileNumber;
 	}
 
 	ReleaseSysCache(tuple);
 
-	if (!OidIsValid(result))
+	if (!RelFileNumberIsValid(result))
 		PG_RETURN_NULL();
 
 	PG_RETURN_OID(result);
 }
 
 /*
- * Get the relation via (reltablespace, relfilenode)
+ * Get the relation via (reltablespace, relfilenumber)
  *
  * This is expected to be used when somebody wants to match an individual file
  * on the filesystem back to its table. That's not trivially possible via
- * pg_class, because that doesn't contain the relfilenodes of shared and nailed
+ * pg_class, because that doesn't contain the relfilenumbers of shared and nailed
  * tables.
  *
  * We don't fail but return NULL if we cannot find a mapping.
+ *
+ * Temporary relations are not detected, returning NULL (see
+ * RelidByRelfilenumber() for the reasons).
  *
  * InvalidOid can be passed instead of the current database's default
  * tablespace.
@@ -986,14 +1032,14 @@ Datum
 pg_filenode_relation(PG_FUNCTION_ARGS)
 {
 	Oid			reltablespace = PG_GETARG_OID(0);
-	Oid			relfilenode = PG_GETARG_OID(1);
+	RelFileNumber relfilenumber = PG_GETARG_OID(1);
 	Oid			heaprel;
 
-	/* test needed so RelidByRelfilenode doesn't misbehave */
-	if (!OidIsValid(relfilenode))
+	/* test needed so RelidByRelfilenumber doesn't misbehave */
+	if (!RelFileNumberIsValid(relfilenumber))
 		PG_RETURN_NULL();
 
-	heaprel = RelidByRelfilenode(reltablespace, relfilenode);
+	heaprel = RelidByRelfilenumber(reltablespace, relfilenumber);
 
 	if (!OidIsValid(heaprel))
 		PG_RETURN_NULL();
@@ -1012,9 +1058,9 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	HeapTuple	tuple;
 	Form_pg_class relform;
-	RelFileNode rnode;
-	BackendId	backend;
-	char	   *path;
+	RelFileLocator rlocator;
+	ProcNumber	backend;
+	RelPathStr	path;
 
 	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
 	if (!HeapTupleIsValid(tuple))
@@ -1025,29 +1071,29 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 	{
 		/* This logic should match RelationInitPhysicalAddr */
 		if (relform->reltablespace)
-			rnode.spcNode = relform->reltablespace;
+			rlocator.spcOid = relform->reltablespace;
 		else
-			rnode.spcNode = MyDatabaseTableSpace;
-		if (rnode.spcNode == GLOBALTABLESPACE_OID)
-			rnode.dbNode = InvalidOid;
+			rlocator.spcOid = MyDatabaseTableSpace;
+		if (rlocator.spcOid == GLOBALTABLESPACE_OID)
+			rlocator.dbOid = InvalidOid;
 		else
-			rnode.dbNode = MyDatabaseId;
+			rlocator.dbOid = MyDatabaseId;
 		if (relform->relfilenode)
-			rnode.relNode = relform->relfilenode;
+			rlocator.relNumber = relform->relfilenode;
 		else					/* Consult the relation mapper */
-			rnode.relNode = RelationMapOidToFilenode(relid,
-													 relform->relisshared);
+			rlocator.relNumber = RelationMapOidToFilenumber(relid,
+															relform->relisshared);
 	}
 	else
 	{
 		/* no storage, return NULL */
-		rnode.relNode = InvalidOid;
+		rlocator.relNumber = InvalidRelFileNumber;
 		/* some compilers generate warnings without these next two lines */
-		rnode.dbNode = InvalidOid;
-		rnode.spcNode = InvalidOid;
+		rlocator.dbOid = InvalidOid;
+		rlocator.spcOid = InvalidOid;
 	}
 
-	if (!OidIsValid(rnode.relNode))
+	if (!RelFileNumberIsValid(rlocator.relNumber))
 	{
 		ReleaseSysCache(tuple);
 		PG_RETURN_NULL();
@@ -1058,27 +1104,27 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 	{
 		case RELPERSISTENCE_UNLOGGED:
 		case RELPERSISTENCE_PERMANENT:
-			backend = InvalidBackendId;
+			backend = INVALID_PROC_NUMBER;
 			break;
 		case RELPERSISTENCE_TEMP:
 			if (isTempOrTempToastNamespace(relform->relnamespace))
-				backend = BackendIdForTempRelations();
+				backend = ProcNumberForTempRelations();
 			else
 			{
 				/* Do it the hard way. */
-				backend = GetTempNamespaceBackendId(relform->relnamespace);
-				Assert(backend != InvalidBackendId);
+				backend = GetTempNamespaceProcNumber(relform->relnamespace);
+				Assert(backend != INVALID_PROC_NUMBER);
 			}
 			break;
 		default:
 			elog(ERROR, "invalid relpersistence: %c", relform->relpersistence);
-			backend = InvalidBackendId; /* placate compiler */
+			backend = INVALID_PROC_NUMBER;	/* placate compiler */
 			break;
 	}
 
 	ReleaseSysCache(tuple);
 
-	path = relpathbackend(rnode, backend, MAIN_FORKNUM);
+	path = relpathbackend(rlocator, backend, MAIN_FORKNUM);
 
-	PG_RETURN_TEXT_P(cstring_to_text(path));
+	PG_RETURN_TEXT_P(cstring_to_text(path.str));
 }

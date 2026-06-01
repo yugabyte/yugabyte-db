@@ -36,7 +36,7 @@
  *		ss_report_location	- update current scan location
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -50,6 +50,7 @@
 #include "miscadmin.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
+#include "storage/subsystems.h"
 #include "utils/rel.h"
 
 
@@ -90,7 +91,7 @@ bool		trace_syncscan = false;
  */
 typedef struct ss_scan_location_t
 {
-	RelFileNode relfilenode;	/* identity of a relation */
+	RelFileLocator relfilelocator;	/* identity of a relation */
 	BlockNumber location;		/* last-reported location in the relation */
 } ss_scan_location_t;
 
@@ -111,75 +112,72 @@ typedef struct ss_scan_locations_t
 #define SizeOfScanLocations(N) \
 	(offsetof(ss_scan_locations_t, items) + (N) * sizeof(ss_lru_item_t))
 
+static void SyncScanShmemRequest(void *arg);
+static void SyncScanShmemInit(void *arg);
+
+const ShmemCallbacks SyncScanShmemCallbacks = {
+	.request_fn = SyncScanShmemRequest,
+	.init_fn = SyncScanShmemInit,
+};
+
 /* Pointer to struct in shared memory */
 static ss_scan_locations_t *scan_locations;
 
 /* prototypes for internal functions */
-static BlockNumber ss_search(RelFileNode relfilenode,
+static BlockNumber ss_search(RelFileLocator relfilelocator,
 							 BlockNumber location, bool set);
 
 
 /*
- * SyncScanShmemSize --- report amount of shared memory space needed
+ * SyncScanShmemRequest --- register this module's shared memory
  */
-Size
-SyncScanShmemSize(void)
+static void
+SyncScanShmemRequest(void *arg)
 {
-	return SizeOfScanLocations(SYNC_SCAN_NELEM);
+	ShmemRequestStruct(.name = "Sync Scan Locations List",
+					   .size = SizeOfScanLocations(SYNC_SCAN_NELEM),
+					   .ptr = (void **) &scan_locations,
+		);
 }
 
 /*
  * SyncScanShmemInit --- initialize this module's shared memory
  */
-void
-SyncScanShmemInit(void)
+static void
+SyncScanShmemInit(void *arg)
 {
 	int			i;
-	bool		found;
 
-	scan_locations = (ss_scan_locations_t *)
-		ShmemInitStruct("Sync Scan Locations List",
-						SizeOfScanLocations(SYNC_SCAN_NELEM),
-						&found);
+	scan_locations->head = &scan_locations->items[0];
+	scan_locations->tail = &scan_locations->items[SYNC_SCAN_NELEM - 1];
 
-	if (!IsUnderPostmaster)
+	for (i = 0; i < SYNC_SCAN_NELEM; i++)
 	{
-		/* Initialize shared memory area */
-		Assert(!found);
+		ss_lru_item_t *item = &scan_locations->items[i];
 
-		scan_locations->head = &scan_locations->items[0];
-		scan_locations->tail = &scan_locations->items[SYNC_SCAN_NELEM - 1];
+		/*
+		 * Initialize all slots with invalid values. As scans are started,
+		 * these invalid entries will fall off the LRU list and get replaced
+		 * with real entries.
+		 */
+		item->location.relfilelocator.spcOid = InvalidOid;
+		item->location.relfilelocator.dbOid = InvalidOid;
+		item->location.relfilelocator.relNumber = InvalidRelFileNumber;
+		item->location.location = InvalidBlockNumber;
 
-		for (i = 0; i < SYNC_SCAN_NELEM; i++)
-		{
-			ss_lru_item_t *item = &scan_locations->items[i];
-
-			/*
-			 * Initialize all slots with invalid values. As scans are started,
-			 * these invalid entries will fall off the LRU list and get
-			 * replaced with real entries.
-			 */
-			item->location.relfilenode.spcNode = InvalidOid;
-			item->location.relfilenode.dbNode = InvalidOid;
-			item->location.relfilenode.relNode = InvalidOid;
-			item->location.location = InvalidBlockNumber;
-
-			item->prev = (i > 0) ?
-				(&scan_locations->items[i - 1]) : NULL;
-			item->next = (i < SYNC_SCAN_NELEM - 1) ?
-				(&scan_locations->items[i + 1]) : NULL;
-		}
+		item->prev = (i > 0) ?
+			(&scan_locations->items[i - 1]) : NULL;
+		item->next = (i < SYNC_SCAN_NELEM - 1) ?
+			(&scan_locations->items[i + 1]) : NULL;
 	}
-	else
-		Assert(found);
 }
 
 /*
  * ss_search --- search the scan_locations structure for an entry with the
- *		given relfilenode.
+ *		given relfilelocator.
  *
  * If "set" is true, the location is updated to the given location.  If no
- * entry for the given relfilenode is found, it will be created at the head
+ * entry for the given relfilelocator is found, it will be created at the head
  * of the list with the given location, even if "set" is false.
  *
  * In any case, the location after possible update is returned.
@@ -188,7 +186,7 @@ SyncScanShmemInit(void)
  * data structure.
  */
 static BlockNumber
-ss_search(RelFileNode relfilenode, BlockNumber location, bool set)
+ss_search(RelFileLocator relfilelocator, BlockNumber location, bool set)
 {
 	ss_lru_item_t *item;
 
@@ -197,7 +195,8 @@ ss_search(RelFileNode relfilenode, BlockNumber location, bool set)
 	{
 		bool		match;
 
-		match = RelFileNodeEquals(item->location.relfilenode, relfilenode);
+		match = RelFileLocatorEquals(item->location.relfilelocator,
+									 relfilelocator);
 
 		if (match || item->next == NULL)
 		{
@@ -207,7 +206,7 @@ ss_search(RelFileNode relfilenode, BlockNumber location, bool set)
 			 */
 			if (!match)
 			{
-				item->location.relfilenode = relfilenode;
+				item->location.relfilelocator = relfilelocator;
 				item->location.location = location;
 			}
 			else if (set)
@@ -255,7 +254,7 @@ ss_get_location(Relation rel, BlockNumber relnblocks)
 	BlockNumber startloc;
 
 	LWLockAcquire(SyncScanLock, LW_EXCLUSIVE);
-	startloc = ss_search(rel->rd_node, 0, false);
+	startloc = ss_search(rel->rd_locator, 0, false);
 	LWLockRelease(SyncScanLock);
 
 	/*
@@ -281,8 +280,8 @@ ss_get_location(Relation rel, BlockNumber relnblocks)
  * ss_report_location --- update the current scan location
  *
  * Writes an entry into the shared Sync Scan state of the form
- * (relfilenode, blocknumber), overwriting any existing entry for the
- * same relfilenode.
+ * (relfilelocator, blocknumber), overwriting any existing entry for the
+ * same relfilelocator.
  */
 void
 ss_report_location(Relation rel, BlockNumber location)
@@ -309,7 +308,7 @@ ss_report_location(Relation rel, BlockNumber location)
 	{
 		if (LWLockConditionalAcquire(SyncScanLock, LW_EXCLUSIVE))
 		{
-			(void) ss_search(rel->rd_node, location, true);
+			(void) ss_search(rel->rd_locator, location, true);
 			LWLockRelease(SyncScanLock);
 		}
 #ifdef TRACE_SYNCSCAN

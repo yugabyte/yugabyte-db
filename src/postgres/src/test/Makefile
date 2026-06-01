@@ -12,29 +12,27 @@ subdir = src/test
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS = perl regress isolation modules authentication recovery subscription
+SUBDIRS = \
+	authentication \
+	isolation \
+	modules \
+	perl \
+	postmaster \
+	recovery \
+	regress \
+	subscription
 
 ifeq ($(with_icu),yes)
 SUBDIRS += icu
 endif
-
-# Test suites that are not safe by default but can be run if selected
-# by the user via the whitespace-separated list in variable
-# PG_TEST_EXTRA:
 ifeq ($(with_gssapi),yes)
-ifneq (,$(filter kerberos,$(PG_TEST_EXTRA)))
 SUBDIRS += kerberos
 endif
-endif
 ifeq ($(with_ldap),yes)
-ifneq (,$(filter ldap,$(PG_TEST_EXTRA)))
 SUBDIRS += ldap
 endif
-endif
 ifeq ($(with_ssl),openssl)
-ifneq (,$(filter ssl,$(PG_TEST_EXTRA)))
 SUBDIRS += ssl
-endif
 endif
 
 # We don't build or execute these by default, but we do want "make

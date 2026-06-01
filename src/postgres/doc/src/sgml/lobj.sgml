@@ -114,7 +114,9 @@
     All large object manipulation using these functions
     <emphasis>must</emphasis> take place within an SQL transaction block,
     since large object file descriptors are only valid for the duration of
-    a transaction.
+    a transaction. Write operations, including <function>lo_open</function>
+    with the <symbol>INV_WRITE</symbol> mode, are not allowed in a read-only
+    transaction.
    </para>
 
    <para>
@@ -396,7 +398,7 @@ int lo_lseek(PGconn *conn, int fd, int offset, int whence);
      When dealing with large objects that might exceed 2GB in size,
      instead use
 <synopsis>
-pg_int64 lo_lseek64(PGconn *conn, int fd, pg_int64 offset, int whence);
+int64_t lo_lseek64(PGconn *conn, int fd, int64_t offset, int whence);
 </synopsis>
      This function has the same behavior
      as <function>lo_lseek</function>, but it can accept an
@@ -432,7 +434,7 @@ int lo_tell(PGconn *conn, int fd);
      When dealing with large objects that might exceed 2GB in size,
      instead use
 <synopsis>
-pg_int64 lo_tell64(PGconn *conn, int fd);
+int64_t lo_tell64(PGconn *conn, int fd);
 </synopsis>
      This function has the same behavior
      as <function>lo_tell</function>, but it can deliver a result larger
@@ -483,7 +485,7 @@ int lo_truncate(PGconn *conn, int fd, size_t len);
      When dealing with large objects that might exceed 2GB in size,
      instead use
 <synopsis>
-int lo_truncate64(PGconn *conn, int fd, pg_int64 len);
+int lo_truncate64(PGconn *conn, int fd, int64_t len);
 </synopsis>
      This function has the same
      behavior as <function>lo_truncate</function>, but it can accept a
@@ -723,7 +725,7 @@ SELECT lo_export(image.raster, '/tmp/motd') FROM image
  * testlo.c
  *    test using large objects with libpq
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *

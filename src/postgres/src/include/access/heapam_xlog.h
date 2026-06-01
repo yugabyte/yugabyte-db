@@ -4,7 +4,7 @@
  *	  POSTGRES heap access XLOG definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/heapam_xlog.h
@@ -19,7 +19,8 @@
 #include "lib/stringinfo.h"
 #include "storage/buf.h"
 #include "storage/bufpage.h"
-#include "storage/relfilenode.h"
+#include "storage/relfilelocator.h"
+#include "storage/sinval.h"
 #include "utils/relcache.h"
 
 
@@ -49,12 +50,17 @@
  * are associated with RM_HEAP2_ID, but are not logically different from
  * the ones above associated with RM_HEAP_ID.  XLOG_HEAP_OPMASK applies to
  * these, too.
+ *
+ * There's no difference between XLOG_HEAP2_PRUNE_ON_ACCESS,
+ * XLOG_HEAP2_PRUNE_VACUUM_SCAN and XLOG_HEAP2_PRUNE_VACUUM_CLEANUP records.
+ * They have separate opcodes just for debugging and analysis purposes, to
+ * indicate why the WAL record was emitted.
  */
 #define XLOG_HEAP2_REWRITE		0x00
-#define XLOG_HEAP2_PRUNE		0x10
-#define XLOG_HEAP2_VACUUM		0x20
-#define XLOG_HEAP2_FREEZE_PAGE	0x30
-#define XLOG_HEAP2_VISIBLE		0x40
+#define XLOG_HEAP2_PRUNE_ON_ACCESS		0x10
+#define XLOG_HEAP2_PRUNE_VACUUM_SCAN	0x20
+#define XLOG_HEAP2_PRUNE_VACUUM_CLEANUP	0x30
+/* 0x40 was XLOG_HEAP2_VISIBLE */
 #define XLOG_HEAP2_MULTI_INSERT 0x50
 #define XLOG_HEAP2_LOCK_UPDATED 0x60
 #define XLOG_HEAP2_NEW_CID		0x70
@@ -98,6 +104,8 @@
 #define XLH_DELETE_CONTAINS_OLD_KEY				(1<<2)
 #define XLH_DELETE_IS_SUPER						(1<<3)
 #define XLH_DELETE_IS_PARTITION_MOVE			(1<<4)
+/* See heap_delete() */
+#define XLH_DELETE_NO_LOGICAL					(1<<5)
 
 /* convenience macro for checking whether any form of old tuple was logged */
 #define XLH_DELETE_CONTAINS_OLD						\
@@ -227,42 +235,162 @@ typedef struct xl_heap_update
 #define SizeOfHeapUpdate	(offsetof(xl_heap_update, new_offnum) + sizeof(OffsetNumber))
 
 /*
- * This is what we need to know about page pruning (both during VACUUM and
- * during opportunistic pruning)
+ * These structures and flags encode VACUUM pruning and freezing and on-access
+ * pruning page modifications.
  *
- * The array of OffsetNumbers following the fixed part of the record contains:
- *	* for each redirected item: the item offset, then the offset redirected to
- *	* for each now-dead item: the item offset
- *	* for each now-unused item: the item offset
- * The total number of OffsetNumbers is therefore 2*nredirected+ndead+nunused.
- * Note that nunused is not explicitly stored, but may be found by reference
- * to the total record length.
+ * xl_heap_prune is the main record.  The XLHP_HAS_* flags indicate which
+ * "sub-records" are included and the other XLHP_* flags provide additional
+ * information about the conditions for replay.
  *
- * Acquires a full cleanup lock.
+ * The data for block reference 0 contains "sub-records" depending on which of
+ * the XLHP_HAS_* flags are set.  See xlhp_* struct definitions below.  The
+ * sub-records appear in the same order as the XLHP_* flags.  An example
+ * record with every sub-record included:
+ *
+ *-----------------------------------------------------------------------------
+ * Main data section:
+ *
+ *	xl_heap_prune
+ *		uint16				flags
+ *	TransactionId			snapshot_conflict_horizon
+ *
+ * Block 0 data section:
+ *
+ *	xlhp_freeze_plans
+ *		uint16				nplans
+ *		[2 bytes of padding]
+ *		xlhp_freeze_plan	plans[nplans]
+ *
+ *	xlhp_prune_items
+ *		uint16				nredirected
+ *		OffsetNumber		redirected[2 * nredirected]
+ *
+ *	xlhp_prune_items
+ *		uint16				ndead
+ *		OffsetNumber		nowdead[ndead]
+ *
+ *	xlhp_prune_items
+ *		uint16				nunused
+ *		OffsetNumber		nowunused[nunused]
+ *
+ *	OffsetNumber			frz_offsets[sum([plan.ntuples for plan in plans])]
+ *-----------------------------------------------------------------------------
+ *
+ * NOTE: because the record data is assembled from many optional parts, we
+ * have to pay close attention to alignment.  In the main data section,
+ * 'snapshot_conflict_horizon' is stored unaligned after 'flags', to save
+ * space.  In the block 0 data section, the freeze plans appear first, because
+ * they contain TransactionId fields that require 4-byte alignment.  All the
+ * other fields require only 2-byte alignment.  This is also the reason that
+ * 'frz_offsets' is stored separately from the xlhp_freeze_plan structs.
  */
 typedef struct xl_heap_prune
 {
-	TransactionId latestRemovedXid;
-	uint16		nredirected;
-	uint16		ndead;
-	/* OFFSET NUMBERS are in the block reference 0 */
+	uint16		flags;
+
+	/*
+	 * If XLHP_HAS_CONFLICT_HORIZON is set, the conflict horizon XID follows,
+	 * unaligned
+	 */
 } xl_heap_prune;
 
-#define SizeOfHeapPrune (offsetof(xl_heap_prune, ndead) + sizeof(uint16))
+#define SizeOfHeapPrune (offsetof(xl_heap_prune, flags) + sizeof(uint16))
+
+/* to handle recovery conflict during logical decoding on standby */
+#define		XLHP_IS_CATALOG_REL			(1 << 1)
 
 /*
- * The vacuum page record is similar to the prune record, but can only mark
- * already LP_DEAD items LP_UNUSED (during VACUUM's second heap pass)
+ * Does replaying the record require a cleanup-lock?
  *
- * Acquires an ordinary exclusive lock only.
+ * Pruning, in VACUUM's first pass or when otherwise accessing a page,
+ * requires a cleanup lock.  For freezing, and VACUUM's second pass which
+ * marks LP_DEAD line pointers as unused without moving any tuple data, an
+ * ordinary exclusive lock is sufficient.
  */
-typedef struct xl_heap_vacuum
-{
-	uint16		nunused;
-	/* OFFSET NUMBERS are in the block reference 0 */
-} xl_heap_vacuum;
+#define		XLHP_CLEANUP_LOCK	       (1 << 2)
 
-#define SizeOfHeapVacuum (offsetof(xl_heap_vacuum, nunused) + sizeof(uint16))
+/*
+ * If we remove or freeze any entries that contain xids, we need to include a
+ * snapshot conflict horizon.  It's used in Hot Standby mode to ensure that
+ * there are no queries running for which the removed tuples are still
+ * visible, or which still consider the frozen XIDs as running.
+ */
+#define		XLHP_HAS_CONFLICT_HORIZON   (1 << 3)
+
+/*
+ * Indicates that an xlhp_freeze_plans sub-record and one or more
+ * xlhp_freeze_plan sub-records are present.
+ */
+#define		XLHP_HAS_FREEZE_PLANS		(1 << 4)
+
+/*
+ * XLHP_HAS_REDIRECTIONS, XLHP_HAS_DEAD_ITEMS, and XLHP_HAS_NOW_UNUSED_ITEMS
+ * indicate that xlhp_prune_items sub-records with redirected, dead, and
+ * unused item offsets are present.
+ */
+#define		XLHP_HAS_REDIRECTIONS		(1 << 5)
+#define		XLHP_HAS_DEAD_ITEMS	        (1 << 6)
+#define		XLHP_HAS_NOW_UNUSED_ITEMS   (1 << 7)
+
+/*
+ * The xl_heap_prune record's flags may also contain which VM bits to set.
+ * xl_heap_prune should always use the XLHP_VM_ALL_VISIBLE and
+ * XLHP_VM_ALL_FROZEN flags and translate them to their visibilitymapdefs.h
+ * equivalents, VISIBILITYMAP_ALL_VISIBLE and VISIBILITYMAP_ALL_FROZEN.
+ */
+#define		XLHP_VM_ALL_VISIBLE			(1 << 8)
+#define		XLHP_VM_ALL_FROZEN			(1 << 9)
+
+/*
+ * xlhp_freeze_plan describes how to freeze a group of one or more heap tuples
+ * (appears in xl_heap_prune's xlhp_freeze_plans sub-record)
+ */
+/* 0x01 was XLH_FREEZE_XMIN */
+#define		XLH_FREEZE_XVAC		0x02
+#define		XLH_INVALID_XVAC	0x04
+
+typedef struct xlhp_freeze_plan
+{
+	TransactionId xmax;
+	uint16		t_infomask2;
+	uint16		t_infomask;
+	uint8		frzflags;
+
+	/* Length of individual page offset numbers array for this plan */
+	uint16		ntuples;
+} xlhp_freeze_plan;
+
+/*
+ * This is what we need to know about a block being frozen during vacuum
+ *
+ * The backup block's data contains an array of xlhp_freeze_plan structs (with
+ * nplans elements).  The individual item offsets are located in an array at
+ * the end of the entire record with nplans * (each plan's ntuples) members
+ * Those offsets are in the same order as the plans.  The REDO routine uses
+ * the offsets to freeze the corresponding heap tuples.
+ *
+ * (As of PostgreSQL 17, XLOG_HEAP2_PRUNE_VACUUM_SCAN records replace the
+ * separate XLOG_HEAP2_FREEZE_PAGE records.)
+ */
+typedef struct xlhp_freeze_plans
+{
+	uint16		nplans;
+	xlhp_freeze_plan plans[FLEXIBLE_ARRAY_MEMBER];
+} xlhp_freeze_plans;
+
+/*
+ * Generic sub-record type contained in block reference 0 of an xl_heap_prune
+ * record and used for redirect, dead, and unused items if any of
+ * XLHP_HAS_REDIRECTIONS/XLHP_HAS_DEAD_ITEMS/XLHP_HAS_NOW_UNUSED_ITEMS are
+ * set.  Note that in the XLHP_HAS_REDIRECTIONS variant, there are actually 2
+ * * length number of OffsetNumbers in the data.
+ */
+typedef struct xlhp_prune_items
+{
+	uint16		ntargets;
+	OffsetNumber data[FLEXIBLE_ARRAY_MEMBER];
+} xlhp_prune_items;
+
 
 /* flags for infobits_set */
 #define XLHL_XMAX_IS_MULTI		0x01
@@ -277,13 +405,13 @@ typedef struct xl_heap_vacuum
 /* This is what we need to know about lock */
 typedef struct xl_heap_lock
 {
-	TransactionId locking_xid;	/* might be a MultiXactId not xid */
+	TransactionId xmax;			/* might be a MultiXactId */
 	OffsetNumber offnum;		/* locked tuple's offset on page */
-	int8		infobits_set;	/* infomask and infomask2 bits to set */
+	uint8		infobits_set;	/* infomask and infomask2 bits to set */
 	uint8		flags;			/* XLH_LOCK_* flag bits */
 } xl_heap_lock;
 
-#define SizeOfHeapLock	(offsetof(xl_heap_lock, flags) + sizeof(int8))
+#define SizeOfHeapLock	(offsetof(xl_heap_lock, flags) + sizeof(uint8))
 
 /* This is what we need to know about locking an updated version of a row */
 typedef struct xl_heap_lock_updated
@@ -308,54 +436,14 @@ typedef struct xl_heap_confirm
 typedef struct xl_heap_inplace
 {
 	OffsetNumber offnum;		/* updated tuple's offset on page */
+	Oid			dbId;			/* MyDatabaseId */
+	Oid			tsId;			/* MyDatabaseTableSpace */
+	bool		relcacheInitFileInval;	/* invalidate relcache init files */
+	int			nmsgs;			/* number of shared inval msgs */
+	SharedInvalidationMessage msgs[FLEXIBLE_ARRAY_MEMBER];
 } xl_heap_inplace;
 
-#define SizeOfHeapInplace	(offsetof(xl_heap_inplace, offnum) + sizeof(OffsetNumber))
-
-/*
- * This struct represents a 'freeze plan', which is what we need to know about
- * a single tuple being frozen during vacuum.
- */
-/* 0x01 was XLH_FREEZE_XMIN */
-#define		XLH_FREEZE_XVAC		0x02
-#define		XLH_INVALID_XVAC	0x04
-
-typedef struct xl_heap_freeze_tuple
-{
-	TransactionId xmax;
-	OffsetNumber offset;
-	uint16		t_infomask2;
-	uint16		t_infomask;
-	uint8		frzflags;
-} xl_heap_freeze_tuple;
-
-/*
- * This is what we need to know about a block being frozen during vacuum
- *
- * Backup block 0's data contains an array of xl_heap_freeze_tuple structs,
- * one for each tuple.
- */
-typedef struct xl_heap_freeze_page
-{
-	TransactionId cutoff_xid;
-	uint16		ntuples;
-} xl_heap_freeze_page;
-
-#define SizeOfHeapFreezePage (offsetof(xl_heap_freeze_page, ntuples) + sizeof(uint16))
-
-/*
- * This is what we need to know about setting a visibility map bit
- *
- * Backup blk 0: visibility map buffer
- * Backup blk 1: heap buffer
- */
-typedef struct xl_heap_visible
-{
-	TransactionId cutoff_xid;
-	uint8		flags;
-} xl_heap_visible;
-
-#define SizeOfHeapVisible (offsetof(xl_heap_visible, flags) + sizeof(uint8))
+#define MinSizeOfHeapInplace	(offsetof(xl_heap_inplace, nmsgs) + sizeof(int))
 
 typedef struct xl_heap_new_cid
 {
@@ -369,9 +457,9 @@ typedef struct xl_heap_new_cid
 	CommandId	combocid;		/* just for debugging */
 
 	/*
-	 * Store the relfilenode/ctid pair to facilitate lookups.
+	 * Store the relfilelocator/ctid pair to facilitate lookups.
 	 */
-	RelFileNode target_node;
+	RelFileLocator target_locator;
 	ItemPointerData target_tid;
 } xl_heap_new_cid;
 
@@ -388,8 +476,8 @@ typedef struct xl_heap_rewrite_mapping
 	XLogRecPtr	start_lsn;		/* Insert LSN at begin of rewrite */
 } xl_heap_rewrite_mapping;
 
-extern void HeapTupleHeaderAdvanceLatestRemovedXid(HeapTupleHeader tuple,
-												   TransactionId *latestRemovedXid);
+extern void HeapTupleHeaderAdvanceConflictHorizon(HeapTupleHeader tuple,
+												  TransactionId *snapshotConflictHorizon);
 
 extern void heap_redo(XLogReaderState *record);
 extern void heap_desc(StringInfo buf, XLogReaderState *record);
@@ -400,21 +488,12 @@ extern void heap2_desc(StringInfo buf, XLogReaderState *record);
 extern const char *heap2_identify(uint8 info);
 extern void heap_xlog_logical_rewrite(XLogReaderState *r);
 
-extern XLogRecPtr log_heap_freeze(Relation reln, Buffer buffer,
-								  TransactionId cutoff_xid, xl_heap_freeze_tuple *tuples,
-								  int ntuples);
-extern bool heap_prepare_freeze_tuple(HeapTupleHeader tuple,
-									  TransactionId relfrozenxid,
-									  TransactionId relminmxid,
-									  TransactionId cutoff_xid,
-									  TransactionId cutoff_multi,
-									  xl_heap_freeze_tuple *frz,
-									  bool *totally_frozen,
-									  TransactionId *relfrozenxid_out,
-									  MultiXactId *relminmxid_out);
-extern void heap_execute_freeze_tuple(HeapTupleHeader tuple,
-									  xl_heap_freeze_tuple *xlrec_tp);
-extern XLogRecPtr log_heap_visible(RelFileNode rnode, Buffer heap_buffer,
-								   Buffer vm_buffer, TransactionId cutoff_xid, uint8 flags);
+/* in heapdesc.c, so it can be shared between frontend/backend code */
+extern void heap_xlog_deserialize_prune_and_freeze(char *cursor, uint16 flags,
+												   int *nplans, xlhp_freeze_plan **plans,
+												   OffsetNumber **frz_offsets,
+												   int *nredirected, OffsetNumber **redirected,
+												   int *ndead, OffsetNumber **nowdead,
+												   int *nunused, OffsetNumber **nowunused);
 
 #endif							/* HEAPAM_XLOG_H */

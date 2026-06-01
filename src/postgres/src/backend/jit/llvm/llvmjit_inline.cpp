@@ -11,7 +11,7 @@
  * so for all external functions, all the referenced functions (and
  * prerequisites) will be imported.
  *
- * Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/llvmjit/llvmjit_inline.cpp
@@ -49,12 +49,7 @@ extern "C"
 #include <llvm/ADT/StringSet.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/Analysis/ModuleSummaryAnalysis.h>
-#if LLVM_VERSION_MAJOR > 3
 #include <llvm/Bitcode/BitcodeReader.h>
-#else
-#include <llvm/Bitcode/ReaderWriter.h>
-#include <llvm/Support/Error.h>
-#endif
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/IntrinsicInst.h>
@@ -243,7 +238,11 @@ llvm_build_inline_plan(LLVMContextRef lc, llvm::Module *mod)
 
 		llvm_split_symbol_name(symbolName.data(), &cmodname, &cfuncname);
 
+#if LLVM_VERSION_MAJOR >= 21
+		funcGUID = llvm::GlobalValue::getGUIDAssumingExternalLinkage(cfuncname);
+#else
 		funcGUID = llvm::GlobalValue::getGUID(cfuncname);
+#endif
 
 		/* already processed */
 		if (inlineState.processed)
@@ -267,14 +266,12 @@ llvm_build_inline_plan(LLVMContextRef lc, llvm::Module *mod)
 
 			fs = llvm::cast<llvm::FunctionSummary>(gvs);
 
-#if LLVM_VERSION_MAJOR > 3
 			if (gvs->notEligibleToImport())
 			{
 				ilog(DEBUG1, "ineligibile to import %s due to summary",
 					 symbolName.data());
 				continue;
 			}
-#endif
 
 			if ((int) fs->instCount() > inlineState.costLimit)
 			{
@@ -458,16 +455,9 @@ llvm_execute_inline_plan(llvm::Module *mod, ImportMapTy *globalsToInline)
 
 		}
 
-#if LLVM_VERSION_MAJOR > 4
-#define IRMOVE_PARAMS , /*IsPerformingImport=*/false
-#elif LLVM_VERSION_MAJOR > 3
-#define IRMOVE_PARAMS , /*LinkModuleInlineAsm=*/false, /*IsPerformingImport=*/false
-#else
-#define IRMOVE_PARAMS
-#endif
 		if (Mover.move(std::move(importMod), GlobalsToImport.getArrayRef(),
-					   [](llvm::GlobalValue &, llvm::IRMover::ValueAdder) {}
-					   IRMOVE_PARAMS))
+					   [](llvm::GlobalValue &, llvm::IRMover::ValueAdder) {},
+					   /*IsPerformingImport=*/false))
 			elog(FATAL, "function import failed with linker error");
 	}
 }
@@ -607,10 +597,6 @@ function_inlinable(llvm::Function &F,
 
 	if (F.materialize())
 		elog(FATAL, "failed to materialize metadata");
-
-#if LLVM_VERSION_MAJOR < 14
-#define hasFnAttr hasFnAttribute
-#endif
 
 	if (F.getAttributes().hasFnAttr(llvm::Attribute::NoInline))
 	{
@@ -766,7 +752,7 @@ function_inlinable(llvm::Function &F,
 		/* import referenced function itself */
 		importVars.insert(referencedFunction->getName());
 
-		/* import referenced function and its dependants */
+		/* import referenced function and its dependents */
 		for (auto& recImportVar : recImportVars)
 			importVars.insert(recImportVar.first());
 	}
@@ -793,7 +779,6 @@ llvm_load_summary(llvm::StringRef path)
 	{
 		llvm::MemoryBufferRef ref(*MBOrErr.get().get());
 
-#if LLVM_VERSION_MAJOR > 3
 		llvm::Expected<std::unique_ptr<llvm::ModuleSummaryIndex> > IndexOrErr =
 			llvm::getModuleSummaryIndex(ref);
 		if (IndexOrErr)
@@ -801,15 +786,6 @@ llvm_load_summary(llvm::StringRef path)
 		elog(FATAL, "failed to load summary \"%s\": %s",
 			 path.data(),
 			 toString(IndexOrErr.takeError()).c_str());
-#else
-		llvm::ErrorOr<std::unique_ptr<llvm::ModuleSummaryIndex> > IndexOrErr =
-			llvm::getModuleSummaryIndex(ref, [](const llvm::DiagnosticInfo &) {});
-		if (IndexOrErr)
-			return std::move(IndexOrErr.get());
-		elog(FATAL, "failed to load summary \"%s\": %s",
-			 path.data(),
-			 IndexOrErr.getError().message().c_str());
-#endif
 	}
 	return nullptr;
 }
@@ -856,22 +832,12 @@ summaries_for_guid(const InlineSearchPath& path, llvm::GlobalValue::GUID guid)
 
 	for (auto index : path)
 	{
-#if LLVM_VERSION_MAJOR > 4
 		llvm::ValueInfo funcVI = index->getValueInfo(guid);
 
 		/* if index doesn't know function, we don't have a body, continue */
 		if (funcVI)
 			for (auto &gv : funcVI.getSummaryList())
 				matches.push_back(gv.get());
-#else
-		const llvm::const_gvsummary_iterator &I =
-			index->findGlobalValueSummaryList(guid);
-		if (I != index->end())
-		{
-			for (auto &gv : I->second)
-				matches.push_back(gv.get());
-		}
-#endif
 	}
 
 	return matches;
@@ -892,9 +858,6 @@ create_redirection_function(std::unique_ptr<llvm::Module> &importMod,
 	llvm::Function *AF;
 	llvm::BasicBlock *BB;
 	llvm::CallInst *fwdcall;
-#if LLVM_VERSION_MAJOR < 14
-	llvm::Attribute inlineAttribute;
-#endif
 
 	AF = llvm::Function::Create(F->getFunctionType(),
 								LinkageTypes::AvailableExternallyLinkage,
@@ -903,13 +866,7 @@ create_redirection_function(std::unique_ptr<llvm::Module> &importMod,
 
 	Builder.SetInsertPoint(BB);
 	fwdcall = Builder.CreateCall(F, &*AF->arg_begin());
-#if LLVM_VERSION_MAJOR < 14
-	inlineAttribute = llvm::Attribute::get(Context,
-										   llvm::Attribute::AlwaysInline);
-	fwdcall->addAttribute(~0U, inlineAttribute);
-#else
 	fwdcall->addFnAttr(llvm::Attribute::AlwaysInline);
-#endif
 	Builder.CreateRet(fwdcall);
 
 	return AF;

@@ -28,7 +28,7 @@
  * be added, though at the cost of a greater chance of the crash dump failing.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/port/win32/crashdump.c
@@ -38,21 +38,7 @@
 
 #include "postgres.h"
 
-/*
- * Some versions of the MS SDK contain "typedef enum { ... } ;" which the MS
- * compiler quite sanely complains about. Well done, Microsoft.
- * This pragma disables the warning just while we include the header.
- * The pragma is known to work with all (as at the time of writing) supported
- * versions of MSVC.
- */
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4091)
-#endif
 #include <dbghelp.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 /*
  * Much of the following code is based on CodeProject and MSDN examples,

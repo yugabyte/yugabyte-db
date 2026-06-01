@@ -411,7 +411,9 @@ CREATE [ OR REPLACE ] FUNCTION
       is to be executed with the privileges of the user that calls it.
       That is the default.  <literal>SECURITY DEFINER</literal>
       specifies that the function is to be executed with the
-      privileges of the user that owns it.
+      privileges of the user that owns it. For information on how to
+      write <literal>SECURITY DEFINER</literal> functions safely,
+      <link linkend="sql-createfunction-security">see below</link>.
      </para>
 
      <para>
@@ -426,22 +428,24 @@ CREATE [ OR REPLACE ] FUNCTION
     <term><literal>PARALLEL</literal></term>
 
     <listitem>
-     <para><literal>PARALLEL UNSAFE</literal> indicates that the function
-      can't be executed in parallel mode and the presence of such a
+     <para>
+      <literal>PARALLEL UNSAFE</literal> indicates that the function
+      can't be executed in parallel mode; the presence of such a
       function in an SQL statement forces a serial execution plan.  This is
       the default.  <literal>PARALLEL RESTRICTED</literal> indicates that
-      the function can be executed in parallel mode, but the execution is
-      restricted to parallel group leader.  <literal>PARALLEL SAFE</literal>
+      the function can be executed in parallel mode, but only in the parallel
+      group leader process.  <literal>PARALLEL SAFE</literal>
       indicates that the function is safe to run in parallel mode without
-      restriction.
+      restriction, including in parallel worker processes.
      </para>
 
      <para>
       Functions should be labeled parallel unsafe if they modify any database
-      state, or if they make changes to the transaction such as using
-      sub-transactions, or if they access sequences or attempt to make
-      persistent changes to settings (e.g., <literal>setval</literal>).  They should
-      be labeled as parallel restricted if they access temporary tables,
+      state, change the transaction state (other than by using a
+      subtransaction for error recovery), access sequences (e.g., by
+      calling <literal>currval</literal>) or make persistent changes to
+      settings.  They should
+      be labeled parallel restricted if they access temporary tables,
       client connection state, cursors, prepared statements, or miscellaneous
       backend-local state which the system cannot synchronize in parallel mode
       (e.g.,  <literal>setseed</literal> cannot be executed other than by the group
@@ -645,7 +649,7 @@ END
     parameters.  Thus for example these declarations conflict:
 <programlisting>
 CREATE FUNCTION foo(int) ...
-CREATE FUNCTION foo(int, out text) ...
+CREATE FUNCTION foo(int, OUT text) ...
 </programlisting>
    </para>
 
@@ -705,7 +709,7 @@ CREATE FUNCTION foo(int, int default 42) ...
    Add two integers using an SQL function:
 <programlisting>
 CREATE FUNCTION add(integer, integer) RETURNS integer
-    AS 'select $1 + $2;'
+    AS 'SELECT $1 + $2;'
     LANGUAGE SQL
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
@@ -736,7 +740,7 @@ $$ LANGUAGE plpgsql;
   <para>
    Return a record containing multiple output parameters:
 <programlisting>
-CREATE FUNCTION dup(in int, out f1 int, out f2 text)
+CREATE FUNCTION dup(IN int, OUT f1 int, OUT f2 text)
     AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$
     LANGUAGE SQL;
 
@@ -776,6 +780,11 @@ SELECT * FROM dup(42);
    <secondary>use in securing functions</secondary>
   </indexterm>
 
+  <indexterm>
+   <primary><varname>createrole_self_grant</varname> configuration parameter</primary>
+   <secondary>use in securing functions</secondary>
+  </indexterm>
+
    <para>
     Because a <literal>SECURITY DEFINER</literal> function is executed
     with the privileges of the user that owns it, care is needed to
@@ -808,18 +817,17 @@ $$  LANGUAGE plpgsql
     SET search_path = admin, pg_temp;
 </programlisting>
 
-    This function's intention is to access a table <literal>admin.pwds</literal>.
+    This function's intention is to access a table <structname>admin.pwds</structname>.
     But without the <literal>SET</literal> clause, or with a <literal>SET</literal> clause
     mentioning only <literal>admin</literal>, the function could be subverted by
-    creating a temporary table named <literal>pwds</literal>.
+    creating a temporary table named <structname>pwds</structname>.
    </para>
 
    <para>
-    Before <productname>PostgreSQL</productname> version 8.3, the
-    <literal>SET</literal> clause was not available, and so older functions may
-    contain rather complicated logic to save, set, and restore
-    <varname>search_path</varname>.  The <literal>SET</literal> clause is far easier
-    to use for this purpose.
+    If the security definer function intends to create roles, and if it
+    is running as a non-superuser, <varname>createrole_self_grant</varname>
+    should also be set to a known value using the <literal>SET</literal>
+    clause.
    </para>
 
    <para>

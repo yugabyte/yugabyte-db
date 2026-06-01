@@ -3,7 +3,7 @@
  * miscinit.c
  *	  miscellaneous initialization support stuff
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -39,8 +39,8 @@
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/interrupt.h"
-#include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
+#include "replication/slotsync.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
@@ -55,6 +55,7 @@
 #include "utils/pidfile.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+#include "utils/wait_event.h"
 
 /* YB includes */
 #include "yb_ysql_conn_mgr_helper.h"
@@ -110,14 +111,6 @@ InitPostmasterChild(void)
 	pgwin32_signal_initialize();
 #endif
 
-	/*
-	 * Set reference point for stack-depth checking.  This might seem
-	 * redundant in !EXEC_BACKEND builds; but it's not because the postmaster
-	 * launches its children from signal handlers, so we might be running on
-	 * an alternative stack.
-	 */
-	(void) set_stack_base();
-
 	InitProcessGlobals();
 
 	/*
@@ -139,9 +132,8 @@ InitPostmasterChild(void)
 #endif
 
 	/* Initialize process-local latch support */
-	InitializeLatchSupport();
-	MyLatch = &LocalLatchData;
-	InitLatch(MyLatch);
+	InitializeWaitEventSupport();
+	InitProcessLocalLatch();
 	InitializeLatchWaitSet();
 
 	/*
@@ -165,10 +157,18 @@ InitPostmasterChild(void)
 	pqsignal(SIGQUIT, SignalHandlerForCrashExit);
 
 	sigdelset(&BlockSig, SIGQUIT);
-	PG_SETMASK(&BlockSig);
+	sigprocmask(SIG_SETMASK, &BlockSig, NULL);
 
 	/* Request a signal if the postmaster dies, if possible. */
 	PostmasterDeathSignalInit();
+
+	/* Don't give the pipe to subprograms that we execute. */
+#ifndef WIN32
+	if (fcntl(postmaster_alive_fds[POSTMASTER_FD_WATCH], F_SETFD, FD_CLOEXEC) < 0)
+		ereport(FATAL,
+				(errcode_for_socket_access(),
+				 errmsg_internal("could not set postmaster death monitoring pipe to FD_CLOEXEC mode: %m")));
+#endif
 }
 
 /*
@@ -181,6 +181,8 @@ InitStandaloneProcess(const char *argv0)
 {
 	Assert(!IsPostmasterEnvironment);
 
+	MyBackendType = B_STANDALONE_BACKEND;
+
 	/*
 	 * Start our win32 signal implementation
 	 */
@@ -191,9 +193,8 @@ InitStandaloneProcess(const char *argv0)
 	InitProcessGlobals();
 
 	/* Initialize process-local latch support */
-	InitializeLatchSupport();
-	MyLatch = &LocalLatchData;
-	InitLatch(MyLatch);
+	InitializeWaitEventSupport();
+	InitProcessLocalLatch();
 	InitializeLatchWaitSet();
 
 	/*
@@ -201,7 +202,7 @@ InitStandaloneProcess(const char *argv0)
 	 * But we don't unblock SIGQUIT or provide a default handler for it.
 	 */
 	pqinitmask();
-	PG_SETMASK(&BlockSig);
+	sigprocmask(SIG_SETMASK, &BlockSig, NULL);
 
 	/* Compute paths, no postmaster to inherit from */
 	if (my_exec_path[0] == '\0')
@@ -236,6 +237,13 @@ SwitchToSharedLatch(void)
 }
 
 void
+InitProcessLocalLatch(void)
+{
+	MyLatch = &LocalLatchData;
+	InitLatch(MyLatch);
+}
+
+void
 SwitchBackToLocalLatch(void)
 {
 	Assert(MyLatch != &LocalLatchData);
@@ -250,52 +258,24 @@ SwitchBackToLocalLatch(void)
 	SetLatch(MyLatch);
 }
 
+/*
+ * Return a human-readable string representation of a BackendType.
+ *
+ * The string is not localized here, but we mark the strings for translation
+ * so that callers can invoke _() on the result.
+ */
 const char *
 GetBackendTypeDesc(BackendType backendType)
 {
-	const char *backendDesc = "unknown process type";
+	const char *backendDesc = gettext_noop("unknown process type");
 
 	switch (backendType)
 	{
-		case B_INVALID:
-			backendDesc = "not initialized";
-			break;
-		case B_AUTOVAC_LAUNCHER:
-			backendDesc = "autovacuum launcher";
-			break;
-		case B_AUTOVAC_WORKER:
-			backendDesc = "autovacuum worker";
-			break;
-		case B_BACKEND:
-			backendDesc = "client backend";
-			break;
-		case B_BG_WORKER:
-			backendDesc = "background worker";
-			break;
-		case B_BG_WRITER:
-			backendDesc = "background writer";
-			break;
-		case B_CHECKPOINTER:
-			backendDesc = "checkpointer";
-			break;
-		case B_STARTUP:
-			backendDesc = "startup";
-			break;
-		case B_WAL_RECEIVER:
-			backendDesc = "walreceiver";
-			break;
-		case B_WAL_SENDER:
-			backendDesc = "walsender";
-			break;
-		case B_WAL_WRITER:
-			backendDesc = "walwriter";
-			break;
-		case B_ARCHIVER:
-			backendDesc = "archiver";
-			break;
-		case B_LOGGER:
-			backendDesc = "logger";
-			break;
+/* YB_TODO_PG19MERGE use PG macro for YB cases as well? */
+#define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach)	\
+		case bktype: backendDesc = description; break;
+#include "postmaster/proctypelist.h"
+#undef PG_PROCTYPE
 		case YB_YSQL_CONN_MGR:
 			backendDesc = "yb-conn-mgr worker connection";
 			break;
@@ -312,7 +292,6 @@ GetBackendTypeDesc(BackendType backendType)
 			backendDesc = "yb matview refresh";
 			break;
 	}
-
 	return backendDesc;
 }
 
@@ -432,13 +411,12 @@ SetDataDir(const char *dir)
 {
 	char	   *new;
 
-	AssertArg(dir);
+	Assert(dir);
 
 	/* If presented path is relative, convert to absolute */
 	new = make_absolute_path(dir);
 
-	if (DataDir)
-		free(DataDir);
+	free(DataDir);
 	DataDir = new;
 }
 
@@ -451,7 +429,7 @@ SetDataDir(const char *dir)
 void
 ChangeToDataDir(void)
 {
-	AssertState(DataDir);
+	Assert(DataDir);
 
 	if (chdir(DataDir) < 0)
 		ereport(FATAL,
@@ -470,8 +448,8 @@ ChangeToDataDir(void)
  * AuthenticatedUserId is determined at connection start and never changes.
  *
  * SessionUserId is initially the same as AuthenticatedUserId, but can be
- * changed by SET SESSION AUTHORIZATION (if AuthenticatedUserIsSuperuser).
- * This is the ID reported by the SESSION_USER SQL function.
+ * changed by SET SESSION AUTHORIZATION (if AuthenticatedUserId is a
+ * superuser).  This is the ID reported by the SESSION_USER SQL function.
  *
  * OuterUserId is the current user ID in effect at the "outer level" (outside
  * any transaction or function).  This is initially the same as SessionUserId,
@@ -493,9 +471,9 @@ static Oid	AuthenticatedUserId = InvalidOid;
 static Oid	SessionUserId = InvalidOid;
 static Oid	OuterUserId = InvalidOid;
 static Oid	CurrentUserId = InvalidOid;
+static const char *SystemUser = NULL;
 
-/* We also have to remember the superuser state of some of these levels */
-static bool AuthenticatedUserIsSuperuser = false;
+/* We also have to remember the superuser state of the session user */
 static bool SessionUserIsSuperuser = false;
 
 static int	SecurityRestrictionContext = 0;
@@ -511,7 +489,7 @@ static bool SetRoleIsActive = false;
 Oid
 GetUserId(void)
 {
-	AssertState(OidIsValid(CurrentUserId));
+	Assert(OidIsValid(CurrentUserId));
 	return CurrentUserId;
 }
 
@@ -522,7 +500,7 @@ GetUserId(void)
 Oid
 GetOuterUserId(void)
 {
-	AssertState(OidIsValid(OuterUserId));
+	Assert(OidIsValid(OuterUserId));
 	return OuterUserId;
 }
 
@@ -530,8 +508,8 @@ GetOuterUserId(void)
 static void
 SetOuterUserId(Oid userid, bool is_superuser)
 {
-	AssertState(SecurityRestrictionContext == 0);
-	AssertArg(OidIsValid(userid));
+	Assert(SecurityRestrictionContext == 0);
+	Assert(OidIsValid(userid));
 	OuterUserId = userid;
 
 	/* We force the effective user ID to match, too */
@@ -550,7 +528,7 @@ SetOuterUserId(Oid userid, bool is_superuser)
 Oid
 GetSessionUserId(void)
 {
-	AssertState(OidIsValid(SessionUserId));
+	Assert(OidIsValid(SessionUserId));
 	return SessionUserId;
 }
 
@@ -564,10 +542,20 @@ GetSessionUserIsSuperuser(void)
 static void
 SetSessionUserId(Oid userid, bool is_superuser)
 {
-	AssertState(SecurityRestrictionContext == 0);
-	AssertArg(OidIsValid(userid));
+	Assert(SecurityRestrictionContext == 0);
+	Assert(OidIsValid(userid));
 	SessionUserId = userid;
 	SessionUserIsSuperuser = is_superuser;
+}
+
+/*
+ * Return the system user representing the authenticated identity.
+ * It is defined in InitializeSystemUser() as auth_method:authn_id.
+ */
+const char *
+GetSystemUser(void)
+{
+	return SystemUser;
 }
 
 /*
@@ -577,22 +565,12 @@ SetSessionUserId(Oid userid, bool is_superuser)
 Oid
 GetAuthenticatedUserId(void)
 {
-	AssertState(OidIsValid(AuthenticatedUserId));
+	Assert(OidIsValid(AuthenticatedUserId));
 	return AuthenticatedUserId;
 }
 
-/*
- * Return whether the authenticated user was superuser at connection start.
- */
-bool
-GetAuthenticatedUserIsSuperuser(void)
-{
-	Assert(OidIsValid(AuthenticatedUserId));
-	return AuthenticatedUserIsSuperuser;
-}
-
 void
-SetAuthenticatedUserId(Oid userid, bool is_superuser)
+SetAuthenticatedUserId(Oid userid)
 {
 	Assert(OidIsValid(userid));
 
@@ -600,7 +578,6 @@ SetAuthenticatedUserId(Oid userid, bool is_superuser)
 	Assert(!OidIsValid(AuthenticatedUserId));
 
 	AuthenticatedUserId = userid;
-	AuthenticatedUserIsSuperuser = is_superuser;
 
 	/* Also mark our PGPROC entry with the authenticated user id */
 	/* (We assume this is an atomic store so no lock is needed) */
@@ -734,6 +711,10 @@ has_rolreplication(Oid roleid)
 	bool		result = false;
 	HeapTuple	utup;
 
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
 	utup = SearchSysCache1(AUTHOID, ObjectIdGetDatum(roleid));
 	if (HeapTupleIsValid(utup))
 	{
@@ -747,7 +728,8 @@ has_rolreplication(Oid roleid)
  * Initialize user identity during normal backend startup
  */
 void
-InitializeSessionUserId(const char *rolename, Oid roleid)
+InitializeSessionUserId(const char *rolename, Oid roleid,
+						bool bypass_login_check)
 {
 	HeapTuple	roleTup;
 	Form_pg_authid rform;
@@ -762,13 +744,16 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 	 * want to fail if it's been dropped.
 	 */
 	if (InitializingParallelWorker)
+	{
+		Assert(bypass_login_check);
 		return;
+	}
 
 	/*
 	 * Don't do scans if we're bootstrapping, none of the system catalogs
 	 * exist yet, and they should be owned by postgres anyway.
 	 */
-	AssertState(!IsBootstrapProcessingMode());
+	Assert(!IsBootstrapProcessingMode());
 
 	/*
 	 * Make sure syscache entries are flushed for recent catalog changes. This
@@ -802,7 +787,7 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 	rname = NameStr(rform->rolname);
 	is_superuser = rform->rolsuper;
 
-	SetAuthenticatedUserId(roleid, is_superuser);
+	SetAuthenticatedUserId(roleid);
 
 	/*
 	 * Set SessionUserId and related variables, including "role", via the GUC
@@ -834,9 +819,10 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 	if (IsUnderPostmaster)
 	{
 		/*
-		 * Is role allowed to login at all?
+		 * Is role allowed to login at all?  (But background workers can
+		 * override this by setting bypass_login_check.)
 		 */
-		if (!rform->rolcanlogin)
+		if (!bypass_login_check && !rform->rolcanlogin)
 			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					 errmsg("role \"%s\" is not permitted to log in",
@@ -876,15 +862,16 @@ InitializeSessionUserIdStandalone(void)
 {
 	/*
 	 * This function should only be called in single-user mode, in autovacuum
-	 * workers, and in background workers.
+	 * workers, in slot sync worker and in background workers.
 	 */
-	AssertState(!IsUnderPostmaster || IsAutoVacuumWorkerProcess() || IsBackgroundWorker);
+	Assert(!IsUnderPostmaster || AmAutoVacuumWorkerProcess() ||
+		   AmLogicalSlotSyncWorkerProcess() || AmBackgroundWorkerProcess() ||
+		   AmDataChecksumsWorkerProcess());
 
 	/* call only once */
-	AssertState(!OidIsValid(AuthenticatedUserId));
+	Assert(!OidIsValid(AuthenticatedUserId));
 
 	AuthenticatedUserId = BOOTSTRAP_SUPERUSERID;
-	AuthenticatedUserIsSuperuser = true;
 
 	/*
 	 * XXX Ideally we'd do this via SetConfigOption("session_authorization"),
@@ -900,6 +887,45 @@ InitializeSessionUserIdStandalone(void)
 	SetCurrentRoleId(InvalidOid, false);
 }
 
+/*
+ * Initialize the system user.
+ *
+ * This is built as auth_method:authn_id.
+ */
+void
+InitializeSystemUser(const char *authn_id, const char *auth_method)
+{
+	char	   *system_user;
+
+	/* call only once */
+	Assert(SystemUser == NULL);
+
+	/*
+	 * InitializeSystemUser should be called only when authn_id is not NULL,
+	 * meaning that auth_method is valid.
+	 */
+	Assert(authn_id != NULL);
+
+	system_user = psprintf("%s:%s", auth_method, authn_id);
+
+	/* Store SystemUser in long-lived storage */
+	SystemUser = MemoryContextStrdup(TopMemoryContext, system_user);
+	pfree(system_user);
+}
+
+/*
+ * SQL-function SYSTEM_USER
+ */
+Datum
+system_user(PG_FUNCTION_ARGS)
+{
+	const char *sysuser = GetSystemUser();
+
+	if (sysuser)
+		PG_RETURN_DATUM(CStringGetTextDatum(sysuser));
+	else
+		PG_RETURN_NULL();
+}
 
 /*
  * Change session auth ID while running
@@ -1003,6 +1029,100 @@ GetUserNameFromId(Oid roleid, bool noerr)
 	return result;
 }
 
+/* ------------------------------------------------------------------------
+ *				Client connection state shared with parallel workers
+ *
+ * ClientConnectionInfo contains pieces of information about the client that
+ * need to be synced to parallel workers when they initialize.
+ *-------------------------------------------------------------------------
+ */
+
+ClientConnectionInfo MyClientConnectionInfo;
+
+/*
+ * Intermediate representation of ClientConnectionInfo for easier
+ * serialization.  Variable-length fields are allocated right after this
+ * header.
+ */
+typedef struct SerializedClientConnectionInfo
+{
+	int32		authn_id_len;	/* strlen(authn_id), or -1 if NULL */
+	UserAuth	auth_method;
+} SerializedClientConnectionInfo;
+
+/*
+ * Calculate the space needed to serialize MyClientConnectionInfo.
+ */
+Size
+EstimateClientConnectionInfoSpace(void)
+{
+	Size		size = 0;
+
+	size = add_size(size, sizeof(SerializedClientConnectionInfo));
+
+	if (MyClientConnectionInfo.authn_id)
+		size = add_size(size, strlen(MyClientConnectionInfo.authn_id) + 1);
+
+	return size;
+}
+
+/*
+ * Serialize MyClientConnectionInfo for use by parallel workers.
+ */
+void
+SerializeClientConnectionInfo(Size maxsize PG_USED_FOR_ASSERTS_ONLY,
+							  char *start_address)
+{
+	SerializedClientConnectionInfo serialized = {0};
+
+	serialized.authn_id_len = -1;
+	serialized.auth_method = MyClientConnectionInfo.auth_method;
+
+	if (MyClientConnectionInfo.authn_id)
+		serialized.authn_id_len = strlen(MyClientConnectionInfo.authn_id);
+
+	/* Copy serialized representation to buffer */
+	Assert(maxsize >= sizeof(serialized));
+	memcpy(start_address, &serialized, sizeof(serialized));
+
+	maxsize -= sizeof(serialized);
+	start_address += sizeof(serialized);
+
+	/* Copy authn_id into the space after the struct */
+	if (serialized.authn_id_len >= 0)
+	{
+		Assert(maxsize >= (serialized.authn_id_len + 1));
+		memcpy(start_address,
+			   MyClientConnectionInfo.authn_id,
+		/* include the NULL terminator to ease deserialization */
+			   serialized.authn_id_len + 1);
+	}
+}
+
+/*
+ * Restore MyClientConnectionInfo from its serialized representation.
+ */
+void
+RestoreClientConnectionInfo(char *conninfo)
+{
+	SerializedClientConnectionInfo serialized;
+
+	memcpy(&serialized, conninfo, sizeof(serialized));
+
+	/* Copy the fields back into place */
+	MyClientConnectionInfo.authn_id = NULL;
+	MyClientConnectionInfo.auth_method = serialized.auth_method;
+
+	if (serialized.authn_id_len >= 0)
+	{
+		char	   *authn_id;
+
+		authn_id = conninfo + sizeof(serialized);
+		MyClientConnectionInfo.authn_id = MemoryContextStrdup(TopMemoryContext,
+															  authn_id);
+	}
+}
+
 
 /*-------------------------------------------------------------------------
  *				Interlock-file support
@@ -1035,7 +1155,6 @@ UnlinkLockFiles(int status, Datum arg)
 		/* Should we complain if the unlink fails? */
 	}
 	/* Since we're about to exit, no need to reclaim storage */
-	lock_files = NIL;
 
 	/*
 	 * Lock file removal should always be the last externally visible action
@@ -1805,9 +1924,7 @@ pg_bindtextdomain(const char *domain)
 void
 YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname)
 {
-	/* change the auth user */
 	AuthenticatedUserId = roleid;
-	AuthenticatedUserIsSuperuser = is_superuser;
 
 	SetSessionUserId(roleid, is_superuser);
 

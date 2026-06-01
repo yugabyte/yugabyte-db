@@ -4,7 +4,7 @@
  *		Extension management commands (create/drop extension).
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/extension.h
@@ -17,6 +17,8 @@
 #include "catalog/objectaddress.h"
 #include "parser/parse_node.h"
 
+/* GUC */
+extern PGDLLIMPORT char *Extension_control_path;
 
 /*
  * creating_extension is only true while running a CREATE EXTENSION or ALTER
@@ -47,7 +49,10 @@ extern ObjectAddress ExecAlterExtensionContentsStmt(AlterExtensionContentsStmt *
 
 extern Oid	get_extension_oid(const char *extname, bool missing_ok);
 extern char *get_extension_name(Oid ext_oid);
+extern Oid	get_extension_schema(Oid ext_oid);
 extern bool extension_file_exists(const char *extensionName);
+
+extern Oid	get_function_sibling_type(Oid funcoid, const char *typname);
 
 extern ObjectAddress AlterExtensionNamespace(const char *extensionName, const char *newschema,
 											 Oid *oldschema);

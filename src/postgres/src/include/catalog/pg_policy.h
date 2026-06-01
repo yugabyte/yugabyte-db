@@ -4,7 +4,7 @@
  *	  definition of the "policy" system catalog (pg_policy)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_policy.h
@@ -19,13 +19,15 @@
 #define PG_POLICY_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_policy_d.h"
+#include "catalog/pg_policy_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_policy definition. cpp turns this into
  *		typedef struct FormData_pg_policy
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_policy,3256,PolicyRelationId)
 {
 	Oid			oid;			/* oid */
@@ -43,6 +45,8 @@ CATALOG(pg_policy,3256,PolicyRelationId)
 #endif
 } FormData_pg_policy;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_policy corresponds to a pointer to a row with
  *		the format of pg_policy relation.
@@ -52,7 +56,7 @@ typedef FormData_pg_policy *Form_pg_policy;
 
 DECLARE_TOAST(pg_policy, 4167, 4168);
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_policy_oid_index, 3257, PolicyOidIndexId, on pg_policy using btree(oid oid_ops));
-DECLARE_UNIQUE_INDEX(pg_policy_polrelid_polname_index, 3258, PolicyPolrelidPolnameIndexId, on pg_policy using btree(polrelid oid_ops, polname name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_policy_oid_index, 3257, PolicyOidIndexId, pg_policy, btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_policy_polrelid_polname_index, 3258, PolicyPolrelidPolnameIndexId, pg_policy, btree(polrelid oid_ops, polname name_ops));
 
 #endif							/* PG_POLICY_H */

@@ -6,7 +6,7 @@
  * backend's command progress counters, without ascribing meaning to the
  * individual fields. See commands/progress.h and system_views.sql for that.
  *
- * Copyright (c) 2001-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * src/include/utils/backend_progress.h
  * ----------
@@ -24,10 +24,11 @@ typedef enum ProgressCommandType
 	PROGRESS_COMMAND_INVALID,
 	PROGRESS_COMMAND_VACUUM,
 	PROGRESS_COMMAND_ANALYZE,
-	PROGRESS_COMMAND_CLUSTER,
 	PROGRESS_COMMAND_CREATE_INDEX,
 	PROGRESS_COMMAND_BASEBACKUP,
-	PROGRESS_COMMAND_COPY
+	PROGRESS_COMMAND_COPY,
+	PROGRESS_COMMAND_REPACK,
+	PROGRESS_COMMAND_DATACHECKSUMS,
 } ProgressCommandType;
 
 #define PGSTAT_NUM_PROGRESS_PARAM	20
@@ -36,6 +37,8 @@ typedef enum ProgressCommandType
 extern void pgstat_progress_start_command(ProgressCommandType cmdtype,
 										  Oid relid);
 extern void pgstat_progress_update_param(int index, int64 val);
+extern void pgstat_progress_incr_param(int index, int64 incr);
+extern void pgstat_progress_parallel_incr_param(int index, int64 incr);
 extern void pgstat_progress_update_multi_param(int nparam, const int *index,
 											   const int64 *val);
 extern void pgstat_progress_end_command(void);

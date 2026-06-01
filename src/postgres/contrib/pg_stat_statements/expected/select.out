@@ -1,0 +1,891 @@
+--
+-- SELECT statements
+--
+CREATE EXTENSION pg_stat_statements;
+SET pg_stat_statements.track_utility = FALSE;
+SET pg_stat_statements.track_planning = TRUE;
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+--
+-- simple and compound statements
+--
+SELECT 1 AS "int";
+ int 
+-----
+   1
+(1 row)
+
+-- LIMIT and OFFSET patterns
+-- Try some query permutations which once produced identical query IDs
+SELECT 1 AS "int" LIMIT 1;
+ int 
+-----
+   1
+(1 row)
+
+SELECT 1 AS "int" LIMIT 2;
+ int 
+-----
+   1
+(1 row)
+
+SELECT 1 AS "int" OFFSET 1;
+ int 
+-----
+(0 rows)
+
+SELECT 1 AS "int" OFFSET 2;
+ int 
+-----
+(0 rows)
+
+SELECT 1 AS "int" OFFSET 1 LIMIT 1;
+ int 
+-----
+(0 rows)
+
+SELECT 1 AS "int" OFFSET 2 LIMIT 2;
+ int 
+-----
+(0 rows)
+
+SELECT 1 AS "int" LIMIT 1 OFFSET 1;
+ int 
+-----
+(0 rows)
+
+SELECT 1 AS "int" LIMIT 3 OFFSET 3;
+ int 
+-----
+(0 rows)
+
+SELECT 1 AS "int" OFFSET 1 FETCH FIRST 2 ROW ONLY;
+ int 
+-----
+(0 rows)
+
+SELECT 1 AS "int" OFFSET 2 FETCH FIRST 3 ROW ONLY;
+ int 
+-----
+(0 rows)
+
+-- DISTINCT and ORDER BY patterns
+-- Try some query permutations which once produced identical query IDs
+SELECT DISTINCT 1 AS "int";
+ int 
+-----
+   1
+(1 row)
+
+SELECT DISTINCT 2 AS "int";
+ int 
+-----
+   2
+(1 row)
+
+SELECT 1 AS "int" ORDER BY 1;
+ int 
+-----
+   1
+(1 row)
+
+SELECT 2 AS "int" ORDER BY 1;
+ int 
+-----
+   2
+(1 row)
+
+/* this comment should not appear in the output */
+SELECT 'hello'
+  -- but this one will appear
+  AS "text";
+ text  
+-------
+ hello
+(1 row)
+
+SELECT 'world' AS "text";
+ text  
+-------
+ world
+(1 row)
+
+-- transaction
+BEGIN;
+SELECT 1 AS "int";
+ int 
+-----
+   1
+(1 row)
+
+SELECT 'hello' AS "text";
+ text  
+-------
+ hello
+(1 row)
+
+COMMIT;
+-- compound transaction
+BEGIN \;
+SELECT 2.0 AS "float" \;
+SELECT 'world' AS "text" \;
+COMMIT;
+ float 
+-------
+   2.0
+(1 row)
+
+ text  
+-------
+ world
+(1 row)
+
+-- compound with empty statements and spurious leading spacing
+\;\;   SELECT 3 + 3 \;\;\;   SELECT ' ' || ' !' \;\;   SELECT 1 + 4 \;;
+ ?column? 
+----------
+        6
+(1 row)
+
+ ?column? 
+----------
+   !
+(1 row)
+
+ ?column? 
+----------
+        5
+(1 row)
+
+-- non ;-terminated statements
+SELECT 1 + 1 + 1 AS "add" \gset
+SELECT :add + 1 + 1 AS "add" \;
+SELECT :add + 1 + 1 AS "add" \gset
+ add 
+-----
+   5
+(1 row)
+
+-- set operator
+SELECT 1 AS i UNION SELECT 2 ORDER BY i;
+ i 
+---
+ 1
+ 2
+(2 rows)
+
+-- ? operator
+select '{"a":1, "b":2}'::jsonb ? 'b';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- cte
+WITH t(f) AS (
+  VALUES (1.0), (2.0)
+)
+  SELECT f FROM t ORDER BY f;
+  f  
+-----
+ 1.0
+ 2.0
+(2 rows)
+
+-- prepared statement with parameter
+PREPARE pgss_test (int) AS SELECT $1, 'test' LIMIT 1;
+EXECUTE pgss_test(1);
+ ?column? | ?column? 
+----------+----------
+        1 | test
+(1 row)
+
+DEALLOCATE pgss_test;
+SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls | rows |                                    query                                     
+-------+------+------------------------------------------------------------------------------
+     1 |    1 | PREPARE pgss_test (int) AS SELECT $1, $2 LIMIT $3
+     4 |    4 | SELECT $1                                                                   +
+       |      |   -- but this one will appear                                               +
+       |      |   AS "text"
+     2 |    2 | SELECT $1 + $2
+     3 |    3 | SELECT $1 + $2 + $3 AS "add"
+     1 |    1 | SELECT $1 AS "float"
+     2 |    2 | SELECT $1 AS "int"
+     2 |    2 | SELECT $1 AS "int" LIMIT $2
+     2 |    0 | SELECT $1 AS "int" OFFSET $2
+     6 |    0 | SELECT $1 AS "int" OFFSET $2 LIMIT $3
+     2 |    2 | SELECT $1 AS "int" ORDER BY 1
+     1 |    2 | SELECT $1 AS i UNION SELECT $2 ORDER BY i
+     1 |    1 | SELECT $1 || $2
+     2 |    2 | SELECT DISTINCT $1 AS "int"
+     0 |    0 | SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C"
+     1 |    1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
+     1 |    2 | WITH t(f) AS (                                                              +
+       |      |   VALUES ($1), ($2)                                                         +
+       |      | )                                                                           +
+       |      |   SELECT f FROM t ORDER BY f
+     1 |    1 | select $1::jsonb ? $2
+(17 rows)
+
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+-- normalization of constants and parameters, with constant locations
+-- recorded one or more times.
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT WHERE '1' IN ('1'::int, '3'::int::text);
+--
+(1 row)
+
+SELECT WHERE (1, 2) IN ((1, 2), (2, 3));
+--
+(1 row)
+
+SELECT WHERE (3, 4) IN ((5, 6), (8, 7));
+--
+(0 rows)
+
+SELECT query, calls FROM pg_stat_statements ORDER BY query COLLATE "C";
+                                 query                                  | calls 
+------------------------------------------------------------------------+-------
+ SELECT WHERE $1 IN ($2::int, $3::int::text)                            |     1
+ SELECT WHERE ($1, $2) IN (($3, $4), ($5, $6))                          |     2
+ SELECT pg_stat_statements_reset() IS NOT NULL AS t                     |     1
+ SELECT query, calls FROM pg_stat_statements ORDER BY query COLLATE "C" |     0
+(4 rows)
+
+-- with the last element being an explicit function call with an argument, ensure
+-- the normalization of the squashing interval is correct.
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT WHERE 1 IN (1, int4(1), int4(2));
+--
+(1 row)
+
+SELECT WHERE 1 = ANY (ARRAY[1, int4(1), int4(2)]);
+--
+(1 row)
+
+SELECT query, calls FROM pg_stat_statements ORDER BY query COLLATE "C";
+                                 query                                  | calls 
+------------------------------------------------------------------------+-------
+ SELECT WHERE $1 IN ($2 /*, ... */)                                     |     2
+ SELECT pg_stat_statements_reset() IS NOT NULL AS t                     |     1
+ SELECT query, calls FROM pg_stat_statements ORDER BY query COLLATE "C" |     0
+(3 rows)
+
+--
+-- queries with locking clauses
+--
+CREATE TABLE pgss_a (id integer PRIMARY KEY);
+CREATE TABLE pgss_b (id integer PRIMARY KEY, a_id integer REFERENCES pgss_a);
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+-- control query
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+-- test range tables
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE OF pgss_a;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE OF pgss_b;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE OF pgss_a, pgss_b; -- matches plain "FOR UPDATE"
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE OF pgss_b, pgss_a;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+-- test strengths
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR NO KEY UPDATE;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR SHARE;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR KEY SHARE;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+-- test wait policies
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE NOWAIT;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE SKIP LOCKED;
+ id | id | a_id 
+----+----+------
+(0 rows)
+
+SELECT calls, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls |                                          query                                           
+-------+------------------------------------------------------------------------------------------
+     1 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id
+     1 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR KEY SHARE
+     1 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR NO KEY UPDATE
+     1 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR SHARE
+     2 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE
+     1 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE NOWAIT
+     1 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE OF pgss_a
+     1 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE OF pgss_b
+     1 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE OF pgss_b, pgss_a
+     1 | SELECT * FROM pgss_a JOIN pgss_b ON pgss_b.a_id = pgss_a.id FOR UPDATE SKIP LOCKED
+     0 | SELECT calls, query FROM pg_stat_statements ORDER BY query COLLATE "C"
+     1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
+(12 rows)
+
+DROP TABLE pgss_a, pgss_b CASCADE;
+--
+-- access to pg_stat_statements_info view
+--
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dealloc FROM pg_stat_statements_info;
+ dealloc 
+---------
+       0
+(1 row)
+
+-- FROM [ONLY]
+CREATE TABLE tbl_inh(id integer);
+CREATE TABLE tbl_inh_1() INHERITS (tbl_inh);
+INSERT INTO tbl_inh_1 SELECT 1;
+SELECT * FROM tbl_inh;
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM ONLY tbl_inh;
+ id 
+----
+(0 rows)
+
+SELECT COUNT(*) FROM pg_stat_statements WHERE query LIKE '%FROM%tbl_inh%';
+ count 
+-------
+     2
+(1 row)
+
+-- WITH TIES
+CREATE TABLE limitoption AS SELECT 0 AS val FROM generate_series(1, 10);
+SELECT *
+FROM limitoption
+WHERE val < 2
+ORDER BY val
+FETCH FIRST 2 ROWS WITH TIES;
+ val 
+-----
+   0
+   0
+   0
+   0
+   0
+   0
+   0
+   0
+   0
+   0
+(10 rows)
+
+SELECT *
+FROM limitoption
+WHERE val < 2
+ORDER BY val
+FETCH FIRST 2 ROW ONLY;
+ val 
+-----
+   0
+   0
+(2 rows)
+
+SELECT COUNT(*) FROM pg_stat_statements WHERE query LIKE '%FETCH FIRST%';
+ count 
+-------
+     2
+(1 row)
+
+-- GROUP BY, HAVING, GROUPING
+SELECT COUNT(*) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY a;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY b;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY a, b;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY b, a;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY GROUPING SETS(a, ());
+ count 
+-------
+     1
+     1
+(2 rows)
+
+SELECT COUNT(*) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY GROUPING SETS(b, ());
+ count 
+-------
+     1
+     1
+(2 rows)
+
+SELECT COUNT(*) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY a HAVING a = 1;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY a HAVING a = 2;
+ count 
+-------
+(0 rows)
+
+SELECT COUNT(*) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY b HAVING b = 1;
+ count 
+-------
+(0 rows)
+
+SELECT GROUPING(a) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY a;
+ grouping 
+----------
+        0
+(1 row)
+
+SELECT GROUPING(b) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY b;
+ grouping 
+----------
+        0
+(1 row)
+
+SELECT GROUPING(b) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY a, b;
+ grouping 
+----------
+        0
+(1 row)
+
+SELECT GROUPING(b) FROM (VALUES (1::INT, 2::INT)) AS t(a, b) GROUP BY b, a;
+ grouping 
+----------
+        0
+(1 row)
+
+SELECT calls, query FROM pg_stat_statements WHERE query LIKE '%GROUP BY%' ORDER BY query COLLATE "C";
+ calls |                                           query                                           
+-------+-------------------------------------------------------------------------------------------
+     1 | SELECT COUNT(*) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY GROUPING SETS(a, ())
+     1 | SELECT COUNT(*) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY GROUPING SETS(b, ())
+     1 | SELECT COUNT(*) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY a
+     2 | SELECT COUNT(*) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY a HAVING a = $3
+     1 | SELECT COUNT(*) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY a, b
+     1 | SELECT COUNT(*) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY b
+     1 | SELECT COUNT(*) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY b HAVING b = $3
+     1 | SELECT COUNT(*) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY b, a
+     1 | SELECT GROUPING(a) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY a
+     1 | SELECT GROUPING(b) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY a, b
+     1 | SELECT GROUPING(b) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY b
+     1 | SELECT GROUPING(b) FROM (VALUES ($1::INT, $2::INT)) AS t(a, b) GROUP BY b, a
+(12 rows)
+
+-- GROUP BY [DISTINCT]
+SELECT a, b, c
+FROM (VALUES (1, 2, 3), (4, NULL, 6), (7, 8, 9)) AS t (a, b, c)
+GROUP BY ROLLUP(a, b), rollup(a, c)
+ORDER BY a, b, c;
+ a | b | c 
+---+---+---
+ 1 | 2 | 3
+ 1 | 2 |  
+ 1 | 2 |  
+ 1 |   | 3
+ 1 |   | 3
+ 1 |   |  
+ 1 |   |  
+ 1 |   |  
+ 4 |   | 6
+ 4 |   | 6
+ 4 |   | 6
+ 4 |   |  
+ 4 |   |  
+ 4 |   |  
+ 4 |   |  
+ 4 |   |  
+ 7 | 8 | 9
+ 7 | 8 |  
+ 7 | 8 |  
+ 7 |   | 9
+ 7 |   | 9
+ 7 |   |  
+ 7 |   |  
+ 7 |   |  
+   |   |  
+(25 rows)
+
+SELECT a, b, c
+FROM (VALUES (1, 2, 3), (4, NULL, 6), (7, 8, 9)) AS t (a, b, c)
+GROUP BY DISTINCT ROLLUP(a, b), rollup(a, c)
+ORDER BY a, b, c;
+ a | b | c 
+---+---+---
+ 1 | 2 | 3
+ 1 | 2 |  
+ 1 |   | 3
+ 1 |   |  
+ 4 |   | 6
+ 4 |   | 6
+ 4 |   |  
+ 4 |   |  
+ 7 | 8 | 9
+ 7 | 8 |  
+ 7 |   | 9
+ 7 |   |  
+   |   |  
+(13 rows)
+
+SELECT COUNT(*) FROM pg_stat_statements WHERE query LIKE '%GROUP BY%ROLLUP%';
+ count 
+-------
+     2
+(1 row)
+
+-- GROUPING SET agglevelsup
+SELECT (
+  SELECT (
+    SELECT GROUPING(a,b) FROM (VALUES (1)) v2(c)
+  ) FROM (VALUES (1,2)) v1(a,b) GROUP BY (a,b)
+) FROM (VALUES(6,7)) v3(e,f) GROUP BY ROLLUP(e,f);
+ grouping 
+----------
+        0
+        0
+        0
+(3 rows)
+
+SELECT (
+  SELECT (
+    SELECT GROUPING(e,f) FROM (VALUES (1)) v2(c)
+  ) FROM (VALUES (1,2)) v1(a,b) GROUP BY (a,b)
+) FROM (VALUES(6,7)) v3(e,f) GROUP BY ROLLUP(e,f);
+ grouping 
+----------
+        3
+        0
+        1
+(3 rows)
+
+SELECT COUNT(*) FROM pg_stat_statements WHERE query LIKE '%SELECT GROUPING%';
+ count 
+-------
+     6
+(1 row)
+
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+-- Temporary table with same name, re-created.
+BEGIN;
+  CREATE TEMP TABLE temp_t (id int) ON COMMIT DROP;
+  SELECT * FROM temp_t;
+ id 
+----
+(0 rows)
+
+COMMIT;
+BEGIN;
+  CREATE TEMP TABLE temp_t (id int) ON COMMIT DROP;
+  SELECT * FROM temp_t;
+ id 
+----
+(0 rows)
+
+COMMIT;
+SELECT calls, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls |                                 query                                  
+-------+------------------------------------------------------------------------
+     2 | SELECT * FROM temp_t
+     0 | SELECT calls, query FROM pg_stat_statements ORDER BY query COLLATE "C"
+     1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
+(3 rows)
+
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+-- search_path with various schemas and temporary tables
+CREATE SCHEMA pgss_schema_1;
+CREATE SCHEMA pgss_schema_2;
+-- Same attributes.
+CREATE TABLE pgss_schema_1.tab_search_same (a int, b int);
+CREATE TABLE pgss_schema_2.tab_search_same (a int, b int);
+CREATE TEMP TABLE tab_search_same (a int, b int);
+-- Different number of attributes, mapping types
+CREATE TABLE pgss_schema_1.tab_search_diff_1 (a int);
+CREATE TABLE pgss_schema_2.tab_search_diff_1 (a int, b int);
+CREATE TEMP TABLE tab_search_diff_1 (a int, b int, c int);
+-- Same number of attributes, different types
+CREATE TABLE pgss_schema_1.tab_search_diff_2 (a int);
+CREATE TABLE pgss_schema_2.tab_search_diff_2 (a text);
+CREATE TEMP TABLE tab_search_diff_2 (a bigint);
+-- First permanent schema
+SET search_path = 'pgss_schema_1';
+SELECT count(*) FROM tab_search_same;
+ count 
+-------
+     0
+(1 row)
+
+SELECT a, b FROM tab_search_same;
+ a | b 
+---+---
+(0 rows)
+
+SELECT count(*) FROM tab_search_diff_1;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM tab_search_diff_2;
+ count 
+-------
+     0
+(1 row)
+
+SELECT a FROM tab_search_diff_2 AS t1;
+ a 
+---
+(0 rows)
+
+SELECT a FROM tab_search_diff_2;
+ a 
+---
+(0 rows)
+
+SELECT a AS a1 FROM tab_search_diff_2;
+ a1 
+----
+(0 rows)
+
+-- Second permanent schema
+SET search_path = 'pgss_schema_2';
+SELECT count(*) FROM tab_search_same;
+ count 
+-------
+     0
+(1 row)
+
+SELECT a, b FROM tab_search_same;
+ a | b 
+---+---
+(0 rows)
+
+SELECT count(*) FROM tab_search_diff_1;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM tab_search_diff_2;
+ count 
+-------
+     0
+(1 row)
+
+SELECT a FROM tab_search_diff_2 AS t1;
+ a 
+---
+(0 rows)
+
+SELECT a FROM tab_search_diff_2;
+ a 
+---
+(0 rows)
+
+SELECT a AS a1 FROM tab_search_diff_2;
+ a1 
+----
+(0 rows)
+
+-- Temporary schema
+SET search_path = 'pg_temp';
+SELECT count(*) FROM tab_search_same;
+ count 
+-------
+     0
+(1 row)
+
+SELECT a, b FROM tab_search_same;
+ a | b 
+---+---
+(0 rows)
+
+SELECT count(*) FROM tab_search_diff_1;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM tab_search_diff_2;
+ count 
+-------
+     0
+(1 row)
+
+SELECT a FROM tab_search_diff_2 AS t1;
+ a 
+---
+(0 rows)
+
+SELECT a FROM tab_search_diff_2;
+ a 
+---
+(0 rows)
+
+SELECT a AS a1 FROM tab_search_diff_2;
+ a1 
+----
+(0 rows)
+
+RESET search_path;
+-- Schema qualifications
+SELECT count(*) FROM pgss_schema_1.tab_search_same;
+ count 
+-------
+     0
+(1 row)
+
+SELECT a, b FROM pgss_schema_1.tab_search_same;
+ a | b 
+---+---
+(0 rows)
+
+SELECT count(*) FROM pgss_schema_2.tab_search_diff_1;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM pg_temp.tab_search_diff_2;
+ count 
+-------
+     0
+(1 row)
+
+SELECT a FROM pgss_schema_2.tab_search_diff_2 AS t1;
+ a 
+---
+(0 rows)
+
+SELECT a FROM pgss_schema_2.tab_search_diff_2;
+ a 
+---
+(0 rows)
+
+SELECT a AS a1 FROM pgss_schema_2.tab_search_diff_2;
+ a1 
+----
+(0 rows)
+
+SELECT calls, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls |                                 query                                  
+-------+------------------------------------------------------------------------
+     8 | SELECT a FROM tab_search_diff_2
+     4 | SELECT a FROM tab_search_diff_2 AS t1
+     4 | SELECT a, b FROM tab_search_same
+     0 | SELECT calls, query FROM pg_stat_statements ORDER BY query COLLATE "C"
+     4 | SELECT count(*) FROM tab_search_diff_1
+     4 | SELECT count(*) FROM tab_search_diff_2
+     4 | SELECT count(*) FROM tab_search_same
+     1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
+(8 rows)
+
+DROP SCHEMA pgss_schema_1 CASCADE;
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table pgss_schema_1.tab_search_same
+drop cascades to table pgss_schema_1.tab_search_diff_1
+drop cascades to table pgss_schema_1.tab_search_diff_2
+DROP SCHEMA pgss_schema_2 CASCADE;
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table pgss_schema_2.tab_search_same
+drop cascades to table pgss_schema_2.tab_search_diff_1
+drop cascades to table pgss_schema_2.tab_search_diff_2
+DROP TABLE tab_search_same, tab_search_diff_1, tab_search_diff_2;
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+

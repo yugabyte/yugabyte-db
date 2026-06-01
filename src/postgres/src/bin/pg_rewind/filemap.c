@@ -16,7 +16,7 @@
  * for each file.  Finally, it sorts the array to the final order that the
  * actions should be executed in.
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -26,24 +26,24 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "access/xlog_internal.h"
 #include "catalog/pg_tablespace_d.h"
-#include "common/hashfn.h"
+#include "common/file_utils.h"
+#include "common/hashfn_unstable.h"
 #include "common/string.h"
 #include "datapagemap.h"
 #include "filemap.h"
 #include "pg_rewind.h"
-#include "storage/fd.h"
 
 /*
  * Define a hash table which we can use to store information about the files
  * appearing in source and target systems.
  */
-static uint32 hash_string_pointer(const char *s);
 #define SH_PREFIX				filehash
 #define SH_ELEMENT_TYPE			file_entry_t
 #define SH_KEY_TYPE				const char *
 #define SH_KEY					path
-#define SH_HASH_KEY(tb, key)	hash_string_pointer(key)
+#define SH_HASH_KEY(tb, key)	hash_string(key)
 #define SH_EQUAL(tb, a, b)		(strcmp(a, b) == 0)
 #define SH_SCOPE				static inline
 #define SH_RAW_ALLOCATOR		pg_malloc0
@@ -55,8 +55,8 @@ static uint32 hash_string_pointer(const char *s);
 
 static filehash_hash *filehash;
 
-static bool isRelDataFile(const char *path);
-static char *datasegpath(RelFileNode rnode, ForkNumber forknum,
+static file_content_type_t getFileContentType(const char *path);
+static char *datasegpath(RelFileLocator rlocator, ForkNumber forknum,
 						 BlockNumber segno);
 
 static file_entry_t *insert_filehash_entry(const char *path);
@@ -75,7 +75,7 @@ typedef struct keepwal_entry
 #define SH_ELEMENT_TYPE			keepwal_entry
 #define SH_KEY_TYPE				const char *
 #define SH_KEY					path
-#define SH_HASH_KEY(tb, key)	hash_string_pointer(key)
+#define SH_HASH_KEY(tb, key)	hash_string(key)
 #define SH_EQUAL(tb, a, b)		(strcmp(a, b) == 0)
 #define SH_SCOPE				static inline
 #define SH_RAW_ALLOCATOR		pg_malloc0
@@ -114,7 +114,7 @@ struct exclude_list_item
  * they are defined in backend-only headers.  So this list is maintained
  * with a best effort in mind.
  */
-static const char *excludeDirContents[] =
+static const char *const excludeDirContents[] =
 {
 	/*
 	 * Skip temporary statistics files. PG_STAT_TMP_DIR must be skipped
@@ -127,7 +127,7 @@ static const char *excludeDirContents[] =
 	 * even if the intention is to restore to another primary. See backup.sgml
 	 * for a more detailed description.
 	 */
-	"pg_replslot",
+	"pg_replslot",				/* defined as PG_REPLSLOT_DIR */
 
 	/* Contents removed on startup, see dsm_cleanup_for_mmap(). */
 	"pg_dynshmem",				/* defined as PG_DYNSHMEM_DIR */
@@ -210,7 +210,7 @@ insert_filehash_entry(const char *path)
 	if (!found)
 	{
 		entry->path = pg_strdup(path);
-		entry->isrelfile = isRelDataFile(path);
+		entry->content_type = getFileContentType(path);
 
 		entry->target_exists = false;
 		entry->target_type = FILE_TYPE_UNDEFINED;
@@ -294,7 +294,7 @@ process_source_file(const char *path, file_type_t type, size_t size,
 	 * sanity check: a filename that looks like a data file better be a
 	 * regular file
 	 */
-	if (type != FILE_TYPE_REGULAR && isRelDataFile(path))
+	if (type != FILE_TYPE_REGULAR && getFileContentType(path) == FILE_CONTENT_TYPE_RELATION)
 		pg_fatal("data file \"%s\" in source is not a regular file", path);
 
 	/* Remember this source file */
@@ -350,7 +350,7 @@ process_target_file(const char *path, file_type_t type, size_t size,
  * hash table!
  */
 void
-process_target_wal_block_change(ForkNumber forknum, RelFileNode rnode,
+process_target_wal_block_change(ForkNumber forknum, RelFileLocator rlocator,
 								BlockNumber blkno)
 {
 	char	   *path;
@@ -361,7 +361,7 @@ process_target_wal_block_change(ForkNumber forknum, RelFileNode rnode,
 	segno = blkno / RELSEG_SIZE;
 	blkno_inseg = blkno % RELSEG_SIZE;
 
-	path = datasegpath(rnode, forknum, segno);
+	path = datasegpath(rlocator, forknum, segno);
 	entry = lookup_filehash_entry(path);
 	pfree(path);
 
@@ -383,7 +383,7 @@ process_target_wal_block_change(ForkNumber forknum, RelFileNode rnode,
 	 */
 	if (entry)
 	{
-		Assert(entry->isrelfile);
+		Assert(entry->content_type == FILE_CONTENT_TYPE_RELATION);
 
 		if (entry->target_exists)
 		{
@@ -546,7 +546,9 @@ print_filemap(filemap_t *filemap)
 	for (i = 0; i < filemap->nentries; i++)
 	{
 		entry = filemap->entries[i];
+
 		if (entry->action != FILE_ACTION_NONE ||
+			entry->content_type == FILE_CONTENT_TYPE_WAL ||
 			entry->target_pages_to_overwrite.bitmapsize > 0)
 		{
 			pg_log_debug("%s (%s)", entry->path,
@@ -560,22 +562,35 @@ print_filemap(filemap_t *filemap)
 }
 
 /*
- * Does it look like a relation data file?
- *
- * For our purposes, only files belonging to the main fork are considered
- * relation files. Other forks are always copied in toto, because we cannot
- * reliably track changes to them, because WAL only contains block references
- * for the main fork.
+ * Determine what kind of file this one looks like.
  */
-static bool
-isRelDataFile(const char *path)
+static file_content_type_t
+getFileContentType(const char *path)
 {
-	RelFileNode rnode;
+	RelFileLocator rlocator;
 	unsigned int segNo;
 	int			nmatch;
-	bool		matched;
+	file_content_type_t result = FILE_CONTENT_TYPE_OTHER;
+
+	/* Check if it is a WAL file. */
+	if (strncmp("pg_wal/", path, 7) == 0)
+	{
+		const char *filename = path + 7;	/* Skip "pg_wal/" */
+
+		if (IsXLogFileName(filename))
+			return FILE_CONTENT_TYPE_WAL;
+		else
+			return FILE_CONTENT_TYPE_OTHER;
+	}
 
 	/*----
+	 * Does it look like a relation data file?
+	 *
+	 * For our purposes, only files belonging to the main fork are considered
+	 * relation files. Other forks are always copied in toto, because we
+	 * cannot reliably track changes to them, because WAL only contains block
+	 * references for the main fork.
+	 *
 	 * Relation data files can be in one of the following directories:
 	 *
 	 * global/
@@ -594,55 +609,55 @@ isRelDataFile(const char *path)
 	 *
 	 *----
 	 */
-	rnode.spcNode = InvalidOid;
-	rnode.dbNode = InvalidOid;
-	rnode.relNode = InvalidOid;
+	rlocator.spcOid = InvalidOid;
+	rlocator.dbOid = InvalidOid;
+	rlocator.relNumber = InvalidRelFileNumber;
 	segNo = 0;
-	matched = false;
+	result = FILE_CONTENT_TYPE_OTHER;
 
-	nmatch = sscanf(path, "global/%u.%u", &rnode.relNode, &segNo);
+	nmatch = sscanf(path, "global/%u.%u", &rlocator.relNumber, &segNo);
 	if (nmatch == 1 || nmatch == 2)
 	{
-		rnode.spcNode = GLOBALTABLESPACE_OID;
-		rnode.dbNode = 0;
-		matched = true;
+		rlocator.spcOid = GLOBALTABLESPACE_OID;
+		rlocator.dbOid = 0;
+		result = FILE_CONTENT_TYPE_RELATION;
 	}
 	else
 	{
 		nmatch = sscanf(path, "base/%u/%u.%u",
-						&rnode.dbNode, &rnode.relNode, &segNo);
+						&rlocator.dbOid, &rlocator.relNumber, &segNo);
 		if (nmatch == 2 || nmatch == 3)
 		{
-			rnode.spcNode = DEFAULTTABLESPACE_OID;
-			matched = true;
+			rlocator.spcOid = DEFAULTTABLESPACE_OID;
+			result = FILE_CONTENT_TYPE_RELATION;
 		}
 		else
 		{
 			nmatch = sscanf(path, "pg_tblspc/%u/" TABLESPACE_VERSION_DIRECTORY "/%u/%u.%u",
-							&rnode.spcNode, &rnode.dbNode, &rnode.relNode,
+							&rlocator.spcOid, &rlocator.dbOid, &rlocator.relNumber,
 							&segNo);
 			if (nmatch == 3 || nmatch == 4)
-				matched = true;
+				result = FILE_CONTENT_TYPE_RELATION;
 		}
 	}
 
 	/*
 	 * The sscanf tests above can match files that have extra characters at
 	 * the end. To eliminate such cases, cross-check that GetRelationPath
-	 * creates the exact same filename, when passed the RelFileNode
+	 * creates the exact same filename, when passed the RelFileLocator
 	 * information we extracted from the filename.
 	 */
-	if (matched)
+	if (result == FILE_CONTENT_TYPE_RELATION)
 	{
-		char	   *check_path = datasegpath(rnode, MAIN_FORKNUM, segNo);
+		char	   *check_path = datasegpath(rlocator, MAIN_FORKNUM, segNo);
 
 		if (strcmp(check_path, path) != 0)
-			matched = false;
+			result = FILE_CONTENT_TYPE_OTHER;
 
 		pfree(check_path);
 	}
 
-	return matched;
+	return result;
 }
 
 /*
@@ -651,20 +666,19 @@ isRelDataFile(const char *path)
  * The returned path is palloc'd
  */
 static char *
-datasegpath(RelFileNode rnode, ForkNumber forknum, BlockNumber segno)
+datasegpath(RelFileLocator rlocator, ForkNumber forknum, BlockNumber segno)
 {
-	char	   *path;
+	RelPathStr	path;
 	char	   *segpath;
 
-	path = relpathperm(rnode, forknum);
+	path = relpathperm(rlocator, forknum);
 	if (segno > 0)
 	{
-		segpath = psprintf("%s.%u", path, segno);
-		pfree(path);
+		segpath = psprintf("%s.%u", path.str, segno);
 		return segpath;
 	}
 	else
-		return path;
+		return pstrdup(path.str);
 }
 
 /*
@@ -680,8 +694,8 @@ datasegpath(RelFileNode rnode, ForkNumber forknum, BlockNumber segno)
 static int
 final_filemap_cmp(const void *a, const void *b)
 {
-	file_entry_t *fa = *((file_entry_t **) a);
-	file_entry_t *fb = *((file_entry_t **) b);
+	file_entry_t *fa = *((file_entry_t *const *) a);
+	file_entry_t *fb = *((file_entry_t *const *) b);
 
 	if (fa->action > fb->action)
 		return 1;
@@ -695,10 +709,44 @@ final_filemap_cmp(const void *a, const void *b)
 }
 
 /*
+ * Decide what to do with a WAL segment file based on its position
+ * relative to the point of divergence.
+ *
+ * Caller is responsible for ensuring that the file exists on both
+ * source and target servers.
+ */
+static file_action_t
+decide_wal_file_action(const char *fname, XLogSegNo last_common_segno,
+					   size_t source_size, size_t target_size)
+{
+	TimeLineID	file_tli;
+	XLogSegNo	file_segno;
+
+	/* Get current WAL segment number given current segment file name */
+	XLogFromFileName(fname, &file_tli, &file_segno, WalSegSz);
+
+	/*
+	 * Avoid copying files before the last common segment.
+	 *
+	 * These files exist on the source and the target servers, so they should
+	 * be identical and located strictly before the segment that contains the
+	 * LSN where target and source servers have diverged.
+	 *
+	 * While we are on it, double-check the size of each file and copy the
+	 * file if they do not match, in case.
+	 */
+	if (file_segno < last_common_segno &&
+		source_size == target_size)
+		return FILE_ACTION_NONE;
+
+	return FILE_ACTION_COPY;
+}
+
+/*
  * Decide what action to perform to a file.
  */
 static file_action_t
-decide_file_action(file_entry_t *entry)
+decide_file_action(file_entry_t *entry, XLogSegNo last_common_segno)
 {
 	const char *path = entry->path;
 
@@ -706,7 +754,7 @@ decide_file_action(file_entry_t *entry)
 	 * Don't touch the control file. It is handled specially, after copying
 	 * all the other files.
 	 */
-	if (strcmp(path, "global/pg_control") == 0)
+	if (strcmp(path, XLOG_CONTROL_FILE) == 0)
 		return FILE_ACTION_NONE;
 
 	/* Skip macOS system files */
@@ -800,7 +848,21 @@ decide_file_action(file_entry_t *entry)
 			return FILE_ACTION_NONE;
 
 		case FILE_TYPE_REGULAR:
-			if (!entry->isrelfile)
+			if (entry->content_type == FILE_CONTENT_TYPE_WAL)
+			{
+				/* Handle WAL segment file */
+				const char *filename = last_dir_separator(entry->path);
+
+				if (filename == NULL)
+					filename = entry->path;
+				else
+					filename++; /* Skip the separator */
+
+				return decide_wal_file_action(filename, last_common_segno,
+											  entry->source_size,
+											  entry->target_size);
+			}
+			else if (entry->content_type != FILE_CONTENT_TYPE_RELATION)
 			{
 				/*
 				 * It's a non-data file that we have no special processing
@@ -859,7 +921,7 @@ decide_file_action(file_entry_t *entry)
  * should be executed.
  */
 filemap_t *
-decide_file_actions(void)
+decide_file_actions(XLogSegNo last_common_segno)
 {
 	int			i;
 	filehash_iterator it;
@@ -869,7 +931,7 @@ decide_file_actions(void)
 	filehash_start_iterate(filehash, &it);
 	while ((entry = filehash_iterate(filehash, &it)) != NULL)
 	{
-		entry->action = decide_file_action(entry);
+		entry->action = decide_file_action(entry, last_common_segno);
 	}
 
 	/*
@@ -890,16 +952,4 @@ decide_file_actions(void)
 		  final_filemap_cmp);
 
 	return filemap;
-}
-
-
-/*
- * Helper function for filemap hash table.
- */
-static uint32
-hash_string_pointer(const char *s)
-{
-	unsigned char *ss = (unsigned char *) s;
-
-	return hash_bytes(ss, strlen(s));
 }

@@ -3,7 +3,7 @@
  * dict_simple.c
  *		Simple dictionary: just lowercase and check for stopword
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -13,10 +13,11 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_collation_d.h"
 #include "commands/defrem.h"
-#include "tsearch/ts_locale.h"
-#include "tsearch/ts_utils.h"
-#include "utils/builtins.h"
+#include "tsearch/ts_public.h"
+#include "utils/fmgrprotos.h"
+#include "utils/formatting.h"
 
 
 typedef struct
@@ -30,7 +31,7 @@ Datum
 dsimple_init(PG_FUNCTION_ARGS)
 {
 	List	   *dictoptions = (List *) PG_GETARG_POINTER(0);
-	DictSimple *d = (DictSimple *) palloc0(sizeof(DictSimple));
+	DictSimple *d = palloc0_object(DictSimple);
 	bool		stoploaded = false,
 				acceptloaded = false;
 	ListCell   *l;
@@ -47,7 +48,7 @@ dsimple_init(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("multiple StopWords parameters")));
-			readstoplist(defGetString(defel), &d->stoplist, lowerstr);
+			readstoplist(defGetString(defel), &d->stoplist, str_tolower);
 			stoploaded = true;
 		}
 		else if (strcmp(defel->defname, "accept") == 0)
@@ -80,19 +81,19 @@ dsimple_lexize(PG_FUNCTION_ARGS)
 	char	   *txt;
 	TSLexeme   *res;
 
-	txt = lowerstr_with_len(in, len);
+	txt = str_tolower(in, len, DEFAULT_COLLATION_OID);
 
 	if (*txt == '\0' || searchstoplist(&(d->stoplist), txt))
 	{
 		/* reject as stopword */
 		pfree(txt);
-		res = palloc0(sizeof(TSLexeme) * 2);
+		res = palloc0_array(TSLexeme, 2);
 		PG_RETURN_POINTER(res);
 	}
 	else if (d->accept)
 	{
 		/* accept */
-		res = palloc0(sizeof(TSLexeme) * 2);
+		res = palloc0_array(TSLexeme, 2);
 		res[0].lexeme = txt;
 		PG_RETURN_POINTER(res);
 	}

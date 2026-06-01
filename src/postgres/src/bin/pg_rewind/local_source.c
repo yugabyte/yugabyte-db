@@ -3,7 +3,7 @@
  * local_source.c
  *	  Functions for using a local data directory as the source.
  *
- * Portions Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -12,10 +12,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "datapagemap.h"
+#include "common/logging.h"
 #include "file_ops.h"
-#include "filemap.h"
-#include "pg_rewind.h"
 #include "rewind_source.h"
 
 typedef struct
@@ -41,7 +39,7 @@ init_local_source(const char *datadir)
 {
 	local_source *src;
 
-	src = pg_malloc0(sizeof(local_source));
+	src = pg_malloc0_object(local_source);
 
 	src->common.traverse_files = local_traverse_files;
 	src->common.fetch_file = local_fetch_file;
@@ -59,7 +57,7 @@ init_local_source(const char *datadir)
 static void
 local_traverse_files(rewind_source *source, process_file_callback_t callback)
 {
-	traverse_datadir(((local_source *) source)->datadir, &process_source_file);
+	traverse_datadir(((local_source *) source)->datadir, callback);
 }
 
 static char *
@@ -77,7 +75,7 @@ static void
 local_queue_fetch_file(rewind_source *source, const char *path, size_t len)
 {
 	const char *datadir = ((local_source *) source)->datadir;
-	PGAlignedBlock buf;
+	PGIOAlignedBlock buf;
 	char		srcpath[MAXPGPATH];
 	int			srcfd;
 	size_t		written_len;
@@ -114,8 +112,8 @@ local_queue_fetch_file(rewind_source *source, const char *path, size_t len)
 	 * check that the size of the file matches our earlier expectation.
 	 */
 	if (written_len != len)
-		pg_fatal("size of source file \"%s\" changed concurrently: %d bytes expected, %d copied",
-				 srcpath, (int) len, (int) written_len);
+		pg_fatal("size of source file \"%s\" changed concurrently: %zu bytes expected, %zu copied",
+				 srcpath, len, written_len);
 
 	if (close(srcfd) != 0)
 		pg_fatal("could not close file \"%s\": %m", srcpath);
@@ -129,7 +127,7 @@ local_queue_fetch_range(rewind_source *source, const char *path, off_t off,
 						size_t len)
 {
 	const char *datadir = ((local_source *) source)->datadir;
-	PGAlignedBlock buf;
+	PGIOAlignedBlock buf;
 	char		srcpath[MAXPGPATH];
 	int			srcfd;
 	off_t		begin = off;

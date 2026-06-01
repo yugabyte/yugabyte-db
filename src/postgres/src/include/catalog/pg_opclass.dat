@@ -3,7 +3,7 @@
 # pg_opclass.dat
 #    Initial contents of the pg_opclass system catalog.
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_opclass.dat
@@ -57,7 +57,7 @@
 { opcmethod => 'hash', opcname => 'inet_ops', opcfamily => 'hash/network_ops',
   opcintype => 'inet' },
 { opcmethod => 'gist', opcname => 'inet_ops', opcfamily => 'gist/network_ops',
-  opcintype => 'inet', opcdefault => 'f' },
+  opcintype => 'inet' },
 { opcmethod => 'spgist', opcname => 'inet_ops',
   opcfamily => 'spgist/network_ops', opcintype => 'inet' },
 { oid => '1979', oid_symbol => 'INT2_BTREE_OPS_OID',
@@ -177,6 +177,10 @@
   opcintype => 'xid8' },
 { opcmethod => 'btree', opcname => 'xid8_ops', opcfamily => 'btree/xid8_ops',
   opcintype => 'xid8' },
+{ opcmethod => 'hash', opcname => 'oid8_ops', opcfamily => 'hash/oid8_ops',
+  opcintype => 'oid8' },
+{ opcmethod => 'btree', opcname => 'oid8_ops', opcfamily => 'btree/oid8_ops',
+  opcintype => 'oid8' },
 { opcmethod => 'hash', opcname => 'cid_ops', opcfamily => 'hash/cid_ops',
   opcintype => 'cid' },
 { opcmethod => 'hash', opcname => 'tid_ops', opcfamily => 'hash/tid_ops',
@@ -548,7 +552,8 @@
   opcfamily => 'lsm/text_ops', opcintype => 'text' },
 { opcmethod => 'lsm', opcname => 'time_ops',
   opcfamily => 'lsm/time_ops', opcintype => 'time' },
-{ oid => '9947', oid_symbol => 'TIMESTAMPTZ_LSM_OPS_OID',
+# YB_TODO_PG19MERGE collision with PG; changed from 9947 to 9812
+{ oid => '9812', oid_symbol => 'TIMESTAMPTZ_LSM_OPS_OID',
   opcmethod => 'lsm', opcname => 'timestamptz_ops',
   opcfamily => 'lsm/datetime_ops', opcintype => 'timestamptz' },
 { opcmethod => 'lsm', opcname => 'timetz_ops',
@@ -557,7 +562,8 @@
   opcfamily => 'lsm/varbit_ops', opcintype => 'varbit' },
 { opcmethod => 'lsm', opcname => 'varchar_ops',
   opcfamily => 'lsm/text_ops', opcintype => 'text', opcdefault => 'f' },
-{ oid => '9948', oid_symbol => 'TIMESTAMP_LSM_OPS_OID',
+# YB_TODO_PG19MERGE collision with PG; changed from 9948 to 9813
+{ oid => '9813', oid_symbol => 'TIMESTAMP_LSM_OPS_OID',
   opcmethod => 'lsm', opcname => 'timestamp_ops',
   opcfamily => 'lsm/datetime_ops', opcintype => 'timestamp' },
 { opcmethod => 'lsm', opcname => 'text_pattern_ops',

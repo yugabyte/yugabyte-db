@@ -4,8 +4,8 @@ subdir = contrib
 top_builddir = ..
 include $(top_builddir)/src/Makefile.global
 
+# YB_TODO_PG19MERGE: resolve pg_stat_statements (omitted from SUBDIRS below).
 SUBDIRS = \
-		adminpack	\
 		amcheck		\
 		auth_delay	\
 		auto_explain	\
@@ -29,13 +29,15 @@ SUBDIRS = \
 		lo		\
 		ltree		\
 		oid2name	\
-		old_snapshot	\
 		pageinspect	\
 		passwordcheck	\
 		pg_buffercache	\
 		pg_freespacemap \
+		pg_logicalinspect \
+		pg_overexplain \
+		pg_plan_advice \
 		pg_prewarm	\
-		pg_stat_statements \
+		pg_stash_advice	\
 		pg_surgery	\
 		pg_trgm		\
 		pgrowlocks	\

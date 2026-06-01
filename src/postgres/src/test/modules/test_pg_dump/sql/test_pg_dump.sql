@@ -75,6 +75,24 @@ GRANT UPDATE ON test_pg_dump_mv1 TO regress_dump_test_role;
 GRANT USAGE ON SCHEMA test_pg_dump_s1 TO regress_dump_test_role;
 GRANT USAGE ON TYPE test_pg_dump_e1 TO regress_dump_test_role;
 
+-- Substitute for current user's name to keep test output consistent
+SELECT s.obj,
+  CASE WHEN a.grantor::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantor::regrole::name END,
+  CASE WHEN a.grantee::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantee::regrole::name END,
+  a.privilege_type, a.is_grantable
+FROM
+  (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
+   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+  aclexplode(s.initprivs) a;
+SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
+  pg_describe_object(refclassid,refobjid,0) AS refobj,
+  deptype
+  FROM pg_shdepend JOIN pg_database d ON dbid = d.oid
+  WHERE d.datname = current_database()
+  ORDER BY 1, 3;
+
 ALTER EXTENSION test_pg_dump ADD ACCESS METHOD gist2;
 ALTER EXTENSION test_pg_dump ADD AGGREGATE newavg(int4);
 ALTER EXTENSION test_pg_dump ADD CAST (text AS casttesttype);
@@ -109,9 +127,98 @@ ALTER EXTENSION test_pg_dump DROP VIEW test_pg_dump_v1;
 
 DROP OWNED BY regress_dump_test_role RESTRICT;
 
+-- Substitute for current user's name to keep test output consistent
+SELECT s.obj,
+  CASE WHEN a.grantor::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantor::regrole::name END,
+  CASE WHEN a.grantee::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantee::regrole::name END,
+  a.privilege_type, a.is_grantable
+FROM
+  (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
+   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+  aclexplode(s.initprivs) a;
+SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
+  pg_describe_object(refclassid,refobjid,0) AS refobj,
+  deptype
+  FROM pg_shdepend JOIN pg_database d ON dbid = d.oid
+  WHERE d.datname = current_database()
+  ORDER BY 1, 3;
+
 DROP ROLE regress_dump_test_role;
 
 DROP EXTENSION test_pg_dump;
 
 -- shouldn't be anything left in pg_init_privs
 SELECT * FROM pg_init_privs WHERE privtype = 'e';
+
+CREATE ROLE regress_dump_test_role;
+CREATE ROLE regress_dump_test_super SUPERUSER;
+
+SET ROLE regress_dump_test_super;
+
+CREATE EXTENSION test_pg_dump;
+
+RESET ROLE;
+
+-- Substitute for current user's name to keep test output consistent
+SELECT s.obj,
+  CASE WHEN a.grantor::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantor::regrole::name END,
+  CASE WHEN a.grantee::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantee::regrole::name END,
+  a.privilege_type, a.is_grantable
+FROM
+  (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
+   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+  aclexplode(s.initprivs) a;
+SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
+  pg_describe_object(refclassid,refobjid,0) AS refobj,
+  deptype
+  FROM pg_shdepend JOIN pg_database d ON dbid = d.oid
+  WHERE d.datname = current_database()
+  ORDER BY 1, 2, 3;
+
+REASSIGN OWNED BY regress_dump_test_super TO CURRENT_ROLE;
+
+-- Substitute for current user's name to keep test output consistent
+SELECT s.obj,
+  CASE WHEN a.grantor::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantor::regrole::name END,
+  CASE WHEN a.grantee::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantee::regrole::name END,
+  a.privilege_type, a.is_grantable
+FROM
+  (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
+   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+  aclexplode(s.initprivs) a;
+SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
+  pg_describe_object(refclassid,refobjid,0) AS refobj,
+  deptype
+  FROM pg_shdepend JOIN pg_database d ON dbid = d.oid
+  WHERE d.datname = current_database()
+  ORDER BY 1, 2, 3;
+
+DROP OWNED BY regress_dump_test_role RESTRICT;
+
+-- Substitute for current user's name to keep test output consistent
+SELECT s.obj,
+  CASE WHEN a.grantor::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantor::regrole::name END,
+  CASE WHEN a.grantee::regrole::name = quote_ident(current_user) THEN 'postgres'
+    ELSE a.grantee::regrole::name END,
+  a.privilege_type, a.is_grantable
+FROM
+  (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
+   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+  aclexplode(s.initprivs) a;
+SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
+  pg_describe_object(refclassid,refobjid,0) AS refobj,
+  deptype
+  FROM pg_shdepend JOIN pg_database d ON dbid = d.oid
+  WHERE d.datname = current_database()
+  ORDER BY 1, 2, 3;
+
+DROP ROLE regress_dump_test_super;
+
+DROP ROLE regress_dump_test_role;

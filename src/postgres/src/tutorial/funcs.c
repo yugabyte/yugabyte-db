@@ -11,7 +11,9 @@
 #include "postgres.h"			/* general Postgres declarations */
 
 #include "executor/executor.h"	/* for GetAttributeByName() */
+#include "utils/fmgrprotos.h"	/* for text_starts_with() */
 #include "utils/geo_decls.h"	/* for point type */
+#include "varatt.h"				/* for VARDATA/VARSIZE macros */
 
 PG_MODULE_MAGIC;
 
@@ -48,7 +50,7 @@ makepoint(PG_FUNCTION_ARGS)
 {
 	Point	   *pointx = PG_GETARG_POINT_P(0);
 	Point	   *pointy = PG_GETARG_POINT_P(1);
-	Point	   *new_point = (Point *) palloc(sizeof(Point));
+	Point	   *new_point = palloc_object(Point);
 
 	new_point->x = pointx->x;
 	new_point->y = pointy->y;
@@ -78,8 +80,8 @@ copytext(PG_FUNCTION_ARGS)
 	 * VARDATA is a pointer to the data region of the new struct.  The source
 	 * could be a short datum, so retrieve its data through VARDATA_ANY.
 	 */
-	memcpy((void *) VARDATA(new_t), /* destination */
-		   (void *) VARDATA_ANY(t), /* source */
+	memcpy(VARDATA(new_t),		/* destination */
+		   VARDATA_ANY(t),		/* source */
 		   VARSIZE_ANY_EXHDR(t));	/* how many bytes */
 	PG_RETURN_TEXT_P(new_t);
 }
@@ -100,6 +102,25 @@ concat_text(PG_FUNCTION_ARGS)
 	memcpy(VARDATA(new_text), VARDATA_ANY(arg1), arg1_size);
 	memcpy(VARDATA(new_text) + arg1_size, VARDATA_ANY(arg2), arg2_size);
 	PG_RETURN_TEXT_P(new_text);
+}
+
+/* A wrapper around starts_with(text, text) */
+
+PG_FUNCTION_INFO_V1(t_starts_with);
+
+Datum
+t_starts_with(PG_FUNCTION_ARGS)
+{
+	text	   *t1 = PG_GETARG_TEXT_PP(0);
+	text	   *t2 = PG_GETARG_TEXT_PP(1);
+	Oid			collid = PG_GET_COLLATION();
+	bool		result;
+
+	result = DatumGetBool(DirectFunctionCall2Coll(text_starts_with,
+												  collid,
+												  PointerGetDatum(t1),
+												  PointerGetDatum(t2)));
+	PG_RETURN_BOOL(result);
 }
 
 /* Composite types */

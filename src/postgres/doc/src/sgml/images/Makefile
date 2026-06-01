@@ -3,9 +3,15 @@
 # see README in this directory about image handling
 
 ALL_IMAGES = \
+	datachecksums.svg \
 	genetic-algorithm.svg \
 	gin.svg \
-	pagelayout.svg
+	pagelayout.svg \
+	temporal-entities.svg \
+	temporal-references.svg \
+	temporal-update.svg \
+	temporal-delete.svg \
+	temporal-isolation.svg
 
 DITAA = ditaa
 DOT = dot

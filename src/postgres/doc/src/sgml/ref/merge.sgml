@@ -23,34 +23,37 @@ PostgreSQL documentation
 <synopsis>
 [ WITH <replaceable class="parameter">with_query</replaceable> [, ...] ]
 MERGE INTO [ ONLY ] <replaceable class="parameter">target_table_name</replaceable> [ * ] [ [ AS ] <replaceable class="parameter">target_alias</replaceable> ]
-USING <replaceable class="parameter">data_source</replaceable> ON <replaceable class="parameter">join_condition</replaceable>
-<replaceable class="parameter">when_clause</replaceable> [...]
+    USING <replaceable class="parameter">data_source</replaceable> ON <replaceable class="parameter">join_condition</replaceable>
+    <replaceable class="parameter">when_clause</replaceable> [...]
+    [ RETURNING [ WITH ( { OLD | NEW } AS <replaceable class="parameter">output_alias</replaceable> [, ...] ) ]
+                { * | <replaceable class="parameter">output_expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] } [, ...] ]
 
 <phrase>where <replaceable class="parameter">data_source</replaceable> is:</phrase>
 
-{ [ ONLY ] <replaceable class="parameter">source_table_name</replaceable> [ * ] | ( <replaceable class="parameter">source_query</replaceable> ) } [ [ AS ] <replaceable class="parameter">source_alias</replaceable> ]
+    { [ ONLY ] <replaceable class="parameter">source_table_name</replaceable> [ * ] | ( <replaceable class="parameter">source_query</replaceable> ) } [ [ AS ] <replaceable class="parameter">source_alias</replaceable> ]
 
 <phrase>and <replaceable class="parameter">when_clause</replaceable> is:</phrase>
 
-{ WHEN MATCHED [ AND <replaceable class="parameter">condition</replaceable> ] THEN { <replaceable class="parameter">merge_update</replaceable> | <replaceable class="parameter">merge_delete</replaceable> | DO NOTHING } |
-  WHEN NOT MATCHED [ AND <replaceable class="parameter">condition</replaceable> ] THEN { <replaceable class="parameter">merge_insert</replaceable> | DO NOTHING } }
+    { WHEN MATCHED [ AND <replaceable class="parameter">condition</replaceable> ] THEN { <replaceable class="parameter">merge_update</replaceable> | <replaceable class="parameter">merge_delete</replaceable> | DO NOTHING } |
+      WHEN NOT MATCHED BY SOURCE [ AND <replaceable class="parameter">condition</replaceable> ] THEN { <replaceable class="parameter">merge_update</replaceable> | <replaceable class="parameter">merge_delete</replaceable> | DO NOTHING } |
+      WHEN NOT MATCHED [ BY TARGET ] [ AND <replaceable class="parameter">condition</replaceable> ] THEN { <replaceable class="parameter">merge_insert</replaceable> | DO NOTHING } }
 
 <phrase>and <replaceable class="parameter">merge_insert</replaceable> is:</phrase>
 
-INSERT [( <replaceable class="parameter">column_name</replaceable> [, ...] )]
-[ OVERRIDING { SYSTEM | USER } VALUE ]
-{ VALUES ( { <replaceable class="parameter">expression</replaceable> | DEFAULT } [, ...] ) | DEFAULT VALUES }
+    INSERT [( <replaceable class="parameter">column_name</replaceable> [, ...] )]
+        [ OVERRIDING { SYSTEM | USER } VALUE ]
+        { VALUES ( { <replaceable class="parameter">expression</replaceable> | DEFAULT } [, ...] ) | DEFAULT VALUES }
 
 <phrase>and <replaceable class="parameter">merge_update</replaceable> is:</phrase>
 
-UPDATE SET { <replaceable class="parameter">column_name</replaceable> = { <replaceable class="parameter">expression</replaceable> | DEFAULT } |
-             ( <replaceable class="parameter">column_name</replaceable> [, ...] ) = [ ROW ] ( { <replaceable class="parameter">expression</replaceable> | DEFAULT } [, ...] ) |
-             ( <replaceable class="parameter">column_name</replaceable> [, ...] ) = ( <replaceable class="parameter">sub-SELECT</replaceable> )
-           } [, ...]
+    UPDATE SET { <replaceable class="parameter">column_name</replaceable> = { <replaceable class="parameter">expression</replaceable> | DEFAULT } |
+                 ( <replaceable class="parameter">column_name</replaceable> [, ...] ) = [ ROW ] ( { <replaceable class="parameter">expression</replaceable> | DEFAULT } [, ...] ) |
+                 ( <replaceable class="parameter">column_name</replaceable> [, ...] ) = ( <replaceable class="parameter">sub-SELECT</replaceable> )
+               } [, ...]
 
 <phrase>and <replaceable class="parameter">merge_delete</replaceable> is:</phrase>
 
-DELETE
+    DELETE
 </synopsis>
  </refsynopsisdiv>
 
@@ -72,7 +75,9 @@ DELETE
    from <replaceable class="parameter">data_source</replaceable> to
    the target table
    producing zero or more candidate change rows.  For each candidate change
-   row, the status of <literal>MATCHED</literal> or <literal>NOT MATCHED</literal>
+   row, the status of <literal>MATCHED</literal>,
+   <literal>NOT MATCHED BY SOURCE</literal>,
+   or <literal>NOT MATCHED [BY TARGET]</literal>
    is set just once, after which <literal>WHEN</literal> clauses are evaluated
    in the order specified.  For each candidate change row, the first clause to
    evaluate as true is executed.  No more than one <literal>WHEN</literal>
@@ -94,6 +99,20 @@ DELETE
    skipped. Since actions are evaluated in their specified order, <literal>DO
    NOTHING</literal> can be handy to skip non-interesting source rows before
    more fine-grained handling.
+  </para>
+
+  <para>
+   The optional <literal>RETURNING</literal> clause causes <command>MERGE</command>
+   to compute and return value(s) based on each row inserted, updated, or
+   deleted.  Any expression using the source or target table's columns, or
+   the <link linkend="merge-action"><function>merge_action()</function></link>
+   function can be computed.  By default, when an <command>INSERT</command> or
+   <command>UPDATE</command> action is performed, the new values of the target
+   table's columns are used, and when a <command>DELETE</command> is performed,
+   the old values of the target table's columns are used, but it is also
+   possible to explicitly request old and new values.  The syntax of the
+   <literal>RETURNING</literal> list is identical to that of the output list
+   of <command>SELECT</command>.
   </para>
 
   <para>
@@ -147,15 +166,25 @@ DELETE
     <term><replaceable class="parameter">target_table_name</replaceable></term>
     <listitem>
      <para>
-      The name (optionally schema-qualified) of the target table to merge into.
-      If <literal>ONLY</literal> is specified before the table name, matching
-      rows are updated or deleted in the named table only.  If
+      The name (optionally schema-qualified) of the target table or view to
+      merge into.  If <literal>ONLY</literal> is specified before a table
+      name, matching rows are updated or deleted in the named table only.  If
       <literal>ONLY</literal> is not specified, matching rows are also updated
       or deleted in any tables inheriting from the named table.  Optionally,
       <literal>*</literal> can be specified after the table name to explicitly
       indicate that descendant tables are included.  The
       <literal>ONLY</literal> keyword and <literal>*</literal> option do not
       affect insert actions, which always insert into the named table only.
+     </para>
+
+     <para>
+      If <replaceable class="parameter">target_table_name</replaceable> is a
+      view, it must either be automatically updatable with no
+      <literal>INSTEAD OF</literal> triggers, or it must have
+      <literal>INSTEAD OF</literal> triggers for every type of action
+      (<literal>INSERT</literal>, <literal>UPDATE</literal>, and
+      <literal>DELETE</literal>) specified in the <literal>WHEN</literal>
+      clauses.  Views with rules are not supported.
      </para>
     </listitem>
    </varlistentry>
@@ -233,6 +262,16 @@ DELETE
        only reference the target table's
        columns can affect which action is taken, often in surprising ways.
       </para>
+      <para>
+       If both <literal>WHEN NOT MATCHED BY SOURCE</literal> and
+       <literal>WHEN NOT MATCHED [BY TARGET]</literal> clauses are specified,
+       the <command>MERGE</command> command will perform a <literal>FULL</literal>
+       join between <replaceable class="parameter">data_source</replaceable>
+       and the target table.  For this to work, at least one
+       <replaceable class="parameter">join_condition</replaceable> subexpression
+       must use an operator that can support a hash join, or all of the
+       subexpressions must use operators that can support a merge join.
+      </para>
      </warning>
     </listitem>
    </varlistentry>
@@ -244,18 +283,40 @@ DELETE
       At least one <literal>WHEN</literal> clause is required.
      </para>
      <para>
+      The <literal>WHEN</literal> clause may specify <literal>WHEN MATCHED</literal>,
+      <literal>WHEN NOT MATCHED BY SOURCE</literal>, or
+      <literal>WHEN NOT MATCHED [BY TARGET]</literal>.
+      Note that the <acronym>SQL</acronym> standard only defines
+      <literal>WHEN MATCHED</literal> and <literal>WHEN NOT MATCHED</literal>
+      (which is defined to mean no matching target row).
+      <literal>WHEN NOT MATCHED BY SOURCE</literal> is an extension to the
+      <acronym>SQL</acronym> standard, as is the option to append
+      <literal>BY TARGET</literal> to <literal>WHEN NOT MATCHED</literal>, to
+      make its meaning more explicit.
+     </para>
+     <para>
       If the <literal>WHEN</literal> clause specifies <literal>WHEN MATCHED</literal>
       and the candidate change row matches a row in the
-      target table,
-      the <literal>WHEN</literal> clause is executed if the
+      <replaceable class="parameter">data_source</replaceable> to a row in the
+      target table, the <literal>WHEN</literal> clause is executed if the
       <replaceable class="parameter">condition</replaceable> is
       absent or it evaluates to <literal>true</literal>.
      </para>
      <para>
-      Conversely, if the <literal>WHEN</literal> clause specifies
-      <literal>WHEN NOT MATCHED</literal>
-      and the candidate change row does not match a row in the
-      target table,
+      If the <literal>WHEN</literal> clause specifies
+      <literal>WHEN NOT MATCHED BY SOURCE</literal> and the candidate change
+      row represents a row in the target table that does not match a row in the
+      <replaceable class="parameter">data_source</replaceable>, the
+      <literal>WHEN</literal> clause is executed if the
+      <replaceable class="parameter">condition</replaceable> is
+      absent or it evaluates to <literal>true</literal>.
+     </para>
+     <para>
+      If the <literal>WHEN</literal> clause specifies
+      <literal>WHEN NOT MATCHED [BY TARGET]</literal> and the candidate change
+      row represents a row in the
+      <replaceable class="parameter">data_source</replaceable> that does not
+      match a row in the target table,
       the <literal>WHEN</literal> clause is executed if the
       <replaceable class="parameter">condition</replaceable> is
       absent or it evaluates to <literal>true</literal>.
@@ -275,7 +336,10 @@ DELETE
      <para>
       A condition on a <literal>WHEN MATCHED</literal> clause can refer to columns
       in both the source and the target relations. A condition on a
-      <literal>WHEN NOT MATCHED</literal> clause can only refer to columns from
+      <literal>WHEN NOT MATCHED BY SOURCE</literal> clause can only refer to
+      columns from the target relation, since by definition there is no matching
+      source row. A condition on a <literal>WHEN NOT MATCHED [BY TARGET]</literal>
+      clause can only refer to columns from
       the source relation, since by definition there is no matching target row.
       Only the system attributes from the target table are accessible.
      </para>
@@ -399,8 +463,10 @@ DELETE
       <literal>WHEN MATCHED</literal> clause, the expression can use values
       from the original row in the target table, and values from the
       <replaceable class="parameter">data_source</replaceable> row.
-      If used in a <literal>WHEN NOT MATCHED</literal> clause, the
-      expression can use values from the
+      If used in a <literal>WHEN NOT MATCHED BY SOURCE</literal> clause, the
+      expression can only use values from the original row in the target table.
+      If used in a <literal>WHEN NOT MATCHED [BY TARGET]</literal> clause, the
+      expression can only use values from the
       <replaceable class="parameter">data_source</replaceable> row.
      </para>
     </listitem>
@@ -425,9 +491,72 @@ DELETE
       sub-query must yield no more than one row when executed.  If it
       yields one row, its column values are assigned to the target columns;
       if it yields no rows, NULL values are assigned to the target columns.
-      The sub-query can refer to values from the original row in the target table,
-      and values from the <replaceable class="parameter">data_source</replaceable>
-      row.
+      If used in a <literal>WHEN MATCHED</literal> clause, the sub-query can
+      refer to values from the original row in the target table, and values
+      from the <replaceable class="parameter">data_source</replaceable> row.
+      If used in a <literal>WHEN NOT MATCHED BY SOURCE</literal> clause, the
+      sub-query can only refer to values from the original row in the target
+      table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">output_alias</replaceable></term>
+    <listitem>
+     <para>
+      An optional substitute name for <literal>OLD</literal> or
+      <literal>NEW</literal> rows in the <literal>RETURNING</literal> list.
+     </para>
+     <para>
+      By default, old values from the target table can be returned by writing
+      <literal>OLD.<replaceable class="parameter">column_name</replaceable></literal>
+      or <literal>OLD.*</literal>, and new values can be returned by writing
+      <literal>NEW.<replaceable class="parameter">column_name</replaceable></literal>
+      or <literal>NEW.*</literal>.  When an alias is provided, these names are
+      hidden and the old or new rows must be referred to using the alias.
+      For example <literal>RETURNING WITH (OLD AS o, NEW AS n) o.*, n.*</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">output_expression</replaceable></term>
+    <listitem>
+     <para>
+      An expression to be computed and returned by the <command>MERGE</command>
+      command after each row is changed (whether inserted, updated, or deleted).
+      The expression can use any columns of the source or target tables, or the
+      <link linkend="merge-action"><function>merge_action()</function></link>
+      function to return additional information about the action executed.
+     </para>
+     <para>
+      Writing <literal>*</literal> will return all columns from the source
+      table, followed by all columns from the target table.  Often this will
+      lead to a lot of duplication, since it is common for the source and
+      target tables to have a lot of the same columns.  This can be avoided by
+      qualifying the <literal>*</literal> with the name or alias of the source
+      or target table.
+     </para>
+     <para>
+      A column name or <literal>*</literal> may also be qualified using
+      <literal>OLD</literal> or <literal>NEW</literal>, or the corresponding
+      <replaceable class="parameter">output_alias</replaceable> for
+      <literal>OLD</literal> or <literal>NEW</literal>, to cause old or new
+      values from the target table to be returned.  An unqualified column
+      name from the target table, or a column name or <literal>*</literal>
+      qualified using the target table name or alias will return new values
+      for <literal>INSERT</literal> and <literal>UPDATE</literal> actions, and
+      old values for <literal>DELETE</literal> actions.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">output_name</replaceable></term>
+    <listitem>
+     <para>
+      A name to use for a returned column.
      </para>
     </listitem>
    </varlistentry>
@@ -450,6 +579,13 @@ MERGE <replaceable class="parameter">total_count</replaceable>
    were changed in any way.
   </para>
 
+  <para>
+   If the <command>MERGE</command> command contains a <literal>RETURNING</literal>
+   clause, the result will be similar to that of a <command>SELECT</command>
+   statement containing the columns and values defined in the
+   <literal>RETURNING</literal> list, computed over the row(s) inserted, updated,
+   or deleted by the command.
+  </para>
  </refsect1>
 
  <refsect1>
@@ -474,8 +610,9 @@ MERGE <replaceable class="parameter">total_count</replaceable>
        <orderedlist>
         <listitem>
          <para>
-          Evaluate whether each row is <literal>MATCHED</literal> or
-          <literal>NOT MATCHED</literal>.
+          Evaluate whether each row is <literal>MATCHED</literal>,
+          <literal>NOT MATCHED BY SOURCE</literal>, or
+          <literal>NOT MATCHED [BY TARGET]</literal>.
          </para>
         </listitem>
         <listitem>
@@ -506,7 +643,11 @@ MERGE <replaceable class="parameter">total_count</replaceable>
              the action's event type.
             </para>
            </listitem>
-          </orderedlist></para>
+          </orderedlist>
+          If the target relation is a view with <literal>INSTEAD OF ROW</literal>
+          triggers for the action's event type, they are used to perform the
+          action instead.
+         </para>
         </listitem>
        </orderedlist></para>
      </listitem>
@@ -550,7 +691,8 @@ MERGE <replaceable class="parameter">total_count</replaceable>
   <para>
    If a <literal>WHEN</literal> clause omits an <literal>AND</literal>
    sub-clause, it becomes the final reachable clause of that
-   kind (<literal>MATCHED</literal> or <literal>NOT MATCHED</literal>).
+   kind (<literal>MATCHED</literal>, <literal>NOT MATCHED BY SOURCE</literal>,
+   or <literal>NOT MATCHED [BY TARGET]</literal>).
    If a later <literal>WHEN</literal> clause of that kind
    is specified it would be provably unreachable and an error is raised.
    If no final reachable clause is specified of either kind, it is
@@ -566,20 +708,14 @@ MERGE <replaceable class="parameter">total_count</replaceable>
   </para>
 
   <para>
-   There is no <literal>RETURNING</literal> clause with
-   <command>MERGE</command>.  Actions of <command>INSERT</command>,
-   <command>UPDATE</command> and <command>DELETE</command> cannot contain
-   <literal>RETURNING</literal> or <literal>WITH</literal> clauses.
-  </para>
-
-  <para>
    When <command>MERGE</command> is run concurrently with other commands
    that modify the target table, the usual transaction isolation rules
    apply; see <xref linkend="transaction-iso"/> for an explanation
    on the behavior at each isolation level.
    You may also wish to consider using <command>INSERT ... ON CONFLICT</command>
    as an alternative statement which offers the ability to run an
-   <command>UPDATE</command> if a concurrent <command>INSERT</command>
+   <command>UPDATE</command> or return the existing row (with
+   <literal>DO SELECT</literal>) if a concurrent <command>INSERT</command>
    occurs.  There are a variety of differences and restrictions between
    the two statement types and they are not interchangeable.
   </para>
@@ -605,26 +741,10 @@ WHEN NOT MATCHED THEN
   </para>
 
   <para>
-   Notice that this would be exactly equivalent to the following
-   statement because the <literal>MATCHED</literal> result does not change
-   during execution.
-
-<programlisting>
-MERGE INTO customer_account ca
-USING (SELECT customer_id, transaction_value FROM recent_transactions) AS t
-ON t.customer_id = ca.customer_id
-WHEN MATCHED THEN
-  UPDATE SET balance = balance + transaction_value
-WHEN NOT MATCHED THEN
-  INSERT (customer_id, balance)
-  VALUES (t.customer_id, t.transaction_value);
-</programlisting>
-  </para>
-
-  <para>
    Attempt to insert a new stock item along with the quantity of stock. If
    the item already exists, instead update the stock count of the existing
-   item. Don't allow entries that have zero stock.
+   item. Don't allow entries that have zero stock. Return details of all
+   changes made.
 <programlisting>
 MERGE INTO wines w
 USING wine_stock_changes s
@@ -634,11 +754,29 @@ WHEN NOT MATCHED AND s.stock_delta > 0 THEN
 WHEN MATCHED AND w.stock + s.stock_delta > 0 THEN
   UPDATE SET stock = w.stock + s.stock_delta
 WHEN MATCHED THEN
-  DELETE;
+  DELETE
+RETURNING merge_action(), w.winename, old.stock AS old_stock, new.stock AS new_stock;
 </programlisting>
 
    The <literal>wine_stock_changes</literal> table might be, for example, a
    temporary table recently loaded into the database.
+  </para>
+
+  <para>
+   Update <literal>wines</literal> based on a replacement wine list, inserting
+   rows for any new stock, updating modified stock entries, and deleting any
+   wines not present in the new list.
+<programlisting>
+MERGE INTO wines w
+USING new_wine_list s
+ON s.winename = w.winename
+WHEN NOT MATCHED BY TARGET THEN
+  INSERT VALUES(s.winename, s.stock)
+WHEN MATCHED AND w.stock != s.stock THEN
+  UPDATE SET stock = s.stock
+WHEN NOT MATCHED BY SOURCE THEN
+  DELETE;
+</programlisting>
   </para>
 
  </refsect1>
@@ -649,8 +787,11 @@ WHEN MATCHED THEN
     This command conforms to the <acronym>SQL</acronym> standard.
   </para>
    <para>
-    The <literal>WITH</literal> clause and <literal>DO NOTHING</literal>
-    action are extensions to the <acronym>SQL</acronym> standard.
+    The <literal>WITH</literal> clause, <literal>BY SOURCE</literal> and
+    <literal>BY TARGET</literal> qualifiers to
+    <literal>WHEN NOT MATCHED</literal>, <literal>DO NOTHING</literal> action,
+    and <literal>RETURNING</literal> clause are extensions to the
+    <acronym>SQL</acronym> standard.
   </para>
  </refsect1>
 </refentry>

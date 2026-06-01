@@ -22,7 +22,7 @@
  * Postgres 9.2, this check is made automatically by the Makefile.)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -36,11 +36,13 @@
 #include <unistd.h>
 
 #include "common/string.h"
-#include "parser/gramparse.h"
+#include "gramparse.h"
+#include "nodes/miscnodes.h"
 #include "parser/parser.h"		/* only needed for GUC variables */
 #include "parser/scansup.h"
 #include "port/pg_bitutils.h"
 #include "mb/pg_wchar.h"
+#include "utils/builtins.h"
 }
 
 %{
@@ -58,14 +60,13 @@ fprintf_to_ereport(const char *fmt, const char *msg)
 }
 
 /*
- * GUC variables.  This is a DIRECT violation of the warning given at the
+ * GUC variable.  This is a DIRECT violation of the warning given at the
  * head of gram.y, ie flex/bison code must not depend on any GUC variables;
- * as such, changing their values can induce very unintuitive behavior.
- * But we shall have to live with it until we can remove these variables.
+ * as such, changing its value can induce very unintuitive behavior.
+ * In practice, backslash_quote is not too awful since it only controls
+ * whether to throw an error: it cannot change non-error results.
  */
 int			backslash_quote = BACKSLASH_QUOTE_SAFE_ENCODING;
-bool		escape_string_warning = true;
-bool		standard_conforming_strings = true;
 
 /*
  * Constant data exported from this file.  This array maps from the
@@ -86,12 +87,6 @@ const uint16 ScanKeywordTokens[] = {
  * Set the type of YYSTYPE.
  */
 #define YYSTYPE core_YYSTYPE
-
-/*
- * Set the type of yyextra.  All state variables used by the scanner should
- * be in yyextra, *not* statically allocated.
- */
-#define YY_EXTRA_TYPE core_yy_extra_type *
 
 /*
  * Each call to yylex must set yylloc to the location of the found token
@@ -124,24 +119,12 @@ static void addlit(char *ytext, size_t yleng, core_yyscan_t yyscanner);
 static void addlitchar(unsigned char ychar, core_yyscan_t yyscanner);
 static char *litbufdup(core_yyscan_t yyscanner);
 static unsigned char unescape_single_char(unsigned char c, core_yyscan_t yyscanner);
-static int	process_integer_literal(const char *token, YYSTYPE *lval);
-static void addunicode(pg_wchar c, yyscan_t yyscanner);
+static int	process_integer_literal(const char *token, YYSTYPE *lval, int base);
+static void addunicode(char32_t c, yyscan_t yyscanner);
 
 #define yyerror(msg)  scanner_yyerror(msg, yyscanner)
 
 #define lexer_errposition()  scanner_errposition(*(yylloc), yyscanner)
-
-static void check_string_escape_warning(unsigned char ychar, core_yyscan_t yyscanner);
-static void check_escape_warning(core_yyscan_t yyscanner);
-
-/*
- * Work around a bug in flex 2.5.35: it emits a couple of functions that
- * it forgets to emit declarations for.  Since we use -Wmissing-prototypes,
- * this would cause warnings.  Providing our own declarations should be
- * harmless even when the bug gets fixed.
- */
-extern int	core_yyget_column(yyscan_t yyscanner);
-extern void core_yyset_column(int column_no, yyscan_t yyscanner);
 
 %}
 
@@ -159,6 +142,7 @@ extern void core_yyset_column(int column_no, yyscan_t yyscanner);
 %option noyyfree
 %option warn
 %option prefix="core_yy"
+%option extra-type="core_yy_extra_type *"
 
 /*
  * OK, here is a short description of lex/flex rules behavior.
@@ -211,16 +195,16 @@ extern void core_yyset_column(int column_no, yyscan_t yyscanner);
  * versions of Postgres failed to recognize -- as a comment if the input
  * did not end with a newline.
  *
- * XXX perhaps \f (formfeed) should be treated as a newline as well?
+ * non_newline_space tracks all the other space characters except newlines.
  *
  * XXX if you change the set of whitespace characters, fix scanner_isspace()
  * to agree.
  */
 
-space			[ \t\n\r\f]
-horiz_space		[ \t\f]
-newline			[\n\r]
-non_newline		[^\n\r]
+space				[ \t\n\r\f\v]
+non_newline_space	[ \t\f\v]
+newline				[\n\r]
+non_newline			[^\n\r]
 
 comment			("--"{non_newline}*)
 
@@ -234,8 +218,8 @@ whitespace		({space}+|{comment})
  */
 
 special_whitespace		({space}+|{comment}{newline})
-horiz_whitespace		({horiz_space}|{comment})
-whitespace_with_newline	({horiz_whitespace}*{newline}{special_whitespace}*)
+non_newline_whitespace	({non_newline_space}|{comment})
+whitespace_with_newline	({non_newline_whitespace}*{newline}{special_whitespace}*)
 
 quote			'
 /* If we see {quote} then {quotecontinue}, the quoted string continues */
@@ -364,6 +348,8 @@ less_equals		"<="
 greater_equals	">="
 less_greater	"<>"
 not_equals		"!="
+/* Note there is no need for left_arrow, since "<-" is not a single operator. */
+right_arrow		"->"
 
 /*
  * "self" is the set of chars that should be returned as single-character
@@ -375,7 +361,7 @@ not_equals		"!="
  * If you change either set, adjust the character lists appearing in the
  * rule for "operator"!
  */
-self			[,()\[\].;\:\+\-\*\/\%\^\<\>\=]
+self			[,()\[\].;\:\|\+\-\*\/\%\^\<\>\=]
 op_chars		[\~\!\@\#\^\&\|\`\?\+\-\*\/\%\<\>\=]
 operator		{op_chars}+
 
@@ -385,25 +371,55 @@ operator		{op_chars}+
  * Unary minus is not part of a number here.  Instead we pass it separately to
  * the parser, and there it gets coerced via doNegate().
  *
- * {decimalfail} is used because we would like "1..10" to lex as 1, dot_dot, 10.
+ * {numericfail} is used because we would like "1..10" to lex as 1, dot_dot, 10.
  *
  * {realfail} is added to prevent the need for scanner
  * backup when the {real} rule fails to match completely.
  */
-digit			[0-9]
+decdigit		[0-9]
+hexdigit		[0-9A-Fa-f]
+octdigit		[0-7]
+bindigit		[0-1]
 
-integer			{digit}+
-decimal			(({digit}*\.{digit}+)|({digit}+\.{digit}*))
-decimalfail		{digit}+\.\.
-real			({integer}|{decimal})[Ee][-+]?{digit}+
-realfail		({integer}|{decimal})[Ee][-+]
+decinteger		{decdigit}(_?{decdigit})*
+hexinteger		0[xX](_?{hexdigit})+
+octinteger		0[oO](_?{octdigit})+
+bininteger		0[bB](_?{bindigit})+
 
-integer_junk	{integer}{identifier}
-decimal_junk	{decimal}{identifier}
+hexfail			0[xX]_?
+octfail			0[oO]_?
+binfail			0[bB]_?
+
+numeric			(({decinteger}\.{decinteger}?)|(\.{decinteger}))
+numericfail		{decinteger}\.\.
+
+real			({decinteger}|{numeric})[Ee][-+]?{decinteger}
+realfail		({decinteger}|{numeric})[Ee][-+]
+
+/* Positional parameters don't accept underscores. */
+param			\${decdigit}+
+
+/*
+ * An identifier immediately following an integer literal is disallowed because
+ * in some cases it's ambiguous what is meant: for example, 0x1234 could be
+ * either a hexinteger or a decinteger "0" and an identifier "x1234".  We can
+ * detect such problems by seeing if integer_junk matches a longer substring
+ * than any of the XXXinteger patterns (decinteger, hexinteger, octinteger,
+ * bininteger).  One "junk" pattern is sufficient because
+ * {decinteger}{identifier} will match all the same strings we'd match with
+ * {hexinteger}{identifier} etc.
+ *
+ * Note that the rule for integer_junk must appear after the ones for
+ * XXXinteger to make this work correctly: 0x1234 will match both hexinteger
+ * and integer_junk, and we need hexinteger to be chosen in that case.
+ *
+ * Also disallow strings matched by numeric_junk, real_junk and param_junk
+ * for consistency.
+ */
+integer_junk	{decinteger}{identifier}
+numeric_junk	{numeric}{identifier}
 real_junk		{real}{identifier}
-
-param			\${integer}
-param_junk		\${integer}{identifier}
+param_junk		\${decdigit}+{identifier}
 
 other			.
 
@@ -525,17 +541,12 @@ other			.
 				}
 
 {xqstart}		{
-					yyextra->warn_on_first_escape = true;
 					yyextra->saw_non_ascii = false;
 					SET_YYLLOC();
-					if (yyextra->standard_conforming_strings)
-						BEGIN(xq);
-					else
-						BEGIN(xe);
+					BEGIN(xq);
 					startlit();
 				}
 {xestart}		{
-					yyextra->warn_on_first_escape = false;
 					yyextra->saw_non_ascii = false;
 					SET_YYLLOC();
 					BEGIN(xe);
@@ -543,12 +554,6 @@ other			.
 				}
 {xusstart}		{
 					SET_YYLLOC();
-					if (!yyextra->standard_conforming_strings)
-						ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("unsafe use of string constant with Unicode escapes"),
-								 errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."),
-								 lexer_errposition()));
 					BEGIN(xus);
 					startlit();
 				}
@@ -622,14 +627,7 @@ other			.
 					addlit(yytext, yyleng, yyscanner);
 				}
 <xe>{xeunicode} {
-					pg_wchar	c = strtoul(yytext + 2, NULL, 16);
-
-					/*
-					 * For consistency with other productions, issue any
-					 * escape warning with cursor pointing to start of string.
-					 * We might want to change that, someday.
-					 */
-					check_escape_warning(yyscanner);
+					char32_t	c = strtoul(yytext + 2, NULL, 16);
 
 					/* Remember start of overall string token ... */
 					PUSH_YYLLOC();
@@ -650,7 +648,7 @@ other			.
 					POP_YYLLOC();
 				}
 <xeu>{xeunicode} {
-					pg_wchar	c = strtoul(yytext + 2, NULL, 16);
+					char32_t	c = strtoul(yytext + 2, NULL, 16);
 
 					/* Remember start of overall string token ... */
 					PUSH_YYLLOC();
@@ -697,14 +695,12 @@ other			.
 									 errhint("Use '' to write quotes in strings. \\' is insecure in client-only encodings."),
 									 lexer_errposition()));
 					}
-					check_string_escape_warning(yytext[1], yyscanner);
 					addlitchar(unescape_single_char(yytext[1], yyscanner),
 							   yyscanner);
 				}
 <xe>{xeoctesc}  {
 					unsigned char c = strtoul(yytext + 1, NULL, 8);
 
-					check_escape_warning(yyscanner);
 					addlitchar(c, yyscanner);
 					if (c == '\0' || IS_HIGHBIT_SET(c))
 						yyextra->saw_non_ascii = true;
@@ -712,7 +708,6 @@ other			.
 <xe>{xehexesc}  {
 					unsigned char c = strtoul(yytext + 2, NULL, 16);
 
-					check_escape_warning(yyscanner);
 					addlitchar(c, yyscanner);
 					if (c == '\0' || IS_HIGHBIT_SET(c))
 						yyextra->saw_non_ascii = true;
@@ -860,6 +855,11 @@ other			.
 					return NOT_EQUALS;
 				}
 
+{right_arrow}	{
+					SET_YYLLOC();
+					return RIGHT_ARROW;
+				}
+
 {self}			{
 					SET_YYLLOC();
 					return yytext[0];
@@ -937,7 +937,7 @@ other			.
 						 * that the "self" rule would have.
 						 */
 						if (nchars == 1 &&
-							strchr(",()[].;:+-*/%^<>=", yytext[0]))
+							strchr(",()[].;:|+-*/%^<>=", yytext[0]))
 							return yytext[0];
 						/*
 						 * Likewise, if what we have left is two chars, and
@@ -957,6 +957,8 @@ other			.
 								return NOT_EQUALS;
 							if (yytext[0] == '!' && yytext[1] == '=')
 								return NOT_EQUALS;
+							if (yytext[0] == '-' && yytext[1] == '>')
+								return RIGHT_ARROW;
 						}
 					}
 
@@ -974,8 +976,14 @@ other			.
 				}
 
 {param}			{
+					ErrorSaveContext escontext = {T_ErrorSaveContext};
+					int32		val;
+
 					SET_YYLLOC();
-					yylval->ival = atol(yytext + 1);
+					val = pg_strtoint32_safe(yytext + 1, (Node *) &escontext);
+					if (escontext.error_occurred)
+						yyerror("parameter number too large");
+					yylval->ival = val;
 					return PARAM;
 				}
 {param_junk}	{
@@ -983,20 +991,44 @@ other			.
 					yyerror("trailing junk after parameter");
 				}
 
-{integer}		{
+{decinteger}	{
 					SET_YYLLOC();
-					return process_integer_literal(yytext, yylval);
+					return process_integer_literal(yytext, yylval, 10);
 				}
-{decimal}		{
+{hexinteger}	{
+					SET_YYLLOC();
+					return process_integer_literal(yytext, yylval, 16);
+				}
+{octinteger}	{
+					SET_YYLLOC();
+					return process_integer_literal(yytext, yylval, 8);
+				}
+{bininteger}	{
+					SET_YYLLOC();
+					return process_integer_literal(yytext, yylval, 2);
+				}
+{hexfail}		{
+					SET_YYLLOC();
+					yyerror("invalid hexadecimal integer");
+				}
+{octfail}		{
+					SET_YYLLOC();
+					yyerror("invalid octal integer");
+				}
+{binfail}		{
+					SET_YYLLOC();
+					yyerror("invalid binary integer");
+				}
+{numeric}		{
 					SET_YYLLOC();
 					yylval->str = pstrdup(yytext);
 					return FCONST;
 				}
-{decimalfail}	{
+{numericfail}	{
 					/* throw back the .., and treat as integer */
 					yyless(yyleng - 2);
 					SET_YYLLOC();
-					return process_integer_literal(yytext, yylval);
+					return process_integer_literal(yytext, yylval, 10);
 				}
 {real}			{
 					SET_YYLLOC();
@@ -1011,7 +1043,7 @@ other			.
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}
-{decimal_junk}	{
+{numeric_junk}	{
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}
@@ -1143,7 +1175,7 @@ setup_scanner_errposition_callback(ScannerCallbackState *scbstate,
 	scbstate->yyscanner = yyscanner;
 	scbstate->location = location;
 	scbstate->errcallback.callback = scb_error_callback;
-	scbstate->errcallback.arg = (void *) scbstate;
+	scbstate->errcallback.arg = scbstate;
 	scbstate->errcallback.previous = error_context_stack;
 	error_context_stack = &scbstate->errcallback;
 }
@@ -1215,8 +1247,6 @@ scanner_init(const char *str,
 	yyext->keyword_tokens = keyword_tokens;
 
 	yyext->backslash_quote = backslash_quote;
-	yyext->escape_string_warning = escape_string_warning;
-	yyext->standard_conforming_strings = standard_conforming_strings;
 
 	/*
 	 * Make a scan buffer with special termination needed by flex.
@@ -1307,18 +1337,17 @@ litbufdup(core_yyscan_t yyscanner)
 }
 
 /*
- * Process {integer}.  Note this will also do the right thing with {decimal},
- * ie digits and a decimal point.
+ * Process {decinteger}, {hexinteger}, etc.  Note this will also do the right
+ * thing with {numeric}, ie digits and a decimal point.
  */
 static int
-process_integer_literal(const char *token, YYSTYPE *lval)
+process_integer_literal(const char *token, YYSTYPE *lval, int base)
 {
-	int			val;
-	char	   *endptr;
+	ErrorSaveContext escontext = {T_ErrorSaveContext};
+	int32		val;
 
-	errno = 0;
-	val = strtoint(token, &endptr, 10);
-	if (*endptr != '\0' || errno == ERANGE)
+	val = pg_strtoint32_safe(token, (Node *) &escontext);
+	if (escontext.error_occurred)
 	{
 		/* integer too large (or contains decimal pt), treat it as a float */
 		lval->str = pstrdup(token);
@@ -1329,7 +1358,7 @@ process_integer_literal(const char *token, YYSTYPE *lval)
 }
 
 static void
-addunicode(pg_wchar c, core_yyscan_t yyscanner)
+addunicode(char32_t c, core_yyscan_t yyscanner)
 {
 	ScannerCallbackState scbstate;
 	char		buf[MAX_UNICODE_EQUIVALENT_STRING + 1];
@@ -1362,6 +1391,8 @@ unescape_single_char(unsigned char c, core_yyscan_t yyscanner)
 			return '\r';
 		case 't':
 			return '\t';
+		case 'v':
+			return '\v';
 		default:
 			/* check for backslash followed by non-7-bit-ASCII */
 			if (c == '\0' || IS_HIGHBIT_SET(c))
@@ -1369,45 +1400,6 @@ unescape_single_char(unsigned char c, core_yyscan_t yyscanner)
 
 			return c;
 	}
-}
-
-static void
-check_string_escape_warning(unsigned char ychar, core_yyscan_t yyscanner)
-{
-	if (ychar == '\'')
-	{
-		if (yyextra->warn_on_first_escape && yyextra->escape_string_warning)
-			ereport(WARNING,
-					(errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER),
-					 errmsg("nonstandard use of \\' in a string literal"),
-					 errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."),
-					 lexer_errposition()));
-		yyextra->warn_on_first_escape = false;	/* warn only once per string */
-	}
-	else if (ychar == '\\')
-	{
-		if (yyextra->warn_on_first_escape && yyextra->escape_string_warning)
-			ereport(WARNING,
-					(errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER),
-					 errmsg("nonstandard use of \\\\ in a string literal"),
-					 errhint("Use the escape string syntax for backslashes, e.g., E'\\\\'."),
-					 lexer_errposition()));
-		yyextra->warn_on_first_escape = false;	/* warn only once per string */
-	}
-	else
-		check_escape_warning(yyscanner);
-}
-
-static void
-check_escape_warning(core_yyscan_t yyscanner)
-{
-	if (yyextra->warn_on_first_escape && yyextra->escape_string_warning)
-		ereport(WARNING,
-				(errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER),
-				 errmsg("nonstandard use of escape in a string literal"),
-		errhint("Use the escape string syntax for escapes, e.g., E'\\r\\n'."),
-				 lexer_errposition()));
-	yyextra->warn_on_first_escape = false;		/* warn only once per string */
 }
 
 /*

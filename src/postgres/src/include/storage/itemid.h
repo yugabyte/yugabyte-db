@@ -4,7 +4,7 @@
  *	  Standard POSTGRES buffer page item identifier/line pointer definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/itemid.h
@@ -83,7 +83,7 @@ typedef uint16 ItemLength;
  *		True iff item identifier is valid.
  *		This is a pretty weak test, probably useful only in Asserts.
  */
-#define ItemIdIsValid(itemId)	PointerIsValid(itemId)
+#define ItemIdIsValid(itemId)	((itemId) != NULL)
 
 /*
  * ItemIdIsUsed

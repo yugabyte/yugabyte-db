@@ -7,9 +7,6 @@ WHERE opc.oid >= 16384 AND NOT amvalidate(opc.oid);
 --------+---------
 (0 rows)
 
---backslash is used in tests below, installcheck will fail if
---standard_conforming_string is off
-set standard_conforming_strings=on;
 -- reduce noise
 set extra_float_digits = 0;
 select show_trgm('');
@@ -4693,6 +4690,23 @@ select count(*) from test_trgm where t like '%99%' and t like '%qw%';
     19
 (1 row)
 
+explain (costs off)
+select count(*) from test_trgm where t %> '' and t %> '%qwerty%';
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on test_trgm
+         Recheck Cond: ((t %> ''::text) AND (t %> '%qwerty%'::text))
+         ->  Bitmap Index Scan on trgm_idx
+               Index Cond: ((t %> ''::text) AND (t %> '%qwerty%'::text))
+(5 rows)
+
+select count(*) from test_trgm where t %> '' and t %> '%qwerty%';
+ count 
+-------
+     0
+(1 row)
+
 -- ensure that pending-list items are handled correctly, too
 create temp table t_test_trgm(t text COLLATE "C");
 create index t_trgm_idx on t_test_trgm using gin (t gin_trgm_ops);
@@ -4731,6 +4745,23 @@ select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
      1
 (1 row)
 
+explain (costs off)
+select count(*) from t_test_trgm where t %> '' and t %> '%qwerty%';
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on t_test_trgm
+         Recheck Cond: ((t %> ''::text) AND (t %> '%qwerty%'::text))
+         ->  Bitmap Index Scan on t_trgm_idx
+               Index Cond: ((t %> ''::text) AND (t %> '%qwerty%'::text))
+(5 rows)
+
+select count(*) from t_test_trgm where t %> '' and t %> '%qwerty%';
+ count 
+-------
+     0
+(1 row)
+
 -- run the same queries with sequential scan to check the results
 set enable_bitmapscan=off;
 set enable_seqscan=on;
@@ -4746,6 +4777,12 @@ select count(*) from test_trgm where t like '%99%' and t like '%qw%';
     19
 (1 row)
 
+select count(*) from test_trgm where t %> '' and t %> '%qwerty%';
+ count 
+-------
+     0
+(1 row)
+
 select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
  count 
 -------
@@ -4756,6 +4793,12 @@ select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
  count 
 -------
      1
+(1 row)
+
+select count(*) from t_test_trgm where t %> '' and t %> '%qwerty%';
+ count 
+-------
+     0
 (1 row)
 
 reset enable_bitmapscan;
@@ -5369,10 +5412,10 @@ SELECT similarity('Szczecin', 'Warsaw');
 EXPLAIN (COSTS OFF)
 SELECT DISTINCT city, similarity(city, 'Warsaw'), show_limit()
   FROM restaurants WHERE city % 'Warsaw';
-                            QUERY PLAN                             
--------------------------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  HashAggregate
-   Group Key: city, similarity(city, 'Warsaw'::text), show_limit()
+   Group Key: city, similarity(city, 'Warsaw'::text)
    ->  Bitmap Heap Scan on restaurants
          Recheck Cond: (city % 'Warsaw'::text)
          ->  Bitmap Index Scan on restaurants_city_idx

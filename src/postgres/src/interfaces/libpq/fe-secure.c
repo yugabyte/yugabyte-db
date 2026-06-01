@@ -6,7 +6,7 @@
  *	  message integrity and endpoint authentication.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -29,20 +29,16 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#ifdef HAVE_NETINET_TCP_H
 #include <netinet/tcp.h>
-#endif
 #include <arpa/inet.h>
 #endif
 
 #include <sys/stat.h>
 
-#ifdef ENABLE_THREAD_SAFETY
 #ifdef WIN32
 #include "pthread-win32.h"
 #else
 #include <pthread.h>
-#endif
 #endif
 
 #include "fe-auth.h"
@@ -57,8 +53,6 @@
 #ifndef WIN32
 
 #define SIGPIPE_MASKED(conn)	((conn)->sigpipe_so || (conn)->sigpipe_flag)
-
-#ifdef ENABLE_THREAD_SAFETY
 
 struct sigpipe_info
 {
@@ -92,24 +86,6 @@ struct sigpipe_info
 			pq_reset_sigpipe(&(spinfo).oldsigmask, (spinfo).sigpipe_pending, \
 							 (spinfo).got_epipe); \
 	} while (0)
-#else							/* !ENABLE_THREAD_SAFETY */
-
-#define DECLARE_SIGPIPE_INFO(spinfo) pqsigfunc spinfo = NULL
-
-#define DISABLE_SIGPIPE(conn, spinfo, failaction) \
-	do { \
-		if (!SIGPIPE_MASKED(conn)) \
-			spinfo = pqsignal(SIGPIPE, SIG_IGN); \
-	} while (0)
-
-#define REMEMBER_EPIPE(spinfo, cond)
-
-#define RESTORE_SIGPIPE(conn, spinfo) \
-	do { \
-		if (!SIGPIPE_MASKED(conn)) \
-			pqsignal(SIGPIPE, spinfo); \
-	} while (0)
-#endif							/* ENABLE_THREAD_SAFETY */
 #else							/* WIN32 */
 
 #define DECLARE_SIGPIPE_INFO(spinfo)
@@ -132,42 +108,27 @@ PQsslInUse(PGconn *conn)
 }
 
 /*
- *	Exported function to allow application to tell us it's already
- *	initialized OpenSSL.
+ *	Exported function to allow application to tell us it's already initialized
+ *	OpenSSL.  Since OpenSSL 1.1.0 it is no longer required to explicitly
+ *	initialize libssl and libcrypto, so this is a no-op.  This function remains
+ *	for backwards API compatibility.
  */
 void
 PQinitSSL(int do_init)
 {
-#ifdef USE_SSL
-	pgtls_init_library(do_init, do_init);
-#endif
+	/* no-op */
 }
 
 /*
- *	Exported function to allow application to tell us it's already
- *	initialized OpenSSL and/or libcrypto.
+ *	Exported function to allow application to tell us it's already initialized
+ *	OpenSSL.  Since OpenSSL 1.1.0 it is no longer required to explicitly
+ *	initialize libssl and libcrypto, so this is a no-op.  This function remains
+ *	for backwards API compatibility.
  */
 void
 PQinitOpenSSL(int do_ssl, int do_crypto)
 {
-#ifdef USE_SSL
-	pgtls_init_library(do_ssl, do_crypto);
-#endif
-}
-
-/*
- *	Initialize global SSL context
- */
-int
-pqsecure_initialize(PGconn *conn, bool do_ssl, bool do_crypto)
-{
-	int			r = 0;
-
-#ifdef USE_SSL
-	r = pgtls_init(conn, do_ssl, do_crypto);
-#endif
-
-	return r;
+	/* no-op */
 }
 
 /*
@@ -258,10 +219,9 @@ pqsecure_raw_read(PGconn *conn, void *ptr, size_t len)
 
 			case EPIPE:
 			case ECONNRESET:
-				appendPQExpBufferStr(&conn->errorMessage,
-									 libpq_gettext("server closed the connection unexpectedly\n"
-												   "\tThis probably means the server terminated abnormally\n"
-												   "\tbefore or while processing the request.\n"));
+				libpq_append_conn_error(conn, "server closed the connection unexpectedly\n"
+										"\tThis probably means the server terminated abnormally\n"
+										"\tbefore or while processing the request.");
 				break;
 
 			case 0:
@@ -270,10 +230,9 @@ pqsecure_raw_read(PGconn *conn, void *ptr, size_t len)
 				break;
 
 			default:
-				appendPQExpBuffer(&conn->errorMessage,
-								  libpq_gettext("could not receive data from server: %s\n"),
-								  SOCK_STRERROR(result_errno,
-												sebuf, sizeof(sebuf)));
+				libpq_append_conn_error(conn, "could not receive data from server: %s",
+										SOCK_STRERROR(result_errno,
+													  sebuf, sizeof(sebuf)));
 				break;
 		}
 	}
@@ -420,8 +379,7 @@ retry_masked:
 				/* Set flag for EPIPE */
 				REMEMBER_EPIPE(spinfo, true);
 
-				/* FALL THRU */
-				yb_switch_fallthrough();
+				pg_fallthrough;
 
 			case ECONNRESET:
 				conn->write_failed = true;
@@ -430,7 +388,9 @@ retry_masked:
 				snprintf(msgbuf, sizeof(msgbuf),
 						 libpq_gettext("server closed the connection unexpectedly\n"
 									   "\tThis probably means the server terminated abnormally\n"
-									   "\tbefore or while processing the request.\n"));
+									   "\tbefore or while processing the request."));
+				/* keep newline out of translated string */
+				strlcat(msgbuf, "\n", sizeof(msgbuf));
 				conn->write_err_msg = strdup(msgbuf);
 				/* Now claim the write succeeded */
 				n = len;
@@ -441,9 +401,11 @@ retry_masked:
 				/* Store error message in conn->write_err_msg, if possible */
 				/* (strdup failure is OK, we'll cope later) */
 				snprintf(msgbuf, sizeof(msgbuf),
-						 libpq_gettext("could not send data to server: %s\n"),
+						 libpq_gettext("could not send data to server: %s"),
 						 SOCK_STRERROR(result_errno,
 									   sebuf, sizeof(sebuf)));
+				/* keep newline out of translated string */
+				strlcat(msgbuf, "\n", sizeof(msgbuf));
 				conn->write_err_msg = strdup(msgbuf);
 				/* Now claim the write succeeded */
 				n = len;
@@ -532,7 +494,7 @@ PQgssEncInUse(PGconn *conn)
 #endif							/* ENABLE_GSS */
 
 
-#if defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
+#if !defined(WIN32)
 
 /*
  *	Block SIGPIPE for this thread.  This prevents send()/write() from exiting
@@ -616,4 +578,4 @@ pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending, bool got_epipe)
 	SOCK_ERRNO_SET(save_errno);
 }
 
-#endif							/* ENABLE_THREAD_SAFETY && !WIN32 */
+#endif							/* !WIN32 */

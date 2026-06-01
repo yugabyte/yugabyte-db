@@ -3,7 +3,7 @@
  * option.c
  *		  FDW and GUC option handling for postgres_fdw
  *
- * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/option.c
@@ -20,8 +20,8 @@
 #include "commands/extension.h"
 #include "libpq/libpq-be.h"
 #include "postgres_fdw.h"
-#include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/memutils.h"
 #include "utils/varlena.h"
 
 /*
@@ -41,17 +41,9 @@ typedef struct PgFdwOption
 static PgFdwOption *postgres_fdw_options;
 
 /*
- * Valid options for libpq.
- * Allocated and filled in InitPgFdwOptions.
- */
-static PQconninfoOption *libpq_options;
-
-/*
  * GUC parameters
  */
 char	   *pgfdw_application_name = NULL;
-
-void		_PG_init(void);
 
 /*
  * Helper functions
@@ -92,26 +84,31 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 		{
 			/*
 			 * Unknown option specified, complain about it. Provide a hint
-			 * with list of valid options for the object.
+			 * with a valid option that looks similar, if there is one.
 			 */
 			PgFdwOption *opt;
-			StringInfoData buf;
+			const char *closest_match;
+			ClosestMatchState match_state;
+			bool		has_valid_options = false;
 
-			initStringInfo(&buf);
+			initClosestMatch(&match_state, def->defname, 4);
 			for (opt = postgres_fdw_options; opt->keyword; opt++)
 			{
 				if (catalog == opt->optcontext)
-					appendStringInfo(&buf, "%s%s", (buf.len > 0) ? ", " : "",
-									 opt->keyword);
+				{
+					has_valid_options = true;
+					updateClosestMatch(&match_state, opt->keyword);
+				}
 			}
 
+			closest_match = getClosestMatch(&match_state);
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 buf.len > 0
-					 ? errhint("Valid options in this context are: %s",
-							   buf.data)
-					 : errhint("There are no valid options in this context.")));
+					 has_valid_options ? closest_match ?
+					 errhint("Perhaps you meant the option \"%s\".",
+							 closest_match) : 0 :
+					 errhint("There are no valid options in this context.")));
 		}
 
 		/*
@@ -122,7 +119,9 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 			strcmp(def->defname, "truncatable") == 0 ||
 			strcmp(def->defname, "async_capable") == 0 ||
 			strcmp(def->defname, "parallel_commit") == 0 ||
-			strcmp(def->defname, "keep_connections") == 0)
+			strcmp(def->defname, "parallel_abort") == 0 ||
+			strcmp(def->defname, "keep_connections") == 0 ||
+			strcmp(def->defname, "restore_stats") == 0)
 		{
 			/* these accept only boolean values */
 			(void) defGetBoolean(def);
@@ -207,6 +206,23 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("sslcert and sslkey are superuser-only"),
 						 errhint("User mappings with the sslcert or sslkey options set may only be created or modified by the superuser.")));
 		}
+		else if (strcmp(def->defname, "analyze_sampling") == 0)
+		{
+			char	   *value;
+
+			value = defGetString(def);
+
+			/* we recognize off/auto/random/system/bernoulli */
+			if (strcmp(value, "off") != 0 &&
+				strcmp(value, "auto") != 0 &&
+				strcmp(value, "random") != 0 &&
+				strcmp(value, "system") != 0 &&
+				strcmp(value, "bernoulli") != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for string option \"%s\": %s",
+								def->defname, value)));
+		}
 		/* YB specific options */
 		else if (strcmp(def->defname, "server_type") == 0)
 		{
@@ -235,6 +251,7 @@ static void
 InitPgFdwOptions(void)
 {
 	int			num_libpq_opts;
+	PQconninfoOption *libpq_options;
 	PQconninfoOption *lopt;
 	PgFdwOption *popt;
 
@@ -267,8 +284,19 @@ InitPgFdwOptions(void)
 		{"async_capable", ForeignServerRelationId, false},
 		{"async_capable", ForeignTableRelationId, false},
 		{"parallel_commit", ForeignServerRelationId, false},
+		{"parallel_abort", ForeignServerRelationId, false},
 		{"keep_connections", ForeignServerRelationId, false},
 		{"password_required", UserMappingRelationId, false},
+
+		/* sampling is available on both server and table */
+		{"analyze_sampling", ForeignServerRelationId, false},
+		{"analyze_sampling", ForeignTableRelationId, false},
+		/* restore_stats is available on both server and table */
+		{"restore_stats", ForeignServerRelationId, false},
+		{"restore_stats", ForeignTableRelationId, false},
+
+		{"use_scram_passthrough", ForeignServerRelationId, false},
+		{"use_scram_passthrough", UserMappingRelationId, false},
 
 		/*
 		 * sslcert and sslkey are in fact libpq options, but we repeat them
@@ -277,6 +305,12 @@ InitPgFdwOptions(void)
 		 */
 		{"sslcert", UserMappingRelationId, true},
 		{"sslkey", UserMappingRelationId, true},
+
+		/*
+		 * gssdelegation is also a libpq option but should be allowed in a
+		 * user mapping context too
+		 */
+		{"gssdelegation", UserMappingRelationId, true},
 
 		/* YB specific options */
 		{"server_type", ForeignServerRelationId, false /* is_libpq_opt */ },
@@ -292,8 +326,8 @@ InitPgFdwOptions(void)
 	 * Get list of valid libpq options.
 	 *
 	 * To avoid unnecessary work, we get the list once and use it throughout
-	 * the lifetime of this backend process.  We don't need to care about
-	 * memory context issues, because PQconndefaults allocates with malloc.
+	 * the lifetime of this backend process.  Hence, we'll allocate it in
+	 * TopMemoryContext.
 	 */
 	libpq_options = PQconndefaults();
 	if (!libpq_options)			/* assume reason for failure is OOM */
@@ -310,19 +344,11 @@ InitPgFdwOptions(void)
 	/*
 	 * Construct an array which consists of all valid options for
 	 * postgres_fdw, by appending FDW-specific options to libpq options.
-	 *
-	 * We use plain malloc here to allocate postgres_fdw_options because it
-	 * lives as long as the backend process does.  Besides, keeping
-	 * libpq_options in memory allows us to avoid copying every keyword
-	 * string.
 	 */
 	postgres_fdw_options = (PgFdwOption *)
-		malloc(sizeof(PgFdwOption) * num_libpq_opts +
-			   sizeof(non_libpq_options));
-	if (postgres_fdw_options == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
+		MemoryContextAlloc(TopMemoryContext,
+						   sizeof(PgFdwOption) * num_libpq_opts +
+						   sizeof(non_libpq_options));
 
 	popt = postgres_fdw_options;
 	for (lopt = libpq_options; lopt->keyword; lopt++)
@@ -333,8 +359,15 @@ InitPgFdwOptions(void)
 			strcmp(lopt->keyword, "client_encoding") == 0)
 			continue;
 
-		/* We don't have to copy keyword string, as described above. */
-		popt->keyword = lopt->keyword;
+		/*
+		 * Disallow OAuth options for now, since the builtin flow communicates
+		 * on stderr by default and can't cache tokens yet.
+		 */
+		if (strncmp(lopt->keyword, "oauth_", strlen("oauth_")) == 0)
+			continue;
+
+		popt->keyword = MemoryContextStrdup(TopMemoryContext,
+											lopt->keyword);
 
 		/*
 		 * "user" and any secret options are allowed only on user mappings.
@@ -348,6 +381,9 @@ InitPgFdwOptions(void)
 
 		popt++;
 	}
+
+	/* Done with libpq's output structure. */
+	PQconninfoFree(libpq_options);
 
 	/* Append FDW-specific options and dummy terminator. */
 	memcpy(popt, non_libpq_options, sizeof(non_libpq_options));
@@ -509,7 +545,7 @@ process_pgfdw_appname(const char *appname)
 				appendStringInfoString(&buf, application_name);
 				break;
 			case 'c':
-				appendStringInfo(&buf, "%" INT64_MODIFIER "x.%x", MyStartTime, MyProcPid);
+				appendStringInfo(&buf, "%" PRIx64 ".%x", MyStartTime, MyProcPid);
 				break;
 			case 'C':
 				appendStringInfoString(&buf, cluster_name);

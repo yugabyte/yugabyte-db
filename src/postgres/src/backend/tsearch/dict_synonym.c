@@ -3,7 +3,7 @@
  * dict_synonym.c
  *		Synonym dictionary: replace word by its synonym
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -13,10 +13,12 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_collation_d.h"
 #include "commands/defrem.h"
 #include "tsearch/ts_locale.h"
-#include "tsearch/ts_utils.h"
-#include "utils/builtins.h"
+#include "tsearch/ts_public.h"
+#include "utils/fmgrprotos.h"
+#include "utils/formatting.h"
 
 typedef struct
 {
@@ -47,8 +49,8 @@ findwrd(char *in, char **end, uint16 *flags)
 	char	   *lastchar;
 
 	/* Skip leading spaces */
-	while (*in && t_isspace(in))
-		in += pg_mblen(in);
+	while (*in && isspace((unsigned char) *in))
+		in += pg_mblen_cstr(in);
 
 	/* Return NULL on empty lines */
 	if (*in == '\0')
@@ -60,10 +62,10 @@ findwrd(char *in, char **end, uint16 *flags)
 	lastchar = start = in;
 
 	/* Find end of word */
-	while (*in && !t_isspace(in))
+	while (*in && !isspace((unsigned char) *in))
 	{
 		lastchar = in;
-		in += pg_mblen(in);
+		in += pg_mblen_cstr(in);
 	}
 
 	if (in - lastchar == 1 && t_iseq(lastchar, '*') && flags)
@@ -132,7 +134,7 @@ dsynonym_init(PG_FUNCTION_ARGS)
 				 errmsg("could not open synonym file \"%s\": %m",
 						filename)));
 
-	d = (DictSyn *) palloc0(sizeof(DictSyn));
+	d = palloc0_object(DictSyn);
 
 	while ((line = tsearch_readline(&trst)) != NULL)
 	{
@@ -167,12 +169,12 @@ dsynonym_init(PG_FUNCTION_ARGS)
 			if (d->len == 0)
 			{
 				d->len = 64;
-				d->syn = (Syn *) palloc(sizeof(Syn) * d->len);
+				d->syn = palloc_array(Syn, d->len);
 			}
 			else
 			{
 				d->len *= 2;
-				d->syn = (Syn *) repalloc(d->syn, sizeof(Syn) * d->len);
+				d->syn = repalloc_array(d->syn, Syn, d->len);
 			}
 		}
 
@@ -183,8 +185,8 @@ dsynonym_init(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			d->syn[cur].in = lowerstr(starti);
-			d->syn[cur].out = lowerstr(starto);
+			d->syn[cur].in = str_tolower(starti, strlen(starti), DEFAULT_COLLATION_OID);
+			d->syn[cur].out = str_tolower(starto, strlen(starto), DEFAULT_COLLATION_OID);
 		}
 
 		d->syn[cur].outlen = strlen(starto);
@@ -197,6 +199,7 @@ skipline:
 	}
 
 	tsearch_readline_end(&trst);
+	pfree(filename);
 
 	d->len = cur;
 	qsort(d->syn, d->len, sizeof(Syn), compareSyn);
@@ -223,7 +226,7 @@ dsynonym_lexize(PG_FUNCTION_ARGS)
 	if (d->case_sensitive)
 		key.in = pnstrdup(in, len);
 	else
-		key.in = lowerstr_with_len(in, len);
+		key.in = str_tolower(in, len, DEFAULT_COLLATION_OID);
 
 	key.out = NULL;
 
@@ -233,7 +236,7 @@ dsynonym_lexize(PG_FUNCTION_ARGS)
 	if (!found)
 		PG_RETURN_POINTER(NULL);
 
-	res = palloc0(sizeof(TSLexeme) * 2);
+	res = palloc0_array(TSLexeme, 2);
 	res[0].lexeme = pnstrdup(found->out, found->outlen);
 	res[0].flags = found->flags;
 

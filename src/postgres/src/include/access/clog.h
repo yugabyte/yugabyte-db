@@ -3,7 +3,7 @@
  *
  * PostgreSQL transaction-commit-log manager
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/clog.h
@@ -31,7 +31,7 @@ typedef int XidStatus;
 
 typedef struct xl_clog_truncate
 {
-	int			pageno;
+	int64		pageno;
 	TransactionId oldestXact;
 	Oid			oldestXactDb;
 } xl_clog_truncate;
@@ -40,9 +40,6 @@ extern void TransactionIdSetTreeStatus(TransactionId xid, int nsubxids,
 									   TransactionId *subxids, XidStatus status, XLogRecPtr lsn);
 extern XidStatus TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn);
 
-extern Size CLOGShmemBuffers(void);
-extern Size CLOGShmemSize(void);
-extern void CLOGShmemInit(void);
 extern void BootStrapCLOG(void);
 extern void StartupCLOG(void);
 extern void TrimCLOG(void);

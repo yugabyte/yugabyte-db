@@ -11,7 +11,7 @@
  * (It's debatable whether the savings justifies carrying two plan node
  * types, though.)
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -36,7 +36,6 @@
 #include "executor/executor.h"
 #include "executor/nodeUnique.h"
 #include "miscadmin.h"
-#include "utils/memutils.h"
 
 /* YB includes */
 #include "pg_yb_utils.h"
@@ -171,11 +170,6 @@ ExecInitUnique(Unique *node, EState *estate, int eflags)
 void
 ExecEndUnique(UniqueState *node)
 {
-	/* clean up tuple table */
-	ExecClearTuple(node->ps.ps_ResultTupleSlot);
-
-	ExecFreeExprContext(&node->ps);
-
 	ExecEndNode(outerPlanState(node));
 }
 
@@ -183,6 +177,8 @@ ExecEndUnique(UniqueState *node)
 void
 ExecReScanUnique(UniqueState *node)
 {
+	PlanState  *outerPlan = outerPlanState(node);
+
 	/* must clear result tuple so first input tuple is returned */
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
@@ -190,6 +186,6 @@ ExecReScanUnique(UniqueState *node)
 	 * if chgParam of subnode is not null then plan will be re-scanned by
 	 * first ExecProcNode.
 	 */
-	if (node->ps.lefttree->chgParam == NULL)
-		ExecReScan(node->ps.lefttree);
+	if (outerPlan->chgParam == NULL)
+		ExecReScan(outerPlan);
 }

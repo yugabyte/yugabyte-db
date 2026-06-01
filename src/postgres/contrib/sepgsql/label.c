@@ -4,7 +4,7 @@
  *
  * Routines to support SELinux labels (security context)
  *
- * Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * -------------------------------------------------------------------------
  */
@@ -23,7 +23,6 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
-#include "commands/dbcommands.h"
 #include "commands/seclabel.h"
 #include "libpq/auth.h"
 #include "libpq/libpq-be.h"
@@ -67,7 +66,7 @@ typedef struct
 {
 	SubTransactionId subid;
 	char	   *label;
-}			pending_label;
+} pending_label;
 
 /*
  * sepgsql_get_client_label
@@ -146,7 +145,7 @@ sepgsql_set_client_label(const char *new_label)
 	 */
 	oldcxt = MemoryContextSwitchTo(CurTransactionContext);
 
-	plabel = palloc0(sizeof(pending_label));
+	plabel = palloc0_object(pending_label);
 	plabel->subid = GetCurrentSubTransactionId();
 	if (new_label)
 		plabel->label = pstrdup(new_label);
@@ -646,45 +645,24 @@ sepgsql_mcstrans_out(PG_FUNCTION_ARGS)
 /*
  * quote_object_name
  *
- * It tries to quote the supplied identifiers
+ * Concatenate as many of the given strings as aren't NULL, with dots between.
+ * Quote any of the strings that wouldn't be valid identifiers otherwise.
  */
 static char *
 quote_object_name(const char *src1, const char *src2,
 				  const char *src3, const char *src4)
 {
 	StringInfoData result;
-	const char *temp;
 
 	initStringInfo(&result);
-
 	if (src1)
-	{
-		temp = quote_identifier(src1);
-		appendStringInfoString(&result, temp);
-		if (src1 != temp)
-			pfree((void *) temp);
-	}
+		appendStringInfoString(&result, quote_identifier(src1));
 	if (src2)
-	{
-		temp = quote_identifier(src2);
-		appendStringInfo(&result, ".%s", temp);
-		if (src2 != temp)
-			pfree((void *) temp);
-	}
+		appendStringInfo(&result, ".%s", quote_identifier(src2));
 	if (src3)
-	{
-		temp = quote_identifier(src3);
-		appendStringInfo(&result, ".%s", temp);
-		if (src3 != temp)
-			pfree((void *) temp);
-	}
+		appendStringInfo(&result, ".%s", quote_identifier(src3));
 	if (src4)
-	{
-		temp = quote_identifier(src4);
-		appendStringInfo(&result, ".%s", temp);
-		if (src4 != temp)
-			pfree((void *) temp);
-	}
+		appendStringInfo(&result, ".%s", quote_identifier(src4));
 	return result.data;
 }
 

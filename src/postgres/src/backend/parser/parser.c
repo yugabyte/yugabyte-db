@@ -10,7 +10,7 @@
  * analyze.c and related files.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -21,8 +21,8 @@
 
 #include "postgres.h"
 
+#include "gramparse.h"
 #include "mb/pg_wchar.h"
-#include "parser/gramparse.h"
 #include "parser/parser.h"
 #include "parser/scansup.h"
 
@@ -56,12 +56,12 @@ raw_parser(const char *str, RawParseMode mode)
 	{
 		/* this array is indexed by RawParseMode enum */
 		static const int mode_token[] = {
-			0,					/* RAW_PARSE_DEFAULT */
-			MODE_TYPE_NAME,		/* RAW_PARSE_TYPE_NAME */
-			MODE_PLPGSQL_EXPR,	/* RAW_PARSE_PLPGSQL_EXPR */
-			MODE_PLPGSQL_ASSIGN1,	/* RAW_PARSE_PLPGSQL_ASSIGN1 */
-			MODE_PLPGSQL_ASSIGN2,	/* RAW_PARSE_PLPGSQL_ASSIGN2 */
-			MODE_PLPGSQL_ASSIGN3	/* RAW_PARSE_PLPGSQL_ASSIGN3 */
+			[RAW_PARSE_DEFAULT] = 0,
+			[RAW_PARSE_TYPE_NAME] = MODE_TYPE_NAME,
+			[RAW_PARSE_PLPGSQL_EXPR] = MODE_PLPGSQL_EXPR,
+			[RAW_PARSE_PLPGSQL_ASSIGN1] = MODE_PLPGSQL_ASSIGN1,
+			[RAW_PARSE_PLPGSQL_ASSIGN2] = MODE_PLPGSQL_ASSIGN2,
+			[RAW_PARSE_PLPGSQL_ASSIGN3] = MODE_PLPGSQL_ASSIGN3,
 		};
 
 		yyextra.have_lookahead = true;
@@ -137,6 +137,9 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 	 */
 	switch (cur_token)
 	{
+		case FORMAT:
+			cur_token_length = 6;
+			break;
 		case NOT:
 			cur_token_length = 3;
 			break;
@@ -149,6 +152,9 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 		case UIDENT:
 		case USCONST:
 			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + *llocp);
+			break;
+		case WITHOUT:
+			cur_token_length = 7;
 			break;
 		default:
 			return cur_token;
@@ -188,6 +194,16 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 	/* Replace cur_token if needed, based on lookahead */
 	switch (cur_token)
 	{
+		case FORMAT:
+			/* Replace FORMAT by FORMAT_LA if it's followed by JSON */
+			switch (next_token)
+			{
+				case JSON:
+					cur_token = FORMAT_LA;
+					break;
+			}
+			break;
+
 		case NOT:
 			/* Replace NOT by NOT_LA if it's followed by BETWEEN, IN, etc */
 			switch (next_token)
@@ -220,6 +236,16 @@ base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, core_yyscan_t yyscanner)
 				case TIME:
 				case ORDINALITY:
 					cur_token = WITH_LA;
+					break;
+			}
+			break;
+
+		case WITHOUT:
+			/* Replace WITHOUT by WITHOUT_LA if it's followed by TIME */
+			switch (next_token)
+			{
+				case TIME:
+					cur_token = WITHOUT_LA;
 					break;
 			}
 			break;
@@ -313,7 +339,7 @@ hexval(unsigned char c)
 
 /* is Unicode code point acceptable? */
 static void
-check_unicode_value(pg_wchar c)
+check_unicode_value(char32_t c)
 {
 	if (!is_valid_unicode_codepoint(c))
 		ereport(ERROR,
@@ -350,7 +376,7 @@ str_udeescape(const char *str, char escape,
 	char	   *new,
 			   *out;
 	size_t		new_len;
-	pg_wchar	pair_first = 0;
+	char16_t	pair_first = 0;
 	ScannerCallbackState scbstate;
 
 	/*
@@ -394,7 +420,7 @@ str_udeescape(const char *str, char escape,
 					 isxdigit((unsigned char) in[3]) &&
 					 isxdigit((unsigned char) in[4]))
 			{
-				pg_wchar	unicode;
+				char32_t	unicode;
 
 				unicode = (hexval(in[1]) << 12) +
 					(hexval(in[2]) << 8) +
@@ -431,7 +457,7 @@ str_udeescape(const char *str, char escape,
 					 isxdigit((unsigned char) in[6]) &&
 					 isxdigit((unsigned char) in[7]))
 			{
-				pg_wchar	unicode;
+				char32_t	unicode;
 
 				unicode = (hexval(in[2]) << 20) +
 					(hexval(in[3]) << 16) +

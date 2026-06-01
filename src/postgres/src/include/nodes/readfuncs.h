@@ -4,7 +4,7 @@
  *	  header file for read.c and readfuncs.c. These functions are internal
  *	  to the stringToNode interface and should not be used by anyone else.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/readfuncs.h
@@ -19,7 +19,7 @@
 /*
  * variable in read.c that needs to be accessible to readfuncs.c
  */
-#ifdef WRITE_READ_PARSE_PLAN_TREES
+#ifdef DEBUG_NODE_TESTS_ENABLED
 extern PGDLLIMPORT bool restore_location_fields;
 #endif
 

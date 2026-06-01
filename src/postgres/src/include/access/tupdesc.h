@@ -4,7 +4,7 @@
  *	  POSTGRES tuple descriptor definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/tupdesc.h
@@ -29,6 +29,7 @@ typedef struct ConstrCheck
 {
 	char	   *ccname;
 	char	   *ccbin;			/* nodeToString representation of expr */
+	bool		ccenforced;
 	bool		ccvalid;
 	bool		ccnoinherit;	/* this is a non-inheritable constraint */
 } ConstrCheck;
@@ -41,9 +42,49 @@ typedef struct TupleConstr
 	struct AttrMissing *missing;	/* missing attributes values, NULL if none */
 	uint16		num_defval;
 	uint16		num_check;
-	bool		has_not_null;
+	bool		has_not_null;	/* any not-null, including not valid ones */
 	bool		has_generated_stored;
+	bool		has_generated_virtual;
 } TupleConstr;
+
+/*
+ * CompactAttribute
+ *		Cut-down version of FormData_pg_attribute for faster access for tasks
+ *		such as tuple deformation.  The fields of this struct are populated
+ *		using the populate_compact_attribute() function, which must be called
+ *		directly after the FormData_pg_attribute struct is populated or
+ *		altered in any way.
+ *
+ * Currently, this struct is 8 bytes.  Any code changes which enlarge this
+ * struct should be considered very carefully.
+ *
+ * Code which must access a TupleDesc's attribute data should always make use
+ * the fields of this struct when required fields are available here.  It's
+ * more efficient to access the memory in CompactAttribute due to it being a
+ * more compact representation of FormData_pg_attribute and also because
+ * accessing the FormData_pg_attribute requires an additional calculations to
+ * obtain the base address of the array within the TupleDesc.
+ */
+typedef struct CompactAttribute
+{
+	int16		attcacheoff;	/* fixed offset into tuple, if known, or -1 */
+	int16		attlen;			/* attr len in bytes or -1 = varlen, -2 =
+								 * cstring */
+	bool		attbyval;		/* as FormData_pg_attribute.attbyval */
+	uint8		attalignby;		/* alignment requirement in bytes */
+	bool		attispackable:1;	/* FormData_pg_attribute.attstorage !=
+									 * TYPSTORAGE_PLAIN */
+	bool		atthasmissing:1;	/* as FormData_pg_attribute.atthasmissing */
+	bool		attisdropped:1; /* as FormData_pg_attribute.attisdropped */
+	bool		attgenerated:1; /* FormData_pg_attribute.attgenerated != '\0' */
+	char		attnullability; /* status of not-null constraint, see below */
+} CompactAttribute;
+
+/* Valid values for CompactAttribute->attnullability */
+#define	ATTNULLABLE_UNRESTRICTED 'f'	/* No constraint exists */
+#define	ATTNULLABLE_UNKNOWN		'u' /* constraint exists, validity unknown */
+#define	ATTNULLABLE_VALID		'v' /* valid constraint exists */
+#define	ATTNULLABLE_INVALID		'i' /* constraint exists, marked invalid */
 
 /*
  * This struct is passed around within the backend to describe the structure
@@ -75,6 +116,34 @@ typedef struct TupleConstr
  * context and go away when the context is freed.  We set the tdrefcount
  * field of such a descriptor to -1, while reference-counted descriptors
  * always have tdrefcount >= 0.
+ *
+ * Beyond the compact_attrs variable length array, the TupleDesc stores an
+ * array of FormData_pg_attribute.  The TupleDescAttr() function, as defined
+ * below, takes care of calculating the address of the elements of the
+ * FormData_pg_attribute array.
+ *
+ * The array of CompactAttribute is effectively an abbreviated version of the
+ * array of FormData_pg_attribute.  Because CompactAttribute is significantly
+ * smaller than FormData_pg_attribute, code, especially performance-critical
+ * code, should prioritize using the fields from the CompactAttribute over the
+ * equivalent fields in FormData_pg_attribute.
+ *
+ * Any code making changes manually to and fields in the FormData_pg_attribute
+ * array must subsequently call populate_compact_attribute() to flush the
+ * changes out to the corresponding 'compact_attrs' element.
+ *
+ * firstNonCachedOffsetAttr stores the index into the compact_attrs array for
+ * the first attribute that we don't have a known attcacheoff for.
+ *
+ * firstNonGuaranteedAttr stores the index to into the compact_attrs array for
+ * the first attribute that is either NULLable, missing, or !attbyval.  This
+ * can be used in locations as a guarantee that attributes before this will
+ * always exist in tuples.  The !attbyval part isn't required for this, but
+ * including this allows various tuple deforming routines to forego any checks
+ * for !attbyval.
+ *
+ * Once a TupleDesc has been populated, before it is used for any purpose,
+ * TupleDescFinalize() must be called on it.
  */
 typedef struct TupleDescData
 {
@@ -82,14 +151,59 @@ typedef struct TupleDescData
 	Oid			tdtypeid;		/* composite type ID for tuple type */
 	int32		tdtypmod;		/* typmod for tuple type */
 	int			tdrefcount;		/* reference count, or -1 if not counting */
+	int			firstNonCachedOffsetAttr;	/* index of first compact_attrs
+											 * element without an attcacheoff */
+	int			firstNonGuaranteedAttr; /* index of the first nullable,
+										 * missing, dropped, or !attbyval
+										 * compact_attrs element. */
 	TupleConstr *constr;		/* constraints, or NULL if none */
-	/* attrs[N] is the description of Attribute Number N+1 */
-	FormData_pg_attribute attrs[FLEXIBLE_ARRAY_MEMBER];
+	/* compact_attrs[N] is the compact metadata of Attribute Number N+1 */
+	CompactAttribute compact_attrs[FLEXIBLE_ARRAY_MEMBER];
 }			TupleDescData;
 typedef struct TupleDescData *TupleDesc;
 
-/* Accessor for the i'th attribute of tupdesc. */
-#define TupleDescAttr(tupdesc, i) (&(tupdesc)->attrs[(i)])
+extern void populate_compact_attribute(TupleDesc tupdesc, int attnum);
+
+/*
+ * Calculates the base address of the Form_pg_attribute at the end of the
+ * TupleDescData struct.
+ */
+#define TupleDescAttrAddress(desc) \
+	(Form_pg_attribute) ((char *) (desc) + \
+	 (offsetof(struct TupleDescData, compact_attrs) + \
+	 (desc)->natts * sizeof(CompactAttribute)))
+
+/* Accessor for the i'th FormData_pg_attribute element of tupdesc. */
+static inline FormData_pg_attribute *
+TupleDescAttr(TupleDesc tupdesc, int i)
+{
+	FormData_pg_attribute *attrs = TupleDescAttrAddress(tupdesc);
+
+	Assert(i >= 0 && i < tupdesc->natts);
+
+	return &attrs[i];
+}
+
+#undef TupleDescAttrAddress
+
+extern void verify_compact_attribute(TupleDesc, int attnum);
+
+/*
+ * Accessor for the i'th CompactAttribute element of tupdesc.
+ */
+static inline CompactAttribute *
+TupleDescCompactAttr(TupleDesc tupdesc, int i)
+{
+	CompactAttribute *cattr = &tupdesc->compact_attrs[i];
+
+#ifdef USE_ASSERT_CHECKING
+
+	/* Check that the CompactAttribute is correctly populated */
+	verify_compact_attribute(tupdesc, i);
+#endif
+
+	return cattr;
+}
 
 extern TupleDesc CreateTemplateTupleDesc(int natts);
 
@@ -97,10 +211,13 @@ extern TupleDesc CreateTupleDesc(int natts, Form_pg_attribute *attrs);
 
 extern TupleDesc CreateTupleDescCopy(TupleDesc tupdesc);
 
+extern TupleDesc CreateTupleDescTruncatedCopy(TupleDesc tupdesc, int natts);
+
 extern TupleDesc CreateTupleDescCopyConstr(TupleDesc tupdesc);
 
 #define TupleDescSize(src) \
-	(offsetof(struct TupleDescData, attrs) + \
+	(offsetof(struct TupleDescData, compact_attrs) + \
+	 (src)->natts * sizeof(CompactAttribute) + \
 	 (src)->natts * sizeof(FormData_pg_attribute))
 
 extern void TupleDescCopy(TupleDesc dst, TupleDesc src);
@@ -108,6 +225,7 @@ extern void TupleDescCopy(TupleDesc dst, TupleDesc src);
 extern void TupleDescCopyEntry(TupleDesc dst, AttrNumber dstAttno,
 							   TupleDesc src, AttrNumber srcAttno);
 
+extern void TupleDescFinalize(TupleDesc tupdesc);
 extern void FreeTupleDesc(TupleDesc tupdesc);
 
 extern void IncrTupleDescRefCount(TupleDesc tupdesc);
@@ -126,8 +244,8 @@ extern void DecrTupleDescRefCount(TupleDesc tupdesc);
 	} while (0)
 
 extern bool equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2);
-
-extern uint32 hashTupleDesc(TupleDesc tupdesc);
+extern bool equalRowTypes(TupleDesc tupdesc1, TupleDesc tupdesc2);
+extern uint32 hashRowType(TupleDesc desc);
 
 extern void TupleDescInitEntry(TupleDesc desc,
 							   AttrNumber attributeNumber,
@@ -147,8 +265,8 @@ extern void TupleDescInitEntryCollation(TupleDesc desc,
 										AttrNumber attributeNumber,
 										Oid collationid);
 
-extern TupleDesc BuildDescForRelation(List *schema);
+extern TupleDesc BuildDescFromLists(const List *names, const List *types, const List *typmods, const List *collations);
 
-extern TupleDesc BuildDescFromLists(List *names, List *types, List *typmods, List *collations);
+extern Node *TupleDescGetDefault(TupleDesc tupdesc, AttrNumber attnum);
 
 #endif							/* TUPDESC_H */

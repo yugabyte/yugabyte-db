@@ -4,7 +4,7 @@
  *	  prototypes for tablecmds.c.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/tablecmds.h
@@ -18,21 +18,24 @@
 #include "catalog/dependency.h"
 #include "catalog/objectaddress.h"
 #include "nodes/parsenodes.h"
-#include "storage/lock.h"
+#include "storage/lockdefs.h"
 #include "utils/relcache.h"
 
-struct AlterTableUtilityContext;	/* avoid including tcop/utility.h here */
+typedef struct AlterTableUtilityContext AlterTableUtilityContext;	/* avoid including
+																	 * tcop/utility.h here */
 
 
 extern ObjectAddress DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 									ObjectAddress *typaddress, const char *queryString);
+
+extern TupleDesc BuildDescForRelation(const List *columns);
 
 extern void RemoveRelations(DropStmt *drop);
 
 extern Oid	AlterTableLookupRelation(AlterTableStmt *stmt, LOCKMODE lockmode);
 
 extern void AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
-					   struct AlterTableUtilityContext *context);
+					   AlterTableUtilityContext *context);
 
 extern LOCKMODE AlterTableGetLockLevel(List *cmds);
 
@@ -61,13 +64,14 @@ extern void ExecuteTruncateGuts(List *explicit_rels,
 								List *relids_logged,
 								DropBehavior behavior,
 								bool restart_seqs,
+								bool run_as_table_owner,
 								bool yb_is_top_level);
 
 extern void SetRelationHasSubclass(Oid relationId, bool relhassubclass);
 
 extern bool CheckRelationTableSpaceMove(Relation rel, Oid newTableSpaceId);
 extern void SetRelationTableSpace(Relation rel, Oid newTableSpaceId,
-								  Oid newRelFileNode);
+								  RelFileNumber newRelFilenumber);
 
 extern ObjectAddress renameatt(RenameStmt *stmt);
 
@@ -97,8 +101,9 @@ extern void AtEOSubXact_on_commit_actions(bool isCommit,
 										  SubTransactionId mySubid,
 										  SubTransactionId parentSubid);
 
-extern void RangeVarCallbackOwnsTable(const RangeVar *relation,
-									  Oid relId, Oid oldRelId, void *arg);
+extern void RangeVarCallbackMaintainsTable(const RangeVar *relation,
+										   Oid relId, Oid oldRelId,
+										   void *arg);
 
 extern void RangeVarCallbackOwnsRelation(const RangeVar *relation,
 										 Oid relId, Oid oldRelId, void *arg);

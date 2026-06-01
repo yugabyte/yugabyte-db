@@ -3,7 +3,7 @@
  * nodeIncrementalSort.c
  *	  Routines to handle incremental sorting of relations.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -69,7 +69,7 @@
  *	the entire result set is available.
  *
  *	The hybrid mode approach allows us to optimize for both very small
- *	groups (where the overhead of a new tuplesort is high) and very	large
+ *	groups (where the overhead of a new tuplesort is high) and very large
  *	groups (where we can lower cost by not having to sort on already sorted
  *	columns), albeit at some extra cost while switching between modes.
  *
@@ -78,7 +78,6 @@
 
 #include "postgres.h"
 
-#include "access/htup_details.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIncrementalSort.h"
 #include "miscadmin.h"
@@ -103,7 +102,7 @@
 			if ((node)->shared_info && (node)->am_worker) \
 			{ \
 				Assert(IsParallelWorker()); \
-				Assert(ParallelWorkerNumber <= (node)->shared_info->num_workers); \
+				Assert(ParallelWorkerNumber < (node)->shared_info->num_workers); \
 				instrumentSortedGroup(&(node)->shared_info->sinfo[ParallelWorkerNumber].groupName##GroupInfo, \
 									  (node)->groupName##_state); \
 			} \
@@ -1079,11 +1078,6 @@ ExecEndIncrementalSort(IncrementalSortState *node)
 {
 	SO_printf("ExecEndIncrementalSort: shutting down sort node\n");
 
-	/* clean out the scan tuple */
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	/* must drop pointer to sort result tuple */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	/* must drop standalone tuple slots from outer node */
 	ExecDropSingleTupleTableSlot(node->group_pivot);
 	ExecDropSingleTupleTableSlot(node->transfer_tuple);
 

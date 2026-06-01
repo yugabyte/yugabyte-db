@@ -4,7 +4,7 @@
  *	  POSTGRES index tuple definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/itup.h
@@ -66,7 +66,7 @@ typedef IndexTupleData *IndexTuple;
 
 typedef struct IndexAttributeBitMapData
 {
-	bits8		bits[(INDEX_MAX_KEYS + 8 - 1) / 8];
+	uint8		bits[(INDEX_MAX_KEYS + 8 - 1) / 8];
 }			IndexAttributeBitMapData;
 
 typedef IndexAttributeBitMapData * IndexAttributeBitMap;
@@ -82,26 +82,57 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
 #define INDEX_VAR_MASK	0x40000000
 #define INDEX_NULL_MASK 0x80000000
 
-#define IndexTupleSize(itup)		((Size) ((itup)->t_info & INDEX_SIZE_MASK))
-#define IndexTupleHasNulls(itup)	((((IndexTuple) (itup))->t_info & INDEX_NULL_MASK))
-#define IndexTupleHasVarwidths(itup) ((((IndexTuple) (itup))->t_info & INDEX_VAR_MASK))
+static inline Size
+IndexTupleSize(const IndexTupleData *itup)
+{
+	return (itup->t_info & INDEX_SIZE_MASK);
+}
+
+static inline bool
+IndexTupleHasNulls(const IndexTupleData *itup)
+{
+	return itup->t_info & INDEX_NULL_MASK;
+}
+
+static inline bool
+IndexTupleHasVarwidths(const IndexTupleData *itup)
+{
+	return itup->t_info & INDEX_VAR_MASK;
+}
+
+
+/* routines in indextuple.c */
+extern IndexTuple index_form_tuple(TupleDesc tupleDescriptor,
+								   const Datum *values, const bool *isnull);
+extern IndexTuple index_form_tuple_context(TupleDesc tupleDescriptor,
+										   const Datum *values, const bool *isnull,
+										   MemoryContext context);
+extern Datum nocache_index_getattr(IndexTuple tup, int attnum,
+								   TupleDesc tupleDesc);
+extern void index_deform_tuple(IndexTuple tup, TupleDesc tupleDescriptor,
+							   Datum *values, bool *isnull);
+extern void index_deform_tuple_internal(TupleDesc tupleDescriptor,
+										Datum *values, bool *isnull,
+										char *tp, uint8 *bp, int hasnulls);
+extern IndexTuple CopyIndexTuple(IndexTuple source);
+extern IndexTuple index_truncate_tuple(TupleDesc sourceDescriptor,
+									   IndexTuple source, int leavenatts);
 
 
 /*
  * Takes an infomask as argument (primarily because this needs to be usable
  * at index_form_tuple time so enough space is allocated).
  */
-#define IndexInfoFindDataOffset(t_info) \
-( \
-	(!((t_info) & INDEX_NULL_MASK)) ? \
-	( \
-		(Size)MAXALIGN(sizeof(IndexTupleData)) \
-	) \
-	: \
-	( \
-		(Size)MAXALIGN(sizeof(IndexTupleData) + sizeof(IndexAttributeBitMapData)) \
-	) \
-)
+static inline Size
+IndexInfoFindDataOffset(unsigned short t_info)
+{
+	if (!(t_info & INDEX_NULL_MASK))
+		return MAXALIGN(sizeof(IndexTupleData));
+	else
+		return MAXALIGN(sizeof(IndexTupleData) + sizeof(IndexAttributeBitMapData));
+}
+
+#ifndef FRONTEND
 
 /* ----------------
  *		index_getattr
@@ -111,34 +142,40 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
  *
  * ----------------
  */
-#define index_getattr(tup, attnum, tupleDesc, isnull) \
-( \
-	AssertMacro(PointerIsValid(isnull) && (attnum) > 0), \
-	*(isnull) = false, \
-	!IndexTupleHasNulls(tup) ? \
-	( \
-		TupleDescAttr((tupleDesc), (attnum)-1)->attcacheoff >= 0 ? \
-		( \
-			fetchatt(TupleDescAttr((tupleDesc), (attnum)-1), \
-			(char *) (tup) + IndexInfoFindDataOffset((tup)->t_info) \
-			+ TupleDescAttr((tupleDesc), (attnum)-1)->attcacheoff) \
-		) \
-		: \
-			nocache_index_getattr((tup), (attnum), (tupleDesc)) \
-	) \
-	: \
-	( \
-		(att_isnull((attnum)-1, (char *)(tup) + sizeof(IndexTupleData))) ? \
-		( \
-			*(isnull) = true, \
-			(Datum)NULL \
-		) \
-		: \
-		( \
-			nocache_index_getattr((tup), (attnum), (tupleDesc)) \
-		) \
-	) \
-)
+static inline Datum
+index_getattr(IndexTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
+{
+	Assert(isnull);
+	Assert(attnum > 0);
+
+	*isnull = false;
+
+	if (!IndexTupleHasNulls(tup))
+	{
+		CompactAttribute *attr = TupleDescCompactAttr(tupleDesc, attnum - 1);
+
+		if (attr->attcacheoff >= 0)
+		{
+			return fetchatt(attr,
+							(char *) tup + IndexInfoFindDataOffset(tup->t_info) +
+							attr->attcacheoff);
+		}
+		else
+			return nocache_index_getattr(tup, attnum, tupleDesc);
+	}
+	else
+	{
+		if (att_isnull(attnum - 1, (uint8 *) tup + sizeof(IndexTupleData)))
+		{
+			*isnull = true;
+			return (Datum) 0;
+		}
+		else
+			return nocache_index_getattr(tup, attnum, tupleDesc);
+	}
+}
+
+#endif
 
 /*
  * MaxIndexTuplesPerPage is an upper bound on the number of tuples that can
@@ -159,23 +196,5 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
 #define MaxIndexTuplesPerPage	\
 	((int) ((BLCKSZ - SizeOfPageHeaderData) / \
 			(MAXALIGN(sizeof(IndexTupleData) + 1) + sizeof(ItemIdData))))
-
-
-/* routines in indextuple.c */
-extern IndexTuple index_form_tuple(TupleDesc tupleDescriptor,
-								   Datum *values, bool *isnull);
-extern IndexTuple index_form_tuple_context(TupleDesc tupleDescriptor,
-										   Datum *values, bool *isnull,
-										   MemoryContext context);
-extern Datum nocache_index_getattr(IndexTuple tup, int attnum,
-								   TupleDesc tupleDesc);
-extern void index_deform_tuple(IndexTuple tup, TupleDesc tupleDescriptor,
-							   Datum *values, bool *isnull);
-extern void index_deform_tuple_internal(TupleDesc tupleDescriptor,
-										Datum *values, bool *isnull,
-										char *tp, bits8 *bp, int hasnulls);
-extern IndexTuple CopyIndexTuple(IndexTuple source);
-extern IndexTuple index_truncate_tuple(TupleDesc sourceDescriptor,
-									   IndexTuple source, int leavenatts);
 
 #endif							/* ITUP_H */

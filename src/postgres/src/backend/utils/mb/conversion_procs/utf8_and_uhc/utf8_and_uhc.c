@@ -2,7 +2,7 @@
  *
  *	  UHC <--> UTF8
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -17,7 +17,10 @@
 #include "../../Unicode/uhc_to_utf8.map"
 #include "../../Unicode/utf8_to_uhc.map"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "utf8_and_uhc",
+					.version = PG_VERSION
+);
 
 PG_FUNCTION_INFO_V1(uhc_to_utf8);
 PG_FUNCTION_INFO_V1(utf8_to_uhc);

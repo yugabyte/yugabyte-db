@@ -4,7 +4,7 @@
  *	  fetch tuples from a GIN scan.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -67,7 +67,7 @@ moveRightIfItNeeded(GinBtreeData *btree, GinBtreeStack *stack, Snapshot snapshot
  */
 static void
 scanPostingTree(Relation index, GinScanEntry scanEntry,
-				BlockNumber rootPostingTree, Snapshot snapshot)
+				BlockNumber rootPostingTree)
 {
 	GinBtreeData btree;
 	GinBtreeStack *stack;
@@ -75,7 +75,7 @@ scanPostingTree(Relation index, GinScanEntry scanEntry,
 	Page		page;
 
 	/* Descend to the leftmost leaf page */
-	stack = ginScanBeginPostingTree(&btree, index, rootPostingTree, snapshot);
+	stack = ginScanBeginPostingTree(&btree, index, rootPostingTree);
 	buffer = stack->buffer;
 
 	IncrBufferRefCount(buffer); /* prevent unpin in freeGinBtreeStack */
@@ -122,10 +122,10 @@ collectMatchBitmap(GinBtreeData *btree, GinBtreeStack *stack,
 				   GinScanEntry scanEntry, Snapshot snapshot)
 {
 	OffsetNumber attnum;
-	Form_pg_attribute attr;
+	CompactAttribute *attr;
 
 	/* Initialize empty bitmap result */
-	scanEntry->matchBitmap = tbm_create(work_mem * 1024L, NULL);
+	scanEntry->matchBitmap = tbm_create(work_mem * (Size) 1024, NULL);
 
 	/* Null query cannot partial-match anything */
 	if (scanEntry->isPartialMatch &&
@@ -134,7 +134,7 @@ collectMatchBitmap(GinBtreeData *btree, GinBtreeStack *stack,
 
 	/* Locate tupdesc entry for key column (for attbyval/attlen data) */
 	attnum = scanEntry->attnum;
-	attr = TupleDescAttr(btree->ginstate->origTupdesc, attnum - 1);
+	attr = TupleDescCompactAttr(btree->ginstate->origTupdesc, attnum - 1);
 
 	/*
 	 * Predicate lock entry leaf page, following pages will be locked by
@@ -158,7 +158,6 @@ collectMatchBitmap(GinBtreeData *btree, GinBtreeStack *stack,
 			return true;
 
 		page = BufferGetPage(stack->buffer);
-		TestForOldSnapshot(snapshot, btree->index, page);
 		itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, stack->off));
 
 		/*
@@ -245,8 +244,7 @@ collectMatchBitmap(GinBtreeData *btree, GinBtreeStack *stack,
 			PredicateLockPage(btree->index, rootPostingTree, snapshot);
 
 			/* Collect all the TIDs in this entry's posting tree */
-			scanPostingTree(btree->index, scanEntry, rootPostingTree,
-							snapshot);
+			scanPostingTree(btree->index, scanEntry, rootPostingTree);
 
 			/*
 			 * We lock again the entry page and while it was unlocked insert
@@ -334,7 +332,8 @@ restartScanEntry:
 	entry->list = NULL;
 	entry->nlist = 0;
 	entry->matchBitmap = NULL;
-	entry->matchResult = NULL;
+	entry->matchNtuples = -1;
+	entry->matchResult.blockno = InvalidBlockNumber;
 	entry->reduceResult = false;
 	entry->predictNumberResult = 0;
 
@@ -345,7 +344,7 @@ restartScanEntry:
 	ginPrepareEntryScan(&btreeEntry, entry->attnum,
 						entry->queryKey, entry->queryCategory,
 						ginstate);
-	stackEntry = ginFindLeafPage(&btreeEntry, true, false, snapshot);
+	stackEntry = ginFindLeafPage(&btreeEntry, true, false);
 	page = BufferGetPage(stackEntry->buffer);
 
 	/* ginFindLeafPage() will have already checked snapshot age. */
@@ -375,7 +374,7 @@ restartScanEntry:
 			if (entry->matchBitmap)
 			{
 				if (entry->matchIterator)
-					tbm_end_iterate(entry->matchIterator);
+					tbm_end_private_iterate(entry->matchIterator);
 				entry->matchIterator = NULL;
 				tbm_free(entry->matchBitmap);
 				entry->matchBitmap = NULL;
@@ -387,7 +386,8 @@ restartScanEntry:
 
 		if (entry->matchBitmap && !tbm_is_empty(entry->matchBitmap))
 		{
-			entry->matchIterator = tbm_begin_iterate(entry->matchBitmap);
+			entry->matchIterator =
+				tbm_begin_private_iterate(entry->matchBitmap);
 			entry->isFinished = false;
 		}
 	}
@@ -399,7 +399,7 @@ restartScanEntry:
 		{
 			BlockNumber rootPostingTree = GinGetPostingTree(itup);
 			GinBtreeStack *stack;
-			Page		page;
+			Page		entrypage;
 			ItemPointerData minItem;
 
 			/*
@@ -420,7 +420,7 @@ restartScanEntry:
 			needUnlock = false;
 
 			stack = ginScanBeginPostingTree(&entry->btree, ginstate->index,
-											rootPostingTree, snapshot);
+											rootPostingTree);
 			entry->buffer = stack->buffer;
 
 			/*
@@ -430,13 +430,13 @@ restartScanEntry:
 			 */
 			IncrBufferRefCount(entry->buffer);
 
-			page = BufferGetPage(entry->buffer);
+			entrypage = BufferGetPage(entry->buffer);
 
 			/*
 			 * Load the first page into memory.
 			 */
 			ItemPointerSetMin(&minItem);
-			entry->list = GinDataLeafPageGetItems(page, &entry->nlist, minItem);
+			entry->list = GinDataLeafPageGetItems(entrypage, &entry->nlist, minItem);
 
 			entry->predictNumberResult = stack->predictNumber * entry->nlist;
 
@@ -489,7 +489,7 @@ restartScanEntry:
 static int
 entryIndexByFrequencyCmp(const void *a1, const void *a2, void *arg)
 {
-	const GinScanKey key = (const GinScanKey) arg;
+	const GinScanKeyData *key = arg;
 	int			i1 = *(const int *) a1;
 	int			i2 = *(const int *) a2;
 	uint32		n1 = key->scanEntry[i1]->predictNumberResult;
@@ -552,22 +552,24 @@ startScanKey(GinState *ginstate, GinScanOpaque so, GinScanKey key)
 	{
 		MemoryContextSwitchTo(so->tempCtx);
 
-		entryIndexes = (int *) palloc(sizeof(int) * key->nentries);
+		entryIndexes = palloc_array(int, key->nentries);
 		for (i = 0; i < key->nentries; i++)
 			entryIndexes[i] = i;
 		qsort_arg(entryIndexes, key->nentries, sizeof(int),
 				  entryIndexByFrequencyCmp, key);
 
+		for (i = 1; i < key->nentries; i++)
+			key->entryRes[entryIndexes[i]] = GIN_MAYBE;
 		for (i = 0; i < key->nentries - 1; i++)
 		{
 			/* Pass all entries <= i as FALSE, and the rest as MAYBE */
-			for (j = 0; j <= i; j++)
-				key->entryRes[entryIndexes[j]] = GIN_FALSE;
-			for (j = i + 1; j < key->nentries; j++)
-				key->entryRes[entryIndexes[j]] = GIN_MAYBE;
+			key->entryRes[entryIndexes[i]] = GIN_FALSE;
 
 			if (key->triConsistentFn(key) == GIN_FALSE)
 				break;
+
+			/* Make this loop interruptible in case there are many keys */
+			CHECK_FOR_INTERRUPTS();
 		}
 		/* i is now the last required entry. */
 
@@ -653,7 +655,7 @@ startScan(IndexScanDesc scan)
  */
 static void
 entryLoadMoreItems(GinState *ginstate, GinScanEntry entry,
-				   ItemPointerData advancePast, Snapshot snapshot)
+				   ItemPointerData advancePast)
 {
 	Page		page;
 	int			i;
@@ -698,7 +700,7 @@ entryLoadMoreItems(GinState *ginstate, GinScanEntry entry,
 						   OffsetNumberNext(GinItemPointerGetOffsetNumber(&advancePast)));
 		}
 		entry->btree.fullScan = false;
-		stack = ginFindLeafPage(&entry->btree, true, false, snapshot);
+		stack = ginFindLeafPage(&entry->btree, true, false);
 
 		/* we don't need the stack, just the buffer. */
 		entry->buffer = stack->buffer;
@@ -808,7 +810,7 @@ entryLoadMoreItems(GinState *ginstate, GinScanEntry entry,
  */
 static void
 entryGetItem(GinState *ginstate, GinScanEntry entry,
-			 ItemPointerData advancePast, Snapshot snapshot)
+			 ItemPointerData advancePast)
 {
 	Assert(!entry->isFinished);
 
@@ -825,29 +827,35 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 		{
 			/*
 			 * If we've exhausted all items on this block, move to next block
-			 * in the bitmap.
+			 * in the bitmap. tbm_private_iterate() sets matchResult.blockno
+			 * to InvalidBlockNumber when the bitmap is exhausted.
 			 */
-			while (entry->matchResult == NULL ||
-				   (entry->matchResult->ntuples >= 0 &&
-					entry->offset >= entry->matchResult->ntuples) ||
-				   entry->matchResult->blockno < advancePastBlk ||
+			while ((!BlockNumberIsValid(entry->matchResult.blockno)) ||
+				   (!entry->matchResult.lossy &&
+					entry->offset >= entry->matchNtuples) ||
+				   entry->matchResult.blockno < advancePastBlk ||
 				   (ItemPointerIsLossyPage(&advancePast) &&
-					entry->matchResult->blockno == advancePastBlk))
+					entry->matchResult.blockno == advancePastBlk))
 			{
-				entry->matchResult = tbm_iterate(entry->matchIterator);
-
-				if (entry->matchResult == NULL)
+				if (!tbm_private_iterate(entry->matchIterator, &entry->matchResult))
 				{
+					Assert(!BlockNumberIsValid(entry->matchResult.blockno));
 					ItemPointerSetInvalid(&entry->curItem);
-					tbm_end_iterate(entry->matchIterator);
+					tbm_end_private_iterate(entry->matchIterator);
 					entry->matchIterator = NULL;
 					entry->isFinished = true;
 					break;
 				}
 
+				/* Exact pages need their tuple offsets extracted. */
+				if (!entry->matchResult.lossy)
+					entry->matchNtuples = tbm_extract_page_tuple(&entry->matchResult,
+																 entry->matchOffsets,
+																 TBM_MAX_TUPLES_PER_PAGE);
+
 				/*
 				 * Reset counter to the beginning of entry->matchResult. Note:
-				 * entry->offset is still greater than matchResult->ntuples if
+				 * entry->offset is still greater than matchResult.ntuples if
 				 * matchResult is lossy.  So, on next call we will get next
 				 * result from TIDBitmap.
 				 */
@@ -860,10 +868,10 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 			 * We're now on the first page after advancePast which has any
 			 * items on it. If it's a lossy result, return that.
 			 */
-			if (entry->matchResult->ntuples < 0)
+			if (entry->matchResult.lossy)
 			{
 				ItemPointerSetLossyPage(&entry->curItem,
-										entry->matchResult->blockno);
+										entry->matchResult.blockno);
 
 				/*
 				 * We might as well fall out of the loop; we could not
@@ -874,30 +882,35 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 			}
 
 			/*
-			 * Not a lossy page. Skip over any offsets <= advancePast, and
-			 * return that.
+			 * Not a lossy page. If tuple offsets were extracted,
+			 * entry->matchNtuples must be > -1
 			 */
-			if (entry->matchResult->blockno == advancePastBlk)
+			Assert(entry->matchNtuples > -1);
+
+			/* Skip over any offsets <= advancePast, and return that. */
+			if (entry->matchResult.blockno == advancePastBlk)
 			{
+				Assert(entry->matchNtuples > 0);
+
 				/*
 				 * First, do a quick check against the last offset on the
 				 * page. If that's > advancePast, so are all the other
 				 * offsets, so just go back to the top to get the next page.
 				 */
-				if (entry->matchResult->offsets[entry->matchResult->ntuples - 1] <= advancePastOff)
+				if (entry->matchOffsets[entry->matchNtuples - 1] <= advancePastOff)
 				{
-					entry->offset = entry->matchResult->ntuples;
+					entry->offset = entry->matchNtuples;
 					continue;
 				}
 
 				/* Otherwise scan to find the first item > advancePast */
-				while (entry->matchResult->offsets[entry->offset] <= advancePastOff)
+				while (entry->matchOffsets[entry->offset] <= advancePastOff)
 					entry->offset++;
 			}
 
 			ItemPointerSet(&entry->curItem,
-						   entry->matchResult->blockno,
-						   entry->matchResult->offsets[entry->offset]);
+						   entry->matchResult.blockno,
+						   entry->matchOffsets[entry->offset]);
 			entry->offset++;
 
 			/* Done unless we need to reduce the result */
@@ -939,7 +952,7 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 			/* If we've processed the current batch, load more items */
 			while (entry->offset >= entry->nlist)
 			{
-				entryLoadMoreItems(ginstate, entry, advancePast, snapshot);
+				entryLoadMoreItems(ginstate, entry, advancePast);
 
 				if (entry->isFinished)
 				{
@@ -990,7 +1003,7 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
  */
 static void
 keyGetItem(GinState *ginstate, MemoryContext tempCtx, GinScanKey key,
-		   ItemPointerData advancePast, Snapshot snapshot)
+		   ItemPointerData advancePast)
 {
 	ItemPointerData minItem;
 	ItemPointerData curPageLossy;
@@ -1037,7 +1050,7 @@ keyGetItem(GinState *ginstate, MemoryContext tempCtx, GinScanKey key,
 		 */
 		if (ginCompareItemPointers(&entry->curItem, &advancePast) <= 0)
 		{
-			entryGetItem(ginstate, entry, advancePast, snapshot);
+			entryGetItem(ginstate, entry, advancePast);
 			if (entry->isFinished)
 				continue;
 		}
@@ -1112,7 +1125,7 @@ keyGetItem(GinState *ginstate, MemoryContext tempCtx, GinScanKey key,
 
 		if (ginCompareItemPointers(&entry->curItem, &advancePast) <= 0)
 		{
-			entryGetItem(ginstate, entry, advancePast, snapshot);
+			entryGetItem(ginstate, entry, advancePast);
 			if (entry->isFinished)
 				continue;
 		}
@@ -1314,6 +1327,8 @@ scanGetItem(IndexScanDesc scan, ItemPointerData advancePast,
 	 */
 	do
 	{
+		CHECK_FOR_INTERRUPTS();
+
 		ItemPointerSetMin(item);
 		match = true;
 		for (i = 0; i < so->nkeys && match; i++)
@@ -1335,8 +1350,7 @@ scanGetItem(IndexScanDesc scan, ItemPointerData advancePast,
 			}
 
 			/* Fetch the next item for this key that is > advancePast. */
-			keyGetItem(&so->ginstate, so->tempCtx, key, advancePast,
-					   scan->xs_snapshot);
+			keyGetItem(&so->ginstate, so->tempCtx, key, advancePast);
 
 			if (key->isFinished)
 				return false;
@@ -1460,7 +1474,6 @@ scanGetCandidate(IndexScanDesc scan, pendingPosition *pos)
 	for (;;)
 	{
 		page = BufferGetPage(pos->pendingBuffer);
-		TestForOldSnapshot(scan->xs_snapshot, scan->indexRelation, page);
 
 		maxoff = PageGetMaxOffsetNumber(page);
 		if (pos->firstOffset > maxoff)
@@ -1641,7 +1654,6 @@ collectMatchesForHeapRow(IndexScanDesc scan, pendingPosition *pos)
 			   sizeof(bool) * (pos->lastOffset - pos->firstOffset));
 
 		page = BufferGetPage(pos->pendingBuffer);
-		TestForOldSnapshot(scan->xs_snapshot, scan->indexRelation, page);
 
 		for (i = 0; i < so->nkeys; i++)
 		{
@@ -1844,7 +1856,6 @@ scanPendingInsert(IndexScanDesc scan, TIDBitmap *tbm, int64 *ntids)
 
 	LockBuffer(metabuffer, GIN_SHARE);
 	page = BufferGetPage(metabuffer);
-	TestForOldSnapshot(scan->xs_snapshot, scan->indexRelation, page);
 	blkno = GinPageGetMeta(page)->head;
 
 	/*
@@ -1862,7 +1873,7 @@ scanPendingInsert(IndexScanDesc scan, TIDBitmap *tbm, int64 *ntids)
 	LockBuffer(pos.pendingBuffer, GIN_SHARE);
 	pos.firstOffset = FirstOffsetNumber;
 	UnlockReleaseBuffer(metabuffer);
-	pos.hasMatchKey = palloc(sizeof(bool) * so->nkeys);
+	pos.hasMatchKey = palloc_array(bool, so->nkeys);
 
 	/*
 	 * loop for each heap row. scanGetCandidate returns full row or row's
@@ -1957,8 +1968,6 @@ gingetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 
 	for (;;)
 	{
-		CHECK_FOR_INTERRUPTS();
-
 		if (!scanGetItem(scan, iptr, &iptr, &recheck))
 			break;
 

@@ -3,7 +3,7 @@
  * dict_thesaurus.c
  *		Thesaurus dictionary: phrase to phrase substitution
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -17,8 +17,8 @@
 #include "commands/defrem.h"
 #include "tsearch/ts_cache.h"
 #include "tsearch/ts_locale.h"
-#include "tsearch/ts_utils.h"
-#include "utils/builtins.h"
+#include "tsearch/ts_public.h"
+#include "utils/fmgrprotos.h"
 #include "utils/regproc.h"
 
 
@@ -78,12 +78,12 @@ newLexeme(DictThesaurus *d, char *b, char *e, uint32 idsubst, uint16 posinsubst)
 		if (d->ntwrds == 0)
 		{
 			d->ntwrds = 16;
-			d->wrds = (TheLexeme *) palloc(sizeof(TheLexeme) * d->ntwrds);
+			d->wrds = palloc_array(TheLexeme, d->ntwrds);
 		}
 		else
 		{
 			d->ntwrds *= 2;
-			d->wrds = (TheLexeme *) repalloc(d->wrds, sizeof(TheLexeme) * d->ntwrds);
+			d->wrds = repalloc_array(d->wrds, TheLexeme, d->ntwrds);
 		}
 	}
 
@@ -95,7 +95,7 @@ newLexeme(DictThesaurus *d, char *b, char *e, uint32 idsubst, uint16 posinsubst)
 	memcpy(ptr->lexeme, b, e - b);
 	ptr->lexeme[e - b] = '\0';
 
-	ptr->entries = (LexemeInfo *) palloc(sizeof(LexemeInfo));
+	ptr->entries = palloc_object(LexemeInfo);
 
 	ptr->entries->nextentry = NULL;
 	ptr->entries->idsubst = idsubst;
@@ -118,12 +118,12 @@ addWrd(DictThesaurus *d, char *b, char *e, uint32 idsubst, uint16 nwrd, uint16 p
 			if (d->nsubst == 0)
 			{
 				d->nsubst = 16;
-				d->subst = (TheSubstitute *) palloc(sizeof(TheSubstitute) * d->nsubst);
+				d->subst = palloc_array(TheSubstitute, d->nsubst);
 			}
 			else
 			{
 				d->nsubst *= 2;
-				d->subst = (TheSubstitute *) repalloc(d->subst, sizeof(TheSubstitute) * d->nsubst);
+				d->subst = repalloc_array(d->subst, TheSubstitute, d->nsubst);
 			}
 		}
 	}
@@ -137,12 +137,12 @@ addWrd(DictThesaurus *d, char *b, char *e, uint32 idsubst, uint16 nwrd, uint16 p
 		if (ntres == 0)
 		{
 			ntres = 2;
-			ptr->res = (TSLexeme *) palloc(sizeof(TSLexeme) * ntres);
+			ptr->res = palloc_array(TSLexeme, ntres);
 		}
 		else
 		{
 			ntres *= 2;
-			ptr->res = (TSLexeme *) repalloc(ptr->res, sizeof(TSLexeme) * ntres);
+			ptr->res = repalloc_array(ptr->res, TSLexeme, ntres);
 		}
 	}
 
@@ -167,17 +167,17 @@ addWrd(DictThesaurus *d, char *b, char *e, uint32 idsubst, uint16 nwrd, uint16 p
 static void
 thesaurusRead(const char *filename, DictThesaurus *d)
 {
+	char	   *real_filename = get_tsearch_config_filename(filename, "ths");
 	tsearch_readline_state trst;
 	uint32		idsubst = 0;
 	bool		useasis = false;
 	char	   *line;
 
-	filename = get_tsearch_config_filename(filename, "ths");
-	if (!tsearch_readline_begin(&trst, filename))
+	if (!tsearch_readline_begin(&trst, real_filename))
 		ereport(ERROR,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("could not open thesaurus file \"%s\": %m",
-						filename)));
+						real_filename)));
 
 	while ((line = tsearch_readline(&trst)) != NULL)
 	{
@@ -190,8 +190,8 @@ thesaurusRead(const char *filename, DictThesaurus *d)
 		ptr = line;
 
 		/* is it a comment? */
-		while (*ptr && t_isspace(ptr))
-			ptr += pg_mblen(ptr);
+		while (*ptr && isspace((unsigned char) *ptr))
+			ptr += pg_mblen_cstr(ptr);
 
 		if (t_iseq(ptr, '#') || *ptr == '\0' ||
 			t_iseq(ptr, '\n') || t_iseq(ptr, '\r'))
@@ -212,7 +212,7 @@ thesaurusRead(const char *filename, DictThesaurus *d)
 								 errmsg("unexpected delimiter")));
 					state = TR_WAITSUBS;
 				}
-				else if (!t_isspace(ptr))
+				else if (!isspace((unsigned char) *ptr))
 				{
 					beginwrd = ptr;
 					state = TR_INLEX;
@@ -225,7 +225,7 @@ thesaurusRead(const char *filename, DictThesaurus *d)
 					newLexeme(d, beginwrd, ptr, idsubst, posinsubst++);
 					state = TR_WAITSUBS;
 				}
-				else if (t_isspace(ptr))
+				else if (isspace((unsigned char) *ptr))
 				{
 					newLexeme(d, beginwrd, ptr, idsubst, posinsubst++);
 					state = TR_WAITLEX;
@@ -237,15 +237,15 @@ thesaurusRead(const char *filename, DictThesaurus *d)
 				{
 					useasis = true;
 					state = TR_INSUBS;
-					beginwrd = ptr + pg_mblen(ptr);
+					beginwrd = ptr + pg_mblen_cstr(ptr);
 				}
 				else if (t_iseq(ptr, '\\'))
 				{
 					useasis = false;
 					state = TR_INSUBS;
-					beginwrd = ptr + pg_mblen(ptr);
+					beginwrd = ptr + pg_mblen_cstr(ptr);
 				}
-				else if (!t_isspace(ptr))
+				else if (!isspace((unsigned char) *ptr))
 				{
 					useasis = false;
 					beginwrd = ptr;
@@ -254,7 +254,7 @@ thesaurusRead(const char *filename, DictThesaurus *d)
 			}
 			else if (state == TR_INSUBS)
 			{
-				if (t_isspace(ptr))
+				if (isspace((unsigned char) *ptr))
 				{
 					if (ptr == beginwrd)
 						ereport(ERROR,
@@ -267,7 +267,7 @@ thesaurusRead(const char *filename, DictThesaurus *d)
 			else
 				elog(ERROR, "unrecognized thesaurus state: %d", state);
 
-			ptr += pg_mblen(ptr);
+			ptr += pg_mblen_cstr(ptr);
 		}
 
 		if (state == TR_INSUBS)
@@ -297,6 +297,7 @@ thesaurusRead(const char *filename, DictThesaurus *d)
 	d->nsubst = idsubst;
 
 	tsearch_readline_end(&trst);
+	pfree(real_filename);
 }
 
 static TheLexeme *
@@ -308,7 +309,7 @@ addCompiledLexeme(TheLexeme *newwrds, int *nnw, int *tnm, TSLexeme *lexeme, Lexe
 		newwrds = (TheLexeme *) repalloc(newwrds, sizeof(TheLexeme) * *tnm);
 	}
 
-	newwrds[*nnw].entries = (LexemeInfo *) palloc(sizeof(LexemeInfo));
+	newwrds[*nnw].entries = palloc_object(LexemeInfo);
 
 	if (lexeme && lexeme->lexeme)
 	{
@@ -393,7 +394,7 @@ compileTheLexeme(DictThesaurus *d)
 	int			i,
 				nnw = 0,
 				tnm = 16;
-	TheLexeme  *newwrds = (TheLexeme *) palloc(sizeof(TheLexeme) * tnm),
+	TheLexeme  *newwrds = palloc_array(TheLexeme, tnm),
 			   *ptrwrds;
 
 	for (i = 0; i < d->nwrds; i++)
@@ -510,7 +511,7 @@ compileTheSubstitute(DictThesaurus *d)
 				   *inptr;
 		int			n = 2;
 
-		outptr = d->subst[i].res = (TSLexeme *) palloc(sizeof(TSLexeme) * n);
+		outptr = d->subst[i].res = palloc_array(TSLexeme, n);
 		outptr->lexeme = NULL;
 		inptr = rem;
 
@@ -599,9 +600,10 @@ thesaurus_init(PG_FUNCTION_ARGS)
 	DictThesaurus *d;
 	char	   *subdictname = NULL;
 	bool		fileloaded = false;
+	List	   *namelist;
 	ListCell   *l;
 
-	d = (DictThesaurus *) palloc0(sizeof(DictThesaurus));
+	d = palloc0_object(DictThesaurus);
 
 	foreach(l, dictoptions)
 	{
@@ -642,7 +644,8 @@ thesaurus_init(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("missing Dictionary parameter")));
 
-	d->subdictOid = get_ts_dict_oid(stringToQualifiedNameList(subdictname), false);
+	namelist = stringToQualifiedNameList(subdictname, NULL);
+	d->subdictOid = get_ts_dict_oid(namelist, false);
 	d->subdict = lookup_ts_dictionary_cache(d->subdictOid);
 
 	compileTheLexeme(d);
@@ -753,7 +756,7 @@ copyTSLexeme(TheSubstitute *ts)
 	TSLexeme   *res;
 	uint16		i;
 
-	res = (TSLexeme *) palloc(sizeof(TSLexeme) * (ts->reslen + 1));
+	res = palloc_array(TSLexeme, ts->reslen + 1);
 	for (i = 0; i < ts->reslen; i++)
 	{
 		res[i] = ts->res[i];
@@ -831,7 +834,7 @@ thesaurus_lexize(PG_FUNCTION_ARGS)
 				ptr++;
 			}
 
-			infos = (LexemeInfo **) palloc(sizeof(LexemeInfo *) * nlex);
+			infos = palloc_array(LexemeInfo *, nlex);
 			for (i = 0; i < nlex; i++)
 				if ((infos[i] = findTheLexeme(d, basevar[i].lexeme)) == NULL)
 					break;
@@ -857,7 +860,7 @@ thesaurus_lexize(PG_FUNCTION_ARGS)
 		info = NULL;			/* word isn't recognized */
 	}
 
-	dstate->private_state = (void *) info;
+	dstate->private_state = info;
 
 	if (!info)
 	{

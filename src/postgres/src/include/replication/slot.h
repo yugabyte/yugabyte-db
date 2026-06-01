@@ -2,7 +2,7 @@
  * slot.h
  *	   Replication slot management.
  *
- * Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2026, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -21,6 +21,16 @@
 #include "replication/walsender.h"
 #include "utils/uuid.h"
 
+/* directory to store replication slot data in */
+#define PG_REPLSLOT_DIR     "pg_replslot"
+
+/*
+ * The reserved name for a replication slot used to retain dead tuples for
+ * conflict detection in logical replication. See
+ * maybe_advance_nonremovable_xid() for detail.
+ */
+#define CONFLICT_DETECTION_SLOT "pg_conflict_detection"
+
 /*
  * Behaviour of replication slots, upon release or crash.
  *
@@ -38,8 +48,50 @@ typedef enum ReplicationSlotPersistency
 {
 	RS_PERSISTENT,
 	RS_EPHEMERAL,
-	RS_TEMPORARY
+	RS_TEMPORARY,
 } ReplicationSlotPersistency;
+
+/*
+ * Slots can be invalidated, e.g. due to max_slot_wal_keep_size. If so, the
+ * 'invalidated' field is set to a value other than _NONE.
+ *
+ * When adding a new invalidation cause here, the value must be powers of 2
+ * (e.g., 1, 2, 4...) for proper bitwise operations. Also, remember to update
+ * RS_INVAL_MAX_CAUSES below, and SlotInvalidationCauses in slot.c.
+ */
+typedef enum ReplicationSlotInvalidationCause
+{
+	RS_INVAL_NONE = 0,
+	/* required WAL has been removed */
+	RS_INVAL_WAL_REMOVED = (1 << 0),
+	/* required rows have been removed */
+	RS_INVAL_HORIZON = (1 << 1),
+	/* wal_level insufficient for slot */
+	RS_INVAL_WAL_LEVEL = (1 << 2),
+	/* idle slot timeout has occurred */
+	RS_INVAL_IDLE_TIMEOUT = (1 << 3),
+} ReplicationSlotInvalidationCause;
+
+/* Maximum number of invalidation causes */
+#define	RS_INVAL_MAX_CAUSES 4
+
+/*
+ * When the slot synchronization worker is running, or when
+ * pg_sync_replication_slots is executed, slot synchronization may be
+ * skipped. This enum defines the possible reasons for skipping slot
+ * synchronization.
+ */
+typedef enum SlotSyncSkipReason
+{
+	SS_SKIP_NONE,				/* No skip */
+	SS_SKIP_WAL_NOT_FLUSHED,	/* Standby did not flush the wal corresponding
+								 * to confirmed flush of remote slot */
+	SS_SKIP_WAL_OR_ROWS_REMOVED,	/* Remote slot is behind; required WAL or
+									 * rows may be removed or at risk */
+	SS_SKIP_NO_CONSISTENT_SNAPSHOT, /* Standby could not build a consistent
+									 * snapshot */
+	SS_SKIP_INVALID				/* Local slot is invalid */
+} SlotSyncSkipReason;
 
 /*
  * On-Disk data of a replication slot, preserved across restarts.
@@ -76,8 +128,8 @@ typedef struct ReplicationSlotPersistentData
 	/* oldest LSN that might be required by this replication slot */
 	XLogRecPtr	restart_lsn;
 
-	/* restart_lsn is copied here when the slot is invalidated */
-	XLogRecPtr	invalidated_at;
+	/* RS_INVAL_NONE if valid, or the reason for having been invalidated */
+	ReplicationSlotInvalidationCause invalidated;
 
 	/*
 	 * Oldest LSN that the client has acked receipt for.  This is used as the
@@ -100,6 +152,17 @@ typedef struct ReplicationSlotPersistentData
 
 	/* plugin name */
 	NameData	plugin;
+
+	/*
+	 * Was this slot synchronized from the primary server?
+	 */
+	bool		synced;
+
+	/*
+	 * Is this a failover slot (sync candidate for standbys)? Only relevant
+	 * for logical slots on the primary server.
+	 */
+	bool		failover;
 
 	/* YB: The CDC stream_id (32 bytes + 1 for null terminator) */
 	char		yb_stream_id[33];
@@ -158,8 +221,11 @@ typedef struct ReplicationSlot
 	/* is this slot defined */
 	bool		in_use;
 
-	/* Who is streaming out changes for this slot? 0 in unused slots. */
-	pid_t		active_pid;
+	/*
+	 * Who is streaming out changes for this slot? INVALID_PROC_NUMBER in
+	 * unused slots.
+	 */
+	ProcNumber	active_proc;
 
 	/* any outstanding modifications? */
 	bool		just_dirtied;
@@ -185,7 +251,7 @@ typedef struct ReplicationSlot
 	/* is somebody performing io on this slot? */
 	LWLock		io_in_progress_lock;
 
-	/* Condition variable signaled when active_pid changes */
+	/* Condition variable signaled when active_proc changes */
 	ConditionVariable active_cv;
 
 	/* all the remaining data is only used for logical slots */
@@ -199,6 +265,59 @@ typedef struct ReplicationSlot
 	XLogRecPtr	candidate_xmin_lsn;
 	XLogRecPtr	candidate_restart_valid;
 	XLogRecPtr	candidate_restart_lsn;
+
+	/*
+	 * This value tracks the last confirmed_flush LSN flushed which is used
+	 * during a shutdown checkpoint to decide if logical's slot data should be
+	 * forcibly flushed or not.
+	 */
+	XLogRecPtr	last_saved_confirmed_flush;
+
+	/*
+	 * The time when the slot became inactive. For synced slots on a standby
+	 * server, it represents the time when slot synchronization was most
+	 * recently stopped.
+	 */
+	TimestampTz inactive_since;
+
+	/*
+	 * Latest restart_lsn that has been flushed to disk. For persistent slots
+	 * the flushed LSN should be taken into account when calculating the
+	 * oldest LSN for WAL segments removal.
+	 *
+	 * Do not assume that restart_lsn will always move forward, i.e., that the
+	 * previously flushed restart_lsn is always behind data.restart_lsn. In
+	 * streaming replication using a physical slot, the restart_lsn is updated
+	 * based on the flushed WAL position reported by the walreceiver.
+	 *
+	 * This replication mode allows duplicate WAL records to be received and
+	 * overwritten. If the walreceiver receives older WAL records and then
+	 * reports them as flushed to the walsender, the restart_lsn may appear to
+	 * move backward.
+	 *
+	 * This typically occurs at the beginning of replication. One reason is
+	 * that streaming replication starts at the beginning of a segment, so, if
+	 * restart_lsn is in the middle of a segment, it will be updated to an
+	 * earlier LSN, see RequestXLogStreaming. Another reason is that the
+	 * walreceiver chooses its startpoint based on the replayed LSN, so, if
+	 * some records have been received but not yet applied, they will be
+	 * received again and leads to updating the restart_lsn to an earlier
+	 * position.
+	 */
+	XLogRecPtr	last_saved_restart_lsn;
+
+	/*
+	 * Reason for the most recent slot synchronization skip.
+	 *
+	 * Slot sync skips can occur for both temporary and persistent replication
+	 * slots. They are more common for temporary slots, but persistent slots
+	 * may also skip synchronization in rare cases (e.g.,
+	 * SS_SKIP_WAL_NOT_FLUSHED or SS_SKIP_WAL_OR_ROWS_REMOVED).
+	 *
+	 * Since, temporary slots are dropped after server restart, persisting
+	 * slotsync_skip_reason provides no practical benefit.
+	 */
+	SlotSyncSkipReason slotsync_skip_reason;
 } ReplicationSlot;
 
 #define SlotIsPhysical(slot) ((slot)->data.database == InvalidOid)
@@ -217,6 +336,23 @@ typedef struct ReplicationSlotCtlData
 } ReplicationSlotCtlData;
 
 /*
+ * Set slot's inactive_since property unless it was previously invalidated.
+ */
+static inline void
+ReplicationSlotSetInactiveSince(ReplicationSlot *s, TimestampTz ts,
+								bool acquire_lock)
+{
+	if (acquire_lock)
+		SpinLockAcquire(&s->mutex);
+
+	if (s->data.invalidated == RS_INVAL_NONE)
+		s->inactive_since = ts;
+
+	if (acquire_lock)
+		SpinLockRelease(&s->mutex);
+}
+
+/*
  * Pointers to shared memory
  */
 extern PGDLLIMPORT ReplicationSlotCtlData *ReplicationSlotCtl;
@@ -224,6 +360,9 @@ extern PGDLLIMPORT ReplicationSlot *MyReplicationSlot;
 
 /* GUCs */
 extern PGDLLIMPORT int max_replication_slots;
+extern PGDLLIMPORT int max_repack_replication_slots;
+extern PGDLLIMPORT char *synchronized_standby_slots;
+extern PGDLLIMPORT int idle_replication_slot_timeout_secs;
 
 /* YB */
 extern PGDLLIMPORT const char *YB_OUTPUT_PLUGIN;
@@ -233,51 +372,70 @@ extern PGDLLIMPORT const char *LSN_TYPE_HYBRID_TIME;
 extern PGDLLIMPORT const char *ORDERING_MODE_ROW;
 extern PGDLLIMPORT const char *ORDERING_MODE_TRANSACTION;
 
-/* shmem initialization functions */
-extern Size ReplicationSlotsShmemSize(void);
-extern void ReplicationSlotsShmemInit(void);
-
 /* management of individual slots */
 extern void ReplicationSlotCreate(const char *name, bool db_specific,
-								  ReplicationSlotPersistency p, bool two_phase,
+								  ReplicationSlotPersistency persistency,
+								  bool two_phase, bool repack, bool failover,
+								  bool synced,
 								  char *yb_plugin_name,
 								  CRSSnapshotAction yb_snapshot_action,
 								  uint64_t *yb_consistent_snapshot_time,
 								  YbCRSLsnType lsn_type,
 								  YbCRSOrderingMode yb_ordering_mode);
 extern void ReplicationSlotPersist(void);
-extern void ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exists);
+extern void ReplicationSlotDrop(const char *name, bool nowait,
+								bool yb_force, bool yb_if_exists);
+extern void ReplicationSlotDropAcquired(void);
+extern void ReplicationSlotAlter(const char *name, const bool *failover,
+								 const bool *two_phase);
 
-extern void ReplicationSlotAcquire(const char *name, bool nowait);
+extern void ReplicationSlotAcquire(const char *name, bool nowait,
+								   bool error_if_invalid);
 extern void ReplicationSlotRelease(void);
-extern void ReplicationSlotCleanup(void);
+extern void ReplicationSlotCleanup(bool synced_only);
 extern void ReplicationSlotSave(void);
 extern void ReplicationSlotMarkDirty(void);
 
 /* misc stuff */
 extern void ReplicationSlotInitialize(void);
-extern bool ReplicationSlotValidateName(const char *name, int elevel);
+extern bool ReplicationSlotValidateName(const char *name,
+										bool allow_reserved_name,
+										int elevel);
+extern bool ReplicationSlotValidateNameInternal(const char *name,
+												bool allow_reserved_name,
+												int *err_code, char **err_msg, char **err_hint);
 extern void ReplicationSlotReserveWal(void);
 extern void ReplicationSlotsComputeRequiredXmin(bool already_locked);
 extern void ReplicationSlotsComputeRequiredLSN(void);
 extern XLogRecPtr ReplicationSlotsComputeLogicalRestartLSN(void);
 extern bool ReplicationSlotsCountDBSlots(Oid dboid, int *nslots, int *nactive);
+extern bool CheckLogicalSlotExists(void);
 extern void ReplicationSlotsDropDBSlots(Oid dboid);
-extern bool InvalidateObsoleteReplicationSlots(XLogSegNo oldestSegno);
+extern bool InvalidateObsoleteReplicationSlots(uint32 possible_causes,
+											   XLogSegNo oldestSegno,
+											   Oid dboid,
+											   TransactionId snapshotConflictHorizon);
 extern ReplicationSlot *SearchNamedReplicationSlot(const char *name, bool need_lock);
 extern int	ReplicationSlotIndex(ReplicationSlot *slot);
 extern bool ReplicationSlotName(int index, Name name);
-extern void ReplicationSlotNameForTablesync(Oid suboid, Oid relid, char *syncslotname, int szslot);
+extern void ReplicationSlotNameForTablesync(Oid suboid, Oid relid, char *syncslotname, Size szslot);
 extern void ReplicationSlotDropAtPubNode(WalReceiverConn *wrconn, char *slotname, bool missing_ok);
 
 extern void StartupReplicationSlots(void);
-extern void CheckPointReplicationSlots(void);
+extern void CheckPointReplicationSlots(bool is_shutdown);
 
-extern void CheckSlotRequirements(void);
+extern void CheckSlotRequirements(bool repack);
 extern void CheckSlotPermissions(void);
+extern ReplicationSlotInvalidationCause
+			GetSlotInvalidationCause(const char *cause_name);
+extern const char *GetSlotInvalidationCauseName(ReplicationSlotInvalidationCause cause);
+
+extern bool SlotExistsInSyncStandbySlots(const char *slot_name);
+extern bool StandbySlotsHaveCaughtup(XLogRecPtr wait_for_lsn, int elevel);
+extern void WaitForStandbyConfirmation(XLogRecPtr wait_for_lsn);
 
 /* YB */
-extern void ReplicationSlotCleanupForProc(PGPROC *proc);
+extern void ReplicationSlotCleanupForProc(PGPROC *proc, bool synced_only);
 extern char YBCGetReplicaIdentityForRelation(Oid relid);
 extern void YbReplicationSlotCreateForDB(const char *name, bool two_phase,
 										 const char *yb_plugin_name,

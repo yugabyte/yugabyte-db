@@ -37,7 +37,9 @@ setup
  CREATE TABLE parttbl (a int, b int, c int,
    d int GENERATED ALWAYS AS (a + b) STORED) PARTITION BY LIST (a);
  CREATE TABLE parttbl1 PARTITION OF parttbl FOR VALUES IN (1);
- CREATE TABLE parttbl2 PARTITION OF parttbl FOR VALUES IN (2);
+ CREATE TABLE parttbl2 PARTITION OF parttbl
+   (d WITH OPTIONS GENERATED ALWAYS AS (a + b + 1000) STORED)
+   FOR VALUES IN (2);
  INSERT INTO parttbl VALUES (1, 1, 1), (2, 2, 2);
 
  CREATE TABLE another_parttbl (a int, b int, c int) PARTITION BY LIST (a);
@@ -74,6 +76,8 @@ setup		{ BEGIN ISOLATION LEVEL READ COMMITTED; }
 step wx1	{ UPDATE accounts SET balance = balance - 200 WHERE accountid = 'checking' RETURNING balance; }
 # wy1 then wy2 checks the case where quals pass then fail
 step wy1	{ UPDATE accounts SET balance = balance + 500 WHERE accountid = 'checking' RETURNING balance; }
+# wx2 then wb1 checks the case of re-fetching up-to-date values for DELETE ... RETURNING ...
+step wb1	{ DELETE FROM accounts WHERE balance = 600 RETURNING *; }
 
 step wxext1	{ UPDATE accounts_ext SET balance = balance - 200 WHERE accountid = 'checking' RETURNING balance; }
 step tocds1	{ UPDATE accounts SET accountid = 'cds' WHERE accountid = 'checking'; }
@@ -94,6 +98,10 @@ step upsert1	{
 	INSERT INTO accounts SELECT 'savings', 500
 	  WHERE NOT EXISTS (SELECT 1 FROM upsert);
 }
+
+# Tests for Tid / Tid Range Scan
+step tid1 { UPDATE accounts SET balance = balance + 100 WHERE ctid = '(0,1)' RETURNING accountid, balance; }
+step tidrange1 { UPDATE accounts SET balance = balance + 100 WHERE ctid BETWEEN '(0,1)' AND '(0,1)' RETURNING accountid, balance; }
 
 # tests with table p check inheritance cases:
 # readp1/writep1/readp2 tests a bug where nodeLockRows did the wrong thing
@@ -196,6 +204,9 @@ step sys1	{
 	UPDATE pg_class SET reltuples = 123 WHERE oid = 'accounts'::regclass;
 }
 
+step s1pp1 { UPDATE another_parttbl SET b = b + 1 WHERE a = 1; }
+
+step updateformergevalues { UPDATE accounts SET balance = balance + 100; }
 
 session s2
 setup		{ BEGIN ISOLATION LEVEL READ COMMITTED; }
@@ -236,6 +247,11 @@ step updateforcip3	{
 }
 step wrtwcte	{ UPDATE table_a SET value = 'tableAValue2' WHERE id = 1; }
 step wrjt	{ UPDATE jointest SET data = 42 WHERE id = 7; }
+
+step tid2 { UPDATE accounts SET balance = balance + 200 WHERE ctid = '(0,1)' RETURNING accountid, balance; }
+step tidrange2 { UPDATE accounts SET balance = balance + 200 WHERE ctid BETWEEN '(0,1)' AND '(0,1)' RETURNING accountid, balance; }
+# here, recheck succeeds; (0,3) is the id that step tid1 will assign
+step tidsucceed2 { UPDATE accounts SET balance = balance + 200 WHERE ctid = '(0,1)' OR ctid = '(0,3)' RETURNING accountid, balance; }
 
 step conditionalpartupdate	{
 	update parttbl set c = -c where b < 10;
@@ -298,6 +314,19 @@ step sysmerge2	{
 
 step c2	{ COMMIT; }
 step r2	{ ROLLBACK; }
+
+step s2pp1 { SET plan_cache_mode TO force_generic_plan; }
+step s2pp2 { PREPARE epd AS DELETE FROM another_parttbl WHERE a = $1; }
+step s2pp3 { EXECUTE epd(1); }
+step s2pp4 { DELETE FROM another_parttbl WHERE a = (SELECT 1); }
+
+step mergevalues {
+	MERGE INTO accounts
+	USING (VALUES ('checking', 610), ('savings', 620)) v(accountid, balance)
+	ON v.accountid = accounts.accountid
+	WHEN MATCHED THEN UPDATE SET balance = v.balance
+	WHEN NOT MATCHED THEN INSERT VALUES ('unmatched', -1);
+}
 
 session s3
 setup		{ BEGIN ISOLATION LEVEL READ COMMITTED; }
@@ -369,6 +398,8 @@ permutation wx1 delwcte c1 c2 read
 # test that a delete to a self-modified row throws error when
 # previously updated by a different cid
 permutation wx1 delwctefail c1 c2 read
+# test that a delete re-fetches up-to-date values for returning clause
+permutation read wx2 wb1 c2 c1 read
 
 permutation upsert1 upsert2 c1 c2 read
 permutation readp1 writep1 readp2 c1 c2
@@ -386,6 +417,11 @@ permutation wrtwcte readwcte c1 c2
 permutation wrjt selectjoinforupdate c2 c1
 permutation wrjt selectresultforupdate c2 c1
 permutation wrtwcte multireadwcte c1 c2
+permutation tid1 tid2 c1 c2 read
+permutation tid1 tidsucceed2 c1 c2 read
+permutation tidrange1 tidrange2 c1 c2 read
+# test that a rollback on s1 has s2 perform the update on the original row
+permutation tid1 tid2 r1 c2 read
 
 permutation simplepartupdate conditionalpartupdate c1 c2 read_part
 permutation simplepartupdate complexpartupdate c1 c2 read_part
@@ -395,3 +431,10 @@ permutation simplepartupdate_noroute complexpartupdate_doesnt_route c1 c2 read_p
 
 permutation sys1 sysupd2 c1 c2
 permutation sys1 sysmerge2 c1 c2
+
+# Exercise run-time partition pruning code in an EPQ recheck
+permutation s1pp1 s2pp1 s2pp2 s2pp3 c1 c2
+permutation s1pp1 s2pp4 c1 c2
+
+# test EPQ recheck in MERGE from VALUES_RTE, cf bug #19355
+permutation updateformergevalues mergevalues c1 c2 read

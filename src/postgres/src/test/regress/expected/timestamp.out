@@ -76,6 +76,12 @@ TRUNCATE TIMESTAMP_TBL;
 INSERT INTO TIMESTAMP_TBL VALUES ('-infinity');
 INSERT INTO TIMESTAMP_TBL VALUES ('infinity');
 INSERT INTO TIMESTAMP_TBL VALUES ('epoch');
+SELECT timestamp 'infinity' = timestamp '+infinity' AS t;
+ t 
+---
+ t
+(1 row)
+
 -- Postgres v6.0 standard output format
 INSERT INTO TIMESTAMP_TBL VALUES ('Mon Feb 10 17:32:01 1997 PST');
 -- Variations on Postgres v6.1 standard output format
@@ -119,6 +125,37 @@ INSERT INTO TIMESTAMP_TBL VALUES ('19970710 173201 America/Does_not_exist');
 ERROR:  time zone "america/does_not_exist" not recognized
 LINE 1: INSERT INTO TIMESTAMP_TBL VALUES ('19970710 173201 America/D...
                                           ^
+-- Test non-error-throwing API
+SELECT pg_input_is_valid('now', 'timestamp');
+ pg_input_is_valid 
+-------------------
+ t
+(1 row)
+
+SELECT pg_input_is_valid('garbage', 'timestamp');
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
+SELECT pg_input_is_valid('2001-01-01 00:00 Nehwon/Lankhmar', 'timestamp');
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
+SELECT * FROM pg_input_error_info('garbage', 'timestamp');
+                      message                       | detail | hint | sql_error_code 
+----------------------------------------------------+--------+------+----------------
+ invalid input syntax for type timestamp: "garbage" |        |      | 22007
+(1 row)
+
+SELECT * FROM pg_input_error_info('2001-01-01 00:00 Nehwon/Lankhmar', 'timestamp');
+                  message                   | detail | hint | sql_error_code 
+--------------------------------------------+--------+------+----------------
+ time zone "nehwon/lankhmar" not recognized |        |      | 22023
+(1 row)
+
 -- Check date conversion and date arithmetic
 INSERT INTO TIMESTAMP_TBL VALUES ('1997-06-10 18:32:01 PDT');
 INSERT INTO TIMESTAMP_TBL VALUES ('Feb 10 17:32:01 1997');
@@ -554,6 +591,18 @@ SELECT date_trunc( 'week', timestamp '2004-02-29 15:44:17.71393' ) AS week_trunc
  Mon Feb 23 00:00:00 2004
 (1 row)
 
+SELECT date_trunc( 'week', timestamp 'infinity' ) AS inf_trunc;
+ inf_trunc 
+-----------
+ infinity
+(1 row)
+
+SELECT date_trunc( 'timezone', timestamp '2004-02-29 15:44:17.71393' ) AS notsupp_trunc;
+ERROR:  unit "timezone" not supported for type timestamp without time zone
+SELECT date_trunc( 'timezone', timestamp 'infinity' ) AS notsupp_inf_trunc;
+ERROR:  unit "timezone" not supported for type timestamp without time zone
+SELECT date_trunc( 'ago', timestamp 'infinity' ) AS invalid_trunc;
+ERROR:  unit "ago" not recognized for type timestamp without time zone
 -- verify date_bin behaves the same as date_trunc for relevant intervals
 -- case 1: AD dates, origin < input
 SELECT
@@ -1184,6 +1233,15 @@ SELECT extract(epoch from '5000-01-01 00:00:00'::timestamp);
  95617584000.000000
 (1 row)
 
+-- test edge-case overflow in timestamp subtraction
+SELECT timestamp '294276-12-31 23:59:59' - timestamp '1999-12-23 19:59:04.224193' AS ok;
+                   ok                    
+-----------------------------------------
+ @ 106751991 days 4 hours 54.775807 secs
+(1 row)
+
+SELECT timestamp '294276-12-31 23:59:59' - timestamp '1999-12-23 19:59:04.224192' AS overflows;
+ERROR:  interval out of range
 -- TO_CHAR()
 SELECT to_char(d1, 'DAY Day day DY Dy dy MONTH Month month RM MON Mon mon')
    FROM TIMESTAMP_TBL;
@@ -2093,3 +2151,78 @@ select * from generate_series('2020-01-01 00:00'::timestamp,
                               '2020-01-02 03:00'::timestamp,
                               '0 hour'::interval);
 ERROR:  step size cannot equal zero
+select generate_series(timestamp '1995-08-06 12:12:12', timestamp '1996-08-06 12:12:12', interval 'infinity');
+ERROR:  step size cannot be infinite
+select generate_series(timestamp '1995-08-06 12:12:12', timestamp '1996-08-06 12:12:12', interval '-infinity');
+ERROR:  step size cannot be infinite
+-- test arithmetic with infinite timestamps
+select timestamp 'infinity' - timestamp 'infinity';
+ERROR:  interval out of range
+select timestamp 'infinity' - timestamp '-infinity';
+ ?column? 
+----------
+ infinity
+(1 row)
+
+select timestamp '-infinity' - timestamp 'infinity';
+ ?column?  
+-----------
+ -infinity
+(1 row)
+
+select timestamp '-infinity' - timestamp '-infinity';
+ERROR:  interval out of range
+select timestamp 'infinity' - timestamp '1995-08-06 12:12:12';
+ ?column? 
+----------
+ infinity
+(1 row)
+
+select timestamp '-infinity' - timestamp '1995-08-06 12:12:12';
+ ?column?  
+-----------
+ -infinity
+(1 row)
+
+-- test age() with infinite timestamps
+select age(timestamp 'infinity');
+    age    
+-----------
+ -infinity
+(1 row)
+
+select age(timestamp '-infinity');
+   age    
+----------
+ infinity
+(1 row)
+
+select age(timestamp 'infinity', timestamp 'infinity');
+ERROR:  interval out of range
+select age(timestamp 'infinity', timestamp '-infinity');
+   age    
+----------
+ infinity
+(1 row)
+
+select age(timestamp '-infinity', timestamp 'infinity');
+    age    
+-----------
+ -infinity
+(1 row)
+
+select age(timestamp '-infinity', timestamp '-infinity');
+ERROR:  interval out of range
+-- test timestamp near POSTGRES_EPOCH_JDATE
+select timestamp '1999-12-31 24:00:00';
+        timestamp         
+--------------------------
+ Sat Jan 01 00:00:00 2000
+(1 row)
+
+select make_timestamp(1999, 12, 31, 24, 0, 0);
+      make_timestamp      
+--------------------------
+ Sat Jan 01 00:00:00 2000
+(1 row)
+

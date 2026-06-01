@@ -6,7 +6,7 @@
  *
  * Sverre H. Huseby <sverrehu@online.no>
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -45,7 +45,8 @@ bytesToHex(uint8 b[16], char *s)
  *	Calculates the MD5 sum of the bytes in a buffer.
  *
  *	SYNOPSIS	  #include "md5.h"
- *				  int pg_md5_hash(const void *buff, size_t len, char *hexsum)
+ *				  bool pg_md5_hash(const void *buff, size_t len, char *hexsum,
+ *				                   const char **errstr)
  *
  *	INPUT		  buff	  the buffer containing the bytes that you want
  *						  the MD5 sum of.
@@ -104,7 +105,7 @@ pg_md5_hash(const void *buff, size_t len, char *hexsum, const char **errstr)
  * (of size MD5_DIGEST_LENGTH) rather than being converted to ASCII hex.
  */
 bool
-pg_md5_binary(const void *buff, size_t len, void *outbuf, const char **errstr)
+pg_md5_binary(const void *buff, size_t len, uint8 *outbuf, const char **errstr)
 {
 	pg_cryptohash_ctx *ctx;
 
@@ -141,7 +142,7 @@ pg_md5_binary(const void *buff, size_t len, void *outbuf, const char **errstr)
  * error context.
  */
 bool
-pg_md5_encrypt(const char *passwd, const char *salt, size_t salt_len,
+pg_md5_encrypt(const char *passwd, const uint8 *salt, size_t salt_len,
 			   char *buf, const char **errstr)
 {
 	size_t		passwd_len = strlen(passwd);

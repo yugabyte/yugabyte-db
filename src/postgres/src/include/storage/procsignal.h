@@ -4,7 +4,7 @@
  *	  Routines for interprocess signaling
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/procsignal.h
@@ -14,7 +14,7 @@
 #ifndef PROCSIGNAL_H
 #define PROCSIGNAL_H
 
-#include "storage/backendid.h"
+#include "storage/procnumber.h"
 
 /* YB includes */
 #include "storage/proc.h"
@@ -42,32 +42,44 @@ typedef enum
 	PROCSIG_LOG_HEAP_SNAPSHOT,	/* ask backend to log the heap snapshot */
 	PROCSIG_LOG_HEAP_SNAPSHOT_PEAK, /* ask backend to log the peak heap
 									 * snapshot */
-
-	/* Recovery conflict reasons */
-	PROCSIG_RECOVERY_CONFLICT_DATABASE,
-	PROCSIG_RECOVERY_CONFLICT_TABLESPACE,
-	PROCSIG_RECOVERY_CONFLICT_LOCK,
-	PROCSIG_RECOVERY_CONFLICT_SNAPSHOT,
-	PROCSIG_RECOVERY_CONFLICT_BUFFERPIN,
-	PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK,
-
-	NUM_PROCSIGNALS				/* Must be last! */
+	PROCSIG_PARALLEL_APPLY_MESSAGE, /* Message from parallel apply workers */
+	PROCSIG_SLOTSYNC_MESSAGE,	/* ask slot synchronization to stop */
+	PROCSIG_REPACK_MESSAGE,		/* Message from repack worker */
+	PROCSIG_RECOVERY_CONFLICT,	/* backend is blocking recovery, check
+								 * PGPROC->pendingRecoveryConflicts for the
+								 * reason */
 } ProcSignalReason;
+
+#define NUM_PROCSIGNALS (PROCSIG_RECOVERY_CONFLICT + 1)
 
 typedef enum
 {
-	PROCSIGNAL_BARRIER_SMGRRELEASE	/* ask smgr to close files */
+	PROCSIGNAL_BARRIER_SMGRRELEASE, /* ask smgr to close files */
+	PROCSIGNAL_BARRIER_UPDATE_XLOG_LOGICAL_INFO,	/* ask to update
+													 * XLogLogicalInfo */
+	PROCSIGNAL_BARRIER_CHECKSUM_OFF,
+	PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_ON,
+	PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_OFF,
+	PROCSIGNAL_BARRIER_CHECKSUM_ON,
 } ProcSignalBarrierType;
+
+/*
+ * Length of query cancel keys generated.
+ *
+ * Note that the protocol allows for longer keys, or shorter, but this is the
+ * length we actually generate.  Client code, and the server code that handles
+ * incoming cancellation packets from clients, mustn't use this hardcoded
+ * length.
+ */
+#define MAX_CANCEL_KEY_LENGTH  32
 
 /*
  * prototypes for functions in procsignal.c
  */
-extern Size ProcSignalShmemSize(void);
-extern void ProcSignalShmemInit(void);
-
-extern void ProcSignalInit(int pss_idx);
+extern void ProcSignalInit(const uint8 *cancel_key, int cancel_key_len);
 extern int	SendProcSignal(pid_t pid, ProcSignalReason reason,
-						   BackendId backendId);
+						   ProcNumber procNumber);
+extern void SendCancelRequest(int backendPID, const uint8 *cancel_key, int cancel_key_len);
 
 extern uint64 EmitProcSignalBarrier(ProcSignalBarrierType type);
 extern void WaitForProcSignalBarrier(uint64 generation);
@@ -76,6 +88,13 @@ extern void ProcessProcSignalBarrier(void);
 extern void procsignal_sigusr1_handler(SIGNAL_ARGS);
 
 /* YB */
-extern void CleanupProcSignalStateForProc(PGPROC *proc);
+extern void YbCleanupProcSignalStateForProc(PGPROC *proc);
+
+/* ProcSignalHeader is an opaque struct, details known only within procsignal.c */
+typedef struct ProcSignalHeader ProcSignalHeader;
+
+#ifdef EXEC_BACKEND
+extern PGDLLIMPORT ProcSignalHeader *ProcSignal;
+#endif
 
 #endif							/* PROCSIGNAL_H */

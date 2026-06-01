@@ -19,7 +19,7 @@
  * function in nodeWindowAgg.c for details.
  *
  *
- * Portions Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/include/windowapi.h
  *
@@ -27,6 +27,8 @@
  */
 #ifndef WINDOWAPI_H
 #define WINDOWAPI_H
+
+#include "fmgr.h"
 
 /* values of "seektype" */
 #define WINDOW_SEEK_CURRENT 0
@@ -40,6 +42,10 @@ typedef struct WindowObjectData *WindowObject;
 
 #define WindowObjectIsValid(winobj) \
 	((winobj) != NULL && IsA(winobj, WindowObjectData))
+
+extern void WinCheckAndInitializeNullTreatment(WindowObject winobj,
+											   bool allowNullTreatment,
+											   FunctionCallInfo fcinfo);
 
 extern void *WinGetPartitionLocalMemory(WindowObject winobj, Size sz);
 

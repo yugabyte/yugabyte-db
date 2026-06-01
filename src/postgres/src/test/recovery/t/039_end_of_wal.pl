@@ -1,11 +1,11 @@
-# Copyright (c) 2023, PostgreSQL Global Development Group
+# Copyright (c) 2023-2026, PostgreSQL Global Development Group
 #
 # Test detecting end-of-WAL conditions.  This test suite generates
 # fake defective page and record headers to trigger various failure
 # scenarios.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -147,7 +147,7 @@ $node->stop('immediate');
 my $log_size = -s $node->logfile;
 $node->start;
 ok( $node->log_contains(
-		"invalid record length at .*: wanted 24, got 0", $log_size
+		"invalid record length at .*: expected at least 24, got 0", $log_size
 	),
 	"xl_tot_len zero");
 
@@ -159,7 +159,7 @@ $node->write_wal($TLI, $end_lsn, $WAL_SEGMENT_SIZE, build_record_header(23));
 $log_size = -s $node->logfile;
 $node->start;
 ok( $node->log_contains(
-		"invalid record length at .*: wanted 24, got 23",
+		"invalid record length at .*: expected at least 24, got 23",
 		$log_size),
 	"xl_tot_len short");
 
@@ -172,7 +172,7 @@ $node->write_wal($TLI, $end_lsn, $WAL_SEGMENT_SIZE, build_record_header(1));
 $log_size = -s $node->logfile;
 $node->start;
 ok( $node->log_contains(
-		"invalid record length at .*: wanted 24, got 1", $log_size
+		"invalid record length at .*: expected at least 24, got 1", $log_size
 	),
 	"xl_tot_len short at end-of-page");
 
@@ -219,7 +219,7 @@ $node->write_wal($TLI, $end_lsn, $WAL_SEGMENT_SIZE,
 	build_record_header(2 * 1024 * 1024 * 1024, 0, $prev_lsn));
 $log_size = -s $node->logfile;
 $node->start;
-ok($node->log_contains("invalid magic number 0000 ", $log_size),
+ok($node->log_contains("invalid magic number 0000 .* LSN .*", $log_size),
 	"xlp_magic zero");
 
 # Good xl_prev, we hit garbage page next (bad magic).
@@ -233,7 +233,7 @@ $node->write_wal($TLI, start_of_next_page($end_lsn),
 	$WAL_SEGMENT_SIZE, build_page_header(0xcafe, 0, 1, 0));
 $log_size = -s $node->logfile;
 $node->start;
-ok($node->log_contains("invalid magic number CAFE ", $log_size),
+ok($node->log_contains("invalid magic number CAFE .* LSN .*", $log_size),
 	"xlp_magic bad");
 
 # Good xl_prev, we hit typical recycled page (good xlp_magic, bad
@@ -249,7 +249,7 @@ $node->write_wal($TLI, start_of_next_page($end_lsn),
 $log_size = -s $node->logfile;
 $node->start;
 ok( $node->log_contains(
-		"unexpected pageaddr 0/BAAAAAAD ", $log_size),
+		"unexpected pageaddr 0/BAAAAAAD in .*, LSN .*,", $log_size),
 	"xlp_pageaddr bad");
 
 # Good xl_prev, xlp_magic, xlp_pageaddr, but bogus xlp_info.
@@ -267,7 +267,7 @@ $node->write_wal(
 		$XLP_PAGE_MAGIC, 0x1234, 1, start_of_next_page($end_lsn)));
 $log_size = -s $node->logfile;
 $node->start;
-ok($node->log_contains("invalid info bits 1234 ", $log_size),
+ok($node->log_contains("invalid info bits 1234 in .*, LSN .*,", $log_size),
 	"xlp_info bad");
 
 # Good xl_prev, xlp_magic, xlp_pageaddr, but xlp_info doesn't mention
@@ -321,7 +321,7 @@ $node->write_wal($TLI, $end_lsn, $WAL_SEGMENT_SIZE,
 	build_record_header(2 * 1024 * 1024 * 1024, 0, 0xdeadbeef));
 $log_size = -s $node->logfile;
 $node->start;
-ok($node->log_contains("invalid magic number 0000 ", $log_size),
+ok($node->log_contains("invalid magic number 0000 .* LSN .*", $log_size),
 	"xlp_magic zero (split record header)");
 
 # And we'll also check xlp_pageaddr before any header checks.
@@ -339,7 +339,7 @@ $node->write_wal(
 $log_size = -s $node->logfile;
 $node->start;
 ok( $node->log_contains(
-		"unexpected pageaddr 0/BAAAAAAD ", $log_size),
+		"unexpected pageaddr 0/BAAAAAAD in .*, LSN .*,", $log_size),
 	"xlp_pageaddr bad (split record header)");
 
 # We'll also discover that xlp_rem_len doesn't add up before any

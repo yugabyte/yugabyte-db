@@ -2,15 +2,19 @@
 
 #include "fmgr.h"
 #include "ltree/ltree.h"
-#include "plpython.h"
+#include "plpy_util.h"
 
-PG_MODULE_MAGIC;
-
-extern void _PG_init(void);
+PG_MODULE_MAGIC_EXT(
+					.name = "ltree_plpython",
+					.version = PG_VERSION
+);
 
 /* Linkage to functions in plpython module */
 typedef PyObject *(*PLyUnicode_FromStringAndSize_t) (const char *s, Py_ssize_t size);
 static PLyUnicode_FromStringAndSize_t PLyUnicode_FromStringAndSize_p;
+
+/* Static asserts verify that typedefs above match original declarations */
+StaticAssertVariableIsOfType(&PLyUnicode_FromStringAndSize, PLyUnicode_FromStringAndSize_t);
 
 
 /*
@@ -19,8 +23,6 @@ static PLyUnicode_FromStringAndSize_t PLyUnicode_FromStringAndSize_p;
 void
 _PG_init(void)
 {
-	/* Asserts verify that typedefs above match original declarations */
-	AssertVariableIsOfType(&PLyUnicode_FromStringAndSize, PLyUnicode_FromStringAndSize_t);
 	PLyUnicode_FromStringAndSize_p = (PLyUnicode_FromStringAndSize_t)
 		load_external_function("$libdir/" PLPYTHON_LIBNAME, "PLyUnicode_FromStringAndSize",
 							   true, NULL);

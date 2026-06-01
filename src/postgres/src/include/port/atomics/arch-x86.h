@@ -7,7 +7,7 @@
  * support for xadd and cmpxchg. Given that the 386 isn't supported anywhere
  * anymore that's not much of a restriction luckily.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES:
@@ -49,8 +49,6 @@
  * nice to support older gcc's and the compare/exchange implementation here is
  * actually more efficient than the * __sync variant.
  */
-#if defined(HAVE_ATOMICS)
-
 #if defined(__GNUC__) || defined(__INTEL_COMPILER)
 
 #define PG_HAVE_ATOMIC_FLAG_SUPPORT
@@ -80,8 +78,6 @@ typedef struct pg_atomic_uint64
 
 #endif /* defined(__GNUC__) || defined(__INTEL_COMPILER) */
 
-#endif /* defined(HAVE_ATOMICS) */
-
 #if !defined(PG_HAVE_SPIN_DELAY)
 /*
  * This sequence is equivalent to the PAUSE instruction ("rep" is
@@ -108,7 +104,7 @@ typedef struct pg_atomic_uint64
  */
 #if defined(__GNUC__) || defined(__INTEL_COMPILER)
 #define PG_HAVE_SPIN_DELAY
-static __inline__ void
+static inline void
 pg_spin_delay_impl(void)
 {
 	__asm__ __volatile__(" rep; nop			\n");
@@ -132,15 +128,13 @@ pg_spin_delay_impl(void)
 #endif /* !defined(PG_HAVE_SPIN_DELAY) */
 
 
-#if defined(HAVE_ATOMICS)
-
 #if defined(__GNUC__) || defined(__INTEL_COMPILER)
 
 #define PG_HAVE_ATOMIC_TEST_SET_FLAG
 static inline bool
 pg_atomic_test_set_flag_impl(volatile pg_atomic_flag *ptr)
 {
-	register char _res = 1;
+	char		_res = 1;
 
 	__asm__ __volatile__(
 		"	lock			\n"
@@ -207,6 +201,8 @@ pg_atomic_compare_exchange_u64_impl(volatile pg_atomic_uint64 *ptr,
 {
 	char	ret;
 
+	AssertPointerAlignment(expected, 8);
+
 	/*
 	 * Perform cmpxchg and use the zero flag which it implicitly sets when
 	 * equal to measure the success.
@@ -245,8 +241,6 @@ pg_atomic_fetch_add_u64_impl(volatile pg_atomic_uint64 *ptr, int64 add_)
  */
 #if defined(__i568__) || defined(__i668__) || /* gcc i586+ */  \
 	(defined(_M_IX86) && _M_IX86 >= 500) || /* msvc i586+ */ \
-	defined(__x86_64__) || defined(__x86_64) || defined(_M_X64) /* gcc, sunpro, msvc */
+	defined(__x86_64__) || defined(__x86_64) || defined(_M_X64) /* gcc, msvc */
 #define PG_HAVE_8BYTE_SINGLE_COPY_ATOMICITY
 #endif /* 8 byte single-copy atomicity */
-
-#endif /* HAVE_ATOMICS */

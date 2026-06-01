@@ -4,7 +4,7 @@
  *	  prototypes for plancat.c.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/plancat.h
@@ -17,16 +17,12 @@
 #include "nodes/pathnodes.h"
 #include "utils/relcache.h"
 
-/* Hook for plugins to get control in get_relation_info() */
-typedef void (*get_relation_info_hook_type) (PlannerInfo *root,
-											 Oid relationObjectId,
-											 bool inhparent,
-											 RelOptInfo *rel);
-extern PGDLLIMPORT get_relation_info_hook_type get_relation_info_hook;
-
-
 extern void get_relation_info(PlannerInfo *root, Oid relationObjectId,
 							  bool inhparent, RelOptInfo *rel);
+
+extern void get_relation_notnullatts(PlannerInfo *root, Relation relation);
+
+extern Bitmapset *find_relation_notnullatts(PlannerInfo *root, Oid relid);
 
 extern List *infer_arbiter_indexes(PlannerInfo *root);
 
@@ -71,6 +67,8 @@ extern void add_function_cost(PlannerInfo *root, Oid funcid, Node *node,
 extern double get_function_rows(PlannerInfo *root, Oid funcid, Node *node);
 
 extern bool has_row_triggers(PlannerInfo *root, Index rti, CmdType event);
+
+extern bool has_transition_tables(PlannerInfo *root, Index rti, CmdType event);
 
 extern bool has_stored_generated_columns(PlannerInfo *root, Index rti);
 

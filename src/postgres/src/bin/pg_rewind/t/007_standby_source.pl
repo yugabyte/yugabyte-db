@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 #
 # Test using a standby server as the source.
@@ -25,7 +25,7 @@
 # as is.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Utils;
 use Test::More;
 
@@ -83,11 +83,10 @@ $node_b->wait_for_catchup('node_c', 'write', $lsn);
 # A (primary) <--- B (standby)      C (primary)
 
 $node_c->promote;
-$node_c->safe_psql('postgres', "checkpoint");
 
 
 # Insert a row in A. This causes A/B and C to have "diverged", so that it's
-# no longer possible to just apply the standy's logs over primary directory
+# no longer possible to just apply the standby's logs over primary directory
 # - you need to rewind.
 $node_a->safe_psql('postgres',
 	"INSERT INTO tbl1 VALUES ('in A, after C was promoted')");
@@ -125,10 +124,12 @@ copy(
 	# recovery configuration automatically.
 	command_ok(
 		[
-			'pg_rewind',                      "--debug",
-			"--source-server",                $node_b->connstr('postgres'),
-			"--target-pgdata=$node_c_pgdata", "--no-sync",
-			"--write-recovery-conf"
+			'pg_rewind',
+			'--debug',
+			'--source-server' => $node_b->connstr('postgres'),
+			'--target-pgdata' => $node_c_pgdata,
+			'--no-sync',
+			'--write-recovery-conf',
 		],
 		'pg_rewind remote');
 }
@@ -160,7 +161,7 @@ in A, after C was promoted
 $node_a->safe_psql('postgres',
 	"INSERT INTO tbl1 values ('in A, after rewind')");
 
-$node_b->wait_for_catchup('node_c', 'replay', $node_a->lsn('write'));
+$node_b->wait_for_replay_catchup('node_c', $node_a);
 
 check_query(
 	'SELECT * FROM tbl1',

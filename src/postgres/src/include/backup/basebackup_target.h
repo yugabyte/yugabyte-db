@@ -3,7 +3,7 @@
  * basebackup_target.h
  *	  Extensibility framework for adding base backup targets.
  *
- * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * src/include/backup/basebackup_target.h
  *
@@ -26,7 +26,7 @@ typedef struct BaseBackupTargetHandle BaseBackupTargetHandle;
  * and either throws an error (if the target detail is not valid or some other
  * problem, such as a permissions issue, is detected) or returns a pointer to
  * the data that will be needed to create a bbsink implementing that target.
- * The second argumnt will be NULL if the TARGET_DETAIL option to the
+ * The second argument will be NULL if the TARGET_DETAIL option to the
  * BASE_BACKUP command was not specified.
  *
  * 'get_sink' is a function that creates the bbsink. The first argument

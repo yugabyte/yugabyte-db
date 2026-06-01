@@ -102,6 +102,10 @@ DETAIL:  Role names starting with "pg_" are reserved.
 CREATE ROLE "pg_abcdef"; -- error
 ERROR:  role name "pg_abcdef" is reserved
 DETAIL:  Role names starting with "pg_" are reserved.
+CREATE ROLE "invalid
+rolename"; -- error
+ERROR:  role name "invalid
+rolename" contains a newline or carriage return character
 CREATE ROLE regress_testrol0 SUPERUSER LOGIN;
 CREATE ROLE regress_testrolx SUPERUSER LOGIN;
 CREATE ROLE regress_testrol2 SUPERUSER;
@@ -1077,7 +1081,8 @@ SHOW session_preload_libraries;
 SET SESSION AUTHORIZATION regress_role_nopriv;
 -- fails with role not member of pg_read_all_settings
 SHOW session_preload_libraries;
-ERROR:  must be superuser or have privileges of pg_read_all_settings to examine "session_preload_libraries"
+ERROR:  permission denied to examine "session_preload_libraries"
+DETAIL:  Only roles with privileges of the "pg_read_all_settings" role may examine this parameter.
 RESET SESSION AUTHORIZATION;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;

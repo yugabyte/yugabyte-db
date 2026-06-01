@@ -2,7 +2,7 @@
  * llvmjit.h
  *	  LLVM JIT provider.
  *
- * Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * src/include/jit/llvmjit.h
  *
@@ -44,6 +44,9 @@ typedef struct LLVMJitContext
 {
 	JitContext	base;
 
+	/* used to ensure cleanup of context */
+	ResourceOwner resowner;
+
 	/* number of modules created */
 	size_t		module_generation;
 
@@ -67,13 +70,11 @@ typedef struct LLVMJitContext
 	List	   *handles;
 } LLVMJitContext;
 
-/* llvm module containing information about types */
-extern PGDLLIMPORT LLVMModuleRef llvm_types_module;
-
 /* type and struct definitions */
 extern PGDLLIMPORT LLVMTypeRef TypeParamBool;
 extern PGDLLIMPORT LLVMTypeRef TypePGFunction;
 extern PGDLLIMPORT LLVMTypeRef TypeSizeT;
+extern PGDLLIMPORT LLVMTypeRef TypeDatum;
 extern PGDLLIMPORT LLVMTypeRef TypeStorageBool;
 
 extern PGDLLIMPORT LLVMTypeRef StructNullableDatum;
@@ -113,7 +114,7 @@ extern void llvm_split_symbol_name(const char *name, char **modname, char **func
 extern LLVMTypeRef llvm_pg_var_type(const char *varname);
 extern LLVMTypeRef llvm_pg_var_func_type(const char *varname);
 extern LLVMValueRef llvm_pg_func(LLVMModuleRef mod, const char *funcname);
-extern void llvm_copy_attributes(LLVMValueRef from, LLVMValueRef to);
+extern void llvm_copy_attributes(LLVMValueRef v_from, LLVMValueRef v_to);
 extern LLVMValueRef llvm_function_reference(LLVMJitContext *context,
 						LLVMBuilderRef builder,
 						LLVMModuleRef mod,
@@ -138,27 +139,10 @@ extern LLVMValueRef slot_compile_deform(struct LLVMJitContext *context, TupleDes
  * Error handling related functions.
  ****************************************************************************
  */
-#if defined(HAVE_DECL_LLVMGETHOSTCPUNAME) && !HAVE_DECL_LLVMGETHOSTCPUNAME
-/** Get the host CPU as a string. The result needs to be disposed with
-  LLVMDisposeMessage. */
-extern char *LLVMGetHostCPUName(void);
-#endif
-
-#if defined(HAVE_DECL_LLVMGETHOSTCPUFEATURES) && !HAVE_DECL_LLVMGETHOSTCPUFEATURES
-/** Get the host CPU features as a string. The result needs to be disposed
-  with LLVMDisposeMessage. */
-extern char *LLVMGetHostCPUFeatures(void);
-#endif
-
-extern unsigned LLVMGetAttributeCountAtIndexPG(LLVMValueRef F, uint32 Idx);
 extern LLVMTypeRef LLVMGetFunctionReturnType(LLVMValueRef r);
 extern LLVMTypeRef LLVMGetFunctionType(LLVMValueRef r);
 #ifdef USE_LLVM_BACKPORT_SECTION_MEMORY_MANAGER
 extern LLVMOrcObjectLayerRef LLVMOrcCreateRTDyldObjectLinkingLayerWithSafeSectionMemoryManager(LLVMOrcExecutionSessionRef ES);
-#endif
-
-#if LLVM_MAJOR_VERSION < 8
-extern LLVMTypeRef LLVMGlobalGetValueType(LLVMValueRef g);
 #endif
 
 #ifdef __cplusplus

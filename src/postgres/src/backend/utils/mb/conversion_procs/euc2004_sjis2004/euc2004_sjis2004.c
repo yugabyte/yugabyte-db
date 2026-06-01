@@ -2,7 +2,7 @@
  *
  *	  EUC_JIS_2004, SHIFT_JIS_2004
  *
- * Copyright (c) 2007-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/mb/conversion_procs/euc2004_sjis2004/euc2004_sjis2004.c
@@ -14,7 +14,10 @@
 #include "fmgr.h"
 #include "mb/pg_wchar.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "euc2004_sjis2004",
+					.version = PG_VERSION
+);
 
 PG_FUNCTION_INFO_V1(euc_jis_2004_to_shift_jis_2004);
 PG_FUNCTION_INFO_V1(shift_jis_2004_to_euc_jis_2004);

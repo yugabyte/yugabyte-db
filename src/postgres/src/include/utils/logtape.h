@@ -5,7 +5,7 @@
  *
  * See logtape.c for explanations.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/logtape.h
@@ -51,7 +51,7 @@ typedef struct TapeShare
 	 * Currently, all the leader process needs is the location of the
 	 * materialized tape's first block.
 	 */
-	long		firstblocknumber;
+	int64		firstblocknumber;
 } TapeShare;
 
 /*
@@ -66,12 +66,12 @@ extern LogicalTape *LogicalTapeCreate(LogicalTapeSet *lts);
 extern LogicalTape *LogicalTapeImport(LogicalTapeSet *lts, int worker, TapeShare *shared);
 extern void LogicalTapeSetForgetFreeSpace(LogicalTapeSet *lts);
 extern size_t LogicalTapeRead(LogicalTape *lt, void *ptr, size_t size);
-extern void LogicalTapeWrite(LogicalTape *lt, void *ptr, size_t size);
+extern void LogicalTapeWrite(LogicalTape *lt, const void *ptr, size_t size);
 extern void LogicalTapeRewindForRead(LogicalTape *lt, size_t buffer_size);
 extern void LogicalTapeFreeze(LogicalTape *lt, TapeShare *share);
 extern size_t LogicalTapeBackspace(LogicalTape *lt, size_t size);
-extern void LogicalTapeSeek(LogicalTape *lt, long blocknum, int offset);
-extern void LogicalTapeTell(LogicalTape *lt, long *blocknum, int *offset);
-extern long LogicalTapeSetBlocks(LogicalTapeSet *lts);
+extern void LogicalTapeSeek(LogicalTape *lt, int64 blocknum, int offset);
+extern void LogicalTapeTell(LogicalTape *lt, int64 *blocknum, int *offset);
+extern int64 LogicalTapeSetBlocks(LogicalTapeSet *lts);
 
 #endif							/* LOGTAPE_H */

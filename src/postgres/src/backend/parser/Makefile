@@ -23,6 +23,8 @@ OBJS = \
 	parse_enr.o \
 	parse_expr.o \
 	parse_func.o \
+	parse_graphtable.o \
+	parse_jsontable.o \
 	parse_merge.o \
 	parse_node.o \
 	parse_oper.o \
@@ -58,14 +60,13 @@ gram.c: BISON_CHECK_CMD = $(PERL) $(srcdir)/check_keywords.pl $< $(top_srcdir)/s
 
 scan.c: FLEXFLAGS = -CF -p -p
 scan.c: FLEX_NO_BACKUP=yes
-scan.c: FLEX_FIX_WARNING=yes
 
 
 # Force these dependencies to be known even without dependency info built:
 gram.o scan.o parser.o: gram.h
 
-
-# gram.c, gram.h, and scan.c are in the distribution tarball, so they
-# are not cleaned here.
-clean distclean maintainer-clean:
+clean:
+	rm -f gram.c \
+	      gram.h \
+	      scan.c
 	rm -f lex.backup

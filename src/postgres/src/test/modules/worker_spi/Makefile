@@ -6,13 +6,11 @@ EXTENSION = worker_spi
 DATA = worker_spi--1.0.sql
 PGFILEDESC = "worker_spi - background worker example"
 
-REGRESS = worker_spi
+EXTRA_INSTALL = src/test/modules/injection_points
 
-# enable our module in shared_preload_libraries for dynamic bgworkers
-REGRESS_OPTS = --temp-config $(top_srcdir)/src/test/modules/worker_spi/dynamic.conf
+export enable_injection_points
 
-# Disable installcheck to ensure we cover dynamic bgworkers.
-NO_INSTALLCHECK = 1
+TAP_TESTS = 1
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

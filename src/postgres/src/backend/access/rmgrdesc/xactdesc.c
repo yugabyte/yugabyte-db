@@ -3,7 +3,7 @@
  * xactdesc.c
  *	  rmgr descriptor routines for access/transam/xact.c
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -25,7 +25,7 @@
  * Parse the WAL format of an xact commit and abort records into an easier to
  * understand format.
  *
- * This routines are in xactdesc.c because they're accessed in backend (when
+ * These routines are in xactdesc.c because they're accessed in backend (when
  * replaying WAL) and frontend (pg_waldump) code. This file is the only xact
  * specific one shared between both. They're complicated enough that
  * duplication would be bothersome.
@@ -73,15 +73,15 @@ ParseCommitRecord(uint8 info, xl_xact_commit *xlrec, xl_xact_parsed_commit *pars
 		data += parsed->nsubxacts * sizeof(TransactionId);
 	}
 
-	if (parsed->xinfo & XACT_XINFO_HAS_RELFILENODES)
+	if (parsed->xinfo & XACT_XINFO_HAS_RELFILELOCATORS)
 	{
-		xl_xact_relfilenodes *xl_relfilenodes = (xl_xact_relfilenodes *) data;
+		xl_xact_relfilelocators *xl_rellocators = (xl_xact_relfilelocators *) data;
 
-		parsed->nrels = xl_relfilenodes->nrels;
-		parsed->xnodes = xl_relfilenodes->xnodes;
+		parsed->nrels = xl_rellocators->nrels;
+		parsed->xlocators = xl_rellocators->xlocators;
 
-		data += MinSizeOfXactRelfilenodes;
-		data += xl_relfilenodes->nrels * sizeof(RelFileNode);
+		data += MinSizeOfXactRelfileLocators;
+		data += xl_rellocators->nrels * sizeof(RelFileLocator);
 	}
 
 	if (parsed->xinfo & XACT_XINFO_HAS_DROPPED_STATS)
@@ -179,15 +179,15 @@ ParseAbortRecord(uint8 info, xl_xact_abort *xlrec, xl_xact_parsed_abort *parsed)
 		data += parsed->nsubxacts * sizeof(TransactionId);
 	}
 
-	if (parsed->xinfo & XACT_XINFO_HAS_RELFILENODES)
+	if (parsed->xinfo & XACT_XINFO_HAS_RELFILELOCATORS)
 	{
-		xl_xact_relfilenodes *xl_relfilenodes = (xl_xact_relfilenodes *) data;
+		xl_xact_relfilelocators *xl_rellocator = (xl_xact_relfilelocators *) data;
 
-		parsed->nrels = xl_relfilenodes->nrels;
-		parsed->xnodes = xl_relfilenodes->xnodes;
+		parsed->nrels = xl_rellocator->nrels;
+		parsed->xlocators = xl_rellocator->xlocators;
 
-		data += MinSizeOfXactRelfilenodes;
-		data += xl_relfilenodes->nrels * sizeof(RelFileNode);
+		data += MinSizeOfXactRelfileLocators;
+		data += xl_rellocator->nrels * sizeof(RelFileLocator);
 	}
 
 	if (parsed->xinfo & XACT_XINFO_HAS_DROPPED_STATS)
@@ -252,6 +252,8 @@ ParsePrepareRecord(uint8 info, xl_xact_prepare *xlrec, xl_xact_parsed_prepare *p
 	parsed->nsubxacts = xlrec->nsubxacts;
 	parsed->nrels = xlrec->ncommitrels;
 	parsed->nabortrels = xlrec->nabortrels;
+	parsed->nstats = xlrec->ncommitstats;
+	parsed->nabortstats = xlrec->nabortstats;
 	parsed->nmsgs = xlrec->ninvalmsgs;
 
 	strncpy(parsed->twophase_gid, bufptr, xlrec->gidlen);
@@ -260,11 +262,11 @@ ParsePrepareRecord(uint8 info, xl_xact_prepare *xlrec, xl_xact_parsed_prepare *p
 	parsed->subxacts = (TransactionId *) bufptr;
 	bufptr += MAXALIGN(xlrec->nsubxacts * sizeof(TransactionId));
 
-	parsed->xnodes = (RelFileNode *) bufptr;
-	bufptr += MAXALIGN(xlrec->ncommitrels * sizeof(RelFileNode));
+	parsed->xlocators = (RelFileLocator *) bufptr;
+	bufptr += MAXALIGN(xlrec->ncommitrels * sizeof(RelFileLocator));
 
-	parsed->abortnodes = (RelFileNode *) bufptr;
-	bufptr += MAXALIGN(xlrec->nabortrels * sizeof(RelFileNode));
+	parsed->abortlocators = (RelFileLocator *) bufptr;
+	bufptr += MAXALIGN(xlrec->nabortrels * sizeof(RelFileLocator));
 
 	parsed->stats = (xl_xact_stats_item *) bufptr;
 	bufptr += MAXALIGN(xlrec->ncommitstats * sizeof(xl_xact_stats_item));
@@ -278,7 +280,7 @@ ParsePrepareRecord(uint8 info, xl_xact_prepare *xlrec, xl_xact_parsed_prepare *p
 
 static void
 xact_desc_relations(StringInfo buf, char *label, int nrels,
-					RelFileNode *xnodes)
+					RelFileLocator *xlocators)
 {
 	int			i;
 
@@ -287,10 +289,8 @@ xact_desc_relations(StringInfo buf, char *label, int nrels,
 		appendStringInfo(buf, "; %s:", label);
 		for (i = 0; i < nrels; i++)
 		{
-			char	   *path = relpathperm(xnodes[i], MAIN_FORKNUM);
-
-			appendStringInfo(buf, " %s", path);
-			pfree(path);
+			appendStringInfo(buf, " %s",
+							 relpathperm(xlocators[i], MAIN_FORKNUM).str);
 		}
 	}
 }
@@ -319,16 +319,19 @@ xact_desc_stats(StringInfo buf, const char *label,
 		appendStringInfo(buf, "; %sdropped stats:", label);
 		for (i = 0; i < ndropped; i++)
 		{
-			appendStringInfo(buf, " %d/%u/%u",
+			uint64		objid =
+				((uint64) dropped_stats[i].objid_hi) << 32 | dropped_stats[i].objid_lo;
+
+			appendStringInfo(buf, " %d/%u/%" PRIu64,
 							 dropped_stats[i].kind,
 							 dropped_stats[i].dboid,
-							 dropped_stats[i].objoid);
+							 objid);
 		}
 	}
 }
 
 static void
-xact_desc_commit(StringInfo buf, uint8 info, xl_xact_commit *xlrec, RepOriginId origin_id)
+xact_desc_commit(StringInfo buf, uint8 info, xl_xact_commit *xlrec, ReplOriginId origin_id)
 {
 	xl_xact_parsed_commit parsed;
 
@@ -340,7 +343,7 @@ xact_desc_commit(StringInfo buf, uint8 info, xl_xact_commit *xlrec, RepOriginId 
 
 	appendStringInfoString(buf, timestamptz_to_str(xlrec->xact_time));
 
-	xact_desc_relations(buf, "rels", parsed.nrels, parsed.xnodes);
+	xact_desc_relations(buf, "rels", parsed.nrels, parsed.xlocators);
 	xact_desc_subxacts(buf, parsed.nsubxacts, parsed.subxacts);
 	xact_desc_stats(buf, "", parsed.nstats, parsed.stats);
 
@@ -356,7 +359,7 @@ xact_desc_commit(StringInfo buf, uint8 info, xl_xact_commit *xlrec, RepOriginId 
 
 	if (parsed.xinfo & XACT_XINFO_HAS_ORIGIN)
 	{
-		appendStringInfo(buf, "; origin: node %u, lsn %X/%X, at %s",
+		appendStringInfo(buf, "; origin: node %u, lsn %X/%08X, at %s",
 						 origin_id,
 						 LSN_FORMAT_ARGS(parsed.origin_lsn),
 						 timestamptz_to_str(parsed.origin_timestamp));
@@ -364,7 +367,7 @@ xact_desc_commit(StringInfo buf, uint8 info, xl_xact_commit *xlrec, RepOriginId 
 }
 
 static void
-xact_desc_abort(StringInfo buf, uint8 info, xl_xact_abort *xlrec, RepOriginId origin_id)
+xact_desc_abort(StringInfo buf, uint8 info, xl_xact_abort *xlrec, ReplOriginId origin_id)
 {
 	xl_xact_parsed_abort parsed;
 
@@ -376,12 +379,12 @@ xact_desc_abort(StringInfo buf, uint8 info, xl_xact_abort *xlrec, RepOriginId or
 
 	appendStringInfoString(buf, timestamptz_to_str(xlrec->xact_time));
 
-	xact_desc_relations(buf, "rels", parsed.nrels, parsed.xnodes);
+	xact_desc_relations(buf, "rels", parsed.nrels, parsed.xlocators);
 	xact_desc_subxacts(buf, parsed.nsubxacts, parsed.subxacts);
 
 	if (parsed.xinfo & XACT_XINFO_HAS_ORIGIN)
 	{
-		appendStringInfo(buf, "; origin: node %u, lsn %X/%X, at %s",
+		appendStringInfo(buf, "; origin: node %u, lsn %X/%08X, at %s",
 						 origin_id,
 						 LSN_FORMAT_ARGS(parsed.origin_lsn),
 						 timestamptz_to_str(parsed.origin_timestamp));
@@ -391,7 +394,7 @@ xact_desc_abort(StringInfo buf, uint8 info, xl_xact_abort *xlrec, RepOriginId or
 }
 
 static void
-xact_desc_prepare(StringInfo buf, uint8 info, xl_xact_prepare *xlrec, RepOriginId origin_id)
+xact_desc_prepare(StringInfo buf, uint8 info, xl_xact_prepare *xlrec, ReplOriginId origin_id)
 {
 	xl_xact_parsed_prepare parsed;
 
@@ -400,9 +403,9 @@ xact_desc_prepare(StringInfo buf, uint8 info, xl_xact_prepare *xlrec, RepOriginI
 	appendStringInfo(buf, "gid %s: ", parsed.twophase_gid);
 	appendStringInfoString(buf, timestamptz_to_str(parsed.xact_time));
 
-	xact_desc_relations(buf, "rels(commit)", parsed.nrels, parsed.xnodes);
+	xact_desc_relations(buf, "rels(commit)", parsed.nrels, parsed.xlocators);
 	xact_desc_relations(buf, "rels(abort)", parsed.nabortrels,
-						parsed.abortnodes);
+						parsed.abortlocators);
 	xact_desc_stats(buf, "commit ", parsed.nstats, parsed.stats);
 	xact_desc_stats(buf, "abort ", parsed.nabortstats, parsed.abortstats);
 	xact_desc_subxacts(buf, parsed.nsubxacts, parsed.subxacts);
@@ -414,8 +417,8 @@ xact_desc_prepare(StringInfo buf, uint8 info, xl_xact_prepare *xlrec, RepOriginI
 	 * Check if the replication origin has been set in this record in the same
 	 * way as PrepareRedoAdd().
 	 */
-	if (origin_id != InvalidRepOriginId)
-		appendStringInfo(buf, "; origin: node %u, lsn %X/%X, at %s",
+	if (origin_id != InvalidReplOriginId)
+		appendStringInfo(buf, "; origin: node %u, lsn %X/%08X, at %s",
 						 origin_id,
 						 LSN_FORMAT_ARGS(parsed.origin_lsn),
 						 timestamptz_to_str(parsed.origin_timestamp));

@@ -10,7 +10,7 @@
  * This file will need work if we ever want it to.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -31,6 +31,7 @@ static YYSTYPE lookahead_yylval;	/* yylval for lookahead token */
 static YYLTYPE lookahead_yylloc;	/* yylloc for lookahead token */
 static char *lookahead_yytext;	/* start current token */
 
+static int	base_yylex_location(void);
 static bool check_uescapechar(unsigned char escape);
 static bool ecpg_isspace(char ch);
 
@@ -71,16 +72,18 @@ filtered_base_yylex(void)
 		have_lookahead = false;
 	}
 	else
-		cur_token = base_yylex();
+		cur_token = base_yylex_location();
 
 	/*
 	 * If this token isn't one that requires lookahead, just return it.
 	 */
 	switch (cur_token)
 	{
+		case FORMAT:
 		case NOT:
 		case NULLS_P:
 		case WITH:
+		case WITHOUT:
 		case UIDENT:
 		case USCONST:
 			break;
@@ -94,7 +97,7 @@ filtered_base_yylex(void)
 	cur_yytext = base_yytext;
 
 	/* Get next token, saving outputs into lookahead variables */
-	next_token = base_yylex();
+	next_token = base_yylex_location();
 
 	lookahead_token = next_token;
 	lookahead_yylval = base_yylval;
@@ -110,6 +113,16 @@ filtered_base_yylex(void)
 	/* Replace cur_token if needed, based on lookahead */
 	switch (cur_token)
 	{
+		case FORMAT:
+			/* Replace FORMAT by FORMAT_LA if it's followed by JSON */
+			switch (next_token)
+			{
+				case JSON:
+					cur_token = FORMAT_LA;
+					break;
+			}
+			break;
+
 		case NOT:
 			/* Replace NOT by NOT_LA if it's followed by BETWEEN, IN, etc */
 			switch (next_token)
@@ -145,6 +158,16 @@ filtered_base_yylex(void)
 					break;
 			}
 			break;
+
+		case WITHOUT:
+			/* Replace WITHOUT by WITHOUT_LA if it's followed by TIME */
+			switch (next_token)
+			{
+				case TIME:
+					cur_token = WITHOUT_LA;
+					break;
+			}
+			break;
 		case UIDENT:
 		case USCONST:
 			/* Look ahead for UESCAPE */
@@ -162,7 +185,7 @@ filtered_base_yylex(void)
 				cur_yytext = base_yytext;
 
 				/* Get third token */
-				next_token = base_yylex();
+				next_token = base_yylex_location();
 
 				if (next_token != SCONST)
 					mmerror(PARSE_ERROR, ET_ERROR, "UESCAPE must be followed by a simple string literal");
@@ -180,7 +203,10 @@ filtered_base_yylex(void)
 				base_yytext = cur_yytext;
 
 				/* Combine 3 tokens into 1 */
-				base_yylval.str = psprintf("%s UESCAPE %s", base_yylval.str, escstr);
+				base_yylval.str = make3_str(base_yylval.str,
+											" UESCAPE ",
+											escstr);
+				base_yylloc = loc_strdup(base_yylval.str);
 
 				/* Clear have_lookahead, thereby consuming all three tokens */
 				have_lookahead = false;
@@ -194,6 +220,61 @@ filtered_base_yylex(void)
 	}
 
 	return cur_token;
+}
+
+/*
+ * Call base_yylex() and fill in base_yylloc.
+ *
+ * pgc.l does not worry about setting yylloc, and given what we want for
+ * that, trying to set it there would be pretty inconvenient.  What we
+ * want is: if the returned token has type <str>, then duplicate its
+ * string value as yylloc; otherwise, make a downcased copy of yytext.
+ * The downcasing is ASCII-only because all that we care about there
+ * is producing uniformly-cased output of keywords.  (That's mostly
+ * cosmetic, but there are places in ecpglib that expect to receive
+ * downcased keywords, plus it keeps us regression-test-compatible
+ * with the pre-v18 implementation of ecpg.)
+ */
+static int
+base_yylex_location(void)
+{
+	int			token = base_yylex();
+
+	switch (token)
+	{
+			/* List a token here if pgc.l assigns to base_yylval.str for it */
+		case Op:
+		case CSTRING:
+		case CPP_LINE:
+		case CVARIABLE:
+		case BCONST:
+		case SCONST:
+		case USCONST:
+		case XCONST:
+		case FCONST:
+		case IDENT:
+		case UIDENT:
+		case IP:
+			/* Duplicate the <str> value */
+			base_yylloc = loc_strdup(base_yylval.str);
+			break;
+		default:
+			/* Else just use the input, i.e., yytext */
+			{
+				char	   *tmp;
+
+				tmp = loc_strdup(base_yytext);
+				/* Apply an ASCII-only downcasing */
+				for (unsigned char *ptr = (unsigned char *) tmp; *ptr; ptr++)
+				{
+					if (*ptr >= 'A' && *ptr <= 'Z')
+						*ptr += 'a' - 'A';
+				}
+				base_yylloc = tmp;
+				break;
+			}
+	}
+	return token;
 }
 
 /*

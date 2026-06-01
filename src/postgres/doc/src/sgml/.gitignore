@@ -6,7 +6,6 @@
 /man7/
 /man-stamp
 # Other popular build targets
-/INSTALL
 /postgres-US.pdf
 /postgres-A4.pdf
 /postgres.html
@@ -16,10 +15,10 @@
 /features-unsupported.sgml
 /errcodes-table.sgml
 /keywords-table.sgml
+/targets-meson.sgml
 /version.sgml
+/wait_event_types.sgml
 # Assorted byproducts from building the above
-/postgres.xml
-/INSTALL.html
-/INSTALL.xml
+/postgres-full.xml
 /postgres-US.fo
 /postgres-A4.fo

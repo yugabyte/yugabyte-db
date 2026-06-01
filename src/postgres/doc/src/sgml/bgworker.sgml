@@ -59,11 +59,11 @@ typedef struct BackgroundWorker
     int         bgw_flags;
     BgWorkerStartTime bgw_start_time;
     int         bgw_restart_time;       /* in seconds, or BGW_NEVER_RESTART */
-    char        bgw_library_name[BGW_MAXLEN];
+    char        bgw_library_name[MAXPGPATH];
     char        bgw_function_name[BGW_MAXLEN];
     Datum       bgw_main_arg;
     char        bgw_extra[BGW_EXTRALEN];
-    int         bgw_notify_pid;
+    pid_t       bgw_notify_pid;
 } BackgroundWorker;
 </programlisting>
   </para>
@@ -108,6 +108,29 @@ typedef struct BackgroundWorker
      </listitem>
     </varlistentry>
 
+    <varlistentry>
+     <term><literal>BGWORKER_INTERRUPTIBLE</literal></term>
+     <listitem>
+     <para>
+      <indexterm><primary>BGWORKER_INTERRUPTIBLE</primary></indexterm>
+      Requests termination of the background worker when its connected database is
+      dropped, renamed, moved to a different tablespace, or used as a template for
+      <command>CREATE DATABASE</command>. Specifically, the postmaster sends a
+      termination signal when any of these commands affect the worker's database:
+      <itemizedlist>
+       <listitem><para><command>DROP DATABASE</command></para></listitem>
+       <listitem><para><command>ALTER DATABASE RENAME
+       TO</command></para></listitem>
+       <listitem><para><command>ALTER DATABASE SET
+       TABLESPACE</command></para></listitem>
+       <listitem><para><command>CREATE DATABASE</command></para></listitem>
+      </itemizedlist>
+      Requires both <literal>BGWORKER_SHMEM_ACCESS</literal> and
+      <literal>BGWORKER_BACKEND_DATABASE_CONNECTION</literal>.
+     </para>
+     </listitem>
+    </varlistentry>
+
    </variablelist>
 
   </para>
@@ -141,14 +164,15 @@ typedef struct BackgroundWorker
    which the initial entry point for the background worker should be sought.
    The named library will be dynamically loaded by the worker process and
    <structfield>bgw_function_name</structfield> will be used to identify the
-   function to be called.  If loading a function from the core code, this must
-   be set to "postgres".
+   function to be called.  If calling a function in the core code, this must
+   be set to <literal>"postgres"</literal>.
   </para>
 
   <para>
-   <structfield>bgw_function_name</structfield> is the name of a function in
-   a dynamically loaded library which should be used as the initial entry point
-   for a new background worker.
+   <structfield>bgw_function_name</structfield> is the name of the function
+   to use as the initial entry point for the new background worker.  If
+   this function is in a dynamically loaded library, it must be marked
+   <literal>PGDLLEXPORT</literal> (and not <literal>static</literal>).
   </para>
 
   <para>
@@ -200,17 +224,30 @@ typedef struct BackgroundWorker
    during <command>initdb</command>. If <literal>BGWORKER_BYPASS_ALLOWCONN</literal>
    is specified as <varname>flags</varname> it is possible to bypass the restriction
    to connect to databases not allowing user connections.
+   If <literal>BGWORKER_BYPASS_ROLELOGINCHECK</literal> is specified as
+   <varname>flags</varname> it is possible to bypass the login check for the
+   role used to connect to databases.
    A background worker can only call one of these two functions, and only
    once.  It is not possible to switch databases.
   </para>
 
   <para>
+   A well-behaved background worker must react promptly to standard signals
+   that the postmaster uses to control its child processes.
    Signals are initially blocked when control reaches the
    background worker's main function, and must be unblocked by it; this is to
    allow the process to customize its signal handlers, if necessary.
    Signals can be unblocked in the new process by calling
    <function>BackgroundWorkerUnblockSignals</function> and blocked by calling
    <function>BackgroundWorkerBlockSignals</function>.
+  </para>
+
+  <para>
+   The default signal handlers merely set interrupt flags
+   that are processed later by <function>CHECK_FOR_INTERRUPTS()</function>.
+   <function>CHECK_FOR_INTERRUPTS()</function> should be called in any
+   long-running loop to ensure that the background worker doesn't prevent the
+   system from shutting down in a timely fashion.
   </para>
 
   <para>

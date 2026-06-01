@@ -47,6 +47,10 @@ static void YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
 									  TupleDesc tupdesc);
 
 /*
+ * YB_TODO_PG19MERGE:
+ * functions in this file need to be reworked (yb_is_omitted, ReorderBufferTupleBuf)
+ */
+/*
  * Take every record received from the YB VirtualWAL and perform the actions
  * required to decode it using the output plugin already setup in the logical
  * decoding context.
@@ -143,6 +147,7 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 static void
 YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
+#if 0
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
 	HeapTuple	tuple;
@@ -186,6 +191,7 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 */
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
+#endif
 }
 
 /*
@@ -194,6 +200,7 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
+#if 0
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
 	Relation	relation;
@@ -364,6 +371,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 
 	RelationClose(relation);
+#endif
 }
 
 /*
@@ -372,6 +380,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
+#if 0
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
 	HeapTuple	tuple;
@@ -399,6 +408,7 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.clear_toast_afterwards = true;
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
+#endif
 }
 
 /*
@@ -424,16 +434,16 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 * subtransactions.
 		 */
 		elog(DEBUG1,
-			 "YBDecodeCommit: Ignoring txn %d with commit_lsn = %lu as "
-			 "yb_start_decoding_at = %lu.",
+			 "YBDecodeCommit: Ignoring txn %d with commit_lsn = " UINT64_FORMAT " as "
+			 "yb_start_decoding_at = " UINT64_FORMAT ".",
 			 yb_record->xid, commit_lsn, ctx->yb_start_decoding_at);
 		ReorderBufferForget(ctx->reorder, yb_record->xid, commit_lsn);
 		return;
 	}
 
 	elog(DEBUG1,
-		 "Going to stream transaction: %d with commit_lsn: %lu and "
-		 "end_lsn: %lu",
+		 "Going to stream transaction: %d with commit_lsn: " UINT64_FORMAT " and "
+		 "end_lsn: " UINT64_FORMAT "",
 		 yb_record->xid, commit_lsn, end_lsn);
 
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
@@ -441,8 +451,8 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 						origin_lsn);
 
 	elog(DEBUG1,
-		 "Successfully streamed transaction: %d with commit_lsn: %lu and "
-		 "end_lsn: %lu",
+		 "Successfully streamed transaction: %d with commit_lsn: " UINT64_FORMAT " and "
+		 "end_lsn: " UINT64_FORMAT "",
 		 yb_record->xid, commit_lsn, end_lsn);
 }
 
@@ -498,7 +508,7 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 	}
 
 	tuple = heap_form_tuple(tupdesc, datums, is_nulls);
-	if (log_min_messages <= DEBUG2)
+	if (log_min_messages[MyBackendType] <= DEBUG2)
 	{
 		const char *tuple_string = YbHeapTupleToStringWithIsOmitted(tuple,
 																	tupdesc,
@@ -530,10 +540,10 @@ YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
 
 	for (attr_idx = 0; attr_idx < tupdesc->natts; attr_idx++)
 	{
-		if (tupdesc->attrs[attr_idx].attisdropped)
+		if (TupleDescAttr(tupdesc, attr_idx)->attisdropped)
 			continue;
 
-		if (!strcmp(tupdesc->attrs[attr_idx].attname.data, column_name))
+		if (!strcmp(TupleDescAttr(tupdesc, attr_idx)->attname.data, column_name))
 			return attr_idx;
 	}
 
@@ -618,16 +628,16 @@ YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
 						  TupleDesc tupdesc)
 {
 	/* Log tuple descriptor for DEBUG2 onwards. */
-	if (log_min_messages <= DEBUG2)
+	if (log_min_messages[MyBackendType] <= DEBUG2)
 	{
 		elog(DEBUG2, "Printing tuple descriptor for relation %d\n",
 			 yb_record->table_oid);
 		for (int attr_idx = 0; attr_idx < tupdesc->natts; attr_idx++)
 		{
 			elog(DEBUG2, "Col %d: name = %s, dropped = %d, type = %d\n",
-				 attr_idx, tupdesc->attrs[attr_idx].attname.data,
-				 tupdesc->attrs[attr_idx].attisdropped,
-				 tupdesc->attrs[attr_idx].atttypid);
+				 attr_idx, TupleDescAttr(tupdesc, attr_idx)->attname.data,
+				 TupleDescAttr(tupdesc, attr_idx)->attisdropped,
+				 TupleDescAttr(tupdesc, attr_idx)->atttypid);
 		}
 	}
 }

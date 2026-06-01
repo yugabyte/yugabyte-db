@@ -87,9 +87,9 @@ gbt_num_compress(GISTENTRY *entry, const gbtree_ninfo *tinfo)
 
 		Assert(tinfo->indexsize >= 2 * tinfo->size);
 
-		memcpy((void *) &r[0], leaf, tinfo->size);
-		memcpy((void *) &r[tinfo->size], leaf, tinfo->size);
-		retval = palloc(sizeof(GISTENTRY));
+		memcpy(&r[0], leaf, tinfo->size);
+		memcpy(&r[tinfo->size], leaf, tinfo->size);
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(r), entry->rel, entry->page,
 					  entry->offset, false);
 	}
@@ -119,44 +119,44 @@ gbt_num_fetch(GISTENTRY *entry, const gbtree_ninfo *tinfo)
 	switch (tinfo->t)
 	{
 		case gbt_t_bool:
-			datum = BoolGetDatum(*(bool *) entry->key);
+			datum = BoolGetDatum(*(bool *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_int2:
-			datum = Int16GetDatum(*(int16 *) entry->key);
+			datum = Int16GetDatum(*(int16 *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_int4:
-			datum = Int32GetDatum(*(int32 *) entry->key);
+			datum = Int32GetDatum(*(int32 *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_int8:
-			datum = Int64GetDatum(*(int64 *) entry->key);
+			datum = Int64GetDatum(*(int64 *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_oid:
 		case gbt_t_enum:
-			datum = ObjectIdGetDatum(*(Oid *) entry->key);
+			datum = ObjectIdGetDatum(*(Oid *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_float4:
-			datum = Float4GetDatum(*(float4 *) entry->key);
+			datum = Float4GetDatum(*(float4 *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_float8:
-			datum = Float8GetDatum(*(float8 *) entry->key);
+			datum = Float8GetDatum(*(float8 *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_date:
-			datum = DateADTGetDatum(*(DateADT *) entry->key);
+			datum = DateADTGetDatum(*(DateADT *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_time:
-			datum = TimeADTGetDatum(*(TimeADT *) entry->key);
+			datum = TimeADTGetDatum(*(TimeADT *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_ts:
-			datum = TimestampGetDatum(*(Timestamp *) entry->key);
+			datum = TimestampGetDatum(*(Timestamp *) DatumGetPointer(entry->key));
 			break;
 		case gbt_t_cash:
-			datum = CashGetDatum(*(Cash *) entry->key);
+			datum = CashGetDatum(*(Cash *) DatumGetPointer(entry->key));
 			break;
 		default:
 			datum = entry->key;
 	}
 
-	retval = palloc(sizeof(GISTENTRY));
+	retval = palloc_object(GISTENTRY);
 	gistentryinit(*retval, datum, entry->rel, entry->page, entry->offset,
 				  false);
 	return retval;
@@ -181,10 +181,10 @@ gbt_num_union(GBT_NUMKEY *out, const GistEntryVector *entryvec, const gbtree_nin
 	cur = (GBT_NUMKEY *) DatumGetPointer((entryvec->vector[0].key));
 
 
-	o.lower = &((GBT_NUMKEY *) out)[0];
-	o.upper = &((GBT_NUMKEY *) out)[tinfo->size];
+	o.lower = &out[0];
+	o.upper = &out[tinfo->size];
 
-	memcpy((void *) out, (void *) cur, 2 * tinfo->size);
+	memcpy(out, cur, 2 * tinfo->size);
 
 	for (i = 1; i < numranges; i++)
 	{
@@ -360,7 +360,7 @@ gbt_num_picksplit(const GistEntryVector *entryvec, GIST_SPLITVEC *v,
 		arr[i].t = (GBT_NUMKEY *) DatumGetPointer((entryvec->vector[i].key));
 		arr[i].i = i;
 	}
-	qsort_arg((void *) &arr[FirstOffsetNumber], maxoff - FirstOffsetNumber + 1, sizeof(Nsrt), (qsort_arg_comparator) tinfo->f_cmp, (void *) flinfo);
+	qsort_arg(&arr[FirstOffsetNumber], maxoff - FirstOffsetNumber + 1, sizeof(Nsrt), (qsort_arg_comparator) tinfo->f_cmp, flinfo);
 
 	/* We do simply create two parts */
 

@@ -2,7 +2,7 @@
  * jit.h
  *	  Provider independent JIT infrastructure.
  *
- * Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * src/include/jit/jit.h
  *
@@ -32,6 +32,9 @@ typedef struct JitInstrumentation
 	/* accumulated time to generate code */
 	instr_time	generation_counter;
 
+	/* accumulated time to deform tuples, included into generation_counter */
+	instr_time	deform_counter;
+
 	/* accumulated time for inlining */
 	instr_time	inlining_counter;
 
@@ -56,14 +59,12 @@ typedef struct JitContext
 	/* see PGJIT_* above */
 	int			flags;
 
-	ResourceOwner resowner;
-
 	JitInstrumentation instr;
 } JitContext;
 
 typedef struct JitProviderCallbacks JitProviderCallbacks;
 
-extern void _PG_jit_provider_init(JitProviderCallbacks *cb);
+extern PGDLLEXPORT void _PG_jit_provider_init(JitProviderCallbacks *cb);
 typedef void (*JitProviderInit) (JitProviderCallbacks *cb);
 typedef void (*JitProviderResetAfterErrorCB) (void);
 typedef void (*JitProviderReleaseContextCB) (JitContext *context);

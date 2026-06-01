@@ -3,7 +3,7 @@
  * pg_seclabel.h
  *	  definition of the "security label" system catalog (pg_seclabel)
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_seclabel.h
@@ -18,13 +18,15 @@
 #define PG_SECLABEL_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_seclabel_d.h"
+#include "catalog/pg_seclabel_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_seclabel definition.  cpp turns this into
  *		typedef struct FormData_pg_seclabel
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_seclabel,3596,SecLabelRelationId)
 {
 	Oid			objoid;			/* OID of the object itself */
@@ -38,8 +40,10 @@ CATALOG(pg_seclabel,3596,SecLabelRelationId)
 #endif
 } FormData_pg_seclabel;
 
+END_CATALOG_STRUCT
+
 DECLARE_TOAST(pg_seclabel, 3598, 3599);
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_seclabel_object_index, 3597, SecLabelObjectIndexId, on pg_seclabel using btree(objoid oid_ops, classoid oid_ops, objsubid int4_ops, provider text_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_seclabel_object_index, 3597, SecLabelObjectIndexId, pg_seclabel, btree(objoid oid_ops, classoid oid_ops, objsubid int4_ops, provider text_ops));
 
 #endif							/* PG_SECLABEL_H */

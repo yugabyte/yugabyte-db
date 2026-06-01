@@ -320,8 +320,8 @@
     uses this isolation level, a <command>SELECT</command> query
     (without a <literal>FOR UPDATE/SHARE</literal> clause) sees only data
     committed before the query began; it never sees either uncommitted
-    data or changes committed during query execution by concurrent
-    transactions.  In effect, a <command>SELECT</command> query sees
+    data or changes committed by concurrent transactions during the query's
+    execution.  In effect, a <command>SELECT</command> query sees
     a snapshot of the database as of the instant the query begins to
     run.   However, <command>SELECT</command> does see the effects
     of previous updates executed within its own transaction, even
@@ -368,6 +368,18 @@
 
    <para>
     <command>INSERT</command> with an <literal>ON CONFLICT DO
+    SELECT</literal> clause behaves similarly to <literal>ON CONFLICT DO
+    UPDATE</literal>.  In Read Committed mode, each row proposed for insertion
+    is guaranteed to either insert or return the conflicting row (unless there are
+    unrelated errors).  If a conflict originates in another transaction whose
+    effects are not yet visible to the <command>INSERT</command>, the command
+    will wait for that transaction to commit or roll back, then return the
+    conflicting row if it was committed (even though that row was not visible
+    when the command started).
+   </para>
+
+   <para>
+    <command>INSERT</command> with an <literal>ON CONFLICT DO
     NOTHING</literal> clause may have insertion not proceed for a row due to
     the outcome of another transaction whose effects are not visible
     to the <command>INSERT</command> snapshot.  Again, this is only
@@ -394,10 +406,14 @@
     conditions for each action are re-evaluated on the updated version of
     the row, starting from the first action, even if the action that had
     originally matched appears later in the list of actions.
-    On the other hand, if the row is concurrently updated or deleted so
-    that the join condition fails, then <command>MERGE</command> will
-    evaluate the condition's <literal>NOT MATCHED</literal> actions next,
-    and execute the first one that succeeds.
+    On the other hand, if the row is concurrently updated so that the join
+    condition fails, then <command>MERGE</command> will evaluate the
+    command's <literal>NOT MATCHED BY SOURCE</literal> and
+    <literal>NOT MATCHED [BY TARGET]</literal> actions next, and execute
+    the first one of each kind that succeeds.
+    If the row is concurrently deleted, then <command>MERGE</command>
+    will evaluate the command's <literal>NOT MATCHED [BY TARGET]</literal>
+    actions, and execute the first one that succeeds.
     If <command>MERGE</command> attempts an <command>INSERT</command>
     and a unique index is present and a duplicate row is concurrently
     inserted, then a uniqueness violation error is raised;
@@ -413,8 +429,8 @@
     does not see effects of those commands on other rows in the database.
     This behavior makes Read Committed mode unsuitable for commands that
     involve complex search conditions; however, it is just right for simpler
-    cases.  For example, consider updating bank balances with transactions
-    like:
+    cases.  For example, consider transferring $100 from one account
+    to another:
 
 <screen>
 BEGIN;
@@ -423,8 +439,8 @@ UPDATE accounts SET balance = balance - 100.00 WHERE acctnum = 7534;
 COMMIT;
 </screen>
 
-    If two such transactions concurrently try to change the balance of account
-    12345, we clearly want the second transaction to start with the updated
+    If another transaction concurrently tries to change the balance of account
+    7534, we clearly want the second statement to start with the updated
     version of the account's row.  Because each command is affecting only a
     predetermined row, letting it see the updated version of the row does
     not create any troublesome inconsistency.
@@ -488,8 +504,8 @@ COMMIT;
    <para>
     The <firstterm>Repeatable Read</firstterm> isolation level only sees
     data committed before the transaction began; it never sees either
-    uncommitted data or changes committed during transaction execution
-    by concurrent transactions.  (However, the query does see the
+    uncommitted data or changes committed by concurrent transactions during
+    the transaction's execution.  (However, each query does see the
     effects of previous updates executed within its own transaction,
     even though they are not yet committed.)  This is a stronger
     guarantee than is required by the <acronym>SQL</acronym> standard
@@ -1676,11 +1692,13 @@ SELECT pg_advisory_lock(q.id) FROM
     </para>
 
     <warning>
+     <title>Warning: Serializable Transactions and Data Replication</title>
      <para>
       This level of integrity protection using Serializable transactions
-      does not yet extend to hot standby mode (<xref linkend="hot-standby"/>).
-      Because of that, those using hot standby may want to use Repeatable
-      Read and explicit locking on the primary.
+      does not yet extend to hot standby mode (<xref linkend="hot-standby"/>)
+      or logical replicas.
+      Because of that, those using hot standby or logical replication
+      may want to use Repeatable Read and explicit locking on the primary.
      </para>
     </warning>
    </sect2>
@@ -1827,15 +1845,17 @@ SELECT pg_advisory_lock(q.id) FROM
    <title>Caveats</title>
 
    <para>
-    Some DDL commands, currently only <link linkend="sql-truncate"><command>TRUNCATE</command></link> and the
-    table-rewriting forms of <link linkend="sql-altertable"><command>ALTER TABLE</command></link>, are not
+    Some commands, currently only <link linkend="sql-truncate"><command>TRUNCATE</command></link>, the
+    table-rewriting forms of <link linkend="sql-altertable"><command>ALTER
+    TABLE</command></link> and <command>REPACK</command> with
+    the <literal>CONCURRENTLY</literal> option, are not
     MVCC-safe.  This means that after the truncation or rewrite commits, the
     table will appear empty to concurrent transactions, if they are using a
-    snapshot taken before the DDL command committed.  This will only be an
+    snapshot taken before the command committed.  This will only be an
     issue for a transaction that did not access the table in question
-    before the DDL command started &mdash; any transaction that has done so
+    before the command started &mdash; any transaction that has done so
     would hold at least an <literal>ACCESS SHARE</literal> table lock,
-    which would block the DDL command until that transaction completes.
+    which would block the truncating or rewriting command until that transaction completes.
     So these commands will not cause any apparent inconsistency in the
     table contents for successive queries on the target table, but they
     could cause visible inconsistency between the contents of the target

@@ -11,13 +11,11 @@
 #include "postgres.h"
 
 #include "access/xact.h"
-#include "backup/basebackup.h"
 #include "backup/basebackup_sink.h"
 #include "catalog/pg_authid.h"
 #include "miscadmin.h"
 #include "storage/fd.h"
 #include "utils/acl.h"
-#include "utils/timestamp.h"
 #include "utils/wait_event.h"
 
 typedef struct bbsink_server
@@ -61,7 +59,7 @@ static const bbsink_ops bbsink_server_ops = {
 bbsink *
 bbsink_server_new(bbsink *next, char *pathname)
 {
-	bbsink_server *sink = palloc0(sizeof(bbsink_server));
+	bbsink_server *sink = palloc0_object(bbsink_server);
 
 	*((const bbsink_ops **) &sink->base.bbs_ops) = &bbsink_server_ops;
 	sink->pathname = pathname;
@@ -72,7 +70,9 @@ bbsink_server_new(bbsink *next, char *pathname)
 	if (!has_privs_of_role(GetUserId(), ROLE_PG_WRITE_SERVER_FILES))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser or a role with privileges of the pg_write_server_files role to create backup stored on server")));
+				 errmsg("permission denied to create backup stored on server"),
+				 errdetail("Only roles with privileges of the \"%s\" role may create a backup stored on the server.",
+						   "pg_write_server_files")));
 	CommitTransactionCommand();
 
 	/*
@@ -176,9 +176,9 @@ bbsink_server_archive_contents(bbsink *sink, size_t len)
 		/* short write: complain appropriately */
 		ereport(ERROR,
 				(errcode(ERRCODE_DISK_FULL),
-				 errmsg("could not write file \"%s\": wrote only %d of %d bytes at offset %u",
+				 errmsg("could not write file \"%s\": wrote only %d of %zu bytes at offset %u",
 						FilePathName(mysink->file),
-						nbytes, (int) len, (unsigned) mysink->filepos),
+						nbytes, len, (unsigned) mysink->filepos),
 				 errhint("Check free disk space.")));
 	}
 
@@ -269,9 +269,9 @@ bbsink_server_manifest_contents(bbsink *sink, size_t len)
 		/* short write: complain appropriately */
 		ereport(ERROR,
 				(errcode(ERRCODE_DISK_FULL),
-				 errmsg("could not write file \"%s\": wrote only %d of %d bytes at offset %u",
+				 errmsg("could not write file \"%s\": wrote only %d of %zu bytes at offset %u",
 						FilePathName(mysink->file),
-						nbytes, (int) len, (unsigned) mysink->filepos),
+						nbytes, len, (unsigned) mysink->filepos),
 				 errhint("Check free disk space.")));
 	}
 

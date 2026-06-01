@@ -3,7 +3,7 @@
  * lsyscache.c
  *	  Convenience routines for common queries in the system catalog cache.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -17,22 +17,29 @@
 
 #include "access/hash.h"
 #include "access/htup_details.h"
-#include "access/nbtree.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_cast.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_database.h"
+#include "catalog/pg_index.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_opfamily.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_propgraph_label.h"
+#include "catalog/pg_propgraph_property.h"
+#include "catalog/pg_publication.h"
 #include "catalog/pg_range.h"
 #include "catalog/pg_statistic.h"
+#include "catalog/pg_subscription.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
@@ -43,7 +50,6 @@
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
@@ -186,10 +192,60 @@ get_opfamily_member(Oid opfamily, Oid lefttype, Oid righttype,
 }
 
 /*
+ * get_opfamily_member_for_cmptype
+ *		Get the OID of the operator that implements the specified comparison
+ *		type with the specified datatypes for the specified opfamily.
+ *
+ * Returns InvalidOid if there is no mapping for the comparison type or no
+ * pg_amop entry for the given keys.
+ */
+Oid
+get_opfamily_member_for_cmptype(Oid opfamily, Oid lefttype, Oid righttype,
+								CompareType cmptype)
+{
+	Oid			opmethod;
+	StrategyNumber strategy;
+
+	opmethod = get_opfamily_method(opfamily);
+	strategy = IndexAmTranslateCompareType(cmptype, opmethod, opfamily, true);
+	if (!strategy)
+		return InvalidOid;
+	return get_opfamily_member(opfamily, lefttype, righttype, strategy);
+}
+
+/*
+ * get_opmethod_canorder
+ *		Return amcanorder field for given index AM.
+ *
+ * To speed things up in the common cases, we're hardcoding the results from
+ * the built-in index types.  Note that we also need to hardcode the negative
+ * results from the built-in non-btree index types, since you'll usually get a
+ * few hits for those as well.  It would be nice to organize and cache this a
+ * bit differently to avoid the hardcoding.
+ */
+static bool
+get_opmethod_canorder(Oid amoid)
+{
+	switch (amoid)
+	{
+		case BTREE_AM_OID:
+			return true;
+		case HASH_AM_OID:
+		case GIST_AM_OID:
+		case GIN_AM_OID:
+		case SPGIST_AM_OID:
+		case BRIN_AM_OID:
+			return false;
+		default:
+			return GetIndexAmRoutineByAmId(amoid, false)->amcanorder;
+	}
+}
+
+/*
  * get_ordering_op_properties
- *		Given the OID of an ordering operator (a btree "<" or ">" operator),
+ *		Given the OID of an ordering operator (a "<" or ">" operator),
  *		determine its opfamily, its declared input datatype, and its
- *		strategy number (BTLessStrategyNumber or BTGreaterStrategyNumber).
+ *		comparison type.
  *
  * Returns true if successful, false if no matching pg_amop entry exists.
  * (This indicates that the operator is not a valid ordering operator.)
@@ -207,7 +263,7 @@ get_opfamily_member(Oid opfamily, Oid lefttype, Oid righttype,
  */
 bool
 get_ordering_op_properties(Oid opno,
-						   Oid *opfamily, Oid *opcintype, int16 *strategy)
+						   Oid *opfamily, Oid *opcintype, CompareType *cmptype)
 {
 	bool		result = false;
 	CatCList   *catlist;
@@ -216,7 +272,7 @@ get_ordering_op_properties(Oid opno,
 	/* ensure outputs are initialized on failure */
 	*opfamily = InvalidOid;
 	*opcintype = InvalidOid;
-	*strategy = 0;
+	*cmptype = COMPARE_INVALID;
 
 	/*
 	 * Search pg_amop to see if the target operator is registered as the "<"
@@ -228,13 +284,18 @@ get_ordering_op_properties(Oid opno,
 	{
 		HeapTuple	tuple = &catlist->members[i]->tuple;
 		Form_pg_amop aform = (Form_pg_amop) GETSTRUCT(tuple);
+		CompareType am_cmptype;
 
-		/* must be btree */
-		if (aform->amopmethod != BTREE_AM_OID && aform->amopmethod != LSM_AM_OID)
+		/* must be ordering index */
+		if (!get_opmethod_canorder(aform->amopmethod))
 			continue;
 
-		if (aform->amopstrategy == BTLessStrategyNumber ||
-			aform->amopstrategy == BTGreaterStrategyNumber)
+		am_cmptype = IndexAmTranslateStrategy(aform->amopstrategy,
+											  aform->amopmethod,
+											  aform->amopfamily,
+											  true);
+
+		if (am_cmptype == COMPARE_LT || am_cmptype == COMPARE_GT)
 		{
 			/* Found it ... should have consistent input types */
 			if (aform->amoplefttype == aform->amoprighttype)
@@ -242,7 +303,7 @@ get_ordering_op_properties(Oid opno,
 				/* Found a suitable opfamily, return info */
 				*opfamily = aform->amopfamily;
 				*opcintype = aform->amoplefttype;
-				*strategy = aform->amopstrategy;
+				*cmptype = am_cmptype;
 				result = true;
 				break;
 			}
@@ -256,7 +317,7 @@ get_ordering_op_properties(Oid opno,
 
 /*
  * get_equality_op_for_ordering_op
- *		Get the OID of the datatype-specific btree equality operator
+ *		Get the OID of the datatype-specific equality operator
  *		associated with an ordering operator (a "<" or ">" operator).
  *
  * If "reverse" isn't NULL, also set *reverse to false if the operator is "<",
@@ -271,19 +332,19 @@ get_equality_op_for_ordering_op(Oid opno, bool *reverse)
 	Oid			result = InvalidOid;
 	Oid			opfamily;
 	Oid			opcintype;
-	int16		strategy;
+	CompareType cmptype;
 
 	/* Find the operator in pg_amop */
 	if (get_ordering_op_properties(opno,
-								   &opfamily, &opcintype, &strategy))
+								   &opfamily, &opcintype, &cmptype))
 	{
 		/* Found a suitable opfamily, get matching equality operator */
-		result = get_opfamily_member(opfamily,
-									 opcintype,
-									 opcintype,
-									 BTEqualStrategyNumber);
+		result = get_opfamily_member_for_cmptype(opfamily,
+												 opcintype,
+												 opcintype,
+												 COMPARE_EQ);
 		if (reverse)
-			*reverse = (strategy == BTGreaterStrategyNumber);
+			*reverse = (cmptype == COMPARE_GT);
 	}
 
 	return result;
@@ -291,7 +352,7 @@ get_equality_op_for_ordering_op(Oid opno, bool *reverse)
 
 /*
  * get_ordering_op_for_equality_op
- *		Get the OID of a datatype-specific btree ordering operator
+ *		Get the OID of a datatype-specific "less than" ordering operator
  *		associated with an equality operator.  (If there are multiple
  *		possibilities, assume any one will do.)
  *
@@ -320,20 +381,25 @@ get_ordering_op_for_equality_op(Oid opno, bool use_lhs_type)
 	{
 		HeapTuple	tuple = &catlist->members[i]->tuple;
 		Form_pg_amop aform = (Form_pg_amop) GETSTRUCT(tuple);
+		CompareType cmptype;
 
-		/* must be btree */
-		if (aform->amopmethod != BTREE_AM_OID && aform->amopmethod != LSM_AM_OID)
+		/* must be ordering index */
+		if (!get_opmethod_canorder(aform->amopmethod))
 			continue;
 
-		if (aform->amopstrategy == BTEqualStrategyNumber)
+		cmptype = IndexAmTranslateStrategy(aform->amopstrategy,
+										   aform->amopmethod,
+										   aform->amopfamily,
+										   true);
+		if (cmptype == COMPARE_EQ)
 		{
 			/* Found a suitable opfamily, get matching ordering operator */
 			Oid			typid;
 
 			typid = use_lhs_type ? aform->amoplefttype : aform->amoprighttype;
-			result = get_opfamily_member(aform->amopfamily,
-										 typid, typid,
-										 BTLessStrategyNumber);
+			result = get_opfamily_member_for_cmptype(aform->amopfamily,
+													 typid, typid,
+													 COMPARE_LT);
 			if (OidIsValid(result))
 				break;
 			/* failure probably shouldn't happen, but keep looking if so */
@@ -348,7 +414,7 @@ get_ordering_op_for_equality_op(Oid opno, bool use_lhs_type)
 /*
  * get_mergejoin_opfamilies
  *		Given a putatively mergejoinable operator, return a list of the OIDs
- *		of the btree opfamilies in which it represents equality.
+ *		of the amcanorder opfamilies in which it represents equality.
  *
  * It is possible (though at present unusual) for an operator to be equality
  * in more than one opfamily, hence the result is a list.  This also lets us
@@ -373,7 +439,7 @@ get_mergejoin_opfamilies(Oid opno)
 
 	/*
 	 * Search pg_amop to see if the target operator is registered as the "="
-	 * operator of any btree opfamily.
+	 * operator of any opfamily of an ordering index type.
 	 */
 	catlist = SearchSysCacheList1(AMOPOPID, ObjectIdGetDatum(opno));
 
@@ -382,9 +448,12 @@ get_mergejoin_opfamilies(Oid opno)
 		HeapTuple	tuple = &catlist->members[i]->tuple;
 		Form_pg_amop aform = (Form_pg_amop) GETSTRUCT(tuple);
 
-		/* must be btree equality */
-		if ((aform->amopmethod == BTREE_AM_OID || aform->amopmethod == LSM_AM_OID) &&
-			aform->amopstrategy == BTEqualStrategyNumber)
+		/* must be ordering index equality */
+		if (get_opmethod_canorder(aform->amopmethod) &&
+			IndexAmTranslateStrategy(aform->amopstrategy,
+									 aform->amopmethod,
+									 aform->amopfamily,
+									 true) == COMPARE_EQ)
 			result = lappend_oid(result, aform->amopfamily);
 	}
 
@@ -590,20 +659,20 @@ get_op_hash_functions(Oid opno,
 }
 
 /*
- * get_op_btree_interpretation
- *		Given an operator's OID, find out which btree opfamilies it belongs to,
+ * get_op_index_interpretation
+ *		Given an operator's OID, find out which amcanorder opfamilies it belongs to,
  *		and what properties it has within each one.  The results are returned
- *		as a palloc'd list of OpBtreeInterpretation structs.
+ *		as a palloc'd list of OpIndexInterpretation structs.
  *
  * In addition to the normal btree operators, we consider a <> operator to be
  * a "member" of an opfamily if its negator is an equality operator of the
- * opfamily.  ROWCOMPARE_NE is returned as the strategy number for this case.
+ * opfamily.  COMPARE_NE is returned as the strategy number for this case.
  */
 List *
-get_op_btree_interpretation(Oid opno)
+get_op_index_interpretation(Oid opno)
 {
 	List	   *result = NIL;
-	OpBtreeInterpretation *thisresult;
+	OpIndexInterpretation *thisresult;
 	CatCList   *catlist;
 	int			i;
 
@@ -616,20 +685,25 @@ get_op_btree_interpretation(Oid opno)
 	{
 		HeapTuple	op_tuple = &catlist->members[i]->tuple;
 		Form_pg_amop op_form = (Form_pg_amop) GETSTRUCT(op_tuple);
-		StrategyNumber op_strategy;
+		CompareType cmptype;
 
-		/* must be btree */
-		if (op_form->amopmethod != BTREE_AM_OID && op_form->amopmethod != LSM_AM_OID)
+		/* must be ordering index */
+		if (!get_opmethod_canorder(op_form->amopmethod))
 			continue;
 
-		/* Get the operator's btree strategy number */
-		op_strategy = (StrategyNumber) op_form->amopstrategy;
-		Assert(op_strategy >= 1 && op_strategy <= 5);
+		/* Get the operator's comparison type */
+		cmptype = IndexAmTranslateStrategy(op_form->amopstrategy,
+										   op_form->amopmethod,
+										   op_form->amopfamily,
+										   true);
 
-		thisresult = (OpBtreeInterpretation *)
-			palloc(sizeof(OpBtreeInterpretation));
+		/* should not happen */
+		if (cmptype == COMPARE_INVALID)
+			continue;
+
+		thisresult = palloc_object(OpIndexInterpretation);
 		thisresult->opfamily_id = op_form->amopfamily;
-		thisresult->strategy = op_strategy;
+		thisresult->cmptype = cmptype;
 		thisresult->oplefttype = op_form->amoplefttype;
 		thisresult->oprighttype = op_form->amoprighttype;
 		result = lappend(result, thisresult);
@@ -654,25 +728,27 @@ get_op_btree_interpretation(Oid opno)
 			{
 				HeapTuple	op_tuple = &catlist->members[i]->tuple;
 				Form_pg_amop op_form = (Form_pg_amop) GETSTRUCT(op_tuple);
-				StrategyNumber op_strategy;
+				const IndexAmRoutine *amroutine = GetIndexAmRoutineByAmId(op_form->amopmethod, false);
+				CompareType cmptype;
 
-				/* must be btree */
-				if (op_form->amopmethod != BTREE_AM_OID && op_form->amopmethod != LSM_AM_OID)
+				/* must be ordering index */
+				if (!amroutine->amcanorder)
 					continue;
 
-				/* Get the operator's btree strategy number */
-				op_strategy = (StrategyNumber) op_form->amopstrategy;
-				Assert(op_strategy >= 1 && op_strategy <= 5);
+				/* Get the operator's comparison type */
+				cmptype = IndexAmTranslateStrategy(op_form->amopstrategy,
+												   op_form->amopmethod,
+												   op_form->amopfamily,
+												   true);
 
 				/* Only consider negators that are = */
-				if (op_strategy != BTEqualStrategyNumber)
+				if (cmptype != COMPARE_EQ)
 					continue;
 
-				/* OK, report it with "strategy" ROWCOMPARE_NE */
-				thisresult = (OpBtreeInterpretation *)
-					palloc(sizeof(OpBtreeInterpretation));
+				/* OK, report it as COMPARE_NE */
+				thisresult = palloc_object(OpIndexInterpretation);
 				thisresult->opfamily_id = op_form->amopfamily;
-				thisresult->strategy = ROWCOMPARE_NE;
+				thisresult->cmptype = COMPARE_NE;
 				thisresult->oplefttype = op_form->amoplefttype;
 				thisresult->oprighttype = op_form->amoprighttype;
 				result = lappend(result, thisresult);
@@ -691,10 +767,11 @@ get_op_btree_interpretation(Oid opno)
  *		semantics.
  *
  * This is trivially true if they are the same operator.  Otherwise,
- * we look to see if they can be found in the same btree or hash opfamily.
- * Either finding allows us to assume that they have compatible notions
- * of equality.  (The reason we need to do these pushups is that one might
- * be a cross-type operator; for instance int24eq vs int4eq.)
+ * we look to see if they both belong to an opfamily that guarantees
+ * compatible semantics for equality.  Either finding allows us to assume
+ * that they have compatible notions of equality.  (The reason we need
+ * to do these pushups is that one might be a cross-type operator; for
+ * instance int24eq vs int4eq.)
  */
 bool
 equality_ops_are_compatible(Oid opno1, Oid opno2)
@@ -718,16 +795,15 @@ equality_ops_are_compatible(Oid opno1, Oid opno2)
 		HeapTuple	op_tuple = &catlist->members[i]->tuple;
 		Form_pg_amop op_form = (Form_pg_amop) GETSTRUCT(op_tuple);
 
-		/* must be btree, lsm or hash */
-		if (op_form->amopmethod == BTREE_AM_OID ||
-			op_form->amopmethod == LSM_AM_OID ||
-			op_form->amopmethod == HASH_AM_OID)
+		/*
+		 * op_in_opfamily() is cheaper than GetIndexAmRoutineByAmId(), so
+		 * check it first
+		 */
+		if (op_in_opfamily(opno2, op_form->amopfamily) &&
+			GetIndexAmRoutineByAmId(op_form->amopmethod, false)->amconsistentequality)
 		{
-			if (op_in_opfamily(opno2, op_form->amopfamily))
-			{
-				result = true;
-				break;
-			}
+			result = true;
+			break;
 		}
 	}
 
@@ -741,12 +817,13 @@ equality_ops_are_compatible(Oid opno1, Oid opno2)
  *		Return true if the two given comparison operators have compatible
  *		semantics.
  *
- * This is trivially true if they are the same operator.  Otherwise,
- * we look to see if they can be found in the same btree opfamily.
- * For example, '<' and '>=' ops match if they belong to the same family.
+ * This is trivially true if they are the same operator.  Otherwise, we look
+ * to see if they both belong to an opfamily that guarantees compatible
+ * semantics for ordering.  (For example, for btree, '<' and '>=' ops match if
+ * they belong to the same family.)
  *
- * (This is identical to equality_ops_are_compatible(), except that we
- * don't bother to examine hash opclasses.)
+ * (This is identical to equality_ops_are_compatible(), except that we check
+ * amconsistentordering instead of amconsistentequality.)
  */
 bool
 comparison_ops_are_compatible(Oid opno1, Oid opno2)
@@ -770,13 +847,56 @@ comparison_ops_are_compatible(Oid opno1, Oid opno2)
 		HeapTuple	op_tuple = &catlist->members[i]->tuple;
 		Form_pg_amop op_form = (Form_pg_amop) GETSTRUCT(op_tuple);
 
-		if (op_form->amopmethod == BTREE_AM_OID)
+		/*
+		 * op_in_opfamily() is cheaper than GetIndexAmRoutineByAmId(), so
+		 * check it first
+		 */
+		if (op_in_opfamily(opno2, op_form->amopfamily) &&
+			GetIndexAmRoutineByAmId(op_form->amopmethod, false)->amconsistentordering)
 		{
-			if (op_in_opfamily(opno2, op_form->amopfamily))
-			{
-				result = true;
-				break;
-			}
+			result = true;
+			break;
+		}
+	}
+
+	ReleaseSysCacheList(catlist);
+
+	return result;
+}
+
+/*
+ * op_is_safe_index_member
+ *		Check if the operator is a member of a B-tree or Hash operator family.
+ *
+ * We use this check as a proxy for "null-safety": if an operator is trusted by
+ * the btree or hash opfamily, it implies that the operator adheres to standard
+ * boolean behavior, and would not return NULL when given valid non-null
+ * inputs, as doing so would break index integrity.
+ */
+bool
+op_is_safe_index_member(Oid opno)
+{
+	bool		result = false;
+	CatCList   *catlist;
+	int			i;
+
+	/*
+	 * Search pg_amop to see if the target operator is registered for any
+	 * btree or hash opfamily.
+	 */
+	catlist = SearchSysCacheList1(AMOPOPID, ObjectIdGetDatum(opno));
+
+	for (i = 0; i < catlist->n_members; i++)
+	{
+		HeapTuple	tuple = &catlist->members[i]->tuple;
+		Form_pg_amop aform = (Form_pg_amop) GETSTRUCT(tuple);
+
+		/* Check if the AM is B-tree or Hash */
+		if (aform->amopmethod == BTREE_AM_OID ||
+			aform->amopmethod == HASH_AM_OID)
+		{
+			result = true;
+			break;
 		}
 	}
 
@@ -874,33 +994,6 @@ get_attnum(Oid relid, const char *attname)
 	}
 	else
 		return InvalidAttrNumber;
-}
-
-/*
- * get_attstattarget
- *
- *		Given the relation id and the attribute number,
- *		return the "attstattarget" field from the attribute relation.
- *
- *		Errors if not found.
- */
-int
-get_attstattarget(Oid relid, AttrNumber attnum)
-{
-	HeapTuple	tp;
-	Form_pg_attribute att_tup;
-	int			result;
-
-	tp = SearchSysCache2(ATTNUM,
-						 ObjectIdGetDatum(relid),
-						 Int16GetDatum(attnum));
-	if (!HeapTupleIsValid(tp))
-		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
-			 attnum, relid);
-	att_tup = (Form_pg_attribute) GETSTRUCT(tp);
-	result = att_tup->attstattarget;
-	ReleaseSysCache(tp);
-	return result;
 }
 
 /*
@@ -1021,6 +1114,33 @@ get_attoptions(Oid relid, int16 attnum)
 		result = datumCopy(attopts, false, -1); /* text[] */
 
 	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * get_attnotnull
+ *
+ *		Given the relation id and the attribute number,
+ *		return the "attnotnull" field from the attribute relation.
+ */
+bool
+get_attnotnull(Oid relid, AttrNumber attnum)
+{
+	HeapTuple	tp;
+	bool		result = false;
+
+	tp = SearchSysCache2(ATTNUM,
+						 ObjectIdGetDatum(relid),
+						 Int16GetDatum(attnum));
+
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_attribute att_tup = (Form_pg_attribute) GETSTRUCT(tp);
+
+		result = att_tup->attnotnull;
+		ReleaseSysCache(tp);
+	}
 
 	return result;
 }
@@ -1163,6 +1283,54 @@ get_constraint_index(Oid conoid)
 		return InvalidOid;
 }
 
+/*
+ * get_constraint_type
+ *		Return the pg_constraint.contype value for the given constraint.
+ *
+ * No frills.
+ */
+char
+get_constraint_type(Oid conoid)
+{
+	HeapTuple	tp;
+	char		contype;
+
+	tp = SearchSysCache1(CONSTROID, ObjectIdGetDatum(conoid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for constraint %u", conoid);
+
+	contype = ((Form_pg_constraint) GETSTRUCT(tp))->contype;
+	ReleaseSysCache(tp);
+
+	return contype;
+}
+
+/*				---------- DATABASE CACHE ----------					 */
+
+/*
+ * get_database_name - given a database OID, look up the name
+ *
+ * Returns a palloc'd string, or NULL if no such database.
+ */
+char *
+get_database_name(Oid dbid)
+{
+	HeapTuple	dbtuple;
+	char	   *result;
+
+	dbtuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(dbid));
+	if (HeapTupleIsValid(dbtuple))
+	{
+		result = pstrdup(NameStr(((Form_pg_database) GETSTRUCT(dbtuple))->datname));
+		ReleaseSysCache(dbtuple);
+	}
+	else
+		result = NULL;
+
+	return result;
+}
+
+
 /*				---------- LANGUAGE CACHE ----------					 */
 
 char *
@@ -1257,6 +1425,76 @@ get_opclass_opfamily_and_input_type(Oid opclass, Oid *opfamily, Oid *opcintype)
 	ReleaseSysCache(tp);
 
 	return true;
+}
+
+/*
+ * get_opclass_method
+ *
+ *		Returns the OID of the index access method the opclass belongs to.
+ */
+Oid
+get_opclass_method(Oid opclass)
+{
+	HeapTuple	tp;
+	Form_pg_opclass cla_tup;
+	Oid			result;
+
+	tp = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclass));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for opclass %u", opclass);
+	cla_tup = (Form_pg_opclass) GETSTRUCT(tp);
+
+	result = cla_tup->opcmethod;
+	ReleaseSysCache(tp);
+	return result;
+}
+
+/*				---------- OPFAMILY CACHE ----------					 */
+
+/*
+ * get_opfamily_method
+ *
+ *		Returns the OID of the index access method the opfamily is for.
+ */
+Oid
+get_opfamily_method(Oid opfid)
+{
+	HeapTuple	tp;
+	Form_pg_opfamily opfform;
+	Oid			result;
+
+	tp = SearchSysCache1(OPFAMILYOID, ObjectIdGetDatum(opfid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for operator family %u", opfid);
+	opfform = (Form_pg_opfamily) GETSTRUCT(tp);
+
+	result = opfform->opfmethod;
+	ReleaseSysCache(tp);
+	return result;
+}
+
+char *
+get_opfamily_name(Oid opfid, bool missing_ok)
+{
+	HeapTuple	tup;
+	char	   *opfname;
+	Form_pg_opfamily opfform;
+
+	tup = SearchSysCache1(OPFAMILYOID, ObjectIdGetDatum(opfid));
+
+	if (!HeapTupleIsValid(tup))
+	{
+		if (!missing_ok)
+			elog(ERROR, "cache lookup failed for operator family %u", opfid);
+		return NULL;
+	}
+
+	opfform = (Form_pg_opfamily) GETSTRUCT(tup);
+	opfname = pstrdup(NameStr(opfform->opfname));
+
+	ReleaseSysCache(tup);
+
+	return opfname;
 }
 
 /*				---------- OPERATOR CACHE ----------					 */
@@ -2101,6 +2339,28 @@ get_rel_persistence(Oid relid)
 	return result;
 }
 
+/*
+ * get_rel_relam
+ *
+ *		Returns the relam associated with a given relation.
+ */
+Oid
+get_rel_relam(Oid relid)
+{
+	HeapTuple	tp;
+	Form_pg_class reltup;
+	Oid			result;
+
+	tp = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for relation %u", relid);
+	reltup = (Form_pg_class) GETSTRUCT(tp);
+	result = reltup->relam;
+	ReleaseSysCache(tp);
+
+	return result;
+}
+
 
 /*				---------- TRANSFORM CACHE ----------						 */
 
@@ -2112,7 +2372,8 @@ get_transform_fromsql(Oid typid, Oid langid, List *trftypes)
 	if (!list_member_oid(trftypes, typid))
 		return InvalidOid;
 
-	tup = SearchSysCache2(TRFTYPELANG, typid, langid);
+	tup = SearchSysCache2(TRFTYPELANG, ObjectIdGetDatum(typid),
+						  ObjectIdGetDatum(langid));
 	if (HeapTupleIsValid(tup))
 	{
 		Oid			funcid;
@@ -2133,7 +2394,8 @@ get_transform_tosql(Oid typid, Oid langid, List *trftypes)
 	if (!list_member_oid(trftypes, typid))
 		return InvalidOid;
 
-	tup = SearchSysCache2(TRFTYPELANG, typid, langid);
+	tup = SearchSysCache2(TRFTYPELANG, ObjectIdGetDatum(typid),
+						  ObjectIdGetDatum(langid));
 	if (HeapTupleIsValid(tup))
 	{
 		Oid			funcid;
@@ -2330,6 +2592,7 @@ get_type_io_data(Oid typid,
 	{
 		Oid			typinput;
 		Oid			typoutput;
+		Oid			typcollation;
 
 		boot_get_type_io_data(typid,
 							  typlen,
@@ -2338,7 +2601,8 @@ get_type_io_data(Oid typid,
 							  typdelim,
 							  typioparam,
 							  &typinput,
-							  &typoutput);
+							  &typoutput,
+							  &typcollation);
 		switch (which_func)
 		{
 			case IOFunc_input:
@@ -3255,6 +3519,10 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
  *
  * If it's desirable to call free_attstatsslot when get_attstatsslot might
  * not have been called, memset'ing sslot to zeroes will allow that.
+ *
+ * Passing flags=0 can be useful to quickly check if the requested slot type
+ * exists.  In this case no arrays are extracted, so free_attstatsslot need
+ * not be called.
  */
 bool
 get_attstatsslot(AttStatsSlot *sslot, HeapTuple statstuple,
@@ -3263,7 +3531,6 @@ get_attstatsslot(AttStatsSlot *sslot, HeapTuple statstuple,
 	Form_pg_statistic stats = (Form_pg_statistic) GETSTRUCT(statstuple);
 	int			i;
 	Datum		val;
-	bool		isnull;
 	ArrayType  *statarray;
 	Oid			arrayelemtype;
 	int			narrayelem;
@@ -3287,11 +3554,8 @@ get_attstatsslot(AttStatsSlot *sslot, HeapTuple statstuple,
 
 	if (flags & ATTSTATSSLOT_VALUES)
 	{
-		val = SysCacheGetAttr(STATRELATTINH, statstuple,
-							  Anum_pg_statistic_stavalues1 + i,
-							  &isnull);
-		if (isnull)
-			elog(ERROR, "stavalues is null");
+		val = SysCacheGetAttrNotNull(STATRELATTINH, statstuple,
+									 Anum_pg_statistic_stavalues1 + i);
 
 		/*
 		 * Detoast the array if needed, and in any case make a copy that's
@@ -3335,11 +3599,8 @@ get_attstatsslot(AttStatsSlot *sslot, HeapTuple statstuple,
 
 	if (flags & ATTSTATSSLOT_NUMBERS)
 	{
-		val = SysCacheGetAttr(STATRELATTINH, statstuple,
-							  Anum_pg_statistic_stanumbers1 + i,
-							  &isnull);
-		if (isnull)
-			elog(ERROR, "stanumbers is null");
+		val = SysCacheGetAttrNotNull(STATRELATTINH, statstuple,
+									 Anum_pg_statistic_stanumbers1 + i);
 
 		/*
 		 * Detoast the array if needed, and in any case make a copy that's
@@ -3482,6 +3743,31 @@ get_range_collation(Oid rangeOid)
 }
 
 /*
+ * get_range_constructor2
+ *		Gets the 2-arg constructor for the given rangetype.
+ *
+ *	Raises an error if not found.
+ */
+RegProcedure
+get_range_constructor2(Oid rangeOid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(RANGETYPE, ObjectIdGetDatum(rangeOid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_range rngtup = (Form_pg_range) GETSTRUCT(tp);
+		RegProcedure result;
+
+		result = rngtup->rngconstruct2;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		elog(ERROR, "cache lookup failed for range type %u", rangeOid);
+}
+
+/*
  * get_range_multirange
  *		Returns the multirange type of a given range type
  *
@@ -3547,7 +3833,6 @@ get_index_column_opclass(Oid index_oid, int attno)
 	HeapTuple	tuple;
 	Form_pg_index rd_index;
 	Datum		datum;
-	bool		isnull;
 	oidvector  *indclass;
 	Oid			opclass;
 
@@ -3569,10 +3854,7 @@ get_index_column_opclass(Oid index_oid, int attno)
 		return InvalidOid;
 	}
 
-	datum = SysCacheGetAttr(INDEXRELID, tuple,
-							Anum_pg_index_indclass, &isnull);
-	Assert(!isnull);
-
+	datum = SysCacheGetAttrNotNull(INDEXRELID, tuple, Anum_pg_index_indclass);
 	indclass = ((oidvector *) DatumGetPointer(datum));
 
 	Assert(attno <= indclass->dim1);
@@ -3650,4 +3932,140 @@ get_index_isclustered(Oid index_oid)
 	ReleaseSysCache(tuple);
 
 	return isclustered;
+}
+
+/*
+ * get_publication_oid - given a publication name, look up the OID
+ *
+ * If missing_ok is false, throw an error if name not found.  If true, just
+ * return InvalidOid.
+ */
+Oid
+get_publication_oid(const char *pubname, bool missing_ok)
+{
+	Oid			oid;
+
+	oid = GetSysCacheOid1(PUBLICATIONNAME, Anum_pg_publication_oid,
+						  CStringGetDatum(pubname));
+	if (!OidIsValid(oid) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("publication \"%s\" does not exist", pubname)));
+	return oid;
+}
+
+/*
+ * get_publication_name - given a publication Oid, look up the name
+ *
+ * If missing_ok is false, throw an error if name not found.  If true, just
+ * return NULL.
+ */
+char *
+get_publication_name(Oid pubid, bool missing_ok)
+{
+	HeapTuple	tup;
+	char	   *pubname;
+	Form_pg_publication pubform;
+
+	tup = SearchSysCache1(PUBLICATIONOID, ObjectIdGetDatum(pubid));
+
+	if (!HeapTupleIsValid(tup))
+	{
+		if (!missing_ok)
+			elog(ERROR, "cache lookup failed for publication %u", pubid);
+		return NULL;
+	}
+
+	pubform = (Form_pg_publication) GETSTRUCT(tup);
+	pubname = pstrdup(NameStr(pubform->pubname));
+
+	ReleaseSysCache(tup);
+
+	return pubname;
+}
+
+/*
+ * get_subscription_oid - given a subscription name, look up the OID
+ *
+ * If missing_ok is false, throw an error if name not found.  If true, just
+ * return InvalidOid.
+ */
+Oid
+get_subscription_oid(const char *subname, bool missing_ok)
+{
+	Oid			oid;
+
+	oid = GetSysCacheOid2(SUBSCRIPTIONNAME, Anum_pg_subscription_oid,
+						  ObjectIdGetDatum(MyDatabaseId), CStringGetDatum(subname));
+	if (!OidIsValid(oid) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("subscription \"%s\" does not exist", subname)));
+	return oid;
+}
+
+/*
+ * get_subscription_name - given a subscription OID, look up the name
+ *
+ * If missing_ok is false, throw an error if name not found.  If true, just
+ * return NULL.
+ */
+char *
+get_subscription_name(Oid subid, bool missing_ok)
+{
+	HeapTuple	tup;
+	char	   *subname;
+	Form_pg_subscription subform;
+
+	tup = SearchSysCache1(SUBSCRIPTIONOID, ObjectIdGetDatum(subid));
+
+	if (!HeapTupleIsValid(tup))
+	{
+		if (!missing_ok)
+			elog(ERROR, "cache lookup failed for subscription %u", subid);
+		return NULL;
+	}
+
+	subform = (Form_pg_subscription) GETSTRUCT(tup);
+	subname = pstrdup(NameStr(subform->subname));
+
+	ReleaseSysCache(tup);
+
+	return subname;
+}
+
+char *
+get_propgraph_label_name(Oid labeloid)
+{
+	HeapTuple	tuple;
+	char	   *labelname;
+
+	tuple = SearchSysCache1(PROPGRAPHLABELOID, labeloid);
+	if (!tuple)
+	{
+		elog(ERROR, "cache lookup failed for label %u", labeloid);
+		return NULL;
+	}
+	labelname = pstrdup(NameStr(((Form_pg_propgraph_label) GETSTRUCT(tuple))->pgllabel));
+	ReleaseSysCache(tuple);
+
+	return labelname;
+}
+
+char *
+get_propgraph_property_name(Oid propoid)
+{
+	HeapTuple	tuple;
+	char	   *propname;
+
+	tuple = SearchSysCache1(PROPGRAPHPROPOID, propoid);
+	if (!tuple)
+	{
+		elog(ERROR, "cache lookup failed for property %u", propoid);
+		return NULL;
+	}
+	propname = pstrdup(NameStr(((Form_pg_propgraph_property) GETSTRUCT(tuple))->pgpname));
+	ReleaseSysCache(tuple);
+
+	return propname;
 }

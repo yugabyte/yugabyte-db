@@ -3,7 +3,7 @@
  * gindesc.c
  *	  rmgr descriptor routines for access/transam/gin/ginxlog.c
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,9 +15,7 @@
 #include "postgres.h"
 
 #include "access/ginxlog.h"
-#include "access/xlogutils.h"
 #include "lib/stringinfo.h"
-#include "storage/relfilenode.h"
 
 static void
 desc_recompress_leaf(StringInfo buf, ginxlogRecompressDataLeaf *insertData)
@@ -25,7 +23,7 @@ desc_recompress_leaf(StringInfo buf, ginxlogRecompressDataLeaf *insertData)
 	int			i;
 	char	   *walbuf = ((char *) insertData) + sizeof(ginxlogRecompressDataLeaf);
 
-	appendStringInfo(buf, " %d segments:", (int) insertData->nactions);
+	appendStringInfo(buf, " %d segments:", insertData->nactions);
 
 	for (i = 0; i < insertData->nactions; i++)
 	{
@@ -101,14 +99,7 @@ gin_desc(StringInfo buf, XLogReaderState *record)
 					appendStringInfo(buf, " children: %u/%u",
 									 leftChildBlkno, rightChildBlkno);
 				}
-				if (XLogRecHasBlockImage(record, 0))
-				{
-					if (XLogRecBlockImageApply(record, 0))
-						appendStringInfoString(buf, " (full page image)");
-					else
-						appendStringInfoString(buf, " (full page image, for WAL verification)");
-				}
-				else
+				if (!XLogRecHasBlockImage(record, 0))
 				{
 					char	   *payload = XLogRecGetBlockData(record, 0, NULL);
 
@@ -139,6 +130,9 @@ gin_desc(StringInfo buf, XLogReaderState *record)
 				appendStringInfo(buf, " isdata: %c isleaf: %c",
 								 (xlrec->flags & GIN_INSERT_ISDATA) ? 'T' : 'F',
 								 (xlrec->flags & GIN_INSERT_ISLEAF) ? 'T' : 'F');
+				if (xlrec->leftChildBlkno != InvalidBlockNumber)
+					appendStringInfo(buf, " children: %u/%u",
+									 xlrec->leftChildBlkno, xlrec->rightChildBlkno);
 			}
 			break;
 		case XLOG_GIN_VACUUM_PAGE:
@@ -146,14 +140,7 @@ gin_desc(StringInfo buf, XLogReaderState *record)
 			break;
 		case XLOG_GIN_VACUUM_DATA_LEAF_PAGE:
 			{
-				if (XLogRecHasBlockImage(record, 0))
-				{
-					if (XLogRecBlockImageApply(record, 0))
-						appendStringInfoString(buf, " (full page image)");
-					else
-						appendStringInfoString(buf, " (full page image, for WAL verification)");
-				}
-				else
+				if (!XLogRecHasBlockImage(record, 0))
 				{
 					ginxlogVacuumDataLeafPage *xlrec =
 						(ginxlogVacuumDataLeafPage *) XLogRecGetBlockData(record, 0, NULL);
@@ -166,10 +153,27 @@ gin_desc(StringInfo buf, XLogReaderState *record)
 			/* no further information */
 			break;
 		case XLOG_GIN_UPDATE_META_PAGE:
-			/* no further information */
+			{
+				ginxlogUpdateMeta *xlrec = (ginxlogUpdateMeta *) rec;
+
+				appendStringInfo(buf, "ntuples: %d", xlrec->ntuples);
+				if (xlrec->prevTail != InvalidBlockNumber)
+					appendStringInfo(buf, " prevTail: %u",
+									 xlrec->prevTail);
+				if (xlrec->newRightlink != InvalidBlockNumber)
+					appendStringInfo(buf, " newRightlink: %u",
+									 xlrec->newRightlink);
+			}
 			break;
 		case XLOG_GIN_INSERT_LISTPAGE:
-			/* no further information */
+			{
+				ginxlogInsertListPage *xlrec = (ginxlogInsertListPage *) rec;
+
+				appendStringInfo(buf, "ntuples: %d", xlrec->ntuples);
+				if (xlrec->rightlink != InvalidBlockNumber)
+					appendStringInfo(buf, " rightlink: %u",
+									 xlrec->rightlink);
+			}
 			break;
 		case XLOG_GIN_DELETE_LISTPAGE:
 			appendStringInfo(buf, "ndeleted: %d",

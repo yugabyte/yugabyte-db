@@ -13,7 +13,7 @@
  * functions or functions using nonportable collations.  Those considerations
  * need not be accounted for here.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/postgres_fdw/shippable.c
@@ -62,7 +62,8 @@ typedef struct
  * made for them, however.
  */
 static void
-InvalidateShippableCacheCallback(Datum arg, int cacheid, uint32 hashvalue)
+InvalidateShippableCacheCallback(Datum arg, SysCacheIdentifier cacheid,
+								 uint32 hashvalue)
 {
 	HASH_SEQ_STATUS status;
 	ShippableCacheEntry *entry;
@@ -77,7 +78,7 @@ InvalidateShippableCacheCallback(Datum arg, int cacheid, uint32 hashvalue)
 	while ((entry = (ShippableCacheEntry *) hash_seq_search(&status)) != NULL)
 	{
 		if (hash_search(ShippableCacheHash,
-						(void *) &entry->key,
+						&entry->key,
 						HASH_REMOVE,
 						NULL) == NULL)
 			elog(ERROR, "hash table corrupted");
@@ -183,10 +184,7 @@ is_shippable(Oid objectId, Oid classId, PgFdwRelationInfo *fpinfo)
 
 	/* See if we already cached the result. */
 	entry = (ShippableCacheEntry *)
-		hash_search(ShippableCacheHash,
-					(void *) &key,
-					HASH_FIND,
-					NULL);
+		hash_search(ShippableCacheHash, &key, HASH_FIND, NULL);
 
 	if (!entry)
 	{
@@ -199,10 +197,7 @@ is_shippable(Oid objectId, Oid classId, PgFdwRelationInfo *fpinfo)
 		 * cache invalidation.
 		 */
 		entry = (ShippableCacheEntry *)
-			hash_search(ShippableCacheHash,
-						(void *) &key,
-						HASH_ENTER,
-						NULL);
+			hash_search(ShippableCacheHash, &key, HASH_ENTER, NULL);
 
 		entry->shippable = shippable;
 	}

@@ -21,7 +21,8 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-REINDEX [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] { INDEX | TABLE | SCHEMA | DATABASE | SYSTEM } [ CONCURRENTLY ] <replaceable class="parameter">name</replaceable>
+REINDEX [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] { INDEX | TABLE | SCHEMA } [ CONCURRENTLY ] <replaceable class="parameter">name</replaceable>
+REINDEX [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] { DATABASE | SYSTEM } [ CONCURRENTLY ] [ <replaceable class="parameter">name</replaceable> ]
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
@@ -126,8 +127,9 @@ REINDEX [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] { IN
     <term><literal>DATABASE</literal></term>
     <listitem>
      <para>
-      Recreate all indexes within the current database.
-      Indexes on shared system catalogs are also processed.
+      Recreate all indexes within the current database, except system
+      catalogs.
+      Indexes on system catalogs are not processed.
       This form of <command>REINDEX</command> cannot be executed inside a
       transaction block.
      </para>
@@ -154,8 +156,8 @@ REINDEX [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] { IN
       The name of the specific index, table, or database to be
       reindexed.  Index and table names can be schema-qualified.
       Presently, <command>REINDEX DATABASE</command> and <command>REINDEX SYSTEM</command>
-      can only reindex the current database, so their parameter must match
-      the current database's name.
+      can only reindex the current database. Their parameter is optional,
+      and it must match the current database's name.
      </para>
     </listitem>
    </varlistentry>
@@ -192,7 +194,8 @@ REINDEX [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] { IN
     <term><literal>VERBOSE</literal></term>
     <listitem>
      <para>
-      Prints a progress report as each index is reindexed.
+      Prints a progress report as each index is reindexed
+      at <literal>INFO</literal> level.
      </para>
     </listitem>
    </varlistentry>
@@ -290,16 +293,27 @@ REINDEX [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] { IN
   </para>
 
   <para>
-   Reindexing a single index or table requires being the owner of that
-   index or table.  Reindexing a schema or database requires being the
-   owner of that schema or database.  Note specifically that it's thus
+   While <command>REINDEX</command> is running, the <xref
+   linkend="guc-search-path"/> is temporarily changed to <literal>pg_catalog,
+   pg_temp</literal>.
+  </para>
+
+  <para>
+   Reindexing a single index or table requires
+   having the <literal>MAINTAIN</literal> privilege on the
+   table.  Note that while <command>REINDEX</command> on a partitioned index or
+   table requires having the <literal>MAINTAIN</literal> privilege on the
+   partitioned table, such commands skip the privilege checks when processing
+   the individual partitions.  Reindexing a schema or database requires being the
+   owner of that schema or database or having privileges of the
+   <xref linkend="predefined-role-pg-maintain"/>
+   role.  Note specifically that it's thus
    possible for non-superusers to rebuild indexes of tables owned by
-   other users.  However, as a special exception, when
-   <command>REINDEX DATABASE</command>, <command>REINDEX SCHEMA</command>
-   or <command>REINDEX SYSTEM</command> is issued by a non-superuser,
-   indexes on shared catalogs will be skipped unless the user owns the
-   catalog (which typically won't be the case).  Of course, superusers
-   can always reindex anything.
+   other users.  However, as a special exception,
+   <command>REINDEX DATABASE</command>, <command>REINDEX SCHEMA</command>,
+   and <command>REINDEX SYSTEM</command> will skip indexes on shared catalogs
+   unless the user has the <literal>MAINTAIN</literal> privilege on the
+   catalog.
   </para>
 
   <para>
@@ -451,14 +465,17 @@ Indexes:
 </programlisting>
 
     If the index marked <literal>INVALID</literal> is suffixed
-    <literal>ccnew</literal>, then it corresponds to the transient
+    <literal>_ccnew</literal>, then it corresponds to the transient
     index created during the concurrent operation, and the recommended
     recovery method is to drop it using <literal>DROP INDEX</literal>,
     then attempt <command>REINDEX CONCURRENTLY</command> again.
-    If the invalid index is instead suffixed <literal>ccold</literal>,
+    If the invalid index is instead suffixed <literal>_ccold</literal>,
     it corresponds to the original index which could not be dropped;
     the recommended recovery method is to just drop said index, since the
     rebuild proper has been successful.
+    A nonzero number may be appended to the suffix of the invalid index
+    names to keep them unique, like <literal>_ccnew1</literal>,
+    <literal>_ccold2</literal>, etc.
    </para>
 
    <para>
@@ -511,7 +528,7 @@ REINDEX INDEX my_index;
   </para>
 
   <para>
-   Rebuild all the indexes on the table <literal>my_table</literal>:
+   Rebuild all the indexes on the table <structname>my_table</structname>:
 
 <programlisting>
 REINDEX TABLE my_table;

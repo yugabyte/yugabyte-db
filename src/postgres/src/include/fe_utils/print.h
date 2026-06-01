@@ -3,7 +3,7 @@
  * Query-result printing support for frontend code
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/fe_utils/print.h
@@ -36,7 +36,7 @@ enum printFormat
 	PRINT_LATEX_LONGTABLE,
 	PRINT_TROFF_MS,
 	PRINT_UNALIGNED,
-	PRINT_WRAPPED
+	PRINT_WRAPPED,
 	/* add your favourite output format here ... */
 };
 
@@ -55,7 +55,7 @@ typedef enum printTextRule
 	PRINT_RULE_TOP,				/* top horizontal line */
 	PRINT_RULE_MIDDLE,			/* intra-data horizontal line */
 	PRINT_RULE_BOTTOM,			/* bottom horizontal line */
-	PRINT_RULE_DATA				/* data line (hrule is unused here) */
+	PRINT_RULE_DATA,			/* data line (hrule is unused here) */
 } printTextRule;
 
 typedef enum printTextLineWrap
@@ -63,8 +63,20 @@ typedef enum printTextLineWrap
 	/* Line wrapping conditions */
 	PRINT_LINE_WRAP_NONE,		/* No wrapping */
 	PRINT_LINE_WRAP_WRAP,		/* Wraparound due to overlength line */
-	PRINT_LINE_WRAP_NEWLINE		/* Newline in data */
+	PRINT_LINE_WRAP_NEWLINE,	/* Newline in data */
 } printTextLineWrap;
+
+typedef enum printXheaderWidthType
+{
+	/* Expanded header line width variants */
+	PRINT_XHEADER_FULL,			/* do not truncate header line (this is the
+								 * default) */
+	PRINT_XHEADER_COLUMN,		/* only print header line above the first
+								 * column */
+	PRINT_XHEADER_PAGE,			/* header line must not be longer than
+								 * terminal width */
+	PRINT_XHEADER_EXACT_WIDTH,	/* explicitly specified width */
+} printXheaderWidthType;
 
 typedef struct printTextFormat
 {
@@ -87,7 +99,7 @@ typedef struct printTextFormat
 typedef enum unicode_linestyle
 {
 	UNICODE_LINESTYLE_SINGLE = 0,
-	UNICODE_LINESTYLE_DOUBLE
+	UNICODE_LINESTYLE_DOUBLE,
 } unicode_linestyle;
 
 struct separator
@@ -101,6 +113,10 @@ typedef struct printTableOpt
 	enum printFormat format;	/* see enum above */
 	unsigned short int expanded;	/* expanded/vertical output (if supported
 									 * by output format); 0=no, 1=yes, 2=auto */
+	printXheaderWidthType expanded_header_width_type;	/* width type for header
+														 * line in expanded mode */
+	int			expanded_header_exact_width;	/* explicit width for header
+												 * line in expanded mode */
 	unsigned short int border;	/* Print a border around the table. 0=none,
 								 * 1=dividing lines, 2=full */
 	unsigned short int pager;	/* use pager for output (if to stdout and
@@ -155,7 +171,7 @@ typedef struct printTableContent
 	const char **cells;			/* NULL-terminated array of cell content
 								 * strings */
 	const char **cell;			/* Pointer to the last added cell */
-	long		cellsadded;		/* Number of cells added this far */
+	uint64		cellsadded;		/* Number of cells added this far */
 	bool	   *cellmustfree;	/* true for cells that need to be free()d */
 	printTableFooter *footers;	/* Pointer to the first footer */
 	printTableFooter *footer;	/* Pointer to the last added footer */
@@ -168,6 +184,8 @@ typedef struct printQueryOpt
 {
 	printTableOpt topt;			/* the options above */
 	char	   *nullPrint;		/* how to print null entities */
+	char	   *truePrint;		/* how to print boolean true values */
+	char	   *falsePrint;		/* how to print boolean false values */
 	char	   *title;			/* override title */
 	char	  **footers;		/* override footer (default is "(xx rows)") */
 	bool		translate_header;	/* do gettext on column headers */

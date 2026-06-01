@@ -4,7 +4,7 @@
  *	  Public interface to various tsearch modules, such as
  *	  parsers and dictionaries.
  *
- * Copyright (c) 1998-2022, PostgreSQL Global Development Group
+ * Copyright (c) 1998-2026, PostgreSQL Global Development Group
  *
  * src/include/tsearch/ts_public.h
  *
@@ -104,7 +104,7 @@ typedef struct
 } StopList;
 
 extern void readstoplist(const char *fname, StopList *s,
-						 char *(*wordop) (const char *));
+						 char *(*wordop) (const char *, size_t, Oid));
 extern bool searchstoplist(StopList *s, char *key);
 
 /*

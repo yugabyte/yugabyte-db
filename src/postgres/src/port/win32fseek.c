@@ -3,7 +3,7 @@
  * win32fseek.c
  *	  Replacements for fseeko() and ftello().
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/port/win32fseek.c
@@ -17,7 +17,7 @@
 #include "postgres.h"
 #endif
 
-#if defined(WIN32) && defined(_MSC_VER)
+#ifdef _MSC_VER
 
 /*
  * _pgfseeko64
@@ -72,4 +72,4 @@ _pgftello64(FILE *stream)
 	return -1;
 }
 
-#endif							/* defined(WIN32) && defined(_MSC_VER) */
+#endif							/* _MSC_VER */

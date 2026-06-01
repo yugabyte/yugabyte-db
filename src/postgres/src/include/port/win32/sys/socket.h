@@ -24,10 +24,11 @@
 #endif
 
 /*
- * we can't use the windows gai_strerror{AW} functions because
- * they are defined inline in the MS header files. So we'll use our
- * own
+ * We don't use the Windows gai_strerror[A] function because it is not
+ * thread-safe.  We define our own in src/port/win32gai_strerror.c.
  */
 #undef gai_strerror
+
+extern const char *gai_strerror(int errcode);
 
 #endif							/* WIN32_SYS_SOCKET_H */

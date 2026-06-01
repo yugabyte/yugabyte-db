@@ -2,7 +2,7 @@
  *
  * Facilities for frontend code to connect to and disconnect from databases.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/fe_utils/connect_utils.c
@@ -25,7 +25,7 @@
  *
  * If allow_password_reuse is true, we will try to re-use any password
  * given during previous calls to this routine.  (Callers should not pass
- * allow_password_reuse=true unless reconnecting to the same database+user
+ * allow_password_reuse=true unless reconnecting to the same host+port+user
  * as before, else we might create password exposure hazards.)
  */
 PGconn *
@@ -99,8 +99,7 @@ connectDatabase(const ConnParams *cparams, const char *progname,
 			cparams->prompt_password != TRI_NO)
 		{
 			PQfinish(conn);
-			if (password)
-				free(password);
+			free(password);
 			password = simple_prompt("Password: ", false);
 			new_pass = true;
 		}
@@ -158,19 +157,14 @@ connectMaintenanceDatabase(ConnParams *cparams,
 void
 disconnectDatabase(PGconn *conn)
 {
-	char		errbuf[256];
-
 	Assert(conn != NULL);
 
 	if (PQtransactionStatus(conn) == PQTRANS_ACTIVE)
 	{
-		PGcancel   *cancel;
+		PGcancelConn *cancelConn = PQcancelCreate(conn);
 
-		if ((cancel = PQgetCancel(conn)))
-		{
-			(void) PQcancel(cancel, errbuf, sizeof(errbuf));
-			PQfreeCancel(cancel);
-		}
+		(void) PQcancelBlocking(cancelConn);
+		PQcancelFinish(cancelConn);
 	}
 
 	PQfinish(conn);

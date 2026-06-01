@@ -8,7 +8,7 @@
  * doesn't actually run the executor for them.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,15 +19,16 @@
 #include "postgres.h"
 
 #include "access/xact.h"
-#include "catalog/pg_type.h"
 #include "commands/portalcmds.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
+#include "utils/hsearch.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
+#include "utils/tuplestore.h"
 
 /* YB includes */
 #include "pg_yb_utils.h"
@@ -135,7 +136,7 @@ GetPortalByName(const char *name)
 {
 	Portal		portal;
 
-	if (PointerIsValid(name))
+	if (name)
 		PortalHashTableLookup(name, portal);
 	else
 		portal = NULL;
@@ -180,7 +181,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 {
 	Portal		portal;
 
-	AssertArg(PointerIsValid(name));
+	Assert(name);
 
 	portal = GetPortalByName(name);
 	if (PortalIsValid(portal))
@@ -298,17 +299,16 @@ PortalDefineQuery(Portal portal,
 				  List *stmts,
 				  CachedPlan *cplan)
 {
-	AssertArg(PortalIsValid(portal));
-	AssertState(portal->status == PORTAL_NEW);
+	Assert(PortalIsValid(portal));
+	Assert(portal->status == PORTAL_NEW);
 
-	AssertArg(sourceText != NULL);
-	AssertArg(commandTag != CMDTAG_UNKNOWN || stmts == NIL);
+	Assert(sourceText != NULL);
+	Assert(commandTag != CMDTAG_UNKNOWN || stmts == NIL);
 
 	portal->prepStmtName = prepStmtName;
 	portal->sourceText = sourceText;
-	portal->qc.commandTag = commandTag;
-	portal->qc.nprocessed = 0;
 	portal->commandTag = commandTag;
+	SetQueryCompletion(&portal->qc, commandTag, 0);
 	portal->stmts = stmts;
 	portal->cplan = cplan;
 	portal->status = PORTAL_DEFINED;
@@ -437,7 +437,7 @@ MarkPortalDone(Portal portal)
 	 * aborted transaction, this is necessary, or we'd reach AtCleanup_Portals
 	 * with the cleanup hook still unexecuted.
 	 */
-	if (PointerIsValid(portal->cleanup))
+	if (portal->cleanup)
 	{
 		portal->cleanup(portal);
 		portal->cleanup = NULL;
@@ -465,7 +465,7 @@ MarkPortalFailed(Portal portal)
 	 * is necessary, or we'd reach AtCleanup_Portals with the cleanup hook
 	 * still unexecuted.
 	 */
-	if (PointerIsValid(portal->cleanup))
+	if (portal->cleanup)
 	{
 		portal->cleanup(portal);
 		portal->cleanup = NULL;
@@ -479,7 +479,7 @@ MarkPortalFailed(Portal portal)
 void
 PortalDrop(Portal portal, bool isTopCommit)
 {
-	AssertArg(PortalIsValid(portal));
+	Assert(PortalIsValid(portal));
 
 	/*
 	 * Don't allow dropping a pinned portal, it's still needed by whoever
@@ -509,7 +509,7 @@ PortalDrop(Portal portal, bool isTopCommit)
 	 * Note: in most paths of control, this will have been done already in
 	 * MarkPortalDone or MarkPortalFailed.  We're just making sure.
 	 */
-	if (PointerIsValid(portal->cleanup))
+	if (portal->cleanup)
 	{
 		portal->cleanup(portal);
 		portal->cleanup = NULL;
@@ -835,7 +835,7 @@ AtAbort_Portals(void)
 		 * Allow portalcmds.c to clean up the state it knows about, if we
 		 * haven't already.
 		 */
-		if (PointerIsValid(portal->cleanup))
+		if (portal->cleanup)
 		{
 			portal->cleanup(portal);
 			portal->cleanup = NULL;
@@ -865,7 +865,8 @@ AtAbort_Portals(void)
 /*
  * Post-abort cleanup for portals.
  *
- * Delete all portals not held over from prior transactions.  */
+ * Delete all portals not held over from prior transactions.
+ */
 void
 AtCleanup_Portals(void)
 {
@@ -908,7 +909,7 @@ AtCleanup_Portals(void)
 		 * We had better not call any user-defined code during cleanup, so if
 		 * the cleanup hook hasn't been run yet, too bad; we'll just skip it.
 		 */
-		if (PointerIsValid(portal->cleanup))
+		if (portal->cleanup)
 		{
 			elog(WARNING, "skipping cleanup for portal \"%s\"", portal->name);
 			portal->cleanup = NULL;
@@ -1068,7 +1069,7 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 		 * Allow portalcmds.c to clean up the state it knows about, if we
 		 * haven't already.
 		 */
-		if (PointerIsValid(portal->cleanup))
+		if (portal->cleanup)
 		{
 			portal->cleanup(portal);
 			portal->cleanup = NULL;
@@ -1127,7 +1128,7 @@ AtSubCleanup_Portals(SubTransactionId mySubid)
 		 * We had better not call any user-defined code during cleanup, so if
 		 * the cleanup hook hasn't been run yet, too bad; we'll just skip it.
 		 */
-		if (PointerIsValid(portal->cleanup))
+		if (portal->cleanup)
 		{
 			elog(WARNING, "skipping cleanup for portal \"%s\"", portal->name);
 			portal->cleanup = NULL;
@@ -1157,7 +1158,7 @@ pg_cursor(PG_FUNCTION_ARGS)
 	{
 		Portal		portal = hentry->portal;
 		Datum		values[6];
-		bool		nulls[6];
+		bool		nulls[6] = {0};
 
 		/* report only "visible" entries */
 		if (!portal->visible)
@@ -1165,8 +1166,6 @@ pg_cursor(PG_FUNCTION_ARGS)
 		/* also ignore it if PortalDefineQuery hasn't been called yet */
 		if (!portal->sourceText)
 			continue;
-
-		MemSet(nulls, 0, sizeof(nulls));
 
 		values[0] = CStringGetTextDatum(portal->name);
 		values[1] = CStringGetTextDatum(portal->sourceText);

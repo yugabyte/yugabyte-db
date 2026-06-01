@@ -4,7 +4,7 @@
  *		Functions for handling locale-related info
  *
  *
- * Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -19,7 +19,7 @@
 #include "postgres_fe.h"
 #endif
 
-#ifdef HAVE_LANGINFO_H
+#ifndef WIN32
 #include <langinfo.h>
 #endif
 
@@ -189,44 +189,20 @@ static const struct encoding_match encoding_match_list[] = {
 
 #ifdef WIN32
 /*
- * On Windows, use CP<code page number> instead of the nl_langinfo() result
+ * On Windows, use CP<code page number> instead of CODESET.
  *
- * Visual Studio 2012 expanded the set of valid LC_CTYPE values, so have its
- * locale machinery determine the code page.  See comments at IsoLocaleName().
- * For other compilers, follow the locale's predictable format.
- *
- * Visual Studio 2015 should still be able to do the same, but the declaration
- * of lc_codepage is missing in _locale_t, causing this code compilation to
- * fail, hence this falls back instead on GetLocaleInfoEx. VS 2015 may be an
- * exception and post-VS2015 versions should be able to handle properly the
- * codepage number using _create_locale(). So, instead of the same logic as
- * VS 2012 and VS 2013, this routine uses GetLocaleInfoEx to parse short
- * locale names like "de-DE", "fr-FR", etc. If those cannot be parsed correctly
- * process falls back to the pre-VS-2010 manual parsing done with
- * using <Language>_<Country>.<CodePage> as a base.
+ * This routine uses GetLocaleInfoEx() to parse short locale names like
+ * "de-DE", "fr-FR", etc.  If those cannot be parsed correctly process falls
+ * back to the pre-VS-2010 manual parsing done with using
+ * <Language>_<Country>.<CodePage> as a base.
  *
  * Returns a malloc()'d string for the caller to free.
  */
 static char *
-win32_langinfo(const char *ctype)
+win32_get_codeset(const char *ctype)
 {
 	char	   *r = NULL;
-
-#if defined(_MSC_VER) && (_MSC_VER < 1900)
-	_locale_t	loct = NULL;
-
-	loct = _create_locale(LC_CTYPE, ctype);
-	if (loct != NULL)
-	{
-		r = malloc(16);			/* excess */
-		if (r != NULL)
-			sprintf(r, "CP%u", loct->locinfo->lc_codepage);
-		_free_locale(loct);
-	}
-#else
-	char	   *codepage;
-
-#if defined(_MSC_VER) && (_MSC_VER >= 1900)
+	const char *codepage;
 	uint32		cp;
 	WCHAR		wctype[LOCALE_NAME_MAX_LENGTH];
 
@@ -251,7 +227,6 @@ win32_langinfo(const char *ctype)
 		}
 	}
 	else
-#endif
 	{
 		/*
 		 * Locale format on Win32 is <Language>_<Country>.<CodePage>.  For
@@ -279,7 +254,6 @@ win32_langinfo(const char *ctype)
 			}
 		}
 	}
-#endif
 
 	return r;
 }
@@ -310,8 +284,6 @@ pg_codepage_to_encoding(UINT cp)
 #endif
 #endif							/* WIN32 */
 
-#if (defined(HAVE_LANGINFO_H) && defined(CODESET)) || defined(WIN32)
-
 /*
  * Given a setting for LC_CTYPE, return the Postgres ID of the associated
  * encoding, if we can determine it.  Return -1 if we can't determine it.
@@ -331,63 +303,34 @@ pg_get_encoding_from_locale(const char *ctype, bool write_message)
 	char	   *sys;
 	int			i;
 
+#ifndef WIN32
+	locale_t	loc;
+#endif
+
 	/* Get the CODESET property, and also LC_CTYPE if not passed in */
-	if (ctype)
-	{
-		char	   *save;
-		char	   *name;
-
-		/* If locale is C or POSIX, we can allow all encodings */
-		if (pg_strcasecmp(ctype, "C") == 0 ||
-			pg_strcasecmp(ctype, "POSIX") == 0)
-			return PG_SQL_ASCII;
-
-		save = setlocale(LC_CTYPE, NULL);
-		if (!save)
-			return -1;			/* setlocale() broken? */
-		/* must copy result, or it might change after setlocale */
-		save = strdup(save);
-		if (!save)
-			return -1;			/* out of memory; unlikely */
-
-		name = setlocale(LC_CTYPE, ctype);
-		if (!name)
-		{
-			free(save);
-			return -1;			/* bogus ctype passed in? */
-		}
-
-#ifndef WIN32
-		sys = nl_langinfo(CODESET);
-		if (sys)
-			sys = strdup(sys);
-#else
-		sys = win32_langinfo(name);
-#endif
-
-		setlocale(LC_CTYPE, save);
-		free(save);
-	}
-	else
-	{
-		/* much easier... */
+	if (!ctype)
 		ctype = setlocale(LC_CTYPE, NULL);
-		if (!ctype)
-			return -1;			/* setlocale() broken? */
 
-		/* If locale is C or POSIX, we can allow all encodings */
-		if (pg_strcasecmp(ctype, "C") == 0 ||
-			pg_strcasecmp(ctype, "POSIX") == 0)
-			return PG_SQL_ASCII;
+
+	/* If locale is C or POSIX, we can allow all encodings */
+	if (pg_strcasecmp(ctype, "C") == 0 ||
+		pg_strcasecmp(ctype, "POSIX") == 0)
+		return PG_SQL_ASCII;
+
 
 #ifndef WIN32
-		sys = nl_langinfo(CODESET);
-		if (sys)
-			sys = strdup(sys);
+	loc = newlocale(LC_CTYPE_MASK, ctype, (locale_t) 0);
+	if (loc == (locale_t) 0)
+		return -1;				/* bogus ctype passed in? */
+
+	sys = nl_langinfo_l(CODESET, loc);
+	if (sys)
+		sys = strdup(sys);
+
+	freelocale(loc);
 #else
-		sys = win32_langinfo(ctype);
+	sys = win32_get_codeset(ctype);
 #endif
-	}
 
 	if (!sys)
 		return -1;				/* out of memory; unlikely */
@@ -438,19 +381,3 @@ pg_get_encoding_from_locale(const char *ctype, bool write_message)
 	free(sys);
 	return -1;
 }
-#else							/* (HAVE_LANGINFO_H && CODESET) || WIN32 */
-
-/*
- * stub if no multi-language platform support
- *
- * Note: we could return -1 here, but that would have the effect of
- * forcing users to specify an encoding to initdb on such platforms.
- * It seems better to silently default to SQL_ASCII.
- */
-int
-pg_get_encoding_from_locale(const char *ctype, bool write_message)
-{
-	return PG_SQL_ASCII;
-}
-
-#endif							/* (HAVE_LANGINFO_H && CODESET) || WIN32 */

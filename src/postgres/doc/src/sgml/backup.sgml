@@ -627,7 +627,7 @@ tar -cf backup.tar /usr/local/pgsql/data
     character in the command.  The simplest useful command is something
     like:
 <programlisting>
-archive_command = 'test ! -f /mnt/server/archivedir/%f &amp;&amp; cp %p /mnt/server/archivedir/%f'  # Unix
+archive_command = 'test ! -f "/mnt/server/archivedir/%f" &amp;&amp; cp "%p" "/mnt/server/archivedir/%f"'  # Unix
 archive_command = 'copy "%p" "C:\\server\\archivedir\\%f"'  # Windows
 </programlisting>
     which will copy archivable WAL segments to the directory
@@ -684,14 +684,27 @@ test ! -f /mnt/server/archivedir/00000001000000A900000065 &amp;&amp; cp pg_wal/0
     any pre-existing archive file.  This is an important safety feature to
     preserve the integrity of your archive in case of administrator error
     (such as sending the output of two different servers to the same archive
-    directory).
+    directory).  It is advisable to test your proposed archive library to ensure
+    that it does not overwrite an existing file.
    </para>
 
    <para>
-    It is advisable to test your proposed archive command or library to ensure that it
-    indeed does not overwrite an existing file, <emphasis>and that it returns
-    nonzero status or <literal>false</literal>, respectively, in this case</emphasis>.
-    The example command above for Unix ensures this by including a separate
+    In rare cases, <productname>PostgreSQL</productname> may attempt to
+    re-archive a WAL file that was previously archived.  For example, if the
+    system crashes before the server makes a durable record of archival
+    success, the server will attempt to archive the file again after
+    restarting (provided archiving is still enabled).  When an archive command or library
+    encounters a pre-existing file, it should return a zero status or <literal>true</literal>, respectively,
+    if the WAL file has identical contents to the pre-existing archive and the
+    pre-existing archive is fully persisted to storage.  If a pre-existing
+    file contains different contents than the WAL file being archived, the
+    archive command or library <emphasis>must</emphasis> return a nonzero status or
+    <literal>false</literal>, respectively.
+   </para>
+
+   <para>
+    The example command above for Unix avoids overwriting a pre-existing archive
+    by including a separate
     <command>test</command> step.  On some Unix platforms, <command>cp</command> has
     switches such as <option>-i</option> that can be used to do the same thing
     less verbosely, but you should not rely on these without verifying that
@@ -850,12 +863,94 @@ test ! -f /mnt/server/archivedir/00000001000000A900000065 &amp;&amp; cp pg_wal/0
    </para>
   </sect2>
 
+  <sect2 id="backup-incremental-backup">
+   <title>Making an Incremental Backup</title>
+
+   <para>
+    You can use <xref linkend="app-pgbasebackup"/> to take an incremental
+    backup by specifying the <literal>--incremental</literal> option. You must
+    supply, as an argument to <literal>--incremental</literal>, the backup
+    manifest to an earlier backup from the same server. In the resulting
+    backup, non-relation files will be included in their entirety, but some
+    relation files may be replaced by smaller incremental files which contain
+    only the blocks which have been changed since the earlier backup and enough
+    metadata to reconstruct the current version of the file.
+   </para>
+
+   <para>
+    To figure out which blocks need to be backed up, the server uses WAL
+    summaries, which are stored in the data directory, inside the directory
+    <literal>pg_wal/summaries</literal>. If the required summary files are not
+    present, an attempt to take an incremental backup will fail. The summaries
+    present in this directory must cover all LSNs from the start LSN of the
+    prior backup to the start LSN of the current backup. Since the server looks
+    for WAL summaries just after establishing the start LSN of the current
+    backup, the necessary summary files probably won't be instantly present
+    on disk, but the server will wait for any missing files to show up.
+    This also helps if the WAL summarization process has fallen behind.
+    However, if the necessary files have already been removed, or if the WAL
+    summarizer doesn't catch up quickly enough, the incremental backup will
+    fail.
+   </para>
+
+   <para>
+    When restoring an incremental backup, it will be necessary to have not
+    only the incremental backup itself but also all earlier backups that
+    are required to supply the blocks omitted from the incremental backup.
+    See <xref linkend="app-pgcombinebackup"/> for further information about
+    this requirement. Note that there are restrictions on the use of
+    <literal>pg_combinebackup</literal> when the checksum status of the
+    cluster has been changed; see
+    <link linkend="app-pgcombinebackup-limitations">pg_combinebackup
+    limitations</link>.
+   </para>
+
+   <para>
+    Note that all of the requirements for making use of a full backup also
+    apply to an incremental backup. For instance, you still need all of the
+    WAL segment files generated during and after the file system backup, and
+    any relevant WAL history files. And you still need to create a
+    <literal>recovery.signal</literal> (or <literal>standby.signal</literal>)
+    and perform recovery, as described in
+    <xref linkend="backup-pitr-recovery" />. The requirement to have earlier
+    backups available at restore time and to use
+    <literal>pg_combinebackup</literal> is an additional requirement on top of
+    everything else. Keep in mind that <application>PostgreSQL</application>
+    has no built-in mechanism to figure out which backups are still needed as
+    a basis for restoring later incremental backups. You must keep track of
+    the relationships between your full and incremental backups on your own,
+    and be certain not to remove earlier backups if they might be needed when
+    restoring later incremental backups.
+   </para>
+
+   <para>
+    Incremental backups typically only make sense for relatively large
+    databases where a significant portion of the data does not change, or only
+    changes slowly. For a small database, it's simpler to ignore the existence
+    of incremental backups and simply take full backups, which are simpler
+    to manage. For a large database all of which is heavily modified,
+    incremental backups won't be much smaller than full backups.
+   </para>
+
+   <para>
+    An incremental backup is only possible if replay would begin from a later
+    checkpoint than for the previous backup upon which it depends.  If you
+    take the incremental backup on the primary, this condition is always
+    satisfied, because each backup triggers a new checkpoint.  On a standby,
+    replay begins from the most recent restartpoint.  Therefore, an
+    incremental backup of a standby server can fail if there has been very
+    little activity since the previous backup, since no new restartpoint might
+    have been created.
+   </para>
+  </sect2>
+
   <sect2 id="backup-lowlevel-base-backup">
    <title>Making a Base Backup Using the Low Level API</title>
    <para>
-    The procedure for making a base backup using the low level
-    APIs contains a few more steps than
-    the <xref linkend="app-pgbasebackup"/> method, but is relatively
+    Instead of taking a full or incremental base backup using
+    <xref linkend="app-pgbasebackup"/>, you can take a base backup using the
+    low-level API. This procedure contains a few more steps than
+    the <application>pg_basebackup</application> method, but is relatively
     simple. It is very important that these steps are executed in
     sequence, and that the success of a step is verified before
     proceeding to the next step.
@@ -896,7 +991,7 @@ SELECT pg_backup_start(label => 'label', fast => false);
      usually preferable as it minimizes the impact on the running system.  If you
      want to start the backup as soon as possible, pass <literal>true</literal> as
      the second parameter to <function>pg_backup_start</function> and it will
-     request an immediate checkpoint, which will finish as fast as possible using
+     request a fast checkpoint, which will finish as fast as possible using
      as much I/O as possible.
     </para>
 
@@ -1099,7 +1194,7 @@ SELECT * FROM pg_backup_stop(wait_for_archive => true);
      require that you have enough free space on your system to hold two
      copies of your existing database. If you do not have enough space,
      you should at least save the contents of the cluster's <filename>pg_wal</filename>
-     subdirectory, as it might contain logs which
+     subdirectory, as it might contain WAL files which
      were not archived before the system went down.
     </para>
    </listitem>
@@ -1111,12 +1206,26 @@ SELECT * FROM pg_backup_stop(wait_for_archive => true);
    </listitem>
    <listitem>
     <para>
-     Restore the database files from your file system backup.  Be sure that they
+     If you're restoring a full backup, you can restore the database files
+     directly into the target directories.  Be sure that they
      are restored with the right ownership (the database system user, not
      <literal>root</literal>!) and with the right permissions.  If you are using
      tablespaces,
      you should verify that the symbolic links in <filename>pg_tblspc/</filename>
      were correctly restored.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     If you're restoring an incremental backup, you'll need to restore the
+     incremental backup and all earlier backups upon which it directly or
+     indirectly depends to the machine where you are performing the restore.
+     These backups will need to be placed in separate directories, not the
+     target directories where you want the running server to end up.
+     Once this is done, use <xref linkend="app-pgcombinebackup"/> to pull
+     data from the full backup and all of the subsequent incremental backups
+     and write out a synthetic full backup to the target directories. As above,
+     verify that permissions and tablespace links are correct.
     </para>
    </listitem>
    <listitem>
@@ -1177,15 +1286,15 @@ SELECT * FROM pg_backup_stop(wait_for_archive => true);
     which tells <productname>PostgreSQL</productname> how to retrieve archived
     WAL file segments.  Like the <varname>archive_command</varname>, this is
     a shell command string.  It can contain <literal>%f</literal>, which is
-    replaced by the name of the desired log file, and <literal>%p</literal>,
-    which is replaced by the path name to copy the log file to.
+    replaced by the name of the desired WAL file, and <literal>%p</literal>,
+    which is replaced by the path name to copy the WAL file to.
     (The path name is relative to the current working directory,
     i.e., the cluster's data directory.)
     Write <literal>%%</literal> if you need to embed an actual <literal>%</literal>
     character in the command.  The simplest useful command is
     something like:
 <programlisting>
-restore_command = 'cp /mnt/server/archivedir/%f %p'
+restore_command = 'cp "/mnt/server/archivedir/%f" "%p"'
 </programlisting>
     which will copy previously archived WAL segments from the directory
     <filename>/mnt/server/archivedir</filename>.  Of course, you can use something
@@ -1302,7 +1411,16 @@ restore_command = 'cp /mnt/server/archivedir/%f %p'
     a new timeline is created to identify the series of WAL records
     generated after that recovery.  The timeline
     ID number is part of WAL segment file names so a new timeline does
-    not overwrite the WAL data generated by previous timelines.  It is
+    not overwrite the WAL data generated by previous timelines.
+    For example, in the WAL file name
+    <filename>0000000100001234000055CD</filename>, the leading
+    <literal>00000001</literal> is the timeline ID in hexadecimal.  (Note that
+    in other contexts, such as server log messages, timeline IDs are
+    usually printed in decimal.)
+   </para>
+
+   <para>
+    It is
     in fact possible to archive many different timelines.  While that might
     seem like a useless feature, it's often a lifesaver.  Consider the
     situation where you aren't quite sure what point-in-time to recover to,
@@ -1375,11 +1493,11 @@ restore_command = 'cp /mnt/server/archivedir/%f %p'
       If archive storage size is a concern, you can use
       <application>gzip</application> to compress the archive files:
 <programlisting>
-archive_command = 'gzip &lt; %p &gt; /mnt/server/archivedir/%f.gz'
+archive_command = 'gzip &lt; "%p" &gt; "/mnt/server/archivedir/%f.gz"'
 </programlisting>
       You will then need to use <application>gunzip</application> during recovery:
 <programlisting>
-restore_command = 'gunzip &lt; /mnt/server/archivedir/%f.gz &gt; %p'
+restore_command = 'gunzip &lt; "/mnt/server/archivedir/%f.gz" &gt; "%p"'
 </programlisting>
      </para>
     </sect3>
@@ -1466,9 +1584,9 @@ archive_command = 'local_backup_script.sh "%p" "%f"'
      <link linkend="sql-createtablespace"><command>CREATE TABLESPACE</command></link>
      commands are WAL-logged with the literal absolute path, and will
      therefore be replayed as tablespace creations with the same
-     absolute path.  This might be undesirable if the log is being
+     absolute path.  This might be undesirable if the WAL is being
      replayed on a different machine.  It can be dangerous even if the
-     log is being replayed on the same machine, but into a new data
+     WAL is being replayed on the same machine, but into a new data
      directory: the replay will still overwrite the contents of the
      original tablespace.  To avoid potential gotchas of this sort,
      the best practice is to take a new base backup after creating or
@@ -1485,11 +1603,11 @@ archive_command = 'local_backup_script.sh "%p" "%f"'
     we might need to fix partially-written disk pages.  Depending on
     your system hardware and software, the risk of partial writes might
     be small enough to ignore, in which case you can significantly
-    reduce the total volume of archived logs by turning off page
+    reduce the total volume of archived WAL files by turning off page
     snapshots using the <xref linkend="guc-full-page-writes"/>
     parameter.  (Read the notes and warnings in <xref linkend="wal"/>
     before you do so.)  Turning off page snapshots does not prevent
-    use of the logs for PITR operations.  An area for future
+    use of the WAL for PITR operations.  An area for future
     development is to compress archived WAL data by removing
     unnecessary page copies even when <varname>full_page_writes</varname> is
     on.  In the meantime, administrators might wish to reduce the number

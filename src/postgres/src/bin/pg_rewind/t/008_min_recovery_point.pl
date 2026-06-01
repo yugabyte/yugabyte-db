@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 #
 # Test situation where a target data directory contains
@@ -31,7 +31,7 @@
 # nodes.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -76,13 +76,6 @@ $node_1->wait_for_catchup('node_3');
 #
 $node_1->stop('fast');
 $node_3->promote;
-# Force a checkpoint after the promotion. pg_rewind looks at the control
-# file to determine what timeline the server is on, and that isn't updated
-# immediately at promotion, but only at the next checkpoint. When running
-# pg_rewind in remote mode, it's possible that we complete the test steps
-# after promotion so quickly that when pg_rewind runs, the standby has not
-# performed a checkpoint after promotion yet.
-$node_3->safe_psql('postgres', "checkpoint");
 
 # reconfigure node_1 as a standby following node_3
 my $node_3_connstr = $node_3->connstr;
@@ -108,8 +101,6 @@ $node_2->restart();
 $node_3->wait_for_catchup('node_1');
 
 $node_1->promote;
-# Force a checkpoint after promotion, like earlier.
-$node_1->safe_psql('postgres', "checkpoint");
 
 #
 # We now have a split-brain with two primaries. Insert a row on both to
@@ -141,7 +132,7 @@ $node_2->poll_query_until('postgres',
 $node_2->stop('fast');
 $node_3->stop('fast');
 
-my $node_2_pgdata  = $node_2->data_dir;
+my $node_2_pgdata = $node_2->data_dir;
 my $node_1_connstr = $node_1->connstr;
 
 # Keep a temporary postgresql.conf or it would be overwritten during the rewind.
@@ -151,8 +142,10 @@ copy(
 
 command_ok(
 	[
-		'pg_rewind',                      "--source-server=$node_1_connstr",
-		"--target-pgdata=$node_2_pgdata", "--debug"
+		'pg_rewind',
+		'--source-server' => $node_1_connstr,
+		'--target-pgdata' => $node_2_pgdata,
+		'--debug',
 	],
 	'run pg_rewind');
 

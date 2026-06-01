@@ -4,7 +4,7 @@
  *	  Header file for Row Level Security (RLS) utility commands to be used
  *	  with the rowsecurity feature.
  *
- * Copyright (c) 2007-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2026, PostgreSQL Global Development Group
  *
  * src/include/utils/rls.h
  *
@@ -42,7 +42,7 @@ enum CheckEnableRlsResult
 {
 	RLS_NONE,
 	RLS_NONE_ENV,
-	RLS_ENABLED
+	RLS_ENABLED,
 };
 
 extern int	check_enable_rls(Oid relid, Oid checkAsUser, bool noError);

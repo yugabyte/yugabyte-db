@@ -165,7 +165,7 @@ pg_base64_enc_len(unsigned srclen)
 	/*
 	 * 3 bytes will be converted to 4, linefeed after 76 chars
 	 */
-	return (srclen + 2) * 4 / 3 + srclen / (76 * 3 / 4);
+	return (srclen + 2) / 3 * 4 + srclen / (76 * 3 / 4);
 }
 
 static unsigned
@@ -178,8 +178,8 @@ pg_base64_dec_len(unsigned srclen)
  * PGP armor
  */
 
-static const char *armor_header = "-----BEGIN PGP MESSAGE-----\n";
-static const char *armor_footer = "\n-----END PGP MESSAGE-----\n";
+static const char *const armor_header = "-----BEGIN PGP MESSAGE-----\n";
+static const char *const armor_footer = "\n-----END PGP MESSAGE-----\n";
 
 /* CRC24 implementation from rfc2440 */
 #define CRC24_INIT 0x00b704ceL

@@ -1,9 +1,9 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # logical replication of 2PC test
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -21,9 +21,9 @@ $node_publisher->start;
 
 # Create subscriber node
 my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
-$node_subscriber->init(allows_streaming => 'logical');
+$node_subscriber->init;
 $node_subscriber->append_conf('postgresql.conf',
-	qq(max_prepared_transactions = 10));
+	qq(max_prepared_transactions = 0));
 $node_subscriber->start;
 
 # Create some pre-existing content on publisher
@@ -67,11 +67,23 @@ $node_subscriber->poll_query_until('postgres', $twophase_query)
 # then COMMIT PREPARED
 ###############################
 
+# Save the log location, to see the failure of the application
+my $log_location = -s $node_subscriber->logfile;
+
 $node_publisher->safe_psql(
 	'postgres', "
 	BEGIN;
 	INSERT INTO tab_full VALUES (11);
 	PREPARE TRANSACTION 'test_prepared_tab_full';");
+
+# Confirm the ERROR is reported because max_prepared_transactions is zero
+$node_subscriber->wait_for_log(
+	qr/ERROR: ( [A-Z0-9]+:)? prepared transactions are disabled/);
+
+# Set max_prepared_transactions to correct value to resume the replication
+$node_subscriber->append_conf('postgresql.conf',
+	qq(max_prepared_transactions = 10));
+$node_subscriber->restart;
 
 $node_publisher->wait_for_catchup($appname);
 
@@ -361,11 +373,111 @@ $result =
   $node_publisher->safe_psql('postgres', "SELECT count(*) FROM tab_copy;");
 is($result, qq(6), 'publisher inserted data');
 
+# Wait for both subscribers to catchup
 $node_publisher->wait_for_catchup($appname_copy);
+$node_publisher->wait_for_catchup($appname);
+
+# Make sure there are no prepared transactions on the subscriber
+$result = $node_subscriber->safe_psql('postgres',
+	"SELECT count(*) FROM pg_prepared_xacts;");
+is($result, qq(0), 'should be no prepared transactions on subscriber');
 
 $result =
   $node_subscriber->safe_psql('postgres', "SELECT count(*) FROM tab_copy;");
 is($result, qq(2), 'replicated data in subscriber table');
+
+# Clean up
+$node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION tap_sub");
+
+###############################
+# Alter the subscription to set two_phase to false.
+# Verify that the altered subscription reflects the new two_phase option.
+###############################
+
+# Confirm that the two-phase slot option is enabled before altering
+$result = $node_publisher->safe_psql('postgres',
+	"SELECT two_phase FROM pg_replication_slots WHERE slot_name = 'tap_sub_copy';"
+);
+is($result, qq(t), 'two-phase is enabled');
+
+# Alter subscription two_phase to false
+$node_subscriber->safe_psql('postgres',
+	"ALTER SUBSCRIPTION tap_sub_copy DISABLE;");
+$node_subscriber->poll_query_until('postgres',
+	"SELECT count(*) = 0 FROM pg_stat_activity WHERE backend_type = 'logical replication apply worker'"
+);
+$node_subscriber->safe_psql(
+	'postgres', "
+    ALTER SUBSCRIPTION tap_sub_copy SET (two_phase = false);
+    ALTER SUBSCRIPTION tap_sub_copy ENABLE;");
+
+# Wait for subscription startup
+$node_subscriber->wait_for_subscription_sync($node_publisher, $appname_copy);
+
+# Make sure that the two-phase is disabled on the subscriber
+$result = $node_subscriber->safe_psql('postgres',
+	"SELECT subtwophasestate FROM pg_subscription WHERE subname = 'tap_sub_copy';"
+);
+is($result, qq(d), 'two-phase subscription option should be disabled');
+
+# Make sure that the two-phase slot option is also disabled
+$result = $node_publisher->safe_psql('postgres',
+	"SELECT two_phase FROM pg_replication_slots WHERE slot_name = 'tap_sub_copy';"
+);
+is($result, qq(f), 'two-phase slot option should be disabled');
+
+###############################
+# Now do a prepare on the publisher and verify that it is not replicated.
+###############################
+$node_publisher->safe_psql(
+	'postgres', qq{
+    BEGIN;
+    INSERT INTO tab_copy VALUES (100);
+    PREPARE TRANSACTION 'newgid';
+	});
+
+# Wait for the subscriber to catchup
+$node_publisher->wait_for_catchup($appname_copy);
+
+# Make sure there are no prepared transactions on the subscriber
+$result = $node_subscriber->safe_psql('postgres',
+	"SELECT count(*) FROM pg_prepared_xacts;");
+is($result, qq(0), 'should be no prepared transactions on subscriber');
+
+###############################
+# Set two_phase to "true" and failover to "true" before the COMMIT PREPARED.
+#
+# This tests the scenario where both two_phase and failover are altered
+# simultaneously.
+###############################
+$node_subscriber->safe_psql('postgres',
+	"ALTER SUBSCRIPTION tap_sub_copy DISABLE;");
+$node_subscriber->poll_query_until('postgres',
+	"SELECT count(*) = 0 FROM pg_stat_activity WHERE backend_type = 'logical replication apply worker'"
+);
+$node_subscriber->safe_psql(
+	'postgres', "
+    ALTER SUBSCRIPTION tap_sub_copy SET (two_phase = true, failover = true);
+    ALTER SUBSCRIPTION tap_sub_copy ENABLE;");
+
+###############################
+# Now commit the insert and verify that it is replicated.
+###############################
+$node_publisher->safe_psql('postgres', "COMMIT PREPARED 'newgid';");
+
+# Wait for the subscriber to catchup
+$node_publisher->wait_for_catchup($appname_copy);
+
+# Make sure that the committed transaction is replicated.
+$result =
+  $node_subscriber->safe_psql('postgres', "SELECT count(*) FROM tab_copy;");
+is($result, qq(3), 'replicated data in subscriber table');
+
+# Make sure that the two-phase is enabled on the subscriber
+$result = $node_subscriber->safe_psql('postgres',
+	"SELECT subtwophasestate FROM pg_subscription WHERE subname = 'tap_sub_copy';"
+);
+is($result, qq(e), 'two-phase should be enabled');
 
 $node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION tap_sub_copy;");
 $node_publisher->safe_psql('postgres', "DROP PUBLICATION tap_pub_copy;");
@@ -373,8 +485,6 @@ $node_publisher->safe_psql('postgres', "DROP PUBLICATION tap_pub_copy;");
 ###############################
 # check all the cleanup
 ###############################
-
-$node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION tap_sub");
 
 $result = $node_subscriber->safe_psql('postgres',
 	"SELECT count(*) FROM pg_subscription");

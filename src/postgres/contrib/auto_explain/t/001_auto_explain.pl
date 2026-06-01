@@ -1,8 +1,8 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -19,7 +19,7 @@ sub query_log
 	local $ENV{PGOPTIONS} = join " ",
 	  map { "-c $_=$params->{$_}" } keys %$params;
 
-	my $log    = $node->logfile();
+	my $log = $node->logfile();
 	my $offset = -s $log;
 
 	$node->safe_psql("postgres", $sql);
@@ -28,9 +28,9 @@ sub query_log
 }
 
 my $node = PostgreSQL::Test::Cluster->new('main');
-$node->init('auth_extra' => [ '--create-role', 'regress_user1' ]);
+$node->init(auth_extra => [ '--create-role' => 'regress_user1' ]);
 $node->append_conf('postgresql.conf',
-	"session_preload_libraries = 'auto_explain'");
+	"session_preload_libraries = 'pg_overexplain,auto_explain'");
 $node->append_conf('postgresql.conf', "auto_explain.log_min_duration = 0");
 $node->append_conf('postgresql.conf', "auto_explain.log_analyze = on");
 $node->start;
@@ -65,9 +65,75 @@ like(
 
 like(
 	$log_contents,
+	qr/Query Parameters: \$1 = 'int4pl'/,
+	"query parameters logged, text mode");
+
+like(
+	$log_contents,
 	qr/Index Scan using pg_proc_proname_args_nsp_index on pg_proc/,
 	"index scan logged, text mode");
 
+
+# Prepared query with truncated parameters.
+$log_contents = query_log(
+	$node,
+	q{PREPARE get_type(name) AS SELECT * FROM pg_type WHERE typname = $1; EXECUTE get_type('float8');},
+	{ "auto_explain.log_parameter_max_length" => 3 });
+
+like(
+	$log_contents,
+	qr/Query Text: PREPARE get_type\(name\) AS SELECT \* FROM pg_type WHERE typname = \$1;/,
+	"prepared query text logged, text mode");
+
+like(
+	$log_contents,
+	qr/Query Parameters: \$1 = 'flo\.\.\.'/,
+	"query parameters truncated, text mode");
+
+# Prepared query with parameter logging disabled.
+$log_contents = query_log(
+	$node,
+	q{PREPARE get_type(name) AS SELECT * FROM pg_type WHERE typname = $1; EXECUTE get_type('float8');},
+	{ "auto_explain.log_parameter_max_length" => 0 });
+
+like(
+	$log_contents,
+	qr/Query Text: PREPARE get_type\(name\) AS SELECT \* FROM pg_type WHERE typname = \$1;/,
+	"prepared query text logged, text mode");
+
+unlike(
+	$log_contents,
+	qr/Query Parameters:/,
+	"query parameters not logged when disabled, text mode");
+
+# Query Identifier.
+# Logging enabled.
+$log_contents = query_log(
+	$node,
+	"SELECT * FROM pg_class;",
+	{
+		"auto_explain.log_verbose" => "on",
+		"compute_query_id" => "on"
+	});
+
+like(
+	$log_contents,
+	qr/Query Identifier:/,
+	"query identifier logged with compute_query_id=on, text mode");
+
+# Logging disabled.
+$log_contents = query_log(
+	$node,
+	"SELECT * FROM pg_class;",
+	{
+		"auto_explain.log_verbose" => "on",
+		"compute_query_id" => "regress"
+	});
+
+unlike(
+	$log_contents,
+	qr/Query Identifier:/,
+	"query identifier not logged with compute_query_id=regress, text mode");
 
 # JSON format.
 $log_contents = query_log(
@@ -105,6 +171,22 @@ like(
 	$log_contents,
 	qr/"Node Type": "Index Scan"[^}]*"Index Name": "pg_class_relname_nsp_index"/s,
 	"index scan logged, json mode");
+
+# Extension options.
+$log_contents = query_log(
+	$node,
+	"SELECT 1;",
+	{ "auto_explain.log_extension_options" => "debug" });
+
+like(
+	$log_contents,
+	qr/Parallel Safe:/,
+	"extension option produces per-node output");
+
+like(
+	$log_contents,
+	qr/Command Type: select/,
+	"extension option produces per-plan output");
 
 # Check that PGC_SUSET parameters can be set by non-superuser if granted,
 # otherwise not
@@ -145,5 +227,18 @@ $node->safe_psql(
 REVOKE SET ON PARAMETER auto_explain.log_format FROM regress_user1;
 DROP USER regress_user1;
 });
+
+# Test pg_get_loaded_modules() function.  This function is particularly
+# useful for modules with no SQL presence, such as auto_explain.
+
+my $res = $node->safe_psql(
+	"postgres", q{
+SELECT module_name,
+       version = current_setting('server_version') as version_ok,
+       regexp_replace(file_name, '\..*', '') as file_name_stripped
+FROM pg_get_loaded_modules()
+WHERE module_name = 'auto_explain';
+});
+like($res, qr/^auto_explain\|t\|auto_explain$/, "pg_get_loaded_modules() ok");
 
 done_testing();

@@ -4,7 +4,7 @@
  *		Support routines for manipulating partition information cached in
  *		relcache
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,7 +19,6 @@
 #include "access/nbtree.h"
 #include "access/relation.h"
 #include "catalog/partition.h"
-#include "catalog/pg_inherits.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_partitioned_table.h"
 #include "miscadmin.h"
@@ -27,9 +26,7 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
 #include "partitioning/partbounds.h"
-#include "rewrite/rewriteHandler.h"
 #include "utils/builtins.h"
-#include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/partcache.h"
@@ -114,6 +111,12 @@ RelationBuildPartitionKey(Relation relation)
 	key->strategy = form->partstrat;
 	key->partnatts = form->partnatts;
 
+	/* Validate partition strategy code */
+	if (key->strategy != PARTITION_STRATEGY_LIST &&
+		key->strategy != PARTITION_STRATEGY_RANGE &&
+		key->strategy != PARTITION_STRATEGY_HASH)
+		elog(ERROR, "invalid partition strategy \"%c\"", key->strategy);
+
 	/*
 	 * We can rely on the first variable-length attribute being mapped to the
 	 * relevant field of the catalog's C struct, because all previous
@@ -123,15 +126,13 @@ RelationBuildPartitionKey(Relation relation)
 
 	/* But use the hard way to retrieve further variable-length attributes */
 	/* Operator class */
-	datum = SysCacheGetAttr(PARTRELID, tuple,
-							Anum_pg_partitioned_table_partclass, &isnull);
-	Assert(!isnull);
+	datum = SysCacheGetAttrNotNull(PARTRELID, tuple,
+								   Anum_pg_partitioned_table_partclass);
 	opclass = (oidvector *) DatumGetPointer(datum);
 
 	/* Collation */
-	datum = SysCacheGetAttr(PARTRELID, tuple,
-							Anum_pg_partitioned_table_partcollation, &isnull);
-	Assert(!isnull);
+	datum = SysCacheGetAttrNotNull(PARTRELID, tuple,
+								   Anum_pg_partitioned_table_partcollation);
 	collation = (oidvector *) DatumGetPointer(datum);
 
 	/* Expressions */
@@ -165,18 +166,18 @@ RelationBuildPartitionKey(Relation relation)
 
 	/* Allocate assorted arrays in the partkeycxt, which we'll fill below */
 	oldcxt = MemoryContextSwitchTo(partkeycxt);
-	key->partattrs = (AttrNumber *) palloc0(key->partnatts * sizeof(AttrNumber));
-	key->partopfamily = (Oid *) palloc0(key->partnatts * sizeof(Oid));
-	key->partopcintype = (Oid *) palloc0(key->partnatts * sizeof(Oid));
-	key->partsupfunc = (FmgrInfo *) palloc0(key->partnatts * sizeof(FmgrInfo));
+	key->partattrs = palloc0_array(AttrNumber, key->partnatts);
+	key->partopfamily = palloc0_array(Oid, key->partnatts);
+	key->partopcintype = palloc0_array(Oid, key->partnatts);
+	key->partsupfunc = palloc0_array(FmgrInfo, key->partnatts);
 
-	key->partcollation = (Oid *) palloc0(key->partnatts * sizeof(Oid));
-	key->parttypid = (Oid *) palloc0(key->partnatts * sizeof(Oid));
-	key->parttypmod = (int32 *) palloc0(key->partnatts * sizeof(int32));
-	key->parttyplen = (int16 *) palloc0(key->partnatts * sizeof(int16));
-	key->parttypbyval = (bool *) palloc0(key->partnatts * sizeof(bool));
-	key->parttypalign = (char *) palloc0(key->partnatts * sizeof(char));
-	key->parttypcoll = (Oid *) palloc0(key->partnatts * sizeof(Oid));
+	key->partcollation = palloc0_array(Oid, key->partnatts);
+	key->parttypid = palloc0_array(Oid, key->partnatts);
+	key->parttypmod = palloc0_array(int32, key->partnatts);
+	key->parttyplen = palloc0_array(int16, key->partnatts);
+	key->parttypbyval = palloc0_array(bool, key->partnatts);
+	key->parttypalign = palloc0_array(char, key->partnatts);
+	key->parttypcoll = palloc0_array(Oid, key->partnatts);
 	MemoryContextSwitchTo(oldcxt);
 
 	/* determine support function number to search for */
@@ -360,7 +361,8 @@ generate_partition_qual(Relation rel)
 	parent = relation_open(parentrelid, AccessShareLock);
 
 	/* Get pg_class.relpartbound */
-	tuple = SearchSysCache1(RELOID, RelationGetRelid(rel));
+	tuple = SearchSysCache1(RELOID,
+							ObjectIdGetDatum(RelationGetRelid(rel)));
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u",
 			 RelationGetRelid(rel));

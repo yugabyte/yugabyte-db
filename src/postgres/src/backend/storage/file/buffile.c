@@ -3,7 +3,7 @@
  * buffile.c
  *	  Management of large buffered temporary files.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -49,10 +49,11 @@
 #include "executor/instrument.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "storage/buf_internals.h"
 #include "storage/buffile.h"
+#include "storage/bufmgr.h"
 #include "storage/fd.h"
 #include "utils/resowner.h"
+#include "utils/wait_event.h"
 
 /*
  * We break BufFiles into gigabyte-sized segments, regardless of RELSEG_SIZE.
@@ -92,9 +93,14 @@ struct BufFile
 	 * Position as seen by user of BufFile is (curFile, curOffset + pos).
 	 */
 	int			curFile;		/* file index (0..n) part of current pos */
-	off_t		curOffset;		/* offset part of current pos */
-	int			pos;			/* next read/write position in buffer */
-	int			nbytes;			/* total # of valid bytes in buffer */
+	pgoff_t		curOffset;		/* offset part of current pos */
+	int64		pos;			/* next read/write position in buffer */
+	int64		nbytes;			/* total # of valid bytes in buffer */
+
+	/*
+	 * XXX Should ideally use PGIOAlignedBlock, but might need a way to avoid
+	 * wasting per-file alignment padding when some users create many files.
+	 */
 	PGAlignedBlock buffer;
 };
 
@@ -104,7 +110,7 @@ static void extendBufFile(BufFile *file);
 static void BufFileLoadBuffer(BufFile *file);
 static void BufFileDumpBuffer(BufFile *file);
 static void BufFileFlush(BufFile *file);
-static File MakeNewFileSetSegment(BufFile *file, int segment);
+static File MakeNewFileSetSegment(BufFile *buffile, int segment);
 
 /*
  * Create BufFile and perform the common initialization.
@@ -112,14 +118,14 @@ static File MakeNewFileSetSegment(BufFile *file, int segment);
 static BufFile *
 makeBufFileCommon(int nfiles)
 {
-	BufFile    *file = (BufFile *) palloc(sizeof(BufFile));
+	BufFile    *file = palloc_object(BufFile);
 
 	file->numFiles = nfiles;
 	file->isInterXact = false;
 	file->dirty = false;
 	file->resowner = CurrentResourceOwner;
 	file->curFile = 0;
-	file->curOffset = 0L;
+	file->curOffset = 0;
 	file->pos = 0;
 	file->nbytes = 0;
 
@@ -135,7 +141,7 @@ makeBufFile(File firstfile)
 {
 	BufFile    *file = makeBufFileCommon(1);
 
-	file->files = (File *) palloc(sizeof(File));
+	file->files = palloc_object(File);
 	file->files[0] = firstfile;
 	file->readOnly = false;
 	file->fileset = NULL;
@@ -266,7 +272,7 @@ BufFileCreateFileSet(FileSet *fileset, const char *name)
 	file = makeBufFileCommon(1);
 	file->fileset = fileset;
 	file->name = pstrdup(name);
-	file->files = (File *) palloc(sizeof(File));
+	file->files = palloc_object(File);
 	file->files[0] = MakeNewFileSetSegment(file, 0);
 	file->readOnly = false;
 
@@ -292,7 +298,7 @@ BufFileOpenFileSet(FileSet *fileset, const char *name, int mode,
 	File	   *files;
 	int			nfiles = 0;
 
-	files = palloc(sizeof(File) * capacity);
+	files = palloc_array(File, capacity);
 
 	/*
 	 * We don't know how many segments there are, so we'll probe the
@@ -304,7 +310,7 @@ BufFileOpenFileSet(FileSet *fileset, const char *name, int mode,
 		if (nfiles + 1 > capacity)
 		{
 			capacity *= 2;
-			files = repalloc(files, sizeof(File) * capacity);
+			files = repalloc_array(files, File, capacity);
 		}
 		/* Try to load a segment. */
 		FileSetSegmentName(segment_name, name, nfiles);
@@ -439,13 +445,15 @@ BufFileLoadBuffer(BufFile *file)
 		file->curFile + 1 < file->numFiles)
 	{
 		file->curFile++;
-		file->curOffset = 0L;
+		file->curOffset = 0;
 	}
 
 	thisfile = file->files[file->curFile];
 
 	if (track_io_timing)
 		INSTR_TIME_SET_CURRENT(io_start);
+	else
+		INSTR_TIME_SET_ZERO(io_start);
 
 	/*
 	 * Read whatever we can get, up to a full bufferload.
@@ -467,8 +475,7 @@ BufFileLoadBuffer(BufFile *file)
 	if (track_io_timing)
 	{
 		INSTR_TIME_SET_CURRENT(io_time);
-		INSTR_TIME_SUBTRACT(io_time, io_start);
-		INSTR_TIME_ADD(pgBufferUsage.temp_blk_read_time, io_time);
+		INSTR_TIME_ACCUM_DIFF(pgBufferUsage.temp_blk_read_time, io_time, io_start);
 	}
 
 	/* we choose not to advance curOffset here */
@@ -487,8 +494,8 @@ BufFileLoadBuffer(BufFile *file)
 static void
 BufFileDumpBuffer(BufFile *file)
 {
-	int			wpos = 0;
-	int			bytestowrite;
+	int64		wpos = 0;
+	int64		bytestowrite;
 	File		thisfile;
 
 	/*
@@ -497,7 +504,7 @@ BufFileDumpBuffer(BufFile *file)
 	 */
 	while (wpos < file->nbytes)
 	{
-		off_t		availbytes;
+		int64		availbytes;
 		instr_time	io_start;
 		instr_time	io_time;
 
@@ -509,7 +516,7 @@ BufFileDumpBuffer(BufFile *file)
 			while (file->curFile + 1 >= file->numFiles)
 				extendBufFile(file);
 			file->curFile++;
-			file->curOffset = 0L;
+			file->curOffset = 0;
 		}
 
 		/*
@@ -518,13 +525,15 @@ BufFileDumpBuffer(BufFile *file)
 		bytestowrite = file->nbytes - wpos;
 		availbytes = MAX_PHYSICAL_FILESIZE - file->curOffset;
 
-		if ((off_t) bytestowrite > availbytes)
-			bytestowrite = (int) availbytes;
+		if (bytestowrite > availbytes)
+			bytestowrite = availbytes;
 
 		thisfile = file->files[file->curFile];
 
 		if (track_io_timing)
 			INSTR_TIME_SET_CURRENT(io_start);
+		else
+			INSTR_TIME_SET_ZERO(io_start);
 
 		bytestowrite = FileWrite(thisfile,
 								 file->buffer.data + wpos,
@@ -540,8 +549,7 @@ BufFileDumpBuffer(BufFile *file)
 		if (track_io_timing)
 		{
 			INSTR_TIME_SET_CURRENT(io_time);
-			INSTR_TIME_SUBTRACT(io_time, io_start);
-			INSTR_TIME_ADD(pgBufferUsage.temp_blk_write_time, io_time);
+			INSTR_TIME_ACCUM_DIFF(pgBufferUsage.temp_blk_write_time, io_time, io_start);
 		}
 
 		file->curOffset += bytestowrite;
@@ -573,14 +581,19 @@ BufFileDumpBuffer(BufFile *file)
 }
 
 /*
- * BufFileRead
+ * BufFileRead variants
  *
  * Like fread() except we assume 1-byte element size and report I/O errors via
  * ereport().
+ *
+ * If 'exact' is true, then an error is also raised if the number of bytes
+ * read is not exactly 'size' (no short reads).  If 'exact' and 'eofOK' are
+ * true, then reading zero bytes is ok.
  */
-size_t
-BufFileRead(BufFile *file, void *ptr, size_t size)
+static size_t
+BufFileReadCommon(BufFile *file, void *ptr, size_t size, bool exact, bool eofOK)
 {
+	size_t		start_size = size;
 	size_t		nread = 0;
 	size_t		nthistime;
 
@@ -607,12 +620,51 @@ BufFileRead(BufFile *file, void *ptr, size_t size)
 		memcpy(ptr, file->buffer.data + file->pos, nthistime);
 
 		file->pos += nthistime;
-		ptr = (void *) ((char *) ptr + nthistime);
+		ptr = (char *) ptr + nthistime;
 		size -= nthistime;
 		nread += nthistime;
 	}
 
+	if (exact &&
+		(nread != start_size && !(nread == 0 && eofOK)))
+		ereport(ERROR,
+				errcode_for_file_access(),
+				file->name ?
+				errmsg("could not read from file set \"%s\": read only %zu of %zu bytes",
+					   file->name, nread, start_size) :
+				errmsg("could not read from temporary file: read only %zu of %zu bytes",
+					   nread, start_size));
+
 	return nread;
+}
+
+/*
+ * Legacy interface where the caller needs to check for end of file or short
+ * reads.
+ */
+size_t
+BufFileRead(BufFile *file, void *ptr, size_t size)
+{
+	return BufFileReadCommon(file, ptr, size, false, false);
+}
+
+/*
+ * Require read of exactly the specified size.
+ */
+void
+BufFileReadExact(BufFile *file, void *ptr, size_t size)
+{
+	BufFileReadCommon(file, ptr, size, true, false);
+}
+
+/*
+ * Require read of exactly the specified size, but optionally allow end of
+ * file (in which case 0 is returned).
+ */
+size_t
+BufFileReadMaybeEOF(BufFile *file, void *ptr, size_t size, bool eofOK)
+{
+	return BufFileReadCommon(file, ptr, size, true, eofOK);
 }
 
 /*
@@ -622,7 +674,7 @@ BufFileRead(BufFile *file, void *ptr, size_t size)
  * ereport().
  */
 void
-BufFileWrite(BufFile *file, void *ptr, size_t size)
+BufFileWrite(BufFile *file, const void *ptr, size_t size)
 {
 	size_t		nthistime;
 
@@ -655,7 +707,7 @@ BufFileWrite(BufFile *file, void *ptr, size_t size)
 		file->pos += nthistime;
 		if (file->nbytes < file->pos)
 			file->nbytes = file->pos;
-		ptr = (void *) ((char *) ptr + nthistime);
+		ptr = (const char *) ptr + nthistime;
 		size -= nthistime;
 	}
 }
@@ -678,7 +730,7 @@ BufFileFlush(BufFile *file)
  * BufFileSeek
  *
  * Like fseek(), except that target position needs two values in order to
- * work when logical filesize exceeds maximum value representable by off_t.
+ * work when logical filesize exceeds maximum value representable by pgoff_t.
  * We do not support relative seeks across more than that, however.
  * I/O errors are reported by ereport().
  *
@@ -686,10 +738,10 @@ BufFileFlush(BufFile *file)
  * impossible seek is attempted.
  */
 int
-BufFileSeek(BufFile *file, int fileno, off_t offset, int whence)
+BufFileSeek(BufFile *file, int fileno, pgoff_t offset, int whence)
 {
 	int			newFile;
-	off_t		newOffset;
+	pgoff_t		newOffset;
 
 	switch (whence)
 	{
@@ -703,8 +755,7 @@ BufFileSeek(BufFile *file, int fileno, off_t offset, int whence)
 
 			/*
 			 * Relative seek considers only the signed offset, ignoring
-			 * fileno. Note that large offsets (> 1 GB) risk overflow in this
-			 * add, unless we have 64-bit off_t.
+			 * fileno.
 			 */
 			newFile = file->curFile;
 			newOffset = (file->curOffset + file->pos) + offset;
@@ -744,7 +795,7 @@ BufFileSeek(BufFile *file, int fileno, off_t offset, int whence)
 		 * whether reading or writing, but buffer remains dirty if we were
 		 * writing.
 		 */
-		file->pos = (int) (newOffset - file->curOffset);
+		file->pos = (int64) (newOffset - file->curOffset);
 		return 0;
 	}
 	/* Otherwise, must reposition buffer, so flush any dirty data */
@@ -779,7 +830,7 @@ BufFileSeek(BufFile *file, int fileno, off_t offset, int whence)
 }
 
 void
-BufFileTell(BufFile *file, int *fileno, off_t *offset)
+BufFileTell(BufFile *file, int *fileno, pgoff_t *offset)
 {
 	*fileno = file->curFile;
 	*offset = file->curOffset + file->pos;
@@ -790,51 +841,31 @@ BufFileTell(BufFile *file, int *fileno, off_t *offset)
  *
  * Performs absolute seek to the start of the n'th BLCKSZ-sized block of
  * the file.  Note that users of this interface will fail if their files
- * exceed BLCKSZ * LONG_MAX bytes, but that is quite a lot; we don't work
- * with tables bigger than that, either...
+ * exceed BLCKSZ * PG_INT64_MAX bytes, but that is quite a lot; we don't
+ * work with tables bigger than that, either...
  *
  * Result is 0 if OK, EOF if not.  Logical position is not moved if an
  * impossible seek is attempted.
  */
 int
-BufFileSeekBlock(BufFile *file, long blknum)
+BufFileSeekBlock(BufFile *file, int64 blknum)
 {
 	return BufFileSeek(file,
 					   (int) (blknum / BUFFILE_SEG_SIZE),
-					   (off_t) (blknum % BUFFILE_SEG_SIZE) * BLCKSZ,
+					   (pgoff_t) (blknum % BUFFILE_SEG_SIZE) * BLCKSZ,
 					   SEEK_SET);
 }
 
-#ifdef NOT_USED
 /*
- * BufFileTellBlock --- block-oriented tell
+ * Returns the amount of data in the given BufFile, in bytes.
  *
- * Any fractional part of a block in the current seek position is ignored.
- */
-long
-BufFileTellBlock(BufFile *file)
-{
-	long		blknum;
-
-	blknum = (file->curOffset + file->pos) / BLCKSZ;
-	blknum += file->curFile * BUFFILE_SEG_SIZE;
-	return blknum;
-}
-
-#endif
-
-/*
- * Return the current fileset based BufFile size.
- *
- * Counts any holes left behind by BufFileAppend as part of the size.
+ * Returned value includes the size of any holes left behind by BufFileAppend.
  * ereport()s on failure.
  */
 int64
 BufFileSize(BufFile *file)
 {
 	int64		lastFileSize;
-
-	Assert(file->fileset != NULL);
 
 	/* Get the size of the last physical file. */
 	lastFileSize = FileSize(file->files[file->numFiles - 1]);
@@ -850,8 +881,7 @@ BufFileSize(BufFile *file)
 }
 
 /*
- * Append the contents of source file (managed within fileset) to
- * end of target file (managed within same fileset).
+ * Append the contents of the source file to the end of the target file.
  *
  * Note that operation subsumes ownership of underlying resources from
  * "source".  Caller should never call BufFileClose against source having
@@ -868,17 +898,15 @@ BufFileSize(BufFile *file)
  * begins.  Caller should apply this as an offset when working off block
  * positions that are in terms of the original BufFile space.
  */
-long
+int64
 BufFileAppend(BufFile *target, BufFile *source)
 {
-	long		startBlock = target->numFiles * BUFFILE_SEG_SIZE;
+	int64		startBlock = (int64) target->numFiles * BUFFILE_SEG_SIZE;
 	int			newNumFiles = target->numFiles + source->numFiles;
 	int			i;
 
-	Assert(target->fileset != NULL);
 	Assert(source->readOnly);
 	Assert(!source->dirty);
-	Assert(source->fileset != NULL);
 
 	if (target->resowner != source->resowner)
 		elog(ERROR, "could not append BufFile with non-matching resource owner");
@@ -897,11 +925,11 @@ BufFileAppend(BufFile *target, BufFile *source)
  * and the offset.
  */
 void
-BufFileTruncateFileSet(BufFile *file, int fileno, off_t offset)
+BufFileTruncateFileSet(BufFile *file, int fileno, pgoff_t offset)
 {
 	int			numFiles = file->numFiles;
 	int			newFile = fileno;
-	off_t		newOffset = file->curOffset;
+	pgoff_t		newOffset = file->curOffset;
 	char		segment_name[MAXPGPATH];
 	int			i;
 
@@ -956,10 +984,10 @@ BufFileTruncateFileSet(BufFile *file, int fileno, off_t offset)
 	{
 		/* No need to reset the current pos if the new pos is greater. */
 		if (newOffset <= file->curOffset + file->pos)
-			file->pos = (int) (newOffset - file->curOffset);
+			file->pos = (int64) newOffset - file->curOffset;
 
 		/* Adjust the nbytes for the current buffer. */
-		file->nbytes = (int) (newOffset - file->curOffset);
+		file->nbytes = (int64) newOffset - file->curOffset;
 	}
 	else if (newFile == file->curFile &&
 			 newOffset < file->curOffset)

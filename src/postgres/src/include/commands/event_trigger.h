@@ -3,7 +3,7 @@
  * event_trigger.h
  *	  Declarations for command trigger handling.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/event_trigger.h
@@ -28,6 +28,8 @@ typedef struct EventTriggerData
 	Node	   *parsetree;		/* parse tree */
 	CommandTag	tag;
 } EventTriggerData;
+
+extern PGDLLIMPORT bool event_triggers;
 
 /*
  * Reasons for relation rewrites.
@@ -57,11 +59,12 @@ extern ObjectAddress AlterEventTriggerOwner(const char *name, Oid newOwnerId);
 extern void AlterEventTriggerOwner_oid(Oid, Oid newOwnerId);
 
 extern bool EventTriggerSupportsObjectType(ObjectType obtype);
-extern bool EventTriggerSupportsObjectClass(ObjectClass objclass);
+extern bool EventTriggerSupportsObject(const ObjectAddress *object);
 extern void EventTriggerDDLCommandStart(Node *parsetree);
 extern void EventTriggerDDLCommandEnd(Node *parsetree);
 extern void EventTriggerSQLDrop(Node *parsetree);
 extern void EventTriggerTableRewrite(Node *parsetree, Oid tableOid, int reason);
+extern void EventTriggerOnLogin(void);
 
 extern bool EventTriggerBeginCompleteQuery(void);
 extern void EventTriggerEndCompleteQuery(void);
@@ -74,23 +77,23 @@ extern void EventTriggerUndoInhibitCommandCollection(void);
 
 extern void EventTriggerCollectSimpleCommand(ObjectAddress address,
 											 ObjectAddress secondaryObject,
-											 Node *parsetree);
+											 const Node *parsetree);
 
-extern void EventTriggerAlterTableStart(Node *parsetree);
+extern void EventTriggerAlterTableStart(const Node *parsetree);
 extern void EventTriggerAlterTableRelid(Oid objectId);
-extern void EventTriggerCollectAlterTableSubcmd(Node *subcmd,
+extern void EventTriggerCollectAlterTableSubcmd(const Node *subcmd,
 												ObjectAddress address);
 extern void EventTriggerAlterTableEnd(void);
 
 extern void EventTriggerCollectGrant(InternalGrant *istmt);
-extern void EventTriggerCollectAlterOpFam(AlterOpFamilyStmt *stmt,
+extern void EventTriggerCollectAlterOpFam(const AlterOpFamilyStmt *stmt,
 										  Oid opfamoid, List *operators,
 										  List *procedures);
-extern void EventTriggerCollectCreateOpClass(CreateOpClassStmt *stmt,
+extern void EventTriggerCollectCreateOpClass(const CreateOpClassStmt *stmt,
 											 Oid opcoid, List *operators,
 											 List *procedures);
-extern void EventTriggerCollectAlterTSConfig(AlterTSConfigurationStmt *stmt,
+extern void EventTriggerCollectAlterTSConfig(const AlterTSConfigurationStmt *stmt,
 											 Oid cfgId, Oid *dictIds, int ndicts);
-extern void EventTriggerCollectAlterDefPrivs(AlterDefaultPrivilegesStmt *stmt);
+extern void EventTriggerCollectAlterDefPrivs(const AlterDefaultPrivilegesStmt *stmt);
 
 #endif							/* EVENT_TRIGGER_H */

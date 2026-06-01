@@ -40,6 +40,19 @@ select '[a,a)'::textrange;
 select '(a,a]'::textrange;
 select '(a,a)'::textrange;
 
+-- Also try it with non-error-throwing API
+select pg_input_is_valid('(1,4)', 'int4range');
+select pg_input_is_valid('(1,4', 'int4range');
+select * from pg_input_error_info('(1,4', 'int4range');
+select pg_input_is_valid('(4,1)', 'int4range');
+select * from pg_input_error_info('(4,1)', 'int4range');
+select pg_input_is_valid('(4,zed)', 'int4range');
+select * from pg_input_error_info('(4,zed)', 'int4range');
+select pg_input_is_valid('[1,2147483647]', 'int4range');
+select * from pg_input_error_info('[1,2147483647]', 'int4range');
+select pg_input_is_valid('[2000-01-01,5874897-12-31]', 'daterange');
+select * from pg_input_error_info('[2000-01-01,5874897-12-31]', 'daterange');
+
 --
 -- create some test data and test the operators
 --
@@ -93,6 +106,16 @@ select numrange(1.1, 2.2) - numrange(2.2, 3.0);
 select numrange(1.1, 2.2,'[]') - numrange(2.0, 3.0);
 select range_minus(numrange(10.1,12.2,'[]'), numrange(110.0,120.2,'(]'));
 select range_minus(numrange(10.1,12.2,'[]'), numrange(0.0,120.2,'(]'));
+
+select range_minus_multi('empty'::numrange, numrange(2.0, 3.0));
+select range_minus_multi(numrange(1.1, 2.2), 'empty'::numrange);
+select range_minus_multi(numrange(1.1, 2.2), numrange(2.0, 3.0));
+select range_minus_multi(numrange(1.1, 2.2), numrange(2.2, 3.0));
+select range_minus_multi(numrange(1.1, 2.2,'[]'), numrange(2.0, 3.0));
+select range_minus_multi(numrange(1.0, 3.0), numrange(1.5, 2.0));
+select range_minus_multi(numrange(10.1,12.2,'[]'), numrange(110.0,120.2,'(]'));
+select range_minus_multi(numrange(10.1,12.2,'[]'), numrange(0.0,120.2,'(]'));
+select range_minus_multi(numrange(1.0,3.0,'[]'), numrange(1.5,2.0,'(]'));
 
 select numrange(4.5, 5.5, '[]') && numrange(5.5, 6.5);
 select numrange(1.0, 2.0) << numrange(3.0, 4.0);
@@ -548,7 +571,7 @@ select array[1,3] <@ arrayrange(array[1,2], array[2,1]);
 create type two_ints as (a int, b int);
 create type two_ints_range as range (subtype = two_ints);
 
--- with force_parallel_mode on, this exercises tqueue.c's range remapping
+-- with debug_parallel_query on, this exercises tqueue.c's range remapping
 select *, row_to_json(upper(t)) as u from
   (values (two_ints_range(row(1,2), row(3,4))),
           (two_ints_range(row(5,6), row(7,8)))) v(t);
@@ -562,11 +585,11 @@ drop type two_ints cascade;
 -- Check behavior when subtype lacks a hash function
 --
 
-create type cashrange as range (subtype = money);
+create type varbitrange as range (subtype = varbit);
 
 set enable_sort = off;  -- try to make it pick a hash setop implementation
 
-select '(2,5)'::cashrange except select '(5,6)'::cashrange;
+select '(01,10)'::varbitrange except select '(10,11)'::varbitrange;
 
 reset enable_sort;
 
@@ -616,3 +639,72 @@ create function inoutparam_fail(inout i anyelement, out r anyrange)
 --should fail
 create function table_fail(i anyelement) returns table(i anyelement, r anyrange)
   as $$ select $1, '[1,10]' $$ language sql;
+
+--
+-- Test support functions
+--
+
+-- empty range
+explain (verbose, costs off)
+select current_date <@ daterange 'empty';
+
+-- unbounded range
+explain (verbose, costs off)
+select current_date <@ daterange(NULL, NULL);
+
+-- only lower bound present
+explain (verbose, costs off)
+select current_date <@ daterange('2000-01-01', NULL, '[)');
+
+-- only upper bound present
+explain (verbose, costs off)
+select current_date <@ daterange(NULL, '2000-01-01', '(]');
+
+-- lower range "-Infinity" excluded
+explain (verbose, costs off)
+select current_date <@ daterange('-Infinity', '1997-04-10'::date, '()');
+
+-- lower range "-Infinity" included
+explain (verbose, costs off)
+select current_date <@ daterange('-Infinity', '1997-04-10'::date, '[)');
+
+-- upper range "Infinity" excluded
+explain (verbose, costs off)
+select current_date <@ daterange('2002-09-25'::date, 'Infinity', '[)');
+
+-- upper range "Infinity" included
+explain (verbose, costs off)
+select current_date <@ daterange('2002-09-25'::date, 'Infinity', '[]');
+
+-- should also work if we use "@>"
+explain (verbose, costs off)
+select daterange('-Infinity', '1997-04-10'::date, '()') @> current_date;
+
+explain (verbose, costs off)
+select daterange('2002-09-25'::date, 'Infinity', '[]') @> current_date;
+
+-- Check that volatile cases are not optimized
+explain (verbose, costs off)
+select now() <@ tstzrange('2024-01-20 00:00', '2024-01-21 00:00');
+explain (verbose, costs off)  -- unsafe!
+select clock_timestamp() <@ tstzrange('2024-01-20 00:00', '2024-01-21 00:00');
+explain (verbose, costs off)
+select clock_timestamp() <@ tstzrange('2024-01-20 00:00', NULL);
+
+-- test a custom range type with a non-default operator class
+create type textrange_supp as range (
+   subtype = text,
+   subtype_opclass = text_pattern_ops
+);
+
+create temp table text_support_test (t text collate "C");
+
+insert into text_support_test values ('a'), ('c'), ('d'), ('ch');
+
+explain (costs off)
+select * from text_support_test where t <@ textrange_supp('a', 'd');
+select * from text_support_test where t <@ textrange_supp('a', 'd');
+
+drop table text_support_test;
+
+drop type textrange_supp;

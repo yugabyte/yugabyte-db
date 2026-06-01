@@ -1,12 +1,12 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Test for promotion handling with WAL records generated post-promotion
 # before the first checkpoint is generated.  This test case checks for
 # invalid page references at replay based on the minimum consistent
 # recovery point defined.
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -54,9 +54,10 @@ $bravo->safe_psql('postgres', 'checkpoint');
 
 # Now just use a dummy table and run some operations to move minRecoveryPoint
 # beyond the previous vacuum.
-$alpha->safe_psql('postgres', 'create table test2 (a int, b text)');
+$alpha->safe_psql('postgres', 'create table test2 (a int, b bytea)');
 $alpha->safe_psql('postgres',
-	'insert into test2 select generate_series(1,10000), md5(random()::text)');
+	q{insert into test2 select generate_series(1,10000), sha256(random()::text::bytea)}
+);
 $alpha->safe_psql('postgres', 'truncate test2');
 
 # Wait again for all records to be replayed.

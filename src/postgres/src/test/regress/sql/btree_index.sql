@@ -111,6 +111,170 @@ SELECT b.*
    WHERE b.seqno = '4500'::float8;
 
 --
+-- Add coverage of RowCompare quals whose row omits a column ("proargtypes")
+-- that's after the first column, but before the final column.  The scan's
+-- initial positioning strategy must become >= here (it's not the > strategy,
+-- since the absence of "proargtypes" makes that tighter constraint unsafe).
+--
+explain (costs off)
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE (proname, pronamespace) > ('abs', 0)
+ORDER BY proname, proargtypes, pronamespace LIMIT 1;
+
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE (proname, pronamespace) > ('abs', 0)
+ORDER BY proname, proargtypes, pronamespace LIMIT 1;
+
+--
+-- Similar to the previous test case, but this time it's a backwards scan
+-- using a < RowCompare.  Must use the <= strategy (and not the < strategy).
+--
+explain (costs off)
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE (proname, pronamespace) < ('abs', 1_000_000)
+ORDER BY proname DESC, proargtypes DESC, pronamespace DESC LIMIT 1;
+
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE (proname, pronamespace) < ('abs', 1_000_000)
+ORDER BY proname DESC, proargtypes DESC, pronamespace DESC LIMIT 1;
+
+--
+-- Forwards scan RowCompare qual whose row arg has a NULL that affects our
+-- initial positioning strategy
+--
+explain (costs off)
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE (proname, proargtypes) >= ('abs', NULL) AND proname <= 'abs'
+ORDER BY proname, proargtypes, pronamespace;
+
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE (proname, proargtypes) >= ('abs', NULL) AND proname <= 'abs'
+ORDER BY proname, proargtypes, pronamespace;
+
+--
+-- Forwards scan RowCompare quals whose row arg has a NULL that ends scan
+--
+explain (costs off)
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE proname >= 'abs' AND (proname, proargtypes) < ('abs', NULL)
+ORDER BY proname, proargtypes, pronamespace;
+
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE proname >= 'abs' AND (proname, proargtypes) < ('abs', NULL)
+ORDER BY proname, proargtypes, pronamespace;
+
+--
+-- Backwards scan RowCompare qual whose row arg has a NULL that affects our
+-- initial positioning strategy
+--
+explain (costs off)
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE proname >= 'abs' AND (proname, proargtypes) <= ('abs', NULL)
+ORDER BY proname DESC, proargtypes DESC, pronamespace DESC;
+
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE proname >= 'abs' AND (proname, proargtypes) <= ('abs', NULL)
+ORDER BY proname DESC, proargtypes DESC, pronamespace DESC;
+
+--
+-- Backwards scan RowCompare qual whose row arg has a NULL that ends scan
+--
+explain (costs off)
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE (proname, proargtypes) > ('abs', NULL) AND proname <= 'abs'
+ORDER BY proname DESC, proargtypes DESC, pronamespace DESC;
+
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE (proname, proargtypes) > ('abs', NULL) AND proname <= 'abs'
+ORDER BY proname DESC, proargtypes DESC, pronamespace DESC;
+
+-- Makes B-Tree preprocessing deal with unmarking redundant keys that were
+-- initially marked required (test case relies on current row compare
+-- preprocessing limitations)
+explain (costs off)
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE proname = 'zzzzzz' AND (proname, proargtypes) > ('abs', NULL)
+   AND pronamespace IN (1, 2, 3) AND proargtypes IN ('26 23', '5077')
+ORDER BY proname, proargtypes, pronamespace;
+
+SELECT proname, proargtypes, pronamespace
+   FROM pg_proc
+   WHERE proname = 'zzzzzz' AND (proname, proargtypes) > ('abs', NULL)
+   AND pronamespace IN (1, 2, 3) AND proargtypes IN ('26 23', '5077')
+ORDER BY proname, proargtypes, pronamespace;
+
+--
+-- Performs a recheck of > key following array advancement on previous (left
+-- sibling) page that used a high key whose attribute value corresponding to
+-- the > key was -inf (due to being truncated when the high key was created).
+--
+-- XXX This relies on the assumption that tenk1_thous_tenthous has a truncated
+-- high key "(183, -inf)" on the first page that we'll scan.  The test will only
+-- provide useful coverage when the default 8K BLCKSZ is in use.
+--
+explain (costs off)
+SELECT thousand, tenthous
+  FROM tenk1
+  WHERE thousand IN (182, 183) AND tenthous > 7550;
+
+SELECT thousand, tenthous
+  FROM tenk1
+  WHERE thousand IN (182, 183) AND tenthous > 7550;
+
+--
+-- Add coverage for optimization of backwards scan index descents
+--
+-- Here we expect _bt_search to descend straight to a leaf page containing a
+-- non-pivot tuple with the value '47', which comes last (after 11 similar
+-- non-pivot tuples).  Query execution should only need to visit a single
+-- leaf page here.
+--
+-- Test case relies on tenk1_hundred index having a leaf page whose high key
+-- is '(48, -inf)'.  We use a low cardinality index to make our test case less
+-- sensitive to implementation details that may change in the future.
+set enable_seqscan to false;
+set enable_indexscan to true;
+set enable_bitmapscan to false;
+explain (costs off)
+select hundred, twenty from tenk1 where hundred < 48 order by hundred desc limit 1;
+select hundred, twenty from tenk1 where hundred < 48 order by hundred desc limit 1;
+
+-- This variant of the query need only return a single tuple located to the immediate
+-- right of the '(48, -inf)' high key.  It also only needs to scan one single
+-- leaf page (the right sibling of the page scanned by the last test case):
+explain (costs off)
+select hundred, twenty from tenk1 where hundred <= 48 order by hundred desc limit 1;
+select hundred, twenty from tenk1 where hundred <= 48 order by hundred desc limit 1;
+
+--
+-- Add coverage for ScalarArrayOp btree quals with pivot tuple constants
+--
+explain (costs off)
+select distinct hundred from tenk1 where hundred in (47, 48, 72, 82);
+select distinct hundred from tenk1 where hundred in (47, 48, 72, 82);
+
+explain (costs off)
+select distinct hundred from tenk1 where hundred in (47, 48, 72, 82) order by hundred desc;
+select distinct hundred from tenk1 where hundred in (47, 48, 72, 82) order by hundred desc;
+
+explain (costs off)
+select thousand from tenk1 where thousand in (364, 366,380) and tenthous = 200000;
+select thousand from tenk1 where thousand in (364, 366,380) and tenthous = 200000;
+
+--
 -- Check correct optimization of LIKE (special index operator support)
 -- for both indexscan and bitmapscan cases
 --
@@ -208,6 +372,27 @@ alter table btree_tall_tbl alter COLUMN t set storage plain;
 create index btree_tall_idx on btree_tall_tbl (t, id) with (fillfactor = 10);
 insert into btree_tall_tbl select g, repeat('x', 250)
 from generate_series(1, 130) g;
+insert into btree_tall_tbl select g, NULL
+from generate_series(50, 60) g;
+
+--
+-- Test for skip scan with type that lacks skip support (text)
+--
+set enable_seqscan to false;
+set enable_bitmapscan to false;
+
+-- Forwards scan
+SELECT id FROM btree_tall_tbl WHERE id = 55 ORDER BY t, id;
+explain (costs off)
+SELECT id FROM btree_tall_tbl WHERE id = 55 ORDER BY t, id;
+
+-- Backwards scan
+SELECT id FROM btree_tall_tbl WHERE id = 55 ORDER BY t DESC, id DESC;
+explain (costs off)
+SELECT id FROM btree_tall_tbl WHERE id = 55 ORDER BY t DESC, id DESC;
+
+reset enable_seqscan;
+reset enable_bitmapscan;
 
 --
 -- Test for multilevel page deletion
@@ -231,6 +416,17 @@ INSERT INTO delete_test_table SELECT i, 1, 2, 3 FROM generate_series(1,1000) i;
 
 -- Test unsupported btree opclass parameters
 create index on btree_tall_tbl (id int4_ops(foo=1));
+
+-- test parallel build with immutable function.
+CREATE TABLE btree_test_expr (n int);
+CREATE FUNCTION btree_test_func() RETURNS int LANGUAGE sql IMMUTABLE RETURN 0;
+BEGIN;
+SET LOCAL min_parallel_table_scan_size = 0;
+SET LOCAL max_parallel_maintenance_workers = 4;
+CREATE INDEX btree_test_expr_idx ON btree_test_expr USING btree (btree_test_func());
+COMMIT;
+DROP TABLE btree_test_expr;
+DROP FUNCTION btree_test_func();
 
 -- Test case of ALTER INDEX with abuse of column names for indexes.
 -- This grammar is not officially supported, but the parser allows it.

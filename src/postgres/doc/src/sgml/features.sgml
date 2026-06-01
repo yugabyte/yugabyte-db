@@ -14,9 +14,9 @@
  <para>
   The formal name of the SQL standard is ISO/IEC 9075 <quote>Database
   Language SQL</quote>.  A revised version of the standard is released
-  from time to time; the most recent update appearing in 2016.
-  The 2016 version is referred to as ISO/IEC 9075:2016, or simply as SQL:2016.
-  The versions prior to that were SQL:2011, SQL:2008, SQL:2006, SQL:2003,
+  from time to time; the most recent update appearing in 2023.
+  The 2023 version is referred to as ISO/IEC 9075:2023, or simply as SQL:2023.
+  The versions prior to that were SQL:2016, SQL:2011, SQL:2008, SQL:2006, SQL:2003,
   SQL:1999, and SQL-92.  Each version
   replaces the previous one, so claims of conformance to earlier
   versions have no official merit.
@@ -48,10 +48,8 @@
  </para>
 
  <para>
-  The standard versions beginning with <acronym>SQL:2003</acronym>
-  are also split into a number
-  of parts.  Each is known by a shorthand name.  Note that these parts
-  are not consecutively numbered.
+  The standard is split into a number of parts, each also known by a shorthand
+  name:
 
   <itemizedlist>
    <listitem><para>ISO/IEC 9075-1 Framework (SQL/Framework)</para><indexterm><primary>SQL/Framework</primary></indexterm></listitem>
@@ -64,12 +62,15 @@
    <listitem><para>ISO/IEC 9075-13 Routines and Types using the Java Language (SQL/JRT)</para><indexterm><primary>SQL/JRT</primary></indexterm></listitem>
    <listitem><para>ISO/IEC 9075-14 XML-related specifications (SQL/XML)</para><indexterm><primary>SQL/XML</primary></indexterm></listitem>
    <listitem><para>ISO/IEC 9075-15 Multi-dimensional arrays (SQL/MDA)</para><indexterm><primary>SQL/MDA</primary></indexterm></listitem>
+   <listitem><para>ISO/IEC 9075-16 Property Graph Queries (SQL/PGQ)</para><indexterm><primary>SQL/PGQ</primary></indexterm></listitem>
   </itemizedlist>
+
+  Note that some part numbers are not (or no longer) used.
  </para>
 
  <para>
   The <productname>PostgreSQL</productname> core covers parts 1, 2, 9,
-  11, and 14.  Part 3 is covered by the ODBC driver, and part 13 is
+  11, 14, and 16.  Part 3 is covered by the ODBC driver, and part 13 is
   covered by the PL/Java plug-in, but exact conformance is currently
   not being verified for these components.  There are currently no
   implementations of parts 4, 10, and 15
@@ -77,18 +78,18 @@
  </para>
 
  <para>
-  PostgreSQL supports most of the major features of SQL:2016.  Out of
+  PostgreSQL supports most of the major features of SQL:2023.  Out of
   177 mandatory features required for full Core conformance,
   PostgreSQL conforms to at least 170.  In addition, there is a long
   list of supported optional features.  It might be worth noting that at
   the time of writing, no current version of any database management
-  system claims full conformance to Core SQL:2016.
+  system claims full conformance to Core SQL:2023.
  </para>
 
  <para>
   In the following two sections, we provide a list of those features
   that <productname>PostgreSQL</productname> supports, followed by a
-  list of the features defined in <acronym>SQL:2016</acronym> which
+  list of the features defined in <acronym>SQL:2023</acronym> which
   are not yet supported in <productname>PostgreSQL</productname>.
   Both of these lists are approximate: There might be minor details that
   are nonconforming for a feature that is listed as supported, and
@@ -135,7 +136,7 @@
    <title>Unsupported Features</title>
 
    <para>
-    The following features defined in <acronym>SQL:2016</acronym> are not
+    The following features defined in <acronym>SQL:2023</acronym> are not
     implemented in this release of
     <productname>PostgreSQL</productname>. In a few cases, equivalent
     functionality is available.
@@ -198,6 +199,15 @@
        standard.
       </para>
      </listitem>
+
+     <listitem>
+      <para>
+       <productname>PostgreSQL</productname> does not support the
+       <literal>RETURNING CONTENT</literal> or <literal>RETURNING SEQUENCE</literal>
+       clauses, functions which are defined to have these in the specification
+       are implicitly returning content.
+      </para>
+     </listitem>
     </itemizedlist>
    </para>
 
@@ -238,7 +248,7 @@
      <productname>PostgreSQL</productname>-specific functions.
     </para>
 
-    <sect3>
+    <sect3 id="functions-xml-limits-xpath1-xquery-restriction">
      <title>Restriction of XQuery to XPath</title>
 
      <para>
@@ -427,7 +437,7 @@
      implementation in <productname>PostgreSQL</productname>.
     </para>
 
-    <sect3>
+    <sect3 id="functions-xml-limits-postgresql-by-value-only">
      <title>Only <literal>BY VALUE</literal> Passing Mechanism Is Supported</title>
 
      <para>
@@ -463,7 +473,7 @@ SELECT XMLQUERY('$a is $b' PASSING BY VALUE <replaceable>x</replaceable> AS a, <
      </para>
     </sect3>
 
-    <sect3>
+    <sect3 id="functions-xml-limits-postgresql-named-parameters">
      <title>Cannot Pass Named Parameters to Queries</title>
 
      <para>
@@ -473,7 +483,7 @@ SELECT XMLQUERY('$a is $b' PASSING BY VALUE <replaceable>x</replaceable> AS a, <
      </para>
     </sect3>
 
-    <sect3>
+    <sect3 id="functions-xml-limits-postgresql-no-xml-sequence">
      <title>No <type>XML(SEQUENCE)</type> Type</title>
 
      <para>

@@ -14,7 +14,7 @@
  * plenty of locality of access.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -42,9 +42,10 @@ struct HSpool
 	Relation	index;
 
 	/*
-	 * We sort the hash keys based on the buckets they belong to. Below masks
-	 * are used in _hash_hashkey2bucket to determine the bucket of given hash
-	 * key.
+	 * We sort the hash keys based on the buckets they belong to, then by the
+	 * hash values themselves, to optimize insertions onto hash pages.  The
+	 * masks below are used in _hash_hashkey2bucket to determine the bucket of
+	 * a given hash key.
 	 */
 	uint32		high_mask;
 	uint32		low_mask;
@@ -58,7 +59,7 @@ struct HSpool
 HSpool *
 _h_spoolinit(Relation heap, Relation index, uint32 num_buckets)
 {
-	HSpool	   *hspool = (HSpool *) palloc0(sizeof(HSpool));
+	HSpool	   *hspool = palloc0_object(HSpool);
 
 	hspool->index = index;
 
@@ -105,7 +106,7 @@ _h_spooldestroy(HSpool *hspool)
  * spool an index entry into the sort file.
  */
 void
-_h_spool(HSpool *hspool, ItemPointer self, Datum *values, bool *isnull)
+_h_spool(HSpool *hspool, const ItemPointerData *self, const Datum *values, const bool *isnull)
 {
 	tuplesort_putindextuplevalues(hspool->sortstate, hspool->index,
 								  self, values, isnull);
@@ -144,7 +145,8 @@ _h_indexbuild(HSpool *hspool, Relation heapRel)
 		Assert(hashkey >= lasthashkey);
 #endif
 
-		_hash_doinsert(hspool->index, itup, heapRel);
+		/* the tuples are sorted by hashkey, so pass 'sorted' as true */
+		_hash_doinsert(hspool->index, itup, heapRel, true);
 
 		/* allow insertion phase to be interrupted, and track progress */
 		CHECK_FOR_INTERRUPTS();

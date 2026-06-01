@@ -9,7 +9,7 @@
  * though.)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -19,18 +19,14 @@
  */
 #include "postgres.h"
 
-#include <unistd.h>
-
 #include "access/xlog.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
-#include "pgstat.h"
-#include "postmaster/interrupt.h"
+#include "postmaster/auxprocess.h"
 #include "postmaster/startup.h"
 #include "storage/ipc.h"
-#include "storage/latch.h"
 #include "storage/pmsignal.h"
 #include "storage/procsignal.h"
 #include "storage/standby.h"
@@ -42,7 +38,7 @@
 #ifndef USE_POSTMASTER_DEATH_SIGNAL
 /*
  * On systems that need to make a system call to find out if the postmaster has
- * gone away, we'll do so only every Nth call to HandleStartupProcInterrupts().
+ * gone away, we'll do so only every Nth call to ProcessStartupProcInterrupts().
  * This only affects how long it takes us to detect the condition while we're
  * busy replaying WAL.  Latch waits and similar which should react immediately
  * through the usual techniques.
@@ -96,52 +92,27 @@ static void StartupProcExit(int code, Datum arg);
 static void
 StartupProcTriggerHandler(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	promote_signaled = true;
 	WakeupRecovery();
-
-	errno = save_errno;
 }
 
 /* SIGHUP: set flag to re-read config file at next convenient time */
 static void
 StartupProcSigHupHandler(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	got_SIGHUP = true;
 	WakeupRecovery();
-
-	errno = save_errno;
 }
 
 /* SIGTERM: set flag to abort redo and exit */
 static void
 StartupProcShutdownHandler(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	if (in_restore_command)
-	{
-		/*
-		 * If we are in a child process (e.g., forked by system() in
-		 * RestoreArchivedFile()), we don't want to call any exit callbacks.
-		 * The parent will take care of that.
-		 */
-		if (MyProcPid == (int) getpid())
-			proc_exit(1);
-		else
-		{
-			write_stderr_signal_safe("StartupProcShutdownHandler() called in child process\n");
-			_exit(1);
-		}
-	}
+		proc_exit(1);
 	else
 		shutdown_requested = true;
 	WakeupRecovery();
-
-	errno = save_errno;
 }
 
 /*
@@ -178,9 +149,9 @@ StartupRereadConfig(void)
 		StartupRequestWalReceiverRestart();
 }
 
-/* Handle various signals that might be sent to the startup process */
+/* Process various signals that might be sent to the startup process */
 void
-HandleStartupProcInterrupts(void)
+ProcessStartupProcInterrupts(void)
 {
 #ifdef POSTMASTER_POLL_RATE_LIMIT
 	static uint32 postmaster_poll_count = 0;
@@ -242,8 +213,12 @@ StartupProcExit(int code, Datum arg)
  * ----------------------------------
  */
 void
-StartupProcessMain(void)
+StartupProcessMain(const void *startup_data, size_t startup_data_len)
 {
+	Assert(startup_data_len == 0);
+
+	AuxiliaryProcessMainCommon();
+
 	/* Arrange to clean up at startup process exit */
 	on_shmem_exit(StartupProcExit, 0);
 
@@ -274,7 +249,7 @@ StartupProcessMain(void)
 	/*
 	 * Unblock signals (they were blocked when the postmaster forked us)
 	 */
-	PG_SETMASK(&UnBlockSig);
+	sigprocmask(SIG_SETMASK, &UnBlockSig, NULL);
 
 	/*
 	 * Do what we came for.

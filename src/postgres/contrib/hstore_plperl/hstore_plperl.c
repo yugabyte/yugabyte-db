@@ -3,11 +3,11 @@
 #include "fmgr.h"
 #include "hstore/hstore.h"
 #include "plperl.h"
-#include "plperl_helpers.h"
 
-PG_MODULE_MAGIC;
-
-extern void _PG_init(void);
+PG_MODULE_MAGIC_EXT(
+					.name = "hstore_plperl",
+					.version = PG_VERSION
+);
 
 /* Linkage to functions in hstore module */
 typedef HStore *(*hstoreUpgrade_t) (Datum orig);
@@ -21,6 +21,13 @@ static hstoreCheckKeyLen_t hstoreCheckKeyLen_p;
 typedef size_t (*hstoreCheckValLen_t) (size_t len);
 static hstoreCheckValLen_t hstoreCheckValLen_p;
 
+/* Static asserts verify that typedefs above match original declarations */
+StaticAssertVariableIsOfType(&hstoreUpgrade, hstoreUpgrade_t);
+StaticAssertVariableIsOfType(&hstoreUniquePairs, hstoreUniquePairs_t);
+StaticAssertVariableIsOfType(&hstorePairs, hstorePairs_t);
+StaticAssertVariableIsOfType(&hstoreCheckKeyLen, hstoreCheckKeyLen_t);
+StaticAssertVariableIsOfType(&hstoreCheckValLen, hstoreCheckValLen_t);
+
 
 /*
  * Module initialize function: fetch function pointers for cross-module calls.
@@ -28,24 +35,18 @@ static hstoreCheckValLen_t hstoreCheckValLen_p;
 void
 _PG_init(void)
 {
-	/* Asserts verify that typedefs above match original declarations */
-	AssertVariableIsOfType(&hstoreUpgrade, hstoreUpgrade_t);
 	hstoreUpgrade_p = (hstoreUpgrade_t)
 		load_external_function("$libdir/hstore", "hstoreUpgrade",
 							   true, NULL);
-	AssertVariableIsOfType(&hstoreUniquePairs, hstoreUniquePairs_t);
 	hstoreUniquePairs_p = (hstoreUniquePairs_t)
 		load_external_function("$libdir/hstore", "hstoreUniquePairs",
 							   true, NULL);
-	AssertVariableIsOfType(&hstorePairs, hstorePairs_t);
 	hstorePairs_p = (hstorePairs_t)
 		load_external_function("$libdir/hstore", "hstorePairs",
 							   true, NULL);
-	AssertVariableIsOfType(&hstoreCheckKeyLen, hstoreCheckKeyLen_t);
 	hstoreCheckKeyLen_p = (hstoreCheckKeyLen_t)
 		load_external_function("$libdir/hstore", "hstoreCheckKeyLen",
 							   true, NULL);
-	AssertVariableIsOfType(&hstoreCheckValLen, hstoreCheckValLen_t);
 	hstoreCheckValLen_p = (hstoreCheckValLen_t)
 		load_external_function("$libdir/hstore", "hstoreCheckValLen",
 							   true, NULL);

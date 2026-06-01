@@ -3,7 +3,7 @@
  * print.c
  *	  various print routines (used mostly for debugging)
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -38,7 +38,7 @@ print(const void *obj)
 	char	   *s;
 	char	   *f;
 
-	s = nodeToString(obj);
+	s = nodeToStringWithLocations(obj);
 	f = format_node_dump(s);
 	pfree(s);
 	printf("%s\n", f);
@@ -56,7 +56,7 @@ pprint(const void *obj)
 	char	   *s;
 	char	   *f;
 
-	s = nodeToString(obj);
+	s = nodeToStringWithLocations(obj);
 	f = pretty_format_node_dump(s);
 	pfree(s);
 	printf("%s\n", f);
@@ -74,7 +74,7 @@ elog_node_display(int lev, const char *title, const void *obj, bool pretty)
 	char	   *s;
 	char	   *f;
 
-	s = nodeToString(obj);
+	s = nodeToStringWithLocations(obj);
 	if (pretty)
 		f = pretty_format_node_dump(s);
 	else
@@ -298,6 +298,14 @@ print_rt(const List *rtable)
 				break;
 			case RTE_RESULT:
 				printf("%d\t%s\t[result]",
+					   i, rte->eref->aliasname);
+				break;
+			case RTE_GROUP:
+				printf("%d\t%s\t[group]",
+					   i, rte->eref->aliasname);
+				break;
+			case RTE_GRAPH_TABLE:
+				printf("%d\t%s\t[graph table]",
 					   i, rte->eref->aliasname);
 				break;
 			default:

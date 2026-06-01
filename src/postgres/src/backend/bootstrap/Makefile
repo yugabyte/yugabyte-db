@@ -16,12 +16,21 @@ OBJS = \
 	yb_bootstrap.o \
 	\
 	bootparse.o \
+	bootscanner.o \
 	bootstrap.o
 
 include $(top_srcdir)/src/backend/common.mk
 
-# bootscanner is compiled as part of bootparse
-bootparse.o: bootscanner.c
+# See notes in src/backend/parser/Makefile about the following two rules
+bootparse.h: bootparse.c
+	touch $@
 
-# bootparse.c and bootscanner.c are in the distribution tarball, so
-# they are not cleaned here.
+bootparse.c: BISONFLAGS += -d
+
+# Force these dependencies to be known even without dependency info built:
+bootparse.o bootscanner.o: bootparse.h
+
+clean:
+	rm -f bootparse.c \
+	      bootparse.h \
+	      bootscanner.c

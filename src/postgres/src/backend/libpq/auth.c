@@ -3,7 +3,7 @@
  * auth.c
  *	  Routines to handle network authentication
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -16,13 +16,12 @@
 #include "postgres.h"
 
 #include <sys/param.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <pwd.h>
 #include <unistd.h>
-#ifdef HAVE_SYS_SELECT_H
-#include <sys/select.h>
-#endif
 
 #include "commands/user.h"
 #include "common/ip.h"
@@ -30,6 +29,7 @@
 #include "libpq/auth.h"
 #include "libpq/crypt.h"
 #include "libpq/libpq.h"
+#include "libpq/oauth.h"
 #include "libpq/pqformat.h"
 #include "libpq/sasl.h"
 #include "libpq/scram.h"
@@ -38,9 +38,8 @@
 #include "postmaster/postmaster.h"
 #include "replication/walsender.h"
 #include "storage/ipc.h"
-#include "utils/guc.h"
+#include "tcop/backend_startup.h"
 #include "utils/memutils.h"
-#include "utils/timestamp.h"
 
 /* YB includes */
 #include "access/htup_details.h"
@@ -56,10 +55,10 @@
  * Global authentication functions
  *----------------------------------------------------------------
  */
-static void auth_failed(Port *port, int status, const char *logdetail,
+static void auth_failed(Port *port, int elevel, int status,
+						const char *logdetail,
 						bool yb_role_is_locked_out);
 static char *recv_password_packet(Port *port);
-static void set_authn_id(Port *port, const char *id);
 
 /*----------------------------------------------------------------
  * Password-based authentication methods (password, md5, and scram-sha-256)
@@ -83,14 +82,14 @@ static int	CheckYbTserverKeyAuth(Port *port, const char **logdetail);
 /* Standard TCP port number for Ident service.  Assigned by IANA */
 #define IDENT_PORT 113
 
-static int	ident_inet(hbaPort *port);
+static int	ident_inet(Port *port);
 
 
 /*----------------------------------------------------------------
  * Peer authentication
  *----------------------------------------------------------------
  */
-static int	auth_peer(hbaPort *port);
+static int	auth_peer(Port *port);
 
 
 /*----------------------------------------------------------------
@@ -107,8 +106,16 @@ static int	auth_peer(hbaPort *port);
 
 #define PGSQL_PAM_SERVICE "postgresql"	/* Service name passed to PAM */
 
+/* Work around original Solaris' lack of "const" in the conv_proc signature */
+#ifdef _PAM_LEGACY_NONCONST
+#define PG_PAM_CONST
+#else
+#define PG_PAM_CONST const
+#endif
+
 static int	CheckPAMAuth(Port *port, const char *user, const char *password);
-static int	pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
+static int	pam_passwd_conv_proc(int num_msg,
+								 PG_PAM_CONST struct pam_message **msg,
 								 struct pam_response **resp, void *appdata_ptr);
 
 static struct pam_conv pam_passw_conv = {
@@ -147,14 +154,6 @@ static int	CheckBSDAuth(Port *port, char *user);
 #else
 #include <winldap.h>
 
-/* Correct header from the Platform SDK */
-typedef
-ULONG		(*__ldap_start_tls_sA) (IN PLDAP ExternalHandle,
-									OUT PULONG ServerReturnValue,
-									OUT LDAPMessage **result,
-									IN PLDAPControlA * ServerControls,
-									IN PLDAPControlA * ClientControls
-);
 #endif
 
 static int	CheckLDAPAuth(Port *port);
@@ -165,6 +164,10 @@ static char *get_ldap_password(char *ldapbindpasswd);
 #ifndef LDAP_OPT_DIAGNOSTIC_MESSAGE
 #define LDAP_OPT_DIAGNOSTIC_MESSAGE LDAP_OPT_ERROR_STRING
 #endif
+
+/* Default LDAP password mutator hook, can be overridden by a shared library */
+static char *dummy_ldap_password_mutator(char *input);
+auth_password_hook_typ ldap_password_hook = dummy_ldap_password_mutator;
 
 #endif							/* USE_LDAP */
 
@@ -183,6 +186,7 @@ static int	CheckCertAuth(Port *port);
  */
 char	   *pg_krb_server_keyfile;
 bool		pg_krb_caseins_users;
+bool		pg_gss_accept_delegation;
 
 
 /*----------------------------------------------------------------
@@ -213,33 +217,10 @@ static int	pg_SSPI_make_upn(char *accountname,
 #endif
 
 /*----------------------------------------------------------------
- * RADIUS Authentication
- *----------------------------------------------------------------
- */
-static int	CheckRADIUSAuth(Port *port);
-static int	PerformRadiusTransaction(const char *server, const char *secret, const char *portstr, const char *identifier, const char *user_name, const char *passwd);
-
-/*----------------------------------------------------------------
  * JWT Authentication
  *----------------------------------------------------------------
  */
 static int	YbCheckJwtAuth(Port *port);
-
-/*
- * Maximum accepted size of GSS and SSPI authentication tokens.
- * We also use this as a limit on ordinary password packet lengths.
- *
- * Kerberos tickets are usually quite small, but the TGTs issued by Windows
- * domain controllers include an authorization field known as the Privilege
- * Attribute Certificate (PAC), which contains the user's Windows permissions
- * (group memberships etc.). The PAC is copied into all tickets obtained on
- * the basis of this TGT (even those issued by Unix realms which the Windows
- * realm trusts), and can be several kB in size. The maximum token size
- * accepted by Windows systems is determined by the MaxAuthToken Windows
- * registry setting. Microsoft recommends that it is not set higher than
- * 65535 bytes, so that seems like a reasonable limit for us as well.
- */
-#define PG_MAX_AUTH_TOKEN_LENGTH	65535
 
 /*----------------------------------------------------------------
  * Global authentication functions
@@ -264,14 +245,18 @@ ClientAuthentication_hook_type ClientAuthentication_hook = NULL;
  * anyway.
  * Note that many sorts of failure report additional information in the
  * postmaster log, which we hope is only readable by good guys.  In
- * particular, if logdetail isn't NULL, we send that string to the log.
+ * particular, if logdetail isn't NULL, we send that string to the log
+ * when the elevel allows.
  */
 static void
-auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locked_out)
+auth_failed(Port *port, int elevel, int status, const char *logdetail,
+			bool yb_role_is_locked_out)
 {
 	const char *errstr;
 	char	   *cdetail;
 	int			errcode_return = ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION;
+
+	Assert(elevel >= FATAL);	/* we must exit here */
 
 	bool		yb_is_auth_passthrough = YbIsAuthPassthroughInProgress(port);
 
@@ -355,8 +340,8 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 		case uaCert:
 			errstr = gettext_noop("certificate authentication failed for user \"%s\"");
 			break;
-		case uaRADIUS:
-			errstr = gettext_noop("RADIUS authentication failed for user \"%s\"");
+		case uaOAuth:
+			errstr = gettext_noop("OAuth bearer authentication failed for user \"%s\"");
 			break;
 
 		case uaYbJWT:
@@ -373,8 +358,9 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 	if (!line_to_print)
 		line_to_print = port->hba->rawline;
 
-	cdetail = psprintf(_("Connection matched pg_hba.conf line %d: \"%s\""),
-					   port->hba->linenumber, line_to_print);
+	cdetail = psprintf(_("Connection matched file \"%s\" line %d: \"%s\""),
+					   port->hba->sourcefile, port->hba->linenumber,
+					   line_to_print);
 	if (logdetail)
 		logdetail = psprintf("%s\n%s", logdetail, cdetail);
 	else
@@ -397,28 +383,31 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 	 * Connection Manager is enabled. The relevant codepath changes for this
 	 * change in behaviour are all under the `yb_ai_auth_passthrough` flag.
 	 */
+	if (!yb_is_auth_passthrough)
+		pg_unreachable();
 }
 
 
 /*
  * Sets the authenticated identity for the current user.  The provided string
- * will be copied into the TopMemoryContext.  The ID will be logged if
- * log_connections is enabled.
+ * will be stored into MyClientConnectionInfo, alongside the current HBA
+ * method in use.  The ID will be logged if log_connections has the
+ * 'authentication' option specified.
  *
  * Auth methods should call this routine exactly once, as soon as the user is
  * successfully authenticated, even if they have reasons to know that
  * authorization will fail later.
  *
  * The provided string will be copied into TopMemoryContext, to match the
- * lifetime of the Port, so it is safe to pass a string that is managed by an
- * external library.
+ * lifetime of MyClientConnectionInfo, so it is safe to pass a string that is
+ * managed by an external library.
  */
-static void
+void
 set_authn_id(Port *port, const char *id)
 {
 	Assert(id);
 
-	if (port->authn_id)
+	if (MyClientConnectionInfo.authn_id)
 	{
 		/*
 		 * An existing authn_id should never be overwritten; that means two
@@ -429,7 +418,7 @@ set_authn_id(Port *port, const char *id)
 		ereport(FATAL,
 				(errmsg("authentication identifier set more than once"),
 				 errdetail_log("previous identifier: \"%s\"; new identifier: \"%s\"",
-							   port->authn_id, id)));
+							   MyClientConnectionInfo.authn_id, id)));
 	}
 
 	/*
@@ -441,17 +430,19 @@ set_authn_id(Port *port, const char *id)
 	 * MemoryContext spawned specifically for Auth Passthrough auth attempts.
 	 */
 	if (YbIsAuthPassthroughInProgress(port))
-		port->authn_id = pstrdup(id);
+		MyClientConnectionInfo.authn_id = pstrdup(id);
 	else
-		port->authn_id = MemoryContextStrdup(TopMemoryContext, id);
+		MyClientConnectionInfo.authn_id = MemoryContextStrdup(TopMemoryContext, id);
+	MyClientConnectionInfo.auth_method = port->hba->auth_method;
 
-	if (Log_connections)
+	if (log_connections & LOG_CONNECTION_AUTHENTICATION)
 	{
 		ereport(LOG,
 				errmsg("connection authenticated: identity=\"%s\" method=%s "
 					   "(%s:%d)",
-					   port->authn_id, hba_authname(port->hba->auth_method), HbaFileName,
-					   port->hba->linenumber));
+					   MyClientConnectionInfo.authn_id,
+					   hba_authname(MyClientConnectionInfo.auth_method),
+					   port->hba->sourcefile, port->hba->linenumber));
 	}
 }
 
@@ -478,6 +469,15 @@ ClientAuthentication(Port *port)
 	/* Auth Passthrough can be enabled only for Ysql Connection Manager */
 	if (yb_auth_passthrough)
 		Assert(YbIsClientYsqlConnMgr());
+
+	/*
+	 * "Abandoned" is a SASL-specific state similar to STATUS_EOF, in that we
+	 * don't want to generate any server logs. But it's caused by an in-band
+	 * client action that requires a server response, not an out-of-band
+	 * connection closure, so we can't just proc_exit() like we do with
+	 * STATUS_EOF.
+	 */
+	bool		abandoned = false;
 
 	/*
 	 * Get the authentication method to use for this frontend/database
@@ -516,7 +516,7 @@ ClientAuthentication(Port *port)
 			 * authentication type of a client, if authentication type is cert,
 			 * a FATAL packet is sent back to the Ysql Connection Manager.
 			 */
-			auth_failed(port, status,
+			auth_failed(port, FATAL, status,
 						"cert authentication is not supported with connection "
 						"manager",
 						false);
@@ -738,12 +738,11 @@ ClientAuthentication(Port *port)
 			break;
 
 		case uaYbTserverKey:
-#ifdef HAVE_UNIX_SOCKETS
 			Assert(IsYugaByteEnabled());
 
 			if (YbIsAuthPassthroughInProgress(port))
 			{
-				auth_failed(port, status,
+				auth_failed(port, FATAL, status,
 							"YbTserverKey authentication is not supported "
 							"in auth passthrough",
 							false);
@@ -751,9 +750,6 @@ ClientAuthentication(Port *port)
 			}
 
 			status = CheckYbTserverKeyAuth(port, &logdetail);
-#else
-			Assert(false);
-#endif
 			break;
 
 		case uaPAM:
@@ -779,13 +775,14 @@ ClientAuthentication(Port *port)
 			Assert(false);
 #endif
 			break;
-		case uaRADIUS:
-			status = CheckRADIUSAuth(port);
-			break;
 		case uaCert:
 			/* uaCert will be treated as if clientcert=verify-full (uaTrust) */
 		case uaTrust:
 			status = STATUS_OK;
+			break;
+		case uaOAuth:
+			status = CheckSASLAuth(&pg_be_oauth_mech, port, NULL, &logdetail,
+								   &abandoned);
 			break;
 
 		case uaYbJWT:
@@ -805,6 +802,23 @@ ClientAuthentication(Port *port)
 #else
 		Assert(false);
 #endif
+	}
+
+	if ((log_connections & LOG_CONNECTION_AUTHENTICATION) &&
+		status == STATUS_OK &&
+		!MyClientConnectionInfo.authn_id)
+	{
+		/*
+		 * Normally, if log_connections is set, the call to set_authn_id()
+		 * will log the connection.  However, if that function is never
+		 * called, perhaps because the trust method is in use, then we handle
+		 * the logging here instead.
+		 */
+		ereport(LOG,
+				errmsg("connection authenticated: user=\"%s\" method=%s "
+					   "(%s:%d)",
+					   port->user_name, hba_authname(port->hba->auth_method),
+					   port->hba->sourcefile, port->hba->linenumber));
 	}
 
 	if (ClientAuthentication_hook)
@@ -850,7 +864,7 @@ ClientAuthentication(Port *port)
 			if (roleid != InvalidOid && status != STATUS_EOF)
 				profile_is_disabled =
 					YbMaybeIncFailedAttemptsAndDisableProfile(roleid);
-			auth_failed(port, status, logdetail, profile_is_disabled);
+			auth_failed(port, FATAL, status, logdetail, profile_is_disabled);
 		}
 		return;
 	}
@@ -860,7 +874,11 @@ ClientAuthentication(Port *port)
 		sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
 	}
 	else
-		auth_failed(port, status, logdetail, false /* yb_role_is_locked_out */ );
+		auth_failed(port,
+					abandoned ? FATAL_CLIENT_ONLY : FATAL,
+					status,
+					logdetail,
+					false /* yb_role_is_locked_out */ );
 }
 
 
@@ -868,13 +886,13 @@ ClientAuthentication(Port *port)
  * Send an authentication request packet to the frontend.
  */
 void
-sendAuthRequest(Port *port, AuthRequest areq, const char *extradata, int extralen)
+sendAuthRequest(Port *port, AuthRequest areq, const void *extradata, int extralen)
 {
 	StringInfoData buf;
 
 	CHECK_FOR_INTERRUPTS();
 
-	pq_beginmessage(&buf, 'R');
+	pq_beginmessage(&buf, PqMsg_AuthenticationRequest);
 	pq_sendint32(&buf, (int32) areq);
 	if (extralen > 0)
 		pq_sendbytes(&buf, extradata, extralen);
@@ -907,7 +925,7 @@ recv_password_packet(Port *port)
 
 	/* Expect 'p' message type */
 	mtype = pq_getbyte();
-	if (mtype != 'p')
+	if (mtype != PqMsg_PasswordMessage)
 	{
 		/*
 		 * If the client just disconnects without offering a password, don't
@@ -951,7 +969,7 @@ recv_password_packet(Port *port)
 	 * We rely on that for MD5 and SCRAM authentication, but we still need
 	 * this check here, to prevent an empty password from being used with
 	 * authentication methods that check the password against an external
-	 * system, like PAM, LDAP and RADIUS.
+	 * system, like PAM and LDAP.
 	 *
 	 * YB: In the case of auth passthrough mode of connection manager, we want
 	 * to avoid terminating the backend process if possible. In this case, we
@@ -1074,7 +1092,7 @@ CheckPWChallengeAuth(Port *port, const char **logdetail)
 		auth_result = CheckMD5Auth(port, shadow_pass, logdetail);
 	else
 		auth_result = CheckSASLAuth(&pg_be_scram_mech, port, shadow_pass,
-									logdetail);
+									logdetail, NULL /* can't abandon SCRAM */ );
 
 	if (shadow_pass)
 		pfree(shadow_pass);
@@ -1096,14 +1114,9 @@ CheckPWChallengeAuth(Port *port, const char **logdetail)
 static int
 CheckMD5Auth(Port *port, char *shadow_pass, const char **logdetail)
 {
-	char		md5Salt[4];		/* Password salt */
+	uint8		md5Salt[4];		/* Password salt */
 	char	   *passwd;
 	int			result;
-
-	if (Db_user_namespace)
-		ereport(FATAL,
-				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-				 errmsg("MD5 authentication is not supported when \"db_user_namespace\" is enabled")));
 
 	/* include the salt to use for computing the response */
 	if (!pg_strong_random(md5Salt, 4))
@@ -1181,10 +1194,12 @@ pg_GSS_recvauth(Port *port)
 	int			mtype;
 	StringInfoData buf;
 	gss_buffer_desc gbuf;
+	gss_cred_id_t delegated_creds;
 
 	/*
-	 * Use the configured keytab, if there is one.  Unfortunately, Heimdal
-	 * doesn't support the cred store extensions, so use the env var.
+	 * Use the configured keytab, if there is one.  As we now require MIT
+	 * Kerberos, we might consider using the credential store extensions in
+	 * the future instead of the environment variable.
 	 */
 	if (pg_krb_server_keyfile != NULL && pg_krb_server_keyfile[0] != '\0')
 	{
@@ -1210,6 +1225,9 @@ pg_GSS_recvauth(Port *port)
 	 */
 	port->gss->ctx = GSS_C_NO_CONTEXT;
 
+	delegated_creds = GSS_C_NO_CREDENTIAL;
+	port->gss->delegated_creds = false;
+
 	/*
 	 * Loop through GSSAPI message exchange. This exchange can consist of
 	 * multiple messages sent in both directions. First message is always from
@@ -1223,7 +1241,7 @@ pg_GSS_recvauth(Port *port)
 		CHECK_FOR_INTERRUPTS();
 
 		mtype = pq_getbyte();
-		if (mtype != 'p')
+		if (mtype != PqMsg_GSSResponse)
 		{
 			/* Only log error if client didn't disconnect. */
 			if (mtype != EOF)
@@ -1247,8 +1265,8 @@ pg_GSS_recvauth(Port *port)
 		gbuf.length = buf.len;
 		gbuf.value = buf.data;
 
-		elog(DEBUG4, "processing received GSS token of length %u",
-			 (unsigned int) gbuf.length);
+		elog(DEBUG4, "processing received GSS token of length %zu",
+			 gbuf.length);
 
 		maj_stat = gss_accept_sec_context(&min_stat,
 										  &port->gss->ctx,
@@ -1260,25 +1278,31 @@ pg_GSS_recvauth(Port *port)
 										  &port->gss->outbuf,
 										  &gflags,
 										  NULL,
-										  NULL);
+										  pg_gss_accept_delegation ? &delegated_creds : NULL);
 
 		/* gbuf no longer used */
 		pfree(buf.data);
 
 		elog(DEBUG5, "gss_accept_sec_context major: %u, "
-			 "minor: %u, outlen: %u, outflags: %x",
+			 "minor: %u, outlen: %zu, outflags: %x",
 			 maj_stat, min_stat,
-			 (unsigned int) port->gss->outbuf.length, gflags);
+			 port->gss->outbuf.length, gflags);
 
 		CHECK_FOR_INTERRUPTS();
+
+		if (delegated_creds != GSS_C_NO_CREDENTIAL && gflags & GSS_C_DELEG_FLAG)
+		{
+			pg_store_delegated_credential(delegated_creds);
+			port->gss->delegated_creds = true;
+		}
 
 		if (port->gss->outbuf.length != 0)
 		{
 			/*
 			 * Negotiation generated data to be sent to the client.
 			 */
-			elog(DEBUG4, "sending GSS response token of length %u",
-				 (unsigned int) port->gss->outbuf.length);
+			elog(DEBUG4, "sending GSS response token of length %zu",
+				 port->gss->outbuf.length);
 
 			sendAuthRequest(port, AUTH_REQ_GSS_CONT,
 							port->gss->outbuf.value, port->gss->outbuf.length);
@@ -1461,10 +1485,7 @@ pg_SSPI_recvauth(Port *port)
 	DWORD		accountnamesize = sizeof(accountname);
 	DWORD		domainnamesize = sizeof(domainname);
 	SID_NAME_USE accountnameuse;
-	HMODULE		secur32;
 	char	   *authn_id;
-
-	QUERY_SECURITY_CONTEXT_TOKEN_FN _QuerySecurityContextToken;
 
 	/*
 	 * Acquire a handle to the server credentials.
@@ -1491,7 +1512,7 @@ pg_SSPI_recvauth(Port *port)
 	{
 		pq_startmsgread();
 		mtype = pq_getbyte();
-		if (mtype != 'p')
+		if (mtype != PqMsg_GSSResponse)
 		{
 			if (sspictx != NULL)
 			{
@@ -1618,36 +1639,12 @@ pg_SSPI_recvauth(Port *port)
 	 *
 	 * Get the name of the user that authenticated, and compare it to the pg
 	 * username that was specified for the connection.
-	 *
-	 * MingW is missing the export for QuerySecurityContextToken in the
-	 * secur32 library, so we have to load it dynamically.
 	 */
 
-	secur32 = LoadLibrary("SECUR32.DLL");
-	if (secur32 == NULL)
-		ereport(ERROR,
-				(errmsg("could not load library \"%s\": error code %lu",
-						"SECUR32.DLL", GetLastError())));
-
-	_QuerySecurityContextToken = (QUERY_SECURITY_CONTEXT_TOKEN_FN) (pg_funcptr_t)
-		GetProcAddress(secur32, "QuerySecurityContextToken");
-	if (_QuerySecurityContextToken == NULL)
-	{
-		FreeLibrary(secur32);
-		ereport(ERROR,
-				(errmsg_internal("could not locate QuerySecurityContextToken in secur32.dll: error code %lu",
-								 GetLastError())));
-	}
-
-	r = (_QuerySecurityContextToken) (sspictx, &token);
+	r = QuerySecurityContextToken(sspictx, &token);
 	if (r != SEC_E_OK)
-	{
-		FreeLibrary(secur32);
 		pg_SSPI_error(ERROR,
 					  _("could not get token from SSPI security context"), r);
-	}
-
-	FreeLibrary(secur32);
 
 	/*
 	 * No longer need the security context, everything from here on uses the
@@ -1851,6 +1848,15 @@ pg_SSPI_make_upn(char *accountname,
  */
 
 /*
+ * Per RFC 1413, space and tab are whitespace in ident messages.
+ */
+static bool
+is_ident_whitespace(const char c)
+{
+	return c == ' ' || c == '\t';
+}
+
+/*
  *	Parse the string "*ident_response" as a response from a query to an Ident
  *	server.  If it's a normal response indicating a user name, return true
  *	and store the user name at *ident_user. If it's anything else,
@@ -1883,14 +1889,14 @@ interpret_ident_response(const char *ident_response,
 			int			i;		/* Index into *response_type */
 
 			cursor++;			/* Go over colon */
-			while (pg_isblank(*cursor))
+			while (is_ident_whitespace(*cursor))
 				cursor++;		/* skip blanks */
 			i = 0;
-			while (*cursor != ':' && *cursor != '\r' && !pg_isblank(*cursor) &&
+			while (*cursor != ':' && *cursor != '\r' && !is_ident_whitespace(*cursor) &&
 				   i < (int) (sizeof(response_type) - 1))
 				response_type[i++] = *cursor++;
 			response_type[i] = '\0';
-			while (pg_isblank(*cursor))
+			while (is_ident_whitespace(*cursor))
 				cursor++;		/* skip blanks */
 			if (strcmp(response_type, "USERID") != 0)
 				return false;
@@ -1912,10 +1918,8 @@ interpret_ident_response(const char *ident_response,
 						return false;
 					else
 					{
-						int			i;	/* Index into *ident_user */
-
 						cursor++;	/* Go over colon */
-						while (pg_isblank(*cursor))
+						while (is_ident_whitespace(*cursor))
 							cursor++;	/* skip blanks */
 						/* Rest of line is user name.  Copy it over. */
 						i = 0;
@@ -1940,7 +1944,7 @@ interpret_ident_response(const char *ident_response,
  *	latch was set would improve the responsiveness to timeouts/cancellations.
  */
 static int
-ident_inet(hbaPort *port)
+ident_inet(Port *port)
 {
 	const SockAddr remote_addr = port->raddr;
 	const SockAddr local_addr = port->laddr;
@@ -2125,12 +2129,15 @@ ident_inet_done:
  *	Iff authorized, return STATUS_OK, otherwise return STATUS_ERROR.
  */
 static int
-auth_peer(hbaPort *port)
+auth_peer(Port *port)
 {
 	uid_t		uid;
 	gid_t		gid;
 #ifndef WIN32
+	struct passwd pwbuf;
 	struct passwd *pw;
+	char		buf[1024];
+	int			rc;
 	int			ret;
 #endif
 
@@ -2149,16 +2156,18 @@ auth_peer(hbaPort *port)
 	}
 
 #ifndef WIN32
-	errno = 0;					/* clear errno before call */
-	pw = getpwuid(uid);
-	if (!pw)
+	rc = getpwuid_r(uid, &pwbuf, buf, sizeof buf, &pw);
+	if (rc != 0)
 	{
-		int			save_errno = errno;
-
+		errno = rc;
 		ereport(LOG,
-				(errmsg("could not look up local user ID %ld: %s",
-						(long) uid,
-						save_errno ? strerror(save_errno) : _("user does not exist"))));
+				errmsg("could not look up local user ID %ld: %m", (long) uid));
+		return STATUS_ERROR;
+	}
+	else if (!pw)
+	{
+		ereport(LOG,
+				errmsg("local user with ID %ld does not exist", (long) uid));
 		return STATUS_ERROR;
 	}
 
@@ -2169,7 +2178,8 @@ auth_peer(hbaPort *port)
 	 */
 	set_authn_id(port, pw->pw_name);
 
-	ret = check_usermap(port->hba->usermap, port->user_name, port->authn_id, false);
+	ret = check_usermap(port->hba->usermap, port->user_name,
+						MyClientConnectionInfo.authn_id, false);
 
 	return ret;
 #else
@@ -2191,7 +2201,7 @@ auth_peer(hbaPort *port)
  */
 
 static int
-pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
+pam_passwd_conv_proc(int num_msg, PG_PAM_CONST struct pam_message **msg,
 					 struct pam_response **resp, void *appdata_ptr)
 {
 	const char *passwd;
@@ -2259,8 +2269,7 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
 				ereport(LOG,
 						(errmsg("error from underlying PAM layer: %s",
 								msg[i]->msg)));
-				/* FALL THROUGH */
-				yb_switch_fallthrough();
+				pg_fallthrough;
 			case PAM_TEXT_INFO:
 				/* we don't bother to log TEXT_INFO messages */
 				if ((reply[i].resp = strdup("")) == NULL)
@@ -2282,10 +2291,7 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
 fail:
 	/* free up whatever we allocated */
 	for (i = 0; i < num_msg; i++)
-	{
-		if (reply[i].resp != NULL)
-			free(reply[i].resp);
-	}
+		free(reply[i].resp);
 	free(reply);
 
 	return PAM_CONV_ERR;
@@ -2501,8 +2507,8 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 	if (!*ldap)
 	{
 		ereport(LOG,
-				(errmsg("could not initialize LDAP: error code %d",
-						(int) LdapGetLastError())));
+				(errmsg("could not initialize LDAP: error code %lu",
+						LdapGetLastError())));
 
 		return STATUS_ERROR;
 	}
@@ -2640,48 +2646,7 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 #ifndef WIN32
 		if ((r = ldap_start_tls_s(*ldap, NULL, NULL)) != LDAP_SUCCESS)
 #else
-		static __ldap_start_tls_sA _ldap_start_tls_sA = NULL;
-
-		if (_ldap_start_tls_sA == NULL)
-		{
-			/*
-			 * Need to load this function dynamically because it may not exist
-			 * on Windows, and causes a load error for the whole exe if
-			 * referenced.
-			 */
-			HANDLE		ldaphandle;
-
-			ldaphandle = LoadLibrary("WLDAP32.DLL");
-			if (ldaphandle == NULL)
-			{
-				/*
-				 * should never happen since we import other files from
-				 * wldap32, but check anyway
-				 */
-				ereport(LOG,
-						(errmsg("could not load library \"%s\": error code %lu",
-								"WLDAP32.DLL", GetLastError())));
-				ldap_unbind(*ldap);
-				return STATUS_ERROR;
-			}
-			_ldap_start_tls_sA = (__ldap_start_tls_sA) (pg_funcptr_t) GetProcAddress(ldaphandle, "ldap_start_tls_sA");
-			if (_ldap_start_tls_sA == NULL)
-			{
-				ereport(LOG,
-						(errmsg("could not load function _ldap_start_tls_sA in wldap32.dll"),
-						 errdetail("LDAP over SSL is not supported on this platform.")));
-				ldap_unbind(*ldap);
-				FreeLibrary(ldaphandle);
-				return STATUS_ERROR;
-			}
-
-			/*
-			 * Leak LDAP handle on purpose, because we need the library to
-			 * stay open. This is ok because it will only ever be leaked once
-			 * per process and is automatically cleaned up on process exit.
-			 */
-		}
-		if ((r = _ldap_start_tls_sA(*ldap, NULL, NULL, NULL, NULL)) != LDAP_SUCCESS)
+		if ((r = ldap_start_tls_s(*ldap, NULL, NULL, NULL, NULL)) != LDAP_SUCCESS)
 #endif
 		{
 			ereport(LOG,
@@ -2709,6 +2674,12 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 #ifndef LDAPS_PORT
 #define LDAPS_PORT 636
 #endif
+
+static char *
+dummy_ldap_password_mutator(char *input)
+{
+	return input;
+}
 
 /*
  * Return a newly allocated C string copied from "pattern" with all
@@ -2933,31 +2904,6 @@ CheckLDAPAuth(Port *port)
 		pfree(filter);
 		ldap_memfree(dn);
 		ldap_msgfree(search_message);
-
-		/* Unbind and disconnect from the LDAP server */
-		r = ldap_unbind_s(ldap);
-		if (r != LDAP_SUCCESS)
-		{
-			ereport(LOG,
-					(errmsg("could not unbind after searching for user \"%s\" on server \"%s\"",
-							fulluser, server_name)));
-			pfree(passwd);
-			pfree(fulluser);
-			return STATUS_ERROR;
-		}
-
-		/*
-		 * Need to re-initialize the LDAP connection, so that we can bind to
-		 * it with a different username.
-		 */
-		if (InitializeLDAPConnection(port, &ldap) == STATUS_ERROR)
-		{
-			pfree(passwd);
-			pfree(fulluser);
-
-			/* Error message already sent */
-			return STATUS_ERROR;
-		}
 	}
 	else
 		fulluser = psprintf("%s%s%s",
@@ -3115,521 +3061,6 @@ CheckCertAuth(Port *port)
 	return status_check_usermap;
 }
 #endif
-
-
-/*----------------------------------------------------------------
- * RADIUS authentication
- *----------------------------------------------------------------
- */
-
-/*
- * RADIUS authentication is described in RFC2865 (and several others).
- */
-
-#define RADIUS_VECTOR_LENGTH 16
-#define RADIUS_HEADER_LENGTH 20
-#define RADIUS_MAX_PASSWORD_LENGTH 128
-
-/* Maximum size of a RADIUS packet we will create or accept */
-#define RADIUS_BUFFER_SIZE 1024
-
-typedef struct
-{
-	uint8		attribute;
-	uint8		length;
-	uint8		data[FLEXIBLE_ARRAY_MEMBER];
-} radius_attribute;
-
-typedef struct
-{
-	uint8		code;
-	uint8		id;
-	uint16		length;
-	uint8		vector[RADIUS_VECTOR_LENGTH];
-	/* this is a bit longer than strictly necessary: */
-	char		pad[RADIUS_BUFFER_SIZE - RADIUS_VECTOR_LENGTH];
-} radius_packet;
-
-/* RADIUS packet types */
-#define RADIUS_ACCESS_REQUEST	1
-#define RADIUS_ACCESS_ACCEPT	2
-#define RADIUS_ACCESS_REJECT	3
-
-/* RADIUS attributes */
-#define RADIUS_USER_NAME		1
-#define RADIUS_PASSWORD			2
-#define RADIUS_SERVICE_TYPE		6
-#define RADIUS_NAS_IDENTIFIER	32
-
-/* RADIUS service types */
-#define RADIUS_AUTHENTICATE_ONLY	8
-
-/* Seconds to wait - XXX: should be in a config variable! */
-#define RADIUS_TIMEOUT 3
-
-static void
-radius_add_attribute(radius_packet *packet, uint8 type, const unsigned char *data, int len)
-{
-	radius_attribute *attr;
-
-	if (packet->length + len > RADIUS_BUFFER_SIZE)
-	{
-		/*
-		 * With remotely realistic data, this can never happen. But catch it
-		 * just to make sure we don't overrun a buffer. We'll just skip adding
-		 * the broken attribute, which will in the end cause authentication to
-		 * fail.
-		 */
-		elog(WARNING,
-			 "adding attribute code %d with length %d to radius packet would create oversize packet, ignoring",
-			 type, len);
-		return;
-	}
-
-	attr = (radius_attribute *) ((unsigned char *) packet + packet->length);
-	attr->attribute = type;
-	attr->length = len + 2;		/* total size includes type and length */
-	memcpy(attr->data, data, len);
-	packet->length += attr->length;
-}
-
-static int
-CheckRADIUSAuth(Port *port)
-{
-	char	   *passwd;
-	ListCell   *server,
-			   *secrets,
-			   *radiusports,
-			   *identifiers;
-
-	/* Make sure struct alignment is correct */
-	Assert(offsetof(radius_packet, vector) == 4);
-
-	/* Verify parameters */
-	if (list_length(port->hba->radiusservers) < 1)
-	{
-		ereport(LOG,
-				(errmsg("RADIUS server not specified")));
-		return STATUS_ERROR;
-	}
-
-	if (list_length(port->hba->radiussecrets) < 1)
-	{
-		ereport(LOG,
-				(errmsg("RADIUS secret not specified")));
-		return STATUS_ERROR;
-	}
-
-	/* Send regular password request to client, and get the response */
-	sendAuthRequest(port, AUTH_REQ_PASSWORD, NULL, 0);
-
-	passwd = recv_password_packet(port);
-	if (passwd == NULL)
-		return STATUS_EOF;		/* client wouldn't send password */
-
-	if (strlen(passwd) > RADIUS_MAX_PASSWORD_LENGTH)
-	{
-		ereport(LOG,
-				(errmsg("RADIUS authentication does not support passwords longer than %d characters", RADIUS_MAX_PASSWORD_LENGTH)));
-		pfree(passwd);
-		return STATUS_ERROR;
-	}
-
-	/*
-	 * Loop over and try each server in order.
-	 */
-	secrets = list_head(port->hba->radiussecrets);
-	radiusports = list_head(port->hba->radiusports);
-	identifiers = list_head(port->hba->radiusidentifiers);
-	foreach(server, port->hba->radiusservers)
-	{
-		int			ret = PerformRadiusTransaction(lfirst(server),
-												   lfirst(secrets),
-												   radiusports ? lfirst(radiusports) : NULL,
-												   identifiers ? lfirst(identifiers) : NULL,
-												   port->user_name,
-												   passwd);
-
-		/*------
-		 * STATUS_OK = Login OK
-		 * STATUS_ERROR = Login not OK, but try next server
-		 * STATUS_EOF = Login not OK, and don't try next server
-		 *------
-		 */
-		if (ret == STATUS_OK)
-		{
-			set_authn_id(port, port->user_name);
-
-			pfree(passwd);
-			return STATUS_OK;
-		}
-		else if (ret == STATUS_EOF)
-		{
-			pfree(passwd);
-			return STATUS_ERROR;
-		}
-
-		/*
-		 * secret, port and identifiers either have length 0 (use default),
-		 * length 1 (use the same everywhere) or the same length as servers.
-		 * So if the length is >1, we advance one step. In other cases, we
-		 * don't and will then reuse the correct value.
-		 */
-		if (list_length(port->hba->radiussecrets) > 1)
-			secrets = lnext(port->hba->radiussecrets, secrets);
-		if (list_length(port->hba->radiusports) > 1)
-			radiusports = lnext(port->hba->radiusports, radiusports);
-		if (list_length(port->hba->radiusidentifiers) > 1)
-			identifiers = lnext(port->hba->radiusidentifiers, identifiers);
-	}
-
-	/* No servers left to try, so give up */
-	pfree(passwd);
-	return STATUS_ERROR;
-}
-
-static int
-PerformRadiusTransaction(const char *server, const char *secret, const char *portstr, const char *identifier, const char *user_name, const char *passwd)
-{
-	radius_packet radius_send_pack;
-	radius_packet radius_recv_pack;
-	radius_packet *packet = &radius_send_pack;
-	radius_packet *receivepacket = &radius_recv_pack;
-	char	   *radius_buffer = (char *) &radius_send_pack;
-	char	   *receive_buffer = (char *) &radius_recv_pack;
-	int32		service = pg_hton32(RADIUS_AUTHENTICATE_ONLY);
-	uint8	   *cryptvector;
-	int			encryptedpasswordlen;
-	uint8		encryptedpassword[RADIUS_MAX_PASSWORD_LENGTH];
-	uint8	   *md5trailer;
-	int			packetlength;
-	pgsocket	sock;
-
-#ifdef HAVE_IPV6
-	struct sockaddr_in6 localaddr;
-	struct sockaddr_in6 remoteaddr;
-#else
-	struct sockaddr_in localaddr;
-	struct sockaddr_in remoteaddr;
-#endif
-	struct addrinfo hint;
-	struct addrinfo *serveraddrs;
-	int			port;
-	socklen_t	addrsize;
-	fd_set		fdset;
-	struct timeval endtime;
-	int			i,
-				j,
-				r;
-
-	/* Assign default values */
-	if (portstr == NULL)
-		portstr = "1812";
-	if (identifier == NULL)
-		identifier = "postgresql";
-
-	MemSet(&hint, 0, sizeof(hint));
-	hint.ai_socktype = SOCK_DGRAM;
-	hint.ai_family = AF_UNSPEC;
-	port = atoi(portstr);
-
-	r = pg_getaddrinfo_all(server, portstr, &hint, &serveraddrs);
-	if (r || !serveraddrs)
-	{
-		ereport(LOG,
-				(errmsg("could not translate RADIUS server name \"%s\" to address: %s",
-						server, gai_strerror(r))));
-		if (serveraddrs)
-			pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
-		return STATUS_ERROR;
-	}
-	/* XXX: add support for multiple returned addresses? */
-
-	/* Construct RADIUS packet */
-	packet->code = RADIUS_ACCESS_REQUEST;
-	packet->length = RADIUS_HEADER_LENGTH;
-	if (!pg_strong_random(packet->vector, RADIUS_VECTOR_LENGTH))
-	{
-		ereport(LOG,
-				(errmsg("could not generate random encryption vector")));
-		pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
-		return STATUS_ERROR;
-	}
-	packet->id = packet->vector[0];
-	radius_add_attribute(packet, RADIUS_SERVICE_TYPE, (const unsigned char *) &service, sizeof(service));
-	radius_add_attribute(packet, RADIUS_USER_NAME, (const unsigned char *) user_name, strlen(user_name));
-	radius_add_attribute(packet, RADIUS_NAS_IDENTIFIER, (const unsigned char *) identifier, strlen(identifier));
-
-	/*
-	 * RADIUS password attributes are calculated as: e[0] = p[0] XOR
-	 * MD5(secret + Request Authenticator) for the first group of 16 octets,
-	 * and then: e[i] = p[i] XOR MD5(secret + e[i-1]) for the following ones
-	 * (if necessary)
-	 */
-	encryptedpasswordlen = ((strlen(passwd) + RADIUS_VECTOR_LENGTH - 1) / RADIUS_VECTOR_LENGTH) * RADIUS_VECTOR_LENGTH;
-	cryptvector = palloc(strlen(secret) + RADIUS_VECTOR_LENGTH);
-	memcpy(cryptvector, secret, strlen(secret));
-
-	/* for the first iteration, we use the Request Authenticator vector */
-	md5trailer = packet->vector;
-	for (i = 0; i < encryptedpasswordlen; i += RADIUS_VECTOR_LENGTH)
-	{
-		const char *errstr = NULL;
-
-		memcpy(cryptvector + strlen(secret), md5trailer, RADIUS_VECTOR_LENGTH);
-
-		/*
-		 * .. and for subsequent iterations the result of the previous XOR
-		 * (calculated below)
-		 */
-		md5trailer = encryptedpassword + i;
-
-		if (!pg_md5_binary(cryptvector, strlen(secret) + RADIUS_VECTOR_LENGTH,
-						   encryptedpassword + i, &errstr))
-		{
-			ereport(LOG,
-					(errmsg("could not perform MD5 encryption of password: %s",
-							errstr)));
-			pfree(cryptvector);
-			pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
-			return STATUS_ERROR;
-		}
-
-		for (j = i; j < i + RADIUS_VECTOR_LENGTH; j++)
-		{
-			if (j < strlen(passwd))
-				encryptedpassword[j] = passwd[j] ^ encryptedpassword[j];
-			else
-				encryptedpassword[j] = '\0' ^ encryptedpassword[j];
-		}
-	}
-	pfree(cryptvector);
-
-	radius_add_attribute(packet, RADIUS_PASSWORD, encryptedpassword, encryptedpasswordlen);
-
-	/* Length needs to be in network order on the wire */
-	packetlength = packet->length;
-	packet->length = pg_hton16(packet->length);
-
-	sock = socket(serveraddrs[0].ai_family, SOCK_DGRAM, 0);
-	if (sock == PGINVALID_SOCKET)
-	{
-		ereport(LOG,
-				(errmsg("could not create RADIUS socket: %m")));
-		pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
-		return STATUS_ERROR;
-	}
-
-	memset(&localaddr, 0, sizeof(localaddr));
-#ifdef HAVE_IPV6
-	localaddr.sin6_family = serveraddrs[0].ai_family;
-	localaddr.sin6_addr = in6addr_any;
-	if (localaddr.sin6_family == AF_INET6)
-		addrsize = sizeof(struct sockaddr_in6);
-	else
-		addrsize = sizeof(struct sockaddr_in);
-#else
-	localaddr.sin_family = serveraddrs[0].ai_family;
-	localaddr.sin_addr.s_addr = INADDR_ANY;
-	addrsize = sizeof(struct sockaddr_in);
-#endif
-
-	if (bind(sock, (struct sockaddr *) &localaddr, addrsize))
-	{
-		ereport(LOG,
-				(errmsg("could not bind local RADIUS socket: %m")));
-		closesocket(sock);
-		pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
-		return STATUS_ERROR;
-	}
-
-	if (sendto(sock, radius_buffer, packetlength, 0,
-			   serveraddrs[0].ai_addr, serveraddrs[0].ai_addrlen) < 0)
-	{
-		ereport(LOG,
-				(errmsg("could not send RADIUS packet: %m")));
-		closesocket(sock);
-		pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
-		return STATUS_ERROR;
-	}
-
-	/* Don't need the server address anymore */
-	pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
-
-	/*
-	 * Figure out at what time we should time out. We can't just use a single
-	 * call to select() with a timeout, since somebody can be sending invalid
-	 * packets to our port thus causing us to retry in a loop and never time
-	 * out.
-	 *
-	 * XXX: Using WaitLatchOrSocket() and doing a CHECK_FOR_INTERRUPTS() if
-	 * the latch was set would improve the responsiveness to
-	 * timeouts/cancellations.
-	 */
-	gettimeofday(&endtime, NULL);
-	endtime.tv_sec += RADIUS_TIMEOUT;
-
-	while (true)
-	{
-		struct timeval timeout;
-		struct timeval now;
-		int64		timeoutval;
-		const char *errstr = NULL;
-
-		gettimeofday(&now, NULL);
-		timeoutval = (endtime.tv_sec * 1000000 + endtime.tv_usec) - (now.tv_sec * 1000000 + now.tv_usec);
-		if (timeoutval <= 0)
-		{
-			ereport(LOG,
-					(errmsg("timeout waiting for RADIUS response from %s",
-							server)));
-			closesocket(sock);
-			return STATUS_ERROR;
-		}
-		timeout.tv_sec = timeoutval / 1000000;
-		timeout.tv_usec = timeoutval % 1000000;
-
-		FD_ZERO(&fdset);
-		FD_SET(sock, &fdset);
-
-		r = select(sock + 1, &fdset, NULL, NULL, &timeout);
-		if (r < 0)
-		{
-			if (errno == EINTR)
-				continue;
-
-			/* Anything else is an actual error */
-			ereport(LOG,
-					(errmsg("could not check status on RADIUS socket: %m")));
-			closesocket(sock);
-			return STATUS_ERROR;
-		}
-		if (r == 0)
-		{
-			ereport(LOG,
-					(errmsg("timeout waiting for RADIUS response from %s",
-							server)));
-			closesocket(sock);
-			return STATUS_ERROR;
-		}
-
-		/*
-		 * Attempt to read the response packet, and verify the contents.
-		 *
-		 * Any packet that's not actually a RADIUS packet, or otherwise does
-		 * not validate as an explicit reject, is just ignored and we retry
-		 * for another packet (until we reach the timeout). This is to avoid
-		 * the possibility to denial-of-service the login by flooding the
-		 * server with invalid packets on the port that we're expecting the
-		 * RADIUS response on.
-		 */
-
-		addrsize = sizeof(remoteaddr);
-		packetlength = recvfrom(sock, receive_buffer, RADIUS_BUFFER_SIZE, 0,
-								(struct sockaddr *) &remoteaddr, &addrsize);
-		if (packetlength < 0)
-		{
-			ereport(LOG,
-					(errmsg("could not read RADIUS response: %m")));
-			closesocket(sock);
-			return STATUS_ERROR;
-		}
-
-#ifdef HAVE_IPV6
-		if (remoteaddr.sin6_port != pg_hton16(port))
-#else
-		if (remoteaddr.sin_port != pg_hton16(port))
-#endif
-		{
-#ifdef HAVE_IPV6
-			ereport(LOG,
-					(errmsg("RADIUS response from %s was sent from incorrect port: %d",
-							server, pg_ntoh16(remoteaddr.sin6_port))));
-#else
-			ereport(LOG,
-					(errmsg("RADIUS response from %s was sent from incorrect port: %d",
-							server, pg_ntoh16(remoteaddr.sin_port))));
-#endif
-			continue;
-		}
-
-		if (packetlength < RADIUS_HEADER_LENGTH)
-		{
-			ereport(LOG,
-					(errmsg("RADIUS response from %s too short: %d", server, packetlength)));
-			continue;
-		}
-
-		if (packetlength != pg_ntoh16(receivepacket->length))
-		{
-			ereport(LOG,
-					(errmsg("RADIUS response from %s has corrupt length: %d (actual length %d)",
-							server, pg_ntoh16(receivepacket->length), packetlength)));
-			continue;
-		}
-
-		if (packet->id != receivepacket->id)
-		{
-			ereport(LOG,
-					(errmsg("RADIUS response from %s is to a different request: %d (should be %d)",
-							server, receivepacket->id, packet->id)));
-			continue;
-		}
-
-		/*
-		 * Verify the response authenticator, which is calculated as
-		 * MD5(Code+ID+Length+RequestAuthenticator+Attributes+Secret)
-		 */
-		cryptvector = palloc(packetlength + strlen(secret));
-
-		memcpy(cryptvector, receivepacket, 4);	/* code+id+length */
-		memcpy(cryptvector + 4, packet->vector, RADIUS_VECTOR_LENGTH);	/* request
-																		 * authenticator, from
-																		 * original packet */
-		if (packetlength > RADIUS_HEADER_LENGTH)	/* there may be no
-													 * attributes at all */
-			memcpy(cryptvector + RADIUS_HEADER_LENGTH, receive_buffer + RADIUS_HEADER_LENGTH, packetlength - RADIUS_HEADER_LENGTH);
-		memcpy(cryptvector + packetlength, secret, strlen(secret));
-
-		if (!pg_md5_binary(cryptvector,
-						   packetlength + strlen(secret),
-						   encryptedpassword, &errstr))
-		{
-			ereport(LOG,
-					(errmsg("could not perform MD5 encryption of received packet: %s",
-							errstr)));
-			pfree(cryptvector);
-			continue;
-		}
-		pfree(cryptvector);
-
-		if (memcmp(receivepacket->vector, encryptedpassword, RADIUS_VECTOR_LENGTH) != 0)
-		{
-			ereport(LOG,
-					(errmsg("RADIUS response from %s has incorrect MD5 signature",
-							server)));
-			continue;
-		}
-
-		if (receivepacket->code == RADIUS_ACCESS_ACCEPT)
-		{
-			closesocket(sock);
-			return STATUS_OK;
-		}
-		else if (receivepacket->code == RADIUS_ACCESS_REJECT)
-		{
-			closesocket(sock);
-			return STATUS_EOF;
-		}
-		else
-		{
-			ereport(LOG,
-					(errmsg("RADIUS response from %s has invalid code (%d) for user \"%s\"",
-							server, receivepacket->code, user_name)));
-			continue;
-		}
-	}							/* while (true) */
-}
 
 /*----------------------------------------------------------------
  * JWT authentication

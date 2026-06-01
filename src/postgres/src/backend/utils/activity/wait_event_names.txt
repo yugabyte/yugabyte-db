@@ -1,0 +1,462 @@
+#
+# wait_event_names.txt
+#      PostgreSQL wait events
+#
+# Copyright (c) 2023-2026, PostgreSQL Global Development Group
+#
+# This list serves as the basis for generating source and documentation files
+# related to wait events.
+#
+# This file defines one wait event per line, with the following
+# tab-separated fields:
+#
+#   "Typedef enum definitions" "description in the docs"
+#
+# The files generated from this one are:
+#
+#   wait_event_types.h
+#      typedef enum definitions for wait events.
+#
+#   pgstat_wait_event.c
+#      C functions to get the wait event name based on the enum.
+#
+#   wait_event_types.sgml
+#      SGML tables of wait events for inclusion in the documentation.
+#
+# When adding a new wait event, make sure it is placed in the appropriate
+# ClassName section.
+#
+# Wait events added in stable branches should be appended to the lists in
+# the "ABI_compatibility:" region of their related ClassName section to
+# preserve ABI compatibility of the C code generated from this file's data,
+# respecting the order of any wait event already listed there.  The
+# "ABI_compatibility:" regions should remain empty on the master branch and
+# on unreleased branches.
+#
+# WaitEventLWLock and WaitEventLock have their own C code for their wait event
+# enums and function names.  Hence, for these, only the SGML documentation is
+# generated.
+#
+# This file is fed to src/backend/utils/activity/generate-wait_event_types.pl.
+#
+
+
+#
+# Wait Events - Activity
+#
+# Use this category when a process is waiting because it has no work to do,
+# unless the "Client" or "Timeout" category describes the situation better.
+# Typically, this should only be used for background processes.
+#
+
+Section: ClassName - WaitEventActivity
+
+ARCHIVER_MAIN	"Waiting in main loop of archiver process."
+AUTOVACUUM_MAIN	"Waiting in main loop of autovacuum launcher process."
+BGWRITER_HIBERNATE	"Waiting in background writer process, hibernating."
+BGWRITER_MAIN	"Waiting in main loop of background writer process."
+CHECKPOINTER_MAIN	"Waiting in main loop of checkpointer process."
+CHECKPOINTER_SHUTDOWN	"Waiting for checkpointer process to be terminated."
+IO_WORKER_MAIN	"Waiting in main loop of IO Worker process."
+LOGICAL_APPLY_MAIN	"Waiting in main loop of logical replication apply process."
+LOGICAL_LAUNCHER_MAIN	"Waiting in main loop of logical replication launcher process."
+LOGICAL_PARALLEL_APPLY_MAIN	"Waiting in main loop of logical replication parallel apply process."
+RECOVERY_WAL_STREAM	"Waiting in main loop of startup process for WAL to arrive, during streaming recovery."
+REPLICATION_SLOTSYNC_MAIN	"Waiting in main loop of slot synchronization."
+REPLICATION_SLOTSYNC_SHUTDOWN	"Waiting for slot sync worker to shut down."
+SYSLOGGER_MAIN	"Waiting in main loop of syslogger process."
+WAL_RECEIVER_MAIN	"Waiting in main loop of WAL receiver process."
+WAL_SENDER_MAIN	"Waiting in main loop of WAL sender process."
+WAL_SUMMARIZER_WAL	"Waiting in WAL summarizer for more WAL to be generated."
+WAL_WRITER_MAIN	"Waiting in main loop of WAL writer process."
+YB_ASH_MAIN	"YB_TODO_PG19MERGE: add description."
+YB_IDLE_SLEEP	"YB_TODO_PG19MERGE: add description."
+YB_QUERY_DIAGNOSTICS_MAIN	"YB_TODO_PG19MERGE: add description."
+YB_ACTIVITY_END	"YB: sentinel for activity wait events iteration."
+
+ABI_compatibility:
+
+#
+# Wait Events - Client
+#
+# Use this category when a process is waiting to send data to or receive data
+# from the frontend process to which it is connected.  This is never used for
+# a background process, which has no client connection.
+#
+
+Section: ClassName - WaitEventClient
+
+CLIENT_READ	"Waiting to read data from the client."
+CLIENT_WRITE	"Waiting to write data to the client."
+GSS_OPEN_SERVER	"Waiting to read data from the client while establishing a GSSAPI session."
+LIBPQWALRECEIVER_CONNECT	"Waiting in WAL receiver to establish connection to remote server."
+LIBPQWALRECEIVER_RECEIVE	"Waiting in WAL receiver to receive data from remote server."
+SSL_OPEN_SERVER	"Waiting for SSL while attempting connection."
+WAIT_FOR_STANDBY_CONFIRMATION	"Waiting for WAL to be received and flushed by the physical standby."
+WAIT_FOR_WAL_FLUSH	"Waiting for WAL flush to reach a target LSN on a primary or standby."
+WAIT_FOR_WAL_REPLAY	"Waiting for WAL replay to reach a target LSN on a standby."
+WAIT_FOR_WAL_WRITE	"Waiting for WAL write to reach a target LSN on a standby."
+WAL_SENDER_WAIT_FOR_WAL	"Waiting for WAL to be flushed in WAL sender process."
+WAL_SENDER_WRITE_DATA	"Waiting for any activity when processing replies from WAL receiver in WAL sender process."
+YB_CLIENT_END	"YB: sentinel for client wait events iteration."
+
+ABI_compatibility:
+
+#
+# Wait Events - IPC
+#
+# Use this category when a process cannot complete the work it is doing because
+# it is waiting for a notification from another process.
+#
+
+Section: ClassName - WaitEventIPC
+
+APPEND_READY	"Waiting for subplan nodes of an <literal>Append</literal> plan node to be ready."
+ARCHIVE_CLEANUP_COMMAND	"Waiting for <xref linkend="guc-archive-cleanup-command"/> to complete."
+ARCHIVE_COMMAND	"Waiting for <xref linkend="guc-archive-command"/> to complete."
+BACKEND_TERMINATION	"Waiting for the termination of another backend."
+BACKUP_WAIT_WAL_ARCHIVE	"Waiting for WAL files required for a backup to be successfully archived."
+BGWORKER_SHUTDOWN	"Waiting for background worker to shut down."
+BGWORKER_STARTUP	"Waiting for background worker to start up."
+BTREE_PAGE	"Waiting for the page number needed to continue a parallel B-tree scan to become available."
+BUFFER_IO	"Waiting for buffer I/O to complete."
+CHECKPOINT_DELAY_COMPLETE	"Waiting for a backend that blocks a checkpoint from completing."
+CHECKPOINT_DELAY_START	"Waiting for a backend that blocks a checkpoint from starting."
+CHECKPOINT_DONE	"Waiting for a checkpoint to complete."
+CHECKPOINT_START	"Waiting for a checkpoint to start."
+CHECKSUM_ENABLE_STARTCONDITION	"Waiting for data checksums enabling to start."
+CHECKSUM_ENABLE_TEMPTABLE_WAIT	"Waiting for temporary tables to be dropped for data checksums to be enabled."
+EXECUTE_GATHER	"Waiting for activity from a child process while executing a <literal>Gather</literal> plan node."
+HASH_BATCH_ALLOCATE	"Waiting for an elected Parallel Hash participant to allocate a hash table."
+HASH_BATCH_ELECT	"Waiting to elect a Parallel Hash participant to allocate a hash table."
+HASH_BATCH_LOAD	"Waiting for other Parallel Hash participants to finish loading a hash table."
+HASH_BUILD_ALLOCATE	"Waiting for an elected Parallel Hash participant to allocate the initial hash table."
+HASH_BUILD_ELECT	"Waiting to elect a Parallel Hash participant to allocate the initial hash table."
+HASH_BUILD_HASH_INNER	"Waiting for other Parallel Hash participants to finish hashing the inner relation."
+HASH_BUILD_HASH_OUTER	"Waiting for other Parallel Hash participants to finish partitioning the outer relation."
+HASH_GROW_BATCHES_DECIDE	"Waiting to elect a Parallel Hash participant to decide on future batch growth."
+HASH_GROW_BATCHES_ELECT	"Waiting to elect a Parallel Hash participant to allocate more batches."
+HASH_GROW_BATCHES_FINISH	"Waiting for an elected Parallel Hash participant to decide on future batch growth."
+HASH_GROW_BATCHES_REALLOCATE	"Waiting for an elected Parallel Hash participant to allocate more batches."
+HASH_GROW_BATCHES_REPARTITION	"Waiting for other Parallel Hash participants to finish repartitioning."
+HASH_GROW_BUCKETS_ELECT	"Waiting to elect a Parallel Hash participant to allocate more buckets."
+HASH_GROW_BUCKETS_REALLOCATE	"Waiting for an elected Parallel Hash participant to finish allocating more buckets."
+HASH_GROW_BUCKETS_REINSERT	"Waiting for other Parallel Hash participants to finish inserting tuples into new buckets."
+LOGICAL_APPLY_SEND_DATA	"Waiting for a logical replication leader apply process to send data to a parallel apply process."
+LOGICAL_PARALLEL_APPLY_STATE_CHANGE	"Waiting for a logical replication parallel apply process to change state."
+LOGICAL_SYNC_DATA	"Waiting for a logical replication remote server to send data for initial table synchronization."
+LOGICAL_SYNC_STATE_CHANGE	"Waiting for a logical replication remote server to change state."
+MESSAGE_QUEUE_INTERNAL	"Waiting for another process to be attached to a shared message queue."
+MESSAGE_QUEUE_PUT_MESSAGE	"Waiting to write a protocol message to a shared message queue."
+MESSAGE_QUEUE_RECEIVE	"Waiting to receive bytes from a shared message queue."
+MESSAGE_QUEUE_SEND	"Waiting to send bytes to a shared message queue."
+MULTIXACT_CREATION	"Waiting for a multixact creation to complete."
+PARALLEL_BITMAP_SCAN	"Waiting for parallel bitmap scan to become initialized."
+PARALLEL_CREATE_INDEX_SCAN	"Waiting for parallel <command>CREATE INDEX</command> workers to finish heap scan."
+PARALLEL_FINISH	"Waiting for parallel workers to finish computing."
+PROCARRAY_GROUP_UPDATE	"Waiting for the group leader to clear the transaction ID at transaction end."
+PROC_SIGNAL_BARRIER	"Waiting for a barrier event to be processed by all backends."
+PROMOTE	"Waiting for standby promotion."
+RECOVERY_CONFLICT_SNAPSHOT	"Waiting for recovery conflict resolution for a vacuum cleanup."
+RECOVERY_CONFLICT_TABLESPACE	"Waiting for recovery conflict resolution for dropping a tablespace."
+RECOVERY_END_COMMAND	"Waiting for <xref linkend="guc-recovery-end-command"/> to complete."
+RECOVERY_PAUSE	"Waiting for recovery to be resumed."
+REPACK_WORKER_EXPORT	"Waiting for decoding worker to export a new output file."
+REPLICATION_ORIGIN_DROP	"Waiting for a replication origin to become inactive so it can be dropped."
+REPLICATION_SLOT_DROP	"Waiting for a replication slot to become inactive so it can be dropped."
+RESTORE_COMMAND	"Waiting for <xref linkend="guc-restore-command"/> to complete."
+SAFE_SNAPSHOT	"Waiting to obtain a valid snapshot for a <literal>READ ONLY DEFERRABLE</literal> transaction."
+SYNC_REP	"Waiting for confirmation from a remote server during synchronous replication."
+WAL_RECEIVER_EXIT	"Waiting for the WAL receiver to exit."
+WAL_RECEIVER_WAIT_START	"Waiting for startup process to send initial data for streaming replication."
+WAL_SUMMARY_READY	"Waiting for a new WAL summary to be generated."
+XACT_GROUP_UPDATE	"Waiting for the group leader to update transaction status at transaction end."
+YB_PARALLEL_SCAN_EMPTY	"YB_TODO_PG19MERGE: add description."
+YB_IPC_END	"YB: sentinel for IPC wait events iteration."
+
+ABI_compatibility:
+
+#
+# Wait Events - Timeout
+#
+# Use this category when a process is waiting for a timeout to expire.
+#
+
+Section: ClassName - WaitEventTimeout
+
+BASE_BACKUP_THROTTLE	"Waiting during base backup when throttling activity."
+CHECKPOINT_WRITE_DELAY	"Waiting between writes while performing a checkpoint."
+COMMIT_DELAY	"Waiting for commit delay before WAL flush."
+PG_SLEEP	"Waiting due to a call to <function>pg_sleep</function> or a sibling function."
+RECOVERY_APPLY_DELAY	"Waiting to apply WAL during recovery because of a delay setting."
+RECOVERY_RETRIEVE_RETRY_INTERVAL	"Waiting during recovery when WAL data is not available from any source (<filename>pg_wal</filename>, archive or stream)."
+REGISTER_SYNC_REQUEST	"Waiting while sending synchronization requests to the checkpointer, because the request queue is full."
+SPIN_DELAY	"Waiting while acquiring a contended spinlock."
+VACUUM_DELAY	"Waiting in a cost-based vacuum delay point."
+VACUUM_TRUNCATE	"Waiting to acquire an exclusive lock to truncate off any empty pages at the end of a table vacuumed."
+WAL_SUMMARIZER_ERROR	"Waiting after a WAL summarizer error."
+YB_TXN_CONFLICT_BACKOFF	"YB_TODO_PG19MERGE: add description."
+YB_TIMEOUT_END	"YB: sentinel for timeout wait events iteration."
+
+ABI_compatibility:
+
+#
+# Wait Events - IO
+#
+# Use this category when a process is waiting for a IO.
+#
+
+Section: ClassName - WaitEventIO
+
+AIO_IO_COMPLETION	"Waiting for another process to complete IO."
+AIO_IO_URING_SUBMIT	"Waiting for IO submission via io_uring."
+AIO_IO_URING_EXECUTION	"Waiting for IO execution via io_uring."
+BASEBACKUP_READ	"Waiting for base backup to read from a file."
+BASEBACKUP_SYNC	"Waiting for data written by a base backup to reach durable storage."
+BASEBACKUP_WRITE	"Waiting for base backup to write to a file."
+BUFFILE_READ	"Waiting for a read from a buffered file."
+BUFFILE_WRITE	"Waiting for a write to a buffered file."
+BUFFILE_TRUNCATE	"Waiting for a buffered file to be truncated."
+CONTROL_FILE_READ	"Waiting for a read from the <filename>pg_control</filename> file."
+CONTROL_FILE_SYNC	"Waiting for the <filename>pg_control</filename> file to reach durable storage."
+CONTROL_FILE_SYNC_UPDATE	"Waiting for an update to the <filename>pg_control</filename> file to reach durable storage."
+CONTROL_FILE_WRITE	"Waiting for a write to the <filename>pg_control</filename> file."
+CONTROL_FILE_WRITE_UPDATE	"Waiting for a write to update the <filename>pg_control</filename> file."
+COPY_FILE_COPY	"Waiting for a file copy operation."
+COPY_FILE_READ	"Waiting for a read during a file copy operation."
+COPY_FILE_WRITE	"Waiting for a write during a file copy operation."
+COPY_FROM_READ	"Waiting to read data from a pipe, a file or a program during COPY FROM."
+COPY_TO_WRITE	"Waiting to write data to a pipe, a file or a program during COPY TO."
+DATA_FILE_EXTEND	"Waiting for a relation data file to be extended."
+DATA_FILE_FLUSH	"Waiting for a relation data file to reach durable storage."
+DATA_FILE_IMMEDIATE_SYNC	"Waiting for an immediate synchronization of a relation data file to durable storage."
+DATA_FILE_PREFETCH	"Waiting for an asynchronous prefetch from a relation data file."
+DATA_FILE_READ	"Waiting for a read from a relation data file."
+DATA_FILE_SYNC	"Waiting for changes to a relation data file to reach durable storage."
+DATA_FILE_TRUNCATE	"Waiting for a relation data file to be truncated."
+DATA_FILE_WRITE	"Waiting for a write to a relation data file."
+DSM_ALLOCATE	"Waiting for a dynamic shared memory segment to be allocated."
+DSM_FILL_ZERO_WRITE	"Waiting to fill a dynamic shared memory backing file with zeroes."
+LOCK_FILE_ADDTODATADIR_READ	"Waiting for a read while adding a line to the data directory lock file."
+LOCK_FILE_ADDTODATADIR_SYNC	"Waiting for data to reach durable storage while adding a line to the data directory lock file."
+LOCK_FILE_ADDTODATADIR_WRITE	"Waiting for a write while adding a line to the data directory lock file."
+LOCK_FILE_CREATE_READ	"Waiting to read while creating the data directory lock file."
+LOCK_FILE_CREATE_SYNC	"Waiting for data to reach durable storage while creating the data directory lock file."
+LOCK_FILE_CREATE_WRITE	"Waiting for a write while creating the data directory lock file."
+LOCK_FILE_RECHECKDATADIR_READ	"Waiting for a read during recheck of the data directory lock file."
+LOGICAL_REWRITE_CHECKPOINT_SYNC	"Waiting for logical rewrite mappings to reach durable storage during a checkpoint."
+LOGICAL_REWRITE_MAPPING_SYNC	"Waiting for mapping data to reach durable storage during a logical rewrite."
+LOGICAL_REWRITE_MAPPING_WRITE	"Waiting for a write of mapping data during a logical rewrite."
+LOGICAL_REWRITE_SYNC	"Waiting for logical rewrite mappings to reach durable storage."
+LOGICAL_REWRITE_TRUNCATE	"Waiting for truncate of mapping data during a logical rewrite."
+LOGICAL_REWRITE_WRITE	"Waiting for a write of logical rewrite mappings."
+RELATION_MAP_READ	"Waiting for a read of the relation map file."
+RELATION_MAP_REPLACE	"Waiting for durable replacement of a relation map file."
+RELATION_MAP_WRITE	"Waiting for a write to the relation map file."
+REORDER_BUFFER_READ	"Waiting for a read during reorder buffer management."
+REORDER_BUFFER_WRITE	"Waiting for a write during reorder buffer management."
+REORDER_LOGICAL_MAPPING_READ	"Waiting for a read of a logical mapping during reorder buffer management."
+REPLICATION_SLOT_READ	"Waiting for a read from a replication slot control file."
+REPLICATION_SLOT_RESTORE_SYNC	"Waiting for a replication slot control file to reach durable storage while restoring it to memory."
+REPLICATION_SLOT_SYNC	"Waiting for a replication slot control file to reach durable storage."
+REPLICATION_SLOT_WRITE	"Waiting for a write to a replication slot control file."
+SLRU_FLUSH_SYNC	"Waiting for SLRU data to reach durable storage during a checkpoint or database shutdown."
+SLRU_READ	"Waiting for a read of an SLRU page."
+SLRU_SYNC	"Waiting for SLRU data to reach durable storage following a page write."
+SLRU_WRITE	"Waiting for a write of an SLRU page."
+SNAPBUILD_READ	"Waiting for a read of a serialized historical catalog snapshot."
+SNAPBUILD_SYNC	"Waiting for a serialized historical catalog snapshot to reach durable storage."
+SNAPBUILD_WRITE	"Waiting for a write of a serialized historical catalog snapshot."
+TIMELINE_HISTORY_FILE_SYNC	"Waiting for a timeline history file received via streaming replication to reach durable storage."
+TIMELINE_HISTORY_FILE_WRITE	"Waiting for a write of a timeline history file received via streaming replication."
+TIMELINE_HISTORY_READ	"Waiting for a read of a timeline history file."
+TIMELINE_HISTORY_SYNC	"Waiting for a newly created timeline history file to reach durable storage."
+TIMELINE_HISTORY_WRITE	"Waiting for a write of a newly created timeline history file."
+TWOPHASE_FILE_READ	"Waiting for a read of a two phase state file."
+TWOPHASE_FILE_SYNC	"Waiting for a two phase state file to reach durable storage."
+TWOPHASE_FILE_WRITE	"Waiting for a write of a two phase state file."
+VERSION_FILE_SYNC	"Waiting for the version file to reach durable storage while creating a database."
+VERSION_FILE_WRITE	"Waiting for the version file to be written while creating a database."
+WALSENDER_TIMELINE_HISTORY_READ	"Waiting for a read from a timeline history file during a walsender timeline command."
+WAL_BOOTSTRAP_SYNC	"Waiting for WAL to reach durable storage during bootstrapping."
+WAL_BOOTSTRAP_WRITE	"Waiting for a write of a WAL page during bootstrapping."
+WAL_COPY_READ	"Waiting for a read when creating a new WAL segment by copying an existing one."
+WAL_COPY_SYNC	"Waiting for a new WAL segment created by copying an existing one to reach durable storage."
+WAL_COPY_WRITE	"Waiting for a write when creating a new WAL segment by copying an existing one."
+WAL_INIT_SYNC	"Waiting for a newly initialized WAL file to reach durable storage."
+WAL_INIT_WRITE	"Waiting for a write while initializing a new WAL file."
+WAL_READ	"Waiting for a read from a WAL file."
+WAL_SUMMARY_READ	"Waiting for a read from a WAL summary file."
+WAL_SUMMARY_WRITE	"Waiting for a write to a WAL summary file."
+WAL_SYNC	"Waiting for a WAL file to reach durable storage."
+WAL_SYNC_METHOD_ASSIGN	"Waiting for data to reach durable storage while assigning a new WAL sync method."
+WAL_WRITE	"Waiting for a write to a WAL file."
+YB_COPY_COMMAND_STREAM_READ	"YB_TODO_PG19MERGE: add description."
+YB_COPY_COMMAND_STREAM_WRITE	"YB_TODO_PG19MERGE: add description."
+YB_IO_END	"YB: sentinel for IO wait events iteration."
+
+ABI_compatibility:
+
+#
+# Wait Events - Buffer
+#
+
+Section: ClassName - WaitEventBuffer
+
+BUFFER_CLEANUP	"Waiting to acquire an exclusive pin on a buffer. Buffer pin waits can be protracted if another process holds an open cursor that last read data from the buffer in question."
+BUFFER_SHARED	"Waiting to acquire a shared lock on a buffer."
+BUFFER_SHARE_EXCLUSIVE	"Waiting to acquire a share exclusive lock on a buffer."
+BUFFER_EXCLUSIVE	"Waiting to acquire a exclusive lock on a buffer."
+
+ABI_compatibility:
+
+#
+# Wait Events - Extension
+#
+
+Section: ClassName - WaitEventExtension
+
+Extension	"Waiting in an extension."
+
+ABI_compatibility:
+
+#
+# Wait Events - LWLock
+#
+# This class of wait events has its own set of C structure, so these are
+# only used for the documentation.
+#
+# NB: Predefined LWLocks (i.e., those declared with PG_LWLOCK in lwlocklist.h)
+# must be listed before the "END OF PREDEFINED LWLOCKS" comment and must be
+# listed in the same order as in lwlocklist.h.  Likewise, the built-in LWLock
+# tranches (i.e., those declared with PG_LWLOCKTRANCHE in lwlocklist.h) must be
+# listed after the "END OF PREDEFINED LWLOCKS" comment and must be listed in
+# the same order as lwlocklist.h.
+#
+
+Section: ClassName - WaitEventLWLock
+
+OidGen	"Waiting to allocate a new OID."
+XidGen	"Waiting to allocate a new transaction ID."
+ProcArray	"Waiting to access the shared per-process data structures (typically, to get a snapshot or report a session's transaction ID)."
+SInvalRead	"Waiting to retrieve messages from the shared catalog invalidation queue."
+SInvalWrite	"Waiting to add a message to the shared catalog invalidation queue."
+WALBufMapping	"Waiting to replace a page in WAL buffers."
+WALWrite	"Waiting for WAL buffers to be written to disk."
+ControlFile	"Waiting to read or update the <filename>pg_control</filename> file or create a new WAL file."
+MultiXactGen	"Waiting to read or update shared multixact state."
+RelCacheInit	"Waiting to read or update a <filename>pg_internal.init</filename> relation cache initialization file."
+CheckpointerComm	"Waiting to manage fsync requests."
+TwoPhaseState	"Waiting to read or update the state of prepared transactions."
+TablespaceCreate	"Waiting to create or drop a tablespace."
+BtreeVacuum	"Waiting to read or update vacuum-related information for a B-tree index."
+AddinShmemInit	"Waiting to manage an extension's space allocation in shared memory."
+Autovacuum	"Waiting to read or update the current state of autovacuum workers."
+AutovacuumSchedule	"Waiting to ensure that a table selected for autovacuum still needs vacuuming."
+SyncScan	"Waiting to select the starting location of a synchronized table scan."
+RelationMapping	"Waiting to read or update a <filename>pg_filenode.map</filename> file (used to track the filenode assignments of certain system catalogs)."
+NotifyQueue	"Waiting to read or update <command>NOTIFY</command> messages."
+SerializableXactHash	"Waiting to read or update information about serializable transactions."
+SerializableFinishedList	"Waiting to access the list of finished serializable transactions."
+SerializablePredicateList	"Waiting to access the list of predicate locks held by serializable transactions."
+SyncRep	"Waiting to read or update information about the state of synchronous replication."
+BackgroundWorker	"Waiting to read or update background worker state."
+DynamicSharedMemoryControl	"Waiting to read or update dynamic shared memory allocation information."
+AutoFile	"Waiting to update the <filename>postgresql.auto.conf</filename> file."
+ReplicationSlotAllocation	"Waiting to allocate or free a replication slot."
+ReplicationSlotControl	"Waiting to read or update replication slot state."
+CommitTs	"Waiting to read or update the last value set for a transaction commit timestamp."
+ReplicationOrigin	"Waiting to create, drop or use a replication origin."
+MultiXactTruncation	"Waiting to read or truncate multixact information."
+LogicalRepWorker	"Waiting to read or update the state of logical replication workers."
+XactTruncation	"Waiting to execute <function>pg_xact_status</function> or update the oldest transaction ID available to it."
+WrapLimitsVacuum	"Waiting to update limits on transaction id and multixact consumption."
+NotifyQueueTail	"Waiting to update limit on <command>NOTIFY</command> message storage."
+WaitEventCustom	"Waiting to read or update custom wait events information."
+WALSummarizer	"Waiting to read or update WAL summarization state."
+DSMRegistry	"Waiting to read or update the dynamic shared memory registry."
+InjectionPoint	"Waiting to read or update information related to injection points."
+SerialControl	"Waiting to read or update shared <filename>pg_serial</filename> state."
+AioWorkerSubmissionQueue	"Waiting to access AIO worker submission queue."
+WaitLSN	"Waiting to read or update shared Wait-for-LSN state."
+LogicalDecodingControl	"Waiting to read or update logical decoding status information."
+DataChecksumsWorker	"Waiting for data checksums worker."
+AioWorkerControl	"Waiting to update AIO worker information."
+
+#
+# END OF PREDEFINED LWLOCKS (DO NOT CHANGE THIS LINE)
+#
+
+XactBuffer	"Waiting for I/O on a transaction status SLRU buffer."
+CommitTsBuffer	"Waiting for I/O on a commit timestamp SLRU buffer."
+SubtransBuffer	"Waiting for I/O on a sub-transaction SLRU buffer."
+MultiXactOffsetBuffer	"Waiting for I/O on a multixact offset SLRU buffer."
+MultiXactMemberBuffer	"Waiting for I/O on a multixact member SLRU buffer."
+NotifyBuffer	"Waiting for I/O on a <command>NOTIFY</command> message SLRU buffer."
+NotifyChannelHash	"Waiting to access the <command>NOTIFY</command> channel hash table."
+SerialBuffer	"Waiting for I/O on a serializable transaction conflict SLRU buffer."
+WALInsert	"Waiting to insert WAL data into a memory buffer."
+ReplicationOriginState	"Waiting to read or update the progress of one replication origin."
+ReplicationSlotIO	"Waiting for I/O on a replication slot."
+LockFastPath	"Waiting to read or update a process' fast-path lock information."
+BufferMapping	"Waiting to associate a data block with a buffer in the buffer pool."
+LockManager	"Waiting to read or update information about <quote>heavyweight</quote> locks."
+PredicateLockManager	"Waiting to access predicate lock information used by serializable transactions."
+ParallelHashJoin	"Waiting to synchronize workers during Parallel Hash Join plan execution."
+ParallelBtreeScan	"Waiting to synchronize workers during Parallel B-tree scan plan execution."
+ParallelQueryDSA	"Waiting for parallel query dynamic shared memory allocation."
+PerSessionDSA	"Waiting for parallel query dynamic shared memory allocation."
+PerSessionRecordType	"Waiting to access a parallel query's information about composite types."
+PerSessionRecordTypmod	"Waiting to access a parallel query's information about type modifiers that identify anonymous record types."
+SharedTupleStore	"Waiting to access a shared tuple store during parallel query."
+SharedTidBitmap	"Waiting to access a shared TID bitmap during a parallel bitmap index scan."
+ParallelAppend	"Waiting to choose the next subplan during Parallel Append plan execution."
+PerXactPredicateList	"Waiting to access the list of predicate locks held by the current serializable transaction during a parallel query."
+PgStatsDSA	"Waiting for stats dynamic shared memory allocator access."
+PgStatsHash	"Waiting for stats shared memory hash table access."
+PgStatsData	"Waiting for shared memory stats data access."
+LogicalRepLauncherDSA	"Waiting to access logical replication launcher's dynamic shared memory allocator."
+LogicalRepLauncherHash	"Waiting to access logical replication launcher's shared hash table."
+DSMRegistryDSA	"Waiting to access dynamic shared memory registry's dynamic shared memory allocator."
+DSMRegistryHash	"Waiting to access dynamic shared memory registry's shared hash table."
+CommitTsSLRU	"Waiting to access the commit timestamp SLRU cache."
+MultiXactOffsetSLRU	"Waiting to access the multixact offset SLRU cache."
+MultiXactMemberSLRU	"Waiting to access the multixact member SLRU cache."
+NotifySLRU	"Waiting to access the <command>NOTIFY</command> message SLRU cache."
+SerialSLRU	"Waiting to access the serializable transaction conflict SLRU cache."
+SubtransSLRU	"Waiting to access the sub-transaction SLRU cache."
+XactSLRU	"Waiting to access the transaction status SLRU cache."
+ParallelVacuumDSA	"Waiting for parallel vacuum dynamic shared memory allocation."
+AioUringCompletion	"Waiting for another process to complete IO via io_uring."
+ShmemIndex	"Waiting to find or allocate space in shared memory."
+YbAshCircularBuffer	"YB_TODO_PG19MERGE: add description."
+YbAshMetadata	"YB_TODO_PG19MERGE: add description."
+YbQueryDiagnostics	"YB_TODO_PG19MERGE: add description."
+YbQueryDiagnosticsCircularBuffer	"YB_TODO_PG19MERGE: add description."
+YbTerminatedQueries	"YB_TODO_PG19MERGE: add description."
+
+# No "ABI_compatibility" region here as WaitEventLWLock has its own C code.
+
+#
+# Wait Events - Lock
+#
+# This class of wait events has its own set of C structure, so these are
+# only used for the documentation.
+#
+
+Section: ClassName - WaitEventLock
+
+relation	"Waiting to acquire a lock on a relation."
+extend	"Waiting to extend a relation."
+frozenid	"Waiting to update <structname>pg_database</structname>.<structfield>datfrozenxid</structfield> and <structname>pg_database</structname>.<structfield>datminmxid</structfield>."
+page	"Waiting to acquire a lock on a page of a relation."
+tuple	"Waiting to acquire a lock on a tuple."
+transactionid	"Waiting for a transaction to finish."
+virtualxid	"Waiting to acquire a virtual transaction ID lock; see <xref linkend="transaction-id"/>."
+spectoken	"Waiting to acquire a speculative insertion lock."
+object	"Waiting to acquire a lock on a non-relation database object."
+userlock	"Waiting to acquire a user lock."
+advisory	"Waiting to acquire an advisory user lock."
+applytransaction	"Waiting to acquire a lock on a remote transaction being applied by a logical replication subscriber."
+
+# No "ABI_compatibility" region here as WaitEventLock has its own C code.

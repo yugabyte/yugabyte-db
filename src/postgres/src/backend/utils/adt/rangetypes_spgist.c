@@ -25,7 +25,7 @@
  * This implementation only uses the comparison function of the range element
  * datatype, therefore it works for any range type.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -39,8 +39,8 @@
 #include "access/spgist.h"
 #include "access/stratnum.h"
 #include "catalog/pg_type.h"
-#include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/fmgrprotos.h"
 #include "utils/rangetypes.h"
 
 static int16 getQuadrant(TypeCacheEntry *typcache, const RangeType *centroid,
@@ -59,7 +59,9 @@ static int	adjacent_cmp_bounds(TypeCacheEntry *typcache, const RangeBound *arg,
 Datum
 spg_range_quad_config(PG_FUNCTION_ARGS)
 {
-	/* spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0); */
+#ifdef NOT_USED
+	spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0);
+#endif
 	spgConfigOut *cfg = (spgConfigOut *) PG_GETARG_POINTER(1);
 
 	cfg->prefixType = ANYRANGEOID;
@@ -185,9 +187,9 @@ spg_range_quad_choose(PG_FUNCTION_ARGS)
 static int
 bound_cmp(const void *a, const void *b, void *arg)
 {
-	RangeBound *ba = (RangeBound *) a;
-	RangeBound *bb = (RangeBound *) b;
-	TypeCacheEntry *typcache = (TypeCacheEntry *) arg;
+	const RangeBound *ba = a;
+	const RangeBound *bb = b;
+	TypeCacheEntry *typcache = arg;
 
 	return range_cmp_bounds(typcache, ba, bb);
 }
@@ -216,8 +218,8 @@ spg_range_quad_picksplit(PG_FUNCTION_ARGS)
 								  RangeTypeGetOid(DatumGetRangeTypeP(in->datums[0])));
 
 	/* Allocate memory for bounds */
-	lowerBounds = palloc(sizeof(RangeBound) * in->nTuples);
-	upperBounds = palloc(sizeof(RangeBound) * in->nTuples);
+	lowerBounds = palloc_array(RangeBound, in->nTuples);
+	upperBounds = palloc_array(RangeBound, in->nTuples);
 	j = 0;
 
 	/* Deserialize bounds of ranges, count non-empty ranges */
@@ -243,8 +245,8 @@ spg_range_quad_picksplit(PG_FUNCTION_ARGS)
 		out->prefixDatum = PointerGetDatum(NULL);
 		out->nodeLabels = NULL;
 
-		out->mapTuplesToNodes = palloc(sizeof(int) * in->nTuples);
-		out->leafTupleDatums = palloc(sizeof(Datum) * in->nTuples);
+		out->mapTuplesToNodes = palloc_array(int, in->nTuples);
+		out->leafTupleDatums = palloc_array(Datum, in->nTuples);
 
 		/* Place all ranges into node 0 */
 		for (i = 0; i < in->nTuples; i++)
@@ -265,7 +267,7 @@ spg_range_quad_picksplit(PG_FUNCTION_ARGS)
 
 	/* Construct "centroid" range from medians of lower and upper bounds */
 	centroid = range_serialize(typcache, &lowerBounds[nonEmptyCount / 2],
-							   &upperBounds[nonEmptyCount / 2], false);
+							   &upperBounds[nonEmptyCount / 2], false, NULL);
 	out->hasPrefix = true;
 	out->prefixDatum = RangeTypePGetDatum(centroid);
 
@@ -273,8 +275,8 @@ spg_range_quad_picksplit(PG_FUNCTION_ARGS)
 	out->nNodes = (in->level == 0) ? 5 : 4;
 	out->nodeLabels = NULL;		/* we don't need node labels */
 
-	out->mapTuplesToNodes = palloc(sizeof(int) * in->nTuples);
-	out->leafTupleDatums = palloc(sizeof(Datum) * in->nTuples);
+	out->mapTuplesToNodes = palloc_array(int, in->nTuples);
+	out->leafTupleDatums = palloc_array(Datum, in->nTuples);
 
 	/*
 	 * Assign ranges to corresponding nodes according to quadrants relative to
@@ -316,7 +318,7 @@ spg_range_quad_inner_consistent(PG_FUNCTION_ARGS)
 	{
 		/* Report that all nodes should be visited */
 		out->nNodes = in->nNodes;
-		out->nodeNumbers = (int *) palloc(sizeof(int) * in->nNodes);
+		out->nodeNumbers = palloc_array(int, in->nNodes);
 		for (i = 0; i < in->nNodes; i++)
 			out->nodeNumbers[i] = i;
 		PG_RETURN_VOID();
@@ -693,7 +695,6 @@ spg_range_quad_inner_consistent(PG_FUNCTION_ARGS)
 				 * quadrants if we're looking for a value strictly greater
 				 * than the maximum.
 				 */
-				int			cmp;
 
 				cmp = range_cmp_bounds(typcache, &centroidLower, maxLower);
 				if (cmp > 0 || (!inclusive && cmp == 0))
@@ -721,7 +722,6 @@ spg_range_quad_inner_consistent(PG_FUNCTION_ARGS)
 				 * quadrants if we're looking for a value strictly greater
 				 * than the maximum.
 				 */
-				int			cmp;
 
 				cmp = range_cmp_bounds(typcache, &centroidUpper, maxUpper);
 				if (cmp > 0 || (!inclusive && cmp == 0))
@@ -734,9 +734,9 @@ spg_range_quad_inner_consistent(PG_FUNCTION_ARGS)
 	}
 
 	/* We must descend into the quadrant(s) identified by 'which' */
-	out->nodeNumbers = (int *) palloc(sizeof(int) * in->nNodes);
+	out->nodeNumbers = palloc_array(int, in->nNodes);
 	if (needPrevious)
-		out->traversalValues = (void **) palloc(sizeof(void *) * in->nNodes);
+		out->traversalValues = palloc_array(void *, in->nNodes);
 	out->nNodes = 0;
 
 	/*
@@ -759,7 +759,7 @@ spg_range_quad_inner_consistent(PG_FUNCTION_ARGS)
 				 * because it's range
 				 */
 				previousCentroid = datumCopy(in->prefixDatum, false, -1);
-				out->traversalValues[out->nNodes] = (void *) previousCentroid;
+				out->traversalValues[out->nNodes] = DatumGetPointer(previousCentroid);
 			}
 			out->nodeNumbers[out->nNodes] = i - 1;
 			out->nNodes++;

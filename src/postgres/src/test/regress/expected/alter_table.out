@@ -197,9 +197,9 @@ SELECT typname FROM pg_type WHERE oid = 'attmp_array[]'::regtype;
 (1 row)
 
 SELECT typname FROM pg_type WHERE oid = '_attmp_array[]'::regtype;
-    typname     
-----------------
- ___attmp_array
+     typname     
+-----------------
+ __attmp_array_1
 (1 row)
 
 DROP TABLE _attmp_array;
@@ -350,7 +350,8 @@ NOTICE:  merging constraint "con1" with inherited definition
  d      | integer |           |          | 
 Check constraints:
     "con1" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 ALTER TABLE constraint_rename_test2 RENAME CONSTRAINT con1 TO con1foo; -- fail
 ERROR:  cannot rename inherited constraint "con1"
@@ -378,7 +379,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  d      | integer |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 ALTER TABLE constraint_rename_test ADD CONSTRAINT con2 CHECK (b > 0) NO INHERIT;
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con2 TO con2foo; -- ok
@@ -405,7 +407,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  d      | integer |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 ALTER TABLE constraint_rename_test ADD CONSTRAINT con3 PRIMARY KEY (a);
 ALTER TABLE constraint_rename_test RENAME CONSTRAINT con3 TO con3foo; -- ok
@@ -433,7 +436,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  d      | integer |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 DROP TABLE constraint_rename_test2;
 DROP TABLE constraint_rename_test;
@@ -507,11 +511,14 @@ ALTER TABLE attmp3 validate constraint attmpconstr;
 ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10); -- fail
 ERROR:  check constraint "b_greater_than_ten" of relation "attmp3" is violated by some row
 ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10) NOT VALID; -- succeeds
+ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten_not_enforced CHECK (b > 10) NOT ENFORCED; -- succeeds
 ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- fails
 ERROR:  check constraint "b_greater_than_ten" of relation "attmp3" is violated by some row
 DELETE FROM attmp3 WHERE NOT b > 10;
 ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
 ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten; -- succeeds
+ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten_not_enforced; -- fail
+ERROR:  cannot validate NOT ENFORCED constraint
 -- Test inherited NOT VALID CHECK constraints
 select * from attmp3;
  a | b  
@@ -647,7 +654,8 @@ alter table nv_parent add check (d between '2001-01-01'::date and '2099-12-31'::
 Check constraints:
     "nv_child_2009_d_check" CHECK (d >= '01-01-2009'::date AND d <= '12-31-2009'::date)
     "nv_parent_d_check" CHECK (d >= '01-01-2001'::date AND d <= '12-31-2099'::date) NOT VALID
-Inherits: nv_parent
+Inherits:
+    nv_parent
 
 -- we leave nv_parent and children around to help test pg_dump logic
 -- Foreign key adding test with mixed types
@@ -659,12 +667,12 @@ CREATE TEMP TABLE FKTABLE (ftest1 inet);
 -- This next should fail, because int=inet does not exist
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 -- This should also fail for the same reason, but here we
 -- give the column name
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable(ptest1);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 DROP TABLE FKTABLE;
 -- This should succeed, even though they are different types,
 -- because int=int8 exists and is a member of the integer opfamily
@@ -682,7 +690,7 @@ DROP TABLE FKTABLE;
 CREATE TEMP TABLE FKTABLE (ftest1 numeric);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1) references pktable;
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: numeric and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: numeric and integer.
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- On the other hand, this should work because int implicitly promotes to
@@ -704,26 +712,26 @@ CREATE TEMP TABLE PKTABLE (ptest1 int, ptest2 inet,
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2) references pktable;
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: cidr and integer.
 DROP TABLE FKTABLE;
 -- Again, so should this...
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
      references pktable(ptest1, ptest2);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: cidr and integer.
 DROP TABLE FKTABLE;
 -- This fails because we mixed up the column ordering
 CREATE TEMP TABLE FKTABLE (ftest1 int, ftest2 inet);
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
      references pktable(ptest2, ptest1);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: integer and inet.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest2" of the referenced table are of incompatible types: integer and inet.
 -- As does this...
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest2, ftest1)
      references pktable(ptest1, ptest2);
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 -- Test that ALTER CONSTRAINT updates trigger deferrability properly
@@ -1118,10 +1126,32 @@ ERROR:  relation "non_existent" does not exist
 -- test checking for null values and primary key
 create table atacc1 (test int not null);
 alter table atacc1 add constraint "atacc1_pkey" primary key (test);
+\d atacc1
+               Table "public.atacc1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ test   | integer |           | not null | 
+Indexes:
+    "atacc1_pkey" PRIMARY KEY, btree (test)
+
 alter table atacc1 alter column test drop not null;
 ERROR:  column "test" is in a primary key
+\d atacc1
+               Table "public.atacc1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ test   | integer |           | not null | 
+Indexes:
+    "atacc1_pkey" PRIMARY KEY, btree (test)
+
 alter table atacc1 drop constraint "atacc1_pkey";
 alter table atacc1 alter column test drop not null;
+\d atacc1
+               Table "public.atacc1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ test   | integer |           |          | 
+
 insert into atacc1 values (null);
 alter table atacc1 alter test set not null;
 ERROR:  column "test" of relation "atacc1" contains null values
@@ -1177,6 +1207,77 @@ alter table atacc1 alter test_a drop not null, alter test_b drop not null;
 alter table atacc1 add constraint atacc1_constr_b_valid check(test_b is not null);
 alter table atacc1 alter test_b set not null, alter test_a set not null;
 drop table atacc1;
+-- not null not valid with partitions
+CREATE TABLE atnnparted (id int, col1 int) PARTITION BY LIST (id);
+ALTER TABLE atnnparted ADD CONSTRAINT dummy_constr NOT NULL id NOT VALID;
+CREATE TABLE atnnpart1 (col1 int, id int);
+ALTER TABLE atnnpart1 ADD CONSTRAINT another_constr NOT NULL id;
+ALTER TABLE atnnpart1 ADD PRIMARY KEY (id);
+ALTER TABLE atnnparted ATTACH PARTITION atnnpart1 FOR VALUES IN ('1');
+\d+ atnnpart*
+                                 Table "public.atnnpart1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ col1   | integer |           |          |         | plain   |              | 
+ id     | integer |           | not null |         | plain   |              | 
+Partition of: atnnparted FOR VALUES IN (1)
+Partition constraint: ((id IS NOT NULL) AND (id = 1))
+Indexes:
+    "atnnpart1_pkey" PRIMARY KEY, btree (id)
+Not-null constraints:
+    "another_constr" NOT NULL "id" (inherited)
+
+                 Index "public.atnnpart1_pkey"
+ Column |  Type   | Key? | Definition | Storage | Stats target 
+--------+---------+------+------------+---------+--------------
+ id     | integer | yes  | id         | plain   | 
+primary key, btree, for table "public.atnnpart1"
+
+                          Partitioned table "public.atnnparted"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id     | integer |           | not null |         | plain   |              | 
+ col1   | integer |           |          |         | plain   |              | 
+Partition key: LIST (id)
+Not-null constraints:
+    "dummy_constr" NOT NULL "id" NOT VALID
+Partitions:
+    atnnpart1 FOR VALUES IN (1)
+
+BEGIN;
+ALTER TABLE atnnparted VALIDATE CONSTRAINT dummy_constr;
+\d+ atnnpart*
+                                 Table "public.atnnpart1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ col1   | integer |           |          |         | plain   |              | 
+ id     | integer |           | not null |         | plain   |              | 
+Partition of: atnnparted FOR VALUES IN (1)
+Partition constraint: ((id IS NOT NULL) AND (id = 1))
+Indexes:
+    "atnnpart1_pkey" PRIMARY KEY, btree (id)
+Not-null constraints:
+    "another_constr" NOT NULL "id" (inherited)
+
+                 Index "public.atnnpart1_pkey"
+ Column |  Type   | Key? | Definition | Storage | Stats target 
+--------+---------+------+------------+---------+--------------
+ id     | integer | yes  | id         | plain   | 
+primary key, btree, for table "public.atnnpart1"
+
+                          Partitioned table "public.atnnparted"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id     | integer |           | not null |         | plain   |              | 
+ col1   | integer |           |          |         | plain   |              | 
+Partition key: LIST (id)
+Not-null constraints:
+    "dummy_constr" NOT NULL "id"
+Partitions:
+    atnnpart1 FOR VALUES IN (1)
+
+ROLLBACK;
+-- leave a table in this state for the pg_upgrade test
 -- test inheritance
 create table parent (a int);
 create table child (b varchar(255)) inherits (parent);
@@ -1194,20 +1295,6 @@ alter table only parent alter a set not null;
 ERROR:  column "a" of relation "parent" contains null values
 alter table child alter a set not null;
 ERROR:  column "a" of relation "child" contains null values
-delete from parent;
-alter table only parent alter a set not null;
-insert into parent values (NULL);
-ERROR:  null value in column "a" of relation "parent" violates not-null constraint
-DETAIL:  Failing row contains (null).
-alter table child alter a set not null;
-insert into child (a, b) values (NULL, 'foo');
-ERROR:  null value in column "a" of relation "child" violates not-null constraint
-DETAIL:  Failing row contains (null, foo).
-delete from child;
-alter table child alter a set not null;
-insert into child (a, b) values (NULL, 'foo');
-ERROR:  null value in column "a" of relation "child" violates not-null constraint
-DETAIL:  Failing row contains (null, foo).
 drop table child;
 drop table parent;
 -- test setting and removing default values
@@ -1505,8 +1592,12 @@ ERROR:  column "........pg.dropped.1........" referenced in foreign key constrai
 drop table atacc2;
 create index "testing_idx" on atacc1(a);
 ERROR:  column "a" does not exist
+LINE 1: create index "testing_idx" on atacc1(a);
+                                             ^
 create index "testing_idx" on atacc1("........pg.dropped.1........");
 ERROR:  column "........pg.dropped.1........" does not exist
+LINE 1: create index "testing_idx" on atacc1("........pg.dropped.1.....
+                                             ^
 -- test create as and select into
 insert into atacc1 values (21, 22, 23);
 create table attest1 as select * from atacc1;
@@ -1681,6 +1772,13 @@ alter table renameColumn add column w int;
 -- this should fail
 alter table only renameColumn add column x int;
 ERROR:  column must be added to child tables too
+-- this should work
+alter table renameColumn add column x int check (x > 0) not enforced;
+-- this should fail
+alter table renameColumn add column y int check (x > 0) not enforced enforced;
+ERROR:  multiple ENFORCED/NOT ENFORCED clauses not allowed
+LINE 1: ...Column add column y int check (x > 0) not enforced enforced;
+                                                              ^
 -- Test corner cases in dropping of inherited columns
 create table p1 (f1 int, f2 int);
 create table c1 (f1 int not null) inherits(p1);
@@ -1954,7 +2052,8 @@ alter table anothertab alter column atcol1 drop default;
 alter table anothertab alter column atcol1 type boolean
         using case when atcol1 % 2 = 0 then true else false end; -- fails
 ERROR:  operator does not exist: boolean <= integer
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 alter table anothertab drop constraint anothertab_chk;
 alter table anothertab drop constraint anothertab_chk; -- fails
 ERROR:  constraint "anothertab_chk" of relation "anothertab" does not exist
@@ -2193,7 +2292,6 @@ select conname, obj_description(oid, 'pg_constraint') as desc
 (3 rows)
 
 alter table at_partitioned alter column name type varchar(127);
--- Note: these tests currently show the wrong behavior for comments :-(
 select relname,
   c.oid = oldoid as orig_oid,
   case relfilenode
@@ -2210,9 +2308,9 @@ select relname,
 ------------------------------+----------+---------+--------------
  at_partitioned               | t        | none    | 
  at_partitioned_0             | t        | own     | 
- at_partitioned_0_id_name_key | f        | own     | parent index
+ at_partitioned_0_id_name_key | f        | own     | 
  at_partitioned_1             | t        | own     | 
- at_partitioned_1_id_name_key | f        | own     | parent index
+ at_partitioned_1_id_name_key | f        | own     | 
  at_partitioned_id_name_key   | f        | none    | parent index
 (6 rows)
 
@@ -2244,7 +2342,7 @@ alter table recur1 add column f2 int;
 alter table recur1 alter column f2 type recur2; -- fails
 ERROR:  composite type recur1 cannot be made a member of itself
 -- SET STORAGE may need to add a TOAST table
-create table test_storage (a text);
+create table test_storage (a text, c text storage plain);
 select reltoastrelid <> 0 as has_toast_table
   from pg_class where oid = 'test_storage'::regclass;
  has_toast_table 
@@ -2262,7 +2360,7 @@ select reltoastrelid <> 0 as has_toast_table
  f
 (1 row)
 
-alter table test_storage alter a set storage extended; -- re-add TOAST table
+alter table test_storage alter a set storage default; -- re-add TOAST table
 select reltoastrelid <> 0 as has_toast_table
   from pg_class where oid = 'test_storage'::regclass;
  has_toast_table 
@@ -2270,6 +2368,9 @@ select reltoastrelid <> 0 as has_toast_table
  t
 (1 row)
 
+-- check STORAGE correctness
+create table test_storage_failed (a text, b int storage extended);
+ERROR:  column data type integer can only have storage PLAIN
 -- test that SET STORAGE propagates to index correctly
 create index test_storage_idx on test_storage (b, a);
 alter table test_storage alter column a set storage external;
@@ -2278,6 +2379,7 @@ alter table test_storage alter column a set storage external;
  Column |  Type   | Collation | Nullable |      Default      | Storage  | Stats target | Description 
 --------+---------+-----------+----------+-------------------+----------+--------------+-------------
  a      | text    |           |          |                   | external |              | 
+ c      | text    |           |          |                   | plain    |              | 
  b      | integer |           |          | random()::integer | plain    |              | 
 Indexes:
     "test_storage_idx" btree (b, a)
@@ -2311,7 +2413,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  b      | double precision |           |          | 
 Check constraints:
     "test_inh_check_a_check" CHECK (a > 10.2::double precision)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2342,7 +2445,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  b      | double precision |           |          | 
 Check constraints:
     "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2382,7 +2486,8 @@ Check constraints:
     "blocal" CHECK (b < 1000::double precision)
     "bmerged" CHECK (b > 1::double precision)
     "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2422,7 +2527,8 @@ Check constraints:
     "blocal" CHECK (b::double precision < 1000::double precision)
     "bmerged" CHECK (b::double precision > 1::double precision)
     "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2489,8 +2595,8 @@ create view at_view_2 as select *, to_json(v1) as j from at_view_1 v1;
  id     | integer |           |          |         | plain    | 
  stuff  | text    |           |          |         | extended | 
 View definition:
- SELECT bt.id,
-    bt.stuff
+ SELECT id,
+    stuff
    FROM at_base_table bt;
 
 \d+ at_view_2
@@ -2501,8 +2607,8 @@ View definition:
  stuff  | text    |           |          |         | extended | 
  j      | json    |           |          |         | extended | 
 View definition:
- SELECT v1.id,
-    v1.stuff,
+ SELECT id,
+    stuff,
     to_json(v1.*) AS j
    FROM at_view_1 v1;
 
@@ -2528,8 +2634,8 @@ create or replace view at_view_1 as select *, 2+2 as more from at_base_table bt;
  stuff  | text    |           |          |         | extended | 
  more   | integer |           |          |         | plain    | 
 View definition:
- SELECT bt.id,
-    bt.stuff,
+ SELECT id,
+    stuff,
     2 + 2 AS more
    FROM at_base_table bt;
 
@@ -2541,8 +2647,8 @@ View definition:
  stuff  | text    |           |          |         | extended | 
  j      | json    |           |          |         | extended | 
 View definition:
- SELECT v1.id,
-    v1.stuff,
+ SELECT id,
+    stuff,
     to_json(v1.*) AS j
    FROM at_view_1 v1;
 
@@ -2808,6 +2914,8 @@ select * from my_locks order by 1;
 
 rollback;
 begin;
+create function ttdummy () returns trigger language plpgsql as
+$$ begin return new; end $$;
 create trigger ttdummy
 	before delete or update on alterlock
 	for each row
@@ -3209,7 +3317,8 @@ Typed table of type: test_type2
 --------+---------+-----------+----------+---------
  aa     | integer |           |          | 
  c      | text    |           |          | 
-Inherits: test_tbl2
+Inherits:
+    test_tbl2
 
 DROP TABLE test_tbl2_subclass, test_tbl2;
 DROP TYPE test_type2;
@@ -3360,6 +3469,7 @@ DROP TABLE tt9;
 -- Check that comments on constraints and indexes are not lost at ALTER TABLE.
 CREATE TABLE comment_test (
   id int,
+  constraint id_notnull_constraint not null id,
   positive_col int CHECK (positive_col > 0),
   indexed_col int,
   CONSTRAINT comment_test_pk PRIMARY KEY (id));
@@ -3368,6 +3478,7 @@ COMMENT ON COLUMN comment_test.id IS 'Column ''id'' on comment_test';
 COMMENT ON INDEX comment_test_index IS 'Simple index on comment_test';
 COMMENT ON CONSTRAINT comment_test_positive_col_check ON comment_test IS 'CHECK constraint on comment_test.positive_col';
 COMMENT ON CONSTRAINT comment_test_pk ON comment_test IS 'PRIMARY KEY constraint of comment_test';
+COMMENT ON CONSTRAINT id_notnull_constraint ON comment_test IS 'NOT NULL constraint of comment_test';
 COMMENT ON INDEX comment_test_pk IS 'Index backing the PRIMARY KEY of comment_test';
 SELECT col_description('comment_test'::regclass, 1) as comment;
            comment           
@@ -3387,7 +3498,8 @@ SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment F
 ---------------------------------+-----------------------------------------------
  comment_test_pk                 | PRIMARY KEY constraint of comment_test
  comment_test_positive_col_check | CHECK constraint on comment_test.positive_col
-(2 rows)
+ id_notnull_constraint           | NOT NULL constraint of comment_test
+(3 rows)
 
 -- Change the datatype of all the columns. ALTER TABLE is optimized to not
 -- rebuild an index if the new data type is binary compatible with the old
@@ -3399,6 +3511,19 @@ ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int;
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
 ALTER TABLE comment_test ALTER COLUMN positive_col SET DATA TYPE int;
 ALTER TABLE comment_test ALTER COLUMN positive_col SET DATA TYPE bigint;
+-- Some error cases.
+ALTER TABLE comment_test ALTER COLUMN xmin SET DATA TYPE x;
+ERROR:  cannot alter system column "xmin"
+LINE 1: ALTER TABLE comment_test ALTER COLUMN xmin SET DATA TYPE x;
+                                              ^
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE x;
+ERROR:  type "x" does not exist
+LINE 1: ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE x;
+                                                               ^
+ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int COLLATE "C";
+ERROR:  collations are not supported by type integer
+LINE 1: ...LE comment_test ALTER COLUMN id SET DATA TYPE int COLLATE "C...
+                                                             ^
 -- Check that the comments are intact.
 SELECT col_description('comment_test'::regclass, 1) as comment;
            comment           
@@ -3418,7 +3543,8 @@ SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment F
 ---------------------------------+-----------------------------------------------
  comment_test_pk                 | PRIMARY KEY constraint of comment_test
  comment_test_positive_col_check | CHECK constraint on comment_test.positive_col
-(2 rows)
+ id_notnull_constraint           | NOT NULL constraint of comment_test
+(3 rows)
 
 -- Check compatibility for foreign keys and comments. This is done
 -- separately as rebuilding the column type of the parent leads
@@ -3433,7 +3559,7 @@ COMMENT ON CONSTRAINT comment_test_child_fk ON comment_test_child IS 'FOREIGN KE
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int USING id::integer;
 ERROR:  foreign key constraint "comment_test_child_fk" cannot be implemented
-DETAIL:  Key columns "id" and "id" are of incompatible types: text and integer.
+DETAIL:  Key columns "id" of the referencing table and "id" of the referenced table are of incompatible types: text and integer.
 -- Comments should be intact
 SELECT col_description('comment_test_child'::regclass, 1) as comment;
               comment              
@@ -3458,12 +3584,15 @@ SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment F
 -- filenode function call can return NULL for a relation dropped concurrently
 -- with the call's surrounding query, so ignore a NULL mapped_oid for
 -- relations that no longer exist after all calls finish.
+-- Temporary relations are ignored, as not supported by pg_filenode_relation().
 CREATE TEMP TABLE filenode_mapping AS
 SELECT
     oid, mapped_oid, reltablespace, relfilenode, relname
 FROM pg_class,
     pg_filenode_relation(reltablespace, pg_relation_filenode(oid)) AS mapped_oid
-WHERE relkind IN ('r', 'i', 'S', 't', 'm') AND mapped_oid IS DISTINCT FROM oid;
+WHERE relkind IN ('r', 'i', 'S', 't', 'm')
+  AND relpersistence != 't'
+  AND mapped_oid IS DISTINCT FROM oid;
 SELECT m.* FROM filenode_mapping m LEFT JOIN pg_class c ON c.oid = m.oid
 WHERE c.oid IS NOT NULL OR m.mapped_oid IS NOT NULL;
  oid | mapped_oid | reltablespace | relfilenode | relname 
@@ -3732,6 +3861,16 @@ Referenced by:
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 10);
 NOTICE:  column "c5" of relation "test_add_column" already exists, skipping
+ALTER TABLE test_add_column
+	ADD c6 integer; -- omit COLUMN
+ALTER TABLE test_add_column
+	ADD IF NOT EXISTS c6 integer;
+NOTICE:  column "c6" of relation "test_add_column" already exists, skipping
+ALTER TABLE test_add_column
+	DROP c6; -- omit COLUMN
+ALTER TABLE test_add_column
+	DROP IF EXISTS c6;
+NOTICE:  column "c6" of relation "test_add_column" does not exist, skipping
 \d test_add_column*
                             Table "public.test_add_column"
  Column |  Type   | Collation | Nullable |                   Default                   
@@ -3830,33 +3969,69 @@ Referenced by:
     TABLE "ataddindex" CONSTRAINT "ataddindex_ref_id_fkey" FOREIGN KEY (ref_id) REFERENCES ataddindex(id)
 
 DROP TABLE ataddindex;
--- unsupported constraint types for partitioned tables
+CREATE TABLE atnotnull1 ();
+ALTER TABLE atnotnull1
+  ADD COLUMN a INT,
+  ALTER a SET NOT NULL;
+ALTER TABLE atnotnull1
+  ADD COLUMN b INT,
+  ADD NOT NULL b;
+ALTER TABLE atnotnull1
+  ADD COLUMN c INT,
+  ADD PRIMARY KEY (c);
+\d+ atnotnull1
+                                Table "public.atnotnull1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+ c      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "atnotnull1_pkey" PRIMARY KEY, btree (c)
+Not-null constraints:
+    "atnotnull1_a_not_null" NOT NULL "a"
+    "atnotnull1_b_not_null" NOT NULL "b"
+    "atnotnull1_c_not_null" NOT NULL "c"
+
+-- cannot drop column that is part of the partition key
 CREATE TABLE partitioned (
 	a int,
 	b int
 ) PARTITION BY RANGE (a, (a+b+1));
-ALTER TABLE partitioned ADD EXCLUDE USING gist (a WITH &&);
-ERROR:  exclusion constraints are not supported on partitioned tables
-LINE 1: ALTER TABLE partitioned ADD EXCLUDE USING gist (a WITH &&);
-                                    ^
--- cannot drop column that is part of the partition key
 ALTER TABLE partitioned DROP COLUMN a;
 ERROR:  cannot drop column "a" because it is part of the partition key of relation "partitioned"
 ALTER TABLE partitioned ALTER COLUMN a TYPE char(5);
 ERROR:  cannot alter column "a" because it is part of the partition key of relation "partitioned"
+LINE 1: ALTER TABLE partitioned ALTER COLUMN a TYPE char(5);
+                                             ^
 ALTER TABLE partitioned DROP COLUMN b;
 ERROR:  cannot drop column "b" because it is part of the partition key of relation "partitioned"
 ALTER TABLE partitioned ALTER COLUMN b TYPE char(5);
 ERROR:  cannot alter column "b" because it is part of the partition key of relation "partitioned"
+LINE 1: ALTER TABLE partitioned ALTER COLUMN b TYPE char(5);
+                                             ^
+-- specifying storage parameters for partitioned tables is not supported
+ALTER TABLE partitioned SET (fillfactor=100);
+ERROR:  cannot specify storage parameters for a partitioned table
+HINT:  Specify storage parameters for its leaf partitions instead.
 -- partitioned table cannot participate in regular inheritance
 CREATE TABLE nonpartitioned (
 	a int,
 	b int
 );
-ALTER TABLE partitioned INHERIT nonpartitioned;
-ERROR:  cannot change inheritance of partitioned table
-ALTER TABLE nonpartitioned INHERIT partitioned;
+ALTER TABLE partitioned INHERIT nonpartitioned; -- fail
+ERROR:  ALTER action INHERIT cannot be performed on relation "partitioned"
+DETAIL:  This operation is not supported for partitioned tables.
+ALTER TABLE partitioned NO INHERIT nonpartitioned; -- fail
+ERROR:  ALTER action NO INHERIT cannot be performed on relation "partitioned"
+DETAIL:  This operation is not supported for partitioned tables.
+ALTER TABLE nonpartitioned INHERIT partitioned; -- fail
 ERROR:  cannot inherit from partitioned table "partitioned"
+CREATE TABLE partitioned_p1 PARTITION OF partitioned FOR VALUES FROM (0, 0) TO (10, 100);
+ALTER TABLE partitioned_p1 INHERIT nonpartitioned; -- fail
+ERROR:  cannot change inheritance of a partition
+ALTER TABLE partitioned_p1 NO INHERIT nonpartitioned; -- fail
+ERROR:  cannot change inheritance of a partition
 -- cannot add NO INHERIT constraint to partitioned tables
 ALTER TABLE partitioned ADD CONSTRAINT chk_a CHECK (a > 0) NO INHERIT;
 ERROR:  cannot add NO INHERIT constraint to partitioned table "partitioned"
@@ -3870,7 +4045,8 @@ CREATE TABLE unparted (
 );
 CREATE TABLE fail_part (like unparted);
 ALTER TABLE unparted ATTACH PARTITION fail_part FOR VALUES IN ('a');
-ERROR:  table "unparted" is not partitioned
+ERROR:  ALTER action ATTACH PARTITION cannot be performed on relation "unparted"
+DETAIL:  This operation is not supported for tables.
 DROP TABLE unparted, fail_part;
 -- check that partition bound is compatible
 CREATE TABLE list_parted (
@@ -3987,6 +4163,14 @@ SELECT conislocal, coninhcount FROM pg_constraint WHERE conrelid = 'part_1'::reg
  f          |           1
 (1 row)
 
+-- check that NOT NULL NO INHERIT cannot be merged to a normal NOT NULL
+CREATE TABLE part_fail (a int NOT NULL NO INHERIT,
+	b char(2) COLLATE "C",
+	CONSTRAINT check_a CHECK (a > 0)
+);
+ALTER TABLE list_parted ATTACH PARTITION part_fail FOR VALUES IN (2);
+ERROR:  constraint "part_fail_a_not_null" conflicts with non-inherited constraint on child table "part_fail"
+DROP TABLE part_fail;
 -- check that the new partition won't overlap with an existing partition
 CREATE TABLE fail_part (LIKE part_1 INCLUDING CONSTRAINTS);
 ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
@@ -4185,7 +4369,7 @@ CREATE TABLE quuux2 PARTITION OF quuux FOR VALUES IN (2);
 DROP TABLE quuux;
 -- check validation when attaching hash partitions
 -- Use hand-rolled hash functions and operator class to get predictable result
--- on different machines. part_test_int4_ops is defined in insert.sql.
+-- on different machines. part_test_int4_ops is defined in test_setup.sql.
 -- check that the new partition won't overlap with an existing partition
 CREATE TABLE hash_parted (
 	a int,
@@ -4240,7 +4424,14 @@ DROP TABLE fail_part;
 -- check that the table is partitioned at all
 CREATE TABLE regular_table (a int);
 ALTER TABLE regular_table DETACH PARTITION any_name;
-ERROR:  table "regular_table" is not partitioned
+ERROR:  ALTER action DETACH PARTITION cannot be performed on relation "regular_table"
+DETAIL:  This operation is not supported for tables.
+ALTER TABLE regular_table DETACH PARTITION any_name CONCURRENTLY;
+ERROR:  ALTER action DETACH PARTITION cannot be performed on relation "regular_table"
+DETAIL:  This operation is not supported for tables.
+ALTER TABLE regular_table DETACH PARTITION any_name FINALIZE;
+ERROR:  ALTER action DETACH PARTITION ... FINALIZE cannot be performed on relation "regular_table"
+DETAIL:  This operation is not supported for tables.
 DROP TABLE regular_table;
 -- check that the partition being detached exists at all
 ALTER TABLE list_parted2 DETACH PARTITION part_4;
@@ -4314,27 +4505,15 @@ ALTER TABLE range_parted2 DETACH PARTITION part_rp CONCURRENTLY;
 Partition key: RANGE (a)
 Number of partitions: 0
 
--- constraint should be created
-\d part_rp
-              Table "public.part_rp"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
-Check constraints:
-    "part_rp_a_check" CHECK (a IS NOT NULL AND a >= 0 AND a < 100)
-
-CREATE TABLE part_rp100 PARTITION OF range_parted2 (CHECK (a>=123 AND a<133 AND a IS NOT NULL)) FOR VALUES FROM (100) to (200);
-ALTER TABLE range_parted2 DETACH PARTITION part_rp100 CONCURRENTLY;
--- redundant constraint should not be created
-\d part_rp100
-             Table "public.part_rp100"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- a      | integer |           |          | 
-Check constraints:
-    "part_rp100_a_check" CHECK (a >= 123 AND a < 133 AND a IS NOT NULL)
-
 DROP TABLE range_parted2;
+-- Test that hash partitions continue to work after they're concurrently
+-- detached (bugs #18371, #19070)
+CREATE TABLE hash_parted2 (a int) PARTITION BY HASH(a);
+CREATE TABLE part_hp PARTITION OF hash_parted2 FOR VALUES WITH (MODULUS 2, REMAINDER 0);
+ALTER TABLE hash_parted2 DETACH PARTITION part_hp CONCURRENTLY;
+DROP TABLE hash_parted2;
+INSERT INTO part_hp VALUES (1);
+DROP TABLE part_hp;
 -- Check ALTER TABLE commands for partitioned tables and partitions
 -- cannot add/drop column to/from *only* the parent
 ALTER TABLE ONLY list_parted2 ADD COLUMN c int;
@@ -4352,28 +4531,38 @@ ALTER TABLE part_2 RENAME COLUMN b to c;
 ERROR:  cannot rename inherited column "b"
 ALTER TABLE part_2 ALTER COLUMN b TYPE text;
 ERROR:  cannot alter inherited column "b"
--- cannot add/drop NOT NULL or check constraints to *only* the parent, when
+LINE 1: ALTER TABLE part_2 ALTER COLUMN b TYPE text;
+                                        ^
+-- cannot add NOT NULL or check constraints to *only* the parent, when
 -- partitions exist
 ALTER TABLE ONLY list_parted2 ALTER b SET NOT NULL;
 ERROR:  constraint must be added to child tables too
-DETAIL:  Column "b" of relation "part_2" is not already NOT NULL.
 HINT:  Do not specify the ONLY keyword.
 ALTER TABLE ONLY list_parted2 ADD CONSTRAINT check_b CHECK (b <> 'zz');
 ERROR:  constraint must be added to child tables too
+-- dropping them is ok though
 ALTER TABLE list_parted2 ALTER b SET NOT NULL;
 ALTER TABLE ONLY list_parted2 ALTER b DROP NOT NULL;
-ERROR:  cannot remove constraint from only the partitioned table when partitions exist
-HINT:  Do not specify the ONLY keyword.
 ALTER TABLE list_parted2 ADD CONSTRAINT check_b CHECK (b <> 'zz');
 ALTER TABLE ONLY list_parted2 DROP CONSTRAINT check_b;
-ERROR:  cannot remove constraint from only the partitioned table when partitions exist
-HINT:  Do not specify the ONLY keyword.
+-- ... and the partitions should still have both
+\d+ part_2
+                                     Table "public.part_2"
+ Column |     Type     | Collation | Nullable | Default | Storage  | Stats target | Description 
+--------+--------------+-----------+----------+---------+----------+--------------+-------------
+ a      | integer      |           |          |         | plain    |              | 
+ b      | character(1) |           | not null |         | extended |              | 
+Partition of: list_parted2 FOR VALUES IN (2)
+Partition constraint: ((a IS NOT NULL) AND (a = 2))
+Check constraints:
+    "check_b" CHECK (b <> 'zz'::bpchar)
+Not-null constraints:
+    "list_parted2_b_not_null" NOT NULL "b"
+
 -- It's alright though, if no partitions are yet created
 CREATE TABLE parted_no_parts (a int) PARTITION BY LIST (a);
 ALTER TABLE ONLY parted_no_parts ALTER a SET NOT NULL;
 ALTER TABLE ONLY parted_no_parts ADD CONSTRAINT check_a CHECK (a > 0);
-ALTER TABLE ONLY parted_no_parts ALTER a DROP NOT NULL;
-ALTER TABLE ONLY parted_no_parts DROP CONSTRAINT check_a;
 DROP TABLE parted_no_parts;
 -- cannot drop inherited NOT NULL or check constraints from partition
 ALTER TABLE list_parted2 ALTER b SET NOT NULL, ADD CONSTRAINT check_a2 CHECK (a > 0);
@@ -4381,6 +4570,12 @@ ALTER TABLE part_2 ALTER b DROP NOT NULL;
 ERROR:  column "b" is marked NOT NULL in parent table
 ALTER TABLE part_2 DROP CONSTRAINT check_a2;
 ERROR:  cannot drop inherited constraint "check_a2" of relation "part_2"
+-- can't drop NOT NULL from under an invalid PK
+CREATE TABLE list_parted3 (a int NOT NULL) PARTITION BY LIST (a);
+CREATE TABLE list_parted3_1 PARTITION OF list_parted3 FOR VALUES IN (1);
+ALTER TABLE ONLY list_parted3 ADD PRIMARY KEY (a);
+ALTER TABLE ONLY list_parted3 DROP CONSTRAINT list_parted3_a_not_null;
+ERROR:  column "a" is in a primary key
 -- Doesn't make sense to add NO INHERIT constraints on partitioned tables
 ALTER TABLE list_parted2 add constraint check_b2 check (b <> 'zz') NO INHERIT;
 ERROR:  cannot add NO INHERIT constraint to partitioned table "list_parted2"
@@ -4399,6 +4594,8 @@ ALTER TABLE list_parted2 DROP COLUMN b;
 ERROR:  cannot drop column "b" because it is part of the partition key of relation "part_5"
 ALTER TABLE list_parted2 ALTER COLUMN b TYPE text;
 ERROR:  cannot alter column "b" because it is part of the partition key of relation "part_5"
+LINE 1: ALTER TABLE list_parted2 ALTER COLUMN b TYPE text;
+                                              ^
 -- dropping non-partition key columns should be allowed on the parent table.
 ALTER TABLE list_parted DROP COLUMN b;
 SELECT * FROM list_parted;
@@ -4407,7 +4604,7 @@ SELECT * FROM list_parted;
 (0 rows)
 
 -- cleanup
-DROP TABLE list_parted, list_parted2, range_parted;
+DROP TABLE list_parted, list_parted2, range_parted, list_parted3;
 DROP TABLE fail_def_part;
 DROP TABLE hash_parted;
 -- more tests for certain multi-level partitioning scenarios
@@ -4575,6 +4772,21 @@ alter table attbl alter column p1 set data type bigint;
 alter table atref alter column c1 set data type bigint;
 drop table attbl, atref;
 /* End test case for bug #17409 */
+/* Test case for bug #18970 */
+create table attbl(a int);
+create table atref(b attbl check ((b).a is not null));
+alter table attbl alter column a type numeric;  -- someday this should work
+ERROR:  cannot alter table "attbl" because column "atref.b" uses its row type
+alter table atref drop constraint atref_b_check;
+create statistics atref_stat on ((b).a is not null) from atref;
+alter table attbl alter column a type numeric;  -- someday this should work
+ERROR:  cannot alter table "attbl" because column "atref.b" uses its row type
+drop statistics atref_stat;
+create index atref_idx on atref (((b).a));
+alter table attbl alter column a type numeric;  -- someday this should work
+ERROR:  cannot alter table "attbl" because column "atref.b" uses its row type
+drop table attbl, atref;
+/* End test case for bug #18970 */
 -- Test that ALTER TABLE rewrite preserves a clustered index
 -- for normal indexes and indexes on constraints.
 create table alttype_cluster (a int);

@@ -38,7 +38,7 @@ commit history / PRs, and can also be viewed in the cirrus-ci UI at
 https://cirrus-ci.com/github/<username>/<reponame>/
 
 Hint: all build log files are uploaded to cirrus-ci and can be downloaded
-from the "Artifacts" section fron the cirrus-ci UI after clicking into a
+from the "Artifacts" section from the cirrus-ci UI after clicking into a
 specific task on a build's summary page.
 
 
@@ -61,7 +61,7 @@ Controlling CI via commit messages
 The behavior of CI can be controlled by special content in commit
 messages. Currently the following controls are available:
 
-- ci-os-only: {(freebsd|linux|macos|windows)}
+- ci-os-only: {(freebsd|linux|macos|mingw|netbsd|openbsd|windows)}
 
   Only runs CI on operating systems specified. This can be useful when
   addressing portability issues affecting only a subset of platforms.
@@ -82,3 +82,14 @@ defined in .cirrus.yml, by redefining the relevant yaml anchors.
 Custom compute resources can be provided using
 - https://cirrus-ci.org/guide/supported-computing-services/
 - https://cirrus-ci.org/guide/persistent-workers/
+
+
+Enabling manual tasks by default
+================================
+
+Some tasks are not triggered automatically by default, to avoid using up CI
+credits too quickly. This can be changed on the repository level, e.g. when
+custom compute resources are configured.
+
+The following repository level environment variables are recognized:
+- REPO_CI_AUTOMATIC_TRIGGER_TASKS - space-separated list of (mingw|netbsd|openbsd)

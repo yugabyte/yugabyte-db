@@ -60,8 +60,7 @@ CREATE [ OR REPLACE ] RULE <replaceable class="parameter">name</replaceable> AS 
 
   <para>
    Presently, <literal>ON SELECT</literal> rules can only be attached
-   to views.  (Attaching one to a table converts the table into a view.)
-   Such a rule must be named <literal>"_RETURN"</literal>,
+   to views.  Such a rule must be named <literal>"_RETURN"</literal>,
    must be an unconditional <literal>INSTEAD</literal> rule, and must have
    an action that consists of a single <command>SELECT</command> command.
    This command defines the visible contents of the view.  (The view

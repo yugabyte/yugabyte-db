@@ -16,7 +16,7 @@
  * across tables.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_shdescription.h
@@ -31,13 +31,15 @@
 #define PG_SHDESCRIPTION_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_shdescription_d.h"
+#include "catalog/pg_shdescription_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_shdescription definition.    cpp turns this into
  *		typedef struct FormData_pg_shdescription
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_shdescription,2396,SharedDescriptionRelationId) BKI_SHARED_RELATION
 {
 	Oid			objoid;			/* OID of object itself */
@@ -48,6 +50,8 @@ CATALOG(pg_shdescription,2396,SharedDescriptionRelationId) BKI_SHARED_RELATION
 #endif
 } FormData_pg_shdescription;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_shdescription corresponds to a pointer to a tuple with
  *		the format of pg_shdescription relation.
@@ -57,7 +61,7 @@ typedef FormData_pg_shdescription * Form_pg_shdescription;
 
 DECLARE_TOAST_WITH_MACRO(pg_shdescription, 2846, 2847, PgShdescriptionToastTable, PgShdescriptionToastIndex);
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_shdescription_o_c_index, 2397, SharedDescriptionObjIndexId, on pg_shdescription using btree(objoid oid_ops, classoid oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_shdescription_o_c_index, 2397, SharedDescriptionObjIndexId, pg_shdescription, btree(objoid oid_ops, classoid oid_ops));
 
 /* We do not use BKI_LOOKUP here because it causes problems for genbki.pl */
 DECLARE_FOREIGN_KEY((classoid), pg_class, (oid));

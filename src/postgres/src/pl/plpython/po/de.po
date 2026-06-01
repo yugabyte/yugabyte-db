@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 12\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2023-05-05 06:26+0000\n"
-"PO-Revision-Date: 2023-05-05 10:54+0200\n"
+"POT-Creation-Date: 2023-05-04 23:38+0000\n"
+"PO-Revision-Date: 2023-05-05 07:45+0200\n"
 "Last-Translator: Peter Eisentraut <peter@eisentraut.org>\n"
 "Language-Team: German <pgsql-translators@postgresql.org>\n"
 "Language: de\n"
@@ -106,7 +106,7 @@ msgstr "PL/Python-Prozedur hat nicht None zurückgegeben"
 msgid "PL/Python function with return type \"void\" did not return None"
 msgstr "PL/Python-Funktion mit Rückgabetyp »void« hat nicht None zurückgegeben"
 
-#: plpy_exec.c:369 plpy_exec.c:395
+#: plpy_exec.c:369 plpy_exec.c:393
 #, c-format
 msgid "unexpected return value from trigger procedure"
 msgstr "unerwarteter Rückgabewert von Triggerprozedur"
@@ -116,112 +116,112 @@ msgstr "unerwarteter Rückgabewert von Triggerprozedur"
 msgid "Expected None or a string."
 msgstr "Erwartete None oder eine Zeichenkette."
 
-#: plpy_exec.c:385
+#: plpy_exec.c:383
 #, c-format
 msgid "PL/Python trigger function returned \"MODIFY\" in a DELETE trigger -- ignored"
 msgstr "PL/Python-Funktion gab in einem DELETE-Trigger \"MODIFY\" zurück -- ignoriert"
 
-#: plpy_exec.c:396
+#: plpy_exec.c:394
 #, c-format
 msgid "Expected None, \"OK\", \"SKIP\", or \"MODIFY\"."
 msgstr "Erwartete None, \"OK\", \"SKIP\" oder \"MODIFY\"."
 
-#: plpy_exec.c:446
+#: plpy_exec.c:444
 #, c-format
 msgid "PyList_SetItem() failed, while setting up arguments"
 msgstr "PyList_SetItem() fehlgeschlagen, beim Einrichten der Argumente"
 
-#: plpy_exec.c:450
+#: plpy_exec.c:448
 #, c-format
 msgid "PyDict_SetItemString() failed, while setting up arguments"
 msgstr "PyDict_SetItemString() fehlgeschlagen, beim Einrichten der Argumente"
 
-#: plpy_exec.c:462
+#: plpy_exec.c:460
 #, c-format
 msgid "function returning record called in context that cannot accept type record"
 msgstr "Funktion, die einen Record zurückgibt, in einem Zusammenhang aufgerufen, der Typ record nicht verarbeiten kann"
 
-#: plpy_exec.c:679
+#: plpy_exec.c:677
 #, c-format
 msgid "while creating return value"
 msgstr "beim Erzeugen des Rückgabewerts"
 
-#: plpy_exec.c:926
+#: plpy_exec.c:924
 #, c-format
 msgid "TD[\"new\"] deleted, cannot modify row"
 msgstr "TD[\"new\"] wurde gelöscht, kann Zeile nicht ändern"
 
-#: plpy_exec.c:931
+#: plpy_exec.c:929
 #, c-format
 msgid "TD[\"new\"] is not a dictionary"
 msgstr "TD[\"new\"] ist kein Dictionary"
 
-#: plpy_exec.c:956
+#: plpy_exec.c:954
 #, c-format
 msgid "TD[\"new\"] dictionary key at ordinal position %d is not a string"
 msgstr "Dictionary-Schlüssel auf Position %d in TD[\"new\"] ist keine Zeichenkette"
 
-#: plpy_exec.c:963
+#: plpy_exec.c:961
 #, c-format
 msgid "key \"%s\" found in TD[\"new\"] does not exist as a column in the triggering row"
 msgstr "in TD[\"new\"] gefundener Schlüssel »%s« existiert nicht als Spalte in der den Trigger auslösenden Zeile"
 
-#: plpy_exec.c:968
+#: plpy_exec.c:966
 #, c-format
 msgid "cannot set system attribute \"%s\""
 msgstr "Systemattribut »%s« kann nicht gesetzt werden"
 
-#: plpy_exec.c:973
+#: plpy_exec.c:971
 #, c-format
 msgid "cannot set generated column \"%s\""
 msgstr "kann generierte Spalte »%s« nicht setzen"
 
-#: plpy_exec.c:1031
+#: plpy_exec.c:1029
 #, c-format
 msgid "while modifying trigger row"
 msgstr "beim Ändern der Triggerzeile"
 
-#: plpy_exec.c:1089
+#: plpy_exec.c:1087
 #, c-format
 msgid "forcibly aborting a subtransaction that has not been exited"
 msgstr "Abbruch einer Subtransaktion, die nicht beendet wurde, wird erzwungen"
 
-#: plpy_main.c:111
+#: plpy_main.c:109
 #, c-format
 msgid "multiple Python libraries are present in session"
 msgstr "in dieser Sitzung sind mehrere Python-Bibliotheken präsent"
 
-#: plpy_main.c:112
+#: plpy_main.c:110
 #, c-format
 msgid "Only one Python major version can be used in one session."
 msgstr "Nur eine Python-Hauptversion kann in einer Sitzung verwendet werden."
 
-#: plpy_main.c:124
+#: plpy_main.c:122
 #, c-format
 msgid "untrapped error in initialization"
 msgstr "nicht abgefangener Fehler bei der Initialisierung"
 
-#: plpy_main.c:147
+#: plpy_main.c:145
 #, c-format
 msgid "could not import \"__main__\" module"
 msgstr "konnte Modul »__main__« nicht importieren"
 
-#: plpy_main.c:156
+#: plpy_main.c:154
 #, c-format
 msgid "could not initialize globals"
 msgstr "konnte globale Objekte nicht initialisieren"
 
-#: plpy_main.c:354
+#: plpy_main.c:352
 #, c-format
 msgid "PL/Python procedure \"%s\""
 msgstr "PL/Python-Prozedur »%s«"
 
-#: plpy_main.c:357
+#: plpy_main.c:355
 #, c-format
 msgid "PL/Python function \"%s\""
 msgstr "PL/Python-Funktion »%s«"
 
-#: plpy_main.c:365
+#: plpy_main.c:363
 #, c-format
 msgid "PL/Python anonymous code block"
 msgstr "anonymer PL/Python-Codeblock"
@@ -285,12 +285,12 @@ msgstr "PL/Python-Funktionen können keinen Rückgabetyp %s haben"
 msgid "PL/Python functions cannot accept type %s"
 msgstr "PL/Python-Funktionen können Typ %s nicht annehmen"
 
-#: plpy_procedure.c:397
+#: plpy_procedure.c:395
 #, c-format
 msgid "could not compile PL/Python function \"%s\""
 msgstr "konnte PL/Python-Funktion »%s« nicht kompilieren"
 
-#: plpy_procedure.c:400
+#: plpy_procedure.c:398
 #, c-format
 msgid "could not compile anonymous PL/Python code block"
 msgstr "konnte anonymen PL/Python-Codeblock nicht kompilieren"

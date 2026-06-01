@@ -116,4 +116,10 @@ SELECT lo_get(43225);
 DELETE FROM image;
 SELECT lo_get(43225);  -- gone
 ERROR:  large object 43225 does not exist
+SELECT lo_oid(1::lo);
+ lo_oid 
+--------
+      1
+(1 row)
+
 DROP TABLE image;

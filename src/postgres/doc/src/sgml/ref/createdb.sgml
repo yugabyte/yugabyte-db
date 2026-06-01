@@ -124,7 +124,10 @@ PostgreSQL documentation
       <listitem>
        <para>
         Specifies the locale to be used in this database.  This is equivalent
-        to specifying both <option>--lc-collate</option> and <option>--lc-ctype</option>.
+        to specifying <option>--lc-collate</option>,
+        <option>--lc-ctype</option>, and <option>--icu-locale</option> to the
+        same value. Some locales are only valid for ICU and must be set with
+        <option>--icu-locale</option>.
        </para>
       </listitem>
      </varlistentry>
@@ -133,7 +136,8 @@ PostgreSQL documentation
       <term><option>--lc-collate=<replaceable class="parameter">locale</replaceable></option></term>
       <listitem>
        <para>
-        Specifies the LC_COLLATE setting to be used in this database.
+        Specifies the LC_COLLATE setting to be used in this database (ignored
+        unless the locale provider is <literal>libc</literal>).
        </para>
       </listitem>
      </varlistentry>
@@ -143,6 +147,16 @@ PostgreSQL documentation
       <listitem>
        <para>
         Specifies the LC_CTYPE setting to be used in this database.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--builtin-locale=<replaceable class="parameter">locale</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the locale name when the builtin provider is used. Locale support
+        is described in <xref linkend="locale"/>.
        </para>
       </listitem>
      </varlistentry>
@@ -158,7 +172,17 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>--locale-provider={<literal>libc</literal>|<literal>icu</literal>}</option></term>
+      <term><option>--icu-rules=<replaceable class="parameter">rules</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies additional collation rules to customize the behavior of the
+        default collation of this database.  This is supported for ICU only.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--locale-provider={<literal>builtin</literal>|<literal>libc</literal>|<literal>icu</literal>}</option></term>
       <listitem>
        <para>
         Specifies the locale provider for the database's default collation.

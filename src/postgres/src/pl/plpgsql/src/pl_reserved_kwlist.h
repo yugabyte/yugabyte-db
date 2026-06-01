@@ -7,7 +7,7 @@
  * by the PG_KEYWORD macro, which is not defined in this file; it can
  * be defined by the caller for special purposes.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/pl/plpgsql/src/pl_reserved_kwlist.h
@@ -33,7 +33,6 @@ PG_KEYWORD("case", K_CASE)
 PG_KEYWORD("declare", K_DECLARE)
 PG_KEYWORD("else", K_ELSE)
 PG_KEYWORD("end", K_END)
-PG_KEYWORD("execute", K_EXECUTE)
 PG_KEYWORD("for", K_FOR)
 PG_KEYWORD("foreach", K_FOREACH)
 PG_KEYWORD("from", K_FROM)
@@ -44,7 +43,6 @@ PG_KEYWORD("loop", K_LOOP)
 PG_KEYWORD("not", K_NOT)
 PG_KEYWORD("null", K_NULL)
 PG_KEYWORD("or", K_OR)
-PG_KEYWORD("strict", K_STRICT)
 PG_KEYWORD("then", K_THEN)
 PG_KEYWORD("to", K_TO)
 PG_KEYWORD("using", K_USING)

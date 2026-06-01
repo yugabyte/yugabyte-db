@@ -151,7 +151,7 @@ protocol to make nodes agree on a serializable transactional order.
     </para>
     <para>
      A standby server can be implemented using file-based log shipping
-     (<xref linkend="warm-standby"/>) or streaming replication (see
+     (<xref linkend="warm-standby"/>) or streaming physical replication (see
      <xref linkend="streaming-replication"/>), or a combination of both. For
      information on hot standby, see <xref linkend="hot-standby"/>.
     </para>
@@ -628,7 +628,7 @@ protocol to make nodes agree on a serializable transactional order.
     In standby mode, the server continuously applies WAL received from the
     primary server. The standby server can read WAL from a WAL archive
     (see <xref linkend="guc-restore-command"/>) or directly from the primary
-    over a TCP connection (streaming replication). The standby server will
+    over a TCP connection (streaming physical replication). The standby server will
     also attempt to restore any WAL found in the standby cluster's
     <filename>pg_wal</filename> directory. That typically happens after a server
     restart, when the standby replays again WAL that was streamed from the
@@ -653,11 +653,10 @@ protocol to make nodes agree on a serializable transactional order.
 
    <para>
     Standby mode is exited and the server switches to normal operation
-    when <command>pg_ctl promote</command> is run,
-    <function>pg_promote()</function> is called, or a trigger file is found
-    (<varname>promote_trigger_file</varname>). Before failover,
-    any WAL immediately available in the archive or in <filename>pg_wal</filename> will be
-    restored, but no attempt is made to connect to the primary.
+    when <command>pg_ctl promote</command> is run, or
+    <function>pg_promote()</function> is called. Before failover,
+    any WAL immediately available in the archive or in <filename>pg_wal</filename>
+    will be restored, but no attempt is made to connect to the primary.
    </para>
   </sect2>
 
@@ -746,8 +745,8 @@ protocol to make nodes agree on a serializable transactional order.
     A simple example of configuration is:
 <programlisting>
 primary_conninfo = 'host=192.168.1.50 port=5432 user=foo password=foopass options=''-c wal_sender_timeout=5000'''
-restore_command = 'cp /path/to/archive/%f %p'
-archive_cleanup_command = 'pg_archivecleanup /path/to/archive %r'
+restore_command = 'cp "/path/to/archive/%f" "%p"'
+archive_cleanup_command = 'pg_archivecleanup /path/to/archive "%r"'
 </programlisting>
    </para>
 
@@ -772,6 +771,14 @@ archive_cleanup_command = 'pg_archivecleanup /path/to/archive %r'
     to the primary, which streams WAL records to the standby as they're
     generated, without waiting for the WAL file to be filled.
    </para>
+
+   <note>
+    <para>
+     This discussion of streaming replication assumes physical replication.
+     Although you could treat a logical replication subscriber as a warm standby,
+     it would require some differences to what is described here.
+    </para>
+   </note>
 
    <para>
     Streaming replication is asynchronous by default
@@ -858,7 +865,7 @@ archive_cleanup_command = 'pg_archivecleanup /path/to/archive %r'
 # as a replication standby if the user's password is correctly supplied.
 #
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
-host    replication     foo             192.168.1.100/32        md5
+host    replication     foo             192.168.1.100/32        scram-sha-256
 </programlisting>
     </para>
     <para>
@@ -925,33 +932,40 @@ primary_conninfo = 'host=192.168.1.50 port=5432 user=foo password=foopass'
     <secondary>streaming replication</secondary>
    </indexterm>
    <para>
-    Replication slots provide an automated way to ensure that the primary does
-    not remove WAL segments until they have been received by all standbys,
-    and that the primary does not remove rows which could cause a
-    <link linkend="hot-standby-conflict">recovery conflict</link> even when the
-    standby is disconnected.
+    Replication slots provide an automated way to ensure that the
+    primary server does not remove WAL segments until they have been
+    received, physically or logically, by all standbys/subscribers,
+    and that the primary does not remove rows which could cause a <link
+    linkend="hot-standby-conflict">recovery conflict</link> on physical
+    replicas even when the standby is disconnected.
    </para>
    <para>
     In lieu of using replication slots, it is possible to prevent the removal
     of old WAL segments using <xref linkend="guc-wal-keep-size"/>, or by
     storing the segments in an archive using
     <xref linkend="guc-archive-command"/> or <xref linkend="guc-archive-library"/>.
-    However, these methods often result in retaining more WAL segments than
+    A disadvantage of these methods is that they
+    often result in retaining more WAL segments than
     required, whereas replication slots retain only the number of segments
-    known to be needed.  On the other hand, replication slots can retain so
-    many WAL segments that they fill up the space allocated
-    for <literal>pg_wal</literal>;
-    <xref linkend="guc-max-slot-wal-keep-size"/> limits the size of WAL files
-    retained by replication slots.
+    known to be needed.
    </para>
    <para>
-    Similarly, <xref linkend="guc-hot-standby-feedback"/>
-    and <xref linkend="guc-vacuum-defer-cleanup-age"/> provide protection against
-    relevant rows being removed by vacuum, but the former provides no
-    protection during any time period when the standby is not connected,
-    and the latter often needs to be set to a high value to provide adequate
-    protection.  Replication slots overcome these disadvantages.
+    Similarly, <xref linkend="guc-hot-standby-feedback"/> on its own, without
+    also using a physical replication slot, provides protection against relevant rows
+    being removed by vacuum, but provides no protection during any time period
+    when the physical replication standby is disconnected.
    </para>
+
+   <caution>
+    <para>
+     Beware that replication slots can cause the server to retain so
+     many WAL segments that they fill up the space allocated for
+     <literal>pg_wal</literal>.
+     <xref linkend="guc-max-slot-wal-keep-size"/> can be used to limit the size
+     of WAL files retained by replication slots.
+    </para>
+   </caution>
+
    <sect3 id="streaming-replication-slots-manipulation">
     <title>Querying and Manipulating Replication Slots</title>
     <para>
@@ -972,7 +986,7 @@ primary_conninfo = 'host=192.168.1.50 port=5432 user=foo password=foopass'
    <sect3 id="streaming-replication-slots-config">
     <title>Configuration Example</title>
     <para>
-     You can create a replication slot like this:
+     You can create a physical replication slot on the primary like this:
 <programlisting>
 postgres=# SELECT * FROM pg_create_physical_replication_slot('node_a_slot');
   slot_name  | lsn
@@ -1176,10 +1190,12 @@ primary_slot_name = 'node_a_slot'
    </para>
 
    <para>
-    Users will stop waiting if a fast shutdown is requested.  However, as
-    when using asynchronous replication, the server will not fully
-    shutdown until all outstanding WAL records are transferred to the currently
-    connected standby servers.
+    Users will stop waiting if a fast shutdown is requested.  However, when
+    using replication, the server will not fully shutdown until all
+    outstanding WAL records are transferred to the currently connected
+    standby servers, or <xref linkend="guc-wal-sender-shutdown-timeout"/>
+    (if set) expires, regardless of whether replication is synchronous or
+    asynchronous.
    </para>
 
    </sect3>
@@ -1361,13 +1377,67 @@ synchronous_standby_names = 'ANY 2 (s1, s2, s3)'
 
    <para>
     If you need to re-create a standby server while transactions are
-    waiting, make sure that the commands pg_backup_start() and
-    pg_backup_stop() are run in a session with
+    waiting, make sure that the functions <function>pg_backup_start()</function>
+    and <function>pg_backup_stop()</function> are run in a session with
     <varname>synchronous_commit</varname> = <literal>off</literal>, otherwise those
     requests will wait forever for the standby to appear.
    </para>
 
    </sect3>
+  </sect2>
+
+  <sect2 id="read-your-writes-consistency">
+   <title>Read-Your-Writes Consistency</title>
+
+   <para>
+    In asynchronous replication, there is always a short window where changes
+    on the primary may not yet be visible on the standby due to replication
+    lag. This can lead to inconsistencies when an application writes data on
+    the primary and then immediately issues a read query on the standby.
+    However, it is possible to address this without switching to synchronous
+    replication.
+   </para>
+
+   <para>
+    To address this, PostgreSQL offers a mechanism for read-your-writes
+    consistency. The key idea is to ensure that a client sees its own writes
+    by synchronizing the WAL replay on the standby with the known point of
+    change on the primary.
+   </para>
+
+   <para>
+    This is achieved by the following steps.  After performing write
+    operations, the application retrieves the current WAL location using a
+    function call like this.
+
+    <programlisting>
+postgres=# SELECT pg_current_wal_insert_lsn();
+pg_current_wal_insert_lsn
+--------------------
+0/306EE20
+(1 row)
+    </programlisting>
+   </para>
+
+   <para>
+    The <acronym>LSN</acronym> obtained from the primary is then communicated
+    to the standby server. This can be managed at the application level or
+    via the connection pooler.  On the standby, the application issues the
+    <xref linkend="sql-wait-for"/> command to block further processing until
+    the standby's WAL replay process reaches (or exceeds) the specified
+    <acronym>LSN</acronym>.
+
+    <programlisting>
+postgres=# WAIT FOR LSN '0/306EE20';
+ status
+--------
+ success
+(1 row)
+    </programlisting>
+    Once the command returns a status of success, it guarantees that all
+    changes up to the provided <acronym>LSN</acronym> have been applied,
+    ensuring that subsequent read queries will reflect the latest updates.
+   </para>
   </sect2>
 
   <sect2 id="continuous-archiving-in-standby">
@@ -1482,16 +1552,20 @@ synchronous_standby_names = 'ANY 2 (s1, s2, s3)'
    </para>
 
    <para>
+    If you have opted for logical replication slot synchronization (see
+    <xref linkend="logicaldecoding-replication-slots-synchronization"/>),
+    then before switching to the standby server, it is recommended to check
+    if the logical slots synchronized on the standby server are ready
+    for failover. This can be done by following the steps described in
+    <xref linkend="logical-replication-failover"/>.
+   </para>
+
+   <para>
     To trigger failover of a log-shipping standby server, run
-    <command>pg_ctl promote</command>, call <function>pg_promote()</function>,
-    or create a trigger file with the file name and path specified by the
-    <varname>promote_trigger_file</varname>. If you're planning to use
-    <command>pg_ctl promote</command> or to call
-    <function>pg_promote()</function> to fail over,
-    <varname>promote_trigger_file</varname> is not required. If you're
-    setting up the reporting servers that are only used to offload read-only
-    queries from the primary, not for high availability purposes, you don't
-    need to promote it.
+    <command>pg_ctl promote</command> or call <function>pg_promote()</function>.
+    If you're setting up reporting servers that are only used to offload
+    read-only queries from the primary, not for high availability purposes,
+    you don't need to promote.
    </para>
   </sect1>
 
@@ -1525,7 +1599,8 @@ synchronous_standby_names = 'ANY 2 (s1, s2, s3)'
    <para>
     When the <xref linkend="guc-hot-standby"/> parameter is set to true on a
     standby server, it will begin accepting connections once the recovery has
-    brought the system to a consistent state.  All such connections are
+    brought the system to a consistent state and be ready for hot standby.
+    All such connections are
     strictly read-only; not even temporary tables may be written.
    </para>
 
@@ -1880,10 +1955,16 @@ synchronous_standby_names = 'ANY 2 (s1, s2, s3)'
    </para>
 
    <para>
-    Experienced users should note that both row version cleanup and row version
-    freezing will potentially conflict with standby queries. Running a manual
-    <command>VACUUM FREEZE</command> is likely to cause conflicts even on tables with
-    no updated or deleted rows.
+    Row version cleanup isn't the only potential cause of conflicts with
+    standby queries.  All index-only scans (including those that run on
+    standbys) must use an <acronym>MVCC</acronym> snapshot that
+    <quote>agrees</quote> with the visibility map.  Conflicts are therefore
+    required whenever <command>VACUUM</command> <link
+     linkend="vacuum-for-visibility-map">sets a page as all-visible in the
+     visibility map</link> containing one or more rows
+    <emphasis>not</emphasis> visible to all standby queries.  So even running
+    <command>VACUUM</command> against a table with no updated or deleted rows
+    requiring cleanup might lead to conflicts.
    </para>
 
    <para>
@@ -1914,17 +1995,6 @@ synchronous_standby_names = 'ANY 2 (s1, s2, s3)'
     files during disconnected periods.  You should also consider increasing
     <varname>max_standby_streaming_delay</varname> to avoid rapid cancellations
     by newly-arrived streaming WAL entries after reconnection.
-   </para>
-
-   <para>
-    Another option is to increase <xref linkend="guc-vacuum-defer-cleanup-age"/>
-    on the primary server, so that dead rows will not be cleaned up as quickly
-    as they normally would be.  This will allow more time for queries to
-    execute before they are canceled on the standby, without having to set
-    a high <varname>max_standby_streaming_delay</varname>.  However it is
-    difficult to guarantee any specific execution-time window with this
-    approach, since <varname>vacuum_defer_cleanup_age</varname> is measured in
-    transactions executed on the primary server.
    </para>
 
    <para>
@@ -1969,9 +2039,12 @@ LOG:  database system is ready to accept read-only connections
     Consistency information is recorded once per checkpoint on the primary.
     It is not possible to enable hot standby when reading WAL
     written during a period when <varname>wal_level</varname> was not set to
-    <literal>replica</literal> or <literal>logical</literal> on the primary.  Reaching
-    a consistent state can also be delayed in the presence of both of these
-    conditions:
+    <literal>replica</literal> or <literal>logical</literal> on the primary.
+    Even after reaching a consistent state, the recovery snapshot may not
+    be ready for hot standby if both of the following conditions are met,
+    delaying accepting read-only connections.  To enable hot standby,
+    long-lived write transactions with more than 64 subtransactions
+    need to be closed on the primary.
 
       <itemizedlist>
        <listitem>
@@ -2231,10 +2304,11 @@ HINT:  You can then restart the server after making the necessary configuration 
     The cumulative statistics system is active during recovery. All scans,
     reads, blocks, index usage, etc., will be recorded normally on the
     standby. However, WAL replay will not increment relation and database
-    specific counters. I.e. replay will not increment pg_stat_all_tables
-    columns (like n_tup_ins), nor will reads or writes performed by the
-    startup process be tracked in the pg_statio views, nor will associated
-    pg_stat_database columns be incremented.
+    specific counters. I.e. replay will not increment
+    <structname>pg_stat_all_tables</structname> columns (like <structfield>n_tup_ins</structfield>),
+    nor will reads or writes performed by the startup process be tracked in the
+    <structname>pg_statio_</structname> views, nor will associated
+    <structname>pg_stat_database</structname> columns be incremented.
    </para>
 
    <para>
@@ -2263,8 +2337,7 @@ HINT:  You can then restart the server after making the necessary configuration 
    </para>
 
    <para>
-    On the primary, parameters <xref linkend="guc-wal-level"/> and
-    <xref linkend="guc-vacuum-defer-cleanup-age"/> can be used.
+    On the primary, the <xref linkend="guc-wal-level"/> parameter can be used.
     <xref linkend="guc-max-standby-archive-delay"/> and
     <xref linkend="guc-max-standby-streaming-delay"/> have no effect if set on
     the primary.
@@ -2274,9 +2347,6 @@ HINT:  You can then restart the server after making the necessary configuration 
     On the standby, parameters <xref linkend="guc-hot-standby"/>,
     <xref linkend="guc-max-standby-archive-delay"/> and
     <xref linkend="guc-max-standby-streaming-delay"/> can be used.
-    <xref linkend="guc-vacuum-defer-cleanup-age"/> has no effect
-    as long as the server remains in standby mode, though it will
-    become relevant if the standby becomes primary.
    </para>
   </sect2>
 

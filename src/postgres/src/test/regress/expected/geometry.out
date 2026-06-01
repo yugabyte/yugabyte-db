@@ -1777,7 +1777,8 @@ SELECT p.f1, l.s, l.s # p.f1 AS intersection
 ERROR:  operator does not exist: lseg # point
 LINE 1: SELECT p.f1, l.s, l.s # p.f1 AS intersection
                               ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 -- Length
 SELECT s, @-@ s FROM LSEG_TBL;
                s               |   ?column?    
@@ -5293,5 +5294,30 @@ SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
          f1          
 ---------------------
  ((2,0),(2,4),(0,0))
+(1 row)
+
+-- test non-error-throwing API for some core types
+SELECT pg_input_is_valid('(1', 'circle');
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
+SELECT * FROM pg_input_error_info('1,', 'circle');
+                  message                   | detail | hint | sql_error_code 
+--------------------------------------------+--------+------+----------------
+ invalid input syntax for type circle: "1," |        |      | 22P02
+(1 row)
+
+SELECT pg_input_is_valid('(1,2),-1', 'circle');
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
+SELECT * FROM pg_input_error_info('(1,2),-1', 'circle');
+                     message                      | detail | hint | sql_error_code 
+--------------------------------------------------+--------+------+----------------
+ invalid input syntax for type circle: "(1,2),-1" |        |      | 22P02
 (1 row)
 

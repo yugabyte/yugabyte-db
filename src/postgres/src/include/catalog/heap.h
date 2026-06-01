@@ -4,7 +4,7 @@
  *	  prototypes for functions in backend/catalog/heap.c
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/heap.h
@@ -23,25 +23,27 @@
 #define CHKATYPE_ANYARRAY		0x01	/* allow ANYARRAY */
 #define CHKATYPE_ANYRECORD		0x02	/* allow RECORD and RECORD[] */
 #define CHKATYPE_IS_PARTKEY		0x04	/* attname is part key # not column */
+#define CHKATYPE_IS_VIRTUAL		0x08	/* is virtual generated column */
 
 typedef struct RawColumnDefault
 {
 	AttrNumber	attnum;			/* attribute to attach default to */
 	Node	   *raw_default;	/* default value (untransformed parse tree) */
-	bool		missingMode;	/* true if part of add column processing */
 	char		generated;		/* attgenerated setting */
 } RawColumnDefault;
 
 typedef struct CookedConstraint
 {
-	ConstrType	contype;		/* CONSTR_DEFAULT or CONSTR_CHECK */
+	ConstrType	contype;		/* CONSTR_DEFAULT, CONSTR_CHECK,
+								 * CONSTR_NOTNULL */
 	Oid			conoid;			/* constr OID if created, otherwise Invalid */
 	char	   *name;			/* name, or NULL if none */
-	AttrNumber	attnum;			/* which attr (only for DEFAULT) */
+	AttrNumber	attnum;			/* which attr (only for NOTNULL, DEFAULT) */
 	Node	   *expr;			/* transformed default or check expr */
+	bool		is_enforced;	/* is enforced? (only for CHECK) */
 	bool		skip_validation;	/* skip validation? (only for CHECK) */
 	bool		is_local;		/* constraint has local (non-inherited) def */
-	int			inhcount;		/* number of times constraint is inherited */
+	int16		inhcount;		/* number of times constraint is inherited */
 	bool		is_no_inherit;	/* constraint has local def and cannot be
 								 * inherited */
 } CookedConstraint;
@@ -51,7 +53,7 @@ extern Relation heap_create(const char *relname,
 							Oid reltablespace,
 							Oid reltablegroup,
 							Oid relid,
-							Oid relfilenode,
+							RelFileNumber relfilenumber,
 							Oid accessmtd,
 							TupleDesc tupDesc,
 							char relkind,
@@ -100,7 +102,7 @@ extern List *heap_truncate_find_FKs(List *relationIds);
 extern void InsertPgAttributeTuples(Relation pg_attribute_rel,
 									TupleDesc tupdesc,
 									Oid new_rel_oid,
-									Datum *attoptions,
+									const FormExtraData_pg_attribute tupdesc_extra[],
 									CatalogIndexState indstate,
 									bool yb_relisshared);
 
@@ -117,8 +119,15 @@ extern List *AddRelationNewConstraints(Relation rel,
 									   bool is_local,
 									   bool is_internal,
 									   const char *queryString);
+extern List *AddRelationNotNullConstraints(Relation rel,
+										   List *constraints,
+										   List *old_notnulls,
+										   List *existing_constraints);
 
 extern void RelationClearMissing(Relation rel);
+
+extern void StoreAttrMissingVal(Relation rel, AttrNumber attnum,
+								Datum missingval);
 extern void SetAttrMissing(Oid relid, char *attname, char *value);
 
 extern Node *cookDefault(ParseState *pstate,

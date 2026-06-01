@@ -105,8 +105,8 @@ void
 ybginbindschema(YbcPgStatement handle,
 				struct IndexInfo *indexInfo,
 				TupleDesc indexTupleDesc,
-				int16 *coloptions,
-				Oid *opclassOids,
+				const int16 *coloptions,
+				const Oid *opclassOids,
 				Datum reloptions)
 {
 	YBCBindCreateIndexColumns(handle,

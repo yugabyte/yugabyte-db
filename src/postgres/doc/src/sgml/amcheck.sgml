@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/amcheck.sgml -->
 
 <sect1 id="amcheck" xreflabel="amcheck">
- <title>amcheck</title>
+ <title>amcheck &mdash; tools to verify table and index consistency</title>
 
  <indexterm zone="amcheck">
   <primary>amcheck</primary>
@@ -24,6 +24,9 @@
   to hold, we can expect binary searches on the affected page to
   incorrectly guide index scans, resulting in wrong answers to SQL
   queries.  If the structure appears to be valid, no error is raised.
+  While these checking functions are run, the <xref
+  linkend="guc-search-path"/> is temporarily changed to <literal>pg_catalog,
+  pg_temp</literal>.
  </para>
  <para>
   Verification is performed using the same procedures as those used by
@@ -52,13 +55,13 @@
   able to infer something of the data itself from such messages.
  </para>
 
- <sect2>
+ <sect2 id="amcheck-functions">
   <title>Functions</title>
 
   <variablelist>
    <varlistentry>
     <term>
-     <function>bt_index_check(index regclass, heapallindexed boolean) returns void</function>
+     <function>bt_index_check(index regclass, heapallindexed boolean, checkunique boolean) returns void</function>
      <indexterm>
       <primary>bt_index_check</primary>
      </indexterm>
@@ -115,7 +118,10 @@ ORDER BY c.relpages DESC LIMIT 10;
       that span child/parent relationships, but will verify the
       presence of all heap tuples as index tuples within the index
       when <parameter>heapallindexed</parameter> is
-      <literal>true</literal>.  When a routine, lightweight test for
+      <literal>true</literal>.  When <parameter>checkunique</parameter>
+      is <literal>true</literal> <function>bt_index_check</function> will
+      check that no more than one among duplicate entries in unique
+      index is visible.  When a routine, lightweight test for
       corruption is required in a live production environment, using
       <function>bt_index_check</function> often provides the best
       trade-off between thoroughness of verification and limiting the
@@ -126,7 +132,7 @@ ORDER BY c.relpages DESC LIMIT 10;
 
    <varlistentry>
     <term>
-     <function>bt_index_parent_check(index regclass, heapallindexed boolean, rootdescend boolean) returns void</function>
+     <function>bt_index_parent_check(index regclass, heapallindexed boolean, rootdescend boolean, checkunique boolean) returns void</function>
      <indexterm>
       <primary>bt_index_parent_check</primary>
      </indexterm>
@@ -139,7 +145,10 @@ ORDER BY c.relpages DESC LIMIT 10;
       Optionally, when the <parameter>heapallindexed</parameter>
       argument is <literal>true</literal>, the function verifies the
       presence of all heap tuples that should be found within the
-      index.  When the optional <parameter>rootdescend</parameter>
+      index.  When <parameter>checkunique</parameter>
+      is <literal>true</literal> <function>bt_index_parent_check</function> will
+      check that no more than one among duplicate entries in unique
+      index is visible.  When the optional <parameter>rootdescend</parameter>
       argument is <literal>true</literal>, verification re-finds
       tuples on the leaf level by performing a new search from the
       root page for each tuple.  The checks that can be performed by
@@ -179,6 +188,26 @@ ORDER BY c.relpages DESC LIMIT 10;
      </para>
     </listitem>
    </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>gin_index_check(index regclass) returns void</function>
+     <indexterm>
+      <primary>gin_index_check</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      <function>gin_index_check</function> tests that its target GIN index
+      has consistent parent-child tuples relations (no parent tuples
+      require tuple adjustment) and page graph respects balanced-tree
+      invariants (internal pages reference only leaf page or only internal
+      pages).
+     </para>
+    </listitem>
+   </varlistentry>
+
   </variablelist>
   <tip>
    <para>
@@ -249,8 +278,8 @@ SET client_min_messages = DEBUG1;
          TOAST table.
         </para>
         <para>
-         This option is known to be slow.  Also, if the toast table or its
-         index is corrupt, checking it against toast values could conceivably
+         This option is known to be slow.  Also, if the TOAST table or its
+         index is corrupt, checking it against TOAST values could conceivably
          crash the server, although in many cases this would just produce an
          error.
         </para>
@@ -346,14 +375,14 @@ SET client_min_messages = DEBUG1;
   </variablelist>
  </sect2>
 
- <sect2>
+ <sect2 id="amcheck-optional-heapallindexed-verification">
   <title>Optional <parameter>heapallindexed</parameter> Verification</title>
  <para>
   When the <parameter>heapallindexed</parameter> argument to B-Tree
   verification functions is <literal>true</literal>, an additional
   phase of verification is performed against the table associated with
   the target index relation.  This consists of a <quote>dummy</quote>
-  <command>CREATE INDEX</command> operation, which checks for the
+  <command>CREATE INDEX CONCURRENTLY</command> operation, which checks for the
   presence of all hypothetical new index tuples against a temporary,
   in-memory summarizing structure (this is built when needed during
   the basic first phase of verification).  The summarizing structure
@@ -387,7 +416,7 @@ SET client_min_messages = DEBUG1;
 
  </sect2>
 
- <sect2>
+ <sect2 id="amcheck-using-amcheck-effectively">
   <title>Using <filename>amcheck</filename> Effectively</title>
 
  <para>
@@ -457,8 +486,8 @@ SET client_min_messages = DEBUG1;
    </listitem>
    <listitem>
     <para>
-     File system or storage subsystem faults where checksums happen to
-     simply not be enabled.
+     File system or storage subsystem faults when data checksums are
+     disabled.
     </para>
     <para>
      Note that <filename>amcheck</filename> examines a page as represented in some
@@ -535,7 +564,7 @@ SET client_min_messages = DEBUG1;
  </para>
 
  </sect2>
- <sect2>
+ <sect2 id="amcheck-repairing-corruption">
   <title>Repairing Corruption</title>
  <para>
   No error concerning corruption raised by <filename>amcheck</filename> should

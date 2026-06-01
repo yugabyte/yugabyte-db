@@ -3,7 +3,7 @@
  * orderedsetaggs.c
  *		Ordered-set aggregate functions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -24,10 +24,8 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
 #include "utils/array.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
-#include "utils/memutils.h"
-#include "utils/timestamp.h"
 #include "utils/tuplesort.h"
 
 
@@ -155,7 +153,7 @@ ordered_set_startup(FunctionCallInfo fcinfo, bool use_tuples)
 		qcontext = fcinfo->flinfo->fn_mcxt;
 		oldcontext = MemoryContextSwitchTo(qcontext);
 
-		qstate = (OSAPerQueryState *) palloc0(sizeof(OSAPerQueryState));
+		qstate = palloc0_object(OSAPerQueryState);
 		qstate->aggref = aggref;
 		qstate->qcontext = qcontext;
 
@@ -235,6 +233,7 @@ ordered_set_startup(FunctionCallInfo fcinfo, bool use_tuples)
 								   -1,
 								   0);
 
+				TupleDescFinalize(newdesc);
 				FreeTupleDesc(qstate->tupdesc);
 				qstate->tupdesc = newdesc;
 			}
@@ -272,7 +271,7 @@ ordered_set_startup(FunctionCallInfo fcinfo, bool use_tuples)
 								 &qstate->typAlign);
 		}
 
-		fcinfo->flinfo->fn_extra = (void *) qstate;
+		fcinfo->flinfo->fn_extra = qstate;
 
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -280,7 +279,7 @@ ordered_set_startup(FunctionCallInfo fcinfo, bool use_tuples)
 	/* Now build the stuff we need in group-lifespan context */
 	oldcontext = MemoryContextSwitchTo(gcontext);
 
-	osastate = (OSAPerGroupState *) palloc(sizeof(OSAPerGroupState));
+	osastate = palloc_object(OSAPerGroupState);
 	osastate->qstate = qstate;
 	osastate->gcontext = gcontext;
 
@@ -482,7 +481,8 @@ percentile_disc_final(PG_FUNCTION_ARGS)
 			elog(ERROR, "missing row in percentile_disc");
 	}
 
-	if (!tuplesort_getdatum(osastate->sortstate, true, &val, &isnull, NULL))
+	if (!tuplesort_getdatum(osastate->sortstate, true, true, &val, &isnull,
+							NULL))
 		elog(ERROR, "missing row in percentile_disc");
 
 	/* We shouldn't have stored any nulls, but do the right thing anyway */
@@ -581,7 +581,8 @@ percentile_cont_final_common(FunctionCallInfo fcinfo,
 	if (!tuplesort_skiptuples(osastate->sortstate, first_row, true))
 		elog(ERROR, "missing row in percentile_cont");
 
-	if (!tuplesort_getdatum(osastate->sortstate, true, &first_val, &isnull, NULL))
+	if (!tuplesort_getdatum(osastate->sortstate, true, true, &first_val,
+							&isnull, NULL))
 		elog(ERROR, "missing row in percentile_cont");
 	if (isnull)
 		PG_RETURN_NULL();
@@ -592,7 +593,8 @@ percentile_cont_final_common(FunctionCallInfo fcinfo,
 	}
 	else
 	{
-		if (!tuplesort_getdatum(osastate->sortstate, true, &second_val, &isnull, NULL))
+		if (!tuplesort_getdatum(osastate->sortstate, true, true, &second_val,
+								&isnull, NULL))
 			elog(ERROR, "missing row in percentile_cont");
 
 		if (isnull)
@@ -659,8 +661,8 @@ pct_info_cmp(const void *pa, const void *pb)
  */
 static struct pct_info *
 setup_pct_info(int num_percentiles,
-			   Datum *percentiles_datum,
-			   bool *percentiles_null,
+			   const Datum *percentiles_datum,
+			   const bool *percentiles_null,
 			   int64 rowcount,
 			   bool continuous)
 {
@@ -759,12 +761,10 @@ percentile_disc_multi_final(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	param = PG_GETARG_ARRAYTYPE_P(1);
 
-	deconstruct_array(param, FLOAT8OID,
-	/* hard-wired info on type float8 */
-					  sizeof(float8), FLOAT8PASSBYVAL, TYPALIGN_DOUBLE,
-					  &percentiles_datum,
-					  &percentiles_null,
-					  &num_percentiles);
+	deconstruct_array_builtin(param, FLOAT8OID,
+							  &percentiles_datum,
+							  &percentiles_null,
+							  &num_percentiles);
 
 	if (num_percentiles == 0)
 		PG_RETURN_POINTER(construct_empty_array(osastate->qstate->sortColType));
@@ -819,7 +819,8 @@ percentile_disc_multi_final(PG_FUNCTION_ARGS)
 				if (!tuplesort_skiptuples(osastate->sortstate, target_row - rownum - 1, true))
 					elog(ERROR, "missing row in percentile_disc");
 
-				if (!tuplesort_getdatum(osastate->sortstate, true, &val, &isnull, NULL))
+				if (!tuplesort_getdatum(osastate->sortstate, true, true, &val,
+										&isnull, NULL))
 					elog(ERROR, "missing row in percentile_disc");
 
 				rownum = target_row;
@@ -883,12 +884,10 @@ percentile_cont_multi_final_common(FunctionCallInfo fcinfo,
 		PG_RETURN_NULL();
 	param = PG_GETARG_ARRAYTYPE_P(1);
 
-	deconstruct_array(param, FLOAT8OID,
-	/* hard-wired info on type float8 */
-					  sizeof(float8), FLOAT8PASSBYVAL, TYPALIGN_DOUBLE,
-					  &percentiles_datum,
-					  &percentiles_null,
-					  &num_percentiles);
+	deconstruct_array_builtin(param, FLOAT8OID,
+							  &percentiles_datum,
+							  &percentiles_null,
+							  &num_percentiles);
 
 	if (num_percentiles == 0)
 		PG_RETURN_POINTER(construct_empty_array(osastate->qstate->sortColType));
@@ -949,8 +948,8 @@ percentile_cont_multi_final_common(FunctionCallInfo fcinfo,
 				if (!tuplesort_skiptuples(osastate->sortstate, first_row - rownum - 1, true))
 					elog(ERROR, "missing row in percentile_cont");
 
-				if (!tuplesort_getdatum(osastate->sortstate, true, &first_val,
-										&isnull, NULL) || isnull)
+				if (!tuplesort_getdatum(osastate->sortstate, true, true,
+										&first_val, &isnull, NULL) || isnull)
 					elog(ERROR, "missing row in percentile_cont");
 
 				rownum = first_row;
@@ -970,8 +969,8 @@ percentile_cont_multi_final_common(FunctionCallInfo fcinfo,
 			/* Fetch second_row if needed */
 			if (second_row > rownum)
 			{
-				if (!tuplesort_getdatum(osastate->sortstate, true, &second_val,
-										&isnull, NULL) || isnull)
+				if (!tuplesort_getdatum(osastate->sortstate, true, true,
+										&second_val, &isnull, NULL) || isnull)
 					elog(ERROR, "missing row in percentile_cont");
 				rownum++;
 			}
@@ -1009,7 +1008,7 @@ percentile_cont_float8_multi_final(PG_FUNCTION_ARGS)
 											  FLOAT8OID,
 	/* hard-wired info on type float8 */
 											  sizeof(float8),
-											  FLOAT8PASSBYVAL,
+											  true,
 											  TYPALIGN_DOUBLE,
 											  float8_lerp);
 }
@@ -1077,7 +1076,8 @@ mode_final(PG_FUNCTION_ARGS)
 		tuplesort_rescan(osastate->sortstate);
 
 	/* Scan tuples and count frequencies */
-	while (tuplesort_getdatum(osastate->sortstate, true, &val, &isnull, &abbrev_val))
+	while (tuplesort_getdatum(osastate->sortstate, true, true, &val, &isnull,
+							  &abbrev_val))
 	{
 		/* we don't expect any nulls, but ignore them if found */
 		if (isnull)

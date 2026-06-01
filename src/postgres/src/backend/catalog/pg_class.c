@@ -3,7 +3,7 @@
  * pg_class.c
  *	  routines to support manipulation of the pg_class relation
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -45,6 +45,8 @@ errdetail_relkind_not_supported(char relkind)
 			return errdetail("This operation is not supported for partitioned tables.");
 		case RELKIND_PARTITIONED_INDEX:
 			return errdetail("This operation is not supported for partitioned indexes.");
+		case RELKIND_PROPGRAPH:
+			return errdetail("This operation is not supported for property graphs.");
 		default:
 			elog(ERROR, "unrecognized relkind: '%c'", relkind);
 			return 0;

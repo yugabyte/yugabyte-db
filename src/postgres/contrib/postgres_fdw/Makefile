@@ -14,9 +14,12 @@ PG_CPPFLAGS = -I$(libpq_srcdir)
 SHLIB_LINK_INTERNAL = $(libpq) -L$(YB_BUILD_ROOT)/lib -lyb_pggate -lyb_pggate_util -lyb_pgresult_util
 
 EXTENSION = postgres_fdw
-DATA = postgres_fdw--1.0.sql postgres_fdw--1.0--1.1.sql
+DATA = postgres_fdw--1.0.sql postgres_fdw--1.0--1.1.sql postgres_fdw--1.1--1.2.sql postgres_fdw--1.2--1.3.sql
 
-REGRESS = postgres_fdw
+REGRESS = postgres_fdw query_cancel
+ISOLATION = eval_plan_qual
+ISOLATION_OPTS = --load-extension=postgres_fdw
+TAP_TESTS = 1
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

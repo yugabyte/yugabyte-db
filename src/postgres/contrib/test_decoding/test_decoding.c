@@ -3,7 +3,7 @@
  * test_decoding.c
  *		  example logical decoding output plugin
  *
- * Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/test_decoding/test_decoding.c
@@ -25,11 +25,10 @@
 /* YB includes */
 #include "pg_yb_utils.h"
 
-PG_MODULE_MAGIC;
-
-/* These must be available to dlsym() */
-extern void _PG_init(void);
-extern void _PG_output_plugin_init(OutputPluginCallbacks *cb);
+PG_MODULE_MAGIC_EXT(
+					.name = "test_decoding",
+					.version = PG_VERSION
+);
 
 typedef struct
 {
@@ -67,16 +66,16 @@ static void pg_output_begin(LogicalDecodingContext *ctx,
 static void pg_decode_commit_txn(LogicalDecodingContext *ctx,
 								 ReorderBufferTXN *txn, XLogRecPtr commit_lsn);
 static void pg_decode_change(LogicalDecodingContext *ctx,
-							 ReorderBufferTXN *txn, Relation rel,
+							 ReorderBufferTXN *txn, Relation relation,
 							 ReorderBufferChange *change);
 static void pg_decode_truncate(LogicalDecodingContext *ctx,
 							   ReorderBufferTXN *txn,
 							   int nrelations, Relation relations[],
 							   ReorderBufferChange *change);
 static bool pg_decode_filter(LogicalDecodingContext *ctx,
-							 RepOriginId origin_id);
+							 ReplOriginId origin_id);
 static void pg_decode_message(LogicalDecodingContext *ctx,
-							  ReorderBufferTXN *txn, XLogRecPtr message_lsn,
+							  ReorderBufferTXN *txn, XLogRecPtr lsn,
 							  bool transactional, const char *prefix,
 							  Size sz, const char *message);
 static bool pg_decode_filter_prepare(LogicalDecodingContext *ctx,
@@ -116,7 +115,7 @@ static void pg_decode_stream_change(LogicalDecodingContext *ctx,
 									Relation relation,
 									ReorderBufferChange *change);
 static void pg_decode_stream_message(LogicalDecodingContext *ctx,
-									 ReorderBufferTXN *txn, XLogRecPtr message_lsn,
+									 ReorderBufferTXN *txn, XLogRecPtr lsn,
 									 bool transactional, const char *prefix,
 									 Size sz, const char *message);
 static void pg_decode_stream_truncate(LogicalDecodingContext *ctx,
@@ -139,8 +138,6 @@ _PG_init(void)
 void
 _PG_output_plugin_init(OutputPluginCallbacks *cb)
 {
-	AssertVariableIsOfType(&_PG_output_plugin_init, LogicalOutputPluginInit);
-
 	cb->startup_cb = pg_decode_startup;
 	cb->begin_cb = pg_decode_begin_txn;
 	cb->change_cb = pg_decode_change;
@@ -180,7 +177,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 	TestDecodingData *data;
 	bool		enable_streaming = false;
 
-	data = palloc0(sizeof(TestDecodingData));
+	data = palloc0_object(TestDecodingData);
 	data->context = AllocSetContextCreate(ctx->context,
 										  "text conversion context",
 										  ALLOCSET_DEFAULT_SIZES);
@@ -357,7 +354,7 @@ pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, " (at %s)",
-						 timestamptz_to_str(txn->xact_time.commit_time));
+						 timestamptz_to_str(txn->commit_time));
 
 	OutputPluginWrite(ctx, true);
 }
@@ -408,7 +405,7 @@ pg_decode_prepare_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, " (at %s)",
-						 timestamptz_to_str(txn->xact_time.prepare_time));
+						 timestamptz_to_str(txn->prepare_time));
 
 	OutputPluginWrite(ctx, true);
 }
@@ -430,7 +427,7 @@ pg_decode_commit_prepared_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn
 
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, " (at %s)",
-						 timestamptz_to_str(txn->xact_time.commit_time));
+						 timestamptz_to_str(txn->commit_time));
 
 	OutputPluginWrite(ctx, true);
 }
@@ -454,7 +451,7 @@ pg_decode_rollback_prepared_txn(LogicalDecodingContext *ctx,
 
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, " (at %s)",
-						 timestamptz_to_str(txn->xact_time.commit_time));
+						 timestamptz_to_str(txn->commit_time));
 
 	OutputPluginWrite(ctx, true);
 }
@@ -478,11 +475,11 @@ pg_decode_filter_prepare(LogicalDecodingContext *ctx, TransactionId xid,
 
 static bool
 pg_decode_filter(LogicalDecodingContext *ctx,
-				 RepOriginId origin_id)
+				 ReplOriginId origin_id)
 {
 	TestDecodingData *data = ctx->output_plugin_private;
 
-	if (data->only_local && origin_id != InvalidRepOriginId)
+	if (data->only_local && origin_id != InvalidReplOriginId)
 		return true;
 	return false;
 }
@@ -491,8 +488,8 @@ pg_decode_filter(LogicalDecodingContext *ctx,
  * Print literal `outputstr' already represented as string of type `typid'
  * into stringbuf `s'.
  *
- * Some builtin types aren't quoted, the rest is quoted. Escaping is done as
- * if standard_conforming_strings were enabled.
+ * Some builtin types aren't quoted, the rest is quoted. Escaping is done
+ * per standard SQL rules.
  */
 static void
 print_literal(StringInfo s, Oid typid, char *outputstr)
@@ -604,8 +601,8 @@ tuple_to_stringinfo(StringInfo s, TupleDesc tupdesc, HeapTuple tuple, bool skip_
 		/* print data */
 		if (isnull && !yb_send_unchanged_toasted)
 			appendStringInfoString(s, "null");
-		else if ((yb_send_unchanged_toasted) ||
-				 (typisvarlena && VARATT_IS_EXTERNAL_ONDISK(origval)))
+		else if (yb_send_unchanged_toasted ||
+				 (typisvarlena && VARATT_IS_EXTERNAL_ONDISK(DatumGetPointer(origval))))
 			appendStringInfoString(s, "unchanged-toast-datum");
 		else if (!typisvarlena)
 			print_literal(s, typid,
@@ -667,9 +664,9 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				appendStringInfoString(ctx->out, " (no-tuple-data)");
 			else
 				tuple_to_stringinfo(ctx->out, tupdesc,
-									&change->data.tp.newtuple->tuple,
+									change->data.tp.newtuple,
 									false,
-									change->data.tp.newtuple->yb_is_omitted);
+									NULL /* YB_TODO_PG19MERGE: yb_is_omitted */);
 			break;
 		case REORDER_BUFFER_CHANGE_UPDATE:
 			appendStringInfoString(ctx->out, " UPDATE:");
@@ -677,9 +674,9 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			{
 				appendStringInfoString(ctx->out, " old-key:");
 				tuple_to_stringinfo(ctx->out, tupdesc,
-									&change->data.tp.oldtuple->tuple,
+									change->data.tp.oldtuple,
 									true,
-									change->data.tp.oldtuple->yb_is_omitted);
+									NULL /* YB_TODO_PG19MERGE: yb_is_omitted */);
 				appendStringInfoString(ctx->out, " new-tuple:");
 			}
 
@@ -687,9 +684,9 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				appendStringInfoString(ctx->out, " (no-tuple-data)");
 			else
 				tuple_to_stringinfo(ctx->out, tupdesc,
-									&change->data.tp.newtuple->tuple,
+									change->data.tp.newtuple,
 									false,
-									change->data.tp.newtuple->yb_is_omitted);
+									NULL /* YB_TODO_PG19MERGE: yb_is_omitted */);
 			break;
 		case REORDER_BUFFER_CHANGE_DELETE:
 			appendStringInfoString(ctx->out, " DELETE:");
@@ -700,9 +697,9 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			/* In DELETE, only the replica identity is present; display that */
 			else
 				tuple_to_stringinfo(ctx->out, tupdesc,
-									&change->data.tp.oldtuple->tuple,
+									change->data.tp.oldtuple,
 									true,
-									change->data.tp.oldtuple->yb_is_omitted);
+									NULL /* YB_TODO_PG19MERGE: yb_is_omitted */);
 			break;
 		default:
 			Assert(false);
@@ -774,6 +771,18 @@ pg_decode_message(LogicalDecodingContext *ctx,
 				  ReorderBufferTXN *txn, XLogRecPtr lsn, bool transactional,
 				  const char *prefix, Size sz, const char *message)
 {
+	TestDecodingData *data = ctx->output_plugin_private;
+	TestDecodingTxnData *txndata;
+
+	txndata = transactional ? txn->output_plugin_private : NULL;
+
+	/* output BEGIN if we haven't yet for transactional messages */
+	if (transactional && data->skip_empty_xacts && !txndata->xact_wrote_changes)
+		pg_output_begin(ctx, data, txn, false);
+
+	if (transactional)
+		txndata->xact_wrote_changes = true;
+
 	OutputPluginPrepareWrite(ctx, true);
 	appendStringInfo(ctx->out, "message: transactional: %d prefix: %s, sz: %zu content:",
 					 transactional, prefix, sz);
@@ -846,11 +855,11 @@ pg_decode_stream_abort(LogicalDecodingContext *ctx,
 	 * maintain the output_plugin_private only under the toptxn so if this is
 	 * not the toptxn then fetch the toptxn.
 	 */
-	ReorderBufferTXN *toptxn = txn->toptxn ? txn->toptxn : txn;
+	ReorderBufferTXN *toptxn = rbtxn_get_toptxn(txn);
 	TestDecodingTxnData *txndata = toptxn->output_plugin_private;
 	bool		xact_wrote_changes = txndata->xact_wrote_changes;
 
-	if (txn->toptxn == NULL)
+	if (rbtxn_is_toptxn(txn))
 	{
 		Assert(txn->output_plugin_private != NULL);
 		pfree(txndata);
@@ -890,7 +899,7 @@ pg_decode_stream_prepare(LogicalDecodingContext *ctx,
 
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, " (at %s)",
-						 timestamptz_to_str(txn->xact_time.prepare_time));
+						 timestamptz_to_str(txn->prepare_time));
 
 	OutputPluginWrite(ctx, true);
 }
@@ -919,7 +928,7 @@ pg_decode_stream_commit(LogicalDecodingContext *ctx,
 
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, " (at %s)",
-						 timestamptz_to_str(txn->xact_time.commit_time));
+						 timestamptz_to_str(txn->commit_time));
 
 	OutputPluginWrite(ctx, true);
 }
@@ -963,6 +972,19 @@ pg_decode_stream_message(LogicalDecodingContext *ctx,
 						 ReorderBufferTXN *txn, XLogRecPtr lsn, bool transactional,
 						 const char *prefix, Size sz, const char *message)
 {
+	/* Output stream start if we haven't yet for transactional messages. */
+	if (transactional)
+	{
+		TestDecodingData *data = ctx->output_plugin_private;
+		TestDecodingTxnData *txndata = txn->output_plugin_private;
+
+		if (data->skip_empty_xacts && !txndata->stream_wrote_changes)
+		{
+			pg_output_stream_start(ctx, data, txn, false);
+		}
+		txndata->xact_wrote_changes = txndata->stream_wrote_changes = true;
+	}
+
 	OutputPluginPrepareWrite(ctx, true);
 
 	if (transactional)

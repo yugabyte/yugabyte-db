@@ -49,6 +49,8 @@ INSERT INTO TIMESTAMP_TBL VALUES ('-infinity');
 INSERT INTO TIMESTAMP_TBL VALUES ('infinity');
 INSERT INTO TIMESTAMP_TBL VALUES ('epoch');
 
+SELECT timestamp 'infinity' = timestamp '+infinity' AS t;
+
 -- Postgres v6.0 standard output format
 INSERT INTO TIMESTAMP_TBL VALUES ('Mon Feb 10 17:32:01 1997 PST');
 
@@ -93,6 +95,13 @@ INSERT INTO TIMESTAMP_TBL VALUES ('1997.041 17:32:01 UTC');
 INSERT INTO TIMESTAMP_TBL VALUES ('19970210 173201 America/New_York');
 -- this fails (even though TZ is a no-op, we still look it up)
 INSERT INTO TIMESTAMP_TBL VALUES ('19970710 173201 America/Does_not_exist');
+
+-- Test non-error-throwing API
+SELECT pg_input_is_valid('now', 'timestamp');
+SELECT pg_input_is_valid('garbage', 'timestamp');
+SELECT pg_input_is_valid('2001-01-01 00:00 Nehwon/Lankhmar', 'timestamp');
+SELECT * FROM pg_input_error_info('garbage', 'timestamp');
+SELECT * FROM pg_input_error_info('2001-01-01 00:00 Nehwon/Lankhmar', 'timestamp');
 
 -- Check date conversion and date arithmetic
 INSERT INTO TIMESTAMP_TBL VALUES ('1997-06-10 18:32:01 PDT');
@@ -166,6 +175,10 @@ SELECT d1 - timestamp without time zone '1997-01-02' AS diff
    FROM TIMESTAMP_TBL WHERE d1 BETWEEN '1902-01-01' AND '2038-01-01';
 
 SELECT date_trunc( 'week', timestamp '2004-02-29 15:44:17.71393' ) AS week_trunc;
+SELECT date_trunc( 'week', timestamp 'infinity' ) AS inf_trunc;
+SELECT date_trunc( 'timezone', timestamp '2004-02-29 15:44:17.71393' ) AS notsupp_trunc;
+SELECT date_trunc( 'timezone', timestamp 'infinity' ) AS notsupp_inf_trunc;
+SELECT date_trunc( 'ago', timestamp 'infinity' ) AS invalid_trunc;
 
 -- verify date_bin behaves the same as date_trunc for relevant intervals
 
@@ -325,6 +338,10 @@ SELECT extract(epoch from '294270-01-01 00:00:00'::timestamp);
 -- another internal overflow test case
 SELECT extract(epoch from '5000-01-01 00:00:00'::timestamp);
 
+-- test edge-case overflow in timestamp subtraction
+SELECT timestamp '294276-12-31 23:59:59' - timestamp '1999-12-23 19:59:04.224193' AS ok;
+SELECT timestamp '294276-12-31 23:59:59' - timestamp '1999-12-23 19:59:04.224192' AS overflows;
+
 -- TO_CHAR()
 SELECT to_char(d1, 'DAY Day day DY Dy dy MONTH Month month RM MON Mon mon')
    FROM TIMESTAMP_TBL;
@@ -392,3 +409,26 @@ select generate_series('2022-01-01 00:00'::timestamp,
 select * from generate_series('2020-01-01 00:00'::timestamp,
                               '2020-01-02 03:00'::timestamp,
                               '0 hour'::interval);
+select generate_series(timestamp '1995-08-06 12:12:12', timestamp '1996-08-06 12:12:12', interval 'infinity');
+select generate_series(timestamp '1995-08-06 12:12:12', timestamp '1996-08-06 12:12:12', interval '-infinity');
+
+
+-- test arithmetic with infinite timestamps
+select timestamp 'infinity' - timestamp 'infinity';
+select timestamp 'infinity' - timestamp '-infinity';
+select timestamp '-infinity' - timestamp 'infinity';
+select timestamp '-infinity' - timestamp '-infinity';
+select timestamp 'infinity' - timestamp '1995-08-06 12:12:12';
+select timestamp '-infinity' - timestamp '1995-08-06 12:12:12';
+
+-- test age() with infinite timestamps
+select age(timestamp 'infinity');
+select age(timestamp '-infinity');
+select age(timestamp 'infinity', timestamp 'infinity');
+select age(timestamp 'infinity', timestamp '-infinity');
+select age(timestamp '-infinity', timestamp 'infinity');
+select age(timestamp '-infinity', timestamp '-infinity');
+
+-- test timestamp near POSTGRES_EPOCH_JDATE
+select timestamp '1999-12-31 24:00:00';
+select make_timestamp(1999, 12, 31, 24, 0, 0);

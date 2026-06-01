@@ -4,7 +4,7 @@
  *	  Definitions for hot standby mode.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/standby.h
@@ -15,24 +15,66 @@
 #define STANDBY_H
 
 #include "datatype/timestamp.h"
-#include "storage/lock.h"
-#include "storage/procsignal.h"
-#include "storage/relfilenode.h"
+#include "storage/locktag.h"
+#include "storage/relfilelocator.h"
 #include "storage/standbydefs.h"
 
+typedef struct PGPROC PGPROC;
+typedef struct VirtualTransactionId VirtualTransactionId;
+
 /* User-settable GUC parameters */
-extern PGDLLIMPORT int vacuum_defer_cleanup_age;
 extern PGDLLIMPORT int max_standby_archive_delay;
 extern PGDLLIMPORT int max_standby_streaming_delay;
 extern PGDLLIMPORT bool log_recovery_conflict_waits;
 
+/* Recovery conflict reasons */
+typedef enum
+{
+	/* Backend is connected to a database that is being dropped */
+	RECOVERY_CONFLICT_DATABASE,
+
+	/* Backend is using a tablespace that is being dropped */
+	RECOVERY_CONFLICT_TABLESPACE,
+
+	/* Backend is holding a lock that is blocking recovery */
+	RECOVERY_CONFLICT_LOCK,
+
+	/* Backend is holding a snapshot that is blocking recovery */
+	RECOVERY_CONFLICT_SNAPSHOT,
+
+	/* Backend is using a logical replication slot that must be invalidated */
+	RECOVERY_CONFLICT_LOGICALSLOT,
+
+	/* Backend is holding a pin on a buffer that is blocking recovery */
+	RECOVERY_CONFLICT_BUFFERPIN,
+
+	/*
+	 * The backend is requested to check for deadlocks. The startup process
+	 * doesn't check for deadlock directly, because we want to kill one of the
+	 * other backends instead of the startup process.
+	 */
+	RECOVERY_CONFLICT_STARTUP_DEADLOCK,
+
+	/*
+	 * Like RECOVERY_CONFLICT_STARTUP_DEADLOCK is, but the suspected deadlock
+	 * involves a buffer pin that some other backend is holding. That needs
+	 * special checking because the normal deadlock detector doesn't track the
+	 * buffer pins.
+	 */
+	RECOVERY_CONFLICT_BUFFERPIN_DEADLOCK,
+} RecoveryConflictReason;
+
+#define NUM_RECOVERY_CONFLICT_REASONS (RECOVERY_CONFLICT_BUFFERPIN_DEADLOCK + 1)
+
 extern void InitRecoveryTransactionEnvironment(void);
 extern void ShutdownRecoveryTransactionEnvironment(void);
 
-extern void ResolveRecoveryConflictWithSnapshot(TransactionId latestRemovedXid,
-												RelFileNode node);
-extern void ResolveRecoveryConflictWithSnapshotFullXid(FullTransactionId latestRemovedFullXid,
-													   RelFileNode node);
+extern void ResolveRecoveryConflictWithSnapshot(TransactionId snapshotConflictHorizon,
+												bool isCatalogRel,
+												RelFileLocator locator);
+extern void ResolveRecoveryConflictWithSnapshotFullXid(FullTransactionId snapshotConflictHorizon,
+													   bool isCatalogRel,
+													   RelFileLocator locator);
 extern void ResolveRecoveryConflictWithTablespace(Oid tsid);
 extern void ResolveRecoveryConflictWithDatabase(Oid dbid);
 
@@ -42,8 +84,8 @@ extern void CheckRecoveryConflictDeadlock(void);
 extern void StandbyDeadLockHandler(void);
 extern void StandbyTimeoutHandler(void);
 extern void StandbyLockTimeoutHandler(void);
-extern void LogRecoveryConflict(ProcSignalReason reason, TimestampTz wait_start,
-								TimestampTz cur_ts, VirtualTransactionId *wait_list,
+extern void LogRecoveryConflict(RecoveryConflictReason reason, TimestampTz wait_start,
+								TimestampTz now, VirtualTransactionId *wait_list,
 								bool still_waiting);
 
 /*
@@ -84,11 +126,14 @@ typedef enum
 
 typedef struct RunningTransactionsData
 {
+	Oid			dbid;			/* only track xacts in this database */
 	int			xcnt;			/* # of xact ids in xids[] */
 	int			subxcnt;		/* # of subxact ids in xids[] */
 	subxids_array_status subxid_status;
-	TransactionId nextXid;		/* xid from ShmemVariableCache->nextXid */
+	TransactionId nextXid;		/* xid from TransamVariables->nextXid */
 	TransactionId oldestRunningXid; /* *not* oldestXmin */
+	TransactionId oldestDatabaseRunningXid; /* same as above, but within the
+											 * current database */
 	TransactionId latestCompletedXid;	/* so we can set xmax */
 
 	TransactionId *xids;		/* array of (sub)xids still running */
@@ -99,7 +144,7 @@ typedef RunningTransactionsData *RunningTransactions;
 extern void LogAccessExclusiveLock(Oid dbOid, Oid relOid);
 extern void LogAccessExclusiveLockPrepare(void);
 
-extern XLogRecPtr LogStandbySnapshot(void);
+extern XLogRecPtr LogStandbySnapshot(Oid dbid);
 extern void LogStandbyInvalidations(int nmsgs, SharedInvalidationMessage *msgs,
 									bool relcacheInitFileInval);
 

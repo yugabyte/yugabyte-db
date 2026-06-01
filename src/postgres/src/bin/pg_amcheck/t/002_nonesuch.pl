@@ -1,8 +1,8 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -11,7 +11,7 @@ use Test::More;
 # Test set-up
 my ($node, $port);
 $node = PostgreSQL::Test::Cluster->new('test');
-$node->init;
+$node->init(auth_extra => [ '--create-role' => 'no_such_user' ]);
 $node->start;
 $port = $node->port;
 
@@ -30,7 +30,7 @@ $node->command_checks_all(
 
 # Failing to resolve a database pattern is an error by default.
 $node->command_checks_all(
-	[ 'pg_amcheck', '-d', 'qqq', '-d', 'postgres' ],
+	[ 'pg_amcheck', '--database' => 'qqq', '--database' => 'postgres' ],
 	1,
 	[qr/^$/],
 	[qr/pg_amcheck: error: no connectable databases to check matching "qqq"/],
@@ -38,7 +38,12 @@ $node->command_checks_all(
 
 # But only a warning under --no-strict-names
 $node->command_checks_all(
-	[ 'pg_amcheck', '--no-strict-names', '-d', 'qqq', '-d', 'postgres' ],
+	[
+		'pg_amcheck',
+		'--no-strict-names',
+		'--database' => 'qqq',
+		'--database' => 'postgres'
+	],
 	0,
 	[qr/^$/],
 	[
@@ -49,7 +54,7 @@ $node->command_checks_all(
 # Check that a substring of an existent database name does not get interpreted
 # as a matching pattern.
 $node->command_checks_all(
-	[ 'pg_amcheck', '-d', 'post', '-d', 'postgres' ],
+	[ 'pg_amcheck', '--database' => 'post', '--database' => 'postgres' ],
 	1,
 	[qr/^$/],
 	[
@@ -61,7 +66,11 @@ $node->command_checks_all(
 # Check that a superstring of an existent database name does not get interpreted
 # as a matching pattern.
 $node->command_checks_all(
-	[ 'pg_amcheck', '-d', 'postgresql', '-d', 'postgres' ],
+	[
+		'pg_amcheck',
+		'--database' => 'postgresql',
+		'--database' => 'postgres'
+	],
 	1,
 	[qr/^$/],
 	[
@@ -74,8 +83,12 @@ $node->command_checks_all(
 # Test connecting with a non-existent user
 
 # Failing to connect to the initial database due to bad username is an error.
-$node->command_checks_all([ 'pg_amcheck', '-U', 'no_such_user', 'postgres' ],
-	1, [qr/^$/], [], 'checking with a non-existent user');
+$node->command_checks_all(
+	[ 'pg_amcheck', '--username' => 'no_such_user', 'postgres' ],
+	1,
+	[qr/^$/],
+	[qr/role "no_such_user" does not exist/],
+	'checking with a non-existent user');
 
 #########################################
 # Test checking databases without amcheck installed
@@ -96,7 +109,7 @@ $node->command_checks_all(
 
 # Again, but this time with another database to check, so no error is raised.
 $node->command_checks_all(
-	[ 'pg_amcheck', '-d', 'template1', '-d', 'postgres' ],
+	[ 'pg_amcheck', '--database' => 'template1', '--database' => 'postgres' ],
 	0,
 	[qr/^$/],
 	[
@@ -121,7 +134,7 @@ $node->command_checks_all(
 
 # Check three-part unreasonable pattern that has zero-length names
 $node->command_checks_all(
-	[ 'pg_amcheck', '-d', 'postgres', '-t', '..' ],
+	[ 'pg_amcheck', '--database' => 'postgres', '--table' => '..' ],
 	1,
 	[qr/^$/],
 	[
@@ -131,7 +144,7 @@ $node->command_checks_all(
 
 # Again, but with non-trivial schema and relation parts
 $node->command_checks_all(
-	[ 'pg_amcheck', '-d', 'postgres', '-t', '.foo.bar' ],
+	[ 'pg_amcheck', '--database' => 'postgres', '--table' => '.foo.bar' ],
 	1,
 	[qr/^$/],
 	[
@@ -141,7 +154,7 @@ $node->command_checks_all(
 
 # Check two-part unreasonable pattern that has zero-length names
 $node->command_checks_all(
-	[ 'pg_amcheck', '-d', 'postgres', '-t', '.' ],
+	[ 'pg_amcheck', '--database' => 'postgres', '--table' => '.' ],
 	1,
 	[qr/^$/],
 	[qr/pg_amcheck: error: no heap tables to check matching "\."/],
@@ -149,7 +162,7 @@ $node->command_checks_all(
 
 # Check that a multipart database name is rejected
 $node->command_checks_all(
-	[ 'pg_amcheck', '-d', 'localhost.postgres' ],
+	[ 'pg_amcheck', '--database' => 'localhost.postgres' ],
 	2,
 	[qr/^$/],
 	[
@@ -159,7 +172,7 @@ $node->command_checks_all(
 
 # Check that a three-part schema name is rejected
 $node->command_checks_all(
-	[ 'pg_amcheck', '-s', 'localhost.postgres.pg_catalog' ],
+	[ 'pg_amcheck', '--schema' => 'localhost.postgres.pg_catalog' ],
 	2,
 	[qr/^$/],
 	[
@@ -169,7 +182,7 @@ $node->command_checks_all(
 
 # Check that a four-part table name is rejected
 $node->command_checks_all(
-	[ 'pg_amcheck', '-t', 'localhost.postgres.pg_catalog.pg_class' ],
+	[ 'pg_amcheck', '--table' => 'localhost.postgres.pg_catalog.pg_class' ],
 	2,
 	[qr/^$/],
 	[
@@ -183,7 +196,7 @@ $node->command_checks_all(
 $node->command_checks_all(
 	[
 		'pg_amcheck', '--no-strict-names',
-		'-t',         'this.is.a.really.long.dotted.string'
+		'--table' => 'this.is.a.really.long.dotted.string'
 	],
 	2,
 	[qr/^$/],
@@ -193,8 +206,8 @@ $node->command_checks_all(
 	'ungrammatical table names still draw errors under --no-strict-names');
 $node->command_checks_all(
 	[
-		'pg_amcheck', '--no-strict-names', '-s',
-		'postgres.long.dotted.string'
+		'pg_amcheck', '--no-strict-names',
+		'--schema' => 'postgres.long.dotted.string'
 	],
 	2,
 	[qr/^$/],
@@ -204,8 +217,8 @@ $node->command_checks_all(
 	'ungrammatical schema names still draw errors under --no-strict-names');
 $node->command_checks_all(
 	[
-		'pg_amcheck', '--no-strict-names', '-d',
-		'postgres.long.dotted.string'
+		'pg_amcheck', '--no-strict-names',
+		'--database' => 'postgres.long.dotted.string'
 	],
 	2,
 	[qr/^$/],
@@ -216,7 +229,7 @@ $node->command_checks_all(
 
 # Likewise for exclusion patterns
 $node->command_checks_all(
-	[ 'pg_amcheck', '--no-strict-names', '-T', 'a.b.c.d' ],
+	[ 'pg_amcheck', '--no-strict-names', '--exclude-table' => 'a.b.c.d' ],
 	2,
 	[qr/^$/],
 	[
@@ -225,7 +238,7 @@ $node->command_checks_all(
 	'ungrammatical table exclusions still draw errors under --no-strict-names'
 );
 $node->command_checks_all(
-	[ 'pg_amcheck', '--no-strict-names', '-S', 'a.b.c' ],
+	[ 'pg_amcheck', '--no-strict-names', '--exclude-schema' => 'a.b.c' ],
 	2,
 	[qr/^$/],
 	[
@@ -234,7 +247,7 @@ $node->command_checks_all(
 	'ungrammatical schema exclusions still draw errors under --no-strict-names'
 );
 $node->command_checks_all(
-	[ 'pg_amcheck', '--no-strict-names', '-D', 'a.b' ],
+	[ 'pg_amcheck', '--no-strict-names', '--exclude-database' => 'a.b' ],
 	2,
 	[qr/^$/],
 	[
@@ -252,20 +265,20 @@ $node->command_checks_all(
 $node->command_checks_all(
 	[
 		'pg_amcheck', '--no-strict-names',
-		'-t',         'no_such_table',
-		'-t',         'no*such*table',
-		'-i',         'no_such_index',
-		'-i',         'no*such*index',
-		'-r',         'no_such_relation',
-		'-r',         'no*such*relation',
-		'-d',         'no_such_database',
-		'-d',         'no*such*database',
-		'-r',         'none.none',
-		'-r',         'none.none.none',
-		'-r',         'postgres.none.none',
-		'-r',         'postgres.pg_catalog.none',
-		'-r',         'postgres.none.pg_class',
-		'-t',         'postgres.pg_catalog.pg_class',    # This exists
+		'--table' => 'no_such_table',
+		'--table' => 'no*such*table',
+		'--index' => 'no_such_index',
+		'--index' => 'no*such*index',
+		'--relation' => 'no_such_relation',
+		'--relation' => 'no*such*relation',
+		'--database' => 'no_such_database',
+		'--database' => 'no*such*database',
+		'--relation' => 'none.none',
+		'--relation' => 'none.none.none',
+		'--relation' => 'postgres.none.none',
+		'--relation' => 'postgres.pg_catalog.none',
+		'--relation' => 'postgres.none.pg_class',
+		'--table' => 'postgres.pg_catalog.pg_class',    # This exists
 	],
 	0,
 	[qr/^$/],
@@ -302,9 +315,7 @@ $node->safe_psql(
 ));
 
 $node->command_checks_all(
-	[
-		'pg_amcheck', '-d', 'regression_invalid'
-	],
+	[ 'pg_amcheck', '--database' => 'regression_invalid' ],
 	1,
 	[qr/^$/],
 	[
@@ -314,8 +325,9 @@ $node->command_checks_all(
 
 $node->command_checks_all(
 	[
-	    'pg_amcheck', '-d', 'postgres',
-		'-t', 'regression_invalid.public.foo',
+		'pg_amcheck',
+		'--database' => 'postgres',
+		'--table' => 'regression_invalid.public.foo',
 	],
 	1,
 	[qr/^$/],
@@ -337,14 +349,15 @@ $node->safe_psql('postgres', q(CREATE DATABASE another_db));
 
 $node->command_checks_all(
 	[
-		'pg_amcheck', '-d',
-		'postgres',   '--no-strict-names',
-		'-t',         'template1.public.foo',
-		'-t',         'another_db.public.foo',
-		'-t',         'no_such_database.public.foo',
-		'-i',         'template1.public.foo_idx',
-		'-i',         'another_db.public.foo_idx',
-		'-i',         'no_such_database.public.foo_idx',
+		'pg_amcheck',
+		'--database' => 'postgres',
+		'--no-strict-names',
+		'--table' => 'template1.public.foo',
+		'--table' => 'another_db.public.foo',
+		'--table' => 'no_such_database.public.foo',
+		'--index' => 'template1.public.foo_idx',
+		'--index' => 'another_db.public.foo_idx',
+		'--index' => 'no_such_database.public.foo_idx',
 	],
 	1,
 	[qr/^$/],
@@ -358,7 +371,7 @@ $node->command_checks_all(
 		qr/pg_amcheck: warning: no connectable databases to check matching "no_such_database\.public\.foo_idx"/,
 		qr/pg_amcheck: error: no relations to check/,
 	],
-	'checking otherwise existent objets in the wrong databases');
+	'checking otherwise existent objects in the wrong databases');
 
 
 #########################################
@@ -367,9 +380,13 @@ $node->command_checks_all(
 # Check with only schema exclusion patterns
 $node->command_checks_all(
 	[
-		'pg_amcheck', '--all', '--no-strict-names', '-S',
-		'public',     '-S',    'pg_catalog',        '-S',
-		'pg_toast',   '-S',    'information_schema',
+		'pg_amcheck',
+		'--all',
+		'--no-strict-names',
+		'--exclude-schema' => 'public',
+		'--exclude-schema' => 'pg_catalog',
+		'--exclude-schema' => 'pg_toast',
+		'--exclude-schema' => 'information_schema',
 	],
 	1,
 	[qr/^$/],
@@ -382,10 +399,15 @@ $node->command_checks_all(
 # Check with schema exclusion patterns overriding relation and schema inclusion patterns
 $node->command_checks_all(
 	[
-		'pg_amcheck',          '--all', '--no-strict-names',  '-s',
-		'public',              '-s',    'pg_catalog',         '-s',
-		'pg_toast',            '-s',    'information_schema', '-t',
-		'pg_catalog.pg_class', '-S*'
+		'pg_amcheck',
+		'--all',
+		'--no-strict-names',
+		'--schema' => 'public',
+		'--schema' => 'pg_catalog',
+		'--schema' => 'pg_toast',
+		'--schema' => 'information_schema',
+		'--table' => 'pg_catalog.pg_class',
+		'--exclude-schema' => '*'
 	],
 	1,
 	[qr/^$/],

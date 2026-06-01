@@ -504,7 +504,7 @@ CREATE TABLE foo(i int);
   <para>
    Two tablespaces are automatically created when the database cluster
    is initialized.  The
-   <literal>pg_global</literal> tablespace is used for shared system catalogs. The
+   <literal>pg_global</literal> tablespace is used only for shared system catalogs. The
    <literal>pg_default</literal> tablespace is the default tablespace of the
    <literal>template1</literal> and <literal>template0</literal> databases (and, therefore,
    will be the default tablespace for other databases as well, unless
@@ -530,17 +530,12 @@ CREATE TABLE foo(i int);
    <link linkend="catalog-pg-tablespace"><structname>pg_tablespace</structname>
    </link> system catalog, for example
 <synopsis>
-SELECT spcname FROM pg_tablespace;
+SELECT spcname, spcowner::regrole, pg_tablespace_location(oid) FROM pg_tablespace;
 </synopsis>
-   The <xref linkend="app-psql"/> program's <literal>\db</literal> meta-command
+   It is possible to find which databases use which tablespaces;
+   see <xref linkend="functions-info-catalog-table"/>.  The <xref
+   linkend="app-psql"/> program's <literal>\db</literal> meta-command
    is also useful for listing the existing tablespaces.
-  </para>
-
-  <para>
-   <productname>PostgreSQL</productname> makes use of symbolic links
-   to simplify the implementation of tablespaces. This
-   means that tablespaces can be used <emphasis>only</emphasis> on systems
-   that support symbolic links.
   </para>
 
   <para>
@@ -548,10 +543,7 @@ SELECT spcname FROM pg_tablespace;
    point to each of the non-built-in tablespaces defined in the cluster.
    Although not recommended, it is possible to adjust the tablespace
    layout by hand by redefining these links. Under no circumstances perform
-   this operation while the server is running. Note that in PostgreSQL 9.1
-   and earlier you will also need to update the <structname>pg_tablespace</structname>
-   catalog with the new locations. (If you do not, <literal>pg_dump</literal> will
-   continue to output the old tablespace locations.)
+   this operation while the server is running.
   </para>
 
  </sect1>

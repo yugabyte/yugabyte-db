@@ -241,6 +241,31 @@
      </row>
 
      <row>
+      <entry><link linkend="catalog-pg-propgraph-element"><structname>pg_propgraph_element</structname></link></entry>
+      <entry>property graph elements (vertices and edges)</entry>
+     </row>
+
+     <row>
+      <entry><link linkend="catalog-pg-propgraph-element-label"><structname>pg_propgraph_element_label</structname></link></entry>
+      <entry>property graph links between elements and labels</entry>
+     </row>
+
+     <row>
+      <entry><link linkend="catalog-pg-propgraph-label"><structname>pg_propgraph_label</structname></link></entry>
+      <entry>property graph labels</entry>
+     </row>
+
+     <row>
+      <entry><link linkend="catalog-pg-propgraph-label-property"><structname>pg_propgraph_label_property</structname></link></entry>
+      <entry>property graph label-specific property definitions</entry>
+     </row>
+
+     <row>
+      <entry><link linkend="catalog-pg-propgraph-property"><structname>pg_propgraph_property</structname></link></entry>
+      <entry>property graph properties</entry>
+     </row>
+
+     <row>
       <entry><link linkend="catalog-pg-publication"><structname>pg_publication</structname></link></entry>
       <entry>publications for logical replication</entry>
      </row>
@@ -596,7 +621,10 @@
       </para>
       <para>
        Approximate average size (in bytes) of the transition state
-       data, or zero to use a default estimate
+       data. A positive value provides an estimate; zero means to
+       use a default estimate. A negative value indicates the state
+       data can grow unboundedly in size, such as when the aggregate
+       accumulates input rows (e.g., array_agg, string_agg).
       </para></entry>
      </row>
 
@@ -1032,10 +1060,11 @@
 
   <para>
    The catalog <structname>pg_attrdef</structname> stores column default
-   values.  The main information about columns is stored in
-   <link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>.
-   Only columns for which a default value has been explicitly set will have
-   an entry here.
+   expressions and generation expressions.  The main information about columns
+   is stored in <link
+   linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>.
+   Only columns for which a default expression or generation expression has
+   been explicitly set will have an entry here.
   </para>
 
   <table>
@@ -1087,7 +1116,7 @@
        <structfield>adbin</structfield> <type>pg_node_tree</type>
       </para>
       <para>
-       The column default value, in <function>nodeToString()</function>
+       The column default or generation expression, in <function>nodeToString()</function>
        representation.  Use <literal>pg_get_expr(adbin, adrelid)</literal> to
        convert it to an SQL expression.
       </para></entry>
@@ -1166,23 +1195,6 @@
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>attstattarget</structfield> <type>int4</type>
-      </para>
-      <para>
-       <structfield>attstattarget</structfield> controls the level of detail
-       of statistics accumulated for this column by
-       <link linkend="sql-analyze"><command>ANALYZE</command></link>.
-       A zero value indicates that no statistics should be collected.
-       A negative value says to use the system default statistics target.
-       The exact meaning of positive values is data type-dependent.
-       For scalar data types, <structfield>attstattarget</structfield>
-       is both the target number of <quote>most common values</quote>
-       to collect, and the target number of histogram bins to create.
-      </para></entry>
-     </row>
-
-     <row>
-      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>attlen</structfield> <type>int2</type>
       </para>
       <para>
@@ -1204,28 +1216,6 @@
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>attndims</structfield> <type>int4</type>
-      </para>
-      <para>
-       Number of dimensions, if the column is an array type; otherwise 0.
-       (Presently, the number of dimensions of an array is not enforced,
-       so any nonzero value effectively means <quote>it's an array</quote>.)
-      </para></entry>
-     </row>
-
-     <row>
-      <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>attcacheoff</structfield> <type>int4</type>
-      </para>
-      <para>
-       Always -1 in storage, but when loaded into a row descriptor
-       in memory this might be updated to cache the offset of the attribute
-       within the row
-      </para></entry>
-     </row>
-
-     <row>
-      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>atttypmod</structfield> <type>int4</type>
       </para>
       <para>
@@ -1234,6 +1224,17 @@
        length of a <type>varchar</type> column).  It is passed to
        type-specific input functions and length coercion functions.
        The value will generally be -1 for types that do not need <structfield>atttypmod</structfield>.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>attndims</structfield> <type>int2</type>
+      </para>
+      <para>
+       Number of dimensions, if the column is an array type; otherwise 0.
+       (Presently, the number of dimensions of an array is not enforced,
+       so any nonzero value effectively means <quote>it's an array</quote>.)
       </para></entry>
      </row>
 
@@ -1287,7 +1288,7 @@
        <structfield>attnotnull</structfield> <type>bool</type>
       </para>
       <para>
-       This represents a not-null constraint.
+       This column has a (possibly invalid) not-null constraint.
       </para></entry>
      </row>
 
@@ -1334,8 +1335,10 @@
       </para>
       <para>
        If a zero byte (<literal>''</literal>), then not a generated column.
-       Otherwise, <literal>s</literal> = stored.  (Other values might be added
-       in the future.)
+       Otherwise, <literal>s</literal> = stored, <literal>v</literal> =
+       virtual.  A stored generated column is physically stored like a normal
+       column.  A virtual generated column is physically stored as a null
+       value, with the actual value being computed at run time.
       </para></entry>
      </row>
 
@@ -1362,7 +1365,7 @@
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>attinhcount</structfield> <type>int4</type>
+       <structfield>attinhcount</structfield> <type>int2</type>
       </para>
       <para>
        The number of direct ancestors this column has.  A column with a
@@ -1378,6 +1381,23 @@
       <para>
        The defined collation of the column, or zero if the column is
        not of a collatable data type
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>attstattarget</structfield> <type>int2</type>
+      </para>
+      <para>
+       <structfield>attstattarget</structfield> controls the level of detail
+       of statistics accumulated for this column by
+       <link linkend="sql-analyze"><command>ANALYZE</command></link>.
+       A zero value indicates that no statistics should be collected.
+       A null value says to use the system default statistics target.
+       The exact meaning of positive values is data type-dependent.
+       For scalar data types, <structfield>attstattarget</structfield>
+       is both the target number of <quote>most common values</quote>
+       to collect, and the target number of histogram bins to create.
       </para></entry>
      </row>
 
@@ -1590,7 +1610,7 @@
        <structfield>rolpassword</structfield> <type>text</type>
       </para>
       <para>
-       Password (possibly encrypted); null if none. The format depends
+       Encrypted password; null if none. The format depends
        on the form of encryption used.
       </para></entry>
      </row>
@@ -1617,6 +1637,15 @@
    will store the md5 hash of <literal>xyzzyjoe</literal>.
   </para>
 
+  <warning>
+   <para>
+    Support for MD5-encrypted passwords is deprecated and will be removed in a
+    future release of <productname>PostgreSQL</productname>.  Refer to
+    <xref linkend="auth-password"/> for details about migrating to another
+    password type.
+   </para>
+  </warning>
+
   <para>
    If the password is encrypted with SCRAM-SHA-256, it has the format:
 <synopsis>
@@ -1625,11 +1654,6 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
    where <replaceable>salt</replaceable>, <replaceable>StoredKey</replaceable> and
    <replaceable>ServerKey</replaceable> are in Base64 encoded format. This format is
    the same as that specified by <ulink url="https://datatracker.ietf.org/doc/html/rfc5803">RFC 5803</ulink>.
-  </para>
-
-  <para>
-    A password that does not follow either of those formats is assumed to be
-    unencrypted.
   </para>
  </sect1>
 
@@ -1671,6 +1695,15 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
     <tbody>
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>oid</structfield> <type>oid</type>
+      </para>
+      <para>
+       Row identifier
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>roleid</structfield> <type>oid</type>
        (references <link linkend="catalog-pg-authid"><structname>pg_authid</structname></link>.<structfield>oid</structfield>)
       </para>
@@ -1706,6 +1739,27 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       <para>
        True if <structfield>member</structfield> can grant membership in
        <structfield>roleid</structfield> to others
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>inherit_option</structfield> <type>bool</type>
+      </para>
+      <para>
+       True if the member automatically inherits the privileges of the
+       granted role
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>set_option</structfield> <type>bool</type>
+      </para>
+      <para>
+       True if the member can
+       <link linkend="sql-set-role"><command>SET ROLE</command></link>
+       to the granted role
       </para></entry>
      </row>
     </tbody>
@@ -1925,7 +1979,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       </para>
       <para>
        The OID of the data type that corresponds to this table's row type,
-       if any; zero for indexes, sequences, and toast tables, which have
+       if any; zero for indexes, sequences, and TOAST tables, which have
        no <structname>pg_type</structname> entry
       </para></entry>
      </row>
@@ -1957,9 +2011,13 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        (references <link linkend="catalog-pg-am"><structname>pg_am</structname></link>.<structfield>oid</structfield>)
       </para>
       <para>
-       If this is a table or an index, the access method used (heap,
-       B-tree, hash, etc.); otherwise zero (zero occurs for sequences,
-       as well as relations without storage, such as views)
+       The access method used to access this table or index.
+       Not meaningful if the relation is a sequence or
+       has no on-disk file,
+       except for partitioned tables, where, if set, it takes
+       precedence over <varname>default_table_access_method</varname>
+       when determining the access method to use for partitions created
+       when one is not specified in the creation command.
       </para></entry>
      </row>
 
@@ -2033,6 +2091,27 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>relallfrozen</structfield> <type>int4</type>
+      </para>
+      <para>
+       Number of pages that are marked all-frozen in the table's visibility
+       map.  This is only an estimate used for triggering autovacuums. It can
+       also be used along with <structfield>relallvisible</structfield> for
+       scheduling manual vacuums and tuning <link
+       linkend="runtime-config-vacuum-freezing">vacuum's freezing
+       behavior</link>.
+
+       It is updated by
+       <link linkend="sql-vacuum"><command>VACUUM</command></link>,
+       <link linkend="sql-analyze"><command>ANALYZE</command></link>,
+       and a few DDL commands such as
+       <link linkend="sql-createindex"><command>CREATE INDEX</command></link>.
+      </para></entry>
+     </row>
+
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>reltoastrelid</structfield> <type>oid</type>
        (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>oid</structfield>)
       </para>
@@ -2087,7 +2166,8 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        <literal>c</literal> = composite type,
        <literal>f</literal> = foreign table,
        <literal>p</literal> = partitioned table,
-       <literal>I</literal> = partitioned index
+       <literal>I</literal> = partitioned index,
+       <literal>g</literal> = property graph
       </para></entry>
      </row>
 
@@ -2350,9 +2430,9 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        <structfield>collprovider</structfield> <type>char</type>
       </para>
       <para>
-       Provider of the collation: <literal>d</literal> = database
-       default, <literal>c</literal> = libc, <literal>i</literal> = icu
-      </para></entry>
+       Provider of the collation: <literal>d</literal> = database default,
+       <literal>b</literal> = builtin, <literal>c</literal> = libc,
+       <literal>i</literal> = icu </para></entry>
      </row>
 
      <row>
@@ -2379,7 +2459,10 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        <structfield>collcollate</structfield> <type>text</type>
       </para>
       <para>
-       <symbol>LC_COLLATE</symbol> for this collation object
+       <symbol>LC_COLLATE</symbol> for this collation object. If the provider is
+       not <literal>libc</literal>, <structfield>collcollate</structfield> is
+       <literal>NULL</literal> and <structfield>colllocale</structfield> is
+       used instead.
       </para></entry>
      </row>
 
@@ -2388,16 +2471,32 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        <structfield>collctype</structfield> <type>text</type>
       </para>
       <para>
-       <symbol>LC_CTYPE</symbol> for this collation object
+       <symbol>LC_CTYPE</symbol> for this collation object. If the provider is
+       not <literal>libc</literal>, <structfield>collctype</structfield> is
+       <literal>NULL</literal> and <structfield>colllocale</structfield> is
+       used instead.
       </para></entry>
      </row>
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>colliculocale</structfield> <type>text</type>
+       <structfield>colllocale</structfield> <type>text</type>
       </para>
       <para>
-       ICU locale ID for this collation object
+       Collation provider locale name for this collation object. If the
+       provider is <literal>libc</literal>,
+       <structfield>colllocale</structfield> is <literal>NULL</literal>;
+       <structfield>collcollate</structfield> and
+       <structfield>collctype</structfield> are used instead.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>collicurules</structfield> <type>text</type>
+      </para>
+      <para>
+       ICU collation rules for this collation object
       </para></entry>
      </row>
 
@@ -2448,13 +2547,10 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
   </indexterm>
 
   <para>
-   The catalog <structname>pg_constraint</structname> stores check, primary
-   key, unique, foreign key, and exclusion constraints on tables.
+   The catalog <structname>pg_constraint</structname> stores check, not-null,
+   primary key, unique, foreign key, and exclusion constraints on tables.
    (Column constraints are not treated specially.  Every column constraint is
    equivalent to some table constraint.)
-   Not-null constraints are represented in the
-   <link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>
-   catalog, not here.
   </para>
 
   <para>
@@ -2516,6 +2612,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       <para>
        <literal>c</literal> = check constraint,
        <literal>f</literal> = foreign key constraint,
+       <literal>n</literal> = not-null constraint,
        <literal>p</literal> = primary key constraint,
        <literal>u</literal> = unique constraint,
        <literal>t</literal> = constraint trigger,
@@ -2543,11 +2640,19 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>conenforced</structfield> <type>bool</type>
+      </para>
+      <para>
+       Is the constraint enforced?
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>convalidated</structfield> <type>bool</type>
       </para>
       <para>
        Has the constraint been validated?
-       Currently, can be false only for foreign keys and CHECK constraints
       </para></entry>
      </row>
 
@@ -2655,7 +2760,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>coninhcount</structfield> <type>int4</type>
+       <structfield>coninhcount</structfield> <type>int2</type>
       </para>
       <para>
        The number of direct inheritance ancestors this constraint has.
@@ -2671,6 +2776,17 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       <para>
        This constraint is defined locally for the relation.  It is a
        non-inheritable constraint.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>conperiod</structfield> <type>bool</type>
+      </para>
+      <para>
+       This constraint is defined with <literal>WITHOUT OVERLAPS</literal>
+       (for primary keys and unique constraints) or <literal>PERIOD</literal>
+       (for foreign keys).
       </para></entry>
      </row>
 
@@ -2743,7 +2859,8 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        (references <link linkend="catalog-pg-operator"><structname>pg_operator</structname></link>.<structfield>oid</structfield>)
       </para>
       <para>
-       If an exclusion constraint, list of the per-column exclusion operators
+       If an exclusion constraint or <literal>WITHOUT OVERLAPS</literal>
+       primary key/unique constraint, list of the per-column exclusion operators.
       </para></entry>
      </row>
 
@@ -2973,9 +3090,8 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        <structfield>datlocprovider</structfield> <type>char</type>
       </para>
       <para>
-       Locale provider for this database: <literal>c</literal> = libc,
-       <literal>i</literal> = icu
-      </para></entry>
+       Locale provider for this database: <literal>b</literal> = builtin,
+       <literal>c</literal> = libc, <literal>i</literal> = icu </para></entry>
      </row>
 
      <row>
@@ -2997,6 +3113,19 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       <para>
        If false then no one can connect to this database.  This is
        used to protect the <literal>template0</literal> database from being altered.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>dathasloginevt</structfield> <type>bool</type>
+      </para>
+      <para>
+        Indicates that there are login event triggers defined for this database.
+        This flag is used to avoid extra lookups on the
+        <structname>pg_event_trigger</structname> table during each backend
+        startup.  This flag is used internally by <productname>PostgreSQL</productname>
+        and should not be manually altered or read for monitoring purposes.
       </para></entry>
      </row>
 
@@ -3058,7 +3187,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        <structfield>datcollate</structfield> <type>text</type>
       </para>
       <para>
-       LC_COLLATE for this database
+       LC_COLLATE for this database (ignored unless <structfield>datlocprovider</structfield> is <literal>c</literal>)
       </para></entry>
      </row>
 
@@ -3073,10 +3202,23 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>daticulocale</structfield> <type>text</type>
+       <structfield>datlocale</structfield> <type>text</type>
       </para>
       <para>
-       ICU locale ID for this database
+       Collation provider locale name for this database. If the
+       provider is <literal>libc</literal>,
+       <structfield>datlocale</structfield> is <literal>NULL</literal>;
+       <structfield>datcollate</structfield> and
+       <structfield>datctype</structfield> are used instead.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>daticurules</structfield> <type>text</type>
+      </para>
+      <para>
+       ICU collation rules for this database
       </para></entry>
      </row>
 
@@ -3241,7 +3383,8 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        <literal>S</literal> = sequence,
        <literal>f</literal> = function,
        <literal>T</literal> = type,
-       <literal>n</literal> = schema
+       <literal>n</literal> = schema,
+       <literal>L</literal> = large object
       </para></entry>
      </row>
 
@@ -3269,8 +3412,8 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
   </para>
 
   <para>
-   Note that when an ACL entry in another catalog is null, it is taken
-   to represent the hard-wired default privileges for its object,
+   Note that when an <acronym>ACL</acronym> entry in another catalog is null,
+   it is taken to represent the hard-wired default privileges for its object,
    <emphasis>not</emphasis> whatever might be in <structname>pg_default_acl</structname>
    at the moment.  <structname>pg_default_acl</structname> is only consulted during
    object creation.
@@ -4035,6 +4178,19 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        foreign-data wrapper, as well as options for foreign servers and user
        mappings using the foreign-data wrapper.  Zero if no validator
        is provided
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>fdwconnection</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-proc"><structname>pg_proc</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       References a connection function that is responsible for creating a
+       connection string for a subscription when the subscription uses a
+       server based on this foreign-data wrapper. Zero if this foreign-data
+       wrapper does not support subscription connections.
       </para></entry>
      </row>
 
@@ -5943,7 +6099,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        The function has no side effects.  No information about the
        arguments is conveyed except via the return value.  Any function
        that might throw an error depending on the values of its arguments
-       is not leak-proof.
+       is not leakproof.
       </para></entry>
      </row>
 
@@ -6191,6 +6347,498 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
  </sect1>
 
+ <sect1 id="catalog-pg-propgraph-element">
+  <title><structname>pg_propgraph_element</structname></title>
+
+  <indexterm zone="catalog-pg-propgraph-element">
+   <primary>pg_propgraph_element</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_propgraph_element</structname> stores
+   information about the vertices and edges of a property graph, collectively
+   called the elements of the property graph.
+  </para>
+
+  <table>
+   <title><structname>pg_propgraph_element</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>oid</structfield> <type>oid</type>
+      </para>
+      <para>
+       Row identifier
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgepgid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Reference to the property graph that this element belongs to
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgerelid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Reference to the table that contains the data for this property graph element
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgealias</structfield> <type>name</type>
+      </para>
+      <para>
+       The alias of the element.  This is a unique identifier for the element
+       within the graph.  It is set when the property graph is defined and
+       defaults to the name of the underlying element table.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgekind</structfield> <type>char</type>
+      </para>
+      <para>
+       <literal>v</literal> for a vertex, <literal>e</literal> for an edge
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgesrcvertexid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-propgraph-element"><structname>pg_propgraph_element</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       For an edge, a link to the source vertex.  (Zero for a vertex.)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgedestvertexid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-propgraph-element"><structname>pg_propgraph_element</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       For an edge, a link to the destination vertex.  (Zero for a vertex.)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgekey</structfield> <type>int2[]</type>
+       (references <link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>.<structfield>attnum</structfield>)
+      </para>
+      <para>
+       An array of column numbers in the table referenced by
+       <structname>pgerelid</structname> that defines the key to use for this
+       element table.  (This defaults to the primary key when the property
+       graph is created.)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgesrckey</structfield> <type>int2[]</type>
+       (references <link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>.<structfield>attnum</structfield>)
+      </para>
+      <para>
+       For an edge, an array of column numbers in the table referenced by
+       <structname>pgerelid</structname> that defines the source key to use
+       for this element table.  (Null for a vertex.)  The combination of
+       <structfield>pgesrckey</structfield> and
+       <structfield>pgesrcref</structfield> creates the link between the edge
+       and the source vertex.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgesrcref</structfield> <type>int2[]</type>
+       (references <link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>.<structfield>attnum</structfield>)
+      </para>
+      <para>
+       For an edge, an array of column numbers in the table reached via
+       <structname>pgesrcvertexid</structname>.  (Null for a vertex.)  The
+       combination of <structfield>pgesrckey</structfield> and
+       <structfield>pgesrcref</structfield> creates the link between the edge
+       and the source vertex.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgesrceqop</structfield> <type>oid[]</type>
+       (references <link linkend="catalog-pg-operator"><structname>pg_operator</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       For an edge, an array of equality operators for
+       <structfield>pgesrcref</structfield> =
+       <structfield>pgesrckey</structfield> comparison. (Null for a vertex.)
+       </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgedestkey</structfield> <type>int2[]</type>
+       (references <link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>.<structfield>attnum</structfield>)
+      </para>
+      <para>
+       For an edge, an array of column numbers in the table referenced by
+       <structname>pgerelid</structname> that defines the destination key to use
+       for this element table.  (Null for a vertex.)  The combination of
+       <structfield>pgedestkey</structfield> and
+       <structfield>pgedestref</structfield> creates the link between the edge
+       and the destination vertex.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgedestref</structfield> <type>int2[]</type>
+       (references <link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>.<structfield>attnum</structfield>)
+      </para>
+      <para>
+       For an edge, an array of column numbers in the table reached via
+       <structname>pgedestvertexid</structname>.  (Null for a vertex.)  The
+       combination of <structfield>pgedestkey</structfield> and
+       <structfield>pgedestref</structfield> creates the link between the edge
+       and the destination vertex.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgedesteqop</structfield> <type>oid[]</type>
+       (references <link linkend="catalog-pg-operator"><structname>pg_operator</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       For an edge, an array of equality operators for
+       <structfield>pgedestref</structfield> =
+       <structfield>pgedestkey</structfield> comparison. (Null for a vertex.)
+       </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="catalog-pg-propgraph-element-label">
+  <title><structname>pg_propgraph_element_label</structname></title>
+
+  <indexterm zone="catalog-pg-propgraph-element-label">
+   <primary>pg_propgraph_element_label</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_propgraph_element_label</structname> stores
+   information about which labels apply to which elements.
+  </para>
+
+  <table>
+   <title><structname>pg_propgraph_element_label</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>oid</structfield> <type>oid</type>
+      </para>
+      <para>
+       Row identifier
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgellabelid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-propgraph-label"><structname>pg_propgraph_label</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Reference to the label
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgelelid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-propgraph-element"><structname>pg_propgraph_element</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Reference to the element
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="catalog-pg-propgraph-label">
+  <title><structname>pg_propgraph_label</structname></title>
+
+  <indexterm zone="catalog-pg-propgraph-label">
+   <primary>pg_propgraph_label</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_propgraph_label</structname> stores
+   information about the labels in a property graph.
+  </para>
+
+  <table>
+   <title><structname>pg_propgraph_label</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>oid</structfield> <type>oid</type>
+      </para>
+      <para>
+       Row identifier
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pglpgid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Reference to the property graph that this label belongs to
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgllabel</structfield> <type>name</type>
+      </para>
+      <para>
+       The name of the label.  This is unique among the labels in a graph.
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="catalog-pg-propgraph-label-property">
+  <title><structname>pg_propgraph_label_property</structname></title>
+
+  <indexterm zone="catalog-pg-propgraph-label-property">
+   <primary>pg_propgraph_label_property</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_propgraph_label_property</structname> stores
+   information about the properties in a property graph that are specific to a
+   label.  In particular, this stores the expression that defines the
+   property.
+  </para>
+
+  <table>
+   <title><structname>pg_propgraph_label_property</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>oid</structfield> <type>oid</type>
+      </para>
+      <para>
+       Row identifier
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>plppropid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-propgraph-property"><structname>pg_propgraph_property</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Reference to the property
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>plpellabelid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-propgraph-element-label"><structname>pg_propgraph_element_label</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Reference to the label (indirectly via
+       <structname>pg_propgraph_element_label</structname>, which then links
+       to <structname>pg_propgraph_label</structname>)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>plpexpr</structfield> <type>pg_node_tree</type>
+      </para>
+      <para>
+       Expression tree (in <function>nodeToString()</function> representation)
+       for the property's definition.  The expression references the table
+       reached via <structname>pg_propgraph_element_label</structname> and
+       <structname>pg_propgraph_element</structname>.
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="catalog-pg-propgraph-property">
+  <title><structname>pg_propgraph_property</structname></title>
+
+  <indexterm zone="catalog-pg-propgraph-property">
+   <primary>pg_propgraph_property</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_propgraph_property</structname> stores
+   information about the properties in a property graph.  This only stores
+   information that applies to a property throughout the graph, independent of
+   what label or element it is on.  Additional information, including the
+   actual expressions that define the properties are in the catalog <link
+   linkend="catalog-pg-propgraph-label-property"><structname>pg_propgraph_label_property</structname></link>.
+  </para>
+
+  <table>
+   <title><structname>pg_propgraph_property</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>oid</structfield> <type>oid</type>
+      </para>
+      <para>
+       Row identifier
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgppgid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Reference to the property graph that this property belongs to
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgpname</structfield> <type>name</type>
+      </para>
+      <para>
+       The name of the property.  This is unique among the properties in a
+       graph.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgptypid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-type"><structname>pg_type</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       The data type of this property.  (This is required to be fixed for a
+       given property in a property graph, even if the property is defined
+       multiple times in different elements and labels.)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgptypmod</structfield> <type>int4</type>
+      </para>
+      <para>
+      <literal>typmod</literal> to be applied to the data type of this property.
+      (This is required to be fixed for a given property in a property graph,
+      even if the property is defined multiple times in different elements and
+      labels.)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pgpcollation</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-collation"><structname>pg_collation</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       The defined collation of this property, or zero if the property is not of
+       a collatable data type.  (This is required to be fixed for a given
+       property in a property graph, even if the property is defined multiple
+       times in different elements and labels.)
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
  <sect1 id="catalog-pg-publication">
   <title><structname>pg_publication</structname></title>
 
@@ -6259,6 +6907,16 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>puballsequences</structfield> <type>bool</type>
+      </para>
+      <para>
+       If true, this publication automatically includes all sequences
+       in the database, including any that will be created in the future.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>pubinsert</structfield> <type>bool</type>
       </para>
       <para>
@@ -6305,6 +6963,20 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        If true, operations on a leaf partition are replicated using the
        identity and schema of its topmost partitioned ancestor mentioned in the
        publication instead of its own.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pubgencols</structfield> <type>char</type>
+      </para>
+      <para>
+       Controls how to handle generated column replication when there is no
+       publication column list:
+       <literal>n</literal> = generated columns in the tables associated with
+       the publication should not be replicated,
+       <literal>s</literal> = stored generated columns in the tables associated
+       with the publication should be replicated.
       </para></entry>
      </row>
     </tbody>
@@ -6427,7 +7099,17 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>oid</structfield>)
       </para>
       <para>
-       Reference to relation
+       Reference to table
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+      <structfield>prexcept</structfield> <type>bool</type>
+      </para>
+      <para>
+       True if the table is excluded from the publication. See
+       <link linkend="sql-createpublication-params-for-except-table"><literal>EXCEPT</literal></link>.
       </para></entry>
      </row>
 
@@ -6532,6 +7214,60 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       </para>
       <para>
        OID of the subtype's operator class used for range comparisons
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>rngconstruct2</structfield> <type>regproc</type>
+       (references <link linkend="catalog-pg-proc"><structname>pg_proc</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       OID of the 2-argument range constructor function (lower and upper)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>rngconstruct3</structfield> <type>regproc</type>
+       (references <link linkend="catalog-pg-proc"><structname>pg_proc</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       OID of the 3-argument range constructor function (lower, upper, and
+       flags)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>rngmltconstruct0</structfield> <type>regproc</type>
+       (references <link linkend="catalog-pg-proc"><structname>pg_proc</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       OID of the 0-argument multirange constructor function (constructs empty
+       range)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>rngmltconstruct1</structfield> <type>regproc</type>
+       (references <link linkend="catalog-pg-proc"><structname>pg_proc</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       OID of the 1-argument multirange constructor function (constructs
+       multirange from single range, also used as cast function)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>rngmltconstruct2</structfield> <type>regproc</type>
+       (references <link linkend="catalog-pg-proc"><structname>pg_proc</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       OID of the 2-argument multirange constructor function (constructs
+       multirange from array of ranges)
       </para></entry>
      </row>
 
@@ -7087,10 +7823,21 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
      <listitem>
       <para>
        The referenced object (which must be a role) is mentioned in the
-       ACL (access control list, i.e., privileges list) of the
+       <acronym>ACL</acronym> of the
        dependent object.  (A <symbol>SHARED_DEPENDENCY_ACL</symbol> entry is
        not made for the owner of the object, since the owner will have
        a <symbol>SHARED_DEPENDENCY_OWNER</symbol> entry anyway.)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><symbol>SHARED_DEPENDENCY_INITACL</symbol> (<literal>i</literal>)</term>
+     <listitem>
+      <para>
+       The referenced object (which must be a role) is mentioned in a
+       <link linkend="catalog-pg-init-privs"><structname>pg_init_privs</structname></link>
+       entry for the dependent object.
       </para>
      </listitem>
     </varlistentry>
@@ -7578,23 +8325,6 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>stxstattarget</structfield> <type>int4</type>
-      </para>
-      <para>
-       <structfield>stxstattarget</structfield> controls the level of detail
-       of statistics accumulated for this statistics object by
-       <link linkend="sql-analyze"><command>ANALYZE</command></link>.
-       A zero value indicates that no statistics should be collected.
-       A negative value says to use the maximum of the statistics targets of
-       the referenced columns, if set, or the system default statistics target.
-       Positive values of <structfield>stxstattarget</structfield>
-       determine the target number of <quote>most common values</quote>
-       to collect.
-      </para></entry>
-     </row>
-
-     <row>
-      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>stxkeys</structfield> <type>int2vector</type>
        (references <link linkend="catalog-pg-attribute"><structname>pg_attribute</structname></link>.<structfield>attnum</structfield>)
       </para>
@@ -7603,6 +8333,23 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        covered by this statistics object;
        for example a value of <literal>1 3</literal> would
        mean that the first and the third table columns are covered
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>stxstattarget</structfield> <type>int2</type>
+      </para>
+      <para>
+       <structfield>stxstattarget</structfield> controls the level of detail
+       of statistics accumulated for this statistics object by
+       <link linkend="sql-analyze"><command>ANALYZE</command></link>.
+       A zero value indicates that no statistics should be collected.
+       A null value says to use the maximum of the statistics targets of
+       the referenced columns, if set, or the system default statistics target.
+       Positive values of <structfield>stxstattarget</structfield>
+       determine the target number of <quote>most common values</quote>
+       to collect.
       </para></entry>
      </row>
 
@@ -7832,7 +8579,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
       </para>
       <para>
        Finish LSN of the transaction whose changes are to be skipped, if a valid
-       LSN; otherwise <literal>0/0</literal>.
+       LSN; otherwise <literal>0/0000000</literal>.
       </para></entry>
      </row>
 
@@ -7876,11 +8623,17 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>substream</structfield> <type>bool</type>
+       <structfield>substream</structfield> <type>char</type>
       </para>
       <para>
-       If true, the subscription will allow streaming of in-progress
-       transactions
+       Controls how to handle the streaming of in-progress transactions:
+       <literal>f</literal> = disallow streaming of in-progress transactions,
+       <literal>t</literal> = spill the changes of in-progress transactions to
+       disk and apply at once after the transaction is committed on the
+       publisher and received by the subscriber,
+       <literal>p</literal> = apply changes directly using a parallel apply
+       worker if available (same as <literal>t</literal> if no worker is
+       available)
       </para></entry>
      </row>
 
@@ -7908,10 +8661,88 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>subpasswordrequired</structfield> <type>bool</type>
+      </para>
+      <para>
+       If true, the subscription will be required to specify a password
+       for authentication
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>subrunasowner</structfield> <type>bool</type>
+      </para>
+      <para>
+       If true, the subscription will be run with the permissions
+       of the subscription owner
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>subfailover</structfield> <type>bool</type>
+      </para>
+      <para>
+       If true, the associated replication slots (i.e. the main slot and the
+       table synchronization slots) in the upstream database are enabled to be
+       synchronized to the standbys
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>subretaindeadtuples</structfield> <type>bool</type>
+      </para>
+      <para>
+       If true, the detection of <xref linkend="conflict-update-deleted"/> is
+       enabled and the information (e.g., dead tuples, commit timestamps, and
+       origins) on the subscriber that is useful for conflict detection is
+       retained.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>submaxretention</structfield> <type>int4</type>
+      </para>
+      <para>
+       The maximum duration (in milliseconds) for which information (e.g., dead
+       tuples, commit timestamps, and origins) useful for conflict detection can
+       be retained.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>subretentionactive</structfield> <type>bool</type>
+      </para>
+      <para>
+       The retention status of information (e.g., dead tuples, commit
+       timestamps, and origins) useful for conflict detection. True if
+       <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
+       is enabled, and the retention duration has not exceeded
+       <link linkend="sql-createsubscription-params-with-max-retention-duration"><literal>max_retention_duration</literal></link>,
+       when defined.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>subserver</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-foreign-server"><structname>pg_foreign_server</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Foreign server to use for the connection string. Zero if <structfield>subconninfo</structfield> is nonnull.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>subconninfo</structfield> <type>text</type>
       </para>
       <para>
-       Connection string to the upstream database
+       Connection string to the upstream database. <literal>NULL</literal> if <structfield>subserver</structfield> is nonzero.
       </para></entry>
      </row>
 
@@ -7938,12 +8769,36 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>subwalrcvtimeout</structfield> <type>text</type>
+      </para>
+      <para>
+       The <varname>wal_receiver_timeout</varname>
+       setting for the subscription's workers to use
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
        <structfield>subpublications</structfield> <type>text[]</type>
       </para>
       <para>
        Array of subscribed publication names. These reference
        publications defined in the upstream database. For more on publications
        see <xref linkend="logical-replication-publication"/>.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>suborigin</structfield> <type>text</type>
+      </para>
+      <para>
+       The origin value must be either <literal>none</literal> or
+       <literal>any</literal>. The default is <literal>any</literal>.
+       If <literal>none</literal>, the subscription will request the publisher
+       to only send changes that don't have an origin. If
+       <literal>any</literal>, the publisher sends changes regardless of their
+       origin.
       </para></entry>
      </row>
     </tbody>
@@ -7959,16 +8814,19 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
   </indexterm>
 
   <para>
-   The catalog <structname>pg_subscription_rel</structname> contains the
-   state for each replicated relation in each subscription.  This is a
-   many-to-many mapping.
+   The catalog <structname>pg_subscription_rel</structname> stores the
+   state of each replicated table and sequence for each subscription.  This
+   is a many-to-many mapping.
   </para>
 
   <para>
-   This catalog only contains tables known to the subscription after running
-   either <link linkend="sql-createsubscription"><command>CREATE SUBSCRIPTION</command></link> or
-   <link linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION ... REFRESH
-   PUBLICATION</command></link>.
+   This catalog contains tables and sequences known to the subscription
+   after running:
+   <link linkend="sql-createsubscription"><command>CREATE SUBSCRIPTION</command></link>,
+   <link linkend="sql-altersubscription-params-refresh-publication">
+   <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>, or
+   <link linkend="sql-altersubscription-params-refresh-sequences">
+   <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link>.
   </para>
 
   <table>
@@ -8002,7 +8860,7 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>oid</structfield>)
       </para>
       <para>
-       Reference to relation
+       Reference to table or sequence
       </para></entry>
      </row>
 
@@ -8011,12 +8869,20 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
        <structfield>srsubstate</structfield> <type>char</type>
       </para>
       <para>
-       State code:
+       State code for the table or sequence.
+      </para>
+      <para>
+       State codes for tables:
        <literal>i</literal> = initialize,
        <literal>d</literal> = data is being copied,
        <literal>f</literal> = finished table copy,
        <literal>s</literal> = synchronized,
        <literal>r</literal> = ready (normal replication)
+      </para>
+      <para>
+       State codes for sequences:
+       <literal>i</literal> = initialize,
+       <literal>r</literal> = ready
       </para></entry>
      </row>
 

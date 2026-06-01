@@ -39,6 +39,8 @@ these required items, the cluster configuration files
 <table tocentry="1" id="pgdata-contents-table">
 <title>Contents of <varname>PGDATA</varname></title>
 <tgroup cols="2">
+ <colspec colname="col1" colwidth="1*"/>
+ <colspec colname="col2" colwidth="2*"/>
 <thead>
 <row>
 <entry>
@@ -202,7 +204,7 @@ these files are named after the table or index's <firstterm>filenode</firstterm>
 which can be found in <structname>pg_class</structname>.<structfield>relfilenode</structfield>. But
 for temporary relations, the file name is of the form
 <literal>t<replaceable>BBB</replaceable>_<replaceable>FFF</replaceable></literal>, where <replaceable>BBB</replaceable>
-is the backend ID of the backend which created the file, and <replaceable>FFF</replaceable>
+is the process number of the backend which created the file, and <replaceable>FFF</replaceable>
 is the filenode number.  In either case, in addition to the main file (a/k/a
 main fork), each table and index has a <firstterm>free space map</firstterm> (see <xref
 linkend="storage-fsm"/>), which stores information about free space available in
@@ -743,6 +745,8 @@ There are five parts to each page.
 <title>Overall Page Layout</title>
 <titleabbrev>Page Layout</titleabbrev>
 <tgroup cols="2">
+ <colspec colname="col1" colwidth="1*"/>
+ <colspec colname="col2" colwidth="2*"/>
 <thead>
 <row>
 <entry>
@@ -1064,7 +1068,7 @@ data. Empty in ordinary tables.</entry>
   fixed width field, then all the bytes are simply placed. If it's a
   variable length field (attlen = -1) then it's a bit more complicated.
   All variable-length data types share the common header structure
-  <type>struct varlena</type>, which includes the total length of the stored
+  <type>varlena</type>, which includes the total length of the stored
   value and some flag bits.  Depending on the flags, the data can be either
   inline or in a <acronym>TOAST</acronym> table;
   it might be compressed, too (see <xref linkend="storage-toast"/>).
@@ -1097,8 +1101,10 @@ data. Empty in ordinary tables.</entry>
   <itemizedlist>
    <listitem>
     <para>
-     The update does not modify any columns referenced by the table's
-     indexes, including expression and partial indexes.
+     The update does not modify any columns referenced by the table's indexes,
+     not including summarizing indexes.  The only summarizing index method in
+     the core <productname>PostgreSQL</productname> distribution is <link
+     linkend="brin">BRIN</link>.
      </para>
    </listitem>
    <listitem>
@@ -1114,30 +1120,35 @@ data. Empty in ordinary tables.</entry>
   <itemizedlist>
    <listitem>
     <para>
-     New index entries are not needed to represent updated rows.
+     New index entries are not needed to represent updated rows, however,
+     summary indexes may still need to be updated.
     </para>
    </listitem>
    <listitem>
     <para>
-     Old versions of updated rows can be completely removed during normal
-     operation, including <command>SELECT</command>s, instead of requiring
-     periodic vacuum operations.  (This is possible because indexes
-     do not reference their <link linkend="storage-page-layout">page
-     item identifiers</link>.)
+     When a row is updated multiple times, row versions other than the oldest
+     and the newest can be completely removed during normal operation,
+     including <command>SELECT</command>s, instead of requiring periodic vacuum
+     operations.  (Indexes always refer to the
+     <link linkend="storage-page-layout">page item identifier</link> of the
+     original row version. The tuple data associated with that row version
+     is removed, and its item identifier is converted to a redirect that
+     points to the oldest version that may still be visible to some concurrent
+     transaction. Intermediate row versions that are no longer visible to
+     anyone are completely removed, and the associated page item identifiers
+     are made available for reuse.)
     </para>
    </listitem>
   </itemizedlist>
  </para>
 
  <para>
-  In summary, heap-only tuple updates can only be created
-  if columns used by indexes are not updated.  You can
-  increase the likelihood of sufficient page space for
+  You can increase the likelihood of sufficient page space for
   <acronym>HOT</acronym> updates by decreasing a table's <link
-  linkend="reloption-fillfactor"><literal>fillfactor</literal></link>.
-  If you don't, <acronym>HOT</acronym> updates will still happen because
-  new rows will naturally migrate to new pages and existing pages with
-  sufficient free space for new row versions.  The system view <link
+  linkend="reloption-fillfactor"><literal>fillfactor</literal></link>.  If you
+  don't, <acronym>HOT</acronym> updates will still happen because new rows
+  will naturally migrate to new pages and existing pages with sufficient free
+  space for new row versions.  The system view <link
   linkend="monitoring-pg-stat-all-tables-view">pg_stat_all_tables</link>
   allows monitoring of the occurrence of HOT and non-HOT updates.
  </para>

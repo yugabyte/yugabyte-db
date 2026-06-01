@@ -5,8 +5,10 @@
 
 #include "btree_gist.h"
 #include "btree_utils_num.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/inet.h"
+#include "utils/rel.h"
+#include "utils/sortsupport.h"
 
 typedef struct
 {
@@ -15,9 +17,7 @@ typedef struct
 	char		pad[4];			/* make struct size = sizeof(gbtreekey16) */
 } macKEY;
 
-/*
-** OID ops
-*/
+/* GiST support functions */
 PG_FUNCTION_INFO_V1(gbt_macad_compress);
 PG_FUNCTION_INFO_V1(gbt_macad_fetch);
 PG_FUNCTION_INFO_V1(gbt_macad_union);
@@ -25,6 +25,7 @@ PG_FUNCTION_INFO_V1(gbt_macad_picksplit);
 PG_FUNCTION_INFO_V1(gbt_macad_consistent);
 PG_FUNCTION_INFO_V1(gbt_macad_penalty);
 PG_FUNCTION_INFO_V1(gbt_macad_same);
+PG_FUNCTION_INFO_V1(gbt_macaddr_sortsupport);
 
 
 static bool
@@ -88,10 +89,8 @@ static const gbtree_ninfo tinfo =
 
 
 /**************************************************
- * macaddr ops
+ * GiST support functions
  **************************************************/
-
-
 
 static uint64
 mac_2_uint64(macaddr *m)
@@ -104,8 +103,6 @@ mac_2_uint64(macaddr *m)
 		res += (((uint64) mi[i]) << ((uint64) ((5 - i) * 8)));
 	return res;
 }
-
-
 
 Datum
 gbt_macad_compress(PG_FUNCTION_ARGS)
@@ -129,8 +126,9 @@ gbt_macad_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	macaddr    *query = (macaddr *) PG_GETARG_POINTER(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	macKEY	   *kkk = (macKEY *) DatumGetPointer(entry->key);
 	GBT_NUMKEY_R key;
@@ -141,7 +139,7 @@ gbt_macad_consistent(PG_FUNCTION_ARGS)
 	key.lower = (GBT_NUMKEY *) &kkk->lower;
 	key.upper = (GBT_NUMKEY *) &kkk->upper;
 
-	PG_RETURN_BOOL(gbt_num_consistent(&key, (void *) query, &strategy,
+	PG_RETURN_BOOL(gbt_num_consistent(&key, query, &strategy,
 									  GIST_LEAF(entry), &tinfo, fcinfo->flinfo));
 }
 
@@ -153,7 +151,7 @@ gbt_macad_union(PG_FUNCTION_ARGS)
 	void	   *out = palloc0(sizeof(macKEY));
 
 	*(int *) PG_GETARG_POINTER(1) = sizeof(macKEY);
-	PG_RETURN_POINTER(gbt_num_union((void *) out, entryvec, &tinfo, fcinfo->flinfo));
+	PG_RETURN_POINTER(gbt_num_union(out, entryvec, &tinfo, fcinfo->flinfo));
 }
 
 
@@ -193,4 +191,27 @@ gbt_macad_same(PG_FUNCTION_ARGS)
 
 	*result = gbt_num_same((void *) b1, (void *) b2, &tinfo, fcinfo->flinfo);
 	PG_RETURN_POINTER(result);
+}
+
+static int
+gbt_macaddr_ssup_cmp(Datum x, Datum y, SortSupport ssup)
+{
+	macKEY	   *arg1 = (macKEY *) DatumGetPointer(x);
+	macKEY	   *arg2 = (macKEY *) DatumGetPointer(y);
+
+	/* for leaf items we expect lower == upper, so only compare lower */
+	return DatumGetInt32(DirectFunctionCall2(macaddr_cmp,
+											 MacaddrPGetDatum(&arg1->lower),
+											 MacaddrPGetDatum(&arg2->lower)));
+}
+
+Datum
+gbt_macaddr_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	ssup->comparator = gbt_macaddr_ssup_cmp;
+	ssup->ssup_extra = NULL;
+
+	PG_RETURN_VOID();
 }

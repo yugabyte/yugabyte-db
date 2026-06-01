@@ -1,9 +1,9 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Logical replication tests for schema publications
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -15,7 +15,7 @@ $node_publisher->start;
 
 # Create subscriber node
 my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
-$node_subscriber->init(allows_streaming => 'logical');
+$node_subscriber->init;
 $node_subscriber->start;
 
 # Test replication with publications created using FOR TABLES IN SCHEMA
@@ -63,7 +63,8 @@ $node_subscriber->safe_psql('postgres',
 );
 
 # Wait for initial table sync to finish
-$node_subscriber->wait_for_subscription_sync($node_publisher, 'tap_sub_schema');
+$node_subscriber->wait_for_subscription_sync($node_publisher,
+	'tap_sub_schema');
 
 # Check the schema table data is synced up
 my $result = $node_subscriber->safe_psql('postgres',

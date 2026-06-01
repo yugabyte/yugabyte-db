@@ -4,7 +4,7 @@
  *
  * Routines corresponding to database objects
  *
- * Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * -------------------------------------------------------------------------
  */
@@ -16,7 +16,6 @@
 #include "access/table.h"
 #include "catalog/dependency.h"
 #include "catalog/pg_database.h"
-#include "commands/dbcommands.h"
 #include "commands/seclabel.h"
 #include "sepgsql.h"
 #include "utils/builtins.h"

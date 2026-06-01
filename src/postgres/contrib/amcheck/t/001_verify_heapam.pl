@@ -1,21 +1,21 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 
 use Test::More;
 
-my ($node, $result);
+my $node;
 
 #
 # Test set-up
 #
 $node = PostgreSQL::Test::Cluster->new('test');
-$node->init;
+$node->init(no_data_checksums => 1);
 $node->append_conf('postgresql.conf', 'autovacuum=off');
 $node->start;
 $node->safe_psql('postgres', q(CREATE EXTENSION amcheck));
@@ -81,23 +81,10 @@ sub relation_filepath
 	my ($relname) = @_;
 
 	my $pgdata = $node->data_dir;
-	my $rel    = $node->safe_psql('postgres',
+	my $rel = $node->safe_psql('postgres',
 		qq(SELECT pg_relation_filepath('$relname')));
 	die "path not found for relation $relname" unless defined $rel;
 	return "$pgdata/$rel";
-}
-
-# Returns the fully qualified name of the toast table for the named relation
-sub get_toast_for
-{
-	my ($relname) = @_;
-
-	return $node->safe_psql(
-		'postgres', qq(
-		SELECT 'pg_toast.' || t.relname
-			FROM pg_catalog.pg_class c, pg_catalog.pg_class t
-			WHERE c.relname = '$relname'
-			  AND c.reltoastrelid = t.oid));
 }
 
 # (Re)create and populate a test table of the given name.
@@ -267,7 +254,7 @@ sub check_all_options_uncorrupted
 					for my $endblock (qw(NULL 0))
 					{
 						my $opts =
-						    "on_error_stop := $stop, "
+							"on_error_stop := $stop, "
 						  . "check_toast := $check_toast, "
 						  . "skip := $skip, "
 						  . "startblock := $startblock, "

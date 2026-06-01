@@ -3,7 +3,7 @@
  * sinvaladt.c
  *	  POSTGRES shared cache invalidation data manager.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,15 +17,15 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include "access/transam.h"
 #include "miscadmin.h"
-#include "storage/backendid.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
+#include "storage/procnumber.h"
 #include "storage/procsignal.h"
 #include "storage/shmem.h"
 #include "storage/sinvaladt.h"
 #include "storage/spin.h"
+#include "storage/subsystems.h"
 
 /* YB includes */
 #include "pg_yb_utils.h"
@@ -142,7 +142,6 @@ typedef struct ProcState
 {
 	/* procPid is zero in an inactive ProcState array entry. */
 	pid_t		procPid;		/* PID of backend, for signaling */
-	PGPROC	   *proc;			/* PGPROC of backend */
 	/* nextMsgNum is meaningless if procPid == 0 or resetState is true. */
 	int			nextMsgNum;		/* next message number to read */
 	bool		resetState;		/* backend needs to reset its state */
@@ -159,8 +158,8 @@ typedef struct ProcState
 
 	/*
 	 * Next LocalTransactionId to use for each idle backend slot.  We keep
-	 * this here because it is indexed by BackendId and it is convenient to
-	 * copy the value to and from local memory when MyBackendId is set. It's
+	 * this here because it is indexed by ProcNumber and it is convenient to
+	 * copy the value to and from local memory when MyProcNumber is set. It's
 	 * meaningless in an active ProcState entry.
 	 */
 	LocalTransactionId nextLXID;
@@ -175,8 +174,6 @@ typedef struct SISeg
 	int			minMsgNum;		/* oldest message still needed */
 	int			maxMsgNum;		/* next message number to be assigned */
 	int			nextThreshold;	/* # of messages to call SICleanupQueue */
-	int			lastBackend;	/* index of last active procState entry, +1 */
-	int			maxBackends;	/* size of procState array */
 
 	slock_t		msgnumLock;		/* spinlock protecting maxMsgNum */
 
@@ -186,77 +183,88 @@ typedef struct SISeg
 	SharedInvalidationMessage buffer[MAXNUMMESSAGES];
 
 	/*
-	 * Per-backend invalidation state info (has MaxBackends entries).
+	 * Per-backend invalidation state info.
+	 *
+	 * 'procState' has NumProcStateSlots entries, and is indexed by pgprocno.
+	 * 'numProcs' is the number of slots currently in use, and 'pgprocnos' is
+	 * a dense array of their indexes, to speed up scanning all in-use slots.
+	 *
+	 * 'pgprocnos' is largely redundant with ProcArrayStruct->pgprocnos, but
+	 * having our separate copy avoids contention on ProcArrayLock, and allows
+	 * us to track only the processes that participate in shared cache
+	 * invalidations.
 	 */
+	int			numProcs;
+	int		   *pgprocnos;
 	ProcState	procState[FLEXIBLE_ARRAY_MEMBER];
 } SISeg;
 
-struct SISeg *shmInvalBuffer;	/* pointer to the shared inval buffer */
+/*
+ * We reserve a slot for each possible ProcNumber, plus one for each
+ * possible auxiliary process type.  (This scheme assumes there is not
+ * more than one of any auxiliary process type at a time, except for
+ * IO workers.)
+ */
+#define NumProcStateSlots	(MaxBackends + NUM_AUXILIARY_PROCS)
+
+static SISeg *shmInvalBuffer;	/* pointer to the shared inval buffer */
+
+static void SharedInvalShmemRequest(void *arg);
+static void SharedInvalShmemInit(void *arg);
+
+const ShmemCallbacks SharedInvalShmemCallbacks = {
+	.request_fn = SharedInvalShmemRequest,
+	.init_fn = SharedInvalShmemInit,
+};
 
 
 static LocalTransactionId nextLocalTransactionId;
 
 
 /*
- * SInvalShmemSize --- return shared-memory space needed
+ * SharedInvalShmemRequest
+ *		Register shared memory needs for the SI message buffer
  */
-Size
-SInvalShmemSize(void)
+static void
+SharedInvalShmemRequest(void *arg)
 {
 	Size		size;
 
 	size = offsetof(SISeg, procState);
+	size = add_size(size, mul_size(sizeof(ProcState), NumProcStateSlots));	/* procState */
+	size = add_size(size, mul_size(sizeof(int), NumProcStateSlots));	/* pgprocnos */
 
-	/*
-	 * In Hot Standby mode, the startup process requests a procState array
-	 * slot using InitRecoveryTransactionEnvironment(). Even though
-	 * MaxBackends doesn't account for the startup process, it is guaranteed
-	 * to get a free slot. This is because the autovacuum launcher and worker
-	 * processes, which are included in MaxBackends, are not started in Hot
-	 * Standby mode.
-	 */
-	size = add_size(size, mul_size(sizeof(ProcState), MaxBackends));
-
-	return size;
+	ShmemRequestStruct(.name = "shmInvalBuffer",
+					   .size = size,
+					   .ptr = (void **) &shmInvalBuffer,
+		);
 }
 
-/*
- * CreateSharedInvalidationState
- *		Create and initialize the SI message buffer
- */
-void
-CreateSharedInvalidationState(void)
+static void
+SharedInvalShmemInit(void *arg)
 {
 	int			i;
-	bool		found;
 
-	/* Allocate space in shared memory */
-	shmInvalBuffer = (SISeg *)
-		ShmemInitStruct("shmInvalBuffer", SInvalShmemSize(), &found);
-	if (found)
-		return;
-
-	/* Clear message counters, save size of procState array, init spinlock */
+	/* Clear message counters, init spinlock */
 	shmInvalBuffer->minMsgNum = 0;
 	shmInvalBuffer->maxMsgNum = 0;
 	shmInvalBuffer->nextThreshold = CLEANUP_MIN;
-	shmInvalBuffer->lastBackend = 0;
-	shmInvalBuffer->maxBackends = MaxBackends;
 	SpinLockInit(&shmInvalBuffer->msgnumLock);
 
 	/* The buffer[] array is initially all unused, so we need not fill it */
 
 	/* Mark all backends inactive, and initialize nextLXID */
-	for (i = 0; i < shmInvalBuffer->maxBackends; i++)
+	for (i = 0; i < NumProcStateSlots; i++)
 	{
 		shmInvalBuffer->procState[i].procPid = 0;	/* inactive */
-		shmInvalBuffer->procState[i].proc = NULL;
 		shmInvalBuffer->procState[i].nextMsgNum = 0;	/* meaningless */
 		shmInvalBuffer->procState[i].resetState = false;
 		shmInvalBuffer->procState[i].signaled = false;
 		shmInvalBuffer->procState[i].hasMessages = false;
 		shmInvalBuffer->procState[i].nextLXID = InvalidLocalTransactionId;
 	}
+	shmInvalBuffer->numProcs = 0;
+	shmInvalBuffer->pgprocnos = (int *) &shmInvalBuffer->procState[i];
 }
 
 /*
@@ -266,59 +274,39 @@ CreateSharedInvalidationState(void)
 void
 SharedInvalBackendInit(bool sendOnly)
 {
-	int			index;
-	ProcState  *stateP = NULL;
+	ProcState  *stateP;
+	pid_t		oldPid;
 	SISeg	   *segP = shmInvalBuffer;
+
+	if (MyProcNumber < 0)
+		elog(ERROR, "MyProcNumber not set");
+	if (MyProcNumber >= NumProcStateSlots)
+		elog(PANIC, "unexpected MyProcNumber %d in SharedInvalBackendInit (max %d)",
+			 MyProcNumber, NumProcStateSlots);
+	stateP = &segP->procState[MyProcNumber];
 
 	/*
 	 * This can run in parallel with read operations, but not with write
-	 * operations, since SIInsertDataEntries relies on lastBackend to set
-	 * hasMessages appropriately.
+	 * operations, since SIInsertDataEntries relies on the pgprocnos array to
+	 * set hasMessages appropriately.
 	 */
 	LWLockAcquire(SInvalWriteLock, LW_EXCLUSIVE);
 
-	/* Look for a free entry in the procState array */
-	for (index = 0; index < segP->lastBackend; index++)
+	oldPid = stateP->procPid;
+	if (oldPid != 0)
 	{
-		if (segP->procState[index].procPid == 0)	/* inactive slot? */
-		{
-			stateP = &segP->procState[index];
-			break;
-		}
+		LWLockRelease(SInvalWriteLock);
+		elog(ERROR, "sinval slot for backend %d is already in use by process %d",
+			 MyProcNumber, (int) oldPid);
 	}
 
-	if (stateP == NULL)
-	{
-		if (segP->lastBackend < segP->maxBackends)
-		{
-			stateP = &segP->procState[segP->lastBackend];
-			Assert(stateP->procPid == 0);
-			segP->lastBackend++;
-		}
-		else
-		{
-			/*
-			 * out of procState slots: MaxBackends exceeded -- report normally
-			 */
-			MyBackendId = InvalidBackendId;
-			LWLockRelease(SInvalWriteLock);
-			ereport(FATAL,
-					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
-					 errmsg("sorry, too many clients already")));
-		}
-	}
-
-	MyBackendId = (stateP - &segP->procState[0]) + 1;
-
-	/* Advertise assigned backend ID in MyProc */
-	MyProc->backendId = MyBackendId;
+	shmInvalBuffer->pgprocnos[shmInvalBuffer->numProcs++] = MyProcNumber;
 
 	/* Fetch next local transaction ID into local memory */
 	nextLocalTransactionId = stateP->nextLXID;
 
 	/* mark myself active, with all extant messages already read */
 	stateP->procPid = MyProcPid;
-	stateP->proc = MyProc;
 	stateP->nextMsgNum = segP->maxMsgNum;
 	stateP->resetState = false;
 	stateP->signaled = false;
@@ -329,8 +317,6 @@ SharedInvalBackendInit(bool sendOnly)
 
 	/* register exit routine to mark my entry inactive at exit */
 	on_shmem_exit(CleanupInvalidationState, PointerGetDatum(segP));
-
-	elog(DEBUG4, "my backend ID is %d", MyBackendId);
 }
 
 /*
@@ -338,34 +324,38 @@ SharedInvalBackendInit(bool sendOnly)
  *		Mark the current backend as no longer active.
  */
 static void
-CleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
+YbCleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
 {
 	ProcState  *stateP;
 	int			i;
 
-	Assert(PointerIsValid(segP));
+	Assert(segP);
 
 	LWLockAcquire(SInvalWriteLock, LW_EXCLUSIVE);
 
-	stateP = &segP->procState[proc->backendId - 1];
+	stateP = &segP->procState[proc->vxid.procNumber];
 
-	/* Update next local transaction ID for next holder of this backendID */
+	/* Update next local transaction ID for next holder of this proc number */
 	stateP->nextLXID = nextLocalTransactionId;
 
 	/* Mark myself inactive */
 	stateP->procPid = 0;
-	stateP->proc = NULL;
 	stateP->nextMsgNum = 0;
 	stateP->resetState = false;
 	stateP->signaled = false;
 
-	/* Recompute index of last active backend */
-	for (i = segP->lastBackend; i > 0; i--)
+	for (i = segP->numProcs - 1; i >= 0; i--)
 	{
-		if (segP->procState[i - 1].procPid != 0)
+		if (segP->pgprocnos[i] == proc->vxid.procNumber)
+		{
+			if (i != segP->numProcs - 1)
+				segP->pgprocnos[i] = segP->pgprocnos[segP->numProcs - 1];
 			break;
+		}
 	}
-	segP->lastBackend = i;
+	if (i < 0)
+		elog(PANIC, "could not find entry in sinval array");
+	segP->numProcs--;
 
 	LWLockRelease(SInvalWriteLock);
 }
@@ -383,80 +373,20 @@ CleanupInvalidationState(int status, Datum arg)
 {
 	SISeg	   *segP = (SISeg *) DatumGetPointer(arg);
 
-	CleanupInvalidationStateInternal(segP, MyProc);
+	YbCleanupInvalidationStateInternal(segP, MyProc);
 }
 
 /*
- * CleanupInvalidationStateForProc
- *		Mark the current backend as no longer active.
+ * YbCleanupInvalidationStateForProc
+ *		Mark the given backend as no longer active.
  *
  * This function is called from reaper() when the parent is notified that its
  * child died unexpectedly.
  */
 void
-CleanupInvalidationStateForProc(PGPROC *proc)
+YbCleanupInvalidationStateForProc(PGPROC *proc)
 {
-	CleanupInvalidationStateInternal(shmInvalBuffer, proc);
-}
-
-/*
- * BackendIdGetProc
- *		Get the PGPROC structure for a backend, given the backend ID.
- *		The result may be out of date arbitrarily quickly, so the caller
- *		must be careful about how this information is used.  NULL is
- *		returned if the backend is not active.
- */
-PGPROC *
-BackendIdGetProc(int backendID)
-{
-	PGPROC	   *result = NULL;
-	SISeg	   *segP = shmInvalBuffer;
-
-	/* Need to lock out additions/removals of backends */
-	LWLockAcquire(SInvalWriteLock, LW_SHARED);
-
-	if (backendID > 0 && backendID <= segP->lastBackend)
-	{
-		ProcState  *stateP = &segP->procState[backendID - 1];
-
-		result = stateP->proc;
-	}
-
-	LWLockRelease(SInvalWriteLock);
-
-	return result;
-}
-
-/*
- * BackendIdGetTransactionIds
- *		Get the xid and xmin of the backend. The result may be out of date
- *		arbitrarily quickly, so the caller must be careful about how this
- *		information is used.
- */
-void
-BackendIdGetTransactionIds(int backendID, TransactionId *xid, TransactionId *xmin)
-{
-	SISeg	   *segP = shmInvalBuffer;
-
-	*xid = InvalidTransactionId;
-	*xmin = InvalidTransactionId;
-
-	/* Need to lock out additions/removals of backends */
-	LWLockAcquire(SInvalWriteLock, LW_SHARED);
-
-	if (backendID > 0 && backendID <= segP->lastBackend)
-	{
-		ProcState  *stateP = &segP->procState[backendID - 1];
-		PGPROC	   *proc = stateP->proc;
-
-		if (proc != NULL)
-		{
-			*xid = proc->xid;
-			*xmin = proc->xmin;
-		}
-	}
-
-	LWLockRelease(SInvalWriteLock);
+	YbCleanupInvalidationStateInternal(shmInvalBuffer, proc);
 }
 
 /*
@@ -530,9 +460,9 @@ SIInsertDataEntries(const SharedInvalidationMessage *data, int n)
 		 * these (unlocked) changes will be committed to memory before we exit
 		 * the function.
 		 */
-		for (i = 0; i < segP->lastBackend; i++)
+		for (i = 0; i < segP->numProcs; i++)
 		{
-			ProcState  *stateP = &segP->procState[i];
+			ProcState  *stateP = &segP->procState[segP->pgprocnos[i]];
 
 			stateP->hasMessages = true;
 		}
@@ -578,7 +508,7 @@ SIGetDataEntries(SharedInvalidationMessage *data, int datasize)
 	int			n;
 
 	segP = shmInvalBuffer;
-	stateP = &segP->procState[MyBackendId - 1];
+	stateP = &segP->procState[MyProcNumber];
 
 	/*
 	 * Before starting to take locks, do a quick, unlocked test to see whether
@@ -718,13 +648,14 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 	ProcState **yb_reset_candidates = NULL;
 	int			yb_num_reset_candidates = 0;
 
-	for (i = 0; i < segP->lastBackend; i++)
+	for (i = 0; i < segP->numProcs; i++)
 	{
-		ProcState  *stateP = &segP->procState[i];
+		ProcState  *stateP = &segP->procState[segP->pgprocnos[i]];
 		int			n = stateP->nextMsgNum;
 
-		/* Ignore if inactive or already in reset state */
-		if (stateP->procPid == 0 || stateP->resetState || stateP->sendOnly)
+		/* Ignore if already in reset state */
+		Assert(stateP->procPid != 0);
+		if (stateP->resetState || stateP->sendOnly)
 			continue;
 
 		/*
@@ -743,7 +674,7 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 			{
 				if (!yb_reset_candidates)
 				{
-					Size		sz = sizeof(ProcState *) * segP->lastBackend;
+					Size		sz = sizeof(ProcState *) * segP->numProcs;
 
 					yb_reset_candidates = (ProcState **) palloc(sz);
 				}
@@ -812,11 +743,8 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 	{
 		segP->minMsgNum -= MSGNUMWRAPAROUND;
 		segP->maxMsgNum -= MSGNUMWRAPAROUND;
-		for (i = 0; i < segP->lastBackend; i++)
-		{
-			/* we don't bother skipping inactive entries here */
-			segP->procState[i].nextMsgNum -= MSGNUMWRAPAROUND;
-		}
+		for (i = 0; i < segP->numProcs; i++)
+			segP->procState[segP->pgprocnos[i]].nextMsgNum -= MSGNUMWRAPAROUND;
 	}
 
 	/*
@@ -837,13 +765,13 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 	if (needSig)
 	{
 		pid_t		his_pid = needSig->procPid;
-		BackendId	his_backendId = (needSig - &segP->procState[0]) + 1;
+		ProcNumber	his_procNumber = (needSig - &segP->procState[0]);
 
 		needSig->signaled = true;
 		LWLockRelease(SInvalReadLock);
 		LWLockRelease(SInvalWriteLock);
 		elog(DEBUG4, "sending sinval catchup signal to PID %d", (int) his_pid);
-		SendProcSignal(his_pid, PROCSIG_CATCHUP_INTERRUPT, his_backendId);
+		SendProcSignal(his_pid, PROCSIG_CATCHUP_INTERRUPT, his_procNumber);
 		if (callerHasWriteLock)
 			LWLockAcquire(SInvalWriteLock, LW_EXCLUSIVE);
 	}
@@ -855,47 +783,6 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 	}
 }
 
-/*
- * SIResetAll
- *		Mark all active backends as "reset"
- *
- * Use this when we don't know what needs to be invalidated.  It's a
- * cluster-wide InvalidateSystemCaches().  This was a back-branch-only remedy
- * to avoid a WAL format change.
- *
- * The implementation is like SICleanupQueue(false, MAXNUMMESSAGES + 1), with
- * one addition.  SICleanupQueue() assumes minFree << MAXNUMMESSAGES, so it
- * assumes hasMessages==true for any backend it resets.  We're resetting even
- * fully-caught-up backends, so we set hasMessages.
- */
-void
-SIResetAll(void)
-{
-	SISeg	   *segP = shmInvalBuffer;
-	int			i;
-
-	LWLockAcquire(SInvalWriteLock, LW_EXCLUSIVE);
-	LWLockAcquire(SInvalReadLock, LW_EXCLUSIVE);
-
-	for (i = 0; i < segP->lastBackend; i++)
-	{
-		ProcState  *stateP = &segP->procState[i];
-
-		if (stateP->procPid == 0 || stateP->sendOnly)
-			continue;
-
-		/* Consuming the reset will update "nextMsgNum" and "signaled". */
-		stateP->resetState = true;
-		stateP->hasMessages = true;
-	}
-
-	segP->minMsgNum = segP->maxMsgNum;
-	segP->nextThreshold = CLEANUP_MIN;
-
-	LWLockRelease(SInvalReadLock);
-	LWLockRelease(SInvalWriteLock);
-}
-
 
 /*
  * GetNextLocalTransactionId --- allocate a new LocalTransactionId
@@ -903,11 +790,11 @@ SIResetAll(void)
  * We split VirtualTransactionIds into two parts so that it is possible
  * to allocate a new one without any contention for shared memory, except
  * for a bit of additional overhead during backend startup/shutdown.
- * The high-order part of a VirtualTransactionId is a BackendId, and the
+ * The high-order part of a VirtualTransactionId is a ProcNumber, and the
  * low-order part is a LocalTransactionId, which we assign from a local
  * counter.  To avoid the risk of a VirtualTransactionId being reused
- * within a short interval, successive procs occupying the same backend ID
- * slot should use a consecutive sequence of local IDs, which is implemented
+ * within a short interval, successive procs occupying the same PGPROC slot
+ * should use a consecutive sequence of local IDs, which is implemented
  * by copying nextLocalTransactionId as seen above.
  */
 LocalTransactionId

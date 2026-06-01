@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pg_checksums
 #
-# Copyright (c) 1998-2022, PostgreSQL Global Development Group
+# Copyright (c) 1998-2026, PostgreSQL Global Development Group
 #
 # src/bin/pg_checksums/Makefile
 #
@@ -36,7 +36,7 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_checksums$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f pg_checksums$(X) $(OBJS)
 	rm -rf tmp_check
 

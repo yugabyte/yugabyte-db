@@ -8,7 +8,7 @@
  * storage implementation and the details about individual types of
  * statistics.
  *
- * Copyright (c) 2001-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat_function.c
@@ -73,7 +73,7 @@ pgstat_init_function_usage(FunctionCallInfo fcinfo,
 						   PgStat_FunctionCallUsage *fcu)
 {
 	PgStat_EntryRef *entry_ref;
-	PgStat_BackendFunctionEntry *pending;
+	PgStat_FunctionCounts *pending;
 	bool		created_entry;
 
 	if (pgstat_track_functions <= fcinfo->flinfo->fn_stats)
@@ -121,16 +121,16 @@ pgstat_init_function_usage(FunctionCallInfo fcinfo,
 
 	pending = entry_ref->pending;
 
-	fcu->fs = &pending->f_counts;
+	fcu->fs = pending;
 
 	/* save stats for this function, later used to compensate for recursion */
-	fcu->save_f_total_time = pending->f_counts.f_total_time;
+	fcu->save_f_total_time = pending->total_time;
 
 	/* save current backend-wide total time */
 	fcu->save_total = total_func_time;
 
 	/* get clock time as of function start */
-	INSTR_TIME_SET_CURRENT(fcu->f_start);
+	INSTR_TIME_SET_CURRENT(fcu->start);
 }
 
 /*
@@ -146,56 +146,56 @@ void
 pgstat_end_function_usage(PgStat_FunctionCallUsage *fcu, bool finalize)
 {
 	PgStat_FunctionCounts *fs = fcu->fs;
-	instr_time	f_total;
-	instr_time	f_others;
-	instr_time	f_self;
+	instr_time	total;
+	instr_time	others;
+	instr_time	self;
 
 	/* stats not wanted? */
 	if (fs == NULL)
 		return;
 
 	/* total elapsed time in this function call */
-	INSTR_TIME_SET_CURRENT(f_total);
-	INSTR_TIME_SUBTRACT(f_total, fcu->f_start);
+	INSTR_TIME_SET_CURRENT(total);
+	INSTR_TIME_SUBTRACT(total, fcu->start);
 
 	/* self usage: elapsed minus anything already charged to other calls */
-	f_others = total_func_time;
-	INSTR_TIME_SUBTRACT(f_others, fcu->save_total);
-	f_self = f_total;
-	INSTR_TIME_SUBTRACT(f_self, f_others);
+	others = total_func_time;
+	INSTR_TIME_SUBTRACT(others, fcu->save_total);
+	self = total;
+	INSTR_TIME_SUBTRACT(self, others);
 
 	/* update backend-wide total time */
-	INSTR_TIME_ADD(total_func_time, f_self);
+	INSTR_TIME_ADD(total_func_time, self);
 
 	/*
-	 * Compute the new f_total_time as the total elapsed time added to the
-	 * pre-call value of f_total_time.  This is necessary to avoid
+	 * Compute the new total_time as the total elapsed time added to the
+	 * pre-call value of total_time.  This is necessary to avoid
 	 * double-counting any time taken by recursive calls of myself.  (We do
 	 * not need any similar kluge for self time, since that already excludes
 	 * any recursive calls.)
 	 */
-	INSTR_TIME_ADD(f_total, fcu->save_f_total_time);
+	INSTR_TIME_ADD(total, fcu->save_f_total_time);
 
 	/* update counters in function stats table */
 	if (finalize)
-		fs->f_numcalls++;
-	fs->f_total_time = f_total;
-	INSTR_TIME_ADD(fs->f_self_time, f_self);
+		fs->numcalls++;
+	fs->total_time = total;
+	INSTR_TIME_ADD(fs->self_time, self);
 }
 
 /*
  * Flush out pending stats for the entry
  *
- * If nowait is true, this function returns false if lock could not
- * immediately acquired, otherwise true is returned.
+ * If nowait is true and the lock could not be immediately acquired, returns
+ * false without flushing the entry.  Otherwise returns true.
  */
 bool
 pgstat_function_flush_cb(PgStat_EntryRef *entry_ref, bool nowait)
 {
-	PgStat_BackendFunctionEntry *localent;
+	PgStat_FunctionCounts *localent;
 	PgStatShared_Function *shfuncent;
 
-	localent = (PgStat_BackendFunctionEntry *) entry_ref->pending;
+	localent = (PgStat_FunctionCounts *) entry_ref->pending;
 	shfuncent = (PgStatShared_Function *) entry_ref->shared_stats;
 
 	/* localent always has non-zero content */
@@ -203,23 +203,29 @@ pgstat_function_flush_cb(PgStat_EntryRef *entry_ref, bool nowait)
 	if (!pgstat_lock_entry(entry_ref, nowait))
 		return false;
 
-	shfuncent->stats.f_numcalls += localent->f_counts.f_numcalls;
-	shfuncent->stats.f_total_time +=
-		INSTR_TIME_GET_MICROSEC(localent->f_counts.f_total_time);
-	shfuncent->stats.f_self_time +=
-		INSTR_TIME_GET_MICROSEC(localent->f_counts.f_self_time);
+	shfuncent->stats.numcalls += localent->numcalls;
+	shfuncent->stats.total_time +=
+		INSTR_TIME_GET_MICROSEC(localent->total_time);
+	shfuncent->stats.self_time +=
+		INSTR_TIME_GET_MICROSEC(localent->self_time);
 
 	pgstat_unlock_entry(entry_ref);
 
 	return true;
 }
 
+void
+pgstat_function_reset_timestamp_cb(PgStatShared_Common *header, TimestampTz ts)
+{
+	((PgStatShared_Function *) header)->stats.stat_reset_timestamp = ts;
+}
+
 /*
- * find any existing PgStat_BackendFunctionEntry entry for specified function
+ * find any existing PgStat_FunctionCounts entry for specified function
  *
  * If no entry, return NULL, don't create a new one
  */
-PgStat_BackendFunctionEntry *
+PgStat_FunctionCounts *
 find_funcstat_entry(Oid func_id)
 {
 	PgStat_EntryRef *entry_ref;
@@ -239,5 +245,5 @@ PgStat_StatFuncEntry *
 pgstat_fetch_stat_funcentry(Oid func_id)
 {
 	return (PgStat_StatFuncEntry *)
-		pgstat_fetch_entry(PGSTAT_KIND_FUNCTION, MyDatabaseId, func_id);
+		pgstat_fetch_entry(PGSTAT_KIND_FUNCTION, MyDatabaseId, func_id, NULL);
 }

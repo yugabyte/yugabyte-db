@@ -18,8 +18,9 @@ PostgreSQL documentation
   <refname>pg_restore</refname>
 
   <refpurpose>
-   restore a <productname>PostgreSQL</productname> database from an
-   archive file created by <application>pg_dump</application>
+   restore <productname>PostgreSQL</productname> databases from archives
+   created by <application>pg_dump</application> or
+   <application>pg_dumpall</application>
   </refpurpose>
  </refnamediv>
 
@@ -38,13 +39,14 @@ PostgreSQL documentation
 
   <para>
    <application>pg_restore</application> is a utility for restoring a
-   <productname>PostgreSQL</productname> database from an archive
-   created by <xref linkend="app-pgdump"/> in one of the non-plain-text
+   <productname>PostgreSQL</productname> database or cluster from an archive
+   created by <xref linkend="app-pgdump"/> or
+   <xref linkend="app-pg-dumpall"/> in one of the non-plain-text
    formats.  It will issue the commands necessary to reconstruct the
-   database to the state it was in at the time it was saved.  The
-   archive files also allow <application>pg_restore</application> to
+   database or cluster to the state it was in at the time it was saved. The
+   archives also allow <application>pg_restore</application> to
    be selective about what is restored, or even to reorder the items
-   prior to being restored. The archive files are designed to be
+   prior to being restored. The archive formats are designed to be
    portable across architectures.
   </para>
 
@@ -52,12 +54,32 @@ PostgreSQL documentation
    <application>pg_restore</application> can operate in two modes.
    If a database name is specified, <application>pg_restore</application>
    connects to that database and restores archive contents directly into
-   the database.  Otherwise, a script containing the SQL
-   commands necessary to rebuild the database is created and written
+   the database.
+   When restoring from a dump made by <application>pg_dumpall</application>,
+   each database will be created and then the restoration will be run in that
+   database.
+
+   Otherwise, when a database name is not specified, a script containing the SQL
+   commands necessary to rebuild the database or cluster is created and written
    to a file or standard output.  This script output is equivalent to
-   the plain text output format of <application>pg_dump</application>.
+   the plain text output format of <application>pg_dump</application> or
+   <application>pg_dumpall</application>.
+
    Some of the options controlling the output are therefore analogous to
    <application>pg_dump</application> options.
+  </para>
+
+  <para>
+   A non-plain-text archive made using <application>pg_dumpall</application>
+   is a directory containing a <filename>toc.glo</filename> file with global
+   objects (roles and tablespaces), a <filename>map.dat</filename> file
+   listing the databases, and a subdirectory for each database containing
+   its archive.  When restoring such an archive,
+   <application>pg_restore</application> first restores global objects from
+   <filename>toc.glo</filename>, then processes each database listed in
+   <filename>map.dat</filename>.  Lines in <filename>map.dat</filename> can
+   be commented out with <literal>#</literal> to skip restoring specific
+   databases.
   </para>
 
   <para>
@@ -68,6 +90,18 @@ PostgreSQL documentation
    <application>pg_restore</application> will not be able to load the data
    using <command>COPY</command> statements.
   </para>
+
+  <warning>
+   <para>
+    Restoring a dump causes the destination to execute arbitrary code of the
+    source superusers' choice.  Partial dumps and partial restores do not limit
+    that.  If the source superusers are not trusted, the dumped SQL statements
+    must be inspected before restoring.  Non-plain-text dumps can be inspected
+    by using <application>pg_restore</application>'s <option>--file</option>
+    option.  Note that the client running the dump and restore need not trust
+    the source or destination superusers.
+   </para>
+  </warning>
  </refsect1>
 
  <refsect1 id="app-pgrestore-options">
@@ -118,6 +152,12 @@ PostgreSQL documentation
         ignorable error messages will be reported,
         unless <option>--if-exists</option> is also specified.
        </para>
+       <para>
+        When restoring a <application>pg_dumpall</application> archive,
+        <option>--if-exists</option> is implied by <option>--clean</option>,
+        since global objects such as roles and tablespaces may not exist
+        in the target cluster.
+       </para>
       </listitem>
      </varlistentry>
 
@@ -140,6 +180,8 @@ PostgreSQL documentation
         commands that mention this database.
         Access privileges for the database itself are also restored,
         unless <option>--no-acl</option> is specified.
+        <option>--create</option> is required when restoring multiple databases
+        from a non-plain-text archive made using <application>pg_dumpall</application>.
        </para>
 
        <para>
@@ -147,6 +189,11 @@ PostgreSQL documentation
         is used only to issue the initial <command>DROP DATABASE</command> and
         <command>CREATE DATABASE</command> commands.  All data is restored into the
         database name that appears in the archive.
+       </para>
+
+       <para>
+        This option cannot be used together
+        with <option>--single-transaction</option>.
        </para>
       </listitem>
      </varlistentry>
@@ -236,6 +283,44 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>-g</option></term>
+      <term><option>--globals-only</option></term>
+      <listitem>
+       <para>
+        Restore only global objects (roles and tablespaces), no databases.
+       </para>
+       <para>
+        This option is only relevant when restoring from a non-plain-text archive made using <application>pg_dumpall</application>.
+        Note: <option>--globals-only</option> cannot be used with
+        <option>--data-only</option>,
+        <option>--schema-only</option>,
+        <option>--statistics-only</option>,
+        <option>--statistics</option>,
+        <option>--exit-on-error</option>,
+        <option>--single-transaction</option>,
+        <option>--clean</option>, or
+        <option>--transaction-size</option>,
+        <option>--no-globals</option>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-globals</option></term>
+      <listitem>
+       <para>
+        Do not restore global objects (roles and tablespaces).  When
+        <option>-C</option>/<option>--create</option> is not specified,
+        databases that do not already exist on the target server are skipped.
+       </para>
+       <para>
+        This option is only relevant when restoring from a non-plain-text
+        archive made using <application>pg_dumpall</application>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-I <replaceable class="parameter">index</replaceable></option></term>
       <term><option>--index=<replaceable class="parameter">index</replaceable></option></term>
       <listitem>
@@ -247,14 +332,14 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-j <replaceable class="parameter">number-of-jobs</replaceable></option></term>
-      <term><option>--jobs=<replaceable class="parameter">number-of-jobs</replaceable></option></term>
+      <term><option>-j <replaceable class="parameter">njobs</replaceable></option></term>
+      <term><option>--jobs=<replaceable class="parameter">njobs</replaceable></option></term>
       <listitem>
        <para>
         Run the most time-consuming steps
         of <application>pg_restore</application> &mdash; those that load data,
         create indexes, or create constraints &mdash; concurrently, using up
-        to <replaceable class="parameter">number-of-jobs</replaceable>
+        to <replaceable class="parameter">njobs</replaceable>
         concurrent sessions.  This option can dramatically reduce the time
         to restore a large database to a server running on a
         multiprocessor machine.  This option is ignored when emitting a script
@@ -403,8 +488,8 @@ PostgreSQL documentation
         to the extent that schema entries are present in the archive.
        </para>
        <para>
-        This option is mutually exclusive of <option>--data-only</option>
-        and <option>--statistics-only</option>.
+        This option cannot be used with <option>--data-only</option>
+        or <option>--statistics-only</option>.
         It is similar to, but for historical reasons not identical to,
         specifying
         <option>--section=pre-data --section=post-data --no-statistics</option>.
@@ -439,16 +524,6 @@ PostgreSQL documentation
         This option can be combined with the <option>-n</option> option to
         specify table(s) in a particular schema.
        </para>
-
-       <note>
-        <para>
-         When <option>-t</option> is specified, <application>pg_restore</application>
-         makes no attempt to restore any other database objects that the
-         selected table(s) might depend upon.  Therefore, there is no
-         guarantee that a specific-table restore into a clean database will
-         succeed.
-        </para>
-       </note>
 
        <note>
         <para>
@@ -521,15 +596,6 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>--statistics-only</option></term>
-      <listitem>
-       <para>
-        Restore only the statistics, not schema (data definitions) or data.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
       <term><option>-1</option></term>
       <term><option>--single-transaction</option></term>
       <listitem>
@@ -539,6 +605,8 @@ PostgreSQL documentation
         ensures that either all the commands complete successfully, or no
         changes are applied. This option implies
         <option>--exit-on-error</option>.
+        It cannot be used together with <option>--create</option>, nor with
+        multiple jobs (<option>--jobs</option>).
        </para>
       </listitem>
      </varlistentry>
@@ -589,6 +657,108 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--exclude-database=<replaceable class="parameter">pattern</replaceable></option></term>
+      <listitem>
+       <para>
+        Do not restore databases whose name matches
+        <replaceable class="parameter">pattern</replaceable>.
+        Multiple patterns can be excluded by writing multiple
+        <option>--exclude-database</option> switches.  The
+        <replaceable class="parameter">pattern</replaceable> parameter is
+        interpreted as a pattern according to the same rules used by
+        <application>psql</application>'s <literal>\d</literal>
+        commands (see <xref linkend="app-psql-patterns"/>),
+        so multiple databases can also be excluded by writing wildcard
+        characters in the pattern.  When using wildcards, be careful to
+        quote the pattern if needed to prevent shell wildcard expansion.
+       </para>
+       <para>
+        This option is only relevant when restoring from a non-plain-text archive made using <application>pg_dumpall</application>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--filter=<replaceable class="parameter">filename</replaceable></option></term>
+      <listitem>
+       <para>
+        Specify a filename from which to read patterns for objects excluded
+        or included from restore. The patterns are interpreted according to the
+        same rules as
+        <option>-n</option>/<option>--schema</option> for including objects in schemas,
+        <option>-N</option>/<option>--exclude-schema</option> for excluding objects in schemas,
+        <option>-P</option>/<option>--function</option> for restoring named functions,
+        <option>-I</option>/<option>--index</option> for restoring named indexes,
+        <option>-t</option>/<option>--table</option> for restoring named tables
+        or <option>-T</option>/<option>--trigger</option> for restoring triggers.
+        To read from <literal>STDIN</literal>, use <filename>-</filename> as the
+        filename.  The <option>--filter</option> option can be specified in
+        conjunction with the above listed options for including or excluding
+        objects, and can also be specified more than once for multiple filter
+        files.
+       </para>
+
+       <para>
+        The file lists one database pattern per row, with the following format:
+<synopsis>
+{ include | exclude } { function | index | schema | table | trigger } <replaceable class="parameter">PATTERN</replaceable>
+</synopsis>
+       </para>
+
+       <para>
+        The first keyword specifies whether the objects matched by the pattern
+        are to be included or excluded. The second keyword specifies the type
+        of object to be filtered using the pattern:
+        <itemizedlist>
+         <listitem>
+          <para>
+           <literal>function</literal>: functions, works like the
+           <option>-P</option>/<option>--function</option> option. This keyword
+           can only be used with the <literal>include</literal> keyword.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>index</literal>: indexes, works like the
+           <option>-I</option>/<option>--indexes</option> option. This keyword
+           can only be used with the <literal>include</literal> keyword.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>schema</literal>: schemas, works like the
+           <option>-n</option>/<option>--schema</option> and
+           <option>-N</option>/<option>--exclude-schema</option> options.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>table</literal>: tables, works like the
+           <option>-t</option>/<option>--table</option> option. This keyword
+           can only be used with the <literal>include</literal> keyword.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>trigger</literal>: triggers, works like the
+           <option>-T</option>/<option>--trigger</option> option. This keyword
+           can only be used with the <literal>include</literal> keyword.
+          </para>
+         </listitem>
+        </itemizedlist>
+       </para>
+
+       <para>
+        Lines starting with <literal>#</literal> are considered comments and
+        ignored. Comments can be placed after an object pattern row as well.
+        Blank lines are also ignored. See <xref linkend="app-psql-patterns"/>
+        for how to perform quoting in patterns.
+       </para>
+
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--if-exists</option></term>
       <listitem>
        <para>
@@ -596,7 +766,9 @@ PostgreSQL documentation
         in <option>--clean</option> mode.  This suppresses <quote>does not
         exist</quote> errors that might otherwise be reported.  This
         option is not valid unless <option>--clean</option> is also
-        specified.
+        specified.  This option is implied when restoring a
+        <application>pg_dumpall</application> archive with
+        <option>--clean</option>.
        </para>
       </listitem>
      </varlistentry>
@@ -639,6 +811,16 @@ PostgreSQL documentation
        <para>
         This option is effective only when restoring directly into a
         database, not when producing SQL script output.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-policies</option></term>
+      <listitem>
+       <para>
+        Do not output commands to restore row security policies, even if
+        the archive contains them.
        </para>
       </listitem>
      </varlistentry>
@@ -699,7 +881,7 @@ PostgreSQL documentation
        <para>
         Do not output commands to select table access methods.
         With this option, all objects will be created with whichever
-        access method is the default during restore.
+        table access method is the default during restore.
        </para>
       </listitem>
      </varlistentry>
@@ -716,28 +898,23 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>--with-data</option></term>
+      <term><option>--restrict-key=<replaceable class="parameter">restrict_key</replaceable></option></term>
       <listitem>
        <para>
-        Dump data. This is the default.
+        Use the provided string as the <application>psql</application>
+        <command>\restrict</command> key in the dump output.  This can only be
+        specified for SQL script output, i.e., when the <option>--file</option>
+        option is used.  If no restrict key is specified,
+        <application>pg_restore</application> will generate a random one as
+        needed.  Keys may contain only alphanumeric characters.
        </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
-      <term><option>--with-schema</option></term>
-      <listitem>
        <para>
-        Dump schema (data definitions). This is the default.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
-      <term><option>--with-statistics</option></term>
-      <listitem>
-       <para>
-        Dump statistics. This is the default.
+        This option is primarily intended for testing purposes and other
+        scenarios that require repeatable output (e.g., comparing dump files).
+        It is not recommended for general use, as a malicious server with
+        advance knowledge of the key may be able to inject arbitrary code that
+        will be executed on the machine that runs
+        <application>psql</application> with the dump output.
        </para>
       </listitem>
      </varlistentry>
@@ -762,13 +939,56 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--statistics</option></term>
+      <listitem>
+       <para>
+        Output commands to restore statistics, if the archive contains them.
+        This is the default.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--statistics-only</option></term>
+      <listitem>
+       <para>
+        Restore only the statistics, not schema (data definitions) or data.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--strict-names</option></term>
       <listitem>
        <para>
         Require that each schema
         (<option>-n</option>/<option>--schema</option>) and table
         (<option>-t</option>/<option>--table</option>) qualifier match at
-        least one schema/table in the backup file.
+        least one schema/table in the file to be restored.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--transaction-size=<replaceable class="parameter">N</replaceable></option></term>
+      <listitem>
+       <para>
+        Execute the restore as a series of transactions, each processing
+        up to <replaceable class="parameter">N</replaceable> database
+        objects.  This option implies <option>--exit-on-error</option>.
+       </para>
+       <para>
+        <option>--transaction-size</option> offers an intermediate choice
+        between the default behavior (one transaction per SQL command)
+        and <option>-1</option>/<option>--single-transaction</option>
+        (one transaction for all restored objects).
+        While <option>--single-transaction</option> has the least
+        overhead, it may be impractical for large databases because the
+        transaction will take a lock on each restored object, possibly
+        exhausting the server's lock table space.
+        Using <option>--transaction-size</option> with a size of a few
+        thousand objects offers nearly the same performance benefits while
+        capping the amount of lock table space needed.
        </para>
       </listitem>
      </varlistentry>
@@ -959,6 +1179,16 @@ PostgreSQL documentation
   <title>Notes</title>
 
   <para>
+   When options <option>-n</option> or <option>-t</option> are specified,
+   <application>pg_restore</application> makes no attempt to restore
+   any other database objects that the selected table(s) or schema(s)
+   might depend upon.  Therefore, there is no guarantee that a specific-table
+   restore into a clean database will succeed.  For example, if a table
+   whose definition includes a foreign key is specified to be restored, the
+   table referenced by the foreign key is not automatically restored.
+  </para>
+
+  <para>
    If your installation has any local additions to the
    <literal>template1</literal> database, be careful to load the output of
    <application>pg_restore</application> into a truly empty database;
@@ -986,11 +1216,42 @@ CREATE DATABASE foo WITH TEMPLATE template0;
     </listitem>
 
     <listitem>
+     <para>
+      Parallel restore (<option>--jobs</option> greater than 1) requires
+      applying dependency information from the archive file to ensure
+      that an object is not restored before other objects it depends on.
+      This information will be incomplete, leading to unexpected restore
+      failures, if the archive does not include object definitions
+      (the <option>pre-data</option> section).  Therefore, avoid
+      using <application>pg_dump</application> options such
+      as <option>--no-schema</option>, <option>-a/--data-only</option>,
+      or <option>--section</option> without <option>pre-data</option> when
+      creating an archive you wish to restore in parallel.  Instead, you
+      may provide such options to <application>pg_restore</application>.
+     </para>
+    </listitem>
+
+    <listitem>
      <para><application>pg_restore</application> cannot restore large objects
       selectively;  for instance, only those for a specific table.  If
       an archive contains large objects, then all large objects will be
       restored, or none of them if they are excluded via <option>-L</option>,
       <option>-t</option>, or other options.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The following options cannot be used when restoring from a non-plain-text
+      archive made using <application>pg_dumpall</application>:
+      <option>-a/--data-only</option>,
+      <option>-l/--list</option>,
+      <option>-L/--use-list</option>,
+      <option>--no-schema</option>,
+      <option>--statistics-only</option>, and
+      <option>--strict-names</option>.
+      Also, if the <option>--section</option> option is used, it must
+      include <option>pre-data</option>.
      </para>
     </listitem>
 
@@ -1003,10 +1264,12 @@ CREATE DATABASE foo WITH TEMPLATE template0;
   </para>
 
   <para>
-   Once restored, it is wise to run <command>ANALYZE</command> on each
-   restored table so the optimizer has useful statistics; see
-   <xref linkend="vacuum-for-statistics"/> and
-   <xref linkend="autovacuum"/> for more information.
+   By default, <command>pg_restore</command> will restore optimizer statistics
+   if included in the dump file.  If not all statistics were restored, it may
+   be useful to run <command>ANALYZE</command> on each restored table so the
+   optimizer has useful statistics; see <xref
+   linkend="vacuum-for-statistics"/> and <xref linkend="autovacuum"/> for more
+   information.
   </para>
 
  </refsect1>

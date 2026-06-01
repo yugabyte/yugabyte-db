@@ -398,6 +398,25 @@ SELECT '1&(2&(4&(5|!6)))'::query_int;
  1 & 2 & 4 & ( 5 | !6 )
 (1 row)
 
+-- test non-error-throwing input
+SELECT str as "query_int",
+       pg_input_is_valid(str,'query_int') as ok,
+       errinfo.sql_error_code,
+       errinfo.message,
+       errinfo.detail,
+       errinfo.hint
+FROM (VALUES ('1&(2&(4&(5|6)))'),
+             ('1#(2&(4&(5&6)))'),
+             ('foo'))
+      AS a(str),
+     LATERAL pg_input_error_info(a.str, 'query_int') as errinfo;
+    query_int    | ok | sql_error_code |   message    | detail | hint 
+-----------------+----+----------------+--------------+--------+------
+ 1&(2&(4&(5|6))) | t  |                |              |        | 
+ 1#(2&(4&(5&6))) | f  | 42601          | syntax error |        | 
+ foo             | f  | 42601          | syntax error |        | 
+(3 rows)
+
 CREATE TABLE test__int( a int[] );
 \copy test__int from 'data/test__int.data'
 ANALYZE test__int;
@@ -473,6 +492,12 @@ SELECT count(*) from test__int WHERE a @@ '!20 & !21';
   6344
 (1 row)
 
+SELECT count(*) from test__int WHERE a @@ '!2733 & (2738 | 254)';
+ count 
+-------
+    12
+(1 row)
+
 SET enable_seqscan = off;  -- not all of these would use index by default
 CREATE INDEX text_idx on test__int using gist ( a gist__int_ops );
 SELECT count(*) from test__int WHERE a && '{23,50}';
@@ -545,6 +570,12 @@ SELECT count(*) from test__int WHERE a @@ '!20 & !21';
  count 
 -------
   6344
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '!2733 & (2738 | 254)';
+ count 
+-------
+    12
 (1 row)
 
 INSERT INTO test__int SELECT array(SELECT x FROM generate_series(1, 1001) x); -- should fail
@@ -629,6 +660,12 @@ SELECT count(*) from test__int WHERE a @@ '!20 & !21';
   6344
 (1 row)
 
+SELECT count(*) from test__int WHERE a @@ '!2733 & (2738 | 254)';
+ count 
+-------
+    12
+(1 row)
+
 DROP INDEX text_idx;
 CREATE INDEX text_idx on test__int using gist (a gist__intbig_ops(siglen = 0));
 ERROR:  value 0 out of bounds for option "siglen"
@@ -709,6 +746,12 @@ SELECT count(*) from test__int WHERE a @@ '!20 & !21';
   6344
 (1 row)
 
+SELECT count(*) from test__int WHERE a @@ '!2733 & (2738 | 254)';
+ count 
+-------
+    12
+(1 row)
+
 DROP INDEX text_idx;
 CREATE INDEX text_idx on test__int using gist ( a gist__intbig_ops );
 SELECT count(*) from test__int WHERE a && '{23,50}';
@@ -783,6 +826,12 @@ SELECT count(*) from test__int WHERE a @@ '!20 & !21';
   6344
 (1 row)
 
+SELECT count(*) from test__int WHERE a @@ '!2733 & (2738 | 254)';
+ count 
+-------
+    12
+(1 row)
+
 DROP INDEX text_idx;
 CREATE INDEX text_idx on test__int using gin ( a gin__int_ops );
 SELECT count(*) from test__int WHERE a && '{23,50}';
@@ -855,6 +904,12 @@ SELECT count(*) from test__int WHERE a @@ '!20 & !21';
  count 
 -------
   6344
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '!2733 & (2738 | 254)';
+ count 
+-------
+    12
 (1 row)
 
 DROP INDEX text_idx;
@@ -947,6 +1002,12 @@ SELECT count(*) from more__int WHERE a @@ '!20 & !21';
  count 
 -------
   6344
+(1 row)
+
+SELECT count(*) from test__int WHERE a @@ '!2733 & (2738 | 254)';
+ count 
+-------
+    12
 (1 row)
 
 RESET enable_seqscan;

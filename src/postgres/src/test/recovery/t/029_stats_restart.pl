@@ -1,10 +1,10 @@
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Tests statistics handling around restarts, including handling of crashes and
-# invalid stats files, as well as restorting stats after "normal" restarts.
+# invalid stats files, as well as restoring stats after "normal" restarts.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -15,8 +15,23 @@ $node->init(allows_streaming => 1);
 $node->append_conf('postgresql.conf', "track_functions = 'all'");
 $node->start;
 
-my $connect_db    = 'postgres';
+my $connect_db = 'postgres';
 my $db_under_test = 'test';
+
+my $sect = "startup";
+
+# Check some WAL statistics after a fresh startup.  The startup process
+# should have done WAL reads, and initialization some WAL writes.
+my $standalone_io_stats = io_stats('init', 'wal', 'standalone backend');
+my $startup_io_stats = io_stats('normal', 'wal', 'startup');
+cmp_ok(
+	'0', '<',
+	$standalone_io_stats->{writes},
+	"$sect: increased standalone backend IO writes");
+cmp_ok(
+	'0', '<',
+	$startup_io_stats->{reads},
+	"$sect: increased startup IO reads");
 
 # create test objects
 $node->safe_psql($connect_db, "CREATE DATABASE $db_under_test");
@@ -39,7 +54,7 @@ my $tableoid = $node->safe_psql($db_under_test,
 trigger_funcrel_stat();
 
 # verify stats objects exist
-my $sect = "initial";
+$sect = "initial";
 is(have_stats('database', $dboid, 0), 't', "$sect: db stats do exist");
 is(have_stats('function', $dboid, $funcoid),
 	't', "$sect: function stats do exist");
@@ -53,7 +68,7 @@ $node->stop();
 my $statsfile = $PostgreSQL::Test::Utils::tmp_check . '/' . "discard_stats1";
 ok(!-f "$statsfile", "backup statsfile cannot already exist");
 
-my $datadir  = $node->data_dir();
+my $datadir = $node->data_dir();
 my $og_stats = "$datadir/pg_stat/pgstat.stat";
 ok(-f "$og_stats", "origin stats file must exist");
 copy($og_stats, $statsfile) or die "Copy failed: $!";
@@ -147,12 +162,12 @@ $node->safe_psql($connect_db, "CHECKPOINT; CHECKPOINT;");
 ## check checkpoint and wal stats are incremented due to restart
 
 my $ckpt_start = checkpoint_stats();
-my $wal_start  = wal_stats();
+my $wal_start = wal_stats();
 $node->restart;
 
 $sect = "post restart";
 my $ckpt_restart = checkpoint_stats();
-my $wal_restart  = wal_stats();
+my $wal_restart = wal_stats();
 
 cmp_ok(
 	$ckpt_start->{count}, '<',
@@ -173,10 +188,10 @@ is($wal_start->{reset}, $wal_restart->{reset},
 
 ## Check that checkpoint stats are reset, WAL stats aren't affected
 
-$node->safe_psql($connect_db, "SELECT pg_stat_reset_shared('bgwriter')");
+$node->safe_psql($connect_db, "SELECT pg_stat_reset_shared('checkpointer')");
 
 $sect = "post ckpt reset";
-my $ckpt_reset     = checkpoint_stats();
+my $ckpt_reset = checkpoint_stats();
 my $wal_ckpt_reset = wal_stats();
 
 cmp_ok($ckpt_restart->{count},
@@ -200,7 +215,7 @@ $node->restart;
 
 $sect = "post ckpt reset & restart";
 my $ckpt_restart_reset = checkpoint_stats();
-my $wal_restart2       = wal_stats();
+my $wal_restart2 = wal_stats();
 
 # made sure above there's enough checkpoints that this will be stable even on slow machines
 cmp_ok(
@@ -292,10 +307,10 @@ sub trigger_funcrel_stat
 
 sub have_stats
 {
-	my ($kind, $dboid, $objoid) = @_;
+	my ($kind, $dboid, $objid) = @_;
 
 	return $node->safe_psql($connect_db,
-		"SELECT pg_stat_have_stats('$kind', $dboid, $objoid)");
+		"SELECT pg_stat_have_stats('$kind', $dboid, $objid)");
 }
 
 sub overwrite_file
@@ -323,9 +338,9 @@ sub checkpoint_stats
 	my %results;
 
 	$results{count} = $node->safe_psql($connect_db,
-		"SELECT checkpoints_timed + checkpoints_req FROM pg_stat_bgwriter");
+		"SELECT num_timed + num_requested FROM pg_stat_checkpointer");
 	$results{reset} = $node->safe_psql($connect_db,
-		"SELECT stats_reset FROM pg_stat_bgwriter");
+		"SELECT stats_reset FROM pg_stat_checkpointer");
 
 	return \%results;
 }
@@ -339,6 +354,23 @@ sub wal_stats
 	  $node->safe_psql($connect_db, "SELECT wal_bytes FROM pg_stat_wal");
 	$results{reset} =
 	  $node->safe_psql($connect_db, "SELECT stats_reset FROM pg_stat_wal");
+
+	return \%results;
+}
+
+sub io_stats
+{
+	my ($context, $object, $backend_type) = @_;
+	my %results;
+
+	$results{writes} = $node->safe_psql(
+		$connect_db, qq{SELECT writes FROM pg_stat_io
+  WHERE context = '$context' AND object = '$object' AND
+    backend_type = '$backend_type'});
+	$results{reads} = $node->safe_psql(
+		$connect_db, qq{SELECT reads FROM pg_stat_io
+  WHERE context = '$context' AND object = '$object' AND
+    backend_type = '$backend_type'});
 
 	return \%results;
 }

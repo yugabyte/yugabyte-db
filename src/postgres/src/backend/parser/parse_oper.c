@@ -3,7 +3,7 @@
  * parse_oper.c
  *		handle operator things for parser
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -25,6 +25,7 @@
 #include "parser/parse_oper.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -70,17 +71,17 @@ static FuncDetailCode oper_select_candidate(int nargs,
 											Oid *input_typeids,
 											FuncCandidateList candidates,
 											Oid *operOid);
-static const char *op_signature_string(List *op, char oprkind,
-									   Oid arg1, Oid arg2);
-static void op_error(ParseState *pstate, List *op, char oprkind,
+static void op_error(ParseState *pstate, List *op,
 					 Oid arg1, Oid arg2,
-					 FuncDetailCode fdresult, int location);
+					 FuncDetailCode fdresult, int fgc_flags, int location);
+static int	oper_lookup_failure_details(int fgc_flags, bool is_unary_op);
 static bool make_oper_cache_key(ParseState *pstate, OprCacheKey *key,
 								List *opname, Oid ltypeId, Oid rtypeId,
 								int location);
 static Oid	find_oper_cache_entry(OprCacheKey *key);
 static void make_oper_cache_entry(OprCacheKey *key, Oid opr_oid);
-static void InvalidateOprCacheCallBack(Datum arg, int cacheid, uint32 hashvalue);
+static void InvalidateOprCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
+									   uint32 hashvalue);
 
 
 /*
@@ -110,26 +111,16 @@ LookupOperName(ParseState *pstate, List *opername, Oid oprleft, Oid oprright,
 	/* we don't use op_error here because only an exact match is wanted */
 	if (!noError)
 	{
-		char		oprkind;
-
-		if (!OidIsValid(oprleft))
-			oprkind = 'l';
-		else if (OidIsValid(oprright))
-			oprkind = 'b';
-		else
-		{
+		if (!OidIsValid(oprright))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("postfix operators are not supported"),
 					 parser_errposition(pstate, location)));
-			oprkind = 0;		/* keep compiler quiet */
-		}
 
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("operator does not exist: %s",
-						op_signature_string(opername, oprkind,
-											oprleft, oprright)),
+						op_signature_string(opername, oprleft, oprright)),
 				 parser_errposition(pstate, location)));
 	}
 
@@ -385,6 +376,7 @@ oper(ParseState *pstate, List *opname, Oid ltypeId, Oid rtypeId,
 	Oid			operOid;
 	OprCacheKey key;
 	bool		key_ok;
+	int			fgc_flags = 0;
 	FuncDetailCode fdresult = FUNCDETAIL_NOTFOUND;
 	HeapTuple	tup = NULL;
 
@@ -416,7 +408,7 @@ oper(ParseState *pstate, List *opname, Oid ltypeId, Oid rtypeId,
 		FuncCandidateList clist;
 
 		/* Get binary operators of given name */
-		clist = OpernameGetCandidates(opname, 'b', false);
+		clist = OpernameGetCandidates(opname, 'b', false, &fgc_flags);
 
 		/* No operators found? Then fail... */
 		if (clist != NULL)
@@ -446,7 +438,8 @@ oper(ParseState *pstate, List *opname, Oid ltypeId, Oid rtypeId,
 			make_oper_cache_entry(&key, operOid);
 	}
 	else if (!noError)
-		op_error(pstate, opname, 'b', ltypeId, rtypeId, fdresult, location);
+		op_error(pstate, opname, ltypeId, rtypeId,
+				 fdresult, fgc_flags, location);
 
 	return (Operator) tup;
 }
@@ -483,7 +476,7 @@ compatible_oper(ParseState *pstate, List *op, Oid arg1, Oid arg2,
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("operator requires run-time type coercion: %s",
-						op_signature_string(op, 'b', arg1, arg2)),
+						op_signature_string(op, arg1, arg2)),
 				 parser_errposition(pstate, location)));
 
 	return (Operator) NULL;
@@ -532,6 +525,7 @@ left_oper(ParseState *pstate, List *op, Oid arg, bool noError, int location)
 	Oid			operOid;
 	OprCacheKey key;
 	bool		key_ok;
+	int			fgc_flags = 0;
 	FuncDetailCode fdresult = FUNCDETAIL_NOTFOUND;
 	HeapTuple	tup = NULL;
 
@@ -563,7 +557,7 @@ left_oper(ParseState *pstate, List *op, Oid arg, bool noError, int location)
 		FuncCandidateList clist;
 
 		/* Get prefix operators of given name */
-		clist = OpernameGetCandidates(op, 'l', false);
+		clist = OpernameGetCandidates(op, 'l', false, &fgc_flags);
 
 		/* No operators found? Then fail... */
 		if (clist != NULL)
@@ -597,7 +591,8 @@ left_oper(ParseState *pstate, List *op, Oid arg, bool noError, int location)
 			make_oper_cache_entry(&key, operOid);
 	}
 	else if (!noError)
-		op_error(pstate, op, 'l', InvalidOid, arg, fdresult, location);
+		op_error(pstate, op, InvalidOid, arg,
+				 fdresult, fgc_flags, location);
 
 	return (Operator) tup;
 }
@@ -610,14 +605,14 @@ left_oper(ParseState *pstate, List *op, Oid arg, bool noError, int location)
  * This is typically used in the construction of operator-not-found error
  * messages.
  */
-static const char *
-op_signature_string(List *op, char oprkind, Oid arg1, Oid arg2)
+const char *
+op_signature_string(List *op, Oid arg1, Oid arg2)
 {
 	StringInfoData argbuf;
 
 	initStringInfo(&argbuf);
 
-	if (oprkind != 'l')
+	if (OidIsValid(arg1))
 		appendStringInfo(&argbuf, "%s ", format_type_be(arg1));
 
 	appendStringInfoString(&argbuf, NameListToString(op));
@@ -631,29 +626,67 @@ op_signature_string(List *op, char oprkind, Oid arg1, Oid arg2)
  * op_error - utility routine to complain about an unresolvable operator
  */
 static void
-op_error(ParseState *pstate, List *op, char oprkind,
+op_error(ParseState *pstate, List *op,
 		 Oid arg1, Oid arg2,
-		 FuncDetailCode fdresult, int location)
+		 FuncDetailCode fdresult, int fgc_flags, int location)
 {
 	if (fdresult == FUNCDETAIL_MULTIPLE)
 		ereport(ERROR,
 				(errcode(ERRCODE_AMBIGUOUS_FUNCTION),
 				 errmsg("operator is not unique: %s",
-						op_signature_string(op, oprkind, arg1, arg2)),
-				 errhint("Could not choose a best candidate operator. "
-						 "You might need to add explicit type casts."),
+						op_signature_string(op, arg1, arg2)),
+				 errdetail("Could not choose a best candidate operator."),
+				 errhint("You might need to add explicit type casts."),
 				 parser_errposition(pstate, location)));
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("operator does not exist: %s",
-						op_signature_string(op, oprkind, arg1, arg2)),
-				 (!arg1 || !arg2) ?
-				 errhint("No operator matches the given name and argument type. "
-						 "You might need to add an explicit type cast.") :
-				 errhint("No operator matches the given name and argument types. "
-						 "You might need to add explicit type casts."),
+						op_signature_string(op, arg1, arg2)),
+				 oper_lookup_failure_details(fgc_flags, (!arg1 || !arg2)),
 				 parser_errposition(pstate, location)));
+}
+
+/*
+ * Interpret the fgc_flags and issue a suitable detail or hint message.
+ */
+static int
+oper_lookup_failure_details(int fgc_flags, bool is_unary_op)
+{
+	/*
+	 * If not FGC_NAME_VISIBLE, we shouldn't raise the question of whether the
+	 * arguments are wrong.  If the operator name was not schema-qualified,
+	 * it's helpful to distinguish between doesn't-exist-anywhere and
+	 * not-in-search-path; but if it was, there's really nothing to add to the
+	 * basic "operator does not exist" message.
+	 *
+	 * Note: we passed missing_ok = false to OpernameGetCandidates, so there's
+	 * no need to consider FGC_SCHEMA_EXISTS here: we'd have already thrown an
+	 * error if an explicitly-given schema doesn't exist.
+	 */
+	if (!(fgc_flags & FGC_NAME_VISIBLE))
+	{
+		if (fgc_flags & FGC_SCHEMA_GIVEN)
+			return 0;			/* schema-qualified name */
+		else if (!(fgc_flags & FGC_NAME_EXISTS))
+			return errdetail("There is no operator of that name.");
+		else
+			return errdetail("An operator of that name exists, but it is not in the search_path.");
+	}
+
+	/*
+	 * Otherwise, the problem must be incorrect argument type(s).
+	 */
+	if (is_unary_op)
+	{
+		(void) errdetail("No operator of that name accepts the given argument type.");
+		return errhint("You might need to add an explicit type cast.");
+	}
+	else
+	{
+		(void) errdetail("No operator of that name accepts the given argument types.");
+		return errhint("You might need to add explicit type casts.");
+	}
 }
 
 /*
@@ -713,7 +746,6 @@ make_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("operator is only a shell: %s",
 						op_signature_string(opname,
-											opform->oprkind,
 											opform->oprleft,
 											opform->oprright)),
 				 parser_errposition(pstate, location)));
@@ -827,7 +859,6 @@ make_scalar_array_op(ParseState *pstate, List *opname,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("operator is only a shell: %s",
 						op_signature_string(opname,
-											opform->oprkind,
 											opform->oprleft,
 											opform->oprright)),
 				 parser_errposition(pstate, location)));
@@ -1017,7 +1048,7 @@ find_oper_cache_entry(OprCacheKey *key)
 
 	/* Look for an existing entry */
 	oprentry = (OprCacheEntry *) hash_search(OprCacheHash,
-											 (void *) key,
+											 key,
 											 HASH_FIND, NULL);
 	if (oprentry == NULL)
 		return InvalidOid;
@@ -1038,7 +1069,7 @@ make_oper_cache_entry(OprCacheKey *key, Oid opr_oid)
 	Assert(OprCacheHash != NULL);
 
 	oprentry = (OprCacheEntry *) hash_search(OprCacheHash,
-											 (void *) key,
+											 key,
 											 HASH_ENTER, NULL);
 	oprentry->opr_oid = opr_oid;
 }
@@ -1047,7 +1078,8 @@ make_oper_cache_entry(OprCacheKey *key, Oid opr_oid)
  * Callback for pg_operator and pg_cast inval events
  */
 static void
-InvalidateOprCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
+InvalidateOprCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
+						   uint32 hashvalue)
 {
 	HASH_SEQ_STATUS status;
 	OprCacheEntry *hentry;
@@ -1060,7 +1092,7 @@ InvalidateOprCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
 	while ((hentry = (OprCacheEntry *) hash_seq_search(&status)) != NULL)
 	{
 		if (hash_search(OprCacheHash,
-						(void *) &hentry->key,
+						&hentry->key,
 						HASH_REMOVE, NULL) == NULL)
 			elog(ERROR, "hash table corrupted");
 	}

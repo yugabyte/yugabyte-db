@@ -5,7 +5,7 @@
 #    Perl script that generates fmgroids.h, fmgrprotos.h, and fmgrtab.c
 #    from pg_proc.dat
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 #
@@ -17,14 +17,14 @@
 use Catalog;
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use Getopt::Long;
 
 my $output_path = '';
 my $include_path;
 
 GetOptions(
-	'output:s'       => \$output_path,
+	'output:s' => \$output_path,
 	'include-path:s' => \$include_path) || usage();
 
 # Make sure output_path ends in a slash.
@@ -34,7 +34,7 @@ if ($output_path ne '' && substr($output_path, -1) ne '/')
 }
 
 # Sanity check arguments.
-die "No input files.\n"                   unless @ARGV;
+die "No input files.\n" unless @ARGV;
 die "--include-path must be specified.\n" unless $include_path;
 
 # Read all the input files into internal data structures.
@@ -56,7 +56,7 @@ foreach my $datfile (@ARGV)
 
 	my $catalog = Catalog::ParseHeader($header);
 	my $catname = $catalog->{catname};
-	my $schema  = $catalog->{columns};
+	my $schema = $catalog->{columns};
 
 	$catalogs{$catname} = $catalog;
 	$catalog_data{$catname} = Catalog::ParseData($datfile, $schema, 0);
@@ -72,14 +72,14 @@ foreach my $row (@{ $catalog_data{pg_proc} })
 
 	push @fmgr,
 	  {
-		oid    => $bki_values{oid},
-		name   => $bki_values{proname},
-		lang   => $bki_values{prolang},
-		kind   => $bki_values{prokind},
+		oid => $bki_values{oid},
+		name => $bki_values{proname},
+		lang => $bki_values{prolang},
+		kind => $bki_values{prokind},
 		strict => $bki_values{proisstrict},
 		retset => $bki_values{proretset},
-		nargs  => $bki_values{pronargs},
-		args   => $bki_values{proargtypes},
+		nargs => $bki_values{pronargs},
+		args => $bki_values{proargtypes},
 		prosrc => $bki_values{prosrc},
 	  };
 
@@ -88,10 +88,10 @@ foreach my $row (@{ $catalog_data{pg_proc} })
 }
 
 # Emit headers for both files
-my $tmpext     = ".tmp$$";
-my $oidsfile   = $output_path . 'fmgroids.h';
+my $tmpext = ".tmp$$";
+my $oidsfile = $output_path . 'fmgroids.h';
 my $protosfile = $output_path . 'fmgrprotos.h';
-my $tabfile    = $output_path . 'fmgrtab.c';
+my $tabfile = $output_path . 'fmgrtab.c';
 
 open my $ofh, '>', $oidsfile . $tmpext
   or die "Could not open $oidsfile$tmpext: $!";
@@ -109,7 +109,7 @@ print $ofh <<OFH;
  * These macros can be used to avoid a catalog lookup when a specific
  * fmgr-callable function needs to be referenced.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -140,7 +140,7 @@ print $pfh <<PFH;
  * fmgrprotos.h
  *    Prototypes for built-in functions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -166,7 +166,7 @@ print $tfh <<TFH;
  * fmgrtab.c
  *    The function manager's table of internal functions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -182,7 +182,6 @@ print $tfh <<TFH;
 
 #include "postgres.h"
 
-#include "access/transam.h"
 #include "utils/fmgrtab.h"
 #include "utils/fmgrprotos.h"
 
@@ -213,7 +212,8 @@ $bmap{'t'} = 'true';
 $bmap{'f'} = 'false';
 my @fmgr_builtin_oid_index;
 my $last_builtin_oid = 0;
-my $fmgr_count       = 0;
+my $fmgr_count = 0;
+
 foreach my $s (sort { $a->{oid} <=> $b->{oid} } @fmgr)
 {
 	next if $s->{lang} ne 'internal';
@@ -273,9 +273,9 @@ close($pfh);
 close($tfh);
 
 # Finally, rename the completed files into place.
-Catalog::RenameTempFile($oidsfile,   $tmpext);
+Catalog::RenameTempFile($oidsfile, $tmpext);
 Catalog::RenameTempFile($protosfile, $tmpext);
-Catalog::RenameTempFile($tabfile,    $tmpext);
+Catalog::RenameTempFile($tabfile, $tmpext);
 
 sub usage
 {

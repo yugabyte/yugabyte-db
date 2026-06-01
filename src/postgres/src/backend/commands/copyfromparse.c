@@ -47,7 +47,7 @@
  * and 'attribute_buf' are expanded on demand, to hold the longest line
  * encountered so far.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -62,7 +62,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-#include "commands/copy.h"
+#include "commands/copyapi.h"
 #include "commands/copyfrom_internal.h"
 #include "commands/progress.h"
 #include "executor/executor.h"
@@ -71,10 +71,12 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "port/pg_bitutils.h"
 #include "port/pg_bswap.h"
+#include "port/simd.h"
 #include "utils/builtins.h"
-#include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/wait_event.h"
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
@@ -136,26 +138,28 @@ if (1) \
 	} \
 } else ((void) 0)
 
-/* Undo any read-ahead and jump out of the block. */
-#define NO_END_OF_COPY_GOTO \
-if (1) \
-{ \
-	input_buf_ptr = prev_raw_ptr + 1; \
-	goto not_end_of_copy; \
-} else ((void) 0)
-
 /* NOTE: there's a copy of this in copyto.c */
 static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
 
 
 /* non-export function prototypes */
-static bool CopyReadLine(CopyFromState cstate);
-static bool CopyReadLineText(CopyFromState cstate);
+static bool CopyReadLine(CopyFromState cstate, bool is_csv);
+static pg_attribute_always_inline bool CopyReadLineText(CopyFromState cstate,
+														bool is_csv);
 static int	CopyReadAttributesText(CopyFromState cstate);
 static int	CopyReadAttributesCSV(CopyFromState cstate);
 static Datum CopyReadBinaryAttribute(CopyFromState cstate, FmgrInfo *flinfo,
 									 Oid typioparam, int32 typmod,
 									 bool *isnull);
+static pg_attribute_always_inline bool CopyFromTextLikeOneRow(CopyFromState cstate,
+															  ExprContext *econtext,
+															  Datum *values,
+															  bool *nulls,
+															  bool is_csv);
+static pg_attribute_always_inline bool NextCopyFromRawFieldsInternal(CopyFromState cstate,
+																	 char ***fields,
+																	 int *nfields,
+																	 bool is_csv);
 
 
 /* Low-level communications functions */
@@ -171,10 +175,10 @@ ReceiveCopyBegin(CopyFromState cstate)
 {
 	StringInfoData buf;
 	int			natts = list_length(cstate->attnumlist);
-	int16		format = (cstate->opts.binary ? 1 : 0);
+	int16		format = (cstate->opts.format == COPY_FORMAT_BINARY ? 1 : 0);
 	int			i;
 
-	pq_beginmessage(&buf, 'G');
+	pq_beginmessage(&buf, PqMsg_CopyInResponse);
 	pq_sendbyte(&buf, format);	/* overall format */
 	pq_sendint16(&buf, natts);
 	for (i = 0; i < natts; i++)
@@ -249,14 +253,21 @@ CopyGetData(CopyFromState cstate, void *databuf, int minread, int maxread)
 	switch (cstate->copy_src)
 	{
 		case COPY_FILE:
-			if (IsYugaByteEnabled())
-				pgstat_report_wait_start(WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ);
-
+			pgstat_report_wait_start(WAIT_EVENT_COPY_FROM_READ);
 			bytesread = fread(databuf, 1, maxread, cstate->copy_file);
-
-			if (IsYugaByteEnabled())
-				pgstat_report_wait_end();
-
+			pgstat_report_wait_end();
+			/*
+			 * YB_TODO_PG19MERGE:  PG19 added WAIT_EVENT_COPY_FROM_READ.
+			 * Evaluate whether YB's specific WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ
+			 * is still needed.
+			 *
+			 * Original YB code:
+			 * if (IsYugaByteEnabled())
+			 *     pgstat_report_wait_start(WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ);
+			 * bytesread = fread(databuf, 1, maxread, cstate->copy_file);
+			 * if (IsYugaByteEnabled())
+			 *     pgstat_report_wait_end();
+			 */
 			if (ferror(cstate->copy_file))
 				ereport(ERROR,
 						(errcode_for_file_access(),
@@ -286,13 +297,13 @@ CopyGetData(CopyFromState cstate, void *databuf, int minread, int maxread)
 					/* Validate message type and set packet size limit */
 					switch (mtype)
 					{
-						case 'd':	/* CopyData */
+						case PqMsg_CopyData:
 							maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
 							break;
-						case 'c':	/* CopyDone */
-						case 'f':	/* CopyFail */
-						case 'H':	/* Flush */
-						case 'S':	/* Sync */
+						case PqMsg_CopyDone:
+						case PqMsg_CopyFail:
+						case PqMsg_Flush:
+						case PqMsg_Sync:
 							maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 							break;
 						default:
@@ -312,20 +323,20 @@ CopyGetData(CopyFromState cstate, void *databuf, int minread, int maxread)
 					/* ... and process it */
 					switch (mtype)
 					{
-						case 'd':	/* CopyData */
+						case PqMsg_CopyData:
 							break;
-						case 'c':	/* CopyDone */
+						case PqMsg_CopyDone:
 							/* COPY IN correctly terminated by frontend */
 							cstate->raw_reached_eof = true;
 							return bytesread;
-						case 'f':	/* CopyFail */
+						case PqMsg_CopyFail:
 							ereport(ERROR,
 									(errcode(ERRCODE_QUERY_CANCELED),
 									 errmsg("COPY from stdin failed: %s",
 											pq_getmsgstring(cstate->fe_msgbuf))));
 							break;
-						case 'H':	/* Flush */
-						case 'S':	/* Sync */
+						case PqMsg_Flush:
+						case PqMsg_Sync:
 
 							/*
 							 * Ignore Flush/Sync for the convenience of client
@@ -342,7 +353,7 @@ CopyGetData(CopyFromState cstate, void *databuf, int minread, int maxread)
 				if (avail > maxread)
 					avail = maxread;
 				pq_copymsgbytes(cstate->fe_msgbuf, databuf, avail);
-				databuf = (void *) ((char *) databuf + avail);
+				databuf = (char *) databuf + avail;
 				maxread -= avail;
 				bytesread += avail;
 			}
@@ -746,8 +757,21 @@ CopyReadBinaryData(CopyFromState cstate, char *dest, int nbytes)
 }
 
 /*
- * Read raw fields in the next line for COPY FROM in text or csv mode.
- * Return false if no more lines.
+ * This function is exposed for use by extensions that read raw fields in the
+ * next line. See NextCopyFromRawFieldsInternal() for details.
+ */
+bool
+NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
+{
+	return NextCopyFromRawFieldsInternal(cstate, fields, nfields,
+										 cstate->opts.format == COPY_FORMAT_CSV);
+}
+
+/*
+ * Workhorse for NextCopyFromRawFields().
+ *
+ * Read raw fields in the next line for COPY FROM in text or csv mode. Return
+ * false if no more lines.
  *
  * An internal temporary buffer is returned via 'fields'. It is valid until
  * the next call of the function. Since the function returns all raw fields
@@ -755,32 +779,46 @@ CopyReadBinaryData(CopyFromState cstate, char *dest, int nbytes)
  * in the relation.
  *
  * NOTE: force_not_null option are not applied to the returned fields.
+ *
+ * We use pg_attribute_always_inline to reduce function call overhead
+ * and to help compilers to optimize away the 'is_csv' condition when called
+ * by internal functions such as CopyFromTextLikeOneRow().
  */
-bool
-NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
+static pg_attribute_always_inline bool
+NextCopyFromRawFieldsInternal(CopyFromState cstate, char ***fields, int *nfields, bool is_csv)
 {
 	int			fldct;
-	bool		done;
+	bool		done = false;
 
 	/* only available for text or csv input */
-	Assert(!cstate->opts.binary);
+	Assert(cstate->opts.format == COPY_FORMAT_TEXT ||
+		   cstate->opts.format == COPY_FORMAT_CSV);
 
 	/* on input check that the header line is correct if needed */
-	if (cstate->cur_lineno == 0 && cstate->opts.header_line)
+	if (cstate->cur_lineno == 0 && cstate->opts.header_line != COPY_HEADER_FALSE)
 	{
 		ListCell   *cur;
 		TupleDesc	tupDesc;
+		int			lines_to_skip = cstate->opts.header_line;
+
+		/* If set to "match", one header line is skipped */
+		if (cstate->opts.header_line == COPY_HEADER_MATCH)
+			lines_to_skip = 1;
 
 		tupDesc = RelationGetDescr(cstate->rel);
 
-		cstate->cur_lineno++;
-		done = CopyReadLine(cstate);
+		for (int i = 0; i < lines_to_skip; i++)
+		{
+			cstate->cur_lineno++;
+			if ((done = CopyReadLine(cstate, is_csv)))
+				break;
+		}
 
 		if (cstate->opts.header_line == COPY_HEADER_MATCH)
 		{
 			int			fldnum;
 
-			if (cstate->opts.csv_mode)
+			if (is_csv)
 				fldct = CopyReadAttributesCSV(cstate);
 			else
 				fldct = CopyReadAttributesText(cstate);
@@ -824,7 +862,7 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
 	cstate->cur_lineno++;
 
 	/* Actually read the line into memory here */
-	done = CopyReadLine(cstate);
+	done = CopyReadLine(cstate, is_csv);
 
 	/*
 	 * EOF at start of line means we're done.  If we see EOF after some
@@ -835,7 +873,7 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
 		return false;
 
 	/* Parse the line into de-escaped field values */
-	if (cstate->opts.csv_mode)
+	if (is_csv)
 		fldct = CopyReadAttributesCSV(cstate);
 	else
 		fldct = CopyReadAttributesText(cstate);
@@ -848,9 +886,10 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
 /*
  * Read next tuple from file for COPY FROM. Return false if no more tuples.
  *
- * 'econtext' is used to evaluate default expression for each column not
- * read from the file. It can be NULL when no default values are used, i.e.
- * when all columns are read from the file.
+ * 'econtext' is used to evaluate default expression for each column that is
+ * either not read from the file or is using the DEFAULT option of COPY FROM.
+ * It can be NULL when no default values are used, i.e. when all columns are
+ * read from the file, and DEFAULT option is unset.
  *
  * 'values' and 'nulls' arrays must be the same length as columns of the
  * relation passed to BeginCopyFrom. This function fills the arrays.
@@ -865,19 +904,30 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 {
 	TupleDesc	tupDesc;
 	AttrNumber	num_phys_attrs,
-				attr_count,
 				num_defaults = cstate->num_defaults;
-	FmgrInfo   *in_functions = cstate->in_functions;
-	Oid		   *typioparams = cstate->typioparams;
 	int			i;
 	int		   *defmap = cstate->defmap;
 	ExprState **defexprs = cstate->defexprs;
 
 	tupDesc = RelationGetDescr(cstate->rel);
 	num_phys_attrs = tupDesc->natts;
-	attr_count = list_length(cstate->attnumlist);
 
 	/* Initialize all values for row to NULL */
+	MemSet(values, 0, num_phys_attrs * sizeof(Datum));
+	MemSet(nulls, true, num_phys_attrs * sizeof(bool));
+	MemSet(cstate->defaults, false, num_phys_attrs * sizeof(bool));
+
+	/* Get one row from source */
+	if (!cstate->routine->CopyFromOneRow(cstate, econtext, values, nulls))
+		return false;
+
+	/*
+	 * YB_TODO_PG19MERGE: YB added skip_row parameter to NextCopyFrom to skip
+	 * format checking for invalid rows. PG19 refactored row parsing into
+	 * CopyFromOneRow callbacks. Port skip_row logic into the callback
+	 * architecture.
+	 */
+#if 0
 	if (!skip_row)
 	{
 		MemSet(values, 0, num_phys_attrs * sizeof(Datum));
@@ -1021,6 +1071,7 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 			cstate->cur_attname = NULL;
 		}
 	}
+#endif
 
 	/*
 	 * Now compute and insert any defaults available for the columns not
@@ -1036,8 +1087,306 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 		Assert(econtext != NULL);
 		Assert(CurrentMemoryContext == econtext->ecxt_per_tuple_memory);
 
-		values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
+		values[defmap[i]] = ExecEvalExpr(defexprs[defmap[i]], econtext,
 										 &nulls[defmap[i]]);
+	}
+
+	return true;
+}
+
+/* Implementation of the per-row callback for text format */
+bool
+CopyFromTextOneRow(CopyFromState cstate, ExprContext *econtext, Datum *values,
+				   bool *nulls)
+{
+	return CopyFromTextLikeOneRow(cstate, econtext, values, nulls, false);
+}
+
+/* Implementation of the per-row callback for CSV format */
+bool
+CopyFromCSVOneRow(CopyFromState cstate, ExprContext *econtext, Datum *values,
+				  bool *nulls)
+{
+	return CopyFromTextLikeOneRow(cstate, econtext, values, nulls, true);
+}
+
+/*
+ * Workhorse for CopyFromTextOneRow() and CopyFromCSVOneRow().
+ *
+ * We use pg_attribute_always_inline to reduce function call overhead
+ * and to help compilers to optimize away the 'is_csv' condition.
+ */
+static pg_attribute_always_inline bool
+CopyFromTextLikeOneRow(CopyFromState cstate, ExprContext *econtext,
+					   Datum *values, bool *nulls, bool is_csv)
+{
+	TupleDesc	tupDesc;
+	AttrNumber	attr_count;
+	FmgrInfo   *in_functions = cstate->in_functions;
+	Oid		   *typioparams = cstate->typioparams;
+	ExprState **defexprs = cstate->defexprs;
+	char	  **field_strings;
+	ListCell   *cur;
+	int			fldct;
+	int			fieldno;
+	char	   *string;
+	bool		current_row_erroneous = false;
+
+	tupDesc = RelationGetDescr(cstate->rel);
+	attr_count = list_length(cstate->attnumlist);
+
+	/* read raw fields in the next line */
+	if (!NextCopyFromRawFieldsInternal(cstate, &field_strings, &fldct, is_csv))
+		return false;
+
+	/* check for overflowing fields */
+	if (attr_count > 0 && fldct > attr_count)
+		ereport(ERROR,
+				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+				 errmsg("extra data after last expected column")));
+
+	fieldno = 0;
+
+	/* Loop to read the user attributes on the line. */
+	foreach(cur, cstate->attnumlist)
+	{
+		int			attnum = lfirst_int(cur);
+		int			m = attnum - 1;
+		Form_pg_attribute att = TupleDescAttr(tupDesc, m);
+
+		if (fieldno >= fldct)
+			ereport(ERROR,
+					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+					 errmsg("missing data for column \"%s\"",
+							NameStr(att->attname))));
+		string = field_strings[fieldno++];
+
+		if (cstate->convert_select_flags &&
+			!cstate->convert_select_flags[m])
+		{
+			/* ignore input field, leaving column as NULL */
+			continue;
+		}
+
+		if (is_csv)
+		{
+			if (string == NULL &&
+				cstate->opts.force_notnull_flags[m])
+			{
+				/*
+				 * FORCE_NOT_NULL option is set and column is NULL - convert
+				 * it to the NULL string.
+				 */
+				string = cstate->opts.null_print;
+			}
+			else if (string != NULL && cstate->opts.force_null_flags[m]
+					 && strcmp(string, cstate->opts.null_print) == 0)
+			{
+				/*
+				 * FORCE_NULL option is set and column matches the NULL
+				 * string. It must have been quoted, or otherwise the string
+				 * would already have been set to NULL. Convert it to NULL as
+				 * specified.
+				 */
+				string = NULL;
+			}
+		}
+
+		cstate->cur_attname = NameStr(att->attname);
+		cstate->cur_attval = string;
+
+		if (string != NULL)
+			nulls[m] = false;
+
+		if (cstate->defaults[m])
+		{
+			/* We must have switched into the per-tuple memory context */
+			Assert(econtext != NULL);
+			Assert(CurrentMemoryContext == econtext->ecxt_per_tuple_memory);
+
+			values[m] = ExecEvalExpr(defexprs[m], econtext, &nulls[m]);
+		}
+
+		/*
+		 * If ON_ERROR is specified, handle the different options
+		 */
+		else if (!InputFunctionCallSafe(&in_functions[m],
+										string,
+										typioparams[m],
+										att->atttypmod,
+										(Node *) cstate->escontext,
+										&values[m]))
+		{
+			Assert(cstate->opts.on_error != COPY_ON_ERROR_STOP);
+
+			if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
+				cstate->num_errors++;
+			else if (cstate->opts.on_error == COPY_ON_ERROR_SET_NULL)
+			{
+				/*
+				 * Reset error state so the subsequent InputFunctionCallSafe
+				 * call (for domain constraint check) can properly report
+				 * whether it succeeded or failed.
+				 */
+				cstate->escontext->error_occurred = false;
+
+				Assert(cstate->domain_with_constraint != NULL);
+
+				/*
+				 * For constrained domains, we need an additional
+				 * InputFunctionCallSafe() to ensure that an error is thrown
+				 * if the domain constraint rejects null values.
+				 */
+				if (!cstate->domain_with_constraint[m] ||
+					InputFunctionCallSafe(&in_functions[m],
+										  NULL,
+										  typioparams[m],
+										  att->atttypmod,
+										  (Node *) cstate->escontext,
+										  &values[m]))
+				{
+					nulls[m] = true;
+					values[m] = (Datum) 0;
+				}
+				else
+					ereport(ERROR,
+							errcode(ERRCODE_NOT_NULL_VIOLATION),
+							errmsg("domain %s does not allow null values",
+								   format_type_be(typioparams[m])),
+							errdetail("ON_ERROR SET_NULL cannot be applied because column \"%s\" (domain %s) does not accept null values.",
+									  cstate->cur_attname,
+									  format_type_be(typioparams[m])),
+							errdatatype(typioparams[m]));
+
+				/*
+				 * We count only the number of rows (not fields) where
+				 * ON_ERROR SET_NULL was applied.
+				 */
+				if (!current_row_erroneous)
+				{
+					current_row_erroneous = true;
+					cstate->num_errors++;
+				}
+			}
+
+			if (cstate->opts.log_verbosity == COPY_LOG_VERBOSITY_VERBOSE)
+			{
+				/*
+				 * Since we emit line number and column info in the below
+				 * notice message, we suppress error context information other
+				 * than the relation name.
+				 */
+				Assert(!cstate->relname_only);
+				cstate->relname_only = true;
+
+				if (cstate->cur_attval)
+				{
+					char	   *attval;
+
+					attval = CopyLimitPrintoutLength(cstate->cur_attval);
+
+					if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
+						ereport(NOTICE,
+								errmsg("skipping row due to data type incompatibility at line %" PRIu64 " for column \"%s\": \"%s\"",
+									   cstate->cur_lineno,
+									   cstate->cur_attname,
+									   attval));
+					else if (cstate->opts.on_error == COPY_ON_ERROR_SET_NULL)
+						ereport(NOTICE,
+								errmsg("setting to null due to data type incompatibility at line %" PRIu64 " for column \"%s\": \"%s\"",
+									   cstate->cur_lineno,
+									   cstate->cur_attname,
+									   attval));
+					pfree(attval);
+				}
+				else
+				{
+					if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
+						ereport(NOTICE,
+								errmsg("skipping row due to data type incompatibility at line %" PRIu64 " for column \"%s\": null input",
+									   cstate->cur_lineno,
+									   cstate->cur_attname));
+				}
+				/* reset relname_only */
+				cstate->relname_only = false;
+			}
+
+			if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
+				return true;
+			else if (cstate->opts.on_error == COPY_ON_ERROR_SET_NULL)
+				continue;
+		}
+
+		cstate->cur_attname = NULL;
+		cstate->cur_attval = NULL;
+	}
+
+	Assert(fieldno == attr_count);
+
+	return true;
+}
+
+/* Implementation of the per-row callback for binary format */
+bool
+CopyFromBinaryOneRow(CopyFromState cstate, ExprContext *econtext, Datum *values,
+					 bool *nulls)
+{
+	TupleDesc	tupDesc;
+	AttrNumber	attr_count;
+	FmgrInfo   *in_functions = cstate->in_functions;
+	Oid		   *typioparams = cstate->typioparams;
+	int16		fld_count;
+	ListCell   *cur;
+
+	tupDesc = RelationGetDescr(cstate->rel);
+	attr_count = list_length(cstate->attnumlist);
+
+	cstate->cur_lineno++;
+
+	if (!CopyGetInt16(cstate, &fld_count))
+	{
+		/* EOF detected (end of file, or protocol-level EOF) */
+		return false;
+	}
+
+	if (fld_count == -1)
+	{
+		/*
+		 * Received EOF marker.  Wait for the protocol-level EOF, and complain
+		 * if it doesn't come immediately.  In COPY FROM STDIN, this ensures
+		 * that we correctly handle CopyFail, if client chooses to send that
+		 * now.  When copying from file, we could ignore the rest of the file
+		 * like in text mode, but we choose to be consistent with the COPY
+		 * FROM STDIN case.
+		 */
+		char		dummy;
+
+		if (CopyReadBinaryData(cstate, &dummy, 1) > 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+					 errmsg("received copy data after EOF marker")));
+		return false;
+	}
+
+	if (fld_count != attr_count)
+		ereport(ERROR,
+				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+				 errmsg("row field count is %d, expected %d",
+						fld_count, attr_count)));
+
+	foreach(cur, cstate->attnumlist)
+	{
+		int			attnum = lfirst_int(cur);
+		int			m = attnum - 1;
+		Form_pg_attribute att = TupleDescAttr(tupDesc, m);
+
+		cstate->cur_attname = NameStr(att->attname);
+		values[m] = CopyReadBinaryAttribute(cstate,
+											&in_functions[m],
+											typioparams[m],
+											att->atttypmod,
+											&nulls[m]);
+		cstate->cur_attname = NULL;
 	}
 
 	return true;
@@ -1051,15 +1400,24 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
  * in the final value of line_buf.
  */
 static bool
-CopyReadLine(CopyFromState cstate)
+CopyReadLine(CopyFromState cstate, bool is_csv)
 {
 	bool		result;
 
 	resetStringInfo(&cstate->line_buf);
 	cstate->line_buf_valid = false;
 
-	/* Parse data and transfer into line_buf */
-	result = CopyReadLineText(cstate);
+	/*
+	 * Parse data and transfer into line_buf.
+	 *
+	 * Because this is performance critical, we inline CopyReadLineText() and
+	 * pass the boolean parameters as constants to allow the compiler to emit
+	 * specialized code with fewer branches.
+	 */
+	if (is_csv)
+		result = CopyReadLineText(cstate, true);
+	else
+		result = CopyReadLineText(cstate, false);
 
 	if (result)
 	{
@@ -1123,11 +1481,157 @@ CopyReadLine(CopyFromState cstate)
 	return result;
 }
 
+#ifndef USE_NO_SIMD
+/*
+ * Helper function for CopyReadLineText() that uses SIMD instructions to scan
+ * the input buffer for special characters.  This can be much faster.
+ *
+ * Note that we disable SIMD for the remainder of the COPY FROM command upon
+ * encountering a special character (except for end-of-line characters) or a
+ * short line.  This is perhaps too conservative, but it should help avoid
+ * regressions.  It could probably be made more lenient in the future via
+ * fine-tuned heuristics.
+ */
+static bool
+CopyReadLineTextSIMDHelper(CopyFromState cstate, bool is_csv,
+						   bool *hit_eof_p, int *input_buf_ptr_p)
+{
+	char	   *copy_input_buf;
+	int			input_buf_ptr;
+	int			copy_buf_len;
+	bool		unique_esc_char;	/* for csv, do quote/esc chars differ? */
+	bool		first = true;
+	bool		result = false;
+	const Vector8 nl_vec = vector8_broadcast('\n');
+	const Vector8 cr_vec = vector8_broadcast('\r');
+	Vector8		bs_or_quote_vec;	/* '\' for text, quote for csv */
+	Vector8		esc_vec;		/* only for csv */
+
+	if (is_csv)
+	{
+		char		quote = cstate->opts.quote[0];
+		char		esc = cstate->opts.escape[0];
+
+		bs_or_quote_vec = vector8_broadcast(quote);
+		esc_vec = vector8_broadcast(esc);
+		unique_esc_char = (quote != esc);
+	}
+	else
+	{
+		bs_or_quote_vec = vector8_broadcast('\\');
+		unique_esc_char = false;
+	}
+
+	/*
+	 * For a little extra speed within the loop, we copy some state members
+	 * into local variables. Note that we need to use a separate local
+	 * variable for input_buf_ptr so that the REFILL_LINEBUF macro works.  We
+	 * copy its value into the input_buf_ptr_p argument before returning.
+	 */
+	copy_input_buf = cstate->input_buf;
+	input_buf_ptr = cstate->input_buf_index;
+	copy_buf_len = cstate->input_buf_len;
+
+	/*
+	 * See the corresponding loop in CopyReadLineText() for more information
+	 * about the purpose of this loop.  This one does the same thing using
+	 * SIMD instructions, although we are quick to bail out to the scalar path
+	 * if we encounter a special character.
+	 */
+	for (;;)
+	{
+		Vector8		chunk;
+		Vector8		match;
+
+		/* Load more data if needed. */
+		if (copy_buf_len - input_buf_ptr < sizeof(Vector8))
+		{
+			REFILL_LINEBUF;
+
+			CopyLoadInputBuf(cstate);
+			/* update our local variables */
+			*hit_eof_p = cstate->input_reached_eof;
+			input_buf_ptr = cstate->input_buf_index;
+			copy_buf_len = cstate->input_buf_len;
+
+			/*
+			 * If we are completely out of data, break out of the loop,
+			 * reporting EOF.
+			 */
+			if (INPUT_BUF_BYTES(cstate) <= 0)
+			{
+				result = true;
+				break;
+			}
+		}
+
+		/*
+		 * If we still don't have enough data for the SIMD path, fall back to
+		 * the scalar code.  Note that this doesn't necessarily mean we
+		 * encountered a short line, so we leave cstate->simd_enabled set to
+		 * true.
+		 */
+		if (copy_buf_len - input_buf_ptr < sizeof(Vector8))
+			break;
+
+		/*
+		 * If we made it here, we have at least enough data to fit in a
+		 * Vector8, so we can use SIMD instructions to scan for special
+		 * characters.
+		 */
+		vector8_load(&chunk, (const uint8 *) &copy_input_buf[input_buf_ptr]);
+
+		/*
+		 * Check for \n, \r, \\ (for text), quotes (for csv), and escapes (for
+		 * csv, if different from quotes).
+		 */
+		match = vector8_eq(chunk, nl_vec);
+		match = vector8_or(match, vector8_eq(chunk, cr_vec));
+		match = vector8_or(match, vector8_eq(chunk, bs_or_quote_vec));
+		if (unique_esc_char)
+			match = vector8_or(match, vector8_eq(chunk, esc_vec));
+
+		/*
+		 * If we found a special character, advance to it and hand off to the
+		 * scalar path.  Except for end-of-line characters, we also disable
+		 * SIMD processing for the remainder of the COPY FROM command.
+		 */
+		if (vector8_is_highbit_set(match))
+		{
+			uint32		mask;
+			char		c;
+
+			mask = vector8_highbit_mask(match);
+			input_buf_ptr += pg_rightmost_one_pos32(mask);
+
+			/*
+			 * Don't disable SIMD if we found \n or \r, else we'd stop using
+			 * SIMD instructions after the first line.  As an exception, we do
+			 * disable it if this is the first vector we processed, as that
+			 * means the line is too short for SIMD.
+			 */
+			c = copy_input_buf[input_buf_ptr];
+			if (first || (c != '\n' && c != '\r'))
+				cstate->simd_enabled = false;
+
+			break;
+		}
+
+		/* That chunk was clear of special characters, so we can skip it. */
+		input_buf_ptr += sizeof(Vector8);
+		first = false;
+	}
+
+	*input_buf_ptr_p = input_buf_ptr;
+	return result;
+}
+#endif							/* ! USE_NO_SIMD */
+
 /*
  * CopyReadLineText - inner loop of CopyReadLine for text mode
  */
-static bool
-CopyReadLineText(CopyFromState cstate)
+static pg_attribute_always_inline bool
+CopyReadLineText(CopyFromState cstate, bool is_csv)
 {
 	char	   *copy_input_buf;
 	int			input_buf_ptr;
@@ -1137,13 +1641,12 @@ CopyReadLineText(CopyFromState cstate)
 	bool		result = false;
 
 	/* CSV variables */
-	bool		first_char_in_line = true;
 	bool		in_quote = false,
 				last_was_esc = false;
 	char		quotec = '\0';
 	char		escapec = '\0';
 
-	if (cstate->opts.csv_mode)
+	if (is_csv)
 	{
 		quotec = cstate->opts.quote[0];
 		escapec = cstate->opts.escape[0];
@@ -1161,9 +1664,6 @@ CopyReadLineText(CopyFromState cstate)
 	 * value and are put in line_buf.  We keep just enough state to know if we
 	 * are currently in a quoted field or not.
 	 *
-	 * These four characters, and the CSV escape and quote characters, are
-	 * assumed the same in frontend and backend encodings.
-	 *
 	 * The input has already been converted to the database encoding.  All
 	 * supported server encodings have the property that all bytes in a
 	 * multi-byte sequence have the high bit set, so a multibyte character
@@ -1177,11 +1677,43 @@ CopyReadLineText(CopyFromState cstate)
 	 * input_buf_ptr have been determined to be part of the line, but not yet
 	 * transferred to line_buf.
 	 *
-	 * For a little extra speed within the loop, we copy input_buf and
-	 * input_buf_len into local variables.
+	 * For a little extra speed within the loop, we copy some state
+	 * information into local variables.  input_buf_ptr could be changed in
+	 * the SIMD path, so we must set that one before it.  The others are set
+	 * afterwards.
 	 */
-	copy_input_buf = cstate->input_buf;
 	input_buf_ptr = cstate->input_buf_index;
+
+	/*
+	 * We first try to use SIMD for the task described above, falling back to
+	 * the scalar path (i.e., the loop below) if needed.
+	 */
+#ifndef USE_NO_SIMD
+	if (cstate->simd_enabled)
+	{
+		/*
+		 * Using temporary variables seems to encourage the compiler to keep
+		 * them in a register, which is beneficial for performance.
+		 */
+		bool		tmp_hit_eof = false;
+		int			tmp_input_buf_ptr = 0;	/* silence compiler warning */
+
+		result = CopyReadLineTextSIMDHelper(cstate, is_csv, &tmp_hit_eof,
+											&tmp_input_buf_ptr);
+		hit_eof = tmp_hit_eof;
+		input_buf_ptr = tmp_input_buf_ptr;
+
+		if (result)
+		{
+			/* Transfer any still-uncopied data to line_buf. */
+			REFILL_LINEBUF;
+
+			return result;
+		}
+	}
+#endif							/* ! USE_NO_SIMD */
+
+	copy_input_buf = cstate->input_buf;
 	copy_buf_len = cstate->input_buf_len;
 
 	for (;;)
@@ -1223,15 +1755,15 @@ CopyReadLineText(CopyFromState cstate)
 		prev_raw_ptr = input_buf_ptr;
 		c = copy_input_buf[input_buf_ptr++];
 
-		if (cstate->opts.csv_mode)
+		if (is_csv)
 		{
 			/*
-			 * If character is '\\' or '\r', we may need to look ahead below.
-			 * Force fetch of the next character if we don't already have it.
-			 * We need to do this before changing CSV state, in case one of
-			 * these characters is also the quote or escape character.
+			 * If character is '\r', we may need to look ahead below.  Force
+			 * fetch of the next character if we don't already have it.  We
+			 * need to do this before changing CSV state, in case '\r' is also
+			 * the quote or escape character.
 			 */
-			if (c == '\\' || c == '\r')
+			if (c == '\r')
 			{
 				IF_NEED_REFILL_AND_NOT_EOF_CONTINUE(0);
 			}
@@ -1262,7 +1794,7 @@ CopyReadLineText(CopyFromState cstate)
 		}
 
 		/* Process \r */
-		if (c == '\r' && (!cstate->opts.csv_mode || !in_quote))
+		if (c == '\r' && (!is_csv || !in_quote))
 		{
 			/* Check for \r\n on first line, _and_ handle \r\n. */
 			if (cstate->eol_type == EOL_UNKNOWN ||
@@ -1290,10 +1822,10 @@ CopyReadLineText(CopyFromState cstate)
 					if (cstate->eol_type == EOL_CRNL)
 						ereport(ERROR,
 								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-								 !cstate->opts.csv_mode ?
+								 !is_csv ?
 								 errmsg("literal carriage return found in data") :
 								 errmsg("unquoted carriage return found in data"),
-								 !cstate->opts.csv_mode ?
+								 !is_csv ?
 								 errhint("Use \"\\r\" to represent carriage return.") :
 								 errhint("Use quoted CSV field to represent carriage return.")));
 
@@ -1307,10 +1839,10 @@ CopyReadLineText(CopyFromState cstate)
 			else if (cstate->eol_type == EOL_NL)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 !cstate->opts.csv_mode ?
+						 !is_csv ?
 						 errmsg("literal carriage return found in data") :
 						 errmsg("unquoted carriage return found in data"),
-						 !cstate->opts.csv_mode ?
+						 !is_csv ?
 						 errhint("Use \"\\r\" to represent carriage return.") :
 						 errhint("Use quoted CSV field to represent carriage return.")));
 			/* If reach here, we have found the line terminator */
@@ -1318,15 +1850,15 @@ CopyReadLineText(CopyFromState cstate)
 		}
 
 		/* Process \n */
-		if (c == '\n' && (!cstate->opts.csv_mode || !in_quote))
+		if (c == '\n' && (!is_csv || !in_quote))
 		{
 			if (cstate->eol_type == EOL_CR || cstate->eol_type == EOL_CRNL)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 !cstate->opts.csv_mode ?
+						 !is_csv ?
 						 errmsg("literal newline found in data") :
 						 errmsg("unquoted newline found in data"),
-						 !cstate->opts.csv_mode ?
+						 !is_csv ?
 						 errhint("Use \"\\n\" to represent newline.") :
 						 errhint("Use quoted CSV field to represent newline.")));
 			cstate->eol_type = EOL_NL;	/* in case not set yet */
@@ -1335,10 +1867,10 @@ CopyReadLineText(CopyFromState cstate)
 		}
 
 		/*
-		 * In CSV mode, we only recognize \. alone on a line.  This is because
-		 * \. is a valid CSV data value.
+		 * Process backslash, except in CSV mode where backslash is a normal
+		 * character.
 		 */
-		if (c == '\\' && (!cstate->opts.csv_mode || first_char_in_line))
+		if (c == '\\' && !is_csv)
 		{
 			char		c2;
 
@@ -1356,12 +1888,6 @@ CopyReadLineText(CopyFromState cstate)
 			if (c2 == '.')
 			{
 				input_buf_ptr++;	/* consume the '.' */
-
-				/*
-				 * Note: if we loop back for more data here, it does not
-				 * matter that the CSV state change checks are re-executed; we
-				 * will come back here with no important state changed.
-				 */
 				if (cstate->eol_type == EOL_CRNL)
 				{
 					/* Get the next character */
@@ -1370,23 +1896,13 @@ CopyReadLineText(CopyFromState cstate)
 					c2 = copy_input_buf[input_buf_ptr++];
 
 					if (c2 == '\n')
-					{
-						if (!cstate->opts.csv_mode)
-							ereport(ERROR,
-									(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-									 errmsg("end-of-copy marker does not match previous newline style")));
-						else
-							NO_END_OF_COPY_GOTO;
-					}
+						ereport(ERROR,
+								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+								 errmsg("end-of-copy marker does not match previous newline style")));
 					else if (c2 != '\r')
-					{
-						if (!cstate->opts.csv_mode)
-							ereport(ERROR,
-									(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-									 errmsg("end-of-copy marker corrupt")));
-						else
-							NO_END_OF_COPY_GOTO;
-					}
+						ereport(ERROR,
+								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+								 errmsg("end-of-copy marker is not alone on its line")));
 				}
 
 				/* Get the next character */
@@ -1395,37 +1911,34 @@ CopyReadLineText(CopyFromState cstate)
 				c2 = copy_input_buf[input_buf_ptr++];
 
 				if (c2 != '\r' && c2 != '\n')
-				{
-					if (!cstate->opts.csv_mode)
-						ereport(ERROR,
-								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-								 errmsg("end-of-copy marker corrupt")));
-					else
-						NO_END_OF_COPY_GOTO;
-				}
+					ereport(ERROR,
+							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+							 errmsg("end-of-copy marker is not alone on its line")));
 
 				if ((cstate->eol_type == EOL_NL && c2 != '\n') ||
 					(cstate->eol_type == EOL_CRNL && c2 != '\n') ||
 					(cstate->eol_type == EOL_CR && c2 != '\r'))
-				{
 					ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("end-of-copy marker does not match previous newline style")));
-				}
 
 				/*
-				 * Transfer only the data before the \. into line_buf, then
-				 * discard the data and the \. sequence.
+				 * If there is any data on this line before the \., complain.
 				 */
-				if (prev_raw_ptr > cstate->input_buf_index)
-					appendBinaryStringInfo(&cstate->line_buf,
-										   cstate->input_buf + cstate->input_buf_index,
-										   prev_raw_ptr - cstate->input_buf_index);
+				if (cstate->line_buf.len > 0 ||
+					prev_raw_ptr > cstate->input_buf_index)
+					ereport(ERROR,
+							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+							 errmsg("end-of-copy marker is not alone on its line")));
+
+				/*
+				 * Discard the \. and newline, then report EOF.
+				 */
 				cstate->input_buf_index = input_buf_ptr;
 				result = true;	/* report EOF */
 				break;
 			}
-			else if (!cstate->opts.csv_mode)
+			else
 			{
 				/*
 				 * If we are here, it means we found a backslash followed by
@@ -1433,23 +1946,11 @@ CopyReadLineText(CopyFromState cstate)
 				 * after a backslash is special, so we skip over that second
 				 * character too.  If we didn't do that \\. would be
 				 * considered an eof-of copy, while in non-CSV mode it is a
-				 * literal backslash followed by a period.  In CSV mode,
-				 * backslashes are not special, so we want to process the
-				 * character after the backslash just like a normal character,
-				 * so we don't increment in those cases.
+				 * literal backslash followed by a period.
 				 */
 				input_buf_ptr++;
 			}
 		}
-
-		/*
-		 * This label is for CSV cases where \. appears at the start of a
-		 * line, but there is more text after it, meaning it was a data value.
-		 * We are more strict for \. in CSV mode because \. could be a data
-		 * value, while in non-CSV mode, \. cannot be a data value.
-		 */
-not_end_of_copy:
-		first_char_in_line = false;
 	}							/* end of outer loop */
 
 	/*
@@ -1469,7 +1970,7 @@ GetDecimalFromHex(char hex)
 	if (isdigit((unsigned char) hex))
 		return hex - '0';
 	else
-		return tolower((unsigned char) hex) - 'a' + 10;
+		return pg_ascii_tolower((unsigned char) hex) - 'a' + 10;
 }
 
 /*
@@ -1680,6 +2181,32 @@ CopyReadAttributesText(CopyFromState cstate)
 		if (input_len == cstate->opts.null_print_len &&
 			strncmp(start_ptr, cstate->opts.null_print, input_len) == 0)
 			cstate->raw_fields[fieldno] = NULL;
+		/* Check whether raw input matched default marker */
+		else if (fieldno < list_length(cstate->attnumlist) &&
+				 cstate->opts.default_print &&
+				 input_len == cstate->opts.default_print_len &&
+				 strncmp(start_ptr, cstate->opts.default_print, input_len) == 0)
+		{
+			/* fieldno is 0-indexed and attnum is 1-indexed */
+			int			m = list_nth_int(cstate->attnumlist, fieldno) - 1;
+
+			if (cstate->defexprs[m] != NULL)
+			{
+				/* defaults contain entries for all physical attributes */
+				cstate->defaults[m] = true;
+			}
+			else
+			{
+				TupleDesc	tupDesc = RelationGetDescr(cstate->rel);
+				Form_pg_attribute att = TupleDescAttr(tupDesc, m);
+
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+						 errmsg("unexpected default marker in COPY data"),
+						 errdetail("Column \"%s\" has no default value.",
+								   NameStr(att->attname))));
+			}
+		}
 		else
 		{
 			/*
@@ -1869,6 +2396,32 @@ endfield:
 		if (!saw_quote && input_len == cstate->opts.null_print_len &&
 			strncmp(start_ptr, cstate->opts.null_print, input_len) == 0)
 			cstate->raw_fields[fieldno] = NULL;
+		/* Check whether raw input matched default marker */
+		else if (fieldno < list_length(cstate->attnumlist) &&
+				 cstate->opts.default_print &&
+				 input_len == cstate->opts.default_print_len &&
+				 strncmp(start_ptr, cstate->opts.default_print, input_len) == 0)
+		{
+			/* fieldno is 0-index and attnum is 1-index */
+			int			m = list_nth_int(cstate->attnumlist, fieldno) - 1;
+
+			if (cstate->defexprs[m] != NULL)
+			{
+				/* defaults contain entries for all physical attributes */
+				cstate->defaults[m] = true;
+			}
+			else
+			{
+				TupleDesc	tupDesc = RelationGetDescr(cstate->rel);
+				Form_pg_attribute att = TupleDescAttr(tupDesc, m);
+
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+						 errmsg("unexpected default marker in COPY data"),
+						 errdetail("Column \"%s\" has no default value.",
+								   NameStr(att->attname))));
+			}
+		}
 
 		fieldno++;
 		/* Done if we hit EOL instead of a delim */

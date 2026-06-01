@@ -3,7 +3,7 @@
  * test.c
  *		Test harness code for shared memory message queues.
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_shm_mq/test.c
@@ -16,6 +16,9 @@
 #include "fmgr.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "storage/proc.h"
+#include "utils/wait_event.h"
+#include "varatt.h"
 
 #include "test_shm_mq.h"
 
@@ -24,10 +27,11 @@ PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(test_shm_mq);
 PG_FUNCTION_INFO_V1(test_shm_mq_pipelined);
 
-void		_PG_init(void);
-
 static void verify_message(Size origlen, char *origdata, Size newlen,
 						   char *newdata);
+
+/* value cached, fetched from shared memory */
+static uint32 we_message_queue = 0;
 
 /*
  * Simple test of the shared memory message queue infrastructure.
@@ -226,6 +230,10 @@ test_shm_mq_pipelined(PG_FUNCTION_ARGS)
 
 		if (wait)
 		{
+			/* first time, allocate or get the custom wait event */
+			if (we_message_queue == 0)
+				we_message_queue = WaitEventExtensionNew("TestShmMqMessageQueue");
+
 			/*
 			 * If we made no progress, wait for one of the other processes to
 			 * which we are connected to set our latch, indicating that they
@@ -233,7 +241,7 @@ test_shm_mq_pipelined(PG_FUNCTION_ARGS)
 			 * for us to do.
 			 */
 			(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
-							 PG_WAIT_EXTENSION);
+							 we_message_queue);
 			ResetLatch(MyLatch);
 			CHECK_FOR_INTERRUPTS();
 		}

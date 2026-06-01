@@ -3,7 +3,7 @@
  * int.c
  *	  Functions for the built-in integer types (except int8).
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -64,7 +64,7 @@ int2in(PG_FUNCTION_ARGS)
 {
 	char	   *num = PG_GETARG_CSTRING(0);
 
-	PG_RETURN_INT16(pg_strtoint16(num));
+	PG_RETURN_INT16(pg_strtoint16_safe(num, fcinfo->context));
 }
 
 /*
@@ -138,12 +138,37 @@ buildint2vector(const int16 *int2s, int n)
 }
 
 /*
+ * validate that an array object meets the restrictions of int2vector
+ *
+ * We need this because there are pathways by which a general int2[] array can
+ * be cast to int2vector, allowing the type's restrictions to be violated.
+ * All code that receives an int2vector as a SQL parameter should check this.
+ */
+static void
+check_valid_int2vector(const int2vector *int2Array)
+{
+	/*
+	 * We insist on ndim == 1 and dataoffset == 0 (that is, no nulls) because
+	 * otherwise the array's layout will not be what calling code expects.  We
+	 * needn't be picky about the index lower bound though.  Checking elemtype
+	 * is just paranoia.
+	 */
+	if (int2Array->ndim != 1 ||
+		int2Array->dataoffset != 0 ||
+		int2Array->elemtype != INT2OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("array is not a valid int2vector")));
+}
+
+/*
  *		int2vectorin			- converts "num num ..." to internal form
  */
 Datum
 int2vectorin(PG_FUNCTION_ARGS)
 {
 	char	   *intString = PG_GETARG_CSTRING(0);
+	Node	   *escontext = fcinfo->context;
 	int2vector *result;
 	int			nalloc;
 	int			n;
@@ -171,19 +196,19 @@ int2vectorin(PG_FUNCTION_ARGS)
 		l = strtol(intString, &endp, 10);
 
 		if (intString == endp)
-			ereport(ERROR,
+			ereturn(escontext, (Datum) 0,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("invalid input syntax for type %s: \"%s\"",
 							"smallint", intString)));
 
 		if (errno == ERANGE || l < SHRT_MIN || l > SHRT_MAX)
-			ereport(ERROR,
+			ereturn(escontext, (Datum) 0,
 					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 					 errmsg("value \"%s\" is out of range for type %s", intString,
 							"smallint")));
 
 		if (*endp && *endp != ' ')
-			ereport(ERROR,
+			ereturn(escontext, (Datum) 0,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("invalid input syntax for type %s: \"%s\"",
 							"smallint", intString)));
@@ -210,9 +235,13 @@ int2vectorout(PG_FUNCTION_ARGS)
 {
 	int2vector *int2Array = (int2vector *) PG_GETARG_POINTER(0);
 	int			num,
-				nnums = int2Array->dim1;
+				nnums;
 	char	   *rp;
 	char	   *result;
+
+	/* validate input before fetching dim1 */
+	check_valid_int2vector(int2Array);
+	nnums = int2Array->dim1;
 
 	/* assumes sign, 5 digits, ' ' */
 	rp = result = (char *) palloc(nnums * 7 + 1);
@@ -274,6 +303,7 @@ int2vectorrecv(PG_FUNCTION_ARGS)
 Datum
 int2vectorsend(PG_FUNCTION_ARGS)
 {
+	/* We don't do check_valid_int2vector, since array_send won't care */
 	return array_send(fcinfo);
 }
 
@@ -290,7 +320,7 @@ int4in(PG_FUNCTION_ARGS)
 {
 	char	   *num = PG_GETARG_CSTRING(0);
 
-	PG_RETURN_INT32(pg_strtoint32(num));
+	PG_RETURN_INT32(pg_strtoint32_safe(num, fcinfo->context));
 }
 
 /*
@@ -406,7 +436,7 @@ i4toi2(PG_FUNCTION_ARGS)
 	int32		arg1 = PG_GETARG_INT32(0);
 
 	if (unlikely(arg1 < SHRT_MIN) || unlikely(arg1 > SHRT_MAX))
-		ereport(ERROR,
+		ereturn(fcinfo->context, (Datum) 0,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("smallint out of range")));
 
@@ -1593,7 +1623,7 @@ generate_series_step_int4(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* allocate memory for user context */
-		fctx = (generate_series_fctx *) palloc(sizeof(generate_series_fctx));
+		fctx = palloc_object(generate_series_fctx);
 
 		/*
 		 * Use fctx to keep state from call to call. Seed current with the

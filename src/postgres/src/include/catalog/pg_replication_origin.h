@@ -4,7 +4,7 @@
  *	  definition of the "replication origin" system catalog
  *	  (pg_replication_origin)
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_replication_origin.h
@@ -20,13 +20,15 @@
 
 #include "access/xlogdefs.h"
 #include "catalog/genbki.h"
-#include "catalog/pg_replication_origin_d.h"
+#include "catalog/pg_replication_origin_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_replication_origin.  cpp turns this into
  *		typedef struct FormData_pg_replication_origin
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_replication_origin,6000,ReplicationOriginRelationId) BKI_SHARED_RELATION
 {
 	/*
@@ -52,11 +54,14 @@ CATALOG(pg_replication_origin,6000,ReplicationOriginRelationId) BKI_SHARED_RELAT
 #endif
 } FormData_pg_replication_origin;
 
+END_CATALOG_STRUCT
+
 typedef FormData_pg_replication_origin *Form_pg_replication_origin;
 
-DECLARE_TOAST_WITH_MACRO(pg_replication_origin, 4181, 4182, PgReplicationOriginToastTable, PgReplicationOriginToastIndex);
+DECLARE_UNIQUE_INDEX_PKEY(pg_replication_origin_roiident_index, 6001, ReplicationOriginIdentIndex, pg_replication_origin, btree(roident oid_ops));
+DECLARE_UNIQUE_INDEX(pg_replication_origin_roname_index, 6002, ReplicationOriginNameIndex, pg_replication_origin, btree(roname text_ops));
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_replication_origin_roiident_index, 6001, ReplicationOriginIdentIndex, on pg_replication_origin using btree(roident oid_ops));
-DECLARE_UNIQUE_INDEX(pg_replication_origin_roname_index, 6002, ReplicationOriginNameIndex, on pg_replication_origin using btree(roname text_ops));
+MAKE_SYSCACHE(REPLORIGIDENT, pg_replication_origin_roiident_index, 16);
+MAKE_SYSCACHE(REPLORIGNAME, pg_replication_origin_roname_index, 16);
 
 #endif							/* PG_REPLICATION_ORIGIN_H */

@@ -4,7 +4,7 @@
  *	  support functions for GIN's indexing of any array
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -16,7 +16,7 @@
 #include "access/gin.h"
 #include "access/stratnum.h"
 #include "utils/array.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
 
 
@@ -82,9 +82,10 @@ ginqueryarrayextract(PG_FUNCTION_ARGS)
 	ArrayType  *array = PG_GETARG_ARRAYTYPE_P_COPY(0);
 	int32	   *nkeys = (int32 *) PG_GETARG_POINTER(1);
 	StrategyNumber strategy = PG_GETARG_UINT16(2);
-
-	/* bool   **pmatch = (bool **) PG_GETARG_POINTER(3); */
-	/* Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4); */
+#ifdef NOT_USED
+	bool	  **pmatch = (bool **) PG_GETARG_POINTER(3);
+	Pointer    *extra_data = (Pointer *) PG_GETARG_POINTER(4);
+#endif
 	bool	  **nullFlags = (bool **) PG_GETARG_POINTER(5);
 	int32	   *searchMode = (int32 *) PG_GETARG_POINTER(6);
 	int16		elmlen;
@@ -143,14 +144,17 @@ ginarrayconsistent(PG_FUNCTION_ARGS)
 {
 	bool	   *check = (bool *) PG_GETARG_POINTER(0);
 	StrategyNumber strategy = PG_GETARG_UINT16(1);
-
-	/* ArrayType  *query = PG_GETARG_ARRAYTYPE_P(2); */
+#ifdef NOT_USED
+	ArrayType  *query = PG_GETARG_ARRAYTYPE_P(2);
+#endif
 	int32		nkeys = PG_GETARG_INT32(3);
-
-	/* Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4); */
+#ifdef NOT_USED
+	Pointer    *extra_data = (Pointer *) PG_GETARG_POINTER(4);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(5);
-
-	/* Datum	   *queryKeys = (Datum *) PG_GETARG_POINTER(6); */
+#ifdef NOT_USED
+	Datum	   *queryKeys = (Datum *) PG_GETARG_POINTER(6);
+#endif
 	bool	   *nullFlags = (bool *) PG_GETARG_POINTER(7);
 	bool		res;
 	int32		i;
@@ -227,12 +231,14 @@ ginarraytriconsistent(PG_FUNCTION_ARGS)
 {
 	GinTernaryValue *check = (GinTernaryValue *) PG_GETARG_POINTER(0);
 	StrategyNumber strategy = PG_GETARG_UINT16(1);
-
-	/* ArrayType  *query = PG_GETARG_ARRAYTYPE_P(2); */
+#ifdef NOT_USED
+	ArrayType  *query = PG_GETARG_ARRAYTYPE_P(2);
+#endif
 	int32		nkeys = PG_GETARG_INT32(3);
-
-	/* Pointer	   *extra_data = (Pointer *) PG_GETARG_POINTER(4); */
-	/* Datum	   *queryKeys = (Datum *) PG_GETARG_POINTER(5); */
+#ifdef NOT_USED
+	Pointer    *extra_data = (Pointer *) PG_GETARG_POINTER(4);
+	Datum	   *queryKeys = (Datum *) PG_GETARG_POINTER(5);
+#endif
 	bool	   *nullFlags = (bool *) PG_GETARG_POINTER(6);
 	GinTernaryValue res;
 	int32		i;

@@ -15,7 +15,7 @@ COMMENT ON PUBLICATION testpub_default IS 'test publication';
 SELECT obj_description(p.oid, 'pg_publication') FROM pg_publication p;
 
 SET client_min_messages = 'ERROR';
-CREATE PUBLICATION testpib_ins_trunct WITH (publish = insert);
+CREATE PUBLICATION testpub_ins_trunct WITH (publish = insert);
 RESET client_min_messages;
 
 ALTER PUBLICATION testpub_default SET (publish = update);
@@ -24,6 +24,9 @@ ALTER PUBLICATION testpub_default SET (publish = update);
 CREATE PUBLICATION testpub_xxx WITH (foo);
 CREATE PUBLICATION testpub_xxx WITH (publish = 'cluster, vacuum');
 CREATE PUBLICATION testpub_xxx WITH (publish_via_partition_root = 'true', publish_via_partition_root = '0');
+CREATE PUBLICATION testpub_xxx WITH (publish_generated_columns = stored, publish_generated_columns = none);
+CREATE PUBLICATION testpub_xxx WITH (publish_generated_columns = foo);
+CREATE PUBLICATION testpub_xxx WITH (publish_generated_columns);
 
 \dRp
 
@@ -102,20 +105,162 @@ SELECT pubname, puballtables FROM pg_publication WHERE pubname = 'testpub_forall
 \d+ testpub_tbl2
 \dRp+ testpub_foralltables
 
-DROP TABLE testpub_tbl2;
-DROP PUBLICATION testpub_foralltables, testpub_fortable, testpub_forschema, testpub_for_tbl_schema;
-
-CREATE TABLE testpub_tbl3 (a int);
-CREATE TABLE testpub_tbl3a (b text) INHERITS (testpub_tbl3);
+---------------------------------------------
+-- EXCEPT clause tests for normal tables
+---------------------------------------------
 SET client_min_messages = 'ERROR';
-CREATE PUBLICATION testpub3 FOR TABLE testpub_tbl3;
-CREATE PUBLICATION testpub4 FOR TABLE ONLY testpub_tbl3;
-RESET client_min_messages;
-\dRp+ testpub3
-\dRp+ testpub4
+CREATE TABLE testpub_tbl3 (id serial primary key, data text);
+-- Specify table list in the EXCEPT clause of a FOR ALL TABLES publication
+CREATE PUBLICATION testpub_foralltables_excepttable FOR ALL TABLES EXCEPT (TABLE testpub_tbl1, testpub_tbl2, TABLE testpub_tbl3);
+\dRp+ testpub_foralltables_excepttable
+-- Specify table in the EXCEPT clause of a FOR ALL TABLES publication
+CREATE PUBLICATION testpub_foralltables_excepttable1 FOR ALL TABLES EXCEPT (TABLE testpub_tbl1);
+\dRp+ testpub_foralltables_excepttable1
+-- Check that the table description shows the publications where it is listed
+-- in the EXCEPT clause
+\d testpub_tbl1
+-- fail - first table in the EXCEPT list should use TABLE keyword
+CREATE PUBLICATION testpub_foralltables_excepttable2 FOR ALL TABLES EXCEPT (testpub_tbl1, testpub_tbl2);
 
-DROP TABLE testpub_tbl3, testpub_tbl3a;
-DROP PUBLICATION testpub3, testpub4;
+---------------------------------------------
+-- SET ALL TABLES/SEQUENCES
+---------------------------------------------
+-- Replace the existing table list in the EXCEPT clause (testpub_tbl1,
+-- testpub_tbl2, testpub_tbl3) with table (testpub_tbl2).
+ALTER PUBLICATION testpub_foralltables_excepttable SET ALL TABLES EXCEPT (TABLE testpub_tbl2);
+\dRp+ testpub_foralltables_excepttable
+
+-- Replace the existing table list in the EXCEPT clause (testpub_tbl2) with a
+-- table list containing (testpub_tbl1, testpub_tbl2, testpub_tbl3).
+ALTER PUBLICATION testpub_foralltables_excepttable SET ALL TABLES EXCEPT (TABLE testpub_tbl1, testpub_tbl2, TABLE testpub_tbl3);
+\dRp+ testpub_foralltables_excepttable
+
+-- Clear the table list in the EXCEPT clause, making the publication include all
+-- tables.
+ALTER PUBLICATION testpub_foralltables_excepttable SET ALL TABLES;
+\dRp+ testpub_foralltables_excepttable
+
+-- Create an empty publication for subsequent tests.
+CREATE PUBLICATION testpub_forall_tbls_seqs;
+
+-- Enable both puballtables and puballsequences
+ALTER PUBLICATION testpub_forall_tbls_seqs SET ALL TABLES, ALL SEQUENCES;
+\dRp+ testpub_forall_tbls_seqs
+
+-- Explicitly test that SET ALL TABLES resets puballsequences to false
+-- Result should be: puballtables = true, puballsequences = false
+ALTER PUBLICATION testpub_forall_tbls_seqs SET ALL TABLES;
+\dRp+ testpub_forall_tbls_seqs
+
+-- Explicitly test that SET ALL SEQUENCES resets puballtables to false
+-- Result should be: puballtables = false, puballsequences = true
+ALTER PUBLICATION testpub_forall_tbls_seqs SET ALL SEQUENCES;
+\dRp+ testpub_forall_tbls_seqs
+
+-- fail - SET ALL TABLES/SEQUENCES is not allowed for a 'FOR TABLE' publication
+ALTER PUBLICATION testpub_fortable SET ALL TABLES EXCEPT (TABLE testpub_tbl1);
+ALTER PUBLICATION testpub_fortable SET ALL TABLES;
+ALTER PUBLICATION testpub_fortable SET ALL SEQUENCES;
+
+-- fail - SET ALL TABLES/SEQUENCES is not allowed for a schema publication
+ALTER PUBLICATION testpub_forschema SET ALL TABLES EXCEPT (TABLE pub_test.testpub_nopk);
+ALTER PUBLICATION testpub_forschema SET ALL TABLES;
+ALTER PUBLICATION testpub_forschema SET ALL SEQUENCES;
+
+RESET client_min_messages;
+DROP TABLE testpub_tbl2, testpub_tbl3;
+DROP PUBLICATION testpub_foralltables, testpub_fortable, testpub_forschema, testpub_for_tbl_schema;
+DROP PUBLICATION testpub_forall_tbls_seqs, testpub_foralltables_excepttable, testpub_foralltables_excepttable1;
+
+---------------------------------------------
+-- Tests for inherited tables, and
+-- EXCEPT clause tests for inherited tables
+---------------------------------------------
+SET client_min_messages = 'ERROR';
+CREATE TABLE testpub_tbl_parent (a int);
+CREATE TABLE testpub_tbl_child (b text) INHERITS (testpub_tbl_parent);
+CREATE PUBLICATION testpub3 FOR TABLE testpub_tbl_parent;
+\dRp+ testpub3
+CREATE PUBLICATION testpub4 FOR TABLE ONLY testpub_tbl_parent;
+\dRp+ testpub4
+-- List the parent table in the EXCEPT clause (without ONLY or '*')
+CREATE PUBLICATION testpub5 FOR ALL TABLES EXCEPT (TABLE testpub_tbl_parent);
+\dRp+ testpub5
+-- EXCEPT with '*': list the table and all its descendants in the EXCEPT clause
+CREATE PUBLICATION testpub6 FOR ALL TABLES EXCEPT (TABLE testpub_tbl_parent *);
+\dRp+ testpub6
+-- EXCEPT with ONLY: list the table in the EXCEPT clause, but not its descendants
+CREATE PUBLICATION testpub7 FOR ALL TABLES EXCEPT (TABLE ONLY testpub_tbl_parent);
+\dRp+ testpub7
+
+RESET client_min_messages;
+DROP TABLE testpub_tbl_parent, testpub_tbl_child;
+DROP PUBLICATION testpub3, testpub4, testpub5, testpub6, testpub7;
+
+---------------------------------------------
+-- EXCEPT clause tests for partitioned tables
+---------------------------------------------
+SET client_min_messages = 'ERROR';
+CREATE TABLE testpub_root(a int) PARTITION BY RANGE(a);
+CREATE TABLE testpub_part1 PARTITION OF testpub_root FOR VALUES FROM (0) TO (100);
+CREATE PUBLICATION testpub8 FOR ALL TABLES EXCEPT (TABLE testpub_root);
+\dRp+ testpub8;
+\d testpub_part1
+\d testpub_root
+CREATE PUBLICATION testpub9 FOR ALL TABLES EXCEPT (TABLE testpub_part1);
+
+CREATE TABLE tab_main (a int) PARTITION BY RANGE(a);
+-- Attaching a partition is not allowed if the partitioned table appears in a
+-- publication's EXCEPT clause.
+ALTER TABLE tab_main ATTACH PARTITION testpub_root FOR VALUES FROM (0) TO (200);
+
+RESET client_min_messages;
+DROP TABLE testpub_root, testpub_part1, tab_main;
+DROP PUBLICATION testpub8;
+
+--- Tests for publications with SEQUENCES
+CREATE SEQUENCE regress_pub_seq0;
+CREATE SEQUENCE pub_test.regress_pub_seq1;
+
+-- FOR ALL SEQUENCES
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION regress_pub_forallsequences1 FOR ALL SEQUENCES;
+RESET client_min_messages;
+
+SELECT pubname, puballtables, puballsequences FROM pg_publication WHERE pubname = 'regress_pub_forallsequences1';
+\d+ regress_pub_seq0
+\dRp+ regress_pub_forallsequences1
+
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION regress_pub_forallsequences2 FOR ALL SEQUENCES;
+RESET client_min_messages;
+
+-- check that describe sequence lists both publications the sequence belongs to
+\d+ pub_test.regress_pub_seq1
+
+--- Specifying both ALL TABLES and ALL SEQUENCES
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION regress_pub_for_allsequences_alltables FOR ALL SEQUENCES, ALL TABLES;
+
+-- Specifying WITH clause in an ALL SEQUENCES publication will emit a NOTICE.
+SET client_min_messages = 'NOTICE';
+ALTER PUBLICATION regress_pub_for_allsequences_alltables SET (publish = 'insert');
+ALTER PUBLICATION regress_pub_for_allsequences_alltables SET (publish_generated_columns = 'stored');
+RESET client_min_messages;
+
+SELECT pubname, puballtables, puballsequences FROM pg_publication WHERE pubname = 'regress_pub_for_allsequences_alltables';
+\dRp+ regress_pub_for_allsequences_alltables
+
+DROP SEQUENCE regress_pub_seq0, pub_test.regress_pub_seq1;
+DROP PUBLICATION regress_pub_forallsequences1;
+DROP PUBLICATION regress_pub_forallsequences2;
+DROP PUBLICATION regress_pub_for_allsequences_alltables;
+
+-- fail - Specifying ALL TABLES more than once
+CREATE PUBLICATION regress_pub_for_allsequences_alltables FOR ALL SEQUENCES, ALL TABLES, ALL TABLES;
+
+-- fail - Specifying ALL SEQUENCES more than once
+CREATE PUBLICATION regress_pub_for_allsequences_alltables FOR ALL SEQUENCES, ALL TABLES, ALL SEQUENCES;
 
 -- Tests for partitioned tables
 SET client_min_messages = 'ERROR';
@@ -212,7 +357,7 @@ CREATE FUNCTION testpub_rf_func1(integer, integer) RETURNS boolean AS $$ SELECT 
 CREATE OPERATOR =#> (PROCEDURE = testpub_rf_func1, LEFTARG = integer, RIGHTARG = integer);
 CREATE PUBLICATION testpub6 FOR TABLE testpub_rf_tbl3 WHERE (e =#> 27);
 -- fail - user-defined functions are not allowed
-CREATE FUNCTION testpub_rf_func2() RETURNS integer AS $$ BEGIN RETURN 123; END; $$ LANGUAGE plpgsql;
+CREATE FUNCTION testpub_rf_func2() RETURNS integer IMMUTABLE AS $$ BEGIN RETURN 123; END; $$ LANGUAGE plpgsql;
 ALTER PUBLICATION testpub5 ADD TABLE testpub_rf_tbl1 WHERE (a >= testpub_rf_func2());
 -- fail - non-immutable functions are not allowed. random() is volatile.
 ALTER PUBLICATION testpub5 ADD TABLE testpub_rf_tbl1 WHERE (a < random());
@@ -259,18 +404,33 @@ CREATE PUBLICATION testpub6 FOR TABLES IN SCHEMA testpub_rf_schema2;
 ALTER PUBLICATION testpub6 SET TABLES IN SCHEMA testpub_rf_schema2, TABLE testpub_rf_schema2.testpub_rf_tbl6 WHERE (i < 99);
 RESET client_min_messages;
 \dRp+ testpub6
+-- fail - virtual generated column uses user-defined function
+-- (Actually, this already fails at CREATE TABLE rather than at CREATE
+-- PUBLICATION, but let's keep the test in case the former gets
+-- relaxed sometime.)
+CREATE TABLE testpub_rf_tbl6 (id int PRIMARY KEY, x int, y int GENERATED ALWAYS AS (x * testpub_rf_func2()) VIRTUAL);
+CREATE PUBLICATION testpub7 FOR TABLE testpub_rf_tbl6 WHERE (y > 100);
+-- test that SET EXPRESSION is rejected, because it could affect a row filter
+SET client_min_messages = 'ERROR';
+CREATE TABLE testpub_rf_tbl7 (id int PRIMARY KEY, x int, y int GENERATED ALWAYS AS (x * 111) VIRTUAL);
+CREATE PUBLICATION testpub8 FOR TABLE testpub_rf_tbl7 WHERE (y > 100);
+ALTER TABLE testpub_rf_tbl7 ALTER COLUMN y SET EXPRESSION AS (x * testpub_rf_func2());
+RESET client_min_messages;
 
 DROP TABLE testpub_rf_tbl1;
 DROP TABLE testpub_rf_tbl2;
 DROP TABLE testpub_rf_tbl3;
 DROP TABLE testpub_rf_tbl4;
 DROP TABLE testpub_rf_tbl5;
+--DROP TABLE testpub_rf_tbl6;
 DROP TABLE testpub_rf_schema1.testpub_rf_tbl5;
 DROP TABLE testpub_rf_schema2.testpub_rf_tbl6;
 DROP SCHEMA testpub_rf_schema1;
 DROP SCHEMA testpub_rf_schema2;
 DROP PUBLICATION testpub5;
 DROP PUBLICATION testpub6;
+DROP PUBLICATION testpub8;
+DROP TABLE testpub_rf_tbl7;
 DROP OPERATOR =#>(integer, integer);
 DROP FUNCTION testpub_rf_func1(integer, integer);
 DROP FUNCTION testpub_rf_func2();
@@ -394,6 +554,54 @@ DROP TABLE rf_tbl_abcd_nopk;
 DROP TABLE rf_tbl_abcd_part_pk;
 -- ======================================================
 
+-- ======================================================
+-- Tests with generated column
+SET client_min_messages = 'ERROR';
+
+-- stored
+CREATE TABLE testpub_gencol (a INT, b INT GENERATED ALWAYS AS (a + 1) STORED NOT NULL);
+CREATE UNIQUE INDEX testpub_gencol_idx ON testpub_gencol (b);
+ALTER TABLE testpub_gencol REPLICA IDENTITY USING index testpub_gencol_idx;
+
+-- error - generated column "b" must be published explicitly as it is
+-- part of the REPLICA IDENTITY index.
+CREATE PUBLICATION pub_gencol FOR TABLE testpub_gencol;
+UPDATE testpub_gencol SET a = 100 WHERE a = 1;
+
+-- error - generated column "b" must be published explicitly as it is
+-- part of the REPLICA IDENTITY.
+ALTER TABLE testpub_gencol REPLICA IDENTITY FULL;
+UPDATE testpub_gencol SET a = 100 WHERE a = 1;
+DROP PUBLICATION pub_gencol;
+
+-- ok - generated column "b" is published explicitly
+CREATE PUBLICATION pub_gencol FOR TABLE testpub_gencol with (publish_generated_columns = stored);
+UPDATE testpub_gencol SET a = 100 WHERE a = 1;
+DROP PUBLICATION pub_gencol;
+
+DROP TABLE testpub_gencol;
+
+-- virtual
+CREATE TABLE testpub_gencol (a INT, b INT GENERATED ALWAYS AS (a + 1) VIRTUAL);
+
+CREATE PUBLICATION pub_gencol FOR TABLE testpub_gencol;
+
+-- error - generated column "b" must be published explicitly as it is
+-- part of the REPLICA IDENTITY.
+ALTER TABLE testpub_gencol REPLICA IDENTITY FULL;
+UPDATE testpub_gencol SET a = 100 WHERE a = 1;
+DROP PUBLICATION pub_gencol;
+
+-- error - "stored" setting does not affect virtual column
+CREATE PUBLICATION pub_gencol FOR TABLE testpub_gencol with (publish_generated_columns = stored);
+UPDATE testpub_gencol SET a = 100 WHERE a = 1;
+DROP PUBLICATION pub_gencol;
+
+DROP TABLE testpub_gencol;
+
+RESET client_min_messages;
+-- ======================================================
+
 -- fail - duplicate tables are not allowed if that table has any column lists
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_dups FOR TABLE testpub_tbl1 (a), testpub_tbl1 WITH (publish = 'insert');
@@ -406,17 +614,21 @@ CREATE PUBLICATION testpub_fortable FOR TABLE testpub_tbl1;
 CREATE PUBLICATION testpub_fortable_insert WITH (publish = 'insert');
 RESET client_min_messages;
 CREATE TABLE testpub_tbl5 (a int PRIMARY KEY, b text, c text,
-	d int generated always as (a + length(b)) stored);
+    d int generated always as (a + length(b)) stored,
+    e int generated always as (a + length(b)) virtual
+);
 -- error: column "x" does not exist
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, x);
 -- error: replica identity "a" not included in the column list
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (b, c);
 UPDATE testpub_tbl5 SET a = 1;
 ALTER PUBLICATION testpub_fortable DROP TABLE testpub_tbl5;
--- error: generated column "d" can't be in list
-ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, d);
 -- error: system attributes "ctid" not allowed in column list
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, ctid);
+ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl1 (id, ctid);
+-- error: duplicates not allowed in column list
+ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, a);
+ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl5 (a, a);
 -- ok
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, c);
 ALTER TABLE testpub_tbl5 DROP COLUMN c;		-- no dice
@@ -431,6 +643,12 @@ ALTER TABLE testpub_tbl5 REPLICA IDENTITY USING INDEX testpub_tbl5_b_key;
 UPDATE testpub_tbl5 SET a = 1;
 ALTER PUBLICATION testpub_fortable DROP TABLE testpub_tbl5;
 
+-- ok: stored generated column "d" can be in the list too
+ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, d);
+ALTER PUBLICATION testpub_fortable DROP TABLE testpub_tbl5;
+-- error: virtual generated column "e" can't be in list
+ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, e);
+
 -- error: change the replica identity to "b", and column list to (a, c)
 -- then update fails, because (a, c) does not cover replica identity
 ALTER TABLE testpub_tbl5 REPLICA IDENTITY USING INDEX testpub_tbl5_b_key;
@@ -443,6 +661,15 @@ CREATE PUBLICATION testpub_table_ins WITH (publish = 'insert, truncate');
 RESET client_min_messages;
 ALTER PUBLICATION testpub_table_ins ADD TABLE testpub_tbl5 (a);		-- ok
 \dRp+ testpub_table_ins
+
+-- error: cannot work with deferrable primary keys
+CREATE TABLE testpub_tbl5d (a int PRIMARY KEY DEFERRABLE);
+ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5d;
+UPDATE testpub_tbl5d SET a = 1;
+/* but works fine with FULL replica identity */
+ALTER TABLE testpub_tbl5d REPLICA IDENTITY FULL;
+UPDATE testpub_tbl5d SET a = 1;
+DROP TABLE testpub_tbl5d;
 
 -- tests with REPLICA IDENTITY FULL
 CREATE TABLE testpub_tbl6 (a int, b text, c text);
@@ -594,10 +821,10 @@ ALTER TABLE rf_tbl_abcd_part_pk ATTACH PARTITION rf_tbl_abcd_part_pk_1 FOR VALUE
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub6 FOR TABLE rf_tbl_abcd_pk (a, b);
 RESET client_min_messages;
--- ok - (a,b) coverts all PK cols
+-- ok - (a,b) covers all PK cols
 UPDATE rf_tbl_abcd_pk SET a = 1;
 ALTER PUBLICATION testpub6 SET TABLE rf_tbl_abcd_pk (a, b, c);
--- ok - (a,b,c) coverts all PK cols
+-- ok - (a,b,c) covers all PK cols
 UPDATE rf_tbl_abcd_pk SET a = 1;
 ALTER PUBLICATION testpub6 SET TABLE rf_tbl_abcd_pk (a);
 -- fail - "b" is missing from the column list
@@ -751,7 +978,7 @@ ALTER PUBLICATION testpub_default ADD TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default SET TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default ADD TABLE pub_test.testpub_nopk;
 
-ALTER PUBLICATION testpib_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tbl1;
+ALTER PUBLICATION testpub_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tbl1;
 
 \d+ pub_test.testpub_nopk
 \d+ testpub_tbl1
@@ -813,7 +1040,18 @@ ALTER PUBLICATION testpub4 owner to regress_publication_user2; -- fail
 ALTER PUBLICATION testpub4 owner to regress_publication_user; -- ok
 
 SET ROLE regress_publication_user;
-DROP PUBLICATION testpub4;
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION testpub5 FOR ALL TABLES;
+RESET client_min_messages;
+ALTER PUBLICATION testpub5 OWNER TO regress_publication_user3;
+SET ROLE regress_publication_user3;
+-- fail - SET ALL TABLES/SEQUENCES on a publication requires superuser privileges
+ALTER PUBLICATION testpub5 SET ALL TABLES EXCEPT (TABLE testpub_tbl1); -- fail
+ALTER PUBLICATION testpub5 SET ALL TABLES; -- fail
+ALTER PUBLICATION testpub5 SET ALL SEQUENCES; -- fail
+
+SET ROLE regress_publication_user;
+DROP PUBLICATION testpub4, testpub5;
 DROP ROLE regress_publication_user3;
 
 REVOKE CREATE ON DATABASE regression FROM regress_publication_user2;
@@ -1030,7 +1268,7 @@ CREATE PUBLICATION testpub_error FOR pub_test2.tbl1;
 DROP VIEW testpub_view;
 
 DROP PUBLICATION testpub_default;
-DROP PUBLICATION testpib_ins_trunct;
+DROP PUBLICATION testpub_ins_trunct;
 DROP PUBLICATION testpub_fortbl;
 DROP PUBLICATION testpub1_forschema;
 DROP PUBLICATION testpub2_forschema;
@@ -1096,7 +1334,235 @@ DROP PUBLICATION pub;
 DROP TABLE sch1.tbl1;
 DROP SCHEMA sch1 cascade;
 DROP SCHEMA sch2 cascade;
+-- ======================================================
+
+-- Test the 'publish_generated_columns' parameter with the following values:
+-- 'stored', 'none'.
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION pub1 FOR ALL TABLES WITH (publish_generated_columns = stored);
+\dRp+ pub1
+CREATE PUBLICATION pub2 FOR ALL TABLES WITH (publish_generated_columns = none);
+\dRp+ pub2
+
+DROP PUBLICATION pub1;
+DROP PUBLICATION pub2;
+
+-- Test the 'publish_generated_columns' parameter as 'none' and 'stored' for
+-- different scenarios with/without generated columns in column lists.
+CREATE TABLE gencols (a int, gen1 int GENERATED ALWAYS AS (a * 2) STORED);
+
+-- Generated columns in column list, when 'publish_generated_columns'='none'
+CREATE PUBLICATION pub1 FOR table gencols(a, gen1) WITH (publish_generated_columns = none);
+\dRp+ pub1
+
+-- Generated columns in column list, when 'publish_generated_columns'='stored'
+CREATE PUBLICATION pub2 FOR table gencols(a, gen1) WITH (publish_generated_columns = stored);
+\dRp+ pub2
+
+-- Generated columns in column list, then set 'publish_generated_columns'='none'
+ALTER PUBLICATION pub2 SET (publish_generated_columns = none);
+\dRp+ pub2
+
+-- Remove generated columns from column list, when 'publish_generated_columns'='none'
+ALTER PUBLICATION pub2 SET TABLE gencols(a);
+\dRp+ pub2
+
+-- Add generated columns in column list, when 'publish_generated_columns'='none'
+ALTER PUBLICATION pub2 SET TABLE gencols(a, gen1);
+\dRp+ pub2
+
+DROP PUBLICATION pub1;
+DROP PUBLICATION pub2;
+DROP TABLE gencols;
+
+RESET client_min_messages;
+
+-- Test that the INSERT ON CONFLICT command correctly checks REPLICA IDENTITY
+-- when the target table is published.
+CREATE TABLE testpub_insert_onconfl_no_ri (a int unique, b int);
+CREATE TABLE testpub_insert_onconfl_parted (a int unique, b int) PARTITION by RANGE (a);
+CREATE TABLE testpub_insert_onconfl_part_no_ri PARTITION OF testpub_insert_onconfl_parted FOR VALUES FROM (1) TO (10);
+
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION pub1 FOR ALL TABLES;
+RESET client_min_messages;
+
+-- fail - missing REPLICA IDENTITY
+INSERT INTO testpub_insert_onconfl_no_ri VALUES (1, 1) ON CONFLICT (a) DO UPDATE SET b = 2;
+
+-- ok - no updates
+INSERT INTO testpub_insert_onconfl_no_ri VALUES (1, 1) ON CONFLICT DO NOTHING;
+
+-- fail - missing REPLICA IDENTITY in partition testpub_insert_onconfl_no_ri
+INSERT INTO testpub_insert_onconfl_parted VALUES (1, 1) ON CONFLICT (a) DO UPDATE SET b = 2;
+
+-- ok - no updates
+INSERT INTO testpub_insert_onconfl_parted VALUES (1, 1) ON CONFLICT DO NOTHING;
+
+DROP PUBLICATION pub1;
+DROP TABLE testpub_insert_onconfl_no_ri;
+DROP TABLE testpub_insert_onconfl_parted;
+
+-- Test that the MERGE command correctly checks REPLICA IDENTITY when the
+-- target table is published.
+CREATE TABLE testpub_merge_no_ri (a int, b int);
+CREATE TABLE testpub_merge_pk (a int primary key, b int);
+
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION pub1 FOR ALL TABLES;
+RESET client_min_messages;
+
+-- fail - missing REPLICA IDENTITY
+MERGE INTO testpub_merge_no_ri USING testpub_merge_pk s ON s.a >= 1
+ WHEN MATCHED THEN UPDATE SET b = s.b;
+
+-- fail - missing REPLICA IDENTITY
+MERGE INTO testpub_merge_no_ri USING testpub_merge_pk s ON s.a >= 1
+ WHEN MATCHED THEN DELETE;
+
+-- ok - insert and do nothing are not restricted
+MERGE INTO testpub_merge_no_ri USING testpub_merge_pk s ON s.a >= 1
+ WHEN MATCHED THEN DO NOTHING
+ WHEN NOT MATCHED THEN INSERT (a, b) VALUES (0, 0);
+
+-- ok - REPLICA IDENTITY is DEFAULT and table has a PK
+MERGE INTO testpub_merge_pk USING testpub_merge_no_ri s ON s.a >= 1
+ WHEN MATCHED AND s.a > 0 THEN UPDATE SET b = s.b
+ WHEN MATCHED THEN DELETE;
+
+DROP PUBLICATION pub1;
+DROP TABLE testpub_merge_no_ri;
+DROP TABLE testpub_merge_pk;
 
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_publication_user, regress_publication_user2;
 DROP ROLE regress_publication_user_dummy;
+
+-- Test pg_get_publication_tables(text[], oid) function
+CREATE SCHEMA gpt_test_sch;
+CREATE TABLE gpt_test_sch.tbl_sch (id int);
+CREATE TABLE tbl_normal (id int);
+CREATE TABLE tbl_parent (id1 int, id2 int, id3 int) PARTITION BY RANGE (id1);
+CREATE TABLE tbl_part1 PARTITION OF tbl_parent FOR VALUES FROM (1) TO (10);
+CREATE VIEW gpt_test_view AS SELECT * FROM tbl_normal;
+
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION pub_all FOR ALL TABLES WITH (publish_via_partition_root = true);
+CREATE PUBLICATION pub_all_no_viaroot FOR ALL TABLES WITH (publish_via_partition_root = false);
+CREATE PUBLICATION pub_all_except FOR ALL TABLES EXCEPT (TABLE tbl_parent, gpt_test_sch.tbl_sch) WITH (publish_via_partition_root = true);
+CREATE PUBLICATION pub_all_except_no_viaroot FOR ALL TABLES EXCEPT (TABLE tbl_parent, gpt_test_sch.tbl_sch) WITH (publish_via_partition_root = false);
+CREATE PUBLICATION pub_schema FOR TABLES IN SCHEMA gpt_test_sch;
+CREATE PUBLICATION pub_normal FOR TABLE tbl_normal WHERE (id < 10);
+CREATE PUBLICATION pub_part_leaf FOR TABLE tbl_part1 WITH (publish_via_partition_root = false);
+CREATE PUBLICATION pub_part_parent FOR TABLE tbl_parent (id1, id2) WHERE (id1 = 10) WITH (publish_via_partition_root = true);
+CREATE PUBLICATION pub_part_parent_no_viaroot FOR TABLE tbl_parent WITH (publish_via_partition_root = false);
+CREATE PUBLICATION pub_part_parent_child FOR TABLE tbl_parent, tbl_part1 WITH (publish_via_partition_root = true);
+RESET client_min_messages;
+
+CREATE FUNCTION test_gpt(pubnames text[], relname text)
+RETURNS TABLE (
+  pubname text,
+  relname name,
+  attrs text,
+  qual text
+)
+BEGIN ATOMIC
+  SELECT p.pubname, c.relname, gpt.attrs::text, pg_get_expr(gpt.qual, gpt.relid)
+    FROM pg_get_publication_tables(pubnames, relname::regclass::oid) gpt
+    JOIN pg_publication p ON p.oid = gpt.pubid
+    JOIN pg_class c ON c.oid = gpt.relid
+  ORDER BY p.pubname, c.relname;
+END;
+
+SELECT * FROM test_gpt(ARRAY['pub_normal'], 'tbl_normal');
+SELECT * FROM test_gpt(ARRAY['pub_normal'], 'gpt_test_sch.tbl_sch'); -- no result
+
+SELECT * FROM test_gpt(ARRAY['pub_schema'], 'gpt_test_sch.tbl_sch');
+SELECT * FROM test_gpt(ARRAY['pub_schema'], 'tbl_normal'); -- no result
+
+SELECT * FROM test_gpt(ARRAY['pub_part_parent'], 'tbl_parent');
+SELECT * FROM test_gpt(ARRAY['pub_part_parent'], 'tbl_part1'); -- no result
+
+SELECT * FROM test_gpt(ARRAY['pub_part_parent_no_viaroot'], 'tbl_part1');
+SELECT * FROM test_gpt(ARRAY['pub_part_parent_no_viaroot'], 'tbl_parent'); -- no result
+
+SELECT * FROM test_gpt(ARRAY['pub_part_leaf'], 'tbl_part1');
+SELECT * FROM test_gpt(ARRAY['pub_part_leaf'], 'tbl_parent'); -- no result
+
+SELECT * FROM test_gpt(ARRAY['pub_all'], 'tbl_parent');
+SELECT * FROM test_gpt(ARRAY['pub_all'], 'tbl_part1'); -- no result
+
+SELECT * FROM test_gpt(ARRAY['pub_all_no_viaroot'], 'tbl_part1');
+SELECT * FROM test_gpt(ARRAY['pub_all_no_viaroot'], 'tbl_parent'); -- no result
+
+SELECT * FROM test_gpt(ARRAY['pub_part_parent_child'], 'tbl_parent');
+SELECT * FROM test_gpt(ARRAY['pub_part_parent_child'], 'tbl_part1'); -- no result
+
+-- test for the EXCEPT clause
+SELECT * FROM test_gpt(ARRAY['pub_all_except'], 'tbl_normal');
+SELECT * FROM test_gpt(ARRAY['pub_all_except'], 'gpt_test_sch.tbl_sch'); -- no result (excluded)
+SELECT * FROM test_gpt(ARRAY['pub_all_except'], 'tbl_parent'); -- no result (excluded)
+SELECT * FROM test_gpt(ARRAY['pub_all_except'], 'tbl_part1'); -- no result
+SELECT * FROM test_gpt(ARRAY['pub_all_except_no_viaroot'], 'tbl_normal');
+SELECT * FROM test_gpt(ARRAY['pub_all_except_no_viaroot'], 'gpt_test_sch.tbl_sch'); -- no result (excluded)
+SELECT * FROM test_gpt(ARRAY['pub_all_except_no_viaroot'], 'tbl_parent'); -- no result (excluded)
+SELECT * FROM test_gpt(ARRAY['pub_all_except_no_viaroot'], 'tbl_part1'); -- no result
+
+-- two rows with different row filter
+SELECT * FROM test_gpt(ARRAY['pub_all', 'pub_normal'], 'tbl_normal');
+
+-- one row with 'pub_part_parent'
+SELECT * FROM test_gpt(ARRAY['pub_part_parent', 'pub_part_parent_no_viaroot'], 'tbl_parent');
+
+-- no result, tbl_parent is the effective published OID due to pubviaroot
+SELECT * FROM test_gpt(ARRAY['pub_part_parent', 'pub_all'], 'tbl_part1');
+
+-- no result, non-existent publication
+SELECT * FROM test_gpt(ARRAY['no_such_pub'], 'tbl_normal');
+
+-- no result, non-table object
+SELECT * FROM test_gpt(ARRAY['pub_all'], 'gpt_test_view');
+
+-- no result, empty publication array
+SELECT * FROM test_gpt(ARRAY[]::text[], 'tbl_normal');
+
+-- no result, OID 0 as target_relid
+SELECT * FROM pg_get_publication_tables(ARRAY['pub_normal'], 0::oid);
+
+-- Clean up
+DROP FUNCTION test_gpt(text[], text);
+DROP PUBLICATION pub_all;
+DROP PUBLICATION pub_all_no_viaroot;
+DROP PUBLICATION pub_all_except;
+DROP PUBLICATION pub_all_except_no_viaroot;
+DROP PUBLICATION pub_schema;
+DROP PUBLICATION pub_normal;
+DROP PUBLICATION pub_part_leaf;
+DROP PUBLICATION pub_part_parent;
+DROP PUBLICATION pub_part_parent_no_viaroot;
+DROP PUBLICATION pub_part_parent_child;
+DROP VIEW gpt_test_view;
+DROP TABLE tbl_normal, tbl_parent, tbl_part1;
+DROP SCHEMA gpt_test_sch CASCADE;
+
+-- stage objects for pg_dump tests
+CREATE SCHEMA pubme CREATE TABLE t0 (c int, d int) CREATE TABLE t1 (c int);
+CREATE SCHEMA pubme2 CREATE TABLE t0 (c int, d int);
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION dump_pub_qual_1ct FOR
+  TABLE ONLY pubme.t0 (c, d) WHERE (c > 0);
+CREATE PUBLICATION dump_pub_qual_2ct FOR
+  TABLE ONLY pubme.t0 (c) WHERE (c > 0),
+  TABLE ONLY pubme.t1 (c);
+CREATE PUBLICATION dump_pub_nsp_1ct FOR
+  TABLES IN SCHEMA pubme;
+CREATE PUBLICATION dump_pub_nsp_2ct FOR
+  TABLES IN SCHEMA pubme,
+  TABLES IN SCHEMA pubme2;
+CREATE PUBLICATION dump_pub_all FOR
+  TABLE ONLY pubme.t0,
+  TABLE ONLY pubme.t1 WHERE (c < 0),
+  TABLES IN SCHEMA pubme,
+  TABLES IN SCHEMA pubme2
+  WITH (publish_via_partition_root = true);
+RESET client_min_messages;

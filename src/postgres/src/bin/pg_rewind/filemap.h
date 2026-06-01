@@ -2,7 +2,7 @@
  *
  * filemap.h
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *-------------------------------------------------------------------------
  */
 #ifndef FILEMAP_H
@@ -10,7 +10,8 @@
 
 #include "datapagemap.h"
 #include "storage/block.h"
-#include "storage/relfilenode.h"
+#include "storage/relfilelocator.h"
+#include "access/xlogdefs.h"
 
 /* these enum values are sorted in the order we want actions to be processed */
 typedef enum
@@ -24,7 +25,7 @@ typedef enum
 	FILE_ACTION_NONE,			/* no action (we might still copy modified
 								 * blocks based on the parsed WAL) */
 	FILE_ACTION_TRUNCATE,		/* truncate local file to 'newsize' bytes */
-	FILE_ACTION_REMOVE			/* remove local file / directory / symlink */
+	FILE_ACTION_REMOVE,			/* remove local file / directory / symlink */
 } file_action_t;
 
 typedef enum
@@ -33,8 +34,15 @@ typedef enum
 
 	FILE_TYPE_REGULAR,
 	FILE_TYPE_DIRECTORY,
-	FILE_TYPE_SYMLINK
+	FILE_TYPE_SYMLINK,
 } file_type_t;
+
+typedef enum
+{
+	FILE_CONTENT_TYPE_OTHER = 0,
+	FILE_CONTENT_TYPE_RELATION,
+	FILE_CONTENT_TYPE_WAL
+} file_content_type_t;
 
 /*
  * For every file found in the local or remote system, we have a file entry
@@ -51,7 +59,7 @@ typedef struct file_entry_t
 	uint32		status;			/* hash status */
 
 	const char *path;
-	bool		isrelfile;		/* is it a relation data file? */
+	file_content_type_t content_type;
 
 	/*
 	 * Status of the file in the target.
@@ -103,10 +111,10 @@ extern void process_source_file(const char *path, file_type_t type,
 extern void process_target_file(const char *path, file_type_t type,
 								size_t size, const char *link_target);
 extern void process_target_wal_block_change(ForkNumber forknum,
-											RelFileNode rnode,
+											RelFileLocator rlocator,
 											BlockNumber blkno);
 
-extern filemap_t *decide_file_actions(void);
+extern filemap_t *decide_file_actions(XLogSegNo last_common_segno);
 extern void calculate_totals(filemap_t *filemap);
 extern void print_filemap(filemap_t *filemap);
 

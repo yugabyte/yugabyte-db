@@ -27,9 +27,10 @@ ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
     [ AS <replaceable class="parameter">data_type</replaceable> ]
     [ INCREMENT [ BY ] <replaceable class="parameter">increment</replaceable> ]
     [ MINVALUE <replaceable class="parameter">minvalue</replaceable> | NO MINVALUE ] [ MAXVALUE <replaceable class="parameter">maxvalue</replaceable> | NO MAXVALUE ]
+    [ [ NO ] CYCLE ]
     [ START [ WITH ] <replaceable class="parameter">start</replaceable> ]
     [ RESTART [ [ WITH ] <replaceable class="parameter">restart</replaceable> ] ]
-    [ CACHE <replaceable class="parameter">cache</replaceable> ] [ [ NO ] CYCLE ]
+    [ CACHE <replaceable class="parameter">cache</replaceable> ]
     [ OWNED BY { <replaceable class="parameter">table_name</replaceable>.<replaceable class="parameter">column_name</replaceable> | NONE } ]
 ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> SET { LOGGED | UNLOGGED }
 ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable class="parameter">new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
@@ -51,9 +52,10 @@ ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> S
    You must own the sequence to use <command>ALTER SEQUENCE</command>.
    To change a sequence's schema, you must also have <literal>CREATE</literal>
    privilege on the new schema.
-   To alter the owner, you must also be a direct or indirect member of the new
-   owning role, and that role must have <literal>CREATE</literal> privilege on
-   the sequence's schema.  (These restrictions enforce that altering the owner
+   To alter the owner, you must be able to <literal>SET ROLE</literal> to the
+   new owning role, and that role must have <literal>CREATE</literal>
+   privilege on the sequence's schema.
+   (These restrictions enforce that altering the owner
    doesn't do anything you couldn't do by dropping and recreating the sequence.
    However, a superuser can alter ownership of any sequence anyway.)
   </para>
@@ -154,59 +156,6 @@ ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> S
      </varlistentry>
 
      <varlistentry>
-      <term><replaceable class="parameter">start</replaceable></term>
-      <listitem>
-       <para>
-        The optional clause <literal>START WITH <replaceable
-        class="parameter">start</replaceable></literal> changes the
-        recorded start value of the sequence.  This has no effect on the
-        <emphasis>current</emphasis> sequence value; it simply sets the value
-        that future <command>ALTER SEQUENCE RESTART</command> commands will use.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
-      <term><replaceable class="parameter">restart</replaceable></term>
-      <listitem>
-       <para>
-        The optional clause <literal>RESTART [ WITH <replaceable
-        class="parameter">restart</replaceable> ]</literal> changes the
-        current value of the sequence.  This is similar to calling the
-        <function>setval</function> function with <literal>is_called</literal> =
-        <literal>false</literal>: the specified value will be returned by the
-        <emphasis>next</emphasis> call of <function>nextval</function>.
-        Writing <literal>RESTART</literal> with no <replaceable
-        class="parameter">restart</replaceable> value is equivalent to supplying
-        the start value that was recorded by <command>CREATE SEQUENCE</command>
-        or last set by <command>ALTER SEQUENCE START WITH</command>.
-       </para>
-
-       <para>
-        In contrast to a <function>setval</function> call,
-        a <literal>RESTART</literal> operation on a sequence is transactional
-        and blocks concurrent transactions from obtaining numbers from the
-        same sequence. If that's not the desired mode of
-        operation, <function>setval</function> should be used.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
-      <term><replaceable class="parameter">cache</replaceable></term>
-      <listitem>
-       <para>
-        The clause <literal>CACHE <replaceable
-        class="parameter">cache</replaceable></literal> enables
-        sequence numbers to be preallocated and stored in memory for
-        faster access. The minimum value is 1 (only one value can be
-        generated at a time, i.e., no cache).  If unspecified, the old
-        cache value will be maintained.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
       <term><literal>CYCLE</literal></term>
       <listitem>
        <para>
@@ -234,6 +183,59 @@ ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> S
         If neither <literal>CYCLE</literal> or <literal>NO
         CYCLE</literal> are specified, the old cycle behavior will be
         maintained.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">start</replaceable></term>
+      <listitem>
+       <para>
+        The optional clause <literal>START WITH <replaceable
+        class="parameter">start</replaceable></literal> changes the
+        recorded start value of the sequence.  This has no effect on the
+        <emphasis>current</emphasis> sequence value; it simply sets the value
+        that future <command>ALTER SEQUENCE RESTART</command> commands will use.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">restart</replaceable></term>
+      <listitem>
+       <para>
+        The optional clause <literal>RESTART [ WITH <replaceable
+        class="parameter">restart</replaceable> ]</literal> changes the
+        current value of the sequence.  This is similar to calling the
+        <function>setval</function> function with <structfield>is_called</structfield>
+        = <literal>false</literal>: the specified value will be returned by the
+        <emphasis>next</emphasis> call of <function>nextval</function>.
+        Writing <literal>RESTART</literal> with no <replaceable
+        class="parameter">restart</replaceable> value is equivalent to supplying
+        the start value that was recorded by <command>CREATE SEQUENCE</command>
+        or last set by <command>ALTER SEQUENCE START WITH</command>.
+       </para>
+
+       <para>
+        In contrast to a <function>setval</function> call,
+        a <literal>RESTART</literal> operation on a sequence is transactional
+        and blocks concurrent transactions from obtaining numbers from the
+        same sequence. If that's not the desired mode of
+        operation, <function>setval</function> should be used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">cache</replaceable></term>
+      <listitem>
+       <para>
+        The clause <literal>CACHE <replaceable
+        class="parameter">cache</replaceable></literal> enables
+        sequence numbers to be preallocated and stored in memory for
+        faster access. The minimum value is 1 (only one value can be
+        generated at a time, i.e., no cache).  If unspecified, the old
+        cache value will be maintained.
        </para>
       </listitem>
      </varlistentry>

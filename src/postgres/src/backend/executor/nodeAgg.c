@@ -237,7 +237,7 @@
  *    to filter expressions having to be evaluated early, and allows to JIT
  *    the entire expression into one native function.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -257,22 +257,24 @@
 #include "common/hashfn.h"
 #include "executor/execExpr.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "lib/hyperloglog.h"
 #include "miscadmin.h"
-#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
+#include "port/pg_bitutils.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
-#include "utils/dynahash.h"
 #include "utils/expandeddatum.h"
+#include "utils/injection_point.h"
 #include "utils/logtape.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/memutils_memorychunk.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
@@ -322,10 +324,9 @@
 #define HASHAGG_HLL_BIT_WIDTH 5
 
 /*
- * Estimate chunk overhead as a constant 16 bytes. XXX: should this be
- * improved?
+ * Assume the palloc overhead always uses sizeof(MemoryChunk) bytes.
  */
-#define CHUNKHDRSZ 16
+#define CHUNKHDRSZ sizeof(MemoryChunk)
 
 /*
  * Represents partitioned spill data for a single hashtable. Contains the
@@ -403,23 +404,23 @@ static void prepare_projection_slot(AggState *aggstate,
 									TupleTableSlot *slot,
 									int currentSet);
 static void finalize_aggregates(AggState *aggstate,
-								AggStatePerAgg peragg,
+								AggStatePerAgg peraggs,
 								AggStatePerGroup pergroup);
 static TupleTableSlot *project_aggregates(AggState *aggstate);
 static void find_cols(AggState *aggstate, Bitmapset **aggregated,
 					  Bitmapset **unaggregated);
 static bool find_cols_walker(Node *node, FindColsContext *context);
 static void build_hash_tables(AggState *aggstate);
-static void build_hash_table(AggState *aggstate, int setno, long nbuckets);
+static void build_hash_table(AggState *aggstate, int setno, double nbuckets);
 static void hashagg_recompile_expressions(AggState *aggstate, bool minslot,
 										  bool nullcheck);
-static long hash_choose_num_buckets(double hashentrysize,
-									long estimated_nbuckets,
-									Size memory);
+static void hash_create_memory(AggState *aggstate);
+static double hash_choose_num_buckets(double hashentrysize,
+									  double ngroups, Size memory);
 static int	hash_choose_num_partitions(double input_groups,
 									   double hashentrysize,
 									   int used_bits,
-									   int *log2_npartittions);
+									   int *log2_npartitions);
 static void initialize_hash_entry(AggState *aggstate,
 								  TupleHashTable hashtable,
 								  TupleHashEntry entry);
@@ -439,11 +440,11 @@ static HashAggBatch *hashagg_batch_new(LogicalTape *input_tape, int setno,
 									   int64 input_tuples, double input_card,
 									   int used_bits);
 static MinimalTuple hashagg_batch_read(HashAggBatch *batch, uint32 *hashp);
-static void hashagg_spill_init(HashAggSpill *spill, LogicalTapeSet *lts,
+static void hashagg_spill_init(HashAggSpill *spill, LogicalTapeSet *tapeset,
 							   int used_bits, double input_groups,
 							   double hashentrysize);
 static Size hashagg_spill_tuple(AggState *aggstate, HashAggSpill *spill,
-								TupleTableSlot *slot, uint32 hash);
+								TupleTableSlot *inputslot, uint32 hash);
 static void hashagg_spill_finish(AggState *aggstate, HashAggSpill *spill,
 								 int setno);
 static Datum GetAggInitVal(Datum textInitVal, Oid transtype);
@@ -594,7 +595,7 @@ initialize_aggregate(AggState *aggstate, AggStatePerTrans pertrans,
 	/*
 	 * Start a fresh sort operation for each DISTINCT/ORDER BY aggregate.
 	 */
-	if (pertrans->numSortCols > 0)
+	if (pertrans->aggsortrequired)
 	{
 		/*
 		 * In case of rescan, maybe there could be an uncompleted sort
@@ -790,12 +791,10 @@ advance_transition_function(AggState *aggstate,
 	/*
 	 * If pass-by-ref datatype, must copy the new value into aggcontext and
 	 * free the prior transValue.  But if transfn returned a pointer to its
-	 * first input, we don't need to do anything.  Also, if transfn returned a
-	 * pointer to a R/W expanded object that is already a child of the
-	 * aggcontext, assume we can adopt that value without copying it.
+	 * first input, we don't need to do anything.
 	 *
 	 * It's safe to compare newVal with pergroup->transValue without regard
-	 * for either being NULL, because ExecAggTransReparent() takes care to set
+	 * for either being NULL, because ExecAggCopyTransValue takes care to set
 	 * transValue to 0 when NULL. Otherwise we could end up accidentally not
 	 * reparenting, when the transValue has the same numerical value as
 	 * newValue, despite being NULL.  This is a somewhat hot path, making it
@@ -805,10 +804,10 @@ advance_transition_function(AggState *aggstate,
 	 */
 	if (!pertrans->transtypeByVal &&
 		DatumGetPointer(newVal) != DatumGetPointer(pergroupstate->transValue))
-		newVal = ExecAggTransReparent(aggstate, pertrans,
-									  newVal, fcinfo->isnull,
-									  pergroupstate->transValue,
-									  pergroupstate->transValueIsNull);
+		newVal = ExecAggCopyTransValue(aggstate, pertrans,
+									   newVal, fcinfo->isnull,
+									   pergroupstate->transValue,
+									   pergroupstate->transValueIsNull);
 
 	pergroupstate->transValue = newVal;
 	pergroupstate->transValueIsNull = fcinfo->isnull;
@@ -830,11 +829,8 @@ advance_transition_function(AggState *aggstate,
 static void
 advance_aggregates(AggState *aggstate)
 {
-	bool		dummynull;
-
-	ExecEvalExprSwitchContext(aggstate->phase->evaltrans,
-							  aggstate->tmpcontext,
-							  &dummynull);
+	ExecEvalExprNoReturnSwitchContext(aggstate->phase->evaltrans,
+									  aggstate->tmpcontext);
 }
 
 /*
@@ -891,7 +887,7 @@ process_ordered_aggregate_single(AggState *aggstate,
 	 */
 
 	while (tuplesort_getdatum(pertrans->sortstates[aggstate->current_set],
-							  true, newVal, isNull, &newAbbrevVal))
+							  true, false, newVal, isNull, &newAbbrevVal))
 	{
 		/*
 		 * Clear and select the working context for evaluation of the equality
@@ -912,24 +908,33 @@ process_ordered_aggregate_single(AggState *aggstate,
 											 pertrans->aggCollation,
 											 oldVal, *newVal)))))
 		{
-			/* equal to prior, so forget this one */
-			if (!pertrans->inputtypeByVal && !*isNull)
-				pfree(DatumGetPointer(*newVal));
+			MemoryContextSwitchTo(oldContext);
+			continue;
 		}
 		else
 		{
 			advance_transition_function(aggstate, pertrans, pergroupstate);
-			/* forget the old value, if any */
-			if (!oldIsNull && !pertrans->inputtypeByVal)
-				pfree(DatumGetPointer(oldVal));
-			/* and remember the new one for subsequent equality checks */
-			oldVal = *newVal;
+
+			MemoryContextSwitchTo(oldContext);
+
+			/*
+			 * Forget the old value, if any, and remember the new one for
+			 * subsequent equality checks.
+			 */
+			if (!pertrans->inputtypeByVal)
+			{
+				if (!oldIsNull)
+					pfree(DatumGetPointer(oldVal));
+				if (!*isNull)
+					oldVal = datumCopy(*newVal, pertrans->inputtypeByVal,
+									   pertrans->inputtypeLen);
+			}
+			else
+				oldVal = *newVal;
 			oldAbbrevVal = newAbbrevVal;
 			oldIsNull = *isNull;
 			haveOldVal = true;
 		}
-
-		MemoryContextSwitchTo(oldContext);
 	}
 
 	if (!oldIsNull && !pertrans->inputtypeByVal)
@@ -1040,10 +1045,13 @@ process_ordered_aggregate_multi(AggState *aggstate,
  *
  * The finalfn will be run, and the result delivered, in the
  * output-tuple context; caller's CurrentMemoryContext does not matter.
+ * (But note that in some cases, such as when there is no finalfn, the
+ * result might be a pointer to or into the agg's transition value.)
  *
- * The finalfn uses the state as set in the transno. This also might be
+ * The finalfn uses the state as set in the transno.  This also might be
  * being used by another aggregate function, so it's important that we do
- * nothing destructive here.
+ * nothing destructive here.  Moreover, the aggregate's final value might
+ * get used in multiple places, so we mustn't return a R/W expanded datum.
  */
 static void
 finalize_aggregate(AggState *aggstate,
@@ -1091,7 +1099,7 @@ finalize_aggregate(AggState *aggstate,
 		InitFunctionCallInfoData(*fcinfo, &peragg->finalfn,
 								 numFinalArgs,
 								 pertrans->aggCollation,
-								 (void *) aggstate, NULL);
+								 (Node *) aggstate, NULL);
 
 		/* Fill in the transition state value */
 		fcinfo->args[0].value =
@@ -1117,27 +1125,24 @@ finalize_aggregate(AggState *aggstate,
 		}
 		else
 		{
-			*resultVal = FunctionCallInvoke(fcinfo);
+			Datum		result;
+
+			result = FunctionCallInvoke(fcinfo);
 			*resultIsNull = fcinfo->isnull;
+			*resultVal = MakeExpandedObjectReadOnly(result,
+													fcinfo->isnull,
+													peragg->resulttypeLen);
 		}
 		aggstate->curperagg = NULL;
 	}
 	else
 	{
-		/* Don't need MakeExpandedObjectReadOnly; datumCopy will copy it */
-		*resultVal = pergroupstate->transValue;
+		*resultVal =
+			MakeExpandedObjectReadOnly(pergroupstate->transValue,
+									   pergroupstate->transValueIsNull,
+									   pertrans->transtypeLen);
 		*resultIsNull = pergroupstate->transValueIsNull;
 	}
-
-	/*
-	 * If result is pass-by-ref, make sure it is in the right context.
-	 */
-	if (!peragg->resulttypeByVal && !*resultIsNull &&
-		!MemoryContextContains(CurrentMemoryContext,
-							   DatumGetPointer(*resultVal)))
-		*resultVal = datumCopy(*resultVal,
-							   peragg->resulttypeByVal,
-							   peragg->resulttypeLen);
 
 	MemoryContextSwitchTo(oldContext);
 }
@@ -1174,6 +1179,7 @@ finalize_partialaggregate(AggState *aggstate,
 		else
 		{
 			FunctionCallInfo fcinfo = pertrans->serialfn_fcinfo;
+			Datum		result;
 
 			fcinfo->args[0].value =
 				MakeExpandedObjectReadOnly(pergroupstate->transValue,
@@ -1182,24 +1188,21 @@ finalize_partialaggregate(AggState *aggstate,
 			fcinfo->args[0].isnull = pergroupstate->transValueIsNull;
 			fcinfo->isnull = false;
 
-			*resultVal = FunctionCallInvoke(fcinfo);
+			result = FunctionCallInvoke(fcinfo);
 			*resultIsNull = fcinfo->isnull;
+			*resultVal = MakeExpandedObjectReadOnly(result,
+													fcinfo->isnull,
+													peragg->resulttypeLen);
 		}
 	}
 	else
 	{
-		/* Don't need MakeExpandedObjectReadOnly; datumCopy will copy it */
-		*resultVal = pergroupstate->transValue;
+		*resultVal =
+			MakeExpandedObjectReadOnly(pergroupstate->transValue,
+									   pergroupstate->transValueIsNull,
+									   pertrans->transtypeLen);
 		*resultIsNull = pergroupstate->transValueIsNull;
 	}
-
-	/* If result is pass-by-ref, make sure it is in the right context. */
-	if (!peragg->resulttypeByVal && !*resultIsNull &&
-		!MemoryContextContains(CurrentMemoryContext,
-							   DatumGetPointer(*resultVal)))
-		*resultVal = datumCopy(*resultVal,
-							   peragg->resulttypeByVal,
-							   peragg->resulttypeLen);
 
 	MemoryContextSwitchTo(oldContext);
 }
@@ -1307,20 +1310,19 @@ finalize_aggregates(AggState *aggstate,
 	Datum	   *aggvalues = econtext->ecxt_aggvalues;
 	bool	   *aggnulls = econtext->ecxt_aggnulls;
 	int			aggno;
-	int			transno;
 
 	/*
 	 * If there were any DISTINCT and/or ORDER BY aggregates, sort their
 	 * inputs and run the transition functions.
 	 */
-	for (transno = 0; transno < aggstate->numtrans; transno++)
+	for (int transno = 0; transno < aggstate->numtrans; transno++)
 	{
 		AggStatePerTrans pertrans = &aggstate->pertrans[transno];
 		AggStatePerGroup pergroupstate;
 
 		pergroupstate = &pergroup[transno];
 
-		if (pertrans->numSortCols > 0)
+		if (pertrans->aggsortrequired)
 		{
 			Assert(aggstate->aggstrategy != AGG_HASHED &&
 				   aggstate->aggstrategy != AGG_MIXED);
@@ -1333,6 +1335,21 @@ finalize_aggregates(AggState *aggstate,
 				process_ordered_aggregate_multi(aggstate,
 												pertrans,
 												pergroupstate);
+		}
+		else if (pertrans->numDistinctCols > 0 && pertrans->haslast)
+		{
+			pertrans->haslast = false;
+
+			if (pertrans->numDistinctCols == 1)
+			{
+				if (!pertrans->inputtypeByVal && !pertrans->lastisnull)
+					pfree(DatumGetPointer(pertrans->lastdatum));
+
+				pertrans->lastisnull = false;
+				pertrans->lastdatum = (Datum) 0;
+			}
+			else
+				ExecClearTuple(pertrans->uniqslot);
 		}
 	}
 
@@ -1434,12 +1451,11 @@ find_cols_walker(Node *node, FindColsContext *context)
 	{
 		Assert(!context->is_aggref);
 		context->is_aggref = true;
-		expression_tree_walker(node, find_cols_walker, (void *) context);
+		expression_tree_walker(node, find_cols_walker, context);
 		context->is_aggref = false;
 		return false;
 	}
-	return expression_tree_walker(node, find_cols_walker,
-								  (void *) context);
+	return expression_tree_walker(node, find_cols_walker, context);
 }
 
 /*
@@ -1448,13 +1464,13 @@ find_cols_walker(Node *node, FindColsContext *context)
  * To implement hashed aggregation, we need a hashtable that stores a
  * representative tuple and an array of AggStatePerGroup structs for each
  * distinct set of GROUP BY column values.  We compute the hash key from the
- * GROUP BY columns.  The per-group data is allocated in lookup_hash_entry(),
+ * GROUP BY columns.  The per-group data is allocated in initialize_hash_entry(),
  * for each entry.
  *
  * We have a separate hashtable and associated perhash data structure for each
  * grouping set for which we're doing hashing.
  *
- * The contents of the hash tables always live in the hashcontext's per-tuple
+ * The contents of the hash tables live in the aggstate's hash_tuplescxt
  * memory context (there is only one of these for all tables together, since
  * they are all reset at the same time).
  */
@@ -1466,7 +1482,7 @@ build_hash_tables(AggState *aggstate)
 	for (setno = 0; setno < aggstate->num_hashes; ++setno)
 	{
 		AggStatePerHash perhash = &aggstate->perhash[setno];
-		long		nbuckets;
+		double		nbuckets;
 		Size		memory;
 
 		if (perhash->hashtable != NULL)
@@ -1475,14 +1491,20 @@ build_hash_tables(AggState *aggstate)
 			continue;
 		}
 
-		Assert(perhash->aggnode->numGroups > 0);
-
 		memory = aggstate->hash_mem_limit / aggstate->num_hashes;
 
 		/* choose reasonable number of buckets per hashtable */
 		nbuckets = hash_choose_num_buckets(aggstate->hashentrysize,
 										   perhash->aggnode->numGroups,
 										   memory);
+
+#ifdef USE_INJECTION_POINTS
+		if (IS_INJECTION_POINT_ATTACHED("hash-aggregate-oversize-table"))
+		{
+			nbuckets = memory / TupleHashEntrySize();
+			INJECTION_POINT_CACHED("hash-aggregate-oversize-table", NULL);
+		}
+#endif
 
 		build_hash_table(aggstate, setno, nbuckets);
 	}
@@ -1494,11 +1516,11 @@ build_hash_tables(AggState *aggstate)
  * Build a single hashtable for this grouping set.
  */
 static void
-build_hash_table(AggState *aggstate, int setno, long nbuckets)
+build_hash_table(AggState *aggstate, int setno, double nbuckets)
 {
 	AggStatePerHash perhash = &aggstate->perhash[setno];
 	MemoryContext metacxt = aggstate->hash_metacxt;
-	MemoryContext hashcxt = aggstate->hashcontext->ecxt_per_tuple_memory;
+	MemoryContext tuplescxt = aggstate->hash_tuplescxt;
 	MemoryContext tmpcxt = aggstate->tmpcontext->ecxt_per_tuple_memory;
 	Size		additionalsize;
 
@@ -1513,19 +1535,20 @@ build_hash_table(AggState *aggstate, int setno, long nbuckets)
 	 */
 	additionalsize = aggstate->numtrans * sizeof(AggStatePerGroupData);
 
-	perhash->hashtable = BuildTupleHashTableExt(&aggstate->ss.ps,
-												perhash->hashslot->tts_tupleDescriptor,
-												perhash->numCols,
-												perhash->hashGrpColIdxHash,
-												perhash->eqfuncoids,
-												perhash->hashfunctions,
-												perhash->aggnode->grpCollations,
-												nbuckets,
-												additionalsize,
-												metacxt,
-												hashcxt,
-												tmpcxt,
-												DO_AGGSPLIT_SKIPFINAL(aggstate->aggsplit));
+	perhash->hashtable = BuildTupleHashTable(&aggstate->ss.ps,
+											 perhash->hashslot->tts_tupleDescriptor,
+											 perhash->hashslot->tts_ops,
+											 perhash->numCols,
+											 perhash->hashGrpColIdxHash,
+											 perhash->eqfuncoids,
+											 perhash->hashfunctions,
+											 perhash->aggnode->grpCollations,
+											 nbuckets,
+											 additionalsize,
+											 metacxt,
+											 tuplescxt,
+											 tmpcxt,
+											 DO_AGGSPLIT_SKIPFINAL(aggstate->aggsplit));
 }
 
 /*
@@ -1536,7 +1559,7 @@ build_hash_table(AggState *aggstate, int setno, long nbuckets)
  * at all.  Only columns of the first two types need to be stored in the
  * hashtable, and getting rid of the others can make the table entries
  * significantly smaller.  The hashtable only contains the relevant columns,
- * and is packed/unpacked in lookup_hash_entry() / agg_retrieve_hash_table()
+ * and is packed/unpacked in lookup_hash_entries() / agg_retrieve_hash_table()
  * into the format of the normal input descriptor.
  *
  * Additional columns, in addition to the columns grouped by, come from two
@@ -1643,11 +1666,12 @@ find_hash_columns(AggState *aggstate)
 			perhash->hashGrpColIdxHash[i] = i + 1;
 			perhash->numhashGrpCols++;
 			/* delete already mapped columns */
-			bms_del_member(colnos, grpColIdx[i]);
+			colnos = bms_del_member(colnos, grpColIdx[i]);
 		}
 
 		/* and add the remaining columns */
-		while ((i = bms_first_member(colnos)) >= 0)
+		i = -1;
+		while ((i = bms_next_member(colnos, i)) >= 0)
 		{
 			perhash->hashGrpColIdxInput[perhash->numhashGrpCols] = i;
 			perhash->numhashGrpCols++;
@@ -1672,7 +1696,7 @@ find_hash_columns(AggState *aggstate)
 							  NULL);
 		perhash->hashslot =
 			ExecAllocTableSlot(&estate->es_tupleTable, hashDesc,
-							   &TTSOpsMinimalTuple);
+							   &TTSOpsMinimalTuple, 0);
 
 		list_free(hashTlist);
 		bms_free(colnos);
@@ -1694,20 +1718,24 @@ hash_agg_entry_size(int numTrans, Size tupleWidth, Size transitionSpace)
 							 tupleWidth);
 	Size		pergroupSize = numTrans * sizeof(AggStatePerGroupData);
 
-	tupleChunkSize = CHUNKHDRSZ + tupleSize;
+	/*
+	 * Entries use the Bump allocator, so the chunk sizes are the same as the
+	 * requested sizes.
+	 */
+	tupleChunkSize = MAXALIGN(tupleSize);
+	pergroupChunkSize = pergroupSize;
 
-	if (pergroupSize > 0)
-		pergroupChunkSize = CHUNKHDRSZ + pergroupSize;
-	else
-		pergroupChunkSize = 0;
-
+	/*
+	 * Transition values use AllocSet, which has a chunk header and also uses
+	 * power-of-two allocations.
+	 */
 	if (transitionSpace > 0)
-		transitionChunkSize = CHUNKHDRSZ + transitionSpace;
+		transitionChunkSize = CHUNKHDRSZ + pg_nextpower2_size_t(transitionSpace);
 	else
 		transitionChunkSize = 0;
 
 	return
-		sizeof(TupleHashEntryData) +
+		TupleHashEntrySize() +
 		tupleChunkSize +
 		pergroupChunkSize +
 		transitionChunkSize;
@@ -1852,19 +1880,37 @@ hash_agg_check_limits(AggState *aggstate)
 	uint64		ngroups = aggstate->hash_ngroups_current;
 	Size		meta_mem = MemoryContextMemAllocated(aggstate->hash_metacxt,
 													 true);
-	Size		hashkey_mem = MemoryContextMemAllocated(aggstate->hashcontext->ecxt_per_tuple_memory,
-														true);
+	Size		entry_mem = MemoryContextMemAllocated(aggstate->hash_tuplescxt,
+													  true);
+	Size		tval_mem = MemoryContextMemAllocated(aggstate->hashcontext->ecxt_per_tuple_memory,
+													 true);
+	Size		total_mem = meta_mem + entry_mem + tval_mem;
+	bool		do_spill = false;
+
+#ifdef USE_INJECTION_POINTS
+	if (ngroups >= 1000)
+	{
+		if (IS_INJECTION_POINT_ATTACHED("hash-aggregate-spill-1000"))
+		{
+			do_spill = true;
+			INJECTION_POINT_CACHED("hash-aggregate-spill-1000", NULL);
+		}
+	}
+#endif
 
 	/*
 	 * Don't spill unless there's at least one group in the hash table so we
 	 * can be sure to make progress even in edge cases.
 	 */
 	if (aggstate->hash_ngroups_current > 0 &&
-		(meta_mem + hashkey_mem > aggstate->hash_mem_limit ||
+		(total_mem > aggstate->hash_mem_limit ||
 		 ngroups > aggstate->hash_ngroups_limit))
 	{
-		hash_agg_enter_spill_mode(aggstate);
+		do_spill = true;
 	}
+
+	if (do_spill)
+		hash_agg_enter_spill_mode(aggstate);
 }
 
 /*
@@ -1875,6 +1921,7 @@ hash_agg_check_limits(AggState *aggstate)
 static void
 hash_agg_enter_spill_mode(AggState *aggstate)
 {
+	INJECTION_POINT("hash-aggregate-enter-spill-mode", NULL);
 	aggstate->hash_spill_mode = true;
 	hashagg_recompile_expressions(aggstate, aggstate->table_filled, true);
 
@@ -1887,7 +1934,7 @@ hash_agg_enter_spill_mode(AggState *aggstate)
 
 		aggstate->hash_tapeset = LogicalTapeSetCreate(true, NULL, -1);
 
-		aggstate->hash_spills = palloc(sizeof(HashAggSpill) * aggstate->num_hashes);
+		aggstate->hash_spills = palloc_array(HashAggSpill, aggstate->num_hashes);
 
 		for (int setno = 0; setno < aggstate->num_hashes; setno++)
 		{
@@ -1911,6 +1958,7 @@ static void
 hash_agg_update_metrics(AggState *aggstate, bool from_tape, int npartitions)
 {
 	Size		meta_mem;
+	Size		entry_mem;
 	Size		hashkey_mem;
 	Size		buffer_mem;
 	Size		total_mem;
@@ -1922,7 +1970,10 @@ hash_agg_update_metrics(AggState *aggstate, bool from_tape, int npartitions)
 	/* memory for the hash table itself */
 	meta_mem = MemoryContextMemAllocated(aggstate->hash_metacxt, true);
 
-	/* memory for the group keys and transition states */
+	/* memory for hash entries */
+	entry_mem = MemoryContextMemAllocated(aggstate->hash_tuplescxt, true);
+
+	/* memory for byref transition states */
 	hashkey_mem = MemoryContextMemAllocated(aggstate->hashcontext->ecxt_per_tuple_memory, true);
 
 	/* memory for read/write tape buffers, if spilled */
@@ -1931,7 +1982,7 @@ hash_agg_update_metrics(AggState *aggstate, bool from_tape, int npartitions)
 		buffer_mem += HASHAGG_READ_BUFFER_SIZE;
 
 	/* update peak mem */
-	total_mem = meta_mem + hashkey_mem + buffer_mem;
+	total_mem = meta_mem + entry_mem + hashkey_mem + buffer_mem;
 	if (total_mem > aggstate->hash_mem_peak)
 		aggstate->hash_mem_peak = total_mem;
 
@@ -1948,19 +1999,77 @@ hash_agg_update_metrics(AggState *aggstate, bool from_tape, int npartitions)
 	if (aggstate->hash_ngroups_current > 0)
 	{
 		aggstate->hashentrysize =
-			sizeof(TupleHashEntryData) +
+			TupleHashEntrySize() +
 			(hashkey_mem / (double) aggstate->hash_ngroups_current);
 	}
 }
 
 /*
+ * Create memory contexts used for hash aggregation.
+ */
+static void
+hash_create_memory(AggState *aggstate)
+{
+	Size		maxBlockSize = ALLOCSET_DEFAULT_MAXSIZE;
+
+	/*
+	 * The hashcontext's per-tuple memory will be used for byref transition
+	 * values and returned by AggCheckCallContext().
+	 */
+	aggstate->hashcontext = CreateWorkExprContext(aggstate->ss.ps.state);
+
+	/*
+	 * The meta context will be used for the bucket array of
+	 * TupleHashEntryData (or arrays, in the case of grouping sets). As the
+	 * hash table grows, the bucket array will double in size and the old one
+	 * will be freed, so an AllocSet is appropriate. For large bucket arrays,
+	 * the large allocation path will be used, so it's not worth worrying
+	 * about wasting space due to power-of-two allocations.
+	 */
+	aggstate->hash_metacxt = AllocSetContextCreate(aggstate->ss.ps.state->es_query_cxt,
+												   "HashAgg meta context",
+												   ALLOCSET_DEFAULT_SIZES);
+
+	/*
+	 * The hash entries themselves, which include the grouping key
+	 * (firstTuple) and pergroup data, are stored in the table context. The
+	 * bump allocator can be used because the entries are not freed until the
+	 * entire hash table is reset. The bump allocator is faster for
+	 * allocations and avoids wasting space on the chunk header or
+	 * power-of-two allocations.
+	 *
+	 * Like CreateWorkExprContext(), use smaller sizings for smaller work_mem,
+	 * to avoid large jumps in memory usage.
+	 */
+
+	/*
+	 * Like CreateWorkExprContext(), use smaller sizings for smaller work_mem,
+	 * to avoid large jumps in memory usage.
+	 */
+	maxBlockSize = pg_prevpower2_size_t(work_mem * (Size) 1024 / 16);
+
+	/* But no bigger than ALLOCSET_DEFAULT_MAXSIZE */
+	maxBlockSize = Min(maxBlockSize, ALLOCSET_DEFAULT_MAXSIZE);
+
+	/* and no smaller than ALLOCSET_DEFAULT_INITSIZE */
+	maxBlockSize = Max(maxBlockSize, ALLOCSET_DEFAULT_INITSIZE);
+
+	aggstate->hash_tuplescxt = BumpContextCreate(aggstate->ss.ps.state->es_query_cxt,
+												 "HashAgg hashed tuples",
+												 ALLOCSET_DEFAULT_MINSIZE,
+												 ALLOCSET_DEFAULT_INITSIZE,
+												 maxBlockSize);
+
+}
+
+/*
  * Choose a reasonable number of buckets for the initial hash table size.
  */
-static long
-hash_choose_num_buckets(double hashentrysize, long ngroups, Size memory)
+static double
+hash_choose_num_buckets(double hashentrysize, double ngroups, Size memory)
 {
-	long		max_nbuckets;
-	long		nbuckets = ngroups;
+	double		max_nbuckets;
+	double		nbuckets = ngroups;
 
 	max_nbuckets = memory / hashentrysize;
 
@@ -1968,12 +2077,16 @@ hash_choose_num_buckets(double hashentrysize, long ngroups, Size memory)
 	 * Underestimating is better than overestimating. Too many buckets crowd
 	 * out space for group keys and transition state values.
 	 */
-	max_nbuckets >>= 1;
+	max_nbuckets /= 2;
 
 	if (nbuckets > max_nbuckets)
 		nbuckets = max_nbuckets;
 
-	return Max(nbuckets, 1);
+	/*
+	 * BuildTupleHashTable will clamp any obviously-insane result, so we don't
+	 * need to be too careful here.
+	 */
+	return nbuckets;
 }
 
 /*
@@ -2017,7 +2130,7 @@ hash_choose_num_partitions(double input_groups, double hashentrysize,
 	npartitions = (int) dpartitions;
 
 	/* ceil(log2(npartitions)) */
-	partition_bits = my_log2(npartitions);
+	partition_bits = pg_ceil_log2_32(npartitions);
 
 	/* make sure that we don't exhaust the hash bits */
 	if (partition_bits + used_bits >= 32)
@@ -2049,11 +2162,7 @@ initialize_hash_entry(AggState *aggstate, TupleHashTable hashtable,
 	if (aggstate->numtrans == 0)
 		return;
 
-	pergroup = (AggStatePerGroup)
-		MemoryContextAlloc(hashtable->tablecxt,
-						   sizeof(AggStatePerGroupData) * aggstate->numtrans);
-
-	entry->additional = pergroup;
+	pergroup = (AggStatePerGroup) TupleHashEntryGetAdditional(hashtable, entry);
 
 	/*
 	 * Initialize aggregates for new tuple group, lookup_hash_entries()
@@ -2070,8 +2179,6 @@ initialize_hash_entry(AggState *aggstate, TupleHashTable hashtable,
 
 /*
  * Look up hash entries for the current tuple in all hashed grouping sets.
- *
- * Be aware that lookup_hash_entry can reset the tmpcontext.
  *
  * Some entries may be left NULL if we are in "spill mode". The same tuple
  * will belong to different groups for each grouping set, so may match a group
@@ -2117,7 +2224,7 @@ lookup_hash_entries(AggState *aggstate)
 		{
 			if (isnew)
 				initialize_hash_entry(aggstate, hashtable, entry);
-			pergroup[setno] = entry->additional;
+			pergroup[setno] = TupleHashEntryGetAdditional(hashtable, entry);
 		}
 		else
 		{
@@ -2481,8 +2588,7 @@ ExecAgg(PlanState *pstate)
 			case AGG_HASHED:
 				if (!node->table_filled)
 					agg_fill_hash_table(node);
-				/* FALLTHROUGH */
-				yb_switch_fallthrough();
+				pg_fallthrough;
 			case AGG_MIXED:
 				result = agg_retrieve_hash_table(node);
 				break;
@@ -2907,7 +3013,7 @@ agg_retrieve_direct(AggState *aggstate)
 					 * If we are grouping, check whether we've crossed a group
 					 * boundary.
 					 */
-					if (node->aggstrategy != AGG_PLAIN)
+					if (node->aggstrategy != AGG_PLAIN && node->numCols > 0)
 					{
 						tmpcontext->ecxt_innertuple = firstSlot;
 						if (!ExecQual(aggstate->phase->eqfunctions[node->numCols - 1],
@@ -3075,10 +3181,12 @@ agg_refill_hash_table(AggState *aggstate)
 	 */
 	hashagg_recompile_expressions(aggstate, true, true);
 
+	INJECTION_POINT("hash-aggregate-process-batch", NULL);
 	for (;;)
 	{
 		TupleTableSlot *spillslot = aggstate->hash_spill_rslot;
 		TupleTableSlot *hashslot = perhash->hashslot;
+		TupleHashTable hashtable = perhash->hashtable;
 		TupleHashEntry entry;
 		MinimalTuple tuple;
 		uint32		hash;
@@ -3097,14 +3205,14 @@ agg_refill_hash_table(AggState *aggstate)
 		prepare_hash_slot(perhash,
 						  aggstate->tmpcontext->ecxt_outertuple,
 						  hashslot);
-		entry = LookupTupleHashEntryHash(perhash->hashtable, hashslot,
+		entry = LookupTupleHashEntryHash(hashtable, hashslot,
 										 p_isnew, hash);
 
 		if (entry != NULL)
 		{
 			if (isnew)
-				initialize_hash_entry(aggstate, perhash->hashtable, entry);
-			aggstate->hash_pergroup[batch->setno] = entry->additional;
+				initialize_hash_entry(aggstate, hashtable, entry);
+			aggstate->hash_pergroup[batch->setno] = TupleHashEntryGetAdditional(hashtable, entry);
 			advance_aggregates(aggstate);
 		}
 		else
@@ -3196,7 +3304,7 @@ agg_retrieve_hash_table_in_memory(AggState *aggstate)
 	ExprContext *econtext;
 	AggStatePerAgg peragg;
 	AggStatePerGroup pergroup;
-	TupleHashEntryData *entry;
+	TupleHashEntry entry;
 	TupleTableSlot *firstSlot;
 	TupleTableSlot *result;
 	AggStatePerHash perhash;
@@ -3223,6 +3331,7 @@ agg_retrieve_hash_table_in_memory(AggState *aggstate)
 	for (;;)
 	{
 		TupleTableSlot *hashslot = perhash->hashslot;
+		TupleHashTable hashtable = perhash->hashtable;
 		int			i;
 
 		CHECK_FOR_INTERRUPTS();
@@ -3230,7 +3339,7 @@ agg_retrieve_hash_table_in_memory(AggState *aggstate)
 		/*
 		 * Find the next entry in the hash table
 		 */
-		entry = ScanTupleHashTable(perhash->hashtable, &perhash->hashiter);
+		entry = ScanTupleHashTable(hashtable, &perhash->hashiter);
 		if (entry == NULL)
 		{
 			int			nextset = aggstate->current_set + 1;
@@ -3268,7 +3377,7 @@ agg_retrieve_hash_table_in_memory(AggState *aggstate)
 		 * Transform representative tuple back into one with the right
 		 * columns.
 		 */
-		ExecStoreMinimalTuple(entry->firstTuple, hashslot, false);
+		ExecStoreMinimalTuple(TupleHashEntryGetTuple(entry), hashslot, false);
 		slot_getallattrs(hashslot);
 
 		ExecClearTuple(firstSlot);
@@ -3284,7 +3393,7 @@ agg_retrieve_hash_table_in_memory(AggState *aggstate)
 		}
 		ExecStoreVirtualTuple(firstSlot);
 
-		pergroup = (AggStatePerGroup) entry->additional;
+		pergroup = (AggStatePerGroup) TupleHashEntryGetAdditional(hashtable, entry);
 
 		/*
 		 * Use the representative input tuple for any references to
@@ -3323,15 +3432,27 @@ hashagg_spill_init(HashAggSpill *spill, LogicalTapeSet *tapeset, int used_bits,
 	npartitions = hash_choose_num_partitions(input_groups, hashentrysize,
 											 used_bits, &partition_bits);
 
-	spill->partitions = palloc0(sizeof(LogicalTape *) * npartitions);
-	spill->ntuples = palloc0(sizeof(int64) * npartitions);
-	spill->hll_card = palloc0(sizeof(hyperLogLogState) * npartitions);
+#ifdef USE_INJECTION_POINTS
+	if (IS_INJECTION_POINT_ATTACHED("hash-aggregate-single-partition"))
+	{
+		npartitions = 1;
+		partition_bits = 0;
+		INJECTION_POINT_CACHED("hash-aggregate-single-partition", NULL);
+	}
+#endif
+
+	spill->partitions = palloc0_array(LogicalTape *, npartitions);
+	spill->ntuples = palloc0_array(int64, npartitions);
+	spill->hll_card = palloc0_array(hyperLogLogState, npartitions);
 
 	for (int i = 0; i < npartitions; i++)
 		spill->partitions[i] = LogicalTapeCreate(tapeset);
 
 	spill->shift = 32 - used_bits - partition_bits;
-	spill->mask = (npartitions - 1) << spill->shift;
+	if (spill->shift < 32)
+		spill->mask = (npartitions - 1) << spill->shift;
+	else
+		spill->mask = 0;
 	spill->npartitions = npartitions;
 
 	for (int i = 0; i < npartitions; i++)
@@ -3380,7 +3501,11 @@ hashagg_spill_tuple(AggState *aggstate, HashAggSpill *spill,
 
 	tuple = ExecFetchSlotMinimalTuple(spillslot, &shouldFree);
 
-	partition = (hash & spill->mask) >> spill->shift;
+	if (spill->shift < 32)
+		partition = (hash & spill->mask) >> spill->shift;
+	else
+		partition = 0;
+
 	spill->ntuples[partition]++;
 
 	/*
@@ -3392,10 +3517,10 @@ hashagg_spill_tuple(AggState *aggstate, HashAggSpill *spill,
 
 	tape = spill->partitions[partition];
 
-	LogicalTapeWrite(tape, (void *) &hash, sizeof(uint32));
+	LogicalTapeWrite(tape, &hash, sizeof(uint32));
 	total_written += sizeof(uint32);
 
-	LogicalTapeWrite(tape, (void *) tuple, tuple->t_len);
+	LogicalTapeWrite(tape, tuple, tuple->t_len);
 	total_written += tuple->t_len;
 
 	if (shouldFree)
@@ -3414,7 +3539,7 @@ static HashAggBatch *
 hashagg_batch_new(LogicalTape *input_tape, int setno,
 				  int64 input_tuples, double input_card, int used_bits)
 {
-	HashAggBatch *batch = palloc0(sizeof(HashAggBatch));
+	HashAggBatch *batch = palloc0_object(HashAggBatch);
 
 	batch->setno = setno;
 	batch->used_bits = used_bits;
@@ -3426,7 +3551,7 @@ hashagg_batch_new(LogicalTape *input_tape, int setno,
 }
 
 /*
- * read_spilled_tuple
+ * hashagg_batch_read
  * 		read the next tuple from a batch's tape.  Return NULL if no more.
  */
 static MinimalTuple
@@ -3460,7 +3585,7 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	tuple->t_len = t_len;
 
 	nread = LogicalTapeRead(tape,
-							(void *) ((char *) tuple + sizeof(uint32)),
+							(char *) tuple + sizeof(uint32),
 							t_len - sizeof(uint32));
 	if (nread != t_len - sizeof(uint32))
 		ereport(ERROR,
@@ -3685,8 +3810,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->maxsets = numGroupingSets;
 	aggstate->numphases = numPhases;
 
-	aggstate->aggcontexts = (ExprContext **)
-		palloc0(sizeof(ExprContext *) * numGroupingSets);
+	aggstate->aggcontexts = palloc0_array(ExprContext *, numGroupingSets);
 
 	/*
 	 * Create expression contexts.  We need three or more, one for
@@ -3712,7 +3836,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	}
 
 	if (use_hashing)
-		aggstate->hashcontext = CreateWorkExprContext(estate);
+		hash_create_memory(aggstate);
 
 	ExecAssignExprContext(estate, &aggstate->ss.ps);
 
@@ -3819,22 +3943,22 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		max_aggno = Max(max_aggno, aggref->aggno);
 		max_transno = Max(max_transno, aggref->aggtransno);
 	}
-	numaggs = max_aggno + 1;
-	numtrans = max_transno + 1;
+	aggstate->numaggs = numaggs = max_aggno + 1;
+	aggstate->numtrans = numtrans = max_transno + 1;
 
 	/*
 	 * For each phase, prepare grouping set data and fmgr lookup data for
 	 * compare functions.  Accumulate all_grouped_cols in passing.
 	 */
-	aggstate->phases = palloc0(numPhases * sizeof(AggStatePerPhaseData));
+	aggstate->phases = palloc0_array(AggStatePerPhaseData, numPhases);
 
 	aggstate->num_hashes = numHashes;
 	if (numHashes)
 	{
-		aggstate->perhash = palloc0(sizeof(AggStatePerHashData) * numHashes);
+		aggstate->perhash = palloc0_array(AggStatePerHashData, numHashes);
 		aggstate->phases[0].numsets = 0;
-		aggstate->phases[0].gset_lengths = palloc(numHashes * sizeof(int));
-		aggstate->phases[0].grouped_cols = palloc(numHashes * sizeof(Bitmapset *));
+		aggstate->phases[0].gset_lengths = palloc_array(int, numHashes);
+		aggstate->phases[0].grouped_cols = palloc_array(Bitmapset *, numHashes);
 	}
 
 	phase = 0;
@@ -3846,7 +3970,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		if (phaseidx > 0)
 		{
 			aggnode = list_nth_node(Agg, node->chain, phaseidx - 1);
-			sortnode = castNode(Sort, aggnode->plan.lefttree);
+			sortnode = castNode(Sort, outerPlan(aggnode));
 		}
 		else
 		{
@@ -3928,21 +4052,16 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			 */
 			if (aggnode->aggstrategy == AGG_SORTED)
 			{
-				int			i = 0;
-
-				Assert(aggnode->numCols > 0);
-
 				/*
 				 * Build a separate function for each subset of columns that
 				 * need to be compared.
 				 */
-				phasedata->eqfunctions =
-					(ExprState **) palloc0(aggnode->numCols * sizeof(ExprState *));
+				phasedata->eqfunctions = palloc0_array(ExprState *, aggnode->numCols);
 
 				/* for each grouping set */
-				for (i = 0; i < phasedata->numsets; i++)
+				for (int k = 0; k < phasedata->numsets; k++)
 				{
-					int			length = phasedata->gset_lengths[i];
+					int			length = phasedata->gset_lengths[k];
 
 					/* nothing to do for empty grouping set */
 					if (length == 0)
@@ -3962,7 +4081,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 				}
 
 				/* and for all grouped columns, unless already computed */
-				if (phasedata->eqfunctions[aggnode->numCols - 1] == NULL)
+				if (aggnode->numCols > 0 &&
+					phasedata->eqfunctions[aggnode->numCols - 1] == NULL)
 				{
 					phasedata->eqfunctions[aggnode->numCols - 1] =
 						execTuplesMatchPrepare(scanDesc,
@@ -3992,27 +4112,24 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	 * allocate my private per-agg working storage
 	 */
 	econtext = aggstate->ss.ps.ps_ExprContext;
-	econtext->ecxt_aggvalues = (Datum *) palloc0(sizeof(Datum) * numaggs);
-	econtext->ecxt_aggnulls = (bool *) palloc0(sizeof(bool) * numaggs);
+	econtext->ecxt_aggvalues = palloc0_array(Datum, numaggs);
+	econtext->ecxt_aggnulls = palloc0_array(bool, numaggs);
 
-	peraggs = (AggStatePerAgg) palloc0(sizeof(AggStatePerAggData) * numaggs);
-	pertransstates = (AggStatePerTrans) palloc0(sizeof(AggStatePerTransData) * numtrans);
+	peraggs = palloc0_array(AggStatePerAggData, numaggs);
+	pertransstates = palloc0_array(AggStatePerTransData, numtrans);
 
 	aggstate->peragg = peraggs;
 	aggstate->pertrans = pertransstates;
 
 
-	aggstate->all_pergroups =
-		(AggStatePerGroup *) palloc0(sizeof(AggStatePerGroup)
-									 * (numGroupingSets + numHashes));
+	aggstate->all_pergroups = palloc0_array(AggStatePerGroup, numGroupingSets + numHashes);
 	pergroups = aggstate->all_pergroups;
 
 	if (node->aggstrategy != AGG_HASHED)
 	{
 		for (i = 0; i < numGroupingSets; i++)
 		{
-			pergroups[i] = (AggStatePerGroup) palloc0(sizeof(AggStatePerGroupData)
-													  * numaggs);
+			pergroups[i] = palloc0_array(AggStatePerGroupData, numaggs);
 		}
 
 		aggstate->pergroups = pergroups;
@@ -4025,12 +4142,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	if (use_hashing)
 	{
 		Plan	   *outerplan = outerPlan(node);
-		uint64		totalGroups = 0;
-		int			i;
+		double		totalGroups = 0;
 
-		aggstate->hash_metacxt = AllocSetContextCreate(aggstate->ss.ps.state->es_query_cxt,
-													   "HashAgg meta context",
-													   ALLOCSET_DEFAULT_SIZES);
 		aggstate->hash_spill_rslot = ExecInitExtraTupleSlot(estate, scanDesc,
 															&TTSOpsMinimalTuple);
 		aggstate->hash_spill_wslot = ExecInitExtraTupleSlot(estate, scanDesc,
@@ -4049,8 +4162,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		 * when there is more than one grouping set, but should still be
 		 * reasonable.
 		 */
-		for (i = 0; i < aggstate->num_hashes; i++)
-			totalGroups += aggstate->perhash[i].aggnode->numGroups;
+		for (int k = 0; k < aggstate->num_hashes; k++)
+			totalGroups += aggstate->perhash[k].aggnode->numGroups;
 
 		hash_agg_set_limits(aggstate->hashentrysize, totalGroups, 0,
 							&aggstate->hash_mem_limit,
@@ -4135,8 +4248,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
 
 		/* Check permission to call aggregate function */
-		aclresult = pg_proc_aclcheck(aggref->aggfnoid, GetUserId(),
-									 ACL_EXECUTE);
+		aclresult = object_aclcheck(ProcedureRelationId, aggref->aggfnoid, GetUserId(),
+									ACL_EXECUTE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_AGGREGATE,
 						   get_func_name(aggref->aggfnoid));
@@ -4202,8 +4315,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 			if (OidIsValid(finalfn_oid))
 			{
-				aclresult = pg_proc_aclcheck(finalfn_oid, aggOwner,
-											 ACL_EXECUTE);
+				aclresult = object_aclcheck(ProcedureRelationId, finalfn_oid, aggOwner,
+											ACL_EXECUTE);
 				if (aclresult != ACLCHECK_OK)
 					aclcheck_error(aclresult, OBJECT_FUNCTION,
 								   get_func_name(finalfn_oid));
@@ -4211,8 +4324,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			}
 			if (OidIsValid(serialfn_oid))
 			{
-				aclresult = pg_proc_aclcheck(serialfn_oid, aggOwner,
-											 ACL_EXECUTE);
+				aclresult = object_aclcheck(ProcedureRelationId, serialfn_oid, aggOwner,
+											ACL_EXECUTE);
 				if (aclresult != ACLCHECK_OK)
 					aclcheck_error(aclresult, OBJECT_FUNCTION,
 								   get_func_name(serialfn_oid));
@@ -4220,8 +4333,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			}
 			if (OidIsValid(deserialfn_oid))
 			{
-				aclresult = pg_proc_aclcheck(deserialfn_oid, aggOwner,
-											 ACL_EXECUTE);
+				aclresult = object_aclcheck(ProcedureRelationId, deserialfn_oid, aggOwner,
+											ACL_EXECUTE);
 				if (aclresult != ACLCHECK_OK)
 					aclcheck_error(aclresult, OBJECT_FUNCTION,
 								   get_func_name(deserialfn_oid));
@@ -4340,7 +4453,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 				}
 			}
 
-			aclresult = pg_proc_aclcheck(transfn_oid, aggOwner, ACL_EXECUTE);
+			aclresult = object_aclcheck(ProcedureRelationId, transfn_oid, aggOwner, ACL_EXECUTE);
 			if (aclresult != ACLCHECK_OK)
 				aclcheck_error(aclresult, OBJECT_FUNCTION,
 							   get_func_name(transfn_oid));
@@ -4429,13 +4542,6 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			pertrans->aggshared = true;
 		ReleaseSysCache(aggTuple);
 	}
-
-	/*
-	 * Update aggstate->numaggs to be the number of unique aggregates found.
-	 * Also set numstates to the number of unique transition states found.
-	 */
-	aggstate->numaggs = numaggs;
-	aggstate->numtrans = numtrans;
 
 	/*
 	 * Last, check whether any more aggregates got added onto the node while
@@ -4571,7 +4677,7 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 	numTransArgs = pertrans->numTransInputs + 1;
 
 	/*
-	 * Set up infrastructure for calling the transfn.  Note that invtrans is
+	 * Set up infrastructure for calling the transfn.  Note that invtransfn is
 	 * not needed here.
 	 */
 	build_aggregate_transfn_expr(inputTypes,
@@ -4594,7 +4700,7 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 							 &pertrans->transfn,
 							 numTransArgs,
 							 pertrans->aggCollation,
-							 (void *) aggstate, NULL);
+							 (Node *) aggstate, NULL);
 
 	/* get info about the state value's datatype */
 	get_typlenbyval(aggtranstype,
@@ -4614,7 +4720,7 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 								 &pertrans->serialfn,
 								 1,
 								 InvalidOid,
-								 (void *) aggstate, NULL);
+								 (Node *) aggstate, NULL);
 	}
 
 	if (OidIsValid(aggdeserialfn))
@@ -4630,7 +4736,7 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 								 &pertrans->deserialfn,
 								 2,
 								 InvalidOid,
-								 (void *) aggstate, NULL);
+								 (Node *) aggstate, NULL);
 	}
 
 	/*
@@ -4639,6 +4745,12 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 	 * stick them into arrays.  We ignore ORDER BY for an ordered-set agg,
 	 * however; the agg's transfn and finalfn are responsible for that.
 	 *
+	 * When the planner has set the aggpresorted flag, the input to the
+	 * aggregate is already correctly sorted.  For ORDER BY aggregates we can
+	 * simply treat these as normal aggregates.  For presorted DISTINCT
+	 * aggregates an extra step must be added to remove duplicate consecutive
+	 * inputs.
+	 *
 	 * Note that by construction, if there is a DISTINCT clause then the ORDER
 	 * BY clause is a prefix of it (see transformDistinctClause).
 	 */
@@ -4646,18 +4758,27 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 	{
 		sortlist = NIL;
 		numSortCols = numDistinctCols = 0;
+		pertrans->aggsortrequired = false;
+	}
+	else if (aggref->aggpresorted && aggref->aggdistinct == NIL)
+	{
+		sortlist = NIL;
+		numSortCols = numDistinctCols = 0;
+		pertrans->aggsortrequired = false;
 	}
 	else if (aggref->aggdistinct)
 	{
 		sortlist = aggref->aggdistinct;
 		numSortCols = numDistinctCols = list_length(sortlist);
 		Assert(numSortCols >= list_length(aggref->aggorder));
+		pertrans->aggsortrequired = !aggref->aggpresorted;
 	}
 	else
 	{
 		sortlist = aggref->aggorder;
 		numSortCols = list_length(sortlist);
 		numDistinctCols = 0;
+		pertrans->aggsortrequired = (numSortCols > 0);
 	}
 
 	pertrans->numSortCols = numSortCols;
@@ -4757,8 +4878,7 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 		pfree(ops);
 	}
 
-	pertrans->sortstates = (Tuplesortstate **)
-		palloc0(sizeof(Tuplesortstate *) * numGroupingSets);
+	pertrans->sortstates = palloc0_array(Tuplesortstate *, numGroupingSets);
 }
 
 
@@ -4795,7 +4915,7 @@ ExecEndAgg(AggState *node)
 	{
 		AggregateInstrumentation *si;
 
-		Assert(ParallelWorkerNumber <= node->shared_info->num_workers);
+		Assert(ParallelWorkerNumber < node->shared_info->num_workers);
 		si = &node->shared_info->sinstrument[ParallelWorkerNumber];
 		si->hash_batches_used = node->hash_batches_used;
 		si->hash_disk_used = node->hash_disk_used;
@@ -4811,10 +4931,16 @@ ExecEndAgg(AggState *node)
 
 	hashagg_reset_spill_state(node);
 
+	/* Release hash tables too */
 	if (node->hash_metacxt != NULL)
 	{
 		MemoryContextDelete(node->hash_metacxt);
 		node->hash_metacxt = NULL;
+	}
+	if (node->hash_tuplescxt != NULL)
+	{
+		MemoryContextDelete(node->hash_tuplescxt);
+		node->hash_tuplescxt = NULL;
 	}
 
 	for (transno = 0; transno < node->numtrans; transno++)
@@ -4833,16 +4959,6 @@ ExecEndAgg(AggState *node)
 		ReScanExprContext(node->aggcontexts[setno]);
 	if (node->hashcontext)
 		ReScanExprContext(node->hashcontext);
-
-	/*
-	 * We don't actually free any ExprContexts here (see comment in
-	 * ExecFreeExprContext), just unlinking the output one from the plan node
-	 * suffices.
-	 */
-	ExecFreeExprContext(&node->ss.ps);
-
-	/* clean up tuple table */
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
 	outerPlan = outerPlanState(node);
 	ExecEndNode(outerPlan);
@@ -4942,7 +5058,7 @@ ExecReScanAgg(AggState *node)
 		node->hash_ngroups_current = 0;
 
 		ReScanExprContext(node->hashcontext);
-		/* Rebuild an empty hash table */
+		/* Rebuild empty hash table(s) */
 		build_hash_tables(node);
 		node->table_filled = false;
 		/* iterator will be reset when the table is filled */

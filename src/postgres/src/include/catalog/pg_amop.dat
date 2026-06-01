@@ -3,7 +3,7 @@
 # pg_amop.dat
 #    Initial contents of the pg_amop system catalog.
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_amop.dat
@@ -179,6 +179,24 @@
   amopstrategy => '4', amopopr => '>=(oid,oid)', amopmethod => 'btree' },
 { amopfamily => 'btree/oid_ops', amoplefttype => 'oid', amoprighttype => 'oid',
   amopstrategy => '5', amopopr => '>(oid,oid)', amopmethod => 'btree' },
+
+# btree oid8_ops
+
+{ amopfamily => 'btree/oid8_ops', amoplefttype => 'oid8',
+  amoprighttype => 'oid8', amopstrategy => '1', amopopr => '<(oid8,oid8)',
+  amopmethod => 'btree' },
+{ amopfamily => 'btree/oid8_ops', amoplefttype => 'oid8',
+  amoprighttype => 'oid8', amopstrategy => '2', amopopr => '<=(oid8,oid8)',
+  amopmethod => 'btree' },
+{ amopfamily => 'btree/oid8_ops', amoplefttype => 'oid8',
+  amoprighttype => 'oid8', amopstrategy => '3', amopopr => '=(oid8,oid8)',
+  amopmethod => 'btree' },
+{ amopfamily => 'btree/oid8_ops', amoplefttype => 'oid8',
+  amoprighttype => 'oid8', amopstrategy => '4', amopopr => '>=(oid8,oid8)',
+  amopmethod => 'btree' },
+{ amopfamily => 'btree/oid8_ops', amoplefttype => 'oid8',
+  amoprighttype => 'oid8', amopstrategy => '5', amopopr => '>(oid8,oid8)',
+  amopmethod => 'btree' },
 
 # btree xid8_ops
 
@@ -973,6 +991,11 @@
 # oid_ops
 { amopfamily => 'hash/oid_ops', amoplefttype => 'oid', amoprighttype => 'oid',
   amopstrategy => '1', amopopr => '=(oid,oid)', amopmethod => 'hash' },
+
+# oid8_ops
+{ amopfamily => 'hash/oid8_ops', amoplefttype => 'oid8',
+  amoprighttype => 'oid8', amopstrategy => '1', amopopr => '=(oid8,oid8)',
+  amopmethod => 'hash' },
 
 # oidvector_ops
 { amopfamily => 'hash/oidvector_ops', amoplefttype => 'oidvector',

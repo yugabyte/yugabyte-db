@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pg_amcheck
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/bin/pg_amcheck/Makefile
@@ -40,7 +40,7 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_amcheck$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f pg_amcheck$(X) $(OBJS)
 	rm -rf tmp_check
 

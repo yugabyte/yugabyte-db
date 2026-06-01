@@ -1,8 +1,3 @@
--- When we have to sort the entire table, incremental sort will
--- be slower than plain sort, so it should not be used.
-explain (costs off)
-select * from (select * from tenk1 order by four) t order by four, ten;
-
 -- When there is a LIMIT clause, incremental sort is beneficial because
 -- it only has to sort some of the groups, and not the entire table.
 explain (costs off)
@@ -26,7 +21,7 @@ declare
   line text;
 begin
   for line in
-    execute 'explain (analyze, costs off, summary off, timing off) ' || query
+    execute 'explain (analyze, costs off, summary off, timing off, buffers off) ' || query
   loop
     out_line := regexp_replace(line, '\d+kB', 'NNkB', 'g');
     return next;
@@ -43,7 +38,7 @@ declare
   element jsonb;
   matching_nodes jsonb := '[]'::jsonb;
 begin
-  execute 'explain (analyze, costs off, summary off, timing off, format ''json'') ' || query into strict elements;
+  execute 'explain (analyze, costs off, summary off, timing off, buffers off, format ''json'') ' || query into strict elements;
   while jsonb_array_length(elements) > 0 loop
     element := elements->0;
     elements := elements - 0;
@@ -281,3 +276,49 @@ from tenk1, lateral (select tenk1.unique1 from generate_series(1, 1000)) as sub;
 explain (costs off) select sub.unique1, stringu1 || random()::text
 from tenk1, lateral (select tenk1.unique1 from generate_series(1, 1000)) as sub
 order by 1, 2;
+
+reset enable_hashagg;
+reset enable_seqscan;
+reset enable_incremental_sort;
+reset parallel_tuple_cost;
+reset parallel_setup_cost;
+reset min_parallel_table_scan_size;
+reset min_parallel_index_scan_size;
+
+-- Ensure incremental sorts work for amcanorderbyop type indexes
+create table point_table (a point, b int);
+create index point_table_a_idx on point_table using gist(a);
+
+-- Ensure we get an incremental sort plan for both of the following queries
+explain (costs off) select a, b, a <-> point(5, 5) dist from point_table order by dist, b limit 1;
+explain (costs off) select a, b, a <-> point(5, 5) dist from point_table order by dist, b desc limit 1;
+
+-- Ensure we get an incremental sort on the outer side of the mergejoin
+explain (costs off)
+select * from
+  (select * from tenk1 order by four) t1 join tenk1 t2 on t1.four = t2.four and t1.two = t2.two
+order by t1.four, t1.two limit 1;
+
+--
+-- Test incremental sort for Append/MergeAppend
+--
+create table prt_tbl (a int, b int) partition by range (a);
+create table prt_tbl_1 partition of prt_tbl for values from (0) to (100);
+create table prt_tbl_2 partition of prt_tbl for values from (100) to (200);
+insert into prt_tbl select i%200, i from generate_series(1,1000)i;
+create index on prt_tbl_1(a);
+create index on prt_tbl_2(a, b);
+analyze prt_tbl;
+
+set enable_seqscan to off;
+set enable_bitmapscan to off;
+
+-- Ensure we get an incremental sort for the subpath of Append
+explain (costs off) select * from prt_tbl order by a, b;
+
+-- Ensure we get an incremental sort for the subpath of MergeAppend
+explain (costs off) select * from prt_tbl_1 union all select * from prt_tbl_2 order by a, b;
+
+reset enable_bitmapscan;
+reset enable_seqscan;
+drop table prt_tbl;

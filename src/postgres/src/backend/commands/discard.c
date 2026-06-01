@@ -3,7 +3,7 @@
  * discard.c
  *	  The implementation of the DISCARD command
  *
- * Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -19,6 +19,7 @@
 #include "commands/discard.h"
 #include "commands/prepare.h"
 #include "commands/sequence.h"
+#include "storage/lock.h"
 #include "utils/guc.h"
 #include "utils/portal.h"
 

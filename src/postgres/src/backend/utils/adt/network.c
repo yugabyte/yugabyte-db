@@ -12,8 +12,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include "access/stratnum.h"
-#include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
 #include "common/hashfn.h"
 #include "common/ip.h"
@@ -72,12 +70,12 @@ static inet *internal_inetpl(inet *ip, int64 addend);
  * Common INET/CIDR input routine
  */
 static inet *
-network_in(char *src, bool is_cidr)
+network_in(char *src, bool is_cidr, Node *escontext)
 {
 	int			bits;
 	inet	   *dst;
 
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = (inet *) palloc0_object(inet);
 
 	/*
 	 * First, check to see if this is an IPv6 or IPv4 address.  IPv6 addresses
@@ -93,7 +91,7 @@ network_in(char *src, bool is_cidr)
 	bits = pg_inet_net_pton(ip_family(dst), src, ip_addr(dst),
 							is_cidr ? ip_addrsize(dst) : -1);
 	if ((bits < 0) || (bits > ip_maxbits(dst)))
-		ereport(ERROR,
+		ereturn(escontext, NULL,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 		/* translator: first %s is inet or cidr */
 				 errmsg("invalid input syntax for type %s: \"%s\"",
@@ -105,7 +103,7 @@ network_in(char *src, bool is_cidr)
 	if (is_cidr)
 	{
 		if (!addressOK(ip_addr(dst), bits, ip_family(dst)))
-			ereport(ERROR,
+			ereturn(escontext, NULL,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					 errmsg("invalid cidr value: \"%s\"", src),
 					 errdetail("Value has bits set to right of mask.")));
@@ -122,7 +120,7 @@ inet_in(PG_FUNCTION_ARGS)
 {
 	char	   *src = PG_GETARG_CSTRING(0);
 
-	PG_RETURN_INET_P(network_in(src, false));
+	PG_RETURN_INET_P(network_in(src, false, fcinfo->context));
 }
 
 Datum
@@ -130,7 +128,7 @@ cidr_in(PG_FUNCTION_ARGS)
 {
 	char	   *src = PG_GETARG_CSTRING(0);
 
-	PG_RETURN_INET_P(network_in(src, true));
+	PG_RETURN_INET_P(network_in(src, true, fcinfo->context));
 }
 
 
@@ -198,7 +196,7 @@ network_recv(StringInfo buf, bool is_cidr)
 				i;
 
 	/* make sure any unused bits in a CIDR value are zeroed */
-	addr = (inet *) palloc0(sizeof(inet));
+	addr = palloc0_object(inet);
 
 	ip_family(addr) = pq_getmsgbyte(buf);
 	if (ip_family(addr) != PGSQL_AF_INET &&
@@ -279,8 +277,6 @@ network_send(inet *addr, bool is_cidr)
 	pq_sendbyte(&buf, ip_bits(addr));
 	pq_sendbyte(&buf, is_cidr);
 	nb = ip_addrsize(addr);
-	if (nb < 0)
-		nb = 0;
 	pq_sendbyte(&buf, nb);
 	addrptr = (char *) ip_addr(addr);
 	for (i = 0; i < nb; i++)
@@ -367,7 +363,7 @@ cidr_set_masklen(PG_FUNCTION_ARGS)
 inet *
 cidr_set_masklen_internal(const inet *src, int bits)
 {
-	inet	   *dst = (inet *) palloc0(sizeof(inet));
+	inet	   *dst = palloc0_object(inet);
 
 	ip_family(dst) = ip_family(src);
 	ip_bits(dst) = bits;
@@ -448,7 +444,7 @@ network_sortsupport(PG_FUNCTION_ARGS)
 
 		oldcontext = MemoryContextSwitchTo(ssup->ssup_cxt);
 
-		uss = palloc(sizeof(network_sortsupport_state));
+		uss = palloc_object(network_sortsupport_state);
 		uss->input_count = 0;
 		uss->estimating = true;
 		initHyperLogLog(&uss->abbr_card, 10);
@@ -503,13 +499,11 @@ network_abbrev_abort(int memtupcount, SortSupport ssup)
 	 */
 	if (abbr_card > 100000.0)
 	{
-#ifdef TRACE_SORT
 		if (trace_sort)
 			elog(LOG,
 				 "network_abbrev: estimation ends at cardinality %f"
 				 " after " INT64_FORMAT " values (%d rows)",
 				 abbr_card, uss->input_count, memtupcount);
-#endif
 		uss->estimating = false;
 		return false;
 	}
@@ -522,23 +516,19 @@ network_abbrev_abort(int memtupcount, SortSupport ssup)
 	 */
 	if (abbr_card < uss->input_count / 2000.0 + 0.5)
 	{
-#ifdef TRACE_SORT
 		if (trace_sort)
 			elog(LOG,
 				 "network_abbrev: aborting abbreviation at cardinality %f"
 				 " below threshold %f after " INT64_FORMAT " values (%d rows)",
 				 abbr_card, uss->input_count / 2000.0 + 0.5, uss->input_count,
 				 memtupcount);
-#endif
 		return true;
 	}
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "network_abbrev: cardinality %f after " INT64_FORMAT
 			 " values (%d rows)", abbr_card, uss->input_count, memtupcount);
-#endif
 
 	return false;
 }
@@ -577,23 +567,10 @@ network_abbrev_abort(int memtupcount, SortSupport ssup)
  *
  * When generating abbreviated keys for SortSupport, we pack as much as we can
  * into a datum while ensuring that when comparing those keys as integers,
- * these rules will be respected. Exact contents depend on IP family and datum
- * size.
+ * these rules will be respected. Exact contents depend on IP family:
  *
  * IPv4
  * ----
- *
- * 4 byte datums:
- *
- * Start with 1 bit for the IP family (IPv4 or IPv6; this bit is present in
- * every case below) followed by all but 1 of the netmasked bits.
- *
- * +----------+---------------------+
- * | 1 bit IP |   31 bits network   |     (1 bit network
- * |  family  |     (truncated)     |      omitted)
- * +----------+---------------------+
- *
- * 8 byte datums:
  *
  * We have space to store all netmasked bits, followed by the netmask size,
  * followed by 25 bits of the subnet (25 bits is usually more than enough in
@@ -606,15 +583,6 @@ network_abbrev_abort(int memtupcount, SortSupport ssup)
  *
  * IPv6
  * ----
- *
- * 4 byte datums:
- *
- * +----------+---------------------+
- * | 1 bit IP |   31 bits network   |    (up to 97 bits
- * |  family  |     (truncated)     |   network omitted)
- * +----------+---------------------+
- *
- * 8 byte datums:
  *
  * +----------+---------------------------------+
  * | 1 bit IP |         63 bits network         |    (up to 65 bits
@@ -638,8 +606,7 @@ network_abbrev_convert(Datum original, SortSupport ssup)
 	/*
 	 * Get an unsigned integer representation of the IP address by taking its
 	 * first 4 or 8 bytes. Always take all 4 bytes of an IPv4 address. Take
-	 * the first 8 bytes of an IPv6 address with an 8 byte datum and 4 bytes
-	 * otherwise.
+	 * the first 8 bytes of an IPv6 address.
 	 *
 	 * We're consuming an array of unsigned char, so byteswap on little endian
 	 * systems (an inet's ipaddr field stores the most significant byte
@@ -669,7 +636,7 @@ network_abbrev_convert(Datum original, SortSupport ssup)
 		ipaddr_datum = DatumBigEndianToNative(ipaddr_datum);
 
 		/* Initialize result with ipfamily (most significant) bit set */
-		res = ((Datum) 1) << (SIZEOF_DATUM * BITS_PER_BYTE - 1);
+		res = ((Datum) 1) << (sizeof(Datum) * BITS_PER_BYTE - 1);
 	}
 
 	/*
@@ -678,8 +645,7 @@ network_abbrev_convert(Datum original, SortSupport ssup)
 	 * while low order bits go in "subnet" component when there is space for
 	 * one. This is often accomplished by generating a temp datum subnet
 	 * bitmask, which we may reuse later when generating the subnet bits
-	 * themselves.  (Note that subnet bits are only used with IPv4 datums on
-	 * platforms where datum is 8 bytes.)
+	 * themselves.
 	 *
 	 * The number of bits in subnet is used to generate a datum subnet
 	 * bitmask. For example, with a /24 IPv4 datum there are 8 subnet bits
@@ -691,14 +657,14 @@ network_abbrev_convert(Datum original, SortSupport ssup)
 	subnet_size = ip_maxbits(authoritative) - ip_bits(authoritative);
 	Assert(subnet_size >= 0);
 	/* subnet size must work with prefix ipaddr cases */
-	subnet_size %= SIZEOF_DATUM * BITS_PER_BYTE;
+	subnet_size %= sizeof(Datum) * BITS_PER_BYTE;
 	if (ip_bits(authoritative) == 0)
 	{
 		/* Fit as many ipaddr bits as possible into subnet */
 		subnet_bitmask = ((Datum) 0) - 1;
 		network = 0;
 	}
-	else if (ip_bits(authoritative) < SIZEOF_DATUM * BITS_PER_BYTE)
+	else if (ip_bits(authoritative) < sizeof(Datum) * BITS_PER_BYTE)
 	{
 		/* Split ipaddr bits between network and subnet */
 		subnet_bitmask = (((Datum) 1) << subnet_size) - 1;
@@ -711,12 +677,11 @@ network_abbrev_convert(Datum original, SortSupport ssup)
 		network = ipaddr_datum;
 	}
 
-#if SIZEOF_DATUM == 8
 	if (ip_family(authoritative) == PGSQL_AF_INET)
 	{
 		/*
-		 * IPv4 with 8 byte datums: keep all 32 netmasked bits, netmask size,
-		 * and most significant 25 subnet bits
+		 * IPv4: keep all 32 netmasked bits, netmask size, and most
+		 * significant 25 subnet bits
 		 */
 		Datum		netmask_size = (Datum) ip_bits(authoritative);
 		Datum		subnet;
@@ -760,12 +725,11 @@ network_abbrev_convert(Datum original, SortSupport ssup)
 		res |= network | netmask_size | subnet;
 	}
 	else
-#endif
 	{
 		/*
-		 * 4 byte datums, or IPv6 with 8 byte datums: Use as many of the
-		 * netmasked bits as will fit in final abbreviated key. Avoid
-		 * clobbering the ipfamily bit that was set earlier.
+		 * IPv6: Use as many of the netmasked bits as will fit in final
+		 * abbreviated key. Avoid clobbering the ipfamily bit that was set
+		 * earlier.
 		 */
 		res |= network >> 1;
 	}
@@ -777,11 +741,7 @@ network_abbrev_convert(Datum original, SortSupport ssup)
 	{
 		uint32		tmp;
 
-#if SIZEOF_DATUM == 8
-		tmp = (uint32) res ^ (uint32) ((uint64) res >> 32);
-#else							/* SIZEOF_DATUM != 8 */
-		tmp = (uint32) res;
-#endif
+		tmp = DatumGetUInt32(res) ^ (uint32) (DatumGetUInt64(res) >> 32);
 
 		addHyperLogLog(&uss->abbr_card, DatumGetUInt32(hash_uint32(tmp)));
 	}
@@ -1100,38 +1060,12 @@ match_network_subset(Node *leftop,
 	rightopval = ((Const *) rightop)->constvalue;
 
 	/*
-	 * Must check that index's opfamily supports the operators we will want to
-	 * apply.
-	 *
-	 * We insist on the opfamily being the specific one we expect, else we'd
-	 * do the wrong thing if someone were to make a reverse-sort opfamily with
-	 * the same operators.
-	 */
-	if (opfamily != NETWORK_BTREE_FAM_OID && opfamily != NETWORK_LSM_FAM_OID)
-		return NIL;
-
-	/*
 	 * create clause "key >= network_scan_first( rightopval )", or ">" if the
 	 * operator disallows equality.
-	 *
-	 * Note: seeing that this function supports only fixed values for opfamily
-	 * and datatype, we could just hard-wire the operator OIDs instead of
-	 * looking them up.  But for now it seems better to be general.
 	 */
-	if (is_eq)
-	{
-		opr1oid = get_opfamily_member(opfamily, datatype, datatype,
-									  BTGreaterEqualStrategyNumber);
-		if (opr1oid == InvalidOid)
-			elog(ERROR, "no >= operator for opfamily %u", opfamily);
-	}
-	else
-	{
-		opr1oid = get_opfamily_member(opfamily, datatype, datatype,
-									  BTGreaterStrategyNumber);
-		if (opr1oid == InvalidOid)
-			elog(ERROR, "no > operator for opfamily %u", opfamily);
-	}
+	opr1oid = get_opfamily_member_for_cmptype(opfamily, datatype, datatype, is_eq ? COMPARE_GE : COMPARE_GT);
+	if (opr1oid == InvalidOid)
+		return NIL;
 
 	opr1right = network_scan_first(rightopval);
 
@@ -1146,10 +1080,9 @@ match_network_subset(Node *leftop,
 
 	/* create clause "key <= network_scan_last( rightopval )" */
 
-	opr2oid = get_opfamily_member(opfamily, datatype, datatype,
-								  BTLessEqualStrategyNumber);
+	opr2oid = get_opfamily_member_for_cmptype(opfamily, datatype, datatype, COMPARE_LE);
 	if (opr2oid == InvalidOid)
-		elog(ERROR, "no <= operator for opfamily %u", opfamily);
+		return NIL;
 
 	opr2right = network_scan_last(rightopval);
 
@@ -1204,7 +1137,7 @@ network_show(PG_FUNCTION_ARGS)
 
 	if (pg_inet_net_ntop(ip_family(ip), ip_addr(ip), ip_maxbits(ip),
 						 tmp, sizeof(tmp)) == NULL)
-		ereport(ERROR,
+		ereturn(fcinfo->context, (Datum) 0,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 				 errmsg("could not format inet value: %m")));
 
@@ -1294,7 +1227,7 @@ network_broadcast(PG_FUNCTION_ARGS)
 			   *b;
 
 	/* make sure any unused bits are zeroed */
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = palloc0_object(inet);
 
 	maxbytes = ip_addrsize(ip);
 	bits = ip_bits(ip);
@@ -1338,7 +1271,7 @@ network_network(PG_FUNCTION_ARGS)
 			   *b;
 
 	/* make sure any unused bits are zeroed */
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = palloc0_object(inet);
 
 	bits = ip_bits(ip);
 	a = ip_addr(ip);
@@ -1381,7 +1314,7 @@ network_netmask(PG_FUNCTION_ARGS)
 	unsigned char *b;
 
 	/* make sure any unused bits are zeroed */
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = palloc0_object(inet);
 
 	bits = ip_bits(ip);
 	b = ip_addr(dst);
@@ -1424,7 +1357,7 @@ network_hostmask(PG_FUNCTION_ARGS)
 	unsigned char *b;
 
 	/* make sure any unused bits are zeroed */
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = palloc0_object(inet);
 
 	maxbytes = ip_addrsize(ip);
 	bits = ip_maxbits(ip) - ip_bits(ip);
@@ -1725,9 +1658,7 @@ inet_client_addr(PG_FUNCTION_ARGS)
 	switch (port->raddr.addr.ss_family)
 	{
 		case AF_INET:
-#ifdef HAVE_IPV6
 		case AF_INET6:
-#endif
 			break;
 		default:
 			PG_RETURN_NULL();
@@ -1744,7 +1675,7 @@ inet_client_addr(PG_FUNCTION_ARGS)
 
 	clean_ipv6_addr(port->raddr.addr.ss_family, remote_host);
 
-	PG_RETURN_INET_P(network_in(remote_host, false));
+	PG_RETURN_INET_P(network_in(remote_host, false, NULL));
 }
 
 
@@ -1764,9 +1695,7 @@ inet_client_port(PG_FUNCTION_ARGS)
 	switch (port->raddr.addr.ss_family)
 	{
 		case AF_INET:
-#ifdef HAVE_IPV6
 		case AF_INET6:
-#endif
 			break;
 		default:
 			PG_RETURN_NULL();
@@ -1801,9 +1730,7 @@ inet_server_addr(PG_FUNCTION_ARGS)
 	switch (port->laddr.addr.ss_family)
 	{
 		case AF_INET:
-#ifdef HAVE_IPV6
 		case AF_INET6:
-#endif
 			break;
 		default:
 			PG_RETURN_NULL();
@@ -1820,7 +1747,7 @@ inet_server_addr(PG_FUNCTION_ARGS)
 
 	clean_ipv6_addr(port->laddr.addr.ss_family, local_host);
 
-	PG_RETURN_INET_P(network_in(local_host, false));
+	PG_RETURN_INET_P(network_in(local_host, false, NULL));
 }
 
 
@@ -1840,9 +1767,7 @@ inet_server_port(PG_FUNCTION_ARGS)
 	switch (port->laddr.addr.ss_family)
 	{
 		case AF_INET:
-#ifdef HAVE_IPV6
 		case AF_INET6:
-#endif
 			break;
 		default:
 			PG_RETURN_NULL();
@@ -1867,7 +1792,7 @@ inetnot(PG_FUNCTION_ARGS)
 	inet	   *ip = PG_GETARG_INET_PP(0);
 	inet	   *dst;
 
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = palloc0_object(inet);
 
 	{
 		int			nb = ip_addrsize(ip);
@@ -1893,7 +1818,7 @@ inetand(PG_FUNCTION_ARGS)
 	inet	   *ip2 = PG_GETARG_INET_PP(1);
 	inet	   *dst;
 
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = palloc0_object(inet);
 
 	if (ip_family(ip) != ip_family(ip2))
 		ereport(ERROR,
@@ -1925,7 +1850,7 @@ inetor(PG_FUNCTION_ARGS)
 	inet	   *ip2 = PG_GETARG_INET_PP(1);
 	inet	   *dst;
 
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = palloc0_object(inet);
 
 	if (ip_family(ip) != ip_family(ip2))
 		ereport(ERROR,
@@ -1955,7 +1880,7 @@ internal_inetpl(inet *ip, int64 addend)
 {
 	inet	   *dst;
 
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = palloc0_object(inet);
 
 	{
 		int			nb = ip_addrsize(ip);
@@ -2102,7 +2027,6 @@ inetmi(PG_FUNCTION_ARGS)
 void
 clean_ipv6_addr(int addr_family, char *addr)
 {
-#ifdef HAVE_IPV6
 	if (addr_family == AF_INET6)
 	{
 		char	   *pct = strchr(addr, '%');
@@ -2110,5 +2034,4 @@ clean_ipv6_addr(int addr_family, char *addr)
 		if (pct)
 			*pct = '\0';
 	}
-#endif
 }

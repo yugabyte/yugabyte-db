@@ -11,7 +11,7 @@ declare
     ln text;
 begin
     for ln in
-        execute format('explain (analyze, costs off, summary off, timing off) %s',
+        execute format('explain (analyze, costs off, summary off, timing off, buffers off) %s',
             query)
     loop
         if hide_hitmiss = true then
@@ -23,8 +23,10 @@ begin
         ln := regexp_replace(ln, 'Evictions: 0', 'Evictions: Zero');
         ln := regexp_replace(ln, 'Evictions: \d+', 'Evictions: N');
         ln := regexp_replace(ln, 'Memory Usage: \d+', 'Memory Usage: N');
-	ln := regexp_replace(ln, 'Heap Fetches: \d+', 'Heap Fetches: N');
-	ln := regexp_replace(ln, 'loops=\d+', 'loops=N');
+        ln := regexp_replace(ln, 'Heap Fetches: \d+', 'Heap Fetches: N');
+        ln := regexp_replace(ln, 'loops=\d+', 'loops=N');
+        ln := regexp_replace(ln, 'Index Searches: \d+', 'Index Searches: N');
+        ln := regexp_replace(ln, 'Memory: \d+kB', 'Memory: NkB');
         return next ln;
     end loop;
 end;
@@ -56,6 +58,47 @@ SELECT COUNT(*),AVG(t2.unique1) FROM tenk1 t1,
 LATERAL (SELECT t2.unique1 FROM tenk1 t2
          WHERE t1.twenty = t2.unique1 OFFSET 0) t2
 WHERE t1.unique1 < 1000;
+
+-- Try with LATERAL joins
+SELECT explain_memoize('
+SELECT COUNT(*),AVG(t2.t1two) FROM tenk1 t1 LEFT JOIN
+LATERAL (
+    SELECT t1.two as t1two, * FROM tenk1 t2 WHERE t2.unique1 < 4 OFFSET 0
+) t2
+ON t1.two = t2.two
+WHERE t1.unique1 < 10;', false);
+
+-- And check we get the expected results.
+SELECT COUNT(*),AVG(t2.t1two) FROM tenk1 t1 LEFT JOIN
+LATERAL (
+    SELECT t1.two as t1two, * FROM tenk1 t2 WHERE t2.unique1 < 4 OFFSET 0
+) t2
+ON t1.two = t2.two
+WHERE t1.unique1 < 10;
+
+-- Try with LATERAL references within PlaceHolderVars
+SELECT explain_memoize('
+SELECT COUNT(*), AVG(t1.twenty) FROM tenk1 t1 LEFT JOIN
+LATERAL (SELECT t1.two+1 AS c1, t2.unique1 AS c2 FROM tenk1 t2) s ON TRUE
+WHERE s.c1 = s.c2 AND t1.unique1 < 1000;', false);
+
+-- And check we get the expected results.
+SELECT COUNT(*), AVG(t1.twenty) FROM tenk1 t1 LEFT JOIN
+LATERAL (SELECT t1.two+1 AS c1, t2.unique1 AS c2 FROM tenk1 t2) s ON TRUE
+WHERE s.c1 = s.c2 AND t1.unique1 < 1000;
+
+-- Ensure we do not omit the cache keys from PlaceHolderVars
+SELECT explain_memoize('
+SELECT COUNT(*), AVG(t1.twenty) FROM tenk1 t1 LEFT JOIN
+LATERAL (SELECT t1.twenty AS c1, t2.unique1 AS c2, t2.two FROM tenk1 t2) s
+ON t1.two = s.two
+WHERE s.c1 = s.c2 AND t1.unique1 < 1000;', false);
+
+-- And check we get the expected results.
+SELECT COUNT(*), AVG(t1.twenty) FROM tenk1 t1 LEFT JOIN
+LATERAL (SELECT t1.twenty AS c1, t2.unique1 AS c2, t2.two FROM tenk1 t2) s
+ON t1.two = s.two
+WHERE s.c1 = s.c2 AND t1.unique1 < 1000;
 
 SET enable_mergejoin TO off;
 
@@ -96,6 +139,7 @@ INSERT INTO flt VALUES('-0.0'::float),('+0.0'::float);
 ANALYZE flt;
 
 SET enable_seqscan TO off;
+SET enable_material TO off;
 
 -- Ensure memoize operates in logical mode
 SELECT explain_memoize('
@@ -112,7 +156,7 @@ DROP TABLE flt;
 CREATE TABLE strtest (n name, t text);
 CREATE INDEX strtest_n_idx ON strtest (n);
 CREATE INDEX strtest_t_idx ON strtest (t);
-INSERT INTO strtest VALUES('one','one'),('two','two'),('three',repeat(md5('three'),100));
+INSERT INTO strtest VALUES('one','one'),('two','two'),('three',repeat(fipshash('three'),100));
 -- duplicate rows so we get some cache hits
 INSERT INTO strtest SELECT * FROM strtest;
 ANALYZE strtest;
@@ -142,6 +186,14 @@ ANALYZE prt;
 SELECT explain_memoize('
 SELECT * FROM prt t1 INNER JOIN prt t2 ON t1.a = t2.a;', false);
 
+-- Ensure memoize works with parameterized union-all Append path
+SET enable_partitionwise_join TO off;
+
+SELECT explain_memoize('
+SELECT * FROM prt_p1 t1 INNER JOIN
+(SELECT * FROM prt_p1 UNION ALL SELECT * FROM prt_p2) t2
+ON t1.a = t2.a;', false);
+
 DROP TABLE prt;
 
 RESET enable_partitionwise_join;
@@ -167,6 +219,7 @@ WHERE unique1 < 3
 	WHERE t0.ten = t1.twenty AND t0.two <> t2.four OFFSET 0);
 
 RESET enable_seqscan;
+RESET enable_material;
 RESET enable_mergejoin;
 RESET work_mem;
 RESET hash_mem_multiplier;
@@ -194,3 +247,29 @@ RESET max_parallel_workers_per_gather;
 RESET parallel_tuple_cost;
 RESET parallel_setup_cost;
 RESET min_parallel_table_scan_size;
+
+-- Ensure memoize works for ANTI joins
+CREATE TABLE tab_anti (a int, b boolean);
+INSERT INTO tab_anti SELECT i%3, false FROM generate_series(1,100)i;
+ANALYZE tab_anti;
+
+-- Ensure we get a Memoize plan for ANTI join
+SELECT explain_memoize('
+SELECT COUNT(*) FROM tab_anti t1 LEFT JOIN
+LATERAL (SELECT DISTINCT ON (a) a, b, t1.a AS x FROM tab_anti t2) t2
+ON t1.a+1 = t2.a
+WHERE t2.a IS NULL;', false);
+
+-- And check we get the expected results.
+SELECT COUNT(*) FROM tab_anti t1 LEFT JOIN
+LATERAL (SELECT DISTINCT ON (a) a, b, t1.a AS x FROM tab_anti t2) t2
+ON t1.a+1 = t2.a
+WHERE t2.a IS NULL;
+
+-- Ensure we do not add memoize node for SEMI join
+EXPLAIN (COSTS OFF)
+SELECT * FROM tab_anti t1 WHERE t1.a IN
+ (SELECT a FROM tab_anti t2 WHERE t2.b IN
+  (SELECT t1.b FROM tab_anti t3 WHERE t2.a > 1 OFFSET 0));
+
+DROP TABLE tab_anti;

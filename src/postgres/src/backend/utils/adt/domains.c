@@ -19,7 +19,7 @@
  *		to evaluate them in.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -40,6 +40,9 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+static bool domain_check_internal(Datum value, bool isnull, Oid domainType,
+								  void **extra, MemoryContext mcxt,
+								  Node *escontext);
 
 /*
  * structure to cache state across multiple calls
@@ -126,9 +129,14 @@ domain_state_setup(Oid domainType, bool binary, MemoryContext mcxt)
  * This is roughly similar to the handling of CoerceToDomain nodes in
  * execExpr*.c, but we execute each constraint separately, rather than
  * compiling them in-line within a larger expression.
+ *
+ * If escontext points to an ErrorSaveContext, any failures are reported
+ * there, otherwise they are ereport'ed.  Note that we do not attempt to do
+ * soft reporting of errors raised during execution of CHECK constraints.
  */
 static void
-domain_check_input(Datum value, bool isnull, DomainIOData *my_extra)
+domain_check_input(Datum value, bool isnull, DomainIOData *my_extra,
+				   Node *escontext)
 {
 	ExprContext *econtext = my_extra->econtext;
 	ListCell   *l;
@@ -144,11 +152,14 @@ domain_check_input(Datum value, bool isnull, DomainIOData *my_extra)
 		{
 			case DOM_CONSTRAINT_NOTNULL:
 				if (isnull)
-					ereport(ERROR,
+				{
+					errsave(escontext,
 							(errcode(ERRCODE_NOT_NULL_VIOLATION),
 							 errmsg("domain %s does not allow null values",
 									format_type_be(my_extra->domain_type)),
 							 errdatatype(my_extra->domain_type)));
+					goto fail;
+				}
 				break;
 			case DOM_CONSTRAINT_CHECK:
 				{
@@ -179,13 +190,16 @@ domain_check_input(Datum value, bool isnull, DomainIOData *my_extra)
 					econtext->domainValue_isNull = isnull;
 
 					if (!ExecCheck(con->check_exprstate, econtext))
-						ereport(ERROR,
+					{
+						errsave(escontext,
 								(errcode(ERRCODE_CHECK_VIOLATION),
 								 errmsg("value for domain %s violates check constraint \"%s\"",
 										format_type_be(my_extra->domain_type),
 										con->name),
 								 errdomainconstraint(my_extra->domain_type,
 													 con->name)));
+						goto fail;
+					}
 					break;
 				}
 			default:
@@ -200,6 +214,7 @@ domain_check_input(Datum value, bool isnull, DomainIOData *my_extra)
 	 * per-tuple memory.  This avoids leaking non-memory resources, if
 	 * anything in the expression(s) has any.
 	 */
+fail:
 	if (econtext)
 		ReScanExprContext(econtext);
 }
@@ -213,6 +228,7 @@ domain_in(PG_FUNCTION_ARGS)
 {
 	char	   *string;
 	Oid			domainType;
+	Node	   *escontext = fcinfo->context;
 	DomainIOData *my_extra;
 	Datum		value;
 
@@ -239,21 +255,24 @@ domain_in(PG_FUNCTION_ARGS)
 	{
 		my_extra = domain_state_setup(domainType, false,
 									  fcinfo->flinfo->fn_mcxt);
-		fcinfo->flinfo->fn_extra = (void *) my_extra;
+		fcinfo->flinfo->fn_extra = my_extra;
 	}
 
 	/*
 	 * Invoke the base type's typinput procedure to convert the data.
 	 */
-	value = InputFunctionCall(&my_extra->proc,
-							  string,
-							  my_extra->typioparam,
-							  my_extra->typtypmod);
+	if (!InputFunctionCallSafe(&my_extra->proc,
+							   string,
+							   my_extra->typioparam,
+							   my_extra->typtypmod,
+							   escontext,
+							   &value))
+		PG_RETURN_NULL();
 
 	/*
 	 * Do the necessary checks to ensure it's a valid domain value.
 	 */
-	domain_check_input(value, (string == NULL), my_extra);
+	domain_check_input(value, (string == NULL), my_extra, escontext);
 
 	if (string == NULL)
 		PG_RETURN_NULL();
@@ -295,7 +314,7 @@ domain_recv(PG_FUNCTION_ARGS)
 	{
 		my_extra = domain_state_setup(domainType, true,
 									  fcinfo->flinfo->fn_mcxt);
-		fcinfo->flinfo->fn_extra = (void *) my_extra;
+		fcinfo->flinfo->fn_extra = my_extra;
 	}
 
 	/*
@@ -309,7 +328,7 @@ domain_recv(PG_FUNCTION_ARGS)
 	/*
 	 * Do the necessary checks to ensure it's a valid domain value.
 	 */
-	domain_check_input(value, (buf == NULL), my_extra);
+	domain_check_input(value, (buf == NULL), my_extra, NULL);
 
 	if (buf == NULL)
 		PG_RETURN_NULL();
@@ -327,6 +346,32 @@ void
 domain_check(Datum value, bool isnull, Oid domainType,
 			 void **extra, MemoryContext mcxt)
 {
+	(void) domain_check_internal(value, isnull, domainType, extra, mcxt,
+								 NULL);
+}
+
+/* Error-safe variant of domain_check(). */
+bool
+domain_check_safe(Datum value, bool isnull, Oid domainType,
+				  void **extra, MemoryContext mcxt,
+				  Node *escontext)
+{
+	return domain_check_internal(value, isnull, domainType, extra, mcxt,
+								 escontext);
+}
+
+/*
+ * domain_check_internal
+ * 		Workhorse for domain_check() and domain_check_safe()
+ *
+ * Returns false if an error occurred in domain_check_input() and 'escontext'
+ * points to an ErrorSaveContext, true otherwise.
+ */
+static bool
+domain_check_internal(Datum value, bool isnull, Oid domainType,
+					  void **extra, MemoryContext mcxt,
+					  Node *escontext)
+{
 	DomainIOData *my_extra = NULL;
 
 	if (mcxt == NULL)
@@ -343,13 +388,15 @@ domain_check(Datum value, bool isnull, Oid domainType,
 	{
 		my_extra = domain_state_setup(domainType, true, mcxt);
 		if (extra)
-			*extra = (void *) my_extra;
+			*extra = my_extra;
 	}
 
 	/*
 	 * Do the necessary checks to ensure it's a valid domain value.
 	 */
-	domain_check_input(value, isnull, my_extra);
+	domain_check_input(value, isnull, my_extra, escontext);
+
+	return !SOFT_ERROR_OCCURRED(escontext);
 }
 
 /*

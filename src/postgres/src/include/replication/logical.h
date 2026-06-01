@@ -2,7 +2,7 @@
  * logical.h
  *	   PostgreSQL logical decoding coordination
  *
- * Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2026, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -110,11 +110,8 @@ typedef struct LogicalDecodingContext
 	/* Are we processing the end LSN of a transaction? */
 	bool		end_xact;
 
-	/*
-	 * True if the logical decoding context being used for the creation of a
-	 * logical replication slot.
-	 */
-	bool		in_create;
+	/* Do we need to process any change in fast_forward mode? */
+	bool		processing_required;
 
 	/*
 	 * YB: Don't replay commits from an LSN < this LSN. This is the YB
@@ -136,11 +133,12 @@ typedef struct LogicalDecodingContext
 } LogicalDecodingContext;
 
 
-extern void CheckLogicalDecodingRequirements(void);
+extern void CheckLogicalDecodingRequirements(bool repack);
 
 extern LogicalDecodingContext *CreateInitDecodingContext(const char *plugin,
 														 List *output_plugin_options,
 														 bool need_full_snapshot,
+														 bool for_repack,
 														 XLogRecPtr restart_lsn,
 														 XLogReaderRoutine *xl_routine,
 														 LogicalOutputPluginWriterPrepareWrite prepare_write,
@@ -157,16 +155,22 @@ extern void DecodingContextFindStartpoint(LogicalDecodingContext *ctx);
 extern bool DecodingContextReady(LogicalDecodingContext *ctx);
 extern void FreeDecodingContext(LogicalDecodingContext *ctx);
 
-extern void LogicalIncreaseXminForSlot(XLogRecPtr lsn, TransactionId xmin);
+extern void LogicalIncreaseXminForSlot(XLogRecPtr current_lsn,
+									   TransactionId xmin);
 extern void LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn,
 												  XLogRecPtr restart_lsn);
 extern void LogicalConfirmReceivedLocation(XLogRecPtr lsn);
 
 extern bool filter_prepare_cb_wrapper(LogicalDecodingContext *ctx,
 									  TransactionId xid, const char *gid);
-extern bool filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, RepOriginId origin_id);
+extern bool filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, ReplOriginId origin_id);
 extern void ResetLogicalStreamingState(void);
 extern void UpdateDecodingStats(LogicalDecodingContext *ctx);
+
+extern XLogRecPtr LogicalReplicationSlotCheckPendingWal(XLogRecPtr end_of_wal,
+													   XLogRecPtr scan_cutoff_lsn);
+extern XLogRecPtr LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
+													  bool *found_consistent_snapshot);
 
 /* YB */
 extern void YBValidateOutputPlugin(char *plugin);

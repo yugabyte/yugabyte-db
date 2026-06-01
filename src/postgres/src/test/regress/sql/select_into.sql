@@ -30,26 +30,26 @@ SET SESSION AUTHORIZATION regress_selinto_user;
 CREATE TABLE selinto_schema.tbl_withdata1 (a)
   AS SELECT generate_series(1,3) WITH DATA;
 INSERT INTO selinto_schema.tbl_withdata1 VALUES (4);
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE TABLE selinto_schema.tbl_withdata2 (a) AS
   SELECT generate_series(1,3) WITH DATA;
 -- WITH NO DATA, passes.
 CREATE TABLE selinto_schema.tbl_nodata1 (a) AS
   SELECT generate_series(1,3) WITH NO DATA;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE TABLE selinto_schema.tbl_nodata2 (a) AS
   SELECT generate_series(1,3) WITH NO DATA;
 -- EXECUTE and WITH DATA, passes.
 PREPARE data_sel AS SELECT generate_series(1,3);
 CREATE TABLE selinto_schema.tbl_withdata3 (a) AS
   EXECUTE data_sel WITH DATA;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE TABLE selinto_schema.tbl_withdata4 (a) AS
   EXECUTE data_sel WITH DATA;
 -- EXECUTE and WITH NO DATA, passes.
 CREATE TABLE selinto_schema.tbl_nodata3 (a) AS
   EXECUTE data_sel WITH NO DATA;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE TABLE selinto_schema.tbl_nodata4 (a) AS
   EXECUTE data_sel WITH NO DATA;
 RESET SESSION AUTHORIZATION;

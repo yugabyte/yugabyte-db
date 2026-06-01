@@ -6,6 +6,7 @@
 --  - PRIMARY KEY clauses
 --  - UNIQUE clauses
 --  - EXCLUDE clauses
+--  - NOT NULL clauses
 --
 -- directory paths are passed to us in environment variables
 \getenv abs_srcdir PG_ABS_SRCDIR
@@ -86,6 +87,25 @@ SELECT * FROM CHECK_TBL;
  6
 (3 rows)
 
+CREATE TABLE NE_CHECK_TBL (x int,
+	CONSTRAINT CHECK_CON CHECK (x > 3) NOT ENFORCED);
+INSERT INTO NE_CHECK_TBL VALUES (5);
+INSERT INTO NE_CHECK_TBL VALUES (4);
+INSERT INTO NE_CHECK_TBL VALUES (3);
+INSERT INTO NE_CHECK_TBL VALUES (2);
+INSERT INTO NE_CHECK_TBL VALUES (6);
+INSERT INTO NE_CHECK_TBL VALUES (1);
+SELECT * FROM NE_CHECK_TBL;
+ x 
+---
+ 5
+ 4
+ 3
+ 2
+ 6
+ 1
+(6 rows)
+
 CREATE SEQUENCE CHECK_SEQ;
 CREATE TABLE CHECK2_TBL (x int, y text, z int,
 	CONSTRAINT SEQUENCE_CON
@@ -119,7 +139,8 @@ CREATE TABLE INSERT_TBL (x INT DEFAULT nextval('insert_seq'),
 	y TEXT DEFAULT '-NULL-',
 	z INT DEFAULT -1 * currval('insert_seq'),
 	CONSTRAINT INSERT_TBL_CON CHECK (x >= 3 AND y <> 'check failed' AND x < 8),
-	CHECK (x + z = 0));
+	CHECK (x + z = 0) ENFORCED, /* no change it is a default */
+	CONSTRAINT NE_INSERT_TBL_CON CHECK (x + z = 1) NOT ENFORCED);
 INSERT INTO INSERT_TBL(x,z) VALUES (2, -2);
 ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_con"
 DETAIL:  Failing row contains (2, -NULL-, -2).
@@ -369,6 +390,84 @@ SELECT * FROM COPY_TBL;
  6 | OK            | 4
 (2 rows)
 
+--
+-- CHECK constraints
+-- ALTER TABLE ALTER CONSTRAINT [NOT] ENFORCED
+create table parted_ch(
+  a int, b int,
+  constraint cc check (a > 10) not enforced,
+  constraint cc_1 check (b < 17) not enforced
+) partition by range(a);
+create table parted_ch_1 partition of parted_ch for values from (0) to (10) partition by list(b);
+create table parted_ch_11 partition of parted_ch_1 for values in (0, 1, 22,4);
+create table parted_ch_12 partition of parted_ch_1 for values in (2);
+create table parted_ch_2(b int, a int,
+  constraint cc check (a > 10) not enforced,
+  constraint cc_1 check (b < 17) enforced,
+  constraint cc_2 check( a < 15) not enforced
+);
+alter table parted_ch attach partition parted_ch_2 for values from (10) to (20);
+insert into parted_ch values (1, 22), (9, 1), (16, 16);
+alter table parted_ch alter constraint cc_1 enforced; --error
+ERROR:  check constraint "cc_1" of relation "parted_ch_11" is violated by some row
+update parted_ch set b = 4 where b = 22;
+alter table parted_ch alter constraint cc_1 enforced; --ok
+create or replace view check_constraint_status as
+select  conname, conrelid::regclass, conenforced, convalidated
+from    pg_constraint
+where   conrelid::regclass::text ~* '^parted_ch' and contype = 'c'
+order by conname, conrelid::regclass::text collate "C";
+alter table parted_ch alter constraint cc not enforced; --no-op
+alter table parted_ch alter constraint cc enforced; --error
+ERROR:  check constraint "cc" of relation "parted_ch_11" is violated by some row
+delete from parted_ch where a = 1;
+alter table parted_ch alter constraint cc enforced; --error
+ERROR:  check constraint "cc" of relation "parted_ch_11" is violated by some row
+delete from parted_ch where a = 9;
+alter table parted_ch alter constraint cc enforced;
+--check these CHECK constraint status
+select * from check_constraint_status;
+ conname |   conrelid   | conenforced | convalidated 
+---------+--------------+-------------+--------------
+ cc      | parted_ch    | t           | t
+ cc      | parted_ch_1  | t           | t
+ cc      | parted_ch_11 | t           | t
+ cc      | parted_ch_12 | t           | t
+ cc      | parted_ch_2  | t           | t
+ cc_1    | parted_ch    | t           | t
+ cc_1    | parted_ch_1  | t           | t
+ cc_1    | parted_ch_11 | t           | t
+ cc_1    | parted_ch_12 | t           | t
+ cc_1    | parted_ch_2  | t           | t
+ cc_2    | parted_ch_2  | f           | f
+(11 rows)
+
+alter table parted_ch_2 alter constraint cc_2 enforced; --error
+ERROR:  check constraint "cc_2" of relation "parted_ch_2" is violated by some row
+delete from parted_ch where a = 16;
+alter table parted_ch_2 alter constraint cc_2 enforced;
+alter table parted_ch_2 alter constraint cc not enforced;
+alter table parted_ch_2 alter constraint cc_1 not enforced;
+alter table parted_ch_2 alter constraint cc_2 not enforced;
+--check these CHECK constraint status again
+select * from check_constraint_status;
+ conname |   conrelid   | conenforced | convalidated 
+---------+--------------+-------------+--------------
+ cc      | parted_ch    | t           | t
+ cc      | parted_ch_1  | t           | t
+ cc      | parted_ch_11 | t           | t
+ cc      | parted_ch_12 | t           | t
+ cc      | parted_ch_2  | f           | f
+ cc_1    | parted_ch    | t           | t
+ cc_1    | parted_ch_1  | t           | t
+ cc_1    | parted_ch_11 | t           | t
+ cc_1    | parted_ch_12 | t           | t
+ cc_1    | parted_ch_2  | f           | f
+ cc_2    | parted_ch_2  | f           | f
+(11 rows)
+
+drop table parted_ch;
+drop view check_constraint_status;
 --
 -- Primary keys
 --
@@ -620,9 +719,9 @@ CREATE TABLE parted_fk_naming_1 (
 );
 ALTER TABLE parted_fk_naming ATTACH PARTITION parted_fk_naming_1 FOR VALUES IN ('1');
 SELECT conname FROM pg_constraint WHERE conrelid = 'parted_fk_naming_1'::regclass AND contype = 'f';
-            conname             
---------------------------------
- parted_fk_naming_1_id_abc_fkey
+    conname     
+----------------
+ dummy_constr_1
 (1 row)
 
 DROP TABLE parted_fk_naming;
@@ -714,6 +813,26 @@ SELECT * FROM unique_tbl;
  3 | threex
 (5 rows)
 
+-- enforceability cannot be specified or set for unique constraint
+CREATE TABLE UNIQUE_EN_TBL(i int UNIQUE ENFORCED);
+ERROR:  misplaced ENFORCED clause
+LINE 1: CREATE TABLE UNIQUE_EN_TBL(i int UNIQUE ENFORCED);
+                                                ^
+CREATE TABLE UNIQUE_NOTEN_TBL(i int UNIQUE NOT ENFORCED);
+ERROR:  misplaced NOT ENFORCED clause
+LINE 1: CREATE TABLE UNIQUE_NOTEN_TBL(i int UNIQUE NOT ENFORCED);
+                                                   ^
+ALTER TABLE unique_tbl ALTER CONSTRAINT unique_tbl_i_key ENFORCED;
+ERROR:  cannot alter enforceability of constraint "unique_tbl_i_key" of relation "unique_tbl"
+HINT:  Only foreign key and check constraints can change enforceability.
+ALTER TABLE unique_tbl ALTER CONSTRAINT unique_tbl_i_key NOT ENFORCED;
+ERROR:  cannot alter enforceability of constraint "unique_tbl_i_key" of relation "unique_tbl"
+HINT:  Only foreign key and check constraints can change enforceability.
+-- can't make an existing constraint NOT VALID
+ALTER TABLE unique_tbl ALTER CONSTRAINT unique_tbl_i_key NOT VALID;
+ERROR:  constraints cannot be altered to be NOT VALID
+LINE 1: ...ABLE unique_tbl ALTER CONSTRAINT unique_tbl_i_key NOT VALID;
+                                                             ^
 DROP TABLE unique_tbl;
 --
 -- EXCLUDE constraints
@@ -741,6 +860,10 @@ INSERT INTO circles VALUES('<(20,20), 10>', '<(0,0), 4>')
 INSERT INTO circles VALUES('<(20,20), 10>', '<(0,0), 4>')
   ON CONFLICT ON CONSTRAINT circles_c1_c2_excl DO UPDATE SET c2 = EXCLUDED.c2;
 ERROR:  ON CONFLICT DO UPDATE not supported with exclusion constraints
+-- fail, because DO SELECT variant requires unique index
+INSERT INTO circles VALUES('<(20,20), 10>', '<(0,0), 4>')
+  ON CONFLICT ON CONSTRAINT circles_c1_c2_excl DO SELECT RETURNING *;
+ERROR:  ON CONFLICT DO SELECT not supported with exclusion constraints
 -- succeed because c1 doesn't overlap
 INSERT INTO circles VALUES('<(20,20), 1>', '<(0,0), 5>');
 -- succeed because c2 doesn't overlap
@@ -797,6 +920,866 @@ ALTER TABLE deferred_excl ADD EXCLUDE (f1 WITH =);
 ERROR:  could not create exclusion constraint "deferred_excl_f1_excl"
 DETAIL:  Key (f1)=(3) conflicts with key (f1)=(3).
 DROP TABLE deferred_excl;
+-- verify constraints created for NOT NULL clauses
+CREATE TABLE notnull_tbl1 (a INTEGER NOT NULL NOT NULL);
+\d+ notnull_tbl1
+                               Table "public.notnull_tbl1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "notnull_tbl1_a_not_null" NOT NULL "a"
+
+-- specifying an existing constraint is a no-op
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT notnull_tbl1_a_not_null NOT NULL a;
+-- but using a different constraint name is not allowed
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT nn NOT NULL a;
+ERROR:  cannot create not-null constraint "nn" on column "a" of table "notnull_tbl1"
+DETAIL:  A not-null constraint named "notnull_tbl1_a_not_null" already exists for this column.
+\d+ notnull_tbl1
+                               Table "public.notnull_tbl1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "notnull_tbl1_a_not_null" NOT NULL "a"
+
+-- duplicate name
+ALTER TABLE notnull_tbl1 ADD COLUMN b INT CONSTRAINT notnull_tbl1_a_not_null NOT NULL;
+ERROR:  constraint "notnull_tbl1_a_not_null" for relation "notnull_tbl1" already exists
+-- DROP NOT NULL gets rid of both the attnotnull flag and the constraint itself
+ALTER TABLE notnull_tbl1 ALTER a DROP NOT NULL;
+\d+ notnull_tbl1
+                               Table "public.notnull_tbl1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+
+-- SET NOT NULL puts both back
+ALTER TABLE notnull_tbl1 ALTER a SET NOT NULL;
+\d+ notnull_tbl1
+                               Table "public.notnull_tbl1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "notnull_tbl1_a_not_null" NOT NULL "a"
+
+-- Doing it twice doesn't create a redundant constraint
+ALTER TABLE notnull_tbl1 ALTER a SET NOT NULL;
+select conname, contype, conkey from pg_constraint where conrelid = 'notnull_tbl1'::regclass;
+         conname         | contype | conkey 
+-------------------------+---------+--------
+ notnull_tbl1_a_not_null | n       | {1}
+(1 row)
+
+-- Using the "table constraint" syntax also works
+ALTER TABLE notnull_tbl1 ALTER a DROP NOT NULL;
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT foobar NOT NULL a;
+\d+ notnull_tbl1
+                               Table "public.notnull_tbl1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "foobar" NOT NULL "a"
+
+DROP TABLE notnull_tbl1;
+-- Verify that constraint names and NO INHERIT are properly considered when
+-- multiple constraint are specified, either explicitly or via SERIAL/PK/etc,
+-- and that conflicting cases are rejected.  Mind that table constraints
+-- handle this separately from column constraints.
+create table notnull_tbl1 (a int primary key constraint foo not null);
+\d+ notnull_tbl1
+                               Table "public.notnull_tbl1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "notnull_tbl1_pkey" PRIMARY KEY, btree (a)
+Not-null constraints:
+    "foo" NOT NULL "a"
+
+create table notnull_tbl2 (a serial, constraint foo not null a);
+\d+ notnull_tbl2
+                                               Table "public.notnull_tbl2"
+ Column |  Type   | Collation | Nullable |                 Default                 | Storage | Stats target | Description 
+--------+---------+-----------+----------+-----------------------------------------+---------+--------------+-------------
+ a      | integer |           | not null | nextval('notnull_tbl2_a_seq'::regclass) | plain   |              | 
+Not-null constraints:
+    "foo" NOT NULL "a"
+
+create table notnull_tbl3 (constraint foo not null a, a int generated by default as identity);
+\d+ notnull_tbl3
+                                            Table "public.notnull_tbl3"
+ Column |  Type   | Collation | Nullable |             Default              | Storage | Stats target | Description 
+--------+---------+-----------+----------+----------------------------------+---------+--------------+-------------
+ a      | integer |           | not null | generated by default as identity | plain   |              | 
+Not-null constraints:
+    "foo" NOT NULL "a"
+
+create table notnull_tbl4 (a int not null constraint foo not null);
+\d+ notnull_tbl4
+                               Table "public.notnull_tbl4"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "foo" NOT NULL "a"
+
+create table notnull_tbl5 (a int constraint foo not null constraint foo not null);
+\d+ notnull_tbl5
+                               Table "public.notnull_tbl5"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "foo" NOT NULL "a"
+
+create table notnull_tbl6 (like notnull_tbl1, constraint foo not null a);
+\d+ notnull_tbl6
+                               Table "public.notnull_tbl6"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "foo" NOT NULL "a"
+
+drop table notnull_tbl2, notnull_tbl3, notnull_tbl4, notnull_tbl5, notnull_tbl6;
+-- error cases:
+create table notnull_tbl_fail (a serial constraint foo not null constraint bar not null);
+ERROR:  conflicting not-null constraint names "foo" and "bar"
+create table notnull_tbl_fail (a serial constraint foo not null no inherit constraint foo not null);
+ERROR:  conflicting NO INHERIT declarations for not-null constraints on column "a"
+create table notnull_tbl_fail (a int constraint foo not null, constraint foo not null a no inherit);
+ERROR:  conflicting NO INHERIT declaration for not-null constraint on column "a"
+create table notnull_tbl_fail (a serial constraint foo not null, constraint bar not null a);
+ERROR:  conflicting not-null constraint names "foo" and "bar"
+create table notnull_tbl_fail (a serial, constraint foo not null a, constraint bar not null a);
+ERROR:  conflicting not-null constraint names "foo" and "bar"
+create table notnull_tbl_fail (a serial, constraint foo not null a no inherit);
+ERROR:  conflicting NO INHERIT declaration for not-null constraint on column "a"
+create table notnull_tbl_fail (a serial not null no inherit);
+ERROR:  conflicting NO INHERIT declarations for not-null constraints on column "a"
+create table notnull_tbl_fail (like notnull_tbl1, constraint foo2 not null a);
+ERROR:  conflicting not-null constraint names "foo" and "foo2"
+create table notnull_tbl_fail (a int primary key constraint foo not null no inherit);
+ERROR:  conflicting NO INHERIT declarations for not-null constraints on column "a"
+create table notnull_tbl_fail (a int not null no inherit primary key);
+ERROR:  conflicting NO INHERIT declarations for not-null constraints on column "a"
+create table notnull_tbl_fail (a int primary key, not null a no inherit);
+ERROR:  conflicting NO INHERIT declaration for not-null constraint on column "a"
+create table notnull_tbl_fail (a int, primary key(a), not null a no inherit);
+ERROR:  conflicting NO INHERIT declaration for not-null constraint on column "a"
+create table notnull_tbl_fail (a int generated by default as identity, constraint foo not null a no inherit);
+ERROR:  conflicting NO INHERIT declaration for not-null constraint on column "a"
+create table notnull_tbl_fail (a int generated by default as identity not null no inherit);
+ERROR:  conflicting NO INHERIT declarations for not-null constraints on column "a"
+drop table notnull_tbl1;
+-- NOT NULL NO INHERIT
+CREATE TABLE ATACC1 (a int, NOT NULL a NO INHERIT);
+CREATE TABLE ATACC2 () INHERITS (ATACC1);
+\d+ ATACC2
+                                  Table "public.atacc2"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+Inherits:
+    atacc1
+
+DROP TABLE ATACC1, ATACC2;
+CREATE TABLE ATACC1 (a int);
+ALTER TABLE ATACC1 ADD NOT NULL a NO INHERIT;
+CREATE TABLE ATACC2 () INHERITS (ATACC1);
+\d+ ATACC2
+                                  Table "public.atacc2"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+Inherits:
+    atacc1
+
+DROP TABLE ATACC1, ATACC2;
+CREATE TABLE ATACC1 (a int);
+CREATE TABLE ATACC2 () INHERITS (ATACC1);
+ALTER TABLE ATACC1 ADD NOT NULL a NO INHERIT;
+\d+ ATACC2
+                                  Table "public.atacc2"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+Inherits:
+    atacc1
+
+CREATE TABLE ATACC3 (PRIMARY KEY (a)) INHERITS (ATACC1);
+\d+ ATACC3
+                                  Table "public.atacc3"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "atacc3_pkey" PRIMARY KEY, btree (a)
+Not-null constraints:
+    "atacc3_a_not_null" NOT NULL "a"
+Inherits:
+    atacc1
+
+DROP TABLE ATACC1, ATACC2, ATACC3;
+-- NOT NULL NO INHERIT is not possible on partitioned tables
+CREATE TABLE ATACC1 (a int NOT NULL NO INHERIT) PARTITION BY LIST (a);
+ERROR:  not-null constraints on partitioned tables cannot be NO INHERIT
+CREATE TABLE ATACC1 (a int, NOT NULL a NO INHERIT) PARTITION BY LIST (a);
+ERROR:  not-null constraints on partitioned tables cannot be NO INHERIT
+-- it's not possible to override a no-inherit constraint with an inheritable one
+CREATE TABLE ATACC2 (a int, CONSTRAINT a_is_not_null NOT NULL a NO INHERIT);
+CREATE TABLE ATACC1 (a int);
+CREATE TABLE ATACC3 (a int) INHERITS (ATACC2);
+NOTICE:  merging column "a" with inherited definition
+ALTER TABLE ATACC2 INHERIT ATACC1;
+-- can't override
+ALTER TABLE ATACC1 ADD CONSTRAINT ditto NOT NULL a;
+ERROR:  cannot change NO INHERIT status of NOT NULL constraint "a_is_not_null" on relation "atacc2"
+HINT:  You might need to make the existing constraint inheritable using ALTER TABLE ... ALTER CONSTRAINT ... INHERIT.
+-- dropping the NO INHERIT constraint allows this to work
+ALTER TABLE ATACC2 DROP CONSTRAINT a_is_not_null;
+ALTER TABLE ATACC1 ADD CONSTRAINT ditto NOT NULL a;
+\d+ ATACC3
+                                  Table "public.atacc3"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "ditto" NOT NULL "a" (inherited)
+Inherits:
+    atacc2
+
+DROP TABLE ATACC1, ATACC2, ATACC3;
+-- Can't have two constraints with the same name
+CREATE TABLE notnull_tbl2 (a INTEGER CONSTRAINT blah NOT NULL, b INTEGER CONSTRAINT blah NOT NULL);
+ERROR:  constraint "blah" for relation "notnull_tbl2" already exists
+-- can't drop not-null in primary key
+CREATE TABLE notnull_tbl2 (a INTEGER PRIMARY KEY);
+ALTER TABLE notnull_tbl2 ALTER a DROP NOT NULL;
+ERROR:  column "a" is in a primary key
+DROP TABLE notnull_tbl2;
+CREATE TABLE notnull_tbl3 (a INTEGER NOT NULL, CHECK (a IS NOT NULL));
+ALTER TABLE notnull_tbl3 ALTER A DROP NOT NULL;
+ALTER TABLE notnull_tbl3 ADD b int, ADD CONSTRAINT pk PRIMARY KEY (a, b);
+\d notnull_tbl3
+            Table "public.notnull_tbl3"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null | 
+ b      | integer |           | not null | 
+Indexes:
+    "pk" PRIMARY KEY, btree (a, b)
+Check constraints:
+    "notnull_tbl3_a_check" CHECK (a IS NOT NULL)
+
+ALTER TABLE notnull_tbl3 DROP CONSTRAINT pk;
+\d notnull_tbl3
+            Table "public.notnull_tbl3"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null | 
+ b      | integer |           | not null | 
+Check constraints:
+    "notnull_tbl3_a_check" CHECK (a IS NOT NULL)
+
+-- Primary keys cause not-null constraints to be created.
+CREATE TABLE cnn_pk (a int, b int);
+CREATE TABLE cnn_pk_child () INHERITS (cnn_pk);
+ALTER TABLE cnn_pk ADD CONSTRAINT cnn_primarykey PRIMARY KEY (b);
+\d+ cnn_pk*
+                                  Table "public.cnn_pk"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "cnn_primarykey" PRIMARY KEY, btree (b)
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b"
+Child tables:
+    cnn_pk_child
+
+                               Table "public.cnn_pk_child"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b" (inherited)
+Inherits:
+    cnn_pk
+
+ALTER TABLE cnn_pk DROP CONSTRAINT cnn_primarykey;
+\d+ cnn_pk*
+                                  Table "public.cnn_pk"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b"
+Child tables:
+    cnn_pk_child
+
+                               Table "public.cnn_pk_child"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b" (inherited)
+Inherits:
+    cnn_pk
+
+DROP TABLE cnn_pk, cnn_pk_child;
+-- As above, but create the primary key ahead of time
+CREATE TABLE cnn_pk (a int, b int, CONSTRAINT cnn_primarykey PRIMARY KEY (b));
+CREATE TABLE cnn_pk_child () INHERITS (cnn_pk);
+\d+ cnn_pk*
+                                  Table "public.cnn_pk"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "cnn_primarykey" PRIMARY KEY, btree (b)
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b"
+Child tables:
+    cnn_pk_child
+
+                               Table "public.cnn_pk_child"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b" (inherited)
+Inherits:
+    cnn_pk
+
+ALTER TABLE cnn_pk DROP CONSTRAINT cnn_primarykey;
+\d+ cnn_pk*
+                                  Table "public.cnn_pk"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b"
+Child tables:
+    cnn_pk_child
+
+                               Table "public.cnn_pk_child"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b" (inherited)
+Inherits:
+    cnn_pk
+
+DROP TABLE cnn_pk, cnn_pk_child;
+-- As above, but create the primary key using a UNIQUE index
+CREATE TABLE cnn_pk (a int, b int);
+CREATE UNIQUE INDEX cnn_uq ON cnn_pk (b);
+CREATE TABLE cnn_pk_child () INHERITS (cnn_pk);
+ALTER TABLE cnn_pk ADD CONSTRAINT cnn_primarykey PRIMARY KEY USING INDEX cnn_uq;
+NOTICE:  ALTER TABLE / ADD CONSTRAINT USING INDEX will rename index "cnn_uq" to "cnn_primarykey"
+\d+ cnn_pk*
+                                  Table "public.cnn_pk"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "cnn_primarykey" PRIMARY KEY, btree (b)
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b"
+Child tables:
+    cnn_pk_child
+
+                               Table "public.cnn_pk_child"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "cnn_pk_b_not_null" NOT NULL "b" (inherited)
+Inherits:
+    cnn_pk
+
+DROP TABLE cnn_pk, cnn_pk_child;
+-- Unique constraints don't give raise to not-null constraints, however.
+create table cnn_uq (a int);
+alter table cnn_uq add unique (a);
+\d+ cnn_uq
+                                  Table "public.cnn_uq"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+Indexes:
+    "cnn_uq_a_key" UNIQUE CONSTRAINT, btree (a)
+
+drop table cnn_uq;
+create table cnn_uq (a int);
+create unique index cnn_uq_idx on cnn_uq (a);
+alter table cnn_uq add unique using index cnn_uq_idx;
+\d+ cnn_uq
+                                  Table "public.cnn_uq"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+Indexes:
+    "cnn_uq_idx" UNIQUE CONSTRAINT, btree (a)
+
+-- can't create a primary key on a noinherit not-null
+create table cnn_pk (a int not null no inherit);
+alter table cnn_pk add primary key (a);
+ERROR:  cannot create primary key on column "a"
+DETAIL:  The constraint "cnn_pk_a_not_null" on column "a" of table "cnn_pk", marked NO INHERIT, is incompatible with a primary key.
+HINT:  You might need to make the existing constraint inheritable using ALTER TABLE ... ALTER CONSTRAINT ... INHERIT.
+drop table cnn_pk;
+-- Ensure partitions are scanned for null values when adding a PK
+create table cnn2_parted(a int) partition by list (a);
+create table cnn_part1 partition of cnn2_parted for values in (1, null);
+insert into cnn_part1 values (null);
+alter table cnn2_parted add primary key (a);
+ERROR:  column "a" of relation "cnn_part1" contains null values
+drop table cnn2_parted;
+-- columns in regular and LIKE inheritance should be marked not-nullable
+-- for primary keys, even if those are deferred
+CREATE TABLE notnull_tbl4 (a INTEGER PRIMARY KEY INITIALLY DEFERRED);
+CREATE TABLE notnull_tbl4_lk (LIKE notnull_tbl4);
+CREATE TABLE notnull_tbl4_lk2 (LIKE notnull_tbl4 INCLUDING INDEXES);
+CREATE TABLE notnull_tbl4_lk3 (LIKE notnull_tbl4 INCLUDING INDEXES, NOT NULL a);
+ALTER TABLE notnull_tbl4_lk3 RENAME CONSTRAINT notnull_tbl4_a_not_null TO a_nn;
+CREATE TABLE notnull_tbl4_cld () INHERITS (notnull_tbl4);
+CREATE TABLE notnull_tbl4_cld2 (PRIMARY KEY (a) DEFERRABLE) INHERITS (notnull_tbl4);
+CREATE TABLE notnull_tbl4_cld3 (PRIMARY KEY (a) DEFERRABLE, CONSTRAINT a_nn NOT NULL a) INHERITS (notnull_tbl4);
+\d+ notnull_tbl4
+                               Table "public.notnull_tbl4"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "notnull_tbl4_pkey" PRIMARY KEY, btree (a) DEFERRABLE INITIALLY DEFERRED
+Not-null constraints:
+    "notnull_tbl4_a_not_null" NOT NULL "a"
+Child tables:
+    notnull_tbl4_cld
+    notnull_tbl4_cld2
+    notnull_tbl4_cld3
+
+\d+ notnull_tbl4_lk
+                              Table "public.notnull_tbl4_lk"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "notnull_tbl4_a_not_null" NOT NULL "a"
+
+\d+ notnull_tbl4_lk2
+                             Table "public.notnull_tbl4_lk2"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "notnull_tbl4_lk2_pkey" PRIMARY KEY, btree (a) DEFERRABLE INITIALLY DEFERRED
+Not-null constraints:
+    "notnull_tbl4_a_not_null" NOT NULL "a"
+
+\d+ notnull_tbl4_lk3
+                             Table "public.notnull_tbl4_lk3"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "notnull_tbl4_lk3_pkey" PRIMARY KEY, btree (a) DEFERRABLE INITIALLY DEFERRED
+Not-null constraints:
+    "a_nn" NOT NULL "a"
+
+\d+ notnull_tbl4_cld
+                             Table "public.notnull_tbl4_cld"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "notnull_tbl4_a_not_null" NOT NULL "a" (inherited)
+Inherits:
+    notnull_tbl4
+
+\d+ notnull_tbl4_cld2
+                             Table "public.notnull_tbl4_cld2"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "notnull_tbl4_cld2_pkey" PRIMARY KEY, btree (a) DEFERRABLE
+Not-null constraints:
+    "notnull_tbl4_cld2_a_not_null" NOT NULL "a" (local, inherited)
+Inherits:
+    notnull_tbl4
+
+\d+ notnull_tbl4_cld3
+                             Table "public.notnull_tbl4_cld3"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+Indexes:
+    "notnull_tbl4_cld3_pkey" PRIMARY KEY, btree (a) DEFERRABLE
+Not-null constraints:
+    "a_nn" NOT NULL "a" (local, inherited)
+Inherits:
+    notnull_tbl4
+
+-- leave these tables around for pg_upgrade testing
+-- It's possible to remove a constraint from parents without affecting children
+CREATE TABLE notnull_tbl5 (a int CONSTRAINT ann NOT NULL,
+	b int CONSTRAINT bnn NOT NULL);
+CREATE TABLE notnull_tbl5_child () INHERITS (notnull_tbl5);
+ALTER TABLE ONLY notnull_tbl5 DROP CONSTRAINT ann;
+ALTER TABLE ONLY notnull_tbl5 ALTER b DROP NOT NULL;
+\d+ notnull_tbl5_child
+                            Table "public.notnull_tbl5_child"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Not-null constraints:
+    "ann" NOT NULL "a"
+    "bnn" NOT NULL "b"
+Inherits:
+    notnull_tbl5
+
+CREATE TABLE notnull_tbl6 (a int CONSTRAINT ann NOT NULL,
+	b int CONSTRAINT bnn NOT NULL, check (a > 0)) PARTITION BY LIST (a);
+CREATE TABLE notnull_tbl6_1 PARTITION OF notnull_tbl6 FOR VALUES IN (1);
+ALTER TABLE ONLY notnull_tbl6 DROP CONSTRAINT ann;
+ALTER TABLE ONLY notnull_tbl6 ALTER b DROP NOT NULL;
+\d+ notnull_tbl6_1
+                              Table "public.notnull_tbl6_1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+ b      | integer |           | not null |         | plain   |              | 
+Partition of: notnull_tbl6 FOR VALUES IN (1)
+Partition constraint: ((a IS NOT NULL) AND (a = 1))
+Check constraints:
+    "notnull_tbl6_a_check" CHECK (a > 0)
+Not-null constraints:
+    "ann" NOT NULL "a"
+    "bnn" NOT NULL "b"
+
+-- NOT NULL NOT VALID
+PREPARE get_nnconstraint_info(regclass[]) AS
+SELECT conrelid::regclass as tabname, conname, convalidated, conislocal, coninhcount
+FROM  pg_constraint
+WHERE conrelid = ANY($1)
+ORDER BY conrelid::regclass::text COLLATE "C", conname;
+CREATE TABLE notnull_tbl1 (a int, b int);
+INSERT INTO notnull_tbl1 VALUES (NULL, 1), (300, 3);
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT nn NOT NULL a; -- error
+ERROR:  column "a" of relation "notnull_tbl1" contains null values
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT nn NOT NULL a NOT VALID; -- ok
+-- even an invalid not-null forbids new nulls
+INSERT INTO notnull_tbl1 VALUES (NULL, 4);
+ERROR:  null value in column "a" of relation "notnull_tbl1" violates not-null constraint
+DETAIL:  Failing row contains (null, 4).
+\d+ notnull_tbl1
+                               Table "public.notnull_tbl1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+ b      | integer |           |          |         | plain   |              | 
+Not-null constraints:
+    "nn" NOT NULL "a" NOT VALID
+
+-- If we have an invalid constraint, we can't have another
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT nn1 NOT NULL a NOT VALID NO INHERIT;
+ERROR:  cannot change NO INHERIT status of NOT NULL constraint "nn" on relation "notnull_tbl1"
+HINT:  You might need to make the existing constraint inheritable using ALTER TABLE ... ALTER CONSTRAINT ... INHERIT.
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT nn NOT NULL a;
+ERROR:  incompatible NOT VALID constraint "nn" on relation "notnull_tbl1"
+HINT:  You might need to validate it using ALTER TABLE ... VALIDATE CONSTRAINT.
+-- cannot add primary key on a column with an invalid not-null
+ALTER TABLE notnull_tbl1 ADD PRIMARY KEY (a);
+ERROR:  cannot create primary key on column "a"
+DETAIL:  The constraint "nn" on column "a" of table "notnull_tbl1", marked NOT VALID, is incompatible with a primary key.
+HINT:  You might need to validate it using ALTER TABLE ... VALIDATE CONSTRAINT.
+-- cannot set column as generated-as-identity if it has an invalid not-null
+ALTER TABLE notnull_tbl1 ALTER COLUMN a ADD GENERATED ALWAYS AS IDENTITY;
+ERROR:  incompatible NOT VALID constraint "nn" on relation "notnull_tbl1"
+HINT:  You might need to validate it using ALTER TABLE ... VALIDATE CONSTRAINT.
+-- ALTER column SET NOT NULL validates an invalid constraint (but this fails
+-- because of rows with null values)
+ALTER TABLE notnull_tbl1 ALTER a SET NOT NULL;
+ERROR:  column "a" of relation "notnull_tbl1" contains null values
+\d+ notnull_tbl1
+                               Table "public.notnull_tbl1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           | not null |         | plain   |              | 
+ b      | integer |           |          |         | plain   |              | 
+Not-null constraints:
+    "nn" NOT NULL "a" NOT VALID
+
+-- Creating a derived table using LIKE gets the constraint, but it's valid
+CREATE TABLE notnull_tbl1_copy (LIKE notnull_tbl1);
+EXECUTE get_nnconstraint_info('{notnull_tbl1_copy}');
+      tabname      | conname | convalidated | conislocal | coninhcount 
+-------------------+---------+--------------+------------+-------------
+ notnull_tbl1_copy | nn      | t            | t          |           0
+(1 row)
+
+-- An inheritance child table gets the constraint, but it's valid
+CREATE TABLE notnull_tbl1_child (a int, b int) INHERITS (notnull_tbl1);
+NOTICE:  merging column "a" with inherited definition
+NOTICE:  merging column "b" with inherited definition
+EXECUTE get_nnconstraint_info('{notnull_tbl1_child, notnull_tbl1}');
+      tabname       | conname | convalidated | conislocal | coninhcount 
+--------------------+---------+--------------+------------+-------------
+ notnull_tbl1       | nn      | f            | t          |           0
+ notnull_tbl1_child | nn      | t            | f          |           1
+(2 rows)
+
+-- Also try inheritance added after table creation
+CREATE TABLE notnull_tbl1_child2 (c int, b int, a int);
+ALTER TABLE notnull_tbl1_child2 INHERIT notnull_tbl1;	-- nope
+ERROR:  column "a" in child table "notnull_tbl1_child2" must be marked NOT NULL
+ALTER TABLE notnull_tbl1_child2 ADD NOT NULL a NOT VALID;
+ALTER TABLE notnull_tbl1_child2 INHERIT notnull_tbl1;
+EXECUTE get_nnconstraint_info('{notnull_tbl1_child2}');
+       tabname       |            conname             | convalidated | conislocal | coninhcount 
+---------------------+--------------------------------+--------------+------------+-------------
+ notnull_tbl1_child2 | notnull_tbl1_child2_a_not_null | f            | t          |           1
+(1 row)
+
+--table rewrite won't validate invalid constraint
+ALTER TABLE notnull_tbl1 ADD column d float8 default random();
+-- VALIDATE CONSTRAINT scans the table
+ALTER TABLE notnull_tbl1 VALIDATE CONSTRAINT nn; -- error, nulls exist
+ERROR:  column "a" of relation "notnull_tbl1" contains null values
+UPDATE notnull_tbl1 SET a = 100 WHERE b = 1;
+ALTER TABLE notnull_tbl1 VALIDATE CONSTRAINT nn; -- now ok
+EXECUTE get_nnconstraint_info('{notnull_tbl1}');
+   tabname    | conname | convalidated | conislocal | coninhcount 
+--------------+---------+--------------+------------+-------------
+ notnull_tbl1 | nn      | t            | t          |           0
+(1 row)
+
+--- now we can add primary key
+ALTER TABLE notnull_tbl1 ADD PRIMARY KEY (a);
+DROP TABLE notnull_tbl1, notnull_tbl1_child, notnull_tbl1_child2;
+-- dropping an invalid constraint is possible
+CREATE TABLE notnull_tbl1 (a int, b int);
+ALTER TABLE notnull_tbl1 ADD NOT NULL a NOT VALID,
+	ADD NOT NULL b NOT VALID;
+ALTER TABLE notnull_tbl1 ALTER a DROP NOT NULL;
+ALTER TABLE notnull_tbl1 DROP CONSTRAINT notnull_tbl1_b_not_null;
+DROP TABLE notnull_tbl1;
+-- ALTER .. NO INHERIT works for invalid constraints
+CREATE TABLE notnull_tbl1 (a int);
+CREATE TABLE notnull_tbl1_chld () INHERITS (notnull_tbl1);
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT nntbl1_a NOT NULL a NOT VALID;
+ALTER TABLE notnull_tbl1 ALTER CONSTRAINT nntbl1_a NO INHERIT;
+-- DROP CONSTRAINT recurses correctly on invalid constraints
+ALTER TABLE notnull_tbl1 ALTER CONSTRAINT nntbl1_a INHERIT;
+ALTER TABLE notnull_tbl1 DROP CONSTRAINT nntbl1_a;
+DROP TABLE notnull_tbl1, notnull_tbl1_chld;
+-- if a parent has a valid not null constraint then a child table cannot
+-- have an invalid one
+CREATE TABLE notnull_tbl1 (a int);
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT nn_parent NOT NULL a not valid;
+CREATE TABLE notnull_chld0 (a int, CONSTRAINT nn_chld0 NOT NULL a);
+ALTER TABLE notnull_tbl1 INHERIT notnull_chld0; --error
+ERROR:  constraint "nn_parent" conflicts with NOT VALID constraint on child table "notnull_tbl1"
+ALTER TABLE notnull_chld0 DROP CONSTRAINT nn_chld0;
+ALTER TABLE notnull_chld0 ADD CONSTRAINT nn_chld0 NOT NULL a not valid;
+ALTER TABLE notnull_tbl1 INHERIT notnull_chld0; --now ok
+-- parents and child not-null will all be validated.
+ALTER TABLE notnull_tbl1 VALIDATE CONSTRAINT nn_parent;
+EXECUTE get_nnconstraint_info('{notnull_tbl1, notnull_chld0}');
+    tabname    |  conname  | convalidated | conislocal | coninhcount 
+---------------+-----------+--------------+------------+-------------
+ notnull_chld0 | nn_chld0  | f            | t          |           0
+ notnull_tbl1  | nn_parent | t            | t          |           1
+(2 rows)
+
+DROP TABLE notnull_tbl1, notnull_chld0;
+-- Test invalid not null on inheritance table.
+CREATE TABLE notnull_inhparent (i int);
+CREATE TABLE notnull_inhchild (i int) INHERITS (notnull_inhparent);
+NOTICE:  merging column "i" with inherited definition
+CREATE TABLE notnull_inhgrand () INHERITS (notnull_inhparent, notnull_inhchild);
+NOTICE:  merging multiple inherited definitions of column "i"
+ALTER TABLE notnull_inhparent ADD CONSTRAINT nn NOT NULL i NOT VALID;
+ALTER TABLE notnull_inhchild ADD CONSTRAINT nn1 NOT NULL i; -- error
+ERROR:  incompatible NOT VALID constraint "nn" on relation "notnull_inhchild"
+HINT:  You might need to validate it using ALTER TABLE ... VALIDATE CONSTRAINT.
+EXECUTE get_nnconstraint_info('{notnull_inhparent, notnull_inhchild, notnull_inhgrand}');
+      tabname      | conname | convalidated | conislocal | coninhcount 
+-------------------+---------+--------------+------------+-------------
+ notnull_inhchild  | nn      | f            | f          |           1
+ notnull_inhgrand  | nn      | f            | f          |           2
+ notnull_inhparent | nn      | f            | t          |           0
+(3 rows)
+
+ALTER TABLE notnull_inhparent ALTER i SET NOT NULL; -- ok
+EXECUTE get_nnconstraint_info('{notnull_inhparent, notnull_inhchild, notnull_inhgrand}');
+      tabname      | conname | convalidated | conislocal | coninhcount 
+-------------------+---------+--------------+------------+-------------
+ notnull_inhchild  | nn      | t            | f          |           1
+ notnull_inhgrand  | nn      | t            | f          |           2
+ notnull_inhparent | nn      | t            | t          |           0
+(3 rows)
+
+DROP TABLE notnull_inhparent, notnull_inhchild, notnull_inhgrand;
+-- Verify NOT NULL VALID/NOT VALID with partition table.
+DROP TABLE notnull_tbl1;
+ERROR:  table "notnull_tbl1" does not exist
+CREATE TABLE notnull_tbl1 (a int, b int) PARTITION BY LIST (a);
+ALTER TABLE notnull_tbl1 ADD CONSTRAINT notnull_con NOT NULL a NOT VALID; --ok
+CREATE TABLE notnull_tbl1_1 PARTITION OF notnull_tbl1 FOR VALUES IN (1,2);
+CREATE TABLE notnull_tbl1_2(a int, CONSTRAINT nn2 NOT NULL a, b int);
+ALTER TABLE notnull_tbl1 ATTACH PARTITION notnull_tbl1_2 FOR VALUES IN (3,4);
+CREATE TABLE notnull_tbl1_3(a int, b int);
+INSERT INTO notnull_tbl1_3 values(NULL,1);
+ALTER TABLE notnull_tbl1_3 add CONSTRAINT nn3 NOT NULL a NOT VALID;
+ALTER TABLE notnull_tbl1 ATTACH PARTITION notnull_tbl1_3 FOR VALUES IN (NULL,5);
+EXECUTE get_nnconstraint_info('{notnull_tbl1, notnull_tbl1_1, notnull_tbl1_2, notnull_tbl1_3}');
+    tabname     |   conname   | convalidated | conislocal | coninhcount 
+----------------+-------------+--------------+------------+-------------
+ notnull_tbl1   | notnull_con | f            | t          |           0
+ notnull_tbl1_1 | notnull_con | t            | f          |           1
+ notnull_tbl1_2 | nn2         | t            | f          |           1
+ notnull_tbl1_3 | nn3         | f            | f          |           1
+(4 rows)
+
+ALTER TABLE notnull_tbl1 ALTER COLUMN a SET NOT NULL; --error, notnull_tbl1_3 have null values
+ERROR:  column "a" of relation "notnull_tbl1_3" contains null values
+ALTER TABLE notnull_tbl1_3 VALIDATE CONSTRAINT nn3; --error
+ERROR:  column "a" of relation "notnull_tbl1_3" contains null values
+TRUNCATE notnull_tbl1;
+ALTER TABLE notnull_tbl1 ALTER COLUMN a SET NOT NULL; --OK
+EXECUTE get_nnconstraint_info('{notnull_tbl1, notnull_tbl1_1, notnull_tbl1_2, notnull_tbl1_3}');
+    tabname     |   conname   | convalidated | conislocal | coninhcount 
+----------------+-------------+--------------+------------+-------------
+ notnull_tbl1   | notnull_con | t            | t          |           0
+ notnull_tbl1_1 | notnull_con | t            | f          |           1
+ notnull_tbl1_2 | nn2         | t            | f          |           1
+ notnull_tbl1_3 | nn3         | t            | f          |           1
+(4 rows)
+
+DROP TABLE notnull_tbl1;
+-- partitioned table have not-null, then the partitions can not be NOT NULL NOT VALID.
+CREATE TABLE pp_nn (a int, b int, NOT NULL a) PARTITION BY LIST (a);
+CREATE TABLE pp_nn_1(a int, b int);
+ALTER TABLE pp_nn_1 ADD CONSTRAINT nn1 NOT NULL a NOT VALID;
+ALTER TABLE pp_nn ATTACH PARTITION pp_nn_1 FOR VALUES IN (NULL,5); --error
+ERROR:  constraint "nn1" conflicts with NOT VALID constraint on child table "pp_nn_1"
+ALTER TABLE pp_nn_1 VALIDATE CONSTRAINT nn1;
+ALTER TABLE pp_nn ATTACH PARTITION pp_nn_1 FOR VALUES IN (NULL,5); --ok
+DROP TABLE pp_nn;
+-- Try a partition with an invalid constraint and create a PK on the parent.
+CREATE TABLE pp_nn (a int) PARTITION BY HASH (a);
+CREATE TABLE pp_nn_1 PARTITION OF pp_nn FOR VALUES WITH (MODULUS 2, REMAINDER 0);
+ALTER TABLE pp_nn_1 ADD CONSTRAINT nn NOT NULL a NOT VALID;
+ALTER TABLE ONLY pp_nn ADD PRIMARY KEY (a);
+ERROR:  cannot create primary key on column "a"
+DETAIL:  The constraint "nn" on column "a" of table "pp_nn_1", marked NOT VALID, is incompatible with a primary key.
+HINT:  You might need to validate it using ALTER TABLE ... VALIDATE CONSTRAINT.
+DROP TABLE pp_nn;
+-- same as above, but the constraint is NO INHERIT
+CREATE TABLE pp_nn (a int) PARTITION BY HASH (a);
+CREATE TABLE pp_nn_1 PARTITION OF pp_nn FOR VALUES WITH (MODULUS 2, REMAINDER 0);
+ALTER TABLE pp_nn_1 ADD CONSTRAINT nn NOT NULL a NO INHERIT;
+ALTER TABLE ONLY pp_nn ADD PRIMARY KEY (a);
+ERROR:  cannot create primary key on column "a"
+DETAIL:  The constraint "nn" on column "a" of table "pp_nn_1", marked NO INHERIT, is incompatible with a primary key.
+HINT:  You might need to make the existing constraint inheritable using ALTER TABLE ... ALTER CONSTRAINT ... INHERIT.
+DROP TABLE pp_nn;
+-- Create table with NOT NULL INVALID constraint, for pg_upgrade.
+CREATE TABLE notnull_tbl1_upg (a int, b int);
+INSERT INTO notnull_tbl1_upg VALUES (NULL, 1), (NULL, 2), (300, 3);
+ALTER TABLE notnull_tbl1_upg ADD CONSTRAINT nn NOT NULL a NOT VALID;
+-- Inherit test for pg_upgrade
+CREATE TABLE notnull_parent_upg (a int);
+CREATE TABLE notnull_child_upg () INHERITS (notnull_parent_upg);
+ALTER TABLE notnull_child_upg ADD CONSTRAINT nn NOT NULL a;
+ALTER TABLE notnull_parent_upg ADD CONSTRAINT nn NOT NULL a NOT VALID;
+SELECT conrelid::regclass, contype, convalidated, conislocal
+FROM pg_catalog.pg_constraint
+WHERE conrelid in ('notnull_parent_upg'::regclass, 'notnull_child_upg'::regclass)
+ORDER BY 1;
+      conrelid      | contype | convalidated | conislocal 
+--------------------+---------+--------------+------------
+ notnull_parent_upg | n       | f            | t
+ notnull_child_upg  | n       | t            | t
+(2 rows)
+
+-- Partition table test, for pg_upgrade
+CREATE TABLE notnull_part1_upg (a int, b int) PARTITION BY LIST (a);
+ALTER TABLE notnull_part1_upg ADD CONSTRAINT notnull_con NOT NULL a NOT VALID; --ok
+CREATE TABLE notnull_part1_1_upg PARTITION OF notnull_part1_upg FOR VALUES IN (1,2);
+CREATE TABLE notnull_part1_2_upg (a int, CONSTRAINT nn2 NOT NULL a, b int);
+ALTER TABLE notnull_part1_upg ATTACH PARTITION notnull_part1_2_upg FOR VALUES IN (3,4);
+CREATE TABLE notnull_part1_3_upg (a int, b int);
+INSERT INTO notnull_part1_3_upg values(NULL,1);
+ALTER TABLE notnull_part1_3_upg add CONSTRAINT nn3 NOT NULL a NOT VALID;
+ALTER TABLE notnull_part1_upg ATTACH PARTITION notnull_part1_3_upg FOR VALUES IN (NULL,5);
+EXECUTE get_nnconstraint_info('{notnull_part1_upg, notnull_part1_1_upg, notnull_part1_2_upg, notnull_part1_3_upg}');
+       tabname       |   conname   | convalidated | conislocal | coninhcount 
+---------------------+-------------+--------------+------------+-------------
+ notnull_part1_1_upg | notnull_con | t            | f          |           1
+ notnull_part1_2_upg | nn2         | t            | f          |           1
+ notnull_part1_3_upg | nn3         | f            | f          |           1
+ notnull_part1_upg   | notnull_con | f            | t          |           0
+(4 rows)
+
+-- Inheritance test tables for pg_upgrade
+create table constr_parent (a int);
+create table constr_child (a int) inherits (constr_parent);
+NOTICE:  merging column "a" with inherited definition
+alter table constr_parent add not null a not valid;
+alter table constr_child validate constraint constr_parent_a_not_null;
+EXECUTE get_nnconstraint_info('{constr_parent, constr_child}');
+    tabname    |         conname          | convalidated | conislocal | coninhcount 
+---------------+--------------------------+--------------+------------+-------------
+ constr_child  | constr_parent_a_not_null | t            | f          |           1
+ constr_parent | constr_parent_a_not_null | f            | t          |           0
+(2 rows)
+
+create table constr_parent2 (a int);
+create table constr_child2 () inherits (constr_parent2);
+alter table constr_parent2 add not null a not valid;
+alter table constr_child2 validate constraint constr_parent2_a_not_null;
+EXECUTE get_nnconstraint_info('{constr_parent2, constr_child2}');
+    tabname     |          conname          | convalidated | conislocal | coninhcount 
+----------------+---------------------------+--------------+------------+-------------
+ constr_child2  | constr_parent2_a_not_null | t            | f          |           1
+ constr_parent2 | constr_parent2_a_not_null | f            | t          |           0
+(2 rows)
+
+create table constr_parent3 (a int not null);
+create table constr_child3 () inherits (constr_parent2, constr_parent3);
+NOTICE:  merging multiple inherited definitions of column "a"
+EXECUTE get_nnconstraint_info('{constr_parent3, constr_child3}');
+    tabname     |          conname          | convalidated | conislocal | coninhcount 
+----------------+---------------------------+--------------+------------+-------------
+ constr_child3  | constr_parent2_a_not_null | t            | f          |           2
+ constr_parent3 | constr_parent3_a_not_null | t            | t          |           0
+(2 rows)
+
+COMMENT ON CONSTRAINT constr_parent2_a_not_null ON constr_parent2 IS 'this constraint is invalid';
+COMMENT ON CONSTRAINT constr_parent2_a_not_null ON constr_child2 IS 'this constraint is valid';
+DEALLOCATE get_nnconstraint_info;
+-- end NOT NULL NOT VALID
 -- Comments
 -- Setup a low-level role to enforce non-superuser checks.
 CREATE ROLE regress_constraint_comments;
@@ -830,3 +1813,11 @@ DROP TABLE constraint_comments_tbl;
 DROP DOMAIN constraint_comments_dom;
 DROP ROLE regress_constraint_comments;
 DROP ROLE regress_constraint_comments_noaccess;
+-- Leave some constraints for the pg_upgrade test to pick up
+CREATE DOMAIN constraint_comments_dom AS int;
+ALTER DOMAIN constraint_comments_dom ADD CONSTRAINT inv_ck CHECK (value > 0) NOT VALID;
+COMMENT ON CONSTRAINT inv_ck ON DOMAIN constraint_comments_dom IS 'comment on invalid constraint';
+-- Create a table that exercises pg_upgrade
+CREATE TABLE regress_notnull1 (a integer);
+CREATE TABLE regress_notnull2 () INHERITS (regress_notnull1);
+ALTER TABLE ONLY regress_notnull2 ALTER COLUMN a SET NOT NULL;

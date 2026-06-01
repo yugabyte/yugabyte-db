@@ -15,7 +15,7 @@ set(YB_PCH_PREFIX pggate)
 set(YB_PCH_DEP_LIBS yb_test_util)
 
 # We need access to the generated pg_type_d.h header from this directory.
-include_directories("${YB_BUILD_ROOT}/postgres_build/src/backend")
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
 # Utility functions that are specific for PGGate.
 add_subdirectory(util)

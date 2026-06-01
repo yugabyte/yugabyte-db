@@ -1,0 +1,182 @@
+CREATE EXTENSION pg_buffercache;
+select count(*) = (select setting::bigint
+                   from pg_settings
+                   where name = 'shared_buffers')
+from pg_buffercache;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- For pg_buffercache_os_pages, we expect at least one entry for each buffer
+select count(*) >= (select setting::bigint
+                    from pg_settings
+                    where name = 'shared_buffers')
+from pg_buffercache_os_pages;
+ ?column? 
+----------
+ t
+(1 row)
+
+select buffers_used + buffers_unused > 0,
+        buffers_dirty <= buffers_used,
+        buffers_pinned <= buffers_used
+from pg_buffercache_summary();
+ ?column? | ?column? | ?column? 
+----------+----------+----------
+ t        | t        | t
+(1 row)
+
+SELECT count(*) > 0 FROM pg_buffercache_usage_counts() WHERE buffers >= 0;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Check that the functions / views can't be accessed by default. To avoid
+-- having to create a dedicated user, use the pg_database_owner pseudo-role.
+SET ROLE pg_database_owner;
+SELECT * FROM pg_buffercache;
+ERROR:  permission denied for view pg_buffercache
+SELECT * FROM pg_buffercache_os_pages;
+ERROR:  permission denied for view pg_buffercache_os_pages
+SELECT * FROM pg_buffercache_pages() AS p (wrong int);
+ERROR:  permission denied for function pg_buffercache_pages
+SELECT * FROM pg_buffercache_summary();
+ERROR:  permission denied for function pg_buffercache_summary
+SELECT * FROM pg_buffercache_usage_counts();
+ERROR:  permission denied for function pg_buffercache_usage_counts
+RESET role;
+-- Check that pg_monitor is allowed to query view / function
+SET ROLE pg_monitor;
+SELECT count(*) > 0 FROM pg_buffercache;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT count(*) > 0 FROM pg_buffercache_os_pages;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT buffers_used + buffers_unused > 0 FROM pg_buffercache_summary();
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT count(*) > 0 FROM pg_buffercache_usage_counts();
+ ?column? 
+----------
+ t
+(1 row)
+
+RESET role;
+------
+---- Test pg_buffercache_evict* and pg_buffercache_mark_dirty* functions
+------
+CREATE ROLE regress_buffercache_normal;
+SET ROLE regress_buffercache_normal;
+-- These should fail because they need to be called as SUPERUSER
+SELECT * FROM pg_buffercache_evict(1);
+ERROR:  must be superuser to use pg_buffercache_evict()
+SELECT * FROM pg_buffercache_evict_relation(1);
+ERROR:  must be superuser to use pg_buffercache_evict_relation()
+SELECT * FROM pg_buffercache_evict_all();
+ERROR:  must be superuser to use pg_buffercache_evict_all()
+SELECT * FROM pg_buffercache_mark_dirty(1);
+ERROR:  must be superuser to use pg_buffercache_mark_dirty()
+SELECT * FROM pg_buffercache_mark_dirty_relation(1);
+ERROR:  must be superuser to use pg_buffercache_mark_dirty_relation()
+SELECT * FROM pg_buffercache_mark_dirty_all();
+ERROR:  must be superuser to use pg_buffercache_mark_dirty_all()
+RESET ROLE;
+-- These should return nothing, because these are STRICT functions
+SELECT * FROM pg_buffercache_evict(NULL);
+ buffer_evicted | buffer_flushed 
+----------------+----------------
+                | 
+(1 row)
+
+SELECT * FROM pg_buffercache_evict_relation(NULL);
+ buffers_evicted | buffers_flushed | buffers_skipped 
+-----------------+-----------------+-----------------
+                 |                 |                
+(1 row)
+
+SELECT * FROM pg_buffercache_mark_dirty(NULL);
+ buffer_dirtied | buffer_already_dirty 
+----------------+----------------------
+                | 
+(1 row)
+
+SELECT * FROM pg_buffercache_mark_dirty_relation(NULL);
+ buffers_dirtied | buffers_already_dirty | buffers_skipped 
+-----------------+-----------------------+-----------------
+                 |                       |                
+(1 row)
+
+-- These should fail because they are not called by valid range of buffers
+-- Number of the shared buffers are limited by max integer
+SELECT 2147483647 max_buffers \gset
+SELECT * FROM pg_buffercache_evict(-1);
+ERROR:  bad buffer ID: -1
+SELECT * FROM pg_buffercache_evict(0);
+ERROR:  bad buffer ID: 0
+SELECT * FROM pg_buffercache_evict(:max_buffers);
+ERROR:  bad buffer ID: 2147483647
+SELECT * FROM pg_buffercache_mark_dirty(-1);
+ERROR:  bad buffer ID: -1
+SELECT * FROM pg_buffercache_mark_dirty(0);
+ERROR:  bad buffer ID: 0
+SELECT * FROM pg_buffercache_mark_dirty(:max_buffers);
+ERROR:  bad buffer ID: 2147483647
+-- These should fail because they don't accept local relations
+CREATE TEMP TABLE temp_pg_buffercache();
+SELECT * FROM pg_buffercache_evict_relation('temp_pg_buffercache');
+ERROR:  relation uses local buffers, pg_buffercache_evict_relation() is intended to be used for shared buffers only
+SELECT * FROM pg_buffercache_mark_dirty_relation('temp_pg_buffercache');
+ERROR:  relation uses local buffers, pg_buffercache_mark_dirty_relation() is intended to be used for shared buffers only
+DROP TABLE temp_pg_buffercache;
+-- These shouldn't fail
+SELECT buffer_evicted IS NOT NULL FROM pg_buffercache_evict(1);
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT buffers_evicted IS NOT NULL FROM pg_buffercache_evict_all();
+ ?column? 
+----------
+ t
+(1 row)
+
+CREATE TABLE shared_pg_buffercache();
+SELECT buffers_evicted IS NOT NULL FROM pg_buffercache_evict_relation('shared_pg_buffercache');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT buffers_dirtied IS NOT NULL FROM pg_buffercache_mark_dirty_relation('shared_pg_buffercache');
+ ?column? 
+----------
+ t
+(1 row)
+
+DROP TABLE shared_pg_buffercache;
+SELECT pg_buffercache_mark_dirty(1) IS NOT NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT pg_buffercache_mark_dirty_all() IS NOT NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+DROP ROLE regress_buffercache_normal;

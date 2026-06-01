@@ -1164,7 +1164,8 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	 *
 	 * Some system updates are marked as in-place update (i.e. overwrite), for
 	 * them we will invalidate the new tuple at next command boundary instead.
-	 * See heap_inplace_update().
+	 * See heap_inplace_update(). YB_TODO_PG19MERGE: heap_inplace_update() is
+	 * deprecated in PG19, does anything here need updates?
 	 *
 	 * Do these now so if there is an error with update we will re-query to get
 	 * the correct state from the master.

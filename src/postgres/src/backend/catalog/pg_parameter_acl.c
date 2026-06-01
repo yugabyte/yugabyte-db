@@ -3,7 +3,7 @@
  * pg_parameter_acl.c
  *	  routines to support manipulation of the pg_parameter_acl relation
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,14 +14,13 @@
  */
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "access/table.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
-#include "catalog/objectaccess.h"
-#include "catalog/pg_namespace.h"
 #include "catalog/pg_parameter_acl.h"
 #include "utils/builtins.h"
-#include "utils/pg_locale.h"
+#include "utils/guc.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
@@ -74,18 +73,14 @@ ParameterAclCreate(const char *parameter)
 	Relation	rel;
 	TupleDesc	tupDesc;
 	HeapTuple	tuple;
-	Datum		values[Natts_pg_parameter_acl];
-	bool		nulls[Natts_pg_parameter_acl];
+	Datum		values[Natts_pg_parameter_acl] = {0};
+	bool		nulls[Natts_pg_parameter_acl] = {0};
 
 	/*
 	 * To prevent cluttering pg_parameter_acl with useless entries, insist
 	 * that the name be valid.
 	 */
-	if (!check_GUC_name_for_parameter_acl(parameter))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_NAME),
-				 errmsg("invalid parameter name \"%s\"",
-						parameter)));
+	check_GUC_name_for_parameter_acl(parameter);
 
 	/* Convert name to the form it should have in pg_parameter_acl. */
 	parname = convert_GUC_name_for_parameter_acl(parameter);
@@ -98,8 +93,6 @@ ParameterAclCreate(const char *parameter)
 	 */
 	rel = table_open(ParameterAclRelationId, RowExclusiveLock);
 	tupDesc = RelationGetDescr(rel);
-	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, false, sizeof(nulls));
 	parameterId = GetNewOidWithIndex(rel,
 									 ParameterAclOidIndexId,
 									 Anum_pg_parameter_acl_oid);

@@ -3,7 +3,7 @@
  * nodeBitmapOr.c
  *	  routines to handle BitmapOr nodes.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -28,8 +28,10 @@
 
 #include "postgres.h"
 
-#include "executor/execdebug.h"
+#include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeBitmapOr.h"
+#include "nodes/tidbitmap.h"
 #include "miscadmin.h"
 
 /* YB includes */
@@ -148,7 +150,7 @@ MultiExecBitmapOr(BitmapOrState *node)
 			if (result.tbm == NULL) /* first subplan */
 			{
 				/* XXX should we use less than work_mem for this? */
-				result.tbm = tbm_create(work_mem * 1024L,
+				result.tbm = tbm_create(work_mem * (Size) 1024,
 										(((BitmapOr *) node->ps.plan)->isshared ?
 										 node->ps.state->es_query_dsa :
 										 NULL));

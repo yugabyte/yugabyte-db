@@ -3,7 +3,7 @@
  * jsonb_gin.c
  *	 GIN support functions for jsonb
  *
- * Copyright (c) 2014-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2026, PostgreSQL Global Development Group
  *
  * We provide two opclasses for jsonb indexing: jsonb_ops and jsonb_path_ops.
  * For their description see json.sgml and comments in jsonb.h.
@@ -65,7 +65,7 @@
 #include "catalog/pg_type.h"
 #include "common/hashfn.h"
 #include "miscadmin.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/jsonb.h"
 #include "utils/jsonpath.h"
 #include "utils/varlena.h"
@@ -88,7 +88,7 @@ typedef enum JsonPathGinNodeType
 {
 	JSP_GIN_OR,
 	JSP_GIN_AND,
-	JSP_GIN_ENTRY
+	JSP_GIN_ENTRY,
 } JsonPathGinNodeType;
 
 typedef struct JsonPathGinNode JsonPathGinNode;
@@ -163,7 +163,7 @@ static void
 init_gin_entries(GinEntries *entries, int preallocated)
 {
 	entries->allocated = preallocated;
-	entries->buf = preallocated ? palloc(sizeof(Datum) * preallocated) : NULL;
+	entries->buf = preallocated ? palloc_array(Datum, preallocated) : NULL;
 	entries->count = 0;
 }
 
@@ -178,13 +178,14 @@ add_gin_entry(GinEntries *entries, Datum entry)
 		if (entries->allocated)
 		{
 			entries->allocated *= 2;
-			entries->buf = repalloc(entries->buf,
-									sizeof(Datum) * entries->allocated);
+			entries->buf = repalloc_array(entries->buf,
+										  Datum,
+										  entries->allocated);
 		}
 		else
 		{
 			entries->allocated = 8;
-			entries->buf = palloc(sizeof(Datum) * entries->allocated);
+			entries->buf = palloc_array(Datum, entries->allocated);
 		}
 	}
 
@@ -307,7 +308,7 @@ jsonb_ops__add_path_item(JsonPathGinPath *path, JsonPathItem *jsp)
 			return false;
 	}
 
-	pentry = palloc(sizeof(*pentry));
+	pentry = palloc_object(JsonPathGinPathItem);
 
 	pentry->type = jsp->type;
 	pentry->keyName = keyName;
@@ -567,7 +568,7 @@ extract_jsp_path_expr(JsonPathGinContext *cxt, JsonPathGinPath path,
 	/* extract a list of nodes to be AND-ed */
 	List	   *nodes = extract_jsp_path_expr_nodes(cxt, path, jsp, scalar);
 
-	if (list_length(nodes) <= 0)
+	if (nodes == NIL)
 		/* no nodes were extracted => full scan is needed for this path */
 		return NULL;
 
@@ -785,7 +786,7 @@ extract_jsp_query(JsonPath *jp, StrategyNumber strat, bool pathOps,
 	if (!*nentries)
 		return NULL;
 
-	*extra_data = palloc0(sizeof(**extra_data) * entries.count);
+	*extra_data = palloc0_array(Pointer, entries.count);
 	**extra_data = (Pointer) node;
 
 	return entries.buf;
@@ -869,7 +870,7 @@ gin_extract_jsonb_query(PG_FUNCTION_ARGS)
 		text	   *query = PG_GETARG_TEXT_PP(0);
 
 		*nentries = 1;
-		entries = (Datum *) palloc(sizeof(Datum));
+		entries = palloc_object(Datum);
 		entries[0] = make_text_key(JGINFLAG_KEY,
 								   VARDATA_ANY(query),
 								   VARSIZE_ANY_EXHDR(query));
@@ -885,11 +886,9 @@ gin_extract_jsonb_query(PG_FUNCTION_ARGS)
 		int			i,
 					j;
 
-		deconstruct_array(query,
-						  TEXTOID, -1, false, TYPALIGN_INT,
-						  &key_datums, &key_nulls, &key_count);
+		deconstruct_array_builtin(query, TEXTOID, &key_datums, &key_nulls, &key_count);
 
-		entries = (Datum *) palloc(sizeof(Datum) * key_count);
+		entries = palloc_array(Datum, key_count);
 
 		for (i = 0, j = 0; i < key_count; i++)
 		{
@@ -898,8 +897,8 @@ gin_extract_jsonb_query(PG_FUNCTION_ARGS)
 				continue;
 			/* We rely on the array elements not being toasted */
 			entries[j++] = make_text_key(JGINFLAG_KEY,
-										 VARDATA_ANY(key_datums[i]),
-										 VARSIZE_ANY_EXHDR(key_datums[i]));
+										 VARDATA_ANY(DatumGetPointer(key_datums[i])),
+										 VARSIZE_ANY_EXHDR(DatumGetPointer(key_datums[i])));
 		}
 
 		*nentries = j;
@@ -932,8 +931,9 @@ gin_consistent_jsonb(PG_FUNCTION_ARGS)
 {
 	bool	   *check = (bool *) PG_GETARG_POINTER(0);
 	StrategyNumber strategy = PG_GETARG_UINT16(1);
-
-	/* Jsonb	   *query = PG_GETARG_JSONB_P(2); */
+#ifdef NOT_USED
+	Jsonb	   *query = PG_GETARG_JSONB_P(2);
+#endif
 	int32		nkeys = PG_GETARG_INT32(3);
 
 	Pointer    *extra_data = (Pointer *) PG_GETARG_POINTER(4);
@@ -1001,8 +1001,7 @@ gin_consistent_jsonb(PG_FUNCTION_ARGS)
 		if (nkeys > 0)
 		{
 			Assert(extra_data && extra_data[0]);
-			res = execute_jsp_gin_node((JsonPathGinNode *) extra_data[0], check,
-									   false) != GIN_FALSE;
+			res = execute_jsp_gin_node(extra_data[0], check, false) != GIN_FALSE;
 		}
 	}
 	else
@@ -1016,8 +1015,9 @@ gin_triconsistent_jsonb(PG_FUNCTION_ARGS)
 {
 	GinTernaryValue *check = (GinTernaryValue *) PG_GETARG_POINTER(0);
 	StrategyNumber strategy = PG_GETARG_UINT16(1);
-
-	/* Jsonb	   *query = PG_GETARG_JSONB_P(2); */
+#ifdef NOT_USED
+	Jsonb	   *query = PG_GETARG_JSONB_P(2);
+#endif
 	int32		nkeys = PG_GETARG_INT32(3);
 	Pointer    *extra_data = (Pointer *) PG_GETARG_POINTER(4);
 	GinTernaryValue res = GIN_MAYBE;
@@ -1062,8 +1062,7 @@ gin_triconsistent_jsonb(PG_FUNCTION_ARGS)
 		if (nkeys > 0)
 		{
 			Assert(extra_data && extra_data[0]);
-			res = execute_jsp_gin_node((JsonPathGinNode *) extra_data[0], check,
-									   true);
+			res = execute_jsp_gin_node(extra_data[0], check, true);
 
 			/* Should always recheck the result */
 			if (res == GIN_TRUE)
@@ -1128,7 +1127,7 @@ gin_extract_jsonb_path(PG_FUNCTION_ARGS)
 			case WJB_BEGIN_OBJECT:
 				/* Push a stack level for this object */
 				parent = stack;
-				stack = (PathHashStack *) palloc(sizeof(PathHashStack));
+				stack = palloc_object(PathHashStack);
 
 				/*
 				 * We pass forward hashes from outer nesting levels so that
@@ -1223,8 +1222,9 @@ gin_consistent_jsonb_path(PG_FUNCTION_ARGS)
 {
 	bool	   *check = (bool *) PG_GETARG_POINTER(0);
 	StrategyNumber strategy = PG_GETARG_UINT16(1);
-
-	/* Jsonb	   *query = PG_GETARG_JSONB_P(2); */
+#ifdef NOT_USED
+	Jsonb	   *query = PG_GETARG_JSONB_P(2);
+#endif
 	int32		nkeys = PG_GETARG_INT32(3);
 	Pointer    *extra_data = (Pointer *) PG_GETARG_POINTER(4);
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(5);
@@ -1260,8 +1260,7 @@ gin_consistent_jsonb_path(PG_FUNCTION_ARGS)
 		if (nkeys > 0)
 		{
 			Assert(extra_data && extra_data[0]);
-			res = execute_jsp_gin_node((JsonPathGinNode *) extra_data[0], check,
-									   false) != GIN_FALSE;
+			res = execute_jsp_gin_node(extra_data[0], check, false) != GIN_FALSE;
 		}
 	}
 	else
@@ -1275,8 +1274,9 @@ gin_triconsistent_jsonb_path(PG_FUNCTION_ARGS)
 {
 	GinTernaryValue *check = (GinTernaryValue *) PG_GETARG_POINTER(0);
 	StrategyNumber strategy = PG_GETARG_UINT16(1);
-
-	/* Jsonb	   *query = PG_GETARG_JSONB_P(2); */
+#ifdef NOT_USED
+	Jsonb	   *query = PG_GETARG_JSONB_P(2);
+#endif
 	int32		nkeys = PG_GETARG_INT32(3);
 	Pointer    *extra_data = (Pointer *) PG_GETARG_POINTER(4);
 	GinTernaryValue res = GIN_MAYBE;
@@ -1304,8 +1304,7 @@ gin_triconsistent_jsonb_path(PG_FUNCTION_ARGS)
 		if (nkeys > 0)
 		{
 			Assert(extra_data && extra_data[0]);
-			res = execute_jsp_gin_node((JsonPathGinNode *) extra_data[0], check,
-									   true);
+			res = execute_jsp_gin_node(extra_data[0], check, true);
 
 			/* Should always recheck the result */
 			if (res == GIN_TRUE)

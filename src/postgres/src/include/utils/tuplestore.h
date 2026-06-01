@@ -21,7 +21,7 @@
  * Also, we have changed the API to return tuples in TupleTableSlots,
  * so that there is a check to prevent attempted access to system columns.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/tuplestore.h
@@ -54,10 +54,7 @@ extern void tuplestore_puttupleslot(Tuplestorestate *state,
 									TupleTableSlot *slot);
 extern void tuplestore_puttuple(Tuplestorestate *state, HeapTuple tuple);
 extern void tuplestore_putvalues(Tuplestorestate *state, TupleDesc tdesc,
-								 Datum *values, bool *isnull);
-
-/* Backwards compatibility macro */
-#define tuplestore_donestoring(state)	((void) 0)
+								 const Datum *values, const bool *isnull);
 
 extern int	tuplestore_alloc_read_pointer(Tuplestorestate *state, int eflags);
 
@@ -68,10 +65,16 @@ extern void tuplestore_copy_read_pointer(Tuplestorestate *state,
 
 extern void tuplestore_trim(Tuplestorestate *state);
 
+extern void tuplestore_get_stats(Tuplestorestate *state, char **max_storage_type,
+								 int64 *max_space);
+
 extern bool tuplestore_in_memory(Tuplestorestate *state);
 
 extern bool tuplestore_gettupleslot(Tuplestorestate *state, bool forward,
 									bool copy, TupleTableSlot *slot);
+
+extern bool tuplestore_gettupleslot_force(Tuplestorestate *state, bool forward,
+										  bool copy, TupleTableSlot *slot);
 
 extern bool tuplestore_advance(Tuplestorestate *state, bool forward);
 

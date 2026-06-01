@@ -25,6 +25,7 @@
 #include "access/htup.h"
 #include "catalog/dependency.h"
 #include "catalog/objectaddress.h"
+#include "catalog/pg_class.h"			/* for Form_pg_class */
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "replication/walsender.h"
@@ -72,7 +73,7 @@ extern void YbUnsafeTruncate(Relation rel);
 extern void YBCCreateIndex(const char *indexName,
 						   IndexInfo *indexInfo,
 						   TupleDesc indexTupleDesc,
-						   int16 *coloptions,
+						   const int16 *coloptions,
 						   Datum reloptions,
 						   Oid indexId,
 						   Relation rel,
@@ -84,12 +85,12 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid tablespaceId,
 						   Oid indexRelfileNodeId,
 						   Oid oldRelfileNodeId,
-						   Oid *opclassOids);
+						   const Oid *opclassOids);
 
 extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 									  IndexInfo *indexInfo,
 									  TupleDesc indexTupleDesc,
-									  int16 *coloptions,
+									  const int16 *coloptions,
 									  int numIndexKeyAttrs);
 
 extern void YBCDropIndex(Relation index);

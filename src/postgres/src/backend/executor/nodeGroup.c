@@ -3,7 +3,7 @@
  * nodeGroup.c
  *	  Routines to handle group nodes (used for queries with GROUP BY clause).
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -23,9 +23,9 @@
 #include "postgres.h"
 
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeGroup.h"
 #include "miscadmin.h"
-#include "utils/memutils.h"
 
 
 /*
@@ -227,11 +227,6 @@ void
 ExecEndGroup(GroupState *node)
 {
 	PlanState  *outerPlan;
-
-	ExecFreeExprContext(&node->ss.ps);
-
-	/* clean up tuple table */
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
 	outerPlan = outerPlanState(node);
 	ExecEndNode(outerPlan);

@@ -3,7 +3,7 @@
  * snapbuild.h
  *	  Exports from replication/logical/snapbuild.c.
  *
- * Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2026, PostgreSQL Global Development Group
  *
  * src/include/replication/snapbuild.h
  *
@@ -15,6 +15,18 @@
 #include "access/xlogdefs.h"
 #include "utils/snapmgr.h"
 
+/*
+ * forward declarations in this file
+ */
+typedef struct ReorderBuffer ReorderBuffer;
+typedef struct SnapBuild SnapBuild;
+typedef struct xl_heap_new_cid xl_heap_new_cid;
+typedef struct xl_running_xacts xl_running_xacts;
+
+/*
+ * Please keep get_snapbuild_state_desc() (located in the pg_logicalinspect
+ * module) updated if a change needs to be made to SnapBuildState.
+ */
 typedef enum
 {
 	/*
@@ -43,58 +55,48 @@ typedef enum
 	 * were running at that point finished. Till we reach that we hold off
 	 * calling any commit callbacks.
 	 */
-	SNAPBUILD_CONSISTENT = 2
+	SNAPBUILD_CONSISTENT = 2,
 } SnapBuildState;
 
-/* forward declare so we don't have to expose the struct to the public */
-struct SnapBuild;
-typedef struct SnapBuild SnapBuild;
 
-/* forward declare so we don't have to include reorderbuffer.h */
-struct ReorderBuffer;
-
-/* forward declare so we don't have to include heapam_xlog.h */
-struct xl_heap_new_cid;
-struct xl_running_xacts;
 
 extern void CheckPointSnapBuild(void);
 
-extern SnapBuild *AllocateSnapshotBuilder(struct ReorderBuffer *cache,
+extern SnapBuild *AllocateSnapshotBuilder(ReorderBuffer *reorder,
 										  TransactionId xmin_horizon, XLogRecPtr start_lsn,
 										  bool need_full_snapshot,
+										  bool in_slot_creation,
 										  XLogRecPtr two_phase_at);
-extern void FreeSnapshotBuilder(SnapBuild *cache);
+extern void FreeSnapshotBuilder(SnapBuild *builder);
 
 extern void SnapBuildSnapDecRefcount(Snapshot snap);
 
 extern Snapshot SnapBuildInitialSnapshot(SnapBuild *builder);
-extern const char *SnapBuildExportSnapshot(SnapBuild *snapstate);
-
+extern const char *SnapBuildExportSnapshot(SnapBuild *builder);
 extern void SnapBuildClearExportedSnapshot(void);
 extern void SnapBuildResetExportedSnapshotState(void);
 
-extern SnapBuildState SnapBuildCurrentState(SnapBuild *snapstate);
-extern Snapshot SnapBuildGetOrBuildSnapshot(SnapBuild *builder,
-											TransactionId xid);
+extern SnapBuildState SnapBuildCurrentState(SnapBuild *builder);
+extern Snapshot SnapBuildGetOrBuildSnapshot(SnapBuild *builder);
 
-extern bool SnapBuildXactNeedsSkip(SnapBuild *snapstate, XLogRecPtr ptr);
+extern bool SnapBuildXactNeedsSkip(SnapBuild *builder, XLogRecPtr ptr);
 extern XLogRecPtr SnapBuildGetTwoPhaseAt(SnapBuild *builder);
 extern void SnapBuildSetTwoPhaseAt(SnapBuild *builder, XLogRecPtr ptr);
 
 extern void SnapBuildCommitTxn(SnapBuild *builder, XLogRecPtr lsn,
 							   TransactionId xid, int nsubxacts,
-							   TransactionId *subxacts);
+							   TransactionId *subxacts, uint32 xinfo);
 extern bool SnapBuildProcessChange(SnapBuild *builder, TransactionId xid,
 								   XLogRecPtr lsn);
 extern void SnapBuildProcessNewCid(SnapBuild *builder, TransactionId xid,
-								   XLogRecPtr lsn, struct xl_heap_new_cid *cid);
+								   XLogRecPtr lsn,
+								   xl_heap_new_cid *xlrec);
 extern void SnapBuildProcessRunningXacts(SnapBuild *builder, XLogRecPtr lsn,
-										 struct xl_running_xacts *running);
+										 xl_running_xacts *running,
+										 bool db_specific);
 extern void SnapBuildSerializationPoint(SnapBuild *builder, XLogRecPtr lsn);
 
-extern void SnapBuildXidSetCatalogChanges(SnapBuild *builder, TransactionId xid,
-										  int subxcnt, TransactionId *subxacts,
-										  XLogRecPtr lsn);
+extern bool SnapBuildSnapshotExists(XLogRecPtr lsn);
 
 /* YB */
 extern const char *YbSnapBuildExportSnapshotWithReadTime(uint64_t read_time);

@@ -10,7 +10,7 @@
 #    in the same order as the columns of the corresponding catalog.
 #    Comments and blank lines are preserved.
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/reformat_dat_file.pl
@@ -18,7 +18,7 @@
 #----------------------------------------------------------------------
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use FindBin;
 use Getopt::Long;
@@ -41,7 +41,7 @@ my $output_path = '';
 my $full_tuples = 0;
 
 GetOptions(
-	'output=s'    => \$output_path,
+	'output=s' => \$output_path,
 	'full-tuples' => \$full_tuples) || usage();
 
 # Sanity check arguments.
@@ -70,7 +70,7 @@ foreach my $datfile (@ARGV)
 
 	my $catalog = Catalog::ParseHeader($header);
 	my $catname = $catalog->{catname};
-	my $schema  = $catalog->{columns};
+	my $schema = $catalog->{columns};
 
 	push @catnames, $catname;
 	$catalogs{$catname} = $catalog;
@@ -84,7 +84,7 @@ foreach my $datfile (@ARGV)
 # if you need to. In the following example, the "next if !ref $row"
 # check below is a hack to filter out non-hash objects. This is because
 # we build the lookup tables from data that we read using the
-# "preserve_formatting" parameter.
+# "preserve_comments" parameter.
 #
 ##Index access method lookup.
 #my %amnames;
@@ -219,7 +219,7 @@ sub strip_default_values
 # data files.
 sub format_hash
 {
-	my $data          = shift;
+	my $data = shift;
 	my @orig_attnames = @_;
 
 	# Copy attname to new array if it has a value, so we can determine
@@ -237,7 +237,7 @@ sub format_hash
 	my $char_count = 1;
 
 	my $threshold;
-	my $hash_str      = '';
+	my $hash_str = '';
 	my $element_count = 0;
 
 	foreach my $attname (@attnames)
@@ -271,7 +271,7 @@ sub format_hash
 		# Include a leading space in the key-value pair, since this will
 		# always go after either a comma or an additional padding space on
 		# the next line.
-		my $element        = " $attname => '$value'";
+		my $element = " $attname => '$value'";
 		my $element_length = length($element);
 
 		# If adding the element to the current line would expand the line

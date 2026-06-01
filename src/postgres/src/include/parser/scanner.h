@@ -8,7 +8,7 @@
  * higher-level API provided by parser.h.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/parser/scanner.h
@@ -85,8 +85,6 @@ typedef struct core_yy_extra_type
 	 * prevailing GUC settings.
 	 */
 	int			backslash_quote;
-	bool		escape_string_warning;
-	bool		standard_conforming_strings;
 
 	/*
 	 * literalbuf is used to accumulate literal values when multiple rules are
@@ -110,8 +108,7 @@ typedef struct core_yy_extra_type
 	/* first part of UTF16 surrogate pair for Unicode escapes */
 	int32		utf16_first_part;
 
-	/* state variables for literal-lexing warnings */
-	bool		warn_on_first_escape;
+	/* true if we need to verify valid encoding of current literal string */
 	bool		saw_non_ascii;
 } core_yy_extra_type;
 
@@ -138,13 +135,13 @@ extern core_yyscan_t scanner_init(const char *str,
 								  const ScanKeywordList *keywordlist,
 								  const uint16 *keyword_tokens);
 extern void scanner_finish(core_yyscan_t yyscanner);
-extern int	core_yylex(core_YYSTYPE *lvalp, YYLTYPE *llocp,
+extern int	core_yylex(core_YYSTYPE *yylval_param, YYLTYPE *yylloc_param,
 					   core_yyscan_t yyscanner);
 extern int	scanner_errposition(int location, core_yyscan_t yyscanner);
 extern void setup_scanner_errposition_callback(ScannerCallbackState *scbstate,
 											   core_yyscan_t yyscanner,
 											   int location);
 extern void cancel_scanner_errposition_callback(ScannerCallbackState *scbstate);
-extern void scanner_yyerror(const char *message, core_yyscan_t yyscanner) pg_attribute_noreturn();
+pg_noreturn extern void scanner_yyerror(const char *message, core_yyscan_t yyscanner);
 
 #endif							/* SCANNER_H */

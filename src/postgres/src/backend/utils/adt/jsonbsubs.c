@@ -3,7 +3,7 @@
  * jsonbsubs.c
  *	  Subscripting support functions for jsonb.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,16 +14,14 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_type_d.h"
 #include "executor/execExpr.h"
-#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/subscripting.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
-#include "utils/jsonb.h"
-#include "utils/jsonfuncs.h"
 #include "utils/builtins.h"
-#include "utils/lsyscache.h"
+#include "utils/jsonb.h"
 
 
 /* SubscriptingRefState.workspace for jsonb subscripting execution */
@@ -54,7 +52,7 @@ jsonb_subscript_transform(SubscriptingRef *sbsref,
 
 	/*
 	 * Transform and convert the subscript expressions. Jsonb subscripting
-	 * does not support slices, look only and the upper index.
+	 * does not support slices, look only at the upper index.
 	 */
 	foreach(idx, indirection)
 	{
@@ -155,7 +153,7 @@ jsonb_subscript_transform(SubscriptingRef *sbsref,
 		upperIndexpr = lappend(upperIndexpr, subExpr);
 	}
 
-	/* store the transformed lists into the SubscriptRef node */
+	/* store the transformed lists into the SubscriptingRef node */
 	sbsref->refupperindexpr = upperIndexpr;
 	sbsref->reflowerindexpr = NIL;
 

@@ -5,7 +5,6 @@
 
 #include "_int.h"
 #include "miscadmin.h"
-#include "utils/builtins.h"
 
 PG_FUNCTION_INFO_V1(bqarr_in);
 PG_FUNCTION_INFO_V1(bqarr_out);
@@ -35,6 +34,7 @@ typedef struct
 	char	   *buf;
 	int32		state;
 	int32		count;
+	struct Node *escontext;
 	/* reverse polish notation in list (for temporary usage) */
 	NODE	   *str;
 	/* number in str */
@@ -135,7 +135,7 @@ gettoken(WORKSTATE *state, int32 *val)
 static void
 pushquery(WORKSTATE *state, int32 type, int32 val)
 {
-	NODE	   *tmp = (NODE *) palloc(sizeof(NODE));
+	NODE	   *tmp = palloc_object(NODE);
 
 	tmp->type = type;
 	tmp->val = val;
@@ -179,7 +179,7 @@ makepol(WORKSTATE *state)
 				else
 				{
 					if (lenstack == STACKDEPTH)
-						ereport(ERROR,
+						ereturn(state->escontext, ERR,
 								(errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
 								 errmsg("statement too complex")));
 					stack[lenstack] = val;
@@ -206,10 +206,9 @@ makepol(WORKSTATE *state)
 				break;
 			case ERR:
 			default:
-				ereport(ERROR,
+				ereturn(state->escontext, ERR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("syntax error")));
-				return ERR;
 		}
 	}
 
@@ -299,7 +298,7 @@ bool
 signconsistent(QUERYTYPE *query, BITVECP sign, int siglen, bool calcnot)
 {
 	return execute(GETQUERY(query) + query->size - 1,
-				   (void *) sign, (void *) (intptr_t) siglen, calcnot,
+				   sign, (void *) (intptr_t) siglen, calcnot,
 				   checkcondition_bit);
 }
 
@@ -313,7 +312,7 @@ execconsistent(QUERYTYPE *query, ArrayType *array, bool calcnot)
 	chkval.arrb = ARRPTR(array);
 	chkval.arre = chkval.arrb + ARRNELEMS(array);
 	return execute(GETQUERY(query) + query->size - 1,
-				   (void *) &chkval, NULL, calcnot,
+				   &chkval, NULL, calcnot,
 				   checkcondition_arr);
 }
 
@@ -347,7 +346,7 @@ gin_bool_consistent(QUERYTYPE *query, bool *check)
 	 * extraction code in ginint4_queryextract.
 	 */
 	gcv.first = items;
-	gcv.mapped_check = (bool *) palloc(sizeof(bool) * query->size);
+	gcv.mapped_check = palloc_array(bool, query->size);
 	for (i = 0; i < query->size; i++)
 	{
 		if (items[i].type == VAL)
@@ -355,7 +354,7 @@ gin_bool_consistent(QUERYTYPE *query, bool *check)
 	}
 
 	return execute(GETQUERY(query) + query->size - 1,
-				   (void *) &gcv, NULL, true,
+				   &gcv, NULL, true,
 				   checkcondition_gin);
 }
 
@@ -483,6 +482,7 @@ bqarr_in(PG_FUNCTION_ARGS)
 	ITEM	   *ptr;
 	NODE	   *tmp;
 	int32		pos = 0;
+	struct Node *escontext = fcinfo->context;
 
 #ifdef BS_DEBUG
 	StringInfoData pbuf;
@@ -493,16 +493,18 @@ bqarr_in(PG_FUNCTION_ARGS)
 	state.count = 0;
 	state.num = 0;
 	state.str = NULL;
+	state.escontext = escontext;
 
 	/* make polish notation (postfix, but in reverse order) */
-	makepol(&state);
+	if (makepol(&state) == ERR)
+		PG_RETURN_NULL();
 	if (!state.num)
-		ereport(ERROR,
+		ereturn(escontext, (Datum) 0,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("empty query")));
 
 	if (state.num > QUERYTYPEMAXITEMS)
-		ereport(ERROR,
+		ereturn(escontext, (Datum) 0,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("number of query items (%d) exceeds the maximum allowed (%d)",
 						state.num, (int) QUERYTYPEMAXITEMS)));
@@ -611,7 +613,7 @@ infix(INFIX *in, bool first)
 
 		nrm.curpol = in->curpol;
 		nrm.buflen = 16;
-		nrm.cur = nrm.buf = (char *) palloc(sizeof(char) * nrm.buflen);
+		nrm.cur = nrm.buf = palloc_array(char, nrm.buflen);
 
 		/* get right operand */
 		infix(&nrm, false);
@@ -649,7 +651,7 @@ bqarr_out(PG_FUNCTION_ARGS)
 
 	nrm.curpol = GETQUERY(query) + query->size - 1;
 	nrm.buflen = 32;
-	nrm.cur = nrm.buf = (char *) palloc(sizeof(char) * nrm.buflen);
+	nrm.cur = nrm.buf = palloc_array(char, nrm.buflen);
 	*(nrm.cur) = '\0';
 	infix(&nrm, true);
 

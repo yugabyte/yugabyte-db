@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/bin/psql/startup.c
  */
@@ -24,6 +24,7 @@
 #include "help.h"
 #include "input.h"
 #include "mainloop.h"
+#include "portability/instr_time.h"
 #include "settings.h"
 
 /*
@@ -47,7 +48,7 @@ enum _actions
 {
 	ACT_SINGLE_QUERY,
 	ACT_SINGLE_SLASH,
-	ACT_FILE
+	ACT_FILE,
 };
 
 typedef struct SimpleActionListCell
@@ -110,7 +111,7 @@ log_locus_callback(const char **filename, uint64 *lineno)
 	}
 }
 
-#ifdef HAVE_POSIX_DECL_SIGWAIT
+#ifndef WIN32
 static void
 empty_signal_handler(SIGNAL_ARGS)
 {
@@ -205,6 +206,11 @@ main(int argc, char *argv[])
 	SetVariable(pset.vars, "PROMPT3", DEFAULT_PROMPT3);
 	SetVariableBool(pset.vars, "SHOW_ALL_RESULTS");
 
+	/* Initialize pipeline variables */
+	SetVariable(pset.vars, "PIPELINE_SYNC_COUNT", "0");
+	SetVariable(pset.vars, "PIPELINE_COMMAND_COUNT", "0");
+	SetVariable(pset.vars, "PIPELINE_RESULT_COUNT", "0");
+
 	parse_psql_options(argc, argv, &options);
 
 	/*
@@ -247,8 +253,8 @@ main(int argc, char *argv[])
 	do
 	{
 #define PARAMS_ARRAY_SIZE	8
-		const char **keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
-		const char **values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
+		const char **keywords = pg_malloc_array(const char *, PARAMS_ARRAY_SIZE);
+		const char **values = pg_malloc_array(const char *, PARAMS_ARRAY_SIZE);
 
 		keywords[0] = "host";
 		values[0] = options.host;
@@ -308,7 +314,7 @@ main(int argc, char *argv[])
 
 	psql_setup_cancel_handler();
 
-#ifdef HAVE_POSIX_DECL_SIGWAIT
+#ifndef WIN32
 
 	/*
 	 * do_watch() needs signal handlers installed (otherwise sigwait() will
@@ -321,6 +327,9 @@ main(int argc, char *argv[])
 #endif
 
 	PQsetNoticeProcessor(pset.db, NoticeProcessor, NULL);
+
+	/* initialize timing infrastructure (required for INSTR_* calls) */
+	pg_initialize_timing();
 
 	SyncVariables();
 
@@ -399,7 +408,7 @@ main(int argc, char *argv[])
 								cell->val, strlen(cell->val),
 								pset.encoding, standard_strings());
 				cond_stack = conditional_stack_create();
-				psql_scan_set_passthrough(scan_state, (void *) cond_stack);
+				psql_scan_set_passthrough(scan_state, cond_stack);
 
 				successResult = HandleSlashCmds(scan_state,
 												cond_stack,
@@ -750,7 +759,7 @@ simple_action_list_append(SimpleActionList *list,
 {
 	SimpleActionListCell *cell;
 
-	cell = (SimpleActionListCell *) pg_malloc(sizeof(SimpleActionListCell));
+	cell = pg_malloc_object(SimpleActionListCell);
 
 	cell->next = NULL;
 	cell->action = action;
@@ -937,6 +946,21 @@ static bool
 histsize_hook(const char *newval)
 {
 	return ParseVariableNum(newval, "HISTSIZE", &pset.histsize);
+}
+
+static char *
+watch_interval_substitute_hook(char *newval)
+{
+	if (newval == NULL)
+		newval = pg_strdup(DEFAULT_WATCH_INTERVAL);
+	return newval;
+}
+
+static bool
+watch_interval_hook(const char *newval)
+{
+	return ParseVariableDouble(newval, "WATCH_INTERVAL", &pset.watch_interval,
+							   0, DEFAULT_WATCH_INTERVAL_MAX);
 }
 
 static char *
@@ -1272,6 +1296,9 @@ EstablishVariableSpace(void)
 	SetVariableHooks(pset.vars, "HIDE_TABLEAM",
 					 bool_substitute_hook,
 					 hide_tableam_hook);
+	SetVariableHooks(pset.vars, "WATCH_INTERVAL",
+					 watch_interval_substitute_hook,
+					 watch_interval_hook);
 	SetVariableHooks(pset.vars, "YB_DISABLE_ERROR_PREFIX",
 					 NULL,
 					 yb_disable_error_prefix_hook);

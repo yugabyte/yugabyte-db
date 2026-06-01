@@ -3,7 +3,7 @@
  * xlogdesc.c
  *	  rmgr descriptor routines for access/transam/xlog.c
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,6 +18,7 @@
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "catalog/pg_control.h"
+#include "storage/checksum.h"
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 
@@ -33,6 +34,61 @@ const struct config_enum_entry wal_level_options[] = {
 	{NULL, 0, false}
 };
 
+/*
+ * Find a string representation for wal_level
+ */
+static const char *
+get_wal_level_string(int wal_level)
+{
+	const struct config_enum_entry *entry;
+	const char *wal_level_str = "?";
+
+	for (entry = wal_level_options; entry->name; entry++)
+	{
+		if (entry->val == wal_level)
+		{
+			wal_level_str = entry->name;
+			break;
+		}
+	}
+
+	return wal_level_str;
+}
+
+const char *
+get_checksum_state_string(uint32 state)
+{
+	switch (state)
+	{
+		case PG_DATA_CHECKSUM_VERSION:
+			return "on";
+		case PG_DATA_CHECKSUM_INPROGRESS_OFF:
+			return "inprogress-off";
+		case PG_DATA_CHECKSUM_INPROGRESS_ON:
+			return "inprogress-on";
+		case PG_DATA_CHECKSUM_OFF:
+			return "off";
+	}
+
+	Assert(false);
+	return "?";
+}
+
+void
+xlog2_desc(StringInfo buf, XLogReaderState *record)
+{
+	char	   *rec = XLogRecGetData(record);
+	uint8		info = XLogRecGetInfo(record) & ~XLR_INFO_MASK;
+
+	if (info == XLOG2_CHECKSUMS)
+	{
+		xl_checksum_state xlrec;
+
+		memcpy(&xlrec, rec, sizeof(xl_checksum_state));
+		appendStringInfoString(buf, get_checksum_state_string(xlrec.new_checksum_state));
+	}
+}
+
 void
 xlog_desc(StringInfo buf, XLogReaderState *record)
 {
@@ -44,15 +100,18 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 	{
 		CheckPoint *checkpoint = (CheckPoint *) rec;
 
-		appendStringInfo(buf, "redo %X/%X; "
-						 "tli %u; prev tli %u; fpw %s; xid %u:%u; oid %u; multi %u; offset %u; "
+		appendStringInfo(buf, "redo %X/%08X; "
+						 "tli %u; prev tli %u; fpw %s; wal_level %s; logical decoding %s; xid %u:%u; oid %u; multi %u; offset %" PRIu64 "; "
 						 "oldest xid %u in DB %u; oldest multi %u in DB %u; "
 						 "oldest/newest commit timestamp xid: %u/%u; "
-						 "oldest running xid %u; %s",
+						 "oldest running xid %u; "
+						 "checksums %s; %s",
 						 LSN_FORMAT_ARGS(checkpoint->redo),
 						 checkpoint->ThisTimeLineID,
 						 checkpoint->PrevTimeLineID,
 						 checkpoint->fullPageWrites ? "true" : "false",
+						 get_wal_level_string(checkpoint->wal_level),
+						 checkpoint->logicalDecodingEnabled ? "true" : "false",
 						 EpochFromFullTransactionId(checkpoint->nextXid),
 						 XidFromFullTransactionId(checkpoint->nextXid),
 						 checkpoint->nextOid,
@@ -65,6 +124,7 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 						 checkpoint->oldestCommitTsXid,
 						 checkpoint->newestCommitTsXid,
 						 checkpoint->oldestActiveXid,
+						 get_checksum_state_string(checkpoint->dataChecksumState),
 						 (info == XLOG_CHECKPOINT_SHUTDOWN) ? "shutdown" : "online");
 	}
 	else if (info == XLOG_NEXTOID)
@@ -89,26 +149,15 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 		XLogRecPtr	startpoint;
 
 		memcpy(&startpoint, rec, sizeof(XLogRecPtr));
-		appendStringInfo(buf, "%X/%X", LSN_FORMAT_ARGS(startpoint));
+		appendStringInfo(buf, "%X/%08X", LSN_FORMAT_ARGS(startpoint));
 	}
 	else if (info == XLOG_PARAMETER_CHANGE)
 	{
 		xl_parameter_change xlrec;
 		const char *wal_level_str;
-		const struct config_enum_entry *entry;
 
 		memcpy(&xlrec, rec, sizeof(xl_parameter_change));
-
-		/* Find a string representation for wal_level */
-		wal_level_str = "?";
-		for (entry = wal_level_options; entry->name; entry++)
-		{
-			if (entry->val == xlrec.wal_level)
-			{
-				wal_level_str = entry->name;
-				break;
-			}
-		}
+		wal_level_str = get_wal_level_string(xlrec.wal_level);
 
 		appendStringInfo(buf, "max_connections=%d max_worker_processes=%d "
 						 "max_wal_senders=%d max_prepared_xacts=%d "
@@ -135,18 +184,39 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 		xl_end_of_recovery xlrec;
 
 		memcpy(&xlrec, rec, sizeof(xl_end_of_recovery));
-		appendStringInfo(buf, "tli %u; prev tli %u; time %s",
+		appendStringInfo(buf, "tli %u; prev tli %u; time %s; wal_level %s",
 						 xlrec.ThisTimeLineID, xlrec.PrevTimeLineID,
-						 timestamptz_to_str(xlrec.end_time));
+						 timestamptz_to_str(xlrec.end_time),
+						 get_wal_level_string(xlrec.wal_level));
 	}
 	else if (info == XLOG_OVERWRITE_CONTRECORD)
 	{
 		xl_overwrite_contrecord xlrec;
 
 		memcpy(&xlrec, rec, sizeof(xl_overwrite_contrecord));
-		appendStringInfo(buf, "lsn %X/%X; time %s",
+		appendStringInfo(buf, "lsn %X/%08X; time %s",
 						 LSN_FORMAT_ARGS(xlrec.overwritten_lsn),
 						 timestamptz_to_str(xlrec.overwrite_time));
+	}
+	else if (info == XLOG_CHECKPOINT_REDO)
+	{
+		xl_checkpoint_redo xlrec;
+
+		memcpy(&xlrec, rec, sizeof(xl_checkpoint_redo));
+		appendStringInfo(buf, "wal_level %s; checksums %s",
+						 get_wal_level_string(xlrec.wal_level),
+						 get_checksum_state_string(xlrec.data_checksum_version));
+	}
+	else if (info == XLOG_LOGICAL_DECODING_STATUS_CHANGE)
+	{
+		bool		enabled;
+
+		memcpy(&enabled, rec, sizeof(bool));
+		appendStringInfoString(buf, enabled ? "true" : "false");
+	}
+	else if (info == XLOG_ASSIGN_LSN)
+	{
+		/* no further information to print */
 	}
 }
 
@@ -196,6 +266,30 @@ xlog_identify(uint8 info)
 		case XLOG_FPI_FOR_HINT:
 			id = "FPI_FOR_HINT";
 			break;
+		case XLOG_CHECKPOINT_REDO:
+			id = "CHECKPOINT_REDO";
+			break;
+		case XLOG_LOGICAL_DECODING_STATUS_CHANGE:
+			id = "LOGICAL_DECODING_STATUS_CHANGE";
+			break;
+		case XLOG_ASSIGN_LSN:
+			id = "ASSIGN_LSN";
+			break;
+	}
+
+	return id;
+}
+
+const char *
+xlog2_identify(uint8 info)
+{
+	const char *id = NULL;
+
+	switch (info & ~XLR_INFO_MASK)
+	{
+		case XLOG2_CHECKSUMS:
+			id = "CHECKSUMS";
+			break;
 	}
 
 	return id;
@@ -219,12 +313,12 @@ XLogRecGetBlockRefInfo(XLogReaderState *record, bool pretty,
 
 	for (block_id = 0; block_id <= XLogRecMaxBlockId(record); block_id++)
 	{
-		RelFileNode rnode;
+		RelFileLocator rlocator;
 		ForkNumber	forknum;
 		BlockNumber blk;
 
 		if (!XLogRecGetBlockTagExtended(record, block_id,
-										&rnode, &forknum, &blk, NULL))
+										&rlocator, &forknum, &blk, NULL))
 			continue;
 
 		if (detailed_format)
@@ -239,7 +333,7 @@ XLogRecGetBlockRefInfo(XLogReaderState *record, bool pretty,
 			appendStringInfo(buf,
 							 "blkref #%d: rel %u/%u/%u fork %s blk %u",
 							 block_id,
-							 rnode.spcNode, rnode.dbNode, rnode.relNode,
+							 rlocator.spcOid, rlocator.dbOid, rlocator.relNumber,
 							 forkNames[forknum],
 							 blk);
 
@@ -299,7 +393,7 @@ XLogRecGetBlockRefInfo(XLogReaderState *record, bool pretty,
 				appendStringInfo(buf,
 								 ", blkref #%d: rel %u/%u/%u fork %s blk %u",
 								 block_id,
-								 rnode.spcNode, rnode.dbNode, rnode.relNode,
+								 rlocator.spcOid, rlocator.dbOid, rlocator.relNumber,
 								 forkNames[forknum],
 								 blk);
 			}
@@ -308,7 +402,7 @@ XLogRecGetBlockRefInfo(XLogReaderState *record, bool pretty,
 				appendStringInfo(buf,
 								 ", blkref #%d: rel %u/%u/%u blk %u",
 								 block_id,
-								 rnode.spcNode, rnode.dbNode, rnode.relNode,
+								 rlocator.spcOid, rlocator.dbOid, rlocator.relNumber,
 								 blk);
 			}
 
@@ -319,9 +413,9 @@ XLogRecGetBlockRefInfo(XLogReaderState *record, bool pretty,
 					*fpi_len += XLogRecGetBlock(record, block_id)->bimg_len;
 
 				if (XLogRecBlockImageApply(record, block_id))
-					appendStringInfo(buf, " FPW");
+					appendStringInfoString(buf, " FPW");
 				else
-					appendStringInfo(buf, " FPW for WAL verification");
+					appendStringInfoString(buf, " FPW for WAL verification");
 			}
 		}
 	}

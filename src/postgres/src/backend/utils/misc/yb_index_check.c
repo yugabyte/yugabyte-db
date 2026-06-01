@@ -1077,7 +1077,8 @@ init_estate(EState *estate, Relation baserel)
 	rte->rtekind = RTE_RELATION;
 	rte->relid = RelationGetRelid(baserel);
 	rte->relkind = RELKIND_RELATION;
-	ExecInitRangeTable(estate, list_make1(rte));
+	ExecInitRangeTable(estate, list_make1(rte), NIL /* permInfos */,
+					   NULL /* unpruned_relids */);
 
 	estate->es_param_exec_vals =
 		(ParamExecData *) palloc0(yb_bnl_batch_size * sizeof(ParamExecData));
@@ -1370,7 +1371,7 @@ yb_compute_row_ybctid(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	Relation	rel = RelationIdGetRelation(relid);
 	TupleTableSlot *slot = MakeTupleTableSlot(RelationGetDescr(rel),
-											  &TTSOpsVirtual);
+											  &TTSOpsVirtual, 0);
 	Form_pg_index index = rel->rd_index;
 
 	ExecStoreHeapTupleDatum(PG_GETARG_DATUM(1), slot);

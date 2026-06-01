@@ -287,8 +287,8 @@ void
 YbDatumToBinary(Datum datum, void **data, int64 *bytes)
 {
 	datum = PointerGetDatum(PG_DETOAST_DATUM(datum));
-	*data = VARDATA_ANY(datum);
-	*bytes = VARSIZE_ANY_EXHDR(datum);
+	*data = VARDATA_ANY(DatumGetPointer(datum));
+	*bytes = VARSIZE_ANY_EXHDR(DatumGetPointer(datum));
 }
 
 Datum
@@ -313,8 +313,8 @@ void
 YbDatumToText(Datum datum, char **data, int64 *bytes)
 {
 	datum = PointerGetDatum(PG_DETOAST_DATUM(datum));
-	*data = VARDATA_ANY(datum);
-	*bytes = VARSIZE_ANY_EXHDR(datum);
+	*data = VARDATA_ANY(DatumGetPointer(datum));
+	*bytes = VARSIZE_ANY_EXHDR(DatumGetPointer(datum));
 }
 
 Datum
@@ -725,7 +725,7 @@ YbUuidToDatum(const unsigned char *data, int64 bytes, const YbcPgTypeAttrs *type
 	if (bytes != UUID_LEN)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DATA_CORRUPTED),
-						errmsg("unexpected size for UUID (%ld)", bytes)));
+						errmsg("unexpected size for UUID (%lld)", bytes)));
 	}
 
 	uuid = (pg_uuid_t *) palloc(sizeof(pg_uuid_t));
@@ -786,7 +786,7 @@ YbIntervalToDatum(const void *data, int64 bytes, const YbcPgTypeAttrs *type_attr
 	if (bytes != sz)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DATA_CORRUPTED),
-						errmsg("unexpected size for Interval (%ld)", bytes)));
+						errmsg("unexpected size for Interval (%lld)", bytes)));
 	}
 	Interval   *result = palloc(sz);
 
@@ -828,7 +828,7 @@ YbDatumToDocdb(Datum datum, uint8 **data, int64 *bytes)
 	if (*bytes < 0)
 	{
 		datum = PointerGetDatum(PG_DETOAST_DATUM(datum));
-		*bytes = VARSIZE_ANY(datum);
+		*bytes = VARSIZE_ANY(DatumGetPointer(datum));
 	}
 	*data = (uint8 *) datum;
 }
@@ -1898,7 +1898,7 @@ YbConstructArrayDatum(Oid arraytypoid, const char **items, const int nelems,
 					elems[i] = CStringGetTextDatum(items[i]);
 					break;
 				case UUIDARRAYOID:
-					elems[i] = UUIDPGetDatum(items[i]);
+					elems[i] = UUIDPGetDatum((const pg_uuid_t *) items[i]);
 					break;
 				default:
 					elog(ERROR, "unsupported array type: %d", arraytypoid);

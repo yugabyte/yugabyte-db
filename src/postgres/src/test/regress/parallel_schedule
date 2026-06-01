@@ -11,11 +11,6 @@
 # required setup steps
 test: test_setup
 
-# run tablespace by itself, and early, because it forces a checkpoint;
-# we'd prefer not to have checkpoints later in the tests because that
-# interferes with crash-recovery testing.
-test: tablespace
-
 # ----------
 # The first group of parallel tests
 # ----------
@@ -26,14 +21,14 @@ test: boolean char name varchar text int2 int4 int8 oid float4 float8 bit numeri
 # multirangetypes depends on rangetypes
 # multirangetypes shouldn't run concurrently with type_sanity
 # ----------
-test: strings numerology point lseg line box path polygon circle date time timetz timestamp timestamptz interval inet macaddr macaddr8 multirangetypes
+test: strings md5 numerology point lseg line box path polygon circle date time timetz timestamp timestamptz interval inet macaddr macaddr8 multirangetypes
 
 # ----------
 # Another group of parallel tests
 # geometry depends on point, lseg, line, box, path, polygon, circle
 # horology depends on date, time, timetz, timestamp, timestamptz, interval
 # ----------
-test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc database stats_import
+test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc database stats_import pg_ndistinct pg_dependencies oid8 encoding euc_kr
 
 # ----------
 # Load huge amounts of data
@@ -41,7 +36,7 @@ test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comment
 # execute two copy tests in parallel, to check that copy itself
 # is concurrent safe.
 # ----------
-test: copy copyselect copydml insert insert_conflict
+test: copy copyselect copydml copyencoding insert insert_conflict
 
 # ----------
 # More groups of parallel tests
@@ -53,16 +48,13 @@ test: create_index create_index_spgist create_view index_including index_includi
 # ----------
 # Another group of parallel tests
 # ----------
-test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse
+test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse create_property_graph for_portion_of
 
 # ----------
 # sanity_check does a vacuum, affecting the sort order of SELECT *
 # results. So it should not run parallel to other tests.
 # ----------
 test: sanity_check
-
-# Note: the ignore: line does not skip random, just mark it as ignorable
-ignore: random
 
 # ----------
 # Another group of parallel tests
@@ -74,7 +66,7 @@ test: select_into select_distinct select_distinct_on select_implicit select_havi
 # ----------
 # Another group of parallel tests
 # ----------
-test: brin gin gist spgist privileges init_privs security_label collate matview lock replica_identity rowsecurity object_address tablesample groupingsets drop_operator password identity generated join_hash
+test: brin gin gist spgist privileges init_privs security_label collate matview lock replica_identity rowsecurity object_address tablesample groupingsets drop_operator password identity generated_stored join_hash
 
 # ----------
 # Additional BRIN tests
@@ -83,13 +75,13 @@ test: brin_bloom brin_multi
 
 # ----------
 # Another group of parallel tests
+# ----------
+test: create_table_like alter_generic alter_operator misc async dbsize merge misc_functions nls sysviews tsrf tid tidscan tidrangescan collate.utf8 collate.icu.utf8 incremental_sort create_role without_overlaps generated_virtual
+
+# collate.linux.utf8 and collate.icu.utf8 tests cannot be run in parallel with each other
 # psql depends on create_am
 # amutils depends on geometry, create_index_spgist, hash_index, brin
-# ----------
-test: create_table_like alter_generic alter_operator misc async dbsize merge misc_functions sysviews tsrf tid tidscan tidrangescan collate.icu.utf8 incremental_sort create_role
-
-# collate.*.utf8 tests cannot be run in parallel with each other
-test: rules psql psql_crosstab amutils stats_ext collate.linux.utf8
+test: rules psql psql_crosstab psql_pipeline amutils stats_ext collate.linux.utf8 collate.windows.win1252
 
 # ----------
 # Run these alone so they don't run out of parallel workers
@@ -99,6 +91,10 @@ test: select_parallel
 test: write_parallel
 test: vacuum_parallel
 
+# Run this alone, because concurrent DROP TABLE would make non-superuser
+# "ANALYZE;" fail with "relation with OID $n does not exist".
+test: maintain_every
+
 # no relation related tests can be put in this group
 test: publication subscription
 
@@ -106,17 +102,17 @@ test: publication subscription
 # Another group of parallel tests
 # select_views depends on create_view
 # ----------
-test: select_views portals_p2 foreign_key cluster dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock indirect_toast equivclass
+test: select_views portals_p2 foreign_key cluster dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock indirect_toast equivclass stats_rewrite graph_table
 
 # ----------
 # Another group of parallel tests (JSON related)
 # ----------
-test: json jsonb json_encoding jsonpath jsonpath_encoding jsonb_jsonpath
+test: json jsonb json_encoding jsonpath jsonpath_encoding jsonb_jsonpath sqljson sqljson_queryfuncs sqljson_jsontable
 
 # ----------
 # Another group of parallel tests
 # with depends on create_misc
-# NB: temp.sql does a reconnect which transiently uses 2 connections,
+# NB: temp.sql does reconnects which transiently uses 2 connections,
 # so keep this parallel group to at most 19 tests
 # ----------
 test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion truncate alter_table sequence polymorphism rowtypes returning largeobject with xml
@@ -127,11 +123,22 @@ test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion tr
 # The stats test resets stats, so nothing else needing stats access can be in
 # this group.
 # ----------
-test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression memoize stats
+test: partition_merge partition_split partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression compression_lz4 memoize stats predicate numa eager_aggregate graph_table_rls planner_est
 
-# event_trigger cannot run concurrently with any test that runs DDL
+# event_trigger depends on create_am and cannot run concurrently with
+# any test that runs DDL
 # oidjoins is read-only, though, and should run late for best coverage
-test: event_trigger oidjoins
+test: oidjoins event_trigger
+
+test: role_ddl tablespace_ddl database_ddl
+
+# event_trigger_login cannot run concurrently with any other tests because
+# on-login event handling could catch connection of a concurrent test.
+test: event_trigger_login
 
 # this test also uses event triggers, so likewise run it by itself
 test: fast_default
+
+# run tablespace test at the end because it drops the tablespace created during
+# setup that other tests may use.
+test: tablespace

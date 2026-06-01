@@ -5,7 +5,7 @@
  *
  * This is a fairly simple bitmap.
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -76,7 +76,7 @@ datapagemap_iterate(datapagemap_t *map)
 {
 	datapagemap_iterator_t *iter;
 
-	iter = pg_malloc(sizeof(datapagemap_iterator_t));
+	iter = pg_malloc0_object(datapagemap_iterator_t);
 	iter->map = map;
 	iter->nextblkno = 0;
 

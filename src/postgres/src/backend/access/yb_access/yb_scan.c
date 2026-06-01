@@ -75,6 +75,10 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "ybgate/ybgate_api.h"
 
+/* YB includes*/
+#include "utils/sortsupport.h"
+#include "utils/wait_event.h"
+
 typedef struct YbAttnumBmsState
 {
 	Bitmapset  *bms;
@@ -381,7 +385,7 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 	/* Form the list of tuples for the RHS. */
 	for (int i = 0; i < nvalues; i++)
 	{
-		tuple.t_len = HeapTupleHeaderGetDatumLength(values[i]);
+		tuple.t_len = HeapTupleHeaderGetDatumLength(DatumGetHeapTupleHeader(values[i]));
 		tuple.t_data = DatumGetHeapTupleHeader(values[i]);
 		heap_deform_tuple(&tuple, tupdesc, datum_values, is_null);
 		for (int j = 0; j < n_attnum_values; j++)
@@ -1514,7 +1518,7 @@ YbIsTupleInRange(Datum value, TupleDesc bind_desc,
 
 	ItemPointerSetInvalid(&(tuple.t_self));
 	tuple.t_tableOid = InvalidOid;
-	tuple.t_len = HeapTupleHeaderGetDatumLength(value);
+	tuple.t_len = HeapTupleHeaderGetDatumLength(DatumGetHeapTupleHeader(value));
 	tuple.t_data = DatumGetHeapTupleHeader(value);
 	heap_deform_tuple(&tuple, val_tupdesc,
 					  datum_values, datum_nulls);
@@ -1928,9 +1932,20 @@ YbCullArray(ArrayType *arrayval,
 	 * sort in the same ordering used by the index column, so that the
 	 * successive primitive indexscans produce data in index order.
 	 */
+	/*
+	 * YB_TODO_PG19MERGE: _bt_sort_array_elements moved from nbtutils.c into
+	 * nbtpreprocesskeys.c (PG commit 597b1ffbf12352a3863a894f16741864aaf2242f),
+	 * changed signature.
+	 * The YB-only IsYugaByteEnabled() fallback that used to live inside the old
+	 * function (lookup_type_cache when get_opfamily_proc returns InvalidOid) is
+	 * also gone.
+	 */
+#if 0
 	*culled_num_elems = _bt_sort_array_elements(&tmp_scan_desc, key,
 												false,	/* reverse */
 												elem_values, num_valid);
+#endif
+	*culled_num_elems = num_valid;
 
 	return true;
 }
@@ -1993,7 +2008,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 		 * All columns are bindable: mark them as bound before proceeding to
 		 * bind them.
 		 */
-		while ((bound_idx = bms_first_member(newly_bound_idxs)) >= 0)
+		bound_idx = -1;
+		while ((bound_idx = bms_next_member(newly_bound_idxs, bound_idx)) >= 0)
 		{
 			is_column_bound[bound_idx] = true;
 		}
@@ -2037,7 +2053,15 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 							   num_elems, elem_values);
 	}
 	else if (scalar_attnum == YBTupleIdAttributeNumber)
-		YBCPgBindYbctids(ybScan->handle, num_elems, elem_values);
+		/*
+		 * YB_TODO_PG19MERGE: PG19 (commit 2a600a93c7be5b0bf8cacb1af78009db12bc4857
+		 * "Make type Datum be 8 bytes wide everywhere") changed Datum from
+		 * uintptr_t to uint64_t. YBC's YBCPgBindYbctids declares the datums
+		 * param as uintptr_t*; the two are now distinct pointer types under
+		 * -Wint-conversion. Cast for now; long-term update ybc_pggate.h to
+		 * take Datum (or uint64_t).
+		 */
+		YBCPgBindYbctids(ybScan->handle, num_elems, (uintptr_t *) elem_values);
 	else
 		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
 							scalar_attnum, num_elems,
@@ -2454,7 +2478,7 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 	}
 
 	/* Bind keys for BETWEEN and IS NOT NULL */
-	int			min_idx = bms_first_member(scan_plan->qualified_scan_key_cols);
+	int			min_idx = bms_next_member(scan_plan->qualified_scan_key_cols, -1);
 
 	min_idx = min_idx < 0 ? 0 : min_idx;
 	for (int idx = min_idx; idx < max_idx; idx++)
@@ -3623,7 +3647,7 @@ ybc_free_ybscan(YbScanDesc ybscan)
 	 * even though it's YbScanDesc was not set. We need to cleanup after the
 	 * biss_ScanDesc but not the YbScanDesc.
 	 */
-	if (PointerIsValid(ybscan))
+	if (ybscan != NULL)
 	{
 		YBCPgDeleteStatement(ybscan->handle);
 		pfree(ybscan);
@@ -3682,7 +3706,7 @@ ybc_systable_getnext(YbSysScanBase default_scan)
 {
 	YbDefaultSysScan scan = (void *) default_scan;
 
-	Assert(PointerIsValid(scan->ybscan));
+	Assert(scan->ybscan != NULL);
 
 	HeapTuple	tuple = ybc_getnext_heaptuple(scan->ybscan,
 											  true);	/* is_forward_scan */
@@ -3811,7 +3835,7 @@ ybc_heap_getnext(TableScanDesc tsdesc)
 {
 	HeapTuple	tuple;
 
-	Assert(PointerIsValid(tsdesc->ybscan));
+	Assert(tsdesc->ybscan != NULL);
 	tuple = ybc_getnext_heaptuple(tsdesc->ybscan, true /* is_forward_scan */ );
 
 	return tuple;
@@ -3945,11 +3969,21 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 
 	ybcAttnumBmsDestroy(&required_attrs);
 
-	/* Create the Scan node */
-	scan_plan = makeNode(Scan);
-	scan_plan->scanrelid = varno;
-	scan_plan->plan.targetlist = targetlist;
-	scan_plan->plan.qual = NIL;	/* No quals for backfill scan */
+	/*
+	 * YB_TODO_PG19MERGE: Scan is now `pg_node_attr(abstract)` in PG19 (see
+	 * plannodes.h Scan struct), so makeNode(Scan) no longer produces a valid
+	 * T_Scan nodetag. Build a SeqScan (which is just `Scan scan;` with no
+	 * extra fields) and return its embedded Scan. Callers only access Scan
+	 * fields, so the SeqScan tag is harmless here.
+	 */
+	{
+		SeqScan    *seq_plan = makeNode(SeqScan);
+
+		scan_plan = &seq_plan->scan;
+		scan_plan->scanrelid = varno;
+		scan_plan->plan.targetlist = targetlist;
+		scan_plan->plan.qual = NIL;	/* No quals for backfill scan */
+	}
 
 	return scan_plan;
 }
@@ -4380,7 +4414,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 				 */
 				if (OidIsValid(clause_op) &&
 					(!yb_ignore_bool_cond_for_legacy_estimate ||
-					 !IsBooleanOpfamily(opfamily)))
+					 !IsBuiltinBooleanOpfamily(opfamily)))
 				{
 					ybcAddAttributeColumn(&scan_plan, attnum);
 					if (other_operand && IsA(other_operand, Const))

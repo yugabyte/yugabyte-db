@@ -31,7 +31,7 @@
  * different) code.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -63,6 +63,13 @@
 #define BGWORKER_BACKEND_DATABASE_CONNECTION		0x0002
 
 /*
+ * Exit the bgworker if its database is involved in a CREATE, ALTER or DROP
+ * database command.  It requires BGWORKER_SHMEM_ACCESS and
+ * BGWORKER_BACKEND_DATABASE_CONNECTION.
+ */
+#define BGWORKER_INTERRUPTIBLE			0x0004
+
+/*
  * This class is used internally for parallel queries, to keep track of the
  * number of active parallel workers and make sure we never launch more than
  * max_parallel_workers parallel workers at the same time.  Third party
@@ -81,7 +88,7 @@ typedef enum
 {
 	BgWorkerStart_PostmasterStart,
 	BgWorkerStart_ConsistentState,
-	BgWorkerStart_RecoveryFinished
+	BgWorkerStart_RecoveryFinished,
 } BgWorkerStartTime;
 
 #define BGW_DEFAULT_RESTART_INTERVAL	60
@@ -96,7 +103,7 @@ typedef struct BackgroundWorker
 	int			bgw_flags;
 	BgWorkerStartTime bgw_start_time;
 	int			bgw_restart_time;	/* in seconds, or BGW_NEVER_RESTART */
-	char		bgw_library_name[BGW_MAXLEN];
+	char		bgw_library_name[MAXPGPATH];
 	char		bgw_function_name[BGW_MAXLEN];
 	Datum		bgw_main_arg;
 	char		bgw_extra[BGW_EXTRALEN];
@@ -111,7 +118,7 @@ typedef enum BgwHandleStatus
 	BGWH_STARTED,				/* worker is running */
 	BGWH_NOT_YET_STARTED,		/* worker hasn't been started yet */
 	BGWH_STOPPED,				/* worker has exited */
-	BGWH_POSTMASTER_DIED		/* postmaster died; worker status unclear */
+	BGWH_POSTMASTER_DIED,		/* postmaster died; worker status unclear */
 } BgwHandleStatus;
 
 struct BackgroundWorkerHandle;
@@ -127,13 +134,16 @@ extern bool RegisterDynamicBackgroundWorker(BackgroundWorker *worker,
 /* Query the status of a bgworker */
 extern BgwHandleStatus GetBackgroundWorkerPid(BackgroundWorkerHandle *handle,
 											  pid_t *pidp);
-extern BgwHandleStatus WaitForBackgroundWorkerStartup(BackgroundWorkerHandle *handle, pid_t *pid);
+extern BgwHandleStatus WaitForBackgroundWorkerStartup(BackgroundWorkerHandle *handle, pid_t *pidp);
 extern BgwHandleStatus
 			WaitForBackgroundWorkerShutdown(BackgroundWorkerHandle *);
 extern const char *GetBackgroundWorkerTypeByPid(pid_t pid);
 
 /* Terminate a bgworker */
 extern void TerminateBackgroundWorker(BackgroundWorkerHandle *handle);
+
+/* Terminate background workers connected to database */
+extern void TerminateBackgroundWorkersForDatabase(Oid databaseId);
 
 /* This is valid in a running worker */
 extern PGDLLIMPORT BackgroundWorker *MyBgworkerEntry;
@@ -162,9 +172,11 @@ extern void YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, 
  * Flags to BackgroundWorkerInitializeConnection et al
  *
  *
- * Allow bypassing datallowconn restrictions when connecting to database
+ * Allow bypassing datallowconn restrictions and login check when connecting
+ * to database
  */
-#define BGWORKER_BYPASS_ALLOWCONN 1
+#define BGWORKER_BYPASS_ALLOWCONN 0x0001
+#define BGWORKER_BYPASS_ROLELOGINCHECK 0x0002
 
 
 /* Block/unblock signals in a background worker process */

@@ -2,7 +2,7 @@
  *
  * clusterdb
  *
- * Portions Copyright (c) 2002-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2002-2026, PostgreSQL Global Development Group
  *
  * src/bin/scripts/clusterdb.c
  *
@@ -16,13 +16,13 @@
 #include "fe_utils/option_utils.h"
 #include "fe_utils/query_utils.h"
 #include "fe_utils/simple_list.h"
-#include "fe_utils/string_utils.h"
 
 
 static void cluster_one_database(const ConnParams *cparams, const char *table,
 								 const char *progname, bool verbose, bool echo);
-static void cluster_all_databases(ConnParams *cparams, const char *progname,
-								  bool verbose, bool echo, bool quiet);
+static void cluster_all_databases(ConnParams *cparams, SimpleStringList *tables,
+								  const char *progname, bool verbose, bool echo,
+								  bool quiet);
 static void help(const char *progname);
 
 
@@ -68,42 +68,42 @@ main(int argc, char *argv[])
 
 	handle_help_version_opts(argc, argv, "clusterdb", help);
 
-	while ((c = getopt_long(argc, argv, "h:p:U:wWeqd:at:v", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "ad:eh:p:qt:U:vwW", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
+			case 'a':
+				alldb = true;
+				break;
+			case 'd':
+				dbname = pg_strdup(optarg);
+				break;
+			case 'e':
+				echo = true;
+				break;
 			case 'h':
 				host = pg_strdup(optarg);
 				break;
 			case 'p':
 				port = pg_strdup(optarg);
 				break;
+			case 'q':
+				quiet = true;
+				break;
+			case 't':
+				simple_string_list_append(&tables, optarg);
+				break;
 			case 'U':
 				username = pg_strdup(optarg);
+				break;
+			case 'v':
+				verbose = true;
 				break;
 			case 'w':
 				prompt_password = TRI_NO;
 				break;
 			case 'W':
 				prompt_password = TRI_YES;
-				break;
-			case 'e':
-				echo = true;
-				break;
-			case 'q':
-				quiet = true;
-				break;
-			case 'd':
-				dbname = pg_strdup(optarg);
-				break;
-			case 'a':
-				alldb = true;
-				break;
-			case 't':
-				simple_string_list_append(&tables, optarg);
-				break;
-			case 'v':
-				verbose = true;
 				break;
 			case 2:
 				maintenance_db = pg_strdup(optarg);
@@ -147,12 +147,10 @@ main(int argc, char *argv[])
 		if (dbname)
 			pg_fatal("cannot cluster all databases and a specific one at the same time");
 
-		if (tables.head != NULL)
-			pg_fatal("cannot cluster specific table(s) in all databases");
-
 		cparams.dbname = maintenance_db;
 
-		cluster_all_databases(&cparams, progname, verbose, echo, quiet);
+		cluster_all_databases(&cparams, &tables,
+							  progname, verbose, echo, quiet);
 	}
 	else
 	{
@@ -195,7 +193,7 @@ cluster_one_database(const ConnParams *cparams, const char *table,
 
 	PGconn	   *conn;
 
-	conn = connectDatabase(cparams, progname, echo, false, false);
+	conn = connectDatabase(cparams, progname, echo, false, true);
 
 	initPQExpBuffer(&sql);
 
@@ -226,8 +224,9 @@ cluster_one_database(const ConnParams *cparams, const char *table,
 
 
 static void
-cluster_all_databases(ConnParams *cparams, const char *progname,
-					  bool verbose, bool echo, bool quiet)
+cluster_all_databases(ConnParams *cparams, SimpleStringList *tables,
+					  const char *progname, bool verbose, bool echo,
+					  bool quiet)
 {
 	PGconn	   *conn;
 	PGresult   *result;
@@ -251,7 +250,17 @@ cluster_all_databases(ConnParams *cparams, const char *progname,
 
 		cparams->override_dbname = dbname;
 
-		cluster_one_database(cparams, NULL, progname, verbose, echo);
+		if (tables->head != NULL)
+		{
+			SimpleStringListCell *cell;
+
+			for (cell = tables->head; cell; cell = cell->next)
+				cluster_one_database(cparams, cell->val,
+									 progname, verbose, echo);
+		}
+		else
+			cluster_one_database(cparams, NULL,
+								 progname, verbose, echo);
 	}
 
 	PQclear(result);

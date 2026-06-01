@@ -34,10 +34,12 @@
 /*************************************************************/
 
 #include "postgres.h"
-#include "optimizer/geqo_random.h"
-#include "optimizer/geqo_recombination.h"
+#include "optimizer/geqo.h"
 
 #if defined(PMX)
+
+#include "optimizer/geqo_random.h"
+#include "optimizer/geqo_recombination.h"
 
 /* pmx
  *
@@ -46,10 +48,10 @@
 void
 pmx(PlannerInfo *root, Gene *tour1, Gene *tour2, Gene *offspring, int num_gene)
 {
-	int		   *failed = (int *) palloc((num_gene + 1) * sizeof(int));
-	int		   *from = (int *) palloc((num_gene + 1) * sizeof(int));
-	int		   *indx = (int *) palloc((num_gene + 1) * sizeof(int));
-	int		   *check_list = (int *) palloc((num_gene + 1) * sizeof(int));
+	int		   *failed = palloc_array(int, num_gene + 1);
+	int		   *from = palloc_array(int, num_gene + 1);
+	int		   *indx = palloc_array(int, num_gene + 1);
+	int		   *check_list = palloc_array(int, num_gene + 1);
 
 	int			left,
 				right,

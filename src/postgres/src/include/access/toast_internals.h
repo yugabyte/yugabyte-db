@@ -3,7 +3,7 @@
  * toast_internals.h
  *	  Internal definitions for the TOAST system.
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/include/access/toast_internals.h
  *
@@ -50,7 +50,7 @@ extern Oid	toast_get_valid_index(Oid toastoid, LOCKMODE lock);
 
 extern void toast_delete_datum(Relation rel, Datum value, bool is_speculative);
 extern Datum toast_save_datum(Relation rel, Datum value,
-							  struct varlena *oldexternal, int options);
+							  varlena *oldexternal, uint32 options);
 
 extern int	toast_open_indexes(Relation toastrel,
 							   LOCKMODE lock,
@@ -58,6 +58,6 @@ extern int	toast_open_indexes(Relation toastrel,
 							   int *num_indexes);
 extern void toast_close_indexes(Relation *toastidxs, int num_indexes,
 								LOCKMODE lock);
-extern void init_toast_snapshot(Snapshot toast_snapshot);
+extern Snapshot get_toast_snapshot(void);
 
 #endif							/* TOAST_INTERNALS_H */

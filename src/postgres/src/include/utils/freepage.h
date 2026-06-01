@@ -3,7 +3,7 @@
  * freepage.h
  *	  Management of page-organized free memory.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/freepage.h
@@ -65,7 +65,7 @@ struct FreePageManager
 
 /* Macros to convert between page numbers (expressed as Size) and pointers. */
 #define fpm_page_to_pointer(base, page) \
-	(AssertVariableIsOfTypeMacro(page, Size), \
+	(StaticAssertVariableIsOfTypeMacro(page, Size), \
 	 (base) + FPM_PAGE_SIZE * (page))
 #define fpm_pointer_to_page(base, ptr)		\
 	(((Size) (((char *) (ptr)) - (base))) / FPM_PAGE_SIZE)

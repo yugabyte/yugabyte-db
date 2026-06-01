@@ -8,7 +8,7 @@
  * storage implementation and the details about individual types of
  * statistics.
  *
- * Copyright (c) 2001-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat_archiver.c
@@ -60,6 +60,14 @@ pgstat_fetch_stat_archiver(void)
 	pgstat_snapshot_fixed(PGSTAT_KIND_ARCHIVER);
 
 	return &pgStatLocal.snapshot.archiver;
+}
+
+void
+pgstat_archiver_init_shmem_cb(void *stats)
+{
+	PgStatShared_Archiver *stats_shmem = (PgStatShared_Archiver *) stats;
+
+	LWLockInitialize(&stats_shmem->lock, LWTRANCHE_PGSTATS_DATA);
 }
 
 void

@@ -3,7 +3,7 @@
  * pg_prewarm.c
  *		  prewarming utilities
  *
- * Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/pg_prewarm/pg_prewarm.c
@@ -16,16 +16,22 @@
 #include <unistd.h>
 
 #include "access/relation.h"
+#include "catalog/index.h"
 #include "fmgr.h"
 #include "miscadmin.h"
 #include "storage/bufmgr.h"
+#include "storage/lmgr.h"
+#include "storage/read_stream.h"
 #include "storage/smgr.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_prewarm",
+					.version = PG_VERSION
+);
 
 PG_FUNCTION_INFO_V1(pg_prewarm);
 
@@ -33,10 +39,10 @@ typedef enum
 {
 	PREWARM_PREFETCH,
 	PREWARM_READ,
-	PREWARM_BUFFER
+	PREWARM_BUFFER,
 } PrewarmType;
 
-static PGAlignedBlock blockbuffer;
+static PGIOAlignedBlock blockbuffer;
 
 /*
  * pg_prewarm(regclass, mode text, fork text,
@@ -67,6 +73,8 @@ pg_prewarm(PG_FUNCTION_ARGS)
 	char	   *ttype;
 	PrewarmType ptype;
 	AclResult	aclresult;
+	char		relkind;
+	Oid			privOid;
 
 	/* Basic sanity checking. */
 	if (PG_ARGISNULL(0))
@@ -102,11 +110,53 @@ pg_prewarm(PG_FUNCTION_ARGS)
 	forkString = text_to_cstring(forkName);
 	forkNumber = forkname_to_number(forkString);
 
-	/* Open relation and check privileges. */
+	/*
+	 * Open relation and check privileges.  If the relation is an index, we
+	 * must check the privileges on its parent table instead.
+	 */
+	relkind = get_rel_relkind(relOid);
+	if (relkind == RELKIND_INDEX ||
+		relkind == RELKIND_PARTITIONED_INDEX)
+	{
+		privOid = IndexGetRelation(relOid, true);
+
+		/* Lock table before index to avoid deadlock. */
+		if (OidIsValid(privOid))
+			LockRelationOid(privOid, AccessShareLock);
+	}
+	else
+		privOid = relOid;
+
 	rel = relation_open(relOid, AccessShareLock);
-	aclresult = pg_class_aclcheck(relOid, GetUserId(), ACL_SELECT);
+
+	/*
+	 * It's possible that the relation with OID "privOid" was dropped and the
+	 * OID was reused before we locked it.  If that happens, we could be left
+	 * with the wrong parent table OID, in which case we must ERROR.  It's
+	 * possible that such a race would change the outcome of
+	 * get_rel_relkind(), too, but the worst case scenario there is that we'll
+	 * check privileges on the index instead of its parent table, which isn't
+	 * too terrible.
+	 */
+	if (!OidIsValid(privOid) ||
+		(privOid != relOid &&
+		 privOid != IndexGetRelation(relOid, true)))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_TABLE),
+				 errmsg("could not find parent table of index \"%s\"",
+						RelationGetRelationName(rel))));
+
+	aclresult = pg_class_aclcheck(privOid, GetUserId(), ACL_SELECT);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind), get_rel_name(relOid));
+
+	/* Check that the relation has storage. */
+	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("relation \"%s\" does not have storage",
+						RelationGetRelationName(rel)),
+				 errdetail_relkind_not_supported(rel->rd_rel->relkind)));
 
 	/* Check that the fork exists. */
 	if (!smgrexists(RelationGetSmgr(rel), forkNumber))
@@ -125,8 +175,8 @@ pg_prewarm(PG_FUNCTION_ARGS)
 		if (first_block < 0 || first_block >= nblocks)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("starting block number must be between 0 and %lld",
-							(long long) (nblocks - 1))));
+					 errmsg("starting block number must be between 0 and %" PRId64,
+							(nblocks - 1))));
 	}
 	if (PG_ARGISNULL(4))
 		last_block = nblocks - 1;
@@ -136,8 +186,8 @@ pg_prewarm(PG_FUNCTION_ARGS)
 		if (last_block < 0 || last_block >= nblocks)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("ending block number must be between 0 and %lld",
-							(long long) (nblocks - 1))));
+					 errmsg("ending block number must be between 0 and %" PRId64,
+							(nblocks - 1))));
 	}
 
 	/* Now we're ready to do the real work. */
@@ -183,22 +233,49 @@ pg_prewarm(PG_FUNCTION_ARGS)
 	}
 	else if (ptype == PREWARM_BUFFER)
 	{
+		BlockRangeReadStreamPrivate p;
+		ReadStream *stream;
+
 		/*
 		 * In buffer mode, we actually pull the data into shared_buffers.
 		 */
+
+		/* Set up the private state for our streaming buffer read callback. */
+		p.current_blocknum = first_block;
+		p.last_exclusive = last_block + 1;
+
+		/*
+		 * It is safe to use batchmode as block_range_read_stream_cb takes no
+		 * locks.
+		 */
+		stream = read_stream_begin_relation(READ_STREAM_MAINTENANCE |
+											READ_STREAM_FULL |
+											READ_STREAM_USE_BATCHING,
+											NULL,
+											rel,
+											forkNumber,
+											block_range_read_stream_cb,
+											&p,
+											0);
+
 		for (block = first_block; block <= last_block; ++block)
 		{
 			Buffer		buf;
 
 			CHECK_FOR_INTERRUPTS();
-			buf = ReadBufferExtended(rel, forkNumber, block, RBM_NORMAL, NULL);
+			buf = read_stream_next_buffer(stream, NULL);
 			ReleaseBuffer(buf);
 			++blocks_done;
 		}
+		Assert(read_stream_next_buffer(stream, NULL) == InvalidBuffer);
+		read_stream_end(stream);
 	}
 
-	/* Close relation, release lock. */
+	/* Close relation, release locks. */
 	relation_close(rel, AccessShareLock);
+
+	if (privOid != relOid)
+		UnlockRelationOid(privOid, AccessShareLock);
 
 	PG_RETURN_INT64(blocks_done);
 }

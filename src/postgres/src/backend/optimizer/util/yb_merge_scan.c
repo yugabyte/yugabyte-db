@@ -41,6 +41,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "utils/rel.h"
 /* GUC options */
 bool		yb_enable_derived_saops;
 int			yb_max_merge_scan_streams;
@@ -472,13 +474,13 @@ yb_get_sort_info_from_pathkeys(List *tlist,
 		 * Look up the correct sort operator from the PathKey's slightly
 		 * abstracted representation.
 		 */
-		sortop = get_opfamily_member(pathkey->pk_opfamily,
-									 pk_datatype,
-									 pk_datatype,
-									 pathkey->pk_strategy);
+		sortop = get_opfamily_member_for_cmptype(pathkey->pk_opfamily,
+												 pk_datatype,
+												 pk_datatype,
+												 pathkey->pk_cmptype);
 		if (!OidIsValid(sortop))	/* should not happen */
 			elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
-				 pathkey->pk_strategy, pk_datatype, pk_datatype,
+				 pathkey->pk_cmptype, pk_datatype, pk_datatype,
 				 pathkey->pk_opfamily);
 
 		/* Add the column to the sort arrays */

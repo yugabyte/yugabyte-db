@@ -4,7 +4,7 @@
  *	  implementation of quad tree over points for SP-GiST
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,14 +19,16 @@
 #include "access/spgist_private.h"
 #include "access/stratnum.h"
 #include "catalog/pg_type.h"
-#include "utils/builtins.h"
 #include "utils/float.h"
+#include "utils/fmgrprotos.h"
 #include "utils/geo_decls.h"
 
 Datum
 spg_quad_config(PG_FUNCTION_ARGS)
 {
-	/* spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0); */
+#ifdef NOT_USED
+	spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0);
+#endif
 	spgConfigOut *cfg = (spgConfigOut *) PG_GETARG_POINTER(1);
 
 	cfg->prefixType = POINTOID;
@@ -82,7 +84,7 @@ getQuadrant(Point *centroid, Point *tst)
 static BOX *
 getQuadrantArea(BOX *bbox, Point *centroid, int quadrant)
 {
-	BOX		   *result = (BOX *) palloc(sizeof(BOX));
+	BOX		   *result = palloc_object(BOX);
 
 	switch (quadrant)
 	{
@@ -145,8 +147,8 @@ spg_quad_choose(PG_FUNCTION_ARGS)
 static int
 x_cmp(const void *a, const void *b, void *arg)
 {
-	Point	   *pa = *(Point **) a;
-	Point	   *pb = *(Point **) b;
+	Point	   *pa = *(Point *const *) a;
+	Point	   *pb = *(Point *const *) b;
 
 	if (pa->x == pb->x)
 		return 0;
@@ -156,8 +158,8 @@ x_cmp(const void *a, const void *b, void *arg)
 static int
 y_cmp(const void *a, const void *b, void *arg)
 {
-	Point	   *pa = *(Point **) a;
-	Point	   *pb = *(Point **) b;
+	Point	   *pa = *(Point *const *) a;
+	Point	   *pb = *(Point *const *) b;
 
 	if (pa->y == pb->y)
 		return 0;
@@ -177,11 +179,11 @@ spg_quad_picksplit(PG_FUNCTION_ARGS)
 	/* Use the median values of x and y as the centroid point */
 	Point	  **sorted;
 
-	sorted = palloc(sizeof(*sorted) * in->nTuples);
+	sorted = palloc_array(Point *, in->nTuples);
 	for (i = 0; i < in->nTuples; i++)
 		sorted[i] = DatumGetPointP(in->datums[i]);
 
-	centroid = palloc(sizeof(*centroid));
+	centroid = palloc_object(Point);
 
 	qsort(sorted, in->nTuples, sizeof(*sorted), x_cmp);
 	centroid->x = sorted[in->nTuples >> 1]->x;
@@ -189,7 +191,7 @@ spg_quad_picksplit(PG_FUNCTION_ARGS)
 	centroid->y = sorted[in->nTuples >> 1]->y;
 #else
 	/* Use the average values of x and y as the centroid point */
-	centroid = palloc0(sizeof(*centroid));
+	centroid = palloc0_object(Point);
 
 	for (i = 0; i < in->nTuples; i++)
 	{
@@ -207,8 +209,8 @@ spg_quad_picksplit(PG_FUNCTION_ARGS)
 	out->nNodes = 4;
 	out->nodeLabels = NULL;		/* we don't need node labels */
 
-	out->mapTuplesToNodes = palloc(sizeof(int) * in->nTuples);
-	out->leafTupleDatums = palloc(sizeof(Datum) * in->nTuples);
+	out->mapTuplesToNodes = palloc_array(int, in->nTuples);
+	out->leafTupleDatums = palloc_array(Datum, in->nTuples);
 
 	for (i = 0; i < in->nTuples; i++)
 	{
@@ -246,8 +248,8 @@ spg_quad_inner_consistent(PG_FUNCTION_ARGS)
 	 */
 	if (in->norderbys > 0)
 	{
-		out->distances = (double **) palloc(sizeof(double *) * in->nNodes);
-		out->traversalValues = (void **) palloc(sizeof(void *) * in->nNodes);
+		out->distances = palloc_array(double *, in->nNodes);
+		out->traversalValues = palloc_array(void *, in->nNodes);
 
 		if (in->level == 0)
 		{
@@ -270,7 +272,7 @@ spg_quad_inner_consistent(PG_FUNCTION_ARGS)
 	{
 		/* Report that all nodes should be visited */
 		out->nNodes = in->nNodes;
-		out->nodeNumbers = (int *) palloc(sizeof(int) * in->nNodes);
+		out->nodeNumbers = palloc_array(int, in->nNodes);
 		for (i = 0; i < in->nNodes; i++)
 		{
 			out->nodeNumbers[i] = i;
@@ -368,12 +370,12 @@ spg_quad_inner_consistent(PG_FUNCTION_ARGS)
 			break;				/* no need to consider remaining conditions */
 	}
 
-	out->levelAdds = palloc(sizeof(int) * 4);
+	out->levelAdds = palloc_array(int, 4);
 	for (i = 0; i < 4; ++i)
 		out->levelAdds[i] = 1;
 
 	/* We must descend into the quadrant(s) identified by which */
-	out->nodeNumbers = (int *) palloc(sizeof(int) * 4);
+	out->nodeNumbers = palloc_array(int, 4);
 	out->nNodes = 0;
 
 	for (i = 1; i <= 4; i++)

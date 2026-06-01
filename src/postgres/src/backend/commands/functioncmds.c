@@ -5,7 +5,7 @@
  *	  Routines for CREATE and DROP FUNCTION commands and CREATE and DROP
  *	  CAST commands.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,7 +15,7 @@
  * DESCRIPTION
  *	  These routines take the parse tree and pick out the
  *	  appropriate arguments/flags, and pass the results to the
- *	  corresponding "FooDefine" routines (in src/catalog) that do
+ *	  corresponding "FooCreate" routines (in src/backend/catalog) that do
  *	  the actual catalog-munging.  These routines also verify permission
  *	  of the user to execute the command.
  *
@@ -32,10 +32,9 @@
  */
 #include "postgres.h"
 
-#include "access/genam.h"
 #include "access/htup_details.h"
-#include "access/sysattr.h"
 #include "access/table.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -47,11 +46,9 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
-#include "commands/alter.h"
 #include "commands/defrem.h"
 #include "commands/extension.h"
 #include "commands/proclang.h"
-#include "executor/execdesc.h"
 #include "executor/executor.h"
 #include "executor/functions.h"
 #include "funcapi.h"
@@ -69,10 +66,8 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
-#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -83,7 +78,7 @@
 
 /*
  *	 Examine the RETURNS clause of the CREATE FUNCTION statement
- *	 and return information about it as *prorettype_p and *returnsSet.
+ *	 and return information about it as *prorettype_p and *returnsSet_p.
  *
  * This is more complex than the average typename lookup because we want to
  * allow a shell type to be used, or even created if the specified return type
@@ -125,7 +120,6 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 	{
 		char	   *typnam = TypeNameToString(returnType);
 		Oid			namespaceId;
-		AclResult	aclresult;
 		char	   *typname;
 		ObjectAddress address;
 
@@ -155,17 +149,19 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 				 errdetail("Creating a shell type definition.")));
 		namespaceId = QualifiedNameGetCreationNamespace(returnType->names,
 														&typname);
-		aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(),
-										  ACL_CREATE);
+		aclresult = object_aclcheck(NamespaceRelationId, namespaceId, GetUserId(),
+									ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_SCHEMA,
 						   get_namespace_name(namespaceId));
 		address = TypeShellMake(typname, namespaceId, GetUserId());
 		rettype = address.objectId;
 		Assert(OidIsValid(rettype));
+		/* Ensure the new shell type is visible to ProcedureCreate */
+		CommandCounterIncrement();
 	}
 
-	aclresult = pg_type_aclcheck(rettype, GetUserId(), ACL_USAGE);
+	aclresult = object_aclcheck(TypeRelationId, rettype, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error_type(aclresult, rettype);
 
@@ -242,7 +238,7 @@ interpret_function_parameter_list(ParseState *pstate,
 		if (fpmode == FUNC_PARAM_DEFAULT)
 			fpmode = FUNC_PARAM_IN;
 
-		typtup = LookupTypeName(NULL, t, NULL, false);
+		typtup = LookupTypeName(pstate, t, NULL, false);
 		if (typtup)
 		{
 			if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
@@ -252,18 +248,21 @@ interpret_function_parameter_list(ParseState *pstate,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 							 errmsg("SQL function cannot accept shell type %s",
-									TypeNameToString(t))));
+									TypeNameToString(t)),
+							 parser_errposition(pstate, t->location)));
 				/* We don't allow creating aggregates on shell types either */
 				else if (objtype == OBJECT_AGGREGATE)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 							 errmsg("aggregate cannot accept shell type %s",
-									TypeNameToString(t))));
+									TypeNameToString(t)),
+							 parser_errposition(pstate, t->location)));
 				else
 					ereport(NOTICE,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("argument type %s is only a shell",
-									TypeNameToString(t))));
+									TypeNameToString(t)),
+							 parser_errposition(pstate, t->location)));
 			}
 			toid = typeTypeId(typtup);
 			ReleaseSysCache(typtup);
@@ -273,11 +272,12 @@ interpret_function_parameter_list(ParseState *pstate,
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type %s does not exist",
-							TypeNameToString(t))));
+							TypeNameToString(t)),
+					 parser_errposition(pstate, t->location)));
 			toid = InvalidOid;	/* keep compiler quiet */
 		}
 
-		aclresult = pg_type_aclcheck(toid, GetUserId(), ACL_USAGE);
+		aclresult = object_aclcheck(TypeRelationId, toid, GetUserId(), ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error_type(aclresult, toid);
 
@@ -286,15 +286,18 @@ interpret_function_parameter_list(ParseState *pstate,
 			if (objtype == OBJECT_AGGREGATE)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("aggregates cannot accept set arguments")));
+						 errmsg("aggregates cannot accept set arguments"),
+						 parser_errposition(pstate, fp->location)));
 			else if (objtype == OBJECT_PROCEDURE)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("procedures cannot accept set arguments")));
+						 errmsg("procedures cannot accept set arguments"),
+						 parser_errposition(pstate, fp->location)));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("functions cannot accept set arguments")));
+						 errmsg("functions cannot accept set arguments"),
+						 parser_errposition(pstate, fp->location)));
 		}
 
 		/* handle input parameters */
@@ -304,7 +307,8 @@ interpret_function_parameter_list(ParseState *pstate,
 			if (varCount > 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("VARIADIC parameter must be the last input parameter")));
+						 errmsg("VARIADIC parameter must be the last input parameter"),
+						 parser_errposition(pstate, fp->location)));
 			inTypes[inCount++] = toid;
 			isinput = true;
 			if (parameterTypes_list)
@@ -324,7 +328,8 @@ interpret_function_parameter_list(ParseState *pstate,
 				if (varCount > 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-							 errmsg("VARIADIC parameter must be the last parameter")));
+							 errmsg("VARIADIC parameter must be the last parameter"),
+							 parser_errposition(pstate, fp->location)));
 				/* Procedures with output parameters always return RECORD */
 				*requiredResultType = RECORDOID;
 			}
@@ -349,7 +354,8 @@ interpret_function_parameter_list(ParseState *pstate,
 					if (!OidIsValid(get_element_type(toid)))
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-								 errmsg("VARIADIC parameter must be an array")));
+								 errmsg("VARIADIC parameter must be an array"),
+								 parser_errposition(pstate, fp->location)));
 					break;
 			}
 		}
@@ -395,7 +401,8 @@ interpret_function_parameter_list(ParseState *pstate,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 							 errmsg("parameter name \"%s\" used more than once",
-									fp->name)));
+									fp->name),
+							 parser_errposition(pstate, fp->location)));
 			}
 
 			paramNames[i] = CStringGetTextDatum(fp->name);
@@ -412,7 +419,8 @@ interpret_function_parameter_list(ParseState *pstate,
 			if (!isinput)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("only input parameters can have default values")));
+						 errmsg("only input parameters can have default values"),
+						 parser_errposition(pstate, fp->location)));
 
 			def = transformExpr(pstate, fp->defexpr,
 								EXPR_KIND_FUNCTION_DEFAULT);
@@ -423,11 +431,12 @@ interpret_function_parameter_list(ParseState *pstate,
 			 * Make sure no variables are referred to (this is probably dead
 			 * code now that add_missing_from is history).
 			 */
-			if (list_length(pstate->p_rtable) != 0 ||
+			if (pstate->p_rtable != NIL ||
 				contain_var_clause(def))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-						 errmsg("cannot use table references in parameter default value")));
+						 errmsg("cannot use table references in parameter default value"),
+						 parser_errposition(pstate, fp->location)));
 
 			/*
 			 * transformExpr() should have already rejected subqueries,
@@ -451,7 +460,8 @@ interpret_function_parameter_list(ParseState *pstate,
 			if (isinput && have_defaults)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("input parameters after one with a default value must also have defaults")));
+						 errmsg("input parameters after one with a default value must also have defaults"),
+						 parser_errposition(pstate, fp->location)));
 
 			/*
 			 * For procedures, we also can't allow OUT parameters after one
@@ -461,7 +471,8 @@ interpret_function_parameter_list(ParseState *pstate,
 			if (objtype == OBJECT_PROCEDURE && have_defaults)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("procedure OUT parameters cannot appear after one with a default value")));
+						 errmsg("procedure OUT parameters cannot appear after one with a default value"),
+						 parser_errposition(pstate, fp->location)));
 		}
 
 		i++;
@@ -472,10 +483,8 @@ interpret_function_parameter_list(ParseState *pstate,
 
 	if (outCount > 0 || varCount > 0)
 	{
-		*allParameterTypes = construct_array(allTypes, parameterCount, OIDOID,
-											 sizeof(Oid), true, TYPALIGN_INT);
-		*parameterModes = construct_array(paramModes, parameterCount, CHAROID,
-										  1, true, TYPALIGN_CHAR);
+		*allParameterTypes = construct_array_builtin(allTypes, parameterCount, OIDOID);
+		*parameterModes = construct_array_builtin(paramModes, parameterCount, CHAROID);
 		if (outCount > 1)
 			*requiredResultType = RECORDOID;
 		/* otherwise we set requiredResultType correctly above */
@@ -493,8 +502,7 @@ interpret_function_parameter_list(ParseState *pstate,
 			if (paramNames[i] == PointerGetDatum(NULL))
 				paramNames[i] = CStringGetTextDatum("");
 		}
-		*parameterNames = construct_array(paramNames, parameterCount, TEXTOID,
-										  -1, false, TYPALIGN_INT);
+		*parameterNames = construct_array_builtin(paramNames, parameterCount, TEXTOID);
 	}
 	else
 		*parameterNames = NULL;
@@ -909,7 +917,7 @@ interpret_AS_clause(Oid languageOid, const char *languageName,
 	{
 		SQLFunctionParseInfoPtr pinfo;
 
-		pinfo = (SQLFunctionParseInfoPtr) palloc0(sizeof(SQLFunctionParseInfo));
+		pinfo = palloc0_object(SQLFunctionParseInfo);
 
 		pinfo->fname = funcname;
 		pinfo->nargs = list_length(parameterTypes);
@@ -1044,6 +1052,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	List	   *parameterDefaults;
 	Oid			variadicArgType;
 	List	   *trftypes_list = NIL;
+	List	   *trfoids_list = NIL;
 	ArrayType  *trftypes;
 	Oid			requiredResultType;
 	bool		isWindowFunc,
@@ -1065,7 +1074,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 													&funcname);
 
 	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, namespaceId, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(namespaceId));
@@ -1119,9 +1128,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	if (languageStruct->lanpltrusted)
 	{
 		/* if trusted language, need USAGE privilege */
-		AclResult	aclresult;
-
-		aclresult = pg_language_aclcheck(languageOid, GetUserId(), ACL_USAGE);
+		aclresult = object_aclcheck(LanguageRelationId, languageOid, GetUserId(), ACL_USAGE);
 		if (aclresult != ACLCHECK_OK && !IsYbDbAdminUser(GetUserId()))
 			aclcheck_error(aclresult, OBJECT_LANGUAGE,
 						   NameStr(languageStruct->lanname));
@@ -1161,11 +1168,12 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 			Oid			typeid = typenameTypeId(NULL,
 												lfirst_node(TypeName, lc));
 			Oid			elt = get_base_element_type(typeid);
+			Oid			transformid;
 
 			typeid = elt ? elt : typeid;
-
-			get_transform_oid(typeid, languageOid, false);
+			transformid = get_transform_oid(typeid, languageOid, false);
 			trftypes_list = lappend_oid(trftypes_list, typeid);
+			trfoids_list = lappend_oid(trfoids_list, transformid);
 		}
 	}
 
@@ -1220,7 +1228,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 		returnsSet = false;
 	}
 
-	if (list_length(trftypes_list) > 0)
+	if (trftypes_list != NIL)
 	{
 		ListCell   *lc;
 		Datum	   *arr;
@@ -1230,8 +1238,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 		i = 0;
 		foreach(lc, trftypes_list)
 			arr[i++] = ObjectIdGetDatum(lfirst_oid(lc));
-		trftypes = construct_array(arr, list_length(trftypes_list),
-								   OIDOID, sizeof(Oid), true, TYPALIGN_INT);
+		trftypes = construct_array_builtin(arr, list_length(trftypes_list), OIDOID);
 	}
 	else
 	{
@@ -1297,6 +1304,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 						   PointerGetDatum(parameterNames),
 						   parameterDefaults,
 						   PointerGetDatum(trftypes),
+						   trfoids_list,
 						   PointerGetDatum(proconfig),
 						   prosupport,
 						   procost,
@@ -1392,7 +1400,7 @@ AlterFunction(ParseState *pstate, AlterFunctionStmt *stmt)
 	procForm = (Form_pg_proc) GETSTRUCT(tup);
 
 	/* Permission check: must own function */
-	if (!pg_proc_ownercheck(funcOid, GetUserId()) &&
+	if (!object_ownercheck(ProcedureRelationId, funcOid, GetUserId()) &&
 		!IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, stmt->objtype,
 					   NameListToString(stmt->func->objname));
@@ -1466,9 +1474,13 @@ AlterFunction(ParseState *pstate, AlterFunctionStmt *stmt)
 
 		/* Add or replace dependency on support function */
 		if (OidIsValid(procForm->prosupport))
-			changeDependencyFor(ProcedureRelationId, funcOid,
-								ProcedureRelationId, procForm->prosupport,
-								newsupport);
+		{
+			if (changeDependencyFor(ProcedureRelationId, funcOid,
+									ProcedureRelationId, procForm->prosupport,
+									newsupport) != 1)
+				elog(ERROR, "could not change support dependency for function %s",
+					 get_func_name(funcOid));
+		}
 		else
 		{
 			ObjectAddress referenced;
@@ -1542,6 +1554,8 @@ CreateCast(CreateCastStmt *stmt)
 	char		sourcetyptype;
 	char		targettyptype;
 	Oid			funcid;
+	Oid			incastid = InvalidOid;
+	Oid			outcastid = InvalidOid;
 	int			nargs;
 	char		castcontext;
 	char		castmethod;
@@ -1568,19 +1582,19 @@ CreateCast(CreateCastStmt *stmt)
 						TypeNameToString(stmt->targettype))));
 
 	/* Permission check */
-	if (!pg_type_ownercheck(sourcetypeid, GetUserId())
-		&& !pg_type_ownercheck(targettypeid, GetUserId()))
+	if (!object_ownercheck(TypeRelationId, sourcetypeid, GetUserId())
+		&& !object_ownercheck(TypeRelationId, targettypeid, GetUserId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be owner of type %s or type %s",
 						format_type_be(sourcetypeid),
 						format_type_be(targettypeid))));
 
-	aclresult = pg_type_aclcheck(sourcetypeid, GetUserId(), ACL_USAGE);
+	aclresult = object_aclcheck(TypeRelationId, sourcetypeid, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error_type(aclresult, sourcetypeid);
 
-	aclresult = pg_type_aclcheck(targettypeid, GetUserId(), ACL_USAGE);
+	aclresult = object_aclcheck(TypeRelationId, targettypeid, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error_type(aclresult, targettypeid);
 
@@ -1619,7 +1633,9 @@ CreateCast(CreateCastStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("cast function must take one to three arguments")));
-		if (!IsBinaryCoercible(sourcetypeid, procstruct->proargtypes.values[0]))
+		if (!IsBinaryCoercibleWithCast(sourcetypeid,
+									   procstruct->proargtypes.values[0],
+									   &incastid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("argument of cast function must match or be binary-coercible from source data type")));
@@ -1633,7 +1649,9 @@ CreateCast(CreateCastStmt *stmt)
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("third argument of cast function must be type %s",
 							"boolean")));
-		if (!IsBinaryCoercible(procstruct->prorettype, targettypeid))
+		if (!IsBinaryCoercibleWithCast(procstruct->prorettype,
+									   targettypeid,
+									   &outcastid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("return data type of cast function must match or be binary-coercible to target data type")));
@@ -1700,13 +1718,18 @@ CreateCast(CreateCastStmt *stmt)
 					 errmsg("source and target data types are not physically compatible")));
 
 		/*
-		 * We know that composite, enum and array types are never binary-
-		 * compatible with each other.  They all have OIDs embedded in them.
+		 * We know that composite, array, range and enum types are never
+		 * binary-compatible with each other.  They all have OIDs embedded in
+		 * them.
 		 *
 		 * Theoretically you could build a user-defined base type that is
-		 * binary-compatible with a composite, enum, or array type.  But we
-		 * disallow that too, as in practice such a cast is surely a mistake.
-		 * You can always work around that by writing a cast function.
+		 * binary-compatible with such a type.  But we disallow it anyway, as
+		 * in practice such a cast is surely a mistake.  You can always work
+		 * around that by writing a cast function.
+		 *
+		 * NOTE: if we ever have a kind of container type that doesn't need to
+		 * be rejected for this reason, we'd likely need to recursively apply
+		 * all of these same checks to the contained type(s).
 		 */
 		if (sourcetyptype == TYPTYPE_COMPOSITE ||
 			targettyptype == TYPTYPE_COMPOSITE)
@@ -1714,17 +1737,25 @@ CreateCast(CreateCastStmt *stmt)
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("composite data types are not binary-compatible")));
 
-		if (sourcetyptype == TYPTYPE_ENUM ||
-			targettyptype == TYPTYPE_ENUM)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("enum data types are not binary-compatible")));
-
 		if (OidIsValid(get_element_type(sourcetypeid)) ||
 			OidIsValid(get_element_type(targettypeid)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("array data types are not binary-compatible")));
+
+		if (sourcetyptype == TYPTYPE_RANGE ||
+			targettyptype == TYPTYPE_RANGE ||
+			sourcetyptype == TYPTYPE_MULTIRANGE ||
+			targettyptype == TYPTYPE_MULTIRANGE)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("range data types are not binary-compatible")));
+
+		if (sourcetyptype == TYPTYPE_ENUM ||
+			targettyptype == TYPTYPE_ENUM)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("enum data types are not binary-compatible")));
 
 		/*
 		 * We also disallow creating binary-compatibility casts involving
@@ -1772,8 +1803,8 @@ CreateCast(CreateCastStmt *stmt)
 			break;
 	}
 
-	myself = CastCreate(sourcetypeid, targettypeid, funcid, castcontext,
-						castmethod, DEPENDENCY_NORMAL);
+	myself = CastCreate(sourcetypeid, targettypeid, funcid, incastid, outcastid,
+						castcontext, castmethod, DEPENDENCY_NORMAL);
 	return myself;
 }
 
@@ -1819,8 +1850,8 @@ CreateTransform(CreateTransformStmt *stmt)
 	AclResult	aclresult;
 	Form_pg_proc procstruct;
 	Datum		values[Natts_pg_transform];
-	bool		nulls[Natts_pg_transform];
-	bool		replaces[Natts_pg_transform];
+	bool		nulls[Natts_pg_transform] = {0};
+	bool		replaces[Natts_pg_transform] = {0};
 	Oid			transformid;
 	HeapTuple	tuple;
 	HeapTuple	newtuple;
@@ -1848,10 +1879,10 @@ CreateTransform(CreateTransformStmt *stmt)
 				 errmsg("data type %s is a domain",
 						TypeNameToString(stmt->type_name))));
 
-	if (!pg_type_ownercheck(typeid, GetUserId()))
+	if (!object_ownercheck(TypeRelationId, typeid, GetUserId()))
 		aclcheck_error_type(ACLCHECK_NOT_OWNER, typeid);
 
-	aclresult = pg_type_aclcheck(typeid, GetUserId(), ACL_USAGE);
+	aclresult = object_aclcheck(TypeRelationId, typeid, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error_type(aclresult, typeid);
 
@@ -1860,7 +1891,7 @@ CreateTransform(CreateTransformStmt *stmt)
 	 */
 	langid = get_language_oid(stmt->lang, false);
 
-	aclresult = pg_language_aclcheck(langid, GetUserId(), ACL_USAGE);
+	aclresult = object_aclcheck(LanguageRelationId, langid, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_LANGUAGE, stmt->lang);
 
@@ -1871,10 +1902,10 @@ CreateTransform(CreateTransformStmt *stmt)
 	{
 		fromsqlfuncid = LookupFuncWithArgs(OBJECT_FUNCTION, stmt->fromsql, false);
 
-		if (!pg_proc_ownercheck(fromsqlfuncid, GetUserId()))
+		if (!object_ownercheck(ProcedureRelationId, fromsqlfuncid, GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION, NameListToString(stmt->fromsql->objname));
 
-		aclresult = pg_proc_aclcheck(fromsqlfuncid, GetUserId(), ACL_EXECUTE);
+		aclresult = object_aclcheck(ProcedureRelationId, fromsqlfuncid, GetUserId(), ACL_EXECUTE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_FUNCTION, NameListToString(stmt->fromsql->objname));
 
@@ -1897,10 +1928,10 @@ CreateTransform(CreateTransformStmt *stmt)
 	{
 		tosqlfuncid = LookupFuncWithArgs(OBJECT_FUNCTION, stmt->tosql, false);
 
-		if (!pg_proc_ownercheck(tosqlfuncid, GetUserId()))
+		if (!object_ownercheck(ProcedureRelationId, tosqlfuncid, GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION, NameListToString(stmt->tosql->objname));
 
-		aclresult = pg_proc_aclcheck(tosqlfuncid, GetUserId(), ACL_EXECUTE);
+		aclresult = object_aclcheck(ProcedureRelationId, tosqlfuncid, GetUserId(), ACL_EXECUTE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_FUNCTION, NameListToString(stmt->tosql->objname));
 
@@ -1926,8 +1957,6 @@ CreateTransform(CreateTransformStmt *stmt)
 	values[Anum_pg_transform_trffromsql - 1] = ObjectIdGetDatum(fromsqlfuncid);
 	values[Anum_pg_transform_trftosql - 1] = ObjectIdGetDatum(tosqlfuncid);
 
-	MemSet(nulls, false, sizeof(nulls));
-
 	relation = table_open(TransformRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCache2(TRFTYPELANG,
@@ -1944,7 +1973,6 @@ CreateTransform(CreateTransformStmt *stmt)
 							format_type_be(typeid),
 							stmt->lang)));
 
-		MemSet(replaces, false, sizeof(replaces));
 		replaces[Anum_pg_transform_trffromsql - 1] = true;
 		replaces[Anum_pg_transform_trftosql - 1] = true;
 
@@ -2129,8 +2157,8 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic)
 		/* if trusted language, need USAGE privilege */
 		AclResult	aclresult;
 
-		aclresult = pg_language_aclcheck(codeblock->langOid, GetUserId(),
-										 ACL_USAGE);
+		aclresult = object_aclcheck(LanguageRelationId, codeblock->langOid, GetUserId(),
+									ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_LANGUAGE,
 						   NameStr(languageStruct->lanname));
@@ -2206,7 +2234,7 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 	Assert(fexpr);
 	Assert(IsA(fexpr, FuncExpr));
 
-	aclresult = pg_proc_aclcheck(fexpr->funcid, GetUserId(), ACL_EXECUTE);
+	aclresult = object_aclcheck(ProcedureRelationId, fexpr->funcid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_PROCEDURE, get_func_name(fexpr->funcid));
 
@@ -2405,6 +2433,7 @@ CallStmtResultDesc(CallStmt *stmt)
 							   -1,
 							   0);
 		}
+		TupleDescFinalize(tupdesc);
 	}
 
 	return tupdesc;
@@ -2477,7 +2506,7 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 		}
 
 		/* Must be able to become new owner */
-		check_is_member_of_role(GetUserId(), newOwnerId);
+		check_can_set_role(GetUserId(), newOwnerId);
 
 		/* New owner must have CREATE privilege on function's schema */
 		namespaceId = proc->pronamespace;
@@ -2485,8 +2514,8 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 		{
 			AclResult	aclresult;
 
-			aclresult = pg_namespace_aclcheck(namespaceId, newOwnerId,
-											  ACL_CREATE);
+			aclresult = object_aclcheck(NamespaceRelationId, namespaceId, newOwnerId,
+										ACL_CREATE);
 			if (aclresult != ACLCHECK_OK)
 				aclcheck_error(aclresult, OBJECT_SCHEMA,
 							   get_namespace_name(namespaceId));

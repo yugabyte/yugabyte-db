@@ -1,4 +1,6 @@
 CREATE EXTENSION ltree;
+-- max length for a label
+\set maxlbl 1000
 -- Check whether any of our opclasses fail amvalidate
 SELECT amname, opcname
 FROM pg_opclass opc LEFT JOIN pg_am am ON am.oid = opcmethod
@@ -25,6 +27,12 @@ SELECT '1.2'::ltree;
  1.2
 (1 row)
 
+SELECT '1.2.-3'::ltree;
+ ltree  
+--------
+ 1.2.-3
+(1 row)
+
 SELECT '1.2._3'::ltree;
  ltree  
 --------
@@ -45,15 +53,15 @@ ERROR:  ltree syntax error
 LINE 1: SELECT '1.2.'::ltree;
                ^
 DETAIL:  Unexpected end of input.
-SELECT repeat('x', 255)::ltree;
-                                                                                                                             repeat                                                                                                                              
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SELECT repeat('x', :maxlbl)::ltree;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  repeat                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 (1 row)
 
-SELECT repeat('x', 256)::ltree;
+SELECT repeat('x', :maxlbl + 1)::ltree;
 ERROR:  label string is too long
-DETAIL:  Label length is 256, must be at most 255, at character 257.
+DETAIL:  Label length is 1001, must be at most 1000, at character 1002.
 SELECT ltree2text('1.2.3.34.sdf');
   ltree2text  
 --------------
@@ -120,6 +128,8 @@ SELECT subpath('Top.Child1.Child2',1);
  Child1.Child2
 (1 row)
 
+SELECT subpath('Top.Child1.Child2',-4);  -- error
+ERROR:  invalid positions
 SELECT index('1.2.3.4.5.6','1.2');
  index 
 -------
@@ -531,24 +541,24 @@ SELECT '1.2.3|@.4'::lquery;
 ERROR:  lquery syntax error at character 7
 LINE 1: SELECT '1.2.3|@.4'::lquery;
                ^
-SELECT (repeat('x', 255) || '*@@*')::lquery;
-                                                                                                                              lquery                                                                                                                               
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@*
+SELECT (repeat('x', :maxlbl) || '*@@*')::lquery;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   lquery                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@*
 (1 row)
 
-SELECT (repeat('x', 256) || '*@@*')::lquery;
+SELECT (repeat('x', :maxlbl + 1) || '*@@*')::lquery;
 ERROR:  label string is too long
-DETAIL:  Label length is 256, must be at most 255, at character 257.
-SELECT ('!' || repeat('x', 255))::lquery;
-                                                                                                                              lquery                                                                                                                              
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- !xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DETAIL:  Label length is 1001, must be at most 1000, at character 1002.
+SELECT ('!' || repeat('x', :maxlbl))::lquery;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  lquery                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ !xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 (1 row)
 
-SELECT ('!' || repeat('x', 256))::lquery;
+SELECT ('!' || repeat('x', :maxlbl + 1))::lquery;
 ERROR:  label string is too long
-DETAIL:  Label length is 256, must be at most 255, at character 258.
+DETAIL:  Label length is 1001, must be at most 1000, at character 1003.
 SELECT nlevel('1.2.3.4');
  nlevel 
 --------
@@ -1195,6 +1205,12 @@ SELECT 'tree & aw_qw%*'::ltxtquery;
  tree & aw_qw%*
 (1 row)
 
+SELECT 'tree & aw-qw%*'::ltxtquery;
+   ltxtquery    
+----------------
+ tree & aw-qw%*
+(1 row)
+
 SELECT 'ltree.awdfg'::ltree @ '!tree & aWdf@*'::ltxtquery;
  ?column? 
 ----------
@@ -1419,8 +1435,27 @@ SELECT '{j.k.l.m, g.b.c.d.e}'::ltree[] ?~ 'A*@|g.b.c.d.e';
  g.b.c.d.e
 (1 row)
 
+-- Check that the hash_ltree() and hash_ltree_extended() function's lower
+-- 32 bits match when the seed is 0 and do not match when the seed != 0
+SELECT v as value, hash_ltree(v)::bit(32) as standard,
+       hash_ltree_extended(v, 0)::bit(32) as extended0,
+       hash_ltree_extended(v, 1)::bit(32) as extended1
+FROM   (VALUES (NULL::ltree), (''::ltree), ('0'::ltree), ('0.1'::ltree),
+       ('0.1.2'::ltree), ('0'::ltree), ('0_asd.1_ASD'::ltree)) x(v)
+WHERE  hash_ltree(v)::bit(32) != hash_ltree_extended(v, 0)::bit(32)
+       OR hash_ltree(v)::bit(32) = hash_ltree_extended(v, 1)::bit(32);
+ value | standard | extended0 | extended1 
+-------+----------+-----------+-----------
+(0 rows)
+
 CREATE TABLE ltreetest (t ltree);
 \copy ltreetest FROM 'data/ltree.data'
+SELECT count(*) from ltreetest;
+ count 
+-------
+  1006
+(1 row)
+
 SELECT * FROM ltreetest WHERE t <  '12.3' order by t asc;
                 t                 
 ----------------------------------
@@ -7819,6 +7854,55 @@ SELECT * FROM ltreetest WHERE t ? '{23.*.1,23.*.2}' order by t asc;
 (4 rows)
 
 drop index tstidx;
+--- test hash index
+create index tstidx on ltreetest using hash (t);
+set enable_seqscan=off;
+set enable_bitmapscan=off;
+EXPLAIN (COSTS OFF)
+SELECT * FROM ltreetest WHERE t =  '12.3' order by t asc;
+              QUERY PLAN              
+--------------------------------------
+ Index Scan using tstidx on ltreetest
+   Index Cond: (t = '12.3'::ltree)
+(2 rows)
+
+SELECT * FROM ltreetest WHERE t =  '12.3' order by t asc;
+  t   
+------
+ 12.3
+(1 row)
+
+reset enable_seqscan;
+reset enable_bitmapscan;
+-- test hash aggregate
+set enable_hashagg=on;
+set enable_sort=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM (
+SELECT t FROM (SELECT * FROM ltreetest UNION ALL SELECT * FROM ltreetest) t1 GROUP BY t
+) t2;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Aggregate
+   ->  HashAggregate
+         Group Key: ltreetest.t
+         ->  Append
+               ->  Seq Scan on ltreetest
+               ->  Seq Scan on ltreetest ltreetest_1
+(6 rows)
+
+SELECT count(*) FROM (
+SELECT t FROM (SELECT * FROM ltreetest UNION ALL SELECT * FROM ltreetest) t1 GROUP BY t
+) t2;
+ count 
+-------
+  1006
+(1 row)
+
+reset enable_hashagg;
+reset enable_sort;
+drop index tstidx;
+-- test gist index
 create index tstidx on ltreetest using gist (t gist_ltree_ops(siglen=0));
 ERROR:  value 0 out of bounds for option "siglen"
 DETAIL:  Valid values are between "4" and "2024".
@@ -8088,4 +8172,33 @@ SELECT count(*) FROM _ltreetest WHERE t ? '{23.*.1,23.*.2}' ;
 -------
     15
 (1 row)
+
+-- test non-error-throwing input
+SELECT str as "value", typ as "type",
+       pg_input_is_valid(str,typ) as ok,
+       errinfo.sql_error_code,
+       errinfo.message,
+       errinfo.detail,
+       errinfo.hint
+FROM (VALUES ('.2.3', 'ltree'),
+             ('1.2.', 'ltree'),
+             ('1.2.3','ltree'),
+             ('@.2.3','lquery'),
+             (' 2.3', 'lquery'),
+             ('1.2.3','lquery'),
+             ('$tree & aWdf@*','ltxtquery'),
+             ('!tree & aWdf@*','ltxtquery'))
+      AS a(str,typ),
+     LATERAL pg_input_error_info(a.str, a.typ) as errinfo;
+     value      |   type    | ok | sql_error_code |              message               |          detail          | hint 
+----------------+-----------+----+----------------+------------------------------------+--------------------------+------
+ .2.3           | ltree     | f  | 42601          | ltree syntax error at character 1  |                          | 
+ 1.2.           | ltree     | f  | 42601          | ltree syntax error                 | Unexpected end of input. | 
+ 1.2.3          | ltree     | t  |                |                                    |                          | 
+ @.2.3          | lquery    | f  | 42601          | lquery syntax error at character 1 |                          | 
+  2.3           | lquery    | f  | 42601          | lquery syntax error at character 1 |                          | 
+ 1.2.3          | lquery    | t  |                |                                    |                          | 
+ $tree & aWdf@* | ltxtquery | f  | 42601          | operand syntax error               |                          | 
+ !tree & aWdf@* | ltxtquery | t  |                |                                    |                          | 
+(8 rows)
 

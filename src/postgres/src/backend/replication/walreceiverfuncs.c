@@ -6,7 +6,7 @@
  * with the walreceiver process. Functions implementing walreceiver itself
  * are in walreceiver.c.
  *
- * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -25,13 +25,23 @@
 #include "access/xlog_internal.h"
 #include "access/xlogrecovery.h"
 #include "pgstat.h"
-#include "postmaster/startup.h"
 #include "replication/walreceiver.h"
 #include "storage/pmsignal.h"
+#include "storage/proc.h"
 #include "storage/shmem.h"
+#include "storage/subsystems.h"
 #include "utils/timestamp.h"
+#include "utils/wait_event.h"
 
 WalRcvData *WalRcv = NULL;
+
+static void WalRcvShmemRequest(void *arg);
+static void WalRcvShmemInit(void *arg);
+
+const ShmemCallbacks WalRcvShmemCallbacks = {
+	.request_fn = WalRcvShmemRequest,
+	.init_fn = WalRcvShmemInit,
+};
 
 /*
  * How long to wait for walreceiver to start up after requesting
@@ -39,36 +49,26 @@ WalRcvData *WalRcv = NULL;
  */
 #define WALRCV_STARTUP_TIMEOUT 10
 
-/* Report shared memory space needed by WalRcvShmemInit */
-Size
-WalRcvShmemSize(void)
+/* Register shared memory space needed by walreceiver */
+static void
+WalRcvShmemRequest(void *arg)
 {
-	Size		size = 0;
-
-	size = add_size(size, sizeof(WalRcvData));
-
-	return size;
+	ShmemRequestStruct(.name = "Wal Receiver Ctl",
+					   .size = sizeof(WalRcvData),
+					   .ptr = (void **) &WalRcv,
+		);
 }
 
-/* Allocate and initialize walreceiver-related shared memory */
-void
-WalRcvShmemInit(void)
+/* Initialize walreceiver-related shared memory */
+static void
+WalRcvShmemInit(void *arg)
 {
-	bool		found;
-
-	WalRcv = (WalRcvData *)
-		ShmemInitStruct("Wal Receiver Ctl", WalRcvShmemSize(), &found);
-
-	if (!found)
-	{
-		/* First time through, so initialize */
-		MemSet(WalRcv, 0, WalRcvShmemSize());
-		WalRcv->walRcvState = WALRCV_STOPPED;
-		ConditionVariableInit(&WalRcv->walRcvStoppedCV);
-		SpinLockInit(&WalRcv->mutex);
-		pg_atomic_init_u64(&WalRcv->writtenUpto, 0);
-		WalRcv->latch = NULL;
-	}
+	MemSet(WalRcv, 0, sizeof(WalRcvData));
+	WalRcv->walRcvState = WALRCV_STOPPED;
+	ConditionVariableInit(&WalRcv->walRcvStoppedCV);
+	SpinLockInit(&WalRcv->mutex);
+	pg_atomic_init_u64(&WalRcv->writtenUpto, 0);
+	WalRcv->procno = INVALID_PROC_NUMBER;
 }
 
 /* Is walreceiver running (or starting up)? */
@@ -119,6 +119,20 @@ WalRcvRunning(void)
 		return false;
 }
 
+/* Return the state of the walreceiver. */
+WalRcvState
+WalRcvGetState(void)
+{
+	WalRcvData *walrcv = WalRcv;
+	WalRcvState state;
+
+	SpinLockAcquire(&walrcv->mutex);
+	state = walrcv->walRcvState;
+	SpinLockRelease(&walrcv->mutex);
+
+	return state;
+}
+
 /*
  * Is walreceiver running and streaming (or at least attempting to connect,
  * or starting up)?
@@ -165,7 +179,7 @@ WalRcvStreaming(void)
 	}
 
 	if (state == WALRCV_STREAMING || state == WALRCV_STARTING ||
-		state == WALRCV_RESTARTING)
+		state == WALRCV_CONNECTING || state == WALRCV_RESTARTING)
 		return true;
 	else
 		return false;
@@ -197,12 +211,12 @@ ShutdownWalRcv(void)
 			stopped = true;
 			break;
 
+		case WALRCV_CONNECTING:
 		case WALRCV_STREAMING:
 		case WALRCV_WAITING:
 		case WALRCV_RESTARTING:
 			walrcv->walRcvState = WALRCV_STOPPING;
-			/* fall through */
-			yb_switch_fallthrough();
+			pg_fallthrough;
 		case WALRCV_STOPPING:
 			walrcvpid = walrcv->pid;
 			break;
@@ -250,7 +264,7 @@ RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr, const char *conninfo,
 	WalRcvData *walrcv = WalRcv;
 	bool		launch = false;
 	pg_time_t	now = (pg_time_t) time(NULL);
-	Latch	   *latch;
+	ProcNumber	walrcv_proc;
 
 	/*
 	 * We always start at the beginning of the segment. That prevents a broken
@@ -268,7 +282,7 @@ RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr, const char *conninfo,
 		   walrcv->walRcvState == WALRCV_WAITING);
 
 	if (conninfo != NULL)
-		strlcpy((char *) walrcv->conninfo, conninfo, MAXCONNINFO);
+		strlcpy(walrcv->conninfo, conninfo, MAXCONNINFO);
 	else
 		walrcv->conninfo[0] = '\0';
 
@@ -280,7 +294,7 @@ RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr, const char *conninfo,
 	 */
 	if (slotname != NULL && slotname[0] != '\0')
 	{
-		strlcpy((char *) walrcv->slotname, slotname, NAMEDATALEN);
+		strlcpy(walrcv->slotname, slotname, NAMEDATALEN);
 		walrcv->is_temp_slot = false;
 	}
 	else
@@ -302,23 +316,24 @@ RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr, const char *conninfo,
 	 * If this is the first startup of walreceiver (on this timeline),
 	 * initialize flushedUpto and latestChunkStart to the starting point.
 	 */
-	if (walrcv->receiveStart == 0 || walrcv->receivedTLI != tli)
+	if (!XLogRecPtrIsValid(walrcv->receiveStart) || walrcv->receivedTLI != tli)
 	{
 		walrcv->flushedUpto = recptr;
 		walrcv->receivedTLI = tli;
 		walrcv->latestChunkStart = recptr;
+		pg_atomic_write_u64(&walrcv->writtenUpto, recptr);
 	}
 	walrcv->receiveStart = recptr;
 	walrcv->receiveStartTLI = tli;
 
-	latch = walrcv->latch;
+	walrcv_proc = walrcv->procno;
 
 	SpinLockRelease(&walrcv->mutex);
 
 	if (launch)
 		SendPostmasterSignal(PMSIGNAL_START_WALRECEIVER);
-	else if (latch)
-		SetLatch(latch);
+	else if (walrcv_proc != INVALID_PROC_NUMBER)
+		SetLatch(&GetPGProcByNumber(walrcv_proc)->procLatch);
 }
 
 /*

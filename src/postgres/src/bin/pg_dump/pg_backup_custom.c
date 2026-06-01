@@ -27,7 +27,6 @@
 
 #include "common/file_utils.h"
 #include "compress_io.h"
-#include "parallel.h"
 #include "pg_backup_utils.h"
 
 /*--------
@@ -40,7 +39,7 @@ static void _StartData(ArchiveHandle *AH, TocEntry *te);
 static void _WriteData(ArchiveHandle *AH, const void *data, size_t dLen);
 static void _EndData(ArchiveHandle *AH, TocEntry *te);
 static int	_WriteByte(ArchiveHandle *AH, const int i);
-static int	_ReadByte(ArchiveHandle *);
+static int	_ReadByte(ArchiveHandle *AH);
 static void _WriteBuf(ArchiveHandle *AH, const void *buf, size_t len);
 static void _ReadBuf(ArchiveHandle *AH, void *buf, size_t len);
 static void _CloseArchive(ArchiveHandle *AH);
@@ -52,13 +51,13 @@ static void _PrintExtraToc(ArchiveHandle *AH, TocEntry *te);
 
 static void _PrintData(ArchiveHandle *AH);
 static void _skipData(ArchiveHandle *AH);
-static void _skipBlobs(ArchiveHandle *AH);
+static void _skipLOs(ArchiveHandle *AH);
 
-static void _StartBlobs(ArchiveHandle *AH, TocEntry *te);
-static void _StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid);
-static void _EndBlob(ArchiveHandle *AH, TocEntry *te, Oid oid);
-static void _EndBlobs(ArchiveHandle *AH, TocEntry *te);
-static void _LoadBlobs(ArchiveHandle *AH, bool drop);
+static void _StartLOs(ArchiveHandle *AH, TocEntry *te);
+static void _StartLO(ArchiveHandle *AH, TocEntry *te, Oid oid);
+static void _EndLO(ArchiveHandle *AH, TocEntry *te, Oid oid);
+static void _EndLOs(ArchiveHandle *AH, TocEntry *te);
+static void _LoadLOs(ArchiveHandle *AH, bool drop);
 
 static void _PrepParallelRestore(ArchiveHandle *AH);
 static void _Clone(ArchiveHandle *AH);
@@ -99,7 +98,7 @@ static size_t _CustomReadFunc(ArchiveHandle *AH, char **buf, size_t *buflen);
  *	It's task is to create any extra archive context (using AH->formatData),
  *	and to initialize the supported function pointers.
  *
- *	It should also prepare whatever it's input source is for reading/writing,
+ *	It should also prepare whatever its input source is for reading/writing,
  *	and in the case of a read mode connection, it should load the Header & TOC.
  */
 void
@@ -123,10 +122,10 @@ InitArchiveFmt_Custom(ArchiveHandle *AH)
 	AH->WriteExtraTocPtr = _WriteExtraToc;
 	AH->PrintExtraTocPtr = _PrintExtraToc;
 
-	AH->StartBlobsPtr = _StartBlobs;
-	AH->StartBlobPtr = _StartBlob;
-	AH->EndBlobPtr = _EndBlob;
-	AH->EndBlobsPtr = _EndBlobs;
+	AH->StartLOsPtr = _StartLOs;
+	AH->StartLOPtr = _StartLO;
+	AH->EndLOPtr = _EndLO;
+	AH->EndLOsPtr = _EndLOs;
 
 	AH->PrepParallelRestorePtr = _PrepParallelRestore;
 	AH->ClonePtr = _Clone;
@@ -137,12 +136,8 @@ InitArchiveFmt_Custom(ArchiveHandle *AH)
 	AH->WorkerJobRestorePtr = _WorkerJobRestoreCustom;
 
 	/* Set up a private area. */
-	ctx = (lclContext *) pg_malloc0(sizeof(lclContext));
-	AH->formatData = (void *) ctx;
-
-	/* Initialize LO buffering */
-	AH->lo_buf_size = LOBBUFSIZE;
-	AH->lo_buf = (void *) pg_malloc(LOBBUFSIZE);
+	ctx = pg_malloc0_object(lclContext);
+	AH->formatData = ctx;
 
 	/*
 	 * Now open the file
@@ -204,13 +199,13 @@ _ArchiveEntry(ArchiveHandle *AH, TocEntry *te)
 {
 	lclTocEntry *ctx;
 
-	ctx = (lclTocEntry *) pg_malloc0(sizeof(lclTocEntry));
+	ctx = pg_malloc0_object(lclTocEntry);
 	if (te->dataDumper)
 		ctx->dataState = K_OFFSET_POS_NOT_SET;
 	else
 		ctx->dataState = K_OFFSET_NO_DATA;
 
-	te->formatData = (void *) ctx;
+	te->formatData = ctx;
 }
 
 /*
@@ -245,8 +240,8 @@ _ReadExtraToc(ArchiveHandle *AH, TocEntry *te)
 
 	if (ctx == NULL)
 	{
-		ctx = (lclTocEntry *) pg_malloc0(sizeof(lclTocEntry));
-		te->formatData = (void *) ctx;
+		ctx = pg_malloc0_object(lclTocEntry);
+		te->formatData = ctx;
 	}
 
 	ctx->dataState = ReadOffset(AH, &(ctx->dataPos));
@@ -298,13 +293,15 @@ _StartData(ArchiveHandle *AH, TocEntry *te)
 	_WriteByte(AH, BLK_DATA);	/* Block type */
 	WriteInt(AH, te->dumpId);	/* For sanity check */
 
-	ctx->cs = AllocateCompressor(AH->compression, _CustomWriteFunc);
+	ctx->cs = AllocateCompressor(AH->compression_spec,
+								 NULL,
+								 _CustomWriteFunc);
 }
 
 /*
  * Called by archiver when dumper calls WriteData. This routine is
- * called for both BLOB and TABLE data; it is the responsibility of
- * the format to manage each kind of data using StartBlob/StartData.
+ * called for both LO and table data; it is the responsibility of
+ * the format to manage each kind of data using StartLO/StartData.
  *
  * It should only be called from within a DataDumper routine.
  *
@@ -317,15 +314,15 @@ _WriteData(ArchiveHandle *AH, const void *data, size_t dLen)
 	CompressorState *cs = ctx->cs;
 
 	if (dLen > 0)
-		/* WriteDataToArchive() internally throws write errors */
-		WriteDataToArchive(AH, cs, data, dLen);
+		/* writeData() internally throws write errors */
+		cs->writeData(AH, cs, data, dLen);
 }
 
 /*
  * Called by the archiver when a dumper's 'DataDumper' routine has
  * finished.
  *
- * Optional.
+ * Mandatory.
  */
 static void
 _EndData(ArchiveHandle *AH, TocEntry *te)
@@ -333,21 +330,23 @@ _EndData(ArchiveHandle *AH, TocEntry *te)
 	lclContext *ctx = (lclContext *) AH->formatData;
 
 	EndCompressor(AH, ctx->cs);
+	ctx->cs = NULL;
+
 	/* Send the end marker */
 	WriteInt(AH, 0);
 }
 
 /*
- * Called by the archiver when starting to save all BLOB DATA (not schema).
+ * Called by the archiver when starting to save BLOB DATA (not schema).
  * This routine should save whatever format-specific information is needed
- * to read the BLOBs back into memory.
+ * to read the LOs back into memory.
  *
  * It is called just prior to the dumper's DataDumper routine.
  *
  * Optional, but strongly recommended.
  */
 static void
-_StartBlobs(ArchiveHandle *AH, TocEntry *te)
+_StartLOs(ArchiveHandle *AH, TocEntry *te)
 {
 	lclContext *ctx = (lclContext *) AH->formatData;
 	lclTocEntry *tctx = (lclTocEntry *) te->formatData;
@@ -361,14 +360,14 @@ _StartBlobs(ArchiveHandle *AH, TocEntry *te)
 }
 
 /*
- * Called by the archiver when the dumper calls StartBlob.
+ * Called by the archiver when the dumper calls StartLO.
  *
  * Mandatory.
  *
  * Must save the passed OID for retrieval at restore-time.
  */
 static void
-_StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
+_StartLO(ArchiveHandle *AH, TocEntry *te, Oid oid)
 {
 	lclContext *ctx = (lclContext *) AH->formatData;
 
@@ -377,16 +376,18 @@ _StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
 
 	WriteInt(AH, oid);
 
-	ctx->cs = AllocateCompressor(AH->compression, _CustomWriteFunc);
+	ctx->cs = AllocateCompressor(AH->compression_spec,
+								 NULL,
+								 _CustomWriteFunc);
 }
 
 /*
- * Called by the archiver when the dumper calls EndBlob.
+ * Called by the archiver when the dumper calls EndLO.
  *
  * Optional.
  */
 static void
-_EndBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
+_EndLO(ArchiveHandle *AH, TocEntry *te, Oid oid)
 {
 	lclContext *ctx = (lclContext *) AH->formatData;
 
@@ -396,14 +397,14 @@ _EndBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
 }
 
 /*
- * Called by the archiver when finishing saving all BLOB DATA.
+ * Called by the archiver when finishing saving BLOB DATA.
  *
  * Optional.
  */
 static void
-_EndBlobs(ArchiveHandle *AH, TocEntry *te)
+_EndLOs(ArchiveHandle *AH, TocEntry *te)
 {
-	/* Write out a fake zero OID to mark end-of-blobs. */
+	/* Write out a fake zero OID to mark end-of-LOs. */
 	WriteInt(AH, 0);
 }
 
@@ -488,7 +489,7 @@ _PrintTocData(ArchiveHandle *AH, TocEntry *te)
 					break;
 
 				case BLK_BLOBS:
-					_skipBlobs(AH);
+					_skipLOs(AH);
 					break;
 
 				default:		/* Always have a default */
@@ -536,7 +537,7 @@ _PrintTocData(ArchiveHandle *AH, TocEntry *te)
 			break;
 
 		case BLK_BLOBS:
-			_LoadBlobs(AH, AH->public.ropt->dropSchema);
+			_LoadLOs(AH, AH->public.ropt->dropSchema);
 			break;
 
 		default:				/* Always have a default */
@@ -566,36 +567,41 @@ _PrintTocData(ArchiveHandle *AH, TocEntry *te)
 static void
 _PrintData(ArchiveHandle *AH)
 {
-	ReadDataFromArchive(AH, AH->compression, _CustomReadFunc);
+	CompressorState *cs;
+
+	cs = AllocateCompressor(AH->compression_spec,
+							_CustomReadFunc, NULL);
+	cs->readData(AH, cs);
+	EndCompressor(AH, cs);
 }
 
 static void
-_LoadBlobs(ArchiveHandle *AH, bool drop)
+_LoadLOs(ArchiveHandle *AH, bool drop)
 {
 	Oid			oid;
 
-	StartRestoreBlobs(AH);
+	StartRestoreLOs(AH);
 
 	oid = ReadInt(AH);
 	while (oid != 0)
 	{
-		StartRestoreBlob(AH, oid, drop);
+		StartRestoreLO(AH, oid, drop);
 		_PrintData(AH);
-		EndRestoreBlob(AH, oid);
+		EndRestoreLO(AH, oid);
 		oid = ReadInt(AH);
 	}
 
-	EndRestoreBlobs(AH);
+	EndRestoreLOs(AH);
 }
 
 /*
- * Skip the BLOBs from the current file position.
- * BLOBS are written sequentially as data blocks (see below).
- * Each BLOB is preceded by its original OID.
- * A zero OID indicates the end of the BLOBS.
+ * Skip the LOs from the current file position.
+ * LOs are written sequentially as data blocks (see below).
+ * Each LO is preceded by its original OID.
+ * A zero OID indicates the end of the LOs.
  */
 static void
-_skipBlobs(ArchiveHandle *AH)
+_skipLOs(ArchiveHandle *AH)
 {
 	Oid			oid;
 
@@ -618,12 +624,19 @@ _skipData(ArchiveHandle *AH)
 	lclContext *ctx = (lclContext *) AH->formatData;
 	size_t		blkLen;
 	char	   *buf = NULL;
-	int			buflen = 0;
+	size_t		buflen = 0;
 
 	blkLen = ReadInt(AH);
 	while (blkLen != 0)
 	{
-		if (ctx->hasSeek)
+		/*
+		 * Seeks of less than stdio's buffer size are less efficient than just
+		 * reading the data, at least on common platforms.  We don't know the
+		 * buffer size for sure, but 4kB is the usual value.  (While pg_dump
+		 * currently tries to avoid producing such short data blocks, older
+		 * dump files often contain them.)
+		 */
+		if (ctx->hasSeek && blkLen >= 4 * 1024)
 		{
 			if (fseeko(AH->FH, blkLen, SEEK_CUR) != 0)
 				pg_fatal("error during file seek: %m");
@@ -632,10 +645,9 @@ _skipData(ArchiveHandle *AH)
 		{
 			if (blkLen > buflen)
 			{
-				if (buf)
-					free(buf);
-				buf = (char *) pg_malloc(blkLen);
-				buflen = blkLen;
+				free(buf);
+				buflen = Max(blkLen, 4 * 1024);
+				buf = (char *) pg_malloc(buflen);
 			}
 			if (fread(buf, 1, blkLen, AH->FH) != blkLen)
 			{
@@ -649,8 +661,7 @@ _skipData(ArchiveHandle *AH)
 		blkLen = ReadInt(AH);
 	}
 
-	if (buf)
-		free(buf);
+	free(buf);
 }
 
 /*
@@ -728,7 +739,7 @@ _ReadBuf(ArchiveHandle *AH, void *buf, size_t len)
  * If an archive is to be written, this routine must call:
  *		WriteHead			to save the archive header
  *		WriteToc			to save the TOC entries
- *		WriteDataChunks		to save all DATA & BLOBs.
+ *		WriteDataChunks		to save all data & LOs.
  *
  */
 static void
@@ -751,9 +762,11 @@ _CloseArchive(ArchiveHandle *AH)
 		 * If possible, re-write the TOC in order to update the data offset
 		 * information.  This is not essential, as pg_restore can cope in most
 		 * cases without it; but it can make pg_restore significantly faster
-		 * in some situations (especially parallel restore).
+		 * in some situations (especially parallel restore).  We can skip this
+		 * step if we're not dumping any data; there are no offsets to update
+		 * in that case.
 		 */
-		if (ctx->hasSeek &&
+		if (ctx->hasSeek && AH->public.dopt->dumpData &&
 			fseeko(AH->FH, tpos, SEEK_SET) == 0)
 			WriteToc(AH);
 	}
@@ -880,7 +893,7 @@ _Clone(ArchiveHandle *AH)
 	/*
 	 * Each thread must have private lclContext working state.
 	 */
-	AH->formatData = (lclContext *) pg_malloc(sizeof(lclContext));
+	AH->formatData = pg_malloc_object(lclContext);
 	memcpy(AH->formatData, ctx, sizeof(lclContext));
 	ctx = (lclContext *) AH->formatData;
 
@@ -893,9 +906,6 @@ _Clone(ArchiveHandle *AH)
 	 * share knowledge about where the data blocks are across threads.
 	 * _PrintTocData has to be careful about the order of operations on that
 	 * state, though.
-	 *
-	 * Note: we do not make a local lo_buf because we expect at most one BLOBS
-	 * entry per archive, so no parallelism is possible.
 	 */
 }
 
@@ -979,7 +989,7 @@ _readBlockHeader(ArchiveHandle *AH, int *type, int *id)
 }
 
 /*
- * Callback function for WriteDataToArchive. Writes one block of (compressed)
+ * Callback function for writeData. Writes one block of (compressed)
  * data to the archive.
  */
 static void
@@ -994,7 +1004,7 @@ _CustomWriteFunc(ArchiveHandle *AH, const char *buf, size_t len)
 }
 
 /*
- * Callback function for ReadDataFromArchive. To keep things simple, we
+ * Callback function for readData. To keep things simple, we
  * always read one compressed block at a time.
  */
 static size_t

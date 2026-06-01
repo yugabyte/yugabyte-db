@@ -10,7 +10,7 @@
  * test behaviors where some specified action happens in another backend
  * between parsing and execution of any desired query.
  *
- * Copyright (c) 2020-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2020-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/test/modules/delay_execution/delay_execution.c
@@ -23,7 +23,7 @@
 #include <limits.h>
 
 #include "optimizer/planner.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/guc.h"
 #include "utils/inval.h"
 
@@ -36,24 +36,22 @@ static int	post_planning_lock_id = 0;
 /* Save previous planner hook user to be a good citizen */
 static planner_hook_type prev_planner_hook = NULL;
 
-/* Module load function */
-void		_PG_init(void);
-
 
 /* planner_hook function to provide the desired delay */
 static PlannedStmt *
 delay_execution_planner(Query *parse, const char *query_string,
-						int cursorOptions, ParamListInfo boundParams)
+						int cursorOptions, ParamListInfo boundParams,
+						ExplainState *es)
 {
 	PlannedStmt *result;
 
 	/* Invoke the planner, possibly via a previous hook user */
 	if (prev_planner_hook)
 		result = prev_planner_hook(parse, query_string, cursorOptions,
-								   boundParams);
+								   boundParams, es);
 	else
 		result = standard_planner(parse, query_string, cursorOptions,
-								  boundParams);
+								  boundParams, es);
 
 	/* If enabled, delay by taking and releasing the specified lock */
 	if (post_planning_lock_id != 0)

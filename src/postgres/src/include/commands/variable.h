@@ -1,6 +1,12 @@
 /*
  * variable.h
- *		Routines for handling specialized SET variables.
+ *		YB-only declarations for specialized SET variable hooks.
+ *
+ * YB_TODO_PG19MERGE: PG19 (commit 0a20ff54f5e3f74e88d022dc8b2c5d537b0a78bc)
+ * removed this file; the PG-side declarations moved to
+ * src/include/utils/guc_hooks.h. YB retains a slimmed variable.h holding only
+ * the YB-specific GUC hook declarations, included by guc.c, pg_yb_utils.c,
+ * and postgres.c.
  *
  * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -11,29 +17,6 @@
 #define VARIABLE_H
 
 #include "utils/guc.h"
-
-
-extern bool check_datestyle(char **newval, void **extra, GucSource source);
-extern void assign_datestyle(const char *newval, void *extra);
-extern bool check_timezone(char **newval, void **extra, GucSource source);
-extern void assign_timezone(const char *newval, void *extra);
-extern const char *show_timezone(void);
-extern bool check_log_timezone(char **newval, void **extra, GucSource source);
-extern void assign_log_timezone(const char *newval, void *extra);
-extern const char *show_log_timezone(void);
-extern bool check_transaction_read_only(bool *newval, void **extra, GucSource source);
-extern bool check_XactIsoLevel(int *newval, void **extra, GucSource source);
-extern bool check_transaction_deferrable(bool *newval, void **extra, GucSource source);
-extern bool check_random_seed(double *newval, void **extra, GucSource source);
-extern void assign_random_seed(double newval, void *extra);
-extern const char *show_random_seed(void);
-extern bool check_client_encoding(char **newval, void **extra, GucSource source);
-extern void assign_client_encoding(const char *newval, void *extra);
-extern bool check_session_authorization(char **newval, void **extra, GucSource source);
-extern void assign_session_authorization(const char *newval, void *extra);
-extern bool check_role(char **newval, void **extra, GucSource source);
-extern void assign_role(const char *newval, void *extra);
-extern const char *show_role(void);
 
 /* YB */
 extern void yb_assign_XactIsoLevel(int newval, void *extra);

@@ -22,6 +22,22 @@ SELECT * FROM xmltest;
 ----+------
 (0 rows)
 
+-- test non-throwing API, too
+SELECT pg_input_is_valid('<value>one</value>', 'xml');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT pg_input_is_valid('<value>one</', 'xml');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT message FROM pg_input_error_info('<value>one</', 'xml');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT pg_input_is_valid('<?xml version="1.0" standalone="y"?><foo/>', 'xml');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT message FROM pg_input_error_info('<?xml version="1.0" standalone="y"?><foo/>', 'xml');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT xmlcomment('test');
 ERROR:  unsupported XML feature
 DETAIL:  This functionality requires the server to be built with libxml support.
@@ -293,6 +309,151 @@ ERROR:  unsupported XML feature
 LINE 1: SELECT xmlserialize(document 'bad' as text);
                                      ^
 DETAIL:  This functionality requires the server to be built with libxml support.
+-- indent
+SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- no indent
+SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- indent non singly-rooted xml
+SELECT xmlserialize(DOCUMENT '<foo>73</foo><bar><val x="y">42</val></bar>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '<foo>73</foo><bar><val x="y">4...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '<foo>73</foo><bar><val x="y">42</val></bar>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '<foo>73</foo><bar><val x="y">4...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- indent non singly-rooted xml with mixed contents
+SELECT xmlserialize(DOCUMENT 'text node<foo>73</foo>text node<bar><val x="y">42</val></bar>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT 'text node<foo>73</foo>text nod...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  'text node<foo>73</foo>text node<bar><val x="y">42</val></bar>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  'text node<foo>73</foo>text nod...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- indent singly-rooted xml with mixed contents
+SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><val x="y">text node<val>73</val></val></bar></foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><val x="y">text node<val>73</val></val></bar></foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- indent empty string
+SELECT xmlserialize(DOCUMENT '' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '' AS text INDENT);
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '' AS text INDENT);
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- whitespaces
+SELECT xmlserialize(DOCUMENT '  ' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '  ' AS text INDENT);
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '  ' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '  ' AS text INDENT);
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- indent null
+SELECT xmlserialize(DOCUMENT NULL AS text INDENT);
+ xmlserialize 
+--------------
+ 
+(1 row)
+
+SELECT xmlserialize(CONTENT  NULL AS text INDENT);
+ xmlserialize 
+--------------
+ 
+(1 row)
+
+-- indent with XML declaration
+SELECT xmlserialize(DOCUMENT '<?xml version="1.0" encoding="UTF-8"?><foo><bar><val>73</val></bar></foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '<?xml version="1.0" encoding="...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '<?xml version="1.0" encoding="UTF-8"?><foo><bar><val>73</val></bar></foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '<?xml version="1.0" encoding="...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- indent containing DOCTYPE declaration
+SELECT xmlserialize(DOCUMENT '<!DOCTYPE a><a/>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '<!DOCTYPE a><a/>' AS text INDE...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '<!DOCTYPE a><a/>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '<!DOCTYPE a><a/>' AS text INDE...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- indent xml with empty element
+SELECT xmlserialize(DOCUMENT '<foo><bar></bar></foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar></bar></foo>' AS tex...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '<foo><bar></bar></foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar></bar></foo>' AS tex...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- 'no indent' = not using 'no indent'
+SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text) = xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text) = xmlserialize(CONTENT '<foo><bar><val x="y">42</val></bar></foo>' AS text NO INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+-- indent xml strings containing blank nodes
+SELECT xmlserialize(DOCUMENT '<foo>   <bar></bar>    </foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(DOCUMENT '<foo>   <bar></bar>    </foo>'...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmlserialize(CONTENT  'text node<foo>    <bar></bar>   </foo>' AS text INDENT);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmlserialize(CONTENT  'text node<foo>    <bar></bar> ...
+                                     ^
+DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT xml '<foo>bar</foo>' IS DOCUMENT;
 ERROR:  unsupported XML feature
 LINE 1: SELECT xml '<foo>bar</foo>' IS DOCUMENT;
@@ -422,6 +583,16 @@ ERROR:  unsupported XML feature
 LINE 1: ...EATE VIEW xmlview9 AS SELECT xmlserialize(content 'good' as ...
                                                              ^
 DETAIL:  This functionality requires the server to be built with libxml support.
+CREATE VIEW xmlview10 AS SELECT xmlserialize(document '<foo><bar>42</bar></foo>' AS text indent);
+ERROR:  unsupported XML feature
+LINE 1: ...TE VIEW xmlview10 AS SELECT xmlserialize(document '<foo><bar...
+                                                             ^
+DETAIL:  This functionality requires the server to be built with libxml support.
+CREATE VIEW xmlview11 AS SELECT xmlserialize(document '<foo><bar>42</bar></foo>' AS character varying no indent);
+ERROR:  unsupported XML feature
+LINE 1: ...TE VIEW xmlview11 AS SELECT xmlserialize(document '<foo><bar...
+                                                             ^
+DETAIL:  This functionality requires the server to be built with libxml support.
 SELECT table_name, view_definition FROM information_schema.views
   WHERE table_name LIKE 'xmlview%' ORDER BY 1;
  table_name |                                view_definition                                 
@@ -543,9 +714,7 @@ BEGIN
   END IF;
 EXCEPTION
   -- character with byte sequence 0xc2 0xb0 in encoding "UTF8" has no equivalent in encoding "LATIN8"
-  WHEN untranslatable_character
-  -- default conversion function for encoding "UTF8" to "MULE_INTERNAL" does not exist
-  OR undefined_function
+  WHEN undefined_function
   -- unsupported XML feature
   OR feature_not_supported THEN
     RAISE LOG 'skip: %', SQLERRM;
@@ -876,6 +1045,10 @@ EXPLAIN (COSTS OFF, VERBOSE) SELECT * FROM xmltableview1;
 -- errors
 SELECT * FROM XMLTABLE (ROW () PASSING null COLUMNS v1 timestamp) AS f (v1, v2);
 ERROR:  XMLTABLE function has 1 columns available but 2 columns specified
+SELECT * FROM XMLTABLE (ROW () PASSING null COLUMNS v1 timestamp __pg__is_not_null 1) AS f (v1);
+ERROR:  option name "__pg__is_not_null" cannot be used in XMLTABLE
+LINE 1: ...MLTABLE (ROW () PASSING null COLUMNS v1 timestamp __pg__is_n...
+                                                             ^
 -- XMLNAMESPACES tests
 SELECT * FROM XMLTABLE(XMLNAMESPACES('http://x.y' AS zz),
                       '/zz:rows/zz:row'
@@ -1026,18 +1199,62 @@ SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan"
 (0 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT xmltable.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS "COUNTRY_NAME" text, "REGION_ID" int) WHERE "COUNTRY_NAME" = 'Japan';
+SELECT f.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS "COUNTRY_NAME" text, "REGION_ID" int) AS f WHERE "COUNTRY_NAME" = 'Japan';
                                                                                     QUERY PLAN                                                                                    
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Nested Loop
-   Output: "xmltable"."COUNTRY_NAME", "xmltable"."REGION_ID"
+   Output: f."COUNTRY_NAME", f."REGION_ID"
    ->  Seq Scan on public.xmldata
          Output: xmldata.data
-   ->  Table Function Scan on "xmltable"
-         Output: "xmltable"."COUNTRY_NAME", "xmltable"."REGION_ID"
+   ->  Table Function Scan on "xmltable" f
+         Output: f."COUNTRY_NAME", f."REGION_ID"
          Table Function Call: XMLTABLE(('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]'::text) PASSING (xmldata.data) COLUMNS "COUNTRY_NAME" text, "REGION_ID" integer)
-         Filter: ("xmltable"."COUNTRY_NAME" = 'Japan'::text)
+         Filter: (f."COUNTRY_NAME" = 'Japan'::text)
 (8 rows)
+
+EXPLAIN (VERBOSE, FORMAT JSON, COSTS OFF)
+SELECT f.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COUNTRY_NAME="India"]' PASSING data COLUMNS "COUNTRY_NAME" text, "REGION_ID" int) AS f WHERE "COUNTRY_NAME" = 'Japan';
+                                                                                           QUERY PLAN                                                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [                                                                                                                                                                                              +
+   {                                                                                                                                                                                            +
+     "Plan": {                                                                                                                                                                                  +
+       "Node Type": "Nested Loop",                                                                                                                                                              +
+       "Parallel Aware": false,                                                                                                                                                                 +
+       "Async Capable": false,                                                                                                                                                                  +
+       "Join Type": "Inner",                                                                                                                                                                    +
+       "Disabled": false,                                                                                                                                                                       +
+       "Output": ["f.\"COUNTRY_NAME\"", "f.\"REGION_ID\""],                                                                                                                                     +
+       "Inner Unique": false,                                                                                                                                                                   +
+       "Plans": [                                                                                                                                                                               +
+         {                                                                                                                                                                                      +
+           "Node Type": "Seq Scan",                                                                                                                                                             +
+           "Parent Relationship": "Outer",                                                                                                                                                      +
+           "Parallel Aware": false,                                                                                                                                                             +
+           "Async Capable": false,                                                                                                                                                              +
+           "Relation Name": "xmldata",                                                                                                                                                          +
+           "Schema": "public",                                                                                                                                                                  +
+           "Alias": "xmldata",                                                                                                                                                                  +
+           "Disabled": false,                                                                                                                                                                   +
+           "Output": ["xmldata.data"]                                                                                                                                                           +
+         },                                                                                                                                                                                     +
+         {                                                                                                                                                                                      +
+           "Node Type": "Table Function Scan",                                                                                                                                                  +
+           "Parent Relationship": "Inner",                                                                                                                                                      +
+           "Parallel Aware": false,                                                                                                                                                             +
+           "Async Capable": false,                                                                                                                                                              +
+           "Table Function Name": "xmltable",                                                                                                                                                   +
+           "Alias": "f",                                                                                                                                                                        +
+           "Disabled": false,                                                                                                                                                                   +
+           "Output": ["f.\"COUNTRY_NAME\"", "f.\"REGION_ID\""],                                                                                                                                 +
+           "Table Function Call": "XMLTABLE(('/ROWS/ROW[COUNTRY_NAME=\"Japan\" or COUNTRY_NAME=\"India\"]'::text) PASSING (xmldata.data) COLUMNS \"COUNTRY_NAME\" text, \"REGION_ID\" integer)",+
+           "Filter": "(f.\"COUNTRY_NAME\" = 'Japan'::text)"                                                                                                                                     +
+         }                                                                                                                                                                                      +
+       ]                                                                                                                                                                                        +
+     }                                                                                                                                                                                          +
+   }                                                                                                                                                                                            +
+ ]
+(1 row)
 
 -- should to work with more data
 INSERT INTO xmldata VALUES('<ROWS>
@@ -1245,7 +1462,7 @@ LINE 1: SELECT * FROM XMLTABLE('*' PASSING '<a>a</a>' COLUMNS a xml ...
                                            ^
 DETAIL:  This functionality requires the server to be built with libxml support.
 \x
-SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>' COLUMNS x xml PATH 'node()', y xml PATH '/');
+SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?><![CDATA[&ent1]]><n2>&amp;deep</n2>post</e>' COLUMNS x xml PATH '/e/n2', y xml PATH '/');
 ERROR:  unsupported XML feature
 LINE 1: SELECT * FROM XMLTABLE('*' PASSING '<e>pre<!--c1--><?pi arg?...
                                            ^
@@ -1253,4 +1470,27 @@ DETAIL:  This functionality requires the server to be built with libxml support.
 \x
 SELECT * FROM XMLTABLE('.' PASSING XMLELEMENT(NAME a) columns a varchar(20) PATH '"<foo/>"', b xml PATH '"<foo/>"');
 ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmltext(NULL);
+ xmltext 
+---------
+ 
+(1 row)
+
+SELECT xmltext('');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmltext('  ');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmltext('foo `$_-+?=*^%!|/\()[]{}');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmltext('foo & <"bar">');
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+SELECT xmltext('x'|| '<P>73</P>'::xml || .42 || true || 'j'::char);
+ERROR:  unsupported XML feature
+LINE 1: SELECT xmltext('x'|| '<P>73</P>'::xml || .42 || true || 'j':...
+                             ^
 DETAIL:  This functionality requires the server to be built with libxml support.

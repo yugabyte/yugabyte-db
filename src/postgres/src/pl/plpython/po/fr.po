@@ -8,10 +8,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: PostgreSQL 15\n"
+"Project-Id-Version: PostgreSQL 17\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2023-05-05 17:08+0000\n"
-"PO-Revision-Date: 2024-09-16 16:35+0200\n"
+"POT-Creation-Date: 2023-07-30 09:08+0000\n"
+"PO-Revision-Date: 2024-09-16 16:28+0200\n"
 "Last-Translator: Guillaume Lelarge <guillaume@lelarge.info>\n"
 "Language-Team: French <guillaume@lelarge.info>\n"
 "Language: fr\n"
@@ -112,7 +112,7 @@ msgstr "la procédure PL/python n'a pas renvoyé None"
 msgid "PL/Python function with return type \"void\" did not return None"
 msgstr "la fonction PL/python avec un code de retour « void » ne renvoyait pas None"
 
-#: plpy_exec.c:369 plpy_exec.c:395
+#: plpy_exec.c:369 plpy_exec.c:393
 #, c-format
 msgid "unexpected return value from trigger procedure"
 msgstr "valeur de retour inattendue de la procédure trigger"
@@ -122,118 +122,118 @@ msgstr "valeur de retour inattendue de la procédure trigger"
 msgid "Expected None or a string."
 msgstr "Attendait None ou une chaîne de caractères."
 
-#: plpy_exec.c:385
+#: plpy_exec.c:383
 #, c-format
 msgid "PL/Python trigger function returned \"MODIFY\" in a DELETE trigger -- ignored"
 msgstr ""
 "la fonction trigger PL/python a renvoyé « MODIFY » dans un trigger DELETE\n"
 "-- ignoré"
 
-#: plpy_exec.c:396
+#: plpy_exec.c:394
 #, c-format
 msgid "Expected None, \"OK\", \"SKIP\", or \"MODIFY\"."
 msgstr "Attendait None, « OK », « SKIP » ou « MODIFY »."
 
-#: plpy_exec.c:446
+#: plpy_exec.c:444
 #, c-format
 msgid "PyList_SetItem() failed, while setting up arguments"
 msgstr "échec de PyList_SetItem() lors de l'initialisation des arguments"
 
-#: plpy_exec.c:450
+#: plpy_exec.c:448
 #, c-format
 msgid "PyDict_SetItemString() failed, while setting up arguments"
 msgstr "échec de PyDict_SetItemString() lors de l'initialisation des arguments"
 
-#: plpy_exec.c:462
+#: plpy_exec.c:460
 #, c-format
 msgid "function returning record called in context that cannot accept type record"
 msgstr ""
 "fonction renvoyant le type record appelée dans un contexte qui ne peut pas\n"
 "accepter le type record"
 
-#: plpy_exec.c:679
+#: plpy_exec.c:677
 #, c-format
 msgid "while creating return value"
 msgstr "lors de la création de la valeur de retour"
 
-#: plpy_exec.c:926
+#: plpy_exec.c:924
 #, c-format
 msgid "TD[\"new\"] deleted, cannot modify row"
 msgstr "TD[\"new\"] supprimé, ne peut pas modifier la ligne"
 
-#: plpy_exec.c:931
+#: plpy_exec.c:929
 #, c-format
 msgid "TD[\"new\"] is not a dictionary"
 msgstr "TD[\"new\"] n'est pas un dictionnaire"
 
-#: plpy_exec.c:956
+#: plpy_exec.c:954
 #, c-format
 msgid "TD[\"new\"] dictionary key at ordinal position %d is not a string"
 msgstr "la clé TD[\"new\"] à la position ordinale %d n'est pas une chaîne"
 
-#: plpy_exec.c:963
+#: plpy_exec.c:961
 #, c-format
 msgid "key \"%s\" found in TD[\"new\"] does not exist as a column in the triggering row"
 msgstr ""
 "la clé « %s » trouvée dans TD[\"new\"]  n'existe pas comme colonne\n"
 "de la ligne impactée par le trigger"
 
-#: plpy_exec.c:968
+#: plpy_exec.c:966
 #, c-format
 msgid "cannot set system attribute \"%s\""
 msgstr "ne peut pas initialiser l'attribut système « %s »"
 
-#: plpy_exec.c:973
+#: plpy_exec.c:971
 #, c-format
 msgid "cannot set generated column \"%s\""
 msgstr "ne peut pas initialiser la colonne générée « %s »"
 
-#: plpy_exec.c:1031
+#: plpy_exec.c:1029
 #, c-format
 msgid "while modifying trigger row"
 msgstr "lors de la modification de la ligne du trigger"
 
-#: plpy_exec.c:1089
+#: plpy_exec.c:1087
 #, c-format
 msgid "forcibly aborting a subtransaction that has not been exited"
 msgstr "annulation forcée d'une sous-transaction qui n'a jamais été quittée"
 
-#: plpy_main.c:111
+#: plpy_main.c:109
 #, c-format
 msgid "multiple Python libraries are present in session"
 msgstr "plusieurs bibliothèques Python sont présentes dans la session"
 
-#: plpy_main.c:112
+#: plpy_main.c:110
 #, c-format
 msgid "Only one Python major version can be used in one session."
 msgstr "Seule une version majeure de Python peut être utilisée dans une session."
 
-#: plpy_main.c:124
+#: plpy_main.c:122
 #, c-format
 msgid "untrapped error in initialization"
 msgstr "erreur non récupérée dans l'initialisation"
 
-#: plpy_main.c:147
+#: plpy_main.c:145
 #, c-format
 msgid "could not import \"__main__\" module"
 msgstr "n'a pas pu importer le module « __main__ »"
 
-#: plpy_main.c:156
+#: plpy_main.c:154
 #, c-format
 msgid "could not initialize globals"
 msgstr "n'a pas pu initialiser les variables globales"
 
-#: plpy_main.c:354
+#: plpy_main.c:352
 #, c-format
 msgid "PL/Python procedure \"%s\""
 msgstr "procédure PL/python « %s »"
 
-#: plpy_main.c:357
+#: plpy_main.c:355
 #, c-format
 msgid "PL/Python function \"%s\""
 msgstr "fonction PL/python « %s »"
 
-#: plpy_main.c:365
+#: plpy_main.c:363
 #, c-format
 msgid "PL/Python anonymous code block"
 msgstr "bloc de code PL/Python anonyme"
@@ -297,12 +297,12 @@ msgstr "les fonctions PL/python ne peuvent pas renvoyer le type %s"
 msgid "PL/Python functions cannot accept type %s"
 msgstr "les fonctions PL/python ne peuvent pas accepter le type %s"
 
-#: plpy_procedure.c:397
+#: plpy_procedure.c:395
 #, c-format
 msgid "could not compile PL/Python function \"%s\""
 msgstr "n'a pas pu compiler la fonction PL/python « %s »"
 
-#: plpy_procedure.c:400
+#: plpy_procedure.c:398
 #, c-format
 msgid "could not compile anonymous PL/Python code block"
 msgstr "n'a pas pu compiler le bloc de code anonyme PL/python"

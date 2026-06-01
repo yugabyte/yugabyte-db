@@ -4,7 +4,7 @@
  *	  definition of the "statistics" system catalog (pg_statistic)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_statistic.h
@@ -19,13 +19,15 @@
 #define PG_STATISTIC_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_statistic_d.h"
+#include "catalog/pg_statistic_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_statistic definition.  cpp turns this into
  *		typedef struct FormData_pg_statistic
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_statistic,2619,StatisticRelationId)
 {
 	/* These fields form the unique key for the entry: */
@@ -124,6 +126,8 @@ CATALOG(pg_statistic,2619,StatisticRelationId)
 #endif
 } FormData_pg_statistic;
 
+END_CATALOG_STRUCT
+
 #define STATISTIC_NUM_SLOTS  5
 
 
@@ -136,7 +140,9 @@ typedef FormData_pg_statistic *Form_pg_statistic;
 
 DECLARE_TOAST(pg_statistic, 2840, 2841);
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_statistic_relid_att_inh_index, 2696, StatisticRelidAttnumInhIndexId, on pg_statistic using btree(starelid oid_ops, staattnum int2_ops, stainherit bool_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_statistic_relid_att_inh_index, 2696, StatisticRelidAttnumInhIndexId, pg_statistic, btree(starelid oid_ops, staattnum int2_ops, stainherit bool_ops));
+
+MAKE_SYSCACHE(STATRELATTINH, pg_statistic_relid_att_inh_index, 128);
 
 DECLARE_FOREIGN_KEY((starelid, staattnum), pg_attribute, (attrelid, attnum));
 
@@ -152,6 +158,9 @@ DECLARE_FOREIGN_KEY((starelid, staattnum), pg_attribute, (attrelid, attnum));
  * data "kind" will appear in any particular slot.  Instead, search the
  * stakind fields to see if the desired data is available.  (The standard
  * function get_attstatsslot() may be used for this.)
+ *
+ * Note: The pg_stats view needs to be modified whenever a new slot kind is
+ * added to core.
  */
 
 /*
@@ -178,9 +187,9 @@ DECLARE_FOREIGN_KEY((starelid, staattnum), pg_attribute, (attrelid, attnum));
  * the K most common non-null values appearing in the column, and stanumbers
  * contains their frequencies (fractions of total row count).  The values
  * shall be ordered in decreasing frequency.  Note that since the arrays are
- * variable-size, K may be chosen by the statistics collector.  Values should
- * not appear in MCV unless they have been observed to occur more than once;
- * a unique column will have no MCV slot.
+ * variable-size, K may be chosen at ANALYZE time.  Values should not appear
+ * in MCV unless they have been observed to occur more than once; a unique
+ * column will have no MCV slot.
  */
 #define STATISTIC_KIND_MCV	1
 
@@ -235,6 +244,10 @@ DECLARE_FOREIGN_KEY((starelid, staattnum), pg_attribute, (attrelid, attnum));
  * the fraction of non-null rows that contain at least one null element).  If
  * this member is omitted, the column is presumed to contain no null elements.
  *
+ * Starting in v19, the first extra member can be smaller than the smallest
+ * frequency of any stored MCE, indicating that it's known that no element
+ * not present in the MCE array has frequency greater than that value.
+ *
  * Note: in current usage for tsvector columns, the stavalues elements are of
  * type text, even though their representation within tsvector is not
  * exactly text.
@@ -262,7 +275,8 @@ DECLARE_FOREIGN_KEY((starelid, staattnum), pg_attribute, (attrelid, attnum));
  * a format similar to STATISTIC_KIND_HISTOGRAM: it contains M (>=2) range
  * values that divide the column data values into M-1 bins of approximately
  * equal population. The lengths are stored as float8s, as measured by the
- * range type's subdiff function. Only non-null rows are considered.
+ * range type's subdiff function. Only non-null, non-empty rows are
+ * considered.
  */
 #define STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM  6
 

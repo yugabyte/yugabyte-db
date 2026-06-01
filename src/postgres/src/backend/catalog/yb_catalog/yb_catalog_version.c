@@ -416,7 +416,8 @@ YbGetSQLIncrementCatalogVersionFunctionOidHelper(char *fname)
 													false /* expand_variadic */ ,
 													false /* expand_defaults */ ,
 													false /* include_out_arguments */ ,
-													false /* missing_ok */ );
+													false /* missing_ok */ ,
+													NULL /* fgc_flags */ );
 
 	/* We expect exactly one candidate. */
 	if (clist && clist->next == NULL)
@@ -820,7 +821,7 @@ YbDeleteMasterDBInvalidationMessagesTableEntries(Oid db_oid)
 		if (spirc != SPI_OK_DELETE)
 			elog(ERROR, "SPI_execute_plan failed for \"%s\"", query);
 		ereport((*YBCGetGFlags()->log_ysql_catalog_versions ? LOG : DEBUG1),
-				(errmsg("%s: deleted %lu invalidation messages for database %u",
+				(errmsg("%s: deleted %llu invalidation messages for database %u",
 						__func__, SPI_processed, db_oid)));
 	}
 	PG_CATCH();

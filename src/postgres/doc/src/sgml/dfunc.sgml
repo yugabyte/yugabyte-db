@@ -66,40 +66,12 @@
       <option>-fPIC</option>.  To create shared libraries the compiler
       flag is <option>-shared</option>.
 <programlisting>
-gcc -fPIC -c foo.c
-gcc -shared -o foo.so foo.o
+cc -fPIC -c foo.c
+cc -shared -o foo.so foo.o
 </programlisting>
-      This is applicable as of version 3.0 of
-      <systemitem class="osname">FreeBSD</systemitem>.
-     </para>
-    </listitem>
-   </varlistentry>
-
-   <varlistentry>
-    <term>
-     <systemitem class="osname">HP-UX</systemitem>
-     <indexterm><primary>HP-UX</primary><secondary>shared library</secondary></indexterm>
-    </term>
-    <listitem>
-     <para>
-      The compiler flag of the system compiler to create
-      <acronym>PIC</acronym> is <option>+z</option>.  When using
-      <application>GCC</application> it's <option>-fPIC</option>. The
-      linker flag for shared libraries is <option>-b</option>.  So:
-<programlisting>
-cc +z -c foo.c
-</programlisting>
-      or:
-<programlisting>
-gcc -fPIC -c foo.c
-</programlisting>
-      and then:
-<programlisting>
-ld -b -o foo.sl foo.o
-</programlisting>
-      <systemitem class="osname">HP-UX</systemitem> uses the extension
-      <filename>.sl</filename> for shared libraries, unlike most other
-      systems.
+      This is applicable as of version 13.0 of
+      <systemitem class="osname">FreeBSD</systemitem>, older versions used
+      the <filename>gcc</filename> compiler.
      </para>
     </listitem>
    </varlistentry>
@@ -185,19 +157,12 @@ ld -Bshareable -o foo.so foo.o
     <listitem>
      <para>
       The compiler flag to create <acronym>PIC</acronym> is
-      <option>-KPIC</option> with the Sun compiler and
       <option>-fPIC</option> with <application>GCC</application>.  To
       link shared libraries, the compiler option is
-      <option>-G</option> with either compiler or alternatively
       <option>-shared</option> with <application>GCC</application>.
 <programlisting>
-cc -KPIC -c foo.c
-cc -G -o foo.so foo.o
-</programlisting>
-      or
-<programlisting>
 gcc -fPIC -c foo.c
-gcc -G -o foo.so foo.o
+gcc -shared -o foo.so foo.o
 </programlisting>
      </para>
     </listitem>
@@ -229,24 +194,5 @@ gcc -G -o foo.so foo.o
   Refer back to <xref linkend="xfunc-c-dynload"/> about where the
   server expects to find the shared library files.
  </para>
-
-<!--
-Under AIX, object files are compiled normally but building the shared
-library requires a couple of steps.  First, create the object file:
-.nf
-cc <other flags> -c foo.c
-.fi
-You must then create a symbol \*(lqexports\*(rq file for the object
-file:
-.nf
-mkldexport foo.o `pwd` &gt; foo.exp
-.fi
-Finally, you can create the shared library:
-.nf
-ld <other flags> -H512 -T512 -o foo.so -e _nostart \e
-   -bI:.../lib/postgres.exp -bE:foo.exp foo.o \e
-   -lm -lc 2>/dev/null
-.fi
-  -->
 
 </sect2>

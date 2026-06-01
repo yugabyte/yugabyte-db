@@ -3,7 +3,7 @@
  * amutils.c
  *	  SQL-level APIs related to index access methods.
  *
- * Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -119,7 +119,6 @@ test_indoption(HeapTuple tuple, int attno, bool guard,
 			   bool *res)
 {
 	Datum		datum;
-	bool		isnull;
 	int2vector *indoption;
 	int16		indoption_val;
 
@@ -129,9 +128,7 @@ test_indoption(HeapTuple tuple, int attno, bool guard,
 		return true;
 	}
 
-	datum = SysCacheGetAttr(INDEXRELID, tuple,
-							Anum_pg_index_indoption, &isnull);
-	Assert(!isnull);
+	datum = SysCacheGetAttrNotNull(INDEXRELID, tuple, Anum_pg_index_indoption);
 
 	indoption = ((int2vector *) DatumGetPointer(datum));
 	indoption_val = indoption->values[attno - 1];
@@ -159,7 +156,7 @@ indexam_property(FunctionCallInfo fcinfo,
 	bool		isnull = false;
 	int			natts = 0;
 	IndexAMProperty prop;
-	IndexAmRoutine *routine;
+	const IndexAmRoutine *routine;
 
 	/* Try to convert property name to enum (no error if not known) */
 	prop = lookup_prop_name(propname);
@@ -455,7 +452,7 @@ pg_indexam_progress_phasename(PG_FUNCTION_ARGS)
 {
 	Oid			amoid = PG_GETARG_OID(0);
 	int32		phasenum = PG_GETARG_INT32(1);
-	IndexAmRoutine *routine;
+	const IndexAmRoutine *routine;
 	char	   *name;
 
 	routine = GetIndexAmRoutineByAmId(amoid, true);

@@ -32,7 +32,6 @@ PostgreSQL documentation
  <refsynopsisdiv>
 <synopsis>
 EXPLAIN [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] <replaceable class="parameter">statement</replaceable>
-EXPLAIN [ ANALYZE ] [ VERBOSE ] <replaceable class="parameter">statement</replaceable>
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
@@ -40,10 +39,14 @@ EXPLAIN [ ANALYZE ] [ VERBOSE ] <replaceable class="parameter">statement</replac
     VERBOSE [ <replaceable class="parameter">boolean</replaceable> ]
     COSTS [ <replaceable class="parameter">boolean</replaceable> ]
     SETTINGS [ <replaceable class="parameter">boolean</replaceable> ]
+    GENERIC_PLAN [ <replaceable class="parameter">boolean</replaceable> ]
     BUFFERS [ <replaceable class="parameter">boolean</replaceable> ]
+    SERIALIZE [ { NONE | TEXT | BINARY } ]
     WAL [ <replaceable class="parameter">boolean</replaceable> ]
     TIMING [ <replaceable class="parameter">boolean</replaceable> ]
     SUMMARY [ <replaceable class="parameter">boolean</replaceable> ]
+    MEMORY [ <replaceable class="parameter">boolean</replaceable> ]
+    IO [ <replaceable class="parameter">boolean</replaceable> ]
     FORMAT { TEXT | XML | JSON | YAML }
 </synopsis>
  </refsynopsisdiv>
@@ -105,14 +108,6 @@ ROLLBACK;
 </programlisting>
    </para>
   </important>
-
-  <para>
-   Only the <literal>ANALYZE</literal> and <literal>VERBOSE</literal> options
-   can be specified, and only in that order, without surrounding the option
-   list in parentheses.  Prior to <productname>PostgreSQL</productname> 9.0,
-   the unparenthesized syntax was the only one supported.  It is expected that
-   all new options will be supported only in the parenthesized syntax.
-  </para>
  </refsect1>
 
  <refsect1>
@@ -169,14 +164,30 @@ ROLLBACK;
    </varlistentry>
 
    <varlistentry>
+    <term><literal>GENERIC_PLAN</literal></term>
+    <listitem>
+     <para>
+      Allow the statement to contain parameter placeholders like
+      <literal>$1</literal>, and generate a generic plan that does not
+      depend on the values of those parameters.
+      See <link linkend="sql-prepare"><command>PREPARE</command></link>
+      for details about generic plans and the types of statement that
+      support parameters.
+      This parameter cannot be used together with <literal>ANALYZE</literal>.
+      It defaults to <literal>FALSE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><literal>BUFFERS</literal></term>
     <listitem>
      <para>
       Include information on buffer usage. Specifically, include the number of
       shared blocks hit, read, dirtied, and written, the number of local blocks
       hit, read, dirtied, and written, the number of temp blocks read and
-      written, and the time spent reading and writing data file blocks and
-      temporary file blocks (in milliseconds) if
+      written, and the time spent reading and writing data file blocks, local
+      blocks and temporary file blocks (in milliseconds) if
       <xref linkend="guc-track-io-timing"/> is enabled.  A
       <emphasis>hit</emphasis> means that a read was avoided because the block
       was found already in cache when needed.
@@ -191,8 +202,39 @@ ROLLBACK;
       query processing.
       The number of blocks shown for an
       upper-level node includes those used by all its child nodes.  In text
-      format, only non-zero values are printed.  It defaults to
-      <literal>FALSE</literal>.
+      format, only non-zero values are printed.  Buffers information is
+      included by default when <literal>ANALYZE</literal> is used but
+      otherwise is not included by default.  When this parameter is
+      <literal>TRUE</literal> without <literal>ANALYZE</literal>,
+      only buffer usage during the query planning phase is reported.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SERIALIZE</literal></term>
+    <listitem>
+     <para>
+      Include information on the cost
+      of <firstterm>serializing</firstterm> the query's output data, that
+      is converting it to text or binary format to send to the client.
+      This can be a significant part of the time required for regular
+      execution of the query, if the datatype output functions are
+      expensive or if <acronym>TOAST</acronym>ed values must be fetched
+      from out-of-line storage.  <command>EXPLAIN</command>'s default
+      behavior, <literal>SERIALIZE NONE</literal>, does not perform these
+      conversions.  If <literal>SERIALIZE TEXT</literal>
+      or <literal>SERIALIZE BINARY</literal> is specified, the appropriate
+      conversions are performed, and the time spent doing so is measured
+      (unless <literal>TIMING OFF</literal> is specified).  If
+      the <literal>BUFFERS</literal> option is also specified, then any
+      buffer accesses involved in the conversions are counted too.
+      In no case, however, will <command>EXPLAIN</command> actually send
+      the resulting data to the client; hence network transmission costs
+      cannot be investigated this way.
+      Serialization may only be enabled when <literal>ANALYZE</literal> is
+      also enabled.  If <literal>SERIALIZE</literal> is written without an
+      argument, <literal>TEXT</literal> is assumed.
      </para>
     </listitem>
    </varlistentry>
@@ -202,8 +244,10 @@ ROLLBACK;
     <listitem>
      <para>
       Include information on WAL record generation. Specifically, include the
-      number of records, number of full page images (fpi) and the amount of WAL
-      generated in bytes. In text format, only non-zero values are printed.
+      number of records, number of full page images (fpi), the amount of WAL
+      generated in bytes, the amount of full page images generated in bytes,
+      and the number of times the WAL buffers became full.
+      In text format, only non-zero values are printed.
       This parameter may only be used when <literal>ANALYZE</literal> is also
       enabled.  It defaults to <literal>FALSE</literal>.
      </para>
@@ -238,6 +282,30 @@ ROLLBACK;
       <command>EXPLAIN EXECUTE</command> includes the time required to fetch
       the plan from the cache and the time required for re-planning, if
       necessary.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>MEMORY</literal></term>
+    <listitem>
+     <para>
+      Include information on memory consumption by the query planning phase.
+      Specifically, include the precise amount of storage used by planner
+      in-memory structures, as well as total memory considering allocation
+      overhead.
+      This parameter defaults to <literal>FALSE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>IO</literal></term>
+    <listitem>
+     <para>
+      Include information on I/O performed by scan nodes proving such information.
+      This parameter may only be used when <literal>ANALYZE</literal> is also
+      enabled.  It defaults to <literal>FALSE</literal>.
      </para>
     </listitem>
    </varlistentry>
@@ -445,14 +513,18 @@ PREPARE query(int, int) AS SELECT sum(bar) FROM test
 EXPLAIN ANALYZE EXECUTE query(100, 200);
 
                                                        QUERY PLAN
--------------------------------------------------------------------&zwsp;-----------------------------------------------------
- HashAggregate  (cost=9.54..9.54 rows=1 width=8) (actual time=0.156..0.161 rows=11 loops=1)
+-------------------------------------------------------------------&zwsp;------------------------------------------------------
+ HashAggregate  (cost=10.77..10.87 rows=10 width=12) (actual time=0.043..0.044 rows=10.00 loops=1)
    Group Key: foo
-   -&gt;  Index Scan using test_pkey on test  (cost=0.29..9.29 rows=50 width=8) (actual time=0.039..0.091 rows=99 loops=1)
-         Index Cond: ((id &gt; $1) AND (id &lt; $2))
- Planning time: 0.197 ms
- Execution time: 0.225 ms
-(6 rows)
+   Batches: 1  Memory Usage: 24kB
+   Buffers: shared hit=4
+   -&gt;  Index Scan using test_pkey on test  (cost=0.29..10.27 rows=99 width=8) (actual time=0.009..0.025 rows=99.00 loops=1)
+         Index Cond: ((id &gt; 100) AND (id &lt; 200))
+         Index Searches: 1
+         Buffers: shared hit=4
+ Planning Time: 0.244 ms
+ Execution Time: 0.073 ms
+(10 rows)
 </programlisting>
   </para>
 
@@ -467,6 +539,42 @@ EXPLAIN ANALYZE EXECUTE query(100, 200);
    <command>ANALYZE</command>, even if the actual distribution of data
    in the table has not changed.
   </para>
+
+  <para>
+   Notice that the previous example showed a <quote>custom</quote> plan
+   for the specific parameter values given in <command>EXECUTE</command>.
+   We might also wish to see the generic plan for a parameterized
+   query, which can be done with <literal>GENERIC_PLAN</literal>:
+
+<programlisting>
+EXPLAIN (GENERIC_PLAN)
+  SELECT sum(bar) FROM test
+    WHERE id &gt; $1 AND id &lt; $2
+    GROUP BY foo;
+
+                                  QUERY PLAN
+-------------------------------------------------------------------&zwsp;------------
+ HashAggregate  (cost=26.79..26.89 rows=10 width=12)
+   Group Key: foo
+   -&gt;  Index Scan using test_pkey on test  (cost=0.29..24.29 rows=500 width=8)
+         Index Cond: ((id &gt; $1) AND (id &lt; $2))
+(4 rows)
+</programlisting>
+
+   In this case the parser correctly inferred that <literal>$1</literal>
+   and <literal>$2</literal> should have the same data type
+   as <literal>id</literal>, so the lack of parameter type information
+   from <command>PREPARE</command> was not a problem.  In other cases
+   it might be necessary to explicitly specify types for the parameter
+   symbols, which can be done by casting them, for example:
+
+<programlisting>
+EXPLAIN (GENERIC_PLAN)
+  SELECT sum(bar) FROM test
+    WHERE id &gt; $1::integer AND id &lt; $2::integer
+    GROUP BY foo;
+</programlisting>
+  </para>
  </refsect1>
 
  <refsect1>
@@ -474,6 +582,16 @@ EXPLAIN ANALYZE EXECUTE query(100, 200);
 
   <para>
    There is no <command>EXPLAIN</command> statement defined in the SQL standard.
+  </para>
+
+  <para>
+   The following syntax was used before <productname>PostgreSQL</productname>
+   version 9.0 and is still supported:
+<synopsis>
+EXPLAIN [ ANALYZE ] [ VERBOSE ] <replaceable class="parameter">statement</replaceable>
+</synopsis>
+   Note that in this syntax, the options must be specified in exactly the order
+   shown.
   </para>
  </refsect1>
 

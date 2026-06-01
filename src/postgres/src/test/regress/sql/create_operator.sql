@@ -22,6 +22,13 @@ CREATE OPERATOR #%# (
 -- Test operator created above
 SELECT @#@ 24;
 
+-- Test error cases
+select @@##@@ 24;  -- no such operator
+set search_path = pg_catalog;
+select @#@ 24;  -- wrong schema
+reset search_path;
+select @#@ 24.0;  -- wrong data type
+
 -- Test comments
 COMMENT ON OPERATOR ###### (NONE, int4) IS 'bad prefix';
 COMMENT ON OPERATOR ###### (int4, NONE) IS 'bad postfix';
@@ -209,6 +216,49 @@ CREATE OPERATOR #*# (
    procedure = fn_op6
 );
 ROLLBACK;
+
+-- Should fail. An operator cannot be its own negator.
+BEGIN TRANSACTION;
+CREATE OPERATOR === (
+    leftarg = integer,
+    rightarg = integer,
+    procedure = int4eq,
+    negator = ===
+);
+ROLLBACK;
+
+-- Should fail. An operator cannot be its own negator. Here we check that
+-- this error is detected when replacing a shell operator.
+BEGIN TRANSACTION;
+-- create a shell operator for ===!!! by referencing it as a commutator
+CREATE OPERATOR === (
+    leftarg = integer,
+    rightarg = integer,
+    procedure = int4eq,
+    commutator = ===!!!
+);
+CREATE OPERATOR ===!!! (
+    leftarg = integer,
+    rightarg = integer,
+    procedure = int4ne,
+    negator = ===!!!
+);
+ROLLBACK;
+
+-- test that we can't use part of an existing commutator or negator pair
+-- as a commutator or negator
+CREATE OPERATOR === (
+    leftarg = integer,
+    rightarg = integer,
+    procedure = int4eq,
+    commutator = =
+);
+CREATE OPERATOR === (
+    leftarg = integer,
+    rightarg = integer,
+    procedure = int4eq,
+    negator = <>
+);
 
 -- invalid: non-lowercase quoted identifiers
 CREATE OPERATOR ===

@@ -3,6 +3,8 @@
 <appendix id="sourcerepo">
  <title>The Source Code Repository</title>
 
+ <indexterm zone="sourcerepo"><primary>Git</primary></indexterm>
+
  <para>
   The <productname>PostgreSQL</productname> source code is stored and managed
   using the <productname>Git</productname> version control system. A public
@@ -15,15 +17,6 @@
   url="https://wiki.postgresql.org/wiki/Working_with_Git"></ulink>,
   has some discussion on working with Git.
  </para>
-
-  <para>
-   Note that building <productname>PostgreSQL</productname> from the source
-   repository requires reasonably up-to-date versions of <application>bison</application>,
-   <application>flex</application>, and <application>Perl</application>. These tools are not needed
-   to build from a distribution tarball, because the files that these tools
-   are used to build are included in the tarball.  Other tool requirements
-   are the same as shown in <xref linkend="install-requirements"/>.
-  </para>
 
  <sect1 id="git">
   <title>Getting the Source via <productname>Git</productname></title>
@@ -49,7 +42,7 @@
 
    <step>
     <para>
-     To begin using the Git repository, make a clone of the official mirror:
+     To begin using the <productname>Git</productname> repository, make a clone of the official mirror:
 
 <programlisting>
 git clone https://git.postgresql.org/git/postgresql.git
@@ -59,16 +52,6 @@ git clone https://git.postgresql.org/git/postgresql.git
      a while to complete, especially if you have a slow Internet connection.
      The files will be placed in a new subdirectory <filename>postgresql</filename> of
      your current directory.
-    </para>
-
-    <para>
-     The Git mirror can also be reached via the Git protocol. Just change the URL
-     prefix to <literal>git</literal>, as in:
-
-<programlisting>
-git clone git://git.postgresql.org/git/postgresql.git
-</programlisting>
-
     </para>
    </step>
 

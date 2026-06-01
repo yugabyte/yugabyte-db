@@ -3,7 +3,7 @@
  * pgtime.h
  *	  PostgreSQL internal timezone library
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/include/pgtime.h
@@ -69,14 +69,21 @@ extern bool pg_interpret_timezone_abbrev(const char *abbrev,
 										 long int *gmtoff,
 										 int *isdst,
 										 const pg_tz *tz);
+extern bool pg_timezone_abbrev_is_known(const char *abbrev,
+										bool *isfixed,
+										long int *gmtoff,
+										int *isdst,
+										const pg_tz *tz);
+extern const char *pg_get_next_timezone_abbrev(int *indx,
+											   const pg_tz *tz);
 extern bool pg_get_timezone_offset(const pg_tz *tz, long int *gmtoff);
 extern const char *pg_get_timezone_name(pg_tz *tz);
 extern bool pg_tz_acceptable(pg_tz *tz);
 
 /* these functions are in strftime.c */
 
-extern size_t pg_strftime(char *s, size_t max, const char *format,
-						  const struct pg_tm *tm);
+extern size_t pg_strftime(char *s, size_t maxsize, const char *format,
+						  const struct pg_tm *t);
 
 /* these functions and variables are in pgtz.c */
 

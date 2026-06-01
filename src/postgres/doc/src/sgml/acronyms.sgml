@@ -10,6 +10,33 @@
   <variablelist>
 
    <varlistentry>
+    <term><acronym>AIO</acronym></term>
+    <listitem>
+     <para>
+      <link linkend="glossary-aio">Asynchronous <acronym>I/O</acronym></link>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><acronym>ACL</acronym></term>
+    <listitem>
+     <para>
+      <ulink url="https://en.wikipedia.org/wiki/Access-control_list">Access Control List</ulink>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><acronym>AM</acronym></term>
+    <listitem>
+     <para>
+      <link linkend="glossary-am">Access Method</link>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><acronym>ANSI</acronym></term>
     <listitem>
      <para>
@@ -32,7 +59,7 @@
     <term><acronym>ASCII</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/Ascii">American Standard
+      <ulink url="https://en.wikipedia.org/wiki/ASCII">American Standard
       Code for Information Interchange</ulink>
      </para>
     </listitem>
@@ -140,7 +167,7 @@
     <term><acronym>DBMS</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/Dbms">Database Management
+      <ulink url="https://en.wikipedia.org/wiki/Database#Database_management_system">Database Management
       System</ulink>
      </para>
     </listitem>
@@ -151,7 +178,7 @@
     <listitem>
      <para>
       <ulink
-      url="https://en.wikipedia.org/wiki/Data_Definition_Language">Data
+      url="https://en.wikipedia.org/wiki/Data_definition_language">Data
       Definition Language</ulink>, SQL commands such as <command>CREATE
       TABLE</command>, <command>ALTER USER</command>
      </para>
@@ -163,7 +190,7 @@
     <listitem>
      <para>
       <ulink
-      url="https://en.wikipedia.org/wiki/Data_Manipulation_Language">Data
+      url="https://en.wikipedia.org/wiki/Data_manipulation_language">Data
       Manipulation Language</ulink>, SQL commands such as <command>INSERT</command>,
       <command>UPDATE</command>, <command>DELETE</command>
      </para>
@@ -251,7 +278,7 @@
     <listitem>
      <para>
       <ulink
-      url="https://en.wikipedia.org/wiki/Git_(software)">Git</ulink>
+      url="https://en.wikipedia.org/wiki/Git">Git</ulink>
      </para>
     </listitem>
    </varlistentry>
@@ -260,7 +287,7 @@
     <term><acronym>GMT</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/GMT">Greenwich Mean Time</ulink>
+      <ulink url="https://en.wikipedia.org/wiki/Greenwich_Mean_Time">Greenwich Mean Time</ulink>
      </para>
     </listitem>
    </varlistentry>
@@ -337,6 +364,15 @@
    </varlistentry>
 
    <varlistentry>
+    <term><acronym>I/O</acronym></term>
+    <listitem>
+     <para>
+      <link linkend="glossary-io">Input/Output</link>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><acronym>ISO</acronym></term>
     <listitem>
      <para>
@@ -350,7 +386,7 @@
     <term><acronym>ISSN</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/Issn">International Standard
+      <ulink url="https://en.wikipedia.org/wiki/ISSN">International Standard
       Serial Number</ulink>
      </para>
     </listitem>
@@ -402,8 +438,27 @@
     <term><acronym>LSN</acronym></term>
     <listitem>
      <para>
-      Log Sequence Number, see <link linkend="datatype-pg-lsn"><type>pg_lsn</type></link>
-      and <link linkend="wal-internals">WAL Internals</link>.
+      <glossterm linkend="glossary-log-sequence-number">Log Sequence Number</glossterm>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><acronym>MCF</acronym></term>
+    <listitem>
+     <para>
+      Most Common Frequency, that is the frequency associated with some
+      Most Common Value
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><acronym>MCV</acronym></term>
+    <listitem>
+     <para>
+      Most Common Value, one of the values appearing most often within a
+      particular table column
      </para>
     </listitem>
    </varlistentry>
@@ -424,7 +479,7 @@
     <listitem>
      <para>
       <ulink
-      url="https://en.wikipedia.org/wiki/Visual_C++"><productname>Microsoft
+      url="https://en.wikipedia.org/wiki/Microsoft_Visual_C%2B%2B"><productname>Microsoft
       Visual C</productname></ulink>
      </para>
     </listitem>
@@ -474,7 +529,7 @@
     <term><acronym>OLAP</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/Olap">Online Analytical
+      <ulink url="https://en.wikipedia.org/wiki/Online_analytical_processing">Online Analytical
       Processing</ulink>
      </para>
     </listitem>
@@ -484,7 +539,7 @@
     <term><acronym>OLTP</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/OLTP">Online Transaction
+      <ulink url="https://en.wikipedia.org/wiki/Online_transaction_processing">Online Transaction
       Processing</ulink>
      </para>
     </listitem>
@@ -494,7 +549,7 @@
     <term><acronym>ORDBMS</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/ORDBMS">Object-Relational
+      <ulink url="https://en.wikipedia.org/wiki/Object%E2%80%93relational_database">Object-Relational
       Database Management System</ulink>
      </para>
     </listitem>
@@ -505,7 +560,7 @@
     <listitem>
      <para>
       <ulink
-      url="https://en.wikipedia.org/wiki/Pluggable_Authentication_Modules">Pluggable
+      url="https://en.wikipedia.org/wiki/Pluggable_authentication_module">Pluggable
       Authentication Modules</ulink>
      </para>
     </listitem>
@@ -572,7 +627,7 @@
     <listitem>
      <para>
       <ulink
-      url="https://en.wikipedia.org/wiki/Relational_database_management_system">Relational
+      url="https://en.wikipedia.org/wiki/Relational_database#RDBMS">Relational
       Database Management System</ulink>
      </para>
     </listitem>
@@ -593,7 +648,7 @@
     <term><acronym>SGML</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/SGML">Standard Generalized
+      <ulink url="https://en.wikipedia.org/wiki/Standard_Generalized_Markup_Language">Standard Generalized
       Markup Language</ulink>
      </para>
     </listitem>
@@ -661,7 +716,7 @@
     <term><acronym>SSL</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/Secure_Sockets_Layer">Secure Sockets Layer</ulink>
+      <ulink url="https://en.wikipedia.org/wiki/Transport_Layer_Security#SSL_1.0,_2.0,_and_3.0">Secure Sockets Layer</ulink>
      </para>
     </listitem>
    </varlistentry>
@@ -680,7 +735,7 @@
     <term><acronym>SYSV</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/System_V">Unix System V</ulink>
+      <ulink url="https://en.wikipedia.org/wiki/UNIX_System_V">Unix System V</ulink>
      </para>
     </listitem>
    </varlistentry>
@@ -769,7 +824,7 @@
     <term><acronym>UTF8</acronym></term>
     <listitem>
      <para>
-      <ulink url="https://en.wikipedia.org/wiki/Utf8">Eight-Bit Unicode
+      <ulink url="https://en.wikipedia.org/wiki/UTF-8">Eight-Bit Unicode
       Transformation Format</ulink>
      </para>
     </listitem>

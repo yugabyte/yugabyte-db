@@ -2,7 +2,7 @@
  * brin_internal.h
  *		internal declarations for BRIN indexes
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -89,13 +89,14 @@ typedef struct BrinDesc
 extern BrinDesc *brin_build_desc(Relation rel);
 extern void brin_free_desc(BrinDesc *bdesc);
 extern IndexBuildResult *brinbuild(Relation heap, Relation index,
-								   struct IndexInfo *indexInfo);
+								   IndexInfo *indexInfo);
 extern void brinbuildempty(Relation index);
 extern bool brininsert(Relation idxRel, Datum *values, bool *nulls,
 					   ItemPointer heaptid, Relation heapRel,
 					   IndexUniqueCheck checkUnique,
 					   bool indexUnchanged,
-					   struct IndexInfo *indexInfo);
+					   IndexInfo *indexInfo);
+extern void brininsertcleanup(Relation index, IndexInfo *indexInfo);
 extern IndexScanDesc brinbeginscan(Relation r, int nkeys, int norderbys);
 extern int64 bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm);
 extern void brinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,

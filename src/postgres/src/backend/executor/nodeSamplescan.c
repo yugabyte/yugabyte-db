@@ -3,7 +3,7 @@
  * nodeSamplescan.c
  *	  Support routines for sample scans of relations (table sampling).
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -20,11 +20,7 @@
 #include "common/pg_prng.h"
 #include "executor/executor.h"
 #include "executor/nodeSamplescan.h"
-#include "miscadmin.h"
-#include "pgstat.h"
-#include "storage/bufmgr.h"
-#include "storage/predicate.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/rel.h"
 
 static TupleTableSlot *SampleNext(SampleScanState *node);
@@ -132,7 +128,8 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	/* and create slot with appropriate rowtype */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  RelationGetDescr(scanstate->ss.ss_currentRelation),
-						  table_slot_callbacks(scanstate->ss.ss_currentRelation));
+						  table_slot_callbacks(scanstate->ss.ss_currentRelation),
+						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*
 	 * Initialize result type and projection.
@@ -189,18 +186,6 @@ ExecEndSampleScan(SampleScanState *node)
 		node->tsmroutine->EndSampleScan(node);
 
 	/*
-	 * Free the exprcontext
-	 */
-	ExecFreeExprContext(&node->ss.ps);
-
-	/*
-	 * clean out the tuple table
-	 */
-	if (node->ss.ps.ps_ResultTupleSlot)
-		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-
-	/*
 	 * close heap scan
 	 */
 	if (node->ss.ss_currentScanDesc)
@@ -244,7 +229,7 @@ tablesample_init(SampleScanState *scanstate)
 	ListCell   *arg;
 
 	scanstate->donetuples = 0;
-	params = (Datum *) palloc(list_length(scanstate->args) * sizeof(Datum));
+	params = palloc_array(Datum, list_length(scanstate->args));
 
 	i = 0;
 	foreach(arg, scanstate->args)
@@ -313,7 +298,9 @@ tablesample_init(SampleScanState *scanstate)
 									 0, NULL,
 									 scanstate->use_bulkread,
 									 allow_sync,
-									 scanstate->use_pagemode);
+									 scanstate->use_pagemode,
+									 ScanRelIsReadOnly(&scanstate->ss) ?
+									 SO_HINT_REL_READ_ONLY : SO_NONE);
 	}
 	else
 	{

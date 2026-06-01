@@ -1,15 +1,12 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Test for timeline switch
 use strict;
-use warnings;
-use File::Path qw(rmtree);
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
-
-$ENV{PGDATABASE} = 'postgres';
 
 # Ensure that a cascading standby is able to follow a newly-promoted standby
 # on a new timeline.
@@ -37,11 +34,10 @@ $node_standby_2->start;
 $node_primary->safe_psql('postgres',
 	"CREATE TABLE tab_int AS SELECT generate_series(1,1000) AS a");
 
-# Wait until standby has replayed enough data on standby 1
-$node_primary->wait_for_catchup($node_standby_1);
-
-# Stop and remove primary
-$node_primary->teardown_node;
+# Cleanly stop and remove primary.  A clean stop is required so as all
+# the records generated on the primary are received and flushed by the two
+# standbys.
+$node_primary->stop;
 
 # promote standby 1 using "pg_promote", switching it to a new timeline
 my $psql_out = '';
@@ -57,7 +53,18 @@ $node_standby_2->append_conf(
 	'postgresql.conf', qq(
 primary_conninfo='$connstr_1'
 ));
+
+# Rotate logfile before restarting, for the log checks done below.
+$node_standby_2->rotate_logfile;
 $node_standby_2->restart;
+
+# Wait for walreceiver to reconnect after the restart.  We want to
+# verify that after reconnection, the walreceiver stays alive during
+# the timeline switch.
+$node_standby_2->poll_query_until('postgres',
+	"SELECT EXISTS(SELECT 1 FROM pg_stat_wal_receiver)");
+my $wr_pid_before_switch = $node_standby_2->safe_psql('postgres',
+	"SELECT pid FROM pg_stat_wal_receiver");
 
 # Insert some data in standby 1 and check its presence in standby 2
 # to ensure that the timeline switch has been done.
@@ -69,6 +76,22 @@ my $result =
   $node_standby_2->safe_psql('postgres', "SELECT count(*) FROM tab_int");
 is($result, qq(2000), 'check content of standby 2');
 
+# Check the logs, WAL receiver should not have been stopped while
+# transitioning to its new timeline.  There is no need to rely on an
+# offset in this check of the server logs: a new log file is used on
+# node restart when primary_conninfo is updated above.
+ok( !$node_standby_2->log_contains(
+		"FATAL: .* terminating walreceiver process due to administrator command"
+	),
+	'WAL receiver should not be stopped across timeline jumps');
+
+# Verify that the walreceiver process stayed alive across the timeline
+# switch, check its PID.
+my $wr_pid_after_switch = $node_standby_2->safe_psql('postgres',
+	"SELECT pid FROM pg_stat_wal_receiver");
+
+is($wr_pid_before_switch, $wr_pid_after_switch,
+	'WAL receiver PID matches across timeline jumps');
 
 # Ensure that a standby is able to follow a primary on a newer timeline
 # when WAL archiving is enabled.

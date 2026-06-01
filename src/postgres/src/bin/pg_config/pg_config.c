@@ -15,7 +15,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * src/bin/pg_config/pg_config.c
  *
@@ -25,7 +25,6 @@
 #include "postgres_fe.h"
 
 #include "common/config_info.h"
-#include "port.h"
 
 static const char *progname;
 

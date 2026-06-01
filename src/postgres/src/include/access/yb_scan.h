@@ -32,6 +32,7 @@
 #include "nodes/pathnodes.h"
 #include "pg_yb_utils.h"
 #include "skey.h"
+#include "storage/condition_variable.h"		/* for ConditionVariable */
 #include "utils/catcache.h"
 #include "utils/resowner.h"
 #include "utils/sampling.h"

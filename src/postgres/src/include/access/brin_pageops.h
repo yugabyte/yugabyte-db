@@ -2,7 +2,7 @@
  * brin_pageops.h
  *		Prototypes for operating on BRIN pages.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -23,7 +23,7 @@ extern bool brin_can_do_samepage_update(Buffer buffer, Size origsz,
 										Size newsz);
 extern OffsetNumber brin_doinsert(Relation idxrel, BlockNumber pagesPerRange,
 								  BrinRevmap *revmap, Buffer *buffer, BlockNumber heapBlk,
-								  BrinTuple *tup, Size itemsz);
+								  const BrinTuple *tup, Size itemsz);
 
 extern void brin_page_init(Page page, uint16 type);
 extern void brin_metapage_init(Page page, BlockNumber pagesPerRange,

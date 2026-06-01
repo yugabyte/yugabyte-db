@@ -3,7 +3,7 @@
  * pg_largeobject.c
  *	  routines to support manipulation of the pg_largeobject relation
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -16,10 +16,8 @@
 
 #include "access/genam.h"
 #include "access/htup_details.h"
-#include "access/sysattr.h"
 #include "access/table.h"
 #include "catalog/catalog.h"
-#include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_largeobject.h"
 #include "catalog/pg_largeobject_metadata.h"
@@ -44,6 +42,8 @@ LargeObjectCreate(Oid loid)
 	Oid			loid_new;
 	Datum		values[Natts_pg_largeobject_metadata];
 	bool		nulls[Natts_pg_largeobject_metadata];
+	Oid			ownerId;
+	Acl		   *lomacl;
 
 	pg_lo_meta = table_open(LargeObjectMetadataRelationId,
 							RowExclusiveLock);
@@ -60,11 +60,18 @@ LargeObjectCreate(Oid loid)
 		loid_new = GetNewOidWithIndex(pg_lo_meta,
 									  LargeObjectMetadataOidIndexId,
 									  Anum_pg_largeobject_metadata_oid);
+	ownerId = GetUserId();
+	lomacl = get_user_default_acl(OBJECT_LARGEOBJECT, ownerId, InvalidOid);
 
 	values[Anum_pg_largeobject_metadata_oid - 1] = ObjectIdGetDatum(loid_new);
 	values[Anum_pg_largeobject_metadata_lomowner - 1]
-		= ObjectIdGetDatum(GetUserId());
-	nulls[Anum_pg_largeobject_metadata_lomacl - 1] = true;
+		= ObjectIdGetDatum(ownerId);
+
+	if (lomacl != NULL)
+		values[Anum_pg_largeobject_metadata_lomacl - 1]
+			= PointerGetDatum(lomacl);
+	else
+		nulls[Anum_pg_largeobject_metadata_lomacl - 1] = true;
 
 	ntup = heap_form_tuple(RelationGetDescr(pg_lo_meta),
 						   values, nulls);
@@ -74,6 +81,10 @@ LargeObjectCreate(Oid loid)
 	heap_freetuple(ntup);
 
 	table_close(pg_lo_meta, RowExclusiveLock);
+
+	/* dependencies on roles mentioned in default ACL */
+	recordDependencyOnNewAcl(LargeObjectRelationId, loid_new, 0,
+							 ownerId, lomacl);
 
 	return loid_new;
 }
@@ -157,6 +168,15 @@ LargeObjectDrop(Oid loid)
 bool
 LargeObjectExists(Oid loid)
 {
+	return LargeObjectExistsWithSnapshot(loid, NULL);
+}
+
+/*
+ * Same as LargeObjectExists(), except snapshot to read with can be specified.
+ */
+bool
+LargeObjectExistsWithSnapshot(Oid loid, Snapshot snapshot)
+{
 	Relation	pg_lo_meta;
 	ScanKeyData skey[1];
 	SysScanDesc sd;
@@ -173,7 +193,7 @@ LargeObjectExists(Oid loid)
 
 	sd = systable_beginscan(pg_lo_meta,
 							LargeObjectMetadataOidIndexId, true,
-							NULL, 1, skey);
+							snapshot, 1, skey);
 
 	tuple = systable_getnext(sd);
 	if (HeapTupleIsValid(tuple))

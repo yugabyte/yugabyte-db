@@ -46,7 +46,7 @@
  * exported rather than being "static" in this file.)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -57,23 +57,28 @@
 #include "postgres.h"
 
 #include "access/heaptoast.h"
+#include "access/tupconvert.h"
 #include "catalog/pg_type.h"
 #include "commands/sequence.h"
 #include "executor/execExpr.h"
 #include "executor/nodeSubplan.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "nodes/miscnodes.h"
 #include "nodes/nodeFuncs.h"
-#include "parser/parsetree.h"
 #include "pgstat.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/datum.h"
 #include "utils/expandedrecord.h"
+#include "utils/json.h"
+#include "utils/jsonfuncs.h"
+#include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
+#include "utils/tuplesort.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
@@ -168,6 +173,12 @@ static Datum ExecJustScanVarVirt(ExprState *state, ExprContext *econtext, bool *
 static Datum ExecJustAssignInnerVarVirt(ExprState *state, ExprContext *econtext, bool *isnull);
 static Datum ExecJustAssignOuterVarVirt(ExprState *state, ExprContext *econtext, bool *isnull);
 static Datum ExecJustAssignScanVarVirt(ExprState *state, ExprContext *econtext, bool *isnull);
+static Datum ExecJustHashInnerVarWithIV(ExprState *state, ExprContext *econtext, bool *isnull);
+static Datum ExecJustHashOuterVar(ExprState *state, ExprContext *econtext, bool *isnull);
+static Datum ExecJustHashInnerVar(ExprState *state, ExprContext *econtext, bool *isnull);
+static Datum ExecJustHashOuterVarVirt(ExprState *state, ExprContext *econtext, bool *isnull);
+static Datum ExecJustHashInnerVarVirt(ExprState *state, ExprContext *econtext, bool *isnull);
+static Datum ExecJustHashOuterVarStrict(ExprState *state, ExprContext *econtext, bool *isnull);
 
 /* execution helper functions */
 static pg_attribute_always_inline void ExecAggPlainTransByVal(AggState *aggstate,
@@ -180,6 +191,7 @@ static pg_attribute_always_inline void ExecAggPlainTransByRef(AggState *aggstate
 															  AggStatePerGroup pergroup,
 															  ExprContext *aggcontext,
 															  int setno);
+static char *ExecGetJsonValueItemString(JsonbValue *item, bool *resnull);
 
 /*
  * ScalarArrayOpExprHashEntry
@@ -239,7 +251,8 @@ ExecReadyInterpretedExpr(ExprState *state)
 
 	/* Simple validity checks on expression */
 	Assert(state->steps_len >= 1);
-	Assert(state->steps[state->steps_len - 1].opcode == EEOP_DONE);
+	Assert(state->steps[state->steps_len - 1].opcode == EEOP_DONE_RETURN ||
+		   state->steps[state->steps_len - 1].opcode == EEOP_DONE_NO_RETURN);
 
 	/*
 	 * Don't perform redundant initialization. This is unreachable in current
@@ -272,7 +285,51 @@ ExecReadyInterpretedExpr(ExprState *state)
 	 * the full interpreter is a measurable overhead for these, and these
 	 * patterns occur often enough to be worth optimizing.
 	 */
-	if (state->steps_len == 3)
+	if (state->steps_len == 5)
+	{
+		ExprEvalOp	step0 = state->steps[0].opcode;
+		ExprEvalOp	step1 = state->steps[1].opcode;
+		ExprEvalOp	step2 = state->steps[2].opcode;
+		ExprEvalOp	step3 = state->steps[3].opcode;
+
+		if (step0 == EEOP_INNER_FETCHSOME &&
+			step1 == EEOP_HASHDATUM_SET_INITVAL &&
+			step2 == EEOP_INNER_VAR &&
+			step3 == EEOP_HASHDATUM_NEXT32)
+		{
+			state->evalfunc_private = (void *) ExecJustHashInnerVarWithIV;
+			return;
+		}
+	}
+	else if (state->steps_len == 4)
+	{
+		ExprEvalOp	step0 = state->steps[0].opcode;
+		ExprEvalOp	step1 = state->steps[1].opcode;
+		ExprEvalOp	step2 = state->steps[2].opcode;
+
+		if (step0 == EEOP_OUTER_FETCHSOME &&
+			step1 == EEOP_OUTER_VAR &&
+			step2 == EEOP_HASHDATUM_FIRST)
+		{
+			state->evalfunc_private = (void *) ExecJustHashOuterVar;
+			return;
+		}
+		else if (step0 == EEOP_INNER_FETCHSOME &&
+				 step1 == EEOP_INNER_VAR &&
+				 step2 == EEOP_HASHDATUM_FIRST)
+		{
+			state->evalfunc_private = (void *) ExecJustHashInnerVar;
+			return;
+		}
+		else if (step0 == EEOP_OUTER_FETCHSOME &&
+				 step1 == EEOP_OUTER_VAR &&
+				 step2 == EEOP_HASHDATUM_FIRST_STRICT)
+		{
+			state->evalfunc_private = (void *) ExecJustHashOuterVarStrict;
+			return;
+		}
+	}
+	else if (state->steps_len == 3)
 	{
 		ExprEvalOp	step0 = state->steps[0].opcode;
 		ExprEvalOp	step1 = state->steps[1].opcode;
@@ -280,44 +337,57 @@ ExecReadyInterpretedExpr(ExprState *state)
 		if (step0 == EEOP_INNER_FETCHSOME &&
 			step1 == EEOP_INNER_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustInnerVar;
+			state->evalfunc_private = ExecJustInnerVar;
 			return;
 		}
 		else if (step0 == EEOP_OUTER_FETCHSOME &&
 				 step1 == EEOP_OUTER_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustOuterVar;
+			state->evalfunc_private = ExecJustOuterVar;
 			return;
 		}
 		else if (step0 == EEOP_SCAN_FETCHSOME &&
 				 step1 == EEOP_SCAN_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustScanVar;
+			state->evalfunc_private = ExecJustScanVar;
 			return;
 		}
 		else if (step0 == EEOP_INNER_FETCHSOME &&
 				 step1 == EEOP_ASSIGN_INNER_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustAssignInnerVar;
+			state->evalfunc_private = ExecJustAssignInnerVar;
 			return;
 		}
 		else if (step0 == EEOP_OUTER_FETCHSOME &&
 				 step1 == EEOP_ASSIGN_OUTER_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustAssignOuterVar;
+			state->evalfunc_private = ExecJustAssignOuterVar;
 			return;
 		}
 		else if (step0 == EEOP_SCAN_FETCHSOME &&
 				 step1 == EEOP_ASSIGN_SCAN_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustAssignScanVar;
+			state->evalfunc_private = ExecJustAssignScanVar;
 			return;
 		}
 		else if (step0 == EEOP_CASE_TESTVAL &&
-				 step1 == EEOP_FUNCEXPR_STRICT &&
-				 state->steps[0].d.casetest.value)
+				 (step1 == EEOP_FUNCEXPR_STRICT ||
+				  step1 == EEOP_FUNCEXPR_STRICT_1 ||
+				  step1 == EEOP_FUNCEXPR_STRICT_2))
 		{
-			state->evalfunc_private = (void *) ExecJustApplyFuncToCase;
+			state->evalfunc_private = ExecJustApplyFuncToCase;
+			return;
+		}
+		else if (step0 == EEOP_INNER_VAR &&
+				 step1 == EEOP_HASHDATUM_FIRST)
+		{
+			state->evalfunc_private = (void *) ExecJustHashInnerVarVirt;
+			return;
+		}
+		else if (step0 == EEOP_OUTER_VAR &&
+				 step1 == EEOP_HASHDATUM_FIRST)
+		{
+			state->evalfunc_private = (void *) ExecJustHashOuterVarVirt;
 			return;
 		}
 	}
@@ -327,37 +397,37 @@ ExecReadyInterpretedExpr(ExprState *state)
 
 		if (step0 == EEOP_CONST)
 		{
-			state->evalfunc_private = (void *) ExecJustConst;
+			state->evalfunc_private = ExecJustConst;
 			return;
 		}
 		else if (step0 == EEOP_INNER_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustInnerVarVirt;
+			state->evalfunc_private = ExecJustInnerVarVirt;
 			return;
 		}
 		else if (step0 == EEOP_OUTER_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustOuterVarVirt;
+			state->evalfunc_private = ExecJustOuterVarVirt;
 			return;
 		}
 		else if (step0 == EEOP_SCAN_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustScanVarVirt;
+			state->evalfunc_private = ExecJustScanVarVirt;
 			return;
 		}
 		else if (step0 == EEOP_ASSIGN_INNER_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustAssignInnerVarVirt;
+			state->evalfunc_private = ExecJustAssignInnerVarVirt;
 			return;
 		}
 		else if (step0 == EEOP_ASSIGN_OUTER_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustAssignOuterVarVirt;
+			state->evalfunc_private = ExecJustAssignOuterVarVirt;
 			return;
 		}
 		else if (step0 == EEOP_ASSIGN_SCAN_VAR)
 		{
-			state->evalfunc_private = (void *) ExecJustAssignScanVarVirt;
+			state->evalfunc_private = ExecJustAssignScanVarVirt;
 			return;
 		}
 	}
@@ -378,7 +448,7 @@ ExecReadyInterpretedExpr(ExprState *state)
 	state->flags |= EEO_FLAG_DIRECT_THREADED;
 #endif							/* EEO_USE_COMPUTED_GOTO */
 
-	state->evalfunc_private = (void *) ExecInterpExpr;
+	state->evalfunc_private = ExecInterpExpr;
 }
 
 
@@ -399,31 +469,44 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 	TupleTableSlot *innerslot;
 	TupleTableSlot *outerslot;
 	TupleTableSlot *scanslot;
+	TupleTableSlot *oldslot;
+	TupleTableSlot *newslot;
 
 	/*
 	 * This array has to be in the same order as enum ExprEvalOp.
 	 */
 #if defined(EEO_USE_COMPUTED_GOTO)
 	static const void *const dispatch_table[] = {
-		&&CASE_EEOP_DONE,
+		&&CASE_EEOP_DONE_RETURN,
+		&&CASE_EEOP_DONE_NO_RETURN,
 		&&CASE_EEOP_INNER_FETCHSOME,
 		&&CASE_EEOP_OUTER_FETCHSOME,
 		&&CASE_EEOP_SCAN_FETCHSOME,
+		&&CASE_EEOP_OLD_FETCHSOME,
+		&&CASE_EEOP_NEW_FETCHSOME,
 		&&CASE_EEOP_INNER_VAR,
 		&&CASE_EEOP_OUTER_VAR,
 		&&CASE_EEOP_SCAN_VAR,
+		&&CASE_EEOP_OLD_VAR,
+		&&CASE_EEOP_NEW_VAR,
 		&&CASE_EEOP_INNER_SYSVAR,
 		&&CASE_EEOP_OUTER_SYSVAR,
 		&&CASE_EEOP_SCAN_SYSVAR,
+		&&CASE_EEOP_OLD_SYSVAR,
+		&&CASE_EEOP_NEW_SYSVAR,
 		&&CASE_EEOP_WHOLEROW,
 		&&CASE_EEOP_ASSIGN_INNER_VAR,
 		&&CASE_EEOP_ASSIGN_OUTER_VAR,
 		&&CASE_EEOP_ASSIGN_SCAN_VAR,
+		&&CASE_EEOP_ASSIGN_OLD_VAR,
+		&&CASE_EEOP_ASSIGN_NEW_VAR,
 		&&CASE_EEOP_ASSIGN_TMP,
 		&&CASE_EEOP_ASSIGN_TMP_MAKE_RO,
 		&&CASE_EEOP_CONST,
 		&&CASE_EEOP_FUNCEXPR,
 		&&CASE_EEOP_FUNCEXPR_STRICT,
+		&&CASE_EEOP_FUNCEXPR_STRICT_1,
+		&&CASE_EEOP_FUNCEXPR_STRICT_2,
 		&&CASE_EEOP_FUNCEXPR_FUSAGE,
 		&&CASE_EEOP_FUNCEXPR_STRICT_FUSAGE,
 		&&CASE_EEOP_BOOL_AND_STEP_FIRST,
@@ -449,15 +532,19 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_PARAM_EXEC,
 		&&CASE_EEOP_PARAM_EXTERN,
 		&&CASE_EEOP_PARAM_CALLBACK,
+		&&CASE_EEOP_PARAM_SET,
 		&&CASE_EEOP_CASE_TESTVAL,
+		&&CASE_EEOP_CASE_TESTVAL_EXT,
 		&&CASE_EEOP_MAKE_READONLY,
 		&&CASE_EEOP_IOCOERCE,
+		&&CASE_EEOP_IOCOERCE_SAFE,
 		&&CASE_EEOP_DISTINCT,
 		&&CASE_EEOP_NOT_DISTINCT,
 		&&CASE_EEOP_NULLIF,
 		&&CASE_EEOP_SQLVALUEFUNCTION,
 		&&CASE_EEOP_CURRENTOFEXPR,
 		&&CASE_EEOP_NEXTVALUEEXPR,
+		&&CASE_EEOP_RETURNINGEXPR,
 		&&CASE_EEOP_ARRAYEXPR,
 		&&CASE_EEOP_ARRAYCOERCE,
 		&&CASE_EEOP_ROW,
@@ -472,19 +559,32 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_SBSREF_ASSIGN,
 		&&CASE_EEOP_SBSREF_FETCH,
 		&&CASE_EEOP_DOMAIN_TESTVAL,
+		&&CASE_EEOP_DOMAIN_TESTVAL_EXT,
 		&&CASE_EEOP_DOMAIN_NOTNULL,
 		&&CASE_EEOP_DOMAIN_CHECK,
+		&&CASE_EEOP_HASHDATUM_SET_INITVAL,
+		&&CASE_EEOP_HASHDATUM_FIRST,
+		&&CASE_EEOP_HASHDATUM_FIRST_STRICT,
+		&&CASE_EEOP_HASHDATUM_NEXT32,
+		&&CASE_EEOP_HASHDATUM_NEXT32_STRICT,
 		&&CASE_EEOP_CONVERT_ROWTYPE,
 		&&CASE_EEOP_SCALARARRAYOP,
 		&&CASE_EEOP_HASHED_SCALARARRAYOP,
 		&&CASE_EEOP_XMLEXPR,
+		&&CASE_EEOP_JSON_CONSTRUCTOR,
+		&&CASE_EEOP_IS_JSON,
+		&&CASE_EEOP_JSONEXPR_PATH,
+		&&CASE_EEOP_JSONEXPR_COERCION,
+		&&CASE_EEOP_JSONEXPR_COERCION_FINISH,
 		&&CASE_EEOP_AGGREF,
 		&&CASE_EEOP_GROUPING_FUNC,
 		&&CASE_EEOP_WINDOW_FUNC,
+		&&CASE_EEOP_MERGE_SUPPORT_FUNC,
 		&&CASE_EEOP_SUBPLAN,
 		&&CASE_EEOP_AGG_STRICT_DESERIALIZE,
 		&&CASE_EEOP_AGG_DESERIALIZE,
 		&&CASE_EEOP_AGG_STRICT_INPUT_CHECK_ARGS,
+		&&CASE_EEOP_AGG_STRICT_INPUT_CHECK_ARGS_1,
 		&&CASE_EEOP_AGG_STRICT_INPUT_CHECK_NULLS,
 		&&CASE_EEOP_AGG_PLAIN_PERGROUP_NULLCHECK,
 		&&CASE_EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYVAL,
@@ -493,13 +593,15 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYREF,
 		&&CASE_EEOP_AGG_PLAIN_TRANS_STRICT_BYREF,
 		&&CASE_EEOP_AGG_PLAIN_TRANS_BYREF,
+		&&CASE_EEOP_AGG_PRESORTED_DISTINCT_SINGLE,
+		&&CASE_EEOP_AGG_PRESORTED_DISTINCT_MULTI,
 		&&CASE_EEOP_AGG_ORDERED_TRANS_DATUM,
 		&&CASE_EEOP_AGG_ORDERED_TRANS_TUPLE,
 		&&CASE_EEOP_ROWARRAY_COMPARE,
 		&&CASE_EEOP_LAST
 	};
 
-	StaticAssertStmt(EEOP_LAST + 1 == lengthof(dispatch_table),
+	StaticAssertDecl(lengthof(dispatch_table) == EEOP_LAST + 1,
 					 "dispatch_table out of whack with ExprEvalOp");
 
 	if (unlikely(state == NULL))
@@ -514,6 +616,8 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 	innerslot = econtext->ecxt_innertuple;
 	outerslot = econtext->ecxt_outertuple;
 	scanslot = econtext->ecxt_scantuple;
+	oldslot = econtext->ecxt_oldtuple;
+	newslot = econtext->ecxt_newtuple;
 
 #if defined(EEO_USE_COMPUTED_GOTO)
 	EEO_DISPATCH();
@@ -521,9 +625,16 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 
 	EEO_SWITCH()
 	{
-		EEO_CASE(EEOP_DONE)
+		EEO_CASE(EEOP_DONE_RETURN)
 		{
-			goto out;
+			*isnull = state->resnull;
+			return state->resvalue;
+		}
+
+		EEO_CASE(EEOP_DONE_NO_RETURN)
+		{
+			Assert(isnull == NULL);
+			return (Datum) 0;
 		}
 
 		EEO_CASE(EEOP_INNER_FETCHSOME)
@@ -549,6 +660,24 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			CheckOpSlotCompatibility(op, scanslot);
 
 			slot_getsomeattrs(scanslot, op->d.fetch.last_var);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_OLD_FETCHSOME)
+		{
+			CheckOpSlotCompatibility(op, oldslot);
+
+			slot_getsomeattrs(oldslot, op->d.fetch.last_var);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_NEW_FETCHSOME)
+		{
+			CheckOpSlotCompatibility(op, newslot);
+
+			slot_getsomeattrs(newslot, op->d.fetch.last_var);
 
 			EEO_NEXT();
 		}
@@ -596,6 +725,32 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			EEO_NEXT();
 		}
 
+		EEO_CASE(EEOP_OLD_VAR)
+		{
+			int			attnum = op->d.var.attnum;
+
+			/* See EEOP_INNER_VAR comments */
+
+			Assert(attnum >= 0 && attnum < oldslot->tts_nvalid);
+			*op->resvalue = oldslot->tts_values[attnum];
+			*op->resnull = oldslot->tts_isnull[attnum];
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_NEW_VAR)
+		{
+			int			attnum = op->d.var.attnum;
+
+			/* See EEOP_INNER_VAR comments */
+
+			Assert(attnum >= 0 && attnum < newslot->tts_nvalid);
+			*op->resvalue = newslot->tts_values[attnum];
+			*op->resnull = newslot->tts_isnull[attnum];
+
+			EEO_NEXT();
+		}
+
 		EEO_CASE(EEOP_INNER_SYSVAR)
 		{
 			ExecEvalSysVar(state, op, econtext, innerslot);
@@ -611,6 +766,18 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		EEO_CASE(EEOP_SCAN_SYSVAR)
 		{
 			ExecEvalSysVar(state, op, econtext, scanslot);
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_OLD_SYSVAR)
+		{
+			ExecEvalSysVar(state, op, econtext, oldslot);
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_NEW_SYSVAR)
+		{
+			ExecEvalSysVar(state, op, econtext, newslot);
 			EEO_NEXT();
 		}
 
@@ -669,6 +836,40 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			Assert(resultnum >= 0 && resultnum < resultslot->tts_tupleDescriptor->natts);
 			resultslot->tts_values[resultnum] = scanslot->tts_values[attnum];
 			resultslot->tts_isnull[resultnum] = scanslot->tts_isnull[attnum];
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_ASSIGN_OLD_VAR)
+		{
+			int			resultnum = op->d.assign_var.resultnum;
+			int			attnum = op->d.assign_var.attnum;
+
+			/*
+			 * We do not need CheckVarSlotCompatibility here; that was taken
+			 * care of at compilation time.  But see EEOP_INNER_VAR comments.
+			 */
+			Assert(attnum >= 0 && attnum < oldslot->tts_nvalid);
+			Assert(resultnum >= 0 && resultnum < resultslot->tts_tupleDescriptor->natts);
+			resultslot->tts_values[resultnum] = oldslot->tts_values[attnum];
+			resultslot->tts_isnull[resultnum] = oldslot->tts_isnull[attnum];
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_ASSIGN_NEW_VAR)
+		{
+			int			resultnum = op->d.assign_var.resultnum;
+			int			attnum = op->d.assign_var.attnum;
+
+			/*
+			 * We do not need CheckVarSlotCompatibility here; that was taken
+			 * care of at compilation time.  But see EEOP_INNER_VAR comments.
+			 */
+			Assert(attnum >= 0 && attnum < newslot->tts_nvalid);
+			Assert(resultnum >= 0 && resultnum < resultslot->tts_tupleDescriptor->natts);
+			resultslot->tts_values[resultnum] = newslot->tts_values[attnum];
+			resultslot->tts_isnull[resultnum] = newslot->tts_isnull[attnum];
 
 			EEO_NEXT();
 		}
@@ -735,12 +936,15 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			EEO_NEXT();
 		}
 
+		/* strict function call with more than two arguments */
 		EEO_CASE(EEOP_FUNCEXPR_STRICT)
 		{
 			FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
 			NullableDatum *args = fcinfo->args;
 			int			nargs = op->d.func.nargs;
 			Datum		d;
+
+			Assert(nargs > 2);
 
 			/* strict function, so check for NULL args */
 			for (int argno = 0; argno < nargs; argno++)
@@ -757,6 +961,54 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			*op->resnull = fcinfo->isnull;
 
 	strictfail:
+			EEO_NEXT();
+		}
+
+		/* strict function call with one argument */
+		EEO_CASE(EEOP_FUNCEXPR_STRICT_1)
+		{
+			FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
+			NullableDatum *args = fcinfo->args;
+
+			Assert(op->d.func.nargs == 1);
+
+			/* strict function, so check for NULL args */
+			if (args[0].isnull)
+				*op->resnull = true;
+			else
+			{
+				Datum		d;
+
+				fcinfo->isnull = false;
+				d = op->d.func.fn_addr(fcinfo);
+				*op->resvalue = d;
+				*op->resnull = fcinfo->isnull;
+			}
+
+			EEO_NEXT();
+		}
+
+		/* strict function call with two arguments */
+		EEO_CASE(EEOP_FUNCEXPR_STRICT_2)
+		{
+			FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
+			NullableDatum *args = fcinfo->args;
+
+			Assert(op->d.func.nargs == 2);
+
+			/* strict function, so check for NULL args */
+			if (args[0].isnull || args[1].isnull)
+				*op->resnull = true;
+			else
+			{
+				Datum		d;
+
+				fcinfo->isnull = false;
+				d = op->d.func.fn_addr(fcinfo);
+				*op->resvalue = d;
+				*op->resnull = fcinfo->isnull;
+			}
+
 			EEO_NEXT();
 		}
 
@@ -1084,46 +1336,25 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			EEO_NEXT();
 		}
 
+		EEO_CASE(EEOP_PARAM_SET)
+		{
+			/* out of line, unlikely to matter performance-wise */
+			ExecEvalParamSet(state, op, econtext);
+			EEO_NEXT();
+		}
+
 		EEO_CASE(EEOP_CASE_TESTVAL)
 		{
-			/*
-			 * Normally upper parts of the expression tree have setup the
-			 * values to be returned here, but some parts of the system
-			 * currently misuse {caseValue,domainValue}_{datum,isNull} to set
-			 * run-time data.  So if no values have been set-up, use
-			 * ExprContext's.  This isn't pretty, but also not *that* ugly,
-			 * and this is unlikely to be performance sensitive enough to
-			 * worry about an extra branch.
-			 */
-			if (op->d.casetest.value)
-			{
-				*op->resvalue = *op->d.casetest.value;
-				*op->resnull = *op->d.casetest.isnull;
-			}
-			else
-			{
-				*op->resvalue = econtext->caseValue_datum;
-				*op->resnull = econtext->caseValue_isNull;
-			}
+			*op->resvalue = *op->d.casetest.value;
+			*op->resnull = *op->d.casetest.isnull;
 
 			EEO_NEXT();
 		}
 
-		EEO_CASE(EEOP_DOMAIN_TESTVAL)
+		EEO_CASE(EEOP_CASE_TESTVAL_EXT)
 		{
-			/*
-			 * See EEOP_CASE_TESTVAL comment.
-			 */
-			if (op->d.casetest.value)
-			{
-				*op->resvalue = *op->d.casetest.value;
-				*op->resnull = *op->d.casetest.isnull;
-			}
-			else
-			{
-				*op->resvalue = econtext->domainValue_datum;
-				*op->resnull = econtext->domainValue_isNull;
-			}
+			*op->resvalue = econtext->caseValue_datum;
+			*op->resnull = econtext->caseValue_isNull;
 
 			EEO_NEXT();
 		}
@@ -1147,6 +1378,9 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			 * Evaluate a CoerceViaIO node.  This can be quite a hot path, so
 			 * inline as much work as possible.  The source value is in our
 			 * result variable.
+			 *
+			 * Also look at ExecEvalCoerceViaIOSafe() if you change anything
+			 * here.
 			 */
 			char	   *str;
 
@@ -1199,6 +1433,12 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 				}
 			}
 
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_IOCOERCE_SAFE)
+		{
+			ExecEvalCoerceViaIOSafe(state, op);
 			EEO_NEXT();
 		}
 
@@ -1345,6 +1585,23 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			EEO_NEXT();
 		}
 
+		EEO_CASE(EEOP_RETURNINGEXPR)
+		{
+			/*
+			 * The next op actually evaluates the expression.  If the OLD/NEW
+			 * row doesn't exist, skip that and return NULL.
+			 */
+			if (state->flags & op->d.returningexpr.nullflag)
+			{
+				*op->resvalue = (Datum) 0;
+				*op->resnull = true;
+
+				EEO_JUMP(op->d.returningexpr.jumpdone);
+			}
+
+			EEO_NEXT();
+		}
+
 		EEO_CASE(EEOP_ARRAYEXPR)
 		{
 			/* too complex for an inline implementation */
@@ -1407,22 +1664,22 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		EEO_CASE(EEOP_ROWCOMPARE_FINAL)
 		{
 			int32		cmpresult = DatumGetInt32(*op->resvalue);
-			RowCompareType rctype = op->d.rowcompare_final.rctype;
+			CompareType cmptype = op->d.rowcompare_final.cmptype;
 
 			*op->resnull = false;
-			switch (rctype)
+			switch (cmptype)
 			{
 					/* EQ and NE cases aren't allowed here */
-				case ROWCOMPARE_LT:
+				case COMPARE_LT:
 					*op->resvalue = BoolGetDatum(cmpresult < 0);
 					break;
-				case ROWCOMPARE_LE:
+				case COMPARE_LE:
 					*op->resvalue = BoolGetDatum(cmpresult <= 0);
 					break;
-				case ROWCOMPARE_GE:
+				case COMPARE_GE:
 					*op->resvalue = BoolGetDatum(cmpresult >= 0);
 					break;
-				case ROWCOMPARE_GT:
+				case COMPARE_GT:
 					*op->resvalue = BoolGetDatum(cmpresult > 0);
 					break;
 				default:
@@ -1513,6 +1770,22 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			EEO_NEXT();
 		}
 
+		EEO_CASE(EEOP_DOMAIN_TESTVAL)
+		{
+			*op->resvalue = *op->d.casetest.value;
+			*op->resnull = *op->d.casetest.isnull;
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_DOMAIN_TESTVAL_EXT)
+		{
+			*op->resvalue = econtext->domainValue_datum;
+			*op->resnull = econtext->domainValue_isNull;
+
+			EEO_NEXT();
+		}
+
 		EEO_CASE(EEOP_DOMAIN_NOTNULL)
 		{
 			/* too complex for an inline implementation */
@@ -1529,10 +1802,154 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			EEO_NEXT();
 		}
 
+		EEO_CASE(EEOP_HASHDATUM_SET_INITVAL)
+		{
+			*op->resvalue = op->d.hashdatum_initvalue.init_value;
+			*op->resnull = false;
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_HASHDATUM_FIRST)
+		{
+			FunctionCallInfo fcinfo = op->d.hashdatum.fcinfo_data;
+
+			/*
+			 * Save the Datum on non-null inputs, otherwise store 0 so that
+			 * subsequent NEXT32 operations combine with an initialized value.
+			 */
+			if (!fcinfo->args[0].isnull)
+				*op->resvalue = op->d.hashdatum.fn_addr(fcinfo);
+			else
+				*op->resvalue = (Datum) 0;
+
+			*op->resnull = false;
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_HASHDATUM_FIRST_STRICT)
+		{
+			FunctionCallInfo fcinfo = op->d.hashdatum.fcinfo_data;
+
+			if (fcinfo->args[0].isnull)
+			{
+				/*
+				 * With strict we have the expression return NULL instead of
+				 * ignoring NULL input values.  We've nothing more to do after
+				 * finding a NULL.
+				 */
+				*op->resnull = true;
+				*op->resvalue = (Datum) 0;
+				EEO_JUMP(op->d.hashdatum.jumpdone);
+			}
+
+			/* execute the hash function and save the resulting value */
+			*op->resvalue = op->d.hashdatum.fn_addr(fcinfo);
+			*op->resnull = false;
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_HASHDATUM_NEXT32)
+		{
+			FunctionCallInfo fcinfo = op->d.hashdatum.fcinfo_data;
+			uint32		existinghash;
+
+			existinghash = DatumGetUInt32(op->d.hashdatum.iresult->value);
+			/* combine successive hash values by rotating */
+			existinghash = pg_rotate_left32(existinghash, 1);
+
+			/* leave the hash value alone on NULL inputs */
+			if (!fcinfo->args[0].isnull)
+			{
+				uint32		hashvalue;
+
+				/* execute hash func and combine with previous hash value */
+				hashvalue = DatumGetUInt32(op->d.hashdatum.fn_addr(fcinfo));
+				existinghash = existinghash ^ hashvalue;
+			}
+
+			*op->resvalue = UInt32GetDatum(existinghash);
+			*op->resnull = false;
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_HASHDATUM_NEXT32_STRICT)
+		{
+			FunctionCallInfo fcinfo = op->d.hashdatum.fcinfo_data;
+
+			if (fcinfo->args[0].isnull)
+			{
+				/*
+				 * With strict we have the expression return NULL instead of
+				 * ignoring NULL input values.  We've nothing more to do after
+				 * finding a NULL.
+				 */
+				*op->resnull = true;
+				*op->resvalue = (Datum) 0;
+				EEO_JUMP(op->d.hashdatum.jumpdone);
+			}
+			else
+			{
+				uint32		existinghash;
+				uint32		hashvalue;
+
+				existinghash = DatumGetUInt32(op->d.hashdatum.iresult->value);
+				/* combine successive hash values by rotating */
+				existinghash = pg_rotate_left32(existinghash, 1);
+
+				/* execute hash func and combine with previous hash value */
+				hashvalue = DatumGetUInt32(op->d.hashdatum.fn_addr(fcinfo));
+				*op->resvalue = UInt32GetDatum(existinghash ^ hashvalue);
+				*op->resnull = false;
+			}
+
+			EEO_NEXT();
+		}
+
 		EEO_CASE(EEOP_XMLEXPR)
 		{
 			/* too complex for an inline implementation */
 			ExecEvalXmlExpr(state, op);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_JSON_CONSTRUCTOR)
+		{
+			/* too complex for an inline implementation */
+			ExecEvalJsonConstructor(state, op, econtext);
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_IS_JSON)
+		{
+			/* too complex for an inline implementation */
+			ExecEvalJsonIsPredicate(state, op);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_JSONEXPR_PATH)
+		{
+			/* too complex for an inline implementation */
+			EEO_JUMP(ExecEvalJsonExprPath(state, op, econtext));
+		}
+
+		EEO_CASE(EEOP_JSONEXPR_COERCION)
+		{
+			/* too complex for an inline implementation */
+			ExecEvalJsonCoercion(state, op, econtext);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_JSONEXPR_COERCION_FINISH)
+		{
+			/* too complex for an inline implementation */
+			ExecEvalJsonCoercionFinish(state, op);
 
 			EEO_NEXT();
 		}
@@ -1572,6 +1989,14 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 
 			*op->resvalue = econtext->ecxt_aggvalues[wfunc->wfuncno];
 			*op->resnull = econtext->ecxt_aggnulls[wfunc->wfuncno];
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_MERGE_SUPPORT_FUNC)
+		{
+			/* too complex/uncommon for an inline implementation */
+			ExecEvalMergeSupportFunc(state, op, econtext);
 
 			EEO_NEXT();
 		}
@@ -1619,16 +2044,32 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		 * input is not NULL.
 		 */
 
+		/* when checking more than one argument */
 		EEO_CASE(EEOP_AGG_STRICT_INPUT_CHECK_ARGS)
 		{
 			NullableDatum *args = op->d.agg_strict_input_check.args;
 			int			nargs = op->d.agg_strict_input_check.nargs;
+
+			Assert(nargs > 1);
 
 			for (int argno = 0; argno < nargs; argno++)
 			{
 				if (args[argno].isnull)
 					EEO_JUMP(op->d.agg_strict_input_check.jumpnull);
 			}
+			EEO_NEXT();
+		}
+
+		/* special case for just one argument */
+		EEO_CASE(EEOP_AGG_STRICT_INPUT_CHECK_ARGS_1)
+		{
+			NullableDatum *args = op->d.agg_strict_input_check.args;
+			PG_USED_FOR_ASSERTS_ONLY int nargs = op->d.agg_strict_input_check.nargs;
+
+			Assert(nargs == 1);
+
+			if (args[0].isnull)
+				EEO_JUMP(op->d.agg_strict_input_check.jumpnull);
 			EEO_NEXT();
 		}
 
@@ -1790,6 +2231,28 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			EEO_NEXT();
 		}
 
+		EEO_CASE(EEOP_AGG_PRESORTED_DISTINCT_SINGLE)
+		{
+			AggStatePerTrans pertrans = op->d.agg_presorted_distinctcheck.pertrans;
+			AggState   *aggstate = castNode(AggState, state->parent);
+
+			if (ExecEvalPreOrderedDistinctSingle(aggstate, pertrans))
+				EEO_NEXT();
+			else
+				EEO_JUMP(op->d.agg_presorted_distinctcheck.jumpdistinct);
+		}
+
+		EEO_CASE(EEOP_AGG_PRESORTED_DISTINCT_MULTI)
+		{
+			AggState   *aggstate = castNode(AggState, state->parent);
+			AggStatePerTrans pertrans = op->d.agg_presorted_distinctcheck.pertrans;
+
+			if (ExecEvalPreOrderedDistinctMulti(aggstate, pertrans))
+				EEO_NEXT();
+			else
+				EEO_JUMP(op->d.agg_presorted_distinctcheck.jumpdistinct);
+		}
+
 		/* process single-column ordered aggregate datum */
 		EEO_CASE(EEOP_AGG_ORDERED_TRANS_DATUM)
 		{
@@ -1820,13 +2283,13 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		{
 			/* unreachable */
 			Assert(false);
-			goto out;
+			goto out_error;
 		}
 	}
 
-out:
-	*isnull = state->resnull;
-	return state->resvalue;
+out_error:
+	pg_unreachable();
+	return (Datum) 0;
 }
 
 /*
@@ -1860,10 +2323,14 @@ CheckExprStillValid(ExprState *state, ExprContext *econtext)
 	TupleTableSlot *innerslot;
 	TupleTableSlot *outerslot;
 	TupleTableSlot *scanslot;
+	TupleTableSlot *oldslot;
+	TupleTableSlot *newslot;
 
 	innerslot = econtext->ecxt_innertuple;
 	outerslot = econtext->ecxt_outertuple;
 	scanslot = econtext->ecxt_scantuple;
+	oldslot = econtext->ecxt_oldtuple;
+	newslot = econtext->ecxt_newtuple;
 
 	for (int i = 0; i < state->steps_len; i++)
 	{
@@ -1892,6 +2359,22 @@ CheckExprStillValid(ExprState *state, ExprContext *econtext)
 					int			attnum = op->d.var.attnum;
 
 					CheckVarSlotCompatibility(scanslot, attnum + 1, op->d.var.vartype);
+					break;
+				}
+
+			case EEOP_OLD_VAR:
+				{
+					int			attnum = op->d.var.attnum;
+
+					CheckVarSlotCompatibility(oldslot, attnum + 1, op->d.var.vartype);
+					break;
+				}
+
+			case EEOP_NEW_VAR:
+				{
+					int			attnum = op->d.var.attnum;
+
+					CheckVarSlotCompatibility(newslot, attnum + 1, op->d.var.vartype);
 					break;
 				}
 			default:
@@ -1935,6 +2418,10 @@ CheckVarSlotCompatibility(TupleTableSlot *slot, int attnum, Oid vartype)
 				 attnum, slot_tupdesc->natts);
 
 		attr = TupleDescAttr(slot_tupdesc, attnum - 1);
+
+		/* Internal error: somebody forgot to expand it. */
+		if (attr->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
+			elog(ERROR, "unexpected virtual generated column reference");
 
 		if (attr->attisdropped)
 			ereport(ERROR,
@@ -2029,7 +2516,7 @@ get_cached_rowtype(Oid type_id, int32 typmod,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("type %s is not composite",
 								format_type_be(type_id))));
-			rowcache->cacheptr = (void *) typentry;
+			rowcache->cacheptr = typentry;
 			rowcache->tupdesc_id = typentry->tupDesc_identifier;
 			if (changed)
 				*changed = true;
@@ -2054,7 +2541,7 @@ get_cached_rowtype(Oid type_id, int32 typmod,
 			tupDesc = lookup_rowtype_tupdesc(type_id, typmod);
 			/* Drop pin acquired by lookup_rowtype_tupdesc */
 			ReleaseTupleDesc(tupDesc);
-			rowcache->cacheptr = (void *) tupDesc;
+			rowcache->cacheptr = tupDesc;
 			rowcache->tupdesc_id = 0;	/* not a valid value for non-RECORD */
 			if (changed)
 				*changed = true;
@@ -2287,6 +2774,148 @@ ExecJustAssignScanVarVirt(ExprState *state, ExprContext *econtext, bool *isnull)
 	return ExecJustAssignVarVirtImpl(state, econtext->ecxt_scantuple, isnull);
 }
 
+/*
+ * implementation for hashing an inner Var, seeding with an initial value.
+ */
+static Datum
+ExecJustHashInnerVarWithIV(ExprState *state, ExprContext *econtext,
+						   bool *isnull)
+{
+	ExprEvalStep *fetchop = &state->steps[0];
+	ExprEvalStep *setivop = &state->steps[1];
+	ExprEvalStep *innervar = &state->steps[2];
+	ExprEvalStep *hashop = &state->steps[3];
+	FunctionCallInfo fcinfo = hashop->d.hashdatum.fcinfo_data;
+	int			attnum = innervar->d.var.attnum;
+	uint32		hashkey;
+
+	CheckOpSlotCompatibility(fetchop, econtext->ecxt_innertuple);
+	slot_getsomeattrs(econtext->ecxt_innertuple, fetchop->d.fetch.last_var);
+
+	fcinfo->args[0].value = econtext->ecxt_innertuple->tts_values[attnum];
+	fcinfo->args[0].isnull = econtext->ecxt_innertuple->tts_isnull[attnum];
+
+	hashkey = DatumGetUInt32(setivop->d.hashdatum_initvalue.init_value);
+	hashkey = pg_rotate_left32(hashkey, 1);
+
+	if (!fcinfo->args[0].isnull)
+	{
+		uint32		hashvalue;
+
+		hashvalue = DatumGetUInt32(hashop->d.hashdatum.fn_addr(fcinfo));
+		hashkey = hashkey ^ hashvalue;
+	}
+
+	*isnull = false;
+	return UInt32GetDatum(hashkey);
+}
+
+/* implementation of ExecJustHash(Inner|Outer)Var */
+static pg_attribute_always_inline Datum
+ExecJustHashVarImpl(ExprState *state, TupleTableSlot *slot, bool *isnull)
+{
+	ExprEvalStep *fetchop = &state->steps[0];
+	ExprEvalStep *var = &state->steps[1];
+	ExprEvalStep *hashop = &state->steps[2];
+	FunctionCallInfo fcinfo = hashop->d.hashdatum.fcinfo_data;
+	int			attnum = var->d.var.attnum;
+
+	CheckOpSlotCompatibility(fetchop, slot);
+	slot_getsomeattrs(slot, fetchop->d.fetch.last_var);
+
+	fcinfo->args[0].value = slot->tts_values[attnum];
+	fcinfo->args[0].isnull = slot->tts_isnull[attnum];
+
+	*isnull = false;
+
+	if (!fcinfo->args[0].isnull)
+		return hashop->d.hashdatum.fn_addr(fcinfo);
+	else
+		return (Datum) 0;
+}
+
+/* implementation for hashing an outer Var */
+static Datum
+ExecJustHashOuterVar(ExprState *state, ExprContext *econtext, bool *isnull)
+{
+	return ExecJustHashVarImpl(state, econtext->ecxt_outertuple, isnull);
+}
+
+/* implementation for hashing an inner Var */
+static Datum
+ExecJustHashInnerVar(ExprState *state, ExprContext *econtext, bool *isnull)
+{
+	return ExecJustHashVarImpl(state, econtext->ecxt_innertuple, isnull);
+}
+
+/* implementation of ExecJustHash(Inner|Outer)VarVirt */
+static pg_attribute_always_inline Datum
+ExecJustHashVarVirtImpl(ExprState *state, TupleTableSlot *slot, bool *isnull)
+{
+	ExprEvalStep *var = &state->steps[0];
+	ExprEvalStep *hashop = &state->steps[1];
+	FunctionCallInfo fcinfo = hashop->d.hashdatum.fcinfo_data;
+	int			attnum = var->d.var.attnum;
+
+	fcinfo->args[0].value = slot->tts_values[attnum];
+	fcinfo->args[0].isnull = slot->tts_isnull[attnum];
+
+	*isnull = false;
+
+	if (!fcinfo->args[0].isnull)
+		return hashop->d.hashdatum.fn_addr(fcinfo);
+	else
+		return (Datum) 0;
+}
+
+/* Like ExecJustHashInnerVar, optimized for virtual slots */
+static Datum
+ExecJustHashInnerVarVirt(ExprState *state, ExprContext *econtext,
+						 bool *isnull)
+{
+	return ExecJustHashVarVirtImpl(state, econtext->ecxt_innertuple, isnull);
+}
+
+/* Like ExecJustHashOuterVar, optimized for virtual slots */
+static Datum
+ExecJustHashOuterVarVirt(ExprState *state, ExprContext *econtext,
+						 bool *isnull)
+{
+	return ExecJustHashVarVirtImpl(state, econtext->ecxt_outertuple, isnull);
+}
+
+/*
+ * implementation for hashing an outer Var.  Returns NULL on NULL input.
+ */
+static Datum
+ExecJustHashOuterVarStrict(ExprState *state, ExprContext *econtext,
+						   bool *isnull)
+{
+	ExprEvalStep *fetchop = &state->steps[0];
+	ExprEvalStep *var = &state->steps[1];
+	ExprEvalStep *hashop = &state->steps[2];
+	FunctionCallInfo fcinfo = hashop->d.hashdatum.fcinfo_data;
+	int			attnum = var->d.var.attnum;
+
+	CheckOpSlotCompatibility(fetchop, econtext->ecxt_outertuple);
+	slot_getsomeattrs(econtext->ecxt_outertuple, fetchop->d.fetch.last_var);
+
+	fcinfo->args[0].value = econtext->ecxt_outertuple->tts_values[attnum];
+	fcinfo->args[0].isnull = econtext->ecxt_outertuple->tts_isnull[attnum];
+
+	if (!fcinfo->args[0].isnull)
+	{
+		*isnull = false;
+		return hashop->d.hashdatum.fn_addr(fcinfo);
+	}
+	else
+	{
+		/* return NULL on NULL input */
+		*isnull = true;
+		return (Datum) 0;
+	}
+}
+
 #if defined(EEO_USE_COMPUTED_GOTO)
 /*
  * Comparator used when building address->opcode lookup table for
@@ -2491,6 +3120,89 @@ ExecEvalParamExtern(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 }
 
 /*
+ * Set value of a param (currently always PARAM_EXEC) from
+ * op->res{value,null}.
+ */
+void
+ExecEvalParamSet(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
+{
+	ParamExecData *prm;
+
+	prm = &(econtext->ecxt_param_exec_vals[op->d.param.paramid]);
+
+	/* Shouldn't have a pending evaluation anymore */
+	Assert(prm->execPlan == NULL);
+
+	prm->value = *op->resvalue;
+	prm->isnull = *op->resnull;
+}
+
+/*
+ * Evaluate a CoerceViaIO node in soft-error mode.
+ *
+ * The source value is in op's result variable.
+ *
+ * Note: This implements EEOP_IOCOERCE_SAFE. If you change anything here,
+ * also look at the inline code for EEOP_IOCOERCE.
+ */
+void
+ExecEvalCoerceViaIOSafe(ExprState *state, ExprEvalStep *op)
+{
+	char	   *str;
+
+	/* call output function (similar to OutputFunctionCall) */
+	if (*op->resnull)
+	{
+		/* output functions are not called on nulls */
+		str = NULL;
+	}
+	else
+	{
+		FunctionCallInfo fcinfo_out;
+
+		fcinfo_out = op->d.iocoerce.fcinfo_data_out;
+		fcinfo_out->args[0].value = *op->resvalue;
+		fcinfo_out->args[0].isnull = false;
+
+		fcinfo_out->isnull = false;
+		str = DatumGetCString(FunctionCallInvoke(fcinfo_out));
+
+		/* OutputFunctionCall assumes result isn't null */
+		Assert(!fcinfo_out->isnull);
+	}
+
+	/* call input function (similar to InputFunctionCallSafe) */
+	if (!op->d.iocoerce.finfo_in->fn_strict || str != NULL)
+	{
+		FunctionCallInfo fcinfo_in;
+
+		fcinfo_in = op->d.iocoerce.fcinfo_data_in;
+		fcinfo_in->args[0].value = PointerGetDatum(str);
+		fcinfo_in->args[0].isnull = *op->resnull;
+		/* second and third arguments are already set up */
+
+		/* ErrorSaveContext must be present. */
+		Assert(IsA(fcinfo_in->context, ErrorSaveContext));
+
+		fcinfo_in->isnull = false;
+		*op->resvalue = FunctionCallInvoke(fcinfo_in);
+
+		if (SOFT_ERROR_OCCURRED(fcinfo_in->context))
+		{
+			*op->resnull = true;
+			*op->resvalue = (Datum) 0;
+			return;
+		}
+
+		/* Should get null result if and only if str is NULL */
+		if (str == NULL)
+			Assert(*op->resnull);
+		else
+			Assert(!*op->resnull);
+	}
+}
+
+/*
  * Evaluate a SQLValueFunction expression.
  */
 void
@@ -2585,7 +3297,7 @@ ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op)
 			*op->resvalue = Int32GetDatum((int32) newval);
 			break;
 		case INT8OID:
-			*op->resvalue = Int64GetDatum((int64) newval);
+			*op->resvalue = Int64GetDatum(newval);
 			break;
 		default:
 			elog(ERROR, "unsupported sequence type %u",
@@ -2668,7 +3380,7 @@ ExecEvalRowNullInt(ExprState *state, ExprEvalStep *op,
 	for (int att = 1; att <= tupDesc->natts; att++)
 	{
 		/* ignore dropped columns */
-		if (TupleDescAttr(tupDesc, att - 1)->attisdropped)
+		if (TupleDescCompactAttr(tupDesc, att - 1)->attisdropped)
 			continue;
 		if (heap_attisnull(&tmptup, att, tupDesc))
 		{
@@ -2742,7 +3454,7 @@ ExecEvalArrayExpr(ExprState *state, ExprEvalStep *op)
 		bool		havenulls = false;
 		bool		haveempty = false;
 		char	  **subdata;
-		bits8	  **subbitmaps;
+		uint8	  **subbitmaps;
 		int		   *subbytes;
 		int		   *subnitems;
 		int32		dataoffset;
@@ -2750,7 +3462,7 @@ ExecEvalArrayExpr(ExprState *state, ExprEvalStep *op)
 		int			iitem;
 
 		subdata = (char **) palloc(nelems * sizeof(char *));
-		subbitmaps = (bits8 **) palloc(nelems * sizeof(bits8 *));
+		subbitmaps = (uint8 **) palloc(nelems * sizeof(uint8 *));
 		subbytes = (int *) palloc(nelems * sizeof(int));
 		subnitems = (int *) palloc(nelems * sizeof(int));
 
@@ -3336,8 +4048,9 @@ ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op)
 	int16		typlen;
 	bool		typbyval;
 	char		typalign;
+	uint8		typalignby;
 	char	   *s;
-	bits8	   *bitmap;
+	uint8	   *bitmap;
 	int			bitmask;
 
 	/*
@@ -3390,6 +4103,7 @@ ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op)
 	typlen = op->d.scalararrayop.typlen;
 	typbyval = op->d.scalararrayop.typbyval;
 	typalign = op->d.scalararrayop.typalign;
+	typalignby = typalign_to_alignby(typalign);
 
 	/* Initialize result appropriately depending on useOr */
 	result = BoolGetDatum(!useOr);
@@ -3415,7 +4129,7 @@ ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op)
 		{
 			elt = fetch_att(s, typbyval, typlen);
 			s = att_addlength_pointer(s, typlen, s);
-			s = (char *) att_align_nominal(s, typalign);
+			s = (char *) att_nominal_alignby(s, typalignby);
 			fcinfo->args[1].value = elt;
 			fcinfo->args[1].isnull = false;
 		}
@@ -3559,10 +4273,11 @@ ExecEvalHashedScalarArrayOp(ExprState *state, ExprEvalStep *op, ExprContext *eco
 		int16		typlen;
 		bool		typbyval;
 		char		typalign;
+		uint8		typalignby;
 		int			nitems;
 		bool		has_nulls = false;
 		char	   *s;
-		bits8	   *bitmap;
+		uint8	   *bitmap;
 		int			bitmask;
 		MemoryContext oldcontext;
 		ArrayType  *arr;
@@ -3576,6 +4291,7 @@ ExecEvalHashedScalarArrayOp(ExprState *state, ExprEvalStep *op, ExprContext *eco
 							 &typlen,
 							 &typbyval,
 							 &typalign);
+		typalignby = typalign_to_alignby(typalign);
 
 		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
@@ -3622,7 +4338,7 @@ ExecEvalHashedScalarArrayOp(ExprState *state, ExprEvalStep *op, ExprContext *eco
 
 				element = fetch_att(s, typbyval, typlen);
 				s = att_addlength_pointer(s, typlen, s);
-				s = (char *) att_align_nominal(s, typalign);
+				s = (char *) att_nominal_alignby(s, typalignby);
 
 				saophash_insert(elements_tab->hashtab, element, &hashfound);
 			}
@@ -3697,7 +4413,7 @@ ExecEvalHashedScalarArrayOp(ExprState *state, ExprEvalStep *op, ExprContext *eco
 			 * is the equality function and we need not-equals.
 			 */
 			if (!inclause)
-				result = !result;
+				result = BoolGetDatum(!DatumGetBool(result));
 		}
 	}
 
@@ -3722,7 +4438,7 @@ YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op)
 	bool		typbyval;
 	char		typalign;
 	char	   *s;
-	bits8	   *bitmap;
+	uint8	   *bitmap;
 	int			bitmask;
 
 	/*
@@ -3869,7 +4585,7 @@ void
 ExecEvalConstraintNotNull(ExprState *state, ExprEvalStep *op)
 {
 	if (*op->resnull)
-		ereport(ERROR,
+		errsave((Node *) op->d.domaincheck.escontext,
 				(errcode(ERRCODE_NOT_NULL_VIOLATION),
 				 errmsg("domain %s does not allow null values",
 						format_type_be(op->d.domaincheck.resulttype)),
@@ -3884,7 +4600,7 @@ ExecEvalConstraintCheck(ExprState *state, ExprEvalStep *op)
 {
 	if (!*op->d.domaincheck.checknull &&
 		!DatumGetBool(*op->d.domaincheck.checkvalue))
-		ereport(ERROR,
+		errsave((Node *) op->d.domaincheck.escontext,
 				(errcode(ERRCODE_CHECK_VIOLATION),
 				 errmsg("value for domain %s violates check constraint \"%s\"",
 						format_type_be(op->d.domaincheck.resulttype),
@@ -4003,7 +4719,7 @@ ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op)
 
 				*op->resvalue = PointerGetDatum(xmlparse(data,
 														 xexpr->xmloption,
-														 preserve_whitespace));
+														 preserve_whitespace, NULL));
 				*op->resnull = false;
 			}
 			break;
@@ -4079,8 +4795,10 @@ ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op)
 					return;
 				value = argvalue[0];
 
-				*op->resvalue = PointerGetDatum(xmltotext_with_xmloption(DatumGetXmlP(value),
-																		 xexpr->xmloption));
+				*op->resvalue =
+					PointerGetDatum(xmltotext_with_options(DatumGetXmlP(value),
+														   xexpr->xmloption,
+														   xexpr->indent));
 				*op->resnull = false;
 			}
 			break;
@@ -4106,6 +4824,586 @@ ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op)
 		default:
 			elog(ERROR, "unrecognized XML operation");
 			break;
+	}
+}
+
+/*
+ * Evaluate a JSON constructor expression.
+ */
+void
+ExecEvalJsonConstructor(ExprState *state, ExprEvalStep *op,
+						ExprContext *econtext)
+{
+	Datum		res;
+	JsonConstructorExprState *jcstate = op->d.json_constructor.jcstate;
+	JsonConstructorExpr *ctor = jcstate->constructor;
+	bool		is_jsonb = ctor->returning->format->format_type == JS_FORMAT_JSONB;
+	bool		isnull = false;
+
+	if (ctor->type == JSCTOR_JSON_ARRAY)
+		res = (is_jsonb ?
+			   jsonb_build_array_worker :
+			   json_build_array_worker) (jcstate->nargs,
+										 jcstate->arg_values,
+										 jcstate->arg_nulls,
+										 jcstate->arg_types,
+										 jcstate->constructor->absent_on_null);
+	else if (ctor->type == JSCTOR_JSON_OBJECT)
+		res = (is_jsonb ?
+			   jsonb_build_object_worker :
+			   json_build_object_worker) (jcstate->nargs,
+										  jcstate->arg_values,
+										  jcstate->arg_nulls,
+										  jcstate->arg_types,
+										  jcstate->constructor->absent_on_null,
+										  jcstate->constructor->unique);
+	else if (ctor->type == JSCTOR_JSON_SCALAR)
+	{
+		if (jcstate->arg_nulls[0])
+		{
+			res = (Datum) 0;
+			isnull = true;
+		}
+		else
+		{
+			Datum		value = jcstate->arg_values[0];
+			Oid			outfuncid = jcstate->arg_type_cache[0].outfuncid;
+			JsonTypeCategory category = (JsonTypeCategory)
+				jcstate->arg_type_cache[0].category;
+
+			if (is_jsonb)
+				res = datum_to_jsonb(value, category, outfuncid);
+			else
+				res = datum_to_json(value, category, outfuncid);
+		}
+	}
+	else if (ctor->type == JSCTOR_JSON_PARSE)
+	{
+		if (jcstate->arg_nulls[0])
+		{
+			res = (Datum) 0;
+			isnull = true;
+		}
+		else
+		{
+			Datum		value = jcstate->arg_values[0];
+			text	   *js = DatumGetTextP(value);
+
+			if (is_jsonb)
+				res = jsonb_from_text(js, true);
+			else
+			{
+				(void) json_validate(js, true, true);
+				res = value;
+			}
+		}
+	}
+	else
+		elog(ERROR, "invalid JsonConstructorExpr type %d", ctor->type);
+
+	*op->resvalue = res;
+	*op->resnull = isnull;
+}
+
+/*
+ * Evaluate a IS JSON predicate.
+ */
+void
+ExecEvalJsonIsPredicate(ExprState *state, ExprEvalStep *op)
+{
+	JsonIsPredicate *pred = op->d.is_json.pred;
+	Datum		js = *op->resvalue;
+	Oid			exprtype = pred->exprBaseType;
+	bool		res;
+
+	if (*op->resnull)
+	{
+		*op->resvalue = BoolGetDatum(false);
+		return;
+	}
+
+	if (exprtype == TEXTOID || exprtype == JSONOID)
+	{
+		text	   *json = DatumGetTextP(js);
+
+		if (pred->item_type == JS_TYPE_ANY)
+			res = true;
+		else
+		{
+			switch (json_get_first_token(json, false))
+			{
+				case JSON_TOKEN_OBJECT_START:
+					res = pred->item_type == JS_TYPE_OBJECT;
+					break;
+				case JSON_TOKEN_ARRAY_START:
+					res = pred->item_type == JS_TYPE_ARRAY;
+					break;
+				case JSON_TOKEN_STRING:
+				case JSON_TOKEN_NUMBER:
+				case JSON_TOKEN_TRUE:
+				case JSON_TOKEN_FALSE:
+				case JSON_TOKEN_NULL:
+					res = pred->item_type == JS_TYPE_SCALAR;
+					break;
+				default:
+					res = false;
+					break;
+			}
+		}
+
+		/*
+		 * Do full parsing pass only for uniqueness check or for JSON text
+		 * validation.
+		 */
+		if (res && (pred->unique_keys || exprtype == TEXTOID))
+			res = json_validate(json, pred->unique_keys, false);
+	}
+	else if (exprtype == JSONBOID)
+	{
+		if (pred->item_type == JS_TYPE_ANY)
+			res = true;
+		else
+		{
+			Jsonb	   *jb = DatumGetJsonbP(js);
+
+			switch (pred->item_type)
+			{
+				case JS_TYPE_OBJECT:
+					res = JB_ROOT_IS_OBJECT(jb);
+					break;
+				case JS_TYPE_ARRAY:
+					res = JB_ROOT_IS_ARRAY(jb) && !JB_ROOT_IS_SCALAR(jb);
+					break;
+				case JS_TYPE_SCALAR:
+					res = JB_ROOT_IS_ARRAY(jb) && JB_ROOT_IS_SCALAR(jb);
+					break;
+				default:
+					res = false;
+					break;
+			}
+		}
+
+		/* Key uniqueness check is redundant for jsonb */
+	}
+	else
+		res = false;
+
+	*op->resvalue = BoolGetDatum(res);
+}
+
+/*
+ * Evaluate a jsonpath against a document, both of which must have been
+ * evaluated and their values saved in op->d.jsonexpr.jsestate.
+ *
+ * If an error occurs during JsonPath* evaluation or when coercing its result
+ * to the RETURNING type, JsonExprState.error is set to true, provided the
+ * ON ERROR behavior is not ERROR.  Similarly, if JsonPath{Query|Value}() found
+ * no matching items, JsonExprState.empty is set to true, provided the ON EMPTY
+ * behavior is not ERROR.  That is to signal to the subsequent steps that check
+ * those flags to return the ON ERROR / ON EMPTY expression.
+ *
+ * Return value is the step address to be performed next.  It will be one of
+ * jump_error, jump_empty, jump_eval_coercion, or jump_end, all given in
+ * op->d.jsonexpr.jsestate.
+ */
+int
+ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
+					 ExprContext *econtext)
+{
+	JsonExprState *jsestate = op->d.jsonexpr.jsestate;
+	JsonExpr   *jsexpr = jsestate->jsexpr;
+	Datum		item;
+	JsonPath   *path;
+	bool		throw_error = jsexpr->on_error->btype == JSON_BEHAVIOR_ERROR;
+	bool		error = false,
+				empty = false;
+	int			jump_eval_coercion = jsestate->jump_eval_coercion;
+	char	   *val_string = NULL;
+
+	item = jsestate->formatted_expr.value;
+	path = DatumGetJsonPathP(jsestate->pathspec.value);
+
+	/* Set error/empty to false. */
+	memset(&jsestate->error, 0, sizeof(NullableDatum));
+	memset(&jsestate->empty, 0, sizeof(NullableDatum));
+
+	/* Also reset ErrorSaveContext contents for the next row. */
+	if (jsestate->escontext.details_wanted)
+	{
+		jsestate->escontext.error_data = NULL;
+		jsestate->escontext.details_wanted = false;
+	}
+	jsestate->escontext.error_occurred = false;
+
+	switch (jsexpr->op)
+	{
+		case JSON_EXISTS_OP:
+			{
+				bool		exists = JsonPathExists(item, path,
+													!throw_error ? &error : NULL,
+													jsestate->args);
+
+				if (!error)
+				{
+					*op->resnull = false;
+					*op->resvalue = BoolGetDatum(exists);
+				}
+			}
+			break;
+
+		case JSON_QUERY_OP:
+			*op->resvalue = JsonPathQuery(item, path, jsexpr->wrapper, &empty,
+										  !throw_error ? &error : NULL,
+										  jsestate->args,
+										  jsexpr->column_name);
+
+			*op->resnull = (DatumGetPointer(*op->resvalue) == NULL);
+			break;
+
+		case JSON_VALUE_OP:
+			{
+				JsonbValue *jbv = JsonPathValue(item, path, &empty,
+												!throw_error ? &error : NULL,
+												jsestate->args,
+												jsexpr->column_name);
+
+				if (jbv == NULL)
+				{
+					/* Will be coerced with json_populate_type(), if needed. */
+					*op->resvalue = (Datum) 0;
+					*op->resnull = true;
+				}
+				else if (!error && !empty)
+				{
+					if (jsexpr->returning->typid == JSONOID ||
+						jsexpr->returning->typid == JSONBOID)
+					{
+						val_string = DatumGetCString(DirectFunctionCall1(jsonb_out,
+																		 JsonbPGetDatum(JsonbValueToJsonb(jbv))));
+					}
+					else if (jsexpr->use_json_coercion)
+					{
+						*op->resvalue = JsonbPGetDatum(JsonbValueToJsonb(jbv));
+						*op->resnull = false;
+					}
+					else
+					{
+						val_string = ExecGetJsonValueItemString(jbv, op->resnull);
+
+						/*
+						 * Simply convert to the default RETURNING type (text)
+						 * if no coercion needed.
+						 */
+						if (!jsexpr->use_io_coercion)
+							*op->resvalue = DirectFunctionCall1(textin,
+																CStringGetDatum(val_string));
+					}
+				}
+				break;
+			}
+
+			/* JSON_TABLE_OP can't happen here */
+
+		default:
+			elog(ERROR, "unrecognized SQL/JSON expression op %d",
+				 (int) jsexpr->op);
+			return false;
+	}
+
+	/*
+	 * Coerce the result value to the RETURNING type by calling its input
+	 * function.
+	 */
+	if (!*op->resnull && jsexpr->use_io_coercion)
+	{
+		FunctionCallInfo fcinfo;
+
+		Assert(jump_eval_coercion == -1);
+		fcinfo = jsestate->input_fcinfo;
+		Assert(fcinfo != NULL);
+		Assert(val_string != NULL);
+		fcinfo->args[0].value = PointerGetDatum(val_string);
+		fcinfo->args[0].isnull = *op->resnull;
+
+		/*
+		 * Second and third arguments are already set up in
+		 * ExecInitJsonExpr().
+		 */
+
+		fcinfo->isnull = false;
+		*op->resvalue = FunctionCallInvoke(fcinfo);
+		if (SOFT_ERROR_OCCURRED(&jsestate->escontext))
+			error = true;
+	}
+
+	/*
+	 * When setting up the ErrorSaveContext (if needed) for capturing the
+	 * errors that occur when coercing the JsonBehavior expression, set
+	 * details_wanted to be able to show the actual error message as the
+	 * DETAIL of the error message that tells that it is the JsonBehavior
+	 * expression that caused the error; see ExecEvalJsonCoercionFinish().
+	 */
+
+	/* Handle ON EMPTY. */
+	if (empty)
+	{
+		*op->resvalue = (Datum) 0;
+		*op->resnull = true;
+		if (jsexpr->on_empty)
+		{
+			if (jsexpr->on_empty->btype != JSON_BEHAVIOR_ERROR)
+			{
+				jsestate->empty.value = BoolGetDatum(true);
+				/* Set up to catch coercion errors of the ON EMPTY value. */
+				jsestate->escontext.error_occurred = false;
+				jsestate->escontext.details_wanted = true;
+				/* Jump to end if the ON EMPTY behavior is to return NULL */
+				return jsestate->jump_empty >= 0 ? jsestate->jump_empty : jsestate->jump_end;
+			}
+		}
+		else if (jsexpr->on_error->btype != JSON_BEHAVIOR_ERROR)
+		{
+			jsestate->error.value = BoolGetDatum(true);
+			/* Set up to catch coercion errors of the ON ERROR value. */
+			jsestate->escontext.error_occurred = false;
+			jsestate->escontext.details_wanted = true;
+			Assert(!throw_error);
+			/* Jump to end if the ON ERROR behavior is to return NULL */
+			return jsestate->jump_error >= 0 ? jsestate->jump_error : jsestate->jump_end;
+		}
+
+		if (jsexpr->column_name)
+			ereport(ERROR,
+					errcode(ERRCODE_NO_SQL_JSON_ITEM),
+					errmsg("no SQL/JSON item found for specified path of column \"%s\"",
+						   jsexpr->column_name));
+		else
+			ereport(ERROR,
+					errcode(ERRCODE_NO_SQL_JSON_ITEM),
+					errmsg("no SQL/JSON item found for specified path"));
+	}
+
+	/*
+	 * ON ERROR. Wouldn't get here if the behavior is ERROR, because they
+	 * would have already been thrown.
+	 */
+	if (error)
+	{
+		Assert(!throw_error);
+		*op->resvalue = (Datum) 0;
+		*op->resnull = true;
+		jsestate->error.value = BoolGetDatum(true);
+		/* Set up to catch coercion errors of the ON ERROR value. */
+		jsestate->escontext.error_occurred = false;
+		jsestate->escontext.details_wanted = true;
+		/* Jump to end if the ON ERROR behavior is to return NULL */
+		return jsestate->jump_error >= 0 ? jsestate->jump_error : jsestate->jump_end;
+	}
+
+	return jump_eval_coercion >= 0 ? jump_eval_coercion : jsestate->jump_end;
+}
+
+/*
+ * Convert the given JsonbValue to its C string representation
+ *
+ * *resnull is set if the JsonbValue is a jbvNull.
+ */
+static char *
+ExecGetJsonValueItemString(JsonbValue *item, bool *resnull)
+{
+	*resnull = false;
+
+	/* get coercion state reference and datum of the corresponding SQL type */
+	switch (item->type)
+	{
+		case jbvNull:
+			*resnull = true;
+			return NULL;
+
+		case jbvString:
+			{
+				char	   *str = palloc(item->val.string.len + 1);
+
+				memcpy(str, item->val.string.val, item->val.string.len);
+				str[item->val.string.len] = '\0';
+				return str;
+			}
+
+		case jbvNumeric:
+			return DatumGetCString(DirectFunctionCall1(numeric_out,
+													   NumericGetDatum(item->val.numeric)));
+
+		case jbvBool:
+			return DatumGetCString(DirectFunctionCall1(boolout,
+													   BoolGetDatum(item->val.boolean)));
+
+		case jbvDatetime:
+			switch (item->val.datetime.typid)
+			{
+				case DATEOID:
+					return DatumGetCString(DirectFunctionCall1(date_out,
+															   item->val.datetime.value));
+				case TIMEOID:
+					return DatumGetCString(DirectFunctionCall1(time_out,
+															   item->val.datetime.value));
+				case TIMETZOID:
+					return DatumGetCString(DirectFunctionCall1(timetz_out,
+															   item->val.datetime.value));
+				case TIMESTAMPOID:
+					return DatumGetCString(DirectFunctionCall1(timestamp_out,
+															   item->val.datetime.value));
+				case TIMESTAMPTZOID:
+					return DatumGetCString(DirectFunctionCall1(timestamptz_out,
+															   item->val.datetime.value));
+				default:
+					elog(ERROR, "unexpected jsonb datetime type oid %u",
+						 item->val.datetime.typid);
+			}
+			break;
+
+		case jbvArray:
+		case jbvObject:
+		case jbvBinary:
+			return DatumGetCString(DirectFunctionCall1(jsonb_out,
+													   JsonbPGetDatum(JsonbValueToJsonb(item))));
+
+		default:
+			elog(ERROR, "unexpected jsonb value type %d", item->type);
+	}
+
+	Assert(false);
+	*resnull = true;
+	return NULL;
+}
+
+/*
+ * Coerce a jsonb value produced by ExecEvalJsonExprPath() or an ON ERROR /
+ * ON EMPTY behavior expression to the target type.
+ *
+ * Any soft errors that occur here will be checked by
+ * EEOP_JSONEXPR_COERCION_FINISH that will run after this.
+ */
+void
+ExecEvalJsonCoercion(ExprState *state, ExprEvalStep *op,
+					 ExprContext *econtext)
+{
+	ErrorSaveContext *escontext = op->d.jsonexpr_coercion.escontext;
+
+	/*
+	 * Prepare to call json_populate_type() to coerce the boolean result of
+	 * JSON_EXISTS_OP to the target type.  If the target type is integer or a
+	 * domain over integer, call the boolean-to-integer cast function instead,
+	 * because the integer's input function (which is what
+	 * json_populate_type() calls to coerce to scalar target types) doesn't
+	 * accept boolean literals as valid input.  We only have a special case
+	 * for integer and domains thereof as it seems common to use those types
+	 * for EXISTS columns in JSON_TABLE().
+	 */
+	if (op->d.jsonexpr_coercion.exists_coerce)
+	{
+		if (op->d.jsonexpr_coercion.exists_cast_to_int)
+		{
+			/* Check domain constraints if any. */
+			if (op->d.jsonexpr_coercion.exists_check_domain &&
+				!domain_check_safe(*op->resvalue, *op->resnull,
+								   op->d.jsonexpr_coercion.targettype,
+								   &op->d.jsonexpr_coercion.json_coercion_cache,
+								   econtext->ecxt_per_query_memory,
+								   (Node *) escontext))
+			{
+				*op->resnull = true;
+				*op->resvalue = (Datum) 0;
+			}
+			else
+				*op->resvalue = DirectFunctionCall1(bool_int4, *op->resvalue);
+			return;
+		}
+
+		*op->resvalue = DirectFunctionCall1(jsonb_in,
+											DatumGetBool(*op->resvalue) ?
+											CStringGetDatum("true") :
+											CStringGetDatum("false"));
+	}
+
+	*op->resvalue = json_populate_type(*op->resvalue, JSONBOID,
+									   op->d.jsonexpr_coercion.targettype,
+									   op->d.jsonexpr_coercion.targettypmod,
+									   &op->d.jsonexpr_coercion.json_coercion_cache,
+									   econtext->ecxt_per_query_memory,
+									   op->resnull,
+									   op->d.jsonexpr_coercion.omit_quotes,
+									   (Node *) escontext);
+}
+
+static char *
+GetJsonBehaviorValueString(JsonBehavior *behavior)
+{
+	/*
+	 * The order of array elements must correspond to the order of
+	 * JsonBehaviorType members.
+	 */
+	const char *behavior_names[] =
+	{
+		"NULL",
+		"ERROR",
+		"EMPTY",
+		"TRUE",
+		"FALSE",
+		"UNKNOWN",
+		"EMPTY ARRAY",
+		"EMPTY OBJECT",
+		"DEFAULT"
+	};
+
+	return pstrdup(behavior_names[behavior->btype]);
+}
+
+/*
+ * Checks if an error occurred in ExecEvalJsonCoercion().  If so, this sets
+ * JsonExprState.error to trigger the ON ERROR handling steps, unless the
+ * error is thrown when coercing a JsonBehavior value.
+ */
+void
+ExecEvalJsonCoercionFinish(ExprState *state, ExprEvalStep *op)
+{
+	JsonExprState *jsestate = op->d.jsonexpr.jsestate;
+
+	if (SOFT_ERROR_OCCURRED(&jsestate->escontext))
+	{
+		/*
+		 * jsestate->error or jsestate->empty being set means that the error
+		 * occurred when coercing the JsonBehavior value.  Throw the error in
+		 * that case with the actual coercion error message shown in the
+		 * DETAIL part.
+		 */
+		if (DatumGetBool(jsestate->error.value))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+			/*- translator: first %s is a SQL/JSON clause (e.g. ON ERROR) */
+					 errmsg("could not coerce %s expression (%s) to the RETURNING type",
+							"ON ERROR",
+							GetJsonBehaviorValueString(jsestate->jsexpr->on_error)),
+					 errdetail("%s", jsestate->escontext.error_data->message)));
+		else if (DatumGetBool(jsestate->empty.value))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+			/*- translator: first %s is a SQL/JSON clause (e.g. ON ERROR) */
+					 errmsg("could not coerce %s expression (%s) to the RETURNING type",
+							"ON EMPTY",
+							GetJsonBehaviorValueString(jsestate->jsexpr->on_empty)),
+					 errdetail("%s", jsestate->escontext.error_data->message)));
+
+		*op->resvalue = (Datum) 0;
+		*op->resnull = true;
+
+		jsestate->error.value = BoolGetDatum(true);
+
+		/*
+		 * Reset for next use such as for catching errors when coercing a
+		 * JsonBehavior expression.
+		 */
+		jsestate->escontext.error_occurred = false;
+		jsestate->escontext.details_wanted = true;
 	}
 }
 
@@ -4141,6 +5439,45 @@ ExecEvalGroupingFunc(ExprState *state, ExprEvalStep *op)
 }
 
 /*
+ * ExecEvalMergeSupportFunc
+ *
+ * Returns information about the current MERGE action for its RETURNING list.
+ */
+void
+ExecEvalMergeSupportFunc(ExprState *state, ExprEvalStep *op,
+						 ExprContext *econtext)
+{
+	ModifyTableState *mtstate = castNode(ModifyTableState, state->parent);
+	MergeActionState *relaction = mtstate->mt_merge_action;
+
+	if (!relaction)
+		elog(ERROR, "no merge action in progress");
+
+	/* Return the MERGE action ("INSERT", "UPDATE", or "DELETE") */
+	switch (relaction->mas_action->commandType)
+	{
+		case CMD_INSERT:
+			*op->resvalue = PointerGetDatum(cstring_to_text_with_len("INSERT", 6));
+			*op->resnull = false;
+			break;
+		case CMD_UPDATE:
+			*op->resvalue = PointerGetDatum(cstring_to_text_with_len("UPDATE", 6));
+			*op->resnull = false;
+			break;
+		case CMD_DELETE:
+			*op->resvalue = PointerGetDatum(cstring_to_text_with_len("DELETE", 6));
+			*op->resnull = false;
+			break;
+		case CMD_NOTHING:
+			elog(ERROR, "unexpected merge action: DO NOTHING");
+			break;
+		default:
+			elog(ERROR, "unrecognized commandType: %d",
+				 (int) relaction->mas_action->commandType);
+	}
+}
+
+/*
  * Hand off evaluation of a subplan to nodeSubplan.c
  */
 void
@@ -4164,7 +5501,7 @@ void
 ExecEvalWholeRowVar(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 {
 	Var		   *variable = op->d.wholerow.var;
-	TupleTableSlot *slot;
+	TupleTableSlot *slot = NULL;
 	TupleDesc	output_tupdesc;
 	MemoryContext oldcontext;
 	HeapTupleHeader dtuple;
@@ -4189,8 +5526,40 @@ ExecEvalWholeRowVar(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 			/* INDEX_VAR is handled by default case */
 
 		default:
-			/* get the tuple from the relation being scanned */
-			slot = econtext->ecxt_scantuple;
+
+			/*
+			 * Get the tuple from the relation being scanned.
+			 *
+			 * By default, this uses the "scan" tuple slot, but a wholerow Var
+			 * in the RETURNING list may explicitly refer to OLD/NEW.  If the
+			 * OLD/NEW row doesn't exist, we just return NULL.
+			 */
+			switch (variable->varreturningtype)
+			{
+				case VAR_RETURNING_DEFAULT:
+					slot = econtext->ecxt_scantuple;
+					break;
+
+				case VAR_RETURNING_OLD:
+					if (state->flags & EEO_FLAG_OLD_IS_NULL)
+					{
+						*op->resvalue = (Datum) 0;
+						*op->resnull = true;
+						return;
+					}
+					slot = econtext->ecxt_oldtuple;
+					break;
+
+				case VAR_RETURNING_NEW:
+					if (state->flags & EEO_FLAG_NEW_IS_NULL)
+					{
+						*op->resvalue = (Datum) 0;
+						*op->resnull = true;
+						return;
+					}
+					slot = econtext->ecxt_newtuple;
+					break;
+			}
 			break;
 	}
 
@@ -4347,15 +5716,15 @@ ExecEvalWholeRowVar(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 
 		for (int i = 0; i < var_tupdesc->natts; i++)
 		{
-			Form_pg_attribute vattr = TupleDescAttr(var_tupdesc, i);
-			Form_pg_attribute sattr = TupleDescAttr(tupleDesc, i);
+			CompactAttribute *vattr = TupleDescCompactAttr(var_tupdesc, i);
+			CompactAttribute *sattr = TupleDescCompactAttr(tupleDesc, i);
 
 			if (!vattr->attisdropped)
 				continue;		/* already checked non-dropped cols */
 			if (slot->tts_isnull[i])
 				continue;		/* null is always okay */
 			if (vattr->attlen != sattr->attlen ||
-				vattr->attalign != sattr->attalign)
+				vattr->attalignby != sattr->attalignby)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 						 errmsg("table row type and query-specified row type do not match"),
@@ -4392,6 +5761,17 @@ ExecEvalSysVar(ExprState *state, ExprEvalStep *op, ExprContext *econtext,
 			   TupleTableSlot *slot)
 {
 	Datum		d;
+
+	/* OLD/NEW system attribute is NULL if OLD/NEW row is NULL */
+	if ((op->d.var.varreturningtype == VAR_RETURNING_OLD &&
+		 state->flags & EEO_FLAG_OLD_IS_NULL) ||
+		(op->d.var.varreturningtype == VAR_RETURNING_NEW &&
+		 state->flags & EEO_FLAG_NEW_IS_NULL))
+	{
+		*op->resvalue = (Datum) 0;
+		*op->resnull = true;
+		return;
+	}
 
 	/* slot_getsysattr has sufficient defenses against bad attnums */
 	d = slot_getsysattr(slot,
@@ -4434,15 +5814,40 @@ ExecAggInitGroup(AggState *aggstate, AggStatePerTrans pertrans, AggStatePerGroup
 }
 
 /*
- * Ensure that the current transition value is a child of the aggcontext,
- * rather than the per-tuple context.
+ * Ensure that the new transition value is stored in the aggcontext,
+ * rather than the per-tuple context.  This should be invoked only when
+ * we know (a) the transition data type is pass-by-reference, and (b)
+ * the newValue is distinct from the oldValue.
  *
  * NB: This can change the current memory context.
+ *
+ * We copy the presented newValue into the aggcontext, except when the datum
+ * points to a R/W expanded object that is already a child of the aggcontext,
+ * in which case we need not copy.  We then delete the oldValue, if not null.
+ *
+ * If the presented datum points to a R/W expanded object that is a child of
+ * some other context, ideally we would just reparent it under the aggcontext.
+ * Unfortunately, that doesn't work easily, and it wouldn't help anyway for
+ * aggregate-aware transfns.  We expect that a transfn that deals in expanded
+ * objects and is aware of the memory management conventions for aggregate
+ * transition values will (1) on first call, return a R/W expanded object that
+ * is already in the right context, allowing us to do nothing here, and (2) on
+ * subsequent calls, modify and return that same object, so that control
+ * doesn't even reach here.  However, if we have a generic transfn that
+ * returns a new R/W expanded object (probably in the per-tuple context),
+ * reparenting that result would cause problems.  We'd pass that R/W object to
+ * the next invocation of the transfn, and then it would be at liberty to
+ * change or delete that object, and if it deletes it then our own attempt to
+ * delete the now-old transvalue afterwards would be a double free.  We avoid
+ * this problem by forcing the stored transvalue to always be a flat
+ * non-expanded object unless the transfn is visibly doing aggregate-aware
+ * memory management.  This is somewhat inefficient, but the best answer to
+ * that is to write a smarter transfn.
  */
 Datum
-ExecAggTransReparent(AggState *aggstate, AggStatePerTrans pertrans,
-					 Datum newValue, bool newValueIsNull,
-					 Datum oldValue, bool oldValueIsNull)
+ExecAggCopyTransValue(AggState *aggstate, AggStatePerTrans pertrans,
+					  Datum newValue, bool newValueIsNull,
+					  Datum oldValue, bool oldValueIsNull)
 {
 	Assert(newValue != oldValue);
 
@@ -4480,6 +5885,99 @@ ExecAggTransReparent(AggState *aggstate, AggStatePerTrans pertrans,
 	}
 
 	return newValue;
+}
+
+/*
+ * ExecEvalPreOrderedDistinctSingle
+ *		Returns true when the aggregate transition value Datum is distinct
+ *		from the previous input Datum and returns false when the input Datum
+ *		matches the previous input Datum.
+ */
+bool
+ExecEvalPreOrderedDistinctSingle(AggState *aggstate, AggStatePerTrans pertrans)
+{
+	Datum		value = pertrans->transfn_fcinfo->args[1].value;
+	bool		isnull = pertrans->transfn_fcinfo->args[1].isnull;
+
+	if (!pertrans->haslast ||
+		pertrans->lastisnull != isnull ||
+		(!isnull && !DatumGetBool(FunctionCall2Coll(&pertrans->equalfnOne,
+													pertrans->aggCollation,
+													pertrans->lastdatum, value))))
+	{
+		if (pertrans->haslast && !pertrans->inputtypeByVal &&
+			!pertrans->lastisnull)
+			pfree(DatumGetPointer(pertrans->lastdatum));
+
+		pertrans->haslast = true;
+		if (!isnull)
+		{
+			MemoryContext oldContext;
+
+			oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
+
+			pertrans->lastdatum = datumCopy(value, pertrans->inputtypeByVal,
+											pertrans->inputtypeLen);
+
+			MemoryContextSwitchTo(oldContext);
+		}
+		else
+			pertrans->lastdatum = (Datum) 0;
+		pertrans->lastisnull = isnull;
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * ExecEvalPreOrderedDistinctMulti
+ *		Returns true when the aggregate input is distinct from the previous
+ *		input and returns false when the input matches the previous input, or
+ *		when there was no previous input.
+ */
+bool
+ExecEvalPreOrderedDistinctMulti(AggState *aggstate, AggStatePerTrans pertrans)
+{
+	ExprContext *tmpcontext = aggstate->tmpcontext;
+	bool		isdistinct = false; /* for now */
+	TupleTableSlot *save_outer;
+	TupleTableSlot *save_inner;
+
+	for (int i = 0; i < pertrans->numTransInputs; i++)
+	{
+		pertrans->sortslot->tts_values[i] = pertrans->transfn_fcinfo->args[i + 1].value;
+		pertrans->sortslot->tts_isnull[i] = pertrans->transfn_fcinfo->args[i + 1].isnull;
+	}
+
+	ExecClearTuple(pertrans->sortslot);
+	pertrans->sortslot->tts_nvalid = pertrans->numInputs;
+	ExecStoreVirtualTuple(pertrans->sortslot);
+
+	/* save the previous slots before we overwrite them */
+	save_outer = tmpcontext->ecxt_outertuple;
+	save_inner = tmpcontext->ecxt_innertuple;
+
+	tmpcontext->ecxt_outertuple = pertrans->sortslot;
+	tmpcontext->ecxt_innertuple = pertrans->uniqslot;
+
+	if (!pertrans->haslast ||
+		!ExecQual(pertrans->equalfnMulti, tmpcontext))
+	{
+		if (pertrans->haslast)
+			ExecClearTuple(pertrans->uniqslot);
+
+		pertrans->haslast = true;
+		ExecCopySlot(pertrans->uniqslot, pertrans->sortslot);
+
+		isdistinct = true;
+	}
+
+	/* restore the original slots */
+	tmpcontext->ecxt_outertuple = save_outer;
+	tmpcontext->ecxt_innertuple = save_inner;
+
+	return isdistinct;
 }
 
 /*
@@ -4573,12 +6071,10 @@ ExecAggPlainTransByRef(AggState *aggstate, AggStatePerTrans pertrans,
 	/*
 	 * For pass-by-ref datatype, must copy the new value into aggcontext and
 	 * free the prior transValue.  But if transfn returned a pointer to its
-	 * first input, we don't need to do anything.  Also, if transfn returned a
-	 * pointer to a R/W expanded object that is already a child of the
-	 * aggcontext, assume we can adopt that value without copying it.
+	 * first input, we don't need to do anything.
 	 *
 	 * It's safe to compare newVal with pergroup->transValue without regard
-	 * for either being NULL, because ExecAggTransReparent() takes care to set
+	 * for either being NULL, because ExecAggCopyTransValue takes care to set
 	 * transValue to 0 when NULL. Otherwise we could end up accidentally not
 	 * reparenting, when the transValue has the same numerical value as
 	 * newValue, despite being NULL.  This is a somewhat hot path, making it
@@ -4587,10 +6083,10 @@ ExecAggPlainTransByRef(AggState *aggstate, AggStatePerTrans pertrans,
 	 * argument.
 	 */
 	if (DatumGetPointer(newVal) != DatumGetPointer(pergroup->transValue))
-		newVal = ExecAggTransReparent(aggstate, pertrans,
-									  newVal, fcinfo->isnull,
-									  pergroup->transValue,
-									  pergroup->transValueIsNull);
+		newVal = ExecAggCopyTransValue(aggstate, pertrans,
+									   newVal, fcinfo->isnull,
+									   pergroup->transValue,
+									   pergroup->transValueIsNull);
 
 	pergroup->transValue = newVal;
 	pergroup->transValueIsNull = fcinfo->isnull;

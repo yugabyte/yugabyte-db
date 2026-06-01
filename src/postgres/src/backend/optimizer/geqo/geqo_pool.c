@@ -3,7 +3,7 @@
  * geqo_pool.c
  *	  Genetic Algorithm (GA) pool stuff
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/optimizer/geqo/geqo_pool.c
@@ -25,7 +25,6 @@
 
 #include <float.h>
 #include <limits.h>
-#include <math.h>
 
 #include "optimizer/geqo_copy.h"
 #include "optimizer/geqo_pool.h"
@@ -46,17 +45,17 @@ alloc_pool(PlannerInfo *root, int pool_size, int string_length)
 	int			i;
 
 	/* pool */
-	new_pool = (Pool *) palloc(sizeof(Pool));
-	new_pool->size = (int) pool_size;
-	new_pool->string_length = (int) string_length;
+	new_pool = palloc_object(Pool);
+	new_pool->size = pool_size;
+	new_pool->string_length = string_length;
 
 	/* all chromosome */
-	new_pool->data = (Chromosome *) palloc(pool_size * sizeof(Chromosome));
+	new_pool->data = palloc_array(Chromosome, pool_size);
 
 	/* all gene */
 	chromo = (Chromosome *) new_pool->data; /* vector of all chromos */
 	for (i = 0; i < pool_size; i++)
-		chromo[i].string = palloc((string_length + 1) * sizeof(Gene));
+		chromo[i].string = palloc_array(Gene, string_length + 1);
 
 	return new_pool;
 }
@@ -163,8 +162,8 @@ alloc_chromo(PlannerInfo *root, int string_length)
 {
 	Chromosome *chromo;
 
-	chromo = (Chromosome *) palloc(sizeof(Chromosome));
-	chromo->string = (Gene *) palloc((string_length + 1) * sizeof(Gene));
+	chromo = palloc_object(Chromosome);
+	chromo->string = palloc_array(Gene, string_length + 1);
 
 	return chromo;
 }

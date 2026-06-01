@@ -1,0 +1,42 @@
+libpq-oauth is an optional module implementing the Device Authorization flow for
+OAuth clients (RFC 8628). It is maintained as its own shared library in order to
+isolate its dependency on libcurl. (End users who don't want the Curl dependency
+can simply choose not to install this module.)
+
+If a connection string allows the use of OAuth, and the server asks for it, and
+a libpq client has not installed its own custom OAuth flow, libpq will attempt
+to delay-load this module using dlopen() and the following ABI. Failure to load
+results in a failed connection.
+
+= Load-Time ABI =
+
+As of v19, this module ABI is public and cannot change incompatibly without also
+changing the entry points. Both libpq and libpq-oauth must gracefully handle
+situations where the other library is of a different release version, past or
+future, since upgrades to the libraries may happen in either order.
+
+(Don't assume that package version dependencies from libpq-oauth to libpq will
+simplify the situation! Since libpq delay-loads libpq-oauth, we still have to
+handle cases where a long-running client application has a libpq that's older
+than a newly upgraded plugin.)
+
+The module exports the following symbol:
+
+- int pg_start_oauthbearer(PGconn *conn, PGoauthBearerRequestV2 *request);
+
+The module then behaves as if it had received a PQAUTHDATA_OAUTH_BEARER_TOKEN_V2
+request via the PQauthDataHook API, and it either fills in an existing token or
+populates the necessary callbacks for a token to be obtained asynchronously.
+(See the documentation for PGoauthBearerRequest.) The function returns zero on
+success and nonzero on failure.
+
+Additionally, libpq-oauth relies on libpq's libpq_gettext(), which must be
+injected by libpq using this initialization function before the flow is run:
+
+- void libpq_oauth_init(libpq_gettext_func gettext_impl);
+
+= Static Build =
+
+The static library libpq.a does not perform any dynamic loading. If the builtin
+flow is enabled, the application is expected to link against libpq-oauth.a to
+provide the necessary symbol, or else implement pg_start_oauthbearer() itself.

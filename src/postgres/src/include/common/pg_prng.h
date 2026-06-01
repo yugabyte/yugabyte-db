@@ -2,7 +2,7 @@
  *
  * Pseudo-Random Number Generator
  *
- * Copyright (c) 2021-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2021-2026, PostgreSQL Global Development Group
  *
  * src/include/common/pg_prng.h
  *
@@ -44,17 +44,19 @@ extern bool pg_prng_seed_check(pg_prng_state *state);
  * pg_strong_random.c and thence OpenSSL.
  */
 #define pg_prng_strong_seed(state) \
-	(pg_strong_random((void *) (state), sizeof(pg_prng_state)) ? \
+	(pg_strong_random(state, sizeof(pg_prng_state)) ? \
 	 pg_prng_seed_check(state) : false)
 
 extern uint64 pg_prng_uint64(pg_prng_state *state);
 extern uint64 pg_prng_uint64_range(pg_prng_state *state, uint64 rmin, uint64 rmax);
 extern int64 pg_prng_int64(pg_prng_state *state);
 extern int64 pg_prng_int64p(pg_prng_state *state);
+extern int64 pg_prng_int64_range(pg_prng_state *state, int64 rmin, int64 rmax);
 extern uint32 pg_prng_uint32(pg_prng_state *state);
 extern int32 pg_prng_int32(pg_prng_state *state);
 extern int32 pg_prng_int32p(pg_prng_state *state);
 extern double pg_prng_double(pg_prng_state *state);
+extern double pg_prng_double_normal(pg_prng_state *state);
 extern bool pg_prng_bool(pg_prng_state *state);
 
 #endif							/* PG_PRNG_H */

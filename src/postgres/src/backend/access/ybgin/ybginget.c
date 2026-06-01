@@ -66,7 +66,7 @@ startScanEntry(GinScanEntry entry)
 	entry->list = NULL;
 	entry->nlist = 0;
 	entry->matchBitmap = NULL;
-	entry->matchResult = NULL;
+	entry->matchResult.blockno = InvalidBlockNumber;
 	entry->reduceResult = false;
 	entry->predictNumberResult = 0;
 }
@@ -262,11 +262,17 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 	Oid			oproid;
 
 	/* yb_make_greater_string cannot accurately handle non-C collations. */
+	/*
+	 * YB_TODO_PG19MERGE: see src/backend/utils/adt/pg_locale.c, this function
+	 * no longer exists.
+	 */
+#if 0
 	if (!lc_collate_is_c(colloid))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot handle ybgin scans with prefix on non-C collation %u",
 						colloid)));
+#endif
 
 	/*
 	 * For now, hardcode to assume type is text.  This is true for the four

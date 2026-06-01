@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/bin/psql/command.h
  */
@@ -19,7 +19,7 @@ typedef enum _backslashResult
 	PSQL_CMD_SKIP_LINE,			/* keep building query */
 	PSQL_CMD_TERMINATE,			/* quit program */
 	PSQL_CMD_NEWEDIT,			/* query buffer was changed (e.g., via \e) */
-	PSQL_CMD_ERROR				/* the execution of the backslash command
+	PSQL_CMD_ERROR,				/* the execution of the backslash command
 								 * resulted in an error */
 } backslashResult;
 

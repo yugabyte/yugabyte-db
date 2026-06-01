@@ -57,7 +57,7 @@
  * calls in portal and cursor manipulations.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/tcop/dest.h
@@ -71,8 +71,6 @@
 #include "tcop/cmdtag.h"
 
 
-/* buffer size to use for command completion tags */
-#define COMPLETION_TAG_BUFSIZE	64
 
 
 /* ----------------
@@ -97,7 +95,8 @@ typedef enum
 	DestCopyOut,				/* results sent to COPY TO code */
 	DestSQLFunction,			/* results sent to SQL-language func mgr */
 	DestTransientRel,			/* results sent to transient relation */
-	DestTupleQueue				/* results sent to tuple queue */
+	DestTupleQueue,				/* results sent to tuple queue */
+	DestExplainSerialize,		/* results are serialized and discarded */
 } CommandDest;
 
 /* ----------------

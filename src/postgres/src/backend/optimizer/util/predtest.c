@@ -4,7 +4,7 @@
  *	  Routines to attempt to prove logical implications between predicate
  *	  expressions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,6 +15,7 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
@@ -24,6 +25,7 @@
 #include "nodes/pathnodes.h"
 #include "optimizer/optimizer.h"
 #include "utils/array.h"
+#include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -50,7 +52,7 @@ typedef enum
 {
 	CLASS_ATOM,					/* expression that's not AND or OR */
 	CLASS_AND,					/* expression with AND semantics */
-	CLASS_OR					/* expression with OR semantics */
+	CLASS_OR,					/* expression with OR semantics */
 } PredClass;
 
 typedef struct PredIterInfoData *PredIterInfo;
@@ -108,7 +110,8 @@ static bool operator_same_subexprs_proof(Oid pred_op, Oid clause_op,
 static bool operator_same_subexprs_lookup(Oid pred_op, Oid clause_op,
 										  bool refute_it);
 static Oid	get_btree_test_op(Oid pred_op, Oid clause_op, bool refute_it);
-static void InvalidateOprProofCacheCallBack(Datum arg, int cacheid, uint32 hashvalue);
+static void InvalidateOprProofCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
+											uint32 hashvalue);
 
 
 /*
@@ -907,7 +910,7 @@ static void
 list_startup_fn(Node *clause, PredIterInfo info)
 {
 	info->state_list = (List *) clause;
-	info->state = (void *) list_head(info->state_list);
+	info->state = list_head(info->state_list);
 }
 
 static Node *
@@ -919,7 +922,7 @@ list_next_fn(PredIterInfo info)
 	if (l == NULL)
 		return NULL;
 	n = lfirst(l);
-	info->state = (void *) lnext(info->state_list, l);
+	info->state = lnext(info->state_list, l);
 	return n;
 }
 
@@ -937,7 +940,7 @@ static void
 boolexpr_startup_fn(Node *clause, PredIterInfo info)
 {
 	info->state_list = ((BoolExpr *) clause)->args;
-	info->state = (void *) list_head(info->state_list);
+	info->state = list_head(info->state_list);
 }
 
 /*
@@ -947,7 +950,7 @@ boolexpr_startup_fn(Node *clause, PredIterInfo info)
 typedef struct
 {
 	OpExpr		opexpr;
-	Const		constexpr;
+	Const		const_expr;
 	int			next_elem;
 	int			num_elems;
 	Datum	   *elem_values;
@@ -966,8 +969,8 @@ arrayconst_startup_fn(Node *clause, PredIterInfo info)
 	char		elmalign;
 
 	/* Create working state struct */
-	state = (ArrayConstIterState *) palloc(sizeof(ArrayConstIterState));
-	info->state = (void *) state;
+	state = palloc_object(ArrayConstIterState);
+	info->state = state;
 
 	/* Deconstruct the array literal */
 	arrayconst = (Const *) lsecond(saop->args);
@@ -991,13 +994,13 @@ arrayconst_startup_fn(Node *clause, PredIterInfo info)
 	state->opexpr.args = list_copy(saop->args);
 
 	/* Set up a dummy Const node to hold the per-element values */
-	state->constexpr.xpr.type = T_Const;
-	state->constexpr.consttype = ARR_ELEMTYPE(arrayval);
-	state->constexpr.consttypmod = -1;
-	state->constexpr.constcollid = arrayconst->constcollid;
-	state->constexpr.constlen = elmlen;
-	state->constexpr.constbyval = elmbyval;
-	lsecond(state->opexpr.args) = &state->constexpr;
+	state->const_expr.xpr.type = T_Const;
+	state->const_expr.consttype = ARR_ELEMTYPE(arrayval);
+	state->const_expr.consttypmod = -1;
+	state->const_expr.constcollid = arrayconst->constcollid;
+	state->const_expr.constlen = elmlen;
+	state->const_expr.constbyval = elmbyval;
+	lsecond(state->opexpr.args) = &state->const_expr;
 
 	/* Initialize iteration state */
 	state->next_elem = 0;
@@ -1010,8 +1013,8 @@ arrayconst_next_fn(PredIterInfo info)
 
 	if (state->next_elem >= state->num_elems)
 		return NULL;
-	state->constexpr.constvalue = state->elem_values[state->next_elem];
-	state->constexpr.constisnull = state->elem_nulls[state->next_elem];
+	state->const_expr.constvalue = state->elem_values[state->next_elem];
+	state->const_expr.constisnull = state->elem_nulls[state->next_elem];
 	state->next_elem++;
 	return (Node *) &(state->opexpr);
 }
@@ -1045,8 +1048,8 @@ arrayexpr_startup_fn(Node *clause, PredIterInfo info)
 	ArrayExpr  *arrayexpr;
 
 	/* Create working state struct */
-	state = (ArrayExprIterState *) palloc(sizeof(ArrayExprIterState));
-	info->state = (void *) state;
+	state = palloc_object(ArrayExprIterState);
+	info->state = state;
 
 	/* Set up a dummy OpExpr to return as the per-item node */
 	state->opexpr.xpr.type = T_OpExpr;
@@ -1086,32 +1089,12 @@ arrayexpr_cleanup_fn(PredIterInfo info)
 }
 
 
-/*----------
+/*
  * predicate_implied_by_simple_clause
  *	  Does the predicate implication test for a "simple clause" predicate
  *	  and a "simple clause" restriction.
  *
  * We return true if able to prove the implication, false if not.
- *
- * We have three strategies for determining whether one simple clause
- * implies another:
- *
- * A simple and general way is to see if they are equal(); this works for any
- * kind of expression, and for either implication definition.  (Actually,
- * there is an implied assumption that the functions in the expression are
- * immutable --- but this was checked for the predicate by the caller.)
- *
- * If the predicate is of the form "foo IS NOT NULL", and we are considering
- * strong implication, we can conclude that the predicate is implied if the
- * clause is strict for "foo", i.e., it must yield false or NULL when "foo"
- * is NULL.  In that case truth of the clause ensures that "foo" isn't NULL.
- * (Again, this is a safe conclusion because "foo" must be immutable.)
- * This doesn't work for weak implication, though.
- *
- * Finally, if both clauses are binary operator expressions, we may be able
- * to prove something using the system's knowledge about operators; those
- * proof rules are encapsulated in operator_predicate_proof().
- *----------
  */
 static bool
 predicate_implied_by_simple_clause(Expr *predicate, Node *clause,
@@ -1120,60 +1103,125 @@ predicate_implied_by_simple_clause(Expr *predicate, Node *clause,
 	/* Allow interrupting long proof attempts */
 	CHECK_FOR_INTERRUPTS();
 
-	/* First try the equal() test */
+	/*
+	 * A simple and general rule is that a clause implies itself, hence we
+	 * check if they are equal(); this works for any kind of expression, and
+	 * for either implication definition.  (Actually, there is an implied
+	 * assumption that the functions in the expression are immutable --- but
+	 * this was checked for the predicate by the caller.)
+	 */
 	if (equal((Node *) predicate, clause))
 		return true;
 
-	/* Next try the IS NOT NULL case */
-	if (!weak &&
-		predicate && IsA(predicate, NullTest))
+	/* Next we have some clause-type-specific strategies */
+	switch (nodeTag(clause))
 	{
-		NullTest   *ntest = (NullTest *) predicate;
+		case T_OpExpr:
+			{
+				OpExpr	   *op = (OpExpr *) clause;
 
-		/* row IS NOT NULL does not act in the simple way we have in mind */
-		if (ntest->nulltesttype == IS_NOT_NULL &&
-			!ntest->argisrow)
-		{
-			/* strictness of clause for foo implies foo IS NOT NULL */
-			if (clause_is_strict_for(clause, (Node *) ntest->arg, true))
-				return true;
-		}
-		return false;			/* we can't succeed below... */
+				/*----------
+				 * For boolean x, "x = TRUE" is equivalent to "x", likewise
+				 * "x = FALSE" is equivalent to "NOT x".  These can be worth
+				 * checking because, while we preferentially simplify boolean
+				 * comparisons down to "x" and "NOT x", the other form has to
+				 * be dealt with anyway in the context of index conditions.
+				 *
+				 * We could likewise check whether the predicate is boolean
+				 * equality to a constant; but there are no known use-cases
+				 * for that at the moment, assuming that the predicate has
+				 * been through constant-folding.
+				 *----------
+				 */
+				if (op->opno == BooleanEqualOperator)
+				{
+					Node	   *rightop;
+
+					Assert(list_length(op->args) == 2);
+					rightop = lsecond(op->args);
+					/* We might never see null Consts here, but better check */
+					if (rightop && IsA(rightop, Const) &&
+						!((Const *) rightop)->constisnull)
+					{
+						Node	   *leftop = linitial(op->args);
+
+						if (DatumGetBool(((Const *) rightop)->constvalue))
+						{
+							/* X = true implies X */
+							if (equal(predicate, leftop))
+								return true;
+						}
+						else
+						{
+							/* X = false implies NOT X */
+							if (is_notclause(predicate) &&
+								equal(get_notclausearg(predicate), leftop))
+								return true;
+						}
+					}
+				}
+			}
+			break;
+		default:
+			break;
 	}
 
-	/* Else try operator-related knowledge */
+	/* ... and some predicate-type-specific ones */
+	switch (nodeTag(predicate))
+	{
+		case T_NullTest:
+			{
+				NullTest   *predntest = (NullTest *) predicate;
+
+				switch (predntest->nulltesttype)
+				{
+					case IS_NOT_NULL:
+
+						/*
+						 * If the predicate is of the form "foo IS NOT NULL",
+						 * and we are considering strong implication, we can
+						 * conclude that the predicate is implied if the
+						 * clause is strict for "foo", i.e., it must yield
+						 * false or NULL when "foo" is NULL.  In that case
+						 * truth of the clause ensures that "foo" isn't NULL.
+						 * (Again, this is a safe conclusion because "foo"
+						 * must be immutable.)  This doesn't work for weak
+						 * implication, though.  Also, "row IS NOT NULL" does
+						 * not act in the simple way we have in mind.
+						 */
+						if (!weak &&
+							!predntest->argisrow &&
+							clause_is_strict_for(clause,
+												 (Node *) predntest->arg,
+												 true))
+							return true;
+						break;
+					case IS_NULL:
+						break;
+				}
+			}
+			break;
+		default:
+			break;
+	}
+
+	/*
+	 * Finally, if both clauses are binary operator expressions, we may be
+	 * able to prove something using the system's knowledge about operators;
+	 * those proof rules are encapsulated in operator_predicate_proof().
+	 */
 	return operator_predicate_proof(predicate, clause, false, weak);
 }
 
-/*----------
+/*
  * predicate_refuted_by_simple_clause
  *	  Does the predicate refutation test for a "simple clause" predicate
  *	  and a "simple clause" restriction.
  *
  * We return true if able to prove the refutation, false if not.
  *
- * Unlike the implication case, checking for equal() clauses isn't helpful.
- * But relation_excluded_by_constraints() checks for self-contradictions in a
- * list of clauses, so that we may get here with predicate and clause being
- * actually pointer-equal, and that is worth eliminating quickly.
- *
- * When the predicate is of the form "foo IS NULL", we can conclude that
- * the predicate is refuted if the clause is strict for "foo" (see notes for
- * implication case), or is "foo IS NOT NULL".  That works for either strong
- * or weak refutation.
- *
- * A clause "foo IS NULL" refutes a predicate "foo IS NOT NULL" in all cases.
- * If we are considering weak refutation, it also refutes a predicate that
- * is strict for "foo", since then the predicate must yield false or NULL
- * (and since "foo" appears in the predicate, it's known immutable).
- *
- * (The main motivation for covering these IS [NOT] NULL cases is to support
- * using IS NULL/IS NOT NULL as partition-defining constraints.)
- *
- * Finally, if both clauses are binary operator expressions, we may be able
- * to prove something using the system's knowledge about operators; those
- * proof rules are encapsulated in operator_predicate_proof().
- *----------
+ * The main motivation for covering IS [NOT] NULL cases is to support using
+ * IS NULL/IS NOT NULL as partition-defining constraints.
  */
 static bool
 predicate_refuted_by_simple_clause(Expr *predicate, Node *clause,
@@ -1182,61 +1230,152 @@ predicate_refuted_by_simple_clause(Expr *predicate, Node *clause,
 	/* Allow interrupting long proof attempts */
 	CHECK_FOR_INTERRUPTS();
 
-	/* A simple clause can't refute itself */
-	/* Worth checking because of relation_excluded_by_constraints() */
+	/*
+	 * A simple clause can't refute itself, so unlike the implication case,
+	 * checking for equal() clauses isn't helpful.
+	 *
+	 * But relation_excluded_by_constraints() checks for self-contradictions
+	 * in a list of clauses, so that we may get here with predicate and clause
+	 * being actually pointer-equal, and that is worth eliminating quickly.
+	 */
 	if ((Node *) predicate == clause)
 		return false;
 
-	/* Try the predicate-IS-NULL case */
-	if (predicate && IsA(predicate, NullTest) &&
-		((NullTest *) predicate)->nulltesttype == IS_NULL)
+	/* Next we have some clause-type-specific strategies */
+	switch (nodeTag(clause))
 	{
-		Expr	   *isnullarg = ((NullTest *) predicate)->arg;
+		case T_NullTest:
+			{
+				NullTest   *clausentest = (NullTest *) clause;
 
-		/* row IS NULL does not act in the simple way we have in mind */
-		if (((NullTest *) predicate)->argisrow)
-			return false;
+				/* row IS NULL does not act in the simple way we have in mind */
+				if (clausentest->argisrow)
+					return false;
 
-		/* strictness of clause for foo refutes foo IS NULL */
-		if (clause_is_strict_for(clause, (Node *) isnullarg, true))
-			return true;
+				switch (clausentest->nulltesttype)
+				{
+					case IS_NULL:
+						{
+							switch (nodeTag(predicate))
+							{
+								case T_NullTest:
+									{
+										NullTest   *predntest = (NullTest *) predicate;
 
-		/* foo IS NOT NULL refutes foo IS NULL */
-		if (clause && IsA(clause, NullTest) &&
-			((NullTest *) clause)->nulltesttype == IS_NOT_NULL &&
-			!((NullTest *) clause)->argisrow &&
-			equal(((NullTest *) clause)->arg, isnullarg))
-			return true;
+										/*
+										 * row IS NULL does not act in the
+										 * simple way we have in mind
+										 */
+										if (predntest->argisrow)
+											return false;
 
-		return false;			/* we can't succeed below... */
+										/*
+										 * foo IS NULL refutes foo IS NOT
+										 * NULL, at least in the non-row case,
+										 * for both strong and weak refutation
+										 */
+										if (predntest->nulltesttype == IS_NOT_NULL &&
+											equal(predntest->arg, clausentest->arg))
+											return true;
+									}
+									break;
+								default:
+									break;
+							}
+
+							/*
+							 * foo IS NULL weakly refutes any predicate that
+							 * is strict for foo, since then the predicate
+							 * must yield false or NULL (and since foo appears
+							 * in the predicate, it's known immutable).
+							 */
+							if (weak &&
+								clause_is_strict_for((Node *) predicate,
+													 (Node *) clausentest->arg,
+													 true))
+								return true;
+
+							return false;	/* we can't succeed below... */
+						}
+						break;
+					case IS_NOT_NULL:
+						break;
+				}
+			}
+			break;
+		default:
+			break;
 	}
 
-	/* Try the clause-IS-NULL case */
-	if (clause && IsA(clause, NullTest) &&
-		((NullTest *) clause)->nulltesttype == IS_NULL)
+	/* ... and some predicate-type-specific ones */
+	switch (nodeTag(predicate))
 	{
-		Expr	   *isnullarg = ((NullTest *) clause)->arg;
+		case T_NullTest:
+			{
+				NullTest   *predntest = (NullTest *) predicate;
 
-		/* row IS NULL does not act in the simple way we have in mind */
-		if (((NullTest *) clause)->argisrow)
-			return false;
+				/* row IS NULL does not act in the simple way we have in mind */
+				if (predntest->argisrow)
+					return false;
 
-		/* foo IS NULL refutes foo IS NOT NULL */
-		if (predicate && IsA(predicate, NullTest) &&
-			((NullTest *) predicate)->nulltesttype == IS_NOT_NULL &&
-			!((NullTest *) predicate)->argisrow &&
-			equal(((NullTest *) predicate)->arg, isnullarg))
-			return true;
+				switch (predntest->nulltesttype)
+				{
+					case IS_NULL:
+						{
+							switch (nodeTag(clause))
+							{
+								case T_NullTest:
+									{
+										NullTest   *clausentest = (NullTest *) clause;
 
-		/* foo IS NULL weakly refutes any predicate that is strict for foo */
-		if (weak &&
-			clause_is_strict_for((Node *) predicate, (Node *) isnullarg, true))
-			return true;
+										/*
+										 * row IS NULL does not act in the
+										 * simple way we have in mind
+										 */
+										if (clausentest->argisrow)
+											return false;
 
-		return false;			/* we can't succeed below... */
+										/*
+										 * foo IS NOT NULL refutes foo IS NULL
+										 * for both strong and weak refutation
+										 */
+										if (clausentest->nulltesttype == IS_NOT_NULL &&
+											equal(clausentest->arg, predntest->arg))
+											return true;
+									}
+									break;
+								default:
+									break;
+							}
+
+							/*
+							 * When the predicate is of the form "foo IS
+							 * NULL", we can conclude that the predicate is
+							 * refuted if the clause is strict for "foo" (see
+							 * notes for implication case).  That works for
+							 * either strong or weak refutation.
+							 */
+							if (clause_is_strict_for(clause,
+													 (Node *) predntest->arg,
+													 true))
+								return true;
+						}
+						break;
+					case IS_NOT_NULL:
+						break;
+				}
+
+				return false;	/* we can't succeed below... */
+			}
+			break;
+		default:
+			break;
 	}
 
-	/* Else try operator-related knowledge */
+	/*
+	 * Finally, if both clauses are binary operator expressions, we may be
+	 * able to prove something using the system's knowledge about operators.
+	 */
 	return operator_predicate_proof(predicate, clause, true, weak);
 }
 
@@ -1468,36 +1607,36 @@ clause_is_strict_for(Node *clause, Node *subexpr, bool allow_false)
 
 
 /*
- * Define "operator implication tables" for btree operators ("strategies"),
+ * Define "operator implication tables" for index operators ("cmptypes"),
  * and similar tables for refutation.
  *
- * The strategy numbers defined by btree indexes (see access/stratnum.h) are:
- *		1 <		2 <=	3 =		4 >=	5 >
+ * The row compare numbers defined by indexes (see access/cmptype.h) are:
+ *		1 <		2 <=	3 =		4 >=	5 >		6 <>
  * and in addition we use 6 to represent <>.  <> is not a btree-indexable
  * operator, but we assume here that if an equality operator of a btree
  * opfamily has a negator operator, the negator behaves as <> for the opfamily.
- * (This convention is also known to get_op_btree_interpretation().)
+ * (This convention is also known to get_op_index_interpretation().)
  *
- * BT_implies_table[] and BT_refutes_table[] are used for cases where we have
+ * RC_implies_table[] and RC_refutes_table[] are used for cases where we have
  * two identical subexpressions and we want to know whether one operator
  * expression implies or refutes the other.  That is, if the "clause" is
  * EXPR1 clause_op EXPR2 and the "predicate" is EXPR1 pred_op EXPR2 for the
  * same two (immutable) subexpressions:
- *		BT_implies_table[clause_op-1][pred_op-1]
+ *		RC_implies_table[clause_op-1][pred_op-1]
  *			is true if the clause implies the predicate
- *		BT_refutes_table[clause_op-1][pred_op-1]
+ *		RC_refutes_table[clause_op-1][pred_op-1]
  *			is true if the clause refutes the predicate
- * where clause_op and pred_op are strategy numbers (from 1 to 6) in the
- * same btree opfamily.  For example, "x < y" implies "x <= y" and refutes
+ * where clause_op and pred_op are cmptype numbers (from 1 to 6) in the
+ * same opfamily.  For example, "x < y" implies "x <= y" and refutes
  * "x > y".
  *
- * BT_implic_table[] and BT_refute_table[] are used where we have two
+ * RC_implic_table[] and RC_refute_table[] are used where we have two
  * constants that we need to compare.  The interpretation of:
  *
- *		test_op = BT_implic_table[clause_op-1][pred_op-1]
+ *		test_op = RC_implic_table[clause_op-1][pred_op-1]
  *
- * where test_op, clause_op and pred_op are strategy numbers (from 1 to 6)
- * of btree operators, is as follows:
+ * where test_op, clause_op and pred_op are cmptypes (from 1 to 6)
+ * of index operators, is as follows:
  *
  *	 If you know, for some EXPR, that "EXPR clause_op CONST1" is true, and you
  *	 want to determine whether "EXPR pred_op CONST2" must also be true, then
@@ -1508,7 +1647,7 @@ clause_is_strict_for(Node *clause, Node *subexpr, bool allow_false)
  * For example, if clause is "Quantity > 10" and pred is "Quantity > 5"
  * then we test "5 <= 10" which evals to true, so clause implies pred.
  *
- * Similarly, the interpretation of a BT_refute_table entry is:
+ * Similarly, the interpretation of a RC_refute_table entry is:
  *
  *	 If you know, for some EXPR, that "EXPR clause_op CONST1" is true, and you
  *	 want to determine whether "EXPR pred_op CONST2" must be false, then
@@ -1522,17 +1661,17 @@ clause_is_strict_for(Node *clause, Node *subexpr, bool allow_false)
  * An entry where test_op == 0 means the implication cannot be determined.
  */
 
-#define BTLT BTLessStrategyNumber
-#define BTLE BTLessEqualStrategyNumber
-#define BTEQ BTEqualStrategyNumber
-#define BTGE BTGreaterEqualStrategyNumber
-#define BTGT BTGreaterStrategyNumber
-#define BTNE ROWCOMPARE_NE
+#define RCLT COMPARE_LT
+#define RCLE COMPARE_LE
+#define RCEQ COMPARE_EQ
+#define RCGE COMPARE_GE
+#define RCGT COMPARE_GT
+#define RCNE COMPARE_NE
 
 /* We use "none" for 0/false to make the tables align nicely */
 #define none 0
 
-static const bool BT_implies_table[6][6] = {
+static const bool RC_implies_table[6][6] = {
 /*
  *			The predicate operator:
  *	 LT    LE	 EQ    GE	 GT    NE
@@ -1545,7 +1684,7 @@ static const bool BT_implies_table[6][6] = {
 	{none, none, none, none, none, true}	/* NE */
 };
 
-static const bool BT_refutes_table[6][6] = {
+static const bool RC_refutes_table[6][6] = {
 /*
  *			The predicate operator:
  *	 LT    LE	 EQ    GE	 GT    NE
@@ -1558,30 +1697,30 @@ static const bool BT_refutes_table[6][6] = {
 	{none, none, true, none, none, none}	/* NE */
 };
 
-static const StrategyNumber BT_implic_table[6][6] = {
+static const CompareType RC_implic_table[6][6] = {
 /*
  *			The predicate operator:
  *	 LT    LE	 EQ    GE	 GT    NE
  */
-	{BTGE, BTGE, none, none, none, BTGE},	/* LT */
-	{BTGT, BTGE, none, none, none, BTGT},	/* LE */
-	{BTGT, BTGE, BTEQ, BTLE, BTLT, BTNE},	/* EQ */
-	{none, none, none, BTLE, BTLT, BTLT},	/* GE */
-	{none, none, none, BTLE, BTLE, BTLE},	/* GT */
-	{none, none, none, none, none, BTEQ}	/* NE */
+	{RCGE, RCGE, none, none, none, RCGE},	/* LT */
+	{RCGT, RCGE, none, none, none, RCGT},	/* LE */
+	{RCGT, RCGE, RCEQ, RCLE, RCLT, RCNE},	/* EQ */
+	{none, none, none, RCLE, RCLT, RCLT},	/* GE */
+	{none, none, none, RCLE, RCLE, RCLE},	/* GT */
+	{none, none, none, none, none, RCEQ}	/* NE */
 };
 
-static const StrategyNumber BT_refute_table[6][6] = {
+static const CompareType RC_refute_table[6][6] = {
 /*
  *			The predicate operator:
  *	 LT    LE	 EQ    GE	 GT    NE
  */
-	{none, none, BTGE, BTGE, BTGE, none},	/* LT */
-	{none, none, BTGT, BTGT, BTGE, none},	/* LE */
-	{BTLE, BTLT, BTNE, BTGT, BTGE, BTEQ},	/* EQ */
-	{BTLE, BTLT, BTLT, none, none, none},	/* GE */
-	{BTLE, BTLE, BTLE, none, none, none},	/* GT */
-	{none, none, BTEQ, none, none, none}	/* NE */
+	{none, none, RCGE, RCGE, RCGE, none},	/* LT */
+	{none, none, RCGT, RCGT, RCGE, none},	/* LE */
+	{RCLE, RCLT, RCNE, RCGT, RCGE, RCEQ},	/* EQ */
+	{RCLE, RCLT, RCLT, none, none, none},	/* GE */
+	{RCLE, RCLE, RCLE, none, none, none},	/* GT */
+	{none, none, RCEQ, none, none, none}	/* NE */
 };
 
 
@@ -1996,7 +2135,7 @@ lookup_proof_cache(Oid pred_op, Oid clause_op, bool refute_it)
 	key.pred_op = pred_op;
 	key.clause_op = clause_op;
 	cache_entry = (OprProofCacheEntry *) hash_search(OprProofCacheHash,
-													 (void *) &key,
+													 &key,
 													 HASH_ENTER, &cfound);
 	if (!cfound)
 	{
@@ -2028,23 +2167,23 @@ lookup_proof_cache(Oid pred_op, Oid clause_op, bool refute_it)
 	 * operator.  This can happen in cases with incomplete sets of cross-type
 	 * comparison operators.
 	 */
-	clause_op_infos = get_op_btree_interpretation(clause_op);
+	clause_op_infos = get_op_index_interpretation(clause_op);
 	if (clause_op_infos)
-		pred_op_infos = get_op_btree_interpretation(pred_op);
+		pred_op_infos = get_op_index_interpretation(pred_op);
 	else						/* no point in looking */
 		pred_op_infos = NIL;
 
 	foreach(lcp, pred_op_infos)
 	{
-		OpBtreeInterpretation *pred_op_info = lfirst(lcp);
+		OpIndexInterpretation *pred_op_info = lfirst(lcp);
 		Oid			opfamily_id = pred_op_info->opfamily_id;
 
 		foreach(lcc, clause_op_infos)
 		{
-			OpBtreeInterpretation *clause_op_info = lfirst(lcc);
-			StrategyNumber pred_strategy,
-						clause_strategy,
-						test_strategy;
+			OpIndexInterpretation *clause_op_info = lfirst(lcc);
+			CompareType pred_cmptype,
+						clause_cmptype,
+						test_cmptype;
 
 			/* Must find them in same opfamily */
 			if (opfamily_id != clause_op_info->opfamily_id)
@@ -2052,51 +2191,51 @@ lookup_proof_cache(Oid pred_op, Oid clause_op, bool refute_it)
 			/* Lefttypes should match */
 			Assert(clause_op_info->oplefttype == pred_op_info->oplefttype);
 
-			pred_strategy = pred_op_info->strategy;
-			clause_strategy = clause_op_info->strategy;
+			pred_cmptype = pred_op_info->cmptype;
+			clause_cmptype = clause_op_info->cmptype;
 
 			/*
 			 * Check to see if we can make a proof for same-subexpressions
 			 * cases based on the operators' relationship in this opfamily.
 			 */
 			if (refute_it)
-				same_subexprs |= BT_refutes_table[clause_strategy - 1][pred_strategy - 1];
+				same_subexprs |= RC_refutes_table[clause_cmptype - 1][pred_cmptype - 1];
 			else
-				same_subexprs |= BT_implies_table[clause_strategy - 1][pred_strategy - 1];
+				same_subexprs |= RC_implies_table[clause_cmptype - 1][pred_cmptype - 1];
 
 			/*
-			 * Look up the "test" strategy number in the implication table
+			 * Look up the "test" cmptype number in the implication table
 			 */
 			if (refute_it)
-				test_strategy = BT_refute_table[clause_strategy - 1][pred_strategy - 1];
+				test_cmptype = RC_refute_table[clause_cmptype - 1][pred_cmptype - 1];
 			else
-				test_strategy = BT_implic_table[clause_strategy - 1][pred_strategy - 1];
+				test_cmptype = RC_implic_table[clause_cmptype - 1][pred_cmptype - 1];
 
-			if (test_strategy == 0)
+			if (test_cmptype == 0)
 			{
 				/* Can't determine implication using this interpretation */
 				continue;
 			}
 
 			/*
-			 * See if opfamily has an operator for the test strategy and the
+			 * See if opfamily has an operator for the test cmptype and the
 			 * datatypes.
 			 */
-			if (test_strategy == BTNE)
+			if (test_cmptype == RCNE)
 			{
-				test_op = get_opfamily_member(opfamily_id,
-											  pred_op_info->oprighttype,
-											  clause_op_info->oprighttype,
-											  BTEqualStrategyNumber);
+				test_op = get_opfamily_member_for_cmptype(opfamily_id,
+														  pred_op_info->oprighttype,
+														  clause_op_info->oprighttype,
+														  COMPARE_EQ);
 				if (OidIsValid(test_op))
 					test_op = get_negator(test_op);
 			}
 			else
 			{
-				test_op = get_opfamily_member(opfamily_id,
-											  pred_op_info->oprighttype,
-											  clause_op_info->oprighttype,
-											  test_strategy);
+				test_op = get_opfamily_member_for_cmptype(opfamily_id,
+														  pred_op_info->oprighttype,
+														  clause_op_info->oprighttype,
+														  test_cmptype);
 			}
 
 			if (!OidIsValid(test_op))
@@ -2206,7 +2345,8 @@ get_btree_test_op(Oid pred_op, Oid clause_op, bool refute_it)
  * Callback for pg_amop inval events
  */
 static void
-InvalidateOprProofCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
+InvalidateOprProofCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
+								uint32 hashvalue)
 {
 	HASH_SEQ_STATUS status;
 	OprProofCacheEntry *hentry;

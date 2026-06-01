@@ -11,7 +11,7 @@
  * Unlike spgtextproc.c, we don't bother with collation-aware logic.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -24,6 +24,7 @@
 #include "access/spgist.h"
 #include "catalog/pg_type.h"
 #include "utils/datum.h"
+#include "varatt.h"
 
 PG_MODULE_MAGIC;
 
@@ -32,7 +33,9 @@ PG_FUNCTION_INFO_V1(spgist_name_config);
 Datum
 spgist_name_config(PG_FUNCTION_ARGS)
 {
-	/* spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0); */
+#ifdef NOT_USED
+	spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0);
+#endif
 	spgConfigOut *cfg = (spgConfigOut *) PG_GETARG_POINTER(1);
 
 	cfg->prefixType = TEXTOID;
@@ -93,7 +96,7 @@ commonPrefix(const char *a, const char *b, int lena, int lenb)
  * On success, *i gets the match location; on failure, it gets where to insert
  */
 static bool
-searchChar(Datum *nodeLabels, int nNodes, int16 c, int *i)
+searchChar(const Datum *nodeLabels, int nNodes, int16 c, int *i)
 {
 	int			StopLow = 0,
 				StopHigh = nNodes;
@@ -170,7 +173,7 @@ spgist_name_choose(PG_FUNCTION_ARGS)
 			}
 			out->result.splitTuple.prefixNNodes = 1;
 			out->result.splitTuple.prefixNodeLabels =
-				(Datum *) palloc(sizeof(Datum));
+				palloc_object(Datum);
 			out->result.splitTuple.prefixNodeLabels[0] =
 				Int16GetDatum(*(unsigned char *) (prefixStr + commonLen));
 
@@ -242,7 +245,7 @@ spgist_name_choose(PG_FUNCTION_ARGS)
 		out->result.splitTuple.prefixHasPrefix = in->hasPrefix;
 		out->result.splitTuple.prefixPrefixDatum = in->prefixDatum;
 		out->result.splitTuple.prefixNNodes = 1;
-		out->result.splitTuple.prefixNodeLabels = (Datum *) palloc(sizeof(Datum));
+		out->result.splitTuple.prefixNodeLabels = palloc_object(Datum);
 		out->result.splitTuple.prefixNodeLabels[0] = Int16GetDatum(-2);
 		out->result.splitTuple.childNodeN = 0;
 		out->result.splitTuple.postfixHasPrefix = false;
@@ -317,9 +320,9 @@ spgist_name_inner_consistent(PG_FUNCTION_ARGS)
 	 * and see if it's consistent with the query.  If so, emit an entry into
 	 * the output arrays.
 	 */
-	out->nodeNumbers = (int *) palloc(sizeof(int) * in->nNodes);
-	out->levelAdds = (int *) palloc(sizeof(int) * in->nNodes);
-	out->reconstructedValues = (Datum *) palloc(sizeof(Datum) * in->nNodes);
+	out->nodeNumbers = palloc_array(int, in->nNodes);
+	out->levelAdds = palloc_array(int, in->nNodes);
+	out->reconstructedValues = palloc_array(Datum, in->nNodes);
 	out->nNodes = 0;
 
 	for (i = 0; i < in->nNodes; i++)

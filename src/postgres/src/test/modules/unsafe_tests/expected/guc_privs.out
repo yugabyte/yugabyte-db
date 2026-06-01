@@ -220,9 +220,31 @@ SELECT 1 FROM pg_parameter_acl WHERE parname = 'none.such';
 ----------
 (0 rows)
 
+-- Superuser should be able to ALTER SYSTEM SET a non-existent custom GUC.
+ALTER SYSTEM SET none.such = 'whiz bang';
+-- None of the above should have created a placeholder GUC for none.such.
+SHOW none.such;  -- error
+ERROR:  unrecognized configuration parameter "none.such"
+-- However, if we reload ...
+SELECT pg_reload_conf();
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+
+-- and start a new session to avoid race condition ...
+\c -
+SET SESSION AUTHORIZATION regress_admin;
+-- then it should be there.
+SHOW none.such;
+ none.such 
+-----------
+ whiz bang
+(1 row)
+
 -- Can't grant on a non-existent core GUC.
 GRANT ALL ON PARAMETER no_such_guc TO regress_host_resource_admin;  -- fail
-ERROR:  invalid parameter name "no_such_guc"
+ERROR:  unrecognized configuration parameter "no_such_guc"
 -- Initially there are no privileges and no catalog entry for this GUC.
 SELECT has_parameter_privilege('regress_host_resource_admin', 'enable_material', 'SET');
  has_parameter_privilege 
@@ -337,7 +359,7 @@ GRANT SET, ALTER SYSTEM ON PARAMETER
     autovacuum_work_mem, hash_mem_multiplier, max_stack_depth,
     shared_buffers, temp_file_limit, work_mem
 TO regress_host_resource_admin;
--- Check the new role now has privilges on parameters
+-- Check the new role now has privileges on parameters
 SELECT has_parameter_privilege('regress_host_resource_admin', 'work_mem', 'SET, ALTER SYSTEM');
  has_parameter_privilege 
 -------------------------
@@ -459,6 +481,8 @@ SELECT set_config ('temp_buffers', '8192', false); -- ok
 ALTER SYSTEM RESET autovacuum_work_mem;  -- ok, privileges have been granted
 ALTER SYSTEM RESET ALL;  -- fail, insufficient privileges
 ERROR:  permission denied to perform ALTER SYSTEM RESET ALL
+ALTER SYSTEM SET none.such2 = 'whiz bang';  -- fail, not superuser
+ERROR:  permission denied to set parameter "none.such2"
 ALTER ROLE regress_host_resource_admin SET lc_messages = 'POSIX';  -- fail
 ERROR:  permission denied to set parameter "lc_messages"
 ALTER ROLE regress_host_resource_admin SET max_stack_depth = '1MB';  -- ok
@@ -557,6 +581,21 @@ DROP ROLE regress_host_resource_newadmin;  -- ok, nothing was transferred
 -- Use "drop owned by" so we can drop the role
 DROP OWNED BY regress_host_resource_admin;  -- ok
 DROP ROLE regress_host_resource_admin;  -- ok
+-- Test for GUC synchronized standby slots
+-- Cannot set synchronized_standby_slots to a reserved slot name
+ALTER SYSTEM SET synchronized_standby_slots='pg_conflict_detection';
+ERROR:  invalid value for parameter "synchronized_standby_slots": "pg_conflict_detection"
+DETAIL:  replication slot name "pg_conflict_detection" is reserved
+HINT:  The name "pg_conflict_detection" is reserved for the conflict detection slot.
+-- Cannot set synchronized_standby_slots to an invalid slot name
+ALTER SYSTEM SET synchronized_standby_slots='invalid*';
+ERROR:  invalid value for parameter "synchronized_standby_slots": "invalid*"
+DETAIL:  replication slot name "invalid*" contains invalid character
+HINT:  Replication slot names may only contain lower case letters, numbers, and the underscore character.
+-- Can set synchronized_standby_slots to a non-existent slot name
+ALTER SYSTEM SET synchronized_standby_slots='missing';
+-- Reset the GUC
+ALTER SYSTEM RESET synchronized_standby_slots;
 -- Clean up
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_admin; -- ok

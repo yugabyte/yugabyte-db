@@ -1,9 +1,9 @@
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Tests for already-propagated WAL segments ending in incomplete WAL records.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use FindBin;
 use PostgreSQL::Test::Cluster;
@@ -39,7 +39,7 @@ DECLARE
 BEGIN
     LOOP
         INSERT into filler
-        select g, repeat(md5(g::text), (random() * 60 + 1)::int)
+        select g, repeat(encode(sha256(g::text::bytea), 'hex'), (random() * 15 + 1)::int)
         from generate_series(1, 10) g;
 
         remain := wal_segsize - (pg_current_wal_insert_lsn() - '0/0') % wal_segsize;

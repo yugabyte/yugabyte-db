@@ -98,6 +98,10 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_tvmm WITH NO DATA;
 -- no tuple locks on materialized views
 SELECT * FROM mvtest_tvvm FOR SHARE;
 
+-- we don't support temp materialized views, so disallow this case:
+CREATE TEMP TABLE mvtest_temp_t (id int NOT NULL, type text NOT NULL, amt numeric NOT NULL);
+CREATE MATERIALIZED VIEW mvtest_temp_tm AS SELECT * FROM mvtest_temp_t;
+
 -- test join of mv and view
 SELECT type, m.totamt AS mtot, v.totamt AS vtot FROM mvtest_tm m LEFT JOIN mvtest_tv v USING (type) ORDER BY type;
 
@@ -216,10 +220,10 @@ SET ROLE regress_user_mvtest;
 -- duplicate all the aliases used in those queries
 CREATE TABLE mvtest_foo_data AS SELECT i,
   i+1 AS tid,
-  md5(random()::text) AS mv,
-  md5(random()::text) AS newdata,
-  md5(random()::text) AS newdata2,
-  md5(random()::text) AS diff
+  fipshash(random()::text) AS mv,
+  fipshash(random()::text) AS newdata,
+  fipshash(random()::text) AS newdata2,
+  fipshash(random()::text) AS diff
   FROM generate_series(1, 10) i;
 CREATE MATERIALIZED VIEW mvtest_mv_foo AS SELECT * FROM mvtest_foo_data;
 CREATE MATERIALIZED VIEW mvtest_mv_foo AS SELECT * FROM mvtest_foo_data;
@@ -233,10 +237,11 @@ DROP ROLE regress_user_mvtest;
 
 -- Concurrent refresh requires a unique index on the materialized
 -- view. Test what happens if it's dropped during the refresh.
+SET search_path = mvtest_mvschema, public;
 CREATE OR REPLACE FUNCTION mvtest_drop_the_index()
   RETURNS bool AS $$
 BEGIN
-  EXECUTE 'DROP INDEX IF EXISTS mvtest_drop_idx';
+  EXECUTE 'DROP INDEX IF EXISTS mvtest_mvschema.mvtest_drop_idx';
   RETURN true;
 END;
 $$ LANGUAGE plpgsql;
@@ -247,6 +252,7 @@ CREATE MATERIALIZED VIEW drop_idx_matview AS
 CREATE UNIQUE INDEX mvtest_drop_idx ON drop_idx_matview (i);
 REFRESH MATERIALIZED VIEW CONCURRENTLY drop_idx_matview;
 DROP MATERIALIZED VIEW drop_idx_matview; -- clean up
+RESET search_path;
 
 -- make sure that create WITH NO DATA works via SPI
 BEGIN;
@@ -272,13 +278,13 @@ GRANT ALL ON SCHEMA matview_schema TO public;
 SET SESSION AUTHORIZATION regress_matview_user;
 CREATE MATERIALIZED VIEW matview_schema.mv_withdata1 (a) AS
   SELECT generate_series(1, 10) WITH DATA;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE MATERIALIZED VIEW matview_schema.mv_withdata2 (a) AS
   SELECT generate_series(1, 10) WITH DATA;
 REFRESH MATERIALIZED VIEW matview_schema.mv_withdata2;
 CREATE MATERIALIZED VIEW matview_schema.mv_nodata1 (a) AS
   SELECT generate_series(1, 10) WITH NO DATA;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE MATERIALIZED VIEW matview_schema.mv_nodata2 (a) AS
   SELECT generate_series(1, 10) WITH NO DATA;
 REFRESH MATERIALIZED VIEW matview_schema.mv_nodata2;
@@ -299,16 +305,16 @@ CREATE MATERIALIZED VIEW matview_ine_tab AS
   SELECT 1 / 0 WITH NO DATA; -- error
 CREATE MATERIALIZED VIEW IF NOT EXISTS matview_ine_tab AS
   SELECT 1 / 0 WITH NO DATA; -- ok
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE MATERIALIZED VIEW matview_ine_tab AS
     SELECT 1 / 0; -- error
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE MATERIALIZED VIEW IF NOT EXISTS matview_ine_tab AS
     SELECT 1 / 0; -- ok
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE MATERIALIZED VIEW matview_ine_tab AS
     SELECT 1 / 0 WITH NO DATA; -- error
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
   CREATE MATERIALIZED VIEW IF NOT EXISTS matview_ine_tab AS
     SELECT 1 / 0 WITH NO DATA; -- ok
 DROP MATERIALIZED VIEW matview_ine_tab;

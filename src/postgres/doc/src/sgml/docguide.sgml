@@ -60,9 +60,7 @@
    maintained by the <ulink url="https://www.oasis-open.org">
    OASIS group</ulink>.  The <ulink url="https://www.oasis-open.org/docbook/">
    official DocBook site</ulink> has good introductory and reference documentation and
-   a complete O'Reilly book for your online reading pleasure.  The
-   <ulink url="http://newbiedoc.sourceforge.net/metadoc/docbook-guide.html">
-   NewbieDoc Docbook Guide</ulink> is very helpful for beginners.
+   a complete O'Reilly book for your online reading pleasure.
    The <ulink url="https://www.freebsd.org/docproj/">
    FreeBSD Documentation Project</ulink> also uses DocBook and has some good
    information, including a number of style guidelines that might be
@@ -79,7 +77,7 @@
    might be optional, as noted.
 
    <variablelist>
-    <varlistentry>
+    <varlistentry id="docguide-toolsets-docbook-dtd">
      <term><ulink url="https://www.oasis-open.org/docbook/">DocBook DTD</ulink></term>
      <listitem>
       <para>
@@ -91,7 +89,7 @@
      </listitem>
     </varlistentry>
 
-    <varlistentry>
+    <varlistentry id="docguide-toolsets-docbook-xsl">
      <term><ulink url="https://github.com/docbook/wiki/wiki/DocBookXslStylesheets">DocBook XSL Stylesheets</ulink></term>
      <listitem>
       <para>
@@ -107,7 +105,7 @@
      </listitem>
     </varlistentry>
 
-    <varlistentry>
+    <varlistentry id="docguide-toolsets-libxml2">
      <term><ulink url="http://xmlsoft.org/">Libxml2</ulink> for <command>xmllint</command></term>
      <listitem>
       <para>
@@ -121,7 +119,7 @@
      </listitem>
      </varlistentry>
 
-    <varlistentry>
+    <varlistentry id="docguide-toolsets-libxslt">
      <term><ulink url="http://xmlsoft.org/XSLT/">Libxslt</ulink> for <command>xsltproc</command></term>
      <listitem>
       <para>
@@ -131,7 +129,7 @@
      </listitem>
     </varlistentry>
 
-    <varlistentry>
+    <varlistentry id="docguide-toolsets-fop">
      <term><ulink url="https://xmlgraphics.apache.org/fop/">FOP</ulink></term>
      <listitem>
       <para>
@@ -152,7 +150,7 @@
    here.
   </para>
 
-  <sect2>
+  <sect2 id="docguide-toolsets-inst-fedora-et-al">
    <title>Installation on Fedora, RHEL, and Derivatives</title>
 
    <para>
@@ -163,7 +161,7 @@ yum install docbook-dtds docbook-style-xsl libxslt fop
    </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="docguide-toolsets-inst-freebsd">
    <title>Installation on FreeBSD</title>
 
    <para>
@@ -180,7 +178,7 @@ pkg install docbook-xml docbook-xsl libxslt fop
    </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="docguide-toolsets-inst-debian">
    <title>Debian Packages</title>
 
    <para>
@@ -193,7 +191,7 @@ apt-get install docbook-xml docbook-xsl libxml2-utils xsltproc fop
    </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="docguide-toolsets-inst-macos">
    <title>macOS</title>
 
    <para>
@@ -264,11 +262,18 @@ checking for dbtoepub... dbtoepub
 ./configure ... XMLLINT=/opt/local/bin/xmllint ...
 </screen>
   </para>
+
+  <para>
+   If you prefer to build <productname>PostgreSQL</productname> using
+   Meson, instead run <command>meson setup</command> as described in
+   <xref linkend="install-meson"/>, and then see
+   <xref linkend="docguide-build-meson"/>.
+  </para>
   </sect2>
  </sect1>
 
  <sect1 id="docguide-build">
-  <title>Building the Documentation</title>
+  <title>Building the Documentation with Make</title>
 
   <para>
    Once you have everything set up, change to the directory
@@ -277,7 +282,7 @@ checking for dbtoepub... dbtoepub
    documentation. (Remember to use GNU make.)
   </para>
 
-  <sect2>
+  <sect2 id="docguide-build-html">
    <title>HTML</title>
 
    <para>
@@ -306,7 +311,7 @@ checking for dbtoepub... dbtoepub
    </para>
  </sect2>
 
- <sect2>
+ <sect2 id="docguide-build-manpages">
   <title>Manpages</title>
 
   <para>
@@ -320,7 +325,7 @@ checking for dbtoepub... dbtoepub
   </para>
  </sect2>
 
-  <sect2>
+  <sect2 id="docguide-build-pdf">
    <title>PDF</title>
 
    <para>
@@ -371,34 +376,22 @@ ADDITIONAL_FLAGS='-Xmx1500m'
    </para>
 
    <para>
+    In its default configuration <productname>FOP</productname> will emit an
+    <literal>INFO</literal> message for each page. The log level can be
+    changed via <filename>~/.foprc</filename>:
+<programlisting>
+LOGCHOICE=-Dorg.apache.commons.logging.Log=&zwsp;org.apache.commons.logging.impl.SimpleLog
+LOGLEVEL=-Dorg.apache.commons.logging.simplelog.defaultlog=WARN
+</programlisting>
+   </para>
+
+   <para>
     Other XSL-FO processors can also be used manually, but the automated build
     process only supports FOP.
    </para>
   </sect2>
 
-  <sect2>
-   <title>Plain Text Files</title>
-
-   <para>
-    The installation instructions are also distributed as plain text,
-    in case they are needed in a situation where better reading tools
-    are not available.  The <filename>INSTALL</filename> file
-    corresponds to <xref linkend="installation"/>, with some minor
-    changes to account for the different context.  To recreate the
-    file, change to the directory <filename>doc/src/sgml</filename>
-    and enter <userinput>make INSTALL</userinput>.  Building text output
-    requires <productname>Pandoc</productname> version 1.13 or newer as an
-    additional build tool.
-   </para>
-
-   <para>
-    In the past, the release notes and regression testing instructions
-    were also distributed as plain text, but this practice has been
-    discontinued.
-   </para>
-  </sect2>
-
-  <sect2>
+  <sect2 id="docguide-build-syntax-check">
    <title>Syntax Check</title>
 
    <para>
@@ -410,6 +403,29 @@ ADDITIONAL_FLAGS='-Xmx1500m'
 </screen>
    </para>
   </sect2>
+ </sect1>
+
+
+ <sect1 id="docguide-build-meson">
+  <title>Building the Documentation with Meson</title>
+
+   <para>
+    To build the documentation using Meson, change to the
+    <filename>build</filename> directory before running one of these commands,
+    or add <option>-C build</option> to the command.
+   </para>
+
+   <para>
+    To build just the <acronym>HTML</acronym> version of the documentation:
+<screen>
+<prompt>build$ </prompt><userinput>ninja html</userinput>
+</screen>
+    For a list of other documentation targets see
+    <xref linkend="targets-meson-documentation"/>.
+
+    The output appears in the
+    subdirectory <filename>build/doc/src/sgml</filename>.
+   </para>
  </sect1>
 
 
@@ -430,7 +446,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
     correct mode.
    </para>
 
-   <sect2>
+   <sect2 id="docguide-authoring-emacs">
     <title>Emacs</title>
 
     <para>
@@ -456,7 +472,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
  <sect1 id="docguide-style">
   <title>Style Guide</title>
 
-  <sect2>
+  <sect2 id="docguide-style-ref-pages">
    <title>Reference Pages</title>
 
    <para>
@@ -479,7 +495,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
     <quote>Usage</quote> section.
 
     <variablelist>
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-name">
       <term>Name</term>
       <listitem>
        <para>
@@ -489,7 +505,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-synopsis">
       <term>Synopsis</term>
       <listitem>
        <para>
@@ -501,7 +517,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-description">
       <term>Description</term>
       <listitem>
        <para>
@@ -510,7 +526,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-options">
       <term>Options</term>
       <listitem>
        <para>
@@ -520,7 +536,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-exit-status">
       <term>Exit Status</term>
       <listitem>
        <para>
@@ -531,7 +547,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-usage">
       <term>Usage</term>
       <listitem>
        <para>
@@ -543,7 +559,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-environment">
       <term>Environment</term>
       <listitem>
        <para>
@@ -554,7 +570,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-files">
       <term>Files</term>
       <listitem>
        <para>
@@ -565,7 +581,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-diagnostics">
       <term>Diagnostics</term>
       <listitem>
        <para>
@@ -578,7 +594,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-notes">
       <term>Notes</term>
       <listitem>
        <para>
@@ -589,7 +605,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-examples">
       <term>Examples</term>
       <listitem>
        <para>
@@ -598,7 +614,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-history">
       <term>History</term>
       <listitem>
        <para>
@@ -609,7 +625,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-author">
       <term>Author</term>
       <listitem>
        <para>
@@ -618,7 +634,7 @@ ADDITIONAL_FLAGS='-Xmx1500m'
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="docguide-style-ref-pages-see-also">
       <term>See Also</term>
       <listitem>
        <para>

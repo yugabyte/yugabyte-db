@@ -40,26 +40,20 @@
 
 #include <ctype.h>
 #include <limits.h>
-
-/*
- * towlower() and friends should be in <wctype.h>, but some pre-C99 systems
- * declare them in <wchar.h>, so include that too.
- */
-#include <wchar.h>
-#ifdef HAVE_WCTYPE_H
 #include <wctype.h>
-#endif
 
 #include "mb/pg_wchar.h"
 
-#include "miscadmin.h"			/* needed by rcancelrequested/rstacktoodeep */
+#include "miscadmin.h"			/* needed by rstacktoodeep */
 
 
 /* overrides for regguts.h definitions, if any */
 #define FUNCPTR(name, args) (*name) args
-#define MALLOC(n)		malloc(n)
-#define FREE(p)			free(VS(p))
-#define REALLOC(p,n)	realloc(VS(p),n)
+#define MALLOC(n)		palloc_extended((n), MCXT_ALLOC_NO_OOM)
+#define FREE(p)			pfree(VS(p))
+#define REALLOC(p,n)	repalloc_extended(VS(p),(n), MCXT_ALLOC_NO_OOM)
+#define INTERRUPT(re)	CHECK_FOR_INTERRUPTS()
+#undef assert
 #define assert(x)		Assert(x)
 
 /* internal character type and related */
@@ -95,10 +89,10 @@ typedef unsigned uchr;			/* unsigned type that will hold a chr */
 #define MAX_SIMPLE_CHR	0x7FF	/* suitable value for Unicode */
 
 /* functions operating on chr */
-#define iscalnum(x) pg_wc_isalnum(x)
-#define iscalpha(x) pg_wc_isalpha(x)
-#define iscdigit(x) pg_wc_isdigit(x)
-#define iscspace(x) pg_wc_isspace(x)
+#define iscalnum(x) regc_wc_isalnum(x)
+#define iscalpha(x) regc_wc_isalpha(x)
+#define iscdigit(x) regc_wc_isdigit(x)
+#define iscspace(x) regc_wc_isspace(x)
 
 /* and pick up the standard header */
 #include "regex.h"

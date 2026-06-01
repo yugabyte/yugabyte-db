@@ -17,11 +17,12 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 # We need libpq only because fe_utils does.
+override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 
 OBJS = \
 	$(WIN32RES) \
-	parse_manifest.o \
+	astreamer_verify.o \
 	pg_verifybackup.o
 
 all: pg_verifybackup
@@ -38,7 +39,7 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_verifybackup$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f pg_verifybackup$(X) $(OBJS)
 	rm -rf tmp_check
 

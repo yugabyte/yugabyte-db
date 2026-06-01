@@ -13,7 +13,9 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	alignedalloc.o \
 	aset.o \
+	bump.o \
 	dsa.o \
 	freepage.o \
 	generation.o \

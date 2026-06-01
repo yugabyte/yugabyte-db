@@ -3,7 +3,7 @@
  * regexp.c
  *	  Postgres' interface to the regular expression package.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -31,7 +31,6 @@
 
 #include "catalog/pg_type.h"
 #include "funcapi.h"
-#include "miscadmin.h"
 #include "regex/regex.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -99,9 +98,13 @@ typedef struct regexp_matches_ctx
 #define MAX_CACHED_RES	32
 #endif
 
+/* A parent memory context for regular expressions. */
+static MemoryContext RegexpCacheMemoryContext;
+
 /* this structure describes one cached regular expression */
 typedef struct cached_re_str
 {
+	MemoryContext cre_context;	/* memory context for this regexp */
 	char	   *cre_pat;		/* original RE (not null terminated!) */
 	int			cre_pat_len;	/* length of original RE, in bytes */
 	int			cre_flags;		/* compile flags: extended,icase etc */
@@ -170,7 +173,7 @@ YbGetReCacheInfo()
 
 /* Local functions */
 static regexp_matches_ctx *setup_regexp_matches(text *orig_str, text *pattern,
-												pg_re_flags *flags,
+												pg_re_flags *re_flags,
 												int start_search,
 												Oid collation,
 												bool use_subpatterns,
@@ -203,6 +206,7 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	int			regcomp_result;
 	cached_re_str re_temp;
 	char		errMsg[100];
+	MemoryContext oldcontext;
 	cached_re_str *re_array = YbGetReCacheInfo().array;
 
 	/*
@@ -231,16 +235,35 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 		}
 	}
 
+	/* Set up the cache memory on first go through. */
+	if (unlikely(RegexpCacheMemoryContext == NULL))
+		RegexpCacheMemoryContext =
+			AllocSetContextCreate(TopMemoryContext,
+								  "RegexpCacheMemoryContext",
+								  ALLOCSET_SMALL_SIZES);
+
 	/*
 	 * Couldn't find it, so try to compile the new RE.  To avoid leaking
 	 * resources on failure, we build into the re_temp local.
 	 */
 
 	/* Convert pattern string to wide characters */
-	pattern = (pg_wchar *) palloc((text_re_len + 1) * sizeof(pg_wchar));
+	pattern = palloc_array(pg_wchar, text_re_len + 1);
 	pattern_len = pg_mb2wchar_with_len(text_re_val,
 									   pattern,
 									   text_re_len);
+
+	/*
+	 * Make a memory context for this compiled regexp.  This is initially a
+	 * child of the current memory context, so it will be cleaned up
+	 * automatically if compilation is interrupted and throws an ERROR. We'll
+	 * re-parent it under the longer lived cache context if we make it to the
+	 * bottom of this function.
+	 */
+	re_temp.cre_context = AllocSetContextCreate(CurrentMemoryContext,
+												"RegexpMemoryContext",
+												ALLOCSET_SMALL_SIZES);
+	oldcontext = MemoryContextSwitchTo(re_temp.cre_context);
 
 	regcomp_result = pg_regcomp(&re_temp.cre_re,
 								pattern,
@@ -253,36 +276,23 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	if (regcomp_result != REG_OKAY)
 	{
 		/* re didn't compile (no need for pg_regfree, if so) */
-
-		/*
-		 * Here and in other places in this file, do CHECK_FOR_INTERRUPTS
-		 * before reporting a regex error.  This is so that if the regex
-		 * library aborts and returns REG_CANCEL, we don't print an error
-		 * message that implies the regex was invalid.
-		 */
-		CHECK_FOR_INTERRUPTS();
-
 		pg_regerror(regcomp_result, &re_temp.cre_re, errMsg, sizeof(errMsg));
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
 				 errmsg("invalid regular expression: %s", errMsg)));
 	}
 
-	/*
-	 * We use malloc/free for the cre_pat field because the storage has to
-	 * persist across transactions, and because we want to get control back on
-	 * out-of-memory.  The Max() is because some malloc implementations return
-	 * NULL for malloc(0).
-	 */
-	re_temp.cre_pat = malloc(Max(text_re_len, 1));
-	if (re_temp.cre_pat == NULL)
-	{
-		pg_regfree(&re_temp.cre_re);
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
+	/* Copy the pattern into the per-regexp memory context. */
+	re_temp.cre_pat = palloc(text_re_len + 1);
 	memcpy(re_temp.cre_pat, text_re_val, text_re_len);
+
+	/*
+	 * NUL-terminate it only for the benefit of the identifier used for the
+	 * memory context, visible in the pg_backend_memory_contexts view.
+	 */
+	re_temp.cre_pat[text_re_len] = 0;
+	MemoryContextSetIdentifier(re_temp.cre_context, re_temp.cre_pat);
+
 	re_temp.cre_pat_len = text_re_len;
 	re_temp.cre_flags = cflags;
 	re_temp.cre_collation = collation;
@@ -295,15 +305,20 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	{
 		--num_res;
 		Assert(num_res < MAX_CACHED_RES);
-		pg_regfree(&re_array[num_res].cre_re);
-		free(re_array[num_res].cre_pat);
+		/* Delete the memory context holding the regexp and pattern. */
+		MemoryContextDelete(re_array[num_res].cre_context);
 	}
+
+	/* Re-parent the memory context to our long-lived cache context. */
+	MemoryContextSetParent(re_temp.cre_context, RegexpCacheMemoryContext);
 
 	if (num_res > 0)
 		memmove(&re_array[1], &re_array[0], num_res * sizeof(cached_re_str));
 
 	re_array[0] = re_temp;
 	num_res++;
+
+	MemoryContextSwitchTo(oldcontext);
 
 	return &re_array[0].cre_re;
 }
@@ -342,7 +357,6 @@ RE_wchar_execute(regex_t *re, pg_wchar *data, int data_len,
 	if (regexec_result != REG_OKAY && regexec_result != REG_NOMATCH)
 	{
 		/* re failed??? */
-		CHECK_FOR_INTERRUPTS();
 		pg_regerror(regexec_result, re, errMsg, sizeof(errMsg));
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
@@ -374,7 +388,7 @@ RE_execute(regex_t *re, char *dat, int dat_len,
 	bool		match;
 
 	/* Convert data string to wide characters */
-	data = (pg_wchar *) palloc((dat_len + 1) * sizeof(pg_wchar));
+	data = palloc_array(pg_wchar, dat_len + 1);
 	data_len = pg_mb2wchar_with_len(dat, data, dat_len);
 
 	/* Perform RE match and return result */
@@ -488,7 +502,7 @@ parse_re_flags(pg_re_flags *flags, text *opts)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid regular expression option: \"%.*s\"",
-									pg_mblen(opt_p + i), opt_p + i)));
+									pg_mblen_range(opt_p + i, opt_p + opt_len), opt_p + i)));
 					break;
 			}
 		}
@@ -718,12 +732,13 @@ textregexreplace(PG_FUNCTION_ARGS)
 	if (VARSIZE_ANY_EXHDR(opt) > 0)
 	{
 		char	   *opt_p = VARDATA_ANY(opt);
+		const char *end_p = opt_p + VARSIZE_ANY_EXHDR(opt);
 
 		if (*opt_p >= '0' && *opt_p <= '9')
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid regular expression option: \"%.*s\"",
-							pg_mblen(opt_p), opt_p),
+							pg_mblen_range(opt_p, end_p), opt_p),
 					 errhint("If you meant to use regexp_replace() with a start parameter, cast the fourth argument to integer explicitly.")));
 	}
 
@@ -817,12 +832,15 @@ similar_escape_internal(text *pat_text, text *esc_text)
 			   *r;
 	int			plen,
 				elen;
+	const char *pend;
 	bool		afterescape = false;
-	bool		incharclass = false;
 	int			nquotes = 0;
+	int			bracket_depth = 0;	/* square bracket nesting level */
+	int			charclass_pos = 0;	/* position inside a character class */
 
 	p = VARDATA_ANY(pat_text);
 	plen = VARSIZE_ANY_EXHDR(pat_text);
+	pend = p + plen;
 	if (esc_text == NULL)
 	{
 		/* No ESCAPE clause provided; default to backslash as escape */
@@ -878,6 +896,17 @@ similar_escape_internal(text *pat_text, text *esc_text)
 	 * the relevant part separators in the above expansion.  If the result
 	 * of this function is used in a plain regexp match (SIMILAR TO), the
 	 * escape-double-quotes have no effect on the match behavior.
+	 *
+	 * While we don't fully validate character classes (bracket expressions),
+	 * we do need to parse them well enough to know where they end.
+	 * "charclass_pos" tracks where we are in a character class.
+	 * Its value is uninteresting when bracket_depth is 0.
+	 * But when bracket_depth > 0, it will be
+	 *   1: right after the opening '[' (a following '^' will negate
+	 *      the class, while ']' is a literal character)
+	 *   2: right after a '^' after the opening '[' (']' is still a literal
+	 *      character)
+	 *   3 or more: further inside the character class (']' ends the class)
 	 *----------
 	 */
 
@@ -911,7 +940,7 @@ similar_escape_internal(text *pat_text, text *esc_text)
 
 		if (elen > 1)
 		{
-			int			mblen = pg_mblen(p);
+			int			mblen = pg_mblen_range(p, pend);
 
 			if (mblen > 1)
 			{
@@ -949,7 +978,7 @@ similar_escape_internal(text *pat_text, text *esc_text)
 		/* fast path */
 		if (afterescape)
 		{
-			if (pchar == '"' && !incharclass)	/* escape-double-quote? */
+			if (pchar == '"' && bracket_depth < 1)	/* escape-double-quote? */
 			{
 				/* emit appropriate part separator, per notes above */
 				if (nquotes == 0)
@@ -990,6 +1019,12 @@ similar_escape_internal(text *pat_text, text *esc_text)
 				 */
 				*r++ = '\\';
 				*r++ = pchar;
+
+				/*
+				 * If we encounter an escaped character in a character class,
+				 * we are no longer at the beginning.
+				 */
+				charclass_pos = 3;
 			}
 			afterescape = false;
 		}
@@ -998,18 +1033,69 @@ similar_escape_internal(text *pat_text, text *esc_text)
 			/* SQL escape character; do not send to output */
 			afterescape = true;
 		}
-		else if (incharclass)
+		else if (bracket_depth > 0)
 		{
+			/* inside a character class */
 			if (pchar == '\\')
+			{
+				/*
+				 * If we're here, backslash is not the SQL escape character,
+				 * so treat it as a literal class element, which requires
+				 * doubling it.  (This matches our behavior for backslashes
+				 * outside character classes.)
+				 */
 				*r++ = '\\';
+			}
 			*r++ = pchar;
-			if (pchar == ']')
-				incharclass = false;
+
+			/* parse the character class well enough to identify ending ']' */
+			if (pchar == ']' && charclass_pos > 2)
+			{
+				/* found the real end of a bracket pair */
+				bracket_depth--;
+				/* don't reset charclass_pos, this may be an inner bracket */
+			}
+			else if (pchar == '[')
+			{
+				/* start of a nested bracket pair */
+				bracket_depth++;
+
+				/*
+				 * We are no longer at the beginning of a character class.
+				 * (The nested bracket pair is a collating element, not a
+				 * character class in its own right.)
+				 */
+				charclass_pos = 3;
+			}
+			else if (pchar == '^')
+			{
+				/*
+				 * A caret right after the opening bracket negates the
+				 * character class.  In that case, the following will
+				 * increment charclass_pos from 1 to 2, so that a following
+				 * ']' is still a literal character and does not end the
+				 * character class.  If we are further inside a character
+				 * class, charclass_pos might get incremented past 3, which is
+				 * fine.
+				 */
+				charclass_pos++;
+			}
+			else
+			{
+				/*
+				 * Anything else (including a backslash or leading ']') is an
+				 * element of the character class, so we are no longer at the
+				 * beginning of the class.
+				 */
+				charclass_pos = 3;
+			}
 		}
 		else if (pchar == '[')
 		{
+			/* start of a character class */
 			*r++ = pchar;
-			incharclass = true;
+			bracket_depth = 1;
+			charclass_pos = 1;
 		}
 		else if (pchar == '%')
 		{
@@ -1365,8 +1451,8 @@ regexp_match(PG_FUNCTION_ARGS)
 	Assert(matchctx->nmatches == 1);
 
 	/* Create workspace that build_regexp_match_result needs */
-	matchctx->elems = (Datum *) palloc(sizeof(Datum) * matchctx->npatterns);
-	matchctx->nulls = (bool *) palloc(sizeof(bool) * matchctx->npatterns);
+	matchctx->elems = palloc_array(Datum, matchctx->npatterns);
+	matchctx->nulls = palloc_array(bool, matchctx->npatterns);
 
 	PG_RETURN_DATUM(PointerGetDatum(build_regexp_match_result(matchctx)));
 }
@@ -1408,11 +1494,11 @@ regexp_matches(PG_FUNCTION_ARGS)
 										true, false, false);
 
 		/* Pre-create workspace that build_regexp_match_result needs */
-		matchctx->elems = (Datum *) palloc(sizeof(Datum) * matchctx->npatterns);
-		matchctx->nulls = (bool *) palloc(sizeof(bool) * matchctx->npatterns);
+		matchctx->elems = palloc_array(Datum, matchctx->npatterns);
+		matchctx->nulls = palloc_array(bool, matchctx->npatterns);
 
 		MemoryContextSwitchTo(oldcontext);
-		funcctx->user_fctx = (void *) matchctx;
+		funcctx->user_fctx = matchctx;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
@@ -1465,7 +1551,7 @@ setup_regexp_matches(text *orig_str, text *pattern, pg_re_flags *re_flags,
 					 bool ignore_degenerate,
 					 bool fetching_unmatched)
 {
-	regexp_matches_ctx *matchctx = palloc0(sizeof(regexp_matches_ctx));
+	regexp_matches_ctx *matchctx = palloc0_object(regexp_matches_ctx);
 	int			eml = pg_database_encoding_max_length();
 	int			orig_len;
 	pg_wchar   *wide_str;
@@ -1485,7 +1571,7 @@ setup_regexp_matches(text *orig_str, text *pattern, pg_re_flags *re_flags,
 
 	/* convert string to pg_wchar form for matching */
 	orig_len = VARSIZE_ANY_EXHDR(orig_str);
-	wide_str = (pg_wchar *) palloc(sizeof(pg_wchar) * (orig_len + 1));
+	wide_str = palloc_array(pg_wchar, orig_len + 1);
 	wide_len = pg_mb2wchar_with_len(VARDATA_ANY(orig_str), wide_str, orig_len);
 
 	/* set up the compiled pattern */
@@ -1508,7 +1594,7 @@ setup_regexp_matches(text *orig_str, text *pattern, pg_re_flags *re_flags,
 	}
 
 	/* temporary output space for RE package */
-	pmatch = palloc(sizeof(regmatch_t) * pmatch_len);
+	pmatch = palloc_array(regmatch_t, pmatch_len);
 
 	/*
 	 * the real output space (grown dynamically if needed)
@@ -1517,7 +1603,7 @@ setup_regexp_matches(text *orig_str, text *pattern, pg_re_flags *re_flags,
 	 * than at 2^27
 	 */
 	array_len = re_flags->glob ? 255 : 31;
-	matchctx->match_locs = (int *) palloc(sizeof(int) * array_len);
+	matchctx->match_locs = palloc_array(int, array_len);
 	array_idx = 0;
 
 	/* search for the pattern, perhaps repeatedly */
@@ -1752,7 +1838,7 @@ regexp_split_to_table(PG_FUNCTION_ARGS)
 										false, true, true);
 
 		MemoryContextSwitchTo(oldcontext);
-		funcctx->user_fctx = (void *) splitctx;
+		funcctx->user_fctx = splitctx;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
@@ -2035,7 +2121,6 @@ regexp_fixed_prefix(text *text_re, bool case_insensitive, Oid collation,
 
 		default:
 			/* re failed??? */
-			CHECK_FOR_INTERRUPTS();
 			pg_regerror(re_result, re, errMsg, sizeof(errMsg));
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
@@ -2049,7 +2134,7 @@ regexp_fixed_prefix(text *text_re, bool case_insensitive, Oid collation,
 	slen = pg_wchar2mb_with_len(str, result, slen);
 	Assert(slen < maxlen);
 
-	free(str);
+	pfree(str);
 
 	return result;
 }

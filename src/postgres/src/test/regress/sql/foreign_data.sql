@@ -13,6 +13,11 @@ CREATE FUNCTION test_fdw_handler()
     AS :'regresslib', 'test_fdw_handler'
     LANGUAGE C;
 
+CREATE FUNCTION test_fdw_connection(oid, oid, internal)
+    RETURNS text
+    AS :'regresslib', 'test_fdw_connection'
+    LANGUAGE C;
+
 -- Clean up in case a prior regression run failed
 
 -- Suppress NOTICE messages when roles don't exist
@@ -67,6 +72,13 @@ CREATE FUNCTION invalid_fdw_handler() RETURNS int LANGUAGE SQL AS 'SELECT 1;';
 CREATE FOREIGN DATA WRAPPER test_fdw HANDLER invalid_fdw_handler;  -- ERROR
 CREATE FOREIGN DATA WRAPPER test_fdw HANDLER test_fdw_handler HANDLER invalid_fdw_handler;  -- ERROR
 CREATE FOREIGN DATA WRAPPER test_fdw HANDLER test_fdw_handler;
+
+-- should preserve dependencies on test_fdw_handler and test_fdw_connection
+ALTER FOREIGN DATA WRAPPER test_fdw CONNECTION test_fdw_connection;
+ALTER FOREIGN DATA WRAPPER test_fdw VALIDATOR postgresql_fdw_validator;
+DROP FUNCTION test_fdw_handler(); -- ERROR
+DROP FUNCTION test_fdw_connection(oid, oid, internal); -- ERROR
+
 DROP FOREIGN DATA WRAPPER test_fdw;
 
 -- ALTER FOREIGN DATA WRAPPER
@@ -383,10 +395,12 @@ COMMENT ON COLUMN ft1.c1 IS NULL;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c4 integer;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c5 integer DEFAULT 0;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c6 integer;
+ALTER FOREIGN TABLE ft1 ADD COLUMN IF NOT EXISTS c6 integer;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c7 integer NOT NULL;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c8 integer;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c9 integer;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c10 integer OPTIONS (p1 'v1');
+ALTER FOREIGN TABLE ft1 ADD c11 integer;
 
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c4 SET DEFAULT 0;
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c5 DROP DEFAULT;
@@ -419,6 +433,7 @@ ALTER FOREIGN TABLE ft1 OPTIONS (DROP delimiter, SET quote '~', ADD escape '@');
 ALTER FOREIGN TABLE ft1 DROP COLUMN no_column;                  -- ERROR
 ALTER FOREIGN TABLE ft1 DROP COLUMN IF EXISTS no_column;
 ALTER FOREIGN TABLE ft1 DROP COLUMN c9;
+ALTER FOREIGN TABLE ft1 DROP c11;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c11 serial;
 ALTER FOREIGN TABLE ft1 SET SCHEMA foreign_schema;
 ALTER FOREIGN TABLE ft1 SET TABLESPACE ts;                      -- ERROR
@@ -430,10 +445,12 @@ ALTER FOREIGN TABLE foreign_schema.ft1 RENAME TO foreign_table_1;
 -- alter noexisting table
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c4 integer;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c6 integer;
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN IF NOT EXISTS c6 integer;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c7 integer NOT NULL;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c8 integer;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c9 integer;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD COLUMN c10 integer OPTIONS (p1 'v1');
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ADD c11 integer;
 
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ALTER COLUMN c6 SET NOT NULL;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 ALTER COLUMN c7 DROP NOT NULL;
@@ -447,8 +464,10 @@ ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP CONSTRAINT IF EXISTS no_cons
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP CONSTRAINT ft1_c1_check;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OWNER TO regress_test_role;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 OPTIONS (DROP delimiter, SET quote '~', ADD escape '@');
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP COLUMN no_column;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP COLUMN IF EXISTS no_column;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP COLUMN c9;
+ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 DROP c11;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 SET SCHEMA foreign_schema;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 RENAME c1 TO foreign_column_1;
 ALTER FOREIGN TABLE IF EXISTS doesnt_exist_ft1 RENAME TO foreign_table_1;

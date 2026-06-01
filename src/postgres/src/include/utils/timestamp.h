@@ -3,7 +3,7 @@
  * timestamp.h
  *	  Definitions for the SQL "timestamp" and "interval" types.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/timestamp.h
@@ -19,18 +19,46 @@
 
 
 /*
- * Macros for fmgr-callable functions.
+ * Functions for fmgr-callable functions.
  *
  * For Timestamp, we make use of the same support routines as for int64.
  * Therefore Timestamp is pass-by-reference if and only if int64 is!
  */
-#define DatumGetTimestamp(X)  ((Timestamp) DatumGetInt64(X))
-#define DatumGetTimestampTz(X)	((TimestampTz) DatumGetInt64(X))
-#define DatumGetIntervalP(X)  ((Interval *) DatumGetPointer(X))
+static inline Timestamp
+DatumGetTimestamp(Datum X)
+{
+	return (Timestamp) DatumGetInt64(X);
+}
 
-#define TimestampGetDatum(X) Int64GetDatum(X)
-#define TimestampTzGetDatum(X) Int64GetDatum(X)
-#define IntervalPGetDatum(X) PointerGetDatum(X)
+static inline TimestampTz
+DatumGetTimestampTz(Datum X)
+{
+	return (TimestampTz) DatumGetInt64(X);
+}
+
+static inline Interval *
+DatumGetIntervalP(Datum X)
+{
+	return (Interval *) DatumGetPointer(X);
+}
+
+static inline Datum
+TimestampGetDatum(Timestamp X)
+{
+	return Int64GetDatum(X);
+}
+
+static inline Datum
+TimestampTzGetDatum(TimestampTz X)
+{
+	return Int64GetDatum(X);
+}
+
+static inline Datum
+IntervalPGetDatum(const Interval *X)
+{
+	return PointerGetDatum(X);
+}
 
 #define PG_GETARG_TIMESTAMP(n) DatumGetTimestamp(PG_GETARG_DATUM(n))
 #define PG_GETARG_TIMESTAMPTZ(n) DatumGetTimestampTz(PG_GETARG_DATUM(n))
@@ -53,8 +81,19 @@
 #define INTERVAL_PRECISION(t) ((t) & INTERVAL_PRECISION_MASK)
 #define INTERVAL_RANGE(t) (((t) >> 16) & INTERVAL_RANGE_MASK)
 
+/* Macros for doing timestamp arithmetic without assuming timestamp's units */
 #define TimestampTzPlusMilliseconds(tz,ms) ((tz) + ((ms) * (int64) 1000))
+#define TimestampTzPlusSeconds(tz,s) ((tz) + ((s) * (int64) 1000000))
 
+/* Helper for simple subtraction between two timestamps */
+static inline uint64
+TimestampDifferenceMicroseconds(TimestampTz start_time,
+								TimestampTz stop_time)
+{
+	if (start_time >= stop_time)
+		return 0;
+	return (uint64) stop_time - start_time;
+}
 
 /* Set at postmaster start */
 extern PGDLLIMPORT TimestampTz PgStartTime;
@@ -77,16 +116,19 @@ extern long TimestampDifferenceMilliseconds(TimestampTz start_time,
 extern bool TimestampDifferenceExceeds(TimestampTz start_time,
 									   TimestampTz stop_time,
 									   int msec);
+extern bool TimestampDifferenceExceedsSeconds(TimestampTz start_time,
+											  TimestampTz stop_time,
+											  int threshold_sec);
 
 extern TimestampTz time_t_to_timestamptz(pg_time_t tm);
 extern pg_time_t timestamptz_to_time_t(TimestampTz t);
 
 extern const char *timestamptz_to_str(TimestampTz t);
 
-extern int	tm2timestamp(struct pg_tm *tm, fsec_t fsec, int *tzp, Timestamp *dt);
+extern int	tm2timestamp(struct pg_tm *tm, fsec_t fsec, int *tzp, Timestamp *result);
 extern int	timestamp2tm(Timestamp dt, int *tzp, struct pg_tm *tm,
 						 fsec_t *fsec, const char **tzn, pg_tz *attimezone);
-extern void dt2time(Timestamp dt, int *hour, int *min, int *sec, fsec_t *fsec);
+extern void dt2time(Timestamp jd, int *hour, int *min, int *sec, fsec_t *fsec);
 
 extern void interval2itm(Interval span, struct pg_itm *itm);
 extern int	itm2interval(struct pg_itm *itm, Interval *span);
@@ -100,8 +142,11 @@ extern int	timestamp_cmp_internal(Timestamp dt1, Timestamp dt2);
 /* timestamp comparison works for timestamptz also */
 #define timestamptz_cmp_internal(dt1,dt2)	timestamp_cmp_internal(dt1, dt2)
 
-extern TimestampTz timestamp2timestamptz_opt_overflow(Timestamp timestamp,
-													  int *overflow);
+extern TimestampTz timestamp2timestamptz_safe(Timestamp timestamp,
+											  Node *escontext);
+extern Timestamp timestamptz2timestamp_safe(TimestampTz timestamp,
+											Node *escontext);
+
 extern int32 timestamp_cmp_timestamptz_internal(Timestamp timestampVal,
 												TimestampTz dt2);
 

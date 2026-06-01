@@ -1,12 +1,12 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 #
 # pgbench tests which do not need a server
 #
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -38,7 +38,6 @@ sub pgbench_scripts
 
 	my ($opts, $stat, $out, $err, $name, $files) = @_;
 	my @cmd = ('pgbench', split /\s+/, $opts);
-	my @filenames = ();
 	if (defined $files)
 	{
 		for my $fn (sort keys %$files)
@@ -51,7 +50,7 @@ sub pgbench_scripts
 			# cleanup from prior runs
 			unlink $filename;
 			append_to_file($filename, $$files{$fn});
-			push @cmd, '-f', $filename;
+			push @cmd, '--file' => $filename;
 		}
 	}
 	command_checks_all(\@cmd, $stat, $out, $err, $name);
@@ -67,7 +66,7 @@ my @options = (
 	# name, options, stderr checks
 	[
 		'bad option',
-		'-h home -p 5432 -U calvin -d --bad-option',
+		'-h home -p 5432 -U calvin ---debug --bad-option',
 		[qr{--help.*more information}]
 	],
 	[
@@ -128,7 +127,7 @@ my @options = (
 		'invalid progress', '--progress=0',
 		[qr{-P/--progress must be in range}]
 	],
-	[ 'invalid rate',    '--rate=0.0',          [qr{invalid rate limit}] ],
+	[ 'invalid rate', '--rate=0.0', [qr{invalid rate limit}] ],
 	[ 'invalid latency', '--latency-limit=0.0', [qr{invalid latency limit}] ],
 	[
 		'invalid sampling rate', '--sampling-rate=0',
@@ -144,7 +143,7 @@ my @options = (
 		'-b se@0 -b si@0 -b tpcb@0',
 		[qr{weight must not be zero}]
 	],
-	[ 'init vs run', '-i -S',    [qr{cannot be used in initialization}] ],
+	[ 'init vs run', '-i -S', [qr{cannot be used in initialization}] ],
 	[ 'run vs init', '-S -F 90', [qr{cannot be used in benchmarking}] ],
 	[ 'ambiguous builtin', '-b s', [qr{ambiguous}] ],
 	[
@@ -234,21 +233,9 @@ for my $o (@options)
 		'pgbench option error: ' . $name);
 }
 
-# Help
-pgbench(
-	'--help', 0,
-	[
-		qr{benchmarking tool for PostgreSQL},
-		qr{Usage},
-		qr{Initialization options:},
-		qr{Common options:},
-		qr{Report bugs to}
-	],
-	[qr{^$}],
-	'pgbench help');
-
-# Version
-pgbench('-V', 0, [qr{^pgbench .PostgreSQL. }], [qr{^$}], 'pgbench version');
+program_help_ok('pgbench');
+program_version_ok('pgbench');
+program_options_handling_ok('pgbench');
 
 # list of builtins
 pgbench(
@@ -257,7 +244,7 @@ pgbench(
 	[qr{^$}],
 	[
 		qr{Available builtin scripts:}, qr{tpcb-like},
-		qr{simple-update},              qr{select-only}
+		qr{simple-update}, qr{select-only}
 	],
 	'pgbench builtin list');
 
@@ -268,7 +255,7 @@ pgbench(
 	[qr{^$}],
 	[
 		qr{select-only: }, qr{SELECT abalance FROM pgbench_accounts WHERE},
-		qr{(?!UPDATE)},    qr{(?!INSERT)}
+		qr{(?!UPDATE)}, qr{(?!INSERT)}
 	],
 	'pgbench builtin listing');
 

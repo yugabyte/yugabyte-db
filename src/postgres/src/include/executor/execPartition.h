@@ -2,7 +2,7 @@
  * execPartition.h
  *		POSTGRES partitioning executor interface
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -42,9 +42,13 @@ extern void ExecCleanupTupleRouting(ModifyTableState *mtstate,
  * PartitionedRelPruneInfo (see plannodes.h); though note that here,
  * subpart_map contains indexes into PartitionPruningData.partrelprunedata[].
  *
+ * partrel						Partitioned table Relation; obtained by
+ * 								ExecGetRangeTableRelation(estate, rti, false),
+ * 								where rti is PartitionedRelPruneInfo.rtindex.
  * nparts						Length of subplan_map[] and subpart_map[].
  * subplan_map					Subplan index by partition index, or -1.
  * subpart_map					Subpart index by partition index, or -1.
+ * leafpart_rti_map				RT index by partition index, or 0.
  * present_parts				A Bitmapset of the partition indexes that we
  *								have subplans or subparts for.
  * initial_pruning_steps		List of PartitionPruneSteps used to
@@ -58,9 +62,11 @@ extern void ExecCleanupTupleRouting(ModifyTableState *mtstate,
  */
 typedef struct PartitionedRelPruningData
 {
+	Relation	partrel;
 	int			nparts;
 	int		   *subplan_map;
 	int		   *subpart_map;
+	int		   *leafpart_rti_map;
 	Bitmapset  *present_parts;
 	List	   *initial_pruning_steps;
 	List	   *exec_pruning_steps;
@@ -90,6 +96,8 @@ typedef struct PartitionPruningData
  * the clauses being unable to match to any tuple that the subplan could
  * possibly produce.
  *
+ * econtext				Standalone ExprContext to evaluate expressions in
+ *						the pruning steps
  * execparamids			Contains paramids of PARAM_EXEC Params found within
  *						any of the partprunedata structs.  Pruning must be
  *						done again each time the value of one of these
@@ -112,6 +120,7 @@ typedef struct PartitionPruningData
  */
 typedef struct PartitionPruneState
 {
+	ExprContext *econtext;
 	Bitmapset  *execparamids;
 	Bitmapset  *other_subplans;
 	MemoryContext prune_context;
@@ -121,12 +130,15 @@ typedef struct PartitionPruneState
 	PartitionPruningData *partprunedata[FLEXIBLE_ARRAY_MEMBER];
 } PartitionPruneState;
 
-extern PartitionPruneState *ExecInitPartitionPruning(PlanState *planstate,
-													 int n_total_subplans,
-													 PartitionPruneInfo *pruneinfo,
-													 Bitmapset **initially_valid_subplans);
+extern void ExecDoInitialPruning(EState *estate);
+extern PartitionPruneState *ExecInitPartitionExecPruning(PlanState *planstate,
+														 int n_total_subplans,
+														 int part_prune_index,
+														 Bitmapset *relids,
+														 Bitmapset **initially_valid_subplans);
 extern Bitmapset *ExecFindMatchingSubPlans(PartitionPruneState *prunestate,
-										   bool initial_prune);
+										   bool initial_prune,
+										   Bitmapset **validsubplan_rtis);
 
 /* YB */
 extern Oid	YbPartitionTupleRoutingRootRelid(PartitionTupleRouting *proute);

@@ -3,7 +3,7 @@
  * array_userfuncs.c
  *	  Misc user-visible array support functions
  *
- * Copyright (c) 2003-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/array_userfuncs.c
@@ -12,13 +12,52 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_operator_d.h"
 #include "catalog/pg_type.h"
 #include "common/int.h"
+#include "common/pg_prng.h"
+#include "libpq/pqformat.h"
+#include "miscadmin.h"
+#include "nodes/supportnodes.h"
+#include "port/pg_bitutils.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/datum.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
+#include "utils/tuplesort.h"
 #include "utils/typcache.h"
 
+/*
+ * SerialIOData
+ *		Used for caching element-type data in array_agg_serialize
+ */
+typedef struct SerialIOData
+{
+	FmgrInfo	typsend;
+} SerialIOData;
+
+/*
+ * DeserialIOData
+ *		Used for caching element-type data in array_agg_deserialize
+ */
+typedef struct DeserialIOData
+{
+	FmgrInfo	typreceive;
+	Oid			typioparam;
+} DeserialIOData;
+
+/*
+ * ArraySortCachedInfo
+ *		Used for caching catalog data in array_sort
+ */
+typedef struct ArraySortCachedInfo
+{
+	ArrayMetaState array_meta;	/* metadata for array_create_iterator */
+	Oid			elem_lt_opr;	/* "<" operator for element type */
+	Oid			elem_gt_opr;	/* ">" operator for element type */
+	Oid			array_type;		/* pg_type OID of array type */
+} ArraySortCachedInfo;
 
 static Datum array_position_common(FunctionCallInfo fcinfo);
 
@@ -145,6 +184,36 @@ array_append(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM(result);
 }
 
+/*
+ * array_append_support()
+ *
+ * Planner support function for array_append()
+ */
+Datum
+array_append_support(PG_FUNCTION_ARGS)
+{
+	Node	   *rawreq = (Node *) PG_GETARG_POINTER(0);
+	Node	   *ret = NULL;
+
+	if (IsA(rawreq, SupportRequestModifyInPlace))
+	{
+		/*
+		 * We can optimize in-place appends if the function's array argument
+		 * is the array being assigned to.  We don't need to worry about array
+		 * references within the other argument.
+		 */
+		SupportRequestModifyInPlace *req = (SupportRequestModifyInPlace *) rawreq;
+		Param	   *arg = (Param *) linitial(req->args);
+
+		if (arg && IsA(arg, Param) &&
+			arg->paramkind == PARAM_EXTERN &&
+			arg->paramid == req->paramid)
+			ret = (Node *) arg;
+	}
+
+	PG_RETURN_POINTER(ret);
+}
+
 /*-----------------------------------------------------------------------------
  * array_prepend :
  *		push an element onto the front of a one-dimensional array
@@ -208,6 +277,36 @@ array_prepend(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM(result);
 }
 
+/*
+ * array_prepend_support()
+ *
+ * Planner support function for array_prepend()
+ */
+Datum
+array_prepend_support(PG_FUNCTION_ARGS)
+{
+	Node	   *rawreq = (Node *) PG_GETARG_POINTER(0);
+	Node	   *ret = NULL;
+
+	if (IsA(rawreq, SupportRequestModifyInPlace))
+	{
+		/*
+		 * We can optimize in-place prepends if the function's array argument
+		 * is the array being assigned to.  We don't need to worry about array
+		 * references within the other argument.
+		 */
+		SupportRequestModifyInPlace *req = (SupportRequestModifyInPlace *) rawreq;
+		Param	   *arg = (Param *) lsecond(req->args);
+
+		if (arg && IsA(arg, Param) &&
+			arg->paramkind == PARAM_EXTERN &&
+			arg->paramid == req->paramid)
+			ret = (Node *) arg;
+	}
+
+	PG_RETURN_POINTER(ret);
+}
+
 /*-----------------------------------------------------------------------------
  * array_cat :
  *		concatenate two nD arrays to form an nD array, or
@@ -239,7 +338,7 @@ array_cat(PG_FUNCTION_ARGS)
 	int			i;
 	char	   *dat1,
 			   *dat2;
-	bits8	   *bitmap1,
+	uint8	   *bitmap1,
 			   *bitmap2;
 	Oid			element_type;
 	Oid			element_type1;
@@ -335,8 +434,8 @@ array_cat(PG_FUNCTION_ARGS)
 		 * themselves) of the input argument arrays
 		 */
 		ndims = ndims1;
-		dims = (int *) palloc(ndims * sizeof(int));
-		lbs = (int *) palloc(ndims * sizeof(int));
+		dims = palloc_array(int, ndims);
+		lbs = palloc_array(int, ndims);
 
 		dims[0] = dims1[0] + dims2[0];
 		lbs[0] = lbs1[0];
@@ -361,8 +460,8 @@ array_cat(PG_FUNCTION_ARGS)
 		 * the first argument inserted at the front of the outer dimension
 		 */
 		ndims = ndims2;
-		dims = (int *) palloc(ndims * sizeof(int));
-		lbs = (int *) palloc(ndims * sizeof(int));
+		dims = palloc_array(int, ndims);
+		lbs = palloc_array(int, ndims);
 		memcpy(dims, dims2, ndims * sizeof(int));
 		memcpy(lbs, lbs2, ndims * sizeof(int));
 
@@ -389,8 +488,8 @@ array_cat(PG_FUNCTION_ARGS)
 		 * second argument appended to the end of the outer dimension
 		 */
 		ndims = ndims1;
-		dims = (int *) palloc(ndims * sizeof(int));
-		lbs = (int *) palloc(ndims * sizeof(int));
+		dims = palloc_array(int, ndims);
+		lbs = palloc_array(int, ndims);
 		memcpy(dims, dims1, ndims * sizeof(int));
 		memcpy(lbs, lbs1, ndims * sizeof(int));
 
@@ -500,6 +599,303 @@ array_agg_transfn(PG_FUNCTION_ARGS)
 }
 
 Datum
+array_agg_combine(PG_FUNCTION_ARGS)
+{
+	ArrayBuildState *state1;
+	ArrayBuildState *state2;
+	MemoryContext agg_context;
+	MemoryContext old_context;
+
+	if (!AggCheckCallContext(fcinfo, &agg_context))
+		elog(ERROR, "aggregate function called in non-aggregate context");
+
+	state1 = PG_ARGISNULL(0) ? NULL : (ArrayBuildState *) PG_GETARG_POINTER(0);
+	state2 = PG_ARGISNULL(1) ? NULL : (ArrayBuildState *) PG_GETARG_POINTER(1);
+
+	if (state2 == NULL)
+	{
+		/*
+		 * NULL state2 is easy, just return state1, which we know is already
+		 * in the agg_context
+		 */
+		if (state1 == NULL)
+			PG_RETURN_NULL();
+		PG_RETURN_POINTER(state1);
+	}
+
+	if (state1 == NULL)
+	{
+		/* We must copy state2's data into the agg_context */
+		state1 = initArrayResultWithSize(state2->element_type, agg_context,
+										 false, state2->alen);
+
+		old_context = MemoryContextSwitchTo(agg_context);
+
+		for (int i = 0; i < state2->nelems; i++)
+		{
+			if (!state2->dnulls[i])
+				state1->dvalues[i] = datumCopy(state2->dvalues[i],
+											   state1->typbyval,
+											   state1->typlen);
+			else
+				state1->dvalues[i] = (Datum) 0;
+		}
+
+		MemoryContextSwitchTo(old_context);
+
+		memcpy(state1->dnulls, state2->dnulls, sizeof(bool) * state2->nelems);
+
+		state1->nelems = state2->nelems;
+
+		PG_RETURN_POINTER(state1);
+	}
+	else if (state2->nelems > 0)
+	{
+		/* We only need to combine the two states if state2 has any elements */
+		int			reqsize = state1->nelems + state2->nelems;
+		MemoryContext oldContext = MemoryContextSwitchTo(state1->mcontext);
+
+		Assert(state1->element_type == state2->element_type);
+
+		/* Enlarge state1 arrays if needed */
+		if (state1->alen < reqsize)
+		{
+			/* Use a power of 2 size rather than allocating just reqsize */
+			state1->alen = pg_nextpower2_32(reqsize);
+			state1->dvalues = (Datum *) repalloc(state1->dvalues,
+												 state1->alen * sizeof(Datum));
+			state1->dnulls = (bool *) repalloc(state1->dnulls,
+											   state1->alen * sizeof(bool));
+		}
+
+		/* Copy in the state2 elements to the end of the state1 arrays */
+		for (int i = 0; i < state2->nelems; i++)
+		{
+			if (!state2->dnulls[i])
+				state1->dvalues[i + state1->nelems] =
+					datumCopy(state2->dvalues[i],
+							  state1->typbyval,
+							  state1->typlen);
+			else
+				state1->dvalues[i + state1->nelems] = (Datum) 0;
+		}
+
+		memcpy(&state1->dnulls[state1->nelems], state2->dnulls,
+			   sizeof(bool) * state2->nelems);
+
+		state1->nelems = reqsize;
+
+		MemoryContextSwitchTo(oldContext);
+	}
+
+	PG_RETURN_POINTER(state1);
+}
+
+/*
+ * array_agg_serialize
+ *		Serialize ArrayBuildState into bytea.
+ */
+Datum
+array_agg_serialize(PG_FUNCTION_ARGS)
+{
+	ArrayBuildState *state;
+	StringInfoData buf;
+	bytea	   *result;
+
+	/* cannot be called directly because of internal-type argument */
+	Assert(AggCheckCallContext(fcinfo, NULL));
+
+	state = (ArrayBuildState *) PG_GETARG_POINTER(0);
+
+	pq_begintypsend(&buf);
+
+	/*
+	 * element_type. Putting this first is more convenient in deserialization
+	 */
+	pq_sendint32(&buf, state->element_type);
+
+	/*
+	 * nelems -- send first so we know how large to make the dvalues and
+	 * dnulls array during deserialization.
+	 */
+	pq_sendint64(&buf, state->nelems);
+
+	/* alen can be decided during deserialization */
+
+	/* typlen */
+	pq_sendint16(&buf, state->typlen);
+
+	/* typbyval */
+	pq_sendbyte(&buf, state->typbyval);
+
+	/* typalign */
+	pq_sendbyte(&buf, state->typalign);
+
+	/* dnulls */
+	pq_sendbytes(&buf, state->dnulls, sizeof(bool) * state->nelems);
+
+	/*
+	 * dvalues.  By agreement with array_agg_deserialize, when the element
+	 * type is byval, we just transmit the Datum array as-is, including any
+	 * null elements.  For by-ref types, we must invoke the element type's
+	 * send function, and we skip null elements (which is why the nulls flags
+	 * must be sent first).
+	 */
+	if (state->typbyval)
+		pq_sendbytes(&buf, state->dvalues, sizeof(Datum) * state->nelems);
+	else
+	{
+		SerialIOData *iodata;
+		int			i;
+
+		/* Avoid repeat catalog lookups for typsend function */
+		iodata = (SerialIOData *) fcinfo->flinfo->fn_extra;
+		if (iodata == NULL)
+		{
+			Oid			typsend;
+			bool		typisvarlena;
+
+			iodata = (SerialIOData *)
+				MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+								   sizeof(SerialIOData));
+			getTypeBinaryOutputInfo(state->element_type, &typsend,
+									&typisvarlena);
+			fmgr_info_cxt(typsend, &iodata->typsend,
+						  fcinfo->flinfo->fn_mcxt);
+			fcinfo->flinfo->fn_extra = iodata;
+		}
+
+		for (i = 0; i < state->nelems; i++)
+		{
+			bytea	   *outputbytes;
+
+			if (state->dnulls[i])
+				continue;
+			outputbytes = SendFunctionCall(&iodata->typsend,
+										   state->dvalues[i]);
+			pq_sendint32(&buf, VARSIZE(outputbytes) - VARHDRSZ);
+			pq_sendbytes(&buf, VARDATA(outputbytes),
+						 VARSIZE(outputbytes) - VARHDRSZ);
+		}
+	}
+
+	result = pq_endtypsend(&buf);
+
+	PG_RETURN_BYTEA_P(result);
+}
+
+Datum
+array_agg_deserialize(PG_FUNCTION_ARGS)
+{
+	bytea	   *sstate;
+	ArrayBuildState *result;
+	StringInfoData buf;
+	Oid			element_type;
+	int64		nelems;
+	const char *temp;
+
+	if (!AggCheckCallContext(fcinfo, NULL))
+		elog(ERROR, "aggregate function called in non-aggregate context");
+
+	sstate = PG_GETARG_BYTEA_PP(0);
+
+	/*
+	 * Initialize a StringInfo so that we can "receive" it using the standard
+	 * recv-function infrastructure.
+	 */
+	initReadOnlyStringInfo(&buf, VARDATA_ANY(sstate),
+						   VARSIZE_ANY_EXHDR(sstate));
+
+	/* element_type */
+	element_type = pq_getmsgint(&buf, 4);
+
+	/* nelems */
+	nelems = pq_getmsgint64(&buf);
+
+	/* Create output ArrayBuildState with the needed number of elements */
+	result = initArrayResultWithSize(element_type, CurrentMemoryContext,
+									 false, nelems);
+	result->nelems = nelems;
+
+	/* typlen */
+	result->typlen = pq_getmsgint(&buf, 2);
+
+	/* typbyval */
+	result->typbyval = pq_getmsgbyte(&buf);
+
+	/* typalign */
+	result->typalign = pq_getmsgbyte(&buf);
+
+	/* dnulls */
+	temp = pq_getmsgbytes(&buf, sizeof(bool) * nelems);
+	memcpy(result->dnulls, temp, sizeof(bool) * nelems);
+
+	/* dvalues --- see comment in array_agg_serialize */
+	if (result->typbyval)
+	{
+		temp = pq_getmsgbytes(&buf, sizeof(Datum) * nelems);
+		memcpy(result->dvalues, temp, sizeof(Datum) * nelems);
+	}
+	else
+	{
+		DeserialIOData *iodata;
+
+		/* Avoid repeat catalog lookups for typreceive function */
+		iodata = (DeserialIOData *) fcinfo->flinfo->fn_extra;
+		if (iodata == NULL)
+		{
+			Oid			typreceive;
+
+			iodata = (DeserialIOData *)
+				MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+								   sizeof(DeserialIOData));
+			getTypeBinaryInputInfo(element_type, &typreceive,
+								   &iodata->typioparam);
+			fmgr_info_cxt(typreceive, &iodata->typreceive,
+						  fcinfo->flinfo->fn_mcxt);
+			fcinfo->flinfo->fn_extra = iodata;
+		}
+
+		for (int i = 0; i < nelems; i++)
+		{
+			int			itemlen;
+			StringInfoData elem_buf;
+
+			if (result->dnulls[i])
+			{
+				result->dvalues[i] = (Datum) 0;
+				continue;
+			}
+
+			itemlen = pq_getmsgint(&buf, 4);
+			if (itemlen < 0 || itemlen > (buf.len - buf.cursor))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+						 errmsg("insufficient data left in message")));
+
+			/*
+			 * Rather than copying data around, we just initialize a
+			 * StringInfo pointing to the correct portion of the message
+			 * buffer.
+			 */
+			initReadOnlyStringInfo(&elem_buf, &buf.data[buf.cursor], itemlen);
+
+			buf.cursor += itemlen;
+
+			/* Now call the element's receiveproc */
+			result->dvalues[i] = ReceiveFunctionCall(&iodata->typreceive,
+													 &elem_buf,
+													 iodata->typioparam,
+													 -1);
+		}
+	}
+
+	pq_getmsgend(&buf);
+
+	PG_RETURN_POINTER(result);
+}
+
+Datum
 array_agg_finalfn(PG_FUNCTION_ARGS)
 {
 	Datum		result;
@@ -576,6 +972,305 @@ array_agg_array_transfn(PG_FUNCTION_ARGS)
 	 * pass the ArrayBuildStateArr pointer through nodeAgg.c's machinations.
 	 */
 	PG_RETURN_POINTER(state);
+}
+
+Datum
+array_agg_array_combine(PG_FUNCTION_ARGS)
+{
+	ArrayBuildStateArr *state1;
+	ArrayBuildStateArr *state2;
+	MemoryContext agg_context;
+	MemoryContext old_context;
+
+	if (!AggCheckCallContext(fcinfo, &agg_context))
+		elog(ERROR, "aggregate function called in non-aggregate context");
+
+	state1 = PG_ARGISNULL(0) ? NULL : (ArrayBuildStateArr *) PG_GETARG_POINTER(0);
+	state2 = PG_ARGISNULL(1) ? NULL : (ArrayBuildStateArr *) PG_GETARG_POINTER(1);
+
+	if (state2 == NULL)
+	{
+		/*
+		 * NULL state2 is easy, just return state1, which we know is already
+		 * in the agg_context
+		 */
+		if (state1 == NULL)
+			PG_RETURN_NULL();
+		PG_RETURN_POINTER(state1);
+	}
+
+	if (state1 == NULL)
+	{
+		/* We must copy state2's data into the agg_context */
+		old_context = MemoryContextSwitchTo(agg_context);
+
+		state1 = initArrayResultArr(state2->array_type, InvalidOid,
+									agg_context, false);
+
+		state1->abytes = state2->abytes;
+		state1->data = (char *) palloc(state1->abytes);
+
+		if (state2->nullbitmap)
+		{
+			int			size = (state2->aitems + 7) / 8;
+
+			state1->nullbitmap = (uint8 *) palloc(size);
+			memcpy(state1->nullbitmap, state2->nullbitmap, size);
+		}
+
+		memcpy(state1->data, state2->data, state2->nbytes);
+		state1->nbytes = state2->nbytes;
+		state1->aitems = state2->aitems;
+		state1->nitems = state2->nitems;
+		state1->ndims = state2->ndims;
+		memcpy(state1->dims, state2->dims, sizeof(state2->dims));
+		memcpy(state1->lbs, state2->lbs, sizeof(state2->lbs));
+		state1->array_type = state2->array_type;
+		state1->element_type = state2->element_type;
+
+		MemoryContextSwitchTo(old_context);
+
+		PG_RETURN_POINTER(state1);
+	}
+
+	/* We only need to combine the two states if state2 has any items */
+	if (state2->nitems > 0)
+	{
+		MemoryContext oldContext;
+		int			reqsize;
+		int			newnitems;
+		int			i;
+
+		/*
+		 * Check the states are compatible with each other.  Ensure we use the
+		 * same error messages that are listed in accumArrayResultArr so that
+		 * the same error is shown as would have been if we'd not used the
+		 * combine function for the aggregation.
+		 */
+		if (state1->ndims != state2->ndims)
+			ereport(ERROR,
+					(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
+					 errmsg("cannot accumulate arrays of different dimensionality")));
+
+		/* Check dimensions match ignoring the first dimension. */
+		for (i = 1; i < state1->ndims; i++)
+		{
+			if (state1->dims[i] != state2->dims[i] || state1->lbs[i] != state2->lbs[i])
+				ereport(ERROR,
+						(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
+						 errmsg("cannot accumulate arrays of different dimensionality")));
+		}
+
+		/* Types should match already. */
+		Assert(state1->array_type == state2->array_type);
+		Assert(state1->element_type == state2->element_type);
+
+		/* Calculate new sizes, guarding against overflow. */
+		if (pg_add_s32_overflow(state1->nbytes, state2->nbytes, &reqsize) ||
+			pg_add_s32_overflow(state1->nitems, state2->nitems, &newnitems))
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("array size exceeds the maximum allowed (%zu)",
+							MaxArraySize)));
+
+		oldContext = MemoryContextSwitchTo(state1->mcontext);
+
+		/*
+		 * If there's not enough space in state1 then we'll need to reallocate
+		 * more.
+		 */
+		if (state1->abytes < reqsize)
+		{
+			/* use a power of 2 size rather than allocating just reqsize */
+			state1->abytes = pg_nextpower2_32(reqsize);
+			state1->data = (char *) repalloc(state1->data, state1->abytes);
+		}
+
+		/* Combine the null bitmaps, if present. */
+		if (state1->nullbitmap || state2->nullbitmap)
+		{
+			if (state1->nullbitmap == NULL)
+			{
+				/*
+				 * First input with nulls; we must retrospectively handle any
+				 * previous inputs by marking all their items non-null.
+				 */
+				state1->aitems = pg_nextpower2_32(Max(256, newnitems));
+				state1->nullbitmap = (uint8 *) palloc((state1->aitems + 7) / 8);
+				array_bitmap_copy(state1->nullbitmap, 0,
+								  NULL, 0,
+								  state1->nitems);
+			}
+			else if (newnitems > state1->aitems)
+			{
+				state1->aitems = pg_nextpower2_32(newnitems);
+				state1->nullbitmap = (uint8 *)
+					repalloc(state1->nullbitmap, (state1->aitems + 7) / 8);
+			}
+			/* This will do the right thing if state2->nullbitmap is NULL: */
+			array_bitmap_copy(state1->nullbitmap, state1->nitems,
+							  state2->nullbitmap, 0,
+							  state2->nitems);
+		}
+
+		/* Finally, combine the data and adjust sizes. */
+		memcpy(state1->data + state1->nbytes, state2->data, state2->nbytes);
+		state1->nbytes += state2->nbytes;
+		state1->nitems += state2->nitems;
+
+		state1->dims[0] += state2->dims[0];
+		/* remaining dims already match, per test above */
+
+		MemoryContextSwitchTo(oldContext);
+	}
+
+	PG_RETURN_POINTER(state1);
+}
+
+/*
+ * array_agg_array_serialize
+ *		Serialize ArrayBuildStateArr into bytea.
+ */
+Datum
+array_agg_array_serialize(PG_FUNCTION_ARGS)
+{
+	ArrayBuildStateArr *state;
+	StringInfoData buf;
+	bytea	   *result;
+
+	/* cannot be called directly because of internal-type argument */
+	Assert(AggCheckCallContext(fcinfo, NULL));
+
+	state = (ArrayBuildStateArr *) PG_GETARG_POINTER(0);
+
+	pq_begintypsend(&buf);
+
+	/*
+	 * element_type. Putting this first is more convenient in deserialization
+	 * so that we can init the new state sooner.
+	 */
+	pq_sendint32(&buf, state->element_type);
+
+	/* array_type */
+	pq_sendint32(&buf, state->array_type);
+
+	/* nbytes */
+	pq_sendint32(&buf, state->nbytes);
+
+	/* data */
+	pq_sendbytes(&buf, state->data, state->nbytes);
+
+	/* abytes */
+	pq_sendint32(&buf, state->abytes);
+
+	/* aitems */
+	pq_sendint32(&buf, state->aitems);
+
+	/* nullbitmap */
+	if (state->nullbitmap)
+	{
+		Assert(state->aitems > 0);
+		pq_sendbytes(&buf, state->nullbitmap, (state->aitems + 7) / 8);
+	}
+
+	/* nitems */
+	pq_sendint32(&buf, state->nitems);
+
+	/* ndims */
+	pq_sendint32(&buf, state->ndims);
+
+	/* dims: XXX should we just send ndims elements? */
+	pq_sendbytes(&buf, state->dims, sizeof(state->dims));
+
+	/* lbs */
+	pq_sendbytes(&buf, state->lbs, sizeof(state->lbs));
+
+	result = pq_endtypsend(&buf);
+
+	PG_RETURN_BYTEA_P(result);
+}
+
+Datum
+array_agg_array_deserialize(PG_FUNCTION_ARGS)
+{
+	bytea	   *sstate;
+	ArrayBuildStateArr *result;
+	StringInfoData buf;
+	Oid			element_type;
+	Oid			array_type;
+	int			nbytes;
+	const char *temp;
+
+	/* cannot be called directly because of internal-type argument */
+	Assert(AggCheckCallContext(fcinfo, NULL));
+
+	sstate = PG_GETARG_BYTEA_PP(0);
+
+	/*
+	 * Initialize a StringInfo so that we can "receive" it using the standard
+	 * recv-function infrastructure.
+	 */
+	initReadOnlyStringInfo(&buf, VARDATA_ANY(sstate),
+						   VARSIZE_ANY_EXHDR(sstate));
+
+	/* element_type */
+	element_type = pq_getmsgint(&buf, 4);
+
+	/* array_type */
+	array_type = pq_getmsgint(&buf, 4);
+
+	/* nbytes */
+	nbytes = pq_getmsgint(&buf, 4);
+
+	result = initArrayResultArr(array_type, element_type,
+								CurrentMemoryContext, false);
+
+	result->abytes = 1024;
+	while (result->abytes < nbytes)
+		result->abytes *= 2;
+
+	result->data = (char *) palloc(result->abytes);
+
+	/* data */
+	temp = pq_getmsgbytes(&buf, nbytes);
+	memcpy(result->data, temp, nbytes);
+	result->nbytes = nbytes;
+
+	/* abytes */
+	result->abytes = pq_getmsgint(&buf, 4);
+
+	/* aitems: might be 0 */
+	result->aitems = pq_getmsgint(&buf, 4);
+
+	/* nullbitmap */
+	if (result->aitems > 0)
+	{
+		int			size = (result->aitems + 7) / 8;
+
+		result->nullbitmap = (uint8 *) palloc(size);
+		temp = pq_getmsgbytes(&buf, size);
+		memcpy(result->nullbitmap, temp, size);
+	}
+	else
+		result->nullbitmap = NULL;
+
+	/* nitems */
+	result->nitems = pq_getmsgint(&buf, 4);
+
+	/* ndims */
+	result->ndims = pq_getmsgint(&buf, 4);
+
+	/* dims */
+	temp = pq_getmsgbytes(&buf, sizeof(result->dims));
+	memcpy(result->dims, temp, sizeof(result->dims));
+
+	/* lbs */
+	temp = pq_getmsgbytes(&buf, sizeof(result->lbs));
+	memcpy(result->lbs, temp, sizeof(result->lbs));
+
+	pq_getmsgend(&buf);
+
+	PG_RETURN_POINTER(result);
 }
 
 Datum
@@ -909,4 +1604,444 @@ array_positions(PG_FUNCTION_ARGS)
 	PG_FREE_IF_COPY(array, 0);
 
 	PG_RETURN_DATUM(makeArrayResult(astate, CurrentMemoryContext));
+}
+
+/*
+ * array_shuffle_n
+ *		Return a copy of array with n randomly chosen items.
+ *
+ * The number of items must not exceed the size of the first dimension of the
+ * array.  We preserve the first dimension's lower bound if keep_lb,
+ * else it's set to 1.  Lower-order dimensions are preserved in any case.
+ *
+ * NOTE: it would be cleaner to look up the elmlen/elmbval/elmalign info
+ * from the system catalogs, given only the elmtyp. However, the caller is
+ * in a better position to cache this info across multiple calls.
+ */
+static ArrayType *
+array_shuffle_n(ArrayType *array, int n, bool keep_lb,
+				Oid elmtyp, TypeCacheEntry *typentry)
+{
+	ArrayType  *result;
+	int			ndim,
+			   *dims,
+			   *lbs,
+				nelm,
+				nitem,
+				rdims[MAXDIM],
+				rlbs[MAXDIM];
+	int16		elmlen;
+	bool		elmbyval;
+	char		elmalign;
+	Datum	   *elms,
+			   *ielms;
+	bool	   *nuls,
+			   *inuls;
+
+	ndim = ARR_NDIM(array);
+	dims = ARR_DIMS(array);
+	lbs = ARR_LBOUND(array);
+
+	elmlen = typentry->typlen;
+	elmbyval = typentry->typbyval;
+	elmalign = typentry->typalign;
+
+	/* If the target array is empty, exit fast */
+	if (ndim < 1 || dims[0] < 1 || n < 1)
+		return construct_empty_array(elmtyp);
+
+	deconstruct_array(array, elmtyp, elmlen, elmbyval, elmalign,
+					  &elms, &nuls, &nelm);
+
+	nitem = dims[0];			/* total number of items */
+	nelm /= nitem;				/* number of elements per item */
+
+	Assert(n <= nitem);			/* else it's caller error */
+
+	/*
+	 * Shuffle array using Fisher-Yates algorithm.  Scan the array and swap
+	 * current item (nelm datums starting at ielms) with a randomly chosen
+	 * later item (nelm datums starting at jelms) in each iteration.  We can
+	 * stop once we've done n iterations; then first n items are the result.
+	 */
+	ielms = elms;
+	inuls = nuls;
+	for (int i = 0; i < n; i++)
+	{
+		int			j = (int) pg_prng_uint64_range(&pg_global_prng_state, i, nitem - 1) * nelm;
+		Datum	   *jelms = elms + j;
+		bool	   *jnuls = nuls + j;
+
+		/* Swap i'th and j'th items; advance ielms/inuls to next item */
+		for (int k = 0; k < nelm; k++)
+		{
+			Datum		elm = *ielms;
+			bool		nul = *inuls;
+
+			*ielms++ = *jelms;
+			*inuls++ = *jnuls;
+			*jelms++ = elm;
+			*jnuls++ = nul;
+		}
+	}
+
+	/* Set up dimensions of the result */
+	memcpy(rdims, dims, ndim * sizeof(int));
+	memcpy(rlbs, lbs, ndim * sizeof(int));
+	rdims[0] = n;
+	if (!keep_lb)
+		rlbs[0] = 1;
+
+	result = construct_md_array(elms, nuls, ndim, rdims, rlbs,
+								elmtyp, elmlen, elmbyval, elmalign);
+
+	pfree(elms);
+	pfree(nuls);
+
+	return result;
+}
+
+/*
+ * array_shuffle
+ *
+ * Returns an array with the same dimensions as the input array, with its
+ * first-dimension elements in random order.
+ */
+Datum
+array_shuffle(PG_FUNCTION_ARGS)
+{
+	ArrayType  *array = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *result;
+	Oid			elmtyp;
+	TypeCacheEntry *typentry;
+
+	/*
+	 * There is no point in shuffling empty arrays or arrays with less than
+	 * two items.
+	 */
+	if (ARR_NDIM(array) < 1 || ARR_DIMS(array)[0] < 2)
+		PG_RETURN_ARRAYTYPE_P(array);
+
+	elmtyp = ARR_ELEMTYPE(array);
+	typentry = (TypeCacheEntry *) fcinfo->flinfo->fn_extra;
+	if (typentry == NULL || typentry->type_id != elmtyp)
+	{
+		typentry = lookup_type_cache(elmtyp, 0);
+		fcinfo->flinfo->fn_extra = typentry;
+	}
+
+	result = array_shuffle_n(array, ARR_DIMS(array)[0], true, elmtyp, typentry);
+
+	PG_RETURN_ARRAYTYPE_P(result);
+}
+
+/*
+ * array_sample
+ *
+ * Returns an array of n randomly chosen first-dimension elements
+ * from the input array.
+ */
+Datum
+array_sample(PG_FUNCTION_ARGS)
+{
+	ArrayType  *array = PG_GETARG_ARRAYTYPE_P(0);
+	int			n = PG_GETARG_INT32(1);
+	ArrayType  *result;
+	Oid			elmtyp;
+	TypeCacheEntry *typentry;
+	int			nitem;
+
+	nitem = (ARR_NDIM(array) < 1) ? 0 : ARR_DIMS(array)[0];
+
+	if (n < 0 || n > nitem)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("sample size must be between 0 and %d", nitem)));
+
+	elmtyp = ARR_ELEMTYPE(array);
+	typentry = (TypeCacheEntry *) fcinfo->flinfo->fn_extra;
+	if (typentry == NULL || typentry->type_id != elmtyp)
+	{
+		typentry = lookup_type_cache(elmtyp, 0);
+		fcinfo->flinfo->fn_extra = typentry;
+	}
+
+	result = array_shuffle_n(array, n, false, elmtyp, typentry);
+
+	PG_RETURN_ARRAYTYPE_P(result);
+}
+
+
+/*
+ * array_reverse_n
+ *		Return a copy of array with reversed items.
+ *
+ * NOTE: it would be cleaner to look up the elmlen/elmbval/elmalign info
+ * from the system catalogs, given only the elmtyp. However, the caller is
+ * in a better position to cache this info across multiple calls.
+ */
+static ArrayType *
+array_reverse_n(ArrayType *array, Oid elmtyp, TypeCacheEntry *typentry)
+{
+	ArrayType  *result;
+	int			ndim,
+			   *dims,
+			   *lbs,
+				nelm,
+				nitem,
+				rdims[MAXDIM],
+				rlbs[MAXDIM];
+	int16		elmlen;
+	bool		elmbyval;
+	char		elmalign;
+	Datum	   *elms,
+			   *ielms;
+	bool	   *nuls,
+			   *inuls;
+
+	ndim = ARR_NDIM(array);
+	dims = ARR_DIMS(array);
+	lbs = ARR_LBOUND(array);
+
+	elmlen = typentry->typlen;
+	elmbyval = typentry->typbyval;
+	elmalign = typentry->typalign;
+
+	deconstruct_array(array, elmtyp, elmlen, elmbyval, elmalign,
+					  &elms, &nuls, &nelm);
+
+	nitem = dims[0];			/* total number of items */
+	nelm /= nitem;				/* number of elements per item */
+
+	/* Reverse the array */
+	ielms = elms;
+	inuls = nuls;
+	for (int i = 0; i < nitem / 2; i++)
+	{
+		int			j = (nitem - i - 1) * nelm;
+		Datum	   *jelms = elms + j;
+		bool	   *jnuls = nuls + j;
+
+		/* Swap i'th and j'th items; advance ielms/inuls to next item */
+		for (int k = 0; k < nelm; k++)
+		{
+			Datum		elm = *ielms;
+			bool		nul = *inuls;
+
+			*ielms++ = *jelms;
+			*inuls++ = *jnuls;
+			*jelms++ = elm;
+			*jnuls++ = nul;
+		}
+	}
+
+	/* Set up dimensions of the result */
+	memcpy(rdims, dims, ndim * sizeof(int));
+	memcpy(rlbs, lbs, ndim * sizeof(int));
+	rdims[0] = nitem;
+
+	result = construct_md_array(elms, nuls, ndim, rdims, rlbs,
+								elmtyp, elmlen, elmbyval, elmalign);
+
+	pfree(elms);
+	pfree(nuls);
+
+	return result;
+}
+
+/*
+ * array_reverse
+ *
+ * Returns an array with the same dimensions as the input array, with its
+ * first-dimension elements in reverse order.
+ */
+Datum
+array_reverse(PG_FUNCTION_ARGS)
+{
+	ArrayType  *array = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *result;
+	Oid			elmtyp;
+	TypeCacheEntry *typentry;
+
+	/*
+	 * There is no point in reversing empty arrays or arrays with less than
+	 * two items.
+	 */
+	if (ARR_NDIM(array) < 1 || ARR_DIMS(array)[0] < 2)
+		PG_RETURN_ARRAYTYPE_P(array);
+
+	elmtyp = ARR_ELEMTYPE(array);
+	typentry = (TypeCacheEntry *) fcinfo->flinfo->fn_extra;
+	if (typentry == NULL || typentry->type_id != elmtyp)
+	{
+		typentry = lookup_type_cache(elmtyp, 0);
+		fcinfo->flinfo->fn_extra = (void *) typentry;
+	}
+
+	result = array_reverse_n(array, elmtyp, typentry);
+
+	PG_RETURN_ARRAYTYPE_P(result);
+}
+
+/*
+ * array_sort
+ *
+ * Sorts the first dimension of the array.
+ */
+static ArrayType *
+array_sort_internal(ArrayType *array, bool descending, bool nulls_first,
+					FunctionCallInfo fcinfo)
+{
+	ArrayType  *newarray;
+	Oid			collation = PG_GET_COLLATION();
+	int			ndim,
+			   *dims,
+			   *lbs;
+	ArraySortCachedInfo *cache_info;
+	Oid			elmtyp;
+	Oid			sort_typ;
+	Oid			sort_opr;
+	Tuplesortstate *tuplesortstate;
+	ArrayIterator array_iterator;
+	Datum		value;
+	bool		isnull;
+	ArrayBuildStateAny *astate = NULL;
+
+	ndim = ARR_NDIM(array);
+	dims = ARR_DIMS(array);
+	lbs = ARR_LBOUND(array);
+
+	/* Quick exit if we don't need to sort */
+	if (ndim < 1 || dims[0] < 2)
+		return array;
+
+	/* Set up cache area if we didn't already */
+	cache_info = (ArraySortCachedInfo *) fcinfo->flinfo->fn_extra;
+	if (cache_info == NULL)
+	{
+		cache_info = (ArraySortCachedInfo *)
+			MemoryContextAllocZero(fcinfo->flinfo->fn_mcxt,
+								   sizeof(ArraySortCachedInfo));
+		fcinfo->flinfo->fn_extra = cache_info;
+	}
+
+	/* Fetch and cache required data if we don't have it */
+	elmtyp = ARR_ELEMTYPE(array);
+	if (elmtyp != cache_info->array_meta.element_type)
+	{
+		TypeCacheEntry *typentry;
+
+		typentry = lookup_type_cache(elmtyp,
+									 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
+		cache_info->array_meta.element_type = elmtyp;
+		cache_info->array_meta.typlen = typentry->typlen;
+		cache_info->array_meta.typbyval = typentry->typbyval;
+		cache_info->array_meta.typalign = typentry->typalign;
+		cache_info->elem_lt_opr = typentry->lt_opr;
+		cache_info->elem_gt_opr = typentry->gt_opr;
+		cache_info->array_type = typentry->typarray;
+	}
+
+	/* Identify the sort operator to use */
+	if (ndim == 1)
+	{
+		/* Need to sort the element type */
+		sort_typ = elmtyp;
+		sort_opr = (descending ? cache_info->elem_gt_opr : cache_info->elem_lt_opr);
+	}
+	else
+	{
+		/* Otherwise we're sorting arrays */
+		sort_typ = cache_info->array_type;
+		if (!OidIsValid(sort_typ))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("could not find array type for data type %s",
+							format_type_be(elmtyp))));
+		/* We know what operators to use for arrays */
+		sort_opr = (descending ? ARRAY_GT_OP : ARRAY_LT_OP);
+	}
+
+	/*
+	 * Fail if we don't know how to sort.  The error message is chosen to
+	 * match what array_lt()/array_gt() will say in the multidimensional case.
+	 */
+	if (!OidIsValid(sort_opr))
+		ereport(ERROR,
+				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("could not identify a comparison function for type %s",
+					   format_type_be(elmtyp)));
+
+	/* Put the things to be sorted (elements or sub-arrays) into a tuplesort */
+	tuplesortstate = tuplesort_begin_datum(sort_typ,
+										   sort_opr,
+										   collation,
+										   nulls_first,
+										   work_mem,
+										   NULL,
+										   TUPLESORT_NONE);
+
+	array_iterator = array_create_iterator(array, ndim - 1,
+										   &cache_info->array_meta);
+	while (array_iterate(array_iterator, &value, &isnull))
+	{
+		tuplesort_putdatum(tuplesortstate, value, isnull);
+	}
+	array_free_iterator(array_iterator);
+
+	/* Do the sort */
+	tuplesort_performsort(tuplesortstate);
+
+	/* Extract results into a new array */
+	while (tuplesort_getdatum(tuplesortstate, true, false, &value, &isnull, NULL))
+	{
+		astate = accumArrayResultAny(astate, value, isnull,
+									 sort_typ, CurrentMemoryContext);
+	}
+	tuplesort_end(tuplesortstate);
+
+	newarray = DatumGetArrayTypeP(makeArrayResultAny(astate,
+													 CurrentMemoryContext,
+													 true));
+
+	/* Adjust lower bound to match the input */
+	ARR_LBOUND(newarray)[0] = lbs[0];
+
+	return newarray;
+}
+
+Datum
+array_sort(PG_FUNCTION_ARGS)
+{
+	ArrayType  *array = PG_GETARG_ARRAYTYPE_P(0);
+
+	PG_RETURN_ARRAYTYPE_P(array_sort_internal(array,
+											  false,
+											  false,
+											  fcinfo));
+}
+
+Datum
+array_sort_order(PG_FUNCTION_ARGS)
+{
+	ArrayType  *array = PG_GETARG_ARRAYTYPE_P(0);
+	bool		descending = PG_GETARG_BOOL(1);
+
+	PG_RETURN_ARRAYTYPE_P(array_sort_internal(array,
+											  descending,
+											  descending,
+											  fcinfo));
+}
+
+Datum
+array_sort_order_nulls_first(PG_FUNCTION_ARGS)
+{
+	ArrayType  *array = PG_GETARG_ARRAYTYPE_P(0);
+	bool		descending = PG_GETARG_BOOL(1);
+	bool		nulls_first = PG_GETARG_BOOL(2);
+
+	PG_RETURN_ARRAYTYPE_P(array_sort_internal(array,
+											  descending,
+											  nulls_first,
+											  fcinfo));
 }

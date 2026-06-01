@@ -3,7 +3,7 @@
  * blinsert.c
  *		Bloom index build and insert functions.
  *
- * Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/bloom/blinsert.c
@@ -16,15 +16,16 @@
 #include "access/generic_xlog.h"
 #include "access/tableam.h"
 #include "bloom.h"
-#include "catalog/index.h"
 #include "miscadmin.h"
+#include "nodes/execnodes.h"
 #include "storage/bufmgr.h"
-#include "storage/indexfsm.h"
-#include "storage/smgr.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "bloom",
+					.version = PG_VERSION
+);
 
 /*
  * State of bloom index build.  We accumulate one page data here before
@@ -129,7 +130,7 @@ blbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 			 RelationGetRelationName(index));
 
 	/* Initialize the meta page */
-	BloomInitMetapage(index);
+	BloomInitMetapage(index, MAIN_FORKNUM);
 
 	/* Initialize the bloom build state */
 	memset(&buildstate, 0, sizeof(buildstate));
@@ -141,7 +142,7 @@ blbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 
 	/* Do the heap scan */
 	reltuples = table_index_build_scan(heap, index, indexInfo, true, true,
-									   bloomBuildCallback, (void *) &buildstate,
+									   bloomBuildCallback, &buildstate,
 									   NULL);
 
 	/* Flush last page if needed (it will be, unless heap was empty) */
@@ -150,7 +151,7 @@ blbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 
 	MemoryContextDelete(buildstate.tmpCtx);
 
-	result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
+	result = palloc_object(IndexBuildResult);
 	result->heap_tuples = reltuples;
 	result->index_tuples = buildstate.indtuples;
 
@@ -163,31 +164,8 @@ blbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 void
 blbuildempty(Relation index)
 {
-	Page		metapage;
-
-	/* Construct metapage. */
-	metapage = (Page) palloc(BLCKSZ);
-	BloomFillMetapage(index, metapage);
-
-	/*
-	 * Write the page and log it.  It might seem that an immediate sync would
-	 * be sufficient to guarantee that the file exists on disk, but recovery
-	 * itself might remove it while replaying, for example, an
-	 * XLOG_DBASE_CREATE* or XLOG_TBLSPC_CREATE record.  Therefore, we need
-	 * this even when wal_level=minimal.
-	 */
-	PageSetChecksumInplace(metapage, BLOOM_METAPAGE_BLKNO);
-	smgrwrite(RelationGetSmgr(index), INIT_FORKNUM, BLOOM_METAPAGE_BLKNO,
-			  (char *) metapage, true);
-	log_newpage(&(RelationGetSmgr(index))->smgr_rnode.node, INIT_FORKNUM,
-				BLOOM_METAPAGE_BLKNO, metapage, true);
-
-	/*
-	 * An immediate sync is required even if we xlog'd the page, because the
-	 * write did not go through shared_buffers and therefore a concurrent
-	 * checkpoint may have moved the redo pointer past our xlog record.
-	 */
-	smgrimmedsync(RelationGetSmgr(index), INIT_FORKNUM);
+	/* Initialize the meta page */
+	BloomInitMetapage(index, INIT_FORKNUM);
 }
 
 /*
@@ -232,8 +210,6 @@ blinsert(Relation index, Datum *values, bool *isnull,
 
 	if (metaData->nEnd > metaData->nStart)
 	{
-		Page		page;
-
 		blkno = metaData->notFullPage[metaData->nStart];
 		Assert(blkno != InvalidBlockNumber);
 

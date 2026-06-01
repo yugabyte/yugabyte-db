@@ -3,7 +3,7 @@
  * bool.c
  *	  Functions for the built-in type "bool".
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,6 +17,7 @@
 
 #include <ctype.h>
 
+#include "common/hashfn.h"
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
 
@@ -35,6 +36,7 @@ parse_bool(const char *value, bool *result)
 bool
 parse_bool_with_len(const char *value, size_t len, bool *result)
 {
+	/* Check the most-used possibilities first. */
 	switch (*value)
 	{
 		case 't':
@@ -119,12 +121,7 @@ parse_bool_with_len(const char *value, size_t len, bool *result)
  *****************************************************************************/
 
 /*
- *		boolin			- converts "t" or "f" to 1 or 0
- *
- * Check explicitly for "true/false" and TRUE/FALSE, 1/0, YES/NO, ON/OFF.
- * Reject other values.
- *
- * In the switch statement, check the most-used possibilities first.
+ *		boolin			- input function for type boolean
  */
 Datum
 boolin(PG_FUNCTION_ARGS)
@@ -148,13 +145,10 @@ boolin(PG_FUNCTION_ARGS)
 	if (parse_bool_with_len(str, len, &result))
 		PG_RETURN_BOOL(result);
 
-	ereport(ERROR,
+	ereturn(fcinfo->context, (Datum) 0,
 			(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 			 errmsg("invalid input syntax for type %s: \"%s\"",
 					"boolean", in_str)));
-
-	/* not reached */
-	PG_RETURN_BOOL(false);
 }
 
 /*
@@ -278,6 +272,18 @@ boolge(PG_FUNCTION_ARGS)
 	bool		arg2 = PG_GETARG_BOOL(1);
 
 	PG_RETURN_BOOL(arg1 >= arg2);
+}
+
+Datum
+hashbool(PG_FUNCTION_ARGS)
+{
+	return hash_uint32((int32) PG_GETARG_BOOL(0));
+}
+
+Datum
+hashboolextended(PG_FUNCTION_ARGS)
+{
+	return hash_uint32_extended((int32) PG_GETARG_BOOL(0), PG_GETARG_INT64(1));
 }
 
 /*

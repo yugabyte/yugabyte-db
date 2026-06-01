@@ -1,9 +1,9 @@
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Verify WAL consistency
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -70,6 +70,6 @@ my ($ret, $out, $err) = $whiskey->psql(
 	});
 cmp_ok($out, '>=', 1);
 
-$whiskey->wait_for_catchup($charlie, 'replay', $whiskey->lsn('insert'));
+$whiskey->wait_for_replay_catchup($charlie);
 
 done_testing();

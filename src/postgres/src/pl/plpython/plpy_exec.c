@@ -9,6 +9,7 @@
 #include "access/htup_details.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
+#include "commands/event_trigger.h"
 #include "commands/trigger.h"
 #include "executor/spi.h"
 #include "funcapi.h"
@@ -17,11 +18,9 @@
 #include "plpy_main.h"
 #include "plpy_procedure.h"
 #include "plpy_subxactobject.h"
-#include "plpython.h"
-#include "utils/builtins.h"
-#include "utils/lsyscache.h"
+#include "plpy_util.h"
+#include "utils/fmgrprotos.h"
 #include "utils/rel.h"
-#include "utils/typcache.h"
 
 /* saved state for a set-returning function */
 typedef struct PLySRFState
@@ -82,10 +81,10 @@ PLy_exec_function(FunctionCallInfo fcinfo, PLyProcedure *proc)
 										   sizeof(PLySRFState));
 				/* Immediately register cleanup callback */
 				srfstate->callback.func = plpython_srf_cleanup_callback;
-				srfstate->callback.arg = (void *) srfstate;
+				srfstate->callback.arg = srfstate;
 				MemoryContextRegisterResetCallback(funcctx->multi_call_memory_ctx,
 												   &srfstate->callback);
-				funcctx->user_fctx = (void *) srfstate;
+				funcctx->user_fctx = srfstate;
 			}
 			/* Every call setup */
 			funcctx = SRF_PERCALL_SETUP();
@@ -398,8 +397,6 @@ PLy_exec_trigger(FunctionCallInfo fcinfo, PLyProcedure *proc)
 				rv = NULL;
 			else if (pg_strcasecmp(srv, "MODIFY") == 0)
 			{
-				TriggerData *tdata = (TriggerData *) fcinfo->context;
-
 				if (TRIGGER_FIRED_BY_INSERT(tdata->tg_event) ||
 					TRIGGER_FIRED_BY_UPDATE(tdata->tg_event))
 					rv = PLy_modify_tuple(proc, plargs, tdata, rv);
@@ -429,6 +426,47 @@ PLy_exec_trigger(FunctionCallInfo fcinfo, PLyProcedure *proc)
 	PG_END_TRY();
 
 	return rv;
+}
+
+/*
+ * event trigger subhandler
+ */
+void
+PLy_exec_event_trigger(FunctionCallInfo fcinfo, PLyProcedure *proc)
+{
+	EventTriggerData *tdata;
+	PyObject   *volatile pltdata = NULL;
+
+	Assert(CALLED_AS_EVENT_TRIGGER(fcinfo));
+	tdata = (EventTriggerData *) fcinfo->context;
+
+	PG_TRY();
+	{
+		PyObject   *pltevent,
+				   *plttag;
+
+		pltdata = PyDict_New();
+		if (!pltdata)
+			PLy_elog(ERROR, NULL);
+
+		pltevent = PLyUnicode_FromString(tdata->event);
+		PyDict_SetItemString(pltdata, "event", pltevent);
+		Py_DECREF(pltevent);
+
+		plttag = PLyUnicode_FromString(GetCommandTagName(tdata->tag));
+		PyDict_SetItemString(pltdata, "tag", plttag);
+		Py_DECREF(plttag);
+
+		PLy_procedure_call(proc, "TD", pltdata);
+
+		if (SPI_finish() != SPI_OK_FINISH)
+			elog(ERROR, "SPI_finish() failed");
+	}
+	PG_FINALLY();
+	{
+		Py_XDECREF(pltdata);
+	}
+	PG_END_TRY();
 }
 
 /* helper functions for Python code execution */
@@ -513,7 +551,7 @@ PLy_function_save_args(PLyProcedure *proc)
 	Py_XINCREF(result->args);
 
 	/* If it's a trigger, also save "TD" */
-	if (proc->is_trigger)
+	if (proc->is_trigger == PLPY_TRIGGER)
 	{
 		result->td = PyDict_GetItemString(proc->globals, "TD");
 		Py_XINCREF(result->td);
@@ -1008,7 +1046,7 @@ PLy_modify_tuple(PLyProcedure *proc, PyObject *pltd, TriggerData *tdata,
 			Py_INCREF(plval);
 
 			/* We assume proc->result is set up to convert tuples properly */
-			att = &proc->result.u.tuple.atts[attn - 1];
+			att = &proc->result.tuple.atts[attn - 1];
 
 			modvalues[attn - 1] = PLy_output_convert(att,
 													 plval,
@@ -1070,13 +1108,7 @@ PLy_procedure_call(PLyProcedure *proc, const char *kargs, PyObject *vargs)
 
 	PG_TRY();
 	{
-#if PY_VERSION_HEX >= 0x03020000
-		rv = PyEval_EvalCode(proc->code,
-							 proc->globals, proc->globals);
-#else
-		rv = PyEval_EvalCode((PyCodeObject *) proc->code,
-							 proc->globals, proc->globals);
-#endif
+		rv = PyEval_EvalCode(proc->code, proc->globals, proc->globals);
 
 		/*
 		 * Since plpy will only let you close subtransactions that you

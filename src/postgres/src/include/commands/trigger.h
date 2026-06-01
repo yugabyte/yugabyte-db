@@ -3,7 +3,7 @@
  * trigger.h
  *	  Declarations for trigger handling.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/trigger.h
@@ -82,7 +82,9 @@ typedef struct TransitionCaptureState
 	/*
 	 * Private data including the tuplestore(s) into which to insert tuples.
 	 */
-	struct AfterTriggersTableData *tcs_private;
+	struct AfterTriggersTableData *tcs_insert_private;
+	struct AfterTriggersTableData *tcs_update_private;
+	struct AfterTriggersTableData *tcs_delete_private;
 } TransitionCaptureState;
 
 /*
@@ -155,11 +157,11 @@ extern PGDLLIMPORT int SessionReplicationRole;
 #define TRIGGER_FIRES_ON_REPLICA			'R'
 #define TRIGGER_DISABLED					'D'
 
-extern ObjectAddress CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
+extern ObjectAddress CreateTrigger(const CreateTrigStmt *stmt, const char *queryString,
 								   Oid relOid, Oid refRelOid, Oid constraintOid, Oid indexOid,
 								   Oid funcoid, Oid parentTriggerOid, Node *whenClause,
 								   bool isInternal, bool in_partition);
-extern ObjectAddress CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
+extern ObjectAddress CreateTriggerFiringOn(const CreateTrigStmt *stmt, const char *queryString,
 										   Oid relOid, Oid refRelOid, Oid constraintOid,
 										   Oid indexOid, Oid funcoid, Oid parentTriggerOid,
 										   Node *whenClause, bool isInternal, bool in_partition,
@@ -170,18 +172,13 @@ extern void TriggerSetParentTrigger(Relation trigRel,
 									Oid parentTrigId,
 									Oid childTableId);
 extern void RemoveTriggerById(Oid trigOid);
-extern Oid	get_trigger_oid(Oid relid, const char *name, bool missing_ok);
+extern Oid	get_trigger_oid(Oid relid, const char *trigname, bool missing_ok);
 
 extern ObjectAddress renametrig(RenameStmt *stmt);
 
-extern void EnableDisableTriggerNew2(Relation rel, const char *tgname, Oid tgparent,
-									 char fires_when, bool skip_system, bool recurse,
-									 LOCKMODE lockmode);
-extern void EnableDisableTriggerNew(Relation rel, const char *tgname,
-									char fires_when, bool skip_system, bool recurse,
-									LOCKMODE lockmode);
-extern void EnableDisableTrigger(Relation rel, const char *tgname,
-								 char fires_when, bool skip_system, LOCKMODE lockmode);
+extern void EnableDisableTrigger(Relation rel, const char *tgname, Oid tgparent,
+								 char fires_when, bool skip_system, bool recurse,
+								 LOCKMODE lockmode);
 
 extern void RelationBuildTriggers(Relation relation, const YbTupleCache *yb_pg_trigger_cache);
 
@@ -215,20 +212,15 @@ extern void ExecBSDeleteTriggers(EState *estate,
 extern void ExecASDeleteTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 TransitionCaptureState *transition_capture);
-extern bool ExecBRDeleteTriggersNew(EState *estate,
-									EPQState *epqstate,
-									ResultRelInfo *relinfo,
-									ItemPointer tupleid,
-									HeapTuple fdw_trigtuple,
-									TupleTableSlot **epqslot,
-									TM_Result *tmresult,
-									TM_FailureData *tmfd);
 extern bool ExecBRDeleteTriggers(EState *estate,
 								 EPQState *epqstate,
 								 ResultRelInfo *relinfo,
 								 ItemPointer tupleid,
 								 HeapTuple fdw_trigtuple,
-								 TupleTableSlot **epqslot);
+								 TupleTableSlot **epqslot,
+								 TM_Result *tmresult,
+								 TM_FailureData *tmfd,
+								 bool is_merge_delete);
 extern void ExecARDeleteTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 ItemPointer tupleid,
@@ -243,35 +235,29 @@ extern void ExecBSUpdateTriggers(EState *estate,
 extern void ExecASUpdateTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 TransitionCaptureState *transition_capture);
-extern bool ExecBRUpdateTriggersNew(EState *estate,
-									EPQState *epqstate,
-									ResultRelInfo *relinfo,
-									ItemPointer tupleid,
-									HeapTuple fdw_trigtuple,
-									TupleTableSlot *newslot,
-									TM_Result *tmresult,
-									TM_FailureData *tmfd);
 extern bool ExecBRUpdateTriggers(EState *estate,
 								 EPQState *epqstate,
 								 ResultRelInfo *relinfo,
 								 ItemPointer tupleid,
 								 HeapTuple fdw_trigtuple,
-								 TupleTableSlot *slot,
-								 TM_FailureData *tmfdp);
+								 TupleTableSlot *newslot,
+								 TM_Result *tmresult,
+								 TM_FailureData *tmfd,
+								 bool is_merge_update);
 extern void ExecARUpdateTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 ResultRelInfo *src_partinfo,
 								 ResultRelInfo *dst_partinfo,
 								 ItemPointer tupleid,
 								 HeapTuple fdw_trigtuple,
-								 TupleTableSlot *slot,
+								 TupleTableSlot *newslot,
 								 List *recheckIndexes,
 								 TransitionCaptureState *transition_capture,
 								 bool is_crosspart_update);
 extern bool ExecIRUpdateTriggers(EState *estate,
 								 ResultRelInfo *relinfo,
 								 HeapTuple trigtuple,
-								 TupleTableSlot *slot);
+								 TupleTableSlot *newslot);
 extern void ExecBSTruncateTriggers(EState *estate,
 								   ResultRelInfo *relinfo);
 extern void ExecASTruncateTriggers(EState *estate,
@@ -292,10 +278,10 @@ extern bool AfterTriggerPendingOnRel(Oid relid);
  * in utils/adt/ri_triggers.c
  */
 extern bool RI_FKey_pk_upd_check_required(Trigger *trigger, Relation pk_rel,
-										  TupleTableSlot *old_slot, TupleTableSlot *new_slot,
+										  TupleTableSlot *oldslot, TupleTableSlot *newslot,
 										  const YbSkippableEntities *yb_skip_entities);
 extern bool RI_FKey_fk_upd_check_required(Trigger *trigger, Relation fk_rel,
-										  TupleTableSlot *old_slot, TupleTableSlot *new_slot,
+										  TupleTableSlot *oldslot, TupleTableSlot *newslot,
 										  const YbSkippableEntities *yb_skip_entities);
 extern bool RI_Initial_Check(Trigger *trigger,
 							 Relation fk_rel, Relation pk_rel);
@@ -308,6 +294,27 @@ extern void RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel,
 #define RI_TRIGGER_NONE 0		/* is not an RI trigger function */
 
 extern int	RI_FKey_trigger_type(Oid tgfoid);
+
+/*
+ * Callback type for end-of-trigger-batch callbacks.
+ *
+ * Currently used by ri_triggers.c to flush fast-path FK batches and
+ * clean up associated resources.
+ *
+ * Registered via RegisterAfterTriggerBatchCallback().  Invoked when
+ * the current trigger-firing batch completes:
+ *	- AfterTriggerEndQuery()      (immediate constraints)
+ *	- AfterTriggerFireDeferred()  (deferred constraints at COMMIT)
+ *	- AfterTriggerSetState()      (SET CONSTRAINTS IMMEDIATE)
+ *
+ * The callback list is cleared after each batch.  Callers must
+ * re-register if they need to be called again in a subsequent batch.
+ */
+typedef void (*AfterTriggerBatchCallback) (void *arg);
+
+extern void RegisterAfterTriggerBatchCallback(AfterTriggerBatchCallback callback,
+											  void *arg);
+extern bool AfterTriggerIsActive(void);
 
 /* YB */
 extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,

@@ -3,7 +3,7 @@
  * relpath.h
  *		Declarations for GetRelationPath() and friends
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/common/relpath.h
@@ -14,17 +14,33 @@
 #define RELPATH_H
 
 /*
- *	'pgrminclude ignore' needed here because CppAsString2() does not throw
- *	an error if the symbol is not defined.
+ *	Required here; note that CppAsString2() does not throw an error if the
+ *	symbol is not defined.
  */
-#include "catalog/catversion.h" /* pgrminclude ignore */
+#include "catalog/catversion.h"
 
+/*
+ * RelFileNumber data type identifies the specific relation file name.
+ */
+typedef Oid RelFileNumber;
+#define InvalidRelFileNumber		((RelFileNumber) InvalidOid)
+#define RelFileNumberIsValid(relnumber) \
+				((bool) ((relnumber) != InvalidRelFileNumber))
 
 /*
  * Name of major-version-specific tablespace subdirectories
  */
 #define TABLESPACE_VERSION_DIRECTORY	"PG_" PG_MAJORVERSION "_" \
 									CppAsString2(CATALOG_VERSION_NO)
+
+/*
+ * Tablespace path (relative to installation's $PGDATA).
+ *
+ * These values should not be changed as many tools rely on it.
+ */
+#define PG_TBLSPC_DIR "pg_tblspc"
+#define PG_TBLSPC_DIR_SLASH "pg_tblspc/"	/* required for strings
+											 * comparisons */
 
 /* Characters to allow for an OID in a relation path */
 #define OIDCHARS		10		/* max chars printed by %u */
@@ -43,7 +59,7 @@ typedef enum ForkNumber
 	MAIN_FORKNUM = 0,
 	FSM_FORKNUM,
 	VISIBILITYMAP_FORKNUM,
-	INIT_FORKNUM
+	INIT_FORKNUM,
 
 	/*
 	 * NOTE: if you add a new fork, change MAX_FORKNUM and possibly
@@ -61,30 +77,78 @@ extern PGDLLIMPORT const char *const forkNames[];
 extern ForkNumber forkname_to_number(const char *forkName);
 extern int	forkname_chars(const char *str, ForkNumber *fork);
 
+
+/*
+ * Unfortunately, there's no easy way to derive PROCNUMBER_CHARS from
+ * MAX_BACKENDS. MAX_BACKENDS is 2^18-1. Crosschecked in test_relpath().
+ */
+#define PROCNUMBER_CHARS	6
+
+/*
+ * The longest possible relation path lengths is from the following format:
+ * sprintf(rp.path, "%s/%u/%s/%u/t%d_%u",
+ *         PG_TBLSPC_DIR, spcOid,
+ *         TABLESPACE_VERSION_DIRECTORY,
+ *         dbOid, procNumber, relNumber);
+ *
+ * Note this does *not* include the trailing null-byte, to make it easier to
+ * combine it with other lengths.
+ */
+#define REL_PATH_STR_MAXLEN \
+	( \
+		sizeof(PG_TBLSPC_DIR) - 1 \
+		+ sizeof((char)'/') \
+		+ OIDCHARS /* spcOid */ \
+		+ sizeof((char)'/') \
+		+ sizeof(TABLESPACE_VERSION_DIRECTORY) - 1 \
+		+ sizeof((char)'/') \
+		+ OIDCHARS /* dbOid */ \
+		+ sizeof((char)'/') \
+		+ sizeof((char)'t') /* temporary table indicator */ \
+		+ PROCNUMBER_CHARS /* procNumber */ \
+		+ sizeof((char)'_') \
+		+ OIDCHARS /* relNumber */ \
+		+ sizeof((char)'_') \
+		+ FORKNAMECHARS /* forkNames[forkNumber] */ \
+	)
+
+/*
+ * String of the exact length required to represent a relation path. We return
+ * this struct, instead of char[REL_PATH_STR_MAXLEN + 1], as the pointer would
+ * decay to a plain char * too easily, possibly preventing the compiler from
+ * detecting invalid references to the on-stack return value of
+ * GetRelationPath().
+ */
+typedef struct RelPathStr
+{
+	char		str[REL_PATH_STR_MAXLEN + 1];
+} RelPathStr;
+
+
 /*
  * Stuff for computing filesystem pathnames for relations.
  */
-extern char *GetDatabasePath(Oid dbNode, Oid spcNode);
+extern char *GetDatabasePath(Oid dbOid, Oid spcOid);
 
-extern char *GetRelationPath(Oid dbNode, Oid spcNode, Oid relNode,
-							 int backendId, ForkNumber forkNumber);
+extern RelPathStr GetRelationPath(Oid dbOid, Oid spcOid, RelFileNumber relNumber,
+								  int procNumber, ForkNumber forkNumber);
 
 /*
  * Wrapper macros for GetRelationPath.  Beware of multiple
- * evaluation of the RelFileNode or RelFileNodeBackend argument!
+ * evaluation of the RelFileLocator or RelFileLocatorBackend argument!
  */
 
-/* First argument is a RelFileNode */
-#define relpathbackend(rnode, backend, forknum) \
-	GetRelationPath((rnode).dbNode, (rnode).spcNode, (rnode).relNode, \
+/* First argument is a RelFileLocator */
+#define relpathbackend(rlocator, backend, forknum) \
+	GetRelationPath((rlocator).dbOid, (rlocator).spcOid, (rlocator).relNumber, \
 					backend, forknum)
 
-/* First argument is a RelFileNode */
-#define relpathperm(rnode, forknum) \
-	relpathbackend(rnode, InvalidBackendId, forknum)
+/* First argument is a RelFileLocator */
+#define relpathperm(rlocator, forknum) \
+	relpathbackend(rlocator, INVALID_PROC_NUMBER, forknum)
 
-/* First argument is a RelFileNodeBackend */
-#define relpath(rnode, forknum) \
-	relpathbackend((rnode).node, (rnode).backend, forknum)
+/* First argument is a RelFileLocatorBackend */
+#define relpath(rlocator, forknum) \
+	relpathbackend((rlocator).locator, (rlocator).backend, forknum)
 
 #endif							/* RELPATH_H */

@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/seg.sgml -->
 
 <sect1 id="seg" xreflabel="seg">
- <title>seg</title>
+ <title>seg &mdash; a datatype for line segments or floating point intervals</title>
 
  <indexterm zone="seg">
   <primary>seg</primary>
@@ -20,7 +20,7 @@
   on the current database.
  </para>
 
- <sect2>
+ <sect2 id="seg-rationale">
   <title>Rationale</title>
 
   <para>
@@ -46,7 +46,7 @@
    when you fetch it? Watch:
 
 <screen>
-test=&gt; select 6.50 :: float8 as "pH";
+test=&gt; SELECT 6.50::float8 AS "pH";
  pH
 ---
 6.5
@@ -72,7 +72,7 @@ test=&gt; select 6.50 :: float8 as "pH";
    Check this out:
 
 <screen>
-test=&gt; select '6.25 .. 6.50'::seg as "pH";
+test=&gt; SELECT '6.25 .. 6.50'::seg AS "pH";
           pH
 ------------
 6.25 .. 6.50
@@ -81,7 +81,7 @@ test=&gt; select '6.25 .. 6.50'::seg as "pH";
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="seg-syntax">
   <title>Syntax</title>
 
   <para>
@@ -220,7 +220,7 @@ test=&gt; select '6.25 .. 6.50'::seg as "pH";
 
  </sect2>
 
- <sect2>
+ <sect2 id="seg-precision">
   <title>Precision</title>
 
   <para>
@@ -239,7 +239,7 @@ test=&gt; select '6.25 .. 6.50'::seg as "pH";
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="seg-usage">
   <title>Usage</title>
 
   <para>
@@ -363,7 +363,7 @@ test=&gt; select '6.25 .. 6.50'::seg as "pH";
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="seg-notes">
   <title>Notes</title>
 
   <para>
@@ -377,7 +377,7 @@ test=&gt; select '6.25 .. 6.50'::seg as "pH";
    boundary if the resulting interval includes a power of ten:
 
 <screen>
-postgres=&gt; select '10(+-)1'::seg as seg;
+postgres=&gt; SELECT '10(+-)1'::seg AS seg;
       seg
 ---------
 9.0 .. 11             -- should be: 9 .. 11
@@ -392,7 +392,7 @@ postgres=&gt; select '10(+-)1'::seg as seg;
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="seg-credits">
   <title>Credits</title>
 
   <para>

@@ -4,7 +4,7 @@
  * Postgres write-ahead log manager record pointer and
  * timeline number definitions
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xlogdefs.h
@@ -25,7 +25,8 @@ typedef uint64 XLogRecPtr;
  * WAL segment, initializing the first WAL page at WAL segment size, so no XLOG
  * record can begin at zero.
  */
-#define InvalidXLogRecPtr	0
+#define InvalidXLogRecPtr		0
+#define XLogRecPtrIsValid(r)	((r) != InvalidXLogRecPtr)
 #define XLogRecPtrIsInvalid(r)	((r) == InvalidXLogRecPtr)
 
 /*
@@ -38,9 +39,12 @@ typedef uint64 XLogRecPtr;
 /*
  * Handy macro for printing XLogRecPtr in conventional format, e.g.,
  *
- * printf("%X/%X", LSN_FORMAT_ARGS(lsn));
+ * printf("%X/%08X", LSN_FORMAT_ARGS(lsn));
+ *
+ * To avoid breaking translatable messages, we're directly applying the
+ * LSN format instead of using a macro.
  */
-#define LSN_FORMAT_ARGS(lsn) (AssertVariableIsOfTypeMacro((lsn), XLogRecPtr), (uint32) ((lsn) >> 32)), ((uint32) (lsn))
+#define LSN_FORMAT_ARGS(lsn) (StaticAssertVariableIsOfTypeMacro((lsn), XLogRecPtr), (uint32) ((lsn) >> 32)), ((uint32) (lsn))
 
 /*
  * XLogSegNo - physical log file sequence number.
@@ -62,40 +66,21 @@ typedef uint32 TimeLineID;
  * Replication origin id - this is located in this file to avoid having to
  * include origin.h in a bunch of xlog related places.
  */
-typedef uint16 RepOriginId;
+typedef uint16 ReplOriginId;
 
 /*
  * This chunk of hackery attempts to determine which file sync methods
  * are available on the current platform, and to choose an appropriate
- * default method.  We assume that fsync() is always available, and that
- * configure determined whether fdatasync() is.
+ * default method.
+ *
+ * Note that we define our own O_DSYNC on Windows, but not O_SYNC.
  */
-#if defined(O_SYNC)
-#define OPEN_SYNC_FLAG		O_SYNC
-#elif defined(O_FSYNC)
-#define OPEN_SYNC_FLAG		O_FSYNC
-#endif
-
-#if defined(O_DSYNC)
-#if defined(OPEN_SYNC_FLAG)
-/* O_DSYNC is distinct? */
-#if O_DSYNC != OPEN_SYNC_FLAG
-#define OPEN_DATASYNC_FLAG		O_DSYNC
-#endif
-#else							/* !defined(OPEN_SYNC_FLAG) */
-/* Win32 only has O_DSYNC */
-#define OPEN_DATASYNC_FLAG		O_DSYNC
-#endif
-#endif
-
-#if defined(PLATFORM_DEFAULT_SYNC_METHOD)
-#define DEFAULT_SYNC_METHOD		PLATFORM_DEFAULT_SYNC_METHOD
-#elif defined(OPEN_DATASYNC_FLAG)
-#define DEFAULT_SYNC_METHOD		SYNC_METHOD_OPEN_DSYNC
-#elif defined(HAVE_FDATASYNC)
-#define DEFAULT_SYNC_METHOD		SYNC_METHOD_FDATASYNC
+#if defined(PLATFORM_DEFAULT_WAL_SYNC_METHOD)
+#define DEFAULT_WAL_SYNC_METHOD		PLATFORM_DEFAULT_WAL_SYNC_METHOD
+#elif defined(O_DSYNC) && (!defined(O_SYNC) || O_DSYNC != O_SYNC)
+#define DEFAULT_WAL_SYNC_METHOD		WAL_SYNC_METHOD_OPEN_DSYNC
 #else
-#define DEFAULT_SYNC_METHOD		SYNC_METHOD_FSYNC
+#define DEFAULT_WAL_SYNC_METHOD		WAL_SYNC_METHOD_FDATASYNC
 #endif
 
 #endif							/* XLOG_DEFS_H */

@@ -8,7 +8,7 @@
  * should end up here.
  *
  *
- * Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/jit/jit.c
@@ -21,15 +21,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "executor/execExpr.h"
 #include "fmgr.h"
 #include "jit/jit.h"
 #include "miscadmin.h"
+#include "nodes/execnodes.h"
+#include "portability/instr_time.h"
+#include "storage/fd.h"
 #include "utils/fmgrprotos.h"
-#include "utils/resowner_private.h"
 
 /* GUCs */
-bool		jit_enabled = false;	/* YB: changed to false */
+bool		jit_enabled = false;	/* YB: set to false */
 char	   *jit_provider = NULL;
 bool		jit_debugging_support = false;
 bool		jit_dump_bitcode = false;
@@ -46,7 +47,6 @@ static bool provider_failed_loading = false;
 
 
 static bool provider_init(void);
-static bool file_exists(const char *name);
 
 
 /*
@@ -90,7 +90,7 @@ provider_init(void)
 	 */
 	snprintf(path, MAXPGPATH, "%s/%s%s", pkglib_path, jit_provider, DLSUFFIX);
 	elog(DEBUG1, "probing availability of JIT provider at %s", path);
-	if (!file_exists(path))
+	if (!pg_file_exists(path))
 	{
 		elog(DEBUG1,
 			 "provider not available, disabling JIT for current session");
@@ -140,7 +140,6 @@ jit_release_context(JitContext *context)
 	if (provider_successfully_loaded)
 		provider.release_context(context);
 
-	ResourceOwnerForgetJIT(context->resowner, PointerGetDatum(context));
 	pfree(context);
 }
 
@@ -185,24 +184,8 @@ InstrJitAgg(JitInstrumentation *dst, JitInstrumentation *add)
 {
 	dst->created_functions += add->created_functions;
 	INSTR_TIME_ADD(dst->generation_counter, add->generation_counter);
+	INSTR_TIME_ADD(dst->deform_counter, add->deform_counter);
 	INSTR_TIME_ADD(dst->inlining_counter, add->inlining_counter);
 	INSTR_TIME_ADD(dst->optimization_counter, add->optimization_counter);
 	INSTR_TIME_ADD(dst->emission_counter, add->emission_counter);
-}
-
-static bool
-file_exists(const char *name)
-{
-	struct stat st;
-
-	AssertArg(name != NULL);
-
-	if (stat(name, &st) == 0)
-		return !S_ISDIR(st.st_mode);
-	else if (!(errno == ENOENT || errno == ENOTDIR))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not access file \"%s\": %m", name)));
-
-	return false;
 }

@@ -48,6 +48,13 @@ FROM   (VALUES (0), (1), (17), (42), (550273), (207112489)) x(v)
 WHERE  hashoid(v)::bit(32) != hashoidextended(v, 0)::bit(32)
        OR hashoid(v)::bit(32) = hashoidextended(v, 1)::bit(32);
 
+SELECT v as value, hashoid8(v)::bit(32) as standard,
+       hashoid8extended(v, 0)::bit(32) as extended0,
+       hashoid8extended(v, 1)::bit(32) as extended1
+FROM   (VALUES (0), (1), (17), (42), (550273), (207112489)) x(v)
+WHERE  hashoid8(v)::bit(32) != hashoid8extended(v, 0)::bit(32)
+       OR hashoid8(v)::bit(32) = hashoid8extended(v, 1)::bit(32);
+
 SELECT v as value, hashchar(v)::bit(32) as standard,
        hashcharextended(v, 0)::bit(32) as extended0,
        hashcharextended(v, 1)::bit(32) as extended1
@@ -132,9 +139,9 @@ WHERE  hash_array(v)::bit(32) != hash_array_extended(v, 0)::bit(32)
 
 -- array hashing with non-hashable element type
 SELECT v as value, hash_array(v)::bit(32) as standard
-FROM   (VALUES ('{0}'::money[])) x(v);
+FROM   (VALUES ('{101}'::varbit[])) x(v);
 SELECT v as value, hash_array_extended(v, 0)::bit(32) as extended0
-FROM   (VALUES ('{0}'::money[])) x(v);
+FROM   (VALUES ('{101}'::varbit[])) x(v);
 
 SELECT v as value, hashbpchar(v)::bit(32) as standard,
        hashbpcharextended(v, 0)::bit(32) as extended0,
@@ -247,11 +254,11 @@ WHERE  hash_record(v)::bit(32) != hash_record_extended(v, 0)::bit(32)
 DROP TYPE hash_test_t1;
 
 -- record hashing with non-hashable field type
-CREATE TYPE hash_test_t2 AS (a money, b text);
+CREATE TYPE hash_test_t2 AS (a varbit, b text);
 SELECT v as value, hash_record(v)::bit(32) as standard
-FROM   (VALUES (row(1, 'aaa')::hash_test_t2)) x(v);
+FROM   (VALUES (row('10'::varbit, 'aaa')::hash_test_t2)) x(v);
 SELECT v as value, hash_record_extended(v, 0)::bit(32) as extended0
-FROM   (VALUES (row(1, 'aaa')::hash_test_t2)) x(v);
+FROM   (VALUES (row('11'::varbit, 'aaa')::hash_test_t2)) x(v);
 DROP TYPE hash_test_t2;
 
 --

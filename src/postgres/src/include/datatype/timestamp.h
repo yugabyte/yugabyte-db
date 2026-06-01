@@ -5,7 +5,7 @@
  *
  * Note: this file must be includable in both frontend and backend contexts.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/datatype/timestamp.h
@@ -114,6 +114,7 @@ struct pg_itm_in
  *	30 days.
  */
 #define DAYS_PER_MONTH	30		/* assumes exactly 30 days per month */
+#define DAYS_PER_WEEK	7
 #define HOURS_PER_DAY	24		/* assume no daylight savings time changes */
 
 /*
@@ -143,10 +144,17 @@ struct pg_itm_in
 #define TZDISP_LIMIT		((MAX_TZDISP_HOUR + 1) * SECS_PER_HOUR)
 
 /*
- * DT_NOBEGIN represents timestamp -infinity; DT_NOEND represents +infinity
+ * We reserve the minimum and maximum integer values to represent
+ * timestamp (or timestamptz) -infinity and +infinity.
  */
-#define DT_NOBEGIN		PG_INT64_MIN
-#define DT_NOEND		PG_INT64_MAX
+#define TIMESTAMP_MINUS_INFINITY	PG_INT64_MIN
+#define TIMESTAMP_INFINITY	PG_INT64_MAX
+
+/*
+ * Historically these aliases for infinity have been used.
+ */
+#define DT_NOBEGIN		TIMESTAMP_MINUS_INFINITY
+#define DT_NOEND		TIMESTAMP_INFINITY
 
 #define TIMESTAMP_NOBEGIN(j)	\
 	do {(j) = DT_NOBEGIN;} while (0)
@@ -160,6 +168,31 @@ struct pg_itm_in
 
 #define TIMESTAMP_NOT_FINITE(j) (TIMESTAMP_IS_NOBEGIN(j) || TIMESTAMP_IS_NOEND(j))
 
+/*
+ * Infinite intervals are represented by setting all fields to the minimum or
+ * maximum integer values.
+ */
+#define INTERVAL_NOBEGIN(i)	\
+	do {	\
+		(i)->time = PG_INT64_MIN;	\
+		(i)->day = PG_INT32_MIN;	\
+		(i)->month = PG_INT32_MIN;	\
+	} while (0)
+
+#define INTERVAL_IS_NOBEGIN(i)	\
+	((i)->month == PG_INT32_MIN && (i)->day == PG_INT32_MIN && (i)->time == PG_INT64_MIN)
+
+#define INTERVAL_NOEND(i)	\
+	do {	\
+		(i)->time = PG_INT64_MAX;	\
+		(i)->day = PG_INT32_MAX;	\
+		(i)->month = PG_INT32_MAX;	\
+	} while (0)
+
+#define INTERVAL_IS_NOEND(i)	\
+	((i)->month == PG_INT32_MAX && (i)->day == PG_INT32_MAX && (i)->time == PG_INT64_MAX)
+
+#define INTERVAL_NOT_FINITE(i) (INTERVAL_IS_NOBEGIN(i) || INTERVAL_IS_NOEND(i))
 
 /*
  * Julian date support.

@@ -1,11 +1,11 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 #
 # Test pg_rewind when the target's pg_wal directory is a symlink.
 #
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use File::Copy;
 use File::Path qw(rmtree);
 use PostgreSQL::Test::Utils;
@@ -52,7 +52,7 @@ sub run_test
 
 	# Insert a row in the old primary. This causes the primary and standby
 	# to have "diverged", it's no longer possible to just apply the
-	# standy's logs over primary directory - you need to rewind.
+	# standby's logs over primary directory - you need to rewind.
 	primary_psql("INSERT INTO tbl1 VALUES ('in primary, after promotion')");
 
 	# Also insert a new row in the standby, which won't be present in the

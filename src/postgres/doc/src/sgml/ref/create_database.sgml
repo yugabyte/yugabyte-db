@@ -29,7 +29,9 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
            [ LOCALE [=] <replaceable class="parameter">locale</replaceable> ]
            [ LC_COLLATE [=] <replaceable class="parameter">lc_collate</replaceable> ]
            [ LC_CTYPE [=] <replaceable class="parameter">lc_ctype</replaceable> ]
+           [ BUILTIN_LOCALE [=] <replaceable class="parameter">builtin_locale</replaceable> ]
            [ ICU_LOCALE [=] <replaceable class="parameter">icu_locale</replaceable> ]
+           [ ICU_RULES [=] <replaceable class="parameter">icu_rules</replaceable> ]
            [ LOCALE_PROVIDER [=] <replaceable class="parameter">locale_provider</replaceable> ]
            [ COLLATION_VERSION = <replaceable>collation_version</replaceable> ]
            [ TABLESPACE [=] <replaceable class="parameter">tablespace_name</replaceable> ]
@@ -74,7 +76,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
   <title>Parameters</title>
 
     <variablelist>
-     <varlistentry>
+     <varlistentry id="create-database-name">
       <term><replaceable class="parameter">name</replaceable></term>
       <listitem>
        <para>
@@ -82,19 +84,19 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
        </para>
       </listitem>
      </varlistentry>
-     <varlistentry>
+     <varlistentry id="create-database-user-name">
       <term><replaceable class="parameter">user_name</replaceable></term>
       <listitem>
        <para>
         The role name of the user who will own the new database,
         or <literal>DEFAULT</literal> to use the default (namely, the
         user executing the command).  To create a database owned by another
-        role, you must be a direct or indirect member of that role,
-        or be a superuser.
+        role, you must be able to <literal>SET ROLE</literal> to that
+        role.
        </para>
       </listitem>
      </varlistentry>
-     <varlistentry>
+     <varlistentry id="create-database-template">
       <term><replaceable class="parameter">template</replaceable></term>
       <listitem>
        <para>
@@ -104,7 +106,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
        </para>
       </listitem>
      </varlistentry>
-     <varlistentry>
+     <varlistentry id="create-database-encoding">
       <term><replaceable class="parameter">encoding</replaceable></term>
       <listitem>
        <para>
@@ -136,16 +138,40 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
         log volume substantially, especially if the template database is large,
         it also forces the system to perform a checkpoint both before and
         after the creation of the new database. In some situations, this may
-        have a noticeable negative impact on overall system performance.
+        have a noticeable negative impact on overall system performance. The
+        <literal>FILE_COPY</literal> strategy is affected by the <xref
+        linkend="guc-file-copy-method"/> setting.
        </para>
       </listitem>
      </varlistentry>
-     <varlistentry>
+     <varlistentry id="create-database-locale">
       <term><replaceable class="parameter">locale</replaceable></term>
       <listitem>
        <para>
-        This is a shortcut for setting <symbol>LC_COLLATE</symbol>
-        and <symbol>LC_CTYPE</symbol> at once.
+        Sets the default collation order and character classification in the
+        new database.  Collation affects the sort order applied to strings,
+        e.g., in queries with <literal>ORDER BY</literal>, as well as the
+        order used in indexes on text columns.  Character classification
+        affects the categorization of characters, e.g., lower, upper, and
+        digit.  Also sets the <literal>LC_CTYPE</literal> aspect of the
+        operating system environment.  The default is the same setting as the
+        template database.  See <xref
+        linkend="collation-managing-create-libc"/> and <xref
+        linkend="collation-managing-create-icu"/> for details.
+       </para>
+       <para>
+        Can be overridden by setting <xref
+        linkend="create-database-lc-collate"/>, <xref
+        linkend="create-database-lc-ctype"/>, <xref
+        linkend="create-database-builtin-locale"/>, or <xref
+        linkend="create-database-icu-locale"/> individually.
+       </para>
+       <para>
+        If <xref linkend="create-database-locale-provider"/> is
+        <literal>builtin</literal>, then <replaceable>locale</replaceable> or
+        <replaceable>builtin_locale</replaceable> must be specified and set to
+        either <literal>C</literal>, <literal>C.UTF-8</literal>, or
+        <literal>PG_UNICODE_FAST</literal>.
        </para>
        <tip>
         <para>
@@ -159,54 +185,107 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
        </tip>
       </listitem>
      </varlistentry>
-     <varlistentry>
+     <varlistentry id="create-database-lc-collate">
       <term><replaceable class="parameter">lc_collate</replaceable></term>
       <listitem>
        <para>
-        Collation order (<literal>LC_COLLATE</literal>) to use in the new database.
-        This affects the sort order applied to strings, e.g., in queries with
-        ORDER BY, as well as the order used in indexes on text columns.
-        The default is to use the collation order of the template database.
+        If <xref linkend="create-database-locale-provider"/> is
+        <literal>libc</literal>, sets the default collation order to use in
+        the new database, overriding the setting <xref
+        linkend="create-database-locale"/>. Otherwise, this setting is
+        ignored.
+       </para>
+       <para>
+        The default is the setting of <xref linkend="create-database-locale"/>
+        if specified, otherwise the same setting as the template database.
         See below for additional restrictions.
        </para>
       </listitem>
      </varlistentry>
-     <varlistentry>
+     <varlistentry id="create-database-lc-ctype">
       <term><replaceable class="parameter">lc_ctype</replaceable></term>
       <listitem>
        <para>
-        Character classification (<literal>LC_CTYPE</literal>) to use in the new
-        database. This affects the categorization of characters, e.g., lower,
-        upper and digit. The default is to use the character classification of
-        the template database. See below for additional restrictions.
+        Sets <literal>LC_CTYPE</literal> in the database server's operating
+        system environment.
+       </para>
+       <para>
+        If <xref linkend="create-database-locale-provider"/> is
+        <literal>libc</literal>, sets the default character classification to
+        use in the new database, overriding the setting <xref
+        linkend="create-database-locale"/>.
+       </para>
+       <para>
+        The default is the setting of <xref linkend="create-database-locale"/>
+        if specified, otherwise the same setting as the template database.
+        See below for additional restrictions.
        </para>
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="create-database-builtin-locale">
+      <term><replaceable class="parameter">builtin_locale</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the builtin provider locale for the database default
+        collation order and character classification, overriding the setting
+        <xref linkend="create-database-locale"/>.  The <link
+        linkend="create-database-locale-provider">locale provider</link> must
+        be <literal>builtin</literal>.  The default is the setting of <xref
+        linkend="create-database-locale"/> if specified; otherwise the same
+        setting as the template database.
+       </para>
+       <para>
+        The locales available for the <literal>builtin</literal> provider are
+        <literal>C</literal>, <literal>C.UTF-8</literal> and
+        <literal>PG_UNICODE_FAST</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="create-database-icu-locale">
       <term><replaceable class="parameter">icu_locale</replaceable></term>
       <listitem>
        <para>
-        Specifies the ICU locale ID if the ICU locale provider is used.
+        Specifies the ICU locale (see <xref
+        linkend="collation-managing-create-icu"/>) for the database default
+        collation order and character classification, overriding the setting
+        <xref linkend="create-database-locale"/>.  The <link
+        linkend="create-database-locale-provider">locale provider</link> must be ICU.  The default
+        is the setting of <xref linkend="create-database-locale"/> if
+        specified; otherwise the same setting as the template database.
        </para>
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="create-database-icu-rules">
+      <term><replaceable class="parameter">icu_rules</replaceable></term>
+      <listitem>
+       <para>
+        Specifies additional collation rules to customize the behavior of the
+        default collation of this database.  This is supported for ICU only.
+        See <xref linkend="icu-tailoring-rules"/> for details.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="create-database-locale-provider">
       <term><replaceable>locale_provider</replaceable></term>
 
       <listitem>
        <para>
         Specifies the provider to use for the default collation in this
-        database.  Possible values are:
-        <literal>icu</literal>,<indexterm><primary>ICU</primary></indexterm>
-        <literal>libc</literal>.  <literal>libc</literal> is the default.  The
-        available choices depend on the operating system and build options.
+        database.  Possible values are <literal>builtin</literal>,
+        <literal>icu</literal><indexterm><primary>ICU</primary></indexterm>
+        (if the server was built with ICU support) or <literal>libc</literal>.
+        By default, the provider is the same as that of the <xref
+        linkend="create-database-template"/>. See <xref
+        linkend="locale-providers"/> for details.
        </para>
       </listitem>
      </varlistentry>
 
-     <varlistentry>
+     <varlistentry id="create-database-collation-version">
       <term><replaceable>collation_version</replaceable></term>
 
       <listitem>
@@ -225,7 +304,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
        </para>
      </listitem>
     </varlistentry>
-     <varlistentry>
+     <varlistentry id="create-database-tablespace-name">
       <term><replaceable class="parameter">tablespace_name</replaceable></term>
       <listitem>
        <para>
@@ -240,7 +319,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
       </listitem>
      </varlistentry>
 
-      <varlistentry>
+      <varlistentry id="create-database-allowconn">
        <term><replaceable class="parameter">allowconn</replaceable></term>
        <listitem>
         <para>
@@ -251,7 +330,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
        </listitem>
       </varlistentry>
 
-      <varlistentry>
+      <varlistentry id="create-database-connlimit">
       <term><replaceable class="parameter">connlimit</replaceable></term>
       <listitem>
        <para>
@@ -261,7 +340,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
       </listitem>
      </varlistentry>
 
-      <varlistentry>
+      <varlistentry id="create-database-istemplate">
        <term><replaceable class="parameter">istemplate</replaceable></term>
        <listitem>
         <para>
@@ -272,7 +351,7 @@ CREATE DATABASE <replaceable class="parameter">name</replaceable>
        </listitem>
       </varlistentry>
 
-      <varlistentry>
+      <varlistentry id="create-database-oid">
        <term><replaceable class="parameter">oid</replaceable></term>
        <listitem>
         <para>

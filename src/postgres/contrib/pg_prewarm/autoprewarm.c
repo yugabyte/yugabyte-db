@@ -16,7 +16,7 @@
  *		relevant database in turn.  The former keeps running after the
  *		initial prewarm is complete to update the dump file periodically.
  *
- *	Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  *	IDENTIFICATION
  *		contrib/pg_prewarm/autoprewarm.c
@@ -30,30 +30,25 @@
 
 #include "access/relation.h"
 #include "access/xact.h"
-#include "catalog/pg_class.h"
-#include "catalog/pg_type.h"
-#include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
 #include "storage/buf_internals.h"
 #include "storage/dsm.h"
+#include "storage/dsm_registry.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
-#include "storage/proc.h"
 #include "storage/procsignal.h"
-#include "storage/shmem.h"
+#include "storage/read_stream.h"
 #include "storage/smgr.h"
 #include "tcop/tcopprot.h"
-#include "utils/acl.h"
-#include "utils/datetime.h"
 #include "utils/guc.h"
-#include "utils/memutils.h"
 #include "utils/rel.h"
-#include "utils/relfilenodemap.h"
-#include "utils/resowner.h"
+#include "utils/relfilenumbermap.h"
+#include "utils/timestamp.h"
+#include "utils/wait_event.h"
 
 #define AUTOPREWARM_FILE "autoprewarm.blocks"
 
@@ -62,7 +57,7 @@ typedef struct BlockInfoRecord
 {
 	Oid			database;
 	Oid			tablespace;
-	Oid			filenode;
+	RelFileNumber filenumber;
 	ForkNumber	forknum;
 	BlockNumber blocknum;
 } BlockInfoRecord;
@@ -82,9 +77,30 @@ typedef struct AutoPrewarmSharedState
 	int			prewarmed_blocks;
 } AutoPrewarmSharedState;
 
-void		_PG_init(void);
-void		autoprewarm_main(Datum main_arg);
-void		autoprewarm_database_main(Datum main_arg);
+/*
+ * Private data passed through the read stream API for our use in the
+ * callback.
+ */
+typedef struct AutoPrewarmReadStreamData
+{
+	/* The array of records containing the blocks we should prewarm. */
+	BlockInfoRecord *block_info;
+
+	/*
+	 * pos is the read stream callback's index into block_info. Because the
+	 * read stream may read ahead, pos is likely to be ahead of the index in
+	 * the main loop in autoprewarm_database_main().
+	 */
+	int			pos;
+	Oid			tablespace;
+	RelFileNumber filenumber;
+	ForkNumber	forknum;
+	BlockNumber nblocks;
+} AutoPrewarmReadStreamData;
+
+
+PGDLLEXPORT void autoprewarm_main(Datum main_arg);
+PGDLLEXPORT void autoprewarm_database_main(Datum main_arg);
 
 PG_FUNCTION_INFO_V1(autoprewarm_start_worker);
 PG_FUNCTION_INFO_V1(autoprewarm_dump_now);
@@ -96,15 +112,13 @@ static void apw_start_database_worker(void);
 static bool apw_init_shmem(void);
 static void apw_detach_shmem(int code, Datum arg);
 static int	apw_compare_blockinfo(const void *p, const void *q);
-static void autoprewarm_shmem_request(void);
-static shmem_request_hook_type prev_shmem_request_hook = NULL;
 
 /* Pointer to shared-memory state. */
 static AutoPrewarmSharedState *apw_state = NULL;
 
 /* GUC variables. */
 static bool autoprewarm = true; /* start worker? */
-static int	autoprewarm_interval;	/* dump interval */
+static int	autoprewarm_interval = 300; /* dump interval */
 
 /*
  * Module load callback.
@@ -141,24 +155,9 @@ _PG_init(void)
 
 	MarkGUCPrefixReserved("pg_prewarm");
 
-	prev_shmem_request_hook = shmem_request_hook;
-	shmem_request_hook = autoprewarm_shmem_request;
-
 	/* Register autoprewarm worker, if enabled. */
 	if (autoprewarm)
 		apw_start_leader_worker();
-}
-
-/*
- * Requests any additional shared memory required for autoprewarm.
- */
-static void
-autoprewarm_shmem_request(void)
-{
-	if (prev_shmem_request_hook)
-		prev_shmem_request_hook();
-
-	RequestAddinShmemSpace(MAXALIGN(sizeof(AutoPrewarmSharedState)));
 }
 
 /*
@@ -182,8 +181,14 @@ autoprewarm_main(Datum main_arg)
 	if (apw_init_shmem())
 		first_time = false;
 
-	/* Set on-detach hook so that our PID will be cleared on exit. */
-	on_shmem_exit(apw_detach_shmem, 0);
+	/*
+	 * Set on-detach hook so that our PID will be cleared on exit.
+	 *
+	 * NB: Autoprewarm's state is stored in a DSM segment, and DSM segments
+	 * are detached before calling the on_shmem_exit callbacks, so we must put
+	 * apw_detach_shmem in the before_shmem_exit callback list.
+	 */
+	before_shmem_exit(apw_detach_shmem, 0);
 
 	/*
 	 * Store our PID in the shared memory area --- unless there's already
@@ -194,8 +199,8 @@ autoprewarm_main(Datum main_arg)
 	{
 		LWLockRelease(&apw_state->lock);
 		ereport(LOG,
-				(errmsg("autoprewarm worker is already running under PID %lu",
-						(unsigned long) apw_state->bgworker_pid)));
+				(errmsg("autoprewarm worker is already running under PID %d",
+						(int) apw_state->bgworker_pid)));
 		return;
 	}
 	apw_state->bgworker_pid = MyProcPid;
@@ -304,8 +309,8 @@ apw_load_buffers(void)
 	{
 		LWLockRelease(&apw_state->lock);
 		ereport(LOG,
-				(errmsg("skipping prewarm because block dump file is being written by PID %lu",
-						(unsigned long) apw_state->pid_using_dumpfile)));
+				(errmsg("skipping prewarm because block dump file is being written by PID %d",
+						(int) apw_state->pid_using_dumpfile)));
 		return;
 	}
 	LWLockRelease(&apw_state->lock);
@@ -347,7 +352,7 @@ apw_load_buffers(void)
 		unsigned	forknum;
 
 		if (fscanf(file, "%u,%u,%u,%u,%u\n", &blkinfo[i].database,
-				   &blkinfo[i].tablespace, &blkinfo[i].filenode,
+				   &blkinfo[i].tablespace, &blkinfo[i].filenumber,
 				   &forknum, &blkinfo[i].blocknum) != 5)
 			ereport(ERROR,
 					(errmsg("autoprewarm block dump file is corrupted at line %d",
@@ -358,13 +363,22 @@ apw_load_buffers(void)
 	FreeFile(file);
 
 	/* Sort the blocks to be loaded. */
-	pg_qsort(blkinfo, num_elements, sizeof(BlockInfoRecord),
-			 apw_compare_blockinfo);
+	qsort(blkinfo, num_elements, sizeof(BlockInfoRecord),
+		  apw_compare_blockinfo);
 
 	/* Populate shared memory state. */
 	apw_state->block_info_handle = dsm_segment_handle(seg);
 	apw_state->prewarm_start_idx = apw_state->prewarm_stop_idx = 0;
 	apw_state->prewarmed_blocks = 0;
+
+	/* Don't prewarm more than we can fit. */
+	if (num_elements > NBuffers)
+	{
+		num_elements = NBuffers;
+		ereport(LOG,
+				(errmsg("autoprewarm capping prewarmed blocks to %d (shared_buffers size)",
+						NBuffers)));
+	}
 
 	/* Get the info position of the first block of the next database. */
 	while (apw_state->prewarm_start_idx < num_elements)
@@ -406,10 +420,6 @@ apw_load_buffers(void)
 		apw_state->database = current_db;
 		Assert(apw_state->prewarm_start_idx < apw_state->prewarm_stop_idx);
 
-		/* If we've run out of free buffers, don't launch another worker. */
-		if (!have_free_buffer())
-			break;
-
 		/*
 		 * Likewise, don't launch if we've already been told to shut down.
 		 * (The launch would fail anyway, but we might as well skip it.)
@@ -442,17 +452,57 @@ apw_load_buffers(void)
 }
 
 /*
+ * Return the next block number of a specific relation and fork to read
+ * according to the array of BlockInfoRecord.
+ */
+static BlockNumber
+apw_read_stream_next_block(ReadStream *stream,
+						   void *callback_private_data,
+						   void *per_buffer_data)
+{
+	AutoPrewarmReadStreamData *p = callback_private_data;
+
+	CHECK_FOR_INTERRUPTS();
+
+	while (p->pos < apw_state->prewarm_stop_idx)
+	{
+		BlockInfoRecord blk = p->block_info[p->pos];
+
+		if (blk.tablespace != p->tablespace)
+			return InvalidBlockNumber;
+
+		if (blk.filenumber != p->filenumber)
+			return InvalidBlockNumber;
+
+		if (blk.forknum != p->forknum)
+			return InvalidBlockNumber;
+
+		p->pos++;
+
+		/*
+		 * Check whether blocknum is valid and within fork file size.
+		 * Fast-forward through any invalid blocks. We want p->pos to reflect
+		 * the location of the next relation or fork before ending the stream.
+		 */
+		if (blk.blocknum >= p->nblocks)
+			continue;
+
+		return blk.blocknum;
+	}
+
+	return InvalidBlockNumber;
+}
+
+/*
  * Prewarm all blocks for one database (and possibly also global objects, if
  * those got grouped with this database).
  */
 void
 autoprewarm_database_main(Datum main_arg)
 {
-	int			pos;
 	BlockInfoRecord *block_info;
-	Relation	rel = NULL;
-	BlockNumber nblocks = 0;
-	BlockInfoRecord *old_blk = NULL;
+	int			i;
+	BlockInfoRecord blk;
 	dsm_segment *seg;
 
 	/* Establish signal handlers; once that's done, unblock signals. */
@@ -468,108 +518,141 @@ autoprewarm_database_main(Datum main_arg)
 				 errmsg("could not map dynamic shared memory segment")));
 	BackgroundWorkerInitializeConnectionByOid(apw_state->database, InvalidOid, 0);
 	block_info = (BlockInfoRecord *) dsm_segment_address(seg);
-	pos = apw_state->prewarm_start_idx;
+
+	i = apw_state->prewarm_start_idx;
+	blk = block_info[i];
 
 	/*
-	 * Loop until we run out of blocks to prewarm or until we run out of free
+	 * Loop until we run out of blocks to prewarm or until we run out of
 	 * buffers.
 	 */
-	while (pos < apw_state->prewarm_stop_idx && have_free_buffer())
+	while (i < apw_state->prewarm_stop_idx)
 	{
-		BlockInfoRecord *blk = &block_info[pos++];
-		Buffer		buf;
-
-		CHECK_FOR_INTERRUPTS();
-
-		/*
-		 * Quit if we've reached records for another database. If previous
-		 * blocks are of some global objects, then continue pre-warming.
-		 */
-		if (old_blk != NULL && old_blk->database != blk->database &&
-			old_blk->database != 0)
-			break;
+		Oid			tablespace = blk.tablespace;
+		RelFileNumber filenumber = blk.filenumber;
+		Oid			reloid;
+		Relation	rel;
 
 		/*
-		 * As soon as we encounter a block of a new relation, close the old
-		 * relation. Note that rel will be NULL if try_relation_open failed
-		 * previously; in that case, there is nothing to close.
+		 * All blocks between prewarm_start_idx and prewarm_stop_idx should
+		 * belong either to global objects or the same database.
 		 */
-		if (old_blk != NULL && old_blk->filenode != blk->filenode &&
-			rel != NULL)
+		Assert(blk.database == apw_state->database || blk.database == 0);
+
+		StartTransactionCommand();
+
+		reloid = RelidByRelfilenumber(blk.tablespace, blk.filenumber);
+		if (!OidIsValid(reloid) ||
+			(rel = try_relation_open(reloid, AccessShareLock)) == NULL)
 		{
-			relation_close(rel, AccessShareLock);
-			rel = NULL;
+			/* We failed to open the relation, so there is nothing to close. */
 			CommitTransactionCommand();
-		}
 
-		/*
-		 * Try to open each new relation, but only once, when we first
-		 * encounter it. If it's been dropped, skip the associated blocks.
-		 */
-		if (old_blk == NULL || old_blk->filenode != blk->filenode)
-		{
-			Oid			reloid;
+			/*
+			 * Fast-forward to the next relation. We want to skip all of the
+			 * other records referencing this relation since we know we can't
+			 * open it. That way, we avoid repeatedly trying and failing to
+			 * open the same relation.
+			 */
+			for (; i < apw_state->prewarm_stop_idx; i++)
+			{
+				blk = block_info[i];
+				if (blk.tablespace != tablespace ||
+					blk.filenumber != filenumber)
+					break;
+			}
 
-			Assert(rel == NULL);
-			StartTransactionCommand();
-			reloid = RelidByRelfilenode(blk->tablespace, blk->filenode);
-			if (OidIsValid(reloid))
-				rel = try_relation_open(reloid, AccessShareLock);
-
-			if (!rel)
-				CommitTransactionCommand();
-		}
-		if (!rel)
-		{
-			old_blk = blk;
+			/* Time to try and open our newfound relation */
 			continue;
 		}
 
-		/* Once per fork, check for fork existence and size. */
-		if (old_blk == NULL ||
-			old_blk->filenode != blk->filenode ||
-			old_blk->forknum != blk->forknum)
+		/*
+		 * We have a relation; now let's loop until we find a valid fork of
+		 * the relation or we run out of buffers. Once we've read from all
+		 * valid forks or run out of options, we'll close the relation and
+		 * move on.
+		 */
+		while (i < apw_state->prewarm_stop_idx &&
+			   blk.tablespace == tablespace &&
+			   blk.filenumber == filenumber)
 		{
+			ForkNumber	forknum = blk.forknum;
+			BlockNumber nblocks;
+			struct AutoPrewarmReadStreamData p;
+			ReadStream *stream;
+			Buffer		buf;
+
 			/*
 			 * smgrexists is not safe for illegal forknum, hence check whether
 			 * the passed forknum is valid before using it in smgrexists.
 			 */
-			if (blk->forknum > InvalidForkNumber &&
-				blk->forknum <= MAX_FORKNUM &&
-				smgrexists(RelationGetSmgr(rel), blk->forknum))
-				nblocks = RelationGetNumberOfBlocksInFork(rel, blk->forknum);
-			else
-				nblocks = 0;
+			if (blk.forknum <= InvalidForkNumber ||
+				blk.forknum > MAX_FORKNUM ||
+				!smgrexists(RelationGetSmgr(rel), blk.forknum))
+			{
+				/*
+				 * Fast-forward to the next fork. We want to skip all of the
+				 * other records referencing this fork since we already know
+				 * it's not valid.
+				 */
+				for (; i < apw_state->prewarm_stop_idx; i++)
+				{
+					blk = block_info[i];
+					if (blk.tablespace != tablespace ||
+						blk.filenumber != filenumber ||
+						blk.forknum != forknum)
+						break;
+				}
+
+				/* Time to check if this newfound fork is valid */
+				continue;
+			}
+
+			nblocks = RelationGetNumberOfBlocksInFork(rel, blk.forknum);
+
+			p = (struct AutoPrewarmReadStreamData)
+			{
+				.block_info = block_info,
+					.pos = i,
+					.tablespace = tablespace,
+					.filenumber = filenumber,
+					.forknum = forknum,
+					.nblocks = nblocks,
+			};
+
+			stream = read_stream_begin_relation(READ_STREAM_MAINTENANCE |
+												READ_STREAM_DEFAULT |
+												READ_STREAM_USE_BATCHING,
+												NULL,
+												rel,
+												p.forknum,
+												apw_read_stream_next_block,
+												&p,
+												0);
+
+			/*
+			 * Loop until we've prewarmed all the blocks from this fork. The
+			 * read stream callback will check that we still have free buffers
+			 * before requesting each block from the read stream API.
+			 */
+			while ((buf = read_stream_next_buffer(stream, NULL)) != InvalidBuffer)
+			{
+				apw_state->prewarmed_blocks++;
+				ReleaseBuffer(buf);
+			}
+
+			read_stream_end(stream);
+
+			/* Advance i past all the blocks just prewarmed. */
+			i = p.pos;
+			blk = block_info[i];
 		}
 
-		/* Check whether blocknum is valid and within fork file size. */
-		if (blk->blocknum >= nblocks)
-		{
-			/* Move to next forknum. */
-			old_blk = blk;
-			continue;
-		}
-
-		/* Prewarm buffer. */
-		buf = ReadBufferExtended(rel, blk->forknum, blk->blocknum, RBM_NORMAL,
-								 NULL);
-		if (BufferIsValid(buf))
-		{
-			apw_state->prewarmed_blocks++;
-			ReleaseBuffer(buf);
-		}
-
-		old_blk = blk;
-	}
-
-	dsm_detach(seg);
-
-	/* Release lock on previous relation. */
-	if (rel)
-	{
 		relation_close(rel, AccessShareLock);
 		CommitTransactionCommand();
 	}
+
+	dsm_detach(seg);
 }
 
 /*
@@ -600,21 +683,28 @@ apw_dump_now(bool is_bgworker, bool dump_unlogged)
 	{
 		if (!is_bgworker)
 			ereport(ERROR,
-					(errmsg("could not perform block dump because dump file is being used by PID %lu",
-							(unsigned long) apw_state->pid_using_dumpfile)));
+					(errmsg("could not perform block dump because dump file is being used by PID %d",
+							(int) apw_state->pid_using_dumpfile)));
 
 		ereport(LOG,
-				(errmsg("skipping block dump because it is already being performed by PID %lu",
-						(unsigned long) apw_state->pid_using_dumpfile)));
+				(errmsg("skipping block dump because it is already being performed by PID %d",
+						(int) apw_state->pid_using_dumpfile)));
 		return 0;
 	}
 
-	block_info_array =
-		(BlockInfoRecord *) palloc(sizeof(BlockInfoRecord) * NBuffers);
+	/*
+	 * With sufficiently large shared_buffers, allocation will exceed 1GB, so
+	 * allow for a huge allocation to prevent outright failure.
+	 *
+	 * (In the future, it might be a good idea to redesign this to use a more
+	 * memory-efficient data structure.)
+	 */
+	block_info_array = (BlockInfoRecord *)
+		palloc_extended((sizeof(BlockInfoRecord) * NBuffers), MCXT_ALLOC_HUGE);
 
 	for (num_blocks = 0, i = 0; i < NBuffers; i++)
 	{
-		uint32		buf_state;
+		uint64		buf_state;
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -631,15 +721,17 @@ apw_dump_now(bool is_bgworker, bool dump_unlogged)
 		if (buf_state & BM_TAG_VALID &&
 			((buf_state & BM_PERMANENT) || dump_unlogged))
 		{
-			block_info_array[num_blocks].database = bufHdr->tag.rnode.dbNode;
-			block_info_array[num_blocks].tablespace = bufHdr->tag.rnode.spcNode;
-			block_info_array[num_blocks].filenode = bufHdr->tag.rnode.relNode;
-			block_info_array[num_blocks].forknum = bufHdr->tag.forkNum;
+			block_info_array[num_blocks].database = bufHdr->tag.dbOid;
+			block_info_array[num_blocks].tablespace = bufHdr->tag.spcOid;
+			block_info_array[num_blocks].filenumber =
+				BufTagGetRelNumber(&bufHdr->tag);
+			block_info_array[num_blocks].forknum =
+				BufTagGetForkNum(&bufHdr->tag);
 			block_info_array[num_blocks].blocknum = bufHdr->tag.blockNum;
 			++num_blocks;
 		}
 
-		UnlockBufHdr(bufHdr, buf_state);
+		UnlockBufHdr(bufHdr);
 	}
 
 	snprintf(transient_dump_file_path, MAXPGPATH, "%s.tmp", AUTOPREWARM_FILE);
@@ -671,7 +763,7 @@ apw_dump_now(bool is_bgworker, bool dump_unlogged)
 		ret = fprintf(file, "%u,%u,%u,%u,%u\n",
 					  block_info_array[i].database,
 					  block_info_array[i].tablespace,
-					  block_info_array[i].filenode,
+					  block_info_array[i].filenumber,
 					  (uint32) block_info_array[i].forknum,
 					  block_info_array[i].blocknum);
 		if (ret < 0)
@@ -736,8 +828,8 @@ autoprewarm_start_worker(PG_FUNCTION_ARGS)
 	if (pid != InvalidPid)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("autoprewarm worker is already running under PID %lu",
-						(unsigned long) pid)));
+				 errmsg("autoprewarm worker is already running under PID %d",
+						(int) pid)));
 
 	apw_start_leader_worker();
 
@@ -766,6 +858,16 @@ autoprewarm_dump_now(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64((int64) num_blocks);
 }
 
+static void
+apw_init_state(void *ptr, void *arg)
+{
+	AutoPrewarmSharedState *state = (AutoPrewarmSharedState *) ptr;
+
+	LWLockInitialize(&state->lock, LWLockNewTrancheId("autoprewarm"));
+	state->bgworker_pid = InvalidPid;
+	state->pid_using_dumpfile = InvalidPid;
+}
+
 /*
  * Allocate and initialize autoprewarm related shared memory, if not already
  * done, and set up backend-local pointer to that state.  Returns true if an
@@ -776,20 +878,10 @@ apw_init_shmem(void)
 {
 	bool		found;
 
-	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
-	apw_state = ShmemInitStruct("autoprewarm",
-								sizeof(AutoPrewarmSharedState),
-								&found);
-	if (!found)
-	{
-		/* First time through ... */
-		LWLockInitialize(&apw_state->lock, LWLockNewTrancheId());
-		apw_state->bgworker_pid = InvalidPid;
-		apw_state->pid_using_dumpfile = InvalidPid;
-	}
-	LWLockRelease(AddinShmemInitLock);
-
-	LWLockRegisterTranche(apw_state->lock.tranche, "autoprewarm");
+	apw_state = GetNamedDSMSegment("autoprewarm",
+								   sizeof(AutoPrewarmSharedState),
+								   apw_init_state,
+								   &found, NULL);
 
 	return found;
 }
@@ -814,12 +906,11 @@ apw_detach_shmem(int code, Datum arg)
 static void
 apw_start_leader_worker(void)
 {
-	BackgroundWorker worker;
+	BackgroundWorker worker = {0};
 	BackgroundWorkerHandle *handle;
 	BgwHandleStatus status;
 	pid_t		pid;
 
-	MemSet(&worker, 0, sizeof(BackgroundWorker));
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
 	worker.bgw_start_time = BgWorkerStart_ConsistentState;
 	strcpy(worker.bgw_library_name, "pg_prewarm");
@@ -840,7 +931,7 @@ apw_start_leader_worker(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 				 errmsg("could not register background process"),
-				 errhint("You may need to increase max_worker_processes.")));
+				 errhint("You may need to increase \"max_worker_processes\".")));
 
 	status = WaitForBackgroundWorkerStartup(handle, &pid);
 	if (status != BGWH_STARTED)
@@ -856,10 +947,9 @@ apw_start_leader_worker(void)
 static void
 apw_start_database_worker(void)
 {
-	BackgroundWorker worker;
+	BackgroundWorker worker = {0};
 	BackgroundWorkerHandle *handle;
 
-	MemSet(&worker, 0, sizeof(BackgroundWorker));
 	worker.bgw_flags =
 		BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_ConsistentState;
@@ -876,7 +966,7 @@ apw_start_database_worker(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 				 errmsg("registering dynamic bgworker autoprewarm failed"),
-				 errhint("Consider increasing configuration parameter \"max_worker_processes\".")));
+				 errhint("Consider increasing the configuration parameter \"%s\".", "max_worker_processes")));
 
 	/*
 	 * Ignore return value; if it fails, postmaster has died, but we have
@@ -900,7 +990,7 @@ do { \
  * We depend on all records for a particular database being consecutive
  * in the dump file; each per-database worker will preload blocks until
  * it sees a block for some other database.  Sorting by tablespace,
- * filenode, forknum, and blocknum isn't critical for correctness, but
+ * filenumber, forknum, and blocknum isn't critical for correctness, but
  * helps us get a sequential I/O pattern.
  */
 static int
@@ -911,7 +1001,7 @@ apw_compare_blockinfo(const void *p, const void *q)
 
 	cmp_member_elem(database);
 	cmp_member_elem(tablespace);
-	cmp_member_elem(filenode);
+	cmp_member_elem(filenumber);
 	cmp_member_elem(forknum);
 	cmp_member_elem(blocknum);
 

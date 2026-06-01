@@ -4,7 +4,7 @@
  *	  POSTGRES relation scan descriptor definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/relscan.h
@@ -16,8 +16,9 @@
 
 #include "access/htup_details.h"
 #include "access/itup.h"
+#include "nodes/tidbitmap.h"
 #include "port/atomics.h"
-#include "storage/buf.h"
+#include "storage/relfilelocator.h"
 #include "storage/spin.h"
 #include "utils/relcache.h"
 
@@ -31,6 +32,7 @@
 typedef struct YbScanDescData *YbScanDesc;
 
 struct ParallelTableScanDescData;
+struct TableScanInstrumentation;
 
 /*
  * Generic descriptor for table scans. This is the base-class for table scans,
@@ -44,9 +46,24 @@ typedef struct TableScanDescData
 	int			rs_nkeys;		/* number of scan keys */
 	struct ScanKeyData *rs_key; /* array of scan key descriptors */
 
-	/* Range of ItemPointers for table_scan_getnextslot_tidrange() to scan. */
-	ItemPointerData rs_mintid;
-	ItemPointerData rs_maxtid;
+	/*
+	 * Scan type-specific members
+	 */
+	union
+	{
+		/* Iterator for Bitmap Table Scans */
+		TBMIterator rs_tbmiterator;
+
+		/*
+		 * Range of ItemPointers for table_scan_getnextslot_tidrange() to
+		 * scan.
+		 */
+		struct
+		{
+			ItemPointerData rs_mintid;
+			ItemPointerData rs_maxtid;
+		}			tidrange;
+	}			st;
 
 	/*
 	 * Information about type and behaviour of the scan, a bitmask of members
@@ -56,6 +73,11 @@ typedef struct TableScanDescData
 
 	struct ParallelTableScanDescData *rs_parallel;	/* parallel scan
 													 * information */
+
+	/*
+	 * Instrumentation counters maintained by all table AMs.
+	 */
+	struct TableScanInstrumentation *rs_instrument;
 
 	YbScanDesc	ybscan;			/* ignored for non-yb scans */
 } TableScanDescData;
@@ -72,7 +94,7 @@ typedef struct TableScanDescData *TableScanDesc;
  */
 typedef struct ParallelTableScanDescData
 {
-	Oid			phs_relid;		/* OID of relation to scan */
+	RelFileLocator phs_locator; /* physical relation to scan */
 	bool		phs_syncscan;	/* report location to syncscan logic? */
 	bool		phs_snapshot_any;	/* SnapshotAny, not phs_snapshot_data? */
 	Size		phs_snapshot_off;	/* data for snapshot */
@@ -89,6 +111,8 @@ typedef struct ParallelBlockTableScanDescData
 	BlockNumber phs_nblocks;	/* # blocks in relation at start of scan */
 	slock_t		phs_mutex;		/* mutual exclusion for setting startblock */
 	BlockNumber phs_startblock; /* starting block number */
+	BlockNumber phs_numblock;	/* # blocks to scan, or InvalidBlockNumber if
+								 * no limit */
 	pg_atomic_uint64 phs_nallocated;	/* number of blocks allocated to
 										 * workers so far. */
 }			ParallelBlockTableScanDescData;
@@ -114,7 +138,15 @@ typedef struct ParallelBlockTableScanWorkerData *ParallelBlockTableScanWorker;
 typedef struct IndexFetchTableData
 {
 	Relation	rel;
+
+	/*
+	 * Bitmask of ScanOptions affecting the relation. No SO_INTERNAL_FLAGS are
+	 * permitted.
+	 */
+	uint32		flags;
 } IndexFetchTableData;
+
+struct IndexScanInstrumentation;
 
 /*
  * We use the same IndexScanDescData structure for both amgettuple-based
@@ -142,6 +174,12 @@ typedef struct IndexScanDescData
 
 	/* index access method's private state */
 	void	   *opaque;			/* access-method-specific info */
+
+	/*
+	 * Instrumentation counters maintained by all index AMs during both
+	 * amgettuple calls and amgetbitmap calls (unless field remains NULL)
+	 */
+	struct IndexScanInstrumentation *instrument;
 
 	/*
 	 * In an index-only scan, a successful amgettuple call must fill either
@@ -214,14 +252,14 @@ typedef struct IndexScanDescData
 	int			yb_distinct_prefixlen;	/* prefix length, in columns, of a
 										 * distinct index scan */
 	bool		fetch_ybctids_only;
-}			IndexScanDescData;
+} IndexScanDescData;
 
 /* Generic structure for parallel scans */
 typedef struct ParallelIndexScanDescData
 {
-	Oid			ps_relid;
-	Oid			ps_indexid;
-	Size		ps_offset;		/* Offset in bytes of am specific structure */
+	RelFileLocator ps_locator;	/* physical table relation to scan */
+	RelFileLocator ps_indexlocator; /* physical index relation to scan */
+	Size		ps_offset_am;	/* Offset to am-specific structure */
 	char		ps_snapshot_data[FLEXIBLE_ARRAY_MEMBER];
 }			ParallelIndexScanDescData;
 
@@ -237,6 +275,6 @@ typedef struct SysScanDescData
 	struct SnapshotData *snapshot;	/* snapshot to unregister at end of scan */
 	struct TupleTableSlot *slot;
 	YbSysScanBase ybscan;		/* only valid in yb-scan case */
-}			SysScanDescData;
+} SysScanDescData;
 
 #endif							/* RELSCAN_H */

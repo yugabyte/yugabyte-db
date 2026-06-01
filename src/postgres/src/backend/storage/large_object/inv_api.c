@@ -19,7 +19,7 @@
  * memory context given to inv_open (for LargeObjectDesc structs).
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -35,14 +35,12 @@
 #include "access/detoast.h"
 #include "access/genam.h"
 #include "access/htup_details.h"
-#include "access/sysattr.h"
 #include "access/table.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_largeobject.h"
-#include "catalog/pg_largeobject_metadata.h"
 #include "libpq/libpq-fs.h"
 #include "miscadmin.h"
 #include "storage/large_object.h"
@@ -58,11 +56,11 @@
 bool		lo_compat_privileges;
 
 /*
- * All accesses to pg_largeobject and its index make use of a single Relation
- * reference, so that we only need to open pg_relation once per transaction.
- * To avoid problems when the first such reference occurs inside a
- * subtransaction, we execute a slightly klugy maneuver to assign ownership of
- * the Relation reference to TopTransactionResourceOwner.
+ * All accesses to pg_largeobject and its index make use of a single
+ * Relation reference.  To guarantee that the relcache entry remains
+ * in the cache, on the first reference inside a subtransaction, we
+ * execute a slightly klugy maneuver to assign ownership of the
+ * Relation reference to TopTransactionResourceOwner.
  */
 static Relation lo_heap_r = NULL;
 static Relation lo_index_r = NULL;
@@ -125,43 +123,6 @@ close_lo_relation(bool isCommit)
 
 
 /*
- * Same as pg_largeobject.c's LargeObjectExists(), except snapshot to
- * read with can be specified.
- */
-static bool
-myLargeObjectExists(Oid loid, Snapshot snapshot)
-{
-	Relation	pg_lo_meta;
-	ScanKeyData skey[1];
-	SysScanDesc sd;
-	HeapTuple	tuple;
-	bool		retval = false;
-
-	ScanKeyInit(&skey[0],
-				Anum_pg_largeobject_metadata_oid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(loid));
-
-	pg_lo_meta = table_open(LargeObjectMetadataRelationId,
-							AccessShareLock);
-
-	sd = systable_beginscan(pg_lo_meta,
-							LargeObjectMetadataOidIndexId, true,
-							snapshot, 1, skey);
-
-	tuple = systable_getnext(sd);
-	if (HeapTupleIsValid(tuple))
-		retval = true;
-
-	systable_endscan(sd);
-
-	table_close(pg_lo_meta, AccessShareLock);
-
-	return retval;
-}
-
-
-/*
  * Extract data field from a pg_largeobject tuple, detoasting if needed
  * and verifying that the length is sane.  Returns data pointer (a bytea *),
  * data length, and an indication of whether to pfree the data pointer.
@@ -181,7 +142,7 @@ getdatafield(Form_pg_largeobject tuple,
 	if (VARATT_IS_EXTENDED(datafield))
 	{
 		datafield = (bytea *)
-			detoast_attr((struct varlena *) datafield);
+			detoast_attr((varlena *) datafield);
 		freeit = true;
 	}
 	len = VARSIZE(datafield) - VARHDRSZ;
@@ -221,11 +182,10 @@ inv_create(Oid lobjId)
 	/*
 	 * dependency on the owner of largeobject
 	 *
-	 * The reason why we use LargeObjectRelationId instead of
-	 * LargeObjectMetadataRelationId here is to provide backward compatibility
-	 * to the applications which utilize a knowledge about internal layout of
-	 * system catalogs. OID of pg_largeobject_metadata and loid of
-	 * pg_largeobject are same value, so there are no actual differences here.
+	 * Note that LO dependencies are recorded using classId
+	 * LargeObjectRelationId for backwards-compatibility reasons.  Using
+	 * LargeObjectMetadataRelationId instead would simplify matters for the
+	 * backend, but it'd complicate pg_dump and possibly break other clients.
 	 */
 	recordDependencyOnOwner(LargeObjectRelationId,
 							lobjId_new, GetUserId());
@@ -281,7 +241,7 @@ inv_open(Oid lobjId, int flags, MemoryContext mcxt)
 		snapshot = GetActiveSnapshot();
 
 	/* Can't use LargeObjectExists here because we need to specify snapshot */
-	if (!myLargeObjectExists(lobjId, snapshot))
+	if (!LargeObjectExistsWithSnapshot(lobjId, snapshot))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("large object %u does not exist", lobjId)));
@@ -338,7 +298,7 @@ inv_open(Oid lobjId, int flags, MemoryContext mcxt)
 void
 inv_close(LargeObjectDesc *obj_desc)
 {
-	Assert(PointerIsValid(obj_desc));
+	Assert(obj_desc);
 	pfree(obj_desc);
 }
 
@@ -384,7 +344,7 @@ inv_getsize(LargeObjectDesc *obj_desc)
 	SysScanDesc sd;
 	HeapTuple	tuple;
 
-	Assert(PointerIsValid(obj_desc));
+	Assert(obj_desc);
 
 	open_lo_relation();
 
@@ -429,7 +389,7 @@ inv_seek(LargeObjectDesc *obj_desc, int64 offset, int whence)
 {
 	int64		newoffset;
 
-	Assert(PointerIsValid(obj_desc));
+	Assert(obj_desc);
 
 	/*
 	 * We allow seek/tell if you have either read or write permission, so no
@@ -476,7 +436,7 @@ inv_seek(LargeObjectDesc *obj_desc, int64 offset, int whence)
 int64
 inv_tell(LargeObjectDesc *obj_desc)
 {
-	Assert(PointerIsValid(obj_desc));
+	Assert(obj_desc);
 
 	/*
 	 * We allow seek/tell if you have either read or write permission, so no
@@ -499,7 +459,7 @@ inv_read(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 	SysScanDesc sd;
 	HeapTuple	tuple;
 
-	Assert(PointerIsValid(obj_desc));
+	Assert(obj_desc);
 	Assert(buf != NULL);
 
 	if ((obj_desc->flags & IFS_RDLOCK) == 0)
@@ -596,12 +556,10 @@ inv_write(LargeObjectDesc *obj_desc, const char *buf, int nbytes)
 	bool		pfreeit;
 	union
 	{
-		bytea		hdr;
+		alignas(int32) bytea hdr;
 		/* this is to make the union big enough for a LO data chunk: */
 		char		data[LOBLKSIZE + VARHDRSZ];
-		/* ensure union is aligned well enough: */
-		int32		align_it;
-	}			workbuf;
+	}			workbuf = {0};
 	char	   *workb = VARDATA(&workbuf.hdr);
 	HeapTuple	newtup;
 	Datum		values[Natts_pg_largeobject];
@@ -609,7 +567,7 @@ inv_write(LargeObjectDesc *obj_desc, const char *buf, int nbytes)
 	bool		replace[Natts_pg_largeobject];
 	CatalogIndexState indstate;
 
-	Assert(PointerIsValid(obj_desc));
+	Assert(obj_desc);
 	Assert(buf != NULL);
 
 	/* enforce writability because snapshot is probably wrong otherwise */
@@ -787,12 +745,10 @@ inv_truncate(LargeObjectDesc *obj_desc, int64 len)
 	Form_pg_largeobject olddata;
 	union
 	{
-		bytea		hdr;
+		alignas(int32) bytea hdr;
 		/* this is to make the union big enough for a LO data chunk: */
 		char		data[LOBLKSIZE + VARHDRSZ];
-		/* ensure union is aligned well enough: */
-		int32		align_it;
-	}			workbuf;
+	}			workbuf = {0};
 	char	   *workb = VARDATA(&workbuf.hdr);
 	HeapTuple	newtup;
 	Datum		values[Natts_pg_largeobject];
@@ -800,7 +756,7 @@ inv_truncate(LargeObjectDesc *obj_desc, int64 len)
 	bool		replace[Natts_pg_largeobject];
 	CatalogIndexState indstate;
 
-	Assert(PointerIsValid(obj_desc));
+	Assert(obj_desc);
 
 	/* enforce writability because snapshot is probably wrong otherwise */
 	if ((obj_desc->flags & IFS_WRLOCK) == 0)

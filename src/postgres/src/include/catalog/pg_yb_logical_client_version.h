@@ -41,6 +41,6 @@ CATALOG(pg_yb_logical_client_version,8073,YBLogicalClientVersionRelationId) BKI_
  */
 typedef FormData_yb_pg_logical_client_version *Form_yb_pg_logical_client_version;
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_yb_logical_client_version_db_oid_index, 8075, YBLogicalClientVersionDbOidIndexId, on pg_yb_logical_client_version using btree(db_oid oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_yb_logical_client_version_db_oid_index, 8075, YBLogicalClientVersionDbOidIndexId, pg_yb_logical_client_version, btree(db_oid oid_ops));
 
 #endif							/* PG_YB_LOGICAL_CLIENT_VERSION_H */

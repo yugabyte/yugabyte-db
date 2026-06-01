@@ -29,7 +29,7 @@
  * intentional denormalization of the catalogs to buy lookup speed.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_amop.h
@@ -44,13 +44,15 @@
 #define PG_AMOP_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_amop_d.h"
+#include "catalog/pg_amop_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_amop definition.  cpp turns this into
  *		typedef struct FormData_pg_amop
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_amop,2602,AccessMethodOperatorRelationId)
 {
 	Oid			oid;			/* oid */
@@ -80,6 +82,8 @@ CATALOG(pg_amop,2602,AccessMethodOperatorRelationId)
 	Oid			amopsortfamily BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_opfamily);
 } FormData_pg_amop;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_amop corresponds to a pointer to a tuple with
  *		the format of pg_amop relation.
@@ -87,9 +91,12 @@ CATALOG(pg_amop,2602,AccessMethodOperatorRelationId)
  */
 typedef FormData_pg_amop *Form_pg_amop;
 
-DECLARE_UNIQUE_INDEX(pg_amop_fam_strat_index, 2653, AccessMethodStrategyIndexId, on pg_amop using btree(amopfamily oid_ops, amoplefttype oid_ops, amoprighttype oid_ops, amopstrategy int2_ops));
-DECLARE_UNIQUE_INDEX(pg_amop_opr_fam_index, 2654, AccessMethodOperatorIndexId, on pg_amop using btree(amopopr oid_ops, amoppurpose char_ops, amopfamily oid_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_amop_oid_index, 2756, AccessMethodOperatorOidIndexId, on pg_amop using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_amop_fam_strat_index, 2653, AccessMethodStrategyIndexId, pg_amop, btree(amopfamily oid_ops, amoplefttype oid_ops, amoprighttype oid_ops, amopstrategy int2_ops));
+DECLARE_UNIQUE_INDEX(pg_amop_opr_fam_index, 2654, AccessMethodOperatorIndexId, pg_amop, btree(amopopr oid_ops, amoppurpose char_ops, amopfamily oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_amop_oid_index, 2756, AccessMethodOperatorOidIndexId, pg_amop, btree(oid oid_ops));
+
+MAKE_SYSCACHE(AMOPSTRATEGY, pg_amop_fam_strat_index, 64);
+MAKE_SYSCACHE(AMOPOPID, pg_amop_opr_fam_index, 64);
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

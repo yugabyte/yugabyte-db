@@ -3,7 +3,7 @@
  *
  * A Pairing Heap implementation
  *
- * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2026, PostgreSQL Global Development Group
  *
  * src/include/lib/pairingheap.h
  */
@@ -41,16 +41,16 @@ typedef struct pairingheap_node
  * This is used to convert a pairingheap_node * back to its containing struct.
  */
 #define pairingheap_container(type, membername, ptr) \
-	(AssertVariableIsOfTypeMacro(ptr, pairingheap_node *), \
-	 AssertVariableIsOfTypeMacro(((type *) NULL)->membername, pairingheap_node),  \
+	(StaticAssertVariableIsOfTypeMacro(ptr, pairingheap_node *), \
+	 StaticAssertVariableIsOfTypeMacro(((type *) NULL)->membername, pairingheap_node),  \
 	 ((type *) ((char *) (ptr) - offsetof(type, membername))))
 
 /*
  * Like pairingheap_container, but used when the pointer is 'const ptr'
  */
 #define pairingheap_const_container(type, membername, ptr) \
-	(AssertVariableIsOfTypeMacro(ptr, const pairingheap_node *), \
-	 AssertVariableIsOfTypeMacro(((type *) NULL)->membername, pairingheap_node),  \
+	(StaticAssertVariableIsOfTypeMacro(ptr, const pairingheap_node *), \
+	 StaticAssertVariableIsOfTypeMacro(((type *) NULL)->membername, pairingheap_node),  \
 	 ((const type *) ((const char *) (ptr) - offsetof(type, membername))))
 
 /*
@@ -77,6 +77,9 @@ typedef struct pairingheap
 
 extern pairingheap *pairingheap_allocate(pairingheap_comparator compare,
 										 void *arg);
+extern void pairingheap_initialize(pairingheap *heap,
+								   pairingheap_comparator compare,
+								   void *arg);
 extern void pairingheap_free(pairingheap *heap);
 extern void pairingheap_add(pairingheap *heap, pairingheap_node *node);
 extern pairingheap_node *pairingheap_first(pairingheap *heap);

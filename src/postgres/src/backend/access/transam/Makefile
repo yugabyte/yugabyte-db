@@ -29,13 +29,15 @@ OBJS = \
 	xact.o \
 	xlog.o \
 	xlogarchive.o \
+	xlogbackup.o \
 	xlogfuncs.o \
 	xloginsert.o \
 	xlogprefetcher.o \
 	xlogreader.o \
 	xlogrecovery.o \
 	xlogstats.o \
-	xlogutils.o
+	xlogutils.o \
+	xlogwait.o
 
 include $(top_srcdir)/src/backend/common.mk
 

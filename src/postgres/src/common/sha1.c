@@ -5,7 +5,7 @@
  *
  * Fallback implementation of SHA1, as specified in RFC 3174.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -61,7 +61,7 @@
 #include "sha1_int.h"
 
 /* constant table */
-static uint32 _K[] = {0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6};
+static const uint32 _K[] = {0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6};
 
 #define K(t)	_K[(t) / 20]
 
@@ -277,7 +277,7 @@ sha1_result(uint8 *digest0, pg_sha1_ctx *ctx)
 {
 	uint8	   *digest;
 
-	digest = (uint8 *) digest0;
+	digest = digest0;
 
 #ifdef WORDS_BIGENDIAN
 	memmove(digest, &ctx->h.b8[0], 20);
@@ -337,7 +337,7 @@ pg_sha1_update(pg_sha1_ctx *ctx, const uint8 *data, size_t len)
 	size_t		off;
 	size_t		copysiz;
 
-	input = (const uint8 *) data;
+	input = data;
 	off = 0;
 
 	while (off < len)

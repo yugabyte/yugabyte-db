@@ -241,6 +241,17 @@ SELECT functest_S_14();
 
 DROP TABLE functest3 CASCADE;
 
+-- Check reporting of temporary-object dependencies within SQL-standard body
+-- (tests elsewhere already cover dependencies on arg and result types)
+CREATE TEMP SEQUENCE mytempseq;
+
+CREATE FUNCTION functest_tempseq() RETURNS int
+    RETURN nextval('mytempseq');
+
+-- This discards mytempseq and therefore functest_tempseq().  If it fails to,
+-- the function will appear in the information_schema tests below.
+DISCARD TEMP;
+
 
 -- information_schema tests
 
@@ -328,6 +339,15 @@ CREATE OR REPLACE PROCEDURE functest1(a int) LANGUAGE SQL AS 'SELECT $1';
 DROP FUNCTION functest1(a int);
 
 
+-- early shutdown of set-returning functions
+
+CREATE FUNCTION functest_srf0() RETURNS SETOF int
+LANGUAGE SQL
+AS $$ SELECT i FROM generate_series(1, 100) i $$;
+
+SELECT functest_srf0() LIMIT 5;
+
+
 -- inlining of set-returning functions
 
 CREATE TABLE functest3 (a int);
@@ -385,6 +405,31 @@ CREATE FUNCTION voidtest5(a int) RETURNS SETOF VOID LANGUAGE SQL AS
 $$ SELECT generate_series(1, a) $$ STABLE;
 SELECT * FROM voidtest5(3);
 
+-- DDL within a SQL function can now affect later statements in the function;
+-- though that doesn't work if check_function_bodies is on.
+
+SET check_function_bodies TO off;
+
+CREATE FUNCTION create_and_insert() RETURNS VOID LANGUAGE sql AS $$
+  create table ddl_test (f1 int);
+  insert into ddl_test values (1.2);
+$$;
+
+SELECT create_and_insert();
+
+TABLE ddl_test;
+
+CREATE FUNCTION alter_and_insert() RETURNS VOID LANGUAGE sql AS $$
+  alter table ddl_test alter column f1 type numeric;
+  insert into ddl_test values (1.2);
+$$;
+
+SELECT alter_and_insert();
+
+TABLE ddl_test;
+
+RESET check_function_bodies;
+
 -- Regression tests for bugs:
 
 -- Check that arguments that are R/W expanded datums aren't corrupted by
@@ -397,6 +442,23 @@ $$ SELECT array_append($1, $2) || array_append($1, $2) $$;
 
 SELECT double_append(array_append(ARRAY[q1], q2), q3)
   FROM (VALUES(1,2,3), (4,5,6)) v(q1,q2,q3);
+
+-- Check that we can re-use a SQLFunctionCache after a run-time error.
+
+-- This function will fail with zero-divide at run time (not plan time).
+CREATE FUNCTION part_hashint4_error(value int4, seed int8) RETURNS int8
+LANGUAGE SQL STRICT IMMUTABLE PARALLEL SAFE AS
+$$ SELECT value + seed + random()::int/0 $$;
+
+-- Put it into an operator class so that FmgrInfo will be cached in relcache.
+CREATE OPERATOR CLASS part_test_int4_ops_bad FOR TYPE int4 USING hash AS
+  FUNCTION 2 part_hashint4_error(int4, int8);
+
+CREATE TABLE pt(i int) PARTITION BY hash (i part_test_int4_ops_bad);
+CREATE TABLE p1 PARTITION OF pt FOR VALUES WITH (modulus 4, remainder 0);
+
+INSERT INTO pt VALUES (1);
+INSERT INTO pt VALUES (1);
 
 -- Things that shouldn't work:
 
@@ -414,6 +476,16 @@ CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
 
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'a', 'b';
+
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
+    AS '';
+
+-- make sure empty-body case is handled at execution time, too
+SET check_function_bodies = off;
+CREATE FUNCTION test1 (anyelement) RETURNS anyarray LANGUAGE SQL
+    AS '';
+SELECT test1(0);
+RESET check_function_bodies;
 
 -- Cleanup
 DROP SCHEMA temp_func_test CASCADE;

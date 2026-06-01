@@ -66,6 +66,17 @@ ALTER TABLE has_volatile ADD col2 int DEFAULT 1;
 ALTER TABLE has_volatile ADD col3 timestamptz DEFAULT current_timestamp;
 ALTER TABLE has_volatile ADD col4 int DEFAULT (random() * 10000)::int;
 
+-- virtual generated columns don't need a rewrite
+ALTER TABLE has_volatile ADD col5 int GENERATED ALWAYS AS (tableoid::int + col2) VIRTUAL;
+ALTER TABLE has_volatile ALTER COLUMN col5 TYPE float8;
+ALTER TABLE has_volatile ALTER COLUMN col5 TYPE numeric;
+ALTER TABLE has_volatile ALTER COLUMN col5 TYPE numeric;
+-- here, we do need a rewrite
+ALTER TABLE has_volatile ALTER COLUMN col1 SET DATA TYPE float8,
+  ADD COLUMN col6 float8 GENERATED ALWAYS AS (col1 * 4) VIRTUAL;
+-- stored generated columns need a rewrite
+ALTER TABLE has_volatile ADD col7 int GENERATED ALWAYS AS (55) stored;
+
 
 
 -- Test a large sample of different datatypes
@@ -237,6 +248,101 @@ SELECT comp();
 
 DROP TABLE T;
 
+-- Test domains with default value for table rewrite.
+CREATE DOMAIN domain1 AS int DEFAULT 11;  -- constant
+CREATE DOMAIN domain2 AS int DEFAULT random(min=>10, max=>100);  -- volatile
+CREATE DOMAIN domain3 AS text DEFAULT foo(4);  -- stable
+CREATE DOMAIN domain4 AS text[]
+  DEFAULT ('{"This", "is", "' || foo(4) || '","the", "real", "world"}')::TEXT[];
+
+CREATE TABLE t2 (a domain1);
+INSERT INTO t2 VALUES (1),(2);
+
+-- no table rewrite
+ALTER TABLE t2 ADD COLUMN b domain1 default 3;
+
+SELECT attnum, attname, atthasmissing, atthasdef, attmissingval
+FROM pg_attribute
+WHERE attnum > 0 AND attrelid = 't2'::regclass
+ORDER BY attnum;
+
+-- table rewrite should happen
+ALTER TABLE t2 ADD COLUMN c domain3 default left(random()::text,3);
+
+-- no table rewrite
+ALTER TABLE t2 ADD COLUMN d domain4;
+
+SELECT attnum, attname, atthasmissing, atthasdef, attmissingval
+FROM pg_attribute
+WHERE attnum > 0 AND attrelid = 't2'::regclass
+ORDER BY attnum;
+
+-- table rewrite should happen
+ALTER TABLE t2 ADD COLUMN e domain2;
+
+SELECT attnum, attname, atthasmissing, atthasdef, attmissingval
+FROM pg_attribute
+WHERE attnum > 0 AND attrelid = 't2'::regclass
+ORDER BY attnum;
+
+SELECT a, b, length(c) = 3 as c_ok, d, e >= 10 as e_ok FROM t2;
+
+-- test fast default over domains with constraints
+CREATE DOMAIN domain5 AS int CHECK(value > 10) DEFAULT 8;
+CREATE DOMAIN domain6 as int CHECK(value > 10) DEFAULT random(min=>11, max=>100);
+CREATE DOMAIN domain7 as int CHECK((value + random(min=>11::int, max=>11)) > 12);
+CREATE DOMAIN domain8 as int NOT NULL;
+
+CREATE TABLE test_add_domain_col(a int);
+-- succeeds despite constraint-violating default because table is empty
+ALTER TABLE test_add_domain_col ADD COLUMN a1 domain5;
+ALTER TABLE test_add_domain_col DROP COLUMN a1;
+INSERT INTO test_add_domain_col VALUES(1),(2);
+
+-- tests with non-empty table
+ALTER TABLE test_add_domain_col ADD COLUMN b domain5; -- table rewrite, then fail
+ALTER TABLE test_add_domain_col ADD COLUMN b domain8; -- table rewrite, then fail
+ALTER TABLE test_add_domain_col ADD COLUMN b domain5 DEFAULT 1; -- table rewrite, then fail
+ALTER TABLE test_add_domain_col ADD COLUMN b domain5 DEFAULT 12; -- ok, no table rewrite
+
+-- explicit column default expression overrides domain's default
+-- expression, so no table rewrite
+ALTER TABLE test_add_domain_col ADD COLUMN c domain6 DEFAULT 14;
+
+ALTER TABLE test_add_domain_col ADD COLUMN c1 domain8 DEFAULT 13; -- no table rewrite
+SELECT attnum, attname, atthasmissing, atthasdef, attmissingval
+FROM  pg_attribute
+WHERE attnum > 0 AND attrelid = 'test_add_domain_col'::regclass AND attisdropped is false
+AND   atthasmissing
+ORDER BY attnum;
+
+-- We need to rewrite the table whenever domain default contains volatile expression
+ALTER TABLE test_add_domain_col ADD COLUMN d domain6;
+
+-- We need to rewrite the table whenever domain constraint expression contains volatile expression
+ALTER TABLE test_add_domain_col ADD COLUMN e domain7 default 14;
+ALTER TABLE test_add_domain_col ADD COLUMN f domain7;
+
+-- domain with both volatile and non-volatile CHECK constraints: the
+-- volatile one forces a table rewrite
+CREATE DOMAIN domain9 AS int CHECK(value > 10) CHECK((value + random(min=>1::int, max=>1)) > 0);
+ALTER TABLE test_add_domain_col ADD COLUMN g domain9 DEFAULT 14;
+
+-- virtual generated columns cannot have domain types
+ALTER TABLE test_add_domain_col ADD COLUMN h domain5
+  GENERATED ALWAYS AS (a + 20) VIRTUAL;  -- error
+
+DROP TABLE t2;
+DROP TABLE test_add_domain_col;
+DROP DOMAIN domain1;
+DROP DOMAIN domain2;
+DROP DOMAIN domain3;
+DROP DOMAIN domain4;
+DROP DOMAIN domain5;
+DROP DOMAIN domain6;
+DROP DOMAIN domain7;
+DROP DOMAIN domain8;
+DROP DOMAIN domain9;
 DROP FUNCTION foo(INT);
 
 -- Fall back to full rewrite for volatile expressions

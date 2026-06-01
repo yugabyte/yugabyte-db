@@ -3,7 +3,7 @@
  * backup_manifest.h
  *	  Routines for generating a backup manifest.
  *
- * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * src/include/backup/backup_manifest.h
  *
@@ -21,7 +21,7 @@ typedef enum manifest_option
 {
 	MANIFEST_OPTION_YES,
 	MANIFEST_OPTION_NO,
-	MANIFEST_OPTION_FORCE_ENCODE
+	MANIFEST_OPTION_FORCE_ENCODE,
 } backup_manifest_option;
 
 typedef struct backup_manifest_info
@@ -39,7 +39,7 @@ extern void InitializeBackupManifest(backup_manifest_info *manifest,
 									 backup_manifest_option want_manifest,
 									 pg_checksum_type manifest_checksum_type);
 extern void AddFileToBackupManifest(backup_manifest_info *manifest,
-									const char *spcoid,
+									Oid spcoid,
 									const char *pathname, size_t size,
 									pg_time_t mtime,
 									pg_checksum_context *checksum_ctx);

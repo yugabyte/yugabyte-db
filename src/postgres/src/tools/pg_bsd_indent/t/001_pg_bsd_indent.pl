@@ -1,7 +1,7 @@
 # pg_bsd_indent: some simple tests
 
 # The test cases come from FreeBSD upstream, but this test scaffolding is ours.
-# Copyright (c) 2017-2025, PostgreSQL Global Development Group
+# Copyright (c) 2017-2026, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -51,7 +51,7 @@ while (my $test_src = glob("$src_dir/tests/*.0"))
 	# check result matches, adding any diff to $diffs_file
 	my $result =
 	  run_log([ 'diff', @diffopts, "$test_src.stdout", "$test.out" ],
-		'>>', $diffs_file);
+		'>>' => $diffs_file);
 	ok($result, "pg_bsd_indent output matches for $test");
 }
 

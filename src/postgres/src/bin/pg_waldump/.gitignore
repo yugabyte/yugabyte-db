@@ -16,6 +16,9 @@
 # /nbtdesc.c
 # /relmapdesc.c
 # /replorigindesc.c
+# YB_TODO_PG19MERGE: rmgrdesc_utils.c is not matched by the *desc.c symlink
+# wildcard in the Makefile, so we can't comment this out. Revisit later.
+/rmgrdesc_utils.c
 # /seqdesc.c
 # /smgrdesc.c
 # /spgdesc.c

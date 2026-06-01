@@ -8,7 +8,7 @@
  * or call fmgr-callable functions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/fmgr.h
@@ -19,14 +19,14 @@
 #define FMGR_H
 
 /* We don't want to include primnodes.h here, so make some stub references */
-typedef struct Node *fmNodePtr;
-typedef struct Aggref *fmAggrefPtr;
+typedef struct Node Node;
+typedef struct Aggref Aggref;
 
 /* Likewise, avoid including execnodes.h here */
-typedef void (*fmExprContextCallbackFunction) (Datum arg);
+typedef void (*ExprContextCallbackFunction) (Datum arg);
 
 /* Likewise, avoid including stringinfo.h here */
-typedef struct StringInfoData *fmStringInfo;
+typedef struct StringInfoData *StringInfo;
 
 
 /*
@@ -63,7 +63,7 @@ typedef struct FmgrInfo
 	unsigned char fn_stats;		/* collect stats if track_functions > this */
 	void	   *fn_extra;		/* extra space for use by handler */
 	MemoryContext fn_mcxt;		/* memory context to store fn_extra in */
-	fmNodePtr	fn_expr;		/* expression parse tree for call, or NULL */
+	Node	   *fn_expr;		/* expression parse tree for call, or NULL */
 	void	   *fn_alt;			/* alternative function implementation for
 								 * special cases */
 } FmgrInfo;
@@ -87,8 +87,8 @@ typedef struct FmgrInfo
 typedef struct FunctionCallInfoBaseData
 {
 	FmgrInfo   *flinfo;			/* ptr to lookup info used for this call */
-	fmNodePtr	context;		/* pass info about context of call */
-	fmNodePtr	resultinfo;		/* pass or return extra info about result */
+	Node	   *context;		/* pass info about context of call */
+	Node	   *resultinfo;		/* pass or return extra info about result */
 	Oid			fncollation;	/* collation for function to use */
 #define FIELDNO_FUNCTIONCALLINFODATA_ISNULL 4
 	bool		isnull;			/* function must set true if result is NULL */
@@ -233,22 +233,22 @@ extern void fmgr_symbol(Oid functionId, char **mod, char **fn);
  * Note: it'd be nice if these could be macros, but I see no way to do that
  * without evaluating the arguments multiple times, which is NOT acceptable.
  */
-extern struct varlena *pg_detoast_datum(struct varlena *datum);
-extern struct varlena *pg_detoast_datum_copy(struct varlena *datum);
-extern struct varlena *pg_detoast_datum_slice(struct varlena *datum,
-											  int32 first, int32 count);
-extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
+extern varlena *pg_detoast_datum(varlena *datum);
+extern varlena *pg_detoast_datum_copy(varlena *datum);
+extern varlena *pg_detoast_datum_slice(varlena *datum,
+									   int32 first, int32 count);
+extern varlena *pg_detoast_datum_packed(varlena *datum);
 
 #define PG_DETOAST_DATUM(datum) \
-	pg_detoast_datum((struct varlena *) DatumGetPointer(datum))
+	pg_detoast_datum((varlena *) DatumGetPointer(datum))
 #define PG_DETOAST_DATUM_COPY(datum) \
-	pg_detoast_datum_copy((struct varlena *) DatumGetPointer(datum))
+	pg_detoast_datum_copy((varlena *) DatumGetPointer(datum))
 #define PG_DETOAST_DATUM_SLICE(datum,f,c) \
-		pg_detoast_datum_slice((struct varlena *) DatumGetPointer(datum), \
+		pg_detoast_datum_slice((varlena *) DatumGetPointer(datum), \
 		(int32) (f), (int32) (c))
 /* WARNING -- unaligned pointer */
 #define PG_DETOAST_DATUM_PACKED(datum) \
-	pg_detoast_datum_packed((struct varlena *) DatumGetPointer(datum))
+	pg_detoast_datum_packed((varlena *) DatumGetPointer(datum))
 
 /*
  * Support for cleaning up detoasted copies of inputs.  This must only
@@ -261,7 +261,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
  */
 #define PG_FREE_IF_COPY(ptr,n) \
 	do { \
-		if ((Pointer) (ptr) != PG_GETARG_POINTER(n)) \
+		if ((ptr) != PG_GETARG_POINTER(n)) \
 			pfree(ptr); \
 	} while (0)
 
@@ -275,6 +275,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
 #define PG_GETARG_CHAR(n)	 DatumGetChar(PG_GETARG_DATUM(n))
 #define PG_GETARG_BOOL(n)	 DatumGetBool(PG_GETARG_DATUM(n))
 #define PG_GETARG_OID(n)	 DatumGetObjectId(PG_GETARG_DATUM(n))
+#define PG_GETARG_OID8(n)	 DatumGetObjectId8(PG_GETARG_DATUM(n))
 #define PG_GETARG_POINTER(n) DatumGetPointer(PG_GETARG_DATUM(n))
 #define PG_GETARG_CSTRING(n) DatumGetCString(PG_GETARG_DATUM(n))
 #define PG_GETARG_NAME(n)	 DatumGetName(PG_GETARG_DATUM(n))
@@ -284,7 +285,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
 #define PG_GETARG_FLOAT8(n)  DatumGetFloat8(PG_GETARG_DATUM(n))
 #define PG_GETARG_INT64(n)	 DatumGetInt64(PG_GETARG_DATUM(n))
 /* use this if you want the raw, possibly-toasted input datum: */
-#define PG_GETARG_RAW_VARLENA_P(n)	((struct varlena *) PG_GETARG_POINTER(n))
+#define PG_GETARG_RAW_VARLENA_P(n)	((varlena *) PG_GETARG_POINTER(n))
 /* use this if you want the input datum de-toasted: */
 #define PG_GETARG_VARLENA_P(n) PG_DETOAST_DATUM(PG_GETARG_DATUM(n))
 /* and this if you can handle 1-byte-header datums: */
@@ -360,6 +361,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
 #define PG_RETURN_CHAR(x)	 return CharGetDatum(x)
 #define PG_RETURN_BOOL(x)	 return BoolGetDatum(x)
 #define PG_RETURN_OID(x)	 return ObjectIdGetDatum(x)
+#define PG_RETURN_OID8(x)	 return ObjectId8GetDatum(x)
 #define PG_RETURN_POINTER(x) return PointerGetDatum(x)
 #define PG_RETURN_CSTRING(x) return CStringGetDatum(x)
 #define PG_RETURN_NAME(x)	 return NameGetDatum(x)
@@ -415,7 +417,7 @@ typedef const Pg_finfo_record *(*PGFInfoFunction) (void);
  *	info function, since authors shouldn't need to be explicitly aware of it.
  */
 #define PG_FUNCTION_INFO_V1(funcname) \
-extern Datum funcname(PG_FUNCTION_ARGS); \
+extern PGDLLEXPORT Datum funcname(PG_FUNCTION_ARGS); \
 extern PGDLLEXPORT const Pg_finfo_record * CppConcat(pg_finfo_,funcname)(void); \
 const Pg_finfo_record * \
 CppConcat(pg_finfo_,funcname) (void) \
@@ -426,47 +428,68 @@ CppConcat(pg_finfo_,funcname) (void) \
 extern int no_such_variable
 
 
+/*
+ * Declare _PG_init centrally. Historically each shared library had its own
+ * declaration; but now that we want to mark these PGDLLEXPORT, using central
+ * declarations avoids each extension having to add that.  Any existing
+ * declarations in extensions will continue to work if fmgr.h is included
+ * before them, otherwise compilation for Windows will fail.
+ */
+extern PGDLLEXPORT void _PG_init(void);
+
+
 /*-------------------------------------------------------------------------
  *		Support for verifying backend compatibility of loaded modules
  *
  * We require dynamically-loaded modules to include the macro call
  *		PG_MODULE_MAGIC;
  * so that we can check for obvious incompatibility, such as being compiled
- * for a different major PostgreSQL version.
+ * for a different major PostgreSQL version.  Alternatively, write
+ *		PG_MODULE_MAGIC_EXT(...);
+ * where the optional arguments can specify module name and version, and
+ * perhaps other values in future.  Note that in a multiple-source-file
+ * module, there should be exactly one such macro call.
  *
- * To compile with versions of PostgreSQL that do not support this,
- * you may put an #ifdef/#endif test around it.  Note that in a multiple-
- * source-file module, the macro call should only appear once.
+ * You may need an #ifdef test to verify that the version of PostgreSQL
+ * you are compiling against supports PG_MODULE_MAGIC_EXT().
  *
- * The specific items included in the magic block are intended to be ones that
+ * The specific items included in the ABI fields are intended to be ones that
  * are custom-configurable and especially likely to break dynamically loaded
  * modules if they were compiled with other values.  Also, the length field
  * can be used to detect definition changes.
  *
- * Note: we compare magic blocks with memcmp(), so there had better not be
- * any alignment pad bytes in them.
+ * Note: we compare Pg_abi_values structs with memcmp(), so there had better
+ * not be any alignment pad bytes in them.
  *
- * Note: when changing the contents of magic blocks, be sure to adjust the
+ * Note: when changing the contents of Pg_abi_values, be sure to adjust the
  * incompatible_module_error() function in dfmgr.c.
  *-------------------------------------------------------------------------
  */
+
+/* Definition of the values we check to verify ABI compatibility */
+typedef struct
+{
+	int			version;		/* PostgreSQL major version */
+	int			funcmaxargs;	/* FUNC_MAX_ARGS */
+	int			indexmaxkeys;	/* INDEX_MAX_KEYS */
+	int			namedatalen;	/* NAMEDATALEN */
+	int			float8byval;	/* FLOAT8PASSBYVAL (now vestigial) */
+	char		abi_extra[32];	/* see pg_config_manual.h */
+} Pg_abi_values;
 
 /* Definition of the magic block structure */
 typedef struct
 {
 	int			len;			/* sizeof(this struct) */
-	int			version;		/* PostgreSQL major version */
-	int			funcmaxargs;	/* FUNC_MAX_ARGS */
-	int			indexmaxkeys;	/* INDEX_MAX_KEYS */
-	int			namedatalen;	/* NAMEDATALEN */
-	int			float8byval;	/* FLOAT8PASSBYVAL */
-	char		abi_extra[32];	/* see pg_config_manual.h */
+	Pg_abi_values abi_fields;	/* see above */
+	/* Remaining fields are zero unless filled via PG_MODULE_MAGIC_EXT */
+	const char *name;			/* optional module name */
+	const char *version;		/* optional module version */
 } Pg_magic_struct;
 
-/* The actual data block contents */
-#define PG_MODULE_MAGIC_DATA \
+/* Macro to fill the ABI fields */
+#define PG_MODULE_ABI_DATA \
 { \
-	sizeof(Pg_magic_struct), \
 	PG_VERSION_NUM / 100, \
 	FUNC_MAX_ARGS, \
 	INDEX_MAX_KEYS, \
@@ -475,7 +498,18 @@ typedef struct
 	FMGR_ABI_EXTRA, \
 }
 
-StaticAssertDecl(sizeof(FMGR_ABI_EXTRA) <= sizeof(((Pg_magic_struct *) 0)->abi_extra),
+/*
+ * Macro to fill a magic block.  If any arguments are given, they should
+ * be field initializers.
+ */
+#define PG_MODULE_MAGIC_DATA(...) \
+{ \
+	.len = sizeof(Pg_magic_struct), \
+	.abi_fields = PG_MODULE_ABI_DATA, \
+	__VA_ARGS__ \
+}
+
+StaticAssertDecl(sizeof(FMGR_ABI_EXTRA) <= sizeof(((Pg_abi_values *) 0)->abi_extra),
 				 "FMGR_ABI_EXTRA too long");
 
 /*
@@ -492,7 +526,26 @@ extern PGDLLEXPORT const Pg_magic_struct *PG_MAGIC_FUNCTION_NAME(void); \
 const Pg_magic_struct * \
 PG_MAGIC_FUNCTION_NAME(void) \
 { \
-	static const Pg_magic_struct Pg_magic_data = PG_MODULE_MAGIC_DATA; \
+	static const Pg_magic_struct Pg_magic_data = PG_MODULE_MAGIC_DATA(.name = NULL); \
+	return &Pg_magic_data; \
+} \
+extern int no_such_variable
+
+/*
+ * Alternate declaration that allows specification of additional fields.
+ * The additional values should be written as field initializers, for example
+ *	PG_MODULE_MAGIC_EXT(
+ *		.name = "some string",
+ *		.version = "some string"
+ *	);
+ */
+#define PG_MODULE_MAGIC_EXT(...) \
+extern PGDLLEXPORT const Pg_magic_struct *PG_MAGIC_FUNCTION_NAME(void); \
+const Pg_magic_struct * \
+PG_MAGIC_FUNCTION_NAME(void) \
+{ \
+	static const Pg_magic_struct Pg_magic_data = \
+		PG_MODULE_MAGIC_DATA(__VA_ARGS__); \
 	return &Pg_magic_data; \
 } \
 extern int no_such_variable
@@ -691,13 +744,21 @@ extern Datum OidFunctionCall9Coll(Oid functionId, Oid collation,
 /* Special cases for convenient invocation of datatype I/O functions. */
 extern Datum InputFunctionCall(FmgrInfo *flinfo, char *str,
 							   Oid typioparam, int32 typmod);
+extern bool InputFunctionCallSafe(FmgrInfo *flinfo, char *str,
+								  Oid typioparam, int32 typmod,
+								  Node *escontext,
+								  Datum *result);
+extern bool DirectInputFunctionCallSafe(PGFunction func, char *str,
+										Oid typioparam, int32 typmod,
+										Node *escontext,
+										Datum *result);
 extern Datum OidInputFunctionCall(Oid functionId, char *str,
 								  Oid typioparam, int32 typmod);
 extern char *OutputFunctionCall(FmgrInfo *flinfo, Datum val);
 extern char *OidOutputFunctionCall(Oid functionId, Datum val);
-extern Datum ReceiveFunctionCall(FmgrInfo *flinfo, fmStringInfo buf,
+extern Datum ReceiveFunctionCall(FmgrInfo *flinfo, StringInfo buf,
 								 Oid typioparam, int32 typmod);
-extern Datum OidReceiveFunctionCall(Oid functionId, fmStringInfo buf,
+extern Datum OidReceiveFunctionCall(Oid functionId, StringInfo buf,
 									Oid typioparam, int32 typmod);
 extern bytea *SendFunctionCall(FmgrInfo *flinfo, Datum val);
 extern bytea *OidSendFunctionCall(Oid functionId, Datum val);
@@ -710,9 +771,9 @@ extern const Pg_finfo_record *fetch_finfo_record(void *filehandle, const char *f
 extern Oid	fmgr_internal_function(const char *proname);
 extern Oid	get_fn_expr_rettype(FmgrInfo *flinfo);
 extern Oid	get_fn_expr_argtype(FmgrInfo *flinfo, int argnum);
-extern Oid	get_call_expr_argtype(fmNodePtr expr, int argnum);
+extern Oid	get_call_expr_argtype(Node *expr, int argnum);
 extern bool get_fn_expr_arg_stable(FmgrInfo *flinfo, int argnum);
-extern bool get_call_expr_arg_stable(fmNodePtr expr, int argnum);
+extern bool get_call_expr_arg_stable(Node *expr, int argnum);
 extern bool get_fn_expr_variadic(FmgrInfo *flinfo);
 extern bytea *get_fn_opclass_options(FmgrInfo *flinfo);
 extern bool has_fn_opclass_options(FmgrInfo *flinfo);
@@ -722,12 +783,23 @@ extern bool CheckFunctionValidatorAccess(Oid validatorOid, Oid functionOid);
 /*
  * Routines in dfmgr.c
  */
+typedef struct DynamicFileList DynamicFileList; /* opaque outside dfmgr.c */
+
 extern PGDLLIMPORT char *Dynamic_library_path;
 
+extern char *substitute_path_macro(const char *str, const char *macro, const char *value);
+extern char *find_in_path(const char *basename, const char *path, const char *path_param,
+						  const char *macro, const char *macro_val);
 extern void *load_external_function(const char *filename, const char *funcname,
 									bool signalNotFound, void **filehandle);
 extern void *lookup_external_function(void *filehandle, const char *funcname);
 extern void load_file(const char *filename, bool restricted);
+extern DynamicFileList *get_first_loaded_module(void);
+extern DynamicFileList *get_next_loaded_module(DynamicFileList *dfptr);
+extern void get_loaded_module_details(DynamicFileList *dfptr,
+									  const char **library_path,
+									  const char **module_name,
+									  const char **module_version);
 extern void **find_rendezvous_variable(const char *varName);
 extern Size EstimateLibraryStateSpace(void);
 extern void SerializeLibraryState(Size maxsize, char *start_address);
@@ -746,11 +818,11 @@ extern void RestoreLibraryState(char *start_address);
 
 extern int	AggCheckCallContext(FunctionCallInfo fcinfo,
 								MemoryContext *aggcontext);
-extern fmAggrefPtr AggGetAggref(FunctionCallInfo fcinfo);
+extern Aggref *AggGetAggref(FunctionCallInfo fcinfo);
 extern MemoryContext AggGetTempMemoryContext(FunctionCallInfo fcinfo);
 extern bool AggStateIsShared(FunctionCallInfo fcinfo);
 extern void AggRegisterCallback(FunctionCallInfo fcinfo,
-								fmExprContextCallbackFunction func,
+								ExprContextCallbackFunction func,
 								Datum arg);
 
 /*
@@ -766,7 +838,7 @@ typedef enum FmgrHookEventType
 {
 	FHET_START,
 	FHET_END,
-	FHET_ABORT
+	FHET_ABORT,
 } FmgrHookEventType;
 
 typedef bool (*needs_fmgr_hook_type) (Oid fn_oid);
@@ -781,7 +853,7 @@ extern PGDLLIMPORT fmgr_hook_type fmgr_hook;
 	(!needs_fmgr_hook ? false : (*needs_fmgr_hook)(fn_oid))
 
 /* YB */
-extern void StringInfoSendFunctionCall(fmStringInfo buf, FmgrInfo *flinfo,
+extern void StringInfoSendFunctionCall(StringInfo buf, FmgrInfo *flinfo,
 									   Datum val);
 extern bool is_builtin_func(Oid id);
 

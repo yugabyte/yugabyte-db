@@ -32,6 +32,9 @@
 #include "catalog/catalog.h"
 #include "catalog/pg_authid_d.h"
 #include "catalog/pg_namespace.h"
+#include "commands/explain.h"
+#include "commands/explain_format.h"
+#include "commands/explain_state.h"
 #include "common/ip.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
@@ -45,6 +48,7 @@
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
@@ -169,7 +173,7 @@ static void YbQpmInstallHooks(void);
 
 static void yb_qpm_ExecutorRun(QueryDesc *queryDesc,
 							   ScanDirection direction,
-							   uint64 count, bool execute_once);
+							   uint64 count);
 
 static void yb_qpm_ExecutorFinish(QueryDesc *queryDesc);
 static void yb_qpm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
@@ -680,17 +684,16 @@ YbQpmInstallHooks(void)
 }
 
 static void
-yb_qpm_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
-				   bool execute_once)
+yb_qpm_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count)
 {
 	/* Increase the nesting level. */
 	++qpmNestedLevel;
 	PG_TRY();
 	{
 		if (prev_ExecutorRun)
-			prev_ExecutorRun(queryDesc, direction, count, execute_once);
+			prev_ExecutorRun(queryDesc, direction, count);
 		else
-			standard_ExecutorRun(queryDesc, direction, count, execute_once);
+			standard_ExecutorRun(queryDesc, direction, count);
 	}
 	PG_FINALLY();
 	{
@@ -711,7 +714,7 @@ qpmCompress(char *srcText, Bytef * compressBuffer, uint64 bufferLen)
 
 	memset(compressBuffer, 0, bufferLen);
 
-	uint64		destLen = bufferLen - 1;
+	uLongf		destLen = bufferLen - 1;
 
 	if (yb_qpm_configuration.compress_text &&
 		compress(compressBuffer, &destLen, (const Bytef *) srcText, srcLen) == Z_OK)
@@ -734,7 +737,7 @@ qpmCompress(char *srcText, Bytef * compressBuffer, uint64 bufferLen)
 static char *
 qpmDecompress(uint64 uncompressedSize, Bytef * compressedData, uint64 compressed_size)
 {
-	uint64		uncompressBufferSize = uncompressedSize * 2;
+	uLongf		uncompressBufferSize = uncompressedSize * 2;
 	Bytef	   *decompressBuffer = (Bytef *) palloc0(uncompressBufferSize);
 
 	if (uncompress(decompressBuffer, &uncompressBufferSize, compressedData,
@@ -790,9 +793,11 @@ qpmProcess(QueryDesc *queryDesc)
 		 !qpmReferencesCatalogRelation(queryDesc)))
 	{
 		CHECK_GLOBALS;
+		/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists */
+#if 0
 		if (queryDesc->totaltime != NULL)
 			InstrEndLoop(queryDesc->totaltime);
-
+#endif
 		/*
 		 * Insert or update an entry.
 		 */
@@ -929,6 +934,8 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 		Assert(*planText != NULL);
 		*freePlanText = true;
 
+		/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists. */
+#if 0
 		if (queryDesc->totaltime != NULL)
 		{
 			/*
@@ -937,6 +944,7 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 			*totalTime = queryDesc->totaltime->total;
 			*estTotalCost = queryDesc->plannedstmt->planTree->total_cost;
 		}
+#endif
 	}
 }
 
@@ -1484,10 +1492,9 @@ YbQpmShmemInit(void)
 		 * Initialize the QPM lock.
 		 */
 		qpmLock = &(qpm->lock);
-		int			trancheId = LWLockNewTrancheId();
+		int			trancheId = LWLockNewTrancheId("qpm");
 
 		LWLockInitialize(qpmLock, trancheId);
-		LWLockRegisterTranche(trancheId, "qpm");
 
 		/*
 		 * Allocate the LRU clock.
@@ -1512,7 +1519,7 @@ YbQpmShmemInit(void)
 	 * Initialize the hash table.
 	 */
 	qpmHashTable = ShmemInitHash("qpm: hashtable", yb_qpm_configuration.max_cache_size + 1,
-								 yb_qpm_configuration.max_cache_size + 1, &info,
+								 &info,
 								 HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
 
 	qpm->totalTime = 0;
@@ -1551,8 +1558,8 @@ YbQpmShmemInit(void)
 typedef struct YbPlanStatePtr
 {
 	PlanState  *ps;
-	Instrumentation *instrument;
-	WorkerInstrumentation *worker_instrument;
+	NodeInstrumentation *instrument;
+	WorkerNodeInstrumentation *worker_instrument;
 	struct SharedJitInstrumentation *worker_jit_instrument;
 } YbPlanStatePtr;
 
@@ -1796,7 +1803,7 @@ yb_pg_stat_plans_get_all_entries(PG_FUNCTION_ARGS)
 		values[4] = DatumGetCString(DirectFunctionCall1(timestamptz_out, currentEntry->firstUsedTime));
 		values[5] = DatumGetCString(DirectFunctionCall1(timestamptz_out, currentEntry->lastUsedTime));
 		values[6] = currentEntry->hintText;
-		values[7] = psprintf("%ld", currentEntry->useCount);
+		values[7] = psprintf(INT64_FORMAT, currentEntry->useCount);
 
 		if (currentEntry->timing.cnt > 0)
 		{

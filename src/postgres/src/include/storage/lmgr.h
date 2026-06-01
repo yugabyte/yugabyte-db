@@ -4,7 +4,7 @@
  *	  POSTGRES lock manager definitions.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/lmgr.h
@@ -16,7 +16,7 @@
 
 #include "lib/stringinfo.h"
 #include "storage/itemptr.h"
-#include "storage/lock.h"
+#include "storage/locktag.h"
 #include "utils/rel.h"
 
 
@@ -31,7 +31,7 @@ typedef enum XLTW_Oper
 	XLTW_InsertIndex,
 	XLTW_InsertIndexUnique,
 	XLTW_FetchUpdated,
-	XLTW_RecheckExclusionConstr
+	XLTW_RecheckExclusionConstr,
 } XLTW_Oper;
 
 extern void RelationInitLockInfo(Relation relation);
@@ -71,17 +71,18 @@ extern bool ConditionalLockPage(Relation relation, BlockNumber blkno, LOCKMODE l
 extern void UnlockPage(Relation relation, BlockNumber blkno, LOCKMODE lockmode);
 
 /* Lock a tuple (see heap_lock_tuple before assuming you understand this) */
-extern void LockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode);
-extern bool ConditionalLockTuple(Relation relation, ItemPointer tid,
-								 LOCKMODE lockmode);
-extern void UnlockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode);
+extern void LockTuple(Relation relation, const ItemPointerData *tid, LOCKMODE lockmode);
+extern bool ConditionalLockTuple(Relation relation, const ItemPointerData *tid,
+								 LOCKMODE lockmode, bool logLockFailure);
+extern void UnlockTuple(Relation relation, const ItemPointerData *tid, LOCKMODE lockmode);
 
 /* Lock an XID (used to wait for a transaction to finish) */
 extern void XactLockTableInsert(TransactionId xid);
 extern void XactLockTableDelete(TransactionId xid);
 extern void XactLockTableWait(TransactionId xid, Relation rel,
-							  ItemPointer ctid, XLTW_Oper oper);
-extern bool ConditionalXactLockTableWait(TransactionId xid);
+							  const ItemPointerData *ctid, XLTW_Oper oper);
+extern bool ConditionalXactLockTableWait(TransactionId xid,
+										 bool logLockFailure);
 
 /* Lock VXIDs, specified by conflicting locktags */
 extern void WaitForLockers(LOCKTAG heaplocktag, LOCKMODE lockmode, bool progress);
@@ -103,6 +104,8 @@ extern void UnlockDatabaseObject(Oid classid, Oid objid, uint16 objsubid,
 /* Lock a shared-across-databases object (other than a relation) */
 extern void LockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 							 LOCKMODE lockmode);
+extern bool ConditionalLockSharedObject(Oid classid, Oid objid, uint16 objsubid,
+										LOCKMODE lockmode);
 extern void UnlockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 							   LOCKMODE lockmode);
 
@@ -110,6 +113,11 @@ extern void LockSharedObjectForSession(Oid classid, Oid objid, uint16 objsubid,
 									   LOCKMODE lockmode);
 extern void UnlockSharedObjectForSession(Oid classid, Oid objid, uint16 objsubid,
 										 LOCKMODE lockmode);
+
+extern void LockApplyTransactionForSession(Oid suboid, TransactionId xid, uint16 objid,
+										   LOCKMODE lockmode);
+extern void UnlockApplyTransactionForSession(Oid suboid, TransactionId xid, uint16 objid,
+											 LOCKMODE lockmode);
 
 /* Describe a locktag for error messages */
 extern void DescribeLockTag(StringInfo buf, const LOCKTAG *tag);

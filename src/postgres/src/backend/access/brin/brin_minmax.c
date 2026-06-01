@@ -2,7 +2,7 @@
  * brin_minmax.c
  *		Implementation of Min/Max opclass for BRIN
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -12,12 +12,10 @@
 
 #include "access/brin_internal.h"
 #include "access/brin_tuple.h"
-#include "access/genam.h"
 #include "access/stratnum.h"
 #include "catalog/pg_amop.h"
-#include "catalog/pg_type.h"
-#include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
@@ -68,7 +66,7 @@ brin_minmax_add_value(PG_FUNCTION_ARGS)
 	BrinDesc   *bdesc = (BrinDesc *) PG_GETARG_POINTER(0);
 	BrinValues *column = (BrinValues *) PG_GETARG_POINTER(1);
 	Datum		newval = PG_GETARG_DATUM(2);
-	bool		isnull PG_USED_FOR_ASSERTS_ONLY = PG_GETARG_DATUM(3);
+	bool		isnull PG_USED_FOR_ASSERTS_ONLY = PG_GETARG_BOOL(3);
 	Oid			colloid = PG_GET_COLLATION();
 	FmgrInfo   *cmpFn;
 	Datum		compar;
@@ -227,8 +225,8 @@ brin_minmax_union(PG_FUNCTION_ARGS)
 	/* Adjust minimum, if B's min is less than A's min */
 	finfo = minmax_get_strategy_procinfo(bdesc, attno, attr->atttypid,
 										 BTLessStrategyNumber);
-	needsadj = FunctionCall2Coll(finfo, colloid, col_b->bv_values[0],
-								 col_a->bv_values[0]);
+	needsadj = DatumGetBool(FunctionCall2Coll(finfo, colloid, col_b->bv_values[0],
+											  col_a->bv_values[0]));
 	if (needsadj)
 	{
 		if (!attr->attbyval)
@@ -240,8 +238,8 @@ brin_minmax_union(PG_FUNCTION_ARGS)
 	/* Adjust maximum, if B's max is greater than A's max */
 	finfo = minmax_get_strategy_procinfo(bdesc, attno, attr->atttypid,
 										 BTGreaterStrategyNumber);
-	needsadj = FunctionCall2Coll(finfo, colloid, col_b->bv_values[1],
-								 col_a->bv_values[1]);
+	needsadj = DatumGetBool(FunctionCall2Coll(finfo, colloid, col_b->bv_values[1],
+											  col_a->bv_values[1]));
 	if (needsadj)
 	{
 		if (!attr->attbyval)
@@ -290,23 +288,22 @@ minmax_get_strategy_procinfo(BrinDesc *bdesc, uint16 attno, Oid subtype,
 		HeapTuple	tuple;
 		Oid			opfamily,
 					oprid;
-		bool		isNull;
 
 		opfamily = bdesc->bd_index->rd_opfamily[attno - 1];
 		attr = TupleDescAttr(bdesc->bd_tupdesc, attno - 1);
 		tuple = SearchSysCache4(AMOPSTRATEGY, ObjectIdGetDatum(opfamily),
 								ObjectIdGetDatum(attr->atttypid),
 								ObjectIdGetDatum(subtype),
-								Int16GetDatum(strategynum));
+								UInt16GetDatum(strategynum));
 
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
 				 strategynum, attr->atttypid, subtype, opfamily);
 
-		oprid = DatumGetObjectId(SysCacheGetAttr(AMOPSTRATEGY, tuple,
-												 Anum_pg_amop_amopopr, &isNull));
+		oprid = DatumGetObjectId(SysCacheGetAttrNotNull(AMOPSTRATEGY, tuple,
+														Anum_pg_amop_amopopr));
 		ReleaseSysCache(tuple);
-		Assert(!isNull && RegProcedureIsValid(oprid));
+		Assert(RegProcedureIsValid(oprid));
 
 		fmgr_info_cxt(get_opcode(oprid),
 					  &opaque->strategy_procinfos[strategynum - 1],

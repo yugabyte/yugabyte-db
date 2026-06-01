@@ -4,7 +4,7 @@
  *	  definition of the "collation" system catalog (pg_collation)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_collation.h
@@ -19,13 +19,15 @@
 #define PG_COLLATION_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_collation_d.h"
+#include "catalog/pg_collation_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_collation definition.  cpp turns this into
  *		typedef struct FormData_pg_collation
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_collation,3456,CollationRelationId)
 {
 	Oid			oid;			/* oid */
@@ -42,12 +44,15 @@ CATALOG(pg_collation,3456,CollationRelationId)
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	text		collcollate BKI_DEFAULT(_null_);	/* LC_COLLATE setting */
 	text		collctype BKI_DEFAULT(_null_);	/* LC_CTYPE setting */
-	text		colliculocale BKI_DEFAULT(_null_);	/* ICU locale ID */
+	text		colllocale BKI_DEFAULT(_null_); /* locale ID */
+	text		collicurules BKI_DEFAULT(_null_);	/* ICU collation rules */
 	text		collversion BKI_DEFAULT(_null_);	/* provider-dependent
 													 * version of collation
 													 * data */
 #endif
 } FormData_pg_collation;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_collation corresponds to a pointer to a row with
@@ -58,12 +63,16 @@ typedef FormData_pg_collation *Form_pg_collation;
 
 DECLARE_TOAST(pg_collation, 6175, 6176);
 
-DECLARE_UNIQUE_INDEX(pg_collation_name_enc_nsp_index, 3164, CollationNameEncNspIndexId, on pg_collation using btree(collname name_ops, collencoding int4_ops, collnamespace oid_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_collation_oid_index, 3085, CollationOidIndexId, on pg_collation using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_collation_name_enc_nsp_index, 3164, CollationNameEncNspIndexId, pg_collation, btree(collname name_ops, collencoding int4_ops, collnamespace oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_collation_oid_index, 3085, CollationOidIndexId, pg_collation, btree(oid oid_ops));
+
+MAKE_SYSCACHE(COLLNAMEENCNSP, pg_collation_name_enc_nsp_index, 8);
+MAKE_SYSCACHE(COLLOID, pg_collation_oid_index, 8);
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 
 #define COLLPROVIDER_DEFAULT	'd'
+#define COLLPROVIDER_BUILTIN	'b'
 #define COLLPROVIDER_ICU		'i'
 #define COLLPROVIDER_LIBC		'c'
 
@@ -72,6 +81,8 @@ collprovider_name(char c)
 {
 	switch (c)
 	{
+		case COLLPROVIDER_BUILTIN:
+			return "builtin";
 		case COLLPROVIDER_ICU:
 			return "icu";
 		case COLLPROVIDER_LIBC:
@@ -90,7 +101,8 @@ extern Oid	CollationCreate(const char *collname, Oid collnamespace,
 							bool collisdeterministic,
 							int32 collencoding,
 							const char *collcollate, const char *collctype,
-							const char *colliculocale,
+							const char *colllocale,
+							const char *collicurules,
 							const char *collversion,
 							bool if_not_exists,
 							bool quiet);

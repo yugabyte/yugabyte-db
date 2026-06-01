@@ -20,8 +20,6 @@ SELECT spcoptions FROM pg_tablespace WHERE spcname = 'regress_tblspacewith';
 -- drop the tablespace so we can re-use the location
 DROP TABLESPACE regress_tblspacewith;
 
--- create a tablespace we can use
-CREATE TABLESPACE regress_tblspace LOCATION '';
 -- This returns a relative path as of an effect of allow_in_place_tablespaces,
 -- masking the tablespace OID used in the path name.
 SELECT regexp_replace(pg_tablespace_location(oid), '(pg_tblspc)/(\d+)', '\1/NNN')
@@ -42,10 +40,10 @@ REINDEX (TABLESPACE regress_tblspace) TABLE CONCURRENTLY pg_am;
 REINDEX (TABLESPACE regress_tblspace) TABLE pg_authid;
 REINDEX (TABLESPACE regress_tblspace) TABLE CONCURRENTLY pg_authid;
 -- toast relations, fail
-REINDEX (TABLESPACE regress_tblspace) INDEX pg_toast.pg_toast_1260_index;
-REINDEX (TABLESPACE regress_tblspace) INDEX CONCURRENTLY pg_toast.pg_toast_1260_index;
-REINDEX (TABLESPACE regress_tblspace) TABLE pg_toast.pg_toast_1260;
-REINDEX (TABLESPACE regress_tblspace) TABLE CONCURRENTLY pg_toast.pg_toast_1260;
+REINDEX (TABLESPACE regress_tblspace) INDEX pg_toast.pg_toast_1262_index;
+REINDEX (TABLESPACE regress_tblspace) INDEX CONCURRENTLY pg_toast.pg_toast_1262_index;
+REINDEX (TABLESPACE regress_tblspace) TABLE pg_toast.pg_toast_1262;
+REINDEX (TABLESPACE regress_tblspace) TABLE CONCURRENTLY pg_toast.pg_toast_1262;
 -- system catalog, fail
 REINDEX (TABLESPACE pg_global) TABLE pg_authid;
 REINDEX (TABLESPACE pg_global) TABLE CONCURRENTLY pg_authid;
@@ -225,7 +223,7 @@ CREATE TABLE testschema.part1 PARTITION OF testschema.part FOR VALUES IN (1);
 CREATE INDEX part_a_idx ON testschema.part (a) TABLESPACE regress_tblspace;
 CREATE TABLE testschema.part2 PARTITION OF testschema.part FOR VALUES IN (2);
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
-    where c.reltablespace = t.oid AND c.relname LIKE 'part%_idx';
+    where c.reltablespace = t.oid AND c.relname LIKE 'part%_idx' ORDER BY relname;
 \d testschema.part
 \d+ testschema.part
 \d testschema.part1
@@ -431,6 +429,10 @@ ALTER MATERIALIZED VIEW ALL IN TABLESPACE regress_tblspace_renamed SET TABLESPAC
 -- Should show notice that nothing was done
 ALTER TABLE ALL IN TABLESPACE regress_tblspace_renamed SET TABLESPACE pg_default;
 ALTER MATERIALIZED VIEW ALL IN TABLESPACE regress_tblspace_renamed SET TABLESPACE pg_default;
+
+-- Should fail, contains \n in name
+ALTER TABLESPACE regress_tblspace_renamed RENAME TO "invalid
+name";
 
 -- Should succeed
 DROP TABLESPACE regress_tblspace_renamed;

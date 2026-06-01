@@ -1,21 +1,31 @@
 #! /bin/sh
 
-if [ $# -ne 2 ]; then
+os=$1
+directory=$2
+executable_directory=$3
+
+if [ "$os" != 'openbsd' ] && [ $# -ne 2 ]; then
     echo "cores_backtrace.sh <os> <directory>"
     exit 1
 fi
 
-os=$1
-directory=$2
+if [ "$os" = 'openbsd' ] && [ $# -ne 3 ]; then
+    echo "cores_backtrace.sh <os> <core_directory> <executable_directory>"
+    exit 1
+fi
 
 case $os in
-    freebsd|linux|macos)
+    freebsd|linux|macos|netbsd|openbsd)
     ;;
     *)
         echo "unsupported operating system ${os}"
         exit 1
     ;;
 esac
+
+if [ "$os" = 'openbsd' ]; then
+    export PATH="${executable_directory}:${PATH}"
+fi
 
 first=1
 for corefile in $(find "$directory" -type f) ; do
@@ -28,6 +38,19 @@ for corefile in $(find "$directory" -type f) ; do
 
     if [ "$os" = 'macos' ]; then
         lldb -c $corefile --batch -o 'thread backtrace all' -o 'quit'
+    elif [ "$os" = 'openbsd' ]; then
+        # OpenBSD's ELF format doesn't include executable information, so we
+        # search for the executable manually in <executable_directory>.
+        filename=$(basename "$corefile")
+        base=$(echo "$filename" | sed 's/\.core.*$//')
+        binary=$(which "${base}")
+
+        if [ -z "$binary" ]; then
+            echo "executable ${base} not found in ${PATH}, running 'lldb' without debug information"
+            lldb -c "$corefile" --batch -o 'thread backtrace all' -o 'quit'
+        else
+            lldb "$binary" -c "$corefile" --batch -o 'thread backtrace all' -o 'quit'
+        fi
     else
         auxv=$(gdb --quiet --core ${corefile} --batch -ex 'info auxv' 2>/dev/null)
         if [ $? -ne 0 ]; then
@@ -37,6 +60,8 @@ for corefile in $(find "$directory" -type f) ; do
 
         if [ "$os" = 'freebsd' ]; then
             binary=$(echo "$auxv" | grep AT_EXECPATH | perl -pe "s/^.*\"(.*)\"\$/\$1/g")
+        elif [ "$os" = 'netbsd' ]; then
+            binary=$(echo "$auxv" | grep AT_SUN_EXECNAME | perl -pe "s/^.*\"(.*)\"\$/\$1/g")
         elif [ "$os" = 'linux' ]; then
             binary=$(echo "$auxv" | grep AT_EXECFN | perl -pe "s/^.*\"(.*)\"\$/\$1/g")
         else

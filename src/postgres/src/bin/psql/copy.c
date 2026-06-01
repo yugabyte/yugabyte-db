@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/bin/psql/copy.c
  */
@@ -33,7 +33,7 @@
  *	\copy ( query stmt ) to filename [options]
  *
  * where 'filename' can be one of the following:
- *	'<file path>' | PROGRAM '<command>' | stdin | stdout | pstdout | pstdout
+ *	'<file path>' | PROGRAM '<command>' | stdin | stdout | pstdin | pstdout
  * and 'query' can be one of the following:
  *	SELECT | UPDATE | INSERT | DELETE
  *
@@ -99,7 +99,7 @@ parse_slash_copy(const char *args)
 		return NULL;
 	}
 
-	result = pg_malloc0(sizeof(struct copy_options));
+	result = pg_malloc0_object(struct copy_options);
 
 	result->before_tofrom = pg_strdup("");	/* initialize for appending */
 
@@ -288,8 +288,7 @@ do_copy(const char *args)
 		{
 			if (options->program)
 			{
-				fflush(stdout);
-				fflush(stderr);
+				fflush(NULL);
 				errno = 0;
 				copystream = popen(options->file, PG_BINARY_R);
 			}
@@ -307,10 +306,9 @@ do_copy(const char *args)
 		{
 			if (options->program)
 			{
-				fflush(stdout);
-				fflush(stderr);
-				errno = 0;
+				fflush(NULL);
 				disable_sigpipe_trap();
+				errno = 0;
 				copystream = popen(options->file, PG_BINARY_W);
 			}
 			else
@@ -389,11 +387,11 @@ do_copy(const char *args)
 
 					pg_log_error("%s: %s", options->file,
 								 reason ? reason : "");
-					if (reason)
-						free(reason);
+					free(reason);
 				}
 				success = false;
 			}
+			SetShellResultVariables(pclose_rc);
 			restore_sigpipe_trap();
 		}
 		else
@@ -622,20 +620,29 @@ handleCopyIn(PGconn *conn, FILE *copystream, bool isbinary, PGresult **res)
 				/* current line is done? */
 				if (buf[buflen - 1] == '\n')
 				{
-					/* check for EOF marker, but not on a partial line */
-					if (at_line_begin)
+					/*
+					 * When at the beginning of the line and the data is
+					 * inlined, check for EOF marker.  If the marker is found,
+					 * we must stop at this point.  If not, the \. line can be
+					 * sent to the server, and we let it decide whether it's
+					 * an EOF or not depending on the format: in TEXT mode, \.
+					 * will be interpreted as an EOF, in CSV, it will not.
+					 */
+					if (at_line_begin && copystream == pset.cur_cmd_source)
 					{
-						/*
-						 * This code erroneously assumes '\.' on a line alone
-						 * inside a quoted CSV string terminates the \copy.
-						 * https://www.postgresql.org/message-id/E1TdNVQ-0001ju-GO@wrigleys.postgresql.org
-						 *
-						 * https://www.postgresql.org/message-id/bfcd57e4-8f23-4c3e-a5db-2571d09208e2@beta.fastmail.com
-						 */
 						if ((linelen == 3 && memcmp(fgresult, "\\.\n", 3) == 0) ||
 							(linelen == 4 && memcmp(fgresult, "\\.\r\n", 4) == 0))
 						{
 							copydone = true;
+
+							/*
+							 * Remove the EOF marker from the data sent.  In
+							 * CSV mode, the EOF marker must be removed,
+							 * otherwise it would be interpreted by the server
+							 * as valid data.
+							 */
+							*fgresult = '\0';
+							buflen -= linelen;
 						}
 					}
 

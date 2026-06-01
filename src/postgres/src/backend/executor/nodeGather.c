@@ -3,7 +3,7 @@
  * nodeGather.c
  *	  Support routines for scanning a plan via multiple workers.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * A Gather executor launches parallel workers to run multiple copies of a
@@ -30,18 +30,14 @@
 
 #include "postgres.h"
 
-#include "access/relscan.h"
-#include "access/xact.h"
-#include "executor/execdebug.h"
 #include "executor/execParallel.h"
+#include "executor/executor.h"
 #include "executor/nodeGather.h"
-#include "executor/nodeSubplan.h"
 #include "executor/tqueue.h"
 #include "miscadmin.h"
 #include "optimizer/optimizer.h"
-#include "pgstat.h"
-#include "utils/memutils.h"
-#include "utils/rel.h"
+#include "storage/latch.h"
+#include "utils/wait_event.h"
 
 
 static TupleTableSlot *ExecGather(PlanState *pstate);
@@ -168,13 +164,13 @@ ExecGather(PlanState *pstate)
 
 			/* Initialize, or re-initialize, shared state needed by workers. */
 			if (!node->pei)
-				node->pei = ExecInitParallelPlan(node->ps.lefttree,
+				node->pei = ExecInitParallelPlan(outerPlanState(node),
 												 estate,
 												 gather->initParam,
 												 gather->num_workers,
 												 node->tuples_needed);
 			else
-				ExecParallelReinitialize(node->ps.lefttree,
+				ExecParallelReinitialize(outerPlanState(node),
 										 node->pei,
 										 gather->initParam);
 
@@ -186,6 +182,13 @@ ExecGather(PlanState *pstate)
 			LaunchParallelWorkers(pcxt);
 			/* We save # workers launched for the benefit of EXPLAIN */
 			node->nworkers_launched = pcxt->nworkers_launched;
+
+			/*
+			 * Count number of workers originally wanted and actually
+			 * launched.
+			 */
+			estate->es_parallel_workers_to_launch += pcxt->nworkers_to_launch;
+			estate->es_parallel_workers_launched += pcxt->nworkers_launched;
 
 			/* Set up tuple queue readers to read the results. */
 			if (pcxt->nworkers_launched > 0)
@@ -250,9 +253,6 @@ ExecEndGather(GatherState *node)
 {
 	ExecEndNode(outerPlanState(node));	/* let children clean up first */
 	ExecShutdownGather(node);
-	ExecFreeExprContext(&node->ps);
-	if (node->ps.ps_ResultTupleSlot)
-		ExecClearTuple(node->ps.ps_ResultTupleSlot);
 }
 
 /*

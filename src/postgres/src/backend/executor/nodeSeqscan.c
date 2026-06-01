@@ -3,7 +3,7 @@
  * nodeSeqscan.c
  *	  Support routines for sequential scans of relations.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -29,7 +29,9 @@
 
 #include "access/relscan.h"
 #include "access/tableam.h"
-#include "executor/execdebug.h"
+#include "executor/execParallel.h"
+#include "executor/execScan.h"
+#include "executor/executor.h"
 #include "executor/nodeSeqscan.h"
 #include "utils/rel.h"
 
@@ -50,7 +52,7 @@ static TupleTableSlot *SeqNext(SeqScanState *node);
  *		This is a workhorse for ExecSeqScan
  * ----------------------------------------------------------------
  */
-static TupleTableSlot *
+static pg_attribute_always_inline TupleTableSlot *
 SeqNext(SeqScanState *node)
 {
 	TableScanDesc scandesc;
@@ -68,13 +70,21 @@ SeqNext(SeqScanState *node)
 
 	if (scandesc == NULL)
 	{
+		uint32		flags = SO_NONE;
+
+		if (ScanRelIsReadOnly(&node->ss))
+			flags |= SO_HINT_REL_READ_ONLY;
+
+		if (estate->es_instrument & INSTRUMENT_IO)
+			flags |= SO_SCAN_INSTRUMENT;
+
 		/*
 		 * We reach here if the scan is not parallel, or if we're serially
 		 * executing a scan that was planned to be parallel.
 		 */
 		scandesc = table_beginscan(node->ss.ss_currentRelation,
 								   estate->es_snapshot,
-								   0, NULL);
+								   0, NULL, flags);
 		node->ss.ss_currentScanDesc = scandesc;
 	}
 
@@ -89,7 +99,7 @@ SeqNext(SeqScanState *node)
 /*
  * SeqRecheck -- access method routine to recheck a tuple in EvalPlanQual
  */
-static bool
+static pg_attribute_always_inline bool
 SeqRecheck(SeqScanState *node, TupleTableSlot *slot)
 {
 	/*
@@ -103,9 +113,10 @@ SeqRecheck(SeqScanState *node, TupleTableSlot *slot)
  *		ExecSeqScan(node)
  *
  *		Scans the relation sequentially and returns the next qualifying
- *		tuple.
- *		We call the ExecScan() routine and pass it the appropriate
- *		access method functions.
+ *		tuple. This variant is used when there is no es_epq_active, no qual
+ *		and no projection.  Passing const-NULLs for these to ExecScanExtended
+ *		allows the compiler to eliminate the additional code that would
+ *		ordinarily be required for the evaluation of these.
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
@@ -113,11 +124,97 @@ ExecSeqScan(PlanState *pstate)
 {
 	SeqScanState *node = castNode(SeqScanState, pstate);
 
+	Assert(pstate->state->es_epq_active == NULL);
+	Assert(pstate->qual == NULL);
+	Assert(pstate->ps_ProjInfo == NULL);
+
+	return ExecScanExtended(&node->ss,
+							(ExecScanAccessMtd) SeqNext,
+							(ExecScanRecheckMtd) SeqRecheck,
+							NULL,
+							NULL,
+							NULL);
+}
+
+/*
+ * Variant of ExecSeqScan() but when qual evaluation is required.
+ */
+static TupleTableSlot *
+ExecSeqScanWithQual(PlanState *pstate)
+{
+	SeqScanState *node = castNode(SeqScanState, pstate);
+
+	/*
+	 * Use pg_assume() for != NULL tests to make the compiler realize no
+	 * runtime check for the field is needed in ExecScanExtended().
+	 */
+	Assert(pstate->state->es_epq_active == NULL);
+	pg_assume(pstate->qual != NULL);
+	Assert(pstate->ps_ProjInfo == NULL);
+
+	return ExecScanExtended(&node->ss,
+							(ExecScanAccessMtd) SeqNext,
+							(ExecScanRecheckMtd) SeqRecheck,
+							NULL,
+							pstate->qual,
+							NULL);
+}
+
+/*
+ * Variant of ExecSeqScan() but when projection is required.
+ */
+static TupleTableSlot *
+ExecSeqScanWithProject(PlanState *pstate)
+{
+	SeqScanState *node = castNode(SeqScanState, pstate);
+
+	Assert(pstate->state->es_epq_active == NULL);
+	Assert(pstate->qual == NULL);
+	pg_assume(pstate->ps_ProjInfo != NULL);
+
+	return ExecScanExtended(&node->ss,
+							(ExecScanAccessMtd) SeqNext,
+							(ExecScanRecheckMtd) SeqRecheck,
+							NULL,
+							NULL,
+							pstate->ps_ProjInfo);
+}
+
+/*
+ * Variant of ExecSeqScan() but when qual evaluation and projection are
+ * required.
+ */
+static TupleTableSlot *
+ExecSeqScanWithQualProject(PlanState *pstate)
+{
+	SeqScanState *node = castNode(SeqScanState, pstate);
+
+	Assert(pstate->state->es_epq_active == NULL);
+	pg_assume(pstate->qual != NULL);
+	pg_assume(pstate->ps_ProjInfo != NULL);
+
+	return ExecScanExtended(&node->ss,
+							(ExecScanAccessMtd) SeqNext,
+							(ExecScanRecheckMtd) SeqRecheck,
+							NULL,
+							pstate->qual,
+							pstate->ps_ProjInfo);
+}
+
+/*
+ * Variant of ExecSeqScan for when EPQ evaluation is required.  We don't
+ * bother adding variants of this for with/without qual and projection as
+ * EPQ doesn't seem as exciting a case to optimize for.
+ */
+static TupleTableSlot *
+ExecSeqScanEPQ(PlanState *pstate)
+{
+	SeqScanState *node = castNode(SeqScanState, pstate);
+
 	return ExecScan(&node->ss,
 					(ExecScanAccessMtd) SeqNext,
 					(ExecScanRecheckMtd) SeqRecheck);
 }
-
 
 /* ----------------------------------------------------------------
  *		ExecInitSeqScan
@@ -141,7 +238,6 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	scanstate = makeNode(SeqScanState);
 	scanstate->ss.ps.plan = (Plan *) node;
 	scanstate->ss.ps.state = estate;
-	scanstate->ss.ps.ExecProcNode = ExecSeqScan;
 
 	/*
 	 * Miscellaneous initialization
@@ -161,7 +257,8 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	/* and create slot with the appropriate rowtype */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  RelationGetDescr(scanstate->ss.ss_currentRelation),
-						  table_slot_callbacks(scanstate->ss.ss_currentRelation));
+						  table_slot_callbacks(scanstate->ss.ss_currentRelation),
+						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*
 	 * Initialize result type and projection.
@@ -174,6 +271,28 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	 */
 	scanstate->ss.ps.qual =
 		ExecInitQual(node->scan.plan.qual, (PlanState *) scanstate);
+
+	/*
+	 * When EvalPlanQual() is not in use, assign ExecProcNode for this node
+	 * based on the presence of qual and projection. Each ExecSeqScan*()
+	 * variant is optimized for the specific combination of these conditions.
+	 */
+	if (scanstate->ss.ps.state->es_epq_active != NULL)
+		scanstate->ss.ps.ExecProcNode = ExecSeqScanEPQ;
+	else if (scanstate->ss.ps.qual == NULL)
+	{
+		if (scanstate->ss.ps.ps_ProjInfo == NULL)
+			scanstate->ss.ps.ExecProcNode = ExecSeqScan;
+		else
+			scanstate->ss.ps.ExecProcNode = ExecSeqScanWithProject;
+	}
+	else
+	{
+		if (scanstate->ss.ps.ps_ProjInfo == NULL)
+			scanstate->ss.ps.ExecProcNode = ExecSeqScanWithQual;
+		else
+			scanstate->ss.ps.ExecProcNode = ExecSeqScanWithQualProject;
+	}
 
 	return scanstate;
 }
@@ -195,16 +314,20 @@ ExecEndSeqScan(SeqScanState *node)
 	scanDesc = node->ss.ss_currentScanDesc;
 
 	/*
-	 * Free the exprcontext
+	 * Collect I/O stats for this process into shared instrumentation.
 	 */
-	ExecFreeExprContext(&node->ss.ps);
+	if (node->sinstrument != NULL && IsParallelWorker())
+	{
+		SeqScanInstrumentation *si;
 
-	/*
-	 * clean out the tuple table
-	 */
-	if (node->ss.ps.ps_ResultTupleSlot)
-		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
+		Assert(ParallelWorkerNumber < node->sinstrument->num_workers);
+		si = &node->sinstrument->sinstrument[ParallelWorkerNumber];
+
+		if (scanDesc && scanDesc->rs_instrument)
+		{
+			AccumulateIOStats(&si->stats.io, &scanDesc->rs_instrument->io);
+		}
+	}
 
 	/*
 	 * close heap scan
@@ -274,14 +397,22 @@ ExecSeqScanInitializeDSM(SeqScanState *node,
 {
 	EState	   *estate = node->ss.ps.state;
 	ParallelTableScanDesc pscan;
+	uint32		flags = SO_NONE;
+
+	if (ScanRelIsReadOnly(&node->ss))
+		flags |= SO_HINT_REL_READ_ONLY;
+
+	if (estate->es_instrument & INSTRUMENT_IO)
+		flags |= SO_SCAN_INSTRUMENT;
 
 	pscan = shm_toc_allocate(pcxt->toc, node->pscan_len);
 	table_parallelscan_initialize(node->ss.ss_currentRelation,
 								  pscan,
 								  estate->es_snapshot);
 	shm_toc_insert(pcxt->toc, node->ss.ps.plan->plan_node_id, pscan);
+
 	node->ss.ss_currentScanDesc =
-		table_beginscan_parallel(node->ss.ss_currentRelation, pscan);
+		table_beginscan_parallel(node->ss.ss_currentRelation, pscan, flags);
 }
 
 /* ----------------------------------------------------------------
@@ -311,8 +442,97 @@ ExecSeqScanInitializeWorker(SeqScanState *node,
 							ParallelWorkerContext *pwcxt)
 {
 	ParallelTableScanDesc pscan;
+	uint32		flags = SO_NONE;
+
+	if (ScanRelIsReadOnly(&node->ss))
+		flags |= SO_HINT_REL_READ_ONLY;
+
+	if (node->ss.ps.state->es_instrument & INSTRUMENT_IO)
+		flags |= SO_SCAN_INSTRUMENT;
 
 	pscan = shm_toc_lookup(pwcxt->toc, node->ss.ps.plan->plan_node_id, false);
 	node->ss.ss_currentScanDesc =
-		table_beginscan_parallel(node->ss.ss_currentRelation, pscan);
+		table_beginscan_parallel(node->ss.ss_currentRelation, pscan, flags);
+}
+
+/*
+ * Compute the amount of space we'll need for the shared instrumentation and
+ * inform pcxt->estimator.
+ */
+void
+ExecSeqScanInstrumentEstimate(SeqScanState *node, ParallelContext *pcxt)
+{
+	EState	   *estate = node->ss.ps.state;
+	Size		size;
+
+	if ((estate->es_instrument & INSTRUMENT_IO) == 0 || pcxt->nworkers == 0)
+		return;
+
+	size = add_size(offsetof(SharedSeqScanInstrumentation, sinstrument),
+					mul_size(pcxt->nworkers, sizeof(SeqScanInstrumentation)));
+
+	shm_toc_estimate_chunk(&pcxt->estimator, size);
+	shm_toc_estimate_keys(&pcxt->estimator, 1);
+}
+
+/*
+ * Set up parallel sequential scan instrumentation.
+ */
+void
+ExecSeqScanInstrumentInitDSM(SeqScanState *node, ParallelContext *pcxt)
+{
+	EState	   *estate = node->ss.ps.state;
+	SharedSeqScanInstrumentation *sinstrument;
+	Size		size;
+
+	if ((estate->es_instrument & INSTRUMENT_IO) == 0 || pcxt->nworkers == 0)
+		return;
+
+	size = add_size(offsetof(SharedSeqScanInstrumentation, sinstrument),
+					mul_size(pcxt->nworkers, sizeof(SeqScanInstrumentation)));
+	sinstrument = shm_toc_allocate(pcxt->toc, size);
+	memset(sinstrument, 0, size);
+	sinstrument->num_workers = pcxt->nworkers;
+	shm_toc_insert(pcxt->toc,
+				   node->ss.ps.plan->plan_node_id +
+				   PARALLEL_KEY_SCAN_INSTRUMENT_OFFSET,
+				   sinstrument);
+	node->sinstrument = sinstrument;
+}
+
+/*
+ * Look up and save the location of the shared instrumentation.
+ */
+void
+ExecSeqScanInstrumentInitWorker(SeqScanState *node,
+								ParallelWorkerContext *pwcxt)
+{
+	EState	   *estate = node->ss.ps.state;
+
+	if ((estate->es_instrument & INSTRUMENT_IO) == 0)
+		return;
+
+	node->sinstrument = shm_toc_lookup(pwcxt->toc,
+									   node->ss.ps.plan->plan_node_id +
+									   PARALLEL_KEY_SCAN_INSTRUMENT_OFFSET,
+									   false);
+}
+
+/*
+ * Transfer sequential scan instrumentation from DSM to private memory.
+ */
+void
+ExecSeqScanRetrieveInstrumentation(SeqScanState *node)
+{
+	SharedSeqScanInstrumentation *sinstrument = node->sinstrument;
+	Size		size;
+
+	if (sinstrument == NULL)
+		return;
+
+	size = offsetof(SharedSeqScanInstrumentation, sinstrument)
+		+ sinstrument->num_workers * sizeof(SeqScanInstrumentation);
+
+	node->sinstrument = palloc(size);
+	memcpy(node->sinstrument, sinstrument, size);
 }

@@ -3,7 +3,7 @@
  * basebackup.h
  *	  Exports from replication/basebackup.c.
  *
- * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * src/include/backup/basebackup.h
  *
@@ -27,13 +27,16 @@
  */
 typedef struct
 {
-	char	   *oid;			/* tablespace's OID, as a decimal string */
+	Oid			oid;			/* tablespace's OID */
 	char	   *path;			/* full path to tablespace's directory */
 	char	   *rpath;			/* relative path if it's within PGDATA, else
 								 * NULL */
 	int64		size;			/* total size as sent; -1 if not known */
 } tablespaceinfo;
 
-extern void SendBaseBackup(BaseBackupCmd *cmd);
+struct IncrementalBackupInfo;
+
+extern void SendBaseBackup(BaseBackupCmd *cmd,
+						   struct IncrementalBackupInfo *ib);
 
 #endif							/* _BASEBACKUP_H */

@@ -28,9 +28,9 @@ PostgreSQL documentation
      <arg choice="plain"><option>-D</option></arg>
      <arg choice="plain"><option>--target-pgdata</option></arg>
     </group>
-    <replaceable> directory</replaceable>
+    <replaceable> datadir</replaceable>
     <group choice="req">
-     <arg choice="plain"><option>--source-pgdata=<replaceable>directory</replaceable></option></arg>
+     <arg choice="plain"><option>--source-pgdata=<replaceable>datadir</replaceable></option></arg>
      <arg choice="plain"><option>--source-server=<replaceable>connstr</replaceable></option></arg>
     </group>
    </group>
@@ -52,12 +52,32 @@ PostgreSQL documentation
    analogous to a base backup of the source data directory. Unlike taking
    a new base backup or using a tool like <application>rsync</application>,
    <application>pg_rewind</application> does not require comparing or copying
-   unchanged relation blocks in the cluster. Only changed blocks from existing
-   relation files are copied; all other files, including new relation files,
-   configuration files, and WAL segments, are copied in full. As such the
-   rewind operation is significantly faster than other approaches when the
-   database is large and only a small fraction of blocks differ between the
-   clusters.
+   unchanged relation blocks in the cluster:
+  </para>
+  <itemizedlist>
+   <listitem>
+    <para>
+     Only changed blocks from existing relation files are copied.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     WAL segments prior to the point where the source and target servers
+     have diverged are not copied. WAL segments generated after the source
+     and target servers have diverged are copied in full.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     All other files, including new relation files and configuration files,
+     are copied in full.
+    </para>
+   </listitem>
+  </itemizedlist>
+  <para>
+   As such, the rewind operation is significantly faster than other
+   approaches when the database is large and only a small fraction of blocks
+   differ between the clusters.
   </para>
 
   <para>
@@ -97,12 +117,13 @@ PostgreSQL documentation
    <application>pg_rewind</application> requires that the target server either has
    the <xref linkend="guc-wal-log-hints"/> option enabled
    in <filename>postgresql.conf</filename> or data checksums enabled when
-   the cluster was initialized with <application>initdb</application>.  Neither of these
-   are currently on by default.  <xref linkend="guc-full-page-writes"/>
-   must also be set to <literal>on</literal>, but is enabled by default.
+   the cluster was initialized with <application>initdb</application> (the
+   default).  <xref linkend="guc-full-page-writes"/> must also be set to
+   <literal>on</literal>, but is enabled by default.
   </para>
 
   <warning>
+   <title>Warning: Failures While Rewinding</title>
    <para>
     If <application>pg_rewind</application> fails while processing, then
     the data folder of the target is likely not in a state that can be
@@ -141,8 +162,8 @@ PostgreSQL documentation
 
     <variablelist>
      <varlistentry>
-      <term><option>-D <replaceable class="parameter">directory</replaceable></option></term>
-      <term><option>--target-pgdata=<replaceable class="parameter">directory</replaceable></option></term>
+      <term><option>-D <replaceable class="parameter">datadir</replaceable></option></term>
+      <term><option>--target-pgdata=<replaceable class="parameter">datadir</replaceable></option></term>
       <listitem>
        <para>
         This option specifies the target data directory that is synchronized
@@ -153,7 +174,7 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>--source-pgdata=<replaceable class="parameter">directory</replaceable></option></term>
+      <term><option>--source-pgdata=<replaceable class="parameter">datadir</replaceable></option></term>
       <listitem>
        <para>
         Specifies the file system path to the data directory of the source
@@ -185,8 +206,10 @@ PostgreSQL documentation
        <para>
         Create <filename>standby.signal</filename> and append connection
         settings to <filename>postgresql.auto.conf</filename> in the output
-        directory.  <literal>--source-server</literal> is mandatory with
-        this option.
+        directory.  The dbname will be recorded only if the dbname was
+        specified explicitly in the connection string or <link linkend="libpq-envars">
+        environment variable</link>. <literal>--source-server</literal> is
+        mandatory with this option.
        </para>
       </listitem>
      </varlistentry>
@@ -284,6 +307,28 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--sync-method=<replaceable class="parameter">method</replaceable></option></term>
+      <listitem>
+       <para>
+        When set to <literal>fsync</literal>, which is the default,
+        <command>pg_rewind</command> will recursively open and synchronize all
+        files in the data directory.  The search for files will follow symbolic
+        links for the WAL directory and each configured tablespace.
+       </para>
+       <para>
+        On Linux, <literal>syncfs</literal> may be used instead to ask the
+        operating system to synchronize the whole file systems that contain the
+        data directory, the WAL files, and each tablespace.  See
+        <xref linkend="guc-recovery-init-sync-method"/> for information about
+        the caveats to be aware of when using <literal>syncfs</literal>.
+       </para>
+       <para>
+        This option has no effect when <option>--no-sync</option> is used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-V</option></term>
       <term><option>--version</option></term>
       <listitem><para>Display version information, then exit.</para></listitem>
@@ -327,20 +372,11 @@ PostgreSQL documentation
    a role, named <literal>rewind_user</literal> here:
 <programlisting>
 CREATE USER rewind_user LOGIN;
-GRANT EXECUTE ON function pg_catalog.pg_ls_dir(text, boolean, boolean) TO rewind_user;
-GRANT EXECUTE ON function pg_catalog.pg_stat_file(text, boolean) TO rewind_user;
-GRANT EXECUTE ON function pg_catalog.pg_read_binary_file(text) TO rewind_user;
-GRANT EXECUTE ON function pg_catalog.pg_read_binary_file(text, bigint, bigint, boolean) TO rewind_user;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_ls_dir(text, boolean, boolean) TO rewind_user;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_stat_file(text, boolean) TO rewind_user;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_read_binary_file(text) TO rewind_user;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_read_binary_file(text, bigint, bigint, boolean) TO rewind_user;
 </programlisting>
-  </para>
-
-  <para>
-   When executing <application>pg_rewind</application> using an online
-   cluster as source which has been recently promoted, it is necessary
-   to execute a <command>CHECKPOINT</command> after promotion such that its
-   control file reflects up-to-date timeline information, which is used by
-   <application>pg_rewind</application> to check if the target cluster
-   can be rewound using the designated source cluster.
   </para>
 
   <refsect2>

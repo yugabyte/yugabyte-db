@@ -2,7 +2,7 @@
  * llvmjit_emit.h
  *	  Helpers to make emitting LLVM IR a bit more concise and pgindent proof.
  *
- * Copyright (c) 2018-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2018-2026, PostgreSQL Global Development Group
  *
  * src/include/jit/llvmjit_emit.h
  */
@@ -87,6 +87,15 @@ l_sizet_const(size_t i)
 }
 
 /*
+ * Emit constant integer.
+ */
+static inline LLVMValueRef
+l_datum_const(Datum i)
+{
+	return LLVMConstInt(TypeDatum, i, false);
+}
+
+/*
  * Emit constant boolean, as used for storage (e.g. global vars, structs).
  */
 static inline LLVMValueRef
@@ -107,41 +116,25 @@ l_pbool_const(bool i)
 static inline LLVMValueRef
 l_struct_gep(LLVMBuilderRef b, LLVMTypeRef t, LLVMValueRef v, int32 idx, const char *name)
 {
-#if LLVM_VERSION_MAJOR < 16
-	return LLVMBuildStructGEP(b, v, idx, "");
-#else
 	return LLVMBuildStructGEP2(b, t, v, idx, "");
-#endif
 }
 
 static inline LLVMValueRef
 l_gep(LLVMBuilderRef b, LLVMTypeRef t, LLVMValueRef v, LLVMValueRef *indices, int32 nindices, const char *name)
 {
-#if LLVM_VERSION_MAJOR < 16
-	return LLVMBuildGEP(b, v, indices, nindices, name);
-#else
 	return LLVMBuildGEP2(b, t, v, indices, nindices, name);
-#endif
 }
 
 static inline LLVMValueRef
 l_load(LLVMBuilderRef b, LLVMTypeRef t, LLVMValueRef v, const char *name)
 {
-#if LLVM_VERSION_MAJOR < 16
-	return LLVMBuildLoad(b, v, name);
-#else
 	return LLVMBuildLoad2(b, t, v, name);
-#endif
 }
 
 static inline LLVMValueRef
 l_call(LLVMBuilderRef b, LLVMTypeRef t, LLVMValueRef fn, LLVMValueRef *args, int32 nargs, const char *name)
 {
-#if LLVM_VERSION_MAJOR < 16
-	return LLVMBuildCall(b, fn, args, nargs, name);
-#else
 	return LLVMBuildCall2(b, t, fn, args, nargs, name);
-#endif
 }
 
 /*
@@ -329,7 +322,7 @@ l_funcnull(LLVMBuilderRef b, LLVMValueRef v_fcinfo, size_t argno)
 static inline LLVMValueRef
 l_funcvalue(LLVMBuilderRef b, LLVMValueRef v_fcinfo, size_t argno)
 {
-	return l_load(b, TypeSizeT, l_funcvaluep(b, v_fcinfo, argno), "");
+	return l_load(b, TypeDatum, l_funcvaluep(b, v_fcinfo, argno), "");
 }
 
 #endif							/* USE_LLVM */

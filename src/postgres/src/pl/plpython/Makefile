@@ -11,7 +11,7 @@ ifeq ($(PORTNAME), win32)
 override python_libspec =
 endif
 
-override CPPFLAGS := -I. -I$(srcdir) $(python_includespec) $(CPPFLAGS)
+override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS) $(python_includespec)
 
 rpathdir = $(python_libdir)
 
@@ -143,6 +143,7 @@ clean distclean: clean-lib
 ifeq ($(PORTNAME), win32)
 	rm -f python${pytverstr}.def
 endif
+	rm -f spiexceptions.h
 
 
 # Force this dependency to be known even without dependency info built:
@@ -150,8 +151,3 @@ plpy_plpymodule.o: spiexceptions.h
 
 spiexceptions.h: $(top_srcdir)/src/backend/utils/errcodes.txt generate-spiexceptions.pl
 	$(PERL) $(srcdir)/generate-spiexceptions.pl $< > $@
-
-distprep: spiexceptions.h
-
-maintainer-clean: distclean
-	rm -f spiexceptions.h

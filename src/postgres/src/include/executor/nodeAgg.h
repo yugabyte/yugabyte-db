@@ -4,7 +4,7 @@
  *	  prototypes for nodeAgg.c
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/nodeAgg.h
@@ -47,6 +47,11 @@ typedef struct AggStatePerTransData
 	 * Is this state value actually being shared by more than one Aggref?
 	 */
 	bool		aggshared;
+
+	/*
+	 * True for ORDER BY and DISTINCT Aggrefs that are not aggpresorted.
+	 */
+	bool		aggsortrequired;
 
 	/*
 	 * Number of aggregated input columns.  This includes ORDER BY expressions
@@ -136,6 +141,9 @@ typedef struct AggStatePerTransData
 	TupleTableSlot *sortslot;	/* current input tuple */
 	TupleTableSlot *uniqslot;	/* used for multi-column DISTINCT */
 	TupleDesc	sortdesc;		/* descriptor of input tuples */
+	Datum		lastdatum;		/* used for single-column DISTINCT */
+	bool		lastisnull;		/* used for single-column DISTINCT */
+	bool		haslast;		/* got a last value for DISTINCT check */
 
 	/*
 	 * These values are working state that is initialized at the start of an
@@ -165,7 +173,7 @@ typedef struct AggStatePerTransData
 	FunctionCallInfo serialfn_fcinfo;
 
 	FunctionCallInfo deserialfn_fcinfo;
-}			AggStatePerTransData;
+} AggStatePerTransData;
 
 /*
  * AggStatePerAggData - per-aggregate information
@@ -221,7 +229,7 @@ typedef struct AggStatePerAggData
 	 * aggregates because the final function is read-write.
 	 */
 	bool		shareable;
-}			AggStatePerAggData;
+} AggStatePerAggData;
 
 /*
  * AggStatePerGroupData - per-aggregate-per-group working state
@@ -256,7 +264,7 @@ typedef struct AggStatePerGroupData
 	 * NULL and not auto-replace it with a later input value. Only the first
 	 * non-NULL input will be auto-substituted.
 	 */
-}			AggStatePerGroupData;
+} AggStatePerGroupData;
 
 /*
  * AggStatePerPhaseData - per-grouping-set-phase state
@@ -289,7 +297,7 @@ typedef struct AggStatePerPhaseData
 	 *----------
 	 */
 	ExprState  *evaltrans_cache[2][2];
-}			AggStatePerPhaseData;
+} AggStatePerPhaseData;
 
 /*
  * AggStatePerHashData - per-hashtable state
@@ -311,7 +319,7 @@ typedef struct AggStatePerHashData
 	AttrNumber *hashGrpColIdxInput; /* hash col indices in input slot */
 	AttrNumber *hashGrpColIdxHash;	/* indices in hash table tuples */
 	Agg		   *aggnode;		/* original Agg node, for numGroups etc. */
-}			AggStatePerHashData;
+} AggStatePerHashData;
 
 
 extern AggState *ExecInitAgg(Agg *node, EState *estate, int eflags);

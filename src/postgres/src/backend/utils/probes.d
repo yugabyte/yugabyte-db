@@ -1,7 +1,7 @@
 /* ----------
  *	DTrace probes for PostgreSQL backend
  *
- *	Copyright (c) 2006-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2006-2026, PostgreSQL Global Development Group
  *
  *	src/backend/utils/probes.d
  * ----------
@@ -55,10 +55,12 @@ provider postgresql {
 	probe sort__start(int, bool, int, int, bool, int);
 	probe sort__done(bool, long);
 
-	probe buffer__read__start(ForkNumber, BlockNumber, Oid, Oid, Oid, int, bool);
-	probe buffer__read__done(ForkNumber, BlockNumber, Oid, Oid, Oid, int, bool, bool);
+	probe buffer__read__start(ForkNumber, BlockNumber, Oid, Oid, Oid, int);
+	probe buffer__read__done(ForkNumber, BlockNumber, Oid, Oid, Oid, int, bool);
 	probe buffer__flush__start(ForkNumber, BlockNumber, Oid, Oid, Oid);
 	probe buffer__flush__done(ForkNumber, BlockNumber, Oid, Oid, Oid);
+	probe buffer__extend__start(ForkNumber, Oid, Oid, Oid, int, unsigned int);
+	probe buffer__extend__done(ForkNumber, Oid, Oid, Oid, int, unsigned int, BlockNumber);
 
 	probe buffer__checkpoint__start(int);
 	probe buffer__checkpoint__sync__start();
@@ -66,8 +68,6 @@ provider postgresql {
 	probe buffer__sync__start(int, int);
 	probe buffer__sync__written(int);
 	probe buffer__sync__done(int, int, int);
-	probe buffer__write__dirty__start(ForkNumber, BlockNumber, Oid, Oid, Oid);
-	probe buffer__write__dirty__done(ForkNumber, BlockNumber, Oid, Oid, Oid);
 
 	probe deadlock__found();
 

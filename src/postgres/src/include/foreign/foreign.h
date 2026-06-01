@@ -4,7 +4,7 @@
  *	  support for foreign-data wrappers, servers and user mappings.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * src/include/foreign/foreign.h
  *
@@ -28,6 +28,7 @@ typedef struct ForeignDataWrapper
 	char	   *fdwname;		/* Name of the FDW */
 	Oid			fdwhandler;		/* Oid of handler function, or 0 */
 	Oid			fdwvalidator;	/* Oid of validator function, or 0 */
+	Oid			fdwconnection;	/* Oid of connection string function, or 0 */
 	List	   *options;		/* fdwoptions as DefElem list */
 } ForeignDataWrapper;
 
@@ -66,13 +67,16 @@ typedef struct ForeignTable
 
 extern ForeignServer *GetForeignServer(Oid serverid);
 extern ForeignServer *GetForeignServerExtended(Oid serverid,
-											   bits16 flags);
-extern ForeignServer *GetForeignServerByName(const char *name, bool missing_ok);
+											   uint16 flags);
+extern ForeignServer *GetForeignServerByName(const char *srvname,
+											 bool missing_ok);
+extern char *ForeignServerConnectionString(Oid userid,
+										   ForeignServer *server);
 extern UserMapping *GetUserMapping(Oid userid, Oid serverid);
 extern ForeignDataWrapper *GetForeignDataWrapper(Oid fdwid);
 extern ForeignDataWrapper *GetForeignDataWrapperExtended(Oid fdwid,
-														 bits16 flags);
-extern ForeignDataWrapper *GetForeignDataWrapperByName(const char *name,
+														 uint16 flags);
+extern ForeignDataWrapper *GetForeignDataWrapperByName(const char *fdwname,
 													   bool missing_ok);
 extern ForeignTable *GetForeignTable(Oid relid);
 

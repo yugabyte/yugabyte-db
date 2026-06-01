@@ -14,7 +14,7 @@
  *	The pairing heap: a new form of self-adjusting heap.
  *	Algorithmica 1, 1 (January 1986), pages 111-129. DOI: 10.1007/BF01840439
  *
- * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/pairingheap.c
@@ -43,13 +43,27 @@ pairingheap_allocate(pairingheap_comparator compare, void *arg)
 {
 	pairingheap *heap;
 
-	heap = (pairingheap *) palloc(sizeof(pairingheap));
+	heap = palloc_object(pairingheap);
+	pairingheap_initialize(heap, compare, arg);
+
+	return heap;
+}
+
+/*
+ * pairingheap_initialize
+ *
+ * Same as pairingheap_allocate(), but initializes the pairing heap in-place
+ * rather than allocating a new chunk of memory.  Useful to store the pairing
+ * heap in a shared memory.
+ */
+void
+pairingheap_initialize(pairingheap *heap, pairingheap_comparator compare,
+					   void *arg)
+{
 	heap->ph_compare = compare;
 	heap->ph_arg = arg;
 
 	heap->ph_root = NULL;
-
-	return heap;
 }
 
 /*

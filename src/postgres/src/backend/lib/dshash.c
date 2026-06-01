@@ -20,7 +20,7 @@
  * Future versions may support iterators and incremental resizing; for now
  * the implementation is minimalist.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -31,12 +31,12 @@
 
 #include "postgres.h"
 
+#include <limits.h>
+
 #include "common/hashfn.h"
 #include "lib/dshash.h"
-#include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "utils/dsa.h"
-#include "utils/memutils.h"
 
 /*
  * An item in the hash table.  This wraps the user's entry object in an
@@ -167,7 +167,8 @@ struct dshash_table
 
 static void delete_item(dshash_table *hash_table,
 						dshash_table_item *item);
-static void resize(dshash_table *hash_table, size_t new_size);
+static bool resize(dshash_table *hash_table, size_t new_size_log2,
+				   int flags);
 static inline void ensure_valid_bucket_pointers(dshash_table *hash_table);
 static inline dshash_table_item *find_in_bucket(dshash_table *hash_table,
 												const void *key,
@@ -178,7 +179,8 @@ static void insert_item_into_bucket(dshash_table *hash_table,
 									dsa_pointer *bucket);
 static dshash_table_item *insert_into_bucket(dshash_table *hash_table,
 											 const void *key,
-											 dsa_pointer *bucket);
+											 dsa_pointer *bucket,
+											 int flags);
 static bool delete_key_from_bucket(dshash_table *hash_table,
 								   const void *key,
 								   dsa_pointer *bucket_head);
@@ -188,6 +190,8 @@ static bool delete_item_from_bucket(dshash_table *hash_table,
 static inline dshash_hash hash_key(dshash_table *hash_table, const void *key);
 static inline bool equal_keys(dshash_table *hash_table,
 							  const void *a, const void *b);
+static inline void copy_key(dshash_table *hash_table, void *dest,
+							const void *src);
 
 #define PARTITION_LOCK(hash_table, i)			\
 	(&(hash_table)->control->partitions[(i)].lock)
@@ -200,7 +204,7 @@ static inline bool equal_keys(dshash_table *hash_table,
  * Create a new hash table backed by the given dynamic shared area, with the
  * given parameters.  The returned object is allocated in backend-local memory
  * using the current MemoryContext.  'arg' will be passed through to the
- * compare and hash functions.
+ * compare, hash, and copy functions.
  */
 dshash_table *
 dshash_create(dsa_area *area, const dshash_parameters *params, void *arg)
@@ -209,7 +213,7 @@ dshash_create(dsa_area *area, const dshash_parameters *params, void *arg)
 	dsa_pointer control;
 
 	/* Allocate the backend-local object representing the hash table. */
-	hash_table = palloc(sizeof(dshash_table));
+	hash_table = palloc_object(dshash_table);
 
 	/* Allocate the control object in shared memory. */
 	control = dsa_allocate(area, sizeof(dshash_table_control));
@@ -274,7 +278,7 @@ dshash_attach(dsa_area *area, const dshash_parameters *params,
 	dsa_pointer control;
 
 	/* Allocate the backend-local object representing the hash table. */
-	hash_table = palloc(sizeof(dshash_table));
+	hash_table = palloc_object(dshash_table);
 
 	/* Find the control object in shared memory. */
 	control = handle;
@@ -420,19 +424,25 @@ dshash_find(dshash_table *hash_table, const void *key, bool exclusive)
 }
 
 /*
- * Returns a pointer to an exclusively locked item which must be released with
- * dshash_release_lock.  If the key is found in the hash table, 'found' is set
- * to true and a pointer to the existing entry is returned.  If the key is not
- * found, 'found' is set to false, and a pointer to a newly created entry is
- * returned.
+ * Find an existing entry in a dshash_table, or insert a new one.
  *
- * Notes above dshash_find() regarding locking and error handling equally
- * apply here.
+ * DSHASH_INSERT_NO_OOM causes this function to return NULL when no memory is
+ * available for the new entry. Otherwise, such allocations will result in
+ * an ERROR.
+ *
+ * Any entry returned by this function is exclusively locked, and the caller
+ * must release that lock using dshash_release_lock. Notes above dshash_find()
+ * regarding locking and error handling equally apply here.
+ *
+ * On return, *found is set to true if an existing entry was found in the
+ * hash table, and otherwise false.
+ *
  */
 void *
-dshash_find_or_insert(dshash_table *hash_table,
-					  const void *key,
-					  bool *found)
+dshash_find_or_insert_extended(dshash_table *hash_table,
+							   const void *key,
+							   bool *found,
+							   int flags)
 {
 	dshash_hash hash;
 	size_t		partition_index;
@@ -475,14 +485,25 @@ restart:
 			 * reacquire all the locks in the right order to avoid deadlocks.
 			 */
 			LWLockRelease(PARTITION_LOCK(hash_table, partition_index));
-			resize(hash_table, hash_table->size_log2 + 1);
+			if (!resize(hash_table, hash_table->size_log2 + 1, flags))
+			{
+				Assert((flags & DSHASH_INSERT_NO_OOM) != 0);
+				return NULL;
+			}
 
 			goto restart;
 		}
 
 		/* Finally we can try to insert the new item. */
 		item = insert_into_bucket(hash_table, key,
-								  &BUCKET_FOR_HASH(hash_table, hash));
+								  &BUCKET_FOR_HASH(hash_table, hash),
+								  flags);
+		if (item == NULL)
+		{
+			Assert((flags & DSHASH_INSERT_NO_OOM) != 0);
+			LWLockRelease(PARTITION_LOCK(hash_table, partition_index));
+			return NULL;
+		}
 		item->hash = hash;
 		/* Adjust per-lock-partition counter for load factor knowledge. */
 		++partition->count;
@@ -581,6 +602,49 @@ dshash_hash
 dshash_memhash(const void *v, size_t size, void *arg)
 {
 	return tag_hash(v, size);
+}
+
+/*
+ * A copy function that forwards to memcpy.
+ */
+void
+dshash_memcpy(void *dest, const void *src, size_t size, void *arg)
+{
+	(void) memcpy(dest, src, size);
+}
+
+/*
+ * A compare function that forwards to strcmp.
+ */
+int
+dshash_strcmp(const void *a, const void *b, size_t size, void *arg)
+{
+	Assert(strlen((const char *) a) < size);
+	Assert(strlen((const char *) b) < size);
+
+	return strcmp((const char *) a, (const char *) b);
+}
+
+/*
+ * A hash function that forwards to string_hash.
+ */
+dshash_hash
+dshash_strhash(const void *v, size_t size, void *arg)
+{
+	Assert(strlen((const char *) v) < size);
+
+	return string_hash((const char *) v, size);
+}
+
+/*
+ * A copy function that forwards to strcpy.
+ */
+void
+dshash_strcpy(void *dest, const void *src, size_t size, void *arg)
+{
+	Assert(strlen((const char *) src) < size);
+
+	(void) strcpy((char *) dest, (const char *) src);
 }
 
 /*
@@ -809,10 +873,14 @@ delete_item(dshash_table *hash_table, dshash_table_item *item)
  * Grow the hash table if necessary to the requested number of buckets.  The
  * requested size must be double some previously observed size.
  *
+ * If an out-of-memory condition is observed, this function returns false if
+ * flags includes DSHASH_INSERT_NO_OOM, and otherwise throws an ERROR. In all
+ * other cases, it returns true.
+ *
  * Must be called without any partition lock held.
  */
-static void
-resize(dshash_table *hash_table, size_t new_size_log2)
+static bool
+resize(dshash_table *hash_table, size_t new_size_log2, int flags)
 {
 	dsa_pointer old_buckets;
 	dsa_pointer new_buckets_shared;
@@ -820,6 +888,7 @@ resize(dshash_table *hash_table, size_t new_size_log2)
 	size_t		size;
 	size_t		new_size = ((size_t) 1) << new_size_log2;
 	size_t		i;
+	int			dsa_flags = DSA_ALLOC_HUGE | DSA_ALLOC_ZERO;
 
 	/*
 	 * Acquire the locks for all lock partitions.  This is expensive, but we
@@ -837,23 +906,34 @@ resize(dshash_table *hash_table, size_t new_size_log2)
 			 * obtaining all the locks and return early.
 			 */
 			LWLockRelease(PARTITION_LOCK(hash_table, 0));
-			return;
+			return true;
 		}
 	}
 
 	Assert(new_size_log2 == hash_table->control->size_log2 + 1);
 
 	/* Allocate the space for the new table. */
+	if (flags & DSHASH_INSERT_NO_OOM)
+		dsa_flags |= DSA_ALLOC_NO_OOM;
 	new_buckets_shared =
 		dsa_allocate_extended(hash_table->area,
 							  sizeof(dsa_pointer) * new_size,
-							  DSA_ALLOC_HUGE | DSA_ALLOC_ZERO);
-	new_buckets = dsa_get_address(hash_table->area, new_buckets_shared);
+							  dsa_flags);
+
+	/* If DSHASH_INSERT_NO_OOM was specified, allocation may have failed. */
+	if (!DsaPointerIsValid(new_buckets_shared))
+	{
+		/* Release all the locks and return without resizing. */
+		for (i = 0; i < DSHASH_NUM_PARTITIONS; ++i)
+			LWLockRelease(PARTITION_LOCK(hash_table, i));
+		return false;
+	}
 
 	/*
 	 * We've allocated the new bucket array; all that remains to do now is to
 	 * reinsert all items, which amounts to adjusting all the pointers.
 	 */
+	new_buckets = dsa_get_address(hash_table->area, new_buckets_shared);
 	size = ((size_t) 1) << hash_table->control->size_log2;
 	for (i = 0; i < size; ++i)
 	{
@@ -883,6 +963,8 @@ resize(dshash_table *hash_table, size_t new_size_log2)
 	/* Release all the locks. */
 	for (i = 0; i < DSHASH_NUM_PARTITIONS; ++i)
 		LWLockRelease(PARTITION_LOCK(hash_table, i));
+
+	return true;
 }
 
 /*
@@ -937,21 +1019,28 @@ insert_item_into_bucket(dshash_table *hash_table,
 
 /*
  * Allocate space for an entry with the given key and insert it into the
- * provided bucket.
+ * provided bucket.  Returns NULL if out of memory and DSHASH_INSERT_NO_OOM
+ * was specified in flags.
  */
 static dshash_table_item *
 insert_into_bucket(dshash_table *hash_table,
 				   const void *key,
-				   dsa_pointer *bucket)
+				   dsa_pointer *bucket,
+				   int flags)
 {
 	dsa_pointer item_pointer;
 	dshash_table_item *item;
+	int			dsa_flags;
 
-	item_pointer = dsa_allocate(hash_table->area,
-								hash_table->params.entry_size +
-								MAXALIGN(sizeof(dshash_table_item)));
+	dsa_flags = (flags & DSHASH_INSERT_NO_OOM) ? DSA_ALLOC_NO_OOM : 0;
+	item_pointer = dsa_allocate_extended(hash_table->area,
+										 hash_table->params.entry_size +
+										 MAXALIGN(sizeof(dshash_table_item)),
+										 dsa_flags);
+	if (!DsaPointerIsValid(item_pointer))
+		return NULL;
 	item = dsa_get_address(hash_table->area, item_pointer);
-	memcpy(ENTRY_FROM_ITEM(item), key, hash_table->params.key_size);
+	copy_key(hash_table, ENTRY_FROM_ITEM(item), key);
 	insert_item_into_bucket(hash_table, item_pointer, item, bucket);
 	return item;
 }
@@ -1033,4 +1122,15 @@ equal_keys(dshash_table *hash_table, const void *a, const void *b)
 	return hash_table->params.compare_function(a, b,
 											   hash_table->params.key_size,
 											   hash_table->arg) == 0;
+}
+
+/*
+ * Copy a key.
+ */
+static inline void
+copy_key(dshash_table *hash_table, void *dest, const void *src)
+{
+	hash_table->params.copy_function(dest, src,
+									 hash_table->params.key_size,
+									 hash_table->arg);
 }

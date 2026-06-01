@@ -3,7 +3,7 @@
  * libpq_source.c
  *	  Functions for fetching files from a remote server via libpq.
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -11,7 +11,6 @@
 
 #include "catalog/pg_type_d.h"
 #include "common/connect.h"
-#include "datapagemap.h"
 #include "file_ops.h"
 #include "filemap.h"
 #include "lib/stringinfo.h"
@@ -85,7 +84,7 @@ init_libpq_source(PGconn *conn)
 
 	init_libpq_conn(conn);
 
-	src = pg_malloc0(sizeof(libpq_source));
+	src = pg_malloc0_object(libpq_source);
 
 	src->common.traverse_files = libpq_traverse_files;
 	src->common.fetch_file = libpq_fetch_file;
@@ -117,6 +116,7 @@ init_libpq_conn(PGconn *conn)
 	run_simple_command(conn, "SET statement_timeout = 0");
 	run_simple_command(conn, "SET lock_timeout = 0");
 	run_simple_command(conn, "SET idle_in_transaction_session_timeout = 0");
+	run_simple_command(conn, "SET transaction_timeout = 0");
 
 	/*
 	 * we don't intend to do any updates, put the connection in read-only mode
@@ -127,7 +127,7 @@ init_libpq_conn(PGconn *conn)
 	/* secure search_path */
 	res = PQexec(conn, ALWAYS_SECURE_SEARCH_PATH_SQL);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
-		pg_fatal("could not clear search_path: %s",
+		pg_fatal("could not clear \"search_path\": %s",
 				 PQresultErrorMessage(res));
 	PQclear(res);
 
@@ -138,7 +138,7 @@ init_libpq_conn(PGconn *conn)
 	 */
 	str = run_simple_query(conn, "SHOW full_page_writes");
 	if (strcmp(str, "on") != 0)
-		pg_fatal("full_page_writes must be enabled in the source server");
+		pg_fatal("\"full_page_writes\" must be enabled in the source server");
 	pg_free(str);
 
 	/* Prepare a statement we'll use to fetch files */
@@ -215,7 +215,7 @@ libpq_get_current_wal_insert_lsn(rewind_source *source)
 
 	val = run_simple_query(conn, "SELECT pg_current_wal_insert_lsn()");
 
-	if (sscanf(val, "%X/%X", &hi, &lo) != 2)
+	if (sscanf(val, "%X/%08X", &hi, &lo) != 2)
 		pg_fatal("unrecognized result \"%s\" for current WAL insert location", val);
 
 	result = ((uint64) hi) << 32 | lo;
@@ -293,18 +293,27 @@ libpq_traverse_files(rewind_source *source, process_file_callback_t callback)
 		}
 
 		path = PQgetvalue(res, i, 0);
-		filesize = atol(PQgetvalue(res, i, 1));
+		filesize = atoll(PQgetvalue(res, i, 1));
 		isdir = (strcmp(PQgetvalue(res, i, 2), "t") == 0);
 		link_target = PQgetvalue(res, i, 3);
 
 		if (link_target[0])
-			type = FILE_TYPE_SYMLINK;
+		{
+			/*
+			 * In-place tablespaces are directories located in pg_tblspc/ with
+			 * relative paths.
+			 */
+			if (is_absolute_path(link_target))
+				type = FILE_TYPE_SYMLINK;
+			else
+				type = FILE_TYPE_DIRECTORY;
+		}
 		else if (isdir)
 			type = FILE_TYPE_DIRECTORY;
 		else
 			type = FILE_TYPE_REGULAR;
 
-		process_source_file(path, type, filesize, link_target);
+		callback(path, type, filesize, link_target);
 	}
 	PQclear(res);
 }
@@ -450,7 +459,7 @@ process_queued_fetch_requests(libpq_source *src)
 
 		appendArrayEscapedString(&src->paths, rq->path);
 		appendStringInfo(&src->offsets, INT64_FORMAT, (int64) rq->offset);
-		appendStringInfo(&src->lengths, INT64_FORMAT, (int64) rq->length);
+		appendStringInfo(&src->lengths, "%zu", rq->length);
 	}
 	appendStringInfoChar(&src->paths, '}');
 	appendStringInfoChar(&src->offsets, '}');
@@ -558,8 +567,8 @@ process_queued_fetch_requests(libpq_source *src)
 		}
 		else
 		{
-			pg_log_debug("received chunk for file \"%s\", offset %lld, size %d",
-						 filename, (long long int) chunkoff, chunksize);
+			pg_log_debug("received chunk for file \"%s\", offset %" PRId64 ", size %d",
+						 filename, chunkoff, chunksize);
 
 			if (strcmp(filename, rq->path) != 0)
 			{
@@ -567,8 +576,8 @@ process_queued_fetch_requests(libpq_source *src)
 						 filename, rq->path);
 			}
 			if (chunkoff != rq->offset)
-				pg_fatal("received data at offset %lld of file \"%s\", when requested for offset %lld",
-						 (long long int) chunkoff, rq->path, (long long int) rq->offset);
+				pg_fatal("received data at offset %" PRId64 " of file \"%s\", when requested for offset %lld",
+						 chunkoff, rq->path, (long long int) rq->offset);
 
 			/*
 			 * We should not receive more data than we requested, or

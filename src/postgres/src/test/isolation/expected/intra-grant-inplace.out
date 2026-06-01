@@ -226,7 +226,7 @@ step revoke4: <... completed>
 starting permutation: b1 drop1 b3 sfu3 revoke4 c1 r3
 step b1: BEGIN;
 step drop1: 
-	DROP TABLE intra_grant_inplace;
+	DELETE FROM pg_class WHERE relname = 'intra_grant_inplace';
 
 step b3: BEGIN ISOLATION LEVEL READ COMMITTED;
 step sfu3: 

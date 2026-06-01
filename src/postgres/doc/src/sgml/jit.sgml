@@ -148,11 +148,12 @@
 =# EXPLAIN ANALYZE SELECT SUM(relpages) FROM pg_class;
                                                  QUERY PLAN
 -------------------------------------------------------------------&zwsp;------------------------------------------
- Aggregate  (cost=16.27..16.29 rows=1 width=8) (actual time=0.303..0.303 rows=1 loops=1)
-   ->  Seq Scan on pg_class  (cost=0.00..15.42 rows=342 width=4) (actual time=0.017..0.111 rows=356 loops=1)
+ Aggregate  (cost=16.27..16.29 rows=1 width=8) (actual time=0.303..0.303 rows=1.00 loops=1)
+   Buffers: shared hit=14
+   ->  Seq Scan on pg_class  (cost=0.00..15.42 rows=342 width=4) (actual time=0.017..0.111 rows=356.00 loops=1)
+         Buffers: shared hit=14
  Planning Time: 0.116 ms
  Execution Time: 0.365 ms
-(4 rows)
 </screen>
    Given the cost of the plan, it is entirely reasonable that no
    <acronym>JIT</acronym> was used; the cost of <acronym>JIT</acronym> would
@@ -164,13 +165,15 @@ SET
 =# EXPLAIN ANALYZE SELECT SUM(relpages) FROM pg_class;
                                                  QUERY PLAN
 -------------------------------------------------------------------&zwsp;------------------------------------------
- Aggregate  (cost=16.27..16.29 rows=1 width=8) (actual time=6.049..6.049 rows=1 loops=1)
-   ->  Seq Scan on pg_class  (cost=0.00..15.42 rows=342 width=4) (actual time=0.019..0.052 rows=356 loops=1)
+ Aggregate  (cost=16.27..16.29 rows=1 width=8) (actual time=6.049..6.049 rows=1.00 loops=1)
+   Buffers: shared hit=14
+   ->  Seq Scan on pg_class  (cost=0.00..15.42 rows=342 width=4) (actual time=0.019..0.052 rows=356.00 loops=1)
+         Buffers: shared hit=14
  Planning Time: 0.133 ms
  JIT:
    Functions: 3
    Options: Inlining false, Optimization false, Expressions true, Deforming true
-   Timing: Generation 1.259 ms, Inlining 0.000 ms, Optimization 0.797 ms, Emission 5.048 ms, Total 7.104 ms
+   Timing: Generation 1.259 ms (Deform 0.000 ms), Inlining 0.000 ms, Optimization 0.797 ms, Emission 5.048 ms, Total 7.104 ms
  Execution Time: 7.416 ms
 </screen>
    As visible here, <acronym>JIT</acronym> was used, but inlining and
@@ -256,7 +259,7 @@ SET
     <xref linkend="guc-jit-provider"/>.
    </para>
 
-   <sect3>
+   <sect3 id="jit-pluggable-provider-interface">
     <title><acronym>JIT</acronym> Provider Interface</title>
     <para>
      A <acronym>JIT</acronym> provider is loaded by dynamically loading the

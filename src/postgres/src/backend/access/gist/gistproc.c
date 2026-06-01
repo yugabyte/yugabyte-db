@@ -7,7 +7,7 @@
  * This gives R-tree behavior, with Guttman's poly-time split algorithm.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -21,8 +21,8 @@
 
 #include "access/gist.h"
 #include "access/stratnum.h"
-#include "utils/builtins.h"
 #include "utils/float.h"
+#include "utils/fmgrprotos.h"
 #include "utils/geo_decls.h"
 #include "utils/sortsupport.h"
 
@@ -115,8 +115,9 @@ gist_box_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	BOX		   *query = PG_GETARG_BOX_P(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 
 	/* All cases served by this function are exact */
@@ -171,9 +172,9 @@ gist_box_union(PG_FUNCTION_ARGS)
 			   *pageunion;
 
 	numranges = entryvec->n;
-	pageunion = (BOX *) palloc(sizeof(BOX));
+	pageunion = palloc_object(BOX);
 	cur = DatumGetBoxP(entryvec->vector[0].key);
-	memcpy((void *) pageunion, (void *) cur, sizeof(BOX));
+	memcpy(pageunion, cur, sizeof(BOX));
 
 	for (i = 1; i < numranges; i++)
 	{
@@ -237,7 +238,7 @@ fallbackSplit(GistEntryVector *entryvec, GIST_SPLITVEC *v)
 			v->spl_left[v->spl_nleft] = i;
 			if (unionL == NULL)
 			{
-				unionL = (BOX *) palloc(sizeof(BOX));
+				unionL = palloc_object(BOX);
 				*unionL = *cur;
 			}
 			else
@@ -250,7 +251,7 @@ fallbackSplit(GistEntryVector *entryvec, GIST_SPLITVEC *v)
 			v->spl_right[v->spl_nright] = i;
 			if (unionR == NULL)
 			{
-				unionR = (BOX *) palloc(sizeof(BOX));
+				unionR = palloc_object(BOX);
 				*unionR = *cur;
 			}
 			else
@@ -698,8 +699,8 @@ gist_box_picksplit(PG_FUNCTION_ARGS)
 	v->spl_nright = 0;
 
 	/* Allocate bounding boxes of left and right groups */
-	leftBox = palloc0(sizeof(BOX));
-	rightBox = palloc0(sizeof(BOX));
+	leftBox = palloc0_object(BOX);
+	rightBox = palloc0_object(BOX);
 
 	/*
 	 * Allocate an array for "common entries" - entries which can be placed to
@@ -797,8 +798,8 @@ gist_box_picksplit(PG_FUNCTION_ARGS)
 		for (i = 0; i < commonEntriesCount; i++)
 		{
 			box = DatumGetBoxP(entryvec->vector[commonEntries[i].index].key);
-			commonEntries[i].delta = Abs(float8_mi(box_penalty(leftBox, box),
-												   box_penalty(rightBox, box)));
+			commonEntries[i].delta = fabs(float8_mi(box_penalty(leftBox, box),
+													box_penalty(rightBox, box)));
 		}
 
 		/*
@@ -1042,10 +1043,10 @@ gist_poly_compress(PG_FUNCTION_ARGS)
 		POLYGON    *in = DatumGetPolygonP(entry->key);
 		BOX		   *r;
 
-		r = (BOX *) palloc(sizeof(BOX));
-		memcpy((void *) r, (void *) &(in->boundbox), sizeof(BOX));
+		r = palloc_object(BOX);
+		memcpy(r, &(in->boundbox), sizeof(BOX));
 
-		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(r),
 					  entry->rel, entry->page,
 					  entry->offset, false);
@@ -1064,8 +1065,9 @@ gist_poly_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	POLYGON    *query = PG_GETARG_POLYGON_P(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	bool		result;
 
@@ -1107,13 +1109,13 @@ gist_circle_compress(PG_FUNCTION_ARGS)
 		CIRCLE	   *in = DatumGetCircleP(entry->key);
 		BOX		   *r;
 
-		r = (BOX *) palloc(sizeof(BOX));
+		r = palloc_object(BOX);
 		r->high.x = float8_pl(in->center.x, in->radius);
 		r->low.x = float8_mi(in->center.x, in->radius);
 		r->high.y = float8_pl(in->center.y, in->radius);
 		r->low.y = float8_mi(in->center.y, in->radius);
 
-		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(r),
 					  entry->rel, entry->page,
 					  entry->offset, false);
@@ -1132,8 +1134,9 @@ gist_circle_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	CIRCLE	   *query = PG_GETARG_CIRCLE_P(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	BOX			bbox;
 	bool		result;
@@ -1171,9 +1174,9 @@ gist_point_compress(PG_FUNCTION_ARGS)
 
 	if (entry->leafkey)			/* Point, actually */
 	{
-		BOX		   *box = palloc(sizeof(BOX));
+		BOX		   *box = palloc_object(BOX);
 		Point	   *point = DatumGetPointP(entry->key);
-		GISTENTRY  *retval = palloc(sizeof(GISTENTRY));
+		GISTENTRY  *retval = palloc_object(GISTENTRY);
 
 		box->high = box->low = *point;
 
@@ -1200,9 +1203,9 @@ gist_point_fetch(PG_FUNCTION_ARGS)
 	Point	   *r;
 	GISTENTRY  *retval;
 
-	retval = palloc(sizeof(GISTENTRY));
+	retval = palloc_object(GISTENTRY);
 
-	r = (Point *) palloc(sizeof(Point));
+	r = palloc_object(Point);
 	r->x = in->high.x;
 	r->y = in->high.y;
 	gistentryinit(*retval, PointerGetDatum(r),
@@ -1502,9 +1505,10 @@ gist_box_distance(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	Datum		query = PG_GETARG_DATUM(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid subtype = PG_GETARG_OID(3); */
-	/* bool	   *recheck = (bool *) PG_GETARG_POINTER(4); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
+#endif
 	float8		distance;
 
 	distance = gist_bbox_distance(entry, query, strategy);
@@ -1528,8 +1532,9 @@ gist_circle_distance(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	Datum		query = PG_GETARG_DATUM(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	float8		distance;
 
@@ -1545,8 +1550,9 @@ gist_poly_distance(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	Datum		query = PG_GETARG_DATUM(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	float8		distance;
 
@@ -1707,8 +1713,8 @@ gist_bbox_zorder_cmp(Datum a, Datum b, SortSupport ssup)
  * Abbreviated version of Z-order comparison
  *
  * The abbreviated format is a Z-order value computed from the two 32-bit
- * floats. If SIZEOF_DATUM == 8, the 64-bit Z-order value fits fully in the
- * abbreviated Datum, otherwise use its most significant bits.
+ * floats.  Now that sizeof(Datum) is always 8, the 64-bit Z-order value
+ * always fits fully in the abbreviated Datum.
  */
 static Datum
 gist_bbox_zorder_abbrev_convert(Datum original, SortSupport ssup)
@@ -1718,11 +1724,7 @@ gist_bbox_zorder_abbrev_convert(Datum original, SortSupport ssup)
 
 	z = point_zorder_internal(p->x, p->y);
 
-#if SIZEOF_DATUM == 8
-	return (Datum) z;
-#else
-	return (Datum) (z >> 32);
-#endif
+	return UInt64GetDatum(z);
 }
 
 /*

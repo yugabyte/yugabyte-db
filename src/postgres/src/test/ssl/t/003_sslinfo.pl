@@ -1,8 +1,8 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -17,6 +17,11 @@ use SSL::Server;
 if ($ENV{with_ssl} ne 'openssl')
 {
 	plan skip_all => 'OpenSSL not supported by this build';
+}
+if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bssl\b/)
+{
+	plan skip_all =>
+	  'Potentially unsafe test SSL not enabled in PG_TEST_EXTRA';
 }
 
 #### Some configuration
@@ -38,6 +43,10 @@ sub switch_server_cert
 my $SERVERHOSTADDR = '127.0.0.1';
 # This is the pattern to use in pg_hba.conf to match incoming connections.
 my $SERVERHOSTCIDR = '127.0.0.1/32';
+
+# Determine whether build supports sslcertmode=require.
+my $supports_sslcertmode_require =
+  check_pg_config("#define HAVE_SSL_CTX_SET_CERT_CB 1");
 
 # Allocation of base connection string shared among multiple tests.
 my $common_connstr;
@@ -161,5 +170,24 @@ $result = $node->safe_psql(
 	"SELECT value, critical FROM ssl_extension_info() WHERE name = 'basicConstraints';",
 	connstr => $common_connstr);
 is($result, 'CA:FALSE|t', 'extract extension from cert');
+
+# Sanity tests for sslcertmode, using ssl_client_cert_present()
+my @cases = (
+	{ opts => "sslcertmode=allow", present => 't' },
+	{ opts => "sslcertmode=allow sslcert=invalid", present => 'f' },
+	{ opts => "sslcertmode=disable", present => 'f' },);
+if ($supports_sslcertmode_require)
+{
+	push(@cases, { opts => "sslcertmode=require", present => 't' });
+}
+
+foreach my $c (@cases)
+{
+	$result = $node->safe_psql(
+		"trustdb",
+		"SELECT ssl_client_cert_present();",
+		connstr => "$common_connstr dbname=trustdb $c->{opts}");
+	is($result, $c->{present}, "ssl_client_cert_present() for $c->{opts}");
+}
 
 done_testing();

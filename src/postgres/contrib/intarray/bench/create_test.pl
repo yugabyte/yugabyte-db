@@ -1,11 +1,11 @@
 #!/usr/bin/perl
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # contrib/intarray/bench/create_test.pl
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 print <<EOT;
 create table message (
@@ -19,7 +19,7 @@ create table message_section_map (
 
 EOT
 
-open(my $msg, '>', "message.tmp")             || die;
+open(my $msg, '>', "message.tmp") || die;
 open(my $map, '>', "message_section_map.tmp") || die;
 
 srand(1);

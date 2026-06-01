@@ -1,7 +1,7 @@
 /*
  * Utilities for working with hash values.
  *
- * Portions Copyright (c) 2017-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2017-2026, PostgreSQL Global Development Group
  */
 
 #ifndef HASHFN_H
@@ -98,6 +98,21 @@ murmurhash32(uint32 data)
 	h ^= h >> 13;
 	h *= 0xc2b2ae35;
 	h ^= h >> 16;
+	return h;
+}
+
+/* 64-bit variant */
+static inline uint64
+murmurhash64(uint64 data)
+{
+	uint64		h = data;
+
+	h ^= h >> 33;
+	h *= 0xff51afd7ed558ccd;
+	h ^= h >> 33;
+	h *= 0xc4ceb9fe1a85ec53;
+	h ^= h >> 33;
+
 	return h;
 }
 

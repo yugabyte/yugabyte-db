@@ -14,7 +14,7 @@
  * hard postmaster crash, remaining segments will be removed, if they
  * still exist, at the next postmaster startup.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -38,13 +38,15 @@
 #include "miscadmin.h"
 #include "port/pg_bitutils.h"
 #include "storage/dsm.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "storage/pg_shmem.h"
+#include "storage/shmem.h"
+#include "storage/subsystems.h"
 #include "utils/freepage.h"
-#include "utils/guc.h"
 #include "utils/memutils.h"
-#include "utils/resowner_private.h"
+#include "utils/resowner.h"
 
 #define PG_DYNSHMEM_CONTROL_MAGIC		0x9a503d32
 
@@ -108,6 +110,15 @@ static bool dsm_init_done = false;
 
 /* Preallocated DSM space in the main shared memory region. */
 static void *dsm_main_space_begin = NULL;
+static size_t dsm_main_space_size;
+
+static void dsm_main_space_request(void *arg);
+static void dsm_main_space_init(void *arg);
+
+const ShmemCallbacks dsm_shmem_callbacks = {
+	.request_fn = dsm_main_space_request,
+	.init_fn = dsm_main_space_init,
+};
 
 /*
  * List of dynamic shared memory segments used by this backend.
@@ -139,6 +150,32 @@ static dsm_handle dsm_control_handle;
 static dsm_control_header *dsm_control;
 static Size dsm_control_mapped_size = 0;
 static void *dsm_control_impl_private = NULL;
+
+
+/* ResourceOwner callbacks to hold DSM segments */
+static void ResOwnerReleaseDSM(Datum res);
+static char *ResOwnerPrintDSM(Datum res);
+
+static const ResourceOwnerDesc dsm_resowner_desc =
+{
+	.name = "dynamic shared memory segment",
+	.release_phase = RESOURCE_RELEASE_BEFORE_LOCKS,
+	.release_priority = RELEASE_PRIO_DSMS,
+	.ReleaseResource = ResOwnerReleaseDSM,
+	.DebugPrint = ResOwnerPrintDSM
+};
+
+/* Convenience wrappers over ResourceOwnerRemember/Forget */
+static inline void
+ResourceOwnerRememberDSM(ResourceOwner owner, dsm_segment *seg)
+{
+	ResourceOwnerRemember(owner, PointerGetDatum(seg), &dsm_resowner_desc);
+}
+static inline void
+ResourceOwnerForgetDSM(ResourceOwner owner, dsm_segment *seg)
+{
+	ResourceOwnerForget(owner, PointerGetDatum(seg), &dsm_resowner_desc);
+}
 
 /*
  * Start up the dynamic shared memory system.
@@ -173,9 +210,8 @@ dsm_postmaster_startup(PGShmemHeader *shim)
 
 	/*
 	 * Loop until we find an unused identifier for the new control segment. We
-	 * sometimes use 0 as a sentinel value indicating that no control segment
-	 * is known to exist, so avoid using that value for a real control
-	 * segment.
+	 * sometimes use DSM_HANDLE_INVALID as a sentinel value indicating "no
+	 * control segment", so avoid generating that value for a real handle.
 	 */
 	for (;;)
 	{
@@ -438,42 +474,40 @@ dsm_set_control_handle(dsm_handle h)
 #endif
 
 /*
- * Reserve some space in the main shared memory segment for DSM segments.
+ * Reserve space in the main shared memory segment for DSM segments.
  */
-size_t
-dsm_estimate_size(void)
+static void
+dsm_main_space_request(void *arg)
 {
-	return 1024 * 1024 * (size_t) min_dynamic_shared_memory;
-}
+	dsm_main_space_size = 1024 * 1024 * (size_t) min_dynamic_shared_memory;
 
-/*
- * Initialize space in the main shared memory segment for DSM segments.
- */
-void
-dsm_shmem_init(void)
-{
-	size_t		size = dsm_estimate_size();
-	bool		found;
-
-	if (size == 0)
+	if (dsm_main_space_size == 0)
 		return;
 
-	dsm_main_space_begin = ShmemInitStruct("Preallocated DSM", size, &found);
-	if (!found)
-	{
-		FreePageManager *fpm = (FreePageManager *) dsm_main_space_begin;
-		size_t		first_page = 0;
-		size_t		pages;
+	ShmemRequestStruct(.name = "Preallocated DSM",
+					   .size = dsm_main_space_size,
+					   .ptr = &dsm_main_space_begin,
+		);
+}
 
-		/* Reserve space for the FreePageManager. */
-		while (first_page * FPM_PAGE_SIZE < sizeof(FreePageManager))
-			++first_page;
+static void
+dsm_main_space_init(void *arg)
+{
+	FreePageManager *fpm = (FreePageManager *) dsm_main_space_begin;
+	size_t		first_page = 0;
+	size_t		pages;
 
-		/* Initialize it and give it all the rest of the space. */
-		FreePageManagerInitialize(fpm, dsm_main_space_begin);
-		pages = (size / FPM_PAGE_SIZE) - first_page;
-		FreePageManagerPut(fpm, first_page, pages);
-	}
+	if (dsm_main_space_size == 0)
+		return;
+
+	/* Reserve space for the FreePageManager. */
+	while (first_page * FPM_PAGE_SIZE < sizeof(FreePageManager))
+		++first_page;
+
+	/* Initialize it and give it all the rest of the space. */
+	FreePageManagerInitialize(fpm, dsm_main_space_begin);
+	pages = (dsm_main_space_size / FPM_PAGE_SIZE) - first_page;
+	FreePageManagerPut(fpm, first_page, pages);
 }
 
 /*
@@ -908,7 +942,7 @@ void
 dsm_unpin_mapping(dsm_segment *seg)
 {
 	Assert(seg->resowner == NULL);
-	ResourceOwnerEnlargeDSMs(CurrentResourceOwner);
+	ResourceOwnerEnlarge(CurrentResourceOwner);
 	seg->resowner = CurrentResourceOwner;
 	ResourceOwnerRememberDSM(seg->resowner, seg);
 }
@@ -1047,7 +1081,7 @@ dsm_unpin_segment(dsm_handle handle)
  * Find an existing mapping for a shared memory segment, if there is one.
  */
 dsm_segment *
-dsm_find_mapping(dsm_handle h)
+dsm_find_mapping(dsm_handle handle)
 {
 	dlist_iter	iter;
 	dsm_segment *seg;
@@ -1055,7 +1089,7 @@ dsm_find_mapping(dsm_handle h)
 	dlist_foreach(iter, &dsm_segment_list)
 	{
 		seg = dlist_container(dsm_segment, node, iter.cur);
-		if (seg->handle == h)
+		if (seg->handle == handle)
 			return seg;
 	}
 
@@ -1177,7 +1211,7 @@ dsm_create_descriptor(void)
 	dsm_segment *seg;
 
 	if (CurrentResourceOwner)
-		ResourceOwnerEnlargeDSMs(CurrentResourceOwner);
+		ResourceOwnerEnlarge(CurrentResourceOwner);
 
 	seg = MemoryContextAlloc(TopMemoryContext, sizeof(dsm_segment));
 	dlist_push_head(&dsm_segment_list, &seg->node);
@@ -1255,4 +1289,23 @@ static inline bool
 is_main_region_dsm_handle(dsm_handle handle)
 {
 	return handle & 1;
+}
+
+/* ResourceOwner callbacks */
+
+static void
+ResOwnerReleaseDSM(Datum res)
+{
+	dsm_segment *seg = (dsm_segment *) DatumGetPointer(res);
+
+	seg->resowner = NULL;
+	dsm_detach(seg);
+}
+static char *
+ResOwnerPrintDSM(Datum res)
+{
+	dsm_segment *seg = (dsm_segment *) DatumGetPointer(res);
+
+	return psprintf("dynamic shared memory segment %u",
+					dsm_segment_handle(seg));
 }

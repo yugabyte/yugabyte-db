@@ -25,6 +25,30 @@ SELECT avg(a) AS avg_32 FROM aggtest WHERE a < 100;
  32.6666666666666667
 (1 row)
 
+SELECT any_value(v) FROM (VALUES (1), (2), (3)) AS v (v);
+ any_value 
+-----------
+         1
+(1 row)
+
+SELECT any_value(v) FROM (VALUES (NULL)) AS v (v);
+ any_value 
+-----------
+ 
+(1 row)
+
+SELECT any_value(v) FROM (VALUES (NULL), (1), (2)) AS v (v);
+ any_value 
+-----------
+         1
+(1 row)
+
+SELECT any_value(v) FROM (VALUES (array['hello', 'world'])) AS v (v);
+   any_value   
+---------------
+ {hello,world}
+(1 row)
+
 -- In 7.1, avg(float4) is computed using float8 arithmetic.
 -- Round the result to 3 digits to avoid platform-specific results.
 SELECT avg(b)::numeric(10,3) AS avg_107_943 FROM aggtest;
@@ -243,6 +267,31 @@ SELECT stddev_pop('nan'::numeric), stddev_samp('nan'::numeric);
  stddev_pop | stddev_samp 
 ------------+-------------
         NaN |            
+(1 row)
+
+-- verify correct results for min(record) and max(record) aggregates
+SELECT max(row(a,b)) FROM aggtest;
+     max      
+--------------
+ (100,99.097)
+(1 row)
+
+SELECT max(row(b,a)) FROM aggtest;
+     max     
+-------------
+ (324.78,42)
+(1 row)
+
+SELECT min(row(a,b)) FROM aggtest;
+     min     
+-------------
+ (0,0.09561)
+(1 row)
+
+SELECT min(row(b,a)) FROM aggtest;
+     min     
+-------------
+ (0.09561,0)
 (1 row)
 
 -- verify correct results for null and NaN inputs
@@ -466,6 +515,62 @@ SELECT covar_pop(1::float8,'nan'::float8), covar_samp(3::float8,'nan'::float8);
        NaN |           
 (1 row)
 
+-- check some cases that formerly had poor roundoff-error behavior
+SELECT corr(0.09, g), regr_r2(0.09, g)
+  FROM generate_series(1, 30) g;
+ corr | regr_r2 
+------+---------
+      |       1
+(1 row)
+
+SELECT corr(g, 0.09), regr_r2(g, 0.09), regr_slope(g, 0.09), regr_intercept(g, 0.09)
+  FROM generate_series(1, 30) g;
+ corr | regr_r2 | regr_slope | regr_intercept 
+------+---------+------------+----------------
+      |         |            |               
+(1 row)
+
+SELECT corr(1.3 + g * 1e-16, 1.3 + g * 1e-16)
+  FROM generate_series(1, 3) g;
+ corr 
+------
+     
+(1 row)
+
+SELECT corr(1e-100 + g * 1e-105, 1e-100 + g * 1e-105)
+  FROM generate_series(1, 3) g;
+ corr 
+------
+    1
+(1 row)
+
+SELECT corr(1e-100 + g * 1e-105, 1e-100 + g * 1e-105)
+  FROM generate_series(1, 30) g;
+ corr 
+------
+    1
+(1 row)
+
+-- these examples pose definitional questions for NaN inputs,
+-- which we resolve by saying that an all-NaN input column is not all equal
+SELECT corr(g, 'NaN') FROM generate_series(1, 30) g;
+ corr 
+------
+  NaN
+(1 row)
+
+SELECT corr(0.1, 'NaN') FROM generate_series(1, 30) g;
+ corr 
+------
+     
+(1 row)
+
+SELECT corr('NaN', 'NaN') FROM generate_series(1, 30) g;
+ corr 
+------
+  NaN
+(1 row)
+
 -- test accum and combine functions directly
 CREATE TABLE regr_test (x float8, y float8);
 INSERT INTO regr_test VALUES (10,150),(20,250),(30,350),(80,540),(100,200);
@@ -489,10 +594,10 @@ SELECT float8_accum('{4,140,2900}'::float8[], 100);
  {5,240,6280}
 (1 row)
 
-SELECT float8_regr_accum('{4,140,2900,1290,83075,15050}'::float8[], 200, 100);
-      float8_regr_accum       
-------------------------------
- {5,240,6280,1490,95080,8680}
+SELECT float8_regr_accum('{4,140,2900,1290,83075,15050,100,0}'::float8[], 200, 100);
+           float8_regr_accum           
+---------------------------------------
+ {5,240,2900,1490,95080,15050,100,NaN}
 (1 row)
 
 SELECT count(*), sum(x), regr_sxx(y,x), sum(y),regr_syy(y,x), regr_sxy(y,x)
@@ -527,25 +632,25 @@ SELECT float8_combine('{3,60,200}'::float8[], '{2,180,200}'::float8[]);
  {5,240,6280}
 (1 row)
 
-SELECT float8_regr_combine('{3,60,200,750,20000,2000}'::float8[],
-                           '{0,0,0,0,0,0}'::float8[]);
-    float8_regr_combine    
----------------------------
- {3,60,200,750,20000,2000}
+SELECT float8_regr_combine('{3,60,200,750,20000,2000,1,NaN}'::float8[],
+                           '{0,0,0,0,0,0,0,0}'::float8[]);
+       float8_regr_combine       
+---------------------------------
+ {3,60,200,750,20000,2000,1,NaN}
 (1 row)
 
-SELECT float8_regr_combine('{0,0,0,0,0,0}'::float8[],
-                           '{2,180,200,740,57800,-3400}'::float8[]);
-     float8_regr_combine     
------------------------------
- {2,180,200,740,57800,-3400}
+SELECT float8_regr_combine('{0,0,0,0,0,0,0,0}'::float8[],
+                           '{2,180,200,740,57800,-3400,NaN,1}'::float8[]);
+        float8_regr_combine        
+-----------------------------------
+ {2,180,200,740,57800,-3400,NaN,1}
 (1 row)
 
-SELECT float8_regr_combine('{3,60,200,750,20000,2000}'::float8[],
-                           '{2,180,200,740,57800,-3400}'::float8[]);
-     float8_regr_combine      
-------------------------------
- {5,240,6280,1490,95080,8680}
+SELECT float8_regr_combine('{3,60,200,750,20000,2000,7,8}'::float8[],
+                           '{2,180,200,740,57800,-3400,7,9}'::float8[]);
+        float8_regr_combine         
+------------------------------------
+ {5,240,6280,1490,95080,8680,7,NaN}
 (1 row)
 
 DROP TABLE regr_test;
@@ -631,6 +736,25 @@ SELECT sum2(q1,q2) FROM int8_tbl;
  18271560493827981
 (1 row)
 
+-- sanity checks
+SELECT sum(q1+q2), sum(q1)+sum(q2) FROM int8_tbl;
+        sum        |     ?column?      
+-------------------+-------------------
+ 18271560493827981 | 18271560493827981
+(1 row)
+
+SELECT sum(q1-q2), sum(q2-q1), sum(q1)-sum(q2) FROM int8_tbl;
+       sum        |        sum        |     ?column?     
+------------------+-------------------+------------------
+ 9135780246913245 | -9135780246913245 | 9135780246913245
+(1 row)
+
+SELECT sum(q1*2000), sum(-q1*2000), 2000*sum(q1) FROM int8_tbl;
+         sum          |          sum          |       ?column?       
+----------------------+-----------------------+----------------------
+ 27407340740741226000 | -27407340740741226000 | 27407340740741226000
+(1 row)
+
 -- test for outer-level aggregates
 -- this should work
 select ten, sum(distinct four) from onek a
@@ -714,9 +838,9 @@ select array(select sum(x+y) s
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Function Scan on pg_catalog.generate_series x
-   Output: (SubPlan 1)
+   Output: ARRAY(SubPlan array_1)
    Function Call: generate_series(1, 3)
-   SubPlan 1
+   SubPlan array_1
      ->  Sort
            Output: (sum((x.x + y.y))), y.y
            Sort Key: (sum((x.x + y.y)))
@@ -737,6 +861,26 @@ select array(select sum(x+y) s
  {3,4,5}
  {4,5,6}
 (3 rows)
+
+-- Test handling of grouping-expression references within sublinks
+select two + four as g, (select f1 from int4_tbl where f1 = (two + four))
+from tenk1 t1
+group by two + four order by 1;
+ g | f1 
+---+----
+ 0 |  0
+ 2 |   
+ 4 |   
+(3 rows)
+
+select q1, (select q1) as ss  -- q1 is actually a COALESCE expression here
+from int8_tbl i81 full outer join int8_tbl i82 using (q1)
+group by q1 order by q1;
+        q1        |        ss        
+------------------+------------------
+              123 |              123
+ 4567890123456789 | 4567890123456789
+(2 rows)
 
 --
 -- test for bitwise integer aggregates
@@ -891,11 +1035,12 @@ explain (costs off)
                          QUERY PLAN                         
 ------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan using tenk1_unique1 on tenk1
                  Index Cond: (unique1 IS NOT NULL)
-(5 rows)
+(6 rows)
 
 select min(unique1) from tenk1;
  min 
@@ -908,11 +1053,12 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique1 on tenk1
                  Index Cond: (unique1 IS NOT NULL)
-(5 rows)
+(6 rows)
 
 select max(unique1) from tenk1;
  max  
@@ -925,11 +1071,12 @@ explain (costs off)
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique1 on tenk1
                  Index Cond: ((unique1 IS NOT NULL) AND (unique1 < 42))
-(5 rows)
+(6 rows)
 
 select max(unique1) from tenk1 where unique1 < 42;
  max 
@@ -942,11 +1089,12 @@ explain (costs off)
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique1 on tenk1
                  Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42))
-(5 rows)
+(6 rows)
 
 select max(unique1) from tenk1 where unique1 > 42;
  max  
@@ -965,11 +1113,12 @@ explain (costs off)
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique1 on tenk1
                  Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42000))
-(5 rows)
+(6 rows)
 
 select max(unique1) from tenk1 where unique1 > 42000;
  max 
@@ -984,11 +1133,12 @@ explain (costs off)
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_thous_tenthous on tenk1
                  Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
-(5 rows)
+(6 rows)
 
 select max(tenthous) from tenk1 where thousand = 33;
  max  
@@ -1001,11 +1151,12 @@ explain (costs off)
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan using tenk1_thous_tenthous on tenk1
                  Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
-(5 rows)
+(6 rows)
 
 select min(tenthous) from tenk1 where thousand = 33;
  min 
@@ -1020,13 +1171,14 @@ explain (costs off)
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Seq Scan on int4_tbl
-   SubPlan 2
+   SubPlan expr_1
      ->  Result
-           InitPlan 1 (returns $1)
+           Replaces: MinMaxAggregate
+           InitPlan minmax_1
              ->  Limit
                    ->  Index Only Scan using tenk1_unique1 on tenk1
                          Index Cond: ((unique1 IS NOT NULL) AND (unique1 > int4_tbl.f1))
-(7 rows)
+(8 rows)
 
 select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
   from int4_tbl;
@@ -1045,13 +1197,14 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  HashAggregate
-   Group Key: $0
-   InitPlan 1 (returns $0)
+   Group Key: (InitPlan minmax_1).col1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
    ->  Result
-(7 rows)
+         Replaces: MinMaxAggregate
+(8 rows)
 
 select distinct max(unique2) from tenk1;
  max  
@@ -1064,13 +1217,14 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Sort
-   Sort Key: ($0)
-   InitPlan 1 (returns $0)
+   Sort Key: ((InitPlan minmax_1).col1)
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
    ->  Result
-(7 rows)
+         Replaces: MinMaxAggregate
+(8 rows)
 
 select max(unique2) from tenk1 order by 1;
  max  
@@ -1083,13 +1237,14 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Sort
-   Sort Key: ($0)
-   InitPlan 1 (returns $0)
+   Sort Key: ((InitPlan minmax_1).col1)
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
    ->  Result
-(7 rows)
+         Replaces: MinMaxAggregate
+(8 rows)
 
 select max(unique2) from tenk1 order by max(unique2);
  max  
@@ -1102,13 +1257,14 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Sort
-   Sort Key: (($0 + 1))
-   InitPlan 1 (returns $0)
+   Sort Key: (((InitPlan minmax_1).col1 + 1))
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
    ->  Result
-(7 rows)
+         Replaces: MinMaxAggregate
+(8 rows)
 
 select max(unique2) from tenk1 order by max(unique2)+1;
  max  
@@ -1122,13 +1278,14 @@ explain (costs off)
 ---------------------------------------------------------------------
  Sort
    Sort Key: (generate_series(1, 3)) DESC
-   InitPlan 1 (returns $0)
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
    ->  ProjectSet
          ->  Result
-(8 rows)
+               Replaces: MinMaxAggregate
+(9 rows)
 
 select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
  max  | g 
@@ -1138,23 +1295,42 @@ select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
  9999 | 1
 (3 rows)
 
--- interesting corner case: constant gets optimized into a seqscan
+-- two interesting corner cases: both non-null and null constant gets
+-- optimized into a seqscan
 explain (costs off)
   select max(100) from tenk1;
-                     QUERY PLAN                     
-----------------------------------------------------
+           QUERY PLAN            
+---------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
-           ->  Result
-                 One-Time Filter: (100 IS NOT NULL)
-                 ->  Seq Scan on tenk1
-(6 rows)
+           ->  Seq Scan on tenk1
+(5 rows)
 
 select max(100) from tenk1;
  max 
 -----
  100
+(1 row)
+
+explain (costs off)
+  select max(null) from tenk1;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Result
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
+     ->  Limit
+           ->  Result
+                 One-Time Filter: (NULL::text IS NOT NULL)
+                 ->  Seq Scan on tenk1
+(7 rows)
+
+select max(null) from tenk1;
+ max 
+-----
+ 
 (1 row)
 
 -- try it on an inheritance tree
@@ -1175,7 +1351,8 @@ explain (costs off)
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Result
-   InitPlan 1 (returns $0)
+   Replaces: MinMaxAggregate
+   InitPlan minmax_1
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest.f1
@@ -1186,7 +1363,7 @@ explain (costs off)
                  ->  Index Only Scan Backward using minmaxtest2i on minmaxtest2 minmaxtest_3
                        Index Cond: (f1 IS NOT NULL)
                  ->  Index Only Scan using minmaxtest3i on minmaxtest3 minmaxtest_4
-   InitPlan 2 (returns $1)
+   InitPlan minmax_2
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest_5.f1 DESC
@@ -1197,7 +1374,7 @@ explain (costs off)
                  ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_8
                        Index Cond: (f1 IS NOT NULL)
                  ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_9
-(23 rows)
+(24 rows)
 
 select min(f1), max(f1) from minmaxtest;
  min | max 
@@ -1211,7 +1388,7 @@ explain (costs off)
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Unique
-   InitPlan 1 (returns $0)
+   InitPlan minmax_1
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest.f1
@@ -1222,7 +1399,7 @@ explain (costs off)
                  ->  Index Only Scan Backward using minmaxtest2i on minmaxtest2 minmaxtest_3
                        Index Cond: (f1 IS NOT NULL)
                  ->  Index Only Scan using minmaxtest3i on minmaxtest3 minmaxtest_4
-   InitPlan 2 (returns $1)
+   InitPlan minmax_2
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest_5.f1 DESC
@@ -1234,9 +1411,10 @@ explain (costs off)
                        Index Cond: (f1 IS NOT NULL)
                  ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_9
    ->  Sort
-         Sort Key: ($0), ($1)
+         Sort Key: ((InitPlan minmax_1).col1), ((InitPlan minmax_2).col1)
          ->  Result
-(26 rows)
+               Replaces: MinMaxAggregate
+(27 rows)
 
 select distinct min(f1), max(f1) from minmaxtest;
  min | max 
@@ -1258,15 +1436,16 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Seq Scan on int4_tbl t0
-   SubPlan 2
+   SubPlan expr_1
      ->  HashAggregate
-           Group Key: $1
-           InitPlan 1 (returns $1)
+           Group Key: (InitPlan minmax_1).col1
+           InitPlan minmax_1
              ->  Limit
                    ->  Seq Scan on int4_tbl t1
                          Filter: ((f1 IS NOT NULL) AND (f1 = t0.f1))
            ->  Result
-(9 rows)
+                 Replaces: MinMaxAggregate
+(10 rows)
 
 select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
 from int4_tbl t0;
@@ -1326,7 +1505,7 @@ group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.y,t2.z;
                       QUERY PLAN                      
 ------------------------------------------------------
  HashAggregate
-   Group Key: t1.a, t1.b, t2.x, t2.y
+   Group Key: t1.a, t1.b
    ->  Hash Join
          Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
          ->  Seq Scan on t2
@@ -1341,7 +1520,7 @@ group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.z;
                       QUERY PLAN                      
 ------------------------------------------------------
  HashAggregate
-   Group Key: t1.a, t1.b, t2.x, t2.z
+   Group Key: t1.a, t1.b, t2.z
    ->  Hash Join
          Hash Cond: ((t2.x = t1.a) AND (t2.y = t1.b))
          ->  Seq Scan on t2
@@ -1399,16 +1578,206 @@ explain (costs off) select * from p_t1 group by a,b,c,d;
          ->  Seq Scan on p_t1_2
 (5 rows)
 
+create unique index t2_z_uidx on t2(z);
+-- Ensure we don't remove any columns from the GROUP BY for a unique
+-- index on a NULLable column.
+explain (costs off) select y,z from t2 group by y,z;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: y, z
+   ->  Seq Scan on t2
+(3 rows)
+
+-- Make the column NOT NULL and ensure we remove the redundant column
+alter table t2 alter column z set not null;
+explain (costs off) select y,z from t2 group by y,z;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: z
+   ->  Seq Scan on t2
+(3 rows)
+
+-- When there are multiple supporting unique indexes and the GROUP BY contains
+-- columns to cover all of those, ensure we pick the index with the least
+-- number of columns so that we can remove more columns from the GROUP BY.
+explain (costs off) select x,y,z from t2 group by x,y,z;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: z
+   ->  Seq Scan on t2
+(3 rows)
+
+-- As above but try ordering the columns differently to ensure we get the
+-- same result.
+explain (costs off) select x,y,z from t2 group by z,x,y;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: z
+   ->  Seq Scan on t2
+(3 rows)
+
+-- Ensure we don't use a partial index as proof of functional dependency
+drop index t2_z_uidx;
+create index t2_z_uidx on t2 (z) where z > 0;
+explain (costs off) select y,z from t2 group by y,z;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: y, z
+   ->  Seq Scan on t2
+(3 rows)
+
+-- A unique index defined as NULLS NOT DISTINCT does not need a supporting NOT
+-- NULL constraint on the indexed columns.  Ensure the redundant columns are
+-- removed from the GROUP BY for such a table.
+drop index t2_z_uidx;
+alter table t2 alter column z drop not null;
+create unique index t2_z_uidx on t2(z) nulls not distinct;
+explain (costs off) select y,z from t2 group by y,z;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: z
+   ->  Seq Scan on t2
+(3 rows)
+
 drop table t1 cascade;
 NOTICE:  drop cascades to table t1c
 drop table t2;
 drop table t3;
 drop table p_t1;
 --
+-- Test GROUP BY ALL
+--
+-- We don't care about the data here, just the proper transformation of the
+-- GROUP BY clause, so test some queries and verify the EXPLAIN plans.
+--
+CREATE TEMP TABLE t1 (
+  a int,
+  b int,
+  c int
+);
+-- basic example
+EXPLAIN (COSTS OFF) SELECT b, COUNT(*) FROM t1 GROUP BY ALL;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: b
+   ->  Seq Scan on t1
+(3 rows)
+
+-- multiple columns, non-consecutive order
+EXPLAIN (COSTS OFF) SELECT a, SUM(b), b FROM t1 GROUP BY ALL;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: a, b
+   ->  Seq Scan on t1
+(3 rows)
+
+-- multi columns, no aggregate
+EXPLAIN (COSTS OFF) SELECT a + b FROM t1 GROUP BY ALL;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: (a + b)
+   ->  Seq Scan on t1
+(3 rows)
+
+-- check we detect a non-top-level aggregate
+EXPLAIN (COSTS OFF) SELECT a, SUM(b) + 4 FROM t1 GROUP BY ALL;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: a
+   ->  Seq Scan on t1
+(3 rows)
+
+-- including grouped column is okay
+EXPLAIN (COSTS OFF) SELECT a, SUM(b) + a FROM t1 GROUP BY ALL;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: a
+   ->  Seq Scan on t1
+(3 rows)
+
+-- including non-grouped column, not so much
+EXPLAIN (COSTS OFF) SELECT a, SUM(b) + c FROM t1 GROUP BY ALL;
+ERROR:  column "t1.c" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 1: EXPLAIN (COSTS OFF) SELECT a, SUM(b) + c FROM t1 GROUP BY AL...
+                                               ^
+-- all aggregates, should reduce to GROUP BY ()
+EXPLAIN (COSTS OFF) SELECT COUNT(a), SUM(b) FROM t1 GROUP BY ALL;
+      QUERY PLAN      
+----------------------
+ Aggregate
+   Group Key: ()
+   ->  Seq Scan on t1
+(3 rows)
+
+-- likewise with empty target list
+EXPLAIN (COSTS OFF) SELECT FROM t1 GROUP BY ALL;
+      QUERY PLAN       
+-----------------------
+ Result
+   Replaces: Aggregate
+(2 rows)
+
+-- window functions are not to be included in GROUP BY, either
+EXPLAIN (COSTS OFF) SELECT a, COUNT(a) OVER (PARTITION BY a) FROM t1 GROUP BY ALL;
+            QUERY PLAN            
+----------------------------------
+ WindowAgg
+   Window: w1 AS (PARTITION BY a)
+   ->  Sort
+         Sort Key: a
+         ->  HashAggregate
+               Group Key: a
+               ->  Seq Scan on t1
+(7 rows)
+
+-- all cols
+EXPLAIN (COSTS OFF) SELECT *, count(*) FROM t1 GROUP BY ALL;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: a, b, c
+   ->  Seq Scan on t1
+(3 rows)
+
+-- group by all with grouping element(s) (equivalent to GROUP BY's
+-- default behavior, explicit antithesis to GROUP BY DISTINCT)
+EXPLAIN (COSTS OFF) SELECT a, count(*) FROM t1 GROUP BY ALL a;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: a
+   ->  Seq Scan on t1
+(3 rows)
+
+-- verify deparsing of GROUP BY ALL
+CREATE TEMP VIEW v1 AS SELECT b, COUNT(*) FROM t1 GROUP BY ALL;
+SELECT pg_get_viewdef('v1'::regclass);
+    pg_get_viewdef     
+-----------------------
+  SELECT b,           +
+     count(*) AS count+
+    FROM t1           +
+   GROUP BY ALL;
+(1 row)
+
+DROP VIEW v1;
+DROP TABLE t1;
+--
 -- Test GROUP BY matching of join columns that are type-coerced due to USING
 --
-create temp table t1(f1 int, f2 bigint);
-create temp table t2(f1 bigint, f22 bigint);
+create temp table t1(f1 int, f2 int);
+create temp table t2(f1 bigint, f2 oid);
 select f1 from t1 left join t2 using (f1) group by f1;
  f1 
 ----
@@ -1429,7 +1798,189 @@ select t1.f1 from t1 left join t2 using (f1) group by f1;
 ERROR:  column "t1.f1" must appear in the GROUP BY clause or be used in an aggregate function
 LINE 1: select t1.f1 from t1 left join t2 using (f1) group by f1;
                ^
+-- check case where we have to inject nullingrels into coerced join alias
+select f1, count(*) from
+t1 x(x0,x1) left join (t1 left join t2 using(f1)) on (x0 = 0)
+group by f1;
+ f1 | count 
+----+-------
+(0 rows)
+
+-- same, for a RelabelType coercion
+select f2, count(*) from
+t1 x(x0,x1) left join (t1 left join t2 using(f2)) on (x0 = 0)
+group by f2;
+ f2 | count 
+----+-------
+(0 rows)
+
+-- check that we preserve join alias in GROUP BY expressions
+create temp view v1 as
+select f1::int from t1 left join t2 using (f1) group by f1;
+select pg_get_viewdef('v1'::regclass);
+        pg_get_viewdef         
+-------------------------------
+  SELECT (f1)::integer AS f1  +
+    FROM (t1                  +
+      LEFT JOIN t2 USING (f1))+
+   GROUP BY f1;
+(1 row)
+
+drop view v1;
 drop table t1, t2;
+--
+-- Test planner's selection of pathkeys for ORDER BY aggregates
+--
+-- Ensure we order by four.  This suits the most aggregate functions.
+explain (costs off)
+select sum(two order by two),max(four order by four), min(four order by four)
+from tenk1;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Sort
+         Sort Key: four
+         ->  Seq Scan on tenk1
+(4 rows)
+
+-- Ensure we order by two.  It's a tie between ordering by two and four but
+-- we tiebreak on the aggregate's position.
+explain (costs off)
+select
+  sum(two order by two), max(four order by four),
+  min(four order by four), max(two order by two)
+from tenk1;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Sort
+         Sort Key: two
+         ->  Seq Scan on tenk1
+(4 rows)
+
+-- Similar to above, but tiebreak on ordering by four
+explain (costs off)
+select
+  max(four order by four), sum(two order by two),
+  min(four order by four), max(two order by two)
+from tenk1;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Sort
+         Sort Key: four
+         ->  Seq Scan on tenk1
+(4 rows)
+
+-- Ensure this one orders by ten since there are 3 aggregates that require ten
+-- vs two that suit two and four.
+explain (costs off)
+select
+  max(four order by four), sum(two order by two),
+  min(four order by four), max(two order by two),
+  sum(ten order by ten), min(ten order by ten), max(ten order by ten)
+from tenk1;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Sort
+         Sort Key: ten
+         ->  Seq Scan on tenk1
+(4 rows)
+
+-- Try a case involving a GROUP BY clause where the GROUP BY column is also
+-- part of an aggregate's ORDER BY clause.  We want a sort order that works
+-- for the GROUP BY along with the first and the last aggregate.
+explain (costs off)
+select
+  sum(unique1 order by ten, two), sum(unique1 order by four),
+  sum(unique1 order by two, four)
+from tenk1
+group by ten;
+            QUERY PLAN            
+----------------------------------
+ GroupAggregate
+   Group Key: ten
+   ->  Sort
+         Sort Key: ten, two, four
+         ->  Seq Scan on tenk1
+(5 rows)
+
+-- Ensure that we never choose to provide presorted input to an Aggref with
+-- a volatile function in the ORDER BY / DISTINCT clause.  We want to ensure
+-- these sorts are performed individually rather than at the query level.
+explain (costs off)
+select
+  sum(unique1 order by two), sum(unique1 order by four),
+  sum(unique1 order by four, two), sum(unique1 order by two, random()),
+  sum(unique1 order by two, random(), random() + 1)
+from tenk1
+group by ten;
+            QUERY PLAN            
+----------------------------------
+ GroupAggregate
+   Group Key: ten
+   ->  Sort
+         Sort Key: ten, four, two
+         ->  Seq Scan on tenk1
+(5 rows)
+
+-- Ensure consecutive NULLs are properly treated as distinct from each other
+select array_agg(distinct val)
+from (select null as val from generate_series(1, 2));
+ array_agg 
+-----------
+ {NULL}
+(1 row)
+
+-- Ensure no ordering is requested when enable_presorted_aggregate is off
+set enable_presorted_aggregate to off;
+explain (costs off)
+select sum(two order by two) from tenk1;
+       QUERY PLAN        
+-------------------------
+ Aggregate
+   ->  Seq Scan on tenk1
+(2 rows)
+
+reset enable_presorted_aggregate;
+--
+-- Test cases with FILTER clause
+--
+-- Ensure we presort when the aggregate contains plain Vars
+explain (costs off)
+select sum(two order by two) filter (where two > 1) from tenk1;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Sort
+         Sort Key: two
+         ->  Seq Scan on tenk1
+(4 rows)
+
+-- Ensure we presort for RelabelType'd Vars
+explain (costs off)
+select string_agg(distinct f1, ',') filter (where length(f1) > 1)
+from varchar_tbl;
+             QUERY PLAN              
+-------------------------------------
+ Aggregate
+   ->  Sort
+         Sort Key: f1
+         ->  Seq Scan on varchar_tbl
+(4 rows)
+
+-- Ensure we don't presort when the aggregate's argument contains an
+-- explicit cast.
+explain (costs off)
+select string_agg(distinct f1::varchar(2), ',') filter (where length(f1) > 1)
+from varchar_tbl;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Seq Scan on varchar_tbl
+(2 rows)
+
 --
 -- Test combinations of DISTINCT and/or ORDER BY
 --
@@ -1569,6 +2120,19 @@ select aggfns(distinct a,b,c order by a,c using ~<~,b)
  {"(0,,)","(1,3,foo)","(2,2,bar)","(3,1,baz)"}
 (1 row)
 
+-- test a more complex permutation that has previous caused issues
+select
+    string_agg(distinct 'a', ','),
+    sum((
+        select sum(1)
+        from (values(1)) b(id)
+        where a.id = b.id
+)) from unnest(array[1]) a(id);
+ string_agg | sum 
+------------+-----
+ a          |   1
+(1 row)
+
 -- check node I/O via view creation and usage, also deparsing logic
 create view agg_view1 as
   select aggfns(a,b,c)
@@ -1582,7 +2146,7 @@ select * from agg_view1;
 select pg_get_viewdef('agg_view1'::regclass);
                                                    pg_get_viewdef                                                    
 ---------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(v.a, v.b, v.c) AS aggfns                                                                            +
+  SELECT aggfns(a, b, c) AS aggfns                                                                                  +
     FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
 (1 row)
 
@@ -1634,7 +2198,7 @@ select * from agg_view1;
 select pg_get_viewdef('agg_view1'::regclass);
                                                    pg_get_viewdef                                                    
 ---------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(v.a, v.b, v.c ORDER BY (v.b + 1)) AS aggfns                                                         +
+  SELECT aggfns(a, b, c ORDER BY (b + 1)) AS aggfns                                                                 +
     FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
 (1 row)
 
@@ -1650,7 +2214,7 @@ select * from agg_view1;
 select pg_get_viewdef('agg_view1'::regclass);
                                                    pg_get_viewdef                                                    
 ---------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(v.a, v.a, v.c ORDER BY v.b) AS aggfns                                                               +
+  SELECT aggfns(a, a, c ORDER BY b) AS aggfns                                                                       +
     FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
 (1 row)
 
@@ -1666,7 +2230,7 @@ select * from agg_view1;
 select pg_get_viewdef('agg_view1'::regclass);
                                                    pg_get_viewdef                                                    
 ---------------------------------------------------------------------------------------------------------------------
-  SELECT aggfns(v.a, v.b, v.c ORDER BY v.c USING ~<~ NULLS LAST) AS aggfns                                          +
+  SELECT aggfns(a, b, c ORDER BY c USING ~<~ NULLS LAST) AS aggfns                                                  +
     FROM ( VALUES (1,3,'foo'::text), (0,NULL::integer,NULL::text), (2,2,'bar'::text), (3,1,'baz'::text)) v(a, b, c);
 (1 row)
 
@@ -1756,7 +2320,7 @@ select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -
  a,ab,abcd
 (1 row)
 
--- string_agg bytea tests
+-- string_agg, min, max bytea tests
 create table bytea_test_table(v bytea);
 select string_agg(v, '') from bytea_test_table;
  string_agg 
@@ -1790,7 +2354,150 @@ select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
  \xffeeaa
 (1 row)
 
+select min(v) from bytea_test_table;
+ min  
+------
+ \xaa
+(1 row)
+
+select max(v) from bytea_test_table;
+ max  
+------
+ \xff
+(1 row)
+
+insert into bytea_test_table values(decode('ffff','hex'));
+insert into bytea_test_table values(decode('aaaa','hex'));
+select min(v) from bytea_test_table;
+ min  
+------
+ \xaa
+(1 row)
+
+select max(v) from bytea_test_table;
+  max   
+--------
+ \xffff
+(1 row)
+
 drop table bytea_test_table;
+-- Test parallel string_agg and array_agg
+create table pagg_test (x int, y int) with (autovacuum_enabled = off);
+insert into pagg_test
+select (case x % 4 when 1 then null else x end), x % 10
+from generate_series(1,5000) x;
+set parallel_setup_cost TO 0;
+set parallel_tuple_cost TO 0;
+set parallel_leader_participation TO 0;
+set min_parallel_table_scan_size = 0;
+set bytea_output = 'escape';
+set max_parallel_workers_per_gather = 2;
+-- create a view as we otherwise have to repeat this query a few times.
+create view v_pagg_test AS
+select
+	y,
+	min(t) AS tmin,max(t) AS tmax,count(distinct t) AS tndistinct,
+	min(b) AS bmin,max(b) AS bmax,count(distinct b) AS bndistinct,
+	min(a) AS amin,max(a) AS amax,count(distinct a) AS andistinct,
+	min(aa) AS aamin,max(aa) AS aamax,count(distinct aa) AS aandistinct
+from (
+	select
+		y,
+		unnest(regexp_split_to_array(a1.t, ','))::int AS t,
+		unnest(regexp_split_to_array(a1.b::text, ',')) AS b,
+		unnest(a1.a) AS a,
+		unnest(a1.aa) AS aa
+	from (
+		select
+			y,
+			string_agg(x::text, ',') AS t,
+			string_agg(x::text::bytea, ',') AS b,
+			array_agg(x) AS a,
+			array_agg(ARRAY[x]) AS aa
+		from pagg_test
+		group by y
+	) a1
+) a2
+group by y;
+-- Ensure results are correct.
+select * from v_pagg_test order by y;
+ y | tmin | tmax | tndistinct | bmin | bmax | bndistinct | amin | amax | andistinct | aamin | aamax | aandistinct 
+---+------+------+------------+------+------+------------+------+------+------------+-------+-------+-------------
+ 0 |   10 | 5000 |        500 | 10   | 990  |        500 |   10 | 5000 |        500 |    10 |  5000 |         500
+ 1 |   11 | 4991 |        250 | 1011 | 991  |        250 |   11 | 4991 |        250 |    11 |  4991 |         250
+ 2 |    2 | 4992 |        500 | 1002 | 992  |        500 |    2 | 4992 |        500 |     2 |  4992 |         500
+ 3 |    3 | 4983 |        250 | 1003 | 983  |        250 |    3 | 4983 |        250 |     3 |  4983 |         250
+ 4 |    4 | 4994 |        500 | 1004 | 994  |        500 |    4 | 4994 |        500 |     4 |  4994 |         500
+ 5 |   15 | 4995 |        250 | 1015 | 995  |        250 |   15 | 4995 |        250 |    15 |  4995 |         250
+ 6 |    6 | 4996 |        500 | 1006 | 996  |        500 |    6 | 4996 |        500 |     6 |  4996 |         500
+ 7 |    7 | 4987 |        250 | 1007 | 987  |        250 |    7 | 4987 |        250 |     7 |  4987 |         250
+ 8 |    8 | 4998 |        500 | 1008 | 998  |        500 |    8 | 4998 |        500 |     8 |  4998 |         500
+ 9 |   19 | 4999 |        250 | 1019 | 999  |        250 |   19 | 4999 |        250 |    19 |  4999 |         250
+(10 rows)
+
+-- Ensure parallel aggregation is actually being used.
+explain (costs off) select * from v_pagg_test order by y;
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ GroupAggregate
+   Group Key: pagg_test.y
+   ->  Sort
+         Sort Key: pagg_test.y, (((unnest(regexp_split_to_array((string_agg((pagg_test.x)::text, ','::text)), ','::text))))::integer)
+         ->  Result
+               ->  ProjectSet
+                     ->  Finalize HashAggregate
+                           Group Key: pagg_test.y
+                           ->  Gather
+                                 Workers Planned: 2
+                                 ->  Partial HashAggregate
+                                       Group Key: pagg_test.y
+                                       ->  Parallel Seq Scan on pagg_test
+(13 rows)
+
+-- Ensure results are the same without parallel aggregation.
+set max_parallel_workers_per_gather = 0;
+select * from v_pagg_test order by y;
+ y | tmin | tmax | tndistinct | bmin | bmax | bndistinct | amin | amax | andistinct | aamin | aamax | aandistinct 
+---+------+------+------------+------+------+------------+------+------+------------+-------+-------+-------------
+ 0 |   10 | 5000 |        500 | 10   | 990  |        500 |   10 | 5000 |        500 |    10 |  5000 |         500
+ 1 |   11 | 4991 |        250 | 1011 | 991  |        250 |   11 | 4991 |        250 |    11 |  4991 |         250
+ 2 |    2 | 4992 |        500 | 1002 | 992  |        500 |    2 | 4992 |        500 |     2 |  4992 |         500
+ 3 |    3 | 4983 |        250 | 1003 | 983  |        250 |    3 | 4983 |        250 |     3 |  4983 |         250
+ 4 |    4 | 4994 |        500 | 1004 | 994  |        500 |    4 | 4994 |        500 |     4 |  4994 |         500
+ 5 |   15 | 4995 |        250 | 1015 | 995  |        250 |   15 | 4995 |        250 |    15 |  4995 |         250
+ 6 |    6 | 4996 |        500 | 1006 | 996  |        500 |    6 | 4996 |        500 |     6 |  4996 |         500
+ 7 |    7 | 4987 |        250 | 1007 | 987  |        250 |    7 | 4987 |        250 |     7 |  4987 |         250
+ 8 |    8 | 4998 |        500 | 1008 | 998  |        500 |    8 | 4998 |        500 |     8 |  4998 |         500
+ 9 |   19 | 4999 |        250 | 1019 | 999  |        250 |   19 | 4999 |        250 |    19 |  4999 |         250
+(10 rows)
+
+-- Check that we don't fail on anonymous record types.
+set max_parallel_workers_per_gather = 2;
+explain (costs off)
+select array_dims(array_agg(s)) from (select * from pagg_test) s;
+                 QUERY PLAN                 
+--------------------------------------------
+ Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Parallel Seq Scan on pagg_test
+(4 rows)
+
+select array_dims(array_agg(s)) from (select * from pagg_test) s;
+ array_dims 
+------------
+ [1:5000]
+(1 row)
+
+-- Clean up
+reset max_parallel_workers_per_gather;
+reset bytea_output;
+reset min_parallel_table_scan_size;
+reset parallel_leader_participation;
+reset parallel_tuple_cost;
+reset parallel_setup_cost;
+drop view v_pagg_test;
+drop table pagg_test;
 -- FILTER tests
 select min(unique1) filter (where unique1 > 100) from tenk1;
  min 
@@ -1837,6 +2544,12 @@ from (values ('a', 'b')) AS v(foo,bar);
  max 
 -----
  a
+(1 row)
+
+select any_value(v) filter (where v > 2) from (values (1), (2), (3)) as v (v);
+ any_value 
+-----------
+         3
 (1 row)
 
 -- outer reference in FILTER (PostgreSQL extension)
@@ -2151,15 +2864,15 @@ select ten,
   from tenk1
  group by ten order by ten;
 select pg_get_viewdef('aggordview1');
-                                                        pg_get_viewdef                                                         
--------------------------------------------------------------------------------------------------------------------------------
-  SELECT tenk1.ten,                                                                                                           +
-     percentile_disc((0.5)::double precision) WITHIN GROUP (ORDER BY tenk1.thousand) AS p50,                                  +
-     percentile_disc((0.5)::double precision) WITHIN GROUP (ORDER BY tenk1.thousand) FILTER (WHERE (tenk1.hundred = 1)) AS px,+
-     rank(5, 'AZZZZ'::name, 50) WITHIN GROUP (ORDER BY tenk1.hundred, tenk1.string4 DESC, tenk1.hundred) AS rank              +
-    FROM tenk1                                                                                                                +
-   GROUP BY tenk1.ten                                                                                                         +
-   ORDER BY tenk1.ten;
+                                                  pg_get_viewdef                                                   
+-------------------------------------------------------------------------------------------------------------------
+  SELECT ten,                                                                                                     +
+     percentile_disc((0.5)::double precision) WITHIN GROUP (ORDER BY thousand) AS p50,                            +
+     percentile_disc((0.5)::double precision) WITHIN GROUP (ORDER BY thousand) FILTER (WHERE (hundred = 1)) AS px,+
+     rank(5, 'AZZZZ'::name, 50) WITHIN GROUP (ORDER BY hundred, string4 DESC, hundred) AS rank                    +
+    FROM tenk1                                                                                                    +
+   GROUP BY ten                                                                                                   +
+   ORDER BY ten;
 (1 row)
 
 select * from aggordview1 order by ten;
@@ -2215,6 +2928,101 @@ select pg_typeof(cleast_agg(variadic array[4.5,f1])) from int4_tbl;
  numeric
 (1 row)
 
+--
+-- Test SupportRequestSimplifyAggref code
+--
+begin;
+create table agg_simplify (a int, not_null_col int not null, nullable_col int);
+-- Ensure count(not_null_col) uses count(*)
+explain (costs off, verbose)
+select count(not_null_col) from agg_simplify;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Seq Scan on public.agg_simplify
+         Output: a, not_null_col, nullable_col
+(4 rows)
+
+-- Ensure count(<not null const>) uses count(*)
+explain (costs off, verbose)
+select count('bananas') from agg_simplify;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Seq Scan on public.agg_simplify
+         Output: a, not_null_col, nullable_col
+(4 rows)
+
+-- Ensure count(null) isn't optimized
+explain (costs off, verbose)
+select count(null) from agg_simplify;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Aggregate
+   Output: count(NULL::unknown)
+   ->  Seq Scan on public.agg_simplify
+         Output: a, not_null_col, nullable_col
+(4 rows)
+
+-- Ensure count(nullable_col) does not use count(*)
+explain (costs off, verbose)
+select count(nullable_col) from agg_simplify;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Aggregate
+   Output: count(nullable_col)
+   ->  Seq Scan on public.agg_simplify
+         Output: a, not_null_col, nullable_col
+(4 rows)
+
+-- Ensure there's no optimization with DISTINCT aggs
+explain (costs off, verbose)
+select count(distinct not_null_col) from agg_simplify;
+                 QUERY PLAN                  
+---------------------------------------------
+ Aggregate
+   Output: count(DISTINCT not_null_col)
+   ->  Sort
+         Output: not_null_col
+         Sort Key: agg_simplify.not_null_col
+         ->  Seq Scan on public.agg_simplify
+               Output: not_null_col
+(7 rows)
+
+-- Ensure there's no optimization with ORDER BY aggs
+explain (costs off, verbose)
+select count(not_null_col order by not_null_col) from agg_simplify;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Aggregate
+   Output: count(not_null_col ORDER BY not_null_col)
+   ->  Sort
+         Output: not_null_col
+         Sort Key: agg_simplify.not_null_col
+         ->  Seq Scan on public.agg_simplify
+               Output: not_null_col
+(7 rows)
+
+-- Ensure we don't optimize to count(*) with agglevelsup > 0
+explain (costs off, verbose)
+select a from agg_simplify a group by a
+having exists (select 1 from onek b where count(a.not_null_col) = b.four);
+                     QUERY PLAN                      
+-----------------------------------------------------
+ HashAggregate
+   Output: a.a
+   Group Key: a.a
+   Filter: EXISTS(SubPlan exists_1)
+   ->  Seq Scan on public.agg_simplify a
+         Output: a.a, a.not_null_col, a.nullable_col
+   SubPlan exists_1
+     ->  Seq Scan on public.onek b
+           Filter: (count(a.not_null_col) = b.four)
+(9 rows)
+
+rollback;
 -- test aggregates with common transition functions share the same states
 begin work;
 create type avg_state as (total bigint, count bigint);
@@ -2301,8 +3109,8 @@ NOTICE:  avg_transfn called with 3
 -- shouldn't share states due to the distinctness not matching.
 select my_avg(distinct one),my_sum(one) from (values(1),(3)) t(one);
 NOTICE:  avg_transfn called with 1
-NOTICE:  avg_transfn called with 3
 NOTICE:  avg_transfn called with 1
+NOTICE:  avg_transfn called with 3
 NOTICE:  avg_transfn called with 3
  my_avg | my_sum 
 --------+--------
@@ -2485,6 +3293,243 @@ SELECT balk(hundred) FROM tenk1;
 (1 row)
 
 ROLLBACK;
+-- GROUP BY optimization by reordering GROUP BY clauses
+CREATE TABLE btg AS SELECT
+  i % 10 AS x,
+  i % 10 AS y,
+  'abc' || i % 10 AS z,
+  i AS w
+FROM generate_series(1, 100) AS i;
+CREATE INDEX btg_x_y_idx ON btg(x, y);
+ANALYZE btg;
+SET enable_hashagg = off;
+SET enable_seqscan = off;
+-- Utilize the ordering of index scan to avoid a Sort operation
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM btg GROUP BY y, x;
+                   QUERY PLAN                   
+------------------------------------------------
+ GroupAggregate
+   Group Key: x, y
+   ->  Index Only Scan using btg_x_y_idx on btg
+(3 rows)
+
+-- Engage incremental sort
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM btg GROUP BY z, y, w, x;
+                   QUERY PLAN                    
+-------------------------------------------------
+ GroupAggregate
+   Group Key: x, y, z, w
+   ->  Incremental Sort
+         Sort Key: x, y, z, w
+         Presorted Key: x, y
+         ->  Index Scan using btg_x_y_idx on btg
+(6 rows)
+
+-- Utilize the ordering of subquery scan to avoid a Sort operation
+EXPLAIN (COSTS OFF) SELECT count(*)
+FROM (SELECT * FROM btg ORDER BY x, y, w, z) AS q1
+GROUP BY w, x, z, y;
+                   QUERY PLAN                    
+-------------------------------------------------
+ GroupAggregate
+   Group Key: btg.x, btg.y, btg.w, btg.z
+   ->  Incremental Sort
+         Sort Key: btg.x, btg.y, btg.w, btg.z
+         Presorted Key: btg.x, btg.y
+         ->  Index Scan using btg_x_y_idx on btg
+(6 rows)
+
+-- Utilize the ordering of merge join to avoid a Sort operation
+SET enable_hashjoin = off;
+SET enable_nestloop = off;
+EXPLAIN (COSTS OFF)
+SELECT count(*)
+  FROM btg t1 JOIN btg t2 ON t1.w = t2.w AND t1.x = t2.x AND t1.z = t2.z
+  GROUP BY t1.w, t1.z, t1.x;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ GroupAggregate
+   Group Key: t1.x, t1.w, t1.z
+   ->  Merge Join
+         Merge Cond: ((t1.x = t2.x) AND (t1.w = t2.w) AND (t1.z = t2.z))
+         ->  Incremental Sort
+               Sort Key: t1.x, t1.w, t1.z
+               Presorted Key: t1.x
+               ->  Index Scan using btg_x_y_idx on btg t1
+         ->  Sort
+               Sort Key: t2.x, t2.w, t2.z
+               ->  Index Scan using btg_x_y_idx on btg t2
+(11 rows)
+
+RESET enable_nestloop;
+RESET enable_hashjoin;
+-- Should work with and without GROUP-BY optimization
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM btg GROUP BY w, x, z, y ORDER BY y, x, z, w;
+                   QUERY PLAN                    
+-------------------------------------------------
+ GroupAggregate
+   Group Key: y, x, z, w
+   ->  Sort
+         Sort Key: y, x, z, w
+         ->  Index Scan using btg_x_y_idx on btg
+(5 rows)
+
+-- Utilize incremental sort to make the ORDER BY rule a bit cheaper
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM btg GROUP BY w, x, y, z ORDER BY x*x, z;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Sort
+   Sort Key: ((x * x)), z
+   ->  GroupAggregate
+         Group Key: x, y, w, z
+         ->  Incremental Sort
+               Sort Key: x, y, w, z
+               Presorted Key: x, y
+               ->  Index Scan using btg_x_y_idx on btg
+(8 rows)
+
+-- Test the case where the number of incoming subtree path keys is more than
+-- the number of grouping keys.
+CREATE INDEX btg_y_x_w_idx ON btg(y, x, w);
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT y, x, array_agg(distinct w)
+  FROM btg WHERE y < 0 GROUP BY x, y;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ GroupAggregate
+   Output: y, x, array_agg(DISTINCT w)
+   Group Key: btg.y, btg.x
+   ->  Index Only Scan using btg_y_x_w_idx on public.btg
+         Output: y, x, w
+         Index Cond: (btg.y < 0)
+(6 rows)
+
+-- Ensure that we do not select the aggregate pathkeys instead of the grouping
+-- pathkeys
+CREATE TABLE group_agg_pk AS SELECT
+  i % 10 AS x,
+  i % 2 AS y,
+  i % 2 AS z,
+  2 AS w,
+  i % 10 AS f
+FROM generate_series(1,100) AS i;
+ANALYZE group_agg_pk;
+SET enable_nestloop = off;
+SET enable_hashjoin = off;
+EXPLAIN (COSTS OFF)
+SELECT avg(c1.f ORDER BY c1.x, c1.y)
+FROM group_agg_pk c1 JOIN group_agg_pk c2 ON c1.x = c2.x
+GROUP BY c1.w, c1.z;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ GroupAggregate
+   Group Key: c1.w, c1.z
+   ->  Sort
+         Sort Key: c1.w, c1.z, c1.x, c1.y
+         ->  Merge Join
+               Merge Cond: (c1.x = c2.x)
+               ->  Sort
+                     Sort Key: c1.x
+                     ->  Seq Scan on group_agg_pk c1
+                           Disabled: true
+               ->  Sort
+                     Sort Key: c2.x
+                     ->  Seq Scan on group_agg_pk c2
+                           Disabled: true
+(14 rows)
+
+SELECT avg(c1.f ORDER BY c1.x, c1.y)
+FROM group_agg_pk c1 JOIN group_agg_pk c2 ON c1.x = c2.x
+GROUP BY c1.w, c1.z;
+        avg         
+--------------------
+ 4.0000000000000000
+ 5.0000000000000000
+(2 rows)
+
+-- Pathkeys, built in a subtree, can be used to optimize GROUP-BY clause
+-- ordering.  Also, here we check that it doesn't depend on the initial clause
+-- order in the GROUP-BY list.
+EXPLAIN (COSTS OFF)
+SELECT c1.y,c1.x FROM group_agg_pk c1
+  JOIN group_agg_pk c2
+  ON c1.x = c2.x
+GROUP BY c1.y,c1.x,c2.x;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Group
+   Group Key: c1.x, c1.y
+   ->  Incremental Sort
+         Sort Key: c1.x, c1.y
+         Presorted Key: c1.x
+         ->  Merge Join
+               Merge Cond: (c1.x = c2.x)
+               ->  Sort
+                     Sort Key: c1.x
+                     ->  Seq Scan on group_agg_pk c1
+                           Disabled: true
+               ->  Sort
+                     Sort Key: c2.x
+                     ->  Seq Scan on group_agg_pk c2
+                           Disabled: true
+(15 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT c1.y,c1.x FROM group_agg_pk c1
+  JOIN group_agg_pk c2
+  ON c1.x = c2.x
+GROUP BY c1.y,c2.x,c1.x;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Group
+   Group Key: c2.x, c1.y
+   ->  Incremental Sort
+         Sort Key: c2.x, c1.y
+         Presorted Key: c2.x
+         ->  Merge Join
+               Merge Cond: (c1.x = c2.x)
+               ->  Sort
+                     Sort Key: c1.x
+                     ->  Seq Scan on group_agg_pk c1
+                           Disabled: true
+               ->  Sort
+                     Sort Key: c2.x
+                     ->  Seq Scan on group_agg_pk c2
+                           Disabled: true
+(15 rows)
+
+RESET enable_nestloop;
+RESET enable_hashjoin;
+DROP TABLE group_agg_pk;
+-- Test the case where the ordering of the scan matches the ordering within the
+-- aggregate but cannot be found in the group-by list
+CREATE TABLE agg_sort_order (c1 int PRIMARY KEY, c2 int);
+CREATE UNIQUE INDEX agg_sort_order_c2_idx ON agg_sort_order(c2);
+INSERT INTO agg_sort_order SELECT i, i FROM generate_series(1,100)i;
+ANALYZE agg_sort_order;
+EXPLAIN (COSTS OFF)
+SELECT array_agg(c1 ORDER BY c2),c2
+FROM agg_sort_order WHERE c2 < 100 GROUP BY c1 ORDER BY 2;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Sort
+   Sort Key: c2
+   ->  GroupAggregate
+         Group Key: c1
+         ->  Sort
+               Sort Key: c1, c2
+               ->  Index Scan using agg_sort_order_c2_idx on agg_sort_order
+                     Index Cond: (c2 < 100)
+(8 rows)
+
+DROP TABLE agg_sort_order CASCADE;
+DROP TABLE btg;
+RESET enable_hashagg;
+RESET enable_seqscan;
 -- Secondly test the case of a parallel aggregate combiner function
 -- returning NULL. For that use normal transition function, but a
 -- combiner function returning NULL.
@@ -2526,6 +3571,43 @@ SELECT balk(hundred) FROM tenk1;
  balk 
 ------
      
+(1 row)
+
+ROLLBACK;
+-- test multiple usage of an aggregate whose finalfn returns a R/W datum
+BEGIN;
+CREATE FUNCTION rwagg_sfunc(x anyarray, y anyarray) RETURNS anyarray
+LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    RETURN array_fill(y[1], ARRAY[4]);
+END;
+$$;
+CREATE FUNCTION rwagg_finalfunc(x anyarray) RETURNS anyarray
+LANGUAGE plpgsql STRICT IMMUTABLE AS $$
+DECLARE
+    res x%TYPE;
+BEGIN
+    -- assignment is essential for this test, it expands the array to R/W
+    res := array_fill(x[1], ARRAY[4]);
+    RETURN res;
+END;
+$$;
+CREATE AGGREGATE rwagg(anyarray) (
+    STYPE = anyarray,
+    SFUNC = rwagg_sfunc,
+    FINALFUNC = rwagg_finalfunc
+);
+CREATE FUNCTION eatarray(x real[]) RETURNS real[]
+LANGUAGE plpgsql STRICT IMMUTABLE AS $$
+BEGIN
+    x[1] := x[1] + 1;
+    RETURN x;
+END;
+$$;
+SELECT eatarray(rwagg(ARRAY[1.0::real])), eatarray(rwagg(ARRAY[1.0::real]));
+ eatarray  | eatarray  
+-----------+-----------
+ {2,1,1,1} | {2,1,1,1}
 (1 row)
 
 ROLLBACK;
@@ -2658,26 +3740,6 @@ select v||'a', case when v||'a' = 'aa' then 1 else 0 end, count(*)
  ba       |    0 |     1
 (2 rows)
 
--- Make sure that generation of HashAggregate for uniqification purposes
--- does not lead to array overflow due to unexpected duplicate hash keys
--- see CAFeeJoKKu0u+A_A9R9316djW-YW3-+Gtgvy3ju655qRHR3jtdA@mail.gmail.com
-set enable_memoize to off;
-explain (costs off)
-  select 1 from tenk1
-   where (hundred, thousand) in (select twothousand, twothousand from onek);
-                         QUERY PLAN                          
--------------------------------------------------------------
- Hash Join
-   Hash Cond: (tenk1.hundred = onek.twothousand)
-   ->  Seq Scan on tenk1
-         Filter: (hundred = thousand)
-   ->  Hash
-         ->  HashAggregate
-               Group Key: onek.twothousand, onek.twothousand
-               ->  Seq Scan on onek
-(8 rows)
-
-reset enable_memoize;
 --
 -- Hash Aggregation Spill tests
 --

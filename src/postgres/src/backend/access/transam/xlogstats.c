@@ -1,9 +1,9 @@
 /*-------------------------------------------------------------------------
  *
  * xlogstats.c
- *		Functions for WAL Statitstics
+ *		Functions for WAL Statistics
  *
- * Copyright (c) 2022, PostgreSQL Global Development Group
+ * Copyright (c) 2022-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/backend/access/transam/xlogstats.c

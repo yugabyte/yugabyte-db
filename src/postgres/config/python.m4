@@ -97,6 +97,11 @@ python_ldlibrary=`${PYTHON} -c "import sysconfig; print(' '.join(filter(None,sys
 
 # If LDLIBRARY exists and has a shlib extension, use it verbatim.
 ldlibrary=`echo "${python_ldlibrary}" | sed -e 's/\.so$//' -e 's/\.dll$//' -e 's/\.dylib$//' -e 's/\.sl$//'`
+if test "$PORTNAME" = "aix"; then
+  # On AIX, '.a' should also be believed to be a shlib.
+  ldlibrary=`echo "${ldlibrary}" | sed -e 's/\.a$//'`
+fi
+
 if test -e "${python_libdir}/${python_ldlibrary}" -a x"${python_ldlibrary}" != x"${ldlibrary}"
 then
 	ldlibrary=`echo "${ldlibrary}" | sed "s/^lib//"`
@@ -120,16 +125,11 @@ else
 	found_shlib=0
 	for d in "${python_libdir}" "${python_configdir}" /usr/lib64 /usr/lib
 	do
-		# Note: DLSUFFIX is for loadable modules, not shared
-		# libraries, so cannot be used here portably.  Just
-		# check all known possibilities.
-		for e in .so .dll .dylib .sl; do
-			if test -e "$d/lib${ldlibrary}$e"; then
-				python_libdir="$d"
-				found_shlib=1
-				break 2
-			fi
-		done
+		if test -e "$d/lib${ldlibrary}${DLSUFFIX}"; then
+			python_libdir="$d"
+			found_shlib=1
+			break 2
+		fi
 	done
 	# Some platforms (OpenBSD) require us to accept a bare versioned shlib
 	# (".so.n.n") as well. However, check this only after failing to find

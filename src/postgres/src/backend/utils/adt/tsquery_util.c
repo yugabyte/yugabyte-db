@@ -3,7 +3,7 @@
  * tsquery_util.c
  *	  Utilities for tsquery datatype
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -16,6 +16,7 @@
 
 #include "miscadmin.h"
 #include "tsearch/ts_utils.h"
+#include "varatt.h"
 
 /*
  * Build QTNode tree for a tsquery given in QueryItem array format.
@@ -23,7 +24,7 @@
 QTNode *
 QT2QTN(QueryItem *in, char *operand)
 {
-	QTNode	   *node = (QTNode *) palloc0(sizeof(QTNode));
+	QTNode	   *node = palloc0_object(QTNode);
 
 	/* since this function recurses, it could be driven to stack overflow. */
 	check_stack_depth();
@@ -32,7 +33,7 @@ QT2QTN(QueryItem *in, char *operand)
 
 	if (in->type == QI_OPR)
 	{
-		node->child = (QTNode **) palloc0(sizeof(QTNode *) * 2);
+		node->child = palloc0_array(QTNode *, 2);
 		node->child[0] = QT2QTN(in + 1, operand);
 		node->sign = node->child[0]->sign;
 		if (in->qoperator.oper == OP_NOT)
@@ -172,7 +173,7 @@ QTNSort(QTNode *in)
 	for (i = 0; i < in->nchild; i++)
 		QTNSort(in->child[i]);
 	if (in->nchild > 1 && in->valnode->qoperator.oper != OP_PHRASE)
-		qsort((void *) in->child, in->nchild, sizeof(QTNode *), cmpQTN);
+		qsort(in->child, in->nchild, sizeof(QTNode *), cmpQTN);
 }
 
 /*
@@ -225,7 +226,7 @@ QTNTernary(QTNode *in)
 			int			oldnchild = in->nchild;
 
 			in->nchild += cc->nchild - 1;
-			in->child = (QTNode **) repalloc(in->child, in->nchild * sizeof(QTNode *));
+			in->child = repalloc_array(in->child, QTNode *, in->nchild);
 
 			if (i + 1 != oldnchild)
 				memmove(in->child + i + cc->nchild, in->child + i + 1,
@@ -261,10 +262,10 @@ QTNBinary(QTNode *in)
 
 	while (in->nchild > 2)
 	{
-		QTNode	   *nn = (QTNode *) palloc0(sizeof(QTNode));
+		QTNode	   *nn = palloc0_object(QTNode);
 
-		nn->valnode = (QueryItem *) palloc0(sizeof(QueryItem));
-		nn->child = (QTNode **) palloc0(sizeof(QTNode *) * 2);
+		nn->valnode = palloc0_object(QueryItem);
+		nn->child = palloc0_array(QTNode *, 2);
 
 		nn->nchild = 2;
 		nn->flags = QTN_NEEDFREE;
@@ -399,10 +400,10 @@ QTNCopy(QTNode *in)
 	/* since this function recurses, it could be driven to stack overflow. */
 	check_stack_depth();
 
-	out = (QTNode *) palloc(sizeof(QTNode));
+	out = palloc_object(QTNode);
 
 	*out = *in;
-	out->valnode = (QueryItem *) palloc(sizeof(QueryItem));
+	out->valnode = palloc_object(QueryItem);
 	*(out->valnode) = *(in->valnode);
 	out->flags |= QTN_NEEDFREE;
 
@@ -417,7 +418,7 @@ QTNCopy(QTNode *in)
 	{
 		int			i;
 
-		out->child = (QTNode **) palloc(sizeof(QTNode *) * in->nchild);
+		out->child = palloc_array(QTNode *, in->nchild);
 
 		for (i = 0; i < in->nchild; i++)
 			out->child[i] = QTNCopy(in->child[i]);

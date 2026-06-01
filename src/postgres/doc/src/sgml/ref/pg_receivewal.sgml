@@ -119,8 +119,9 @@ PostgreSQL documentation
 
   <para>
    In the absence of fatal errors, <application>pg_receivewal</application>
-   will run until terminated by the <systemitem>SIGINT</systemitem> signal
-   (<keycombo action="simul"><keycap>Control</keycap><keycap>C</keycap></keycombo>).
+   will run until terminated by the <systemitem>SIGINT</systemitem>
+   (<keycombo action="simul"><keycap>Control</keycap><keycap>C</keycap></keycombo>)
+   or <systemitem>SIGTERM</systemitem> signal.
   </para>
  </refsect1>
 
@@ -280,7 +281,8 @@ PostgreSQL documentation
         A compression detail string can optionally be specified.  If the
         detail string is an integer, it specifies the compression level.
         Otherwise, it should be a comma-separated list of items, each of the
-        form <literal>keyword</literal> or <literal>keyword=value</literal>.
+        form <replaceable>keyword</replaceable> or
+        <replaceable>keyword=value</replaceable>.
         Currently, the only supported keyword is <literal>level</literal>.
        </para>
        <para>
@@ -313,10 +315,16 @@ PostgreSQL documentation
         will override any conflicting command line options.
        </para>
        <para>
-        The option is called <literal>--dbname</literal> for consistency with other
+        This option is called <literal>--dbname</literal> for consistency with other
         client applications, but because <application>pg_receivewal</application>
-        doesn't connect to any particular database in the cluster, database
-        name in the connection string will be ignored.
+        doesn't connect to any particular database in the cluster, any database
+        name included in the connection string will be ignored by the server.
+        However, a database name supplied that way overrides the default
+        database name (<literal>replication</literal>) for purposes of
+        looking up the replication connection's password
+        in <filename>~/.pgpass</filename>.  Similarly, middleware or proxies
+        used in connecting to <productname>PostgreSQL</productname> might
+        utilize the name for purposes such as connection routing.
        </para>
       </listitem>
      </varlistentry>
@@ -458,7 +466,8 @@ PostgreSQL documentation
 
   <para>
    <application>pg_receivewal</application> will exit with status 0 when
-   terminated by the <systemitem>SIGINT</systemitem> signal.  (That is the
+   terminated by the <systemitem>SIGINT</systemitem> or
+   <systemitem>SIGTERM</systemitem> signal.  (That is the
    normal way to end it.  Hence it is not an error.)  For fatal errors or
    other signals, the exit status will be nonzero.
   </para>

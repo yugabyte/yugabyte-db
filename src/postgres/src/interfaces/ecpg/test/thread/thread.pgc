@@ -6,14 +6,6 @@
 #include <stdlib.h>
 #include "ecpg_config.h"
 
-#ifndef ENABLE_THREAD_SAFETY
-int
-main(void)
-{
-	printf("No threading enabled.\n");
-	return 0;
-}
-#else
 #ifndef WIN32
 #include <pthread.h>
 #else
@@ -28,7 +20,7 @@ void *test_thread(void *arg);
 int nthreads   = 10;
 int iterations = 20;
 
-int main()
+int main(void)
 {
 #ifndef WIN32
   pthread_t *threads;
@@ -133,4 +125,3 @@ void *test_thread(void *arg)
   EXEC SQL DISCONNECT :l_connection;
   return NULL;
 }
-#endif /* ENABLE_THREAD_SAFETY */

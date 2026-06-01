@@ -3,7 +3,7 @@
  * datum.c
  *	  POSTGRES Datum (abstract data type) manipulation routines.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -26,7 +26,7 @@
  * The number of significant bytes are always equal to the typlen.
  *
  * C) if a type is not "byVal" and has typlen == -1,
- * then the "Datum" always points to a "struct varlena".
+ * then the "Datum" always points to a "varlena".
  * This varlena structure has information about the actual length of this
  * particular instance of the type and about its value.
  *
@@ -43,12 +43,11 @@
 #include "postgres.h"
 
 #include "access/detoast.h"
-#include "catalog/pg_type_d.h"
 #include "common/hashfn.h"
 #include "fmgr.h"
-#include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/expandeddatum.h"
+#include "utils/fmgrprotos.h"
 
 
 /*-------------------------------------------------------------------------
@@ -83,9 +82,9 @@ datumGetSize(Datum value, bool typByVal, int typLen)
 		else if (typLen == -1)
 		{
 			/* It is a varlena datatype */
-			struct varlena *s = (struct varlena *) DatumGetPointer(value);
+			varlena    *s = (varlena *) DatumGetPointer(value);
 
-			if (!PointerIsValid(s))
+			if (!s)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
 						 errmsg("invalid Datum pointer")));
@@ -97,7 +96,7 @@ datumGetSize(Datum value, bool typByVal, int typLen)
 			/* It is a cstring datatype */
 			char	   *s = (char *) DatumGetPointer(value);
 
-			if (!PointerIsValid(s))
+			if (!s)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
 						 errmsg("invalid Datum pointer")));
@@ -139,7 +138,7 @@ datumCopy(Datum value, bool typByVal, int typLen)
 	else if (typLen == -1)
 	{
 		/* It is a varlena datatype */
-		struct varlena *vl = (struct varlena *) DatumGetPointer(value);
+		varlena    *vl = (varlena *) DatumGetPointer(value);
 
 		if (VARATT_IS_EXTERNAL_EXPANDED(vl))
 		{
@@ -150,7 +149,7 @@ datumCopy(Datum value, bool typByVal, int typLen)
 
 			resultsize = EOH_get_flat_size(eoh);
 			resultptr = (char *) palloc(resultsize);
-			EOH_flatten_into(eoh, (void *) resultptr, resultsize);
+			EOH_flatten_into(eoh, resultptr, resultsize);
 			res = PointerGetDatum(resultptr);
 		}
 		else
@@ -259,8 +258,13 @@ datumIsEqual(Datum value1, Datum value2, bool typByVal, int typLen)
 /*-------------------------------------------------------------------------
  * datum_image_eq
  *
- * Compares two datums for identical contents, based on byte images.  Return
- * true if the two datums are equal, false otherwise.
+ * Compares two datums for identical contents when coerced to a signed integer
+ * of typLen bytes.  Return true if the two datums are equal, false otherwise.
+ *
+ * The coercion is required as we're not always careful to use the correct
+ * PG_RETURN_* macro.  If we didn't do this, a Datum that's been formed and
+ * deformed into a tuple may not have the same signed representation as the
+ * other datum value.
  *-------------------------------------------------------------------------
  */
 bool
@@ -272,7 +276,21 @@ datum_image_eq(Datum value1, Datum value2, bool typByVal, int typLen)
 
 	if (typByVal)
 	{
-		result = (value1 == value2);
+		switch (typLen)
+		{
+			case sizeof(char):
+				result = (DatumGetChar(value1) == DatumGetChar(value2));
+				break;
+			case sizeof(int16):
+				result = (DatumGetInt16(value1) == DatumGetInt16(value2));
+				break;
+			case sizeof(int32):
+				result = (DatumGetInt32(value1) == DatumGetInt32(value2));
+				break;
+			default:
+				result = (value1 == value2);
+				break;
+		}
 	}
 	else if (typLen > 0)
 	{
@@ -289,8 +307,8 @@ datum_image_eq(Datum value1, Datum value2, bool typByVal, int typLen)
 			result = false;
 		else
 		{
-			struct varlena *arg1val;
-			struct varlena *arg2val;
+			varlena    *arg1val;
+			varlena    *arg2val;
 
 			arg1val = PG_DETOAST_DATUM_PACKED(value1);
 			arg2val = PG_DETOAST_DATUM_PACKED(value2);
@@ -300,9 +318,9 @@ datum_image_eq(Datum value1, Datum value2, bool typByVal, int typLen)
 							 len1 - VARHDRSZ) == 0);
 
 			/* Only free memory if it's a copy made here. */
-			if ((Pointer) arg1val != (Pointer) value1)
+			if (arg1val != DatumGetPointer(value1))
 				pfree(arg1val);
-			if ((Pointer) arg2val != (Pointer) value2)
+			if (arg2val != DatumGetPointer(value2))
 				pfree(arg2val);
 		}
 	}
@@ -329,10 +347,11 @@ datum_image_eq(Datum value1, Datum value2, bool typByVal, int typLen)
 /*-------------------------------------------------------------------------
  * datum_image_hash
  *
- * Generate a hash value based on the binary representation of 'value'.  Most
- * use cases will want to use the hash function specific to the Datum's type,
- * however, some corner cases require generating a hash value based on the
- * actual bits rather than the logical value.
+ * Generate a hash value based on the binary representation of 'value' when
+ * represented as a signed integer of typLen bytes.  Most use cases will want
+ * to use the hash function specific to the Datum's type, however, some corner
+ * cases require generating a hash value based on the actual bits rather than
+ * the logical value.
  *-------------------------------------------------------------------------
  */
 uint32
@@ -342,12 +361,28 @@ datum_image_hash(Datum value, bool typByVal, int typLen)
 	uint32		result;
 
 	if (typByVal)
+	{
+		switch (typLen)
+		{
+			case sizeof(char):
+				value = CharGetDatum(DatumGetChar(value));
+				break;
+			case sizeof(int16):
+				value = Int16GetDatum(DatumGetInt16(value));
+				break;
+			case sizeof(int32):
+				value = Int32GetDatum(DatumGetInt32(value));
+				break;
+				/* Nothing needs done for 64-bit types */
+		}
+
 		result = hash_bytes((unsigned char *) &value, sizeof(Datum));
+	}
 	else if (typLen > 0)
 		result = hash_bytes((unsigned char *) DatumGetPointer(value), typLen);
 	else if (typLen == -1)
 	{
-		struct varlena *val;
+		varlena    *val;
 
 		len = toast_raw_datum_size(value);
 
@@ -356,7 +391,7 @@ datum_image_hash(Datum value, bool typByVal, int typLen)
 		result = hash_bytes((unsigned char *) VARDATA_ANY(val), len - VARHDRSZ);
 
 		/* Only free memory if it's a copy made here. */
-		if ((Pointer) val != (Pointer) value)
+		if (val != DatumGetPointer(value))
 			pfree(val);
 	}
 	else if (typLen == -2)
@@ -386,17 +421,22 @@ datum_image_hash(Datum value, bool typByVal, int typLen)
  * datum_image_eq() in all cases can use this as their "equalimage" support
  * function.
  *
- * Earlier minor releases erroneously associated this function with
- * interval_ops.  Detect that case to rescind deduplication support, without
- * requiring initdb.
+ * Currently, we unconditionally assume that any B-Tree operator class that
+ * registers btequalimage as its support function 4 must be able to safely use
+ * optimizations like deduplication (i.e. we return true unconditionally).  If
+ * it ever proved necessary to rescind support for an operator class, we could
+ * do that in a targeted fashion by doing something with the opcintype
+ * argument.
  *-------------------------------------------------------------------------
  */
 Datum
 btequalimage(PG_FUNCTION_ARGS)
 {
+#ifdef NOT_USED
 	Oid			opcintype = PG_GETARG_OID(0);
+#endif
 
-	PG_RETURN_BOOL(opcintype != INTERVALOID);
+	PG_RETURN_BOOL(true);
 }
 
 /*-------------------------------------------------------------------------
@@ -493,7 +533,7 @@ datumSerialize(Datum value, bool isnull, bool typByVal, int typLen,
 			 * so we can't store directly to *start_address.
 			 */
 			tmp = (char *) palloc(header);
-			EOH_flatten_into(eoh, (void *) tmp, header);
+			EOH_flatten_into(eoh, tmp, header);
 			memcpy(*start_address, tmp, header);
 			*start_address += header;
 

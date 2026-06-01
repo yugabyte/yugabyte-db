@@ -4,7 +4,7 @@
  *	  Combo command ID support routines
  *
  * Before version 8.3, HeapTupleHeaderData had separate fields for cmin
- * and cmax.  To reduce the header size, cmin and cmax are now overlayed
+ * and cmax.  To reduce the header size, cmin and cmax are now overlaid
  * in the same field in the header.  That usually works because you rarely
  * insert and delete a tuple in the same transaction, and we don't need
  * either field to remain valid after the originating transaction exits.
@@ -30,7 +30,7 @@
  * destroyed at the end of each transaction.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -101,7 +101,7 @@ static CommandId GetRealCmax(CommandId combocid);
  */
 
 CommandId
-HeapTupleHeaderGetCmin(HeapTupleHeader tup)
+HeapTupleHeaderGetCmin(const HeapTupleHeaderData *tup)
 {
 	CommandId	cid = HeapTupleHeaderGetRawCommandId(tup);
 
@@ -115,7 +115,7 @@ HeapTupleHeaderGetCmin(HeapTupleHeader tup)
 }
 
 CommandId
-HeapTupleHeaderGetCmax(HeapTupleHeader tup)
+HeapTupleHeaderGetCmax(const HeapTupleHeaderData *tup)
 {
 	CommandId	cid = HeapTupleHeaderGetRawCommandId(tup);
 
@@ -150,7 +150,7 @@ HeapTupleHeaderGetCmax(HeapTupleHeader tup)
  * changes the tuple in shared buffers.
  */
 void
-HeapTupleHeaderAdjustCmax(HeapTupleHeader tup,
+HeapTupleHeaderAdjustCmax(const HeapTupleHeaderData *tup,
 						  CommandId *cmax,
 						  bool *iscombo)
 {
@@ -253,7 +253,7 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 	key.cmin = cmin;
 	key.cmax = cmax;
 	entry = (ComboCidEntry) hash_search(comboHash,
-										(void *) &key,
+										&key,
 										HASH_ENTER,
 										&found);
 

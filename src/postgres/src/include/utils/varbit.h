@@ -5,7 +5,7 @@
  *
  * Code originally contributed by Adriaan Joubert.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/varbit.h
@@ -20,7 +20,7 @@
 #include "fmgr.h"
 
 /*
- * Modeled on struct varlena from postgres.h, but data type is bits8.
+ * Modeled on varlena from c.h, but data type is uint8.
  *
  * Caution: if bit_len is not a multiple of BITS_PER_BYTE, the low-order
  * bits of the last byte of bit_dat[] are unused and MUST be zeroes.
@@ -31,7 +31,7 @@ typedef struct
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int32		bit_len;		/* number of valid bits */
-	bits8		bit_dat[FLEXIBLE_ARRAY_MEMBER]; /* bit string, most sig. byte
+	uint8		bit_dat[FLEXIBLE_ARRAY_MEMBER]; /* bit string, most sig. byte
 												 * first */
 } VarBit;
 
@@ -41,9 +41,24 @@ typedef struct
  * BIT and BIT VARYING are toastable varlena types.  They are the same
  * as far as representation goes, so we just have one set of macros.
  */
-#define DatumGetVarBitP(X)		   ((VarBit *) PG_DETOAST_DATUM(X))
-#define DatumGetVarBitPCopy(X)	   ((VarBit *) PG_DETOAST_DATUM_COPY(X))
-#define VarBitPGetDatum(X)		   PointerGetDatum(X)
+static inline VarBit *
+DatumGetVarBitP(Datum X)
+{
+	return (VarBit *) PG_DETOAST_DATUM(X);
+}
+
+static inline VarBit *
+DatumGetVarBitPCopy(Datum X)
+{
+	return (VarBit *) PG_DETOAST_DATUM_COPY(X);
+}
+
+static inline Datum
+VarBitPGetDatum(const VarBit *X)
+{
+	return PointerGetDatum(X);
+}
+
 #define PG_GETARG_VARBIT_P(n)	   DatumGetVarBitP(PG_GETARG_DATUM(n))
 #define PG_GETARG_VARBIT_P_COPY(n) DatumGetVarBitPCopy(PG_GETARG_DATUM(n))
 #define PG_RETURN_VARBIT_P(x)	   return VarBitPGetDatum(x)
@@ -67,7 +82,7 @@ typedef struct
  */
 #define VARBITMAXLEN		(INT_MAX - BITS_PER_BYTE + 1)
 /* pointer beyond the end of the bit string (like end() in STL containers) */
-#define VARBITEND(PTR)		(((bits8 *) (PTR)) + VARSIZE(PTR))
+#define VARBITEND(PTR)		(((uint8 *) (PTR)) + VARSIZE(PTR))
 /* Mask that will cover exactly one byte, i.e. BITS_PER_BYTE bits */
 #define BITMASK 0xFF
 

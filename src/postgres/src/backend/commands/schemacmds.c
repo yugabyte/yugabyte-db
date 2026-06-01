@@ -3,7 +3,7 @@
  * schemacmds.c
  *	  schema creation/manipulation commands
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -39,8 +39,8 @@
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
-#include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
 #include "commands/schemacmds.h"
 #include "miscadmin.h"
@@ -49,6 +49,7 @@
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
@@ -67,7 +68,7 @@ static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerI
  * a subquery.
  */
 Oid
-CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
+CreateSchemaCommand(ParseState *pstate, CreateSchemaStmt *stmt,
 					int stmt_location, int stmt_len)
 {
 	const char *schemaName = stmt->schemaname;
@@ -113,12 +114,12 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	 * The latter provision guards against "giveaway" attacks.  Note that a
 	 * superuser will always have both of these privileges a fortiori.
 	 */
-	aclresult = pg_database_aclcheck(MyDatabaseId, saved_uid, ACL_CREATE);
+	aclresult = object_aclcheck(DatabaseRelationId, MyDatabaseId, saved_uid, ACL_CREATE);
 	if (aclresult != ACLCHECK_OK && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(aclresult, OBJECT_DATABASE,
 					   get_database_name(MyDatabaseId));
 
-	check_is_member_of_role(saved_uid, owner_uid);
+	check_can_set_role(saved_uid, owner_uid);
 
 	/* Additional check to protect reserved schema names */
 	if (!allowSystemTableMods && IsReservedName(schemaName))
@@ -207,12 +208,12 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 
 	/*
 	 * Examine the list of commands embedded in the CREATE SCHEMA command, and
-	 * reorganize them into a sequentially executable order with no forward
-	 * references.  Note that the result is still a list of raw parsetrees ---
-	 * we cannot, in general, run parse analysis on one statement until we
-	 * have actually executed the prior ones.
+	 * do preliminary transformations.  Note that the result is still a list
+	 * of raw parsetrees --- we cannot, in general, run parse analysis on one
+	 * statement until we have actually executed the prior ones.
 	 */
-	parsetree_list = transformCreateSchemaStmtElements(stmt->schemaElts,
+	parsetree_list = transformCreateSchemaStmtElements(pstate,
+													   stmt->schemaElts,
 													   schemaName);
 
 	/*
@@ -233,10 +234,11 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 		wrapper->utilityStmt = stmt;
 		wrapper->stmt_location = stmt_location;
 		wrapper->stmt_len = stmt_len;
+		wrapper->planOrigin = PLAN_STMT_INTERNAL;
 
 		/* do this step */
 		ProcessUtility(wrapper,
-					   queryString,
+					   pstate->p_sourcetext,
 					   false,
 					   PROCESS_UTILITY_SUBCOMMAND,
 					   NULL,
@@ -296,12 +298,12 @@ RenameSchema(const char *oldname, const char *newname)
 				 errmsg("schema \"%s\" already exists", newname)));
 
 	/* must be owner */
-	if (!pg_namespace_ownercheck(nspOid, GetUserId()) && !IsYbDbAdminUser(GetUserId()))
+	if (!object_ownercheck(NamespaceRelationId, nspOid, GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SCHEMA,
 					   oldname);
 
 	/* must have CREATE privilege on database */
-	aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(DatabaseRelationId, MyDatabaseId, GetUserId(), ACL_CREATE);
 
 	/* yb_db_admin has superuser-like privileges */
 	if (IsYbDbAdminUser(GetUserId()))
@@ -334,16 +336,16 @@ RenameSchema(const char *oldname, const char *newname)
 }
 
 void
-AlterSchemaOwner_oid(Oid oid, Oid newOwnerId)
+AlterSchemaOwner_oid(Oid schemaoid, Oid newOwnerId)
 {
 	HeapTuple	tup;
 	Relation	rel;
 
 	rel = table_open(NamespaceRelationId, RowExclusiveLock);
 
-	tup = SearchSysCache1(NAMESPACEOID, ObjectIdGetDatum(oid));
+	tup = SearchSysCache1(NAMESPACEOID, ObjectIdGetDatum(schemaoid));
 	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "cache lookup failed for schema %u", oid);
+		elog(ERROR, "cache lookup failed for schema %u", schemaoid);
 
 	AlterSchemaOwner_internal(tup, rel, newOwnerId);
 
@@ -413,16 +415,21 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		AclResult	aclresult;
 
 		/* Otherwise, must be owner of the existing object */
-		if (!pg_namespace_ownercheck(nspForm->oid, GetUserId()) && !IsYbDbAdminUser(GetUserId()))
+		if (!object_ownercheck(NamespaceRelationId, nspForm->oid, GetUserId()) && !IsYbDbAdminUser(GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SCHEMA,
 						   NameStr(nspForm->nspname));
 
 		/* Must be able to become new owner */
-		if (!is_member_of_role(GetUserId(), newOwnerId) && !IsYbDbAdminUser(GetUserId()))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be member of role \"%s\"",
-							GetUserNameFromId(newOwnerId, false))));
+		if (IsYugaByteEnabled())
+		{
+			if (!is_member_of_role(GetUserId(), newOwnerId) && !IsYbDbAdminUser(GetUserId()))
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("must be member of role \"%s\"",
+								GetUserNameFromId(newOwnerId, false))));
+		}
+		else
+			check_can_set_role(GetUserId(), newOwnerId);
 
 		/*
 		 * must have create-schema rights
@@ -439,8 +446,8 @@ AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId)
 		}
 		else
 		{
-			aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(),
-											 ACL_CREATE);
+			aclresult = object_aclcheck(DatabaseRelationId, MyDatabaseId, GetUserId(),
+										ACL_CREATE);
 		}
 
 		if (aclresult != ACLCHECK_OK)

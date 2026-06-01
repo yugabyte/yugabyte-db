@@ -259,6 +259,22 @@ drop user regress_user_ectest;
 explain (costs off)
   select * from tenk1 where unique1 = unique1 and unique2 = unique2;
 
+-- Test that broken ECs are processed correctly during self join removal.
+-- Disable merge joins so that we don't get an error about missing commutator.
+-- Test both orientations of the join clause, because only one of them breaks
+-- the EC.
+set enable_mergejoin to off;
+
+explain (costs off)
+  select * from ec0 m join ec0 n on m.ff = n.ff
+  join ec1 p on m.ff + n.ff = p.f1;
+
+explain (costs off)
+  select * from ec0 m join ec0 n on m.ff = n.ff
+  join ec1 p on p.f1::int8 = (m.ff + n.ff)::int8alias1;
+
+reset enable_mergejoin;
+
 -- this could be converted, but isn't at present
 explain (costs off)
   select * from tenk1 where unique1 = unique1 or unique2 = unique2;
@@ -269,3 +285,37 @@ create temp view overview as
   select f1::information_schema.sql_identifier as sqli, f2 from undername;
 explain (costs off)  -- this should not require a sort
   select * from overview where sqli = 'foo' order by sqli;
+
+--
+-- test handling of merge/hash clauses that do not have valid commutators
+--
+
+-- There are not (and should not be) any such operators built into Postgres
+-- that are mergejoinable or hashable but have no commutators; so we leverage
+-- the alias type 'int8alias1' created in this file to conduct the tests.
+-- That's why this test is included here rather than in join.sql.
+
+begin;
+
+create table tbl_nocom(a int8, b int8alias1);
+
+-- check that non-commutable merge clauses do not lead to error
+set enable_hashjoin to off;
+set enable_mergejoin to on;
+explain (costs off)
+select * from tbl_nocom t1 full join tbl_nocom t2 on t2.a = t1.b;
+
+-- check that non-commutable hash clauses do not lead to error
+alter operator = (int8, int8alias1) set (hashes);
+alter operator family integer_ops using hash add
+  operator 1 = (int8, int8alias1);
+create function hashint8alias1(int8alias1) returns int
+  strict immutable language internal as 'hashint8';
+alter operator family integer_ops using hash add
+  function 1 hashint8alias1(int8alias1);
+set enable_hashjoin to on;
+set enable_mergejoin to off;
+explain (costs off)
+select * from tbl_nocom t1 full join tbl_nocom t2 on t2.a = t1.b;
+
+abort;

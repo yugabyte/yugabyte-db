@@ -2,14 +2,15 @@
 
 #include "plpy_elog.h"
 #include "plpy_typeio.h"
-#include "plpython.h"
+#include "plpy_util.h"
 #include "utils/fmgrprotos.h"
 #include "utils/jsonb.h"
 #include "utils/numeric.h"
 
-PG_MODULE_MAGIC;
-
-void		_PG_init(void);
+PG_MODULE_MAGIC_EXT(
+					.name = "jsonb_plpython",
+					.version = PG_VERSION
+);
 
 /* for PLyObject_AsString in plpy_typeio.c */
 typedef char *(*PLyObject_AsString_t) (PyObject *plrv);
@@ -25,12 +26,18 @@ static PLy_elog_impl_t PLy_elog_impl_p;
 static PyObject *decimal_constructor;
 
 static PyObject *PLyObject_FromJsonbContainer(JsonbContainer *jsonb);
-static JsonbValue *PLyObject_ToJsonbValue(PyObject *obj,
-										  JsonbParseState **jsonb_state, bool is_elem);
+static void PLyObject_ToJsonbValue(PyObject *obj,
+								   JsonbInState *jsonb_state, bool is_elem);
 
 typedef PyObject *(*PLyUnicode_FromStringAndSize_t)
 			(const char *s, Py_ssize_t size);
 static PLyUnicode_FromStringAndSize_t PLyUnicode_FromStringAndSize_p;
+
+/* Static asserts verify that typedefs above match original declarations */
+StaticAssertVariableIsOfType(&PLyObject_AsString, PLyObject_AsString_t);
+StaticAssertVariableIsOfType(&PLyUnicode_FromStringAndSize, PLyUnicode_FromStringAndSize_t);
+StaticAssertVariableIsOfType(&PLy_elog_impl, PLy_elog_impl_t);
+
 
 /*
  * Module initialize function: fetch function pointers for cross-module calls.
@@ -38,16 +45,12 @@ static PLyUnicode_FromStringAndSize_t PLyUnicode_FromStringAndSize_p;
 void
 _PG_init(void)
 {
-	/* Asserts verify that typedefs above match original declarations */
-	AssertVariableIsOfType(&PLyObject_AsString, PLyObject_AsString_t);
 	PLyObject_AsString_p = (PLyObject_AsString_t)
 		load_external_function("$libdir/" PLPYTHON_LIBNAME, "PLyObject_AsString",
 							   true, NULL);
-	AssertVariableIsOfType(&PLyUnicode_FromStringAndSize, PLyUnicode_FromStringAndSize_t);
 	PLyUnicode_FromStringAndSize_p = (PLyUnicode_FromStringAndSize_t)
 		load_external_function("$libdir/" PLPYTHON_LIBNAME, "PLyUnicode_FromStringAndSize",
 							   true, NULL);
-	AssertVariableIsOfType(&PLy_elog_impl, PLy_elog_impl_t);
 	PLy_elog_impl_p = (PLy_elog_impl_t)
 		load_external_function("$libdir/" PLPYTHON_LIBNAME, "PLy_elog_impl",
 							   true, NULL);
@@ -260,12 +263,11 @@ PLyObject_FromJsonbContainer(JsonbContainer *jsonb)
  *
  * Transform Python dict to JsonbValue.
  */
-static JsonbValue *
-PLyMapping_ToJsonbValue(PyObject *obj, JsonbParseState **jsonb_state)
+static void
+PLyMapping_ToJsonbValue(PyObject *obj, JsonbInState *jsonb_state)
 {
 	Py_ssize_t	pcount;
 	PyObject   *volatile items;
-	JsonbValue *volatile out;
 
 	pcount = PyMapping_Size(obj);
 	items = PyMapping_Items(obj);
@@ -296,19 +298,17 @@ PLyMapping_ToJsonbValue(PyObject *obj, JsonbParseState **jsonb_state)
 				PLyUnicode_ToJsonbValue(key, &jbvKey);
 			}
 
-			(void) pushJsonbValue(jsonb_state, WJB_KEY, &jbvKey);
-			(void) PLyObject_ToJsonbValue(value, jsonb_state, false);
+			pushJsonbValue(jsonb_state, WJB_KEY, &jbvKey);
+			PLyObject_ToJsonbValue(value, jsonb_state, false);
 		}
 
-		out = pushJsonbValue(jsonb_state, WJB_END_OBJECT, NULL);
+		pushJsonbValue(jsonb_state, WJB_END_OBJECT, NULL);
 	}
 	PG_FINALLY();
 	{
 		Py_DECREF(items);
 	}
 	PG_END_TRY();
-
-	return out;
 }
 
 /*
@@ -317,8 +317,8 @@ PLyMapping_ToJsonbValue(PyObject *obj, JsonbParseState **jsonb_state)
  * Transform python list to JsonbValue. Expects transformed PyObject and
  * a state required for jsonb construction.
  */
-static JsonbValue *
-PLySequence_ToJsonbValue(PyObject *obj, JsonbParseState **jsonb_state)
+static void
+PLySequence_ToJsonbValue(PyObject *obj, JsonbInState *jsonb_state)
 {
 	Py_ssize_t	i;
 	Py_ssize_t	pcount;
@@ -335,7 +335,7 @@ PLySequence_ToJsonbValue(PyObject *obj, JsonbParseState **jsonb_state)
 			value = PySequence_GetItem(obj, i);
 			Assert(value);
 
-			(void) PLyObject_ToJsonbValue(value, jsonb_state, true);
+			PLyObject_ToJsonbValue(value, jsonb_state, true);
 			Py_XDECREF(value);
 			value = NULL;
 		}
@@ -347,7 +347,7 @@ PLySequence_ToJsonbValue(PyObject *obj, JsonbParseState **jsonb_state)
 	}
 	PG_END_TRY();
 
-	return pushJsonbValue(jsonb_state, WJB_END_ARRAY, NULL);
+	pushJsonbValue(jsonb_state, WJB_END_ARRAY, NULL);
 }
 
 /*
@@ -405,20 +405,26 @@ PLyNumber_ToJsonbValue(PyObject *obj, JsonbValue *jbvNum)
  *
  * Transform python object to JsonbValue.
  */
-static JsonbValue *
-PLyObject_ToJsonbValue(PyObject *obj, JsonbParseState **jsonb_state, bool is_elem)
+static void
+PLyObject_ToJsonbValue(PyObject *obj, JsonbInState *jsonb_state, bool is_elem)
 {
 	JsonbValue *out;
 
 	if (!PyUnicode_Check(obj))
 	{
 		if (PySequence_Check(obj))
-			return PLySequence_ToJsonbValue(obj, jsonb_state);
+		{
+			PLySequence_ToJsonbValue(obj, jsonb_state);
+			return;
+		}
 		else if (PyMapping_Check(obj))
-			return PLyMapping_ToJsonbValue(obj, jsonb_state);
+		{
+			PLyMapping_ToJsonbValue(obj, jsonb_state);
+			return;
+		}
 	}
 
-	out = palloc(sizeof(JsonbValue));
+	out = palloc_object(JsonbValue);
 
 	if (obj == Py_None)
 		out->type = jbvNull;
@@ -442,10 +448,20 @@ PLyObject_ToJsonbValue(PyObject *obj, JsonbParseState **jsonb_state, bool is_ele
 				 errmsg("Python type \"%s\" cannot be transformed to jsonb",
 						PLyObject_AsString((PyObject *) obj->ob_type))));
 
-	/* Push result into 'jsonb_state' unless it is raw scalar value. */
-	return (*jsonb_state ?
-			pushJsonbValue(jsonb_state, is_elem ? WJB_ELEM : WJB_VALUE, out) :
-			out);
+	if (jsonb_state->parseState)
+	{
+		/* We're in an array or object, so push value as element or field. */
+		pushJsonbValue(jsonb_state, is_elem ? WJB_ELEM : WJB_VALUE, out);
+	}
+	else
+	{
+		/*
+		 * We are at top level, so it's a raw scalar.  If we just shove the
+		 * scalar value into jsonb_state->result, JsonbValueToJsonb will take
+		 * care of wrapping it into a dummy array.
+		 */
+		jsonb_state->result = out;
+	}
 }
 
 /*
@@ -457,13 +473,11 @@ PG_FUNCTION_INFO_V1(plpython_to_jsonb);
 Datum
 plpython_to_jsonb(PG_FUNCTION_ARGS)
 {
-	PyObject   *obj;
-	JsonbValue *out;
-	JsonbParseState *jsonb_state = NULL;
+	PyObject   *obj = (PyObject *) PG_GETARG_POINTER(0);
+	JsonbInState jsonb_state = {0};
 
-	obj = (PyObject *) PG_GETARG_POINTER(0);
-	out = PLyObject_ToJsonbValue(obj, &jsonb_state, true);
-	PG_RETURN_POINTER(JsonbValueToJsonb(out));
+	PLyObject_ToJsonbValue(obj, &jsonb_state, true);
+	PG_RETURN_POINTER(JsonbValueToJsonb(jsonb_state.result));
 }
 
 /*

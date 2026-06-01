@@ -10,12 +10,12 @@
  * via functions such as SubTransGetTopmostTransaction().
  *
  * These functions are used to support the txid_XXX functions and the newer
- * pg_current_xact, pg_current_snapshot and related fmgr functions, since the
- * only difference between them is whether they expose xid8 or int8 values to
- * users.  The txid_XXX variants should eventually be dropped.
+ * pg_current_xact_id, pg_current_snapshot and related fmgr functions, since
+ * the only difference between them is whether they expose xid8 or int8 values
+ * to users.  The txid_XXX variants should eventually be dropped.
  *
  *
- *	Copyright (c) 2003-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2003-2026, PostgreSQL Global Development Group
  *	Author: Jan Wieck, Afilias USA INC.
  *	64-bit txids: Marko Kreen, Skype Technologies
  *
@@ -26,21 +26,20 @@
 
 #include "postgres.h"
 
-#include "access/clog.h"
 #include "access/transam.h"
 #include "access/xact.h"
-#include "access/xlog.h"
 #include "funcapi.h"
 #include "lib/qunique.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
-#include "postmaster/postmaster.h"
 #include "storage/lwlock.h"
 #include "storage/procarray.h"
+#include "storage/procnumber.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/xid8.h"
+#include "varatt.h"
 
 
 /*
@@ -75,6 +74,14 @@ typedef struct
 	((MaxAllocSize - offsetof(pg_snapshot, xip)) / sizeof(FullTransactionId))
 
 /*
+ * Compile-time limits on the procarray (MAX_BACKENDS processes plus
+ * MAX_BACKENDS prepared transactions) guarantee nxip won't be too large.
+ */
+StaticAssertDecl(MAX_BACKENDS * 2 <= PG_SNAPSHOT_MAX_NXIP,
+				 "possible overflow in pg_current_snapshot()");
+
+
+/*
  * Helper to get a TransactionId from a 64-bit xid with wraparound detection.
  *
  * It is an ERROR if the xid is in the future.  Otherwise, returns true if
@@ -91,15 +98,11 @@ static bool
 TransactionIdInRecentPast(FullTransactionId fxid, TransactionId *extracted_xid)
 {
 	TransactionId xid = XidFromFullTransactionId(fxid);
-	uint32		now_epoch;
-	TransactionId now_epoch_next_xid;
 	FullTransactionId now_fullxid;
-	TransactionId oldest_xid;
-	FullTransactionId oldest_fxid;
+	TransactionId oldest_clog_xid;
+	FullTransactionId oldest_clog_fxid;
 
 	now_fullxid = ReadNextFullTransactionId();
-	now_epoch_next_xid = XidFromFullTransactionId(now_fullxid);
-	now_epoch = EpochFromFullTransactionId(now_fullxid);
 
 	if (extracted_xid != NULL)
 		*extracted_xid = xid;
@@ -115,12 +118,12 @@ TransactionIdInRecentPast(FullTransactionId fxid, TransactionId *extracted_xid)
 	if (!FullTransactionIdPrecedes(fxid, now_fullxid))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("transaction ID %llu is in the future",
-						(unsigned long long) U64FromFullTransactionId(fxid))));
+				 errmsg("transaction ID %" PRIu64 " is in the future",
+						U64FromFullTransactionId(fxid))));
 
 	/*
-	 * ShmemVariableCache->oldestClogXid is protected by XactTruncationLock,
-	 * but we don't acquire that lock here.  Instead, we require the caller to
+	 * TransamVariables->oldestClogXid is protected by XactTruncationLock, but
+	 * we don't acquire that lock here.  Instead, we require the caller to
 	 * acquire it, because the caller is presumably going to look up the
 	 * returned XID.  If we took and released the lock within this function, a
 	 * CLOG truncation could occur before the caller finished with the XID.
@@ -128,53 +131,20 @@ TransactionIdInRecentPast(FullTransactionId fxid, TransactionId *extracted_xid)
 	Assert(LWLockHeldByMe(XactTruncationLock));
 
 	/*
-	 * If fxid is not older than ShmemVariableCache->oldestClogXid, the
-	 * relevant CLOG entry is guaranteed to still exist.  Convert
-	 * ShmemVariableCache->oldestClogXid into a FullTransactionId to compare
-	 * it with fxid.  Determine the right epoch knowing that oldest_fxid
-	 * shouldn't be more than 2^31 older than now_fullxid.
+	 * If fxid is not older than TransamVariables->oldestClogXid, the relevant
+	 * CLOG entry is guaranteed to still exist.
+	 *
+	 * TransamVariables->oldestXid governs allowable XIDs.  Usually,
+	 * oldestClogXid==oldestXid.  It's also possible for oldestClogXid to
+	 * follow oldestXid, in which case oldestXid might advance after our
+	 * ReadNextFullTransactionId() call.  If oldestXid has advanced, that
+	 * advancement reinstated the usual oldestClogXid==oldestXid.  Whether or
+	 * not that happened, oldestClogXid is allowable relative to now_fullxid.
 	 */
-	oldest_xid = ShmemVariableCache->oldestClogXid;
-	Assert(TransactionIdPrecedesOrEquals(oldest_xid, now_epoch_next_xid));
-	if (oldest_xid <= now_epoch_next_xid)
-	{
-		oldest_fxid = FullTransactionIdFromEpochAndXid(now_epoch, oldest_xid);
-	}
-	else
-	{
-		Assert(now_epoch > 0);
-		oldest_fxid = FullTransactionIdFromEpochAndXid(now_epoch - 1, oldest_xid);
-	}
-	return !FullTransactionIdPrecedes(fxid, oldest_fxid);
-}
-
-/*
- * Convert a TransactionId obtained from a snapshot held by the caller to a
- * FullTransactionId.  Use next_fxid as a reference FullTransactionId, so that
- * we can compute the high order bits.  It must have been obtained by the
- * caller with ReadNextFullTransactionId() after the snapshot was created.
- */
-static FullTransactionId
-widen_snapshot_xid(TransactionId xid, FullTransactionId next_fxid)
-{
-	TransactionId next_xid = XidFromFullTransactionId(next_fxid);
-	uint32		epoch = EpochFromFullTransactionId(next_fxid);
-
-	/* Special transaction ID. */
-	if (!TransactionIdIsNormal(xid))
-		return FullTransactionIdFromEpochAndXid(0, xid);
-
-	/*
-	 * The 64 bit result must be <= next_fxid, since next_fxid hadn't been
-	 * issued yet when the snapshot was created.  Every TransactionId in the
-	 * snapshot must therefore be from the same epoch as next_fxid, or the
-	 * epoch before.  We know this because next_fxid is never allow to get
-	 * more than one epoch ahead of the TransactionIds in any snapshot.
-	 */
-	if (xid > next_xid)
-		epoch--;
-
-	return FullTransactionIdFromEpochAndXid(epoch, xid);
+	oldest_clog_xid = TransamVariables->oldestClogXid;
+	oldest_clog_fxid =
+		FullTransactionIdFromAllowableAt(now_fullxid, oldest_clog_xid);
+	return !FullTransactionIdPrecedes(fxid, oldest_clog_fxid);
 }
 
 /*
@@ -224,7 +194,7 @@ is_visible_fxid(FullTransactionId value, const pg_snapshot *snap)
 #ifdef USE_BSEARCH_IF_NXIP_GREATER
 	else if (snap->nxip > USE_BSEARCH_IF_NXIP_GREATER)
 	{
-		void	   *res;
+		const void *res;
 
 		res = bsearch(&value, snap->xip, snap->nxip, sizeof(FullTransactionId),
 					  cmp_fxid);
@@ -260,7 +230,7 @@ buf_init(FullTransactionId xmin, FullTransactionId xmax)
 	snap.nxip = 0;
 
 	buf = makeStringInfo();
-	appendBinaryStringInfo(buf, (char *) &snap, PG_SNAPSHOT_SIZE(0));
+	appendBinaryStringInfo(buf, &snap, PG_SNAPSHOT_SIZE(0));
 	return buf;
 }
 
@@ -272,7 +242,7 @@ buf_add_txid(StringInfo buf, FullTransactionId fxid)
 	/* do this before possible realloc */
 	snap->nxip++;
 
-	appendBinaryStringInfo(buf, (char *) &fxid, sizeof(fxid));
+	appendBinaryStringInfo(buf, &fxid, sizeof(fxid));
 }
 
 static pg_snapshot *
@@ -293,7 +263,7 @@ buf_finalize(StringInfo buf)
  * parse snapshot from cstring
  */
 static pg_snapshot *
-parse_snapshot(const char *str)
+parse_snapshot(const char *str, Node *escontext)
 {
 	FullTransactionId xmin;
 	FullTransactionId xmax;
@@ -349,11 +319,10 @@ parse_snapshot(const char *str)
 	return buf_finalize(buf);
 
 bad_format:
-	ereport(ERROR,
+	ereturn(escontext, NULL,
 			(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 			 errmsg("invalid input syntax for type %s: \"%s\"",
 					"pg_snapshot", str_start)));
-	return NULL;				/* keep compiler quiet */
 }
 
 /*
@@ -411,23 +380,22 @@ pg_current_snapshot(PG_FUNCTION_ARGS)
 	if (cur == NULL)
 		elog(ERROR, "no active snapshot set");
 
-	/*
-	 * Compile-time limits on the procarray (MAX_BACKENDS processes plus
-	 * MAX_BACKENDS prepared transactions) guarantee nxip won't be too large.
-	 */
-	StaticAssertStmt(MAX_BACKENDS * 2 <= PG_SNAPSHOT_MAX_NXIP,
-					 "possible overflow in pg_current_snapshot()");
-
 	/* allocate */
 	nxip = cur->xcnt;
 	snap = palloc(PG_SNAPSHOT_SIZE(nxip));
 
-	/* fill */
-	snap->xmin = widen_snapshot_xid(cur->xmin, next_fxid);
-	snap->xmax = widen_snapshot_xid(cur->xmax, next_fxid);
+	/*
+	 * Fill.  This is the current backend's active snapshot, so MyProc->xmin
+	 * is <= all these XIDs.  As long as that remains so, oldestXid can't
+	 * advance past any of these XIDs.  Hence, these XIDs remain allowable
+	 * relative to next_fxid.
+	 */
+	snap->xmin = FullTransactionIdFromAllowableAt(next_fxid, cur->xmin);
+	snap->xmax = FullTransactionIdFromAllowableAt(next_fxid, cur->xmax);
 	snap->nxip = nxip;
 	for (i = 0; i < nxip; i++)
-		snap->xip[i] = widen_snapshot_xid(cur->xip[i], next_fxid);
+		snap->xip[i] =
+			FullTransactionIdFromAllowableAt(next_fxid, cur->xip[i]);
 
 	/*
 	 * We want them guaranteed to be in ascending order.  This also removes
@@ -455,7 +423,7 @@ pg_snapshot_in(PG_FUNCTION_ARGS)
 	char	   *str = PG_GETARG_CSTRING(0);
 	pg_snapshot *snap;
 
-	snap = parse_snapshot(str);
+	snap = parse_snapshot(str, fcinfo->context);
 
 	PG_RETURN_POINTER(snap);
 }
@@ -686,7 +654,7 @@ pg_xact_status(PG_FUNCTION_ARGS)
 		Assert(TransactionIdIsValid(xid));
 
 		/*
-		 * Like when doing visiblity checks on a row, check whether the
+		 * Like when doing visibility checks on a row, check whether the
 		 * transaction is still in progress before looking into the CLOG.
 		 * Otherwise we would incorrectly return "committed" for a transaction
 		 * that is committing and has already updated the CLOG, but hasn't

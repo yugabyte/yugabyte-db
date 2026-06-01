@@ -26,16 +26,21 @@ OBJS = \
 	yb_tcmalloc_utils.o \
 	yb_ysql_conn_mgr_helper.o \
 	\
+	conffiles.o \
 	guc.o \
+	guc-file.o \
+	guc_funcs.o \
+	guc_tables.o \
 	help_config.o \
+	injection_point.o \
 	pg_config.o \
 	pg_controldata.o \
 	pg_rusage.o \
 	ps_status.o \
 	queryenvironment.o \
-	queryjumble.o \
 	rls.o \
 	sampling.o \
+	stack_depth.o \
 	superuser.o \
 	timeout.o \
 	tzparser.o
@@ -46,12 +51,10 @@ ifdef krb_srvtab
 override CPPFLAGS += -DPG_KRB_SRVTAB='"$(krb_srvtab)"'
 endif
 
+# Force this dependency to be known even without dependency info built:
+guc_tables.o: guc_tables.c $(top_builddir)/src/backend/utils/guc_tables.inc.c
+
 include $(top_srcdir)/src/backend/common.mk
 
-# guc-file is compiled as part of guc
-guc.o: guc-file.c
-
-# Note: guc-file.c is not deleted by 'make clean',
-# since we want to ship it in distribution tarballs.
 clean:
-	@rm -f lex.yy.c
+	rm -f guc-file.c

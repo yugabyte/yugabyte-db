@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Test for checking consistency of on-disk pages for a cluster with
 # the minimum recovery LSN, ensuring that the updates happen across
@@ -8,7 +8,7 @@
 # both checked.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -20,7 +20,7 @@ use Test::More;
 sub find_largest_lsn
 {
 	my $blocksize = int(shift);
-	my $filename  = shift;
+	my $filename = shift;
 	my ($max_hi, $max_lo) = (0, 0);
 	open(my $fh, "<:raw", $filename)
 	  or die "failed to open $filename: $!";
@@ -39,7 +39,7 @@ sub find_largest_lsn
 	defined($len) or die "read error on $filename: $!";
 	close($fh);
 
-	return sprintf("%X/%X", $max_hi, $max_lo);
+	return sprintf("%X/%08X", $max_hi, $max_lo);
 }
 
 # Initialize primary node

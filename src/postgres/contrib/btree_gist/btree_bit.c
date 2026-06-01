@@ -5,20 +5,20 @@
 
 #include "btree_gist.h"
 #include "btree_utils_var.h"
-#include "utils/builtins.h"
-#include "utils/bytea.h"
+#include "utils/fmgrprotos.h"
+#include "utils/sortsupport.h"
 #include "utils/varbit.h"
+#include "varatt.h"
 
-
-/*
-** Bit ops
-*/
+/* GiST support functions */
 PG_FUNCTION_INFO_V1(gbt_bit_compress);
 PG_FUNCTION_INFO_V1(gbt_bit_union);
 PG_FUNCTION_INFO_V1(gbt_bit_picksplit);
 PG_FUNCTION_INFO_V1(gbt_bit_consistent);
 PG_FUNCTION_INFO_V1(gbt_bit_penalty);
 PG_FUNCTION_INFO_V1(gbt_bit_same);
+PG_FUNCTION_INFO_V1(gbt_bit_sortsupport);
+PG_FUNCTION_INFO_V1(gbt_varbit_sortsupport);
 
 
 /* define for comparison */
@@ -84,7 +84,7 @@ gbt_bit_xfrm(bytea *leaf)
 	while (sz < padded_sz)
 		((char *) out)[sz++] = 0;
 	SET_VARSIZE(out, padded_sz);
-	memcpy((void *) VARDATA(out), (void *) VARBITS(leaf), VARBITBYTES(leaf));
+	memcpy(VARDATA(out), VARBITS(leaf), VARBITBYTES(leaf));
 	return out;
 }
 
@@ -122,7 +122,7 @@ static const gbtree_vinfo tinfo =
 
 
 /**************************************************
- * Bit ops
+ * GiST support functions
  **************************************************/
 
 Datum
@@ -137,10 +137,11 @@ Datum
 gbt_bit_consistent(PG_FUNCTION_ARGS)
 {
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
-	void	   *query = (void *) DatumGetByteaP(PG_GETARG_DATUM(1));
+	void	   *query = DatumGetByteaP(PG_GETARG_DATUM(1));
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	bool		retval;
 	GBT_VARKEY *key = (GBT_VARKEY *) DatumGetPointer(entry->key);
@@ -162,8 +163,6 @@ gbt_bit_consistent(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(retval);
 }
 
-
-
 Datum
 gbt_bit_union(PG_FUNCTION_ARGS)
 {
@@ -173,7 +172,6 @@ gbt_bit_union(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(gbt_var_union(entryvec, size, PG_GET_COLLATION(),
 									&tinfo, fcinfo->flinfo));
 }
-
 
 Datum
 gbt_bit_picksplit(PG_FUNCTION_ARGS)
@@ -197,7 +195,6 @@ gbt_bit_same(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(result);
 }
 
-
 Datum
 gbt_bit_penalty(PG_FUNCTION_ARGS)
 {
@@ -207,4 +204,47 @@ gbt_bit_penalty(PG_FUNCTION_ARGS)
 
 	PG_RETURN_POINTER(gbt_var_penalty(result, o, n, PG_GET_COLLATION(),
 									  &tinfo, fcinfo->flinfo));
+}
+
+static int
+gbt_bit_ssup_cmp(Datum x, Datum y, SortSupport ssup)
+{
+	GBT_VARKEY *key1 = PG_DETOAST_DATUM(x);
+	GBT_VARKEY *key2 = PG_DETOAST_DATUM(y);
+
+	GBT_VARKEY_R arg1 = gbt_var_key_readable(key1);
+	GBT_VARKEY_R arg2 = gbt_var_key_readable(key2);
+	Datum		result;
+
+	/* for leaf items we expect lower == upper, so only compare lower */
+	result = DirectFunctionCall2(byteacmp,
+								 PointerGetDatum(arg1.lower),
+								 PointerGetDatum(arg2.lower));
+
+	GBT_FREE_IF_COPY(key1, x);
+	GBT_FREE_IF_COPY(key2, y);
+
+	return DatumGetInt32(result);
+}
+
+Datum
+gbt_bit_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	ssup->comparator = gbt_bit_ssup_cmp;
+	ssup->ssup_extra = NULL;
+
+	PG_RETURN_VOID();
+}
+
+Datum
+gbt_varbit_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	ssup->comparator = gbt_bit_ssup_cmp;
+	ssup->ssup_extra = NULL;
+
+	PG_RETURN_VOID();
 }

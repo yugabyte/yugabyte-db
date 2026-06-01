@@ -3,7 +3,7 @@
  * nodeMaterial.c
  *	  Routines to handle materialization nodes.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -24,6 +24,7 @@
 #include "executor/executor.h"
 #include "executor/nodeMaterial.h"
 #include "miscadmin.h"
+#include "utils/tuplestore.h"
 
 /* ----------------------------------------------------------------
  *		ExecMaterial
@@ -239,11 +240,6 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 void
 ExecEndMaterial(MaterialState *node)
 {
-	/*
-	 * clean out the tuple table
-	 */
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-
 	/*
 	 * Release tuplestore resources
 	 */

@@ -897,15 +897,25 @@ $d$;
 CREATE USER MAPPING FOR public SERVER fdtest
   OPTIONS (server 'localhost');  -- fail, can't specify server here
 ERROR:  invalid option "server"
-HINT:  Valid options in this context are: user, password, sslpassword
 CREATE USER MAPPING FOR public SERVER fdtest OPTIONS (user :'USER');
+-- OAuth options are not allowed in either context
+ALTER SERVER fdtest OPTIONS (ADD oauth_issuer 'https://example.com');
+ERROR:  invalid option "oauth_issuer"
+ALTER SERVER fdtest OPTIONS (ADD oauth_client_id 'myID');
+ERROR:  invalid option "oauth_client_id"
+ALTER USER MAPPING FOR public SERVER fdtest
+	OPTIONS (ADD oauth_issuer 'https://example.com');
+ERROR:  invalid option "oauth_issuer"
+ALTER USER MAPPING FOR public SERVER fdtest
+	OPTIONS (ADD oauth_client_id 'myID');
+ERROR:  invalid option "oauth_client_id"
 GRANT USAGE ON FOREIGN SERVER fdtest TO regress_dblink_user;
 GRANT EXECUTE ON FUNCTION dblink_connect_u(text, text) TO regress_dblink_user;
 SET SESSION AUTHORIZATION regress_dblink_user;
 -- should fail
 SELECT dblink_connect('myconn', 'fdtest');
-ERROR:  password is required
-DETAIL:  Non-superusers must provide a password in the connection string.
+ERROR:  password or GSSAPI delegated credentials required
+DETAIL:  Non-superusers must provide a password in the connection string or send delegated GSSAPI credentials.
 -- should succeed
 SELECT dblink_connect_u('myconn', 'fdtest');
  dblink_connect_u 
@@ -939,6 +949,25 @@ DROP SERVER fdtest;
 ALTER FOREIGN DATA WRAPPER dblink_fdw OPTIONS (nonexistent 'fdw');
 ERROR:  invalid option "nonexistent"
 HINT:  There are no valid options in this context.
+-- test repeated calls to dblink_connect
+SELECT dblink_connect(connection_parameters());
+ dblink_connect 
+----------------
+ OK
+(1 row)
+
+SELECT dblink_connect(connection_parameters());
+ dblink_connect 
+----------------
+ OK
+(1 row)
+
+SELECT dblink_disconnect();
+ dblink_disconnect 
+-------------------
+ OK
+(1 row)
+
 -- test asynchronous notifications
 SELECT dblink_connect(connection_parameters());
  dblink_connect 

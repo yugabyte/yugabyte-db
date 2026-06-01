@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/ltree.sgml -->
 
 <sect1 id="ltree" xreflabel="ltree">
- <title>ltree</title>
+ <title>ltree &mdash; hierarchical tree-like data type</title>
 
  <indexterm zone="ltree">
   <primary>ltree</primary>
@@ -19,14 +19,15 @@
   on the current database.
  </para>
 
- <sect2>
+ <sect2 id="ltree-definitions">
   <title>Definitions</title>
 
   <para>
-   A <firstterm>label</firstterm> is a sequence of alphanumeric characters
-   and underscores (for example, in C locale the characters
-   <literal>A-Za-z0-9_</literal> are allowed).
-   Labels must be less than 256 characters long.
+   A <firstterm>label</firstterm> is a sequence of alphanumeric characters,
+   underscores, and hyphens. Valid alphanumeric character ranges are
+   dependent on the database locale. For example, in C locale, the characters
+   <literal>A-Za-z0-9_-</literal> are allowed.
+   Labels must be no more than 1000 characters long.
   </para>
 
   <para>
@@ -187,7 +188,7 @@ Europe &amp; Russia*@ &amp; !Transportation
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="ltree-ops-funcs">
   <title>Operators and Functions</title>
 
   <para>
@@ -607,7 +608,7 @@ Europe &amp; Russia*@ &amp; !Transportation
   </table>
  </sect2>
 
- <sect2>
+ <sect2 id="ltree-indexes">
   <title>Indexes</title>
   <para>
    <filename>ltree</filename> supports several types of indexes that can speed
@@ -624,6 +625,13 @@ Europe &amp; Russia*@ &amp; !Transportation
    </listitem>
    <listitem>
     <para>
+     Hash index over <type>ltree</type>:
+     <literal>=</literal>
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
      GiST index over <type>ltree</type> (<literal>gist_ltree_ops</literal>
      opclass):
      <literal>&lt;</literal>, <literal>&lt;=</literal>, <literal>=</literal>,
@@ -637,7 +645,7 @@ Europe &amp; Russia*@ &amp; !Transportation
      <literal>siglen</literal> determines the
      signature length in bytes.  The default signature length is 8 bytes.
      The length must be a positive multiple of <type>int</type> alignment
-     (4 bytes on most machines)) up to 2024.  Longer
+     (4 bytes on most machines) up to 2024.  Longer
      signatures lead to a more precise search (scanning a smaller fraction of the index and
      fewer heap pages), at the cost of a larger index.
     </para>
@@ -686,7 +694,7 @@ CREATE INDEX path_gist_idx ON test USING GIST (array_path gist__ltree_ops(siglen
   </itemizedlist>
  </sect2>
 
- <sect2>
+ <sect2 id="ltree-example">
   <title>Example</title>
 
   <para>
@@ -711,6 +719,7 @@ INSERT INTO test VALUES ('Top.Collections.Pictures.Astronomy.Galaxies');
 INSERT INTO test VALUES ('Top.Collections.Pictures.Astronomy.Astronauts');
 CREATE INDEX path_gist_idx ON test USING GIST (path);
 CREATE INDEX path_idx ON test USING BTREE (path);
+CREATE INDEX path_hash_idx ON test USING HASH (path);
 </programlisting>
 
   <para>
@@ -809,7 +818,7 @@ ltreetest=&gt; SELECT subpath(path,0,2)||'Space'||subpath(path,2) FROM test WHER
    at a specified position in a path:
 <screen>
 CREATE FUNCTION ins_label(ltree, int, text) RETURNS ltree
-    AS 'select subpath($1,0,$2) || $3 || subpath($1,$2);'
+    AS 'SELECT subpath($1, 0, $2) || $3 || subpath($1, $2);'
     LANGUAGE SQL IMMUTABLE;
 
 ltreetest=&gt; SELECT ins_label(path,2,'Space') FROM test WHERE path &lt;@ 'Top.Science.Astronomy';
@@ -823,7 +832,7 @@ ltreetest=&gt; SELECT ins_label(path,2,'Space') FROM test WHERE path &lt;@ 'Top.
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="ltree-transforms">
   <title>Transforms</title>
 
   <para>
@@ -832,18 +841,9 @@ ltreetest=&gt; SELECT ins_label(path,2,'Space') FROM test WHERE path &lt;@ 'Top.
    creating a function, <type>ltree</type> values are mapped to Python lists.
    (The reverse is currently not supported, however.)
   </para>
-
-  <caution>
-   <para>
-    It is strongly recommended that the transform extension be installed in
-    the same schema as <filename>ltree</filename>.  Otherwise there are
-    installation-time security hazards if a transform extension's schema
-    contains objects defined by a hostile user.
-   </para>
-  </caution>
  </sect2>
 
- <sect2>
+ <sect2 id="ltree-authors">
   <title>Authors</title>
 
   <para>

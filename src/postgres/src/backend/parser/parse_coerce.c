@@ -3,7 +3,7 @@
  * parse_coerce.c
  *		handle type coercions/conversions for parser
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_inherits.h"
@@ -414,6 +415,12 @@ coerce_type(ParseState *pstate, Node *node,
 									 &funcId);
 	if (pathtype != COERCION_PATH_NONE)
 	{
+		Oid			baseTypeId;
+		int32		baseTypeMod;
+
+		baseTypeMod = targetTypeMod;
+		baseTypeId = getBaseTypeAndTypmod(targetTypeId, &baseTypeMod);
+
 		if (pathtype != COERCION_PATH_RELABELTYPE)
 		{
 			/*
@@ -423,12 +430,6 @@ coerce_type(ParseState *pstate, Node *node,
 			 * and we need to extract the correct typmod to use from the
 			 * domain's typtypmod.
 			 */
-			Oid			baseTypeId;
-			int32		baseTypeMod;
-
-			baseTypeMod = targetTypeMod;
-			baseTypeId = getBaseTypeAndTypmod(targetTypeId, &baseTypeMod);
-
 			result = build_coercion_expression(node, pathtype, funcId,
 											   baseTypeId, baseTypeMod,
 											   ccontext, cformat, location);
@@ -454,7 +455,8 @@ coerce_type(ParseState *pstate, Node *node,
 			 * that must be accounted for.  If the destination is a domain
 			 * then we won't need a RelabelType node.
 			 */
-			result = coerce_to_domain(node, InvalidOid, -1, targetTypeId,
+			result = coerce_to_domain(node, baseTypeId, baseTypeMod,
+									  targetTypeId,
 									  ccontext, cformat, location,
 									  false);
 			if (result == node)
@@ -660,10 +662,8 @@ can_coerce_type(int nargs, const Oid *input_typeids, const Oid *target_typeids,
  * Create an expression tree to represent coercion to a domain type.
  *
  * 'arg': input expression
- * 'baseTypeId': base type of domain, if known (pass InvalidOid if caller
- *		has not bothered to look this up)
- * 'baseTypeMod': base type typmod of domain, if known (pass -1 if caller
- *		has not bothered to look this up)
+ * 'baseTypeId': base type of domain
+ * 'baseTypeMod': base type typmod of domain
  * 'typeId': target type to coerce to
  * 'ccontext': context indicator to control coercions
  * 'cformat': coercion display format
@@ -679,9 +679,8 @@ coerce_to_domain(Node *arg, Oid baseTypeId, int32 baseTypeMod, Oid typeId,
 {
 	CoerceToDomain *result;
 
-	/* Get the base type if it hasn't been supplied */
-	if (baseTypeId == InvalidOid)
-		baseTypeId = getBaseTypeAndTypmod(typeId, &baseTypeMod);
+	/* We now require the caller to supply correct baseTypeId/baseTypeMod */
+	Assert(OidIsValid(baseTypeId));
 
 	/* If it isn't a domain, return the node as it was passed in */
 	if (baseTypeId == typeId)
@@ -1042,7 +1041,7 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 		ParseNamespaceItem *nsitem;
 
 		nsitem = GetNSItemByRangeTablePosn(pstate, rtindex, sublevels_up);
-		args = expandNSItemVars(nsitem, sublevels_up, vlocation, NULL);
+		args = expandNSItemVars(pstate, nsitem, sublevels_up, vlocation, NULL);
 	}
 	else
 		ereport(ERROR,
@@ -3031,9 +3030,27 @@ IsPreferredType(TYPCATEGORY category, Oid type)
 bool
 IsBinaryCoercible(Oid srctype, Oid targettype)
 {
+	Oid			castoid;
+
+	return IsBinaryCoercibleWithCast(srctype, targettype, &castoid);
+}
+
+/* IsBinaryCoercibleWithCast()
+ *		Check if srctype is binary-coercible to targettype.
+ *
+ * This variant also returns the OID of the pg_cast entry if one is involved.
+ * *castoid is set to InvalidOid if no binary-coercible cast exists, or if
+ * there is a hard-wired rule for it rather than a pg_cast entry.
+ */
+bool
+IsBinaryCoercibleWithCast(Oid srctype, Oid targettype,
+						  Oid *castoid)
+{
 	HeapTuple	tuple;
 	Form_pg_cast castForm;
 	bool		result;
+
+	*castoid = InvalidOid;
 
 	/* Fast path if same type */
 	if (srctype == targettype)
@@ -3097,6 +3114,9 @@ IsBinaryCoercible(Oid srctype, Oid targettype)
 
 	result = (castForm->castmethod == COERCION_METHOD_BINARY &&
 			  castForm->castcontext == COERCION_CODE_IMPLICIT);
+
+	if (result)
+		*castoid = castForm->oid;
 
 	ReleaseSysCache(tuple);
 

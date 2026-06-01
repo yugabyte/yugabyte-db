@@ -4,7 +4,7 @@
  *		sprintf into an allocated-on-demand buffer
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -23,9 +23,6 @@
 #else
 
 #include "postgres_fe.h"
-
-/* It's possible we could use a different value for this in frontend code */
-#define MaxAllocSize	((Size) 0x3fffffff) /* 1 gigabyte - 1 */
 
 #endif
 
@@ -115,8 +112,8 @@ pvsnprintf(char *buf, size_t len, const char *fmt, va_list args)
 #ifndef FRONTEND
 		elog(ERROR, "vsnprintf failed: %m with format string \"%s\"", fmt);
 #else
-		fprintf(stderr, "vsnprintf failed: %s with format string \"%s\"\n",
-				strerror(errno), fmt);
+		fprintf(stderr, "vsnprintf failed: %m with format string \"%s\"\n",
+				fmt);
 		exit(EXIT_FAILURE);
 #endif
 	}

@@ -3,7 +3,7 @@
  * nodeCustom.c
  *		Routines to handle execution of custom scan node
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * ------------------------------------------------------------------------
@@ -17,9 +17,6 @@
 #include "nodes/execnodes.h"
 #include "nodes/extensible.h"
 #include "nodes/plannodes.h"
-#include "parser/parsetree.h"
-#include "utils/hsearch.h"
-#include "utils/memutils.h"
 #include "utils/rel.h"
 
 static TupleTableSlot *ExecCustomScan(PlanState *pstate);
@@ -29,6 +26,7 @@ CustomScanState *
 ExecInitCustomScan(CustomScan *cscan, EState *estate, int eflags)
 {
 	CustomScanState *css;
+	const TupleTableSlotOps *slotOps;
 	Relation	scan_rel = NULL;
 	Index		scanrelid = cscan->scan.scanrelid;
 	int			tlistvarno;
@@ -64,6 +62,14 @@ ExecInitCustomScan(CustomScan *cscan, EState *estate, int eflags)
 	}
 
 	/*
+	 * Use a custom slot if specified in CustomScanState or use virtual slot
+	 * otherwise.
+	 */
+	slotOps = css->slotOps;
+	if (!slotOps)
+		slotOps = &TTSOpsVirtual;
+
+	/*
 	 * Determine the scan tuple type.  If the custom scan provider provided a
 	 * targetlist describing the scan tuples, use that; else use base
 	 * relation's rowtype.
@@ -73,14 +79,14 @@ ExecInitCustomScan(CustomScan *cscan, EState *estate, int eflags)
 		TupleDesc	scan_tupdesc;
 
 		scan_tupdesc = ExecTypeFromTL(cscan->custom_scan_tlist);
-		ExecInitScanTupleSlot(estate, &css->ss, scan_tupdesc, &TTSOpsVirtual);
+		ExecInitScanTupleSlot(estate, &css->ss, scan_tupdesc, slotOps, 0);
 		/* Node's targetlist will contain Vars with varno = INDEX_VAR */
 		tlistvarno = INDEX_VAR;
 	}
 	else
 	{
 		ExecInitScanTupleSlot(estate, &css->ss, RelationGetDescr(scan_rel),
-							  &TTSOpsVirtual);
+							  slotOps, 0);
 		/* Node's targetlist will contain Vars with varno = scanrelid */
 		tlistvarno = scanrelid;
 	}
@@ -120,13 +126,6 @@ ExecEndCustomScan(CustomScanState *node)
 {
 	Assert(node->methods->EndCustomScan != NULL);
 	node->methods->EndCustomScan(node);
-
-	/* Free the exprcontext */
-	ExecFreeExprContext(&node->ss.ps);
-
-	/* Clean out the tuple table */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 }
 
 void

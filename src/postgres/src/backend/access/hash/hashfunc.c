@@ -3,7 +3,7 @@
  * hashfunc.c
  *	  Support functions for hash access method.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -26,12 +26,12 @@
 
 #include "postgres.h"
 
-#include "access/hash.h"
-#include "catalog/pg_collation.h"
 #include "common/hashfn.h"
 #include "utils/builtins.h"
 #include "utils/float.h"
+#include "utils/fmgrprotos.h"
 #include "utils/pg_locale.h"
+#include "varatt.h"
 
 /*
  * Datatype-specific hash functions.
@@ -234,6 +234,7 @@ hashoidvector(PG_FUNCTION_ARGS)
 {
 	oidvector  *key = (oidvector *) PG_GETARG_POINTER(0);
 
+	check_valid_oidvector(key);
 	return hash_any((unsigned char *) key->values, key->dim1 * sizeof(Oid));
 }
 
@@ -242,6 +243,7 @@ hashoidvectorextended(PG_FUNCTION_ARGS)
 {
 	oidvector  *key = (oidvector *) PG_GETARG_POINTER(0);
 
+	check_valid_oidvector(key);
 	return hash_any_extended((unsigned char *) key->values,
 							 key->dim1 * sizeof(Oid),
 							 PG_GETARG_INT64(1));
@@ -269,7 +271,7 @@ hashtext(PG_FUNCTION_ARGS)
 {
 	text	   *key = PG_GETARG_TEXT_PP(0);
 	Oid			collid = PG_GET_COLLATION();
-	pg_locale_t mylocale = 0;
+	pg_locale_t mylocale;
 	Datum		result;
 
 	if (!collid)
@@ -278,41 +280,39 @@ hashtext(PG_FUNCTION_ARGS)
 				 errmsg("could not determine which collation to use for string hashing"),
 				 errhint("Use the COLLATE clause to set the collation explicitly.")));
 
-	if (!lc_collate_is_c(collid))
-		mylocale = pg_newlocale_from_collation(collid);
+	mylocale = pg_newlocale_from_collation(collid);
 
-	if (!mylocale || mylocale->deterministic)
+	if (mylocale->deterministic)
 	{
 		result = hash_any((unsigned char *) VARDATA_ANY(key),
 						  VARSIZE_ANY_EXHDR(key));
 	}
 	else
 	{
-#ifdef USE_ICU
-		if (mylocale->provider == COLLPROVIDER_ICU)
-		{
-			int32_t		ulen = -1;
-			UChar	   *uchar = NULL;
-			Size		bsize;
-			uint8_t    *buf;
+		Size		bsize,
+					rsize;
+		char	   *buf;
+		const char *keydata = VARDATA_ANY(key);
+		size_t		keylen = VARSIZE_ANY_EXHDR(key);
 
-			ulen = icu_to_uchar(&uchar, VARDATA_ANY(key), VARSIZE_ANY_EXHDR(key));
 
-			bsize = ucol_getSortKey(mylocale->info.icu.ucol,
-									uchar, ulen, NULL, 0);
-			buf = palloc(bsize);
-			ucol_getSortKey(mylocale->info.icu.ucol,
-							uchar, ulen, buf, bsize);
-			pfree(uchar);
+		bsize = pg_strnxfrm(NULL, 0, keydata, keylen, mylocale);
+		buf = palloc(bsize + 1);
 
-			result = hash_any(buf, bsize);
+		rsize = pg_strnxfrm(buf, bsize + 1, keydata, keylen, mylocale);
 
-			pfree(buf);
-		}
-		else
-#endif
-			/* shouldn't happen */
-			elog(ERROR, "unsupported collprovider: %c", mylocale->provider);
+		/* the second call may return a smaller value than the first */
+		if (rsize > bsize)
+			elog(ERROR, "pg_strnxfrm() returned unexpected result");
+
+		/*
+		 * In principle, there's no reason to include the terminating NUL
+		 * character in the hash, but it was done before and the behavior must
+		 * be preserved.
+		 */
+		result = hash_any((uint8_t *) buf, bsize + 1);
+
+		pfree(buf);
 	}
 
 	/* Avoid leaking memory for toasted inputs */
@@ -326,7 +326,7 @@ hashtextextended(PG_FUNCTION_ARGS)
 {
 	text	   *key = PG_GETARG_TEXT_PP(0);
 	Oid			collid = PG_GET_COLLATION();
-	pg_locale_t mylocale = 0;
+	pg_locale_t mylocale;
 	Datum		result;
 
 	if (!collid)
@@ -335,10 +335,9 @@ hashtextextended(PG_FUNCTION_ARGS)
 				 errmsg("could not determine which collation to use for string hashing"),
 				 errhint("Use the COLLATE clause to set the collation explicitly.")));
 
-	if (!lc_collate_is_c(collid))
-		mylocale = pg_newlocale_from_collation(collid);
+	mylocale = pg_newlocale_from_collation(collid);
 
-	if (!mylocale || mylocale->deterministic)
+	if (mylocale->deterministic)
 	{
 		result = hash_any_extended((unsigned char *) VARDATA_ANY(key),
 								   VARSIZE_ANY_EXHDR(key),
@@ -346,31 +345,30 @@ hashtextextended(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-#ifdef USE_ICU
-		if (mylocale->provider == COLLPROVIDER_ICU)
-		{
-			int32_t		ulen = -1;
-			UChar	   *uchar = NULL;
-			Size		bsize;
-			uint8_t    *buf;
+		Size		bsize,
+					rsize;
+		char	   *buf;
+		const char *keydata = VARDATA_ANY(key);
+		size_t		keylen = VARSIZE_ANY_EXHDR(key);
 
-			ulen = icu_to_uchar(&uchar, VARDATA_ANY(key), VARSIZE_ANY_EXHDR(key));
+		bsize = pg_strnxfrm(NULL, 0, keydata, keylen, mylocale);
+		buf = palloc(bsize + 1);
 
-			bsize = ucol_getSortKey(mylocale->info.icu.ucol,
-									uchar, ulen, NULL, 0);
-			buf = palloc(bsize);
-			ucol_getSortKey(mylocale->info.icu.ucol,
-							uchar, ulen, buf, bsize);
-			pfree(uchar);
+		rsize = pg_strnxfrm(buf, bsize + 1, keydata, keylen, mylocale);
 
-			result = hash_any_extended(buf, bsize, PG_GETARG_INT64(1));
+		/* the second call may return a smaller value than the first */
+		if (rsize > bsize)
+			elog(ERROR, "pg_strnxfrm() returned unexpected result");
 
-			pfree(buf);
-		}
-		else
-#endif
-			/* shouldn't happen */
-			elog(ERROR, "unsupported collprovider: %c", mylocale->provider);
+		/*
+		 * In principle, there's no reason to include the terminating NUL
+		 * character in the hash, but it was done before and the behavior must
+		 * be preserved.
+		 */
+		result = hash_any_extended((uint8_t *) buf, bsize + 1,
+								   PG_GETARG_INT64(1));
+
+		pfree(buf);
 	}
 
 	PG_FREE_IF_COPY(key, 0);
@@ -381,11 +379,16 @@ hashtextextended(PG_FUNCTION_ARGS)
 /*
  * hashvarlena() can be used for any varlena datatype in which there are
  * no non-significant bits, ie, distinct bitpatterns never compare as equal.
+ *
+ * (However, you need to define an SQL-level wrapper function around it with
+ * the concrete input data type; otherwise hashvalidate() won't accept it.
+ * Moreover, at least for built-in types, a C-level wrapper function is also
+ * recommended; otherwise, the opr_sanity test will get upset.)
  */
 Datum
 hashvarlena(PG_FUNCTION_ARGS)
 {
-	struct varlena *key = PG_GETARG_VARLENA_PP(0);
+	varlena    *key = PG_GETARG_VARLENA_PP(0);
 	Datum		result;
 
 	result = hash_any((unsigned char *) VARDATA_ANY(key),
@@ -400,7 +403,7 @@ hashvarlena(PG_FUNCTION_ARGS)
 Datum
 hashvarlenaextended(PG_FUNCTION_ARGS)
 {
-	struct varlena *key = PG_GETARG_VARLENA_PP(0);
+	varlena    *key = PG_GETARG_VARLENA_PP(0);
 	Datum		result;
 
 	result = hash_any_extended((unsigned char *) VARDATA_ANY(key),
@@ -410,4 +413,16 @@ hashvarlenaextended(PG_FUNCTION_ARGS)
 	PG_FREE_IF_COPY(key, 0);
 
 	return result;
+}
+
+Datum
+hashbytea(PG_FUNCTION_ARGS)
+{
+	return hashvarlena(fcinfo);
+}
+
+Datum
+hashbyteaextended(PG_FUNCTION_ARGS)
+{
+	return hashvarlenaextended(fcinfo);
 }

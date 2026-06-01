@@ -15,7 +15,7 @@
 									 ((GISTIntArrayOptions *) PG_GET_OPCLASS_OPTIONS())->num_ranges : \
 									 G_INT_NUMRANGES_DEFAULT)
 
-/* gist_int_ops opclass options */
+/* gist__int_ops opclass options */
 typedef struct
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
@@ -41,17 +41,17 @@ typedef struct
 #define SORT(x) \
 	do { \
 		int		_nelems_ = ARRNELEMS(x); \
-		if (_nelems_ > 1) \
-			isort(ARRPTR(x), _nelems_); \
+		bool _ascending = true; \
+		isort(ARRPTR(x), _nelems_, &_ascending); \
 	} while(0)
 
 /* sort the elements of the array and remove duplicates */
 #define PREPAREARR(x) \
 	do { \
 		int		_nelems_ = ARRNELEMS(x); \
-		if (_nelems_ > 1) \
-			if (isort(ARRPTR(x), _nelems_)) \
-				(x) = _int_unique(x); \
+		bool _ascending = true; \
+		isort(ARRPTR(x), _nelems_, &_ascending); \
+		(x) = _int_unique(x); \
 	} while(0)
 
 /* "wish" function */
@@ -80,7 +80,7 @@ typedef char *BITVECP;
 #define HASHVAL(val, siglen) (((unsigned int)(val)) % SIGLENBIT(siglen))
 #define HASH(sign, val, siglen) SETBIT((sign), HASHVAL(val, siglen))
 
-/* gist_intbig_ops opclass options */
+/* gist__intbig_ops opclass options */
 typedef struct
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
@@ -109,12 +109,12 @@ typedef struct
 /*
  * useful functions
  */
-bool		isort(int32 *a, int len);
+void		isort(int32 *a, size_t len, void *arg);
 ArrayType  *new_intArrayType(int num);
 ArrayType  *copy_intArrayType(ArrayType *a);
 ArrayType  *resize_intArrayType(ArrayType *a, int num);
 int			internal_size(int *a, int len);
-ArrayType  *_int_unique(ArrayType *a);
+ArrayType  *_int_unique(ArrayType *r);
 int32		intarray_match_first(ArrayType *a, int32 elem);
 ArrayType  *intarray_add_elem(ArrayType *a, int32 elem);
 ArrayType  *intarray_concat_arrays(ArrayType *a, ArrayType *b);
@@ -176,16 +176,12 @@ bool		execconsistent(QUERYTYPE *query, ArrayType *array, bool calcnot);
 bool		gin_bool_consistent(QUERYTYPE *query, bool *check);
 bool		query_has_required_values(QUERYTYPE *query);
 
-int			compASC(const void *a, const void *b);
-int			compDESC(const void *a, const void *b);
-
 /* sort, either ascending or descending */
 #define QSORT(a, direction) \
 	do { \
 		int		_nelems_ = ARRNELEMS(a); \
-		if (_nelems_ > 1) \
-			qsort((void*) ARRPTR(a), _nelems_, sizeof(int32), \
-				  (direction) ? compASC : compDESC ); \
+		bool _ascending = (direction) ? true : false; \
+		isort(ARRPTR(a), _nelems_, &_ascending); \
 	} while(0)
 
 #endif							/* ___INT_H__ */

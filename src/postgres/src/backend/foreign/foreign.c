@@ -3,7 +3,7 @@
  * foreign.c
  *		  support for foreign-data wrappers, servers and user mappings.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/foreign/foreign.c
@@ -37,13 +37,15 @@
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
 #include "funcapi.h"
-#include "lib/stringinfo.h"
 #include "miscadmin.h"
+#include "optimizer/paths.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "utils/tuplestore.h"
+#include "utils/varlena.h"
 
 /* YB includes */
 #include "pg_yb_utils.h"
@@ -65,7 +67,7 @@ GetForeignDataWrapper(Oid fdwid)
  * be found instead of raising an error.
  */
 ForeignDataWrapper *
-GetForeignDataWrapperExtended(Oid fdwid, bits16 flags)
+GetForeignDataWrapperExtended(Oid fdwid, uint16 flags)
 {
 	Form_pg_foreign_data_wrapper fdwform;
 	ForeignDataWrapper *fdw;
@@ -84,12 +86,13 @@ GetForeignDataWrapperExtended(Oid fdwid, bits16 flags)
 
 	fdwform = (Form_pg_foreign_data_wrapper) GETSTRUCT(tp);
 
-	fdw = (ForeignDataWrapper *) palloc(sizeof(ForeignDataWrapper));
+	fdw = palloc_object(ForeignDataWrapper);
 	fdw->fdwid = fdwid;
 	fdw->owner = fdwform->fdwowner;
 	fdw->fdwname = pstrdup(NameStr(fdwform->fdwname));
 	fdw->fdwhandler = fdwform->fdwhandler;
 	fdw->fdwvalidator = fdwform->fdwvalidator;
+	fdw->fdwconnection = fdwform->fdwconnection;
 
 	/* Extract the fdwoptions */
 	datum = SysCacheGetAttr(FOREIGNDATAWRAPPEROID,
@@ -139,7 +142,7 @@ GetForeignServer(Oid serverid)
  * instead of raising an error.
  */
 ForeignServer *
-GetForeignServerExtended(Oid serverid, bits16 flags)
+GetForeignServerExtended(Oid serverid, uint16 flags)
 {
 	Form_pg_foreign_server serverform;
 	ForeignServer *server;
@@ -158,7 +161,7 @@ GetForeignServerExtended(Oid serverid, bits16 flags)
 
 	serverform = (Form_pg_foreign_server) GETSTRUCT(tp);
 
-	server = (ForeignServer *) palloc(sizeof(ForeignServer));
+	server = palloc_object(ForeignServer);
 	server->serverid = serverid;
 	server->servername = pstrdup(NameStr(serverform->srvname));
 	server->owner = serverform->srvowner;
@@ -210,6 +213,35 @@ GetForeignServerByName(const char *srvname, bool missing_ok)
 
 
 /*
+ * Retrieve connection string from server's FDW.
+ *
+ * NB: leaks into CurrentMemoryContext.
+ */
+char *
+ForeignServerConnectionString(Oid userid, ForeignServer *server)
+{
+	ForeignDataWrapper *fdw;
+	Datum		connection_datum;
+
+	fdw = GetForeignDataWrapper(server->fdwid);
+
+	if (!OidIsValid(fdw->fdwconnection))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("foreign data wrapper \"%s\" does not support subscription connections",
+						fdw->fdwname),
+				 errdetail("Foreign data wrapper must be defined with CONNECTION specified.")));
+
+	connection_datum = OidFunctionCall3(fdw->fdwconnection,
+										ObjectIdGetDatum(userid),
+										ObjectIdGetDatum(server->serverid),
+										PointerGetDatum(NULL));
+
+	return text_to_cstring(DatumGetTextPP(connection_datum));
+}
+
+
+/*
  * GetUserMapping - look up the user mapping.
  *
  * If no mapping is found for the supplied user, we also look for
@@ -236,12 +268,16 @@ GetUserMapping(Oid userid, Oid serverid)
 	}
 
 	if (!HeapTupleIsValid(tp))
+	{
+		ForeignServer *server = GetForeignServer(serverid);
+
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("user mapping not found for \"%s\"",
-						MappingUserName(userid))));
+				 errmsg("user mapping not found for user \"%s\", server \"%s\"",
+						MappingUserName(userid), server->servername)));
+	}
 
-	um = (UserMapping *) palloc(sizeof(UserMapping));
+	um = palloc_object(UserMapping);
 	um->umid = ((Form_pg_user_mapping) GETSTRUCT(tp))->oid;
 	um->userid = userid;
 	um->serverid = serverid;
@@ -279,7 +315,7 @@ GetForeignTable(Oid relid)
 		elog(ERROR, "cache lookup failed for foreign table %u", relid);
 	tableform = (Form_pg_foreign_table) GETSTRUCT(tp);
 
-	ft = (ForeignTable *) palloc(sizeof(ForeignTable));
+	ft = palloc_object(ForeignTable);
 	ft->relid = relid;
 	ft->serverid = tableform->ftserver;
 
@@ -479,7 +515,7 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 	/* We have valid cached data --- does the caller want a copy? */
 	if (makecopy)
 	{
-		fdwroutine = (FdwRoutine *) palloc(sizeof(FdwRoutine));
+		fdwroutine = palloc_object(FdwRoutine);
 		memcpy(fdwroutine, relation->rd_fdwroutine, sizeof(FdwRoutine));
 		return fdwroutine;
 	}
@@ -541,7 +577,7 @@ pg_options_to_table(PG_FUNCTION_ARGS)
 	Datum		array = PG_GETARG_DATUM(0);
 	ListCell   *cell;
 	List	   *options;
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	ReturnSetInfo *rsinfo;
 
 	options = untransformRelOptions(array);
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -604,6 +640,7 @@ static const struct ConnectionOption libpq_conninfo_options[] = {
 	{"requiressl", ForeignServerRelationId},
 	{"sslmode", ForeignServerRelationId},
 	{"gsslib", ForeignServerRelationId},
+	{"gssdelegation", ForeignServerRelationId},
 	{NULL, InvalidOid}
 };
 
@@ -652,25 +689,32 @@ postgresql_fdw_validator(PG_FUNCTION_ARGS)
 		if (!is_conninfo_option(def->defname, catalog))
 		{
 			const struct ConnectionOption *opt;
-			StringInfoData buf;
+			const char *closest_match;
+			ClosestMatchState match_state;
+			bool		has_valid_options = false;
 
 			/*
 			 * Unknown option specified, complain about it. Provide a hint
-			 * with list of valid options for the object.
+			 * with a valid option that looks similar, if there is one.
 			 */
-			initStringInfo(&buf);
+			initClosestMatch(&match_state, def->defname, 4);
 			for (opt = libpq_conninfo_options; opt->optname; opt++)
+			{
 				if (catalog == opt->optcontext)
-					appendStringInfo(&buf, "%s%s", (buf.len > 0) ? ", " : "",
-									 opt->optname);
+				{
+					has_valid_options = true;
+					updateClosestMatch(&match_state, opt->optname);
+				}
+			}
 
+			closest_match = getClosestMatch(&match_state);
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 buf.len > 0
-					 ? errhint("Valid options in this context are: %s",
-							   buf.data)
-					 : errhint("There are no valid options in this context.")));
+					 has_valid_options ? closest_match ?
+					 errhint("Perhaps you meant the option \"%s\".",
+							 closest_match) : 0 :
+					 errhint("There are no valid options in this context.")));
 
 			PG_RETURN_BOOL(false);
 		}
@@ -818,7 +862,24 @@ GetExistingLocalJoinPath(RelOptInfo *joinrel)
 
 			foreign_path = (ForeignPath *) joinpath->outerjoinpath;
 			if (IS_JOIN_REL(foreign_path->path.parent))
+			{
 				joinpath->outerjoinpath = foreign_path->fdw_outerpath;
+
+				if (joinpath->path.pathtype == T_MergeJoin)
+				{
+					MergePath  *merge_path = (MergePath *) joinpath;
+
+					/*
+					 * If the new outer path is already well enough ordered
+					 * for the mergejoin, we can skip doing an explicit sort.
+					 */
+					if (merge_path->outersortkeys &&
+						pathkeys_count_contained_in(merge_path->outersortkeys,
+													joinpath->outerjoinpath->pathkeys,
+													&merge_path->outer_presorted_keys))
+						merge_path->outersortkeys = NIL;
+				}
+			}
 		}
 
 		if (IsA(joinpath->innerjoinpath, ForeignPath))
@@ -827,7 +888,23 @@ GetExistingLocalJoinPath(RelOptInfo *joinrel)
 
 			foreign_path = (ForeignPath *) joinpath->innerjoinpath;
 			if (IS_JOIN_REL(foreign_path->path.parent))
+			{
 				joinpath->innerjoinpath = foreign_path->fdw_outerpath;
+
+				if (joinpath->path.pathtype == T_MergeJoin)
+				{
+					MergePath  *merge_path = (MergePath *) joinpath;
+
+					/*
+					 * If the new inner path is already well enough ordered
+					 * for the mergejoin, we can skip doing an explicit sort.
+					 */
+					if (merge_path->innersortkeys &&
+						pathkeys_contained_in(merge_path->innersortkeys,
+											  joinpath->innerjoinpath->pathkeys))
+						merge_path->innersortkeys = NIL;
+				}
+			}
 		}
 
 		return (Path *) joinpath;

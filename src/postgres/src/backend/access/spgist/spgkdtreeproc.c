@@ -4,7 +4,7 @@
  *	  implementation of k-d tree over points for SP-GiST
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,15 +19,17 @@
 #include "access/spgist_private.h"
 #include "access/stratnum.h"
 #include "catalog/pg_type.h"
-#include "utils/builtins.h"
 #include "utils/float.h"
+#include "utils/fmgrprotos.h"
 #include "utils/geo_decls.h"
 
 
 Datum
 spg_kd_config(PG_FUNCTION_ARGS)
 {
-	/* spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0); */
+#ifdef NOT_USED
+	spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0);
+#endif
 	spgConfigOut *cfg = (spgConfigOut *) PG_GETARG_POINTER(1);
 
 	cfg->prefixType = FLOAT8OID;
@@ -84,8 +86,8 @@ typedef struct SortedPoint
 static int
 x_cmp(const void *a, const void *b)
 {
-	SortedPoint *pa = (SortedPoint *) a;
-	SortedPoint *pb = (SortedPoint *) b;
+	const SortedPoint *pa = a;
+	const SortedPoint *pb = b;
 
 	if (pa->p->x == pb->p->x)
 		return 0;
@@ -95,8 +97,8 @@ x_cmp(const void *a, const void *b)
 static int
 y_cmp(const void *a, const void *b)
 {
-	SortedPoint *pa = (SortedPoint *) a;
-	SortedPoint *pb = (SortedPoint *) b;
+	const SortedPoint *pa = a;
+	const SortedPoint *pb = b;
 
 	if (pa->p->y == pb->p->y)
 		return 0;
@@ -114,7 +116,7 @@ spg_kd_picksplit(PG_FUNCTION_ARGS)
 	SortedPoint *sorted;
 	double		coord;
 
-	sorted = palloc(sizeof(*sorted) * in->nTuples);
+	sorted = palloc_array(SortedPoint, in->nTuples);
 	for (i = 0; i < in->nTuples; i++)
 	{
 		sorted[i].p = DatumGetPointP(in->datums[i]);
@@ -132,8 +134,8 @@ spg_kd_picksplit(PG_FUNCTION_ARGS)
 	out->nNodes = 2;
 	out->nodeLabels = NULL;		/* we don't need node labels */
 
-	out->mapTuplesToNodes = palloc(sizeof(int) * in->nTuples);
-	out->leafTupleDatums = palloc(sizeof(Datum) * in->nTuples);
+	out->mapTuplesToNodes = palloc_array(int, in->nTuples);
+	out->leafTupleDatums = palloc_array(Datum, in->nTuples);
 
 	/*
 	 * Note: points that have coordinates exactly equal to coord may get
@@ -259,7 +261,7 @@ spg_kd_inner_consistent(PG_FUNCTION_ARGS)
 	if (!which)
 		PG_RETURN_VOID();
 
-	out->nodeNumbers = (int *) palloc(sizeof(int) * 2);
+	out->nodeNumbers = palloc_array(int, 2);
 
 	/*
 	 * When ordering scan keys are specified, we've to calculate distance for
@@ -273,8 +275,8 @@ spg_kd_inner_consistent(PG_FUNCTION_ARGS)
 		BOX			infArea;
 		BOX		   *area;
 
-		out->distances = (double **) palloc(sizeof(double *) * in->nNodes);
-		out->traversalValues = (void **) palloc(sizeof(void *) * in->nNodes);
+		out->distances = palloc_array(double *, in->nNodes);
+		out->traversalValues = palloc_array(void *, in->nNodes);
 
 		if (in->level == 0)
 		{
@@ -335,7 +337,7 @@ spg_kd_inner_consistent(PG_FUNCTION_ARGS)
 	}
 
 	/* Set up level increments, too */
-	out->levelAdds = (int *) palloc(sizeof(int) * 2);
+	out->levelAdds = palloc_array(int, 2);
 	out->levelAdds[0] = 1;
 	out->levelAdds[1] = 1;
 

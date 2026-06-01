@@ -3,7 +3,7 @@
  * pg_depend.c
  *	  routines to support manipulation of the pg_depend relation
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -23,11 +23,14 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
+#include "catalog/pg_type.h"
+#include "catalog/partition.h"
 #include "commands/extension.h"
 #include "miscadmin.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 
 /* YB includes */
 #include "catalog/pg_yb_tablegroup_d.h"
@@ -39,7 +42,7 @@ static bool isObjectPinned(const ObjectAddress *object);
 
 
 /*
- * Record a dependency between 2 objects via their respective objectAddress.
+ * Record a dependency between 2 objects via their respective ObjectAddress.
  * The first argument is the dependent object, the second the one it
  * references.
  *
@@ -92,7 +95,7 @@ recordMultipleDependencies(const ObjectAddress *depender,
 	 */
 	max_slots = Min(nreferenced,
 					MAX_CATALOG_MULTI_INSERT_BYTES / sizeof(FormData_pg_depend));
-	slot = palloc(sizeof(TupleTableSlot *) * max_slots);
+	slot = palloc_array(TupleTableSlot *, max_slots);
 
 	/* Don't open indexes unless we need to make an update */
 	indstate = NULL;
@@ -896,6 +899,77 @@ getAutoExtensionsOfObject(Oid classId, Oid objectId)
 }
 
 /*
+ * Look up a type belonging to an extension.
+ *
+ * Returns the type's OID, or InvalidOid if not found.
+ *
+ * Notice that the type is specified by name only, without a schema.
+ * That's because this will typically be used by relocatable extensions
+ * which can't make a-priori assumptions about which schema their objects
+ * are in.  As long as the extension only defines one type of this name,
+ * the answer is unique anyway.
+ *
+ * We might later add the ability to look up functions, operators, etc.
+ */
+Oid
+getExtensionType(Oid extensionOid, const char *typname)
+{
+	Oid			result = InvalidOid;
+	Relation	depRel;
+	ScanKeyData key[3];
+	SysScanDesc scan;
+	HeapTuple	tup;
+
+	depRel = table_open(DependRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(ExtensionRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(extensionOid));
+	ScanKeyInit(&key[2],
+				Anum_pg_depend_refobjsubid,
+				BTEqualStrategyNumber, F_INT4EQ,
+				Int32GetDatum(0));
+
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, 3, key);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	{
+		Form_pg_depend depform = (Form_pg_depend) GETSTRUCT(tup);
+
+		if (depform->classid == TypeRelationId &&
+			depform->deptype == DEPENDENCY_EXTENSION)
+		{
+			Oid			typoid = depform->objid;
+			HeapTuple	typtup;
+
+			typtup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typoid));
+			if (!HeapTupleIsValid(typtup))
+				continue;		/* should we throw an error? */
+			if (strcmp(NameStr(((Form_pg_type) GETSTRUCT(typtup))->typname),
+					   typname) == 0)
+			{
+				result = typoid;
+				ReleaseSysCache(typtup);
+				break;			/* no need to keep searching */
+			}
+			ReleaseSysCache(typtup);
+		}
+	}
+
+	systable_endscan(scan);
+
+	table_close(depRel, AccessShareLock);
+
+	return result;
+}
+
+/*
  * Detect whether a sequence is marked as "owned" by a column
  *
  * An ownership marker is an AUTO or INTERNAL dependency from the sequence to the
@@ -1024,13 +1098,32 @@ getOwnedSequences(Oid relid)
  * Get owned identity sequence, error if not exactly one.
  */
 Oid
-getIdentitySequence(Oid relid, AttrNumber attnum, bool missing_ok)
+getIdentitySequence(Relation rel, AttrNumber attnum, bool missing_ok)
 {
-	List	   *seqlist = getOwnedSequences_internal(relid, attnum, DEPENDENCY_INTERNAL);
+	Oid			relid = RelationGetRelid(rel);
+	List	   *seqlist;
 
+	/*
+	 * The identity sequence is associated with the topmost partitioned table,
+	 * which might have column order different than the given partition.
+	 */
+	if (RelationGetForm(rel)->relispartition)
+	{
+		List	   *ancestors = get_partition_ancestors(relid);
+		const char *attname = get_attname(relid, attnum, false);
+
+		relid = llast_oid(ancestors);
+		attnum = get_attnum(relid, attname);
+		if (attnum == InvalidAttrNumber)
+			elog(ERROR, "cache lookup failed for attribute \"%s\" of relation %u",
+				 attname, relid);
+		list_free(ancestors);
+	}
+
+	seqlist = getOwnedSequences_internal(relid, attnum, DEPENDENCY_INTERNAL);
 	if (list_length(seqlist) > 1)
 		elog(ERROR, "more than one owned sequence found");
-	else if (list_length(seqlist) < 1)
+	else if (seqlist == NIL)
 	{
 		if (missing_ok)
 			return InvalidOid;

@@ -3,7 +3,7 @@
  * pg_shdepend.c
  *	  routines to support manipulation of the pg_shdepend relation
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,6 +22,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_auth_members.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
@@ -32,7 +33,6 @@
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_largeobject.h"
-#include "catalog/pg_largeobject_metadata.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
@@ -47,14 +47,9 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
 #include "commands/alter.h"
-#include "commands/collationcmds.h"
-#include "commands/conversioncmds.h"
-#include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
-#include "commands/extension.h"
 #include "commands/policy.h"
-#include "commands/proclang.h"
 #include "commands/publicationcmds.h"
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
@@ -65,6 +60,7 @@
 #include "storage/lmgr.h"
 #include "utils/acl.h"
 #include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
@@ -82,7 +78,7 @@ typedef enum
 {
 	LOCAL_OBJECT,
 	SHARED_OBJECT,
-	REMOTE_OBJECT
+	REMOTE_OBJECT,
 } SharedDependencyObjectType;
 
 typedef struct
@@ -98,6 +94,11 @@ static void shdepChangeDep(Relation sdepRel,
 						   Oid classid, Oid objid, int32 objsubid,
 						   Oid refclassid, Oid refobjid,
 						   SharedDependencyType deptype);
+static void updateAclDependenciesWorker(Oid classId, Oid objectId,
+										int32 objsubId, Oid ownerId,
+										SharedDependencyType deptype,
+										int noldmembers, Oid *oldmembers,
+										int nnewmembers, Oid *newmembers);
 static void shdepAddDependency(Relation sdepRel,
 							   Oid classId, Oid objectId, int32 objsubId,
 							   Oid refclassId, Oid refobjId,
@@ -113,6 +114,9 @@ static void storeObjectDescription(StringInfo descs,
 								   ObjectAddress *object,
 								   SharedDependencyType deptype,
 								   int count);
+static void shdepReassignOwned_Owner(Form_pg_shdepend sdepForm, Oid newrole);
+static void shdepReassignOwned_InitAcl(Form_pg_shdepend sdepForm,
+									   Oid oldrole, Oid newrole);
 
 
 /*
@@ -392,6 +396,12 @@ changeDependencyOnOwner(Oid classId, Oid objectId, Oid newOwnerId)
 						AuthIdRelationId, newOwnerId,
 						SHARED_DEPENDENCY_ACL);
 
+	/*
+	 * However, nothing need be done about SHARED_DEPENDENCY_INITACL entries,
+	 * since those exist whether or not the role is the object's owner, and
+	 * ALTER OWNER does not modify the underlying pg_init_privs entry.
+	 */
+
 	table_close(sdepRel, RowExclusiveLock);
 }
 
@@ -554,6 +564,40 @@ updateAclDependencies(Oid classId, Oid objectId, int32 objsubId,
 					  int noldmembers, Oid *oldmembers,
 					  int nnewmembers, Oid *newmembers)
 {
+	updateAclDependenciesWorker(classId, objectId, objsubId,
+								ownerId, SHARED_DEPENDENCY_ACL,
+								noldmembers, oldmembers,
+								nnewmembers, newmembers);
+}
+
+/*
+ * updateInitAclDependencies
+ *		Update the pg_shdepend info for a pg_init_privs entry.
+ *
+ * Exactly like updateAclDependencies, except we are considering a
+ * pg_init_privs ACL for the specified object.  Since recording of
+ * pg_init_privs role dependencies is the same for owners and non-owners,
+ * we do not need an ownerId argument.
+ */
+void
+updateInitAclDependencies(Oid classId, Oid objectId, int32 objsubId,
+						  int noldmembers, Oid *oldmembers,
+						  int nnewmembers, Oid *newmembers)
+{
+	updateAclDependenciesWorker(classId, objectId, objsubId,
+								InvalidOid, /* ownerId will not be consulted */
+								SHARED_DEPENDENCY_INITACL,
+								noldmembers, oldmembers,
+								nnewmembers, newmembers);
+}
+
+/* Common code for the above two functions */
+static void
+updateAclDependenciesWorker(Oid classId, Oid objectId, int32 objsubId,
+							Oid ownerId, SharedDependencyType deptype,
+							int noldmembers, Oid *oldmembers,
+							int nnewmembers, Oid *newmembers)
+{
 	Relation	sdepRel;
 	int			i;
 
@@ -575,11 +619,13 @@ updateAclDependencies(Oid classId, Oid objectId, int32 objsubId,
 			Oid			roleid = newmembers[i];
 
 			/*
-			 * Skip the owner: he has an OWNER shdep entry instead. (This is
-			 * not just a space optimization; it makes ALTER OWNER easier. See
-			 * notes in changeDependencyOnOwner.)
+			 * For SHARED_DEPENDENCY_ACL entries, skip the owner: she has an
+			 * OWNER shdep entry instead.  (This is not just a space
+			 * optimization; it makes ALTER OWNER easier.  See notes in
+			 * changeDependencyOnOwner.)  But for INITACL entries, we record
+			 * the owner too.
 			 */
-			if (roleid == ownerId)
+			if (deptype == SHARED_DEPENDENCY_ACL && roleid == ownerId)
 				continue;
 
 			/* Skip pinned roles; they don't need dependency entries */
@@ -588,7 +634,7 @@ updateAclDependencies(Oid classId, Oid objectId, int32 objsubId,
 
 			shdepAddDependency(sdepRel, classId, objectId, objsubId,
 							   AuthIdRelationId, roleid,
-							   SHARED_DEPENDENCY_ACL);
+							   deptype);
 		}
 
 		/* Drop no-longer-used old dependencies */
@@ -596,8 +642,8 @@ updateAclDependencies(Oid classId, Oid objectId, int32 objsubId,
 		{
 			Oid			roleid = oldmembers[i];
 
-			/* Skip the owner, same as above */
-			if (roleid == ownerId)
+			/* Skip the owner for ACL entries, same as above */
+			if (deptype == SHARED_DEPENDENCY_ACL && roleid == ownerId)
 				continue;
 
 			/* Skip pinned roles */
@@ -607,7 +653,7 @@ updateAclDependencies(Oid classId, Oid objectId, int32 objsubId,
 			shdepDropDependency(sdepRel, classId, objectId, objsubId,
 								false,	/* exact match on objsubId */
 								AuthIdRelationId, roleid,
-								SHARED_DEPENDENCY_ACL);
+								deptype);
 		}
 
 		table_close(sdepRel, RowExclusiveLock);
@@ -816,7 +862,7 @@ checkSharedDependencies(Oid classId, Oid objectId,
 			}
 			if (!stored)
 			{
-				dep = (remoteDep *) palloc(sizeof(remoteDep));
+				dep = palloc_object(remoteDep);
 				dep->dbOid = sdepForm->dbid;
 				dep->count = 1;
 				remDeps = lappend(remDeps, dep);
@@ -832,7 +878,7 @@ checkSharedDependencies(Oid classId, Oid objectId,
 	 * Sort and report local and shared objects.
 	 */
 	if (numobjects > 1)
-		qsort((void *) objects, numobjects,
+		qsort(objects, numobjects,
 			  sizeof(ShDependObjectInfo), shared_dependency_comparator);
 
 	for (int i = 0; i < numobjects; i++)
@@ -940,7 +986,7 @@ copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 	 * know that they will be used.
 	 */
 	max_slots = MAX_CATALOG_MULTI_INSERT_BYTES / sizeof(FormData_pg_shdepend);
-	slot = palloc(sizeof(TupleTableSlot *) * max_slots);
+	slot = palloc_array(TupleTableSlot *, max_slots);
 
 	indstate = CatalogOpenIndexes(sdepRel);
 
@@ -983,12 +1029,12 @@ copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 		shdep = (Form_pg_shdepend) GETSTRUCT(tup);
 
 		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_dbid - 1] = ObjectIdGetDatum(newDbId);
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_classid - 1] = shdep->classid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_objid - 1] = shdep->objid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_objsubid - 1] = shdep->objsubid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_refclassid - 1] = shdep->refclassid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_refobjid - 1] = shdep->refobjid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_deptype - 1] = shdep->deptype;
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_classid - 1] = ObjectIdGetDatum(shdep->classid);
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_objid - 1] = ObjectIdGetDatum(shdep->objid);
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_objsubid - 1] = Int32GetDatum(shdep->objsubid);
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_refclassid - 1] = ObjectIdGetDatum(shdep->refclassid);
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_refobjid - 1] = ObjectIdGetDatum(shdep->refobjid);
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_deptype - 1] = CharGetDatum(shdep->deptype);
 
 		ExecStoreVirtualTuple(slot[slot_stored_count]);
 		slot_stored_count++;
@@ -1342,6 +1388,8 @@ storeObjectDescription(StringInfo descs,
 				appendStringInfo(descs, _("owner of %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_ACL)
 				appendStringInfo(descs, _("privileges for %s"), objdesc);
+			else if (deptype == SHARED_DEPENDENCY_INITACL)
+				appendStringInfo(descs, _("initial privileges for %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_POLICY)
 				appendStringInfo(descs, _("target of %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_TABLESPACE)
@@ -1467,11 +1515,6 @@ shdepDropOwned(List *roleids, DropBehavior behavior)
 				case SHARED_DEPENDENCY_INVALID:
 					elog(ERROR, "unexpected dependency type");
 					break;
-				case SHARED_DEPENDENCY_ACL:
-					RemoveRoleFromObjectACL(roleid,
-											sdepForm->classid,
-											sdepForm->objid);
-					break;
 				case SHARED_DEPENDENCY_POLICY:
 
 					/*
@@ -1501,9 +1544,34 @@ shdepDropOwned(List *roleids, DropBehavior behavior)
 						add_exact_object_address(&obj, deleteobjs);
 					}
 					break;
+				case SHARED_DEPENDENCY_ACL:
+
+					/*
+					 * Dependencies on role grants are recorded using
+					 * SHARED_DEPENDENCY_ACL, but unlike a regular ACL list
+					 * which stores all permissions for a particular object in
+					 * a single ACL array, there's a separate catalog row for
+					 * each grant - so removing the grant just means removing
+					 * the entire row.
+					 */
+					if (sdepForm->classid != AuthMemRelationId)
+					{
+						RemoveRoleFromObjectACL(roleid,
+												sdepForm->classid,
+												sdepForm->objid);
+						break;
+					}
+					pg_fallthrough;
+
 				case SHARED_DEPENDENCY_OWNER:
-					/* If a local object, save it for deletion below */
-					if (sdepForm->dbid == MyDatabaseId)
+
+					/*
+					 * Save it for deletion below, if it's a local object or a
+					 * role grant. Other shared objects, such as databases,
+					 * should not be removed here.
+					 */
+					if (sdepForm->dbid == MyDatabaseId ||
+						sdepForm->classid == AuthMemRelationId)
 					{
 						obj.classId = sdepForm->classid;
 						obj.objectId = sdepForm->objid;
@@ -1517,6 +1585,21 @@ shdepDropOwned(List *roleids, DropBehavior behavior)
 						}
 						add_exact_object_address(&obj, deleteobjs);
 					}
+					break;
+				case SHARED_DEPENDENCY_INITACL:
+
+					/*
+					 * Any mentions of the role that remain in pg_init_privs
+					 * entries are just dropped.  This is the same policy as
+					 * we apply to regular ACLs.
+					 */
+
+					/* Shouldn't see a role grant here */
+					Assert(sdepForm->classid != AuthMemRelationId);
+					RemoveRoleFromInitPriv(roleid,
+										   sdepForm->classid,
+										   sdepForm->objid,
+										   sdepForm->objsubid);
 					break;
 				case SHARED_DEPENDENCY_PROFILE:
 					/*
@@ -1618,12 +1701,8 @@ shdepReassignOwned(List *roleids, Oid newrole)
 				sdepForm->dbid != InvalidOid)
 				continue;
 
-			/* We leave non-owner dependencies alone */
-			if (sdepForm->deptype != SHARED_DEPENDENCY_OWNER)
-				continue;
-
 			/*
-			 * The various ALTER OWNER routines tend to leak memory in
+			 * The various DDL routines called here tend to leak memory in
 			 * CurrentMemoryContext.  That's not a problem when they're only
 			 * called once per command; but in this usage where we might be
 			 * touching many objects, it can amount to a serious memory leak.
@@ -1634,92 +1713,23 @@ shdepReassignOwned(List *roleids, Oid newrole)
 										ALLOCSET_DEFAULT_SIZES);
 			oldcxt = MemoryContextSwitchTo(cxt);
 
-			/* Issue the appropriate ALTER OWNER call */
-			switch (sdepForm->classid)
+			/* Perform the appropriate processing */
+			switch (sdepForm->deptype)
 			{
-				case TypeRelationId:
-					AlterTypeOwner_oid(sdepForm->objid, newrole, true);
+				case SHARED_DEPENDENCY_OWNER:
+					shdepReassignOwned_Owner(sdepForm, newrole);
 					break;
-
-				case NamespaceRelationId:
-					AlterSchemaOwner_oid(sdepForm->objid, newrole);
+				case SHARED_DEPENDENCY_INITACL:
+					shdepReassignOwned_InitAcl(sdepForm, roleid, newrole);
 					break;
-
-				case RelationRelationId:
-
-					/*
-					 * Pass recursing = true so that we don't fail on indexes,
-					 * owned sequences, etc when we happen to visit them
-					 * before their parent table.
-					 */
-					ATExecChangeOwner(sdepForm->objid, newrole, true, AccessExclusiveLock);
+				case SHARED_DEPENDENCY_ACL:
+				case SHARED_DEPENDENCY_POLICY:
+				case SHARED_DEPENDENCY_TABLESPACE:
+					/* Nothing to do for these entry types */
 					break;
-
-				case DefaultAclRelationId:
-
-					/*
-					 * Ignore default ACLs; they should be handled by DROP
-					 * OWNED, not REASSIGN OWNED.
-					 */
-					break;
-
-				case UserMappingRelationId:
-					/* ditto */
-					break;
-
-				case ForeignServerRelationId:
-					AlterForeignServerOwner_oid(sdepForm->objid, newrole);
-					break;
-
-				case ForeignDataWrapperRelationId:
-					AlterForeignDataWrapperOwner_oid(sdepForm->objid, newrole);
-					break;
-
-				case EventTriggerRelationId:
-					AlterEventTriggerOwner_oid(sdepForm->objid, newrole);
-					break;
-
-				case PublicationRelationId:
-					AlterPublicationOwner_oid(sdepForm->objid, newrole);
-					break;
-
-				case SubscriptionRelationId:
-					AlterSubscriptionOwner_oid(sdepForm->objid, newrole);
-					break;
-
-					/* Generic alter owner cases */
-				case CollationRelationId:
-				case ConversionRelationId:
-				case OperatorRelationId:
-				case ProcedureRelationId:
-				case LanguageRelationId:
-				case LargeObjectRelationId:
-				case OperatorFamilyRelationId:
-				case OperatorClassRelationId:
-				case ExtensionRelationId:
-				case StatisticExtRelationId:
-				case TableSpaceRelationId:
-				case DatabaseRelationId:
-				case TSConfigRelationId:
-				case TSDictionaryRelationId:
-					{
-						Oid			classId = sdepForm->classid;
-						Relation	catalog;
-
-						if (classId == LargeObjectRelationId)
-							classId = LargeObjectMetadataRelationId;
-
-						catalog = table_open(classId, RowExclusiveLock);
-
-						AlterObjectOwner_internal(catalog, sdepForm->objid,
-												  newrole);
-
-						table_close(catalog, NoLock);
-					}
-					break;
-
 				default:
-					elog(ERROR, "unexpected classid %u", sdepForm->classid);
+					elog(ERROR, "unrecognized dependency type: %d",
+						 (int) sdepForm->deptype);
 					break;
 			}
 
@@ -1735,6 +1745,126 @@ shdepReassignOwned(List *roleids, Oid newrole)
 	}
 
 	table_close(sdepRel, RowExclusiveLock);
+}
+
+/*
+ * shdepReassignOwned_Owner
+ *
+ * shdepReassignOwned's processing of SHARED_DEPENDENCY_OWNER entries
+ */
+static void
+shdepReassignOwned_Owner(Form_pg_shdepend sdepForm, Oid newrole)
+{
+	/* Issue the appropriate ALTER OWNER call */
+	switch (sdepForm->classid)
+	{
+		case TypeRelationId:
+			AlterTypeOwner_oid(sdepForm->objid, newrole, true);
+			break;
+
+		case NamespaceRelationId:
+			AlterSchemaOwner_oid(sdepForm->objid, newrole);
+			break;
+
+		case RelationRelationId:
+
+			/*
+			 * Pass recursing = true so that we don't fail on indexes, owned
+			 * sequences, etc when we happen to visit them before their parent
+			 * table.
+			 */
+			ATExecChangeOwner(sdepForm->objid, newrole, true, AccessExclusiveLock);
+			break;
+
+		case DefaultAclRelationId:
+
+			/*
+			 * Ignore default ACLs; they should be handled by DROP OWNED, not
+			 * REASSIGN OWNED.
+			 */
+			break;
+
+		case UserMappingRelationId:
+			/* ditto */
+			break;
+
+		case ForeignServerRelationId:
+			AlterForeignServerOwner_oid(sdepForm->objid, newrole);
+			break;
+
+		case ForeignDataWrapperRelationId:
+			AlterForeignDataWrapperOwner_oid(sdepForm->objid, newrole);
+			break;
+
+		case EventTriggerRelationId:
+			AlterEventTriggerOwner_oid(sdepForm->objid, newrole);
+			break;
+
+		case PublicationRelationId:
+			AlterPublicationOwner_oid(sdepForm->objid, newrole);
+			break;
+
+		case SubscriptionRelationId:
+			AlterSubscriptionOwner_oid(sdepForm->objid, newrole);
+			break;
+
+			/* Generic alter owner cases */
+		case CollationRelationId:
+		case ConversionRelationId:
+		case OperatorRelationId:
+		case ProcedureRelationId:
+		case LanguageRelationId:
+		case LargeObjectRelationId:
+		case OperatorFamilyRelationId:
+		case OperatorClassRelationId:
+		case ExtensionRelationId:
+		case StatisticExtRelationId:
+		case TableSpaceRelationId:
+		case DatabaseRelationId:
+		case TSConfigRelationId:
+		case TSDictionaryRelationId:
+			AlterObjectOwner_internal(sdepForm->classid,
+									  sdepForm->objid,
+									  newrole);
+			break;
+
+		default:
+			elog(ERROR, "unexpected classid %u", sdepForm->classid);
+			break;
+	}
+}
+
+/*
+ * shdepReassignOwned_InitAcl
+ *
+ * shdepReassignOwned's processing of SHARED_DEPENDENCY_INITACL entries
+ */
+static void
+shdepReassignOwned_InitAcl(Form_pg_shdepend sdepForm, Oid oldrole, Oid newrole)
+{
+	/*
+	 * Currently, REASSIGN OWNED replaces mentions of oldrole with newrole in
+	 * pg_init_privs entries, just as it does in the object's regular ACL.
+	 * This is less than ideal, since pg_init_privs ought to retain a
+	 * historical record of the situation at the end of CREATE EXTENSION.
+	 * However, there are two big stumbling blocks to doing something
+	 * different:
+	 *
+	 * 1. If we don't replace the references, what is to happen if the old
+	 * role gets dropped?  (DROP OWNED's current answer is to just delete the
+	 * pg_init_privs entry, which is surely ahistorical.)
+	 *
+	 * 2. It's unlikely that pg_dump will cope nicely with pg_init_privs
+	 * entries that are based on a different owner than the object now has ---
+	 * the more so given that pg_init_privs doesn't record the original owner
+	 * explicitly.  (This problem actually exists anyway given that a bare
+	 * ALTER OWNER won't update pg_init_privs, but we don't need REASSIGN
+	 * OWNED making it worse.)
+	 */
+	ReplaceRoleInInitPriv(oldrole, newrole,
+						  sdepForm->classid,
+						  sdepForm->objid,
+						  sdepForm->objsubid);
 }
 
 /*

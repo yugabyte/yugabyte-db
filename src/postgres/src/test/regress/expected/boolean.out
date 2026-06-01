@@ -142,6 +142,25 @@ SELECT bool '' AS error;
 ERROR:  invalid input syntax for type boolean: ""
 LINE 1: SELECT bool '' AS error;
                     ^
+-- Also try it with non-error-throwing API
+SELECT pg_input_is_valid('true', 'bool');
+ pg_input_is_valid 
+-------------------
+ t
+(1 row)
+
+SELECT pg_input_is_valid('asdf', 'bool');
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
+SELECT * FROM pg_input_error_info('junk', 'bool');
+                    message                    | detail | hint | sql_error_code 
+-----------------------------------------------+--------+------+----------------
+ invalid input syntax for type boolean: "junk" |        |      | 22P02
+(1 row)
+
 -- and, or, not in qualifications
 SELECT bool 't' or bool 'f' AS true;
  true 
@@ -467,7 +486,7 @@ FROM booltbl3 ORDER BY o;
 
 -- Test to make sure short-circuiting and NULL handling is
 -- correct. Use a table as source to prevent constant simplification
--- to interfer.
+-- from interfering.
 CREATE TABLE booltbl4(isfalse bool, istrue bool, isnul bool);
 INSERT INTO booltbl4 VALUES (false, true, null);
 \pset null '(null)'
@@ -544,6 +563,25 @@ SELECT istrue OR isfalse OR isnul FROM booltbl4;
 SELECT isnul OR istrue OR isfalse FROM booltbl4;
  ?column? 
 ----------
+ t
+(1 row)
+
+-- Casts
+SELECT 0::boolean;
+ bool 
+------
+ f
+(1 row)
+
+SELECT 1::boolean;
+ bool 
+------
+ t
+(1 row)
+
+SELECT 2::boolean;
+ bool 
+------
  t
 (1 row)
 

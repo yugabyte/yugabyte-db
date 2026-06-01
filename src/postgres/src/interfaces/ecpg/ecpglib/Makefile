@@ -2,7 +2,7 @@
 #
 # Makefile for ecpg library
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/interfaces/ecpg/ecpglib/Makefile
@@ -19,7 +19,7 @@ SO_MAJOR_VERSION= 6
 SO_MINOR_VERSION= $(MAJORVERSION)
 
 override CPPFLAGS := -I../include -I$(top_srcdir)/src/interfaces/ecpg/include \
-	-I$(libpq_srcdir) -I$(top_builddir)/src/port -DFRONTEND $(CPPFLAGS)
+	-I$(libpq_srcdir) -I$(top_builddir)/src/port $(CPPFLAGS)
 override CFLAGS += $(PTHREAD_CFLAGS)
 
 OBJS = \
@@ -41,7 +41,7 @@ SHLIB_PREREQS = submake-libpq submake-pgtypeslib
 
 SHLIB_EXPORTS = exports.txt
 
-PKG_CONFIG_REQUIRES_PRIVATE = libpq libpgtypes
+PKG_CONFIG_REQUIRES_PRIVATE = libpq, libpgtypes
 
 all: all-lib
 
@@ -66,5 +66,3 @@ uninstall: uninstall-lib
 
 clean distclean: clean-lib
 	rm -f $(OBJS)
-
-maintainer-clean: distclean

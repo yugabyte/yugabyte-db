@@ -2,7 +2,7 @@
  * brin_bloom.c
  *		Implementation of Bloom opclass for BRIN
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -114,24 +114,22 @@
  */
 #include "postgres.h"
 
-#include "access/genam.h"
+#include <limits.h>
+#include <math.h>
+
 #include "access/brin.h"
 #include "access/brin_internal.h"
 #include "access/brin_page.h"
 #include "access/brin_tuple.h"
-#include "access/hash.h"
+#include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/reloptions.h"
-#include "access/stratnum.h"
+#include "catalog/pg_am.h"
 #include "catalog/pg_type.h"
-#include "catalog/pg_amop.h"
-#include "utils/builtins.h"
-#include "utils/datum.h"
-#include "utils/lsyscache.h"
+#include "common/hashfn.h"
+#include "port/pg_bitutils.h"
+#include "utils/fmgrprotos.h"
 #include "utils/rel.h"
-#include "utils/syscache.h"
-
-#include <math.h>
 
 #define BloomEqualStrategyNumber	1
 
@@ -259,6 +257,48 @@ typedef struct BloomFilter
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } BloomFilter;
 
+/*
+ * bloom_filter_size
+ *		Calculate Bloom filter parameters (nbits, nbytes, nhashes).
+ *
+ * Given expected number of distinct values and desired false positive rate,
+ * calculates the optimal parameters of the Bloom filter.
+ *
+ * The resulting parameters are returned through nbytesp (number of bytes),
+ * nbitsp (number of bits) and nhashesp (number of hash functions). If a
+ * pointer is NULL, the parameter is not returned.
+ */
+static void
+bloom_filter_size(int ndistinct, double false_positive_rate,
+				  int *nbytesp, int *nbitsp, int *nhashesp)
+{
+	double		k;
+	int			nbits,
+				nbytes;
+
+	/* sizing bloom filter: -(n * ln(p)) / (ln(2))^2 */
+	nbits = ceil(-(ndistinct * log(false_positive_rate)) / pow(log(2.0), 2));
+
+	/* round m to whole bytes */
+	nbytes = ((nbits + 7) / 8);
+	nbits = nbytes * 8;
+
+	/*
+	 * round(log(2.0) * m / ndistinct), but assume round() may not be
+	 * available on Windows
+	 */
+	k = log(2.0) * nbits / ndistinct;
+	k = (k - floor(k) >= 0.5) ? ceil(k) : floor(k);
+
+	if (nbytesp)
+		*nbytesp = nbytes;
+
+	if (nbitsp)
+		*nbitsp = nbits;
+
+	if (nhashesp)
+		*nhashesp = (int) k;
+}
 
 /*
  * bloom_init
@@ -275,18 +315,14 @@ bloom_init(int ndistinct, double false_positive_rate)
 
 	int			nbits;			/* size of filter / number of bits */
 	int			nbytes;			/* size of filter / number of bytes */
-
-	double		k;				/* number of hash functions */
+	int			nhashes;		/* number of hash functions */
 
 	Assert(ndistinct > 0);
 	Assert(false_positive_rate > 0 && false_positive_rate < 1);
 
-	/* sizing bloom filter: -(n * ln(p)) / (ln(2))^2 */
-	nbits = ceil(-(ndistinct * log(false_positive_rate)) / pow(log(2.0), 2));
-
-	/* round m to whole bytes */
-	nbytes = ((nbits + 7) / 8);
-	nbits = nbytes * 8;
+	/* calculate bloom filter size / parameters */
+	bloom_filter_size(ndistinct, false_positive_rate,
+					  &nbytes, &nbits, &nhashes);
 
 	/*
 	 * Reject filters that are obviously too large to store on a page.
@@ -310,13 +346,6 @@ bloom_init(int ndistinct, double false_positive_rate)
 			 BloomMaxFilterSize);
 
 	/*
-	 * round(log(2.0) * m / ndistinct), but assume round() may not be
-	 * available on Windows
-	 */
-	k = log(2.0) * nbits / ndistinct;
-	k = (k - floor(k) >= 0.5) ? ceil(k) : floor(k);
-
-	/*
 	 * We allocate the whole filter. Most of it is going to be 0 bits, so the
 	 * varlena is easy to compress.
 	 */
@@ -325,7 +354,7 @@ bloom_init(int ndistinct, double false_positive_rate)
 	filter = (BloomFilter *) palloc0(len);
 
 	filter->flags = 0;
-	filter->nhashes = (int) k;
+	filter->nhashes = nhashes;
 	filter->nbits = nbits;
 
 	SET_VARSIZE(filter, len);
@@ -411,7 +440,6 @@ typedef struct BloomOpaque
 	 * consistency. We may need additional procs in the future.
 	 */
 	FmgrInfo	extra_procinfos[BLOOM_MAX_PROCNUMS];
-	bool		extra_proc_missing[BLOOM_MAX_PROCNUMS];
 } BloomOpaque;
 
 static FmgrInfo *bloom_get_procinfo(BrinDesc *bdesc, uint16 attno,
@@ -514,7 +542,7 @@ brin_bloom_add_value(PG_FUNCTION_ARGS)
 	BrinDesc   *bdesc = (BrinDesc *) PG_GETARG_POINTER(0);
 	BrinValues *column = (BrinValues *) PG_GETARG_POINTER(1);
 	Datum		newval = PG_GETARG_DATUM(2);
-	bool		isnull PG_USED_FOR_ASSERTS_ONLY = PG_GETARG_DATUM(3);
+	bool		isnull PG_USED_FOR_ASSERTS_ONLY = PG_GETARG_BOOL(3);
 	BloomOptions *opts = (BloomOptions *) PG_GET_OPCLASS_OPTIONS();
 	Oid			colloid = PG_GET_COLLATION();
 	FmgrInfo   *hashFn;
@@ -573,7 +601,7 @@ brin_bloom_consistent(PG_FUNCTION_ARGS)
 	Oid			colloid = PG_GET_COLLATION();
 	AttrNumber	attno;
 	Datum		value;
-	Datum		matches;
+	bool		matches;
 	FmgrInfo   *finfo;
 	uint32		hashValue;
 	BloomFilter *filter;
@@ -583,6 +611,10 @@ brin_bloom_consistent(PG_FUNCTION_ARGS)
 
 	Assert(filter);
 
+	/*
+	 * Assume all scan keys match. We'll be searching for a scan key
+	 * eliminating the page range (we can stop on the first such key).
+	 */
 	matches = true;
 
 	for (keyno = 0; keyno < nkeys; keyno++)
@@ -600,9 +632,8 @@ brin_bloom_consistent(PG_FUNCTION_ARGS)
 			case BloomEqualStrategyNumber:
 
 				/*
-				 * In the equality case (WHERE col = someval), we want to
-				 * return the current page range if the minimum value in the
-				 * range <= scan key, and the maximum value >= scan key.
+				 * We want to return the current page range if the bloom
+				 * filter seems to contain the value.
 				 */
 				finfo = bloom_get_procinfo(bdesc, attno, PROCNUM_HASH);
 
@@ -613,7 +644,7 @@ brin_bloom_consistent(PG_FUNCTION_ARGS)
 			default:
 				/* shouldn't happen */
 				elog(ERROR, "invalid strategy number %d", key->sk_strategy);
-				matches = 0;
+				matches = false;
 				break;
 		}
 
@@ -621,7 +652,7 @@ brin_bloom_consistent(PG_FUNCTION_ARGS)
 			break;
 	}
 
-	PG_RETURN_DATUM(matches);
+	PG_RETURN_BOOL(matches);
 }
 
 /*
@@ -663,6 +694,17 @@ brin_bloom_union(PG_FUNCTION_ARGS)
 	/* update the number of bits set in the filter */
 	filter_a->nbits_set = pg_popcount((const char *) filter_a->data, nbytes);
 
+	/* if we decompressed filter_a, update the summary */
+	if (PointerGetDatum(filter_a) != col_a->bv_values[0])
+	{
+		pfree(DatumGetPointer(col_a->bv_values[0]));
+		col_a->bv_values[0] = PointerGetDatum(filter_a);
+	}
+
+	/* also free filter_b, if it was decompressed */
+	if (PointerGetDatum(filter_b) != col_b->bv_values[0])
+		pfree(filter_b);
+
 	PG_RETURN_VOID();
 }
 
@@ -684,27 +726,19 @@ bloom_get_procinfo(BrinDesc *bdesc, uint16 attno, uint16 procnum)
 	 */
 	opaque = (BloomOpaque *) bdesc->bd_info[attno - 1]->oi_opaque;
 
-	/*
-	 * If we already searched for this proc and didn't find it, don't bother
-	 * searching again.
-	 */
-	if (opaque->extra_proc_missing[basenum])
-		return NULL;
-
 	if (opaque->extra_procinfos[basenum].fn_oid == InvalidOid)
 	{
 		if (RegProcedureIsValid(index_getprocid(bdesc->bd_index, attno,
 												procnum)))
-		{
 			fmgr_info_copy(&opaque->extra_procinfos[basenum],
 						   index_getprocinfo(bdesc->bd_index, attno, procnum),
 						   bdesc->bd_context);
-		}
 		else
-		{
-			opaque->extra_proc_missing[basenum] = true;
-			return NULL;
-		}
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					errmsg_internal("invalid opclass definition"),
+					errdetail_internal("The operator class is missing support function %d for column %d.",
+									   procnum, attno));
 	}
 
 	return &opaque->extra_procinfos[basenum];
@@ -769,7 +803,7 @@ brin_bloom_summary_out(PG_FUNCTION_ARGS)
 	StringInfoData str;
 
 	/* detoast the data to get value with a full 4B header */
-	filter = (BloomFilter *) PG_DETOAST_DATUM_PACKED(PG_GETARG_DATUM(0));
+	filter = (BloomFilter *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
 
 	initStringInfo(&str);
 	appendStringInfoChar(&str, '{');

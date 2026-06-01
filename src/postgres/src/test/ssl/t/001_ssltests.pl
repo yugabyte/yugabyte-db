@@ -1,8 +1,8 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use Config qw ( %Config );
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -17,6 +17,11 @@ if ($ENV{with_ssl} ne 'openssl')
 {
 	plan skip_all => 'OpenSSL not supported by this build';
 }
+if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bssl\b/)
+{
+	plan skip_all =>
+	  'Potentially unsafe test SSL not enabled in PG_TEST_EXTRA';
+}
 
 my $ssl_server = SSL::Server->new();
 
@@ -29,6 +34,10 @@ sub switch_server_cert
 {
 	$ssl_server->switch_server_cert(@_);
 }
+
+# Determine whether this build uses OpenSSL or LibreSSL.
+my $libressl = $ssl_server->is_libressl;
+
 #### Some configuration
 
 # This is the hostname used to connect to the server. This cannot be a
@@ -38,14 +47,27 @@ my $SERVERHOSTADDR = '127.0.0.1';
 # This is the pattern to use in pg_hba.conf to match incoming connections.
 my $SERVERHOSTCIDR = '127.0.0.1/32';
 
+# Determine whether build supports sslcertmode=require.
+my $supports_sslcertmode_require =
+  check_pg_config("#define HAVE_SSL_CTX_SET_CERT_CB 1");
+
+# Set of default settings for SSL parameters in connection string.  This
+# makes the tests protected against any defaults the environment may have
+# in ~/.postgresql/.
+my $default_ssl_connstr =
+  "sslkey=invalid sslcert=invalid sslrootcert=invalid sslcrl=invalid sslcrldir=invalid";
+
 # Allocation of base connection string shared among multiple tests.
-my $common_connstr;
+my $common_connstr =
+  "$default_ssl_connstr user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR host=common-name.pg-ssltest.test";
 
 #### Set up the server.
 
 note "setting up data directory";
 my $node = PostgreSQL::Test::Cluster->new('primary');
 $node->init;
+# Needed to allow connect_fails to inspect postmaster log:
+$node->append_conf('postgresql.conf', "log_min_messages = debug2");
 
 # PGHOST is enforced here to set up the node, subsequent connections
 # will use a dedicated connection string.
@@ -57,36 +79,101 @@ $node->start;
 my $result = $node->safe_psql('postgres', "SHOW ssl_library");
 is($result, $ssl_server->ssl_library(), 'ssl_library parameter');
 
+my $exec_backend = $node->safe_psql('postgres', 'SHOW debug_exec_backend');
+chomp($exec_backend);
+
 $ssl_server->configure_test_server_for_ssl($node, $SERVERHOSTADDR,
 	$SERVERHOSTCIDR, 'trust');
 
 note "testing password-protected keys";
 
+# Test a passphrase command which fails to unlock the private key, the server
+# should not start at all.
 switch_server_cert(
 	$node,
-	certfile       => 'server-cn-only',
-	cafile         => 'root+client_ca',
-	keyfile        => 'server-password',
+	certfile => 'server-cn-only',
+	cafile => 'root+client_ca',
+	keyfile => 'server-password',
 	passphrase_cmd => 'echo wrongpassword',
-	restart        => 'no');
+	restart => 'no');
 
-command_fails(
-	[ 'pg_ctl', '-D', $node->data_dir, '-l', $node->logfile, 'restart' ],
+$result = $node->restart(
+	fail_ok => 1,
+	log_like => qr/could not load private key file/);
+is($result, 0,
 	'restart fails with password-protected key file with wrong password');
-$node->_update_pid(0);
 
+# Test a passphrase command which successfully unlocks the private key but
+# which doesn't support reloading.  Unlocking the private key will fail when
+# reloading and the already existing SSL context will remain in place, with
+# connections still accepted.  EXEC_BACKEND builds will reload the SSL context
+# on each backend startup, so command reloading must be enabled or else
+# connections will fail.
 switch_server_cert(
 	$node,
-	certfile       => 'server-cn-only',
-	cafile         => 'root+client_ca',
-	keyfile        => 'server-password',
+	certfile => 'server-cn-only',
+	cafile => 'root+client_ca',
+	keyfile => 'server-password',
 	passphrase_cmd => 'echo secret1',
-	restart        => 'no');
+	passphrase_cmd_reload => 'off',
+	restart => 'no');
 
-command_ok(
-	[ 'pg_ctl', '-D', $node->data_dir, '-l', $node->logfile, 'restart' ],
-	'restart succeeds with password-protected key file');
-$node->_update_pid(1);
+$result = $node->restart(
+	fail_ok => 1,
+	log_unlike => qr/could not load private key file/);
+is($result, 1, 'restart succeeds with password-protected key file');
+
+if ($exec_backend =~ /on/)
+{
+	$node->connect_fails(
+		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
+		"connect with correct server CA cert file sslmode=require",
+		expected_stderr => qr/\Qserver does not support SSL\E/);
+}
+else
+{
+	$node->connect_ok(
+		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
+		"connect with correct server CA cert file sslmode=require");
+}
+
+# Reloading should fail since we cannot execute the passphrase command
+$node->reload();
+my $log_start = $node->wait_for_log(
+	qr/cannot be reloaded because it requires a passphrase/);
+
+# Test a passphrase command which successfully unlocks the private key, and
+# which can be reloaded.  The server should start and connections be accepted.
+switch_server_cert(
+	$node,
+	certfile => 'server-cn-only',
+	cafile => 'root+client_ca',
+	keyfile => 'server-password',
+	passphrase_cmd => 'echo secret1',
+	passphrase_cmd_reload => 'on',
+	restart => 'no');
+
+$result = $node->restart(
+	fail_ok => 1,
+	log_unlike => qr/could not load private key file/);
+is($result, 1, 'restart succeeds with password-protected key file');
+$node->connect_ok(
+	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
+	"connect with correct server CA cert file sslmode=require");
+
+# Reloading the config should execute the passphrase reload command and
+# successfully reload the private key.
+$node->reload();
+$log_start =
+  $node->wait_for_log(qr/reloading configuration files/, $log_start);
+$node->log_check(
+	"passphrase could reload private key",
+	$log_start,
+	log_unlike => [ qr/cannot be reloaded because it requires a passphrase/, ]
+);
+$node->connect_ok(
+	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
+	"connect with correct server CA cert file sslmode=require");
 
 # Test compatibility of SSL protocols.
 # TLSv1.1 is lower than TLSv1.2, so it won't work.
@@ -94,17 +181,28 @@ $node->append_conf(
 	'postgresql.conf',
 	qq{ssl_min_protocol_version='TLSv1.2'
 ssl_max_protocol_version='TLSv1.1'});
-command_fails(
-	[ 'pg_ctl', '-D', $node->data_dir, '-l', $node->logfile, 'restart' ],
-	'restart fails with incorrect SSL protocol bounds');
+$result = $node->restart(fail_ok => 1);
+is($result, 0, 'restart fails with incorrect SSL protocol bounds');
+
 # Go back to the defaults, this works.
 $node->append_conf(
 	'postgresql.conf',
 	qq{ssl_min_protocol_version='TLSv1.2'
 ssl_max_protocol_version=''});
-command_ok(
-	[ 'pg_ctl', '-D', $node->data_dir, '-l', $node->logfile, 'restart' ],
-	'restart succeeds with correct SSL protocol bounds');
+$result = $node->restart(fail_ok => 1);
+is($result, 1, 'restart succeeds with correct SSL protocol bounds');
+
+# Test parsing colon-separated groups. Resetting to a default value to clear
+# the error is fine since the call to switch_server_cert in the client side
+# tests will overwrite ssl_groups with a known set of groups.
+$node->append_conf('sslconfig.conf', qq{ssl_groups='bad:value'});
+my $log_size = -s $node->logfile;
+$result = $node->restart(fail_ok => 1);
+is($result, 0, 'restart fails with incorrect groups');
+ok($node->log_contains(qr/no SSL error reported/) == 0,
+	'error message translated');
+$node->append_conf('ssl_config.conf', qq{ssl_groups='prime256v1'});
+$result = $node->restart(fail_ok => 1);
 
 ### Run client-side tests.
 ###
@@ -116,14 +214,39 @@ note "running client tests";
 
 switch_server_cert($node, certfile => 'server-cn-only');
 
-# Set of default settings for SSL parameters in connection string.  This
-# makes the tests protected against any defaults the environment may have
-# in ~/.postgresql/.
-my $default_ssl_connstr =
-  "sslkey=invalid sslcert=invalid sslrootcert=invalid sslcrl=invalid sslcrldir=invalid";
+SKIP:
+{
+	skip "Keylogging is not supported with LibreSSL", 5 if $libressl;
 
-$common_connstr =
-  "$default_ssl_connstr user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR host=common-name.pg-ssltest.test";
+	my $tempdir = PostgreSQL::Test::Utils::tempdir;
+	my @status;
+
+	# Properly escape backslashes in the path
+	$tempdir =~ s/\\/\\\\/g;
+
+	# Connect should work with a given sslkeylogfile
+	$node->connect_ok(
+		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslkeylogfile=$tempdir/key.txt sslmode=require",
+		"connect with server root cert and sslkeylogfile=$tempdir/key.txt");
+
+	# Verify the key file exists
+	ok(-f "$tempdir/key.txt", "keylog file exists at: $tempdir/key.txt");
+
+	# Skip permission checks on Windows/Cygwin
+	skip "Permissions check not enforced on Windows", 2
+	  if ($windows_os || $Config::Config{osname} eq 'cygwin');
+
+	ok( (@status = stat("$tempdir/key.txt")),
+		"keylog file exists and returned status");
+	ok(@status && !($status[2] & 0006), "keylog file is not world readable");
+
+	# Connect should work with an incorrect sslkeylogfile, with the error to
+	# open the logfile printed to stderr
+	$node->connect_ok(
+		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslkeylogfile=$tempdir/invalid/key.txt sslmode=require",
+		"connect with server root cert and incorrect sslkeylogfile path",
+		expected_stderr => qr/could not open/);
+}
 
 # The server should not accept non-SSL connections.
 $node->connect_fails(
@@ -187,6 +310,22 @@ $node->connect_ok(
 	"$common_connstr sslrootcert=ssl/both-cas-2.crt sslmode=verify-ca",
 	"cert root file that contains two certificates, order 2");
 
+# sslcertmode=allow and disable should both work without a client certificate.
+$node->connect_ok(
+	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require sslcertmode=disable",
+	"connect with sslcertmode=disable");
+$node->connect_ok(
+	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require sslcertmode=allow",
+	"connect with sslcertmode=allow");
+
+# sslcertmode=require, however, should fail.
+$node->connect_fails(
+	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require sslcertmode=require",
+	"connect with sslcertmode=require fails without a client certificate",
+	expected_stderr => $supports_sslcertmode_require
+	? qr/server accepted connection without a valid SSL certificate/
+	: qr/sslcertmode value "require" is not supported/);
+
 # CRL tests
 
 # Invalid CRL filename is the same as no CRL, succeeds
@@ -241,11 +380,11 @@ switch_server_cert($node, certfile => 'server-ip-cn-only');
 $common_connstr =
   "$default_ssl_connstr user=ssltestuser dbname=trustdb sslrootcert=ssl/root+server_ca.crt hostaddr=$SERVERHOSTADDR sslmode=verify-full";
 
-$node->connect_ok("$common_connstr host=192.0.2.1",
+$node->connect_ok("$common_connstr host=192.0.2.1 sslsni=0",
 	"IP address in the Common Name");
 
 $node->connect_fails(
-	"$common_connstr host=192.000.002.001",
+	"$common_connstr host=192.000.002.001 sslsni=0",
 	"mismatch between host name and server certificate IP address",
 	expected_stderr =>
 	  qr/\Qserver certificate for "192.0.2.1" does not match host name "192.000.002.001"\E/
@@ -255,7 +394,7 @@ $node->connect_fails(
 # long-standing behavior.)
 switch_server_cert($node, certfile => 'server-ip-in-dnsname');
 
-$node->connect_ok("$common_connstr host=192.0.2.1",
+$node->connect_ok("$common_connstr host=192.0.2.1 sslsni=0",
 	"IP address in a dNSName");
 
 # Test Subject Alternative Names.
@@ -437,6 +576,50 @@ $node->connect_fails(
 	expected_stderr =>
 	  qr/could not get server's host name from server certificate/);
 
+# Test system trusted roots.
+switch_server_cert(
+	$node,
+	certfile => 'server-cn-only+server_ca',
+	keyfile => 'server-cn-only',
+	cafile => 'root_ca');
+$common_connstr =
+  "$default_ssl_connstr user=ssltestuser dbname=trustdb sslrootcert=system hostaddr=$SERVERHOSTADDR";
+
+# By default our custom-CA-signed certificate should not be trusted.
+# OpenSSL 3.0 reports a missing/invalid system CA as "unregistered schema"
+# instead of a failed certificate verification.
+$node->connect_fails(
+	"$common_connstr sslmode=verify-full host=common-name.pg-ssltest.test",
+	"sslrootcert=system does not connect with private CA",
+	expected_stderr =>
+	  qr/SSL error: (certificate verify failed|unregistered scheme)/);
+
+# Modes other than verify-full cannot be mixed with sslrootcert=system.
+$node->connect_fails(
+	"$common_connstr sslmode=verify-ca host=common-name.pg-ssltest.test",
+	"sslrootcert=system only accepts sslmode=verify-full",
+	expected_stderr =>
+	  qr/weak sslmode "verify-ca" may not be used with sslrootcert=system/);
+
+SKIP:
+{
+	skip "SSL_CERT_FILE is not supported with LibreSSL" if $libressl;
+
+	# We can modify the definition of "system" to get it trusted again.
+	local $ENV{SSL_CERT_FILE} = $node->data_dir . "/root_ca.crt";
+	$node->connect_ok(
+		"$common_connstr sslmode=verify-full host=common-name.pg-ssltest.test",
+		"sslrootcert=system connects with overridden SSL_CERT_FILE");
+
+	# verify-full mode should be the default for system CAs.
+	$node->connect_fails(
+		"$common_connstr host=common-name.pg-ssltest.test.bad",
+		"sslrootcert=system defaults to sslmode=verify-full",
+		expected_stderr =>
+		  qr/server certificate for "common-name.pg-ssltest.test" does not match host name "common-name.pg-ssltest.test.bad"/
+	);
+}
+
 # Test that the CRL works
 switch_server_cert($node, certfile => 'server-revoked');
 
@@ -461,12 +644,14 @@ $node->connect_fails(
 # pg_stat_ssl
 command_like(
 	[
-		'psql',                                '-X',
-		'-A',                                  '-F',
-		',',                                   '-P',
-		'null=_null_',                         '-d',
-		"$common_connstr sslrootcert=invalid", '-c',
-		"SELECT * FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
+		'psql',
+		'--no-psqlrc',
+		'--no-align',
+		'--field-separator' => ',',
+		'--pset', => 'null=_null_',
+		'--dbname' => "$common_connstr sslrootcert=invalid",
+		'--command' =>
+		  "SELECT * FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
 	],
 	qr{^pid,ssl,version,cipher,bits,client_dn,client_serial,issuer_dn\r?\n
 				^\d+,t,TLSv[\d.]+,[\w-]+,\d+,_null_,_null_,_null_\r?$}mx,
@@ -483,11 +668,11 @@ $node->connect_fails(
 $node->connect_fails(
 	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require ssl_min_protocol_version=incorrect_tls",
 	"connection failure with an incorrect SSL protocol minimum bound",
-	expected_stderr => qr/invalid ssl_min_protocol_version value/);
+	expected_stderr => qr/invalid "ssl_min_protocol_version" value/);
 $node->connect_fails(
 	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require ssl_max_protocol_version=incorrect_tls",
 	"connection failure with an incorrect SSL protocol maximum bound",
-	expected_stderr => qr/invalid ssl_max_protocol_version value/);
+	expected_stderr => qr/invalid "ssl_max_protocol_version" value/);
 
 ### Server-side tests.
 ###
@@ -533,6 +718,28 @@ $node->connect_ok(
 	  . " sslpassword='dUmmyP^#+'",
 	"certificate authorization succeeds with correct client cert in encrypted DER format"
 );
+
+# correct client cert with sslcertmode=allow or require
+if ($supports_sslcertmode_require)
+{
+	$node->connect_ok(
+		"$common_connstr user=ssltestuser sslcertmode=require sslcert=ssl/client.crt "
+		  . sslkey('client.key'),
+		"certificate authorization succeeds with correct client cert and sslcertmode=require"
+	);
+}
+$node->connect_ok(
+	"$common_connstr user=ssltestuser sslcertmode=allow sslcert=ssl/client.crt "
+	  . sslkey('client.key'),
+	"certificate authorization succeeds with correct client cert and sslcertmode=allow"
+);
+
+# client cert is not sent if sslcertmode=disable.
+$node->connect_fails(
+	"$common_connstr user=ssltestuser sslcertmode=disable sslcert=ssl/client.crt "
+	  . sslkey('client.key'),
+	"certificate authorization fails with correct client cert and sslcertmode=disable",
+	expected_stderr => qr/connection requires a valid client certificate/);
 
 # correct client cert in encrypted PEM with wrong password
 $node->connect_fails(
@@ -607,46 +814,42 @@ TODO:
 
 # pg_stat_ssl
 
-my $serialno = `openssl x509 -serial -noout -in ssl/client.crt`;
-if ($? == 0)
+# If the openssl program isn't available, or fails to run, fall back to a
+# generic integer match rather than skipping the test.
+my $serialno = '\d+';
+
+if ($ENV{OPENSSL} ne '')
 {
-	# OpenSSL prints serial numbers in hexadecimal and converting the serial
-	# from hex requires a 64-bit capable Perl as the serialnumber is based on
-	# the current timestamp. On 32-bit fall back to checking for it being an
-	# integer like how we do when grabbing the serial fails.
-	if ($Config{ivsize} == 8)
+	my $serialstr = `$ENV{OPENSSL} x509 -serial -noout -in ssl/client.crt`;
+	if ($? == 0)
 	{
-		$serialno =~ s/^serial=//;
-		$serialno =~ s/\s+//g;
-		$serialno = hex($serialno);
+		# OpenSSL prints serial numbers in hexadecimal and converting the serial
+		# from hex requires a 64-bit capable Perl as the serialnumber is based on
+		# the current timestamp. On 32-bit fall back to checking for it being an
+		# integer like how we do when grabbing the serial fails.
+		if ($Config{ivsize} == 8)
+		{
+			no warnings qw(portable);
+
+			$serialstr =~ s/^serial=//;
+			$serialstr =~ s/\s+//g;
+			$serialno = hex($serialstr);
+		}
 	}
-	else
-	{
-		$serialno = '\d+';
-	}
-}
-else
-{
-	# OpenSSL isn't functioning on the user's PATH. This probably isn't worth
-	# skipping the test over, so just fall back to a generic integer match.
-	warn 'couldn\'t run `openssl x509` to get client cert serialno';
-	$serialno = '\d+';
 }
 
 command_like(
 	[
 		'psql',
-		'-X',
-		'-A',
-		'-F',
-		',',
-		'-P',
-		'null=_null_',
-		'-d',
-		"$common_connstr user=ssltestuser sslcert=ssl/client.crt "
+		'--no-psqlrc',
+		'--no-align',
+		'--field-separator' => ',',
+		'--pset' => 'null=_null_',
+		'--dbname' =>
+		  "$common_connstr user=ssltestuser sslcert=ssl/client.crt "
 		  . sslkey('client.key'),
-		'-c',
-		"SELECT * FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
+		'--command' =>
+		  "SELECT * FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
 	],
 	qr{^pid,ssl,version,cipher,bits,client_dn,client_serial,issuer_dn\r?\n
 				^\d+,t,TLSv[\d.]+,[\w-]+,\d+,/?CN=ssltestuser,$serialno,/?\QCN=Test CA for PostgreSQL SSL regression test client certs\E\r?$}mx,
@@ -683,6 +886,10 @@ $node->connect_fails(
 	  . sslkey('client-revoked.key'),
 	"certificate authorization fails with revoked client cert",
 	expected_stderr => qr|SSL error: ssl[a-z0-9/]* alert certificate revoked|,
+	log_like => [
+		qr{Client certificate verification failed at depth 0: certificate revoked},
+		qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	],
 	# revoked certificates should not authenticate the user
 	log_unlike => [qr/connection authenticated:/],);
 
@@ -696,8 +903,8 @@ $node->connect_ok(
 	"$common_connstr user=ssltestuser sslcert=ssl/client.crt "
 	  . sslkey('client.key'),
 	"auth_option clientcert=verify-full succeeds with matching username and Common Name",
-	# verify-full does not provide authentication
-	log_unlike => [qr/connection authenticated:/],);
+	log_like =>
+	  [qr/connection authenticated: user="ssltestuser" method=trust/],);
 
 $node->connect_fails(
 	"$common_connstr user=anotheruser sslcert=ssl/client.crt "
@@ -714,35 +921,143 @@ $node->connect_ok(
 	"$common_connstr user=yetanotheruser sslcert=ssl/client.crt "
 	  . sslkey('client.key'),
 	"auth_option clientcert=verify-ca succeeds with mismatching username and Common Name",
-	# verify-full does not provide authentication
-	log_unlike => [qr/connection authenticated:/],);
+	log_like =>
+	  [qr/connection authenticated: user="yetanotheruser" method=trust/],);
 
 # intermediate client_ca.crt is provided by client, and isn't in server's ssl_ca_file
 switch_server_cert($node, certfile => 'server-cn-only', cafile => 'root_ca');
 $common_connstr =
-    "$default_ssl_connstr user=ssltestuser dbname=certdb "
+	"$default_ssl_connstr user=ssltestuser dbname=certdb "
   . sslkey('client.key')
   . " sslrootcert=ssl/root+server_ca.crt hostaddr=$SERVERHOSTADDR host=localhost";
 
 $node->connect_ok(
 	"$common_connstr sslmode=require sslcert=ssl/client+client_ca.crt",
 	"intermediate client certificate is provided by client");
+
 $node->connect_fails(
 	$common_connstr . " " . "sslmode=require sslcert=ssl/client.crt",
 	"intermediate client certificate is missing",
-	expected_stderr => qr/SSL error: tlsv1 alert unknown ca/);
+	expected_stderr => qr/SSL error: tlsv1 alert unknown ca/,
+	log_like => [
+		qr{Client certificate verification failed at depth 0: unable to get local issuer certificate},
+		qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
+
+$node->connect_fails(
+	"$common_connstr sslmode=require sslcert=ssl/client-long.crt "
+	  . sslkey('client-long.key'),
+	"logged client certificate Subjects are truncated if they're too long",
+	expected_stderr => qr/SSL error: tlsv1 alert unknown ca/,
+	log_like => [
+		qr{Client certificate verification failed at depth 0: unable to get local issuer certificate},
+		qr{Failed certificate data \(unverified\): subject "\.\.\./CN=ssl-123456789012345678901234567890123456789012345678901234567890", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
+
+# Use an invalid cafile here so that the next test won't be able to verify the
+# client CA.
+switch_server_cert(
+	$node,
+	certfile => 'server-cn-only',
+	cafile => 'server-cn-only');
+
+# intermediate CA is provided but doesn't have a trusted root (checks error
+# logging for cert chain depths > 0)
+$node->connect_fails(
+	"$common_connstr sslmode=require sslcert=ssl/client+client_ca.crt",
+	"intermediate client certificate is untrusted",
+	expected_stderr => qr/SSL error: tlsv1 alert unknown ca/,
+	log_like => [
+		qr{Client certificate verification failed at depth 1: unable to get local issuer certificate},
+		# As of 5/2025, LibreSSL reports a different cert as being at fault;
+		# it's wrong, but seems to be their bug not ours
+		!$libressl
+		? qr{Failed certificate data \(unverified\): subject "/CN=Test CA for PostgreSQL SSL regression test client certs", serial number \d+, issuer "/CN=Test root CA for PostgreSQL SSL regression test suite"}
+		: qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
 
 # test server-side CRL directory
 switch_server_cert(
 	$node,
 	certfile => 'server-cn-only',
-	crldir   => 'root+client-crldir');
+	crldir => 'root+client-crldir');
 
 # revoked client cert
 $node->connect_fails(
 	"$common_connstr user=ssltestuser sslcert=ssl/client-revoked.crt "
 	  . sslkey('client-revoked.key'),
 	"certificate authorization fails with revoked client cert with server-side CRL directory",
-	expected_stderr => qr|SSL error: ssl[a-z0-9/]* alert certificate revoked|);
+	expected_stderr => qr|SSL error: ssl[a-z0-9/]* alert certificate revoked|,
+	log_like => [
+		qr{Client certificate verification failed at depth 0: certificate revoked},
+		qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
+
+# revoked client cert, non-ASCII subject
+$node->connect_fails(
+	"$common_connstr user=ssltestuser sslcert=ssl/client-revoked-utf8.crt "
+	  . sslkey('client-revoked-utf8.key'),
+	"certificate authorization fails with revoked UTF-8 client cert with server-side CRL directory",
+	expected_stderr => qr|SSL error: ssl[a-z0-9/]* alert certificate revoked|,
+	log_like => [
+		qr{Client certificate verification failed at depth 0: certificate revoked},
+		qr{Failed certificate data \(unverified\): subject "/CN=\\xce\\x9f\\xce\\xb4\\xcf\\x85\\xcf\\x83\\xcf\\x83\\xce\\xad\\xce\\xb1\\xcf\\x82", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
+
+SKIP:
+{
+	skip "sslmode require not supported in this build", 4
+	  unless ($supports_sslcertmode_require);
+
+	# Test client CAs
+	my $connstr =
+	  "user=ssltestuser dbname=certdb hostaddr=$SERVERHOSTADDR sslmode=require sslsni=1";
+
+	switch_server_cert($node, certfile => 'server-cn-only', cafile => '');
+	# example.org is unconfigured and should fail.
+	$node->connect_fails(
+		"$connstr host=example.org sslcertmode=require sslcert=ssl/client.crt"
+		  . sslkey('client.key'),
+		"host: 'example.org', ca: '': connect with sslcert, no client CA configured",
+		expected_stderr =>
+		  qr/client certificates can only be checked if a root certificate store is available/
+	);
+
+	# example.com uses the client CA.
+	switch_server_cert(
+		$node,
+		certfile => 'server-cn-only',
+		cafile => 'root+client_ca');
+	# example.com is configured and should require a valid client cert.
+	$node->connect_fails(
+		"$connstr host=example.com sslcertmode=disable",
+		"host: 'example.com', ca: 'root+client_ca.crt': connect fails if no client certificate sent",
+		expected_stderr => qr/connection requires a valid client certificate/
+	);
+	$node->connect_ok(
+		"$connstr host=example.com sslcertmode=require sslcert=ssl/client.crt "
+		  . sslkey('client.key'),
+		"host: 'example.com', ca: 'root+client_ca.crt': connect with sslcert, client certificate sent"
+	);
+
+	# example.net uses the server CA (which is wrong).
+	switch_server_cert(
+		$node,
+		certfile => 'server-cn-only',
+		cafile => 'root+server_ca');
+	# example.net is configured and should require a client cert, but will
+	# always fail verification.
+	$node->connect_fails(
+		"$connstr host=example.net sslcertmode=disable",
+		"host: 'example.net', ca: 'root+server_ca.crt': connect fails if no client certificate sent",
+		expected_stderr => qr/connection requires a valid client certificate/
+	);
+
+	$node->connect_fails(
+		"$connstr host=example.net sslcertmode=require sslcert=ssl/client.crt "
+		  . sslkey('client.key'),
+		"host: 'example.net', ca: 'root+server_ca.crt': connect with sslcert, client certificate sent",
+		expected_stderr => qr/unknown ca/);
+}
 
 done_testing();

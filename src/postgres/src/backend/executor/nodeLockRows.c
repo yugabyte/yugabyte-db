@@ -3,7 +3,7 @@
  * nodeLockRows.c
  *	  Routines to handle FOR UPDATE/FOR SHARE row locking
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -121,7 +121,6 @@ lnext:
 				/* this child is inactive right now */
 				erm->ermActive = false;
 				ItemPointerSetInvalid(&(erm->curCtid));
-				ExecClearTuple(markSlot);
 				continue;
 			}
 		}
@@ -394,11 +393,20 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	foreach(lc, node->rowMarks)
 	{
 		PlanRowMark *rc = lfirst_node(PlanRowMark, lc);
+		RangeTblEntry *rte = exec_rt_fetch(rc->rti, estate);
 		ExecRowMark *erm;
 		ExecAuxRowMark *aerm;
 
 		/* ignore "parent" rowmarks; they are irrelevant at runtime */
 		if (rc->isParent)
+			continue;
+
+		/*
+		 * Also ignore rowmarks belonging to child tables that have been
+		 * pruned in ExecDoInitialPruning().
+		 */
+		if (rte->rtekind == RTE_RELATION &&
+			!bms_is_member(rc->rti, estate->es_unpruned_relids))
 			continue;
 
 		/* find ExecRowMark and build ExecAuxRowMark */
@@ -437,7 +445,7 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 
 	/* Now we have the info needed to set up EPQ state */
 	EvalPlanQualInit(&lrstate->lr_epqstate, estate,
-					 outerPlan, epq_arowmarks, node->epqParam);
+					 outerPlan, epq_arowmarks, node->epqParam, NIL);
 
 	return lrstate;
 }
@@ -461,12 +469,14 @@ ExecEndLockRows(LockRowsState *node)
 void
 ExecReScanLockRows(LockRowsState *node)
 {
+	PlanState  *outerPlan = outerPlanState(node);
+
 	/*
 	 * if chgParam of subnode is not null then plan will be re-scanned by
 	 * first ExecProcNode.
 	 */
-	if (node->ps.lefttree->chgParam == NULL)
-		ExecReScan(node->ps.lefttree);
+	if (outerPlan->chgParam == NULL)
+		ExecReScan(outerPlan);
 }
 
 /* ----------------------------------------------------------------

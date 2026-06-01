@@ -1,0 +1,121 @@
+#include <stdio.h>
+
+EXEC SQL INCLUDE sqlca;
+exec sql include ../regression;
+
+EXEC SQL WHENEVER SQLERROR sqlprint;
+
+int
+main(void)
+{
+EXEC SQL BEGIN DECLARE SECTION;
+  char json[1024];
+  bool is_json[8];
+EXEC SQL END DECLARE SECTION;
+
+  ECPGdebug (1, stderr);
+
+  EXEC SQL CONNECT TO REGRESSDB1;
+  EXEC SQL SET AUTOCOMMIT = ON;
+
+  EXEC SQL SELECT JSON_OBJECT(RETURNING text) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_OBJECT(RETURNING text FORMAT JSON) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_ARRAY(RETURNING jsonb) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_ARRAY(RETURNING jsonb FORMAT JSON) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_OBJECT(1: 1, '1': NULL WITH UNIQUE) INTO :json;
+  // error
+
+  EXEC SQL SELECT JSON_OBJECT(1: 1, '2': NULL, 1: '2' ABSENT ON NULL WITHOUT UNIQUE KEYS) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_OBJECT(1: 1, '2': NULL ABSENT ON NULL WITHOUT UNIQUE RETURNING jsonb) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON(NULL) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON('{ "a" : 1 } ' FORMAT JSON) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON('{ "a" : 1 } ' FORMAT JSON ENCODING UTF8) INTO :json;
+  // error
+
+  EXEC SQL SELECT JSON('   1   '::jsonb) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON('   1   '::json WITH UNIQUE KEYS) INTO json;
+  // error
+
+  EXEC SQL SELECT JSON('{"a": 1, "a": 2}') INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON('{"a": 1, "a": 2}' WITH UNIQUE KEYS) INTO :json;
+  // error
+
+  EXEC SQL SELECT JSON_SCALAR(NULL) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SCALAR(NULL::int) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SCALAR(123.45) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SCALAR(true) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SCALAR(' 123.45') INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SCALAR('2020-06-07 01:02:03'::timestamp) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SCALAR('{}'::jsonb) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SERIALIZE(NULL) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SERIALIZE(JSON('{ "a" : 1 } ')) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SERIALIZE('{ "a" : 1 } ') INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SERIALIZE('1' FORMAT JSON) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SERIALIZE('{ "a" : 1 } ' RETURNING varchar) INTO :json;
+  printf("Found json=%s\n", json);
+
+  EXEC SQL SELECT JSON_SERIALIZE('{ "a" : 1 } ' RETURNING jsonb);
+  // error
+
+  EXEC SQL WITH val (js) AS (VALUES ('{ "a": 1, "b": [{ "a": 1, "b": 0, "a": 2 }] }'))
+	  SELECT
+	  js IS JSON "IS JSON",
+	  js IS NOT JSON "IS NOT JSON",
+	  js IS JSON VALUE "IS VALUE",
+	  js IS JSON OBJECT "IS OBJECT",
+	  js IS JSON ARRAY "IS ARRAY",
+	  js IS JSON SCALAR "IS SCALAR",
+	  js IS JSON WITHOUT UNIQUE KEYS "WITHOUT UNIQUE",
+	  js IS JSON WITH UNIQUE KEYS "WITH UNIQUE"
+		  INTO :is_json[0], :is_json[1], :is_json[2], :is_json[3], :is_json[4],
+		  :is_json[5], :is_json[6], :is_json[7]
+		  FROM val;
+	  for (int i = 0; i < sizeof(is_json); i++)
+		  printf("Found is_json[%d]: %s\n", i, is_json[i] ? "true" : "false");
+
+  EXEC SQL DISCONNECT;
+
+  return 0;
+}

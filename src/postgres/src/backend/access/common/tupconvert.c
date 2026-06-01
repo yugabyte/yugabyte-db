@@ -7,7 +7,7 @@
  * equivalent but might have columns in a different order or different sets of
  * dropped columns.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,6 +18,7 @@
  */
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "access/tupconvert.h"
 #include "executor/tuptable.h"
 
@@ -78,17 +79,17 @@ convert_tuples_by_position(TupleDesc indesc,
 	}
 
 	/* Prepare the map structure */
-	map = (TupleConversionMap *) palloc(sizeof(TupleConversionMap));
+	map = palloc_object(TupleConversionMap);
 	map->indesc = indesc;
 	map->outdesc = outdesc;
 	map->attrMap = attrMap;
 	/* preallocate workspace for Datum arrays */
 	n = outdesc->natts + 1;		/* +1 for NULL */
-	map->outvalues = (Datum *) palloc(n * sizeof(Datum));
-	map->outisnull = (bool *) palloc(n * sizeof(bool));
+	map->outvalues = palloc_array(Datum, n);
+	map->outisnull = palloc_array(bool, n);
 	n = indesc->natts + 1;		/* +1 for NULL */
-	map->invalues = (Datum *) palloc(n * sizeof(Datum));
-	map->inisnull = (bool *) palloc(n * sizeof(bool));
+	map->invalues = palloc_array(Datum, n);
+	map->inisnull = palloc_array(bool, n);
 	map->invalues[0] = (Datum) 0;	/* set up the NULL entry */
 	map->inisnull[0] = true;
 
@@ -106,12 +107,10 @@ TupleConversionMap *
 convert_tuples_by_name(TupleDesc indesc,
 					   TupleDesc outdesc)
 {
-	TupleConversionMap *map;
 	AttrMap    *attrMap;
-	int			n = outdesc->natts;
 
 	/* Verify compatibility and prepare attribute-number map */
-	attrMap = build_attrmap_by_name_if_req(indesc, outdesc);
+	attrMap = build_attrmap_by_name_if_req(indesc, outdesc, false);
 
 	if (attrMap == NULL)
 	{
@@ -119,17 +118,34 @@ convert_tuples_by_name(TupleDesc indesc,
 		return NULL;
 	}
 
+	return convert_tuples_by_name_attrmap(indesc, outdesc, attrMap);
+}
+
+/*
+ * Set up tuple conversion for input and output TupleDescs using the given
+ * AttrMap.
+ */
+TupleConversionMap *
+convert_tuples_by_name_attrmap(TupleDesc indesc,
+							   TupleDesc outdesc,
+							   AttrMap *attrMap)
+{
+	int			n = outdesc->natts;
+	TupleConversionMap *map;
+
+	Assert(attrMap != NULL);
+
 	/* Prepare the map structure */
-	map = (TupleConversionMap *) palloc(sizeof(TupleConversionMap));
+	map = palloc_object(TupleConversionMap);
 	map->indesc = indesc;
 	map->outdesc = outdesc;
 	map->attrMap = attrMap;
 	/* preallocate workspace for Datum arrays */
-	map->outvalues = (Datum *) palloc(n * sizeof(Datum));
-	map->outisnull = (bool *) palloc(n * sizeof(bool));
+	map->outvalues = palloc_array(Datum, n);
+	map->outisnull = palloc_array(bool, n);
 	n = indesc->natts + 1;		/* +1 for NULL */
-	map->invalues = (Datum *) palloc(n * sizeof(Datum));
-	map->inisnull = (bool *) palloc(n * sizeof(bool));
+	map->invalues = palloc_array(Datum, n);
+	map->inisnull = palloc_array(bool, n);
 	map->invalues[0] = (Datum) 0;	/* set up the NULL entry */
 	map->inisnull[0] = true;
 
@@ -241,7 +257,7 @@ execute_attr_map_slot(AttrMap *attrMap,
  * FirstLowInvalidHeapAttributeNumber.
  */
 Bitmapset *
-execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols, Relation rel)
+execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols, Relation yb_rel)
 {
 	Bitmapset  *out_cols;
 	int			out_attnum;
@@ -255,7 +271,7 @@ execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols, Relation rel)
 	 */
 	out_cols = NULL;
 
-	for (out_attnum = YBGetFirstLowInvalidAttributeNumber(rel) + 1;
+	for (out_attnum = YBGetFirstLowInvalidAttributeNumber(yb_rel) + 1;
 		 out_attnum <= attrMap->maplen;
 		 out_attnum++)
 	{
@@ -277,9 +293,9 @@ execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols, Relation rel)
 				continue;
 		}
 
-		if (bms_is_member(in_attnum - YBGetFirstLowInvalidAttributeNumber(rel), in_cols))
+		if (bms_is_member(in_attnum - YBGetFirstLowInvalidAttributeNumber(yb_rel), in_cols))
 			out_cols = bms_add_member(out_cols,
-									  out_attnum - YBGetFirstLowInvalidAttributeNumber(rel));
+									  out_attnum - YBGetFirstLowInvalidAttributeNumber(yb_rel));
 	}
 
 	return out_cols;

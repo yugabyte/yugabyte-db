@@ -18,6 +18,9 @@ SET synchronous_commit = on;
 -- and most of the core regression tests still expect that.
 --
 GRANT ALL ON SCHEMA public TO public;
+-- Create a tablespace we can use in tests.
+SET allow_in_place_tablespaces = true;
+CREATE TABLESPACE regress_tblspace LOCATION '';
 --
 -- These tables have traditionally been referenced by many tests,
 -- so create and populate them.  Insert only non-error values here.
@@ -202,14 +205,6 @@ CREATE FUNCTION binary_coercible(oid, oid)
     RETURNS bool
     AS :'regresslib', 'binary_coercible'
     LANGUAGE C STRICT STABLE PARALLEL SAFE;
-CREATE FUNCTION ttdummy ()
-    RETURNS trigger
-    AS :'regresslib'
-    LANGUAGE C;
-CREATE FUNCTION get_columns_length(oid[])
-    RETURNS int
-    AS :'regresslib'
-    LANGUAGE C STRICT STABLE PARALLEL SAFE;
 -- Use hand-rolled hash functions and operator classes to get predictable
 -- result on different machines.  The hash function for int4 simply returns
 -- the sum of the values passed to it and the one for text returns the length
@@ -228,3 +223,15 @@ create function part_hashtext_length(value text, seed int8)
 create operator class part_test_text_ops for type text using hash as
     operator 1 =,
     function 2 part_hashtext_length(text, int8);
+--
+-- These functions are used in tests that used to use md5(), which we now
+-- mostly avoid so that the tests will pass in FIPS mode.
+--
+create function fipshash(bytea)
+    returns text
+    strict immutable parallel safe leakproof
+    return substr(encode(sha256($1), 'hex'), 1, 32);
+create function fipshash(text)
+    returns text
+    strict immutable parallel safe leakproof
+    return substr(encode(sha256($1::bytea), 'hex'), 1, 32);

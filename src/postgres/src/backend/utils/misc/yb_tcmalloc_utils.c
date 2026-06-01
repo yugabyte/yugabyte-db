@@ -117,9 +117,6 @@ yb_backend_heap_snapshot_internal(bool peak_heap, FunctionCallInfo fcinfo)
 	}
 
 	pfree(snapshot);
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 }
 
 Datum
@@ -216,7 +213,7 @@ yb_log_backend_heap_snapshot_internal(int pid, bool peak_heap)
 
 	ProcSignalReason reason = peak_heap ? PROCSIG_LOG_HEAP_SNAPSHOT_PEAK : PROCSIG_LOG_HEAP_SNAPSHOT;
 
-	if (SendProcSignal(pid, reason, proc->backendId) < 0)
+	if (SendProcSignal(pid, reason, proc->vxid.procNumber) < 0)
 	{
 		ereport(WARNING, (errmsg("could not send signal to process %d: %m", pid)));
 		return false;

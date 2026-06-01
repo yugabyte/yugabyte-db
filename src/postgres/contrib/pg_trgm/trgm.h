@@ -15,7 +15,6 @@
  */
 #define LPADDING		2
 #define RPADDING		1
-#define KEEPONLYALNUM
 /*
  * Caution: IGNORECASE macro means that trigrams are case-insensitive.
  * If this macro is disabled, the ~* and ~~* operators must be removed from
@@ -41,23 +40,15 @@
 
 typedef char trgm[3];
 
-#define CMPCHAR(a,b) ( ((a)==(b)) ? 0 : ( ((a)<(b)) ? -1 : 1 ) )
-#define CMPPCHAR(a,b,i)  CMPCHAR( *(((const char*)(a))+i), *(((const char*)(b))+i) )
-#define CMPTRGM(a,b) ( CMPPCHAR(a,b,0) ? CMPPCHAR(a,b,0) : ( CMPPCHAR(a,b,1) ? CMPPCHAR(a,b,1) : CMPPCHAR(a,b,2) ) )
-
 #define CPTRGM(a,b) do {				\
 	*(((char*)(a))+0) = *(((char*)(b))+0);	\
 	*(((char*)(a))+1) = *(((char*)(b))+1);	\
 	*(((char*)(a))+2) = *(((char*)(b))+2);	\
 } while(0)
+extern int	(*CMPTRGM) (const void *a, const void *b);
 
-#ifdef KEEPONLYALNUM
-#define ISWORDCHR(c)	(t_isalpha(c) || t_isdigit(c))
+#define ISWORDCHR(c, len)	(t_isalnum_with_len(c, len))
 #define ISPRINTABLECHAR(a)	( isascii( *(unsigned char*)(a) ) && (isalnum( *(unsigned char*)(a) ) || *(unsigned char*)(a)==' ') )
-#else
-#define ISWORDCHR(c)	(!t_isspace(c))
-#define ISPRINTABLECHAR(a)	( isascii( *(unsigned char*)(a) ) && isprint( *(unsigned char*)(a) ) )
-#endif
 #define ISPRINTABLETRGM(t)	( ISPRINTABLECHAR( ((char*)(t)) ) && ISPRINTABLECHAR( ((char*)(t))+1 ) && ISPRINTABLECHAR( ((char*)(t))+2 ) )
 
 #define ISESCAPECHAR(x) (*(x) == '\\')	/* Wildcard escape character */

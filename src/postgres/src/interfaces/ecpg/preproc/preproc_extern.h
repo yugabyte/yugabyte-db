@@ -13,7 +13,13 @@
 /* defines */
 
 #define STRUCT_DEPTH 128
-#define EMPTY mm_strdup("")
+
+/*
+ * "Location tracking" support --- see ecpg.header for more comments.
+ */
+typedef const char *YYLTYPE;
+
+#define YYLTYPE_IS_DECLARED 1
 
 /* variables */
 
@@ -65,41 +71,57 @@ extern const uint16 SQLScanKeywordTokens[];
 extern const char *get_dtype(enum ECPGdtype);
 extern void lex_init(void);
 extern void output_line_number(void);
-extern void output_statement(char *, int, enum ECPG_statement_type);
-extern void output_prepare_statement(char *, char *);
-extern void output_deallocate_prepare_statement(char *);
-extern void output_simple_statement(char *, int);
+extern void output_statement(const char *stmt, int whenever_mode, enum ECPG_statement_type st);
+extern void output_prepare_statement(const char *name, const char *stmt);
+extern void output_deallocate_prepare_statement(const char *name);
+extern void output_simple_statement(const char *stmt, int whenever_mode);
 extern char *hashline_number(void);
 extern int	base_yyparse(void);
 extern int	base_yylex(void);
-extern void base_yyerror(const char *);
-extern void *mm_alloc(size_t);
-extern char *mm_strdup(const char *);
-extern void mmerror(int errorcode, enum errortype type, const char *error,...) pg_attribute_printf(3, 4);
-extern void mmfatal(int errorcode, const char *error,...) pg_attribute_printf(2, 3) pg_attribute_noreturn();
-extern void output_get_descr_header(char *);
-extern void output_get_descr(char *, char *);
-extern void output_set_descr_header(char *);
-extern void output_set_descr(char *, char *);
-extern void push_assignment(char *, enum ECPGdtype);
-extern struct variable *find_variable(char *);
-extern void whenever_action(int);
-extern void add_descriptor(char *, char *);
-extern void drop_descriptor(char *, char *);
-extern struct descriptor *lookup_descriptor(char *, char *);
+extern void base_yyerror(const char *error);
+extern void *mm_alloc(size_t size);
+extern char *mm_strdup(const char *string);
+extern void *loc_alloc(size_t size);
+extern char *loc_strdup(const char *string);
+extern void reclaim_local_storage(void);
+extern char *cat2_str(const char *str1, const char *str2);
+extern char *cat_str(int count,...);
+extern char *make2_str(const char *str1, const char *str2);
+extern char *make3_str(const char *str1, const char *str2, const char *str3);
+extern void mmerror(int error_code, enum errortype type, const char *error,...) pg_attribute_printf(3, 4);
+pg_noreturn extern void mmfatal(int error_code, const char *error,...) pg_attribute_printf(2, 3);
+extern void output_get_descr_header(const char *desc_name);
+extern void output_get_descr(const char *desc_name, const char *index);
+extern void output_set_descr_header(const char *desc_name);
+extern void output_set_descr(const char *desc_name, const char *index);
+extern void push_assignment(const char *var, enum ECPGdtype value);
+extern struct variable *find_variable(const char *name);
+extern void whenever_action(int mode);
+extern void add_descriptor(const char *name, const char *connection);
+extern void drop_descriptor(const char *name, const char *connection);
+extern struct descriptor *lookup_descriptor(const char *name, const char *connection);
 extern struct variable *descriptor_variable(const char *name, int input);
 extern struct variable *sqlda_variable(const char *name);
-extern void add_variable_to_head(struct arguments **, struct variable *, struct variable *);
-extern void add_variable_to_tail(struct arguments **, struct variable *, struct variable *);
+extern void add_variable_to_head(struct arguments **list,
+								 struct variable *var,
+								 struct variable *ind);
+extern void add_variable_to_tail(struct arguments **list,
+								 struct variable *var,
+								 struct variable *ind);
 extern void remove_variable_from_list(struct arguments **list, struct variable *var);
-extern void dump_variables(struct arguments *, int);
-extern struct typedefs *get_typedef(char *);
-extern void adjust_array(enum ECPGttype, char **, char **, char *, char *, int, bool);
+extern void dump_variables(struct arguments *list, int mode);
+extern struct typedefs *get_typedef(const char *name, bool noerror);
+extern void adjust_array(enum ECPGttype type_enum, const char **dimension,
+						 const char **length, const char *type_dimension,
+						 const char *type_index, int pointer_len,
+						 bool type_definition);
 extern void reset_variables(void);
-extern void check_indicator(struct ECPGtype *);
-extern void remove_typedefs(int);
-extern void remove_variables(int);
-extern struct variable *new_variable(const char *, struct ECPGtype *, int);
+extern void check_indicator(struct ECPGtype *var);
+extern void remove_typedefs(int brace_level);
+extern void remove_variables(int brace_level);
+extern struct variable *new_variable(const char *name,
+									 struct ECPGtype *type,
+									 int brace_level);
 extern int	ScanCKeywordLookup(const char *text);
 extern int	ScanECPGKeywordLookup(const char *text);
 extern void parser_init(void);

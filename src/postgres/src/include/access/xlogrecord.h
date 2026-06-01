@@ -3,7 +3,7 @@
  *
  * Definitions for the WAL record format.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xlogrecord.h
@@ -15,7 +15,7 @@
 #include "access/xlogdefs.h"
 #include "port/pg_crc32c.h"
 #include "storage/block.h"
-#include "storage/relfilenode.h"
+#include "storage/relfilelocator.h"
 
 /*
  * The overall layout of an XLOG record is:
@@ -63,6 +63,17 @@ typedef struct XLogRecord
 #define XLR_RMGR_INFO_MASK		0xF0
 
 /*
+ * XLogReader needs to allocate all the data of a WAL record in a single
+ * chunk.  This means that a single XLogRecord cannot exceed MaxAllocSize
+ * in length if we ignore any allocation overhead of the XLogReader.
+ *
+ * To accommodate some overhead, this value allows for 4M of allocation
+ * overhead, that should be plenty enough for what the XLogReader
+ * infrastructure expects as extra.
+ */
+#define XLogRecordMaxSize	(1020 * 1024 * 1024)
+
+/*
  * If a WAL record modifies any relation files, in ways not covered by the
  * usual block references, this flag is set. This is not used for anything
  * by PostgreSQL itself, but it allows external tools that read WAL and keep
@@ -97,7 +108,7 @@ typedef struct XLogRecordBlockHeader
 								 * image) */
 
 	/* If BKPBLOCK_HAS_IMAGE, an XLogRecordBlockImageHeader struct follows */
-	/* If BKPBLOCK_SAME_REL is not set, a RelFileNode follows */
+	/* If BKPBLOCK_SAME_REL is not set, a RelFileLocator follows */
 	/* BlockNumber follows */
 } XLogRecordBlockHeader;
 
@@ -175,7 +186,7 @@ typedef struct XLogRecordBlockCompressHeader
 	(SizeOfXLogRecordBlockHeader + \
 	 SizeOfXLogRecordBlockImageHeader + \
 	 SizeOfXLogRecordBlockCompressHeader + \
-	 sizeof(RelFileNode) + \
+	 sizeof(RelFileLocator) + \
 	 sizeof(BlockNumber))
 
 /*
@@ -187,7 +198,8 @@ typedef struct XLogRecordBlockCompressHeader
 #define BKPBLOCK_HAS_IMAGE	0x10	/* block data is an XLogRecordBlockImage */
 #define BKPBLOCK_HAS_DATA	0x20
 #define BKPBLOCK_WILL_INIT	0x40	/* redo will re-init the page */
-#define BKPBLOCK_SAME_REL	0x80	/* RelFileNode omitted, same as previous */
+#define BKPBLOCK_SAME_REL	0x80	/* RelFileLocator omitted, same as
+									 * previous */
 
 /*
  * XLogRecordDataHeaderShort/Long are used for the "main data" portion of

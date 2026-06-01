@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Logging framework for frontend programs
  *
- * Copyright (c) 2018-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2018-2026, PostgreSQL Global Development Group
  *
  * src/include/common/logging.h
  *
@@ -154,5 +154,12 @@ void		yb_set_should_log_filename(bool log_filename);
 		pg_log_generic(PG_LOG_ERROR, PG_LOG_PRIMARY, __VA_ARGS__); \
 		exit(1); \
 	} while(0)
+
+/*
+ * Use these variants for "can't happen" cases, if it seems translating their
+ * messages would be a waste of effort.
+ */
+#define pg_log_error_internal(...) pg_log_error(__VA_ARGS__)
+#define pg_fatal_internal(...) pg_fatal(__VA_ARGS__)
 
 #endif							/* COMMON_LOGGING_H */

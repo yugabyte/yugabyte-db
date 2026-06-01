@@ -40,8 +40,9 @@ CATALOG(pg_yb_profile,8051,YbProfileRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_
  */
 typedef FormData_pg_yb_profile *Form_pg_yb_profile;
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_yb_profile_oid_index, 8052, YbProfileOidIndexId, on pg_yb_profile using btree(oid oid_ops));
-DECLARE_UNIQUE_INDEX(pg_yb_profile_prfname_index, 8057, YbProfileRolnameIndexId, on pg_yb_profile using btree(prfname name_ops));
+/* YB_TODO_PG19MERGE collision with PG; changed from 8052 to 9811 */
+DECLARE_UNIQUE_INDEX_PKEY(pg_yb_profile_oid_index, 9811, YbProfileOidIndexId, pg_yb_profile, btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_yb_profile_prfname_index, 8057, YbProfileRolnameIndexId, pg_yb_profile, btree(prfname name_ops));
 
 
 #endif							/* PG_YB_PROFILE_H */

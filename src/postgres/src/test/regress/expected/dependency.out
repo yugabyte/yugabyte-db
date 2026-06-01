@@ -19,7 +19,7 @@ DETAIL:  privileges for table deptest
 REVOKE SELECT ON deptest FROM GROUP regress_dep_group;
 DROP GROUP regress_dep_group;
 -- can't drop the user if we revoke the privileges partially
-REVOKE SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES ON deptest FROM regress_dep_user;
+REVOKE SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, MAINTAIN ON deptest FROM regress_dep_user;
 DROP USER regress_dep_user;
 ERROR:  role "regress_dep_user" cannot be dropped because some objects depend on it
 DETAIL:  privileges for table deptest
@@ -48,12 +48,16 @@ SET SESSION AUTHORIZATION regress_dep_user0;
 -- permission denied
 DROP OWNED BY regress_dep_user1;
 ERROR:  permission denied to drop objects
+DETAIL:  Only roles with privileges of role "regress_dep_user1" may drop objects owned by it.
 DROP OWNED BY regress_dep_user0, regress_dep_user2;
 ERROR:  permission denied to drop objects
+DETAIL:  Only roles with privileges of role "regress_dep_user2" may drop objects owned by it.
 REASSIGN OWNED BY regress_dep_user0 TO regress_dep_user1;
 ERROR:  permission denied to reassign objects
+DETAIL:  Only roles with privileges of role "regress_dep_user1" may reassign objects to it.
 REASSIGN OWNED BY regress_dep_user1 TO regress_dep_user0;
 ERROR:  permission denied to reassign objects
+DETAIL:  Only roles with privileges of role "regress_dep_user1" may reassign objects owned by it.
 -- this one is allowed
 DROP OWNED BY regress_dep_user0;
 CREATE TABLE deptest1 (f1 int unique);
@@ -63,21 +67,21 @@ CREATE TABLE deptest (a serial primary key, b text);
 GRANT ALL ON deptest1 TO regress_dep_user2;
 RESET SESSION AUTHORIZATION;
 \z deptest1
-                                               Access privileges
- Schema |   Name   | Type  |                 Access privileges                  | Column privileges | Policies 
---------+----------+-------+----------------------------------------------------+-------------------+----------
- public | deptest1 | table | regress_dep_user0=arwdDxt/regress_dep_user0       +|                   | 
-        |          |       | regress_dep_user1=a*r*w*d*D*x*t*/regress_dep_user0+|                   | 
-        |          |       | regress_dep_user2=arwdDxt/regress_dep_user1        |                   | 
+                                                Access privileges
+ Schema |   Name   | Type  |                  Access privileges                   | Column privileges | Policies 
+--------+----------+-------+------------------------------------------------------+-------------------+----------
+ public | deptest1 | table | regress_dep_user0=arwdDxtm/regress_dep_user0        +|                   | 
+        |          |       | regress_dep_user1=a*r*w*d*D*x*t*m*/regress_dep_user0+|                   | 
+        |          |       | regress_dep_user2=arwdDxtm/regress_dep_user1         |                   | 
 (1 row)
 
 DROP OWNED BY regress_dep_user1;
 -- all grants revoked
 \z deptest1
-                                           Access privileges
- Schema |   Name   | Type  |              Access privileges              | Column privileges | Policies 
---------+----------+-------+---------------------------------------------+-------------------+----------
- public | deptest1 | table | regress_dep_user0=arwdDxt/regress_dep_user0 |                   | 
+                                            Access privileges
+ Schema |   Name   | Type  |              Access privileges               | Column privileges | Policies 
+--------+----------+-------+----------------------------------------------+-------------------+----------
+ public | deptest1 | table | regress_dep_user0=arwdDxtm/regress_dep_user0 |                   | 
 (1 row)
 
 -- table was dropped
@@ -112,7 +116,7 @@ FROM pg_type JOIN pg_class c ON typrelid = c.oid WHERE typname = 'deptest_t';
 RESET SESSION AUTHORIZATION;
 REASSIGN OWNED BY regress_dep_user1 TO regress_dep_user2;
 \dt deptest
-              List of relations
+                List of tables
  Schema |  Name   | Type  |       Owner       
 --------+---------+-------+-------------------
  public | deptest | table | regress_dep_user2
@@ -140,7 +144,6 @@ owner of sequence deptest_a_seq
 owner of table deptest
 owner of function deptest_func()
 owner of type deptest_enum
-owner of type deptest_multirange
 owner of type deptest_range
 owner of table deptest2
 owner of sequence ss1

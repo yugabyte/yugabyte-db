@@ -337,6 +337,17 @@ GetForeignJoinPaths(PlannerInfo *root,
     </para>
 
     <para>
+     Note also that the set of join clauses to apply to the join,
+     which is passed as <literal>extra-&gt;restrictlist</literal>, varies
+     depending on the combination of inner and outer relations.  A
+     <structname>ForeignPath</structname> path generated for the
+     <literal>joinrel</literal> must contain the set of join clauses it uses,
+     which will be used by the planner to convert the
+     <structname>ForeignPath</structname> path into a plan, if it is selected
+     by the planner as the best path for the <literal>joinrel</literal>.
+    </para>
+
+    <para>
      If a <structname>ForeignPath</structname> path is chosen for the join, it will
      represent the entire join process; paths generated for the component
      tables and subsidiary joins will not be used.  Subsequent processing of
@@ -353,6 +364,17 @@ GetForeignJoinPaths(PlannerInfo *root,
      of <structfield>TargetEntry</structfield> nodes, representing the set of columns
      it will supply at run time in the tuples it returns.
     </para>
+
+    <note>
+     <para>
+      Beginning with <productname>PostgreSQL</productname> 16,
+      <structfield>fs_relids</structfield> includes the rangetable indexes
+      of outer joins, if any were involved in this join.  The new field
+      <structfield>fs_base_relids</structfield> includes only base
+      relation indexes, and thus
+      mimics <structfield>fs_relids</structfield>'s old semantics.
+     </para>
+    </note>
 
     <para>
      See <xref linkend="fdw-planning"/> for additional information.
@@ -668,7 +690,9 @@ ExecForeignBatchInsert(EState *estate,
 
     <para>
      Note that this function is also called when inserting routed tuples into
-     a foreign-table partition.  See the callback functions
+     a foreign-table partition or executing <command>COPY FROM</command> on
+     a foreign table, in which case it is called in a different way than it
+     is in the <command>INSERT</command> case.  See the callback functions
      described below that allow the FDW to support that.
     </para>
 
@@ -1296,7 +1320,7 @@ ExplainForeignModify(ModifyTableState *mtstate,
                      ResultRelInfo *rinfo,
                      List *fdw_private,
                      int subplan_index,
-                     struct ExplainState *es);
+                     ExplainState *es);
 </programlisting>
 
      Print additional <command>EXPLAIN</command> output for a foreign table update.
@@ -1383,6 +1407,45 @@ AcquireSampleRowsFunc(Relation relation,
      the table into the output parameters <parameter>totalrows</parameter> and
      <parameter>totaldeadrows</parameter>.  (Set <parameter>totaldeadrows</parameter> to zero
      if the FDW does not have any concept of dead rows.)
+    </para>
+
+    <para>
+<programlisting>
+bool
+ImportForeignStatistics(Relation relation,
+                        List *va_cols,
+                        int elevel);
+</programlisting>
+
+     This function is called before the <function>AnalyzeForeignTable</function>
+     callback function when <xref linkend="sql-analyze"/> is executed on a
+     foreign table, and is used to import remotely-calculated statistics (both
+     table-level and column-level) for the foreign table directly to the local
+     server.
+     <literal>relation</literal> is the <structname>Relation</structname> struct
+     describing the target foreign table.  <literal>va_cols</literal>, if not
+     NIL, contains the columns specified in the <command>ANALYZE</command>
+     command.  <literal>elevel</literal> contains a flag indicating a logging
+     level to use.
+     If the function imports the statistics successfully, it should return
+     <literal>true</literal>.  Otherwise, return <literal>false</literal>, in
+     which case <function>AnalyzeForeignTable</function> callback function is
+     called on the foreign table to collect statistics locally, if supported.
+    </para>
+
+    <para>
+     For reference, the logic for calculating statistics in
+     <productname>PostgreSQL</productname> is found in
+     <filename>src/backend/command/analyze.c</filename>.
+     It's recommended to import table-level and column-level statistics for the
+     foreign table using <function>pg_restore_relation_stats</function> and
+     <function>pg_restore_attribute_stats</function>, respectively.
+    </para>
+
+    <para>
+     If the FDW does not support importing remotely-calculated statistics for
+     any tables, the <function>ImportForeignStatistics</function> pointer can be
+     set to <literal>NULL</literal>.
     </para>
 
    </sect2>
@@ -1678,7 +1741,7 @@ ReparameterizeForeignPathByChild(PlannerInfo *root, List *fdw_private,
     <para>
 <programlisting>
 ForeignDataWrapper *
-GetForeignDataWrapperExtended(Oid fdwid, bits16 flags);
+GetForeignDataWrapperExtended(Oid fdwid, uint16 flags);
 </programlisting>
 
      This function returns a <structname>ForeignDataWrapper</structname>
@@ -1707,7 +1770,7 @@ GetForeignDataWrapper(Oid fdwid);
     <para>
 <programlisting>
 ForeignServer *
-GetForeignServerExtended(Oid serverid, bits16 flags);
+GetForeignServerExtended(Oid serverid, uint16 flags);
 </programlisting>
 
      This function returns a <structname>ForeignServer</structname> object
@@ -2021,7 +2084,7 @@ GetForeignServerByName(const char *name, bool missing_ok);
      <command>INSERT</command> with an <literal>ON CONFLICT</literal> clause does not
      support specifying the conflict target, as unique constraints or
      exclusion constraints on remote tables are not locally known. This
-     in turn implies that <literal>ON CONFLICT DO UPDATE</literal> is not supported,
+     in turn implies that <literal>ON CONFLICT DO SELECT/UPDATE</literal> is not supported,
      since the specification is mandatory there.
     </para>
 

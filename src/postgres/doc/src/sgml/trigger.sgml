@@ -129,32 +129,25 @@
     In all cases, a trigger is executed as part of the same transaction as
     the statement that triggered it, so if either the statement or the
     trigger causes an error, the effects of both will be rolled back.
-   </para>
-
-   <para>
-    A statement that targets a parent table in an inheritance or partitioning
-    hierarchy does not cause the statement-level triggers of affected child
-    tables to be fired; only the parent table's statement-level triggers are
-    fired.  However, row-level triggers of any affected child tables will be
-    fired.
+    Also, the trigger will always run as the role that queued the trigger
+    event, unless the trigger function is marked as <literal>SECURITY
+    DEFINER</literal>, in which case it will run as the function owner.
    </para>
 
    <para>
     If an <command>INSERT</command> contains an <literal>ON CONFLICT
-    DO UPDATE</literal> clause, it is possible that the effects of
-    row-level <literal>BEFORE</literal> <command>INSERT</command> triggers and
-    row-level <literal>BEFORE</literal> <command>UPDATE</command> triggers can
-    both be applied in a way that is apparent from the final state of
-    the updated row, if an <varname>EXCLUDED</varname> column is referenced.
-    There need not be an <varname>EXCLUDED</varname> column reference for
-    both sets of row-level <literal>BEFORE</literal> triggers to execute,
-    though.  The
-    possibility of surprising outcomes should be considered when there
-    are both <literal>BEFORE</literal> <command>INSERT</command> and
-    <literal>BEFORE</literal> <command>UPDATE</command> row-level triggers
-    that change a row being inserted/updated (this can be
-    problematic even if the modifications are more or less equivalent, if
-    they're not also idempotent).  Note that statement-level
+    DO UPDATE</literal> clause, it is possible for row-level
+    <literal>BEFORE</literal> <command>INSERT</command> and then
+    <literal>BEFORE</literal> <command>UPDATE</command> triggers
+    to be executed on triggered rows.  Such interactions can be
+    complex if the triggers are not idempotent because change made by
+    <literal>BEFORE</literal> <command>INSERT</command> triggers will be
+    seen by <literal>BEFORE</literal> <command>UPDATE</command> triggers,
+    including changes to <varname>EXCLUDED</varname> columns.
+   </para>
+
+   <para>
+    Note that statement-level
     <command>UPDATE</command> triggers are executed when <literal>ON
     CONFLICT DO UPDATE</literal> is specified, regardless of whether or not
     any rows were affected by the <command>UPDATE</command> (and
@@ -167,6 +160,14 @@
     <literal>AFTER</literal> <command>UPDATE</command> triggers and finally
     statement-level <literal>AFTER</literal> <command>INSERT</command>
     triggers.
+   </para>
+
+   <para>
+    A statement that targets a parent table in an inheritance or partitioning
+    hierarchy does not cause the statement-level triggers of affected child
+    tables to be fired; only the parent table's statement-level triggers are
+    fired.  However, row-level triggers of any affected child tables will be
+    fired.
    </para>
 
    <para>
@@ -212,6 +213,18 @@
     inserted or deleted. So it's perfectly legal that while statement-level
     triggers are fired for certain types of action, no row-level triggers
     are fired for the same kind of action.
+   </para>
+
+   <para>
+    If an <command>UPDATE</command> or <command>DELETE</command> uses
+    <literal>FOR PORTION OF</literal>, causing new rows to be inserted
+    to preserve the leftover untargeted part of modified records, then
+    <command>INSERT</command> triggers are fired for each inserted
+    row. Each row is inserted separately, so they fire their own
+    statement triggers, and they have their own transition tables.
+    (The <literal>BEFORE DELETE/UPDATE</literal> triggers are fired first,
+    then <literal>BEFORE INSERT</literal>, then <literal>AFTER
+    INSERT</literal>, then <literal>AFTER DELETE/UPDATE</literal>.)
    </para>
 
    <para>
@@ -291,6 +304,10 @@
     <literal>BEFORE</literal> trigger.  Changes to the value of a generated
     column in a <literal>BEFORE</literal> trigger are ignored and will be
     overwritten.
+    Virtual generated columns are never computed when triggers fire.  In the C
+    language interface, their content is undefined in a trigger function.
+    Higher-level programming languages should prevent access to virtual
+    generated columns in triggers.
    </para>
 
    <para>
@@ -354,6 +371,18 @@
     into the same table, causing the <command>INSERT</command> trigger
     to be fired again.  It is the trigger programmer's responsibility
     to avoid infinite recursion in such scenarios.
+   </para>
+
+   <para>
+    If a foreign key constraint specifies referential actions (that
+    is, cascading updates or deletes), those actions are performed via
+    ordinary SQL <command>UPDATE</command> or <command>DELETE</command>
+    commands on the referencing table.
+    In particular, any triggers that exist on the referencing table
+    will be fired for those changes.  If such a trigger modifies or
+    blocks the effect of one of these commands, the end result could
+    be to break referential integrity.  It is the trigger programmer's
+    responsibility to avoid that.
    </para>
 
    <para>
@@ -806,7 +835,7 @@ typedef struct Trigger
         <varname>attnum</varname> (1-based) is a member of this bitmap set,
         call <literal>bms_is_member(attnum -
         FirstLowInvalidHeapAttributeNumber,
-        trigdata->tg_updatedcols))</literal>.
+        trigdata->tg_updatedcols)</literal>.
        </para>
 
        <para>
@@ -906,8 +935,7 @@ trigf(PG_FUNCTION_ARGS)
     tupdesc = trigdata->tg_relation->rd_att;
 
     /* connect to SPI manager */
-    if ((ret = SPI_connect()) < 0)
-        elog(ERROR, "trigf (fired %s): SPI_connect returned %d", when, ret);
+    SPI_connect();
 
     /* get number of rows in table */
     ret = SPI_exec("SELECT count(*) FROM ttest", 0);

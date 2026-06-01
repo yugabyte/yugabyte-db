@@ -3,7 +3,7 @@
  * mxactdesc.c
  *	  rmgr descriptor routines for access/transam/multixact.c
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -55,17 +55,17 @@ multixact_desc(StringInfo buf, XLogReaderState *record)
 	if (info == XLOG_MULTIXACT_ZERO_OFF_PAGE ||
 		info == XLOG_MULTIXACT_ZERO_MEM_PAGE)
 	{
-		int			pageno;
+		int64		pageno;
 
-		memcpy(&pageno, rec, sizeof(int));
-		appendStringInfo(buf, "%d", pageno);
+		memcpy(&pageno, rec, sizeof(pageno));
+		appendStringInfo(buf, "%" PRId64, pageno);
 	}
 	else if (info == XLOG_MULTIXACT_CREATE_ID)
 	{
 		xl_multixact_create *xlrec = (xl_multixact_create *) rec;
 		int			i;
 
-		appendStringInfo(buf, "%u offset %u nmembers %d: ", xlrec->mid,
+		appendStringInfo(buf, "%u offset %" PRIu64 " nmembers %d: ", xlrec->mid,
 						 xlrec->moff, xlrec->nmembers);
 		for (i = 0; i < xlrec->nmembers; i++)
 			out_member(buf, &xlrec->members[i]);
@@ -74,9 +74,8 @@ multixact_desc(StringInfo buf, XLogReaderState *record)
 	{
 		xl_multixact_truncate *xlrec = (xl_multixact_truncate *) rec;
 
-		appendStringInfo(buf, "offsets [%u, %u), members [%u, %u)",
-						 xlrec->startTruncOff, xlrec->endTruncOff,
-						 xlrec->startTruncMemb, xlrec->endTruncMemb);
+		appendStringInfo(buf, "oldestMulti %u, oldestOffset %" PRIu64,
+						 xlrec->oldestMulti, xlrec->oldestOffset);
 	}
 }
 

@@ -4,7 +4,7 @@
  *	  Heap-specific definitions for external and compressed storage
  *	  of variable size attributes.
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/include/access/heaptoast.h
  *
@@ -95,7 +95,7 @@
  * ----------
  */
 extern HeapTuple heap_toast_insert_or_update(Relation rel, HeapTuple newtup,
-											 HeapTuple oldtup, int options);
+											 HeapTuple oldtup, uint32 options);
 
 /* ----------
  * heap_toast_delete -
@@ -135,8 +135,8 @@ extern Datum toast_flatten_tuple_to_datum(HeapTupleHeader tup,
  * ----------
  */
 extern HeapTuple toast_build_flattened_tuple(TupleDesc tupleDesc,
-											 Datum *values,
-											 bool *isnull);
+											 const Datum *values,
+											 const bool *isnull);
 
 /* ----------
  * heap_fetch_toast_slice
@@ -146,6 +146,6 @@ extern HeapTuple toast_build_flattened_tuple(TupleDesc tupleDesc,
  */
 extern void heap_fetch_toast_slice(Relation toastrel, Oid valueid,
 								   int32 attrsize, int32 sliceoffset,
-								   int32 slicelength, struct varlena *result);
+								   int32 slicelength, varlena *result);
 
 #endif							/* HEAPTOAST_H */

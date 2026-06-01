@@ -2,7 +2,7 @@
  *
  *	  LATIN2 and WIN1250
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -15,12 +15,11 @@
 #include "fmgr.h"
 #include "mb/pg_wchar.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "latin2_and_win1250",
+					.version = PG_VERSION
+);
 
-PG_FUNCTION_INFO_V1(latin2_to_mic);
-PG_FUNCTION_INFO_V1(mic_to_latin2);
-PG_FUNCTION_INFO_V1(win1250_to_mic);
-PG_FUNCTION_INFO_V1(mic_to_win1250);
 PG_FUNCTION_INFO_V1(latin2_to_win1250);
 PG_FUNCTION_INFO_V1(win1250_to_latin2);
 
@@ -78,72 +77,6 @@ static const unsigned char iso88592_2_win1250[] = {
 	0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF
 };
 
-
-Datum
-latin2_to_mic(PG_FUNCTION_ARGS)
-{
-	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
-	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
-	int			len = PG_GETARG_INT32(4);
-	bool		noError = PG_GETARG_BOOL(5);
-	int			converted;
-
-	CHECK_ENCODING_CONVERSION_ARGS(PG_LATIN2, PG_MULE_INTERNAL);
-
-	converted = latin2mic(src, dest, len, LC_ISO8859_2, PG_LATIN2, noError);
-
-	PG_RETURN_INT32(converted);
-}
-
-Datum
-mic_to_latin2(PG_FUNCTION_ARGS)
-{
-	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
-	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
-	int			len = PG_GETARG_INT32(4);
-	bool		noError = PG_GETARG_BOOL(5);
-	int			converted;
-
-	CHECK_ENCODING_CONVERSION_ARGS(PG_MULE_INTERNAL, PG_LATIN2);
-
-	converted = mic2latin(src, dest, len, LC_ISO8859_2, PG_LATIN2, noError);
-
-	PG_RETURN_INT32(converted);
-}
-
-Datum
-win1250_to_mic(PG_FUNCTION_ARGS)
-{
-	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
-	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
-	int			len = PG_GETARG_INT32(4);
-	bool		noError = PG_GETARG_BOOL(5);
-	int			converted;
-
-	CHECK_ENCODING_CONVERSION_ARGS(PG_WIN1250, PG_MULE_INTERNAL);
-
-	converted = latin2mic_with_table(src, dest, len, LC_ISO8859_2, PG_WIN1250,
-									 win1250_2_iso88592, noError);
-
-	PG_RETURN_INT32(converted);
-}
-
-Datum
-mic_to_win1250(PG_FUNCTION_ARGS)
-{
-	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
-	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
-	int			len = PG_GETARG_INT32(4);
-	bool		noError = PG_GETARG_BOOL(5);
-	int			converted;
-
-	CHECK_ENCODING_CONVERSION_ARGS(PG_MULE_INTERNAL, PG_WIN1250);
-
-	converted = mic2latin_with_table(src, dest, len, LC_ISO8859_2, PG_WIN1250,
-									 iso88592_2_win1250, noError);
-
-	PG_RETURN_INT32(converted);
-}
 
 Datum
 latin2_to_win1250(PG_FUNCTION_ARGS)

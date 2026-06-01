@@ -23,7 +23,6 @@ OBJS = \
 	amcmds.o \
 	analyze.o \
 	async.o \
-	cluster.o \
 	collationcmds.o \
 	comment.o \
 	constraint.o \
@@ -39,6 +38,9 @@ OBJS = \
 	dropcmds.o \
 	event_trigger.o \
 	explain.o \
+	explain_dr.o \
+	explain_format.o \
+	explain_state.o \
 	extension.o \
 	foreigncmds.o \
 	functioncmds.o \
@@ -51,10 +53,14 @@ OBJS = \
 	portalcmds.o \
 	prepare.o \
 	proclang.o \
+	propgraphcmds.o \
 	publicationcmds.o \
+	repack.o \
+	repack_worker.o \
 	schemacmds.o \
 	seclabel.o \
 	sequence.o \
+	sequence_xlog.o \
 	statscmds.o \
 	subscriptioncmds.o \
 	tablecmds.o \
@@ -66,6 +72,7 @@ OBJS = \
 	vacuum.o \
 	vacuumparallel.o \
 	variable.o \
-	view.o
+	view.o \
+	wait.o
 
 include $(top_srcdir)/src/backend/common.mk

@@ -3,7 +3,7 @@
  * test_integerset.c
  *		Test integer set data structure.
  *
- * Copyright (c) 2019-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_integerset/test_integerset.c
@@ -15,10 +15,6 @@
 #include "common/pg_prng.h"
 #include "fmgr.h"
 #include "lib/integerset.h"
-#include "miscadmin.h"
-#include "nodes/bitmapset.h"
-#include "storage/block.h"
-#include "storage/itemptr.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
@@ -389,7 +385,7 @@ test_single_value_and_filler(uint64 value, uint64 filler_min, uint64 filler_max)
 
 	intset = intset_create();
 
-	iter_expected = palloc(sizeof(uint64) * (filler_max - filler_min + 1));
+	iter_expected = palloc_array(uint64, filler_max - filler_min + 1);
 	if (value < filler_min)
 	{
 		intset_add_member(intset, value);
@@ -585,26 +581,26 @@ test_huge_distances(void)
 	 */
 	for (int i = 0; i < num_values; i++)
 	{
-		uint64		x = values[i];
+		uint64		y = values[i];
 		bool		expected;
 		bool		result;
 
-		if (x > 0)
+		if (y > 0)
 		{
-			expected = (values[i - 1] == x - 1);
-			result = intset_is_member(intset, x - 1);
+			expected = (values[i - 1] == y - 1);
+			result = intset_is_member(intset, y - 1);
 			if (result != expected)
-				elog(ERROR, "intset_is_member failed for " UINT64_FORMAT, x - 1);
+				elog(ERROR, "intset_is_member failed for " UINT64_FORMAT, y - 1);
 		}
 
-		result = intset_is_member(intset, x);
+		result = intset_is_member(intset, y);
 		if (result != true)
-			elog(ERROR, "intset_is_member failed for " UINT64_FORMAT, x);
+			elog(ERROR, "intset_is_member failed for " UINT64_FORMAT, y);
 
-		expected = (i != num_values - 1) ? (values[i + 1] == x + 1) : false;
-		result = intset_is_member(intset, x + 1);
+		expected = (i != num_values - 1) ? (values[i + 1] == y + 1) : false;
+		result = intset_is_member(intset, y + 1);
 		if (result != expected)
-			elog(ERROR, "intset_is_member failed for " UINT64_FORMAT, x + 1);
+			elog(ERROR, "intset_is_member failed for " UINT64_FORMAT, y + 1);
 	}
 
 	/*

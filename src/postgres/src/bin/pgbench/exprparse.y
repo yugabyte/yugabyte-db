@@ -4,7 +4,7 @@
  * exprparse.y
  *	  bison grammar for a simple expression syntax
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pgbench/exprparse.y
@@ -21,9 +21,7 @@
 #define PGBENCH_NARGS_HASH		(-3)
 #define PGBENCH_NARGS_PERMUTE	(-4)
 
-PgBenchExpr *expr_parse_result;
-
-static PgBenchExprList *make_elist(PgBenchExpr *exp, PgBenchExprList *list);
+static PgBenchExprList *make_elist(PgBenchExpr *expr, PgBenchExprList *list);
 static PgBenchExpr *make_null_constant(void);
 static PgBenchExpr *make_boolean_constant(bool bval);
 static PgBenchExpr *make_integer_constant(int64 ival);
@@ -42,6 +40,7 @@ static PgBenchExpr *make_case(yyscan_t yyscanner, PgBenchExprList *when_then_lis
 %expect 0
 %name-prefix="expr_yy"
 
+%parse-param {PgBenchExpr **expr_parse_result_p}
 %parse-param {yyscan_t yyscanner}
 %lex-param   {yyscan_t yyscanner}
 
@@ -81,7 +80,7 @@ static PgBenchExpr *make_case(yyscan_t yyscanner, PgBenchExprList *when_then_lis
 %%
 
 result: expr				{
-								expr_parse_result = $1;
+								*expr_parse_result_p = $1;
 								(void) yynerrs; /* suppress compiler warning */
 							}
 
@@ -168,7 +167,7 @@ function: FUNCTION			{ $$ = find_func(yyscanner, $1); pg_free($1); }
 static PgBenchExpr *
 make_null_constant(void)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_CONSTANT;
 	expr->u.constant.type = PGBT_NULL;
@@ -179,7 +178,7 @@ make_null_constant(void)
 static PgBenchExpr *
 make_integer_constant(int64 ival)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_CONSTANT;
 	expr->u.constant.type = PGBT_INT;
@@ -190,7 +189,7 @@ make_integer_constant(int64 ival)
 static PgBenchExpr *
 make_double_constant(double dval)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_CONSTANT;
 	expr->u.constant.type = PGBT_DOUBLE;
@@ -201,7 +200,7 @@ make_double_constant(double dval)
 static PgBenchExpr *
 make_boolean_constant(bool bval)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_CONSTANT;
 	expr->u.constant.type = PGBT_BOOLEAN;
@@ -212,7 +211,7 @@ make_boolean_constant(bool bval)
 static PgBenchExpr *
 make_variable(char *varname)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_VARIABLE;
 	expr->u.variable.varname = varname;
@@ -252,7 +251,8 @@ static const struct
 	const char *fname;
 	int			nargs;
 	PgBenchFunction tag;
-}	PGBENCH_FUNCTIONS[] =
+}			PGBENCH_FUNCTIONS[] =
+
 {
 	/* parsed as operators, executed as functions */
 	{
@@ -415,12 +415,12 @@ make_elist(PgBenchExpr *expr, PgBenchExprList *list)
 
 	if (list == NULL)
 	{
-		list = pg_malloc(sizeof(PgBenchExprList));
+		list = pg_malloc_object(PgBenchExprList);
 		list->head = NULL;
 		list->tail = NULL;
 	}
 
-	cons = pg_malloc(sizeof(PgBenchExprLink));
+	cons = pg_malloc_object(PgBenchExprLink);
 	cons->expr = expr;
 	cons->next = NULL;
 
@@ -451,23 +451,23 @@ elist_length(PgBenchExprList *list)
 static PgBenchExpr *
 make_func(yyscan_t yyscanner, int fnumber, PgBenchExprList *args)
 {
-	int len = elist_length(args);
+	int			len = elist_length(args);
 
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	Assert(fnumber >= 0);
 
 	/* validate arguments number including few special cases */
 	switch (PGBENCH_FUNCTIONS[fnumber].nargs)
 	{
-		/* check at least one arg for least & greatest */
+			/* check at least one arg for least & greatest */
 		case PGBENCH_NARGS_VARIABLE:
 			if (len == 0)
 				expr_yyerror_more(yyscanner, "at least one argument expected",
 								  PGBENCH_FUNCTIONS[fnumber].fname);
 			break;
 
-		/* case (when ... then ...)+ (else ...)? end */
+			/* case (when ... then ...)+ (else ...)? end */
 		case PGBENCH_NARGS_CASE:
 			/* 'else' branch is always present, but could be a NULL-constant */
 			if (len < 3 || len % 2 != 1)
@@ -476,7 +476,7 @@ make_func(yyscan_t yyscanner, int fnumber, PgBenchExprList *args)
 								  "case control structure");
 			break;
 
-		/* hash functions with optional seed argument */
+			/* hash functions with optional seed argument */
 		case PGBENCH_NARGS_HASH:
 			if (len < 1 || len > 2)
 				expr_yyerror_more(yyscanner, "unexpected number of arguments",
@@ -485,11 +485,12 @@ make_func(yyscan_t yyscanner, int fnumber, PgBenchExprList *args)
 			if (len == 1)
 			{
 				PgBenchExpr *var = make_variable("default_seed");
+
 				args = make_elist(var, args);
 			}
 			break;
 
-		/* pseudorandom permutation function with optional seed argument */
+			/* pseudorandom permutation function with optional seed argument */
 		case PGBENCH_NARGS_PERMUTE:
 			if (len < 2 || len > 3)
 				expr_yyerror_more(yyscanner, "unexpected number of arguments",
@@ -498,11 +499,12 @@ make_func(yyscan_t yyscanner, int fnumber, PgBenchExprList *args)
 			if (len == 2)
 			{
 				PgBenchExpr *var = make_variable("default_seed");
+
 				args = make_elist(var, args);
 			}
 			break;
 
-		/* common case: positive arguments number */
+			/* common case: positive arguments number */
 		default:
 			Assert(PGBENCH_FUNCTIONS[fnumber].nargs >= 0);
 
@@ -529,18 +531,3 @@ make_case(yyscan_t yyscanner, PgBenchExprList *when_then_list, PgBenchExpr *else
 					 find_func(yyscanner, "!case_end"),
 					 make_elist(else_part, when_then_list));
 }
-
-/*
- * exprscan.l is compiled as part of exprparse.y.  Currently, this is
- * unavoidable because exprparse does not create a .h file to export
- * its token symbols.  If these files ever grow large enough to be
- * worth compiling separately, that could be fixed; but for now it
- * seems like useless complication.
- */
-
-/* First, get rid of "#define yyscan_t" from pgbench.h */
-#undef yyscan_t
-/* ... and the yylval macro, which flex will have its own definition for */
-#undef yylval
-
-#include "exprscan.c"

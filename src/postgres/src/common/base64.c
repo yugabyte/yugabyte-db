@@ -3,7 +3,7 @@
  * base64.c
  *	  Encoding and decoding routines for base64 without whitespace.
  *
- * Copyright (c) 2001-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -41,15 +41,15 @@ static const int8 b64lookup[128] = {
 /*
  * pg_b64_encode
  *
- * Encode into base64 the given string.  Returns the length of the encoded
- * string, and -1 in the event of an error with the result buffer zeroed
- * for safety.
+ * Encode the 'src' byte array into base64.  Returns the length of the encoded
+ * string, and -1 in the event of an error with the result buffer zeroed for
+ * safety.
  */
 int
-pg_b64_encode(const char *src, int len, char *dst, int dstlen)
+pg_b64_encode(const uint8 *src, int len, char *dst, int dstlen)
 {
 	char	   *p;
-	const char *s,
+	const uint8 *s,
 			   *end = src + len;
 	int			pos = 2;
 	uint32		buf = 0;
@@ -59,7 +59,7 @@ pg_b64_encode(const char *src, int len, char *dst, int dstlen)
 
 	while (s < end)
 	{
-		buf |= (unsigned char) *s << (pos << 3);
+		buf |= *s << (pos << 3);
 		pos--;
 		s++;
 
@@ -113,11 +113,11 @@ error:
  * buffer zeroed for safety.
  */
 int
-pg_b64_decode(const char *src, int len, char *dst, int dstlen)
+pg_b64_decode(const char *src, int len, uint8 *dst, int dstlen)
 {
 	const char *srcend = src + len,
 			   *s = src;
-	char	   *p = dst;
+	uint8	   *p = dst;
 	char		c;
 	int			b = 0;
 	uint32		buf = 0;
@@ -224,7 +224,7 @@ int
 pg_b64_enc_len(int srclen)
 {
 	/* 3 bytes will be converted to 4 */
-	return (srclen + 2) * 4 / 3;
+	return (srclen + 2) / 3 * 4;
 }
 
 /*

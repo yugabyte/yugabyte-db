@@ -3,7 +3,7 @@
  * checksum_helper.h
  *	  Compute a checksum of any of various types using common routines
  *
- * Portions Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/include/common/checksum_helper.h
@@ -33,7 +33,7 @@ typedef enum pg_checksum_type
 	CHECKSUM_TYPE_SHA224,
 	CHECKSUM_TYPE_SHA256,
 	CHECKSUM_TYPE_SHA384,
-	CHECKSUM_TYPE_SHA512
+	CHECKSUM_TYPE_SHA512,
 } pg_checksum_type;
 
 /*

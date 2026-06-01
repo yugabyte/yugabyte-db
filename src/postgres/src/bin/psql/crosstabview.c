@@ -1,13 +1,14 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/bin/psql/crosstabview.c
  */
 #include "postgres_fe.h"
 
 #include "common.h"
+#include "common/int.h"
 #include "common/logging.h"
 #include "crosstabview.h"
 #include "pqexpbuffer.h"
@@ -244,11 +245,9 @@ PrintResultInCrosstab(const PGresult *res)
 	num_columns = piv_columns.count;
 	num_rows = piv_rows.count;
 
-	array_columns = (pivot_field *)
-		pg_malloc(sizeof(pivot_field) * num_columns);
+	array_columns = pg_malloc_array(pivot_field, num_columns);
 
-	array_rows = (pivot_field *)
-		pg_malloc(sizeof(pivot_field) * num_rows);
+	array_rows = pg_malloc_array(pivot_field, num_rows);
 
 	avlCollectFields(&piv_columns, piv_columns.root, array_columns, 0);
 	avlCollectFields(&piv_rows, piv_rows.root, array_rows, 0);
@@ -311,7 +310,7 @@ printCrosstab(const PGresult *result,
 	 * map associating each piv_columns[].rank to its index in piv_columns.
 	 * This avoids an O(N^2) loop later.
 	 */
-	horiz_map = (int *) pg_malloc(sizeof(int) * num_columns);
+	horiz_map = pg_malloc_array(int, num_columns);
 	for (i = 0; i < num_columns; i++)
 		horiz_map[piv_columns[i].rank] = i;
 
@@ -436,7 +435,7 @@ error:
 static void
 avlInit(avl_tree *tree)
 {
-	tree->end = (avl_node *) pg_malloc0(sizeof(avl_node));
+	tree->end = pg_malloc0_object(avl_node);
 	tree->end->children[0] = tree->end->children[1] = tree->end;
 	tree->count = 0;
 	tree->root = tree->end;
@@ -531,8 +530,7 @@ avlInsertNode(avl_tree *tree, avl_node **node, pivot_field field)
 
 	if (current == tree->end)
 	{
-		avl_node   *new_node = (avl_node *)
-			pg_malloc(sizeof(avl_node));
+		avl_node   *new_node = pg_malloc_object(avl_node);
 
 		new_node->height = 1;
 		new_node->field = field;
@@ -590,7 +588,7 @@ rankSort(int num_columns, pivot_field *piv_columns)
 								 * every header entry] */
 	int			i;
 
-	hmap = (int *) pg_malloc(sizeof(int) * num_columns * 2);
+	hmap = pg_malloc_array(int, num_columns * 2);
 	for (i = 0; i < num_columns; i++)
 	{
 		char	   *val = piv_columns[i].sort_value;
@@ -709,5 +707,5 @@ pivotFieldCompare(const void *a, const void *b)
 static int
 rankCompare(const void *a, const void *b)
 {
-	return *((const int *) a) - *((const int *) b);
+	return pg_cmp_s32(*(const int *) a, *(const int *) b);
 }

@@ -5,7 +5,7 @@
  *	  in a page which can be different when the WAL is generated
  *	  and when the WAL is applied.
  *
- * Portions Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * Contains common routines required for masking a page.
  *
@@ -32,7 +32,7 @@ mask_page_lsn_and_checksum(Page page)
 {
 	PageHeader	phdr = (PageHeader) page;
 
-	PageXLogRecPtrSet(phdr->pd_lsn, (uint64) MASK_MARKER);
+	PageXLogRecPtrSet(&phdr->pd_lsn, (uint64) MASK_MARKER);
 	phdr->pd_checksum = MASK_MARKER;
 }
 
@@ -55,9 +55,8 @@ mask_page_hint_bits(Page page)
 	PageClearHasFreeLinePointers(page);
 
 	/*
-	 * During replay, if the page LSN has advanced past our XLOG record's LSN,
-	 * we don't mark the page all-visible. See heap_xlog_visible() for
-	 * details.
+	 * PD_ALL_VISIBLE is masked during WAL consistency checking. XXX: It is
+	 * worth investigating if we could stop doing this.
 	 */
 	PageClearAllVisible(page);
 }

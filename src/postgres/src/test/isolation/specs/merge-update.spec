@@ -23,12 +23,27 @@ setup
 
   INSERT INTO pa_target VALUES (1, 'initial');
   INSERT INTO pa_target VALUES (2, 'initial');
+
+  CREATE FUNCTION explain_filter(text) RETURNS SETOF text
+  LANGUAGE plpgsql AS
+  $$
+  DECLARE
+    ln text;
+  BEGIN
+    FOR ln IN EXECUTE $1 LOOP
+      -- Ignore hash memory usage because it varies depending on the system
+      CONTINUE WHEN (ln ~ 'Memory Usage');
+      RETURN NEXT ln;
+    END LOOP;
+  END;
+  $$;
 }
 
 teardown
 {
   DROP TABLE target;
   DROP TABLE pa_target CASCADE;
+  DROP FUNCTION explain_filter;
 }
 
 session "s1"
@@ -78,6 +93,7 @@ step "pa_merge3"
 }
 step "c1" { COMMIT; }
 step "a1" { ABORT; }
+step "s1beginrr" { BEGIN ISOLATION LEVEL REPEATABLE READ; }
 
 session "s2"
 setup
@@ -92,7 +108,26 @@ step "merge2a"
   WHEN NOT MATCHED THEN
 	INSERT VALUES (s.key, s.val)
   WHEN MATCHED THEN
-	UPDATE set key = t.key + 1, val = t.val || ' updated by ' || s.val;
+	UPDATE set key = t.key + 1, val = t.val || ' updated by ' || s.val
+  WHEN NOT MATCHED BY SOURCE THEN
+	UPDATE set key = t.key + 1, val = t.val || ' source not matched by merge2a'
+  RETURNING merge_action(), old, new, t.*;
+}
+step "explain_merge2a"
+{
+  SELECT explain_filter($$
+  EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF)
+  MERGE INTO target t
+  USING (SELECT 1 as key, 'merge2a' as val) s
+  ON s.key = t.key
+  WHEN NOT MATCHED THEN
+	INSERT VALUES (s.key, s.val)
+  WHEN MATCHED THEN
+	UPDATE set key = t.key + 1, val = t.val || ' updated by ' || s.val
+  WHEN NOT MATCHED BY SOURCE THEN
+	UPDATE set key = t.key + 1, val = t.val || ' source not matched by merge2a'
+  RETURNING merge_action(), old, new, t.*
+  $$);
 }
 step "merge2b"
 {
@@ -122,7 +157,26 @@ step "pa_merge2a"
   WHEN NOT MATCHED THEN
 	INSERT VALUES (s.key, s.val)
   WHEN MATCHED THEN
-	UPDATE set key = t.key + 1, val = t.val || ' updated by ' || s.val;
+	UPDATE set key = t.key + 1, val = t.val || ' updated by ' || s.val
+  WHEN NOT MATCHED BY SOURCE THEN
+	UPDATE set key = t.key + 1, val = t.val || ' source not matched by pa_merge2a'
+  RETURNING merge_action(), old, new, t.*;
+}
+step "explain_pa_merge2a"
+{
+  SELECT explain_filter($$
+  EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF)
+  MERGE INTO pa_target t
+  USING (SELECT 1 as key, 'pa_merge2a' as val) s
+  ON s.key = t.key
+  WHEN NOT MATCHED THEN
+	INSERT VALUES (s.key, s.val)
+  WHEN MATCHED THEN
+	UPDATE set key = t.key + 1, val = t.val || ' updated by ' || s.val
+  WHEN NOT MATCHED BY SOURCE THEN
+	UPDATE set key = t.key + 1, val = t.val || ' source not matched by pa_merge2a'
+  RETURNING merge_action(), old, new, t.*
+  $$);
 }
 # MERGE proceeds only if 'val' unchanged
 step "pa_merge2b_when"
@@ -154,16 +208,20 @@ permutation "merge1" "c1" "select2" "c2"
 
 # One after the other, no concurrency
 permutation "merge1" "c1" "merge2a" "select2" "c2"
+permutation "merge1" "c1" "explain_merge2a" "select2" "c2"
 permutation "pa_merge1" "c1" "pa_merge2c_dup" "a2"
 
 # Now with concurrency
 permutation "merge1" "merge2a" "c1" "select2" "c2"
+permutation "merge1" "explain_merge2a" "c1" "select2" "c2"
 permutation "merge1" "merge2a" "a1" "select2" "c2"
 permutation "merge1" "merge2b" "c1" "select2" "c2"
 permutation "merge1" "merge2c" "c1" "select2" "c2"
 permutation "pa_merge1" "pa_merge2a" "c1" "pa_select2" "c2"
+permutation "pa_merge1" "explain_pa_merge2a" "c1" "pa_select2" "c2"
 permutation "pa_merge2" "pa_merge2a" "c1" "pa_select2" "c2" # fails
 permutation "pa_merge2" "c1" "pa_merge2a" "pa_select2" "c2" # succeeds
 permutation "pa_merge3" "pa_merge2b_when" "c1" "pa_select2" "c2" # WHEN not satisfied by updated tuple
 permutation "pa_merge1" "pa_merge2b_when" "c1" "pa_select2" "c2" # WHEN satisfied by updated tuple
 permutation "pa_merge1" "pa_merge2c_dup" "c1" "a2"
+permutation "merge2a" "c1" "s1beginrr" "merge1" "c2"

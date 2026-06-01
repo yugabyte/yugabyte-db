@@ -3,7 +3,7 @@
  * amcmds.c
  *	  Routines for SQL commands that manipulate access methods.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -172,7 +172,7 @@ get_index_am_oid(const char *amname, bool missing_ok)
 
 /*
  * get_table_am_oid - given an access method name, look up its OID
- *		and verify it corresponds to an table AM.
+ *		and verify it corresponds to a table AM.
  */
 Oid
 get_table_am_oid(const char *amname, bool missing_ok)

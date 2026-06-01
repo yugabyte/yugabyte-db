@@ -513,7 +513,7 @@ SELECT jdoc->'guid', jdoc->'name' FROM api WHERE jdoc @@ '$.tags[*] == "qui"';
 </programlisting>
     For these operators, a GIN index extracts clauses of the form
     <literal><replaceable>accessors_chain</replaceable>
-    = <replaceable>constant</replaceable></literal> out of
+    == <replaceable>constant</replaceable></literal> out of
     the <type>jsonpath</type> pattern, and does the index search based on
     the keys and values mentioned in these clauses.  The accessors chain
     may include <literal>.<replaceable>key</replaceable></literal>,
@@ -712,7 +712,7 @@ UPDATE table_name SET jsonb_field[1]['a'] = '1';
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="datatype-json-transforms">
   <title>Transforms</title>
 
   <para>
@@ -779,6 +779,18 @@ UPDATE table_name SET jsonb_field[1]['a'] = '1';
     </para>
    </listitem>
   </itemizedlist>
+
+  <para>
+   Numeric literals in SQL/JSON path expressions follow JavaScript rules,
+   which are different from both SQL and JSON in some minor details.  For
+   example, SQL/JSON path allows <literal>.1</literal> and
+   <literal>1.</literal>, which are invalid in JSON.  Non-decimal integer
+   literals and underscore separators are supported, for example,
+   <literal>1_000_000</literal>, <literal>0x1EEE_FFFF</literal>,
+   <literal>0o273</literal>, <literal>0b100101</literal>.  In SQL/JSON path
+   (and in JavaScript, but not in SQL proper), there must not be an underscore
+   separator directly after the radix prefix.
+  </para>
 
   <para>
    An SQL/JSON path expression is typically written in an SQL query as an
@@ -870,9 +882,10 @@ UPDATE table_name SET jsonb_field[1]['a'] = '1';
       <entry><literal>$varname</literal></entry>
       <entry>
         A named variable. Its value can be set by the parameter
-        <parameter>vars</parameter> of several JSON processing functions;
-        see <xref linkend="functions-json-processing-table"/> for details.
-        <!-- TODO: describe PASSING clause once implemented !-->
+        <parameter>vars</parameter> of several JSON processing functions
+        (see <xref linkend="functions-json-processing-table"/>), or by
+        using the SQL/JSON <literal>PASSING</literal> clause as described
+        in <xref linkend="sqljson-query-functions"/>.
       </entry>
      </row>
      <row>

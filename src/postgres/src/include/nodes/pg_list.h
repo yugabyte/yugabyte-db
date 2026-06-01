@@ -15,19 +15,21 @@
  * Non-empty lists have a header, which will not be relocated as long as the
  * list remains non-empty, and an expansible data array.
  *
- * We support three types of lists:
+ * We support four types of lists:
  *
  *	T_List: lists of pointers
  *		(in practice usually pointers to Nodes, but not always;
  *		declared as "void *" to minimize casting annoyances)
  *	T_IntList: lists of integers
  *	T_OidList: lists of Oids
+ *	T_XidList: lists of TransactionIds
+ *		(the XidList infrastructure is less complete than the other cases)
  *
- * (At the moment, ints and Oids are the same size, but they may not
- * always be so; try to be careful to maintain the distinction.)
+ * (At the moment, ints, Oids, and XIDs are the same size, but they may not
+ * always be so; be careful to use the appropriate list type for your data.)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/pg_list.h
@@ -45,11 +47,12 @@ typedef union ListCell
 	void	   *ptr_value;
 	int			int_value;
 	Oid			oid_value;
+	TransactionId xid_value;
 } ListCell;
 
 typedef struct List
 {
-	NodeTag		type;			/* T_List, T_IntList, or T_OidList */
+	NodeTag		type;			/* T_List, T_IntList, T_OidList, or T_XidList */
 	int			length;			/* number of elements currently present */
 	int			max_length;		/* allocated length of elements[] */
 	ListCell   *elements;		/* re-allocatable array of cells */
@@ -169,6 +172,7 @@ list_length(const List *l)
 #define lfirst(lc)				((lc)->ptr_value)
 #define lfirst_int(lc)			((lc)->int_value)
 #define lfirst_oid(lc)			((lc)->oid_value)
+#define lfirst_xid(lc)			((lc)->xid_value)
 #define lfirst_node(type,lc)	castNode(type, lfirst(lc))
 
 #define linitial(l)				lfirst(list_nth_cell(l, 0))
@@ -194,14 +198,48 @@ list_length(const List *l)
 #define llast(l)				lfirst(list_last_cell(l))
 #define llast_int(l)			lfirst_int(list_last_cell(l))
 #define llast_oid(l)			lfirst_oid(list_last_cell(l))
+#define llast_xid(l)			lfirst_xid(list_last_cell(l))
 #define llast_node(type,l)		castNode(type, llast(l))
 
 /*
  * Convenience macros for building fixed-length lists
  */
-#define list_make_ptr_cell(v)	((ListCell) {.ptr_value = (v)})
-#define list_make_int_cell(v)	((ListCell) {.int_value = (v)})
-#define list_make_oid_cell(v)	((ListCell) {.oid_value = (v)})
+
+static inline ListCell
+list_make_ptr_cell(void *v)
+{
+	ListCell	c;
+
+	c.ptr_value = v;
+	return c;
+}
+
+static inline ListCell
+list_make_int_cell(int v)
+{
+	ListCell	c;
+
+	c.int_value = v;
+	return c;
+}
+
+static inline ListCell
+list_make_oid_cell(Oid v)
+{
+	ListCell	c;
+
+	c.oid_value = v;
+	return c;
+}
+
+static inline ListCell
+list_make_xid_cell(TransactionId v)
+{
+	ListCell	c;
+
+	c.xid_value = v;
+	return c;
+}
 
 #define list_make1(x1) \
 	list_make1_impl(T_List, list_make_ptr_cell(x1))
@@ -247,6 +285,21 @@ list_length(const List *l)
 	list_make5_impl(T_OidList, list_make_oid_cell(x1), list_make_oid_cell(x2), \
 					list_make_oid_cell(x3), list_make_oid_cell(x4), \
 					list_make_oid_cell(x5))
+
+#define list_make1_xid(x1) \
+	list_make1_impl(T_XidList, list_make_xid_cell(x1))
+#define list_make2_xid(x1,x2) \
+	list_make2_impl(T_XidList, list_make_xid_cell(x1), list_make_xid_cell(x2))
+#define list_make3_xid(x1,x2,x3) \
+	list_make3_impl(T_XidList, list_make_xid_cell(x1), list_make_xid_cell(x2), \
+					list_make_xid_cell(x3))
+#define list_make4_xid(x1,x2,x3,x4) \
+	list_make4_impl(T_XidList, list_make_xid_cell(x1), list_make_xid_cell(x2), \
+					list_make_xid_cell(x3), list_make_xid_cell(x4))
+#define list_make5_xid(x1,x2,x3,x4,x5) \
+	list_make5_impl(T_XidList, list_make_xid_cell(x1), list_make_xid_cell(x2), \
+					list_make_xid_cell(x3), list_make_xid_cell(x4), \
+					list_make_xid_cell(x5))
 
 /*
  * Locate the n'th cell (counting from 0) of the list.
@@ -360,26 +413,26 @@ lnext(const List *l, const ListCell *c)
 /*
  * foreach_delete_current -
  *	  delete the current list element from the List associated with a
- *	  surrounding foreach() loop, returning the new List pointer.
+ *	  surrounding foreach() or foreach_*() loop, returning the new List
+ *	  pointer; pass the name of the iterator variable.
  *
- * This is equivalent to list_delete_cell(), but it also adjusts the foreach
- * loop's state so that no list elements will be missed.  Do not delete
- * elements from an active foreach loop's list in any other way!
+ * This is similar to list_delete_cell(), but it also adjusts the loop's state
+ * so that no list elements will be missed.  Do not delete elements from an
+ * active foreach or foreach_* loop's list in any other way!
  */
-#define foreach_delete_current(lst, cell)	\
-	(cell##__state.i--, \
-	 (List *) (cell##__state.l = list_delete_cell(lst, cell)))
+#define foreach_delete_current(lst, var_or_cell)	\
+	((List *) (var_or_cell##__state.l = list_delete_nth_cell(lst, var_or_cell##__state.i--)))
 
 /*
  * foreach_current_index -
- *	  get the zero-based list index of a surrounding foreach() loop's
- *	  current element; pass the name of the "ListCell *" iterator variable.
+ *	  get the zero-based list index of a surrounding foreach() or foreach_*()
+ *	  loop's current element; pass the name of the iterator variable.
  *
  * Beware of using this after foreach_delete_current(); the value will be
  * out of sync for the rest of the current loop iteration.  Anyway, since
  * you just deleted the current element, the value is pretty meaningless.
  */
-#define foreach_current_index(cell)  (cell##__state.i)
+#define foreach_current_index(var_or_cell)  (var_or_cell##__state.i)
 
 /*
  * for_each_from -
@@ -430,6 +483,57 @@ for_each_cell_setup(const List *lst, const ListCell *initcell)
 
 	return r;
 }
+
+/*
+ * Convenience macros that loop through a list without needing a separate
+ * "ListCell *" variable.  Instead, the macros declare a locally-scoped loop
+ * variable with the provided name and the appropriate type.
+ *
+ * Since the variable is scoped to the loop, it's not possible to detect an
+ * early break by checking its value after the loop completes, as is common
+ * practice.  If you need to do this, you can either use foreach() instead or
+ * manually track early breaks with a separate variable declared outside of the
+ * loop.
+ *
+ * Note that the caveats described in the comment above the foreach() macro
+ * also apply to these convenience macros.
+ */
+#define foreach_ptr(type, var, lst) foreach_internal(type, *, var, lst, lfirst)
+#define foreach_int(var, lst)	foreach_internal(int, , var, lst, lfirst_int)
+#define foreach_oid(var, lst)	foreach_internal(Oid, , var, lst, lfirst_oid)
+#define foreach_xid(var, lst)	foreach_internal(TransactionId, , var, lst, lfirst_xid)
+
+/*
+ * The internal implementation of the above macros.  Do not use directly.
+ *
+ * This macro actually generates two loops in order to declare two variables of
+ * different types.  The outer loop only iterates once, so we expect optimizing
+ * compilers will unroll it, thereby optimizing it away.
+ */
+#define foreach_internal(type, pointer, var, lst, func) \
+	for (type pointer var = 0, pointer var##__outerloop = (type pointer) 1; \
+		 var##__outerloop; \
+		 var##__outerloop = 0) \
+		for (ForEachState var##__state = {(lst), 0}; \
+			 (var##__state.l != NIL && \
+			  var##__state.i < var##__state.l->length && \
+			 (var = (type pointer) func(&var##__state.l->elements[var##__state.i]), true)); \
+			 var##__state.i++)
+
+/*
+ * foreach_node -
+ *	  The same as foreach_ptr, but asserts that the element is of the specified
+ *	  node type.
+ */
+#define foreach_node(type, var, lst) \
+	for (type * var = 0, *var##__outerloop = (type *) 1; \
+		 var##__outerloop; \
+		 var##__outerloop = 0) \
+		for (ForEachState var##__state = {(lst), 0}; \
+			 (var##__state.l != NIL && \
+			  var##__state.i < var##__state.l->length && \
+			 (var = lfirst_node(type, &var##__state.l->elements[var##__state.i]), true)); \
+			 var##__state.i++)
 
 /*
  * forboth -
@@ -536,37 +640,39 @@ extern List *list_make5_impl(NodeTag t, ListCell datum1, ListCell datum2,
 							 ListCell datum3, ListCell datum4,
 							 ListCell datum5);
 
-extern pg_nodiscard List *lappend(List *list, void *datum);
-extern pg_nodiscard List *lappend_int(List *list, int datum);
-extern pg_nodiscard List *lappend_oid(List *list, Oid datum);
+pg_nodiscard extern List *lappend(List *list, void *datum);
+pg_nodiscard extern List *lappend_int(List *list, int datum);
+pg_nodiscard extern List *lappend_oid(List *list, Oid datum);
+pg_nodiscard extern List *lappend_xid(List *list, TransactionId datum);
 
-extern pg_nodiscard List *list_insert_nth(List *list, int pos, void *datum);
-extern pg_nodiscard List *list_insert_nth_int(List *list, int pos, int datum);
-extern pg_nodiscard List *list_insert_nth_oid(List *list, int pos, Oid datum);
+pg_nodiscard extern List *list_insert_nth(List *list, int pos, void *datum);
+pg_nodiscard extern List *list_insert_nth_int(List *list, int pos, int datum);
+pg_nodiscard extern List *list_insert_nth_oid(List *list, int pos, Oid datum);
 
-extern pg_nodiscard List *lcons(void *datum, List *list);
-extern pg_nodiscard List *lcons_int(int datum, List *list);
-extern pg_nodiscard List *lcons_oid(Oid datum, List *list);
+pg_nodiscard extern List *lcons(void *datum, List *list);
+pg_nodiscard extern List *lcons_int(int datum, List *list);
+pg_nodiscard extern List *lcons_oid(Oid datum, List *list);
 
-extern pg_nodiscard List *list_concat(List *list1, const List *list2);
-extern pg_nodiscard List *list_concat_copy(const List *list1, const List *list2);
+pg_nodiscard extern List *list_concat(List *list1, const List *list2);
+pg_nodiscard extern List *list_concat_copy(const List *list1, const List *list2);
 
-extern pg_nodiscard List *list_truncate(List *list, int new_size);
+pg_nodiscard extern List *list_truncate(List *list, int new_size);
 
 extern bool list_member(const List *list, const void *datum);
 extern bool list_member_ptr(const List *list, const void *datum);
 extern bool list_member_int(const List *list, int datum);
 extern bool list_member_oid(const List *list, Oid datum);
+extern bool list_member_xid(const List *list, TransactionId datum);
 
-extern pg_nodiscard List *list_delete(List *list, void *datum);
-extern pg_nodiscard List *list_delete_ptr(List *list, void *datum);
-extern pg_nodiscard List *list_delete_int(List *list, int datum);
-extern pg_nodiscard List *list_delete_oid(List *list, Oid datum);
-extern pg_nodiscard List *list_delete_first(List *list);
-extern pg_nodiscard List *list_delete_last(List *list);
-extern pg_nodiscard List *list_delete_first_n(List *list, int n);
-extern pg_nodiscard List *list_delete_nth_cell(List *list, int n);
-extern pg_nodiscard List *list_delete_cell(List *list, ListCell *cell);
+pg_nodiscard extern List *list_delete(List *list, void *datum);
+pg_nodiscard extern List *list_delete_ptr(List *list, void *datum);
+pg_nodiscard extern List *list_delete_int(List *list, int datum);
+pg_nodiscard extern List *list_delete_oid(List *list, Oid datum);
+pg_nodiscard extern List *list_delete_first(List *list);
+pg_nodiscard extern List *list_delete_last(List *list);
+pg_nodiscard extern List *list_delete_first_n(List *list, int n);
+pg_nodiscard extern List *list_delete_nth_cell(List *list, int n);
+pg_nodiscard extern List *list_delete_cell(List *list, ListCell *cell);
 
 extern List *list_union(const List *list1, const List *list2);
 extern List *list_union_ptr(const List *list1, const List *list2);
@@ -583,25 +689,25 @@ extern List *list_difference_ptr(const List *list1, const List *list2);
 extern List *list_difference_int(const List *list1, const List *list2);
 extern List *list_difference_oid(const List *list1, const List *list2);
 
-extern pg_nodiscard List *list_append_unique(List *list, void *datum);
-extern pg_nodiscard List *list_append_unique_ptr(List *list, void *datum);
-extern pg_nodiscard List *list_append_unique_int(List *list, int datum);
-extern pg_nodiscard List *list_append_unique_oid(List *list, Oid datum);
+pg_nodiscard extern List *list_append_unique(List *list, void *datum);
+pg_nodiscard extern List *list_append_unique_ptr(List *list, void *datum);
+pg_nodiscard extern List *list_append_unique_int(List *list, int datum);
+pg_nodiscard extern List *list_append_unique_oid(List *list, Oid datum);
 
-extern pg_nodiscard List *list_concat_unique(List *list1, const List *list2);
-extern pg_nodiscard List *list_concat_unique_ptr(List *list1, const List *list2);
-extern pg_nodiscard List *list_concat_unique_int(List *list1, const List *list2);
-extern pg_nodiscard List *list_concat_unique_oid(List *list1, const List *list2);
+pg_nodiscard extern List *list_concat_unique(List *list1, const List *list2);
+pg_nodiscard extern List *list_concat_unique_ptr(List *list1, const List *list2);
+pg_nodiscard extern List *list_concat_unique_int(List *list1, const List *list2);
+pg_nodiscard extern List *list_concat_unique_oid(List *list1, const List *list2);
 
 extern void list_deduplicate_oid(List *list);
 
 extern void list_free(List *list);
 extern void list_free_deep(List *list);
 
-extern pg_nodiscard List *list_copy(const List *list);
-extern pg_nodiscard List *list_copy_head(const List *oldlist, int len);
-extern pg_nodiscard List *list_copy_tail(const List *list, int nskip);
-extern pg_nodiscard List *list_copy_deep(const List *oldlist);
+pg_nodiscard extern List *list_copy(const List *oldlist);
+pg_nodiscard extern List *list_copy_head(const List *oldlist, int len);
+pg_nodiscard extern List *list_copy_tail(const List *oldlist, int nskip);
+pg_nodiscard extern List *list_copy_deep(const List *oldlist);
 
 typedef int (*list_sort_comparator) (const ListCell *a, const ListCell *b);
 extern void list_sort(List *list, list_sort_comparator cmp);

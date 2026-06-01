@@ -3,7 +3,7 @@
  * execAmi.c
  *	  miscellaneous executor access method routines
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/executor/execAmi.c
@@ -14,7 +14,9 @@
 
 #include "access/amapi.h"
 #include "access/htup_details.h"
-#include "executor/execdebug.h"
+#include "catalog/pg_class.h"
+#include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
 #include "executor/nodeBitmapAnd.h"
@@ -59,9 +61,7 @@
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
 #include "nodes/extensible.h"
-#include "nodes/nodeFuncs.h"
 #include "nodes/pathnodes.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 
 /* YB includes */
@@ -124,11 +124,11 @@ ExecReScan(PlanState *node)
 			if (splan->plan->extParam != NULL)
 				UpdateChangedParamSet(splan, node->chgParam);
 		}
-		/* Well. Now set chgParam for left/right trees. */
-		if (node->lefttree != NULL)
-			UpdateChangedParamSet(node->lefttree, node->chgParam);
-		if (node->righttree != NULL)
-			UpdateChangedParamSet(node->righttree, node->chgParam);
+		/* Well. Now set chgParam for child trees. */
+		if (outerPlanState(node) != NULL)
+			UpdateChangedParamSet(outerPlanState(node), node->chgParam);
+		if (innerPlanState(node) != NULL)
+			UpdateChangedParamSet(innerPlanState(node), node->chgParam);
 	}
 
 	/* Call expression callbacks */
@@ -645,7 +645,7 @@ IndexSupportsBackwardScan(Oid indexid)
 	bool		result;
 	HeapTuple	ht_idxrel;
 	Form_pg_class idxrelrec;
-	IndexAmRoutine *amroutine;
+	const IndexAmRoutine *amroutine;
 
 	/* Fetch the pg_class tuple of the index relation */
 	ht_idxrel = SearchSysCache1(RELOID, ObjectIdGetDatum(indexid));
@@ -658,7 +658,6 @@ IndexSupportsBackwardScan(Oid indexid)
 
 	result = amroutine->amcanbackward;
 
-	pfree(amroutine);
 	ReleaseSysCache(ht_idxrel);
 
 	return result;

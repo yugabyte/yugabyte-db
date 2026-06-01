@@ -3,7 +3,7 @@
  * enum.c
  *	  I/O functions, operators, aggregates etc for enum types
  *
- * Copyright (c) 2006-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -22,7 +22,6 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
@@ -50,11 +49,12 @@ static ArrayType *enum_range_internal(Oid enumtypoid, Oid lower, Oid upper);
  * We don't implement that fully right now, but we do allow free use of enum
  * values created during CREATE TYPE AS ENUM, which are surely of the same
  * lifespan as the enum type.  (This case is required by "pg_restore -1".)
- * Values added by ALTER TYPE ADD VALUE are currently restricted, but could
- * be allowed if the enum type could be proven to have been created earlier
- * in the same transaction.  (Note that comparing tuple xmins would not work
- * for that, because the type tuple might have been updated in the current
- * transaction.  Subtransactions also create hazards to be accounted for.)
+ * Values added by ALTER TYPE ADD VALUE are also allowed if the enum type
+ * is known to have been created earlier in the same transaction.  (Note that
+ * we have to track that explicitly; comparing tuple xmins is insufficient,
+ * because the type tuple might have been updated in the current transaction.
+ * Subtransactions also create hazards to be accounted for; currently,
+ * pg_enum.c only handles ADD VALUE at the outermost transaction level.)
  *
  * This function needs to be called (directly or indirectly) in any of the
  * functions below that could return an enum value to SQL operations.
@@ -82,10 +82,10 @@ check_safe_enum_use(HeapTuple enumval_tup)
 		return;
 
 	/*
-	 * Check if the enum value is uncommitted.  If not, it's safe, because it
-	 * was made during CREATE TYPE AS ENUM and can't be shorter-lived than its
-	 * owning type.  (This'd also be false for values made by other
-	 * transactions; but the previous tests should have handled all of those.)
+	 * Check if the enum value is listed as uncommitted.  If not, it's safe,
+	 * because it can't be shorter-lived than its owning type.  (This'd also
+	 * be false for values made by other transactions; but the previous tests
+	 * should have handled all of those.)
 	 */
 	if (!EnumUncommitted(en->oid))
 		return;
@@ -110,12 +110,13 @@ enum_in(PG_FUNCTION_ARGS)
 {
 	char	   *name = PG_GETARG_CSTRING(0);
 	Oid			enumtypoid = PG_GETARG_OID(1);
+	Node	   *escontext = fcinfo->context;
 	Oid			enumoid;
 	HeapTuple	tup;
 
 	/* must check length to prevent Assert failure within SearchSysCache */
 	if (strlen(name) >= NAMEDATALEN)
-		ereport(ERROR,
+		ereturn(escontext, (Datum) 0,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input value for enum %s: \"%s\"",
 						format_type_be(enumtypoid),
@@ -125,13 +126,18 @@ enum_in(PG_FUNCTION_ARGS)
 						  ObjectIdGetDatum(enumtypoid),
 						  CStringGetDatum(name));
 	if (!HeapTupleIsValid(tup))
-		ereport(ERROR,
+		ereturn(escontext, (Datum) 0,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid input value for enum %s: \"%s\"",
 						format_type_be(enumtypoid),
 						name)));
 
-	/* check it's safe to use in SQL */
+	/*
+	 * Check it's safe to use in SQL.  Perhaps we should take the trouble to
+	 * report "unsafe use" softly; but it's unclear that it's worth the
+	 * trouble, or indeed that that is a legitimate bad-input case at all
+	 * rather than an implementation shortcoming.
+	 */
 	check_safe_enum_use(tup);
 
 	/*
@@ -289,7 +295,7 @@ enum_cmp_internal(Oid arg1, Oid arg2, FunctionCallInfo fcinfo)
 		ReleaseSysCache(enum_tup);
 		/* Now locate and remember the typcache entry */
 		tcache = lookup_type_cache(typeoid, 0);
-		fcinfo->flinfo->fn_extra = (void *) tcache;
+		fcinfo->flinfo->fn_extra = tcache;
 	}
 
 	/* The remaining comparison logic is in typcache.c */

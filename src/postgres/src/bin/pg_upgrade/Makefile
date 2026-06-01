@@ -3,6 +3,8 @@
 PGFILEDESC = "pg_upgrade - an in-place binary upgrade utility"
 PGAPPICON = win32
 
+EXTRA_INSTALL=contrib/test_decoding src/test/modules/dummy_seclabel src/test/modules/test_extensions
+
 subdir = src/bin/pg_upgrade
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
@@ -16,12 +18,16 @@ OBJS = \
 	file.o \
 	function.o \
 	info.o \
+	multixact_read_v18.o \
+	multixact_rewrite.o \
 	option.o \
 	parallel.o \
 	pg_upgrade.o \
-	relfilenode.o \
+	relfilenumber.o \
 	server.o \
+	slru_io.o \
 	tablespace.o \
+	task.o \
 	util.o \
 	version.o
 
@@ -31,6 +37,10 @@ LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 # required for 002_pg_upgrade.pl
 REGRESS_SHLIB=$(abs_top_builddir)/src/test/regress/regress$(DLSUFFIX)
 export REGRESS_SHLIB
+
+# required for 008_extension_control_path.pl
+TEST_EXT_LIB=$(abs_top_builddir)/src/test/modules/test_extensions/test_ext$(DLSUFFIX)
+export TEST_EXT_LIB
 
 all: pg_upgrade
 
@@ -46,10 +56,12 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_upgrade$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f pg_upgrade$(X) $(OBJS)
 	rm -rf delete_old_cluster.sh log/ tmp_check/ \
 	       reindex_hash.sql
+
+export with_icu
 
 check:
 	$(prove_check)

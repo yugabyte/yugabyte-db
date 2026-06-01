@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 #
 # Tests restarts of postgres due to crashes of a subprocess.
@@ -12,7 +12,7 @@
 # backend died), or because it's already restarted.
 #
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -21,43 +21,58 @@ my $psql_timeout = IPC::Run::timer($PostgreSQL::Test::Utils::timeout_default);
 
 my $node = PostgreSQL::Test::Cluster->new('primary');
 $node->init(allows_streaming => 1);
+
+# Enable pg_stat_statements to test restart of shared_preload_libraries.
+$node->append_conf(
+	'postgresql.conf',
+	qq{shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.max = 50000
+compute_query_id = 'regress'
+});
+
 $node->start();
 
 # by default PostgreSQL::Test::Cluster doesn't restart after a crash
 $node->safe_psql(
-	'postgres',
-	q[ALTER SYSTEM SET restart_after_crash = 1;
-				   ALTER SYSTEM SET log_connections = 1;
-				   SELECT pg_reload_conf();]);
+	'postgres', q[
+		ALTER SYSTEM SET restart_after_crash = 1;
+		ALTER SYSTEM SET log_connections = receipt;
+		SELECT pg_reload_conf();
+	]);
+
+# Remember the time that pg_stat_statements was reset. We'll use it later to
+# verify that it gets re-initialized after crash.
+my $stats_reset = $node->safe_psql(
+	'postgres', q[
+		CREATE EXTENSION pg_stat_statements;
+		SELECT stats_reset FROM pg_stat_statements_info;
+	]);
 
 # Run psql, keeping session alive, so we have an alive backend to kill.
 my ($killme_stdin, $killme_stdout, $killme_stderr) = ('', '', '');
 my $killme = IPC::Run::start(
 	[
-		'psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-f', '-', '-d',
-		$node->connstr('postgres')
+		'psql', '--no-psqlrc', '--quiet', '--no-align', '--tuples-only',
+		'--set' => 'ON_ERROR_STOP=1',
+		'--file' => '-',
+		'--dbname' => $node->connstr('postgres')
 	],
-	'<',
-	\$killme_stdin,
-	'>',
-	\$killme_stdout,
-	'2>',
-	\$killme_stderr,
+	'<' => \$killme_stdin,
+	'>' => \$killme_stdout,
+	'2>' => \$killme_stderr,
 	$psql_timeout);
 
 # Need a second psql to check if crash-restart happened.
 my ($monitor_stdin, $monitor_stdout, $monitor_stderr) = ('', '', '');
 my $monitor = IPC::Run::start(
 	[
-		'psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-f', '-', '-d',
-		$node->connstr('postgres')
+		'psql', '--no-psqlrc', '--quiet', '--no-align', '--tuples-only',
+		'--set' => 'ON_ERROR_STOP=1',
+		'--file', '-', '--dbname' => $node->connstr('postgres')
 	],
-	'<',
-	\$monitor_stdin,
-	'>',
-	\$monitor_stdout,
-	'2>',
-	\$monitor_stderr,
+	'<' => \$monitor_stdin,
+	'>' => \$monitor_stdout,
+	'2>' => \$monitor_stderr,
 	$psql_timeout);
 
 #create table, insert row that should survive
@@ -80,7 +95,7 @@ BEGIN;
 INSERT INTO alive VALUES($$in-progress-before-sigquit$$) RETURNING status;
 ];
 ok( pump_until(
-		$killme,         $psql_timeout,
+		$killme, $psql_timeout,
 		\$killme_stdout, qr/in-progress-before-sigquit/m),
 	'inserted in-progress-before-sigquit');
 $killme_stdout = '';
@@ -144,6 +159,13 @@ $killme->run();
 ($monitor_stdin, $monitor_stdout, $monitor_stderr) = ('', '', '');
 $monitor->run();
 
+# Verify that pg_stat_statements, loaded via shared_preload_libraries,
+# was re-initialized at the crash.
+my $stats_reset_after = $node->safe_psql('postgres',
+	q[SELECT stats_reset FROM pg_stat_statements_info]);
+cmp_ok($stats_reset, 'ne', $stats_reset_after,
+	"pg_stat_statements was reset by restart");
+
 
 # Acquire pid of new backend
 $killme_stdin .= q[
@@ -164,7 +186,7 @@ BEGIN;
 INSERT INTO alive VALUES($$in-progress-before-sigkill$$) RETURNING status;
 ];
 ok( pump_until(
-		$killme,         $psql_timeout,
+		$killme, $psql_timeout,
 		\$killme_stdout, qr/in-progress-before-sigkill/m),
 	'inserted in-progress-before-sigkill');
 $killme_stdout = '';
@@ -230,6 +252,13 @@ is( $node->safe_psql(
 	),
 	'before-orderly-restart',
 	'can still write after crash restart');
+
+# Confirm that the logical replication launcher, a background worker
+# without the never-restart flag, has also restarted successfully.
+is($node->poll_query_until('postgres',
+	"SELECT count(*) = 1 FROM pg_stat_activity WHERE backend_type = 'logical replication launcher'"),
+	'1',
+	'logical replication launcher restarted after crash');
 
 # Just to be sure, check that an orderly restart now still works
 $node->restart();

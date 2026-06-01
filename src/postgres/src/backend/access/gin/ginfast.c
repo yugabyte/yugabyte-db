@@ -7,7 +7,7 @@
  *	  transfer pending entries into the regular index structure.  This
  *	  wins because bulk insertion is much more efficient than retail.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -31,7 +31,7 @@
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
 #include "utils/acl.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
@@ -39,7 +39,7 @@
 int			gin_pending_list_limit = 0;
 
 #define GIN_PAGE_FREESIZE \
-	( BLCKSZ - MAXALIGN(SizeOfPageHeaderData) - MAXALIGN(sizeof(GinPageOpaqueData)) )
+	( (Size) BLCKSZ - MAXALIGN(SizeOfPageHeaderData) - MAXALIGN(sizeof(GinPageOpaqueData)) )
 
 typedef struct KeyArray
 {
@@ -57,7 +57,7 @@ typedef struct KeyArray
  */
 static int32
 writeListPage(Relation index, Buffer buffer,
-			  IndexTuple *tuples, int32 ntuples, BlockNumber rightlink)
+			  const IndexTuple *tuples, int32 ntuples, BlockNumber rightlink)
 {
 	Page		page = BufferGetPage(buffer);
 	int32		i,
@@ -83,7 +83,7 @@ writeListPage(Relation index, Buffer buffer,
 		ptr += this_size;
 		size += this_size;
 
-		l = PageAddItem(page, (Item) tuples[i], this_size, off, false, false);
+		l = PageAddItem(page, tuples[i], this_size, off, false, false);
 
 		if (l == InvalidOffsetNumber)
 			elog(ERROR, "failed to add item to index page in \"%s\"",
@@ -122,7 +122,7 @@ writeListPage(Relation index, Buffer buffer,
 		data.ntuples = ntuples;
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &data, sizeof(ginxlogInsertListPage));
+		XLogRegisterData(&data, sizeof(ginxlogInsertListPage));
 
 		XLogRegisterBuffer(0, buffer, REGBUF_WILL_INIT);
 		XLogRegisterBufData(0, workspace.data, size);
@@ -134,9 +134,9 @@ writeListPage(Relation index, Buffer buffer,
 	/* get free space before releasing buffer */
 	freesize = PageGetExactFreeSpace(page);
 
-	UnlockReleaseBuffer(buffer);
-
 	END_CRIT_SECTION();
+
+	UnlockReleaseBuffer(buffer);
 
 	return freesize;
 }
@@ -235,7 +235,7 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 
 	needWal = RelationNeedsWAL(index);
 
-	data.node = index->rd_node;
+	data.locator = index->rd_locator;
 	data.ntuples = 0;
 	data.newRightlink = data.prevTail = InvalidBlockNumber;
 
@@ -384,7 +384,7 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 		for (i = 0; i < collector->ntuples; i++)
 		{
 			tupsize = IndexTupleSize(collector->tuples[i]);
-			l = PageAddItem(page, (Item) collector->tuples[i], tupsize, off, false, false);
+			l = PageAddItem(page, collector->tuples[i], tupsize, off, false, false);
 
 			if (l == InvalidOffsetNumber)
 				elog(ERROR, "failed to add item to index page in \"%s\"",
@@ -397,6 +397,9 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 		}
 
 		Assert((ptr - collectordata) <= collector->sumsize);
+
+		MarkBufferDirty(buffer);
+
 		if (needWal)
 		{
 			XLogRegisterBuffer(1, buffer, REGBUF_STANDARD);
@@ -404,8 +407,6 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 		}
 
 		metadata->tailFreeSize = PageGetExactFreeSpace(page);
-
-		MarkBufferDirty(buffer);
 	}
 
 	/*
@@ -430,7 +431,7 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 		memcpy(&data.metadata, metadata, sizeof(GinMetaPageData));
 
 		XLogRegisterBuffer(0, metabuffer, REGBUF_WILL_INIT | REGBUF_STANDARD);
-		XLogRegisterData((char *) &data, sizeof(ginxlogUpdateMeta));
+		XLogRegisterData(&data, sizeof(ginxlogUpdateMeta));
 
 		recptr = XLogInsert(RM_GIN_ID, XLOG_GIN_UPDATE_META_PAGE);
 		PageSetLSN(metapage, recptr);
@@ -455,12 +456,12 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 	 * ginInsertCleanup() should not be called inside our CRIT_SECTION.
 	 */
 	cleanupSize = GinGetPendingListCleanupSize(index);
-	if (metadata->nPendingPages * GIN_PAGE_FREESIZE > cleanupSize * 1024L)
+	if (metadata->nPendingPages * GIN_PAGE_FREESIZE > cleanupSize * (Size) 1024)
 		needCleanup = true;
 
-	UnlockReleaseBuffer(metabuffer);
-
 	END_CRIT_SECTION();
+
+	UnlockReleaseBuffer(metabuffer);
 
 	/*
 	 * Since it could contend with concurrent cleanup process we cleanup
@@ -513,7 +514,7 @@ ginHeapTupleFastCollect(GinState *ginstate,
 		 * resizing (since palloc likes powers of 2).
 		 */
 		collector->lentuples = pg_nextpower2_32(Max(16, nentries));
-		collector->tuples = (IndexTuple *) palloc(sizeof(IndexTuple) * collector->lentuples);
+		collector->tuples = palloc_array(IndexTuple, collector->lentuples);
 	}
 	else if (collector->lentuples < collector->ntuples + nentries)
 	{
@@ -523,8 +524,8 @@ ginHeapTupleFastCollect(GinState *ginstate,
 		 * MaxAllocSize/sizeof(IndexTuple), causing an error in repalloc.
 		 */
 		collector->lentuples = pg_nextpower2_32(collector->ntuples + nentries);
-		collector->tuples = (IndexTuple *) repalloc(collector->tuples,
-													sizeof(IndexTuple) * collector->lentuples);
+		collector->tuples = repalloc_array(collector->tuples,
+										   IndexTuple, collector->lentuples);
 	}
 
 	/*
@@ -645,7 +646,7 @@ shiftList(Relation index, Buffer metabuffer, BlockNumber newHead,
 
 			memcpy(&data.metadata, metadata, sizeof(GinMetaPageData));
 
-			XLogRegisterData((char *) &data,
+			XLogRegisterData(&data,
 							 sizeof(ginxlogDeleteListPages));
 
 			recptr = XLogInsert(RM_GIN_ID, XLOG_GIN_DELETE_LISTPAGE);
@@ -658,10 +659,10 @@ shiftList(Relation index, Buffer metabuffer, BlockNumber newHead,
 			}
 		}
 
+		END_CRIT_SECTION();
+
 		for (i = 0; i < data.ndeleted; i++)
 			UnlockReleaseBuffer(buffers[i]);
-
-		END_CRIT_SECTION();
 
 		for (i = 0; fill_fsm && i < data.ndeleted; i++)
 			RecordFreeIndexPage(index, freespace[i]);
@@ -673,9 +674,8 @@ shiftList(Relation index, Buffer metabuffer, BlockNumber newHead,
 static void
 initKeyArray(KeyArray *keys, int32 maxvalues)
 {
-	keys->keys = (Datum *) palloc(sizeof(Datum) * maxvalues);
-	keys->categories = (GinNullCategory *)
-		palloc(sizeof(GinNullCategory) * maxvalues);
+	keys->keys = palloc_array(Datum, maxvalues);
+	keys->categories = palloc_array(GinNullCategory, maxvalues);
 	keys->nvalues = 0;
 	keys->maxvalues = maxvalues;
 }
@@ -687,10 +687,8 @@ addDatum(KeyArray *keys, Datum datum, GinNullCategory category)
 	if (keys->nvalues >= keys->maxvalues)
 	{
 		keys->maxvalues *= 2;
-		keys->keys = (Datum *)
-			repalloc(keys->keys, sizeof(Datum) * keys->maxvalues);
-		keys->categories = (GinNullCategory *)
-			repalloc(keys->categories, sizeof(GinNullCategory) * keys->maxvalues);
+		keys->keys = repalloc_array(keys->keys, Datum, keys->maxvalues);
+		keys->categories = repalloc_array(keys->categories, GinNullCategory, keys->maxvalues);
 	}
 
 	keys->keys[keys->nvalues] = datum;
@@ -797,7 +795,7 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 				blknoFinish;
 	bool		cleanupFinish = false;
 	bool		fsm_vac = false;
-	Size		workMemory;
+	int			workMemory;
 
 	/*
 	 * We would like to prevent concurrent cleanup process. For that we will
@@ -814,7 +812,7 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 		 */
 		LockPage(index, GIN_METAPAGE_BLKNO, ExclusiveLock);
 		workMemory =
-			(IsAutoVacuumWorkerProcess() && autovacuum_work_mem != -1) ?
+			(AmAutoVacuumWorkerProcess() && autovacuum_work_mem != -1) ?
 			autovacuum_work_mem : maintenance_work_mem;
 	}
 	else
@@ -894,7 +892,7 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 		 */
 		processPendingPage(&accum, &datums, page, FirstOffsetNumber);
 
-		vacuum_delay_point();
+		vacuum_delay_point(false);
 
 		/*
 		 * Is it time to flush memory to disk?	Flush if we are at the end of
@@ -903,7 +901,7 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 		 */
 		if (GinPageGetOpaque(page)->rightlink == InvalidBlockNumber ||
 			(GinPageHasFullRow(page) &&
-			 (accum.allocatedMemory >= workMemory * 1024L)))
+			 accum.allocatedMemory >= workMemory * (Size) 1024))
 		{
 			ItemPointerData *list;
 			uint32		nlist;
@@ -931,7 +929,7 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 			{
 				ginEntryInsert(ginstate, attnum, key, category,
 							   list, nlist, NULL);
-				vacuum_delay_point();
+				vacuum_delay_point(false);
 			}
 
 			/*
@@ -1004,7 +1002,7 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 		/*
 		 * Read next page in pending list
 		 */
-		vacuum_delay_point();
+		vacuum_delay_point(false);
 		buffer = ReadBuffer(index, blkno);
 		LockBuffer(buffer, GIN_SHARE);
 		page = BufferGetPage(buffer);
@@ -1061,7 +1059,7 @@ gin_clean_pending_list(PG_FUNCTION_ARGS)
 				 errmsg("cannot access temporary indexes of other sessions")));
 
 	/* User must own the index (comparable to privileges needed for VACUUM) */
-	if (!pg_class_ownercheck(indexoid, GetUserId()))
+	if (!object_ownercheck(RelationRelationId, indexoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_INDEX,
 					   RelationGetRelationName(indexRel));
 

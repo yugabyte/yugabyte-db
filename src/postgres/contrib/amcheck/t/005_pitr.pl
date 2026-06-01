@@ -1,8 +1,8 @@
-# Copyright (c) 2021-2023, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Test integrity of intermediate states by PITR to those states
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -20,8 +20,7 @@ my $setup = <<EOSQL;
 BEGIN;
 CREATE EXTENSION amcheck;
 CREATE EXTENSION pg_walinspect;
-CREATE TABLE not_leftmost (c text);
-ALTER TABLE not_leftmost ALTER c SET STORAGE PLAIN;
+CREATE TABLE not_leftmost (c text STORAGE PLAIN);
 INSERT INTO not_leftmost
   SELECT repeat(n::text, database_block_size / 4)
   FROM generate_series(1,6) t(n), pg_control_init();
@@ -43,7 +42,7 @@ VACUUM (VERBOSE, INDEX_CLEANUP ON) not_leftmost;
 CREATE TABLE XLogFlush ();
 DROP TABLE XLogFlush;
 SELECT max(start_lsn)
-  FROM pg_get_wal_records_info('$before_vacuum_lsn', pg_current_wal_flush_lsn())
+  FROM pg_get_wal_records_info('$before_vacuum_lsn', 'FFFFFFFF/FFFFFFFF')
   WHERE resource_manager = 'Btree' AND record_type = 'UNLINK_PAGE';
 EOSQL
 my $unlink_lsn = $origin->safe_psql('postgres', $vacuum);

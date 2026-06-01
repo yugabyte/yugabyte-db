@@ -3,8 +3,9 @@ SET synchronous_commit = on;
 
 SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'test_decoding');
 
-SELECT 'msg1' FROM pg_logical_emit_message(true, 'test', 'msg1');
-SELECT 'msg2' FROM pg_logical_emit_message(false, 'test', 'msg2');
+-- These two cover the path for the flush variant.
+SELECT 'msg1' FROM pg_logical_emit_message(true, 'test', 'msg1', true);
+SELECT 'msg2' FROM pg_logical_emit_message(false, 'test', 'msg2', true);
 
 BEGIN;
 SELECT 'msg3' FROM pg_logical_emit_message(true, 'test', 'msg3');
@@ -19,7 +20,7 @@ COMMIT;
 
 SELECT 'ignorethis' FROM pg_logical_emit_message(true, 'test', 'czechtastic');
 
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'force-binary', '0', 'skip-empty-xacts', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'force-binary', '0', 'skip-empty-xacts', '1', 'include-xids', '0');
 
 -- test db filtering
 \set prevdb :DBNAME

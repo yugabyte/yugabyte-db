@@ -4,7 +4,7 @@
  *	  WAL replay logic for btrees.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -18,10 +18,8 @@
 #include "access/nbtree.h"
 #include "access/nbtxlog.h"
 #include "access/transam.h"
-#include "access/xlog.h"
 #include "access/xlogutils.h"
-#include "miscadmin.h"
-#include "storage/procarray.h"
+#include "storage/standby.h"
 #include "utils/memutils.h"
 
 static MemoryContext opCtx;		/* working memory for operations */
@@ -40,7 +38,7 @@ _bt_restore_page(Page page, char *from, int len)
 	IndexTupleData itupdata;
 	Size		itemsz;
 	char	   *end = from + len;
-	Item		items[MaxIndexTuplesPerPage];
+	void	   *items[MaxIndexTuplesPerPage];
 	uint16		itemsizes[MaxIndexTuplesPerPage];
 	int			i;
 	int			nitems;
@@ -55,16 +53,15 @@ _bt_restore_page(Page page, char *from, int len)
 	{
 		/*
 		 * As we step through the items, 'from' won't always be properly
-		 * aligned, so we need to use memcpy().  Further, we use Item (which
-		 * is just a char*) here for our items array for the same reason;
-		 * wouldn't want the compiler or anyone thinking that an item is
-		 * aligned when it isn't.
+		 * aligned, so we need to use memcpy().  Further, we use void * here
+		 * for our items array for the same reason; wouldn't want the compiler
+		 * or anyone thinking that an item is aligned when it isn't.
 		 */
 		memcpy(&itupdata, from, sizeof(IndexTupleData));
 		itemsz = IndexTupleSize(&itupdata);
 		itemsz = MAXALIGN(itemsz);
 
-		items[i] = (Item) from;
+		items[i] = from;
 		itemsizes[i] = itemsz;
 		i++;
 
@@ -74,8 +71,7 @@ _bt_restore_page(Page page, char *from, int len)
 
 	for (i = nitems - 1; i >= 0; i--)
 	{
-		if (PageAddItem(page, items[i], itemsizes[i], nitems - i,
-						false, false) == InvalidOffsetNumber)
+		if (PageAddItem(page, items[i], itemsizes[i], nitems - i, false, false) == InvalidOffsetNumber)
 			elog(PANIC, "_bt_restore_page: cannot add item to page");
 	}
 }
@@ -145,7 +141,7 @@ _bt_clear_incomplete_split(XLogReaderState *record, uint8 block_id)
 
 	if (XLogReadBufferForRedo(record, block_id, &buf) == BLK_NEEDS_REDO)
 	{
-		Page		page = (Page) BufferGetPage(buf);
+		Page		page = BufferGetPage(buf);
 		BTPageOpaque pageop = BTPageGetOpaque(page);
 
 		Assert(P_INCOMPLETE_SPLIT(pageop));
@@ -188,8 +184,7 @@ btree_xlog_insert(bool isleaf, bool ismeta, bool posting,
 		if (!posting)
 		{
 			/* Simple retail insertion */
-			if (PageAddItem(page, (Item) datapos, datalen, xlrec->offnum,
-							false, false) == InvalidOffsetNumber)
+			if (PageAddItem(page, datapos, datalen, xlrec->offnum, false, false) == InvalidOffsetNumber)
 				elog(PANIC, "failed to add new item");
 		}
 		else
@@ -227,8 +222,7 @@ btree_xlog_insert(bool isleaf, bool ismeta, bool posting,
 
 			/* Insert "final" new item (not orignewitem from WAL stream) */
 			Assert(IndexTupleSize(newitem) == datalen);
-			if (PageAddItem(page, (Item) newitem, datalen, xlrec->offnum,
-							false, false) == InvalidOffsetNumber)
+			if (PageAddItem(page, newitem, datalen, xlrec->offnum, false, false) == InvalidOffsetNumber)
 				elog(PANIC, "failed to add posting split new item");
 		}
 
@@ -289,7 +283,7 @@ btree_xlog_split(bool newitemonleft, XLogReaderState *record)
 	/* Reconstruct right (new) sibling page from scratch */
 	rbuf = XLogInitBufferForRedo(record, 1);
 	datapos = XLogRecGetBlockData(record, 1, &datalen);
-	rpage = (Page) BufferGetPage(rbuf);
+	rpage = BufferGetPage(rbuf);
 
 	_bt_pageinit(rpage, BufferGetPageSize(rbuf));
 	ropaque = BTPageGetOpaque(rpage);
@@ -316,7 +310,7 @@ btree_xlog_split(bool newitemonleft, XLogReaderState *record)
 		 * checking possible.  See also _bt_restore_page(), which does the
 		 * same for the right page.
 		 */
-		Page		origpage = (Page) BufferGetPage(buf);
+		Page		origpage = BufferGetPage(buf);
 		BTPageOpaque oopaque = BTPageGetOpaque(origpage);
 		OffsetNumber off;
 		IndexTuple	newitem = NULL,
@@ -370,8 +364,7 @@ btree_xlog_split(bool newitemonleft, XLogReaderState *record)
 
 		/* Add high key tuple from WAL record to temp page */
 		leftoff = P_HIKEY;
-		if (PageAddItem(leftpage, (Item) left_hikey, left_hikeysz, P_HIKEY,
-						false, false) == InvalidOffsetNumber)
+		if (PageAddItem(leftpage, left_hikey, left_hikeysz, P_HIKEY, false, false) == InvalidOffsetNumber)
 			elog(ERROR, "failed to add high key to left page after split");
 		leftoff = OffsetNumberNext(leftoff);
 
@@ -386,9 +379,7 @@ btree_xlog_split(bool newitemonleft, XLogReaderState *record)
 			{
 				Assert(newitemonleft ||
 					   xlrec->firstrightoff == xlrec->newitemoff);
-				if (PageAddItem(leftpage, (Item) nposting,
-								MAXALIGN(IndexTupleSize(nposting)), leftoff,
-								false, false) == InvalidOffsetNumber)
+				if (PageAddItem(leftpage, nposting, MAXALIGN(IndexTupleSize(nposting)), leftoff, false, false) == InvalidOffsetNumber)
 					elog(ERROR, "failed to add new posting list item to left page after split");
 				leftoff = OffsetNumberNext(leftoff);
 				continue;		/* don't insert oposting */
@@ -397,8 +388,7 @@ btree_xlog_split(bool newitemonleft, XLogReaderState *record)
 			/* add the new item if it was inserted on left page */
 			else if (newitemonleft && off == xlrec->newitemoff)
 			{
-				if (PageAddItem(leftpage, (Item) newitem, newitemsz, leftoff,
-								false, false) == InvalidOffsetNumber)
+				if (PageAddItem(leftpage, newitem, newitemsz, leftoff, false, false) == InvalidOffsetNumber)
 					elog(ERROR, "failed to add new item to left page after split");
 				leftoff = OffsetNumberNext(leftoff);
 			}
@@ -406,8 +396,7 @@ btree_xlog_split(bool newitemonleft, XLogReaderState *record)
 			itemid = PageGetItemId(origpage, off);
 			itemsz = ItemIdGetLength(itemid);
 			item = (IndexTuple) PageGetItem(origpage, itemid);
-			if (PageAddItem(leftpage, (Item) item, itemsz, leftoff,
-							false, false) == InvalidOffsetNumber)
+			if (PageAddItem(leftpage, item, itemsz, leftoff, false, false) == InvalidOffsetNumber)
 				elog(ERROR, "failed to add old item to left page after split");
 			leftoff = OffsetNumberNext(leftoff);
 		}
@@ -415,8 +404,7 @@ btree_xlog_split(bool newitemonleft, XLogReaderState *record)
 		/* cope with possibility that newitem goes at the end */
 		if (newitemonleft && off == xlrec->newitemoff)
 		{
-			if (PageAddItem(leftpage, (Item) newitem, newitemsz, leftoff,
-							false, false) == InvalidOffsetNumber)
+			if (PageAddItem(leftpage, newitem, newitemsz, leftoff, false, false) == InvalidOffsetNumber)
 				elog(ERROR, "failed to add new item to left page after split");
 			leftoff = OffsetNumberNext(leftoff);
 		}
@@ -441,7 +429,7 @@ btree_xlog_split(bool newitemonleft, XLogReaderState *record)
 
 		if (XLogReadBufferForRedo(record, 2, &sbuf) == BLK_NEEDS_REDO)
 		{
-			Page		spage = (Page) BufferGetPage(sbuf);
+			Page		spage = BufferGetPage(sbuf);
 			BTPageOpaque spageop = BTPageGetOpaque(spage);
 
 			spageop->btpo_prev = rightpagenumber;
@@ -472,7 +460,7 @@ btree_xlog_dedup(XLogReaderState *record)
 	if (XLogReadBufferForRedo(record, 0, &buf) == BLK_NEEDS_REDO)
 	{
 		char	   *ptr = XLogRecGetBlockData(record, 0, NULL);
-		Page		page = (Page) BufferGetPage(buf);
+		Page		page = BufferGetPage(buf);
 		BTPageOpaque opaque = BTPageGetOpaque(page);
 		OffsetNumber offnum,
 					minoff,
@@ -481,11 +469,11 @@ btree_xlog_dedup(XLogReaderState *record)
 		BTDedupInterval *intervals;
 		Page		newpage;
 
-		state = (BTDedupState) palloc(sizeof(BTDedupStateData));
+		state = palloc_object(BTDedupStateData);
 		state->deduplicate = true;	/* unused */
 		state->nmaxitems = 0;	/* unused */
 		/* Conservatively use larger maxpostingsize than primary */
-		state->maxpostingsize = BTMaxItemSize(page);
+		state->maxpostingsize = BTMaxItemSize;
 		state->base = NULL;
 		state->baseoff = InvalidOffsetNumber;
 		state->basetupsize = 0;
@@ -505,8 +493,7 @@ btree_xlog_dedup(XLogReaderState *record)
 			Size		itemsz = ItemIdGetLength(itemid);
 			IndexTuple	item = (IndexTuple) PageGetItem(page, itemid);
 
-			if (PageAddItem(newpage, (Item) item, itemsz, P_HIKEY,
-							false, false) == InvalidOffsetNumber)
+			if (PageAddItem(newpage, item, itemsz, P_HIKEY, false, false) == InvalidOffsetNumber)
 				elog(ERROR, "deduplication failed to add highkey");
 		}
 
@@ -582,8 +569,7 @@ btree_xlog_updates(Page page, OffsetNumber *updatedoffsets,
 
 		/* Overwrite updated version of tuple */
 		itemsz = MAXALIGN(IndexTupleSize(vacposting->itup));
-		if (!PageIndexTupleOverwrite(page, updatedoffsets[i],
-									 (Item) vacposting->itup, itemsz))
+		if (!PageIndexTupleOverwrite(page, updatedoffsets[i], vacposting->itup, itemsz))
 			elog(PANIC, "failed to update partially dead item");
 
 		pfree(vacposting->itup);
@@ -616,7 +602,7 @@ btree_xlog_vacuum(XLogReaderState *record)
 	{
 		char	   *ptr = XLogRecGetBlockData(record, 0, NULL);
 
-		page = (Page) BufferGetPage(buffer);
+		page = BufferGetPage(buffer);
 
 		if (xlrec->nupdated > 0)
 		{
@@ -636,10 +622,11 @@ btree_xlog_vacuum(XLogReaderState *record)
 			PageIndexMultiDelete(page, (OffsetNumber *) ptr, xlrec->ndeleted);
 
 		/*
-		 * Mark the page as not containing any LP_DEAD items --- see comments
-		 * in _bt_delitems_vacuum().
+		 * Clear the vacuum cycle ID, and mark the page as not containing any
+		 * LP_DEAD items
 		 */
 		opaque = BTPageGetOpaque(page);
+		opaque->btpo_cycleid = 0;
 		opaque->btpo_flags &= ~BTP_HAS_GARBAGE;
 
 		PageSetLSN(page, lsn);
@@ -664,11 +651,13 @@ btree_xlog_delete(XLogReaderState *record)
 	 */
 	if (InHotStandby)
 	{
-		RelFileNode rnode;
+		RelFileLocator rlocator;
 
-		XLogRecGetBlockTag(record, 0, &rnode, NULL, NULL);
+		XLogRecGetBlockTag(record, 0, &rlocator, NULL, NULL);
 
-		ResolveRecoveryConflictWithSnapshot(xlrec->latestRemovedXid, rnode);
+		ResolveRecoveryConflictWithSnapshot(xlrec->snapshotConflictHorizon,
+											xlrec->isCatalogRel,
+											rlocator);
 	}
 
 	/*
@@ -679,7 +668,7 @@ btree_xlog_delete(XLogReaderState *record)
 	{
 		char	   *ptr = XLogRecGetBlockData(record, 0, NULL);
 
-		page = (Page) BufferGetPage(buffer);
+		page = BufferGetPage(buffer);
 
 		if (xlrec->nupdated > 0)
 		{
@@ -698,7 +687,10 @@ btree_xlog_delete(XLogReaderState *record)
 		if (xlrec->ndeleted > 0)
 			PageIndexMultiDelete(page, (OffsetNumber *) ptr, xlrec->ndeleted);
 
-		/* Mark the page as not containing any LP_DEAD items */
+		/*
+		 * Do *not* clear the vacuum cycle ID, but do mark the page as not
+		 * containing any LP_DEAD items
+		 */
 		opaque = BTPageGetOpaque(page);
 		opaque->btpo_flags &= ~BTP_HAS_GARBAGE;
 
@@ -736,7 +728,7 @@ btree_xlog_mark_page_halfdead(uint8 info, XLogReaderState *record)
 		OffsetNumber nextoffset;
 		BlockNumber rightsib;
 
-		page = (Page) BufferGetPage(buffer);
+		page = BufferGetPage(buffer);
 		pageop = BTPageGetOpaque(page);
 
 		poffset = xlrec->poffset;
@@ -765,7 +757,7 @@ btree_xlog_mark_page_halfdead(uint8 info, XLogReaderState *record)
 
 	/* Rewrite the leaf page as a halfdead page */
 	buffer = XLogInitBufferForRedo(record, 0);
-	page = (Page) BufferGetPage(buffer);
+	page = BufferGetPage(buffer);
 
 	_bt_pageinit(page, BufferGetPageSize(buffer));
 	pageop = BTPageGetOpaque(page);
@@ -784,8 +776,7 @@ btree_xlog_mark_page_halfdead(uint8 info, XLogReaderState *record)
 	trunctuple.t_info = sizeof(IndexTupleData);
 	BTreeTupleSetTopParent(&trunctuple, xlrec->topparent);
 
-	if (PageAddItem(page, (Item) &trunctuple, sizeof(IndexTupleData), P_HIKEY,
-					false, false) == InvalidOffsetNumber)
+	if (PageAddItem(page, &trunctuple, sizeof(IndexTupleData), P_HIKEY, false, false) == InvalidOffsetNumber)
 		elog(ERROR, "could not add dummy high key to half-dead page");
 
 	PageSetLSN(page, lsn);
@@ -832,7 +823,7 @@ btree_xlog_unlink_page(uint8 info, XLogReaderState *record)
 	{
 		if (XLogReadBufferForRedo(record, 1, &leftbuf) == BLK_NEEDS_REDO)
 		{
-			page = (Page) BufferGetPage(leftbuf);
+			page = BufferGetPage(leftbuf);
 			pageop = BTPageGetOpaque(page);
 			pageop->btpo_next = rightsib;
 
@@ -845,7 +836,7 @@ btree_xlog_unlink_page(uint8 info, XLogReaderState *record)
 
 	/* Rewrite target page as empty deleted page */
 	target = XLogInitBufferForRedo(record, 0);
-	page = (Page) BufferGetPage(target);
+	page = BufferGetPage(target);
 
 	_bt_pageinit(page, BufferGetPageSize(target));
 	pageop = BTPageGetOpaque(page);
@@ -864,7 +855,7 @@ btree_xlog_unlink_page(uint8 info, XLogReaderState *record)
 	/* Fix left-link of right sibling */
 	if (XLogReadBufferForRedo(record, 2, &rightbuf) == BLK_NEEDS_REDO)
 	{
-		page = (Page) BufferGetPage(rightbuf);
+		page = BufferGetPage(rightbuf);
 		pageop = BTPageGetOpaque(page);
 		pageop->btpo_prev = leftsib;
 
@@ -903,7 +894,7 @@ btree_xlog_unlink_page(uint8 info, XLogReaderState *record)
 		Assert(!isleaf);
 
 		leafbuf = XLogInitBufferForRedo(record, 3);
-		page = (Page) BufferGetPage(leafbuf);
+		page = BufferGetPage(leafbuf);
 
 		_bt_pageinit(page, BufferGetPageSize(leafbuf));
 		pageop = BTPageGetOpaque(page);
@@ -919,8 +910,7 @@ btree_xlog_unlink_page(uint8 info, XLogReaderState *record)
 		trunctuple.t_info = sizeof(IndexTupleData);
 		BTreeTupleSetTopParent(&trunctuple, xlrec->leaftopparent);
 
-		if (PageAddItem(page, (Item) &trunctuple, sizeof(IndexTupleData), P_HIKEY,
-						false, false) == InvalidOffsetNumber)
+		if (PageAddItem(page, &trunctuple, sizeof(IndexTupleData), P_HIKEY, false, false) == InvalidOffsetNumber)
 			elog(ERROR, "could not add dummy high key to half-dead page");
 
 		PageSetLSN(page, lsn);
@@ -945,7 +935,7 @@ btree_xlog_newroot(XLogReaderState *record)
 	Size		len;
 
 	buffer = XLogInitBufferForRedo(record, 0);
-	page = (Page) BufferGetPage(buffer);
+	page = BufferGetPage(buffer);
 
 	_bt_pageinit(page, BufferGetPageSize(buffer));
 	pageop = BTPageGetOpaque(page);
@@ -982,16 +972,16 @@ btree_xlog_newroot(XLogReaderState *record)
  * As far as any backend operating during original execution is concerned, the
  * FSM is a cache of recycle-safe pages; the mere presence of the page in the
  * FSM indicates that the page must already be safe to recycle (actually,
- * _bt_getbuf() verifies it's safe using BTPageIsRecyclable(), but that's just
- * because it would be unwise to completely trust the FSM, given its current
- * limitations).
+ * _bt_allocbuf() verifies it's safe using BTPageIsRecyclable(), but that's
+ * just because it would be unwise to completely trust the FSM, given its
+ * current limitations).
  *
  * This isn't sufficient to prevent similar concurrent recycling race
  * conditions during Hot Standby, though.  For that we need to log a
  * xl_btree_reuse_page record at the point that a page is actually recycled
  * and reused for an entirely unrelated page inside _bt_split().  These
  * records include the same safexid value from the original deleted page,
- * stored in the record's latestRemovedFullXid field.
+ * stored in the record's snapshotConflictHorizon field.
  *
  * The GlobalVisCheckRemovableFullXid() test in BTPageIsRecyclable() is used
  * to determine if it's safe to recycle a page.  This mirrors our own test:
@@ -1005,8 +995,9 @@ btree_xlog_reuse_page(XLogReaderState *record)
 	xl_btree_reuse_page *xlrec = (xl_btree_reuse_page *) XLogRecGetData(record);
 
 	if (InHotStandby)
-		ResolveRecoveryConflictWithSnapshotFullXid(xlrec->latestRemovedFullXid,
-												   xlrec->node);
+		ResolveRecoveryConflictWithSnapshotFullXid(xlrec->snapshotConflictHorizon,
+												   xlrec->isCatalogRel,
+												   xlrec->locator);
 }
 
 void

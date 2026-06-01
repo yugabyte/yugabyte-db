@@ -237,10 +237,10 @@ GIN packs keys and downlinks into tuples in a different way.
 
 P_i is grouped with K_{i+1}.  -Inf key is not needed.
 
-There are couple of additional notes regarding K_{n+1} key.
-1) In entry tree rightmost page, a key coupled with P_n doesn't really matter.
+There are a couple of additional notes regarding K_{n+1} key.
+1) In the entry tree on the rightmost page, a key coupled with P_n doesn't really matter.
 Highkey is assumed to be infinity.
-2) In posting tree, a key coupled with P_n always doesn't matter.  Highkey for
+2) In the posting tree, a key coupled with P_n always doesn't matter.  Highkey for
 non-rightmost pages is stored separately and accessed via
 GinDataPageGetRightBound().
 
@@ -393,11 +393,11 @@ tree leafs in logical order by rightlinks and removes deletable TIDs from
 posting lists. Posting trees are processed by links from entry tree leafs. They
 are vacuumed in two stages. At first stage, deletable TIDs are removed from
 leafs. If first stage detects at least one empty page, then at the second stage
-ginScanToDelete() deletes empty pages.
+ginScanPostingTreeToDelete() deletes empty pages.
 
-ginScanToDelete() traverses the whole tree in depth-first manner.  It starts
-from the full cleanup lock on the tree root.  This lock prevents all the
-concurrent insertions into this tree while we're deleting pages.  However,
+ginScanPostingTreeToDelete() traverses the whole tree in depth-first manner.
+It starts from the full cleanup lock on the tree root.  This lock prevents all
+the concurrent insertions into this tree while we're deleting pages.  However,
 there are still might be some in-progress readers, who traversed root before
 we locked it.
 

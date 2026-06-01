@@ -14,7 +14,7 @@
  * a true branch?) so that the interpreter knows whether to execute
  * code and whether to evaluate conditions.
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/include/fe_utils/conditional.h
  *
@@ -39,7 +39,7 @@ typedef enum ifState
 								 * false parent branch */
 	IFSTATE_ELSE_TRUE,			/* currently in an \else that is true and all
 								 * parent branches (if any) are true */
-	IFSTATE_ELSE_FALSE			/* currently in an \else that is false or
+	IFSTATE_ELSE_FALSE,			/* currently in an \else that is false or
 								 * ignored */
 } ifState;
 

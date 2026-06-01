@@ -13,7 +13,7 @@ REGRESS = test_ddl_deparse \
 	create_type \
 	create_conversion \
 	create_domain \
-	create_sequence_1 \
+	create_sequence \
 	create_table \
 	create_transform \
 	alter_table \
@@ -27,6 +27,7 @@ REGRESS = test_ddl_deparse \
 	alter_type_enum \
 	opfamily \
 	defprivs \
+	textsearch \
 	matviews
 
 EXTRA_INSTALL = contrib/pg_stat_statements

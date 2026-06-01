@@ -79,6 +79,11 @@
 #define FREE(p)		free(VS(p))
 #endif
 
+/* interruption */
+#ifndef INTERRUPT
+#define INTERRUPT(re)
+#endif
+
 /* want size of a char in bits, and max value in bounded quantifiers */
 #ifndef _POSIX2_RE_DUP_MAX
 #define _POSIX2_RE_DUP_MAX	255 /* normally from <limits.h> */
@@ -514,18 +519,15 @@ struct subre
 struct fns
 {
 	void		FUNCPTR(free, (regex_t *));
-	int			FUNCPTR(cancel_requested, (void));
 	int			FUNCPTR(stack_too_deep, (void));
 };
 
 extern YB_THREAD_LOCAL int yb_regex_recursion_depth;
 
-#define CANCEL_REQUESTED(re)  \
-	((*((struct fns *) (re)->re_fns)->cancel_requested) ())
-
 #define STACK_TOO_DEEP(re)	(IsMultiThreadedMode() ? \
 	yb_regex_recursion_depth > *YBCGetGFlags()->yb_max_recursion_depth : \
 	(*((struct fns *) (re)->re_fns)->stack_too_deep) ())
+
 /*
  * the insides of a regex_t, hidden behind a void *
  */

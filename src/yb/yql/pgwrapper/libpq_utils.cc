@@ -77,7 +77,8 @@ std::string ExecStatusTypeToStr(ExecStatusType exec_status_type) {
     (PGRES_COPY_BOTH) \
     (PGRES_SINGLE_TUPLE) \
     (PGRES_PIPELINE_SYNC) \
-    (PGRES_PIPELINE_ABORTED)
+    (PGRES_PIPELINE_ABORTED) \
+    (PGRES_TUPLES_CHUNK)
   switch (exec_status_type) {
     BOOST_PP_SEQ_FOR_EACH(EXEC_STATUS_SWITCH_CASE, ~, EXEC_STATUS_TYPE_ENUM_ELEMENTS)
   }
@@ -339,7 +340,8 @@ Result<PGResultPtr> CheckResult(PGResultPtr src, const std::string& command) {
     case ExecStatusType::PGRES_FATAL_ERROR:      [[fallthrough]];
     case ExecStatusType::PGRES_SINGLE_TUPLE:     [[fallthrough]];
     case ExecStatusType::PGRES_PIPELINE_SYNC:    [[fallthrough]];
-    case ExecStatusType::PGRES_PIPELINE_ABORTED:
+    case ExecStatusType::PGRES_PIPELINE_ABORTED: [[fallthrough]];
+    case ExecStatusType::PGRES_TUPLES_CHUNK:
       break;
   }
 
@@ -486,7 +488,8 @@ class CopyController {
       case ExecStatusType::PGRES_FATAL_ERROR:      [[fallthrough]];
       case ExecStatusType::PGRES_SINGLE_TUPLE:     [[fallthrough]];
       case ExecStatusType::PGRES_PIPELINE_SYNC:    [[fallthrough]];
-      case ExecStatusType::PGRES_PIPELINE_ABORTED:
+      case ExecStatusType::PGRES_PIPELINE_ABORTED: [[fallthrough]];
+      case ExecStatusType::PGRES_TUPLES_CHUNK:
         break;
     }
     return STATUS_FORMAT(

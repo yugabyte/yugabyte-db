@@ -30,9 +30,11 @@
    parallel method starts up multiple server processes to run groups
    of tests in parallel.  Parallel testing adds confidence that
    interprocess communication and locking are working correctly.
+   Some tests may run sequentially even in the <quote>parallel</quote>
+   mode in case this is required by the test.
   </para>
 
-  <sect2>
+  <sect2 id="regress-run-temp-inst">
    <title>Running the Tests Against a Temporary Installation</title>
 
   <para>
@@ -43,12 +45,12 @@ make check
 </screen>
    in the top-level directory.  (Or you can change to
    <filename>src/test/regress</filename> and run the command there.)
+   Tests which are run in parallel are prefixed with <quote>+</quote>, and
+   tests which run sequentially are prefixed with <quote>-</quote>.
    At the end you should see something like:
 <screen>
 <computeroutput>
-=======================
- All 193 tests passed.
-=======================
+# All 213 tests passed.
 </computeroutput>
 </screen>
    or otherwise a note about which tests failed.  See <xref
@@ -93,7 +95,7 @@ make MAX_CONNECTIONS=10 check
    </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="regress-run-existing-inst">
    <title>Running the Tests Against an Existing Installation</title>
 
   <para>
@@ -123,7 +125,19 @@ make installcheck-parallel
   </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="regress-subset">
+   <title>Running Specific Tests</title>
+
+   <para>
+    A subset of the regression tests can be run with the command
+    <literal>make check-tests TESTS="boolean char"</literal> or
+    <literal>make installcheck-tests TESTS="boolean char"</literal>.
+    Note that sometimes tests have dependencies on objects created by other
+    tests, which can cause unexpected failures.
+   </para>
+  </sect2>
+
+  <sect2 id="regress-additional">
    <title>Additional Test Suites</title>
 
   <para>
@@ -252,15 +266,29 @@ make check-world -j8 >/dev/null
   <para>
    Some test suites are not run by default, either because they are not secure
    to run on a multiuser system, because they require special software or
-   because they are resource intensive.  You can decide which test suites to
+   because they are resource-intensive.  You can decide which test suites to
    run additionally by setting the <command>make</command> or environment
    variable <varname>PG_TEST_EXTRA</varname> to a whitespace-separated list,
    for example:
 <programlisting>
-make check-world PG_TEST_EXTRA='kerberos ldap ssl'
+make check-world PG_TEST_EXTRA='kerberos ldap ssl load_balance libpq_encryption'
 </programlisting>
    The following values are currently supported:
    <variablelist>
+    <varlistentry>
+     <term><literal>checksum</literal>, <literal>checksum_extended</literal></term>
+     <listitem>
+      <para>
+       Runs additional tests for enabling data checksums which inject faults
+       to cause re-tries in the processing, as well as tests that run pgbench
+       concurrently and randomly restarts the cluster.  Some of these test
+       suites require injection points enabled in the installation.
+       <literal>checksum_extended</literal> is an extended version with
+       longer runtime, injected random delays and larger datasets.
+      </para>
+     </listitem>
+    </varlistentry>
+
     <varlistentry>
      <term><literal>kerberos</literal></term>
      <listitem>
@@ -283,6 +311,73 @@ make check-world PG_TEST_EXTRA='kerberos ldap ssl'
     </varlistentry>
 
     <varlistentry>
+     <term><literal>libpq_encryption</literal></term>
+     <listitem>
+      <para>
+       Runs the test <filename>src/interfaces/libpq/t/005_negotiate_encryption.pl</filename>.
+       This opens TCP/IP listen sockets. If <varname>PG_TEST_EXTRA</varname>
+       also includes <literal>kerberos</literal>, additional tests that require
+       an MIT Kerberos installation are enabled.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>load_balance</literal></term>
+     <listitem>
+      <para>
+       Runs the test <filename>src/interfaces/libpq/t/004_load_balance_dns.pl</filename>.
+       This requires editing the system <filename>hosts</filename> file and
+       opens TCP/IP listen sockets.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>oauth</literal></term>
+     <listitem>
+      <para>
+       Runs the test suite under <filename>src/test/modules/oauth_validator</filename>.
+       This opens TCP/IP listen sockets for a test server running HTTPS.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>regress_dump_restore</literal></term>
+     <listitem>
+      <para>
+       Runs an additional test suite in
+       <filename>src/bin/pg_upgrade/t/002_pg_upgrade.pl</filename> which
+       cycles the regression database through <command>pg_dump</command>/
+       <command>pg_restore</command>.  Not enabled by default because it
+       is resource-intensive.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>saslprep</literal></term>
+     <listitem>
+      <para>
+       Runs the TAP test suite under <filename>src/test/modules/test_saslprep</filename>.
+       Not enabled by default because it is resource-intensive.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>sepgsql</literal></term>
+     <listitem>
+      <para>
+       Runs the test suite under <filename>contrib/sepgsql</filename>.  This
+       requires an SELinux environment that is set up in a specific way; see
+       <xref linkend="sepgsql-regression"/>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
      <term><literal>ssl</literal></term>
      <listitem>
       <para>
@@ -297,7 +392,17 @@ make check-world PG_TEST_EXTRA='kerberos ldap ssl'
       <para>
        Uses <literal>wal_consistency_checking=all</literal> while running
        certain tests under <filename>src/test/recovery</filename>.  Not
-       enabled by default because it is resource intensive.
+       enabled by default because it is resource-intensive.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>xid_wraparound</literal></term>
+     <listitem>
+      <para>
+       Runs the test suite under <filename>src/test/modules/xid_wraparound</filename>.
+       Not enabled by default because it is resource-intensive.
       </para>
      </listitem>
     </varlistentry>
@@ -320,7 +425,7 @@ make check-world PG_TEST_EXTRA='kerberos ldap ssl'
   </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="regress-run-locale">
    <title>Locale and Encoding</title>
 
    <para>
@@ -363,16 +468,105 @@ make check LANG=C ENCODING=EUC_JP
    </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="regress-run-path-substitution">
+   <title>Path Substitution</title>
+
+   <para>
+    The test suites driven by <command>pg_regress</command> can use the
+    following environment variables for path substitutions:
+
+    <variablelist>
+     <varlistentry>
+      <term><literal>PG_ABS_SRCDIR</literal></term>
+      <listitem>
+       <para>
+        Absolute path to the source directory.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+     <term><literal>PG_ABS_BUILDDIR</literal></term>
+     <listitem>
+      <para>
+       Absolute path to the build directory.
+      </para>
+     </listitem>
+     </varlistentry>
+
+     <varlistentry>
+     <term><literal>PG_DLSUFFIX</literal></term>
+     <listitem>
+      <para>
+       Name of extension for dynamically-loadable modules (e.g.
+       <literal>.so</literal> on Linux).
+      </para>
+     </listitem>
+     </varlistentry>
+
+     <varlistentry>
+     <term><literal>PG_LIBDIR</literal></term>
+     <listitem>
+      <para>
+       Absolute path to dynamic libraries.
+      </para>
+     </listitem>
+     </varlistentry>
+    </variablelist>
+   </para>
+
+   <para>
+    These variables should be set in the tests with the meta-command
+    <command>\getenv</command>, like:
+<programlisting>
+\getenv abs_builddir PG_ABS_BUILDDIR
+\getenv abs_srcdir PG_ABS_SRCDIR
+</programlisting>
+   </para>
+
+   <para>
+    These are useful when dealing with function and object loading
+    that require specific paths to work, like paths defined in a
+    <command>CREATE FUNCTION</command> or <command>LOAD</command>
+    command.
+   </para>
+  </sect2>
+
+  <sect2 id="regress-run-custom-settings">
    <title>Custom Server Settings</title>
 
    <para>
-    Custom server settings to use when running a regression test suite can be
-    set in the <varname>PGOPTIONS</varname> environment variable (for settings
-    that allow this):
+    There are several ways to use custom server settings when running a test
+    suite.  This can be useful to enable additional logging, adjust resource
+    limits, or enable extra run-time checks such as <xref
+    linkend="guc-debug-discard-caches"/>.  But note that not all tests can be
+    expected to pass cleanly with arbitrary settings.
+   </para>
+
+   <para>
+    Extra options can be passed to the various <command>initdb</command>
+    commands that are run internally during test setup using the environment
+    variable <envar>PG_TEST_INITDB_EXTRA_OPTS</envar>.  For example, to run a
+    test with checksums enabled and a custom WAL segment size and
+    <varname>work_mem</varname> setting, use:
 <screen>
-make check PGOPTIONS="-c force_parallel_mode=regress -c work_mem=50MB"
+make check PG_TEST_INITDB_EXTRA_OPTS='-k --wal-segsize=4 -c work_mem=50MB'
 </screen>
+   </para>
+
+   <para>
+    For the core regression test suite and other tests driven by
+    <command>pg_regress</command>, custom run-time server settings can also be
+    set in the <varname>PGOPTIONS</varname> environment variable (for settings
+    that allow this), for example:
+<screen>
+make check PGOPTIONS="-c debug_parallel_query=regress -c work_mem=50MB"
+</screen>
+    (This makes use of functionality provided by libpq; see <xref
+    linkend="libpq-connect-options"/> for details.)
+   </para>
+
+   <para>
     When running against a temporary installation, custom settings can also be
     set by supplying a pre-written <filename>postgresql.conf</filename>:
 <screen>
@@ -382,14 +576,9 @@ make check EXTRA_REGRESS_OPTS="--temp-config=test_postgresql.conf"
 </screen>
    </para>
 
-   <para>
-    This can be useful to enable additional logging, adjust resource limits,
-    or enable extra run-time checks such as <xref
-    linkend="guc-debug-discard-caches"/>.
-   </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="regress-run-extra-tests">
    <title>Extra Tests</title>
 
    <para>
@@ -453,7 +642,7 @@ make check EXTRA_TESTS=numeric_big
     <xref linkend="regress-variant"/> for details.
    </para>
 
-   <sect2>
+   <sect2 id="regress-evaluation-message-differences">
     <title>Error Message Differences</title>
 
     <para>
@@ -468,7 +657,7 @@ make check EXTRA_TESTS=numeric_big
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="regress-evaluation-locale-differences">
     <title>Locale Differences</title>
 
     <para>
@@ -515,7 +704,7 @@ make check NO_LOCALE=1
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="regress-evaluation-date-time-differences">
     <title>Date and Time Differences</title>
 
     <para>
@@ -529,7 +718,7 @@ make check NO_LOCALE=1
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="regress-evaluation-float-differences">
     <title>Floating-Point Differences</title>
 
     <para>
@@ -557,7 +746,7 @@ make check NO_LOCALE=1
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="regress-evaluation-ordering-differences">
     <title>Row Ordering Differences</title>
 
     <para>
@@ -593,7 +782,7 @@ exclusion of those that don't.
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="regress-evaluation-stack-depth">
     <title>Insufficient Stack Depth</title>
 
     <para>
@@ -615,7 +804,7 @@ exclusion of those that don't.
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="regress-evaluation-random-test">
     <title>The <quote>random</quote> Test</title>
 
     <para>
@@ -630,7 +819,7 @@ diff results/random.out expected/random.out
     </para>
    </sect2>
 
-   <sect2>
+   <sect2 id="regress-evaluation-config-params">
     <title>Configuration Parameters</title>
 
     <para>
@@ -690,13 +879,13 @@ testname:output:platformpattern=comparisonfilename
     Therefore, we provide a variant comparison file,
     <filename>float4-misrounded-input.out</filename>, which includes
     the results to be expected on these systems.  To silence the bogus
-    <quote>failure</quote> message on <systemitem>HP-UX 10</systemitem>
+    <quote>failure</quote> message on <systemitem>Cygwin</systemitem>
     platforms, <filename>resultmap</filename> includes:
 <programlisting>
-float4:out:hppa.*-hp-hpux10.*=float4-misrounded-input.out
+float4:out:.*-.*-cygwin.*=float4-misrounded-input.out
 </programlisting>
     which will trigger on any machine where the output of
-    <command>config.guess</command> matches <literal>hppa.*-hp-hpux10.*</literal>.
+    <command>config.guess</command> matches <literal>.*-.*-cygwin.*</literal>.
     Other lines in <filename>resultmap</filename> select the variant comparison
     file for other platforms where it's appropriate.
    </para>
@@ -766,7 +955,9 @@ make check PROVE_TESTS='t/001_test1.pl t/003_test3.pl'
 
    <para>
     The TAP tests require the Perl module <literal>IPC::Run</literal>.
-    This module is available from CPAN or an operating system package.
+    This module is available from
+    <ulink url="https://metacpan.org/dist/IPC-Run">CPAN</ulink>
+    or an operating system package.
     They also require <productname>PostgreSQL</productname> to be
     configured with the option <option>--enable-tap-tests</option>.
    </para>
@@ -790,6 +981,40 @@ make check PROVE_TESTS='t/001_test1.pl t/003_test3.pl'
     meaning that <literal>make installcheck</literal> will produce a mix of
     results from temporary servers and the already-running test server.
    </para>
+
+  <sect2 id="regress-tap-vars">
+   <title>Environment Variables</title>
+
+   <para>
+    Data directories are named according to the test filename, and will be
+    retained if a test fails.  If the environment variable
+    <varname>PG_TEST_NOCLEAN</varname> is set, data directories will be
+    retained regardless of test status.  For example, retaining the data
+    directory regardless of test results when running the
+    <application>pg_dump</application> tests:
+<programlisting>
+PG_TEST_NOCLEAN=1 make -C src/bin/pg_dump check
+</programlisting>
+    This environment variable also prevents the test's temporary directories
+    from being removed.
+   </para>
+
+   <para>
+    Many operations in the test suites use a 180-second timeout, which on slow
+    hosts may lead to load-induced timeouts.  Setting the environment variable
+    <varname>PG_TEST_TIMEOUT_DEFAULT</varname> to a higher number will change
+    the default to avoid this.
+   </para>
+
+   <para>
+    For certain tests, the environment variable
+    <envar>PG_TEST_FILE_READ_LINES</envar> can be set to limit the number of
+    lines read from large output files (head and tail). This is useful when
+    the test output contains a lot of unnecessary content, allowing the test
+    framework to read only a limited number of lines for its reports.
+   </para>
+  </sect2>
+
   </sect1>
 
   <sect1 id="regress-coverage">
@@ -800,53 +1025,77 @@ make check PROVE_TESTS='t/001_test1.pl t/003_test3.pl'
     instrumentation, so that it becomes possible to examine which
     parts of the code are covered by the regression tests or any other
     test suite that is run with the code.  This is currently supported
-    when compiling with GCC, and it requires the <command>gcov</command>
-    and <command>lcov</command> programs.
+    when compiling with GCC, and it requires the <literal>gcov</literal>
+    and <literal>lcov</literal> packages.
    </para>
 
-   <para>
-    A typical workflow looks like this:
+   <sect2 id="regress-coverage-configure">
+    <title>Coverage with Autoconf and Make</title>
+    <para>
+     A typical workflow looks like this:
 <screen>
 ./configure --enable-coverage ... OTHER OPTIONS ...
 make
 make check # or other test suite
 make coverage-html
 </screen>
-    Then point your HTML browser
-    to <filename>coverage/index.html</filename>.
-   </para>
+     Then point your HTML browser
+     to <filename>coverage/index.html</filename>.
+    </para>
 
-   <para>
-    If you don't have <command>lcov</command> or prefer text output over an
-    HTML report, you can run
+    <para>
+     If you don't have <command>lcov</command> or prefer text output over an
+     HTML report, you can run
 <screen>
 make coverage
 </screen>
-    instead of <literal>make coverage-html</literal>, which will
-    produce <filename>.gcov</filename> output files for each source file
-    relevant to the test.  (<literal>make coverage</literal> and <literal>make
-    coverage-html</literal> will overwrite each other's files, so mixing them
-    might be confusing.)
-   </para>
+     instead of <literal>make coverage-html</literal>, which will
+     produce <filename>.gcov</filename> output files for each source file
+     relevant to the test.  (<literal>make coverage</literal> and <literal>make
+     coverage-html</literal> will overwrite each other's files, so mixing them
+     might be confusing.)
+    </para>
 
-   <para>
-    You can run several different tests before making the coverage report;
-    the execution counts will accumulate.  If you want
-    to reset the execution counts between test runs, run:
+    <para>
+     You can run several different tests before making the coverage report;
+     the execution counts will accumulate.  If you want
+     to reset the execution counts between test runs, run:
 <screen>
 make coverage-clean
 </screen>
-   </para>
+    </para>
 
-   <para>
-    You can run the <literal>make coverage-html</literal> or <literal>make
-    coverage</literal> command in a subdirectory if you want a coverage
-    report for only a portion of the code tree.
-   </para>
+    <para>
+     You can run the <literal>make coverage-html</literal> or <literal>make
+     coverage</literal> command in a subdirectory if you want a coverage
+     report for only a portion of the code tree.
+    </para>
 
-   <para>
-    Use <literal>make distclean</literal> to clean up when done.
-   </para>
+    <para>
+     Use <literal>make distclean</literal> to clean up when done.
+    </para>
+   </sect2>
+
+   <sect2 id="regress-coverage-meson">
+    <title>Coverage with Meson</title>
+    <para>
+     A typical workflow looks like this:
+<screen>
+meson setup -Db_coverage=true ... OTHER OPTIONS ... builddir/
+meson compile -C builddir/
+meson test -C builddir/
+cd builddir/
+ninja coverage-html
+</screen>
+     Then point your HTML browser
+     to <filename>./meson-logs/coveragereport/index.html</filename>.
+    </para>
+
+    <para>
+     You can run several different tests before making the coverage report;
+     the execution counts will accumulate.
+    </para>
+   </sect2>
   </sect1>
 
 </chapter>

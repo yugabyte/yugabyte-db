@@ -27,6 +27,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY alterOperatorFamily SYSTEM "alter_opfamily.sgml">
 <!ENTITY alterPolicy        SYSTEM "alter_policy.sgml">
 <!ENTITY alterProcedure     SYSTEM "alter_procedure.sgml">
+<!ENTITY alterPropertyGraph SYSTEM "alter_property_graph.sgml">
 <!ENTITY alterPublication   SYSTEM "alter_publication.sgml">
 <!ENTITY alterRole          SYSTEM "alter_role.sgml">
 <!ENTITY alterRoutine       SYSTEM "alter_routine.sgml">
@@ -79,6 +80,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY createOperatorFamily SYSTEM "create_opfamily.sgml">
 <!ENTITY createPolicy       SYSTEM "create_policy.sgml">
 <!ENTITY createProcedure    SYSTEM "create_procedure.sgml">
+<!ENTITY createPropertyGraph SYSTEM "create_property_graph.sgml">
 <!ENTITY createProfile      SYSTEM "create_profile.sgml">
 <!ENTITY createPublication  SYSTEM "create_publication.sgml">
 <!ENTITY createRole         SYSTEM "create_role.sgml">
@@ -128,6 +130,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY dropOwned          SYSTEM "drop_owned.sgml">
 <!ENTITY dropPolicy         SYSTEM "drop_policy.sgml">
 <!ENTITY dropProcedure      SYSTEM "drop_procedure.sgml">
+<!ENTITY dropPropertyGraph  SYSTEM "drop_property_graph.sgml">
 <!ENTITY dropProfile        SYSTEM "drop_profile.sgml">
 <!ENTITY dropPublication    SYSTEM "drop_publication.sgml">
 <!ENTITY dropRole           SYSTEM "drop_role.sgml">
@@ -169,6 +172,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY refreshMaterializedView SYSTEM "refresh_materialized_view.sgml">
 <!ENTITY reindex            SYSTEM "reindex.sgml">
 <!ENTITY releaseSavepoint   SYSTEM "release_savepoint.sgml">
+<!ENTITY repack             SYSTEM "repack.sgml">
 <!ENTITY reset              SYSTEM "reset.sgml">
 <!ENTITY revoke             SYSTEM "revoke.sgml">
 <!ENTITY rollback           SYSTEM "rollback.sgml">
@@ -190,6 +194,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY update             SYSTEM "update.sgml">
 <!ENTITY vacuum             SYSTEM "vacuum.sgml">
 <!ENTITY values             SYSTEM "values.sgml">
+<!ENTITY waitFor            SYSTEM "wait_for.sgml">
 
 <!-- applications and utilities -->
 <!ENTITY clusterdb          SYSTEM "clusterdb.sgml">
@@ -204,8 +209,10 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY pgBasebackup       SYSTEM "pg_basebackup.sgml">
 <!ENTITY pgbench            SYSTEM "pgbench.sgml">
 <!ENTITY pgChecksums        SYSTEM "pg_checksums.sgml">
+<!ENTITY pgCombinebackup    SYSTEM "pg_combinebackup.sgml">
 <!ENTITY pgConfig           SYSTEM "pg_config-ref.sgml">
 <!ENTITY pgControldata      SYSTEM "pg_controldata.sgml">
+<!ENTITY pgCreateSubscriber SYSTEM "pg_createsubscriber.sgml">
 <!ENTITY pgCtl              SYSTEM "pg_ctl-ref.sgml">
 <!ENTITY pgDump             SYSTEM "pg_dump.sgml">
 <!ENTITY pgDumpall          SYSTEM "pg_dumpall.sgml">
@@ -220,8 +227,8 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY pgtesttiming       SYSTEM "pgtesttiming.sgml">
 <!ENTITY pgupgrade          SYSTEM "pgupgrade.sgml">
 <!ENTITY pgwaldump          SYSTEM "pg_waldump.sgml">
+<!ENTITY pgwalsummary       SYSTEM "pg_walsummary.sgml">
 <!ENTITY postgres           SYSTEM "postgres-ref.sgml">
-<!ENTITY postmaster         SYSTEM "postmaster.sgml">
 <!ENTITY psqlRef            SYSTEM "psql-ref.sgml">
 <!ENTITY reindexdb          SYSTEM "reindexdb.sgml">
 <!ENTITY vacuumdb           SYSTEM "vacuumdb.sgml">

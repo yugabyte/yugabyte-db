@@ -22,8 +22,8 @@ PostgreSQL documentation
  <refsynopsisdiv>
   <cmdsynopsis>
    <command>pg_waldump</command>
-   <arg rep="repeat" choice="opt"><option>option</option></arg>
-   <arg choice="opt"><option>startseg</option><arg choice="opt"><option>endseg</option></arg></arg>
+   <arg rep="repeat" choice="opt"><replaceable>option</replaceable></arg>
+   <arg choice="opt"><replaceable>startseg</replaceable><arg choice="opt"><replaceable>endseg</replaceable></arg></arg>
   </cmdsynopsis>
  </refsynopsisdiv>
 
@@ -53,7 +53,7 @@ PostgreSQL documentation
       <term><replaceable class="parameter">startseg</replaceable></term>
       <listitem>
        <para>
-        Start reading at the specified log segment file.  This implicitly determines
+        Start reading at the specified WAL segment file.  This implicitly determines
         the path in which files will be searched for, and the timeline to use.
        </para>
       </listitem>
@@ -63,7 +63,7 @@ PostgreSQL documentation
       <term><replaceable class="parameter">endseg</replaceable></term>
       <listitem>
        <para>
-        Stop after reading the specified log segment file.
+        Stop after reading the specified WAL segment file.
        </para>
       </listitem>
      </varlistentry>
@@ -117,7 +117,7 @@ PostgreSQL documentation
       <term><option>--fork=<replaceable>fork</replaceable></option></term>
       <listitem>
        <para>
-        If provided, only display records that modify blocks in the given fork.
+        Only display records that modify blocks in the given fork.
         The valid values are <literal>main</literal> for the main fork,
         <literal>fsm</literal> for the free space map,
         <literal>vm</literal> for the visibility map,
@@ -141,12 +141,20 @@ PostgreSQL documentation
       <term><option>--path=<replaceable>path</replaceable></option></term>
       <listitem>
        <para>
-        Specifies a directory to search for log segment files or a
-        directory with a <literal>pg_wal</literal> subdirectory that
+        Specifies a tar archive or a directory to search for WAL segment files
+        or a directory with a <literal>pg_wal</literal> subdirectory that
         contains such files.  The default is to search in the current
         directory, the <literal>pg_wal</literal> subdirectory of the
         current directory, and the <literal>pg_wal</literal> subdirectory
         of <envar>PGDATA</envar>.
+       </para>
+       <para>
+        If a tar archive is provided and its WAL segment files are not in
+        sequential order, those files will be written to a temporary directory
+        named starting with <filename>waldump_tmp</filename>. This directory will be
+        created inside the directory specified by the <envar>TMPDIR</envar>
+        environment variable if it is set; otherwise, it will be created within
+        the same directory as the tar archive.
        </para>
       </listitem>
      </varlistentry>
@@ -174,12 +182,13 @@ PostgreSQL documentation
         names, and exit.
        </para>
        <para>
-        Extensions may define custom resource managers, but pg_waldump does
+        Extensions may define custom resource managers, but
+        <application>pg_waldump</application> does
         not load the extension module and therefore does not recognize custom
         resource managers by name. Instead, you can specify the custom
         resource managers as <literal>custom###</literal> where
-        "<literal>###</literal>" is the three-digit resource manager ID. Names
-        of this form will always be considered valid.
+        <replaceable>###</replaceable> is the three-digit resource manager ID.
+        Names of this form will always be considered valid.
        </para>
       </listitem>
      </varlistentry>
@@ -203,7 +212,7 @@ PostgreSQL documentation
       <listitem>
        <para>
         WAL location at which to start reading. The default is to start reading
-        the first valid log record found in the earliest file found.
+        the first valid WAL record found in the earliest file found.
        </para>
       </listitem>
      </varlistentry>
@@ -213,9 +222,10 @@ PostgreSQL documentation
       <term><option>--timeline=<replaceable>timeline</replaceable></option></term>
       <listitem>
        <para>
-        Timeline from which to read log records. The default is to use the
+        Timeline from which to read WAL records. The default is to use the
         value in <replaceable>startseg</replaceable>, if that is specified; otherwise, the
-        default is 1.
+        default is 1.  The value can be specified in decimal or hexadecimal,
+        for example <literal>17</literal> or <literal>0x11</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -272,6 +282,79 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+       <term><option>--save-fullpage=<replaceable>save_path</replaceable></option></term>
+       <listitem>
+       <para>
+        Save full page images found in the WAL records to the
+        <replaceable>save_path</replaceable> directory. The images saved
+        are subject to the same filtering and limiting criteria as the
+        records displayed.
+       </para>
+       <para>
+        The full page images are saved with the following file name format:
+        <literal><replaceable>TIMELINE</replaceable>-<replaceable>LSN</replaceable>.<replaceable>RELTABLESPACE</replaceable>.<replaceable>DATOID</replaceable>.<replaceable>RELNODE</replaceable>.<replaceable>BLKNO</replaceable>_<replaceable>FORK</replaceable></literal>
+
+        The file names are composed of the following parts:
+        <informaltable>
+         <tgroup cols="2">
+          <thead>
+           <row>
+            <entry>Component</entry>
+            <entry>Description</entry>
+           </row>
+          </thead>
+
+          <tbody>
+           <row>
+            <entry>TIMELINE</entry>
+            <entry>The timeline of the WAL segment file where the record
+             is located formatted as one 8-character hexadecimal number
+             <literal>%08X</literal></entry>
+           </row>
+
+           <row>
+            <entry>LSN</entry>
+            <entry>The <acronym>LSN</acronym> of the record with this image,
+             formatted as two 8-character hexadecimal numbers
+             <literal>%08X-%08X</literal></entry>
+           </row>
+
+           <row>
+            <entry>RELTABLESPACE</entry>
+            <entry>tablespace OID of the block</entry>
+           </row>
+
+           <row>
+            <entry>DATOID</entry>
+            <entry>database OID of the block</entry>
+           </row>
+
+           <row>
+            <entry>RELNODE</entry>
+            <entry>filenode of the block</entry>
+           </row>
+
+           <row>
+            <entry>BLKNO</entry>
+            <entry>block number of the block</entry>
+           </row>
+
+           <row>
+            <entry>FORK</entry>
+            <entry>
+             The name of the fork the full page image came from, such as
+             <literal>main</literal>, <literal>fsm</literal>,
+             <literal>vm</literal>, or <literal>init</literal>.
+            </entry>
+           </row>
+          </tbody>
+         </tgroup>
+        </informaltable>
+       </para>
+       </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-?</option></term>
       <term><option>--help</option></term>
        <listitem>
@@ -305,6 +388,17 @@ PostgreSQL documentation
       Specifies whether to use color in diagnostic messages. Possible values
       are <literal>always</literal>, <literal>auto</literal> and
       <literal>never</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>TMPDIR</envar></term>
+    <listitem>
+     <para>
+      Directory in which to create temporary files when reading WAL from a
+      tar archive with out-of-order segment files. If not set, the temporary
+      directory is created within the same directory as the tar archive.
      </para>
     </listitem>
    </varlistentry>

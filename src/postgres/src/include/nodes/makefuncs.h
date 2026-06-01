@@ -4,7 +4,7 @@
  *	  prototypes for the creator functions of various nodes
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/makefuncs.h
@@ -68,6 +68,7 @@ extern RelabelType *makeRelabelType(Expr *arg, Oid rtype, int32 rtypmod,
 									Oid rcollid, CoercionForm rformat);
 
 extern RangeVar *makeRangeVar(char *schemaname, char *relname, int location);
+extern Constraint *makeNotNullConstraint(String *colname);
 
 extern TypeName *makeTypeName(char *typnam);
 extern TypeName *makeTypeNameFromNameList(List *names);
@@ -96,8 +97,11 @@ extern List *make_ands_implicit(Expr *clause);
 
 extern IndexInfo *makeIndexInfo(int numattrs, int numkeyattrs, Oid amoid,
 								List *expressions, List *predicates,
-								bool unique, bool nulls_not_distinct, bool isready, bool concurrent);
+								bool unique, bool nulls_not_distinct,
+								bool isready, bool concurrent,
+								bool summarizing, bool withoutoverlaps);
 
+extern Node *makeStringConst(char *str, int location);
 extern DefElem *makeDefElem(char *name, Node *arg, int location);
 extern DefElem *makeDefElemExtended(char *nameSpace, char *name, Node *arg,
 									DefElemAction defaction, int location);
@@ -105,5 +109,20 @@ extern DefElem *makeDefElemExtended(char *nameSpace, char *name, Node *arg,
 extern GroupingSet *makeGroupingSet(GroupingSetKind kind, List *content, int location);
 
 extern VacuumRelation *makeVacuumRelation(RangeVar *relation, Oid oid, List *va_cols);
+
+extern JsonFormat *makeJsonFormat(JsonFormatType type, JsonEncoding encoding,
+								  int location);
+extern JsonValueExpr *makeJsonValueExpr(Expr *raw_expr, Expr *formatted_expr,
+										JsonFormat *format);
+extern Node *makeJsonKeyValue(Node *key, Node *value);
+extern Node *makeJsonIsPredicate(Node *expr, JsonFormat *format,
+								 JsonValueType item_type, bool unique_keys,
+								 Oid exprBaseType, int location);
+extern JsonBehavior *makeJsonBehavior(JsonBehaviorType btype, Node *expr,
+									  int location);
+extern JsonTablePath *makeJsonTablePath(Const *pathvalue, char *pathname);
+extern JsonTablePathSpec *makeJsonTablePathSpec(char *string, char *name,
+												int string_location,
+												int name_location);
 
 #endif							/* MAKEFUNC_H */

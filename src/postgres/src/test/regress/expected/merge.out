@@ -72,6 +72,15 @@ WHEN MATCHED THEN
 ERROR:  syntax error at or near "INSERT"
 LINE 5:  INSERT DEFAULT VALUES;
          ^
+-- NOT MATCHED BY SOURCE/INSERT error
+MERGE INTO target t
+USING source AS s
+ON t.tid = s.sid
+WHEN NOT MATCHED BY SOURCE THEN
+	INSERT DEFAULT VALUES;
+ERROR:  syntax error at or near "INSERT"
+LINE 5:  INSERT DEFAULT VALUES;
+         ^
 -- incorrectly specifying INTO target
 MERGE INTO target t
 USING source AS s
@@ -108,6 +117,15 @@ WHEN NOT MATCHED THEN
 ERROR:  syntax error at or near "UPDATE"
 LINE 5:  UPDATE SET balance = 0;
          ^
+-- NOT MATCHED BY TARGET/UPDATE
+MERGE INTO target t
+USING source AS s
+ON t.tid = s.sid
+WHEN NOT MATCHED BY TARGET THEN
+	UPDATE SET balance = 0;
+ERROR:  syntax error at or near "UPDATE"
+LINE 5:  UPDATE SET balance = 0;
+         ^
 -- UPDATE tablename
 MERGE INTO target t
 USING source AS s
@@ -124,31 +142,21 @@ ON tid = tid
 WHEN MATCHED THEN DO NOTHING;
 ERROR:  name "target" specified more than once
 DETAIL:  The name is used both as MERGE target table and data source.
--- used in a CTE
+-- used in a CTE without RETURNING
 WITH foo AS (
   MERGE INTO target USING source ON (true)
   WHEN MATCHED THEN DELETE
 ) SELECT * FROM foo;
-ERROR:  MERGE not supported in WITH query
-LINE 1: WITH foo AS (
-             ^
--- used in COPY
+ERROR:  WITH query "foo" does not have a RETURNING clause
+LINE 4: ) SELECT * FROM foo;
+                        ^
+-- used in COPY without RETURNING
 COPY (
   MERGE INTO target USING source ON (true)
   WHEN MATCHED THEN DELETE
 ) TO stdout;
-ERROR:  MERGE not supported in COPY
+ERROR:  COPY query must have a RETURNING clause
 -- unsupported relation types
--- view
-CREATE VIEW tv AS SELECT * FROM target;
-MERGE INTO tv t
-USING source s
-ON t.tid = s.sid
-WHEN NOT MATCHED THEN
-	INSERT DEFAULT VALUES;
-ERROR:  cannot execute MERGE on relation "tv"
-DETAIL:  This operation is not supported for views.
-DROP VIEW tv;
 -- materialized view
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM target;
 MERGE INTO mv t
@@ -162,7 +170,7 @@ DROP MATERIALIZED VIEW mv;
 -- permissions
 SET SESSION AUTHORIZATION regress_merge_none;
 MERGE INTO target
-USING (SELECT 1) AS s
+USING (SELECT 1)
 ON true
 WHEN MATCHED THEN
 	DO NOTHING;
@@ -206,7 +214,7 @@ WHEN NOT MATCHED THEN
 ERROR:  invalid reference to FROM-clause entry for table "t"
 LINE 2: USING (SELECT * FROM source WHERE t.tid > sid) s
                                           ^
-HINT:  There is an entry for table "t", but it cannot be referenced from this part of the query.
+DETAIL:  There is an entry for table "t", but it cannot be referenced from this part of the query.
 --
 -- initial tests
 --
@@ -278,6 +286,31 @@ SELECT * FROM target ORDER BY tid;
    3 |      30
      |        
 (4 rows)
+
+ROLLBACK;
+-- DELETE/INSERT not matched by source/target
+BEGIN;
+MERGE INTO target t
+USING source AS s
+ON t.tid = s.sid
+WHEN NOT MATCHED BY SOURCE THEN
+	DELETE
+WHEN NOT MATCHED BY TARGET THEN
+	INSERT VALUES (s.sid, s.delta)
+RETURNING merge_action(), old, new, t.*;
+ merge_action |  old   |  new   | tid | balance 
+--------------+--------+--------+-----+---------
+ DELETE       | (1,10) |        |   1 |      10
+ DELETE       | (2,20) |        |   2 |      20
+ DELETE       | (3,30) |        |   3 |      30
+ INSERT       |        | (4,40) |   4 |      40
+(4 rows)
+
+SELECT * FROM target ORDER BY tid;
+ tid | balance 
+-----+---------
+   4 |      40
+(1 row)
 
 ROLLBACK;
 -- index plans
@@ -627,7 +660,7 @@ WHEN NOT MATCHED THEN
 ERROR:  invalid reference to FROM-clause entry for table "t"
 LINE 5:  INSERT (tid, balance) VALUES (t.tid, s.delta);
                                        ^
-HINT:  There is an entry for table "t", but it cannot be referenced from this part of the query.
+DETAIL:  There is an entry for table "t", but it cannot be referenced from this part of the query.
 -- and again with a constant ON clause
 BEGIN;
 MERGE INTO target t
@@ -638,7 +671,7 @@ WHEN NOT MATCHED THEN
 ERROR:  invalid reference to FROM-clause entry for table "t"
 LINE 5:  INSERT (tid, balance) VALUES (t.tid, s.delta);
                                        ^
-HINT:  There is an entry for table "t", but it cannot be referenced from this part of the query.
+DETAIL:  There is an entry for table "t", but it cannot be referenced from this part of the query.
 SELECT * FROM target ORDER BY tid;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;
@@ -733,7 +766,7 @@ WHEN NOT MATCHED AND t.balance = 100 THEN
 ERROR:  invalid reference to FROM-clause entry for table "t"
 LINE 3: WHEN NOT MATCHED AND t.balance = 100 THEN
                              ^
-HINT:  There is an entry for table "t", but it cannot be referenced from this part of the query.
+DETAIL:  There is an entry for table "t", but it cannot be referenced from this part of the query.
 SELECT * FROM wq_target;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;
@@ -747,6 +780,19 @@ SELECT * FROM wq_target;
    1 |      -1
 (1 row)
 
+-- conditions in NOT MATCHED BY SOURCE clause can only refer to target columns
+MERGE INTO wq_target t
+USING wq_source s ON t.tid = s.sid
+WHEN NOT MATCHED BY SOURCE AND s.balance = 100 THEN
+	DELETE;
+ERROR:  invalid reference to FROM-clause entry for table "s"
+LINE 3: WHEN NOT MATCHED BY SOURCE AND s.balance = 100 THEN
+                                       ^
+DETAIL:  There is an entry for table "s", but it cannot be referenced from this part of the query.
+MERGE INTO wq_target t
+USING wq_source s ON t.tid = s.sid
+WHEN NOT MATCHED BY SOURCE AND t.balance = 100 THEN
+    DELETE;
 -- conditions in MATCHED clause can refer to both source and target
 SELECT * FROM wq_source;
  balance | sid 
@@ -928,6 +974,54 @@ SELECT * FROM target ORDER BY tid;
 -----+---------
    1 |      10
    2 |      15
+   4 |      40
+(3 rows)
+
+ROLLBACK;
+-- UPSERT with UPDATE/DELETE when not matched by source
+BEGIN;
+DELETE FROM SOURCE WHERE sid = 2;
+MERGE INTO target t
+USING source AS s
+ON t.tid = s.sid
+WHEN MATCHED AND t.balance > s.delta THEN
+    UPDATE SET balance = t.balance - s.delta
+WHEN MATCHED THEN
+	UPDATE SET balance = 0
+WHEN NOT MATCHED THEN
+    INSERT VALUES (s.sid, s.delta)
+WHEN NOT MATCHED BY SOURCE AND tid = 1 THEN
+	UPDATE SET balance = 0
+WHEN NOT MATCHED BY SOURCE THEN
+	DELETE
+RETURNING merge_action(), old, new, t.*;
+NOTICE:  BEFORE INSERT STATEMENT trigger
+NOTICE:  BEFORE UPDATE STATEMENT trigger
+NOTICE:  BEFORE DELETE STATEMENT trigger
+NOTICE:  BEFORE UPDATE ROW trigger row: (3,30) -> (3,10)
+NOTICE:  BEFORE INSERT ROW trigger row: (4,40)
+NOTICE:  BEFORE DELETE ROW trigger row: (2,20)
+NOTICE:  BEFORE UPDATE ROW trigger row: (1,10) -> (1,0)
+NOTICE:  AFTER UPDATE ROW trigger row: (3,30) -> (3,10)
+NOTICE:  AFTER INSERT ROW trigger row: (4,40)
+NOTICE:  AFTER DELETE ROW trigger row: (2,20)
+NOTICE:  AFTER UPDATE ROW trigger row: (1,10) -> (1,0)
+NOTICE:  AFTER DELETE STATEMENT trigger
+NOTICE:  AFTER UPDATE STATEMENT trigger
+NOTICE:  AFTER INSERT STATEMENT trigger
+ merge_action |  old   |  new   | tid | balance 
+--------------+--------+--------+-----+---------
+ UPDATE       | (3,30) | (3,10) |   3 |      10
+ INSERT       |        | (4,40) |   4 |      40
+ DELETE       | (2,20) |        |   2 |      20
+ UPDATE       | (1,10) | (1,0)  |   1 |       0
+(4 rows)
+
+SELECT * FROM target ORDER BY tid;
+ tid | balance 
+-----+---------
+   1 |       0
+   3 |      10
    4 |      40
 (3 rows)
 
@@ -1265,7 +1359,7 @@ BEGIN;
 MERGE INTO sq_target
 USING v
 ON tid = sid
-WHEN MATCHED AND tid > 2 THEN
+WHEN MATCHED AND tid >= 2 THEN
     UPDATE SET balance = balance + delta
 WHEN NOT MATCHED THEN
 	INSERT (balance, tid) VALUES (balance + delta, sid)
@@ -1280,7 +1374,7 @@ INSERT INTO sq_source (sid, balance, delta) VALUES (-1, -1, -10);
 MERGE INTO sq_target t
 USING v
 ON tid = sid
-WHEN MATCHED AND tid > 2 THEN
+WHEN MATCHED AND tid >= 2 THEN
     UPDATE SET balance = t.balance + delta
 WHEN NOT MATCHED THEN
 	INSERT (balance, tid) VALUES (balance + delta, sid)
@@ -1304,7 +1398,7 @@ WITH targq AS (
 MERGE INTO sq_target t
 USING v
 ON tid = sid
-WHEN MATCHED AND tid > 2 THEN
+WHEN MATCHED AND tid >= 2 THEN
     UPDATE SET balance = t.balance + delta
 WHEN NOT MATCHED THEN
 	INSERT (balance, tid) VALUES (balance + delta, sid)
@@ -1312,21 +1406,209 @@ WHEN MATCHED AND tid < 2 THEN
 	DELETE;
 ROLLBACK;
 -- RETURNING
+SELECT * FROM sq_source ORDER BY sid;
+ delta | sid | balance 
+-------+-----+---------
+    10 |   1 |       0
+    20 |   2 |       0
+    40 |   4 |       0
+(3 rows)
+
+SELECT * FROM sq_target ORDER BY tid;
+ tid | balance 
+-----+---------
+   1 |     100
+   2 |     200
+   3 |     300
+(3 rows)
+
 BEGIN;
-INSERT INTO sq_source (sid, balance, delta) VALUES (-1, -1, -10);
+CREATE TABLE merge_actions(action text, abbrev text);
+INSERT INTO merge_actions VALUES ('INSERT', 'ins'), ('UPDATE', 'upd'), ('DELETE', 'del');
 MERGE INTO sq_target t
-USING v
+USING sq_source s
 ON tid = sid
-WHEN MATCHED AND tid > 2 THEN
+WHEN MATCHED AND tid >= 2 THEN
     UPDATE SET balance = t.balance + delta
 WHEN NOT MATCHED THEN
-	INSERT (balance, tid) VALUES (balance + delta, sid)
+    INSERT (balance, tid) VALUES (balance + delta, sid)
 WHEN MATCHED AND tid < 2 THEN
-	DELETE
-RETURNING *;
-ERROR:  syntax error at or near "RETURNING"
-LINE 10: RETURNING *;
-         ^
+    DELETE
+RETURNING (SELECT abbrev FROM merge_actions
+            WHERE action = merge_action()) AS action,
+          old.tid AS old_tid, old.balance AS old_balance,
+          new.tid AS new_tid, new.balance AS new_balance,
+          (SELECT new.balance - old.balance AS delta_balance), t.*,
+          CASE merge_action()
+              WHEN 'INSERT' THEN 'Inserted '||t
+              WHEN 'UPDATE' THEN 'Added '||delta||' to balance'
+              WHEN 'DELETE' THEN 'Removed '||t
+          END AS description;
+ action | old_tid | old_balance | new_tid | new_balance | delta_balance | tid | balance |     description     
+--------+---------+-------------+---------+-------------+---------------+-----+---------+---------------------
+ del    |       1 |         100 |         |             |               |   1 |     100 | Removed (1,100)
+ upd    |       2 |         200 |       2 |         220 |            20 |   2 |     220 | Added 20 to balance
+ ins    |         |             |       4 |          40 |               |   4 |      40 | Inserted (4,40)
+(3 rows)
+
+ROLLBACK;
+-- error when using merge_action() outside MERGE
+SELECT merge_action() FROM sq_target;
+ERROR:  MERGE_ACTION() can only be used in the RETURNING list of a MERGE command
+LINE 1: SELECT merge_action() FROM sq_target;
+               ^
+UPDATE sq_target SET balance = balance + 1 RETURNING merge_action();
+ERROR:  MERGE_ACTION() can only be used in the RETURNING list of a MERGE command
+LINE 1: ...ATE sq_target SET balance = balance + 1 RETURNING merge_acti...
+                                                             ^
+-- RETURNING in CTEs
+CREATE TABLE sq_target_merge_log (tid integer NOT NULL, last_change text);
+INSERT INTO sq_target_merge_log VALUES (1, 'Original value');
+BEGIN;
+WITH m AS (
+    MERGE INTO sq_target t
+    USING sq_source s
+    ON tid = sid
+    WHEN MATCHED AND tid >= 2 THEN
+        UPDATE SET balance = t.balance + delta
+    WHEN NOT MATCHED THEN
+        INSERT (balance, tid) VALUES (balance + delta, sid)
+    WHEN MATCHED AND tid < 2 THEN
+        DELETE
+    RETURNING merge_action() AS action, old AS old_data, new AS new_data, t.*,
+              CASE merge_action()
+                  WHEN 'INSERT' THEN 'Inserted '||t
+                  WHEN 'UPDATE' THEN 'Added '||delta||' to balance'
+                  WHEN 'DELETE' THEN 'Removed '||t
+              END AS description
+), m2 AS (
+    MERGE INTO sq_target_merge_log l
+    USING m
+    ON l.tid = m.tid
+    WHEN MATCHED THEN
+        UPDATE SET last_change = description
+    WHEN NOT MATCHED THEN
+        INSERT VALUES (m.tid, description)
+    RETURNING m.*, merge_action() AS log_action, old AS old_log, new AS new_log, l.*
+)
+SELECT * FROM m2;
+ action | old_data | new_data | tid | balance |     description     | log_action |       old_log        |          new_log          | tid |     last_change     
+--------+----------+----------+-----+---------+---------------------+------------+----------------------+---------------------------+-----+---------------------
+ DELETE | (1,100)  |          |   1 |     100 | Removed (1,100)     | UPDATE     | (1,"Original value") | (1,"Removed (1,100)")     |   1 | Removed (1,100)
+ UPDATE | (2,200)  | (2,220)  |   2 |     220 | Added 20 to balance | INSERT     |                      | (2,"Added 20 to balance") |   2 | Added 20 to balance
+ INSERT |          | (4,40)   |   4 |      40 | Inserted (4,40)     | INSERT     |                      | (4,"Inserted (4,40)")     |   4 | Inserted (4,40)
+(3 rows)
+
+SELECT * FROM sq_target_merge_log ORDER BY tid;
+ tid |     last_change     
+-----+---------------------
+   1 | Removed (1,100)
+   2 | Added 20 to balance
+   4 | Inserted (4,40)
+(3 rows)
+
+ROLLBACK;
+-- COPY (MERGE ... RETURNING) TO ...
+BEGIN;
+COPY (
+    MERGE INTO sq_target t
+    USING sq_source s
+    ON tid = sid
+    WHEN MATCHED AND tid >= 2 THEN
+        UPDATE SET balance = t.balance + delta
+    WHEN NOT MATCHED THEN
+        INSERT (balance, tid) VALUES (balance + delta, sid)
+    WHEN MATCHED AND tid < 2 THEN
+        DELETE
+    RETURNING merge_action(), old.*, new.*
+) TO stdout;
+DELETE	1	100	\N	\N
+UPDATE	2	200	2	220
+INSERT	\N	\N	4	40
+ROLLBACK;
+-- SQL function with MERGE ... RETURNING
+BEGIN;
+CREATE FUNCTION merge_into_sq_target(sid int, balance int, delta int,
+                                     OUT action text, OUT tid int, OUT new_balance int)
+LANGUAGE sql AS
+$$
+    MERGE INTO sq_target t
+    USING (VALUES ($1, $2, $3)) AS v(sid, balance, delta)
+    ON tid = v.sid
+    WHEN MATCHED AND tid >= 2 THEN
+        UPDATE SET balance = t.balance + v.delta
+    WHEN NOT MATCHED THEN
+        INSERT (balance, tid) VALUES (v.balance + v.delta, v.sid)
+    WHEN MATCHED AND tid < 2 THEN
+        DELETE
+    RETURNING merge_action(), t.*;
+$$;
+SELECT m.*
+FROM (VALUES (1, 0, 0), (3, 0, 20), (4, 100, 10)) AS v(sid, balance, delta),
+LATERAL (SELECT action, tid, new_balance FROM merge_into_sq_target(sid, balance, delta)) m;
+ action | tid | new_balance 
+--------+-----+-------------
+ DELETE |   1 |         100
+ UPDATE |   3 |         320
+ INSERT |   4 |         110
+(3 rows)
+
+ROLLBACK;
+-- SQL SRF with MERGE ... RETURNING
+BEGIN;
+CREATE FUNCTION merge_sq_source_into_sq_target()
+RETURNS TABLE (action text, tid int, balance int)
+LANGUAGE sql AS
+$$
+    MERGE INTO sq_target t
+    USING sq_source s
+    ON tid = sid
+    WHEN MATCHED AND tid >= 2 THEN
+        UPDATE SET balance = t.balance + delta
+    WHEN NOT MATCHED THEN
+        INSERT (balance, tid) VALUES (balance + delta, sid)
+    WHEN MATCHED AND tid < 2 THEN
+        DELETE
+    RETURNING merge_action(), t.*;
+$$;
+SELECT * FROM merge_sq_source_into_sq_target();
+ action | tid | balance 
+--------+-----+---------
+ DELETE |   1 |     100
+ UPDATE |   2 |     220
+ INSERT |   4 |      40
+(3 rows)
+
+ROLLBACK;
+-- PL/pgSQL function with MERGE ... RETURNING ... INTO
+BEGIN;
+CREATE FUNCTION merge_into_sq_target(sid int, balance int, delta int,
+                                     OUT r_action text, OUT r_tid int, OUT r_balance int)
+LANGUAGE plpgsql AS
+$$
+BEGIN
+    MERGE INTO sq_target t
+    USING (VALUES ($1, $2, $3)) AS v(sid, balance, delta)
+    ON tid = v.sid
+    WHEN MATCHED AND tid >= 2 THEN
+        UPDATE SET balance = t.balance + v.delta
+    WHEN NOT MATCHED THEN
+        INSERT (balance, tid) VALUES (v.balance + v.delta, v.sid)
+    WHEN MATCHED AND tid < 2 THEN
+        DELETE
+    RETURNING merge_action(), t.* INTO r_action, r_tid, r_balance;
+END;
+$$;
+SELECT m.*
+FROM (VALUES (1, 0, 0), (3, 0, 20), (4, 100, 10)) AS v(sid, balance, delta),
+LATERAL (SELECT r_action, r_tid, r_balance FROM merge_into_sq_target(sid, balance, delta)) m;
+ r_action | r_tid | r_balance 
+----------+-------+-----------
+ DELETE   |     1 |       100
+ UPDATE   |     3 |       320
+ INSERT   |     4 |       110
+(3 rows)
+
 ROLLBACK;
 -- EXPLAIN
 CREATE TABLE ex_mtarget (a int, b int)
@@ -1341,7 +1623,7 @@ $$
 DECLARE ln text;
 BEGIN
     FOR ln IN
-        EXECUTE 'explain (analyze, timing off, summary off, costs off) ' ||
+        EXECUTE 'explain (analyze, timing off, summary off, costs off, buffers off) ' ||
 		  query
     LOOP
         ln := regexp_replace(ln, '(Memory( Usage)?|Buckets|Batches): \S*',  '\1: xxx', 'g');
@@ -1354,20 +1636,20 @@ SELECT explain_merge('
 MERGE INTO ex_mtarget t USING ex_msource s ON t.a = s.a
 WHEN MATCHED THEN
 	UPDATE SET b = t.b + 1');
-                            explain_merge                             
-----------------------------------------------------------------------
- Merge on ex_mtarget t (actual rows=0 loops=1)
+                              explain_merge                              
+-------------------------------------------------------------------------
+ Merge on ex_mtarget t (actual rows=0.00 loops=1)
    Tuples: updated=50
-   ->  Merge Join (actual rows=50 loops=1)
+   ->  Merge Join (actual rows=50.00 loops=1)
          Merge Cond: (t.a = s.a)
-         ->  Sort (actual rows=50 loops=1)
+         ->  Sort (actual rows=50.00 loops=1)
                Sort Key: t.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_mtarget t (actual rows=50 loops=1)
-         ->  Sort (actual rows=100 loops=1)
+               ->  Seq Scan on ex_mtarget t (actual rows=50.00 loops=1)
+         ->  Sort (actual rows=100.00 loops=1)
                Sort Key: s.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_msource s (actual rows=100 loops=1)
+               ->  Seq Scan on ex_msource s (actual rows=100.00 loops=1)
 (12 rows)
 
 -- only updates to selected tuples
@@ -1375,20 +1657,20 @@ SELECT explain_merge('
 MERGE INTO ex_mtarget t USING ex_msource s ON t.a = s.a
 WHEN MATCHED AND t.a < 10 THEN
 	UPDATE SET b = t.b + 1');
-                            explain_merge                             
-----------------------------------------------------------------------
- Merge on ex_mtarget t (actual rows=0 loops=1)
+                              explain_merge                              
+-------------------------------------------------------------------------
+ Merge on ex_mtarget t (actual rows=0.00 loops=1)
    Tuples: updated=5 skipped=45
-   ->  Merge Join (actual rows=50 loops=1)
+   ->  Merge Join (actual rows=50.00 loops=1)
          Merge Cond: (t.a = s.a)
-         ->  Sort (actual rows=50 loops=1)
+         ->  Sort (actual rows=50.00 loops=1)
                Sort Key: t.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_mtarget t (actual rows=50 loops=1)
-         ->  Sort (actual rows=100 loops=1)
+               ->  Seq Scan on ex_mtarget t (actual rows=50.00 loops=1)
+         ->  Sort (actual rows=100.00 loops=1)
                Sort Key: s.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_msource s (actual rows=100 loops=1)
+               ->  Seq Scan on ex_msource s (actual rows=100.00 loops=1)
 (12 rows)
 
 -- updates + deletes
@@ -1398,20 +1680,20 @@ WHEN MATCHED AND t.a < 10 THEN
 	UPDATE SET b = t.b + 1
 WHEN MATCHED AND t.a >= 10 AND t.a <= 20 THEN
 	DELETE');
-                            explain_merge                             
-----------------------------------------------------------------------
- Merge on ex_mtarget t (actual rows=0 loops=1)
+                              explain_merge                              
+-------------------------------------------------------------------------
+ Merge on ex_mtarget t (actual rows=0.00 loops=1)
    Tuples: updated=5 deleted=5 skipped=40
-   ->  Merge Join (actual rows=50 loops=1)
+   ->  Merge Join (actual rows=50.00 loops=1)
          Merge Cond: (t.a = s.a)
-         ->  Sort (actual rows=50 loops=1)
+         ->  Sort (actual rows=50.00 loops=1)
                Sort Key: t.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_mtarget t (actual rows=50 loops=1)
-         ->  Sort (actual rows=100 loops=1)
+               ->  Seq Scan on ex_mtarget t (actual rows=50.00 loops=1)
+         ->  Sort (actual rows=100.00 loops=1)
                Sort Key: s.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_msource s (actual rows=100 loops=1)
+               ->  Seq Scan on ex_msource s (actual rows=100.00 loops=1)
 (12 rows)
 
 -- only inserts
@@ -1419,20 +1701,20 @@ SELECT explain_merge('
 MERGE INTO ex_mtarget t USING ex_msource s ON t.a = s.a
 WHEN NOT MATCHED AND s.a < 10 THEN
 	INSERT VALUES (a, b)');
-                            explain_merge                             
-----------------------------------------------------------------------
- Merge on ex_mtarget t (actual rows=0 loops=1)
+                              explain_merge                              
+-------------------------------------------------------------------------
+ Merge on ex_mtarget t (actual rows=0.00 loops=1)
    Tuples: inserted=4 skipped=96
-   ->  Merge Left Join (actual rows=100 loops=1)
+   ->  Merge Left Join (actual rows=100.00 loops=1)
          Merge Cond: (s.a = t.a)
-         ->  Sort (actual rows=100 loops=1)
+         ->  Sort (actual rows=100.00 loops=1)
                Sort Key: s.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_msource s (actual rows=100 loops=1)
-         ->  Sort (actual rows=45 loops=1)
+               ->  Seq Scan on ex_msource s (actual rows=100.00 loops=1)
+         ->  Sort (actual rows=45.00 loops=1)
                Sort Key: t.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_mtarget t (actual rows=45 loops=1)
+               ->  Seq Scan on ex_mtarget t (actual rows=45.00 loops=1)
 (12 rows)
 
 -- all three
@@ -1444,20 +1726,64 @@ WHEN MATCHED AND t.a >= 30 AND t.a <= 40 THEN
 	DELETE
 WHEN NOT MATCHED AND s.a < 20 THEN
 	INSERT VALUES (a, b)');
-                            explain_merge                             
-----------------------------------------------------------------------
- Merge on ex_mtarget t (actual rows=0 loops=1)
+                              explain_merge                              
+-------------------------------------------------------------------------
+ Merge on ex_mtarget t (actual rows=0.00 loops=1)
    Tuples: inserted=10 updated=9 deleted=5 skipped=76
-   ->  Merge Left Join (actual rows=100 loops=1)
+   ->  Merge Left Join (actual rows=100.00 loops=1)
          Merge Cond: (s.a = t.a)
-         ->  Sort (actual rows=100 loops=1)
+         ->  Sort (actual rows=100.00 loops=1)
                Sort Key: s.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_msource s (actual rows=100 loops=1)
-         ->  Sort (actual rows=49 loops=1)
+               ->  Seq Scan on ex_msource s (actual rows=100.00 loops=1)
+         ->  Sort (actual rows=49.00 loops=1)
                Sort Key: t.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_mtarget t (actual rows=49 loops=1)
+               ->  Seq Scan on ex_mtarget t (actual rows=49.00 loops=1)
+(12 rows)
+
+-- not matched by source
+SELECT explain_merge('
+MERGE INTO ex_mtarget t USING ex_msource s ON t.a = s.a
+WHEN NOT MATCHED BY SOURCE and t.a < 10 THEN
+	DELETE');
+                              explain_merge                              
+-------------------------------------------------------------------------
+ Merge on ex_mtarget t (actual rows=0.00 loops=1)
+   Tuples: skipped=54
+   ->  Merge Left Join (actual rows=54.00 loops=1)
+         Merge Cond: (t.a = s.a)
+         ->  Sort (actual rows=54.00 loops=1)
+               Sort Key: t.a
+               Sort Method: quicksort  Memory: xxx
+               ->  Seq Scan on ex_mtarget t (actual rows=54.00 loops=1)
+         ->  Sort (actual rows=100.00 loops=1)
+               Sort Key: s.a
+               Sort Method: quicksort  Memory: xxx
+               ->  Seq Scan on ex_msource s (actual rows=100.00 loops=1)
+(12 rows)
+
+-- not matched by source and target
+SELECT explain_merge('
+MERGE INTO ex_mtarget t USING ex_msource s ON t.a = s.a
+WHEN NOT MATCHED BY SOURCE AND t.a < 10 THEN
+	DELETE
+WHEN NOT MATCHED BY TARGET AND s.a < 20 THEN
+	INSERT VALUES (a, b)');
+                              explain_merge                              
+-------------------------------------------------------------------------
+ Merge on ex_mtarget t (actual rows=0.00 loops=1)
+   Tuples: skipped=100
+   ->  Merge Full Join (actual rows=100.00 loops=1)
+         Merge Cond: (t.a = s.a)
+         ->  Sort (actual rows=54.00 loops=1)
+               Sort Key: t.a
+               Sort Method: quicksort  Memory: xxx
+               ->  Seq Scan on ex_mtarget t (actual rows=54.00 loops=1)
+         ->  Sort (actual rows=100.00 loops=1)
+               Sort Key: s.a
+               Sort Method: quicksort  Memory: xxx
+               ->  Seq Scan on ex_msource s (actual rows=100.00 loops=1)
 (12 rows)
 
 -- nothing
@@ -1465,15 +1791,15 @@ SELECT explain_merge('
 MERGE INTO ex_mtarget t USING ex_msource s ON t.a = s.a AND t.a < -1000
 WHEN MATCHED AND t.a < 10 THEN
 	DO NOTHING');
-                           explain_merge                            
---------------------------------------------------------------------
- Merge on ex_mtarget t (actual rows=0 loops=1)
-   ->  Merge Join (actual rows=0 loops=1)
+                             explain_merge                             
+-----------------------------------------------------------------------
+ Merge on ex_mtarget t (actual rows=0.00 loops=1)
+   ->  Merge Join (actual rows=0.00 loops=1)
          Merge Cond: (t.a = s.a)
-         ->  Sort (actual rows=0 loops=1)
+         ->  Sort (actual rows=0.00 loops=1)
                Sort Key: t.a
                Sort Method: quicksort  Memory: xxx
-               ->  Seq Scan on ex_mtarget t (actual rows=0 loops=1)
+               ->  Seq Scan on ex_mtarget t (actual rows=0.00 loops=1)
                      Filter: (a < '-1000'::integer)
                      Rows Removed by Filter: 54
          ->  Sort (never executed)
@@ -1502,29 +1828,29 @@ WHEN MATCHED AND t.c > s.cnt THEN
    ->  Hash Join
          Output: t.ctid, s.a, s.b, s.c, s.d, s.ctid
          Hash Cond: (t.a = s.a)
-         Join Filter: (t.b < (SubPlan 1))
+         Join Filter: (t.b < (SubPlan expr_1))
          ->  Seq Scan on public.tgt t
                Output: t.ctid, t.a, t.b
          ->  Hash
                Output: s.a, s.b, s.c, s.d, s.ctid
                ->  Seq Scan on public.src s
                      Output: s.a, s.b, s.c, s.d, s.ctid
-         SubPlan 1
+         SubPlan expr_1
            ->  Aggregate
                  Output: count(*)
                  ->  Seq Scan on public.ref r
                        Output: r.ab, r.cd
                        Filter: ((r.ab = (s.a + s.b)) AND (r.cd = (s.c - s.d)))
-   SubPlan 4
+   SubPlan expr_3
      ->  Aggregate
            Output: count(*)
            ->  Seq Scan on public.ref r_2
                  Output: r_2.ab, r_2.cd
                  Filter: ((r_2.ab = (s.a + s.b)) AND (r_2.cd = (s.c - s.d)))
-   SubPlan 3 (returns $9,$10)
+   SubPlan multiexpr_1
      ->  Result
-           Output: s.b, $8
-           InitPlan 2 (returns $8)
+           Output: s.b, (InitPlan expr_2).col1
+           InitPlan expr_2
              ->  Aggregate
                    Output: count(*)
                    ->  Seq Scan on public.ref r_1
@@ -1573,7 +1899,7 @@ SELECT * FROM sq_target WHERE tid = 1;
 (1 row)
 
 ROLLBACK;
-DROP TABLE sq_target, sq_source CASCADE;
+DROP TABLE sq_target, sq_target_merge_log, sq_source CASCADE;
 NOTICE:  drop cascades to view v
 CREATE TABLE pa_target (tid integer, balance float, val text)
 	PARTITION BY LIST (tid);
@@ -1589,7 +1915,7 @@ CREATE TABLE pa_source (sid integer, delta float);
 -- insert many rows to the source table
 INSERT INTO pa_source SELECT id, id * 10  FROM generate_series(1,14) AS id;
 -- insert a few rows in the target table (odd numbered tid)
-INSERT INTO pa_target SELECT id, id * 100, 'initial' FROM generate_series(1,14,2) AS id;
+INSERT INTO pa_target SELECT id, id * 100, 'initial' FROM generate_series(1,15,2) AS id;
 -- try simple MERGE
 BEGIN;
 MERGE INTO pa_target t
@@ -1598,10 +1924,12 @@ MERGE INTO pa_target t
   WHEN MATCHED THEN
     UPDATE SET balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
-    INSERT VALUES (sid, delta, 'inserted by merge');
-SELECT * FROM pa_target ORDER BY tid;
- tid | balance |           val            
------+---------+--------------------------
+    INSERT VALUES (sid, delta, 'inserted by merge')
+  WHEN NOT MATCHED BY SOURCE THEN
+    UPDATE SET val = val || ' not matched by source';
+SELECT * FROM pa_target ORDER BY tid, val;
+ tid | balance |              val              
+-----+---------+-------------------------------
    1 |     110 | initial updated by merge
    2 |      20 | inserted by merge
    3 |     330 | initial updated by merge
@@ -1616,7 +1944,8 @@ SELECT * FROM pa_target ORDER BY tid;
   12 |     120 | inserted by merge
   13 |    1430 | initial updated by merge
   14 |     140 | inserted by merge
-(14 rows)
+  15 |    1500 | initial not matched by source
+(15 rows)
 
 ROLLBACK;
 -- same with a constant qual
@@ -1627,31 +1956,34 @@ MERGE INTO pa_target t
   WHEN MATCHED THEN
     UPDATE SET balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
-    INSERT VALUES (sid, delta, 'inserted by merge');
-SELECT * FROM pa_target ORDER BY tid;
- tid | balance |           val            
------+---------+--------------------------
+    INSERT VALUES (sid, delta, 'inserted by merge')
+  WHEN NOT MATCHED BY SOURCE THEN
+    UPDATE SET val = val || ' not matched by source';
+SELECT * FROM pa_target ORDER BY tid, val;
+ tid | balance |              val              
+-----+---------+-------------------------------
    1 |     110 | initial updated by merge
    2 |      20 | inserted by merge
+   3 |     300 | initial not matched by source
    3 |      30 | inserted by merge
-   3 |     300 | initial
    4 |      40 | inserted by merge
-   5 |     500 | initial
+   5 |     500 | initial not matched by source
    5 |      50 | inserted by merge
    6 |      60 | inserted by merge
-   7 |     700 | initial
+   7 |     700 | initial not matched by source
    7 |      70 | inserted by merge
    8 |      80 | inserted by merge
+   9 |     900 | initial not matched by source
    9 |      90 | inserted by merge
-   9 |     900 | initial
   10 |     100 | inserted by merge
-  11 |    1100 | initial
+  11 |    1100 | initial not matched by source
   11 |     110 | inserted by merge
   12 |     120 | inserted by merge
-  13 |    1300 | initial
+  13 |    1300 | initial not matched by source
   13 |     130 | inserted by merge
   14 |     140 | inserted by merge
-(20 rows)
+  15 |    1500 | initial not matched by source
+(21 rows)
 
 ROLLBACK;
 -- try updating the partition key column
@@ -1666,7 +1998,9 @@ MERGE INTO pa_target t
   WHEN MATCHED THEN
     UPDATE SET tid = tid + 1, balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
-    INSERT VALUES (sid, delta, 'inserted by merge');
+    INSERT VALUES (sid, delta, 'inserted by merge')
+  WHEN NOT MATCHED BY SOURCE THEN
+    UPDATE SET tid = 1, val = val || ' not matched by source';
 IF FOUND THEN
   GET DIAGNOSTICS result := ROW_COUNT;
 END IF;
@@ -1676,27 +2010,72 @@ $$;
 SELECT merge_func();
  merge_func 
 ------------
-         14
+         15
 (1 row)
 
-SELECT * FROM pa_target ORDER BY tid;
- tid | balance |           val            
------+---------+--------------------------
+SELECT * FROM pa_target ORDER BY tid, val;
+ tid | balance |              val              
+-----+---------+-------------------------------
+   1 |    1500 | initial not matched by source
    2 |     110 | initial updated by merge
    2 |      20 | inserted by merge
-   4 |      40 | inserted by merge
    4 |     330 | initial updated by merge
+   4 |      40 | inserted by merge
    6 |     550 | initial updated by merge
    6 |      60 | inserted by merge
-   8 |      80 | inserted by merge
    8 |     770 | initial updated by merge
+   8 |      80 | inserted by merge
   10 |     990 | initial updated by merge
   10 |     100 | inserted by merge
   12 |    1210 | initial updated by merge
   12 |     120 | inserted by merge
   14 |    1430 | initial updated by merge
   14 |     140 | inserted by merge
-(14 rows)
+(15 rows)
+
+ROLLBACK;
+-- update partition key to partition not initially scanned
+BEGIN;
+MERGE INTO pa_target t
+  USING pa_source s
+  ON t.tid = s.sid AND t.tid = 1
+  WHEN MATCHED THEN
+    UPDATE SET tid = tid + 1, balance = balance + delta, val = val || ' updated by merge'
+  RETURNING merge_action(), old, new, t.*;
+ merge_action |       old       |                new                 | tid | balance |           val            
+--------------+-----------------+------------------------------------+-----+---------+--------------------------
+ UPDATE       | (1,100,initial) | (2,110,"initial updated by merge") |   2 |     110 | initial updated by merge
+(1 row)
+
+SELECT * FROM pa_target ORDER BY tid;
+ tid | balance |           val            
+-----+---------+--------------------------
+   2 |     110 | initial updated by merge
+   3 |     300 | initial
+   5 |     500 | initial
+   7 |     700 | initial
+   9 |     900 | initial
+  11 |    1100 | initial
+  13 |    1300 | initial
+  15 |    1500 | initial
+(8 rows)
+
+ROLLBACK;
+-- bug #18871: ExecInitPartitionInfo()'s handling of DO NOTHING actions
+BEGIN;
+TRUNCATE pa_target;
+MERGE INTO pa_target t
+  USING (VALUES (10, 100)) AS s(sid, delta)
+  ON t.tid = s.sid
+  WHEN NOT MATCHED THEN
+    INSERT VALUES (1, 10, 'inserted by merge')
+  WHEN MATCHED THEN
+    DO NOTHING;
+SELECT * FROM pa_target ORDER BY tid, val;
+ tid | balance |        val        
+-----+---------+-------------------
+   1 |      10 | inserted by merge
+(1 row)
 
 ROLLBACK;
 DROP TABLE pa_target CASCADE;
@@ -1718,7 +2097,7 @@ ALTER TABLE pa_target ATTACH PARTITION part2 FOR VALUES IN (2,5,6);
 ALTER TABLE pa_target ATTACH PARTITION part3 FOR VALUES IN (3,8,9);
 ALTER TABLE pa_target ATTACH PARTITION part4 DEFAULT;
 -- insert a few rows in the target table (odd numbered tid)
-INSERT INTO pa_target SELECT id, id * 100, 'initial' FROM generate_series(1,14,2) AS id;
+INSERT INTO pa_target SELECT id, id * 100, 'initial' FROM generate_series(1,15,2) AS id;
 -- try simple MERGE
 BEGIN;
 DO $$
@@ -1731,15 +2110,17 @@ MERGE INTO pa_target t
   WHEN MATCHED THEN
     UPDATE SET balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
-    INSERT VALUES (sid, delta, 'inserted by merge');
+    INSERT VALUES (sid, delta, 'inserted by merge')
+  WHEN NOT MATCHED BY SOURCE THEN
+    UPDATE SET val = val || ' not matched by source';
 GET DIAGNOSTICS result := ROW_COUNT;
 RAISE NOTICE 'ROW_COUNT = %', result;
 END;
 $$;
-NOTICE:  ROW_COUNT = 14
-SELECT * FROM pa_target ORDER BY tid;
- tid | balance |           val            
------+---------+--------------------------
+NOTICE:  ROW_COUNT = 15
+SELECT * FROM pa_target ORDER BY tid, val;
+ tid | balance |              val              
+-----+---------+-------------------------------
    1 |     110 | initial updated by merge
    2 |      20 | inserted by merge
    3 |     330 | initial updated by merge
@@ -1754,7 +2135,8 @@ SELECT * FROM pa_target ORDER BY tid;
   12 |     120 | inserted by merge
   13 |    1430 | initial updated by merge
   14 |     140 | inserted by merge
-(14 rows)
+  15 |    1500 | initial not matched by source
+(15 rows)
 
 ROLLBACK;
 -- same with a constant qual
@@ -1766,29 +2148,32 @@ MERGE INTO pa_target t
   WHEN MATCHED THEN
     UPDATE SET balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
-    INSERT VALUES (sid, delta, 'inserted by merge');
-SELECT * FROM pa_target ORDER BY tid;
- tid | balance |           val            
------+---------+--------------------------
+    INSERT VALUES (sid, delta, 'inserted by merge')
+  WHEN NOT MATCHED BY SOURCE THEN
+    UPDATE SET val = val || ' not matched by source';
+SELECT * FROM pa_target ORDER BY tid, val;
+ tid | balance |              val              
+-----+---------+-------------------------------
    1 |     110 | initial updated by merge
    2 |      20 | inserted by merge
+   3 |     300 | initial not matched by source
    3 |      30 | inserted by merge
-   3 |     300 | initial
    4 |      40 | inserted by merge
    6 |      60 | inserted by merge
-   7 |     700 | initial
+   7 |     700 | initial not matched by source
    7 |      70 | inserted by merge
    8 |      80 | inserted by merge
-   9 |     900 | initial
+   9 |     900 | initial not matched by source
    9 |      90 | inserted by merge
   10 |     100 | inserted by merge
+  11 |    1100 | initial not matched by source
   11 |     110 | inserted by merge
-  11 |    1100 | initial
   12 |     120 | inserted by merge
-  13 |    1300 | initial
+  13 |    1300 | initial not matched by source
   13 |     130 | inserted by merge
   14 |     140 | inserted by merge
-(18 rows)
+  15 |    1500 | initial not matched by source
+(19 rows)
 
 ROLLBACK;
 -- try updating the partition key column
@@ -1803,30 +2188,33 @@ MERGE INTO pa_target t
   WHEN MATCHED THEN
     UPDATE SET tid = tid + 1, balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
-    INSERT VALUES (sid, delta, 'inserted by merge');
+    INSERT VALUES (sid, delta, 'inserted by merge')
+  WHEN NOT MATCHED BY SOURCE THEN
+    UPDATE SET tid = 1, val = val || ' not matched by source';
 GET DIAGNOSTICS result := ROW_COUNT;
 RAISE NOTICE 'ROW_COUNT = %', result;
 END;
 $$;
-NOTICE:  ROW_COUNT = 14
-SELECT * FROM pa_target ORDER BY tid;
- tid | balance |           val            
------+---------+--------------------------
+NOTICE:  ROW_COUNT = 15
+SELECT * FROM pa_target ORDER BY tid, val;
+ tid | balance |              val              
+-----+---------+-------------------------------
+   1 |    1500 | initial not matched by source
    2 |     110 | initial updated by merge
    2 |      20 | inserted by merge
-   4 |      40 | inserted by merge
    4 |     330 | initial updated by merge
+   4 |      40 | inserted by merge
    6 |     550 | initial updated by merge
    6 |      60 | inserted by merge
-   8 |      80 | inserted by merge
    8 |     770 | initial updated by merge
+   8 |      80 | inserted by merge
   10 |     990 | initial updated by merge
   10 |     100 | inserted by merge
   12 |    1210 | initial updated by merge
   12 |     120 | inserted by merge
   14 |    1430 | initial updated by merge
   14 |     140 | inserted by merge
-(14 rows)
+(15 rows)
 
 ROLLBACK;
 -- as above, but blocked by BEFORE DELETE ROW trigger
@@ -1845,15 +2233,17 @@ MERGE INTO pa_target t
   WHEN MATCHED THEN
     UPDATE SET tid = tid + 1, balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
-    INSERT VALUES (sid, delta, 'inserted by merge');
+    INSERT VALUES (sid, delta, 'inserted by merge')
+  WHEN NOT MATCHED BY SOURCE THEN
+    UPDATE SET val = val || ' not matched by source';
 GET DIAGNOSTICS result := ROW_COUNT;
 RAISE NOTICE 'ROW_COUNT = %', result;
 END;
 $$;
-NOTICE:  ROW_COUNT = 10
-SELECT * FROM pa_target ORDER BY tid;
- tid | balance |           val            
------+---------+--------------------------
+NOTICE:  ROW_COUNT = 11
+SELECT * FROM pa_target ORDER BY tid, val;
+ tid | balance |              val              
+-----+---------+-------------------------------
    1 |     100 | initial
    2 |      20 | inserted by merge
    3 |     300 | initial
@@ -1868,7 +2258,8 @@ SELECT * FROM pa_target ORDER BY tid;
   12 |     120 | inserted by merge
   14 |    1430 | initial updated by merge
   14 |     140 | inserted by merge
-(14 rows)
+  15 |    1500 | initial not matched by source
+(15 rows)
 
 ROLLBACK;
 -- as above, but blocked by BEFORE INSERT ROW trigger
@@ -1887,19 +2278,22 @@ MERGE INTO pa_target t
   WHEN MATCHED THEN
     UPDATE SET tid = tid + 1, balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
-    INSERT VALUES (sid, delta, 'inserted by merge');
+    INSERT VALUES (sid, delta, 'inserted by merge')
+  WHEN NOT MATCHED BY SOURCE THEN
+    UPDATE SET val = val || ' not matched by source';
 GET DIAGNOSTICS result := ROW_COUNT;
 RAISE NOTICE 'ROW_COUNT = %', result;
 END;
 $$;
-NOTICE:  ROW_COUNT = 3
-SELECT * FROM pa_target ORDER BY tid;
- tid | balance |           val            
------+---------+--------------------------
+NOTICE:  ROW_COUNT = 4
+SELECT * FROM pa_target ORDER BY tid, val;
+ tid | balance |              val              
+-----+---------+-------------------------------
    6 |     550 | initial updated by merge
   12 |    1210 | initial updated by merge
   14 |    1430 | initial updated by merge
-(3 rows)
+  15 |    1500 | initial not matched by source
+(4 rows)
 
 ROLLBACK;
 -- test RLS enforcement
@@ -1948,7 +2342,21 @@ MERGE INTO pa_target t
   WHEN MATCHED THEN
     UPDATE SET balance = balance + delta, val = val || ' updated by merge'
   WHEN NOT MATCHED THEN
-    INSERT VALUES (slogts::timestamp, sid, delta, 'inserted by merge');
+    INSERT VALUES (slogts::timestamp, sid, delta, 'inserted by merge')
+  RETURNING merge_action(), old, new, t.*;
+ merge_action |                    old                     |                              new                              |          logts           | tid | balance |           val            
+--------------+--------------------------------------------+---------------------------------------------------------------+--------------------------+-----+---------+--------------------------
+ UPDATE       | ("Tue Jan 31 00:00:00 2017",1,100,initial) | ("Tue Jan 31 00:00:00 2017",1,110,"initial updated by merge") | Tue Jan 31 00:00:00 2017 |   1 |     110 | initial updated by merge
+ UPDATE       | ("Tue Feb 28 00:00:00 2017",2,200,initial) | ("Tue Feb 28 00:00:00 2017",2,220,"initial updated by merge") | Tue Feb 28 00:00:00 2017 |   2 |     220 | initial updated by merge
+ INSERT       |                                            | ("Sun Jan 15 00:00:00 2017",3,30,"inserted by merge")         | Sun Jan 15 00:00:00 2017 |   3 |      30 | inserted by merge
+ UPDATE       | ("Tue Jan 31 00:00:00 2017",4,400,initial) | ("Tue Jan 31 00:00:00 2017",4,440,"initial updated by merge") | Tue Jan 31 00:00:00 2017 |   4 |     440 | initial updated by merge
+ UPDATE       | ("Tue Feb 28 00:00:00 2017",5,500,initial) | ("Tue Feb 28 00:00:00 2017",5,550,"initial updated by merge") | Tue Feb 28 00:00:00 2017 |   5 |     550 | initial updated by merge
+ INSERT       |                                            | ("Sun Jan 15 00:00:00 2017",6,60,"inserted by merge")         | Sun Jan 15 00:00:00 2017 |   6 |      60 | inserted by merge
+ UPDATE       | ("Tue Jan 31 00:00:00 2017",7,700,initial) | ("Tue Jan 31 00:00:00 2017",7,770,"initial updated by merge") | Tue Jan 31 00:00:00 2017 |   7 |     770 | initial updated by merge
+ UPDATE       | ("Tue Feb 28 00:00:00 2017",8,800,initial) | ("Tue Feb 28 00:00:00 2017",8,880,"initial updated by merge") | Tue Feb 28 00:00:00 2017 |   8 |     880 | initial updated by merge
+ INSERT       |                                            | ("Sun Jan 15 00:00:00 2017",9,90,"inserted by merge")         | Sun Jan 15 00:00:00 2017 |   9 |      90 | inserted by merge
+(9 rows)
+
 SELECT * FROM pa_target ORDER BY tid;
           logts           | tid | balance |           val            
 --------------------------+-----+---------+--------------------------
@@ -1974,18 +2382,21 @@ INSERT INTO pa_source VALUES (1), (2);
 EXPLAIN (VERBOSE, COSTS OFF)
 MERGE INTO pa_target t USING pa_source s ON t.tid = s.sid
   WHEN NOT MATCHED THEN INSERT VALUES (s.sid);
-                              QUERY PLAN                               
------------------------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Merge on public.pa_target t
    Merge on public.pa_targetp t_1
-   ->  Nested Loop Left Join
+   ->  Hash Left Join
          Output: s.sid, s.ctid, t_1.tableoid, t_1.ctid
+         Inner Unique: true
+         Hash Cond: (s.sid = t_1.tid)
          ->  Seq Scan on public.pa_source s
                Output: s.sid, s.ctid
-         ->  Index Scan using pa_targetp_pkey on public.pa_targetp t_1
+         ->  Hash
                Output: t_1.tid, t_1.tableoid, t_1.ctid
-               Index Cond: (t_1.tid = s.sid)
-(9 rows)
+               ->  Seq Scan on public.pa_targetp t_1
+                     Output: t_1.tid, t_1.tableoid, t_1.ctid
+(12 rows)
 
 MERGE INTO pa_target t USING pa_source s ON t.tid = s.sid
   WHEN NOT MATCHED THEN INSERT VALUES (s.sid);
@@ -2007,6 +2418,7 @@ MERGE INTO pa_target t USING pa_source s ON t.tid = s.sid
  Merge on public.pa_target t
    ->  Hash Left Join
          Output: s.sid, s.ctid, t.ctid
+         Inner Unique: true
          Hash Cond: (s.sid = t.tid)
          ->  Seq Scan on public.pa_source s
                Output: s.sid, s.ctid
@@ -2014,8 +2426,9 @@ MERGE INTO pa_target t USING pa_source s ON t.tid = s.sid
                Output: t.tid, t.ctid
                ->  Result
                      Output: t.tid, t.ctid
+                     Replaces: Scan on t
                      One-Time Filter: false
-(11 rows)
+(13 rows)
 
 MERGE INTO pa_target t USING pa_source s ON t.tid = s.sid
   WHEN NOT MATCHED THEN INSERT VALUES (s.sid);
@@ -2290,12 +2703,132 @@ SELECT * FROM new_measurement ORDER BY city_id, logdate;
        1 | 01-17-2007 |          |          
 (2 rows)
 
+-- MERGE into inheritance root table
+DROP TRIGGER insert_measurement_trigger ON measurement;
+ALTER TABLE measurement ADD CONSTRAINT mcheck CHECK (city_id = 0) NO INHERIT;
+EXPLAIN (COSTS OFF)
+MERGE INTO measurement m
+ USING (VALUES (1, '01-17-2007'::date)) nm(city_id, logdate) ON
+      (m.city_id = nm.city_id and m.logdate=nm.logdate)
+WHEN NOT MATCHED THEN INSERT
+     (city_id, logdate, peaktemp, unitsales)
+   VALUES (city_id - 1, logdate, 25, 100);
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Merge on measurement m
+   Merge on measurement_y2007m01 m_1
+   ->  Nested Loop Left Join
+         ->  Result
+         ->  Seq Scan on measurement_y2007m01 m_1
+               Filter: ((city_id = 1) AND (logdate = '01-17-2007'::date))
+(6 rows)
+
+BEGIN;
+MERGE INTO measurement m
+ USING (VALUES (1, '01-17-2007'::date)) nm(city_id, logdate) ON
+      (m.city_id = nm.city_id and m.logdate=nm.logdate)
+WHEN NOT MATCHED THEN INSERT
+     (city_id, logdate, peaktemp, unitsales)
+   VALUES (city_id - 1, logdate, 25, 100);
+SELECT * FROM ONLY measurement ORDER BY city_id, logdate;
+ city_id |  logdate   | peaktemp | unitsales 
+---------+------------+----------+-----------
+       0 | 07-21-2005 |       25 |        35
+       0 | 01-17-2007 |       25 |       100
+(2 rows)
+
+ROLLBACK;
+ALTER TABLE measurement ENABLE ROW LEVEL SECURITY;
+ALTER TABLE measurement FORCE ROW LEVEL SECURITY;
+CREATE POLICY measurement_p ON measurement USING (peaktemp IS NOT NULL);
+MERGE INTO measurement m
+ USING (VALUES (1, '01-17-2007'::date)) nm(city_id, logdate) ON
+      (m.city_id = nm.city_id and m.logdate=nm.logdate)
+WHEN NOT MATCHED THEN INSERT
+     (city_id, logdate, peaktemp, unitsales)
+   VALUES (city_id - 1, logdate, NULL, 100); -- should fail
+ERROR:  new row violates row-level security policy for table "measurement"
+MERGE INTO measurement m
+ USING (VALUES (1, '01-17-2007'::date)) nm(city_id, logdate) ON
+      (m.city_id = nm.city_id and m.logdate=nm.logdate)
+WHEN NOT MATCHED THEN INSERT
+     (city_id, logdate, peaktemp, unitsales)
+   VALUES (city_id - 1, logdate, 25, 100); -- ok
+SELECT * FROM ONLY measurement ORDER BY city_id, logdate;
+ city_id |  logdate   | peaktemp | unitsales 
+---------+------------+----------+-----------
+       0 | 07-21-2005 |       25 |        35
+       0 | 01-17-2007 |       25 |       100
+(2 rows)
+
+MERGE INTO measurement m
+ USING (VALUES (1, '01-18-2007'::date)) nm(city_id, logdate) ON
+      (m.city_id = nm.city_id and m.logdate=nm.logdate)
+WHEN NOT MATCHED THEN INSERT
+     (city_id, logdate, peaktemp, unitsales)
+   VALUES (city_id - 1, logdate, 25, 200)
+RETURNING merge_action(), m.*;
+ merge_action | city_id |  logdate   | peaktemp | unitsales 
+--------------+---------+------------+----------+-----------
+ INSERT       |       0 | 01-18-2007 |       25 |       200
+(1 row)
+
 DROP TABLE measurement, new_measurement CASCADE;
 NOTICE:  drop cascades to 3 other objects
 DETAIL:  drop cascades to table measurement_y2006m02
 drop cascades to table measurement_y2006m03
 drop cascades to table measurement_y2007m01
 DROP FUNCTION measurement_insert_trigger();
+--
+-- test non-strict join clause
+--
+CREATE TABLE src (a int, b text);
+INSERT INTO src VALUES (1, 'src row');
+CREATE TABLE tgt (a int, b text);
+INSERT INTO tgt VALUES (NULL, 'tgt row');
+MERGE INTO tgt USING src ON tgt.a IS NOT DISTINCT FROM src.a
+  WHEN MATCHED THEN UPDATE SET a = src.a, b = src.b
+  WHEN NOT MATCHED BY SOURCE THEN DELETE
+  RETURNING merge_action(), src.*, tgt.*;
+ merge_action | a | b | a |    b    
+--------------+---+---+---+---------
+ DELETE       |   |   |   | tgt row
+(1 row)
+
+SELECT * FROM tgt;
+ a | b 
+---+---
+(0 rows)
+
+DROP TABLE src, tgt;
+--
+-- test for bug #18634 (wrong varnullingrels error)
+--
+CREATE TABLE bug18634t (a int, b int, c text);
+INSERT INTO bug18634t VALUES(1, 10, 'tgt1'), (2, 20, 'tgt2');
+CREATE VIEW bug18634v AS
+  SELECT * FROM bug18634t WHERE EXISTS (SELECT 1 FROM bug18634t);
+CREATE TABLE bug18634s (a int, b int, c text);
+INSERT INTO bug18634s VALUES (1, 2, 'src1');
+MERGE INTO bug18634v t USING bug18634s s ON s.a = t.a
+  WHEN MATCHED THEN UPDATE SET b = s.b
+  WHEN NOT MATCHED BY SOURCE THEN DELETE
+  RETURNING merge_action(), s.c, t.*;
+ merge_action |  c   | a | b  |  c   
+--------------+------+---+----+------
+ UPDATE       | src1 | 1 |  2 | tgt1
+ DELETE       |      | 2 | 20 | tgt2
+(2 rows)
+
+SELECT * FROM bug18634t;
+ a | b |  c   
+---+---+------
+ 1 | 2 | tgt1
+(1 row)
+
+DROP TABLE bug18634t CASCADE;
+NOTICE:  drop cascades to view bug18634v
+DROP TABLE bug18634s;
 -- prepare
 RESET SESSION AUTHORIZATION;
 -- try a system catalog
@@ -2303,12 +2836,25 @@ MERGE INTO pg_class c
 USING (SELECT 'pg_depend'::regclass AS oid) AS j
 ON j.oid = c.oid
 WHEN MATCHED THEN
-	UPDATE SET reltuples = reltuples + 1;
-MERGE INTO pg_class c
+	UPDATE SET reltuples = reltuples + 1
+RETURNING j.oid;
+    oid    
+-----------
+ pg_depend
+(1 row)
+
+CREATE VIEW classv AS SELECT * FROM pg_class;
+MERGE INTO classv c
 USING pg_namespace n
 ON n.oid = c.relnamespace
 WHEN MATCHED AND c.oid = 'pg_depend'::regclass THEN
-	UPDATE SET reltuples = reltuples - 1;
+	UPDATE SET reltuples = reltuples - 1
+RETURNING c.oid;
+ oid  
+------
+ 2608
+(1 row)
+
 DROP TABLE target, target2;
 DROP TABLE source, source2;
 DROP FUNCTION merge_trigfunc();

@@ -3,7 +3,7 @@
  * bloom.h
  *	  Header for bloom index.
  *
- * Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/bloom/bloom.h
@@ -72,7 +72,7 @@ typedef BloomPageOpaqueData *BloomPageOpaque;
 	((BloomTuple *)(PageGetContents(page) \
 		+ (state)->sizeOfBloomTuple * ((offset) - 1)))
 #define BloomPageGetNextTuple(state, tuple) \
-	((BloomTuple *)((Pointer)(tuple) + (state)->sizeOfBloomTuple))
+	((BloomTuple *)((char *)(tuple) + (state)->sizeOfBloomTuple))
 
 /* Preserved page numbers */
 #define BLOOM_METAPAGE_BLKNO	(0)
@@ -110,12 +110,9 @@ typedef struct BloomOptions
  * FreeBlockNumberArray - array of block numbers sized so that metadata fill
  * all space in metapage.
  */
-typedef BlockNumber FreeBlockNumberArray[
-										 MAXALIGN_DOWN(
-													   BLCKSZ - SizeOfPageHeaderData - MAXALIGN(sizeof(BloomPageOpaqueData))
-													   - MAXALIGN(sizeof(uint16) * 2 + sizeof(uint32) + sizeof(BloomOptions))
-													   ) / sizeof(BlockNumber)
-];
+typedef BlockNumber FreeBlockNumberArray[MAXALIGN_DOWN(BLCKSZ - SizeOfPageHeaderData - MAXALIGN(sizeof(BloomPageOpaqueData))
+													   - MAXALIGN(sizeof(uint16) * 2 + sizeof(uint32) + sizeof(BloomOptions)))
+										 / sizeof(BlockNumber)];
 
 /* Metadata of bloom index */
 typedef struct BloomMetaPageData
@@ -127,7 +124,7 @@ typedef struct BloomMetaPageData
 	FreeBlockNumberArray notFullPage;
 } BloomMetaPageData;
 
-/* Magic number to distinguish bloom pages among anothers */
+/* Magic number to distinguish bloom pages from others */
 #define BLOOM_MAGICK_NUMBER (0xDBAC0DED)
 
 /* Number of blocks numbers fit in BloomMetaPageData */
@@ -175,10 +172,9 @@ typedef struct BloomScanOpaqueData
 typedef BloomScanOpaqueData *BloomScanOpaque;
 
 /* blutils.c */
-extern void _PG_init(void);
 extern void initBloomState(BloomState *state, Relation index);
 extern void BloomFillMetapage(Relation index, Page metaPage);
-extern void BloomInitMetapage(Relation index);
+extern void BloomInitMetapage(Relation index, ForkNumber forknum);
 extern void BloomInitPage(Page page, uint16 flags);
 extern Buffer BloomNewBuffer(Relation index);
 extern void signValue(BloomState *state, BloomSignatureWord *sign, Datum value, int attno);

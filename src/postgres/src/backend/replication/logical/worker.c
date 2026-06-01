@@ -2,7 +2,7 @@
  * worker.c
  *	   PostgreSQL logical replication worker (apply)
  *
- * Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/worker.c
@@ -22,8 +22,12 @@
  * STREAMED TRANSACTIONS
  * ---------------------
  * Streamed transactions (large transactions exceeding a memory limit on the
- * upstream) are not applied immediately, but instead, the data is written
- * to temporary files and then applied at once when the final commit arrives.
+ * upstream) are applied using one of two approaches:
+ *
+ * 1) Write to temporary files and apply when the final commit arrives
+ *
+ * This approach is used when the user has set the subscription's streaming
+ * option as on.
  *
  * Unlike the regular (non-streamed) case, handling streamed transactions has
  * to handle aborts of both the toplevel transaction and subtransactions. This
@@ -49,6 +53,12 @@
  * a new way to pass filenames to BufFile APIs so that we are allowed to open
  * the file we desired across multiple stream-open calls for the same
  * transaction.
+ *
+ * 2) Parallel apply workers.
+ *
+ * This approach is used when the user has set the subscription's streaming
+ * option as parallel. See logical/applyparallelworker.c for information about
+ * this approach.
  *
  * TWO_PHASE TRANSACTIONS
  * ----------------------
@@ -81,7 +91,7 @@
  * behave as if two_phase = off. When the apply worker detects that all
  * tablesyncs have become READY (while the tri-state was PENDING) it will
  * restart the apply worker process. This happens in
- * process_syncing_tables_for_apply.
+ * ProcessSyncingTablesForApply.
  *
  * When the (re-started) apply worker finds that all tablesyncs are READY for a
  * two_phase tri-state of PENDING it start streaming messages with the
@@ -99,13 +109,6 @@
  * If ever a user needs to be aware of the tri-state value, they can fetch it
  * from the pg_subscription catalog (see column subtwophasestate).
  *
- * We don't allow to toggle two_phase option of a subscription because it can
- * lead to an inconsistent replica. Consider, initially, it was on and we have
- * received some prepare then we turn it off, now at commit time the server
- * will send the entire transaction data along with the commit. With some more
- * analysis, we can allow changing this option from off to on but not sure if
- * that alone would be useful.
- *
  * Finally, to avoid problems mentioned in previous paragraphs from any
  * subsequent (not READY) tablesyncs (need to toggle two_phase option from 'on'
  * to 'off' and then again back to 'on') there is a restriction for
@@ -122,6 +125,120 @@
  * avoid such deadlocks, we generate a unique GID (consisting of the
  * subscription oid and the xid of the prepared transaction) for each prepare
  * transaction on the subscriber.
+ *
+ * FAILOVER
+ * ----------------------
+ * The logical slot on the primary can be synced to the standby by specifying
+ * failover = true when creating the subscription. Enabling failover allows us
+ * to smoothly transition to the promoted standby, ensuring that we can
+ * subscribe to the new primary without losing any data.
+ *
+ * RETAIN DEAD TUPLES
+ * ----------------------
+ * Each apply worker that enabled retain_dead_tuples option maintains a
+ * non-removable transaction ID (oldest_nonremovable_xid) in shared memory to
+ * prevent dead rows from being removed prematurely when the apply worker still
+ * needs them to detect update_deleted conflicts. Additionally, this helps to
+ * retain the required commit_ts module information, which further helps to
+ * detect update_origin_differs and delete_origin_differs conflicts reliably, as
+ * otherwise, vacuum freeze could remove the required information.
+ *
+ * The logical replication launcher manages an internal replication slot named
+ * "pg_conflict_detection". It asynchronously aggregates the non-removable
+ * transaction ID from all apply workers to determine the appropriate xmin for
+ * the slot, thereby retaining necessary tuples.
+ *
+ * The non-removable transaction ID in the apply worker is advanced to the
+ * oldest running transaction ID once all concurrent transactions on the
+ * publisher have been applied and flushed locally. The process involves:
+ *
+ * - RDT_GET_CANDIDATE_XID:
+ *   Call GetOldestActiveTransactionId() to take oldestRunningXid as the
+ *   candidate xid.
+ *
+ * - RDT_REQUEST_PUBLISHER_STATUS:
+ *   Send a message to the walsender requesting the publisher status, which
+ *   includes the latest WAL write position and information about transactions
+ *   that are in the commit phase.
+ *
+ * - RDT_WAIT_FOR_PUBLISHER_STATUS:
+ *   Wait for the status from the walsender. After receiving the first status,
+ *   do not proceed if there are concurrent remote transactions that are still
+ *   in the commit phase. These transactions might have been assigned an
+ *   earlier commit timestamp but have not yet written the commit WAL record.
+ *   Continue to request the publisher status (RDT_REQUEST_PUBLISHER_STATUS)
+ *   until all these transactions have completed.
+ *
+ * - RDT_WAIT_FOR_LOCAL_FLUSH:
+ *   Advance the non-removable transaction ID if the current flush location has
+ *   reached or surpassed the last received WAL position.
+ *
+ * - RDT_STOP_CONFLICT_INFO_RETENTION:
+ *   This phase is required only when max_retention_duration is defined. We
+ *   enter this phase if the wait time in either the
+ *   RDT_WAIT_FOR_PUBLISHER_STATUS or RDT_WAIT_FOR_LOCAL_FLUSH phase exceeds
+ *   configured max_retention_duration. In this phase,
+ *   pg_subscription.subretentionactive is updated to false within a new
+ *   transaction, and oldest_nonremovable_xid is set to InvalidTransactionId.
+ *
+ * - RDT_RESUME_CONFLICT_INFO_RETENTION:
+ *   This phase is required only when max_retention_duration is defined. We
+ *   enter this phase if the retention was previously stopped, and the time
+ *   required to advance the non-removable transaction ID in the
+ *   RDT_WAIT_FOR_LOCAL_FLUSH phase has decreased to within acceptable limits
+ *   (or if max_retention_duration is set to 0). During this phase,
+ *   pg_subscription.subretentionactive is updated to true within a new
+ *   transaction, and the worker will be restarted.
+ *
+ * The overall state progression is: GET_CANDIDATE_XID ->
+ * REQUEST_PUBLISHER_STATUS -> WAIT_FOR_PUBLISHER_STATUS -> (loop to
+ * REQUEST_PUBLISHER_STATUS till concurrent remote transactions end) ->
+ * WAIT_FOR_LOCAL_FLUSH -> loop back to GET_CANDIDATE_XID.
+ *
+ * Retaining the dead tuples for this period is sufficient for ensuring
+ * eventual consistency using last-update-wins strategy, as dead tuples are
+ * useful for detecting conflicts only during the application of concurrent
+ * transactions from remote nodes. After applying and flushing all remote
+ * transactions that occurred concurrently with the tuple DELETE, any
+ * subsequent UPDATE from a remote node should have a later timestamp. In such
+ * cases, it is acceptable to detect an update_missing scenario and convert the
+ * UPDATE to an INSERT when applying it. But, for concurrent remote
+ * transactions with earlier timestamps than the DELETE, detecting
+ * update_deleted is necessary, as the UPDATEs in remote transactions should be
+ * ignored if their timestamp is earlier than that of the dead tuples.
+ *
+ * Note that advancing the non-removable transaction ID is not supported if the
+ * publisher is also a physical standby. This is because the logical walsender
+ * on the standby can only get the WAL replay position but there may be more
+ * WALs that are being replicated from the primary and those WALs could have
+ * earlier commit timestamp.
+ *
+ * Similarly, when the publisher has subscribed to another publisher,
+ * information necessary for conflict detection cannot be retained for
+ * changes from origins other than the publisher. This is because publisher
+ * lacks the information on concurrent transactions of other publishers to
+ * which it subscribes. As the information on concurrent transactions is
+ * unavailable beyond subscriber's immediate publishers, the non-removable
+ * transaction ID might be advanced prematurely before changes from other
+ * origins have been fully applied.
+ *
+ * XXX Retaining information for changes from other origins might be possible
+ * by requesting the subscription on that origin to enable retain_dead_tuples
+ * and fetching the conflict detection slot.xmin along with the publisher's
+ * status. In the RDT_WAIT_FOR_PUBLISHER_STATUS phase, the apply worker could
+ * wait for the remote slot's xmin to reach the oldest active transaction ID,
+ * ensuring that all transactions from other origins have been applied on the
+ * publisher, thereby getting the latest WAL position that includes all
+ * concurrent changes. However, this approach may impact performance, so it
+ * might not worth the effort.
+ *
+ * XXX It seems feasible to get the latest commit's WAL location from the
+ * publisher and wait till that is applied. However, we can't do that
+ * because commit timestamps can regress as a commit with a later LSN is not
+ * guaranteed to have a later timestamp than those with earlier LSNs. Having
+ * said that, even if that is possible, it won't improve performance much as
+ * the apply always lag and moves slowly as compared with the transactions
+ * on the publisher.
  *-------------------------------------------------------------------------
  */
 
@@ -130,62 +247,48 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "access/genam.h"
+#include "access/commit_ts.h"
 #include "access/table.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "access/twophase.h"
 #include "access/xact.h"
-#include "access/xlog_internal.h"
-#include "catalog/catalog.h"
 #include "catalog/indexing.h"
-#include "catalog/namespace.h"
-#include "catalog/partition.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_subscription_rel.h"
-#include "catalog/pg_tablespace.h"
+#include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
-#include "commands/tablespace.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/execPartition.h"
-#include "executor/nodeModifyTable.h"
-#include "funcapi.h"
 #include "libpq/pqformat.h"
-#include "libpq/pqsignal.h"
-#include "mb/pg_wchar.h"
 #include "miscadmin.h"
-#include "nodes/makefuncs.h"
 #include "optimizer/optimizer.h"
+#include "parser/parse_relation.h"
 #include "pgstat.h"
+#include "port/pg_bitutils.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
-#include "postmaster/postmaster.h"
 #include "postmaster/walwriter.h"
-#include "replication/decode.h"
-#include "replication/logical.h"
+#include "replication/conflict.h"
+#include "replication/logicallauncher.h"
 #include "replication/logicalproto.h"
 #include "replication/logicalrelation.h"
 #include "replication/logicalworker.h"
 #include "replication/origin.h"
-#include "replication/reorderbuffer.h"
-#include "replication/snapbuild.h"
+#include "replication/slot.h"
 #include "replication/walreceiver.h"
 #include "replication/worker_internal.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/buffile.h"
-#include "storage/bufmgr.h"
-#include "storage/fd.h"
 #include "storage/ipc.h"
+#include "storage/latch.h"
 #include "storage/lmgr.h"
-#include "storage/proc.h"
 #include "storage/procarray.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
-#include "utils/builtins.h"
-#include "utils/catcache.h"
-#include "utils/dynahash.h"
-#include "utils/datum.h"
-#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
@@ -193,8 +296,10 @@
 #include "utils/pg_lsn.h"
 #include "utils/rel.h"
 #include "utils/rls.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
-#include "utils/timeout.h"
+#include "utils/usercontext.h"
+#include "utils/wait_event.h"
 
 #define NAPTIME_PER_CYCLE 1000	/* max sleep time between cycles (1s) */
 
@@ -232,6 +337,130 @@ typedef struct ApplyErrorCallbackArg
 	char	   *origin_name;
 } ApplyErrorCallbackArg;
 
+/*
+ * The action to be taken for the changes in the transaction.
+ *
+ * TRANS_LEADER_APPLY:
+ * This action means that we are in the leader apply worker or table sync
+ * worker. The changes of the transaction are either directly applied or
+ * are read from temporary files (for streaming transactions) and then
+ * applied by the worker.
+ *
+ * TRANS_LEADER_SERIALIZE:
+ * This action means that we are in the leader apply worker or table sync
+ * worker. Changes are written to temporary files and then applied when the
+ * final commit arrives.
+ *
+ * TRANS_LEADER_SEND_TO_PARALLEL:
+ * This action means that we are in the leader apply worker and need to send
+ * the changes to the parallel apply worker.
+ *
+ * TRANS_LEADER_PARTIAL_SERIALIZE:
+ * This action means that we are in the leader apply worker and have sent some
+ * changes directly to the parallel apply worker and the remaining changes are
+ * serialized to a file, due to timeout while sending data. The parallel apply
+ * worker will apply these serialized changes when the final commit arrives.
+ *
+ * We can't use TRANS_LEADER_SERIALIZE for this case because, in addition to
+ * serializing changes, the leader worker also needs to serialize the
+ * STREAM_XXX message to a file, and wait for the parallel apply worker to
+ * finish the transaction when processing the transaction finish command. So
+ * this new action was introduced to keep the code and logic clear.
+ *
+ * TRANS_PARALLEL_APPLY:
+ * This action means that we are in the parallel apply worker and changes of
+ * the transaction are applied directly by the worker.
+ */
+typedef enum
+{
+	/* The action for non-streaming transactions. */
+	TRANS_LEADER_APPLY,
+
+	/* Actions for streaming transactions. */
+	TRANS_LEADER_SERIALIZE,
+	TRANS_LEADER_SEND_TO_PARALLEL,
+	TRANS_LEADER_PARTIAL_SERIALIZE,
+	TRANS_PARALLEL_APPLY,
+} TransApplyAction;
+
+/*
+ * The phases involved in advancing the non-removable transaction ID.
+ *
+ * See comments atop worker.c for details of the transition between these
+ * phases.
+ */
+typedef enum
+{
+	RDT_GET_CANDIDATE_XID,
+	RDT_REQUEST_PUBLISHER_STATUS,
+	RDT_WAIT_FOR_PUBLISHER_STATUS,
+	RDT_WAIT_FOR_LOCAL_FLUSH,
+	RDT_STOP_CONFLICT_INFO_RETENTION,
+	RDT_RESUME_CONFLICT_INFO_RETENTION,
+} RetainDeadTuplesPhase;
+
+/*
+ * Critical information for managing phase transitions within the
+ * RetainDeadTuplesPhase.
+ */
+typedef struct RetainDeadTuplesData
+{
+	RetainDeadTuplesPhase phase;	/* current phase */
+	XLogRecPtr	remote_lsn;		/* WAL write position on the publisher */
+
+	/*
+	 * Oldest transaction ID that was in the commit phase on the publisher.
+	 * Use FullTransactionId to prevent issues with transaction ID wraparound,
+	 * where a new remote_oldestxid could falsely appear to originate from the
+	 * past and block advancement.
+	 */
+	FullTransactionId remote_oldestxid;
+
+	/*
+	 * Next transaction ID to be assigned on the publisher. Use
+	 * FullTransactionId for consistency and to allow straightforward
+	 * comparisons with remote_oldestxid.
+	 */
+	FullTransactionId remote_nextxid;
+
+	TimestampTz reply_time;		/* when the publisher responds with status */
+
+	/*
+	 * Publisher transaction ID that must be awaited to complete before
+	 * entering the final phase (RDT_WAIT_FOR_LOCAL_FLUSH). Use
+	 * FullTransactionId for the same reason as remote_nextxid.
+	 */
+	FullTransactionId remote_wait_for;
+
+	TransactionId candidate_xid;	/* candidate for the non-removable
+									 * transaction ID */
+	TimestampTz flushpos_update_time;	/* when the remote flush position was
+										 * updated in final phase
+										 * (RDT_WAIT_FOR_LOCAL_FLUSH) */
+
+	long		table_sync_wait_time;	/* time spent waiting for table sync
+										 * to finish */
+
+	/*
+	 * The following fields are used to determine the timing for the next
+	 * round of transaction ID advancement.
+	 */
+	TimestampTz last_recv_time; /* when the last message was received */
+	TimestampTz candidate_xid_time; /* when the candidate_xid is decided */
+	int			xid_advance_interval;	/* how much time (ms) to wait before
+										 * attempting to advance the
+										 * non-removable transaction ID */
+} RetainDeadTuplesData;
+
+/*
+ * The minimum (100ms) and maximum (3 minutes) intervals for advancing
+ * non-removable transaction IDs. The maximum interval is a bit arbitrary but
+ * is sufficient to not cause any undue network traffic.
+ */
+#define MIN_XID_ADVANCE_INTERVAL 100
+#define MAX_XID_ADVANCE_INTERVAL 180000
+
+/* errcontext tracker */
 static ApplyErrorCallbackArg apply_error_callback_arg =
 {
 	.command = 0,
@@ -242,7 +471,9 @@ static ApplyErrorCallbackArg apply_error_callback_arg =
 	.origin_name = NULL,
 };
 
-static MemoryContext ApplyMessageContext = NULL;
+ErrorContextCallback *apply_error_context_stack = NULL;
+
+MemoryContext ApplyMessageContext = NULL;
 MemoryContext ApplyContext = NULL;
 
 /* per stream context for streaming transactions */
@@ -253,6 +484,8 @@ WalReceiverConn *LogRepWorkerWalRcvConn = NULL;
 Subscription *MySubscription = NULL;
 static bool MySubscriptionValid = false;
 
+static List *on_commit_wakeup_workers_subids = NIL;
+
 bool		in_remote_transaction = false;
 static XLogRecPtr remote_final_lsn = InvalidXLogRecPtr;
 
@@ -262,28 +495,47 @@ static bool in_streamed_transaction = false;
 static TransactionId stream_xid = InvalidTransactionId;
 
 /*
+ * The number of changes applied by parallel apply worker during one streaming
+ * block.
+ */
+static uint32 parallel_stream_nchanges = 0;
+
+/* Are we initializing an apply worker? */
+bool		InitializingApplyWorker = false;
+
+/*
  * We enable skipping all data modification changes (INSERT, UPDATE, etc.) for
  * the subscription if the remote transaction's finish LSN matches the subskiplsn.
  * Once we start skipping changes, we don't stop it until we skip all changes of
  * the transaction even if pg_subscription is updated and MySubscription->skiplsn
- * gets changed or reset during that. Also, in streaming transaction cases, we
- * don't skip receiving and spooling the changes since we decide whether or not
+ * gets changed or reset during that. Also, in streaming transaction cases (streaming = on),
+ * we don't skip receiving and spooling the changes since we decide whether or not
  * to skip applying the changes when starting to apply changes. The subskiplsn is
  * cleared after successfully skipping the transaction or applying non-empty
  * transaction. The latter prevents the mistakenly specified subskiplsn from
- * being left.
+ * being left. Note that we cannot skip the streaming transactions when using
+ * parallel apply workers because we cannot get the finish LSN before applying
+ * the changes. So, we don't start parallel apply worker when finish LSN is set
+ * by the user.
  */
 static XLogRecPtr skip_xact_finish_lsn = InvalidXLogRecPtr;
-#define is_skipping_changes() (unlikely(!XLogRecPtrIsInvalid(skip_xact_finish_lsn)))
+#define is_skipping_changes() (unlikely(XLogRecPtrIsValid(skip_xact_finish_lsn)))
 
 /* BufFile handle of the current streaming file */
 static BufFile *stream_fd = NULL;
+
+/*
+ * The remote WAL position that has been applied and flushed locally. We record
+ * and use this information both while sending feedback to the server and
+ * advancing oldest_nonremovable_xid.
+ */
+static XLogRecPtr last_flushpos = InvalidXLogRecPtr;
 
 typedef struct SubXactInfo
 {
 	TransactionId xid;			/* XID of the subxact */
 	int			fileno;			/* file number in the buffile */
-	off_t		offset;			/* offset in the file */
+	pgoff_t		offset;			/* offset in the file */
 } SubXactInfo;
 
 /* Sub-transaction data for the current streaming transaction */
@@ -311,21 +563,33 @@ static inline void cleanup_subxact_info(void);
 /*
  * Serialize and deserialize changes for a toplevel transaction.
  */
-static void stream_cleanup_files(Oid subid, TransactionId xid);
-static void stream_open_file(Oid subid, TransactionId xid, bool first);
+static void stream_open_file(Oid subid, TransactionId xid,
+							 bool first_segment);
 static void stream_write_change(char action, StringInfo s);
+static void stream_open_and_write_change(TransactionId xid, char action, StringInfo s);
 static void stream_close_file(void);
 
 static void send_feedback(XLogRecPtr recvpos, bool force, bool requestReply);
 
-static void store_flush_position(XLogRecPtr remote_lsn);
+static void maybe_advance_nonremovable_xid(RetainDeadTuplesData *rdt_data,
+										   bool status_received);
+static bool can_advance_nonremovable_xid(RetainDeadTuplesData *rdt_data);
+static void process_rdt_phase_transition(RetainDeadTuplesData *rdt_data,
+										 bool status_received);
+static void get_candidate_xid(RetainDeadTuplesData *rdt_data);
+static void request_publisher_status(RetainDeadTuplesData *rdt_data);
+static void wait_for_publisher_status(RetainDeadTuplesData *rdt_data,
+									  bool status_received);
+static void wait_for_local_flush(RetainDeadTuplesData *rdt_data);
+static bool should_stop_conflict_info_retention(RetainDeadTuplesData *rdt_data);
+static void stop_conflict_info_retention(RetainDeadTuplesData *rdt_data);
+static void resume_conflict_info_retention(RetainDeadTuplesData *rdt_data);
+static bool update_retention_status(bool active);
+static void reset_retention_data_fields(RetainDeadTuplesData *rdt_data);
+static void adjust_xid_advance_interval(RetainDeadTuplesData *rdt_data,
+										bool new_xid_found);
 
-static void maybe_reread_subscription(void);
-
-static void DisableSubscriptionAndExit(void);
-
-/* prototype needed because of stream_commit */
-static void apply_dispatch(StringInfo s);
+static void apply_worker_exit(void);
 
 static void apply_handle_commit_internal(LogicalRepCommitData *commit_data);
 static void apply_handle_insert_internal(ApplyExecutionData *edata,
@@ -334,24 +598,27 @@ static void apply_handle_insert_internal(ApplyExecutionData *edata,
 static void apply_handle_update_internal(ApplyExecutionData *edata,
 										 ResultRelInfo *relinfo,
 										 TupleTableSlot *remoteslot,
-										 LogicalRepTupleData *newtup);
+										 LogicalRepTupleData *newtup,
+										 Oid localindexoid);
 static void apply_handle_delete_internal(ApplyExecutionData *edata,
 										 ResultRelInfo *relinfo,
-										 TupleTableSlot *remoteslot);
-static bool FindReplTupleInLocalRel(EState *estate, Relation localrel,
+										 TupleTableSlot *remoteslot,
+										 Oid localindexoid);
+static bool FindReplTupleInLocalRel(ApplyExecutionData *edata, Relation localrel,
 									LogicalRepRelation *remoterel,
+									Oid localidxoid,
 									TupleTableSlot *remoteslot,
 									TupleTableSlot **localslot);
+static bool FindDeletedTupleInLocalRel(Relation localrel,
+									   Oid localidxoid,
+									   TupleTableSlot *remoteslot,
+									   TransactionId *delete_xid,
+									   ReplOriginId *delete_origin,
+									   TimestampTz *delete_time);
 static void apply_handle_tuple_routing(ApplyExecutionData *edata,
 									   TupleTableSlot *remoteslot,
 									   LogicalRepTupleData *newtup,
 									   CmdType operation);
-
-/* Compute GID for two_phase transactions */
-static void TwoPhaseTransactionGid(Oid subid, TransactionId xid, char *gid, int szgid);
-
-/* Common streaming function to apply all the spooled messages */
-static void apply_spooled_messages(TransactionId xid, XLogRecPtr lsn);
 
 /* Functions for skipping changes */
 static void maybe_start_skipping_changes(XLogRecPtr finish_lsn);
@@ -359,32 +626,100 @@ static void stop_skipping_changes(void);
 static void clear_subscription_skip_lsn(XLogRecPtr finish_lsn);
 
 /* Functions for apply error callback */
-static void apply_error_callback(void *arg);
 static inline void set_apply_error_context_xact(TransactionId xid, XLogRecPtr lsn);
 static inline void reset_apply_error_context_info(void);
+
+static TransApplyAction get_transaction_apply_action(TransactionId xid,
+													 ParallelApplyWorkerInfo **winfo);
+
+static void set_wal_receiver_timeout(void);
+
+static void on_exit_clear_xact_state(int code, Datum arg);
+
+/*
+ * Form the origin name for the subscription.
+ *
+ * This is a common function for tablesync and other workers. Tablesync workers
+ * must pass a valid relid. Other callers must pass relid = InvalidOid.
+ *
+ * Return the name in the supplied buffer.
+ */
+void
+ReplicationOriginNameForLogicalRep(Oid suboid, Oid relid,
+								   char *originname, Size szoriginname)
+{
+	if (OidIsValid(relid))
+	{
+		/* Replication origin name for tablesync workers. */
+		snprintf(originname, szoriginname, "pg_%u_%u", suboid, relid);
+	}
+	else
+	{
+		/* Replication origin name for non-tablesync workers. */
+		snprintf(originname, szoriginname, "pg_%u", suboid);
+	}
+}
 
 /*
  * Should this worker apply changes for given relation.
  *
  * This is mainly needed for initial relation data sync as that runs in
  * separate worker process running in parallel and we need some way to skip
- * changes coming to the main apply worker during the sync of a table.
+ * changes coming to the leader apply worker during the sync of a table.
  *
  * Note we need to do smaller or equals comparison for SYNCDONE state because
  * it might hold position of end of initial slot consistent point WAL
  * record + 1 (ie start of next record) and next record can be COMMIT of
  * transaction we are now processing (which is what we set remote_final_lsn
  * to in apply_handle_begin).
+ *
+ * Note that for streaming transactions that are being applied in the parallel
+ * apply worker, we disallow applying changes if the target table in the
+ * subscription is not in the READY state, because we cannot decide whether to
+ * apply the change as we won't know remote_final_lsn by that time.
+ *
+ * We already checked this in pa_can_start() before assigning the
+ * streaming transaction to the parallel worker, but it also needs to be
+ * checked here because if the user executes ALTER SUBSCRIPTION ... REFRESH
+ * PUBLICATION in parallel, the new table can be added to pg_subscription_rel
+ * while applying this transaction.
  */
 static bool
 should_apply_changes_for_rel(LogicalRepRelMapEntry *rel)
 {
-	if (am_tablesync_worker())
-		return MyLogicalRepWorker->relid == rel->localreloid;
-	else
-		return (rel->state == SUBREL_STATE_READY ||
-				(rel->state == SUBREL_STATE_SYNCDONE &&
-				 rel->statelsn <= remote_final_lsn));
+	switch (MyLogicalRepWorker->type)
+	{
+		case WORKERTYPE_TABLESYNC:
+			return MyLogicalRepWorker->relid == rel->localreloid;
+
+		case WORKERTYPE_PARALLEL_APPLY:
+			/* We don't synchronize rel's that are in unknown state. */
+			if (rel->state != SUBREL_STATE_READY &&
+				rel->state != SUBREL_STATE_UNKNOWN)
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("logical replication parallel apply worker for subscription \"%s\" will stop",
+								MySubscription->name),
+						 errdetail("Cannot handle streamed replication transactions using parallel apply workers until all tables have been synchronized.")));
+
+			return rel->state == SUBREL_STATE_READY;
+
+		case WORKERTYPE_APPLY:
+			return (rel->state == SUBREL_STATE_READY ||
+					(rel->state == SUBREL_STATE_SYNCDONE &&
+					 rel->statelsn <= remote_final_lsn));
+
+		case WORKERTYPE_SEQUENCESYNC:
+			/* Should never happen. */
+			elog(ERROR, "sequence synchronization worker is not expected to apply changes");
+			break;
+
+		case WORKERTYPE_UNKNOWN:
+			/* Should never happen. */
+			elog(ERROR, "Unknown worker type");
+	}
+
+	return false;				/* dummy for compiler */
 }
 
 /*
@@ -426,43 +761,110 @@ end_replication_step(void)
 }
 
 /*
- * Handle streamed transactions.
+ * Handle streamed transactions for both the leader apply worker and the
+ * parallel apply workers.
  *
- * If in streaming mode (receiving a block of streamed transaction), we
- * simply redirect it to a file for the proper toplevel transaction.
+ * In the streaming case (receiving a block of the streamed transaction), for
+ * serialize mode, simply redirect it to a file for the proper toplevel
+ * transaction, and for parallel mode, the leader apply worker will send the
+ * changes to parallel apply workers and the parallel apply worker will define
+ * savepoints if needed. (LOGICAL_REP_MSG_RELATION or LOGICAL_REP_MSG_TYPE
+ * messages will be applied by both leader apply worker and parallel apply
+ * workers).
  *
- * Returns true for streamed transactions, false otherwise (regular mode).
+ * Returns true for streamed transactions (when the change is either serialized
+ * to file or sent to parallel apply worker), false otherwise (regular mode or
+ * needs to be processed by parallel apply worker).
+ *
+ * Exception: If the message being processed is LOGICAL_REP_MSG_RELATION
+ * or LOGICAL_REP_MSG_TYPE, return false even if the message needs to be sent
+ * to a parallel apply worker.
  */
 static bool
 handle_streamed_transaction(LogicalRepMsgType action, StringInfo s)
 {
-	TransactionId xid;
+	TransactionId current_xid;
+	ParallelApplyWorkerInfo *winfo;
+	TransApplyAction apply_action;
+	StringInfoData original_msg;
+
+	apply_action = get_transaction_apply_action(stream_xid, &winfo);
 
 	/* not in streaming mode */
-	if (!in_streamed_transaction)
+	if (apply_action == TRANS_LEADER_APPLY)
 		return false;
 
-	Assert(stream_fd != NULL);
 	Assert(TransactionIdIsValid(stream_xid));
+
+	/*
+	 * The parallel apply worker needs the xid in this message to decide
+	 * whether to define a savepoint, so save the original message that has
+	 * not moved the cursor after the xid. We will serialize this message to a
+	 * file in PARTIAL_SERIALIZE mode.
+	 */
+	original_msg = *s;
 
 	/*
 	 * We should have received XID of the subxact as the first part of the
 	 * message, so extract it.
 	 */
-	xid = pq_getmsgint(s, 4);
+	current_xid = pq_getmsgint(s, 4);
 
-	if (!TransactionIdIsValid(xid))
+	if (!TransactionIdIsValid(current_xid))
 		ereport(ERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg_internal("invalid transaction ID in streamed replication transaction")));
 
-	/* Add the new subxact to the array (unless already there). */
-	subxact_info_add(xid);
+	switch (apply_action)
+	{
+		case TRANS_LEADER_SERIALIZE:
+			Assert(stream_fd);
 
-	/* write the change to the current file */
-	stream_write_change(action, s);
+			/* Add the new subxact to the array (unless already there). */
+			subxact_info_add(current_xid);
 
-	return true;
+			/* Write the change to the current file */
+			stream_write_change(action, s);
+			return true;
+
+		case TRANS_LEADER_SEND_TO_PARALLEL:
+			Assert(winfo);
+
+			/*
+			 * XXX The publisher side doesn't always send relation/type update
+			 * messages after the streaming transaction, so also update the
+			 * relation/type in leader apply worker. See function
+			 * cleanup_rel_sync_cache.
+			 */
+			if (pa_send_data(winfo, s->len, s->data))
+				return (action != LOGICAL_REP_MSG_RELATION &&
+						action != LOGICAL_REP_MSG_TYPE);
+
+			/*
+			 * Switch to serialize mode when we are not able to send the
+			 * change to parallel apply worker.
+			 */
+			pa_switch_to_partial_serialize(winfo, false);
+
+			pg_fallthrough;
+		case TRANS_LEADER_PARTIAL_SERIALIZE:
+			stream_write_change(action, &original_msg);
+
+			/* Same reason as TRANS_LEADER_SEND_TO_PARALLEL case. */
+			return (action != LOGICAL_REP_MSG_RELATION &&
+					action != LOGICAL_REP_MSG_TYPE);
+
+		case TRANS_PARALLEL_APPLY:
+			parallel_stream_nchanges += 1;
+
+			/* Define a savepoint for a subxact if needed. */
+			pa_start_subtrans(current_xid, stream_xid);
+			return false;
+
+		default:
+			elog(ERROR, "unexpected apply action: %d", (int) apply_action);
+			return false;		/* silence compiler warning */
+	}
 }
 
 /*
@@ -477,9 +879,10 @@ create_edata_for_relation(LogicalRepRelMapEntry *rel)
 	ApplyExecutionData *edata;
 	EState	   *estate;
 	RangeTblEntry *rte;
+	List	   *perminfos = NIL;
 	ResultRelInfo *resultRelInfo;
 
-	edata = (ApplyExecutionData *) palloc0(sizeof(ApplyExecutionData));
+	edata = palloc0_object(ApplyExecutionData);
 	edata->targetRel = rel;
 
 	edata->estate = estate = CreateExecutorState();
@@ -489,7 +892,11 @@ create_edata_for_relation(LogicalRepRelMapEntry *rel)
 	rte->relid = RelationGetRelid(rel->localrel);
 	rte->relkind = rel->localrel->rd_rel->relkind;
 	rte->rellockmode = AccessShareLock;
-	ExecInitRangeTable(estate, list_make1(rte));
+
+	addRTEPermissionInfo(&perminfos, rte);
+
+	ExecInitRangeTable(estate, list_make1(rte), perminfos,
+					   bms_make_singleton(1));
 
 	edata->targetRelInfo = resultRelInfo = makeNode(ResultRelInfo);
 
@@ -574,15 +981,16 @@ slot_fill_defaults(LogicalRepRelMapEntry *rel, EState *estate,
 	if (num_phys_attrs == rel->remoterel.natts)
 		return;
 
-	defmap = (int *) palloc(num_phys_attrs * sizeof(int));
-	defexprs = (ExprState **) palloc(num_phys_attrs * sizeof(ExprState *));
+	defmap = palloc_array(int, num_phys_attrs);
+	defexprs = palloc_array(ExprState *, num_phys_attrs);
 
 	Assert(rel->attrmap->maplen == num_phys_attrs);
 	for (attnum = 0; attnum < num_phys_attrs; attnum++)
 	{
+		CompactAttribute *cattr = TupleDescCompactAttr(desc, attnum);
 		Expr	   *defexpr;
 
-		if (TupleDescAttr(desc, attnum)->attisdropped || TupleDescAttr(desc, attnum)->attgenerated)
+		if (cattr->attisdropped || cattr->attgenerated)
 			continue;
 
 		if (rel->attrmap->attnums[attnum] >= 0)
@@ -811,6 +1219,9 @@ apply_handle_begin(StringInfo s)
 {
 	LogicalRepBeginData begin_data;
 
+	/* There must not be an active streaming transaction. */
+	Assert(!TransactionIdIsValid(stream_xid));
+
 	logicalrep_read_begin(s, &begin_data);
 	set_apply_error_context_xact(begin_data.xid, begin_data.final_lsn);
 
@@ -838,14 +1249,17 @@ apply_handle_commit(StringInfo s)
 	if (commit_data.commit_lsn != remote_final_lsn)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg_internal("incorrect commit LSN %X/%X in commit message (expected %X/%X)",
+				 errmsg_internal("incorrect commit LSN %X/%08X in commit message (expected %X/%08X)",
 								 LSN_FORMAT_ARGS(commit_data.commit_lsn),
 								 LSN_FORMAT_ARGS(remote_final_lsn))));
 
 	apply_handle_commit_internal(&commit_data);
 
-	/* Process any tables that are being synchronized in parallel. */
-	process_syncing_tables(commit_data.end_lsn);
+	/*
+	 * Process any tables that are being synchronized in parallel, as well as
+	 * any newly added tables or sequences.
+	 */
+	ProcessSyncingRelations(commit_data.end_lsn);
 
 	pgstat_report_activity(STATE_IDLE, NULL);
 	reset_apply_error_context_info();
@@ -864,6 +1278,9 @@ apply_handle_begin_prepare(StringInfo s)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg_internal("tablesync worker received a BEGIN PREPARE message")));
+
+	/* There must not be an active streaming transaction. */
+	Assert(!TransactionIdIsValid(stream_xid));
 
 	logicalrep_read_begin_prepare(s, &begin_data);
 	set_apply_error_context_xact(begin_data.xid, begin_data.prepare_lsn);
@@ -898,15 +1315,18 @@ apply_handle_prepare_internal(LogicalRepPreparedTxnData *prepare_data)
 	 * BeginTransactionBlock is necessary to balance the EndTransactionBlock
 	 * called within the PrepareTransactionBlock below.
 	 */
-	BeginTransactionBlock();
-	CommitTransactionCommand(); /* Completes the preceding Begin command. */
+	if (!IsTransactionBlock())
+	{
+		BeginTransactionBlock();
+		CommitTransactionCommand(); /* Completes the preceding Begin command. */
+	}
 
 	/*
 	 * Update origin state so we can restart streaming from correct position
 	 * in case of crash.
 	 */
-	replorigin_session_origin_lsn = prepare_data->end_lsn;
-	replorigin_session_origin_timestamp = prepare_data->prepare_time;
+	replorigin_xact_state.origin_lsn = prepare_data->end_lsn;
+	replorigin_xact_state.origin_timestamp = prepare_data->prepare_time;
 
 	PrepareTransactionBlock(gid);
 }
@@ -924,7 +1344,7 @@ apply_handle_prepare(StringInfo s)
 	if (prepare_data.prepare_lsn != remote_final_lsn)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg_internal("incorrect prepare LSN %X/%X in prepare message (expected %X/%X)",
+				 errmsg_internal("incorrect prepare LSN %X/%08X in prepare message (expected %X/%08X)",
 								 LSN_FORMAT_ARGS(prepare_data.prepare_lsn),
 								 LSN_FORMAT_ARGS(remote_final_lsn))));
 
@@ -946,12 +1366,25 @@ apply_handle_prepare(StringInfo s)
 	CommitTransactionCommand();
 	pgstat_report_stat(false);
 
-	store_flush_position(prepare_data.end_lsn);
+	/*
+	 * It is okay not to set the local_end LSN for the prepare because we
+	 * always flush the prepare record. So, we can send the acknowledgment of
+	 * the remote_end LSN as soon as prepare is finished.
+	 *
+	 * XXX For the sake of consistency with commit, we could have set it with
+	 * the LSN of prepare but as of now we don't track that value similar to
+	 * XactLastCommitEnd, and adding it for this purpose doesn't seems worth
+	 * it.
+	 */
+	store_flush_position(prepare_data.end_lsn, InvalidXLogRecPtr);
 
 	in_remote_transaction = false;
 
-	/* Process any tables that are being synchronized in parallel. */
-	process_syncing_tables(prepare_data.end_lsn);
+	/*
+	 * Process any tables that are being synchronized in parallel, as well as
+	 * any newly added tables or sequences.
+	 */
+	ProcessSyncingRelations(prepare_data.end_lsn);
 
 	/*
 	 * Since we have already prepared the transaction, in a case where the
@@ -968,6 +1401,12 @@ apply_handle_prepare(StringInfo s)
 
 /*
  * Handle a COMMIT PREPARED of a previously PREPARED transaction.
+ *
+ * Note that we don't need to wait here if the transaction was prepared in a
+ * parallel apply worker. In that case, we have already waited for the prepare
+ * to finish in apply_handle_stream_prepare() which will ensure all the
+ * operations in that transaction have happened in the subscriber, so no
+ * concurrent transaction can cause deadlock or transaction dependency issues.
  */
 static void
 apply_handle_commit_prepared(StringInfo s)
@@ -989,19 +1428,22 @@ apply_handle_commit_prepared(StringInfo s)
 	 * Update origin state so we can restart streaming from correct position
 	 * in case of crash.
 	 */
-	replorigin_session_origin_lsn = prepare_data.end_lsn;
-	replorigin_session_origin_timestamp = prepare_data.commit_time;
+	replorigin_xact_state.origin_lsn = prepare_data.end_lsn;
+	replorigin_xact_state.origin_timestamp = prepare_data.commit_time;
 
 	FinishPreparedTransaction(gid, true);
 	end_replication_step();
 	CommitTransactionCommand();
 	pgstat_report_stat(false);
 
-	store_flush_position(prepare_data.end_lsn);
+	store_flush_position(prepare_data.end_lsn, XactLastCommitEnd);
 	in_remote_transaction = false;
 
-	/* Process any tables that are being synchronized in parallel. */
-	process_syncing_tables(prepare_data.end_lsn);
+	/*
+	 * Process any tables that are being synchronized in parallel, as well as
+	 * any newly added tables or sequences.
+	 */
+	ProcessSyncingRelations(prepare_data.end_lsn);
 
 	clear_subscription_skip_lsn(prepare_data.end_lsn);
 
@@ -1011,6 +1453,12 @@ apply_handle_commit_prepared(StringInfo s)
 
 /*
  * Handle a ROLLBACK PREPARED of a previously PREPARED TRANSACTION.
+ *
+ * Note that we don't need to wait here if the transaction was prepared in a
+ * parallel apply worker. In that case, we have already waited for the prepare
+ * to finish in apply_handle_stream_prepare() which will ensure all the
+ * operations in that transaction have happened in the subscriber, so no
+ * concurrent transaction can cause deadlock or transaction dependency issues.
  */
 static void
 apply_handle_rollback_prepared(StringInfo s)
@@ -1038,8 +1486,8 @@ apply_handle_rollback_prepared(StringInfo s)
 		 * Update origin state so we can restart streaming from correct
 		 * position in case of crash.
 		 */
-		replorigin_session_origin_lsn = rollback_data.rollback_end_lsn;
-		replorigin_session_origin_timestamp = rollback_data.rollback_time;
+		replorigin_xact_state.origin_lsn = rollback_data.rollback_end_lsn;
+		replorigin_xact_state.origin_timestamp = rollback_data.rollback_time;
 
 		/* There is no transaction when ABORT/ROLLBACK PREPARED is called */
 		begin_replication_step();
@@ -1052,11 +1500,19 @@ apply_handle_rollback_prepared(StringInfo s)
 
 	pgstat_report_stat(false);
 
-	store_flush_position(rollback_data.rollback_end_lsn);
+	/*
+	 * It is okay not to set the local_end LSN for the rollback of prepared
+	 * transaction because we always flush the WAL record for it. See
+	 * apply_handle_prepare.
+	 */
+	store_flush_position(rollback_data.rollback_end_lsn, InvalidXLogRecPtr);
 	in_remote_transaction = false;
 
-	/* Process any tables that are being synchronized in parallel. */
-	process_syncing_tables(rollback_data.rollback_end_lsn);
+	/*
+	 * Process any tables that are being synchronized in parallel, as well as
+	 * any newly added tables or sequences.
+	 */
+	ProcessSyncingRelations(rollback_data.rollback_end_lsn);
 
 	pgstat_report_activity(STATE_IDLE, NULL);
 	reset_apply_error_context_info();
@@ -1064,15 +1520,16 @@ apply_handle_rollback_prepared(StringInfo s)
 
 /*
  * Handle STREAM PREPARE.
- *
- * Logic is in two parts:
- * 1. Replay all the spooled operations
- * 2. Mark the transaction as prepared
  */
 static void
 apply_handle_stream_prepare(StringInfo s)
 {
 	LogicalRepPreparedTxnData prepare_data;
+	ParallelApplyWorkerInfo *winfo;
+	TransApplyAction apply_action;
+
+	/* Save the message before it is consumed. */
+	StringInfoData original_msg = *s;
 
 	if (in_streamed_transaction)
 		ereport(ERROR,
@@ -1088,27 +1545,112 @@ apply_handle_stream_prepare(StringInfo s)
 	logicalrep_read_stream_prepare(s, &prepare_data);
 	set_apply_error_context_xact(prepare_data.xid, prepare_data.prepare_lsn);
 
-	elog(DEBUG1, "received prepare for streamed transaction %u", prepare_data.xid);
+	apply_action = get_transaction_apply_action(prepare_data.xid, &winfo);
 
-	/* Replay all the spooled operations. */
-	apply_spooled_messages(prepare_data.xid, prepare_data.prepare_lsn);
+	switch (apply_action)
+	{
+		case TRANS_LEADER_APPLY:
 
-	/* Mark the transaction as prepared. */
-	apply_handle_prepare_internal(&prepare_data);
+			/*
+			 * The transaction has been serialized to file, so replay all the
+			 * spooled operations.
+			 */
+			apply_spooled_messages(MyLogicalRepWorker->stream_fileset,
+								   prepare_data.xid, prepare_data.prepare_lsn);
 
-	CommitTransactionCommand();
+			/* Mark the transaction as prepared. */
+			apply_handle_prepare_internal(&prepare_data);
+
+			CommitTransactionCommand();
+
+			/*
+			 * It is okay not to set the local_end LSN for the prepare because
+			 * we always flush the prepare record. See apply_handle_prepare.
+			 */
+			store_flush_position(prepare_data.end_lsn, InvalidXLogRecPtr);
+
+			in_remote_transaction = false;
+
+			/* Unlink the files with serialized changes and subxact info. */
+			stream_cleanup_files(MyLogicalRepWorker->subid, prepare_data.xid);
+
+			elog(DEBUG1, "finished processing the STREAM PREPARE command");
+			break;
+
+		case TRANS_LEADER_SEND_TO_PARALLEL:
+			Assert(winfo);
+
+			if (pa_send_data(winfo, s->len, s->data))
+			{
+				/* Finish processing the streaming transaction. */
+				pa_xact_finish(winfo, prepare_data.end_lsn);
+				break;
+			}
+
+			/*
+			 * Switch to serialize mode when we are not able to send the
+			 * change to parallel apply worker.
+			 */
+			pa_switch_to_partial_serialize(winfo, true);
+
+			pg_fallthrough;
+		case TRANS_LEADER_PARTIAL_SERIALIZE:
+			Assert(winfo);
+
+			stream_open_and_write_change(prepare_data.xid,
+										 LOGICAL_REP_MSG_STREAM_PREPARE,
+										 &original_msg);
+
+			pa_set_fileset_state(winfo->shared, FS_SERIALIZE_DONE);
+
+			/* Finish processing the streaming transaction. */
+			pa_xact_finish(winfo, prepare_data.end_lsn);
+			break;
+
+		case TRANS_PARALLEL_APPLY:
+
+			/*
+			 * If the parallel apply worker is applying spooled messages then
+			 * close the file before preparing.
+			 */
+			if (stream_fd)
+				stream_close_file();
+
+			begin_replication_step();
+
+			/* Mark the transaction as prepared. */
+			apply_handle_prepare_internal(&prepare_data);
+
+			end_replication_step();
+
+			CommitTransactionCommand();
+
+			/*
+			 * It is okay not to set the local_end LSN for the prepare because
+			 * we always flush the prepare record. See apply_handle_prepare.
+			 */
+			MyParallelShared->last_commit_end = InvalidXLogRecPtr;
+
+			pa_set_xact_state(MyParallelShared, PARALLEL_TRANS_FINISHED);
+			pa_unlock_transaction(MyParallelShared->xid, AccessExclusiveLock);
+
+			pa_reset_subtrans();
+
+			elog(DEBUG1, "finished processing the STREAM PREPARE command");
+			break;
+
+		default:
+			elog(ERROR, "unexpected apply action: %d", (int) apply_action);
+			break;
+	}
 
 	pgstat_report_stat(false);
 
-	store_flush_position(prepare_data.end_lsn);
-
-	in_remote_transaction = false;
-
-	/* unlink the files with serialized changes and subxact info. */
-	stream_cleanup_files(MyLogicalRepWorker->subid, prepare_data.xid);
-
-	/* Process any tables that are being synchronized in parallel. */
-	process_syncing_tables(prepare_data.end_lsn);
+	/*
+	 * Process any tables that are being synchronized in parallel, as well as
+	 * any newly added tables or sequences.
+	 */
+	ProcessSyncingRelations(prepare_data.end_lsn);
 
 	/*
 	 * Similar to prepare case, the subskiplsn could be left in a case of
@@ -1143,26 +1685,66 @@ apply_handle_origin(StringInfo s)
 }
 
 /*
+ * Initialize fileset (if not already done).
+ *
+ * Create a new file when first_segment is true, otherwise open the existing
+ * file.
+ */
+void
+stream_start_internal(TransactionId xid, bool first_segment)
+{
+	begin_replication_step();
+
+	/*
+	 * Initialize the worker's stream_fileset if we haven't yet. This will be
+	 * used for the entire duration of the worker so create it in a permanent
+	 * context. We create this on the very first streaming message from any
+	 * transaction and then use it for this and other streaming transactions.
+	 * Now, we could create a fileset at the start of the worker as well but
+	 * then we won't be sure that it will ever be used.
+	 */
+	if (!MyLogicalRepWorker->stream_fileset)
+	{
+		MemoryContext oldctx;
+
+		oldctx = MemoryContextSwitchTo(ApplyContext);
+
+		MyLogicalRepWorker->stream_fileset = palloc_object(FileSet);
+		FileSetInit(MyLogicalRepWorker->stream_fileset);
+
+		MemoryContextSwitchTo(oldctx);
+	}
+
+	/* Open the spool file for this transaction. */
+	stream_open_file(MyLogicalRepWorker->subid, xid, first_segment);
+
+	/* If this is not the first segment, open existing subxact file. */
+	if (!first_segment)
+		subxact_info_read(MyLogicalRepWorker->subid, xid);
+
+	end_replication_step();
+}
+
+/*
  * Handle STREAM START message.
  */
 static void
 apply_handle_stream_start(StringInfo s)
 {
 	bool		first_segment;
+	ParallelApplyWorkerInfo *winfo;
+	TransApplyAction apply_action;
+
+	/* Save the message before it is consumed. */
+	StringInfoData original_msg = *s;
 
 	if (in_streamed_transaction)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg_internal("duplicate STREAM START message")));
 
-	/*
-	 * Start a transaction on stream start, this transaction will be committed
-	 * on the stream stop unless it is a tablesync worker in which case it
-	 * will be committed after processing all the messages. We need the
-	 * transaction for handling the buffile, used for serializing the
-	 * streaming data and subxact info.
-	 */
-	begin_replication_step();
+	/* There must not be an active streaming transaction. */
+	Assert(!TransactionIdIsValid(stream_xid));
 
 	/* notify handle methods we're processing a remote transaction */
 	in_streamed_transaction = true;
@@ -1177,54 +1759,120 @@ apply_handle_stream_start(StringInfo s)
 
 	set_apply_error_context_xact(stream_xid, InvalidXLogRecPtr);
 
-	/*
-	 * Initialize the worker's stream_fileset if we haven't yet. This will be
-	 * used for the entire duration of the worker so create it in a permanent
-	 * context. We create this on the very first streaming message from any
-	 * transaction and then use it for this and other streaming transactions.
-	 * Now, we could create a fileset at the start of the worker as well but
-	 * then we won't be sure that it will ever be used.
-	 */
-	if (MyLogicalRepWorker->stream_fileset == NULL)
+	/* Try to allocate a worker for the streaming transaction. */
+	if (first_segment)
+		pa_allocate_worker(stream_xid);
+
+	apply_action = get_transaction_apply_action(stream_xid, &winfo);
+
+	switch (apply_action)
 	{
-		MemoryContext oldctx;
+		case TRANS_LEADER_SERIALIZE:
 
-		oldctx = MemoryContextSwitchTo(ApplyContext);
+			/*
+			 * Function stream_start_internal starts a transaction. This
+			 * transaction will be committed on the stream stop unless it is a
+			 * tablesync worker in which case it will be committed after
+			 * processing all the messages. We need this transaction for
+			 * handling the BufFile, used for serializing the streaming data
+			 * and subxact info.
+			 */
+			stream_start_internal(stream_xid, first_segment);
+			break;
 
-		MyLogicalRepWorker->stream_fileset = palloc(sizeof(FileSet));
-		FileSetInit(MyLogicalRepWorker->stream_fileset);
+		case TRANS_LEADER_SEND_TO_PARALLEL:
+			Assert(winfo);
 
-		MemoryContextSwitchTo(oldctx);
+			/*
+			 * Once we start serializing the changes, the parallel apply
+			 * worker will wait for the leader to release the stream lock
+			 * until the end of the transaction. So, we don't need to release
+			 * the lock or increment the stream count in that case.
+			 */
+			if (pa_send_data(winfo, s->len, s->data))
+			{
+				/*
+				 * Unlock the shared object lock so that the parallel apply
+				 * worker can continue to receive changes.
+				 */
+				if (!first_segment)
+					pa_unlock_stream(winfo->shared->xid, AccessExclusiveLock);
+
+				/*
+				 * Increment the number of streaming blocks waiting to be
+				 * processed by parallel apply worker.
+				 */
+				pg_atomic_add_fetch_u32(&winfo->shared->pending_stream_count, 1);
+
+				/* Cache the parallel apply worker for this transaction. */
+				pa_set_stream_apply_worker(winfo);
+				break;
+			}
+
+			/*
+			 * Switch to serialize mode when we are not able to send the
+			 * change to parallel apply worker.
+			 */
+			pa_switch_to_partial_serialize(winfo, !first_segment);
+
+			pg_fallthrough;
+		case TRANS_LEADER_PARTIAL_SERIALIZE:
+			Assert(winfo);
+
+			/*
+			 * Open the spool file unless it was already opened when switching
+			 * to serialize mode. The transaction started in
+			 * stream_start_internal will be committed on the stream stop.
+			 */
+			if (apply_action != TRANS_LEADER_SEND_TO_PARALLEL)
+				stream_start_internal(stream_xid, first_segment);
+
+			stream_write_change(LOGICAL_REP_MSG_STREAM_START, &original_msg);
+
+			/* Cache the parallel apply worker for this transaction. */
+			pa_set_stream_apply_worker(winfo);
+			break;
+
+		case TRANS_PARALLEL_APPLY:
+			if (first_segment)
+			{
+				/* Hold the lock until the end of the transaction. */
+				pa_lock_transaction(MyParallelShared->xid, AccessExclusiveLock);
+				pa_set_xact_state(MyParallelShared, PARALLEL_TRANS_STARTED);
+
+				/*
+				 * Signal the leader apply worker, as it may be waiting for
+				 * us.
+				 */
+				logicalrep_worker_wakeup(WORKERTYPE_APPLY,
+										 MyLogicalRepWorker->subid, InvalidOid);
+			}
+
+			parallel_stream_nchanges = 0;
+			break;
+
+		default:
+			elog(ERROR, "unexpected apply action: %d", (int) apply_action);
+			break;
 	}
 
-	/* open the spool file for this transaction */
-	stream_open_file(MyLogicalRepWorker->subid, stream_xid, first_segment);
-
-	/* if this is not the first segment, open existing subxact file */
-	if (!first_segment)
-		subxact_info_read(MyLogicalRepWorker->subid, stream_xid);
-
 	pgstat_report_activity(STATE_RUNNING, NULL);
-
-	end_replication_step();
 }
 
 /*
- * Handle STREAM STOP message.
+ * Update the information about subxacts and close the file.
+ *
+ * This function should be called when the stream_start_internal function has
+ * been called.
  */
-static void
-apply_handle_stream_stop(StringInfo s)
+void
+stream_stop_internal(TransactionId xid)
 {
-	if (!in_streamed_transaction)
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg_internal("STREAM STOP message without STREAM START")));
-
 	/*
-	 * Close the file with serialized changes, and serialize information about
-	 * subxacts for the toplevel transaction.
+	 * Serialize information about subxacts for the toplevel transaction, then
+	 * close the stream messages spool file.
 	 */
-	subxact_info_write(MyLogicalRepWorker->subid, stream_xid);
+	subxact_info_write(MyLogicalRepWorker->subid, xid);
 	stream_close_file();
 
 	/* We must be in a valid transaction state */
@@ -1233,40 +1881,125 @@ apply_handle_stream_stop(StringInfo s)
 	/* Commit the per-stream transaction */
 	CommitTransactionCommand();
 
-	in_streamed_transaction = false;
-
 	/* Reset per-stream context */
 	MemoryContextReset(LogicalStreamingContext);
+}
 
-	pgstat_report_activity(STATE_IDLE, NULL);
+/*
+ * Handle STREAM STOP message.
+ */
+static void
+apply_handle_stream_stop(StringInfo s)
+{
+	ParallelApplyWorkerInfo *winfo;
+	TransApplyAction apply_action;
+
+	if (!in_streamed_transaction)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg_internal("STREAM STOP message without STREAM START")));
+
+	apply_action = get_transaction_apply_action(stream_xid, &winfo);
+
+	switch (apply_action)
+	{
+		case TRANS_LEADER_SERIALIZE:
+			stream_stop_internal(stream_xid);
+			break;
+
+		case TRANS_LEADER_SEND_TO_PARALLEL:
+			Assert(winfo);
+
+			/*
+			 * Lock before sending the STREAM_STOP message so that the leader
+			 * can hold the lock first and the parallel apply worker will wait
+			 * for leader to release the lock. See Locking Considerations atop
+			 * applyparallelworker.c.
+			 */
+			pa_lock_stream(winfo->shared->xid, AccessExclusiveLock);
+
+			if (pa_send_data(winfo, s->len, s->data))
+			{
+				pa_set_stream_apply_worker(NULL);
+				break;
+			}
+
+			/*
+			 * Switch to serialize mode when we are not able to send the
+			 * change to parallel apply worker.
+			 */
+			pa_switch_to_partial_serialize(winfo, true);
+
+			pg_fallthrough;
+		case TRANS_LEADER_PARTIAL_SERIALIZE:
+			stream_write_change(LOGICAL_REP_MSG_STREAM_STOP, s);
+			stream_stop_internal(stream_xid);
+			pa_set_stream_apply_worker(NULL);
+			break;
+
+		case TRANS_PARALLEL_APPLY:
+			elog(DEBUG1, "applied %u changes in the streaming chunk",
+				 parallel_stream_nchanges);
+
+			/*
+			 * By the time parallel apply worker is processing the changes in
+			 * the current streaming block, the leader apply worker may have
+			 * sent multiple streaming blocks. This can lead to parallel apply
+			 * worker start waiting even when there are more chunk of streams
+			 * in the queue. So, try to lock only if there is no message left
+			 * in the queue. See Locking Considerations atop
+			 * applyparallelworker.c.
+			 *
+			 * Note that here we have a race condition where we can start
+			 * waiting even when there are pending streaming chunks. This can
+			 * happen if the leader sends another streaming block and acquires
+			 * the stream lock again after the parallel apply worker checks
+			 * that there is no pending streaming block and before it actually
+			 * starts waiting on a lock. We can handle this case by not
+			 * allowing the leader to increment the stream block count during
+			 * the time parallel apply worker acquires the lock but it is not
+			 * clear whether that is worth the complexity.
+			 *
+			 * Now, if this missed chunk contains rollback to savepoint, then
+			 * there is a risk of deadlock which probably shouldn't happen
+			 * after restart.
+			 */
+			pa_decr_and_wait_stream_block();
+			break;
+
+		default:
+			elog(ERROR, "unexpected apply action: %d", (int) apply_action);
+			break;
+	}
+
+	in_streamed_transaction = false;
+	stream_xid = InvalidTransactionId;
+
+	/*
+	 * The parallel apply worker could be in a transaction in which case we
+	 * need to report the state as STATE_IDLEINTRANSACTION.
+	 */
+	if (IsTransactionOrTransactionBlock())
+		pgstat_report_activity(STATE_IDLEINTRANSACTION, NULL);
+	else
+		pgstat_report_activity(STATE_IDLE, NULL);
+
 	reset_apply_error_context_info();
 }
 
 /*
- * Handle STREAM abort message.
+ * Helper function to handle STREAM ABORT message when the transaction was
+ * serialized to file.
  */
 static void
-apply_handle_stream_abort(StringInfo s)
+stream_abort_internal(TransactionId xid, TransactionId subxid)
 {
-	TransactionId xid;
-	TransactionId subxid;
-
-	if (in_streamed_transaction)
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg_internal("STREAM ABORT message without STREAM STOP")));
-
-	logicalrep_read_stream_abort(s, &xid, &subxid);
-
 	/*
 	 * If the two XIDs are the same, it's in fact abort of toplevel xact, so
 	 * just delete the files with serialized info.
 	 */
 	if (xid == subxid)
-	{
-		set_apply_error_context_xact(xid, InvalidXLogRecPtr);
 		stream_cleanup_files(MyLogicalRepWorker->subid, xid);
-	}
 	else
 	{
 		/*
@@ -1289,8 +2022,6 @@ apply_handle_stream_abort(StringInfo s)
 		BufFile    *fd;
 		bool		found = false;
 		char		path[MAXPGPATH];
-
-		set_apply_error_context_xact(subxid, InvalidXLogRecPtr);
 
 		subidx = -1;
 		begin_replication_step();
@@ -1316,7 +2047,6 @@ apply_handle_stream_abort(StringInfo s)
 			cleanup_subxact_info();
 			end_replication_step();
 			CommitTransactionCommand();
-			reset_apply_error_context_info();
 			return;
 		}
 
@@ -1339,24 +2069,214 @@ apply_handle_stream_abort(StringInfo s)
 		end_replication_step();
 		CommitTransactionCommand();
 	}
+}
+
+/*
+ * Handle STREAM ABORT message.
+ */
+static void
+apply_handle_stream_abort(StringInfo s)
+{
+	TransactionId xid;
+	TransactionId subxid;
+	LogicalRepStreamAbortData abort_data;
+	ParallelApplyWorkerInfo *winfo;
+	TransApplyAction apply_action;
+
+	/* Save the message before it is consumed. */
+	StringInfoData original_msg = *s;
+	bool		toplevel_xact;
+
+	if (in_streamed_transaction)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg_internal("STREAM ABORT message without STREAM STOP")));
+
+	/* We receive abort information only when we can apply in parallel. */
+	logicalrep_read_stream_abort(s, &abort_data,
+								 MyLogicalRepWorker->parallel_apply);
+
+	xid = abort_data.xid;
+	subxid = abort_data.subxid;
+	toplevel_xact = (xid == subxid);
+
+	set_apply_error_context_xact(subxid, abort_data.abort_lsn);
+
+	apply_action = get_transaction_apply_action(xid, &winfo);
+
+	switch (apply_action)
+	{
+		case TRANS_LEADER_APPLY:
+
+			/*
+			 * We are in the leader apply worker and the transaction has been
+			 * serialized to file.
+			 */
+			stream_abort_internal(xid, subxid);
+
+			elog(DEBUG1, "finished processing the STREAM ABORT command");
+			break;
+
+		case TRANS_LEADER_SEND_TO_PARALLEL:
+			Assert(winfo);
+
+			/*
+			 * For the case of aborting the subtransaction, we increment the
+			 * number of streaming blocks and take the lock again before
+			 * sending the STREAM_ABORT to ensure that the parallel apply
+			 * worker will wait on the lock for the next set of changes after
+			 * processing the STREAM_ABORT message if it is not already
+			 * waiting for STREAM_STOP message.
+			 *
+			 * It is important to perform this locking before sending the
+			 * STREAM_ABORT message so that the leader can hold the lock first
+			 * and the parallel apply worker will wait for the leader to
+			 * release the lock. This is the same as what we do in
+			 * apply_handle_stream_stop. See Locking Considerations atop
+			 * applyparallelworker.c.
+			 */
+			if (!toplevel_xact)
+			{
+				pa_unlock_stream(xid, AccessExclusiveLock);
+				pg_atomic_add_fetch_u32(&winfo->shared->pending_stream_count, 1);
+				pa_lock_stream(xid, AccessExclusiveLock);
+			}
+
+			if (pa_send_data(winfo, s->len, s->data))
+			{
+				/*
+				 * Unlike STREAM_COMMIT and STREAM_PREPARE, we don't need to
+				 * wait here for the parallel apply worker to finish as that
+				 * is not required to maintain the commit order and won't have
+				 * the risk of failures due to transaction dependencies and
+				 * deadlocks. However, it is possible that before the parallel
+				 * worker finishes and we clear the worker info, the xid
+				 * wraparound happens on the upstream and a new transaction
+				 * with the same xid can appear and that can lead to duplicate
+				 * entries in ParallelApplyTxnHash. Yet another problem could
+				 * be that we may have serialized the changes in partial
+				 * serialize mode and the file containing xact changes may
+				 * already exist, and after xid wraparound trying to create
+				 * the file for the same xid can lead to an error. To avoid
+				 * these problems, we decide to wait for the aborts to finish.
+				 *
+				 * Note, it is okay to not update the flush location position
+				 * for aborts as in worst case that means such a transaction
+				 * won't be sent again after restart.
+				 */
+				if (toplevel_xact)
+					pa_xact_finish(winfo, InvalidXLogRecPtr);
+
+				break;
+			}
+
+			/*
+			 * Switch to serialize mode when we are not able to send the
+			 * change to parallel apply worker.
+			 */
+			pa_switch_to_partial_serialize(winfo, true);
+
+			pg_fallthrough;
+		case TRANS_LEADER_PARTIAL_SERIALIZE:
+			Assert(winfo);
+
+			/*
+			 * Parallel apply worker might have applied some changes, so write
+			 * the STREAM_ABORT message so that it can rollback the
+			 * subtransaction if needed.
+			 */
+			stream_open_and_write_change(xid, LOGICAL_REP_MSG_STREAM_ABORT,
+										 &original_msg);
+
+			if (toplevel_xact)
+			{
+				pa_set_fileset_state(winfo->shared, FS_SERIALIZE_DONE);
+				pa_xact_finish(winfo, InvalidXLogRecPtr);
+			}
+			break;
+
+		case TRANS_PARALLEL_APPLY:
+
+			/*
+			 * If the parallel apply worker is applying spooled messages then
+			 * close the file before aborting.
+			 */
+			if (toplevel_xact && stream_fd)
+				stream_close_file();
+
+			pa_stream_abort(&abort_data);
+
+			/*
+			 * We need to wait after processing rollback to savepoint for the
+			 * next set of changes.
+			 *
+			 * We have a race condition here due to which we can start waiting
+			 * here when there are more chunk of streams in the queue. See
+			 * apply_handle_stream_stop.
+			 */
+			if (!toplevel_xact)
+				pa_decr_and_wait_stream_block();
+
+			elog(DEBUG1, "finished processing the STREAM ABORT command");
+			break;
+
+		default:
+			elog(ERROR, "unexpected apply action: %d", (int) apply_action);
+			break;
+	}
 
 	reset_apply_error_context_info();
 }
 
 /*
- * Common spoolfile processing.
+ * Ensure that the passed location is fileset's end.
  */
 static void
-apply_spooled_messages(TransactionId xid, XLogRecPtr lsn)
+ensure_last_message(FileSet *stream_fileset, TransactionId xid, int fileno,
+					pgoff_t offset)
 {
-	StringInfoData s2;
+	char		path[MAXPGPATH];
+	BufFile    *fd;
+	int			last_fileno;
+	pgoff_t		last_offset;
+
+	Assert(!IsTransactionState());
+
+	begin_replication_step();
+
+	changes_filename(path, MyLogicalRepWorker->subid, xid);
+
+	fd = BufFileOpenFileSet(stream_fileset, path, O_RDONLY, false);
+
+	BufFileSeek(fd, 0, 0, SEEK_END);
+	BufFileTell(fd, &last_fileno, &last_offset);
+
+	BufFileClose(fd);
+
+	end_replication_step();
+
+	if (last_fileno != fileno || last_offset != offset)
+		elog(ERROR, "unexpected message left in streaming transaction's changes file \"%s\"",
+			 path);
+}
+
+/*
+ * Common spoolfile processing.
+ */
+void
+apply_spooled_messages(FileSet *stream_fileset, TransactionId xid,
+					   XLogRecPtr lsn)
+{
 	int			nchanges;
 	char		path[MAXPGPATH];
 	char	   *buffer = NULL;
 	MemoryContext oldcxt;
-	BufFile    *fd;
+	ResourceOwner oldowner;
+	int			fileno;
+	pgoff_t		offset;
 
-	maybe_start_skipping_changes(lsn);
+	if (!am_parallel_apply_worker())
+		maybe_start_skipping_changes(lsn);
 
 	/* Make sure we have an open transaction */
 	begin_replication_step();
@@ -1372,11 +2292,18 @@ apply_spooled_messages(TransactionId xid, XLogRecPtr lsn)
 	changes_filename(path, MyLogicalRepWorker->subid, xid);
 	elog(DEBUG1, "replaying changes from file \"%s\"", path);
 
-	fd = BufFileOpenFileSet(MyLogicalRepWorker->stream_fileset, path, O_RDONLY,
-							false);
+	/*
+	 * Make sure the file is owned by the toplevel transaction so that the
+	 * file will not be accidentally closed when aborting a subtransaction.
+	 */
+	oldowner = CurrentResourceOwner;
+	CurrentResourceOwner = TopTransactionResourceOwner;
+
+	stream_fd = BufFileOpenFileSet(stream_fileset, path, O_RDONLY, false);
+
+	CurrentResourceOwner = oldowner;
 
 	buffer = palloc(BLCKSZ);
-	initStringInfo(&s2);
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -1398,25 +2325,20 @@ apply_spooled_messages(TransactionId xid, XLogRecPtr lsn)
 	nchanges = 0;
 	while (true)
 	{
+		StringInfoData s2;
 		size_t		nbytes;
 		int			len;
 
 		CHECK_FOR_INTERRUPTS();
 
 		/* read length of the on-disk record */
-		nbytes = BufFileRead(fd, &len, sizeof(len));
+		nbytes = BufFileReadMaybeEOF(stream_fd, &len, sizeof(len), true);
 
 		/* have we reached end of the file? */
 		if (nbytes == 0)
 			break;
 
 		/* do we have a correct length? */
-		if (nbytes != sizeof(len))
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not read from streaming transaction's changes file \"%s\": read only %zu of %zu bytes",
-							path, nbytes, sizeof(len))));
-
 		if (len <= 0)
 			elog(ERROR, "incorrect length %d in streaming transaction's changes file \"%s\"",
 				 len, path);
@@ -1425,16 +2347,12 @@ apply_spooled_messages(TransactionId xid, XLogRecPtr lsn)
 		buffer = repalloc(buffer, len);
 
 		/* and finally read the data into the buffer */
-		nbytes = BufFileRead(fd, buffer, len);
-		if (nbytes != len)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not read from streaming transaction's changes file \"%s\": read only %zu of %zu bytes",
-							path, nbytes, (size_t) len)));
+		BufFileReadExact(stream_fd, buffer, len);
 
-		/* copy the buffer to the stringinfo and call apply_dispatch */
-		resetStringInfo(&s2);
-		appendBinaryStringInfo(&s2, buffer, len);
+		BufFileTell(stream_fd, &fileno, &offset);
+
+		/* init a stringinfo using the buffer and call apply_dispatch */
+		initReadOnlyStringInfo(&s2, buffer, len);
 
 		/* Ensure we are reading the data into our memory context. */
 		oldcxt = MemoryContextSwitchTo(ApplyMessageContext);
@@ -1447,15 +2365,24 @@ apply_spooled_messages(TransactionId xid, XLogRecPtr lsn)
 
 		nchanges++;
 
+		/*
+		 * It is possible the file has been closed because we have processed
+		 * the transaction end message like stream_commit in which case that
+		 * must be the last message.
+		 */
+		if (!stream_fd)
+		{
+			ensure_last_message(stream_fileset, xid, fileno, offset);
+			break;
+		}
+
 		if (nchanges % 1000 == 0)
 			elog(DEBUG1, "replayed %d changes from file \"%s\"",
 				 nchanges, path);
 	}
 
-	BufFileClose(fd);
-
-	pfree(buffer);
-	pfree(s2.data);
+	if (stream_fd)
+		stream_close_file();
 
 	elog(DEBUG1, "replayed %d (all) changes from file \"%s\"",
 		 nchanges, path);
@@ -1471,6 +2398,11 @@ apply_handle_stream_commit(StringInfo s)
 {
 	TransactionId xid;
 	LogicalRepCommitData commit_data;
+	ParallelApplyWorkerInfo *winfo;
+	TransApplyAction apply_action;
+
+	/* Save the message before it is consumed. */
+	StringInfoData original_msg = *s;
 
 	if (in_streamed_transaction)
 		ereport(ERROR,
@@ -1480,17 +2412,91 @@ apply_handle_stream_commit(StringInfo s)
 	xid = logicalrep_read_stream_commit(s, &commit_data);
 	set_apply_error_context_xact(xid, commit_data.commit_lsn);
 
-	elog(DEBUG1, "received commit for streamed transaction %u", xid);
+	apply_action = get_transaction_apply_action(xid, &winfo);
 
-	apply_spooled_messages(xid, commit_data.commit_lsn);
+	switch (apply_action)
+	{
+		case TRANS_LEADER_APPLY:
 
-	apply_handle_commit_internal(&commit_data);
+			/*
+			 * The transaction has been serialized to file, so replay all the
+			 * spooled operations.
+			 */
+			apply_spooled_messages(MyLogicalRepWorker->stream_fileset, xid,
+								   commit_data.commit_lsn);
 
-	/* unlink the files with serialized changes and subxact info */
-	stream_cleanup_files(MyLogicalRepWorker->subid, xid);
+			apply_handle_commit_internal(&commit_data);
 
-	/* Process any tables that are being synchronized in parallel. */
-	process_syncing_tables(commit_data.end_lsn);
+			/* Unlink the files with serialized changes and subxact info. */
+			stream_cleanup_files(MyLogicalRepWorker->subid, xid);
+
+			elog(DEBUG1, "finished processing the STREAM COMMIT command");
+			break;
+
+		case TRANS_LEADER_SEND_TO_PARALLEL:
+			Assert(winfo);
+
+			if (pa_send_data(winfo, s->len, s->data))
+			{
+				/* Finish processing the streaming transaction. */
+				pa_xact_finish(winfo, commit_data.end_lsn);
+				break;
+			}
+
+			/*
+			 * Switch to serialize mode when we are not able to send the
+			 * change to parallel apply worker.
+			 */
+			pa_switch_to_partial_serialize(winfo, true);
+
+			pg_fallthrough;
+		case TRANS_LEADER_PARTIAL_SERIALIZE:
+			Assert(winfo);
+
+			stream_open_and_write_change(xid, LOGICAL_REP_MSG_STREAM_COMMIT,
+										 &original_msg);
+
+			pa_set_fileset_state(winfo->shared, FS_SERIALIZE_DONE);
+
+			/* Finish processing the streaming transaction. */
+			pa_xact_finish(winfo, commit_data.end_lsn);
+			break;
+
+		case TRANS_PARALLEL_APPLY:
+
+			/*
+			 * If the parallel apply worker is applying spooled messages then
+			 * close the file before committing.
+			 */
+			if (stream_fd)
+				stream_close_file();
+
+			apply_handle_commit_internal(&commit_data);
+
+			MyParallelShared->last_commit_end = XactLastCommitEnd;
+
+			/*
+			 * It is important to set the transaction state as finished before
+			 * releasing the lock. See pa_wait_for_xact_finish.
+			 */
+			pa_set_xact_state(MyParallelShared, PARALLEL_TRANS_FINISHED);
+			pa_unlock_transaction(xid, AccessExclusiveLock);
+
+			pa_reset_subtrans();
+
+			elog(DEBUG1, "finished processing the STREAM COMMIT command");
+			break;
+
+		default:
+			elog(ERROR, "unexpected apply action: %d", (int) apply_action);
+			break;
+	}
+
+	/*
+	 * Process any tables that are being synchronized in parallel, as well as
+	 * any newly added tables or sequences.
+	 */
+	ProcessSyncingRelations(commit_data.end_lsn);
 
 	pgstat_report_activity(STATE_IDLE, NULL);
 
@@ -1527,13 +2533,20 @@ apply_handle_commit_internal(LogicalRepCommitData *commit_data)
 		 * Update origin state so we can restart streaming from correct
 		 * position in case of crash.
 		 */
-		replorigin_session_origin_lsn = commit_data->end_lsn;
-		replorigin_session_origin_timestamp = commit_data->committime;
+		replorigin_xact_state.origin_lsn = commit_data->end_lsn;
+		replorigin_xact_state.origin_timestamp = commit_data->committime;
 
 		CommitTransactionCommand();
+
+		if (IsTransactionBlock())
+		{
+			EndTransactionBlock(false);
+			CommitTransactionCommand();
+		}
+
 		pgstat_report_stat(false);
 
-		store_flush_position(commit_data->end_lsn);
+		store_flush_position(commit_data->end_lsn, XactLastCommitEnd);
 	}
 	else
 	{
@@ -1588,24 +2601,6 @@ apply_handle_type(StringInfo s)
 }
 
 /*
- * Get replica identity index or if it is not defined a primary key.
- *
- * If neither is defined, returns InvalidOid
- */
-static Oid
-GetRelationIdentityOrPK(Relation rel)
-{
-	Oid			idxoid;
-
-	idxoid = RelationGetReplicaIndex(rel);
-
-	if (!OidIsValid(idxoid))
-		idxoid = RelationGetPrimaryKeyIndex(rel);
-
-	return idxoid;
-}
-
-/*
  * Check that we (the subscription owner) have sufficient privileges on the
  * target relation to perform the given operation.
  */
@@ -1647,10 +2642,12 @@ apply_handle_insert(StringInfo s)
 	LogicalRepRelMapEntry *rel;
 	LogicalRepTupleData newtup;
 	LogicalRepRelId relid;
+	UserContext ucxt;
 	ApplyExecutionData *edata;
 	EState	   *estate;
 	TupleTableSlot *remoteslot;
 	MemoryContext oldctx;
+	bool		run_as_owner;
 
 	/*
 	 * Quick return if we are skipping data modification changes or handling
@@ -1675,6 +2672,14 @@ apply_handle_insert(StringInfo s)
 		return;
 	}
 
+	/*
+	 * Make sure that any user-supplied code runs as the table owner, unless
+	 * the user has opted out of that behavior.
+	 */
+	run_as_owner = MySubscription->runasowner;
+	if (!run_as_owner)
+		SwitchToUntrustedUser(rel->localrel->rd_rel->relowner, &ucxt);
+
 	/* Set relation for error callback */
 	apply_error_callback_arg.rel = rel;
 
@@ -1696,13 +2701,21 @@ apply_handle_insert(StringInfo s)
 		apply_handle_tuple_routing(edata,
 								   remoteslot, NULL, CMD_INSERT);
 	else
-		apply_handle_insert_internal(edata, edata->targetRelInfo,
-									 remoteslot);
+	{
+		ResultRelInfo *relinfo = edata->targetRelInfo;
+
+		ExecOpenIndices(relinfo, false);
+		apply_handle_insert_internal(edata, relinfo, remoteslot);
+		ExecCloseIndices(relinfo);
+	}
 
 	finish_edata(edata);
 
 	/* Reset relation for error callback */
 	apply_error_callback_arg.rel = NULL;
+
+	if (!run_as_owner)
+		RestoreUserContext(&ucxt);
 
 	logicalrep_rel_close(rel, NoLock);
 
@@ -1721,15 +2734,18 @@ apply_handle_insert_internal(ApplyExecutionData *edata,
 {
 	EState	   *estate = edata->estate;
 
-	/* We must open indexes here. */
-	ExecOpenIndices(relinfo, false);
+	/* Caller should have opened indexes already. */
+	Assert(relinfo->ri_IndexRelationDescs != NULL ||
+		   !relinfo->ri_RelationDesc->rd_rel->relhasindex ||
+		   RelationGetIndexList(relinfo->ri_RelationDesc) == NIL);
+
+	/* Caller will not have done this bit. */
+	Assert(relinfo->ri_onConflictArbiterIndexes == NIL);
+	InitConflictIndexes(relinfo);
 
 	/* Do the insert. */
 	TargetPrivilegesCheck(relinfo->ri_RelationDesc, ACL_INSERT);
 	ExecSimpleRelationInsert(relinfo, estate, remoteslot);
-
-	/* Cleanup. */
-	ExecCloseIndices(relinfo);
 }
 
 /*
@@ -1782,14 +2798,16 @@ apply_handle_update(StringInfo s)
 {
 	LogicalRepRelMapEntry *rel;
 	LogicalRepRelId relid;
+	UserContext ucxt;
 	ApplyExecutionData *edata;
 	EState	   *estate;
 	LogicalRepTupleData oldtup;
 	LogicalRepTupleData newtup;
 	bool		has_oldtup;
 	TupleTableSlot *remoteslot;
-	RangeTblEntry *target_rte;
+	RTEPermissionInfo *target_perminfo;
 	MemoryContext oldctx;
+	bool		run_as_owner;
 
 	/*
 	 * Quick return if we are skipping data modification changes or handling
@@ -1821,6 +2839,14 @@ apply_handle_update(StringInfo s)
 	/* Check if we can do the update. */
 	check_relation_updatable(rel);
 
+	/*
+	 * Make sure that any user-supplied code runs as the table owner, unless
+	 * the user has opted out of that behavior.
+	 */
+	run_as_owner = MySubscription->runasowner;
+	if (!run_as_owner)
+		SwitchToUntrustedUser(rel->localrel->rd_rel->relowner, &ucxt);
+
 	/* Initialize the executor state. */
 	edata = create_edata_for_relation(rel);
 	estate = edata->estate;
@@ -1836,18 +2862,18 @@ apply_handle_update(StringInfo s)
 	 * information.  But it would for example exclude columns that only exist
 	 * on the subscriber, since we are not touching those.
 	 */
-	target_rte = list_nth(estate->es_range_table, 0);
+	target_perminfo = list_nth(estate->es_rteperminfos, 0);
 	for (int i = 0; i < remoteslot->tts_tupleDescriptor->natts; i++)
 	{
-		Form_pg_attribute att = TupleDescAttr(remoteslot->tts_tupleDescriptor, i);
+		CompactAttribute *att = TupleDescCompactAttr(remoteslot->tts_tupleDescriptor, i);
 		int			remoteattnum = rel->attrmap->attnums[i];
 
 		if (!att->attisdropped && remoteattnum >= 0)
 		{
 			Assert(remoteattnum < newtup.ncols);
 			if (newtup.colstatus[remoteattnum] != LOGICALREP_COLUMN_UNCHANGED)
-				target_rte->updatedCols =
-					bms_add_member(target_rte->updatedCols,
+				target_perminfo->updatedCols =
+					bms_add_member(target_perminfo->updatedCols,
 								   i + 1 - FirstLowInvalidHeapAttributeNumber);
 		}
 	}
@@ -1864,12 +2890,15 @@ apply_handle_update(StringInfo s)
 								   remoteslot, &newtup, CMD_UPDATE);
 	else
 		apply_handle_update_internal(edata, edata->targetRelInfo,
-									 remoteslot, &newtup);
+									 remoteslot, &newtup, rel->localindexoid);
 
 	finish_edata(edata);
 
 	/* Reset relation for error callback */
 	apply_error_callback_arg.rel = NULL;
+
+	if (!run_as_owner)
+		RestoreUserContext(&ucxt);
 
 	logicalrep_rel_close(rel, NoLock);
 
@@ -1885,23 +2914,25 @@ static void
 apply_handle_update_internal(ApplyExecutionData *edata,
 							 ResultRelInfo *relinfo,
 							 TupleTableSlot *remoteslot,
-							 LogicalRepTupleData *newtup)
+							 LogicalRepTupleData *newtup,
+							 Oid localindexoid)
 {
 	EState	   *estate = edata->estate;
 	LogicalRepRelMapEntry *relmapentry = edata->targetRel;
 	Relation	localrel = relinfo->ri_RelationDesc;
 	EPQState	epqstate;
-	TupleTableSlot *localslot;
+	TupleTableSlot *localslot = NULL;
+	ConflictTupleInfo conflicttuple = {0};
 	bool		found;
 	MemoryContext oldctx;
 
-	EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1);
+	EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1, NIL);
 	ExecOpenIndices(relinfo, false);
 
-	found = FindReplTupleInLocalRel(estate, localrel,
+	found = FindReplTupleInLocalRel(edata, localrel,
 									&relmapentry->remoterel,
+									localindexoid,
 									remoteslot, &localslot);
-	ExecClearTuple(remoteslot);
 
 	/*
 	 * Tuple found.
@@ -1910,12 +2941,35 @@ apply_handle_update_internal(ApplyExecutionData *edata,
 	 */
 	if (found)
 	{
+		/*
+		 * Report the conflict if the tuple was modified by a different
+		 * origin.
+		 */
+		if (GetTupleTransactionInfo(localslot, &conflicttuple.xmin,
+									&conflicttuple.origin, &conflicttuple.ts) &&
+			conflicttuple.origin != replorigin_xact_state.origin)
+		{
+			TupleTableSlot *newslot;
+
+			/* Store the new tuple for conflict reporting */
+			newslot = table_slot_create(localrel, &estate->es_tupleTable);
+			slot_store_data(newslot, relmapentry, newtup);
+
+			conflicttuple.slot = localslot;
+
+			ReportApplyConflict(estate, relinfo, LOG, CT_UPDATE_ORIGIN_DIFFERS,
+								remoteslot, newslot,
+								list_make1(&conflicttuple));
+		}
+
 		/* Process and store remote tuple in the slot */
 		oldctx = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 		slot_modify_data(remoteslot, localslot, relmapentry, newtup);
 		MemoryContextSwitchTo(oldctx);
 
 		EvalPlanQualSetSlot(&epqstate, remoteslot);
+
+		InitConflictIndexes(relinfo);
 
 		/* Do the actual update. */
 		TargetPrivilegesCheck(relinfo->ri_RelationDesc, ACL_UPDATE);
@@ -1924,16 +2978,31 @@ apply_handle_update_internal(ApplyExecutionData *edata,
 	}
 	else
 	{
+		ConflictType type;
+		TupleTableSlot *newslot = localslot;
+
 		/*
-		 * The tuple to be updated could not be found.  Do nothing except for
-		 * emitting a log message.
-		 *
-		 * XXX should this be promoted to ereport(LOG) perhaps?
+		 * Detecting whether the tuple was recently deleted or never existed
+		 * is crucial to avoid misleading the user during conflict handling.
 		 */
-		elog(DEBUG1,
-			 "logical replication did not find row to be updated "
-			 "in replication target relation \"%s\"",
-			 RelationGetRelationName(localrel));
+		if (FindDeletedTupleInLocalRel(localrel, localindexoid, remoteslot,
+									   &conflicttuple.xmin,
+									   &conflicttuple.origin,
+									   &conflicttuple.ts) &&
+			conflicttuple.origin != replorigin_xact_state.origin)
+			type = CT_UPDATE_DELETED;
+		else
+			type = CT_UPDATE_MISSING;
+
+		/* Store the new tuple for conflict reporting */
+		slot_store_data(newslot, relmapentry, newtup);
+
+		/*
+		 * The tuple to be updated could not be found or was deleted.  Do
+		 * nothing except for emitting a log message.
+		 */
+		ReportApplyConflict(estate, relinfo, LOG, type, remoteslot, newslot,
+							list_make1(&conflicttuple));
 	}
 
 	/* Cleanup. */
@@ -1952,10 +3021,12 @@ apply_handle_delete(StringInfo s)
 	LogicalRepRelMapEntry *rel;
 	LogicalRepTupleData oldtup;
 	LogicalRepRelId relid;
+	UserContext ucxt;
 	ApplyExecutionData *edata;
 	EState	   *estate;
 	TupleTableSlot *remoteslot;
 	MemoryContext oldctx;
+	bool		run_as_owner;
 
 	/*
 	 * Quick return if we are skipping data modification changes or handling
@@ -1986,6 +3057,14 @@ apply_handle_delete(StringInfo s)
 	/* Check if we can do the delete. */
 	check_relation_updatable(rel);
 
+	/*
+	 * Make sure that any user-supplied code runs as the table owner, unless
+	 * the user has opted out of that behavior.
+	 */
+	run_as_owner = MySubscription->runasowner;
+	if (!run_as_owner)
+		SwitchToUntrustedUser(rel->localrel->rd_rel->relowner, &ucxt);
+
 	/* Initialize the executor state. */
 	edata = create_edata_for_relation(rel);
 	estate = edata->estate;
@@ -2003,13 +3082,22 @@ apply_handle_delete(StringInfo s)
 		apply_handle_tuple_routing(edata,
 								   remoteslot, NULL, CMD_DELETE);
 	else
-		apply_handle_delete_internal(edata, edata->targetRelInfo,
-									 remoteslot);
+	{
+		ResultRelInfo *relinfo = edata->targetRelInfo;
+
+		ExecOpenIndices(relinfo, false);
+		apply_handle_delete_internal(edata, relinfo,
+									 remoteslot, rel->localindexoid);
+		ExecCloseIndices(relinfo);
+	}
 
 	finish_edata(edata);
 
 	/* Reset relation for error callback */
 	apply_error_callback_arg.rel = NULL;
+
+	if (!run_as_owner)
+		RestoreUserContext(&ucxt);
 
 	logicalrep_rel_close(rel, NoLock);
 
@@ -2024,24 +3112,44 @@ apply_handle_delete(StringInfo s)
 static void
 apply_handle_delete_internal(ApplyExecutionData *edata,
 							 ResultRelInfo *relinfo,
-							 TupleTableSlot *remoteslot)
+							 TupleTableSlot *remoteslot,
+							 Oid localindexoid)
 {
 	EState	   *estate = edata->estate;
 	Relation	localrel = relinfo->ri_RelationDesc;
 	LogicalRepRelation *remoterel = &edata->targetRel->remoterel;
 	EPQState	epqstate;
 	TupleTableSlot *localslot;
+	ConflictTupleInfo conflicttuple = {0};
 	bool		found;
 
-	EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1);
-	ExecOpenIndices(relinfo, false);
+	EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1, NIL);
 
-	found = FindReplTupleInLocalRel(estate, localrel, remoterel,
+	/* Caller should have opened indexes already. */
+	Assert(relinfo->ri_IndexRelationDescs != NULL ||
+		   !localrel->rd_rel->relhasindex ||
+		   RelationGetIndexList(localrel) == NIL);
+
+	found = FindReplTupleInLocalRel(edata, localrel, remoterel, localindexoid,
 									remoteslot, &localslot);
 
 	/* If found delete it. */
 	if (found)
 	{
+		/*
+		 * Report the conflict if the tuple was modified by a different
+		 * origin.
+		 */
+		if (GetTupleTransactionInfo(localslot, &conflicttuple.xmin,
+									&conflicttuple.origin, &conflicttuple.ts) &&
+			conflicttuple.origin != replorigin_xact_state.origin)
+		{
+			conflicttuple.slot = localslot;
+			ReportApplyConflict(estate, relinfo, LOG, CT_DELETE_ORIGIN_DIFFERS,
+								remoteslot, NULL,
+								list_make1(&conflicttuple));
+		}
+
 		EvalPlanQualSetSlot(&epqstate, localslot);
 
 		/* Do the actual delete. */
@@ -2053,34 +3161,30 @@ apply_handle_delete_internal(ApplyExecutionData *edata,
 		/*
 		 * The tuple to be deleted could not be found.  Do nothing except for
 		 * emitting a log message.
-		 *
-		 * XXX should this be promoted to ereport(LOG) perhaps?
 		 */
-		elog(DEBUG1,
-			 "logical replication did not find row to be deleted "
-			 "in replication target relation \"%s\"",
-			 RelationGetRelationName(localrel));
+		ReportApplyConflict(estate, relinfo, LOG, CT_DELETE_MISSING,
+							remoteslot, NULL, list_make1(&conflicttuple));
 	}
 
 	/* Cleanup. */
-	ExecCloseIndices(relinfo);
 	EvalPlanQualEnd(&epqstate);
 }
 
 /*
  * Try to find a tuple received from the publication side (in 'remoteslot') in
  * the corresponding local relation using either replica identity index,
- * primary key or if needed, sequential scan.
+ * primary key, index or if needed, sequential scan.
  *
  * Local tuple, if found, is returned in '*localslot'.
  */
 static bool
-FindReplTupleInLocalRel(EState *estate, Relation localrel,
+FindReplTupleInLocalRel(ApplyExecutionData *edata, Relation localrel,
 						LogicalRepRelation *remoterel,
+						Oid localidxoid,
 						TupleTableSlot *remoteslot,
 						TupleTableSlot **localslot)
 {
-	Oid			idxoid;
+	EState	   *estate = edata->estate;
 	bool		found;
 
 	/*
@@ -2091,19 +3195,160 @@ FindReplTupleInLocalRel(EState *estate, Relation localrel,
 
 	*localslot = table_slot_create(localrel, &estate->es_tupleTable);
 
-	idxoid = GetRelationIdentityOrPK(localrel);
-	Assert(OidIsValid(idxoid) ||
+	Assert(OidIsValid(localidxoid) ||
 		   (remoterel->replident == REPLICA_IDENTITY_FULL));
 
-	if (OidIsValid(idxoid))
-		found = RelationFindReplTupleByIndex(localrel, idxoid,
+	if (OidIsValid(localidxoid))
+	{
+#ifdef USE_ASSERT_CHECKING
+		Relation	idxrel = index_open(localidxoid, AccessShareLock);
+
+		/* Index must be PK, RI, or usable for REPLICA IDENTITY FULL tables */
+		Assert(GetRelationIdentityOrPK(localrel) == localidxoid ||
+			   (remoterel->replident == REPLICA_IDENTITY_FULL &&
+				IsIndexUsableForReplicaIdentityFull(idxrel,
+													edata->targetRel->attrmap)));
+		index_close(idxrel, AccessShareLock);
+#endif
+
+		found = RelationFindReplTupleByIndex(localrel, localidxoid,
 											 LockTupleExclusive,
 											 remoteslot, *localslot);
+	}
 	else
 		found = RelationFindReplTupleSeq(localrel, LockTupleExclusive,
 										 remoteslot, *localslot);
 
 	return found;
+}
+
+/*
+ * Determine whether the index can reliably locate the deleted tuple in the
+ * local relation.
+ *
+ * An index may exclude deleted tuples if it was re-indexed or re-created during
+ * change application. Therefore, an index is considered usable only if the
+ * conflict detection slot.xmin (conflict_detection_xmin) is greater than the
+ * index tuple's xmin. This ensures that any tuples deleted prior to the index
+ * creation or re-indexing are not relevant for conflict detection in the
+ * current apply worker.
+ *
+ * Note that indexes may also be excluded if they were modified by other DDL
+ * operations, such as ALTER INDEX. However, this is acceptable, as the
+ * likelihood of such DDL changes coinciding with the need to scan dead
+ * tuples for the update_deleted is low.
+ */
+static bool
+IsIndexUsableForFindingDeletedTuple(Oid localindexoid,
+									TransactionId conflict_detection_xmin)
+{
+	HeapTuple	index_tuple;
+	TransactionId index_xmin;
+
+	index_tuple = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(localindexoid));
+
+	if (!HeapTupleIsValid(index_tuple)) /* should not happen */
+		elog(ERROR, "cache lookup failed for index %u", localindexoid);
+
+	/*
+	 * No need to check for a frozen transaction ID, as
+	 * TransactionIdPrecedes() manages it internally, treating it as falling
+	 * behind the conflict_detection_xmin.
+	 */
+	index_xmin = HeapTupleHeaderGetXmin(index_tuple->t_data);
+
+	ReleaseSysCache(index_tuple);
+
+	return TransactionIdPrecedes(index_xmin, conflict_detection_xmin);
+}
+
+/*
+ * Attempts to locate a deleted tuple in the local relation that matches the
+ * values of the tuple received from the publication side (in 'remoteslot').
+ * The search is performed using either the replica identity index, primary
+ * key, other available index, or a sequential scan if necessary.
+ *
+ * Returns true if the deleted tuple is found. If found, the transaction ID,
+ * origin, and commit timestamp of the deletion are stored in '*delete_xid',
+ * '*delete_origin', and '*delete_time' respectively.
+ */
+static bool
+FindDeletedTupleInLocalRel(Relation localrel, Oid localidxoid,
+						   TupleTableSlot *remoteslot,
+						   TransactionId *delete_xid, ReplOriginId *delete_origin,
+						   TimestampTz *delete_time)
+{
+	TransactionId oldestxmin;
+
+	/*
+	 * Return false if either dead tuples are not retained or commit timestamp
+	 * data is not available.
+	 */
+	if (!MySubscription->retaindeadtuples || !track_commit_timestamp)
+		return false;
+
+	/*
+	 * For conflict detection, we use the leader worker's
+	 * oldest_nonremovable_xid value instead of invoking
+	 * GetOldestNonRemovableTransactionId() or using the conflict detection
+	 * slot's xmin. The oldest_nonremovable_xid acts as a threshold to
+	 * identify tuples that were recently deleted. These deleted tuples are no
+	 * longer visible to concurrent transactions. However, if a remote update
+	 * matches such a tuple, we log an update_deleted conflict.
+	 *
+	 * While GetOldestNonRemovableTransactionId() and slot.xmin may return
+	 * transaction IDs older than oldest_nonremovable_xid, for our current
+	 * purpose, it is acceptable to treat tuples deleted by transactions prior
+	 * to oldest_nonremovable_xid as update_missing conflicts.
+	 */
+	if (am_leader_apply_worker())
+	{
+		oldestxmin = MyLogicalRepWorker->oldest_nonremovable_xid;
+	}
+	else
+	{
+		LogicalRepWorker *leader;
+
+		/*
+		 * Obtain the information from the leader apply worker as only the
+		 * leader manages oldest_nonremovable_xid (see
+		 * maybe_advance_nonremovable_xid() for details).
+		 */
+		LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
+		leader = logicalrep_worker_find(WORKERTYPE_APPLY,
+										MyLogicalRepWorker->subid, InvalidOid,
+										false);
+		if (!leader)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("could not detect conflict as the leader apply worker has exited")));
+		}
+
+		SpinLockAcquire(&leader->relmutex);
+		oldestxmin = leader->oldest_nonremovable_xid;
+		SpinLockRelease(&leader->relmutex);
+		LWLockRelease(LogicalRepWorkerLock);
+	}
+
+	/*
+	 * Return false if the leader apply worker has stopped retaining
+	 * information for detecting conflicts. This implies that update_deleted
+	 * can no longer be reliably detected.
+	 */
+	if (!TransactionIdIsValid(oldestxmin))
+		return false;
+
+	if (OidIsValid(localidxoid) &&
+		IsIndexUsableForFindingDeletedTuple(localidxoid, oldestxmin))
+		return RelationFindDeletedTupleInfoByIndex(localrel, localidxoid,
+												   remoteslot, oldestxmin,
+												   delete_xid, delete_origin,
+												   delete_time);
+	else
+		return RelationFindDeletedTupleInfoSeq(localrel, remoteslot,
+											   oldestxmin, delete_xid,
+											   delete_origin, delete_time);
 }
 
 /*
@@ -2155,6 +3400,7 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 	 * at CREATE/ALTER SUBSCRIPTION would be insufficient.
 	 */
 	CheckSubscriptionRelkind(partrel->rd_rel->relkind,
+							 relmapentry->remoterel.relkind,
 							 get_namespace_name(RelationGetNamespace(partrel)),
 							 RelationGetRelationName(partrel));
 
@@ -2166,7 +3412,7 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 	remoteslot_part = partrelinfo->ri_PartitionTupleSlot;
 	if (remoteslot_part == NULL)
 		remoteslot_part = table_slot_create(partrel, &estate->es_tupleTable);
-	map = partrelinfo->ri_RootToPartitionMap;
+	map = ExecGetRootToChildMap(partrelinfo, estate);
 	if (map != NULL)
 	{
 		attrmap = map->attrMap;
@@ -2197,7 +3443,8 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 
 		case CMD_DELETE:
 			apply_handle_delete_internal(edata, partrelinfo,
-										 remoteslot_part);
+										 remoteslot_part,
+										 part_entry->localindexoid);
 			break;
 
 		case CMD_UPDATE:
@@ -2213,24 +3460,69 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 				ResultRelInfo *partrelinfo_new;
 				Relation	partrel_new;
 				bool		found;
+				EPQState	epqstate;
+				ConflictTupleInfo conflicttuple = {0};
 
 				/* Get the matching local tuple from the partition. */
-				found = FindReplTupleInLocalRel(estate, partrel,
+				found = FindReplTupleInLocalRel(edata, partrel,
 												&part_entry->remoterel,
+												part_entry->localindexoid,
 												remoteslot_part, &localslot);
 				if (!found)
 				{
+					ConflictType type;
+					TupleTableSlot *newslot = localslot;
+
 					/*
-					 * The tuple to be updated could not be found.  Do nothing
-					 * except for emitting a log message.
-					 *
-					 * XXX should this be promoted to ereport(LOG) perhaps?
+					 * Detecting whether the tuple was recently deleted or
+					 * never existed is crucial to avoid misleading the user
+					 * during conflict handling.
 					 */
-					elog(DEBUG1,
-						 "logical replication did not find row to be updated "
-						 "in replication target relation's partition \"%s\"",
-						 RelationGetRelationName(partrel));
+					if (FindDeletedTupleInLocalRel(partrel,
+												   part_entry->localindexoid,
+												   remoteslot_part,
+												   &conflicttuple.xmin,
+												   &conflicttuple.origin,
+												   &conflicttuple.ts) &&
+						conflicttuple.origin != replorigin_xact_state.origin)
+						type = CT_UPDATE_DELETED;
+					else
+						type = CT_UPDATE_MISSING;
+
+					/* Store the new tuple for conflict reporting */
+					slot_store_data(newslot, part_entry, newtup);
+
+					/*
+					 * The tuple to be updated could not be found or was
+					 * deleted.  Do nothing except for emitting a log message.
+					 */
+					ReportApplyConflict(estate, partrelinfo, LOG,
+										type, remoteslot_part, newslot,
+										list_make1(&conflicttuple));
+
 					return;
+				}
+
+				/*
+				 * Report the conflict if the tuple was modified by a
+				 * different origin.
+				 */
+				if (GetTupleTransactionInfo(localslot, &conflicttuple.xmin,
+											&conflicttuple.origin,
+											&conflicttuple.ts) &&
+					conflicttuple.origin != replorigin_xact_state.origin)
+				{
+					TupleTableSlot *newslot;
+
+					/* Store the new tuple for conflict reporting */
+					newslot = table_slot_create(partrel, &estate->es_tupleTable);
+					slot_store_data(newslot, part_entry, newtup);
+
+					conflicttuple.slot = localslot;
+
+					ReportApplyConflict(estate, partrelinfo, LOG, CT_UPDATE_ORIGIN_DIFFERS,
+										remoteslot_part, newslot,
+										list_make1(&conflicttuple));
 				}
 
 				/*
@@ -2241,6 +3533,8 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 				slot_modify_data(remoteslot_part, localslot, part_entry,
 								 newtup);
 				MemoryContextSwitchTo(oldctx);
+
+				EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1, NIL);
 
 				/*
 				 * Does the updated tuple still satisfy the current
@@ -2257,18 +3551,13 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 					 * work already done above to find the local tuple in the
 					 * partition.
 					 */
-					EPQState	epqstate;
-
-					EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1);
-					ExecOpenIndices(partrelinfo, false);
+					InitConflictIndexes(partrelinfo);
 
 					EvalPlanQualSetSlot(&epqstate, remoteslot_part);
 					TargetPrivilegesCheck(partrelinfo->ri_RelationDesc,
 										  ACL_UPDATE);
 					ExecSimpleRelationUpdate(partrelinfo, estate, &epqstate,
 											 localslot, remoteslot_part);
-					ExecCloseIndices(partrelinfo);
-					EvalPlanQualEnd(&epqstate);
 				}
 				else
 				{
@@ -2308,12 +3597,14 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 
 					/* Check that new partition also has supported relkind. */
 					CheckSubscriptionRelkind(partrel_new->rd_rel->relkind,
+											 relmapentry->remoterel.relkind,
 											 get_namespace_name(RelationGetNamespace(partrel_new)),
 											 RelationGetRelationName(partrel_new));
 
 					/* DELETE old tuple found in the old partition. */
-					apply_handle_delete_internal(edata, partrelinfo,
-												 localslot);
+					EvalPlanQualSetSlot(&epqstate, localslot);
+					TargetPrivilegesCheck(partrelinfo->ri_RelationDesc, ACL_DELETE);
+					ExecSimpleRelationDelete(partrelinfo, estate, &epqstate, localslot);
 
 					/* INSERT new tuple into the new partition. */
 
@@ -2326,7 +3617,7 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 					if (remoteslot_part == NULL)
 						remoteslot_part = table_slot_create(partrel_new,
 															&estate->es_tupleTable);
-					map = partrelinfo_new->ri_RootToPartitionMap;
+					map = ExecGetRootToChildMap(partrelinfo_new, estate);
 					if (map != NULL)
 					{
 						remoteslot_part = execute_attr_map_slot(map->attrMap,
@@ -2343,6 +3634,8 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 					apply_handle_insert_internal(edata, partrelinfo_new,
 												 remoteslot_part);
 				}
+
+				EvalPlanQualEnd(&epqstate);
 			}
 			break;
 
@@ -2453,12 +3746,18 @@ apply_handle_truncate(StringInfo s)
 	 * Even if we used CASCADE on the upstream primary we explicitly default
 	 * to replaying changes without further cascading. This might be later
 	 * changeable with a user specified option.
+	 *
+	 * MySubscription->runasowner tells us whether we want to execute
+	 * replication actions as the subscription owner; the last argument to
+	 * TruncateGuts tells it whether we want to switch to the table owner.
+	 * Those are exactly opposite conditions.
 	 */
 	ExecuteTruncateGuts(rels,
 						relids,
 						relids_logged,
 						DROP_RESTRICT,
 						restart_seqs,
+						!MySubscription->runasowner,
 						false /* yb_is_top_level */ );
 	foreach(lc, remote_rels)
 	{
@@ -2480,7 +3779,7 @@ apply_handle_truncate(StringInfo s)
 /*
  * Logical replication protocol message dispatcher.
  */
-static void
+void
 apply_dispatch(StringInfo s)
 {
 	LogicalRepMsgType action = pq_getmsgbyte(s);
@@ -2644,17 +3943,24 @@ get_flush_position(XLogRecPtr *write, XLogRecPtr *flush,
 /*
  * Store current remote/local lsn pair in the tracking list.
  */
-static void
-store_flush_position(XLogRecPtr remote_lsn)
+void
+store_flush_position(XLogRecPtr remote_lsn, XLogRecPtr local_lsn)
 {
 	FlushPosition *flushpos;
+
+	/*
+	 * Skip for parallel apply workers, because the lsn_mapping is maintained
+	 * by the leader apply worker.
+	 */
+	if (am_parallel_apply_worker())
+		return;
 
 	/* Need to do this in permanent context */
 	MemoryContextSwitchTo(ApplyContext);
 
 	/* Track commit lsn  */
-	flushpos = (FlushPosition *) palloc(sizeof(FlushPosition));
-	flushpos->local_end = XactLastCommitEnd;
+	flushpos = palloc_object(FlushPosition);
+	flushpos->local_end = local_lsn;
 	flushpos->remote_end = remote_lsn;
 
 	dlist_push_tail(&lsn_mapping, &flushpos->node);
@@ -2686,6 +3992,7 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 	bool		ping_sent = false;
 	TimeLineID	tli;
 	ErrorContextCallback errcallback;
+	RetainDeadTuplesData rdt_data = {0};
 
 	/*
 	 * Init the ApplyMessageContext which we clean up after each replication
@@ -2713,6 +4020,7 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 	errcallback.callback = apply_error_callback;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
+	apply_error_context_stack = error_context_stack;
 
 	/* This outer loop iterates once per wait. */
 	for (;;)
@@ -2753,21 +4061,26 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 					int			c;
 					StringInfoData s;
 
+					if (ConfigReloadPending)
+					{
+						ConfigReloadPending = false;
+						ProcessConfigFile(PGC_SIGHUP);
+					}
+
 					/* Reset timeout. */
 					last_recv_timestamp = GetCurrentTimestamp();
 					ping_sent = false;
 
+					rdt_data.last_recv_time = last_recv_timestamp;
+
 					/* Ensure we are reading the data into our memory context. */
 					MemoryContextSwitchTo(ApplyMessageContext);
 
-					s.data = buf;
-					s.len = len;
-					s.cursor = 0;
-					s.maxlen = -1;
+					initReadOnlyStringInfo(&s, buf, len);
 
 					c = pq_getmsgbyte(&s);
 
-					if (c == 'w')
+					if (c == PqReplMsg_WALData)
 					{
 						XLogRecPtr	start_lsn;
 						XLogRecPtr	end_lsn;
@@ -2786,8 +4099,10 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 						UpdateWorkerStats(last_received, send_time, false);
 
 						apply_dispatch(&s);
+
+						maybe_advance_nonremovable_xid(&rdt_data, false);
 					}
-					else if (c == 'k')
+					else if (c == PqReplMsg_Keepalive)
 					{
 						XLogRecPtr	end_lsn;
 						TimestampTz timestamp;
@@ -2801,7 +4116,30 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 							last_received = end_lsn;
 
 						send_feedback(last_received, reply_requested, false);
+
+						maybe_advance_nonremovable_xid(&rdt_data, false);
+
 						UpdateWorkerStats(last_received, timestamp, true);
+					}
+					else if (c == PqReplMsg_PrimaryStatusUpdate)
+					{
+						rdt_data.remote_lsn = pq_getmsgint64(&s);
+						rdt_data.remote_oldestxid = FullTransactionIdFromU64((uint64) pq_getmsgint64(&s));
+						rdt_data.remote_nextxid = FullTransactionIdFromU64((uint64) pq_getmsgint64(&s));
+						rdt_data.reply_time = pq_getmsgint64(&s);
+
+						/*
+						 * This should never happen, see
+						 * ProcessStandbyPSRequestMessage. But if it happens
+						 * due to a bug, we don't want to proceed as it can
+						 * incorrectly advance oldest_nonremovable_xid.
+						 */
+						if (!XLogRecPtrIsValid(rdt_data.remote_lsn))
+							elog(ERROR, "cannot get the latest WAL position from the publisher");
+
+						maybe_advance_nonremovable_xid(&rdt_data, true);
+
+						UpdateWorkerStats(last_received, rdt_data.reply_time, false);
 					}
 					/* other message types are purposefully ignored */
 
@@ -2815,6 +4153,11 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 		/* confirm all writes so far */
 		send_feedback(last_received, false, false);
 
+		/* Reset the timestamp if no message was received */
+		rdt_data.last_recv_time = 0;
+
+		maybe_advance_nonremovable_xid(&rdt_data, false);
+
 		if (!in_remote_transaction && !in_streamed_transaction)
 		{
 			/*
@@ -2825,12 +4168,15 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 			AcceptInvalidationMessages();
 			maybe_reread_subscription();
 
-			/* Process any table synchronization changes. */
-			process_syncing_tables(last_received);
+			/*
+			 * Process any relations that are being synchronized in parallel
+			 * and any newly added tables or sequences.
+			 */
+			ProcessSyncingRelations(last_received);
 		}
 
 		/* Cleanup the memory. */
-		MemoryContextResetAndDeleteChildren(ApplyMessageContext);
+		MemoryContextReset(ApplyMessageContext);
 		MemoryContextSwitchTo(TopMemoryContext);
 
 		/* Check if we need to exit the streaming loop. */
@@ -2848,6 +4194,20 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 			wait_time = WalWriterDelay;
 		else
 			wait_time = NAPTIME_PER_CYCLE;
+
+		/*
+		 * Ensure to wake up when it's possible to advance the non-removable
+		 * transaction ID, or when the retention duration may have exceeded
+		 * max_retention_duration.
+		 */
+		if (MySubscription->retentionactive)
+		{
+			if (rdt_data.phase == RDT_GET_CANDIDATE_XID &&
+				rdt_data.xid_advance_interval)
+				wait_time = Min(wait_time, rdt_data.xid_advance_interval);
+			else if (MySubscription->maxretention > 0)
+				wait_time = Min(wait_time, MySubscription->maxretention);
+		}
 
 		rc = WaitLatchOrSocket(MyLatch,
 							   WL_SOCKET_READABLE | WL_LATCH_SET |
@@ -2912,6 +4272,8 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 
 			send_feedback(last_received, requestReply, requestReply);
 
+			maybe_advance_nonremovable_xid(&rdt_data, false);
+
 			/*
 			 * Force reporting to ensure long idle periods don't lead to
 			 * arbitrarily delayed stats. Stats can only be reported outside
@@ -2927,6 +4289,7 @@ LogicalRepApplyLoop(XLogRecPtr last_received)
 
 	/* Pop the error context stack */
 	error_context_stack = errcallback.previous;
+	apply_error_context_stack = error_context_stack;
 
 	/* All done */
 	walrcv_endstreaming(LogRepWorkerWalRcvConn, &tli);
@@ -2946,7 +4309,6 @@ send_feedback(XLogRecPtr recvpos, bool force, bool requestReply)
 
 	static XLogRecPtr last_recvpos = InvalidXLogRecPtr;
 	static XLogRecPtr last_writepos = InvalidXLogRecPtr;
-	static XLogRecPtr last_flushpos = InvalidXLogRecPtr;
 
 	XLogRecPtr	writepos;
 	XLogRecPtr	flushpos;
@@ -3000,14 +4362,14 @@ send_feedback(XLogRecPtr recvpos, bool force, bool requestReply)
 	else
 		resetStringInfo(reply_message);
 
-	pq_sendbyte(reply_message, 'r');
+	pq_sendbyte(reply_message, PqReplMsg_StandbyStatusUpdate);
 	pq_sendint64(reply_message, recvpos);	/* write */
 	pq_sendint64(reply_message, flushpos);	/* flush */
 	pq_sendint64(reply_message, writepos);	/* apply */
 	pq_sendint64(reply_message, now);	/* sendTime */
 	pq_sendbyte(reply_message, requestReply);	/* replyRequested */
 
-	elog(DEBUG2, "sending feedback (force %d) to recv %X/%X, write %X/%X, flush %X/%X",
+	elog(DEBUG2, "sending feedback (force %d) to recv %X/%08X, write %X/%08X, flush %X/%08X",
 		 force,
 		 LSN_FORMAT_ARGS(recvpos),
 		 LSN_FORMAT_ARGS(writepos),
@@ -3025,12 +4387,664 @@ send_feedback(XLogRecPtr recvpos, bool force, bool requestReply)
 }
 
 /*
- * Reread subscription info if needed. Most changes will be exit.
+ * Attempt to advance the non-removable transaction ID.
+ *
+ * See comments atop worker.c for details.
  */
 static void
+maybe_advance_nonremovable_xid(RetainDeadTuplesData *rdt_data,
+							   bool status_received)
+{
+	if (!can_advance_nonremovable_xid(rdt_data))
+		return;
+
+	process_rdt_phase_transition(rdt_data, status_received);
+}
+
+/*
+ * Preliminary check to determine if advancing the non-removable transaction ID
+ * is allowed.
+ */
+static bool
+can_advance_nonremovable_xid(RetainDeadTuplesData *rdt_data)
+{
+	/*
+	 * It is sufficient to manage non-removable transaction ID for a
+	 * subscription by the main apply worker to detect update_deleted reliably
+	 * even for table sync or parallel apply workers.
+	 */
+	if (!am_leader_apply_worker())
+		return false;
+
+	/* No need to advance if retaining dead tuples is not required */
+	if (!MySubscription->retaindeadtuples)
+		return false;
+
+	return true;
+}
+
+/*
+ * Process phase transitions during the non-removable transaction ID
+ * advancement. See comments atop worker.c for details of the transition.
+ */
+static void
+process_rdt_phase_transition(RetainDeadTuplesData *rdt_data,
+							 bool status_received)
+{
+	switch (rdt_data->phase)
+	{
+		case RDT_GET_CANDIDATE_XID:
+			get_candidate_xid(rdt_data);
+			break;
+		case RDT_REQUEST_PUBLISHER_STATUS:
+			request_publisher_status(rdt_data);
+			break;
+		case RDT_WAIT_FOR_PUBLISHER_STATUS:
+			wait_for_publisher_status(rdt_data, status_received);
+			break;
+		case RDT_WAIT_FOR_LOCAL_FLUSH:
+			wait_for_local_flush(rdt_data);
+			break;
+		case RDT_STOP_CONFLICT_INFO_RETENTION:
+			stop_conflict_info_retention(rdt_data);
+			break;
+		case RDT_RESUME_CONFLICT_INFO_RETENTION:
+			resume_conflict_info_retention(rdt_data);
+			break;
+	}
+}
+
+/*
+ * Workhorse for the RDT_GET_CANDIDATE_XID phase.
+ */
+static void
+get_candidate_xid(RetainDeadTuplesData *rdt_data)
+{
+	TransactionId oldest_running_xid;
+	TimestampTz now;
+
+	/*
+	 * Use last_recv_time when applying changes in the loop to avoid
+	 * unnecessary system time retrieval. If last_recv_time is not available,
+	 * obtain the current timestamp.
+	 */
+	now = rdt_data->last_recv_time ? rdt_data->last_recv_time : GetCurrentTimestamp();
+
+	/*
+	 * Compute the candidate_xid and request the publisher status at most once
+	 * per xid_advance_interval. Refer to adjust_xid_advance_interval() for
+	 * details on how this value is dynamically adjusted. This is to avoid
+	 * using CPU and network resources without making much progress.
+	 */
+	if (!TimestampDifferenceExceeds(rdt_data->candidate_xid_time, now,
+									rdt_data->xid_advance_interval))
+		return;
+
+	/*
+	 * Immediately update the timer, even if the function returns later
+	 * without setting candidate_xid due to inactivity on the subscriber. This
+	 * avoids frequent calls to GetOldestActiveTransactionId.
+	 */
+	rdt_data->candidate_xid_time = now;
+
+	/*
+	 * Consider transactions in the current database, as only dead tuples from
+	 * this database are required for conflict detection.
+	 */
+	oldest_running_xid = GetOldestActiveTransactionId(false, false);
+
+	/*
+	 * Oldest active transaction ID (oldest_running_xid) can't be behind any
+	 * of its previously computed value.
+	 */
+	Assert(TransactionIdPrecedesOrEquals(MyLogicalRepWorker->oldest_nonremovable_xid,
+										 oldest_running_xid));
+
+	/* Return if the oldest_nonremovable_xid cannot be advanced */
+	if (TransactionIdEquals(MyLogicalRepWorker->oldest_nonremovable_xid,
+							oldest_running_xid))
+	{
+		adjust_xid_advance_interval(rdt_data, false);
+		return;
+	}
+
+	adjust_xid_advance_interval(rdt_data, true);
+
+	rdt_data->candidate_xid = oldest_running_xid;
+	rdt_data->phase = RDT_REQUEST_PUBLISHER_STATUS;
+
+	/* process the next phase */
+	process_rdt_phase_transition(rdt_data, false);
+}
+
+/*
+ * Workhorse for the RDT_REQUEST_PUBLISHER_STATUS phase.
+ */
+static void
+request_publisher_status(RetainDeadTuplesData *rdt_data)
+{
+	static StringInfo request_message = NULL;
+
+	if (!request_message)
+	{
+		MemoryContext oldctx = MemoryContextSwitchTo(ApplyContext);
+
+		request_message = makeStringInfo();
+		MemoryContextSwitchTo(oldctx);
+	}
+	else
+		resetStringInfo(request_message);
+
+	/*
+	 * Send the current time to update the remote walsender's latest reply
+	 * message received time.
+	 */
+	pq_sendbyte(request_message, PqReplMsg_PrimaryStatusRequest);
+	pq_sendint64(request_message, GetCurrentTimestamp());
+
+	elog(DEBUG2, "sending publisher status request message");
+
+	/* Send a request for the publisher status */
+	walrcv_send(LogRepWorkerWalRcvConn,
+				request_message->data, request_message->len);
+
+	rdt_data->phase = RDT_WAIT_FOR_PUBLISHER_STATUS;
+
+	/*
+	 * Skip calling maybe_advance_nonremovable_xid() since further transition
+	 * is possible only once we receive the publisher status message.
+	 */
+}
+
+/*
+ * Workhorse for the RDT_WAIT_FOR_PUBLISHER_STATUS phase.
+ */
+static void
+wait_for_publisher_status(RetainDeadTuplesData *rdt_data,
+						  bool status_received)
+{
+	/*
+	 * Return if we have requested but not yet received the publisher status.
+	 */
+	if (!status_received)
+		return;
+
+	/*
+	 * We don't need to maintain oldest_nonremovable_xid if we decide to stop
+	 * retaining conflict information for this worker.
+	 */
+	if (should_stop_conflict_info_retention(rdt_data))
+	{
+		rdt_data->phase = RDT_STOP_CONFLICT_INFO_RETENTION;
+		return;
+	}
+
+	if (!FullTransactionIdIsValid(rdt_data->remote_wait_for))
+		rdt_data->remote_wait_for = rdt_data->remote_nextxid;
+
+	/*
+	 * Check if all remote concurrent transactions that were active at the
+	 * first status request have now completed. If completed, proceed to the
+	 * next phase; otherwise, continue checking the publisher status until
+	 * these transactions finish.
+	 *
+	 * It's possible that transactions in the commit phase during the last
+	 * cycle have now finished committing, but remote_oldestxid remains older
+	 * than remote_wait_for. This can happen if some old transaction came in
+	 * the commit phase when we requested status in this cycle. We do not
+	 * handle this case explicitly as it's rare and the benefit doesn't
+	 * justify the required complexity. Tracking would require either caching
+	 * all xids at the publisher or sending them to subscribers. The condition
+	 * will resolve naturally once the remaining transactions are finished.
+	 *
+	 * Directly advancing the non-removable transaction ID is possible if
+	 * there are no activities on the publisher since the last advancement
+	 * cycle. However, it requires maintaining two fields, last_remote_nextxid
+	 * and last_remote_lsn, within the structure for comparison with the
+	 * current cycle's values. Considering the minimal cost of continuing in
+	 * RDT_WAIT_FOR_LOCAL_FLUSH without awaiting changes, we opted not to
+	 * advance the transaction ID here.
+	 */
+	if (FullTransactionIdPrecedesOrEquals(rdt_data->remote_wait_for,
+										  rdt_data->remote_oldestxid))
+		rdt_data->phase = RDT_WAIT_FOR_LOCAL_FLUSH;
+	else
+		rdt_data->phase = RDT_REQUEST_PUBLISHER_STATUS;
+
+	/* process the next phase */
+	process_rdt_phase_transition(rdt_data, false);
+}
+
+/*
+ * Workhorse for the RDT_WAIT_FOR_LOCAL_FLUSH phase.
+ */
+static void
+wait_for_local_flush(RetainDeadTuplesData *rdt_data)
+{
+	Assert(XLogRecPtrIsValid(rdt_data->remote_lsn) &&
+		   TransactionIdIsValid(rdt_data->candidate_xid));
+
+	/*
+	 * We expect the publisher and subscriber clocks to be in sync using time
+	 * sync service like NTP. Otherwise, we will advance this worker's
+	 * oldest_nonremovable_xid prematurely, leading to the removal of rows
+	 * required to detect update_deleted reliably. This check primarily
+	 * addresses scenarios where the publisher's clock falls behind; if the
+	 * publisher's clock is ahead, subsequent transactions will naturally bear
+	 * later commit timestamps, conforming to the design outlined atop
+	 * worker.c.
+	 *
+	 * XXX Consider waiting for the publisher's clock to catch up with the
+	 * subscriber's before proceeding to the next phase.
+	 */
+	if (TimestampDifferenceExceeds(rdt_data->reply_time,
+								   rdt_data->candidate_xid_time, 0))
+		ereport(ERROR,
+				errmsg_internal("oldest_nonremovable_xid transaction ID could be advanced prematurely"),
+				errdetail_internal("The clock on the publisher is behind that of the subscriber."));
+
+	/*
+	 * Do not attempt to advance the non-removable transaction ID when table
+	 * sync is in progress. During this time, changes from a single
+	 * transaction may be applied by multiple table sync workers corresponding
+	 * to the target tables. So, it's necessary for all table sync workers to
+	 * apply and flush the corresponding changes before advancing the
+	 * transaction ID, otherwise, dead tuples that are still needed for
+	 * conflict detection in table sync workers could be removed prematurely.
+	 * However, confirming the apply and flush progress across all table sync
+	 * workers is complex and not worth the effort, so we simply return if not
+	 * all tables are in the READY state.
+	 *
+	 * Advancing the transaction ID is necessary even when no tables are
+	 * currently subscribed, to avoid retaining dead tuples unnecessarily.
+	 * While it might seem safe to skip all phases and directly assign
+	 * candidate_xid to oldest_nonremovable_xid during the
+	 * RDT_GET_CANDIDATE_XID phase in such cases, this is unsafe. If users
+	 * concurrently add tables to the subscription, the apply worker may not
+	 * process invalidations in time. Consequently,
+	 * HasSubscriptionTablesCached() might miss the new tables, leading to
+	 * premature advancement of oldest_nonremovable_xid.
+	 *
+	 * Performing the check during RDT_WAIT_FOR_LOCAL_FLUSH is safe, as
+	 * invalidations are guaranteed to be processed before applying changes
+	 * from newly added tables while waiting for the local flush to reach
+	 * remote_lsn.
+	 *
+	 * Additionally, even if we check for subscription tables during
+	 * RDT_GET_CANDIDATE_XID, they might be dropped before reaching
+	 * RDT_WAIT_FOR_LOCAL_FLUSH. Therefore, it's still necessary to verify
+	 * subscription tables at this stage to prevent unnecessary tuple
+	 * retention.
+	 */
+	if (HasSubscriptionTablesCached() && !AllTablesyncsReady())
+	{
+		TimestampTz now;
+
+		now = rdt_data->last_recv_time
+			? rdt_data->last_recv_time : GetCurrentTimestamp();
+
+		/*
+		 * Record the time spent waiting for table sync, it is needed for the
+		 * timeout check in should_stop_conflict_info_retention().
+		 */
+		rdt_data->table_sync_wait_time =
+			TimestampDifferenceMilliseconds(rdt_data->candidate_xid_time, now);
+
+		return;
+	}
+
+	/*
+	 * We don't need to maintain oldest_nonremovable_xid if we decide to stop
+	 * retaining conflict information for this worker.
+	 */
+	if (should_stop_conflict_info_retention(rdt_data))
+	{
+		rdt_data->phase = RDT_STOP_CONFLICT_INFO_RETENTION;
+		return;
+	}
+
+	/*
+	 * Update and check the remote flush position if we are applying changes
+	 * in a loop. This is done at most once per WalWriterDelay to avoid
+	 * performing costly operations in get_flush_position() too frequently
+	 * during change application.
+	 */
+	if (last_flushpos < rdt_data->remote_lsn && rdt_data->last_recv_time &&
+		TimestampDifferenceExceeds(rdt_data->flushpos_update_time,
+								   rdt_data->last_recv_time, WalWriterDelay))
+	{
+		XLogRecPtr	writepos;
+		XLogRecPtr	flushpos;
+		bool		have_pending_txes;
+
+		/* Fetch the latest remote flush position */
+		get_flush_position(&writepos, &flushpos, &have_pending_txes);
+
+		if (flushpos > last_flushpos)
+			last_flushpos = flushpos;
+
+		rdt_data->flushpos_update_time = rdt_data->last_recv_time;
+	}
+
+	/* Return to wait for the changes to be applied */
+	if (last_flushpos < rdt_data->remote_lsn)
+		return;
+
+	/*
+	 * Reaching this point implies should_stop_conflict_info_retention()
+	 * returned false earlier, meaning that the most recent duration for
+	 * advancing the non-removable transaction ID is within the
+	 * max_retention_duration or max_retention_duration is set to 0.
+	 *
+	 * Therefore, if conflict info retention was previously stopped due to a
+	 * timeout, it is now safe to resume retention.
+	 */
+	if (!MySubscription->retentionactive)
+	{
+		rdt_data->phase = RDT_RESUME_CONFLICT_INFO_RETENTION;
+		return;
+	}
+
+	/*
+	 * Reaching here means the remote WAL position has been received, and all
+	 * transactions up to that position on the publisher have been applied and
+	 * flushed locally. So, we can advance the non-removable transaction ID.
+	 */
+	SpinLockAcquire(&MyLogicalRepWorker->relmutex);
+	MyLogicalRepWorker->oldest_nonremovable_xid = rdt_data->candidate_xid;
+	SpinLockRelease(&MyLogicalRepWorker->relmutex);
+
+	elog(DEBUG2, "confirmed flush up to remote lsn %X/%08X: new oldest_nonremovable_xid %u",
+		 LSN_FORMAT_ARGS(rdt_data->remote_lsn),
+		 rdt_data->candidate_xid);
+
+	/* Notify launcher to update the xmin of the conflict slot */
+	ApplyLauncherWakeup();
+
+	reset_retention_data_fields(rdt_data);
+
+	/* process the next phase */
+	process_rdt_phase_transition(rdt_data, false);
+}
+
+/*
+ * Check whether conflict information retention should be stopped due to
+ * exceeding the maximum wait time (max_retention_duration).
+ *
+ * If retention should be stopped, return true. Otherwise, return false.
+ */
+static bool
+should_stop_conflict_info_retention(RetainDeadTuplesData *rdt_data)
+{
+	TimestampTz now;
+
+	Assert(TransactionIdIsValid(rdt_data->candidate_xid));
+	Assert(rdt_data->phase == RDT_WAIT_FOR_PUBLISHER_STATUS ||
+		   rdt_data->phase == RDT_WAIT_FOR_LOCAL_FLUSH);
+
+	if (!MySubscription->maxretention)
+		return false;
+
+	/*
+	 * Use last_recv_time when applying changes in the loop to avoid
+	 * unnecessary system time retrieval. If last_recv_time is not available,
+	 * obtain the current timestamp.
+	 */
+	now = rdt_data->last_recv_time ? rdt_data->last_recv_time : GetCurrentTimestamp();
+
+	/*
+	 * Return early if the wait time has not exceeded the configured maximum
+	 * (max_retention_duration). Time spent waiting for table synchronization
+	 * is excluded from this calculation, as it occurs infrequently.
+	 */
+	if (!TimestampDifferenceExceeds(rdt_data->candidate_xid_time, now,
+									MySubscription->maxretention +
+									rdt_data->table_sync_wait_time))
+		return false;
+
+	return true;
+}
+
+/*
+ * Workhorse for the RDT_STOP_CONFLICT_INFO_RETENTION phase.
+ */
+static void
+stop_conflict_info_retention(RetainDeadTuplesData *rdt_data)
+{
+	/* Stop retention if not yet */
+	if (MySubscription->retentionactive)
+	{
+		/*
+		 * If the retention status cannot be updated (e.g., due to active
+		 * transaction), skip further processing to avoid inconsistent
+		 * retention behavior.
+		 */
+		if (!update_retention_status(false))
+			return;
+
+		SpinLockAcquire(&MyLogicalRepWorker->relmutex);
+		MyLogicalRepWorker->oldest_nonremovable_xid = InvalidTransactionId;
+		SpinLockRelease(&MyLogicalRepWorker->relmutex);
+
+		ereport(LOG,
+				errmsg("logical replication worker for subscription \"%s\" has stopped retaining the information for detecting conflicts",
+					   MySubscription->name),
+				errdetail("Retention is stopped because the apply process has not caught up with the publisher within the configured max_retention_duration."));
+	}
+
+	Assert(!TransactionIdIsValid(MyLogicalRepWorker->oldest_nonremovable_xid));
+
+	/*
+	 * If retention has been stopped, reset to the initial phase to retry
+	 * resuming retention. This reset is required to recalculate the current
+	 * wait time and resume retention if the time falls within
+	 * max_retention_duration.
+	 */
+	reset_retention_data_fields(rdt_data);
+}
+
+/*
+ * Workhorse for the RDT_RESUME_CONFLICT_INFO_RETENTION phase.
+ */
+static void
+resume_conflict_info_retention(RetainDeadTuplesData *rdt_data)
+{
+	/* We can't resume retention without updating retention status. */
+	if (!update_retention_status(true))
+		return;
+
+	ereport(LOG,
+			errmsg("logical replication worker for subscription \"%s\" will resume retaining the information for detecting conflicts",
+				   MySubscription->name),
+			MySubscription->maxretention
+			? errdetail("Retention is re-enabled because the apply process has caught up with the publisher within the configured max_retention_duration.")
+			: errdetail("Retention is re-enabled because max_retention_duration has been set to unlimited."));
+
+	/*
+	 * Restart the worker to let the launcher initialize
+	 * oldest_nonremovable_xid at startup.
+	 *
+	 * While it's technically possible to derive this value on-the-fly using
+	 * the conflict detection slot's xmin, doing so risks a race condition:
+	 * the launcher might clean slot.xmin just after retention resumes. This
+	 * would make oldest_nonremovable_xid unreliable, especially during xid
+	 * wraparound.
+	 *
+	 * Although this can be prevented by introducing heavy weight locking, the
+	 * complexity it will bring doesn't seem worthwhile given how rarely
+	 * retention is resumed.
+	 */
+	apply_worker_exit();
+}
+
+/*
+ * Updates pg_subscription.subretentionactive to the given value within a
+ * new transaction.
+ *
+ * If already inside an active transaction, skips the update and returns
+ * false.
+ *
+ * Returns true if the update is successfully performed.
+ */
+static bool
+update_retention_status(bool active)
+{
+	/*
+	 * Do not update the catalog during an active transaction. The transaction
+	 * may be started during change application, leading to a possible
+	 * rollback of catalog updates if the application fails subsequently.
+	 */
+	if (IsTransactionState())
+		return false;
+
+	StartTransactionCommand();
+
+	/*
+	 * Updating pg_subscription might involve TOAST table access, so ensure we
+	 * have a valid snapshot.
+	 */
+	PushActiveSnapshot(GetTransactionSnapshot());
+
+	/* Update pg_subscription.subretentionactive */
+	UpdateDeadTupleRetentionStatus(MySubscription->oid, active);
+
+	PopActiveSnapshot();
+	CommitTransactionCommand();
+
+	/* Notify launcher to update the conflict slot */
+	ApplyLauncherWakeup();
+
+	MySubscription->retentionactive = active;
+
+	return true;
+}
+
+/*
+ * Reset all data fields of RetainDeadTuplesData except those used to
+ * determine the timing for the next round of transaction ID advancement. We
+ * can even use flushpos_update_time in the next round to decide whether to get
+ * the latest flush position.
+ */
+static void
+reset_retention_data_fields(RetainDeadTuplesData *rdt_data)
+{
+	rdt_data->phase = RDT_GET_CANDIDATE_XID;
+	rdt_data->remote_lsn = InvalidXLogRecPtr;
+	rdt_data->remote_oldestxid = InvalidFullTransactionId;
+	rdt_data->remote_nextxid = InvalidFullTransactionId;
+	rdt_data->reply_time = 0;
+	rdt_data->remote_wait_for = InvalidFullTransactionId;
+	rdt_data->candidate_xid = InvalidTransactionId;
+	rdt_data->table_sync_wait_time = 0;
+}
+
+/*
+ * Adjust the interval for advancing non-removable transaction IDs.
+ *
+ * If there is no activity on the node or retention has been stopped, we
+ * progressively double the interval used to advance non-removable transaction
+ * ID. This helps conserve CPU and network resources when there's little benefit
+ * to frequent updates.
+ *
+ * The interval is capped by the lowest of the following:
+ * - wal_receiver_status_interval (if set and retention is active),
+ * - a default maximum of 3 minutes,
+ * - max_retention_duration (if retention is active).
+ *
+ * This ensures the interval never exceeds the retention boundary, even if other
+ * limits are higher. Once activity resumes on the node and the retention is
+ * active, the interval is reset to lesser of 100ms and max_retention_duration,
+ * allowing timely advancement of non-removable transaction ID.
+ *
+ * XXX The use of wal_receiver_status_interval is a bit arbitrary so we can
+ * consider the other interval or a separate GUC if the need arises.
+ */
+static void
+adjust_xid_advance_interval(RetainDeadTuplesData *rdt_data, bool new_xid_found)
+{
+	if (rdt_data->xid_advance_interval && !new_xid_found)
+	{
+		int			max_interval = wal_receiver_status_interval
+			? wal_receiver_status_interval * 1000
+			: MAX_XID_ADVANCE_INTERVAL;
+
+		/*
+		 * No new transaction ID has been assigned since the last check, so
+		 * double the interval, but not beyond the maximum allowable value.
+		 */
+		rdt_data->xid_advance_interval = Min(rdt_data->xid_advance_interval * 2,
+											 max_interval);
+	}
+	else if (rdt_data->xid_advance_interval &&
+			 !MySubscription->retentionactive)
+	{
+		/*
+		 * Retention has been stopped, so double the interval-capped at a
+		 * maximum of 3 minutes. The wal_receiver_status_interval is
+		 * intentionally not used as a upper bound, since the likelihood of
+		 * retention resuming is lower than that of general activity resuming.
+		 */
+		rdt_data->xid_advance_interval = Min(rdt_data->xid_advance_interval * 2,
+											 MAX_XID_ADVANCE_INTERVAL);
+	}
+	else
+	{
+		/*
+		 * A new transaction ID was found or the interval is not yet
+		 * initialized, so set the interval to the minimum value.
+		 */
+		rdt_data->xid_advance_interval = MIN_XID_ADVANCE_INTERVAL;
+	}
+
+	/*
+	 * Ensure the wait time remains within the maximum retention time limit
+	 * when retention is active.
+	 */
+	if (MySubscription->retentionactive)
+		rdt_data->xid_advance_interval = Min(rdt_data->xid_advance_interval,
+											 MySubscription->maxretention);
+}
+
+/*
+ * Exit routine for apply workers due to subscription parameter changes.
+ */
+static void
+apply_worker_exit(void)
+{
+	if (am_parallel_apply_worker())
+	{
+		/*
+		 * Don't stop the parallel apply worker as the leader will detect the
+		 * subscription parameter change and restart logical replication later
+		 * anyway. This also prevents the leader from reporting errors when
+		 * trying to communicate with a stopped parallel apply worker, which
+		 * would accidentally disable subscriptions if disable_on_error was
+		 * set.
+		 */
+		return;
+	}
+
+	/*
+	 * Reset the last-start time for this apply worker so that the launcher
+	 * will restart it without waiting for wal_retrieve_retry_interval if the
+	 * subscription is still active, and so that we won't leak that hash table
+	 * entry if it isn't.
+	 */
+	if (am_leader_apply_worker())
+		ApplyLauncherForgetWorkerStartTime(MyLogicalRepWorker->subid);
+
+	proc_exit(0);
+}
+
+/*
+ * Reread subscription info if needed.
+ *
+ * For significant changes, we react by exiting the current process; a new
+ * one will be launched afterwards if needed.
+ */
+void
 maybe_reread_subscription(void)
 {
-	MemoryContext oldctx;
 	Subscription *newsub;
 	bool		started_tx = false;
 
@@ -3045,21 +5059,25 @@ maybe_reread_subscription(void)
 		started_tx = true;
 	}
 
-	/* Ensure allocations in permanent context. */
-	oldctx = MemoryContextSwitchTo(ApplyContext);
+	newsub = GetSubscription(MyLogicalRepWorker->subid, true, true);
 
-	newsub = GetSubscription(MyLogicalRepWorker->subid, true);
-
-	/*
-	 * Exit if the subscription was removed. This normally should not happen
-	 * as the worker gets killed during DROP SUBSCRIPTION.
-	 */
-	if (!newsub)
+	if (newsub)
 	{
+		MemoryContextSetParent(newsub->cxt, ApplyContext);
+	}
+	else
+	{
+		/*
+		 * Exit if the subscription was removed. This normally should not
+		 * happen as the worker gets killed during DROP SUBSCRIPTION.
+		 */
 		ereport(LOG,
-				(errmsg("logical replication apply worker for subscription \"%s\" will "
-						"stop because the subscription was removed",
+				(errmsg("logical replication worker for subscription \"%s\" will stop because the subscription was removed",
 						MySubscription->name)));
+
+		/* Ensure we remove no-longer-useful entry for worker's start time */
+		if (am_leader_apply_worker())
+			ApplyLauncherForgetWorkerStartTime(MyLogicalRepWorker->subid);
 
 		proc_exit(0);
 	}
@@ -3068,36 +5086,63 @@ maybe_reread_subscription(void)
 	if (!newsub->enabled)
 	{
 		ereport(LOG,
-				(errmsg("logical replication apply worker for subscription \"%s\" will "
-						"stop because the subscription was disabled",
+				(errmsg("logical replication worker for subscription \"%s\" will stop because the subscription was disabled",
 						MySubscription->name)));
 
-		proc_exit(0);
+		apply_worker_exit();
 	}
 
 	/* !slotname should never happen when enabled is true. */
 	Assert(newsub->slotname);
 
-	/* two-phase should not be altered */
+	/* two-phase cannot be altered while the worker is running */
 	Assert(newsub->twophasestate == MySubscription->twophasestate);
 
 	/*
 	 * Exit if any parameter that affects the remote connection was changed.
-	 * The launcher will start a new worker.
+	 * The launcher will start a new worker but note that the parallel apply
+	 * worker won't restart if the streaming option's value is changed from
+	 * 'parallel' to any other value or the server decides not to stream the
+	 * in-progress transaction.
 	 */
 	if (strcmp(newsub->conninfo, MySubscription->conninfo) != 0 ||
 		strcmp(newsub->name, MySubscription->name) != 0 ||
 		strcmp(newsub->slotname, MySubscription->slotname) != 0 ||
 		newsub->binary != MySubscription->binary ||
 		newsub->stream != MySubscription->stream ||
+		newsub->passwordrequired != MySubscription->passwordrequired ||
+		strcmp(newsub->origin, MySubscription->origin) != 0 ||
 		newsub->owner != MySubscription->owner ||
 		!equal(newsub->publications, MySubscription->publications))
 	{
-		ereport(LOG,
-				(errmsg("logical replication apply worker for subscription \"%s\" will restart because of a parameter change",
-						MySubscription->name)));
+		if (am_parallel_apply_worker())
+			ereport(LOG,
+					(errmsg("logical replication parallel apply worker for subscription \"%s\" will stop because of a parameter change",
+							MySubscription->name)));
+		else
+			ereport(LOG,
+					(errmsg("logical replication worker for subscription \"%s\" will restart because of a parameter change",
+							MySubscription->name)));
 
-		proc_exit(0);
+		apply_worker_exit();
+	}
+
+	/*
+	 * Exit if the subscription owner's superuser privileges have been
+	 * revoked.
+	 */
+	if (!newsub->ownersuperuser && MySubscription->ownersuperuser)
+	{
+		if (am_parallel_apply_worker())
+			ereport(LOG,
+					errmsg("logical replication parallel apply worker for subscription \"%s\" will stop because the subscription owner's superuser privileges have been revoked",
+						   MySubscription->name));
+		else
+			ereport(LOG,
+					errmsg("logical replication worker for subscription \"%s\" will restart because the subscription owner's superuser privileges have been revoked",
+						   MySubscription->name));
+
+		apply_worker_exit();
 	}
 
 	/* Check for other changes that should never happen too. */
@@ -3108,14 +5153,15 @@ maybe_reread_subscription(void)
 	}
 
 	/* Clean old subscription info and switch to new one. */
-	FreeSubscription(MySubscription);
+	MemoryContextDelete(MySubscription->cxt);
 	MySubscription = newsub;
-
-	MemoryContextSwitchTo(oldctx);
 
 	/* Change synchronous commit according to the user's wishes */
 	SetConfigOption("synchronous_commit", MySubscription->synccommit,
 					PGC_BACKEND, PGC_S_OVERRIDE);
+
+	/* Change wal_receiver_timeout according to the user's wishes */
+	set_wal_receiver_timeout();
 
 	if (started_tx)
 		CommitTransactionCommand();
@@ -3124,10 +5170,45 @@ maybe_reread_subscription(void)
 }
 
 /*
- * Callback from subscription syscache invalidation.
+ * Change wal_receiver_timeout to MySubscription->walrcvtimeout.
  */
 static void
-subscription_change_cb(Datum arg, int cacheid, uint32 hashvalue)
+set_wal_receiver_timeout(void)
+{
+	bool		parsed;
+	int			val;
+	int			prev_timeout = wal_receiver_timeout;
+
+	/*
+	 * Set the wal_receiver_timeout GUC to MySubscription->walrcvtimeout,
+	 * which comes from the subscription's wal_receiver_timeout option. If the
+	 * value is -1, reset the GUC to its default, meaning it will inherit from
+	 * the server config, command line, or role/database settings.
+	 */
+	parsed = parse_int(MySubscription->walrcvtimeout, &val, 0, NULL);
+	if (parsed && val == -1)
+		SetConfigOption("wal_receiver_timeout", NULL,
+						PGC_BACKEND, PGC_S_SESSION);
+	else
+		SetConfigOption("wal_receiver_timeout", MySubscription->walrcvtimeout,
+						PGC_BACKEND, PGC_S_SESSION);
+
+	/*
+	 * Log the wal_receiver_timeout setting (in milliseconds) as a debug
+	 * message when it changes, to verify it was set correctly.
+	 */
+	if (prev_timeout != wal_receiver_timeout)
+		elog(DEBUG1, "logical replication worker for subscription \"%s\" wal_receiver_timeout: %d ms",
+			 MySubscription->name, wal_receiver_timeout);
+}
+
+/*
+ * Callback from subscription syscache invalidation. Also needed for server or
+ * user mapping invalidation, which can change the connection information for
+ * subscriptions that connect using a server object.
+ */
+static void
+subscription_change_cb(Datum arg, SysCacheIdentifier cacheid, uint32 hashvalue)
 {
 	MySubscriptionValid = false;
 }
@@ -3136,7 +5217,7 @@ subscription_change_cb(Datum arg, int cacheid, uint32 hashvalue)
  * subxact_info_write
  *	  Store information about subxacts for a toplevel transaction.
  *
- * For each subxact we store offset of it's first change in the main file.
+ * For each subxact we store offset of its first change in the main file.
  * The file is always over-written as a whole.
  *
  * XXX We should only store subxacts that were not aborted yet.
@@ -3194,7 +5275,6 @@ static void
 subxact_info_read(Oid subid, TransactionId xid)
 {
 	char		path[MAXPGPATH];
-	size_t		nread;
 	Size		len;
 	BufFile    *fd;
 	MemoryContext oldctx;
@@ -3214,17 +5294,12 @@ subxact_info_read(Oid subid, TransactionId xid)
 		return;
 
 	/* read number of subxact items */
-	nread = BufFileRead(fd, &subxact_data.nsubxacts, sizeof(subxact_data.nsubxacts));
-	if (nread != sizeof(subxact_data.nsubxacts))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read from streaming transaction's subxact file \"%s\": read only %zu of %zu bytes",
-						path, nread, sizeof(subxact_data.nsubxacts))));
+	BufFileReadExact(fd, &subxact_data.nsubxacts, sizeof(subxact_data.nsubxacts));
 
 	len = sizeof(SubXactInfo) * subxact_data.nsubxacts;
 
 	/* we keep the maximum as a power of 2 */
-	subxact_data.nsubxacts_max = 1 << my_log2(subxact_data.nsubxacts);
+	subxact_data.nsubxacts_max = 1 << pg_ceil_log2_32(subxact_data.nsubxacts);
 
 	/*
 	 * Allocate subxact information in the logical streaming context. We need
@@ -3233,19 +5308,12 @@ subxact_info_read(Oid subid, TransactionId xid)
 	 * to the subxact file and reset the logical streaming context.
 	 */
 	oldctx = MemoryContextSwitchTo(LogicalStreamingContext);
-	subxact_data.subxacts = palloc(subxact_data.nsubxacts_max *
-								   sizeof(SubXactInfo));
+	subxact_data.subxacts = palloc_array(SubXactInfo,
+										 subxact_data.nsubxacts_max);
 	MemoryContextSwitchTo(oldctx);
 
 	if (len > 0)
-	{
-		nread = BufFileRead(fd, subxact_data.subxacts, len);
-		if (nread != len)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not read from streaming transaction's subxact file \"%s\": read only %zu of %zu bytes",
-							path, nread, len)));
-	}
+		BufFileReadExact(fd, subxact_data.subxacts, len);
 
 	BufFileClose(fd);
 }
@@ -3307,14 +5375,14 @@ subxact_info_add(TransactionId xid)
 		 * subxact_info_read.
 		 */
 		oldctx = MemoryContextSwitchTo(LogicalStreamingContext);
-		subxacts = palloc(subxact_data.nsubxacts_max * sizeof(SubXactInfo));
+		subxacts = palloc_array(SubXactInfo, subxact_data.nsubxacts_max);
 		MemoryContextSwitchTo(oldctx);
 	}
 	else if (subxact_data.nsubxacts == subxact_data.nsubxacts_max)
 	{
 		subxact_data.nsubxacts_max *= 2;
-		subxacts = repalloc(subxacts,
-							subxact_data.nsubxacts_max * sizeof(SubXactInfo));
+		subxacts = repalloc_array(subxacts, SubXactInfo,
+								  subxact_data.nsubxacts_max);
 	}
 
 	subxacts[subxact_data.nsubxacts].xid = xid;
@@ -3353,7 +5421,7 @@ changes_filename(char *path, Oid subid, TransactionId xid)
  * toplevel transaction. Each subscription has a separate set of files
  * for any toplevel transaction.
  */
-static void
+void
 stream_cleanup_files(Oid subid, TransactionId xid)
 {
 	char		path[MAXPGPATH];
@@ -3376,9 +5444,6 @@ stream_cleanup_files(Oid subid, TransactionId xid)
  * by stream_xid (global variable). If it's the first chunk of streamed
  * changes for this transaction, create the buffile, otherwise open the
  * previously created file.
- *
- * This can only be called at the beginning of a "streaming" block, i.e.
- * between stream_start/stream_stop messages from the upstream.
  */
 static void
 stream_open_file(Oid subid, TransactionId xid, bool first_segment)
@@ -3386,7 +5451,6 @@ stream_open_file(Oid subid, TransactionId xid, bool first_segment)
 	char		path[MAXPGPATH];
 	MemoryContext oldcxt;
 
-	Assert(in_streamed_transaction);
 	Assert(OidIsValid(subid));
 	Assert(TransactionIdIsValid(xid));
 	Assert(stream_fd == NULL);
@@ -3425,20 +5489,14 @@ stream_open_file(Oid subid, TransactionId xid, bool first_segment)
 /*
  * stream_close_file
  *	  Close the currently open file with streamed changes.
- *
- * This can only be called at the end of a streaming block, i.e. at stream_stop
- * message from the upstream.
  */
 static void
 stream_close_file(void)
 {
-	Assert(in_streamed_transaction);
-	Assert(TransactionIdIsValid(stream_xid));
 	Assert(stream_fd != NULL);
 
 	BufFileClose(stream_fd);
 
-	stream_xid = InvalidTransactionId;
 	stream_fd = NULL;
 }
 
@@ -3455,8 +5513,6 @@ stream_write_change(char action, StringInfo s)
 {
 	int			len;
 
-	Assert(in_streamed_transaction);
-	Assert(TransactionIdIsValid(stream_xid));
 	Assert(stream_fd != NULL);
 
 	/* total on-disk size, including the action type character */
@@ -3475,10 +5531,81 @@ stream_write_change(char action, StringInfo s)
 }
 
 /*
+ * stream_open_and_write_change
+ *	  Serialize a message to a file for the given transaction.
+ *
+ * This function is similar to stream_write_change except that it will open the
+ * target file if not already before writing the message and close the file at
+ * the end.
+ */
+static void
+stream_open_and_write_change(TransactionId xid, char action, StringInfo s)
+{
+	Assert(!in_streamed_transaction);
+
+	if (!stream_fd)
+		stream_start_internal(xid, false);
+
+	stream_write_change(action, s);
+	stream_stop_internal(xid);
+}
+
+/*
+ * Sets streaming options including replication slot name and origin start
+ * position. Workers need these options for logical replication.
+ */
+void
+set_stream_options(WalRcvStreamOptions *options,
+				   char *slotname,
+				   XLogRecPtr *origin_startpos)
+{
+	int			server_version;
+
+	options->logical = true;
+	options->startpoint = *origin_startpos;
+	options->slotname = slotname;
+
+	server_version = walrcv_server_version(LogRepWorkerWalRcvConn);
+	options->proto.logical.proto_version =
+		server_version >= 160000 ? LOGICALREP_PROTO_STREAM_PARALLEL_VERSION_NUM :
+		server_version >= 150000 ? LOGICALREP_PROTO_TWOPHASE_VERSION_NUM :
+		server_version >= 140000 ? LOGICALREP_PROTO_STREAM_VERSION_NUM :
+		LOGICALREP_PROTO_VERSION_NUM;
+
+	options->proto.logical.publication_names = MySubscription->publications;
+	options->proto.logical.binary = MySubscription->binary;
+
+	/*
+	 * Assign the appropriate option value for streaming option according to
+	 * the 'streaming' mode and the publisher's ability to support that mode.
+	 */
+	if (server_version >= 160000 &&
+		MySubscription->stream == LOGICALREP_STREAM_PARALLEL)
+	{
+		options->proto.logical.streaming_str = "parallel";
+		MyLogicalRepWorker->parallel_apply = true;
+	}
+	else if (server_version >= 140000 &&
+			 MySubscription->stream != LOGICALREP_STREAM_OFF)
+	{
+		options->proto.logical.streaming_str = "on";
+		MyLogicalRepWorker->parallel_apply = false;
+	}
+	else
+	{
+		options->proto.logical.streaming_str = NULL;
+		MyLogicalRepWorker->parallel_apply = false;
+	}
+
+	options->proto.logical.twophase = false;
+	options->proto.logical.origin = pstrdup(MySubscription->origin);
+}
+
+/*
  * Cleanup the memory for subxacts and reset the related variables.
  */
 static inline void
-cleanup_subxact_info()
+cleanup_subxact_info(void)
 {
 	if (subxact_data.subxacts)
 		pfree(subxact_data.subxacts);
@@ -3490,75 +5617,13 @@ cleanup_subxact_info()
 }
 
 /*
- * Form the prepared transaction GID for two_phase transactions.
- *
- * Return the GID in the supplied buffer.
- */
-static void
-TwoPhaseTransactionGid(Oid subid, TransactionId xid, char *gid, int szgid)
-{
-	Assert(subid != InvalidRepOriginId);
-
-	if (!TransactionIdIsValid(xid))
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg_internal("invalid two-phase transaction ID")));
-
-	snprintf(gid, szgid, "pg_gid_%u_%u", subid, xid);
-}
-
-/*
- * Execute the initial sync with error handling. Disable the subscription,
- * if it's required.
- *
- * Allocate the slot name in long-lived context on return. Note that we don't
- * handle FATAL errors which are probably because of system resource error and
- * are not repeatable.
- */
-static void
-start_table_sync(XLogRecPtr *origin_startpos, char **myslotname)
-{
-	char	   *syncslotname = NULL;
-
-	Assert(am_tablesync_worker());
-
-	PG_TRY();
-	{
-		/* Call initial sync. */
-		syncslotname = LogicalRepSyncTableStart(origin_startpos);
-	}
-	PG_CATCH();
-	{
-		if (MySubscription->disableonerr)
-			DisableSubscriptionAndExit();
-		else
-		{
-			/*
-			 * Report the worker failed during table synchronization. Abort
-			 * the current transaction so that the stats message is sent in an
-			 * idle state.
-			 */
-			AbortOutOfAnyTransaction();
-			pgstat_report_subscription_error(MySubscription->oid, false);
-
-			PG_RE_THROW();
-		}
-	}
-	PG_END_TRY();
-
-	/* allocate slot name in long-lived context */
-	*myslotname = MemoryContextStrdup(ApplyContext, syncslotname);
-	pfree(syncslotname);
-}
-
-/*
- * Run the apply loop with error handling. Disable the subscription,
- * if necessary.
+ * Common function to run the apply loop with error handling. Disable the
+ * subscription, if necessary.
  *
  * Note that we don't handle FATAL errors which are probably because
  * of system resource error and are not repeatable.
  */
-static void
+void
 start_apply(XLogRecPtr origin_startpos)
 {
 	PG_TRY();
@@ -3567,6 +5632,14 @@ start_apply(XLogRecPtr origin_startpos)
 	}
 	PG_CATCH();
 	{
+		/*
+		 * Reset the origin state to prevent the advancement of origin
+		 * progress if we fail to apply. Otherwise, this will result in
+		 * transaction loss as that transaction won't be sent again by the
+		 * server.
+		 */
+		replorigin_xact_clear(true);
+
 		if (MySubscription->disableonerr)
 			DisableSubscriptionAndExit();
 		else
@@ -3577,7 +5650,7 @@ start_apply(XLogRecPtr origin_startpos)
 			 * idle state.
 			 */
 			AbortOutOfAnyTransaction();
-			pgstat_report_subscription_error(MySubscription->oid, !am_tablesync_worker());
+			pgstat_report_subscription_error(MySubscription->oid);
 
 			PG_RE_THROW();
 		}
@@ -3585,38 +5658,127 @@ start_apply(XLogRecPtr origin_startpos)
 	PG_END_TRY();
 }
 
-/* Logical Replication Apply worker entry point */
-void
-ApplyWorkerMain(Datum main_arg)
+/*
+ * Runs the leader apply worker.
+ *
+ * It sets up replication origin, streaming options and then starts streaming.
+ */
+static void
+run_apply_worker(void)
 {
-	int			worker_slot = DatumGetInt32(main_arg);
-	MemoryContext oldctx;
 	char		originname[NAMEDATALEN];
 	XLogRecPtr	origin_startpos = InvalidXLogRecPtr;
-	char	   *myslotname = NULL;
+	char	   *slotname = NULL;
 	WalRcvStreamOptions options;
-	int			server_version;
+	ReplOriginId originid;
+	TimeLineID	startpointTLI;
+	char	   *err;
+	bool		must_use_password;
 
-	/* Attach to slot */
-	logicalrep_worker_attach(worker_slot);
-
-	/* Setup signal handling */
-	pqsignal(SIGHUP, SignalHandlerForConfigReload);
-	pqsignal(SIGTERM, die);
-	BackgroundWorkerUnblockSignals();
+	slotname = MySubscription->slotname;
 
 	/*
-	 * We don't currently need any ResourceOwner in a walreceiver process, but
-	 * if we did, we could call CreateAuxProcessResourceOwner here.
+	 * This shouldn't happen if the subscription is enabled, but guard against
+	 * DDL bugs or manual catalog changes.  (libpqwalreceiver will crash if
+	 * slot is NULL.)
 	 */
+	if (!slotname)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("subscription has no replication slot set")));
 
-	/* Initialise stats to a sanish value */
-	MyLogicalRepWorker->last_send_time = MyLogicalRepWorker->last_recv_time =
-		MyLogicalRepWorker->reply_time = GetCurrentTimestamp();
+	/* Setup replication origin tracking. */
+	ReplicationOriginNameForLogicalRep(MySubscription->oid, InvalidOid,
+									   originname, sizeof(originname));
+	StartTransactionCommand();
+	originid = replorigin_by_name(originname, true);
+	if (!OidIsValid(originid))
+		originid = replorigin_create(originname);
+	replorigin_session_setup(originid, 0);
+	replorigin_xact_state.origin = originid;
+	origin_startpos = replorigin_session_get_progress(false);
+	CommitTransactionCommand();
 
-	/* Load the libpq-specific functions */
-	load_file("libpqwalreceiver", false);
+	/* Is the use of a password mandatory? */
+	must_use_password = MySubscription->passwordrequired &&
+		!MySubscription->ownersuperuser;
 
+	LogRepWorkerWalRcvConn = walrcv_connect(MySubscription->conninfo, true,
+											true, must_use_password,
+											MySubscription->name, &err);
+
+	if (LogRepWorkerWalRcvConn == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_CONNECTION_FAILURE),
+				 errmsg("apply worker for subscription \"%s\" could not connect to the publisher: %s",
+						MySubscription->name, err)));
+
+	/*
+	 * We don't really use the output identify_system for anything but it does
+	 * some initializations on the upstream so let's still call it.
+	 */
+	(void) walrcv_identify_system(LogRepWorkerWalRcvConn, &startpointTLI);
+
+	set_apply_error_context_origin(originname);
+
+	set_stream_options(&options, slotname, &origin_startpos);
+
+	/*
+	 * Even when the two_phase mode is requested by the user, it remains as
+	 * the tri-state PENDING until all tablesyncs have reached READY state.
+	 * Only then, can it become ENABLED.
+	 *
+	 * Note: If the subscription has no tables then leave the state as
+	 * PENDING, which allows ALTER SUBSCRIPTION ... REFRESH PUBLICATION to
+	 * work.
+	 */
+	if (MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_PENDING &&
+		AllTablesyncsReady())
+	{
+		/* Start streaming with two_phase enabled */
+		options.proto.logical.twophase = true;
+		walrcv_startstreaming(LogRepWorkerWalRcvConn, &options);
+
+		StartTransactionCommand();
+
+		/*
+		 * Updating pg_subscription might involve TOAST table access, so
+		 * ensure we have a valid snapshot.
+		 */
+		PushActiveSnapshot(GetTransactionSnapshot());
+
+		UpdateTwoPhaseState(MySubscription->oid, LOGICALREP_TWOPHASE_STATE_ENABLED);
+		MySubscription->twophasestate = LOGICALREP_TWOPHASE_STATE_ENABLED;
+		PopActiveSnapshot();
+		CommitTransactionCommand();
+	}
+	else
+	{
+		walrcv_startstreaming(LogRepWorkerWalRcvConn, &options);
+	}
+
+	ereport(DEBUG1,
+			(errmsg_internal("logical replication apply worker for subscription \"%s\" two_phase is %s",
+							 MySubscription->name,
+							 MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_DISABLED ? "DISABLED" :
+							 MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_PENDING ? "PENDING" :
+							 MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_ENABLED ? "ENABLED" :
+							 "?")));
+
+	/* Run the main loop. */
+	start_apply(origin_startpos);
+}
+
+/*
+ * Common initialization for leader apply worker, parallel apply worker,
+ * tablesync worker and sequencesync worker.
+ *
+ * Initialize the database connection, in-memory subscription and necessary
+ * config options.
+ */
+void
+InitializeLogRepWorker(void)
+{
 	/* Run as replica session replication role. */
 	SetConfigOption("session_replication_role", "replica",
 					PGC_SUSET, PGC_S_OVERRIDE);
@@ -3632,194 +5794,208 @@ ApplyWorkerMain(Datum main_arg)
 	 */
 	SetConfigOption("search_path", "", PGC_SUSET, PGC_S_OVERRIDE);
 
-	/* Load the subscription into persistent memory context. */
 	ApplyContext = AllocSetContextCreate(TopMemoryContext,
 										 "ApplyContext",
 										 ALLOCSET_DEFAULT_SIZES);
-	StartTransactionCommand();
-	oldctx = MemoryContextSwitchTo(ApplyContext);
 
-	MySubscription = GetSubscription(MyLogicalRepWorker->subid, true);
-	if (!MySubscription)
+	StartTransactionCommand();
+
+	/*
+	 * Lock the subscription to prevent it from being concurrently dropped,
+	 * then re-verify its existence. After the initialization, the worker will
+	 * be terminated gracefully if the subscription is dropped.
+	 */
+	LockSharedObject(SubscriptionRelationId, MyLogicalRepWorker->subid, 0,
+					 AccessShareLock);
+
+	MySubscription = GetSubscription(MyLogicalRepWorker->subid, true, true);
+
+	if (MySubscription)
+	{
+		MemoryContextSetParent(MySubscription->cxt, ApplyContext);
+	}
+	else
 	{
 		ereport(LOG,
-				(errmsg("logical replication apply worker for subscription %u will not "
-						"start because the subscription was removed during startup",
+				(errmsg("logical replication worker for subscription %u will not start because the subscription was removed during startup",
 						MyLogicalRepWorker->subid)));
+
+		/* Ensure we remove no-longer-useful entry for worker's start time */
+		if (am_leader_apply_worker())
+			ApplyLauncherForgetWorkerStartTime(MyLogicalRepWorker->subid);
+
 		proc_exit(0);
 	}
 
 	MySubscriptionValid = true;
-	MemoryContextSwitchTo(oldctx);
 
 	if (!MySubscription->enabled)
 	{
 		ereport(LOG,
-				(errmsg("logical replication apply worker for subscription \"%s\" will not "
-						"start because the subscription was disabled during startup",
+				(errmsg("logical replication worker for subscription \"%s\" will not start because the subscription was disabled during startup",
 						MySubscription->name)));
 
-		proc_exit(0);
+		apply_worker_exit();
+	}
+
+	/*
+	 * Restart the worker if retain_dead_tuples was enabled during startup.
+	 *
+	 * At this point, the replication slot used for conflict detection might
+	 * not exist yet, or could be dropped soon if the launcher perceives
+	 * retain_dead_tuples as disabled. To avoid unnecessary tracking of
+	 * oldest_nonremovable_xid when the slot is absent or at risk of being
+	 * dropped, a restart is initiated.
+	 *
+	 * The oldest_nonremovable_xid should be initialized only when the
+	 * subscription's retention is active before launching the worker. See
+	 * logicalrep_worker_launch.
+	 */
+	if (am_leader_apply_worker() &&
+		MySubscription->retaindeadtuples &&
+		MySubscription->retentionactive &&
+		!TransactionIdIsValid(MyLogicalRepWorker->oldest_nonremovable_xid))
+	{
+		ereport(LOG,
+				errmsg("logical replication worker for subscription \"%s\" will restart because the option %s was enabled during startup",
+					   MySubscription->name, "retain_dead_tuples"));
+
+		apply_worker_exit();
 	}
 
 	/* Setup synchronous commit according to the user's wishes */
 	SetConfigOption("synchronous_commit", MySubscription->synccommit,
 					PGC_BACKEND, PGC_S_OVERRIDE);
 
-	/* Keep us informed about subscription changes. */
+	/* Change wal_receiver_timeout according to the user's wishes */
+	set_wal_receiver_timeout();
+
+	/*
+	 * Keep us informed about subscription or role changes. Note that the
+	 * role's superuser privilege can be revoked.
+	 */
 	CacheRegisterSyscacheCallback(SUBSCRIPTIONOID,
+								  subscription_change_cb,
+								  (Datum) 0);
+	/* Changes to foreign servers may affect subscriptions using SERVER. */
+	CacheRegisterSyscacheCallback(FOREIGNSERVEROID,
+								  subscription_change_cb,
+								  (Datum) 0);
+	/* Changes to user mappings may affect subscriptions using SERVER. */
+	CacheRegisterSyscacheCallback(USERMAPPINGOID,
+								  subscription_change_cb,
+								  (Datum) 0);
+
+	/*
+	 * Changes to FDW connection_function may affect subscriptions using
+	 * SERVER.
+	 */
+	CacheRegisterSyscacheCallback(FOREIGNDATAWRAPPEROID,
+								  subscription_change_cb,
+								  (Datum) 0);
+
+	CacheRegisterSyscacheCallback(AUTHOID,
 								  subscription_change_cb,
 								  (Datum) 0);
 
 	if (am_tablesync_worker())
 		ereport(LOG,
-				(errmsg("logical replication table synchronization worker for subscription \"%s\", table \"%s\" has started",
-						MySubscription->name, get_rel_name(MyLogicalRepWorker->relid))));
+				errmsg("logical replication table synchronization worker for subscription \"%s\", table \"%s\" has started",
+					   MySubscription->name,
+					   get_rel_name(MyLogicalRepWorker->relid)));
+	else if (am_sequencesync_worker())
+		ereport(LOG,
+				errmsg("logical replication sequence synchronization worker for subscription \"%s\" has started",
+					   MySubscription->name));
 	else
 		ereport(LOG,
-				(errmsg("logical replication apply worker for subscription \"%s\" has started",
-						MySubscription->name)));
+				errmsg("logical replication apply worker for subscription \"%s\" has started",
+					   MySubscription->name));
 
 	CommitTransactionCommand();
+
+	/*
+	 * Register a callback to reset the origin state before aborting any
+	 * pending transaction during shutdown (see ShutdownPostgres()). This will
+	 * avoid origin advancement for an incomplete transaction which could
+	 * otherwise lead to its loss as such a transaction won't be sent by the
+	 * server again.
+	 *
+	 * Note that even a LOG or DEBUG statement placed after setting the origin
+	 * state may process a shutdown signal before committing the current apply
+	 * operation. So, it is important to register such a callback here.
+	 *
+	 * Register this callback here to ensure that all types of logical
+	 * replication workers that set up origins and apply remote transactions
+	 * are protected.
+	 */
+	before_shmem_exit(on_exit_clear_xact_state, (Datum) 0);
+}
+
+/*
+ * Callback on exit to clear transaction-level replication origin state.
+ */
+static void
+on_exit_clear_xact_state(int code, Datum arg)
+{
+	replorigin_xact_clear(true);
+}
+
+/*
+ * Common function to setup the leader apply, tablesync and sequencesync worker.
+ */
+void
+SetupApplyOrSyncWorker(int worker_slot)
+{
+	/* Attach to slot */
+	logicalrep_worker_attach(worker_slot);
+
+	Assert(am_tablesync_worker() || am_sequencesync_worker() || am_leader_apply_worker());
+
+	/* Setup signal handling */
+	pqsignal(SIGHUP, SignalHandlerForConfigReload);
+	BackgroundWorkerUnblockSignals();
+
+	/*
+	 * We don't currently need any ResourceOwner in a walreceiver process, but
+	 * if we did, we could call CreateAuxProcessResourceOwner here.
+	 */
+
+	/* Initialise stats to a sanish value */
+	MyLogicalRepWorker->last_send_time = MyLogicalRepWorker->last_recv_time =
+		MyLogicalRepWorker->reply_time = GetCurrentTimestamp();
+
+	/* Load the libpq-specific functions */
+	load_file("libpqwalreceiver", false);
+
+	InitializeLogRepWorker();
 
 	/* Connect to the origin and start the replication. */
 	elog(DEBUG1, "connecting to publisher using connection string \"%s\"",
 		 MySubscription->conninfo);
-
-	if (am_tablesync_worker())
-	{
-		start_table_sync(&origin_startpos, &myslotname);
-
-		/*
-		 * Allocate the origin name in long-lived context for error context
-		 * message.
-		 */
-		ReplicationOriginNameForTablesync(MySubscription->oid,
-										  MyLogicalRepWorker->relid,
-										  originname,
-										  sizeof(originname));
-		apply_error_callback_arg.origin_name = MemoryContextStrdup(ApplyContext,
-																   originname);
-	}
-	else
-	{
-		/* This is main apply worker */
-		RepOriginId originid;
-		TimeLineID	startpointTLI;
-		char	   *err;
-
-		myslotname = MySubscription->slotname;
-
-		/*
-		 * This shouldn't happen if the subscription is enabled, but guard
-		 * against DDL bugs or manual catalog changes.  (libpqwalreceiver will
-		 * crash if slot is NULL.)
-		 */
-		if (!myslotname)
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					 errmsg("subscription has no replication slot set")));
-
-		/* Setup replication origin tracking. */
-		StartTransactionCommand();
-		snprintf(originname, sizeof(originname), "pg_%u", MySubscription->oid);
-		originid = replorigin_by_name(originname, true);
-		if (!OidIsValid(originid))
-			originid = replorigin_create(originname);
-		replorigin_session_setup(originid);
-		replorigin_session_origin = originid;
-		origin_startpos = replorigin_session_get_progress(false);
-		CommitTransactionCommand();
-
-		LogRepWorkerWalRcvConn = walrcv_connect(MySubscription->conninfo, true,
-												MySubscription->name, &err);
-		if (LogRepWorkerWalRcvConn == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_CONNECTION_FAILURE),
-					 errmsg("could not connect to the publisher: %s", err)));
-
-		/*
-		 * We don't really use the output identify_system for anything but it
-		 * does some initializations on the upstream so let's still call it.
-		 */
-		(void) walrcv_identify_system(LogRepWorkerWalRcvConn, &startpointTLI);
-
-		/*
-		 * Allocate the origin name in long-lived context for error context
-		 * message.
-		 */
-		apply_error_callback_arg.origin_name = MemoryContextStrdup(ApplyContext,
-																   originname);
-	}
 
 	/*
 	 * Setup callback for syscache so that we know when something changes in
 	 * the subscription relation state.
 	 */
 	CacheRegisterSyscacheCallback(SUBSCRIPTIONRELMAP,
-								  invalidate_syncing_table_states,
+								  InvalidateSyncingRelStates,
 								  (Datum) 0);
+}
 
-	/* Build logical replication streaming options. */
-	options.logical = true;
-	options.startpoint = origin_startpos;
-	options.slotname = myslotname;
+/* Logical Replication Apply worker entry point */
+void
+ApplyWorkerMain(Datum main_arg)
+{
+	int			worker_slot = DatumGetInt32(main_arg);
 
-	server_version = walrcv_server_version(LogRepWorkerWalRcvConn);
-	options.proto.logical.proto_version =
-		server_version >= 150000 ? LOGICALREP_PROTO_TWOPHASE_VERSION_NUM :
-		server_version >= 140000 ? LOGICALREP_PROTO_STREAM_VERSION_NUM :
-		LOGICALREP_PROTO_VERSION_NUM;
+	InitializingApplyWorker = true;
 
-	options.proto.logical.publication_names = MySubscription->publications;
-	options.proto.logical.binary = MySubscription->binary;
-	options.proto.logical.streaming = MySubscription->stream;
-	options.proto.logical.twophase = false;
+	SetupApplyOrSyncWorker(worker_slot);
 
-	if (!am_tablesync_worker())
-	{
-		/*
-		 * Even when the two_phase mode is requested by the user, it remains
-		 * as the tri-state PENDING until all tablesyncs have reached READY
-		 * state. Only then, can it become ENABLED.
-		 *
-		 * Note: If the subscription has no tables then leave the state as
-		 * PENDING, which allows ALTER SUBSCRIPTION ... REFRESH PUBLICATION to
-		 * work.
-		 */
-		if (MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_PENDING &&
-			AllTablesyncsReady())
-		{
-			/* Start streaming with two_phase enabled */
-			options.proto.logical.twophase = true;
-			walrcv_startstreaming(LogRepWorkerWalRcvConn, &options);
+	InitializingApplyWorker = false;
 
-			StartTransactionCommand();
-			UpdateTwoPhaseState(MySubscription->oid, LOGICALREP_TWOPHASE_STATE_ENABLED);
-			MySubscription->twophasestate = LOGICALREP_TWOPHASE_STATE_ENABLED;
-			CommitTransactionCommand();
-		}
-		else
-		{
-			walrcv_startstreaming(LogRepWorkerWalRcvConn, &options);
-		}
-
-		ereport(DEBUG1,
-				(errmsg_internal("logical replication apply worker for subscription \"%s\" two_phase is %s",
-								 MySubscription->name,
-								 MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_DISABLED ? "DISABLED" :
-								 MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_PENDING ? "PENDING" :
-								 MySubscription->twophasestate == LOGICALREP_TWOPHASE_STATE_ENABLED ? "ENABLED" :
-								 "?")));
-	}
-	else
-	{
-		/* Start normal logical streaming replication. */
-		walrcv_startstreaming(LogRepWorkerWalRcvConn, &options);
-	}
-
-	/* Run the main loop. */
-	start_apply(origin_startpos);
+	run_apply_worker();
 
 	proc_exit(0);
 }
@@ -3828,7 +6004,7 @@ ApplyWorkerMain(Datum main_arg)
  * After error recovery, disable the subscription in a new transaction
  * and exit cleanly.
  */
-static void
+void
 DisableSubscriptionAndExit(void)
 {
 	/*
@@ -3843,19 +6019,42 @@ DisableSubscriptionAndExit(void)
 
 	RESUME_INTERRUPTS();
 
-	/* Report the worker failed during either table synchronization or apply */
-	pgstat_report_subscription_error(MyLogicalRepWorker->subid,
-									 !am_tablesync_worker());
+	/*
+	 * Report the worker failed during sequence synchronization, table
+	 * synchronization, or apply.
+	 */
+	pgstat_report_subscription_error(MyLogicalRepWorker->subid);
 
 	/* Disable the subscription */
 	StartTransactionCommand();
+
+	/*
+	 * Updating pg_subscription might involve TOAST table access, so ensure we
+	 * have a valid snapshot.
+	 */
+	PushActiveSnapshot(GetTransactionSnapshot());
+
 	DisableSubscription(MySubscription->oid);
+	PopActiveSnapshot();
 	CommitTransactionCommand();
+
+	/* Ensure we remove no-longer-useful entry for worker's start time */
+	if (am_leader_apply_worker())
+		ApplyLauncherForgetWorkerStartTime(MyLogicalRepWorker->subid);
 
 	/* Notify the subscription has been disabled and exit */
 	ereport(LOG,
 			errmsg("subscription \"%s\" has been disabled because of an error",
 				   MySubscription->name));
+
+	/*
+	 * Skip the track_commit_timestamp check when disabling the worker due to
+	 * an error, as verifying commit timestamps is unnecessary in this
+	 * context.
+	 */
+	CheckSubDeadTupleRetention(false, true, WARNING,
+							   MySubscription->retaindeadtuples,
+							   MySubscription->retentionactive, false);
 
 	proc_exit(0);
 }
@@ -3867,6 +6066,15 @@ bool
 IsLogicalWorker(void)
 {
 	return MyLogicalRepWorker != NULL;
+}
+
+/*
+ * Is current process a logical replication parallel apply worker?
+ */
+bool
+IsLogicalParallelApplyWorker(void)
+{
+	return IsLogicalWorker() && am_parallel_apply_worker();
 }
 
 /*
@@ -3885,7 +6093,7 @@ maybe_start_skipping_changes(XLogRecPtr finish_lsn)
 	 * function is called for every remote transaction and we assume that
 	 * skipping the transaction is not used often.
 	 */
-	if (likely(XLogRecPtrIsInvalid(MySubscription->skiplsn) ||
+	if (likely(!XLogRecPtrIsValid(MySubscription->skiplsn) ||
 			   MySubscription->skiplsn != finish_lsn))
 		return;
 
@@ -3893,7 +6101,7 @@ maybe_start_skipping_changes(XLogRecPtr finish_lsn)
 	skip_xact_finish_lsn = finish_lsn;
 
 	ereport(LOG,
-			errmsg("logical replication starts skipping transaction at LSN %X/%X",
+			errmsg("logical replication starts skipping transaction at LSN %X/%08X",
 				   LSN_FORMAT_ARGS(skip_xact_finish_lsn)));
 }
 
@@ -3907,8 +6115,8 @@ stop_skipping_changes(void)
 		return;
 
 	ereport(LOG,
-			(errmsg("logical replication completed skipping transaction at LSN %X/%X",
-					LSN_FORMAT_ARGS(skip_xact_finish_lsn))));
+			errmsg("logical replication completed skipping transaction at LSN %X/%08X",
+				   LSN_FORMAT_ARGS(skip_xact_finish_lsn)));
 
 	/* Stop skipping changes */
 	skip_xact_finish_lsn = InvalidXLogRecPtr;
@@ -3931,7 +6139,7 @@ clear_subscription_skip_lsn(XLogRecPtr finish_lsn)
 	XLogRecPtr	myskiplsn = MySubscription->skiplsn;
 	bool		started_tx = false;
 
-	if (likely(XLogRecPtrIsInvalid(myskiplsn)))
+	if (likely(!XLogRecPtrIsValid(myskiplsn)) || am_parallel_apply_worker())
 		return;
 
 	if (!IsTransactionState())
@@ -3939,6 +6147,12 @@ clear_subscription_skip_lsn(XLogRecPtr finish_lsn)
 		StartTransactionCommand();
 		started_tx = true;
 	}
+
+	/*
+	 * Updating pg_subscription might involve TOAST table access, so ensure we
+	 * have a valid snapshot.
+	 */
+	PushActiveSnapshot(GetTransactionSnapshot());
 
 	/*
 	 * Protect subskiplsn of pg_subscription from being concurrently updated
@@ -3990,7 +6204,7 @@ clear_subscription_skip_lsn(XLogRecPtr finish_lsn)
 		if (myskiplsn != finish_lsn)
 			ereport(WARNING,
 					errmsg("skip-LSN of subscription \"%s\" cleared", MySubscription->name),
-					errdetail("Remote transaction's finish WAL location (LSN) %X/%X did not match skip-LSN %X/%X.",
+					errdetail("Remote transaction's finish WAL location (LSN) %X/%08X did not match skip-LSN %X/%08X.",
 							  LSN_FORMAT_ARGS(finish_lsn),
 							  LSN_FORMAT_ARGS(myskiplsn)));
 	}
@@ -3998,12 +6212,14 @@ clear_subscription_skip_lsn(XLogRecPtr finish_lsn)
 	heap_freetuple(tup);
 	table_close(rel, NoLock);
 
+	PopActiveSnapshot();
+
 	if (started_tx)
 		CommitTransactionCommand();
 }
 
 /* Error callback to give more context info about the change being applied */
-static void
+void
 apply_error_callback(void *arg)
 {
 	ApplyErrorCallbackArg *errarg = &apply_error_callback_arg;
@@ -4019,35 +6235,59 @@ apply_error_callback(void *arg)
 			errcontext("processing remote data for replication origin \"%s\" during message type \"%s\"",
 					   errarg->origin_name,
 					   logicalrep_message_type(errarg->command));
-		else if (XLogRecPtrIsInvalid(errarg->finish_lsn))
+		else if (!XLogRecPtrIsValid(errarg->finish_lsn))
 			errcontext("processing remote data for replication origin \"%s\" during message type \"%s\" in transaction %u",
 					   errarg->origin_name,
 					   logicalrep_message_type(errarg->command),
 					   errarg->remote_xid);
 		else
-			errcontext("processing remote data for replication origin \"%s\" during message type \"%s\" in transaction %u, finished at %X/%X",
+			errcontext("processing remote data for replication origin \"%s\" during message type \"%s\" in transaction %u, finished at %X/%08X",
 					   errarg->origin_name,
 					   logicalrep_message_type(errarg->command),
 					   errarg->remote_xid,
 					   LSN_FORMAT_ARGS(errarg->finish_lsn));
 	}
-	else if (errarg->remote_attnum < 0)
-		errcontext("processing remote data for replication origin \"%s\" during message type \"%s\" for replication target relation \"%s.%s\" in transaction %u, finished at %X/%X",
-				   errarg->origin_name,
-				   logicalrep_message_type(errarg->command),
-				   errarg->rel->remoterel.nspname,
-				   errarg->rel->remoterel.relname,
-				   errarg->remote_xid,
-				   LSN_FORMAT_ARGS(errarg->finish_lsn));
 	else
-		errcontext("processing remote data for replication origin \"%s\" during message type \"%s\" for replication target relation \"%s.%s\" column \"%s\" in transaction %u, finished at %X/%X",
-				   errarg->origin_name,
-				   logicalrep_message_type(errarg->command),
-				   errarg->rel->remoterel.nspname,
-				   errarg->rel->remoterel.relname,
-				   errarg->rel->remoterel.attnames[errarg->remote_attnum],
-				   errarg->remote_xid,
-				   LSN_FORMAT_ARGS(errarg->finish_lsn));
+	{
+		if (errarg->remote_attnum < 0)
+		{
+			if (!XLogRecPtrIsValid(errarg->finish_lsn))
+				errcontext("processing remote data for replication origin \"%s\" during message type \"%s\" for replication target relation \"%s.%s\" in transaction %u",
+						   errarg->origin_name,
+						   logicalrep_message_type(errarg->command),
+						   errarg->rel->remoterel.nspname,
+						   errarg->rel->remoterel.relname,
+						   errarg->remote_xid);
+			else
+				errcontext("processing remote data for replication origin \"%s\" during message type \"%s\" for replication target relation \"%s.%s\" in transaction %u, finished at %X/%08X",
+						   errarg->origin_name,
+						   logicalrep_message_type(errarg->command),
+						   errarg->rel->remoterel.nspname,
+						   errarg->rel->remoterel.relname,
+						   errarg->remote_xid,
+						   LSN_FORMAT_ARGS(errarg->finish_lsn));
+		}
+		else
+		{
+			if (!XLogRecPtrIsValid(errarg->finish_lsn))
+				errcontext("processing remote data for replication origin \"%s\" during message type \"%s\" for replication target relation \"%s.%s\" column \"%s\" in transaction %u",
+						   errarg->origin_name,
+						   logicalrep_message_type(errarg->command),
+						   errarg->rel->remoterel.nspname,
+						   errarg->rel->remoterel.relname,
+						   errarg->rel->remoterel.attnames[errarg->remote_attnum],
+						   errarg->remote_xid);
+			else
+				errcontext("processing remote data for replication origin \"%s\" during message type \"%s\" for replication target relation \"%s.%s\" column \"%s\" in transaction %u, finished at %X/%08X",
+						   errarg->origin_name,
+						   logicalrep_message_type(errarg->command),
+						   errarg->rel->remoterel.nspname,
+						   errarg->rel->remoterel.relname,
+						   errarg->rel->remoterel.attnames[errarg->remote_attnum],
+						   errarg->remote_xid,
+						   LSN_FORMAT_ARGS(errarg->finish_lsn));
+		}
+	}
 }
 
 /* Set transaction information of apply error callback */
@@ -4066,4 +6306,115 @@ reset_apply_error_context_info(void)
 	apply_error_callback_arg.rel = NULL;
 	apply_error_callback_arg.remote_attnum = -1;
 	set_apply_error_context_xact(InvalidTransactionId, InvalidXLogRecPtr);
+}
+
+/*
+ * Request wakeup of the workers for the given subscription OID
+ * at commit of the current transaction.
+ *
+ * This is used to ensure that the workers process assorted changes
+ * as soon as possible.
+ */
+void
+LogicalRepWorkersWakeupAtCommit(Oid subid)
+{
+	MemoryContext oldcxt;
+
+	oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+	on_commit_wakeup_workers_subids =
+		list_append_unique_oid(on_commit_wakeup_workers_subids, subid);
+	MemoryContextSwitchTo(oldcxt);
+}
+
+/*
+ * Wake up the workers of any subscriptions that were changed in this xact.
+ */
+void
+AtEOXact_LogicalRepWorkers(bool isCommit)
+{
+	if (isCommit && on_commit_wakeup_workers_subids != NIL)
+	{
+		ListCell   *lc;
+
+		LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
+		foreach(lc, on_commit_wakeup_workers_subids)
+		{
+			Oid			subid = lfirst_oid(lc);
+			List	   *workers;
+			ListCell   *lc2;
+
+			workers = logicalrep_workers_find(subid, true, false);
+			foreach(lc2, workers)
+			{
+				LogicalRepWorker *worker = (LogicalRepWorker *) lfirst(lc2);
+
+				logicalrep_worker_wakeup_ptr(worker);
+			}
+		}
+		LWLockRelease(LogicalRepWorkerLock);
+	}
+
+	/* The List storage will be reclaimed automatically in xact cleanup. */
+	on_commit_wakeup_workers_subids = NIL;
+}
+
+/*
+ * Allocate the origin name in long-lived context for error context message.
+ */
+void
+set_apply_error_context_origin(char *originname)
+{
+	apply_error_callback_arg.origin_name = MemoryContextStrdup(ApplyContext,
+															   originname);
+}
+
+/*
+ * Return the action to be taken for the given transaction. See
+ * TransApplyAction for information on each of the actions.
+ *
+ * *winfo is assigned to the destination parallel worker info when the leader
+ * apply worker has to pass all the transaction's changes to the parallel
+ * apply worker.
+ */
+static TransApplyAction
+get_transaction_apply_action(TransactionId xid, ParallelApplyWorkerInfo **winfo)
+{
+	*winfo = NULL;
+
+	if (am_parallel_apply_worker())
+	{
+		return TRANS_PARALLEL_APPLY;
+	}
+
+	/*
+	 * If we are processing this transaction using a parallel apply worker
+	 * then either we send the changes to the parallel worker or if the worker
+	 * is busy then serialize the changes to the file which will later be
+	 * processed by the parallel worker.
+	 */
+	*winfo = pa_find_worker(xid);
+
+	if (*winfo && (*winfo)->serialize_changes)
+	{
+		return TRANS_LEADER_PARTIAL_SERIALIZE;
+	}
+	else if (*winfo)
+	{
+		return TRANS_LEADER_SEND_TO_PARALLEL;
+	}
+
+	/*
+	 * If there is no parallel worker involved to process this transaction
+	 * then we either directly apply the change or serialize it to a file
+	 * which will later be applied when the transaction finish message is
+	 * processed.
+	 */
+	else if (in_streamed_transaction)
+	{
+		return TRANS_LEADER_SERIALIZE;
+	}
+	else
+	{
+		return TRANS_LEADER_APPLY;
+	}
 }

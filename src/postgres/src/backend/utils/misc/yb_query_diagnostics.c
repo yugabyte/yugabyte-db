@@ -39,6 +39,8 @@
 #include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
 #include "commands/explain.h"
+#include "commands/explain_format.h"
+#include "commands/explain_state.h"
 #include "commands/tablespace.h"
 #include "common/fe_memutils.h"
 #include "common/file_perm.h"
@@ -52,8 +54,11 @@
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
+#include "utils/wait_event.h"
+#include "yb_ash.h"
 #include "utils/fmgroids.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
@@ -177,7 +182,7 @@ static YbDatabaseConnectionWorkerInfo *database_connection_worker_info = NULL;
 static bool *bg_worker_should_be_active = NULL;
 
 static void YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query,
-												  JumbleState *jstate);
+												  const JumbleState *jstate);
 static void YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc);
 
@@ -196,8 +201,8 @@ static void AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *ent
 static inline TimestampTz BundleEndTime(const YbQueryDiagnosticsEntry *entry);
 static int	YbQueryDiagnosticsBundlesShmemSize(void);
 static Datum CreateJsonb(const YbQueryDiagnosticsParams *params);
-static void CreateJsonbInt(JsonbParseState *state, char *key, int64 value);
-static void CreateJsonbBool(JsonbParseState *state, char *key, bool value);
+static void CreateJsonbInt(JsonbInState *state, char *key, int64 value);
+static void CreateJsonbBool(JsonbInState *state, char *key, bool value);
 static void InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata,
 								  YbQueryDiagnosticsStatusType status, const char *description);
 static void OutputBundle(const YbQueryDiagnosticsMetadata metadata, const char *description,
@@ -318,7 +323,6 @@ YbQueryDiagnosticsShmemInit(void)
 
 	bundles_in_progress = ShmemInitHash("YbQueryDiagnostics shared hash table",
 										max_bundles_in_progress,
-										max_bundles_in_progress,
 										&ctl,
 										HASH_ELEM | HASH_BLOBS);
 
@@ -398,7 +402,7 @@ InsertBundlesIntoView(const YbQueryDiagnosticsMetadata *metadata,
 }
 
 static void
-CreateJsonbInt(JsonbParseState *state, char *key, int64 value)
+CreateJsonbInt(JsonbInState *state, char *key, int64 value)
 {
 	JsonbValue	json_key;
 	JsonbValue	json_value;
@@ -410,12 +414,12 @@ CreateJsonbInt(JsonbParseState *state, char *key, int64 value)
 	json_value.type = jbvNumeric;
 	json_value.val.numeric = DatumGetNumeric(DirectFunctionCall1(int8_numeric, value));
 
-	pushJsonbValue(&state, WJB_KEY, &json_key);
-	pushJsonbValue(&state, WJB_VALUE, &json_value);
+	pushJsonbValue(state, WJB_KEY, &json_key);
+	pushJsonbValue(state, WJB_VALUE, &json_value);
 }
 
 static void
-CreateJsonbBool(JsonbParseState *state, char *key, bool value)
+CreateJsonbBool(JsonbInState *state, char *key, bool value)
 {
 	JsonbValue	json_key;
 	JsonbValue	json_value;
@@ -427,8 +431,8 @@ CreateJsonbBool(JsonbParseState *state, char *key, bool value)
 	json_value.type = jbvBool;
 	json_value.val.boolean = value;
 
-	pushJsonbValue(&state, WJB_KEY, &json_key);
-	pushJsonbValue(&state, WJB_VALUE, &json_value);
+	pushJsonbValue(state, WJB_KEY, &json_key);
+	pushJsonbValue(state, WJB_VALUE, &json_value);
 }
 
 /*
@@ -439,19 +443,20 @@ CreateJsonbBool(JsonbParseState *state, char *key, bool value)
 static Datum
 CreateJsonb(const YbQueryDiagnosticsParams *params)
 {
-	JsonbParseState *state = NULL;
+	JsonbInState state = {0};
 	JsonbValue *result;
 
 	Assert(params != NULL);
 
 	pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 
-	CreateJsonbInt(state, "explain_sample_rate", params->explain_sample_rate);
-	CreateJsonbBool(state, "explain_analyze", params->explain_analyze);
-	CreateJsonbBool(state, "explain_dist", params->explain_dist);
-	CreateJsonbBool(state, "explain_debug", params->explain_debug);
+	CreateJsonbInt(&state, "explain_sample_rate", params->explain_sample_rate);
+	CreateJsonbBool(&state, "explain_analyze", params->explain_analyze);
+	CreateJsonbBool(&state, "explain_dist", params->explain_dist);
+	CreateJsonbBool(&state, "explain_debug", params->explain_debug);
 
-	result = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	result = state.result;
 
 	PG_RETURN_POINTER(JsonbValueToJsonb(result));
 }
@@ -579,7 +584,6 @@ yb_get_query_diagnostics_status(PG_FUNCTION_ARGS)
 	ProcessCompletedBundles(tupstore, tupdesc);
 
 	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
 }
@@ -871,7 +875,7 @@ FormatConstants(StringInfo constants, const char *query, int constants_count,
 }
 
 static void
-YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
+YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query, const JumbleState *jstate)
 {
 	if (prev_post_parse_analyze_hook)
 		prev_post_parse_analyze_hook(pstate, query, jstate);
@@ -897,7 +901,7 @@ YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query, JumbleSt
 			 * Get constants' lengths (Postgres infrastructure only gives us locations).
 			 * Note this also ensures the items are sorted by location.
 			 */
-			yb_qd_fill_in_constant_lengths(jstate, pstate->p_sourcetext, query_location);
+			yb_qd_fill_in_constant_lengths((JumbleState *) jstate, pstate->p_sourcetext, query_location);
 
 			query_constants.stmt_location = query_location;
 			query_constants.count = Min(jstate->clocations_count, YB_QD_MAX_CONSTANTS);
@@ -965,8 +969,12 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 		 * Make sure stats accumulation is done.  (Note: it's okay if several
 		 * levels of hook all do this.)
 		 */
+		/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists */
+#if 0
 		InstrEndLoop(queryDesc->totaltime);
 		double		totaltime_ms = queryDesc->totaltime->total * 1000.0;
+#endif
+		double		totaltime_ms = 0;
 
 		if (entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms &&
 			(queryDesc->params || query_constants.count > 0))
@@ -1102,8 +1110,11 @@ YbQueryDiagnosticsAccumulatePgss(int64 query_id, YbQdPgssStoreKind kind,
 		entry->pgss.counters.local_blks_written += bufusage->local_blks_written;
 		entry->pgss.counters.temp_blks_read += bufusage->temp_blks_read;
 		entry->pgss.counters.temp_blks_written += bufusage->temp_blks_written;
+		/* YB_TODO_PG19MERGE: blk_read_time, blk_write_time no longer exists in BufferUsage */
+#if 0
 		entry->pgss.counters.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
 		entry->pgss.counters.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
+#endif
 		entry->pgss.counters.wal_records += walusage->wal_records;
 		entry->pgss.counters.wal_fpi += walusage->wal_fpi;
 		entry->pgss.counters.wal_bytes += walusage->wal_bytes;
@@ -1159,16 +1170,16 @@ PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const 
 			 "temp_blk_read_time,temp_blk_write_time,wal_records,wal_fpi,wal_bytes,"
 			 "jit_functions,jit_generation_time,jit_inlining_count,jit_inlining_time,"
 			 "jit_optimization_count,jit_optimization_time,jit_emission_count,jit_emission_time\n"
-			 "%ld,\"%s\",%ld,%lf,%lf,%lf,%lf,"
+			 "%lld,\"%s\",%lld,%lf,%lf,%lf,%lf,"
 			 "%lf,%lf,%lf,%lf,%lf,%lf,"
-			 "%ld,%ld,%ld,%ld,%ld,"
-			 "%ld,%ld,%ld,%ld,"
-			 "%ld,%ld,%lf,%lf,"
-			 "%lf,%lf,%ld,%ld,%ld,"
-			 "%ld,%lf,%ld,%lf,"
-			 "%ld,%lf,%ld,%lf\n",
-			 query_id, query_str,
-			 pgss.counters.calls[YB_QD_PGSS_EXEC],
+			 "%lld,%lld,%lld,%lld,%lld,"
+			 "%lld,%lld,%lld,%lld,"
+			 "%lld,%lld,%lf,%lf,"
+			 "%lf,%lf,%lld,%lld,%llu,"
+			 "%lld,%lf,%lld,%lf,"
+			 "%lld,%lf,%lld,%lf\n",
+			 (long long) query_id, query_str,
+			 (long long) pgss.counters.calls[YB_QD_PGSS_EXEC],
 			 pgss.counters.total_time[YB_QD_PGSS_PLAN],
 			 pgss.counters.total_time[YB_QD_PGSS_EXEC],
 			 pgss.counters.min_time[YB_QD_PGSS_PLAN],
@@ -1181,31 +1192,31 @@ PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const 
 										pgss.counters.sum_var_time[YB_QD_PGSS_PLAN]),
 			 CalculateStandardDeviation(pgss.counters.calls[YB_QD_PGSS_EXEC],
 										pgss.counters.sum_var_time[YB_QD_PGSS_EXEC]),
-			 pgss.counters.rows,
-			 pgss.counters.shared_blks_hit,
-			 pgss.counters.shared_blks_read,
-			 pgss.counters.shared_blks_dirtied,
-			 pgss.counters.shared_blks_written,
-			 pgss.counters.local_blks_hit,
-			 pgss.counters.local_blks_read,
-			 pgss.counters.local_blks_dirtied,
-			 pgss.counters.local_blks_written,
-			 pgss.counters.temp_blks_read,
-			 pgss.counters.temp_blks_written,
+			 (long long) pgss.counters.rows,
+			 (long long) pgss.counters.shared_blks_hit,
+			 (long long) pgss.counters.shared_blks_read,
+			 (long long) pgss.counters.shared_blks_dirtied,
+			 (long long) pgss.counters.shared_blks_written,
+			 (long long) pgss.counters.local_blks_hit,
+			 (long long) pgss.counters.local_blks_read,
+			 (long long) pgss.counters.local_blks_dirtied,
+			 (long long) pgss.counters.local_blks_written,
+			 (long long) pgss.counters.temp_blks_read,
+			 (long long) pgss.counters.temp_blks_written,
 			 pgss.counters.blk_read_time,
 			 pgss.counters.blk_write_time,
 			 pgss.counters.temp_blk_read_time,
 			 pgss.counters.temp_blk_write_time,
-			 pgss.counters.wal_records,
-			 pgss.counters.wal_fpi,
-			 pgss.counters.wal_bytes,
-			 pgss.counters.jit_functions,
+			 (long long) pgss.counters.wal_records,
+			 (long long) pgss.counters.wal_fpi,
+			 (unsigned long long) pgss.counters.wal_bytes,
+			 (long long) pgss.counters.jit_functions,
 			 pgss.counters.jit_generation_time,
-			 pgss.counters.jit_inlining_count,
+			 (long long) pgss.counters.jit_inlining_count,
 			 pgss.counters.jit_inlining_time,
-			 pgss.counters.jit_optimization_count,
+			 (long long) pgss.counters.jit_optimization_count,
 			 pgss.counters.jit_optimization_time,
-			 pgss.counters.jit_emission_count,
+			 (long long) pgss.counters.jit_emission_count,
 			 pgss.counters.jit_emission_time);
 }
 
@@ -1367,8 +1378,8 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	if (found)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("query diagnostics for %ld is already being generated",
-						metadata->params.query_id)));
+				 errmsg("query diagnostics for " INT64_FORMAT " is already being generated",
+						(int64) metadata->params.query_id)));
 }
 
 /*
@@ -2535,7 +2546,7 @@ YbQueryDiagnosticsMain(Datum main_arg)
 		if (rc & WL_POSTMASTER_DEATH)
 			proc_exit(1);
 
-		HandleMainLoopInterrupts();
+		ProcessMainLoopInterrupts();
 
 		/* Check for expired entries within the shared hash table */
 		FlushAndCleanBundles();
@@ -3056,7 +3067,7 @@ yb_cancel_query_diagnostics(PG_FUNCTION_ARGS)
 		LWLockRelease(bundles_in_progress_lock);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("query diagnostics is not enabled for query_id %ld", query_id)));
+				 errmsg("query diagnostics is not enabled for query_id " INT64_FORMAT, (int64) query_id)));
 	}
 
 	PG_RETURN_VOID();

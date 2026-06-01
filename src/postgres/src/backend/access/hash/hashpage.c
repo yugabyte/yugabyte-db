@@ -3,7 +3,7 @@
  * hashpage.c
  *	  Hash table page management code for the Postgres hash access method
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -33,9 +33,9 @@
 #include "access/xloginsert.h"
 #include "miscadmin.h"
 #include "port/pg_bitutils.h"
-#include "storage/lmgr.h"
 #include "storage/predicate.h"
 #include "storage/smgr.h"
+#include "utils/rel.h"
 
 static bool _hash_alloc_buckets(Relation rel, BlockNumber firstblock,
 								uint32 nblocks);
@@ -206,14 +206,14 @@ _hash_getnewbuf(Relation rel, BlockNumber blkno, ForkNumber forkNum)
 		elog(ERROR, "access to noncontiguous page in hash index \"%s\"",
 			 RelationGetRelationName(rel));
 
-	/* smgr insists we use P_NEW to extend the relation */
+	/* smgr insists we explicitly extend the relation */
 	if (blkno == nblocks)
 	{
-		buf = ReadBufferExtended(rel, forkNum, P_NEW, RBM_NORMAL, NULL);
+		buf = ExtendBufferedRel(BMR_REL(rel), forkNum, NULL,
+								EB_LOCK_FIRST | EB_SKIP_EXTENSION_LOCK);
 		if (BufferGetBlockNumber(buf) != blkno)
 			elog(ERROR, "unexpected hash relation size: %u, should be %u",
 				 BufferGetBlockNumber(buf), blkno);
-		LockBuffer(buf, HASH_WRITE);
 	}
 	else
 	{
@@ -394,7 +394,7 @@ _hash_init(Relation rel, double num_tuples, ForkNumber forkNum)
 		xlrec.ffactor = metap->hashm_ffactor;
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, SizeOfHashInitMetaPage);
+		XLogRegisterData(&xlrec, SizeOfHashInitMetaPage);
 		XLogRegisterBuffer(0, metabuf, REGBUF_WILL_INIT | REGBUF_STANDARD);
 
 		recptr = XLogInsert(RM_HASH_ID, XLOG_HASH_INIT_META_PAGE);
@@ -428,7 +428,7 @@ _hash_init(Relation rel, double num_tuples, ForkNumber forkNum)
 		MarkBufferDirty(buf);
 
 		if (use_wal)
-			log_newpage(&rel->rd_node,
+			log_newpage(&rel->rd_locator,
 						forkNum,
 						blkno,
 						BufferGetPage(buf),
@@ -468,7 +468,7 @@ _hash_init(Relation rel, double num_tuples, ForkNumber forkNum)
 		xlrec.bmsize = metap->hashm_bmsize;
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, SizeOfHashInitBitmapPage);
+		XLogRegisterData(&xlrec, SizeOfHashInitBitmapPage);
 		XLogRegisterBuffer(0, bitmapbuf, REGBUF_WILL_INIT);
 
 		/*
@@ -630,6 +630,7 @@ _hash_expandtable(Relation rel, Buffer metabuf)
 	uint32		lowmask;
 	bool		metap_update_masks = false;
 	bool		metap_update_splitpoint = false;
+	XLogRecPtr	recptr;
 
 restart_expand:
 
@@ -900,7 +901,6 @@ restart_expand:
 	if (RelationNeedsWAL(rel))
 	{
 		xl_hash_split_allocate_page xlrec;
-		XLogRecPtr	recptr;
 
 		xlrec.new_bucket = maxbucket;
 		xlrec.old_bucket_flag = oopaque->hasho_flag;
@@ -916,28 +916,30 @@ restart_expand:
 		if (metap_update_masks)
 		{
 			xlrec.flags |= XLH_SPLIT_META_UPDATE_MASKS;
-			XLogRegisterBufData(2, (char *) &metap->hashm_lowmask, sizeof(uint32));
-			XLogRegisterBufData(2, (char *) &metap->hashm_highmask, sizeof(uint32));
+			XLogRegisterBufData(2, &metap->hashm_lowmask, sizeof(uint32));
+			XLogRegisterBufData(2, &metap->hashm_highmask, sizeof(uint32));
 		}
 
 		if (metap_update_splitpoint)
 		{
 			xlrec.flags |= XLH_SPLIT_META_UPDATE_SPLITPOINT;
-			XLogRegisterBufData(2, (char *) &metap->hashm_ovflpoint,
+			XLogRegisterBufData(2, &metap->hashm_ovflpoint,
 								sizeof(uint32));
 			XLogRegisterBufData(2,
-								(char *) &metap->hashm_spares[metap->hashm_ovflpoint],
+								&metap->hashm_spares[metap->hashm_ovflpoint],
 								sizeof(uint32));
 		}
 
-		XLogRegisterData((char *) &xlrec, SizeOfHashSplitAllocPage);
+		XLogRegisterData(&xlrec, SizeOfHashSplitAllocPage);
 
 		recptr = XLogInsert(RM_HASH_ID, XLOG_HASH_SPLIT_ALLOCATE_PAGE);
-
-		PageSetLSN(BufferGetPage(buf_oblkno), recptr);
-		PageSetLSN(BufferGetPage(buf_nblkno), recptr);
-		PageSetLSN(BufferGetPage(metabuf), recptr);
 	}
+	else
+		recptr = XLogGetFakeLSN(rel);
+
+	PageSetLSN(BufferGetPage(buf_oblkno), recptr);
+	PageSetLSN(BufferGetPage(buf_nblkno), recptr);
+	PageSetLSN(BufferGetPage(metabuf), recptr);
 
 	END_CRIT_SECTION();
 
@@ -992,7 +994,7 @@ static bool
 _hash_alloc_buckets(Relation rel, BlockNumber firstblock, uint32 nblocks)
 {
 	BlockNumber lastblock;
-	PGAlignedBlock zerobuf;
+	PGIOAlignedBlock zerobuf;
 	Page		page;
 	HashPageOpaque ovflopaque;
 
@@ -1023,13 +1025,13 @@ _hash_alloc_buckets(Relation rel, BlockNumber firstblock, uint32 nblocks)
 	ovflopaque->hasho_page_id = HASHO_PAGE_ID;
 
 	if (RelationNeedsWAL(rel))
-		log_newpage(&rel->rd_node,
+		log_newpage(&rel->rd_locator,
 					MAIN_FORKNUM,
 					lastblock,
 					zerobuf.data,
 					true);
 
-	PageSetChecksumInplace(page, lastblock);
+	PageSetChecksum(page, lastblock);
 	smgrextend(RelationGetSmgr(rel), MAIN_FORKNUM, lastblock, zerobuf.data,
 			   false);
 
@@ -1092,6 +1094,7 @@ _hash_splitbucket(Relation rel,
 	Size		all_tups_size = 0;
 	int			i;
 	uint16		nitups = 0;
+	XLogRecPtr	recptr;
 
 	bucket_obuf = obuf;
 	opage = BufferGetPage(obuf);
@@ -1296,7 +1299,6 @@ _hash_splitbucket(Relation rel,
 
 	if (RelationNeedsWAL(rel))
 	{
-		XLogRecPtr	recptr;
 		xl_hash_split_complete xlrec;
 
 		xlrec.old_bucket_flag = oopaque->hasho_flag;
@@ -1304,16 +1306,18 @@ _hash_splitbucket(Relation rel,
 
 		XLogBeginInsert();
 
-		XLogRegisterData((char *) &xlrec, SizeOfHashSplitComplete);
+		XLogRegisterData(&xlrec, SizeOfHashSplitComplete);
 
 		XLogRegisterBuffer(0, bucket_obuf, REGBUF_STANDARD);
 		XLogRegisterBuffer(1, bucket_nbuf, REGBUF_STANDARD);
 
 		recptr = XLogInsert(RM_HASH_ID, XLOG_HASH_SPLIT_COMPLETE);
-
-		PageSetLSN(BufferGetPage(bucket_obuf), recptr);
-		PageSetLSN(BufferGetPage(bucket_nbuf), recptr);
 	}
+	else
+		recptr = XLogGetFakeLSN(rel);
+
+	PageSetLSN(BufferGetPage(bucket_obuf), recptr);
+	PageSetLSN(BufferGetPage(bucket_nbuf), recptr);
 
 	END_CRIT_SECTION();
 

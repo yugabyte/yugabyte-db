@@ -6,10 +6,13 @@ setup
     INSERT INTO test_stat_tab(key, value) VALUES('k0', 1);
     INSERT INTO test_stat_oid(name, oid) VALUES('test_stat_tab', 'test_stat_tab'::regclass);
 
-    CREATE FUNCTION test_stat_func() RETURNS VOID LANGUAGE plpgsql AS $$BEGIN END;$$;
+    -- include 10us sleep to ensure that runtime measures as more than zero
+    CREATE FUNCTION test_stat_func() RETURNS VOID LANGUAGE plpgsql AS
+      $$BEGIN PERFORM pg_sleep(10e-6); END;$$;
     INSERT INTO test_stat_oid(name, oid) VALUES('test_stat_func', 'test_stat_func'::regproc);
 
-    CREATE FUNCTION test_stat_func2() RETURNS VOID LANGUAGE plpgsql AS $$BEGIN END;$$;
+    CREATE FUNCTION test_stat_func2() RETURNS VOID LANGUAGE plpgsql AS
+      $$BEGIN PERFORM pg_sleep(10e-6); END;$$;
     INSERT INTO test_stat_oid(name, oid) VALUES('test_stat_func2', 'test_stat_func2'::regproc);
 
     CREATE TABLE test_slru_stats(slru TEXT, stat TEXT, value INT);
@@ -55,6 +58,10 @@ step s1_track_funcs_none { SET track_functions = 'none'; }
 step s1_func_call { SELECT test_stat_func(); }
 step s1_func_drop { DROP FUNCTION test_stat_func(); }
 step s1_func_stats_reset { SELECT pg_stat_reset_single_function_counters('test_stat_func'::regproc); }
+step s1_func_stats_reset_check {
+    SELECT pg_stat_get_function_stat_reset_time('test_stat_func'::regproc)
+        IS NOT NULL AS has_stats_reset;
+}
 step s1_func_stats_reset_nonexistent { SELECT pg_stat_reset_single_function_counters(12000); }
 step s1_reset { SELECT pg_stat_reset(); }
 step s1_func_stats {
@@ -107,8 +114,8 @@ step s1_table_stats {
 
 # SLRU stats steps
 step s1_slru_save_stats {
-	INSERT INTO test_slru_stats VALUES('Notify', 'blks_zeroed',
-    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'Notify'));
+	INSERT INTO test_slru_stats VALUES('notify', 'blks_zeroed',
+    (SELECT blks_zeroed FROM pg_stat_slru WHERE name = 'notify'));
 }
 step s1_listen { LISTEN stats_test_nothing; }
 step s1_big_notify { SELECT pg_notify('stats_test_use',
@@ -232,9 +239,9 @@ permutation
   s1_ff s2_ff
   s1_func_stats
   s2_func_call s2_func_call2 s2_ff
-  s1_func_stats s1_func_stats2 s1_func_stats
+  s1_func_stats s1_func_stats2 s1_func_stats s1_func_stats_reset_check
   s1_func_stats_reset
-  s1_func_stats s1_func_stats2 s1_func_stats
+  s1_func_stats s1_func_stats2 s1_func_stats s1_func_stats_reset_check
 
 # test pg_stat_reset_single_function_counters of non-existing function
 permutation
@@ -543,10 +550,10 @@ permutation
   s1_table_insert
   s1_begin
   s1_table_update_k1 # should *not* be counted, different rel
-  s1_table_update_k1 # dito
+  s1_table_update_k1 # ditto
   s1_table_truncate
   s1_table_insert_k1 # should be counted
-  s1_table_update_k1 # dito
+  s1_table_update_k1 # ditto
   s1_prepare_a
   s1_commit_prepared_a
   s1_ff
@@ -557,10 +564,10 @@ permutation
   s1_table_insert
   s1_begin
   s1_table_update_k1 # should *not* be counted, different rel
-  s1_table_update_k1 # dito
+  s1_table_update_k1 # ditto
   s1_table_truncate
   s1_table_insert_k1 # should be counted
-  s1_table_update_k1 # dito
+  s1_table_update_k1 # ditto
   s1_prepare_a
   s1_ff # flush out non-transactional stats, might happen anyway
   s2_commit_prepared_a
@@ -572,10 +579,10 @@ permutation
   s1_table_insert
   s1_begin
   s1_table_update_k1 # should be counted
-  s1_table_update_k1 # dito
+  s1_table_update_k1 # ditto
   s1_table_truncate
   s1_table_insert_k1 # should *not* be counted, different rel
-  s1_table_update_k1 # dito
+  s1_table_update_k1 # ditto
   s1_prepare_a
   s1_rollback_prepared_a
   s1_ff
@@ -586,10 +593,10 @@ permutation
   s1_table_insert
   s1_begin
   s1_table_update_k1 # should be counted
-  s1_table_update_k1 # dito
+  s1_table_update_k1 # ditto
   s1_table_truncate
   s1_table_insert_k1 # should *not* be counted, different rel
-  s1_table_update_k1 # dito
+  s1_table_update_k1 # ditto
   s1_prepare_a
   s2_rollback_prepared_a
   s1_ff s2_ff

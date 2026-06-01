@@ -8,7 +8,7 @@
  *
  * A TupleQueueReader reads tuples from a shm_mq and returns the tuples.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -120,7 +120,7 @@ CreateTupleQueueDestReceiver(shm_mq_handle *handle)
 {
 	TQueueDestReceiver *self;
 
-	self = (TQueueDestReceiver *) palloc0(sizeof(TQueueDestReceiver));
+	self = palloc0_object(TQueueDestReceiver);
 
 	self->pub.receiveSlot = tqueueReceiveSlot;
 	self->pub.rStartup = tqueueStartupReceiver;
@@ -138,7 +138,7 @@ CreateTupleQueueDestReceiver(shm_mq_handle *handle)
 TupleQueueReader *
 CreateTupleQueueReader(shm_mq_handle *handle)
 {
-	TupleQueueReader *reader = palloc0(sizeof(TupleQueueReader));
+	TupleQueueReader *reader = palloc0_object(TupleQueueReader);
 
 	reader->queue = handle;
 

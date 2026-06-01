@@ -310,7 +310,5 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 			continue;
 	}
 
-	tuplestore_donestoring(tupstore);
-
 	return (Datum) 0;
 }

@@ -3,7 +3,7 @@
  * xid.c
  *	  POSTGRES transaction identifier and command identifier datatypes.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -19,6 +19,8 @@
 #include "access/multixact.h"
 #include "access/transam.h"
 #include "access/xact.h"
+#include "common/hashfn.h"
+#include "common/int.h"
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
 #include "utils/xid8.h"
@@ -31,8 +33,10 @@ Datum
 xidin(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
+	TransactionId result;
 
-	PG_RETURN_TRANSACTIONID((TransactionId) strtoul(str, NULL, 0));
+	result = uint32in_subr(str, NULL, "xid", fcinfo->context);
+	PG_RETURN_TRANSACTIONID(result);
 }
 
 Datum
@@ -41,7 +45,7 @@ xidout(PG_FUNCTION_ARGS)
 	TransactionId transactionId = PG_GETARG_TRANSACTIONID(0);
 	char	   *result = (char *) palloc(16);
 
-	snprintf(result, 16, "%lu", (unsigned long) transactionId);
+	snprintf(result, 16, "%u", transactionId);
 	PG_RETURN_CSTRING(result);
 }
 
@@ -94,6 +98,18 @@ xidneq(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(!TransactionIdEquals(xid1, xid2));
 }
 
+Datum
+hashxid(PG_FUNCTION_ARGS)
+{
+	return hash_uint32(PG_GETARG_TRANSACTIONID(0));
+}
+
+Datum
+hashxidextended(PG_FUNCTION_ARGS)
+{
+	return hash_uint32_extended(PG_GETARG_TRANSACTIONID(0), PG_GETARG_INT64(1));
+}
+
 /*
  *		xid_age			- compute age of an XID (relative to latest stable xid)
  */
@@ -138,11 +154,7 @@ xidComparator(const void *arg1, const void *arg2)
 	TransactionId xid1 = *(const TransactionId *) arg1;
 	TransactionId xid2 = *(const TransactionId *) arg2;
 
-	if (xid1 > xid2)
-		return 1;
-	if (xid1 < xid2)
-		return -1;
-	return 0;
+	return pg_cmp_u32(xid1, xid2);
 }
 
 /*
@@ -183,8 +195,10 @@ Datum
 xid8in(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
+	uint64		result;
 
-	PG_RETURN_FULLTRANSACTIONID(FullTransactionIdFromU64(strtou64(str, NULL, 0)));
+	result = uint64in_subr(str, NULL, "xid8", fcinfo->context);
+	PG_RETURN_FULLTRANSACTIONID(FullTransactionIdFromU64(result));
 }
 
 Datum
@@ -287,6 +301,18 @@ xid8cmp(PG_FUNCTION_ARGS)
 }
 
 Datum
+hashxid8(PG_FUNCTION_ARGS)
+{
+	return hashint8(fcinfo);
+}
+
+Datum
+hashxid8extended(PG_FUNCTION_ARGS)
+{
+	return hashint8extended(fcinfo);
+}
+
+Datum
 xid8_larger(PG_FUNCTION_ARGS)
 {
 	FullTransactionId fxid1 = PG_GETARG_FULLTRANSACTIONID(0);
@@ -321,8 +347,10 @@ Datum
 cidin(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
+	CommandId	result;
 
-	PG_RETURN_COMMANDID((CommandId) strtoul(str, NULL, 0));
+	result = uint32in_subr(str, NULL, "cid", fcinfo->context);
+	PG_RETURN_COMMANDID(result);
 }
 
 /*
@@ -334,7 +362,7 @@ cidout(PG_FUNCTION_ARGS)
 	CommandId	c = PG_GETARG_COMMANDID(0);
 	char	   *result = (char *) palloc(16);
 
-	snprintf(result, 16, "%lu", (unsigned long) c);
+	snprintf(result, 16, "%u", c);
 	PG_RETURN_CSTRING(result);
 }
 
@@ -370,4 +398,16 @@ cideq(PG_FUNCTION_ARGS)
 	CommandId	arg2 = PG_GETARG_COMMANDID(1);
 
 	PG_RETURN_BOOL(arg1 == arg2);
+}
+
+Datum
+hashcid(PG_FUNCTION_ARGS)
+{
+	return hash_uint32(PG_GETARG_COMMANDID(0));
+}
+
+Datum
+hashcidextended(PG_FUNCTION_ARGS)
+{
+	return hash_uint32_extended(PG_GETARG_COMMANDID(0), PG_GETARG_INT64(1));
 }

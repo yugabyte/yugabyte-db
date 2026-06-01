@@ -6,6 +6,9 @@ OBJS = \
 	auto_explain.o
 PGFILEDESC = "auto_explain - logging facility for execution plans"
 
+EXTRA_INSTALL = contrib/pg_overexplain
+REGRESS = alter_reset extension_options
+
 TAP_TESTS = 1
 
 ifdef USE_PGXS

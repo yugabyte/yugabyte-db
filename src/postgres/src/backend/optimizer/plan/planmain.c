@@ -9,7 +9,7 @@
  * shorn of features like subselects, inheritance, aggregates, grouping,
  * and so on.  (Those are the things planner.c deals with.)
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,7 +22,6 @@
 
 #include "optimizer/appendinfo.h"
 #include "optimizer/clauses.h"
-#include "optimizer/inherit.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/orclauses.h"
 #include "optimizer/pathnode.h"
@@ -75,6 +74,11 @@ query_planner(PlannerInfo *root,
 	root->full_join_clauses = NIL;
 	root->join_info_list = NIL;
 	root->placeholder_list = NIL;
+	root->placeholder_array = NULL;
+	root->placeholder_array_size = 0;
+	root->agg_clause_list = NIL;
+	root->group_expr_list = NIL;
+	root->tlist_vars = NIL;
 	root->fkey_list = NIL;
 	root->initial_rels = NIL;
 
@@ -110,14 +114,17 @@ query_planner(PlannerInfo *root,
 				 * quals are parallel-restricted.  (We need not check
 				 * final_rel->reltarget because it's empty at this point.
 				 * Anything parallel-restricted in the query tlist will be
-				 * dealt with later.)  This is normally pretty silly, because
-				 * a Result-only plan would never be interesting to
-				 * parallelize.  However, if force_parallel_mode is on, then
-				 * we want to execute the Result in a parallel worker if
-				 * possible, so we must do this.
+				 * dealt with later.)  We should always do this in a subquery,
+				 * since it might be useful to use the subquery in parallel
+				 * paths in the parent level.  At top level this is normally
+				 * not worth the cycles, because a Result-only plan would
+				 * never be interesting to parallelize.  However, if
+				 * debug_parallel_query is on, then we want to execute the
+				 * Result in a parallel worker if possible, so we must check.
 				 */
 				if (root->glob->parallelModeOK &&
-					force_parallel_mode != FORCE_PARALLEL_OFF)
+					(root->query_level > 1 ||
+					 debug_parallel_query != DEBUG_PARALLEL_OFF))
 					final_rel->consider_parallel =
 						is_parallel_safe(root, parse->jointree->quals);
 
@@ -164,6 +171,9 @@ query_planner(PlannerInfo *root,
 	 * want to make RelOptInfos for them.
 	 */
 	add_base_rels_to_query(root, (Node *) parse->jointree);
+
+	/* Remove any redundant GROUP BY columns */
+	remove_useless_groupby_columns(root);
 
 	/*
 	 * Examine the targetlist and join tree, adding entries to baserel
@@ -227,6 +237,11 @@ query_planner(PlannerInfo *root,
 	reduce_unique_semijoins(root);
 
 	/*
+	 * Remove self joins on a unique column.
+	 */
+	joinlist = remove_useless_self_joins(root, joinlist);
+
+	/*
 	 * Now distribute "placeholders" to base rels as needed.  This has to be
 	 * done after join removal because removal could change whether a
 	 * placeholder is evaluable at a base rel.
@@ -252,6 +267,12 @@ query_planner(PlannerInfo *root,
 	 * restriction OR clauses from.
 	 */
 	extract_restriction_or_clauses(root);
+
+	/*
+	 * Check if eager aggregation is applicable, and if so, set up
+	 * root->agg_clause_list and root->group_expr_list.
+	 */
+	setup_eager_aggregation(root);
 
 	/*
 	 * Now expand appendrels by adding "otherrels" for their children.  We

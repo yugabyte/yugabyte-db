@@ -4,7 +4,7 @@
  *	  Checks, enables or disables page level checksums for an offline
  *	  cluster
  *
- * Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/bin/pg_checksums/pg_checksums.c
@@ -16,16 +16,16 @@
 
 #include <dirent.h>
 #include <limits.h>
-#include <time.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
-#include "access/xlog_internal.h"
 #include "common/controldata_utils.h"
-#include "common/file_perm.h"
 #include "common/file_utils.h"
 #include "common/logging.h"
+#include "common/relpath.h"
 #include "fe_utils/option_utils.h"
+#include "fe_utils/version.h"
 #include "getopt_long.h"
 #include "pg_getopt.h"
 #include "storage/bufpage.h"
@@ -44,23 +44,14 @@ static char *only_filenode = NULL;
 static bool do_sync = true;
 static bool verbose = false;
 static bool showprogress = false;
+static DataDirSyncMethod sync_method = DATA_DIR_SYNC_METHOD_FSYNC;
 
 typedef enum
 {
 	PG_MODE_CHECK,
 	PG_MODE_DISABLE,
-	PG_MODE_ENABLE
+	PG_MODE_ENABLE,
 } PgChecksumMode;
-
-/*
- * Filename components.
- *
- * XXX: fd.h is not declared here as frontend side code is not able to
- * interact with the backend-side definitions for the various fsync
- * wrappers.
- */
-#define PG_TEMP_FILES_DIR "pgsql_tmp"
-#define PG_TEMP_FILE_PREFIX "pgsql_tmp"
 
 static PgChecksumMode mode = PG_MODE_CHECK;
 
@@ -69,8 +60,8 @@ static const char *progname;
 /*
  * Progress status information.
  */
-int64		total_size = 0;
-int64		current_size = 0;
+static int64 total_size = 0;
+static int64 current_size = 0;
 static pg_time_t last_progress_report = 0;
 
 static void
@@ -87,6 +78,7 @@ usage(void)
 	printf(_("  -f, --filenode=FILENODE  check only relation with specified filenode\n"));
 	printf(_("  -N, --no-sync            do not wait for changes to be written safely to disk\n"));
 	printf(_("  -P, --progress           show progress information\n"));
+	printf(_("      --sync-method=METHOD set method for syncing files to disk\n"));
 	printf(_("  -v, --verbose            output verbose messages\n"));
 	printf(_("  -V, --version            output version information, then exit\n"));
 	printf(_("  -?, --help               show this help, then exit\n"));
@@ -150,9 +142,9 @@ progress_report(bool finished)
 	/* Calculate current percentage of size done */
 	percent = total_size ? (int) ((current_size) * 100 / total_size) : 0;
 
-	fprintf(stderr, _("%lld/%lld MB (%d%%) computed"),
-			(long long) (current_size / (1024 * 1024)),
-			(long long) (total_size / (1024 * 1024)),
+	fprintf(stderr, _("%" PRId64 "/%" PRId64 " MB (%d%%) computed"),
+			(current_size / (1024 * 1024)),
+			(total_size / (1024 * 1024)),
 			percent);
 
 	/*
@@ -183,7 +175,7 @@ skipfile(const char *fn)
 static void
 scan_file(const char *fn, int segmentno)
 {
-	PGAlignedBlock buf;
+	PGIOAlignedBlock buf;
 	PageHeader	header = (PageHeader) buf.data;
 	int			f;
 	BlockNumber blockno;
@@ -228,7 +220,7 @@ scan_file(const char *fn, int segmentno)
 		current_size += r;
 
 		/* New pages have no checksum yet */
-		if (PageIsNew(header))
+		if (PageIsNew(buf.data))
 			continue;
 
 		csum = pg_checksum_page(buf.data, blockno + segmentno * RELSEG_SIZE);
@@ -396,7 +388,7 @@ scan_directory(const char *basedir, const char *subdir, bool sizeonly)
 			 * is valid, resolving the linked locations and dive into them
 			 * directly.
 			 */
-			if (strncmp("pg_tblspc", subdir, strlen("pg_tblspc")) == 0)
+			if (strncmp(PG_TBLSPC_DIR, subdir, strlen(PG_TBLSPC_DIR)) == 0)
 			{
 				char		tblspc_path[MAXPGPATH];
 				struct stat tblspc_st;
@@ -449,6 +441,7 @@ main(int argc, char *argv[])
 		{"no-sync", no_argument, NULL, 'N'},
 		{"progress", no_argument, NULL, 'P'},
 		{"verbose", no_argument, NULL, 'v'},
+		{"sync-method", required_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -456,6 +449,8 @@ main(int argc, char *argv[])
 	int			c;
 	int			option_index;
 	bool		crc_ok;
+	uint32		major_version;
+	char	   *version_str;
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_checksums"));
@@ -475,7 +470,7 @@ main(int argc, char *argv[])
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "cD:deNPf:v", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "cdD:ef:NPv", long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
@@ -484,6 +479,9 @@ main(int argc, char *argv[])
 				break;
 			case 'd':
 				mode = PG_MODE_DISABLE;
+				break;
+			case 'D':
+				DataDir = optarg;
 				break;
 			case 'e':
 				mode = PG_MODE_ENABLE;
@@ -498,14 +496,15 @@ main(int argc, char *argv[])
 			case 'N':
 				do_sync = false;
 				break;
+			case 'P':
+				showprogress = true;
+				break;
 			case 'v':
 				verbose = true;
 				break;
-			case 'D':
-				DataDir = optarg;
-				break;
-			case 'P':
-				showprogress = true;
+			case 1:
+				if (!parse_sync_method(optarg, &sync_method))
+					exit(1);
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -547,6 +546,20 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/*
+	 * Retrieve the contents of this cluster's PG_VERSION.  We require
+	 * compatibility with the same major version as the one this tool is
+	 * compiled with.
+	 */
+	major_version = GET_PG_MAJORVERSION_NUM(get_pg_version(DataDir, &version_str));
+	if (major_version != PG_MAJORVERSION_NUM)
+	{
+		pg_log_error("data directory is of wrong version");
+		pg_log_error_detail("File \"%s\" contains \"%s\", which is not compatible with this program's version \"%s\".",
+							"PG_VERSION", version_str, PG_MAJORVERSION);
+		exit(1);
+	}
+
 	/* Read the control file and check compatibility */
 	ControlFile = get_controlfile(DataDir, &crc_ok);
 	if (!crc_ok)
@@ -572,15 +585,15 @@ main(int argc, char *argv[])
 		ControlFile->state != DB_SHUTDOWNED_IN_RECOVERY)
 		pg_fatal("cluster must be shut down");
 
-	if (ControlFile->data_checksum_version == 0 &&
+	if (ControlFile->data_checksum_version != PG_DATA_CHECKSUM_VERSION &&
 		mode == PG_MODE_CHECK)
 		pg_fatal("data checksums are not enabled in cluster");
 
-	if (ControlFile->data_checksum_version == 0 &&
+	if (ControlFile->data_checksum_version == PG_DATA_CHECKSUM_OFF &&
 		mode == PG_MODE_DISABLE)
 		pg_fatal("data checksums are already disabled in cluster");
 
-	if (ControlFile->data_checksum_version > 0 &&
+	if (ControlFile->data_checksum_version == PG_DATA_CHECKSUM_VERSION &&
 		mode == PG_MODE_ENABLE)
 		pg_fatal("data checksums are already enabled in cluster");
 
@@ -596,22 +609,22 @@ main(int argc, char *argv[])
 		{
 			total_size = scan_directory(DataDir, "global", true);
 			total_size += scan_directory(DataDir, "base", true);
-			total_size += scan_directory(DataDir, "pg_tblspc", true);
+			total_size += scan_directory(DataDir, PG_TBLSPC_DIR, true);
 		}
 
 		(void) scan_directory(DataDir, "global", false);
 		(void) scan_directory(DataDir, "base", false);
-		(void) scan_directory(DataDir, "pg_tblspc", false);
+		(void) scan_directory(DataDir, PG_TBLSPC_DIR, false);
 
 		if (showprogress)
 			progress_report(true);
 
 		printf(_("Checksum operation completed\n"));
-		printf(_("Files scanned:   %lld\n"), (long long) files_scanned);
-		printf(_("Blocks scanned:  %lld\n"), (long long) blocks_scanned);
+		printf(_("Files scanned:   %" PRId64 "\n"), files_scanned);
+		printf(_("Blocks scanned:  %" PRId64 "\n"), blocks_scanned);
 		if (mode == PG_MODE_CHECK)
 		{
-			printf(_("Bad checksums:  %lld\n"), (long long) badblocks);
+			printf(_("Bad checksums:  %" PRId64 "\n"), badblocks);
 			printf(_("Data checksum version: %u\n"), ControlFile->data_checksum_version);
 
 			if (badblocks > 0)
@@ -619,8 +632,8 @@ main(int argc, char *argv[])
 		}
 		else if (mode == PG_MODE_ENABLE)
 		{
-			printf(_("Files written:  %lld\n"), (long long) files_written);
-			printf(_("Blocks written: %lld\n"), (long long) blocks_written);
+			printf(_("Files written:  %" PRId64 "\n"), files_written);
+			printf(_("Blocks written: %" PRId64 "\n"), blocks_written);
 		}
 	}
 
@@ -632,12 +645,12 @@ main(int argc, char *argv[])
 	if (mode == PG_MODE_ENABLE || mode == PG_MODE_DISABLE)
 	{
 		ControlFile->data_checksum_version =
-			(mode == PG_MODE_ENABLE) ? PG_DATA_CHECKSUM_VERSION : 0;
+			(mode == PG_MODE_ENABLE) ? PG_DATA_CHECKSUM_VERSION : PG_DATA_CHECKSUM_OFF;
 
 		if (do_sync)
 		{
 			pg_log_info("syncing data directory");
-			fsync_pgdata(DataDir, PG_VERSION_NUM);
+			sync_pgdata(DataDir, PG_VERSION_NUM, sync_method, true);
 		}
 
 		pg_log_info("updating control file");

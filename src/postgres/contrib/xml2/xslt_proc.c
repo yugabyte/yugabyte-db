@@ -7,12 +7,10 @@
  */
 #include "postgres.h"
 
-#include "executor/spi.h"
 #include "fmgr.h"
-#include "funcapi.h"
-#include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/xml.h"
+#include "varatt.h"
 
 #ifdef USE_LIBXSLT
 
@@ -51,7 +49,7 @@ xslt_process(PG_FUNCTION_ARGS)
 
 	text	   *doct = PG_GETARG_TEXT_PP(0);
 	text	   *ssheet = PG_GETARG_TEXT_PP(1);
-	text	   *result;
+	text	   *volatile result = NULL;
 	text	   *paramstr;
 	const char **params;
 	PgXmlErrorContext *xmlerrcxt;
@@ -61,8 +59,7 @@ xslt_process(PG_FUNCTION_ARGS)
 	volatile xsltSecurityPrefsPtr xslt_sec_prefs = NULL;
 	volatile xsltTransformContextPtr xslt_ctxt = NULL;
 	volatile int resstat = -1;
-	xmlChar    *resstr = NULL;
-	int			reslen = 0;
+	xmlChar    *volatile resstr = NULL;
 
 	if (fcinfo->nargs == 3)
 	{
@@ -72,7 +69,7 @@ xslt_process(PG_FUNCTION_ARGS)
 	else
 	{
 		/* No parameters */
-		params = (const char **) palloc(sizeof(char *));
+		params = palloc_object(const char *);
 		params[0] = NULL;
 	}
 
@@ -83,14 +80,15 @@ xslt_process(PG_FUNCTION_ARGS)
 	{
 		xmlDocPtr	ssdoc;
 		bool		xslt_sec_prefs_error;
+		int			reslen = 0;
 
 		/* Parse document */
 		doctree = xmlReadMemory((char *) VARDATA_ANY(doct),
 								VARSIZE_ANY_EXHDR(doct), NULL, NULL,
 								XML_PARSE_NOENT);
 
-		if (doctree == NULL)
-			xml_ereport(xmlerrcxt, ERROR, ERRCODE_EXTERNAL_ROUTINE_EXCEPTION,
+		if (doctree == NULL || pg_xml_error_occurred(xmlerrcxt))
+			xml_ereport(xmlerrcxt, ERROR, ERRCODE_INVALID_XML_DOCUMENT,
 						"error parsing XML document");
 
 		/* Same for stylesheet */
@@ -98,15 +96,15 @@ xslt_process(PG_FUNCTION_ARGS)
 							  VARSIZE_ANY_EXHDR(ssheet), NULL, NULL,
 							  XML_PARSE_NOENT);
 
-		if (ssdoc == NULL)
-			xml_ereport(xmlerrcxt, ERROR, ERRCODE_EXTERNAL_ROUTINE_EXCEPTION,
+		if (ssdoc == NULL || pg_xml_error_occurred(xmlerrcxt))
+			xml_ereport(xmlerrcxt, ERROR, ERRCODE_INVALID_XML_DOCUMENT,
 						"error parsing stylesheet as XML document");
 
 		/* After this call we need not free ssdoc separately */
 		stylesheet = xsltParseStylesheetDoc(ssdoc);
 
-		if (stylesheet == NULL)
-			xml_ereport(xmlerrcxt, ERROR, ERRCODE_EXTERNAL_ROUTINE_EXCEPTION,
+		if (stylesheet == NULL || pg_xml_error_occurred(xmlerrcxt))
+			xml_ereport(xmlerrcxt, ERROR, ERRCODE_INVALID_ARGUMENT_FOR_XQUERY,
 						"failed to parse stylesheet");
 
 		xslt_ctxt = xsltNewTransformContext(stylesheet, doctree);
@@ -140,11 +138,24 @@ xslt_process(PG_FUNCTION_ARGS)
 		restree = xsltApplyStylesheetUser(stylesheet, doctree, params,
 										  NULL, NULL, xslt_ctxt);
 
-		if (restree == NULL)
-			xml_ereport(xmlerrcxt, ERROR, ERRCODE_EXTERNAL_ROUTINE_EXCEPTION,
+		if (restree == NULL || pg_xml_error_occurred(xmlerrcxt))
+			xml_ereport(xmlerrcxt, ERROR, ERRCODE_INVALID_ARGUMENT_FOR_XQUERY,
 						"failed to apply stylesheet");
 
-		resstat = xsltSaveResultToString(&resstr, &reslen, restree, stylesheet);
+		resstat = xsltSaveResultToString((xmlChar **) &resstr, &reslen,
+										 restree, stylesheet);
+
+		if (resstat >= 0)
+		{
+			/*
+			 * If an empty string has been returned, resstr would be NULL. In
+			 * this case, assume that the result is an empty string.
+			 */
+			if (reslen == 0)
+				result = cstring_to_text("");
+			else
+				result = cstring_to_text_with_len((char *) resstr, reslen);
+		}
 	}
 	PG_CATCH();
 	{
@@ -158,6 +169,8 @@ xslt_process(PG_FUNCTION_ARGS)
 			xsltFreeStylesheet(stylesheet);
 		if (doctree != NULL)
 			xmlFreeDoc(doctree);
+		if (resstr != NULL)
+			xmlFree(resstr);
 		xsltCleanupGlobals();
 
 		pg_xml_done(xmlerrcxt, true);
@@ -173,16 +186,14 @@ xslt_process(PG_FUNCTION_ARGS)
 	xmlFreeDoc(doctree);
 	xsltCleanupGlobals();
 
+	if (resstr)
+		xmlFree(resstr);
+
 	pg_xml_done(xmlerrcxt, false);
 
 	/* XXX this is pretty dubious, really ought to throw error instead */
 	if (resstat < 0)
 		PG_RETURN_NULL();
-
-	result = cstring_to_text_with_len((char *) resstr, reslen);
-
-	if (resstr)
-		xmlFree(resstr);
 
 	PG_RETURN_TEXT_P(result);
 #else							/* !USE_LIBXSLT */

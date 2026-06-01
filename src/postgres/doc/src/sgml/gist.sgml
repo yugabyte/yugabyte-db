@@ -1,6 +1,6 @@
 <!-- doc/src/sgml/gist.sgml -->
 
-<chapter id="gist">
+<sect1 id="gist">
 <title>GiST Indexes</title>
 
    <indexterm>
@@ -8,7 +8,7 @@
     <secondary>GiST</secondary>
    </indexterm>
 
-<sect1 id="gist-intro">
+<sect2 id="gist-intro">
  <title>Introduction</title>
 
  <para>
@@ -38,9 +38,9 @@
     <ulink url="http://www.sai.msu.su/~megera/postgres/gist/">web site</ulink>.
   </para>
 
-</sect1>
+</sect2>
 
-<sect1 id="gist-builtin-opclasses">
+<sect2 id="gist-builtin-opclasses">
  <title>Built-in Operator Classes</title>
 
  <para>
@@ -216,9 +216,9 @@ CREATE INDEX ON my_table USING GIST (my_inet_column inet_ops);
 </programlisting>
  </para>
 
-</sect1>
+</sect2>
 
-<sect1 id="gist-extensibility">
+<sect2 id="gist-extensibility">
  <title>Extensibility</title>
 
  <para>
@@ -266,21 +266,17 @@ CREATE INDEX ON my_table USING GIST (my_inet_column inet_ops);
 
  <para>
    There are five methods that an index operator class for
-   <acronym>GiST</acronym> must provide, and six that are optional.
+   <acronym>GiST</acronym> must provide, and seven that are optional.
    Correctness of the index is ensured
    by proper implementation of the <function>same</function>, <function>consistent</function>
    and <function>union</function> methods, while efficiency (size and speed) of the
    index will depend on the <function>penalty</function> and <function>picksplit</function>
    methods.
    Two optional methods are <function>compress</function> and
-   <function>decompress</function>, which allow an index to have internal tree data of
-   a different type than the data it indexes. The leaves are to be of the
-   indexed data type, while the other tree nodes can be of any C struct (but
-   you still have to follow <productname>PostgreSQL</productname> data type rules here,
-   see about <literal>varlena</literal> for variable sized data). If the tree's
-   internal data type exists at the SQL level, the <literal>STORAGE</literal> option
-   of the <command>CREATE OPERATOR CLASS</command> command can be used.
-   The optional eighth method is <function>distance</function>, which is needed
+   <function>decompress</function>, which allow an index to store keys that
+   are of a different type than the data it indexes, or are a compressed
+   representation of that type.
+   The optional eighth method <function>distance</function> is needed
    if the operator class wishes to support ordered scans (nearest-neighbor
    searches). The optional ninth method <function>fetch</function> is needed if the
    operator class wishes to support index-only scans, except when the
@@ -289,6 +285,12 @@ CREATE INDEX ON my_table USING GIST (my_inet_column inet_ops);
    user-specified parameters.
    The optional eleventh method <function>sortsupport</function> is used to
    speed up building a <acronym>GiST</acronym> index.
+   The optional twelfth method <function>stratnum</function> is used to
+   translate compare types (from
+   <filename>src/include/access/cmptype.h</filename>) into strategy numbers
+   used by the operator class.  This lets the core code look up operators for
+   temporal constraint indexes.
+   All these methods are described in more detail below.
  </para>
 
  <variablelist>
@@ -338,7 +340,9 @@ my_consistent(PG_FUNCTION_ARGS)
     GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
     data_type  *query = PG_GETARG_DATA_TYPE_P(1);
     StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-    /* Oid subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+    Oid         subtype = PG_GETARG_OID(3);
+#endif
     bool       *recheck = (bool *) PG_GETARG_POINTER(4);
     data_type  *key = DatumGetDataType(entry-&gt;key);
     bool        retval;
@@ -478,6 +482,24 @@ my_union(PG_FUNCTION_ARGS)
       </para>
 
       <para>
+       Use the <literal>STORAGE</literal> option of the <command>CREATE
+       OPERATOR CLASS</command> command to define the data type that is
+       stored in the index, if it is different from the data type being
+       indexed.  Be aware however that the <literal>STORAGE</literal> data
+       type is only used to define the physical properties of the index
+       entries (their <replaceable>typlen</replaceable>,
+       <replaceable>typbyval</replaceable>,
+       and <replaceable>typalign</replaceable> attributes).  What is
+       actually in the index datums is under the control of the
+       <function>compress</function> and <function>decompress</function>
+       methods, so long as the stored datums match those properties.
+       It is allowed for <function>compress</function> to produce different
+       representations for leaf keys than for keys on higher-level index
+       pages, so long as both representations match
+       the <literal>STORAGE</literal> data type.
+      </para>
+
+      <para>
         The <acronym>SQL</acronym> declaration of the function must look like this:
 
 <programlisting>
@@ -501,11 +523,11 @@ my_compress(PG_FUNCTION_ARGS)
     if (entry-&gt;leafkey)
     {
         /* replace entry-&gt;key with a compressed version */
-        compressed_data_type *compressed_data = palloc(sizeof(compressed_data_type));
+        compressed_data_type *compressed_data = palloc_object(compressed_data_type);
 
         /* fill *compressed_data from entry-&gt;key ... */
 
-        retval = palloc(sizeof(GISTENTRY));
+        retval = palloc_object(GISTENTRY);
         gistentryinit(*retval, PointerGetDatum(compressed_data),
                       entry-&gt;rel, entry-&gt;page, entry-&gt;offset, FALSE);
     }
@@ -825,8 +847,10 @@ my_distance(PG_FUNCTION_ARGS)
     GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
     data_type  *query = PG_GETARG_DATA_TYPE_P(1);
     StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-    /* Oid subtype = PG_GETARG_OID(3); */
-    /* bool *recheck = (bool *) PG_GETARG_POINTER(4); */
+#ifdef NOT_USED
+    Oid         subtype = PG_GETARG_OID(3);
+    bool       *recheck = (bool *) PG_GETARG_POINTER(4);
+#endif
     data_type  *key = DatumGetDataType(entry-&gt;key);
     double      retval;
 
@@ -916,8 +940,8 @@ my_fetch(PG_FUNCTION_ARGS)
     fetched_data_type *fetched_data;
     GISTENTRY  *retval;
 
-    retval = palloc(sizeof(GISTENTRY));
-    fetched_data = palloc(sizeof(fetched_data_type));
+    retval = palloc_object(GISTENTRY);
+    fetched_data = palloc_object(fetched_data_type);
 
     /*
      * Convert 'fetched_data' into the a Datum of the original datatype.
@@ -1022,7 +1046,7 @@ fill_my_string_relopt(const char *value, void *ptr)
     int     len = strlen(tmp);
 
     if (ptr)
-        strcpy((char *) ptr, tmp);
+        strcpy(ptr, tmp);
 
     pfree(tmp);
     return len + 1;
@@ -1163,6 +1187,90 @@ my_sortsupport(PG_FUNCTION_ARGS)
       </para>
      </listitem>
     </varlistentry>
+
+    <varlistentry>
+     <term><function>translate_cmptype</function></term>
+     <listitem>
+      <para>
+       Given a <literal>CompareType</literal> value from
+       <filename>src/include/access/cmptype.h</filename>, returns a strategy
+       number used by this operator class for matching functionality.  The
+       function should return <literal>InvalidStrategy</literal> if the
+       operator class has no matching strategy.
+      </para>
+
+      <para>
+       This is used for temporal index constraints (i.e., <literal>PRIMARY
+       KEY</literal> and <literal>UNIQUE</literal>).  If the operator class
+       provides this function and it returns results for
+       <literal>COMPARE_EQ</literal>, it can be used in the
+       non-<literal>WITHOUT OVERLAPS</literal> part(s) of an index constraint.
+      </para>
+
+      <para>
+       This support function corresponds to the index access method callback
+       function <structfield>amtranslatecmptype</structfield> (see <xref
+       linkend="index-functions"/>).  The
+       <structfield>amtranslatecmptype</structfield> callback function for
+       GiST indexes merely calls down to the
+       <function>translate_cmptype</function> support function of the
+       respective operator family, since the GiST index access method has no
+       fixed strategy numbers itself.
+      </para>
+
+      <para>
+       The <acronym>SQL</acronym> declaration of the function must look like
+       this:
+
+<programlisting>
+CREATE OR REPLACE FUNCTION my_translate_cmptype(integer)
+RETURNS smallint
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT;
+</programlisting>
+
+       And the operator family registration must look like this:
+<programlisting>
+ALTER OPERATOR FAMILY my_opfamily USING gist ADD
+    FUNCTION 12 ("any", "any") my_translate_cmptype(int);
+</programlisting>
+      </para>
+
+       <para>
+        The matching code in the C module could then follow this skeleton:
+
+<programlisting>
+PG_FUNCTION_INFO_V1(my_translate_cmptype);
+
+Datum
+my_translate_cmptype(PG_FUNCTION_ARGS)
+{
+    CompareType cmptype = PG_GETARG_INT32(0);
+    StrategyNumber ret = InvalidStrategy;
+
+    switch (cmptype)
+    {
+        case COMPARE_EQ:
+            ret = BTEqualStrategyNumber;
+    }
+
+    PG_RETURN_UINT16(ret);
+}
+</programlisting>
+      </para>
+
+      <para>
+       One translation function is provided by
+       <productname>PostgreSQL</productname>:
+       <literal>gist_translate_cmptype_common</literal> is for operator classes that
+       use the <literal>RT*StrategyNumber</literal> constants.
+       The <literal>btree_gist</literal>
+       extension defines a second translation function,
+       <literal>gist_translate_cmptype_btree</literal>, for operator classes that use
+       the <literal>BT*StrategyNumber</literal> constants.
+      </para>
+     </listitem>
+    </varlistentry>
   </variablelist>
 
   <para>
@@ -1179,12 +1287,12 @@ my_sortsupport(PG_FUNCTION_ARGS)
    will accumulate for the duration of the operation.
   </para>
 
-</sect1>
+</sect2>
 
-<sect1 id="gist-implementation">
+<sect2 id="gist-implementation">
  <title>Implementation</title>
 
- <sect2 id="gist-buffering-build">
+ <sect3 id="gist-buffering-build">
   <title>GiST Index Build Methods</title>
 
   <para>
@@ -1233,10 +1341,10 @@ my_sortsupport(PG_FUNCTION_ARGS)
    is ordered.
   </para>
 
- </sect2>
-</sect1>
+ </sect3>
+</sect2>
 
-<sect1 id="gist-examples">
+<sect2 id="gist-examples">
  <title>Examples</title>
 
  <para>
@@ -1301,6 +1409,6 @@ my_sortsupport(PG_FUNCTION_ARGS)
  </variablelist>
  </para>
 
-</sect1>
+</sect2>
 
-</chapter>
+</sect1>

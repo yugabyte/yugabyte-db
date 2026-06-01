@@ -62,6 +62,11 @@ SELECT bool '000' AS error;
 
 SELECT bool '' AS error;
 
+-- Also try it with non-error-throwing API
+SELECT pg_input_is_valid('true', 'bool');
+SELECT pg_input_is_valid('asdf', 'bool');
+SELECT * FROM pg_input_error_info('junk', 'bool');
+
 -- and, or, not in qualifications
 
 SELECT bool 't' or bool 'f' AS true;
@@ -222,7 +227,7 @@ FROM booltbl3 ORDER BY o;
 
 -- Test to make sure short-circuiting and NULL handling is
 -- correct. Use a table as source to prevent constant simplification
--- to interfer.
+-- from interfering.
 CREATE TABLE booltbl4(isfalse bool, istrue bool, isnul bool);
 INSERT INTO booltbl4 VALUES (false, true, null);
 \pset null '(null)'
@@ -244,6 +249,11 @@ SELECT isnul OR isfalse OR isfalse FROM booltbl4;
 SELECT isfalse OR isnul OR istrue FROM booltbl4;
 SELECT istrue OR isfalse OR isnul FROM booltbl4;
 SELECT isnul OR istrue OR isfalse FROM booltbl4;
+
+-- Casts
+SELECT 0::boolean;
+SELECT 1::boolean;
+SELECT 2::boolean;
 
 
 --

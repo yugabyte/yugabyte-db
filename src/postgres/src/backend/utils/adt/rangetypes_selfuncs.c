@@ -6,7 +6,7 @@
  * Estimates are based on histograms of lower and upper bounds, and the
  * fraction of empty ranges.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,7 +22,6 @@
 #include "access/htup_details.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_statistic.h"
-#include "catalog/pg_type.h"
 #include "utils/float.h"
 #include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
@@ -47,18 +46,18 @@ static float8 get_position(TypeCacheEntry *typcache, const RangeBound *value,
 static float8 get_len_position(double value, double hist1, double hist2);
 static float8 get_distance(TypeCacheEntry *typcache, const RangeBound *bound1,
 						   const RangeBound *bound2);
-static int	length_hist_bsearch(Datum *length_hist_values,
+static int	length_hist_bsearch(const Datum *length_hist_values,
 								int length_hist_nvalues, double value, bool equal);
-static double calc_length_hist_frac(Datum *length_hist_values,
+static double calc_length_hist_frac(const Datum *length_hist_values,
 									int length_hist_nvalues, double length1, double length2, bool equal);
 static double calc_hist_selectivity_contained(TypeCacheEntry *typcache,
 											  const RangeBound *lower, RangeBound *upper,
 											  const RangeBound *hist_lower, int hist_nvalues,
-											  Datum *length_hist_values, int length_hist_nvalues);
+											  const Datum *length_hist_values, int length_hist_nvalues);
 static double calc_hist_selectivity_contains(TypeCacheEntry *typcache,
 											 const RangeBound *lower, const RangeBound *upper,
 											 const RangeBound *hist_lower, int hist_nvalues,
-											 Datum *length_hist_values, int length_hist_nvalues);
+											 const Datum *length_hist_values, int length_hist_nvalues);
 
 /*
  * Returns a default selectivity estimate for given operator, when we don't
@@ -190,15 +189,16 @@ rangesel(PG_FUNCTION_ARGS)
 			upper.val = ((Const *) other)->constvalue;
 			upper.infinite = false;
 			upper.lower = false;
-			constrange = range_serialize(typcache, &lower, &upper, false);
+			constrange = range_serialize(typcache, &lower, &upper, false, NULL);
 		}
 	}
 	else if (operator == OID_RANGE_ELEM_CONTAINED_OP)
 	{
 		/*
-		 * Here, the Var is the elem, not the range.  For now we just punt and
-		 * return the default estimate.  In future we could disassemble the
-		 * range constant and apply scalarineqsel ...
+		 * Here, the Var is the elem, not the range.  In typical cases
+		 * elem_contained_by_range_support will have simplified this case, so
+		 * that we won't get here.  If we do get here we'll fall back on a
+		 * default estimate.
 		 */
 	}
 	else if (((Const *) other)->consttype == vardata.vartype)
@@ -412,8 +412,8 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	 * bounds.
 	 */
 	nhist = hslot.nvalues;
-	hist_lower = (RangeBound *) palloc(sizeof(RangeBound) * nhist);
-	hist_upper = (RangeBound *) palloc(sizeof(RangeBound) * nhist);
+	hist_lower = palloc_array(RangeBound, nhist);
+	hist_upper = palloc_array(RangeBound, nhist);
 	for (i = 0; i < nhist; i++)
 	{
 		range_deserialize(typcache, DatumGetRangeTypeP(hslot.values[i]),
@@ -654,7 +654,7 @@ rbound_bsearch(TypeCacheEntry *typcache, const RangeBound *value, const RangeBou
  * given length, returns -1.
  */
 static int
-length_hist_bsearch(Datum *length_hist_values, int length_hist_nvalues,
+length_hist_bsearch(const Datum *length_hist_values, int length_hist_nvalues,
 					double value, bool equal)
 {
 	int			lower = -1,
@@ -852,7 +852,7 @@ get_distance(TypeCacheEntry *typcache, const RangeBound *bound1, const RangeBoun
  * 'equal' is true).
  */
 static double
-calc_length_hist_frac(Datum *length_hist_values, int length_hist_nvalues,
+calc_length_hist_frac(const Datum *length_hist_values, int length_hist_nvalues,
 					  double length1, double length2, bool equal)
 {
 	double		frac;
@@ -1018,7 +1018,7 @@ static double
 calc_hist_selectivity_contained(TypeCacheEntry *typcache,
 								const RangeBound *lower, RangeBound *upper,
 								const RangeBound *hist_lower, int hist_nvalues,
-								Datum *length_hist_values, int length_hist_nvalues)
+								const Datum *length_hist_values, int length_hist_nvalues)
 {
 	int			i,
 				upper_index;
@@ -1139,7 +1139,7 @@ static double
 calc_hist_selectivity_contains(TypeCacheEntry *typcache,
 							   const RangeBound *lower, const RangeBound *upper,
 							   const RangeBound *hist_lower, int hist_nvalues,
-							   Datum *length_hist_values, int length_hist_nvalues)
+							   const Datum *length_hist_values, int length_hist_nvalues)
 {
 	int			i,
 				lower_index;

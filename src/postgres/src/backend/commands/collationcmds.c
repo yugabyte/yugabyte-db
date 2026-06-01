@@ -3,7 +3,7 @@
  * collationcmds.c
  *	  collation-related commands support code
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,15 +14,19 @@
  */
 #include "postgres.h"
 
+#ifdef USE_ICU
+#include <unicode/uloc.h>
+#endif
+
 #include "access/htup_details.h"
 #include "access/table.h"
 #include "access/xact.h"
-#include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_collation.h"
-#include "commands/alter.h"
+#include "catalog/pg_database.h"
+#include "catalog/pg_namespace.h"
 #include "commands/collationcmds.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
@@ -30,6 +34,7 @@
 #include "common/string.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "storage/fd.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -65,10 +70,12 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 	DefElem    *lcctypeEl = NULL;
 	DefElem    *providerEl = NULL;
 	DefElem    *deterministicEl = NULL;
+	DefElem    *rulesEl = NULL;
 	DefElem    *versionEl = NULL;
 	char	   *collcollate;
 	char	   *collctype;
-	char	   *colliculocale;
+	const char *colllocale;
+	char	   *collicurules;
 	bool		collisdeterministic;
 	int			collencoding;
 	char		collprovider;
@@ -78,7 +85,7 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 
 	collNamespace = QualifiedNameGetCreationNamespace(names, &collName);
 
-	aclresult = pg_namespace_aclcheck(collNamespace, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, collNamespace, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(collNamespace));
@@ -100,6 +107,8 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 			defelp = &providerEl;
 		else if (strcmp(defel->defname, "deterministic") == 0)
 			defelp = &deterministicEl;
+		else if (strcmp(defel->defname, "rules") == 0)
+			defelp = &rulesEl;
 		else if (strcmp(defel->defname, "version") == 0)
 			defelp = &versionEl;
 		else
@@ -156,11 +165,22 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 		else
 			collctype = NULL;
 
-		datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_colliculocale, &isnull);
+		datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_colllocale, &isnull);
 		if (!isnull)
-			colliculocale = TextDatumGetCString(datum);
+			colllocale = TextDatumGetCString(datum);
 		else
-			colliculocale = NULL;
+			colllocale = NULL;
+
+		/*
+		 * When the ICU locale comes from an existing collation, do not
+		 * canonicalize to a language tag.
+		 */
+
+		datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_collicurules, &isnull);
+		if (!isnull)
+			collicurules = TextDatumGetCString(datum);
+		else
+			collicurules = NULL;
 
 		ReleaseSysCache(tp);
 
@@ -182,7 +202,8 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 
 		collcollate = NULL;
 		collctype = NULL;
-		colliculocale = NULL;
+		colllocale = NULL;
+		collicurules = NULL;
 
 		if (providerEl)
 			collproviderstr = defGetString(providerEl);
@@ -192,12 +213,17 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 		else
 			collisdeterministic = true;
 
+		if (rulesEl)
+			collicurules = defGetString(rulesEl);
+
 		if (versionEl)
 			collversion = defGetString(versionEl);
 
 		if (collproviderstr)
 		{
-			if (pg_strcasecmp(collproviderstr, "icu") == 0)
+			if (pg_strcasecmp(collproviderstr, "builtin") == 0)
+				collprovider = COLLPROVIDER_BUILTIN;
+			else if (pg_strcasecmp(collproviderstr, "icu") == 0)
 				collprovider = COLLPROVIDER_ICU;
 			else if (pg_strcasecmp(collproviderstr, "libc") == 0)
 				collprovider = COLLPROVIDER_LIBC;
@@ -218,7 +244,7 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 				collctype = defGetString(localeEl);
 			}
 			else
-				colliculocale = defGetString(localeEl);
+				colllocale = defGetString(localeEl);
 		}
 
 		if (lccollateEl)
@@ -227,24 +253,59 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 		if (lcctypeEl)
 			collctype = defGetString(lcctypeEl);
 
-		if (collprovider == COLLPROVIDER_LIBC)
+		if (collprovider == COLLPROVIDER_BUILTIN)
+		{
+			if (!colllocale)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("parameter \"%s\" must be specified",
+								"locale")));
+
+			colllocale = builtin_validate_locale(GetDatabaseEncoding(),
+												 colllocale);
+		}
+		else if (collprovider == COLLPROVIDER_LIBC)
 		{
 			if (!collcollate)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("parameter \"lc_collate\" must be specified")));
+						 errmsg("parameter \"%s\" must be specified",
+								"lc_collate")));
 
 			if (!collctype)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("parameter \"lc_ctype\" must be specified")));
+						 errmsg("parameter \"%s\" must be specified",
+								"lc_ctype")));
 		}
 		else if (collprovider == COLLPROVIDER_ICU)
 		{
-			if (!colliculocale)
+			if (!colllocale)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("parameter \"locale\" must be specified")));
+						 errmsg("parameter \"%s\" must be specified",
+								"locale")));
+
+			/*
+			 * During binary upgrade, preserve the locale string. Otherwise,
+			 * canonicalize to a language tag.
+			 */
+			if (!IsBinaryUpgrade)
+			{
+				char	   *langtag = icu_language_tag(colllocale,
+													   icu_validation_level);
+
+				if (langtag && strcmp(colllocale, langtag) != 0)
+				{
+					ereport(NOTICE,
+							(errmsg("using standard form \"%s\" for ICU locale \"%s\"",
+									langtag, colllocale)));
+
+					colllocale = langtag;
+				}
+			}
+
+			icu_validate_locale(colllocale);
 		}
 
 		/*
@@ -258,7 +319,16 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("nondeterministic collations not supported with this provider")));
 
-		if (collprovider == COLLPROVIDER_ICU)
+		if (collicurules && collprovider != COLLPROVIDER_ICU)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("ICU rules cannot be specified unless locale provider is ICU")));
+
+		if (collprovider == COLLPROVIDER_BUILTIN)
+		{
+			collencoding = builtin_locale_encoding(colllocale);
+		}
+		else if (collprovider == COLLPROVIDER_ICU)
 		{
 #ifdef USE_ICU
 			/*
@@ -292,7 +362,16 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 				 errmsg("nondeterministic collation is not supported")));
 
 	if (!collversion)
-		collversion = get_collation_actual_version(collprovider, collprovider == COLLPROVIDER_ICU ? colliculocale : collcollate);
+	{
+		const char *locale;
+
+		if (collprovider == COLLPROVIDER_LIBC)
+			locale = collcollate;
+		else
+			locale = colllocale;
+
+		collversion = get_collation_actual_version(collprovider, locale);
+	}
 
 	newoid = CollationCreate(collName,
 							 collNamespace,
@@ -302,7 +381,8 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 							 collencoding,
 							 collcollate,
 							 collctype,
-							 colliculocale,
+							 colllocale,
+							 collicurules,
 							 collversion,
 							 if_not_exists,
 							 false);	/* not quiet */
@@ -310,13 +390,9 @@ DefineCollation(ParseState *pstate, List *names, List *parameters, bool if_not_e
 	if (!OidIsValid(newoid))
 		return InvalidObjectAddress;
 
-	/*
-	 * Check that the locales can be loaded.  NB: pg_newlocale_from_collation
-	 * is only supposed to be called on non-C-equivalent locales.
-	 */
+	/* Check that the locales can be loaded. */
 	CommandCounterIncrement();
-	if (!lc_collate_is_c(newoid) || !lc_ctype_is_c(newoid))
-		(void) pg_newlocale_from_collation(newoid);
+	(void) pg_newlocale_from_collation(newoid);
 
 	ObjectAddressSet(address, CollationRelationId, newoid);
 
@@ -373,7 +449,14 @@ AlterCollation(AlterCollationStmt *stmt)
 	rel = table_open(CollationRelationId, RowExclusiveLock);
 	collOid = get_collation_oid(stmt->collname, false);
 
-	if (!pg_collation_ownercheck(collOid, GetUserId()))
+	if (collOid == DEFAULT_COLLATION_OID)
+		ereport(ERROR,
+				(errmsg("cannot refresh version of default collation"),
+		/* translator: %s is an SQL command */
+				 errhint("Use %s instead.",
+						 "ALTER DATABASE ... REFRESH COLLATION VERSION")));
+
+	if (!object_ownercheck(CollationRelationId, collOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_COLLATION,
 					   NameListToString(stmt->collname));
 
@@ -385,10 +468,13 @@ AlterCollation(AlterCollationStmt *stmt)
 	datum = SysCacheGetAttr(COLLOID, tup, Anum_pg_collation_collversion, &isnull);
 	oldversion = isnull ? NULL : TextDatumGetCString(datum);
 
-	datum = SysCacheGetAttr(COLLOID, tup, collForm->collprovider == COLLPROVIDER_ICU ? Anum_pg_collation_colliculocale : Anum_pg_collation_collcollate, &isnull);
-	if (isnull)
-		elog(ERROR, "unexpected null in pg_collation");
-	newversion = get_collation_actual_version(collForm->collprovider, TextDatumGetCString(datum));
+	if (collForm->collprovider == COLLPROVIDER_LIBC)
+		datum = SysCacheGetAttrNotNull(COLLOID, tup, Anum_pg_collation_collcollate);
+	else
+		datum = SysCacheGetAttrNotNull(COLLOID, tup, Anum_pg_collation_colllocale);
+
+	newversion = get_collation_actual_version(collForm->collprovider,
+											  TextDatumGetCString(datum));
 
 	/* cannot change from NULL to non-NULL or vice versa */
 	if ((!oldversion && newversion) || (oldversion && !newversion))
@@ -434,32 +520,66 @@ Datum
 pg_collation_actual_version(PG_FUNCTION_ARGS)
 {
 	Oid			collid = PG_GETARG_OID(0);
-	HeapTuple	tp;
-	char		collprovider;
-	Datum		datum;
-	bool		isnull;
+	char		provider;
+	char	   *locale;
 	char	   *version;
+	Datum		datum;
 
-	tp = SearchSysCache1(COLLOID, ObjectIdGetDatum(collid));
-	if (!HeapTupleIsValid(tp))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("collation with OID %u does not exist", collid)));
-
-	collprovider = ((Form_pg_collation) GETSTRUCT(tp))->collprovider;
-
-	if (collprovider != COLLPROVIDER_DEFAULT)
+	if (collid == DEFAULT_COLLATION_OID)
 	{
-		datum = SysCacheGetAttr(COLLOID, tp, collprovider == COLLPROVIDER_ICU ? Anum_pg_collation_colliculocale : Anum_pg_collation_collcollate, &isnull);
-		if (isnull)
-			elog(ERROR, "unexpected null in pg_collation");
-		version = get_collation_actual_version(collprovider, TextDatumGetCString(datum));
+		/* retrieve from pg_database */
+
+		HeapTuple	dbtup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId));
+
+		if (!HeapTupleIsValid(dbtup))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("database with OID %u does not exist", MyDatabaseId)));
+
+		provider = ((Form_pg_database) GETSTRUCT(dbtup))->datlocprovider;
+
+		if (provider == COLLPROVIDER_LIBC)
+		{
+			datum = SysCacheGetAttrNotNull(DATABASEOID, dbtup, Anum_pg_database_datcollate);
+			locale = TextDatumGetCString(datum);
+		}
+		else
+		{
+			datum = SysCacheGetAttrNotNull(DATABASEOID, dbtup, Anum_pg_database_datlocale);
+			locale = TextDatumGetCString(datum);
+		}
+
+		ReleaseSysCache(dbtup);
 	}
 	else
-		version = NULL;
+	{
+		/* retrieve from pg_collation */
 
-	ReleaseSysCache(tp);
+		HeapTuple	colltp = SearchSysCache1(COLLOID, ObjectIdGetDatum(collid));
 
+		if (!HeapTupleIsValid(colltp))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("collation with OID %u does not exist", collid)));
+
+		provider = ((Form_pg_collation) GETSTRUCT(colltp))->collprovider;
+		Assert(provider != COLLPROVIDER_DEFAULT);
+
+		if (provider == COLLPROVIDER_LIBC)
+		{
+			datum = SysCacheGetAttrNotNull(COLLOID, colltp, Anum_pg_collation_collcollate);
+			locale = TextDatumGetCString(datum);
+		}
+		else
+		{
+			datum = SysCacheGetAttrNotNull(COLLOID, colltp, Anum_pg_collation_colllocale);
+			locale = TextDatumGetCString(datum);
+		}
+
+		ReleaseSysCache(colltp);
+	}
+
+	version = get_collation_actual_version(provider, locale);
 	if (version)
 		PG_RETURN_TEXT_P(cstring_to_text(version));
 	else
@@ -468,9 +588,15 @@ pg_collation_actual_version(PG_FUNCTION_ARGS)
 
 
 /* will we use "locale -a" in pg_import_system_collations? */
-#if defined(HAVE_LOCALE_T) && !defined(WIN32)
+#if !defined(WIN32)
 #define READ_LOCALE_A_OUTPUT
 #endif
+
+/* will we use EnumSystemLocalesEx in pg_import_system_collations? */
+#ifdef WIN32
+#define ENUM_SYSTEM_LOCALE
+#endif
+
 
 #ifdef READ_LOCALE_A_OUTPUT
 /*
@@ -524,26 +650,6 @@ cmpaliases(const void *a, const void *b)
 
 #ifdef USE_ICU
 /*
- * Get the ICU language tag for a locale name.
- * The result is a palloc'd string.
- */
-static char *
-get_icu_language_tag(const char *localename)
-{
-	char		buf[ULOC_FULLNAME_CAPACITY];
-	UErrorCode	status;
-
-	status = U_ZERO_ERROR;
-	uloc_toLanguageTag(localename, buf, sizeof(buf), true, &status);
-	if (U_FAILURE(status))
-		ereport(ERROR,
-				(errmsg("could not convert locale name \"%s\" to language tag: %s",
-						localename, u_errorName(status))));
-
-	return pstrdup(buf);
-}
-
-/*
  * Get a comment (specifically, the display name) for an ICU locale.
  * The result is a palloc'd string, or NULL if we can't get a comment
  * or find that it's not all ASCII.  (We can *not* accept non-ASCII
@@ -581,6 +687,159 @@ get_icu_locale_comment(const char *localename)
 	return result;
 }
 #endif							/* USE_ICU */
+
+
+/*
+ * Create a new collation using the input locale 'locale'. (subroutine for
+ * pg_import_system_collations())
+ *
+ * 'nspid' is the namespace id where the collation will be created.
+ *
+ * 'nvalidp' is incremented if the locale has a valid encoding.
+ *
+ * 'ncreatedp' is incremented if the collation is actually created.  If the
+ * collation already exists it will quietly do nothing.
+ *
+ * The returned value is the encoding of the locale, -1 if the locale is not
+ * valid for creating a collation.
+ *
+ */
+pg_attribute_unused()
+static int
+create_collation_from_locale(const char *locale, int nspid,
+							 int *nvalidp, int *ncreatedp)
+{
+	int			enc;
+	Oid			collid;
+
+	/*
+	 * Some systems have locale names that don't consist entirely of ASCII
+	 * letters (such as "bokm&aring;l" or "fran&ccedil;ais"). This is pretty
+	 * silly, since we need the locale itself to interpret the non-ASCII
+	 * characters. We can't do much with those, so we filter them out.
+	 */
+	if (!pg_is_ascii(locale))
+	{
+		elog(DEBUG1, "skipping locale with non-ASCII name: \"%s\"", locale);
+		return -1;
+	}
+
+	enc = pg_get_encoding_from_locale(locale, false);
+	if (enc < 0)
+	{
+		elog(DEBUG1, "skipping locale with unrecognized encoding: \"%s\"", locale);
+		return -1;
+	}
+	if (!PG_VALID_BE_ENCODING(enc))
+	{
+		elog(DEBUG1, "skipping locale with client-only encoding: \"%s\"", locale);
+		return -1;
+	}
+	if (enc == PG_SQL_ASCII)
+		return -1;				/* C/POSIX are already in the catalog */
+
+	/* count valid locales found in operating system */
+	(*nvalidp)++;
+
+	/*
+	 * Create a collation named the same as the locale, but quietly doing
+	 * nothing if it already exists.  This is the behavior we need even at
+	 * initdb time, because some versions of "locale -a" can report the same
+	 * locale name more than once.  And it's convenient for later import runs,
+	 * too, since you just about always want to add on new locales without a
+	 * lot of chatter about existing ones.
+	 */
+	collid = CollationCreate(locale, nspid, GetUserId(),
+							 COLLPROVIDER_LIBC, true, enc,
+							 locale, locale, NULL, NULL,
+							 get_collation_actual_version(COLLPROVIDER_LIBC, locale),
+							 true, true);
+	if (OidIsValid(collid))
+	{
+		(*ncreatedp)++;
+
+		/* Must do CCI between inserts to handle duplicates correctly */
+		CommandCounterIncrement();
+	}
+
+	return enc;
+}
+
+
+#ifdef ENUM_SYSTEM_LOCALE
+/* parameter to be passed to the callback function win32_read_locale() */
+typedef struct
+{
+	Oid			nspid;
+	int		   *ncreatedp;
+	int		   *nvalidp;
+} CollParam;
+
+/*
+ * Callback function for EnumSystemLocalesEx() in
+ * pg_import_system_collations().  Creates a collation for every valid locale
+ * and a POSIX alias collation.
+ *
+ * The callback contract is to return TRUE to continue enumerating and FALSE
+ * to stop enumerating.  We always want to continue.
+ */
+static BOOL CALLBACK
+win32_read_locale(LPWSTR pStr, DWORD dwFlags, LPARAM lparam)
+{
+	CollParam  *param = (CollParam *) lparam;
+	char		localebuf[NAMEDATALEN];
+	int			result;
+	int			enc;
+
+	(void) dwFlags;
+
+	result = WideCharToMultiByte(CP_ACP, 0, pStr, -1, localebuf, NAMEDATALEN,
+								 NULL, NULL);
+
+	if (result == 0)
+	{
+		if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			elog(DEBUG1, "skipping locale with too-long name: \"%s\"", localebuf);
+		return TRUE;
+	}
+	if (localebuf[0] == '\0')
+		return TRUE;
+
+	enc = create_collation_from_locale(localebuf, param->nspid,
+									   param->nvalidp, param->ncreatedp);
+	if (enc < 0)
+		return TRUE;
+
+	/*
+	 * Windows will use hyphens between language and territory, where POSIX
+	 * uses an underscore. Simply create a POSIX alias.
+	 */
+	if (strchr(localebuf, '-'))
+	{
+		char		alias[NAMEDATALEN];
+		Oid			collid;
+
+		strcpy(alias, localebuf);
+		for (char *p = alias; *p; p++)
+			if (*p == '-')
+				*p = '_';
+
+		collid = CollationCreate(alias, param->nspid, GetUserId(),
+								 COLLPROVIDER_LIBC, true, enc,
+								 localebuf, localebuf, NULL, NULL,
+								 get_collation_actual_version(COLLPROVIDER_LIBC, localebuf),
+								 true, true);
+		if (OidIsValid(collid))
+		{
+			(*param->ncreatedp)++;
+
+			CommandCounterIncrement();
+		}
+	}
+
+	return TRUE;
+}
+#endif							/* ENUM_SYSTEM_LOCALE */
 
 
 /*
@@ -642,63 +901,14 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 			localebuf[len - 1] = '\0';
 
 			/*
-			 * Some systems have locale names that don't consist entirely of
-			 * ASCII letters (such as "bokm&aring;l" or "fran&ccedil;ais").
-			 * This is pretty silly, since we need the locale itself to
-			 * interpret the non-ASCII characters. We can't do much with
-			 * those, so we filter them out.
-			 */
-			if (!pg_is_ascii(localebuf))
-			{
-				elog(DEBUG1, "skipping locale with non-ASCII name: \"%s\"", localebuf);
-				continue;
-			}
-
-			/*
 			 * For libc, Yugabyte only supports the basic locales.
 			 */
 			if (IsYugaByteEnabled() && !YBIsSupportedLibcLocale(localebuf))
 				continue;
 
-			enc = pg_get_encoding_from_locale(localebuf, false);
+			enc = create_collation_from_locale(localebuf, nspid, &nvalid, &ncreated);
 			if (enc < 0)
-			{
-				elog(DEBUG1, "skipping locale with unrecognized encoding: \"%s\"",
-					 localebuf);
 				continue;
-			}
-			if (!PG_VALID_BE_ENCODING(enc))
-			{
-				elog(DEBUG1, "skipping locale with client-only encoding: \"%s\"", localebuf);
-				continue;
-			}
-			if (enc == PG_SQL_ASCII)
-				continue;		/* C/POSIX are already in the catalog */
-
-			/* count valid locales found in operating system */
-			nvalid++;
-
-			/*
-			 * Create a collation named the same as the locale, but quietly
-			 * doing nothing if it already exists.  This is the behavior we
-			 * need even at initdb time, because some versions of "locale -a"
-			 * can report the same locale name more than once.  And it's
-			 * convenient for later import runs, too, since you just about
-			 * always want to add on new locales without a lot of chatter
-			 * about existing ones.
-			 */
-			collid = CollationCreate(localebuf, nspid, GetUserId(),
-									 COLLPROVIDER_LIBC, true, enc,
-									 localebuf, localebuf, NULL,
-									 get_collation_actual_version(COLLPROVIDER_LIBC, localebuf),
-									 true, true);
-			if (OidIsValid(collid))
-			{
-				ncreated++;
-
-				/* Must do CCI between inserts to handle duplicates correctly */
-				CommandCounterIncrement();
-			}
 
 			/*
 			 * Generate aliases such as "en_US" in addition to "en_US.utf8"
@@ -725,6 +935,12 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 			}
 		}
 
+		/*
+		 * We don't check the return value of this, because we want to support
+		 * the case where there "locale" command does not exist.  (This is
+		 * unusual but can happen on minimalized Linux distributions, for
+		 * example.)  We will warn below if no locales could be found.
+		 */
 		ClosePipeStream(locale_a_handle);
 
 		/*
@@ -739,7 +955,7 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 		 * created such a pg_collation entry above, and that one will win.)
 		 */
 		if (naliases > 1)
-			qsort((void *) aliases, naliases, sizeof(CollAliasData), cmpaliases);
+			qsort(aliases, naliases, sizeof(CollAliasData), cmpaliases);
 
 		/* Now add aliases, ignoring any that match pre-existing entries */
 		for (i = 0; i < naliases; i++)
@@ -750,7 +966,7 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 
 			collid = CollationCreate(alias, nspid, GetUserId(),
 									 COLLPROVIDER_LIBC, true, enc,
-									 locale, locale, NULL,
+									 locale, locale, NULL, NULL,
 									 get_collation_actual_version(COLLPROVIDER_LIBC, locale),
 									 true, true);
 			if (OidIsValid(collid))
@@ -791,7 +1007,6 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 			const char *name;
 			char	   *langtag;
 			char	   *icucomment;
-			const char *iculocstr;
 			Oid			collid;
 
 			if (i == -1)
@@ -799,21 +1014,20 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 			else
 				name = uloc_getAvailable(i);
 
-			langtag = get_icu_language_tag(name);
-			iculocstr = U_ICU_VERSION_MAJOR_NUM >= 54 ? langtag : name;
+			langtag = icu_language_tag(name, ERROR);
 
 			/*
 			 * Be paranoid about not allowing any non-ASCII strings into
 			 * pg_collation
 			 */
-			if (!pg_is_ascii(langtag) || !pg_is_ascii(iculocstr))
+			if (!pg_is_ascii(langtag))
 				continue;
 
 			collid = CollationCreate(psprintf("%s-x-icu", langtag),
 									 nspid, GetUserId(),
 									 COLLPROVIDER_ICU, true, -1,
-									 NULL, NULL, iculocstr,
-									 get_collation_actual_version(COLLPROVIDER_ICU, iculocstr),
+									 NULL, NULL, langtag, NULL,
+									 get_collation_actual_version(COLLPROVIDER_ICU, langtag),
 									 true, true);
 			if (OidIsValid(collid))
 			{
@@ -829,6 +1043,31 @@ pg_import_system_collations(PG_FUNCTION_ARGS)
 		}
 	}
 #endif							/* USE_ICU */
+
+	/* Load collations known to WIN32 */
+#ifdef ENUM_SYSTEM_LOCALE
+	{
+		int			nvalid = 0;
+		CollParam	param;
+
+		param.nspid = nspid;
+		param.ncreatedp = &ncreated;
+		param.nvalidp = &nvalid;
+
+		/*
+		 * Enumerate the locales that are either installed on or supported by
+		 * the OS.
+		 */
+		if (!EnumSystemLocalesEx(win32_read_locale, LOCALE_ALL,
+								 (LPARAM) &param, NULL))
+			_dosmaperr(GetLastError());
+
+		/* Give a warning if EnumSystemLocalesEx seems to be malfunctioning */
+		if (nvalid == 0)
+			ereport(WARNING,
+					(errmsg("no usable system locales were found")));
+	}
+#endif							/* ENUM_SYSTEM_LOCALE */
 
 	PG_RETURN_INT32(ncreated);
 }

@@ -3,7 +3,7 @@
  * rewriteSearchCycle.c
  *		Support for rewriting SEARCH and CYCLE clauses.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -16,8 +16,8 @@
 #include "catalog/pg_operator_d.h"
 #include "catalog/pg_type_d.h"
 #include "nodes/makefuncs.h"
-#include "nodes/pg_list.h"
 #include "nodes/parsenodes.h"
+#include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
@@ -282,8 +282,8 @@ rewriteSearchAndCycle(CommonTableExpr *cte)
 
 	newrte = makeNode(RangeTblEntry);
 	newrte->rtekind = RTE_SUBQUERY;
-	newrte->alias = makeAlias("*TLOCRN*", cte->ctecolnames);
-	newrte->eref = newrte->alias;
+	newrte->alias = NULL;
+	newrte->eref = makeAlias("*TLOCRN*", cte->ctecolnames);
 	newsubquery = copyObject(rte1->subquery);
 	IncrementVarSublevelsUp((Node *) newsubquery, 1, 1);
 	newrte->subquery = newsubquery;
@@ -320,7 +320,7 @@ rewriteSearchAndCycle(CommonTableExpr *cte)
 		if (cte->search_clause->search_breadth_first)
 		{
 			search_col_rowexpr->args = lcons(makeConst(INT8OID, -1, InvalidOid, sizeof(int64),
-													   Int64GetDatum(0), false, FLOAT8PASSBYVAL),
+													   Int64GetDatum(0), false, true),
 											 search_col_rowexpr->args);
 			search_col_rowexpr->colnames = lcons(makeString("*DEPTH*"), search_col_rowexpr->colnames);
 			texpr = (Expr *) search_col_rowexpr;
@@ -379,8 +379,8 @@ rewriteSearchAndCycle(CommonTableExpr *cte)
 		ewcl = lappend(ewcl, makeString(cte->cycle_clause->cycle_mark_column));
 		ewcl = lappend(ewcl, makeString(cte->cycle_clause->cycle_path_column));
 	}
-	newrte->alias = makeAlias("*TROCRN*", ewcl);
-	newrte->eref = newrte->alias;
+	newrte->alias = NULL;
+	newrte->eref = makeAlias("*TROCRN*", ewcl);
 
 	/*
 	 * Find the reference to the recursive CTE in the right UNION subquery's
@@ -523,7 +523,7 @@ rewriteSearchAndCycle(CommonTableExpr *cte)
 
 			fexpr = makeFuncExpr(F_INT8INC, INT8OID, list_make1(fs), InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 
-			lfirst(list_head(search_col_rowexpr->args)) = fexpr;
+			linitial(search_col_rowexpr->args) = fexpr;
 
 			texpr = (Expr *) search_col_rowexpr;
 		}

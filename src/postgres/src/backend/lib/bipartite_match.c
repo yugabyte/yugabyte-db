@@ -7,7 +7,7 @@
  *
  * https://en.wikipedia.org/w/index.php?title=Hopcroft%E2%80%93Karp_algorithm&oldid=593898016
  *
- * Copyright (c) 2015-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/bipartite_match.c
@@ -38,7 +38,7 @@ static bool hk_depth_search(BipartiteMatchState *state, int u);
 BipartiteMatchState *
 BipartiteMatch(int u_size, int v_size, short **adjacency)
 {
-	BipartiteMatchState *state = palloc(sizeof(BipartiteMatchState));
+	BipartiteMatchState *state = palloc_object(BipartiteMatchState);
 
 	if (u_size < 0 || u_size >= SHRT_MAX ||
 		v_size < 0 || v_size >= SHRT_MAX)

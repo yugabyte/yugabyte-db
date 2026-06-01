@@ -44,6 +44,12 @@ SELECT * FROM update_test;
  10 | 20 | 
 (2 rows)
 
+-- error, you're not supposed to qualify the target column
+UPDATE update_test t SET t.b = t.b + 10 WHERE t.a = 10;
+ERROR:  column "t" of relation "update_test" does not exist
+LINE 1: UPDATE update_test t SET t.b = t.b + 10 WHERE t.a = 10;
+                                 ^
+HINT:  SET target columns cannot be qualified with the relation name.
 --
 -- Test VALUES in FROM
 --
@@ -172,15 +178,15 @@ EXPLAIN (VERBOSE, COSTS OFF)
 UPDATE update_test t
   SET (a, b) = (SELECT b, a FROM update_test s WHERE s.a = t.a)
   WHERE CURRENT_USER = SESSION_USER;
-                         QUERY PLAN                          
--------------------------------------------------------------
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
  Update on public.update_test t
    ->  Result
-         Output: $1, $2, (SubPlan 1 (returns $1,$2)), t.ctid
+         Output: (SubPlan multiexpr_1).col1, (SubPlan multiexpr_1).col2, (rescan SubPlan multiexpr_1), t.ctid
          One-Time Filter: (CURRENT_USER = SESSION_USER)
          ->  Seq Scan on public.update_test t
                Output: t.a, t.ctid
-         SubPlan 1 (returns $1,$2)
+         SubPlan multiexpr_1
            ->  Seq Scan on public.update_test s
                  Output: s.b, s.a
                  Filter: (s.a = t.a)

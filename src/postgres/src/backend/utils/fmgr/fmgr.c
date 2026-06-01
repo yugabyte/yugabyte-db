@@ -3,7 +3,7 @@
  * fmgr.c
  *	  The Postgres function manager.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -16,6 +16,7 @@
 #include "postgres.h"
 
 #include "access/detoast.h"
+#include "access/htup_details.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -23,12 +24,14 @@
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/miscnodes.h"
 #include "nodes/nodeFuncs.h"
 #include "pgstat.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgrtab.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
@@ -192,7 +195,6 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	HeapTuple	procedureTuple;
 	Form_pg_proc procedureStruct;
 	Datum		prosrcdatum;
-	bool		isnull;
 	char	   *prosrc;
 
 	/*
@@ -270,10 +272,8 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 			 * internal function is stored in prosrc (it doesn't have to be
 			 * the same as the name of the alias!)
 			 */
-			prosrcdatum = SysCacheGetAttr(PROCOID, procedureTuple,
-										  Anum_pg_proc_prosrc, &isnull);
-			if (isnull)
-				elog(ERROR, "null prosrc");
+			prosrcdatum = SysCacheGetAttrNotNull(PROCOID, procedureTuple,
+												 Anum_pg_proc_prosrc);
 			prosrc = TextDatumGetCString(prosrcdatum);
 			fbp = fmgr_lookupByName(prosrc);
 			if (fbp == NULL)
@@ -328,7 +328,6 @@ fmgr_symbol(Oid functionId, char **mod, char **fn)
 {
 	HeapTuple	procedureTuple;
 	Form_pg_proc procedureStruct;
-	bool		isnull;
 	Datum		prosrcattr;
 	Datum		probinattr;
 
@@ -351,25 +350,19 @@ fmgr_symbol(Oid functionId, char **mod, char **fn)
 	switch (procedureStruct->prolang)
 	{
 		case INTERNALlanguageId:
-			prosrcattr = SysCacheGetAttr(PROCOID, procedureTuple,
-										 Anum_pg_proc_prosrc, &isnull);
-			if (isnull)
-				elog(ERROR, "null prosrc");
+			prosrcattr = SysCacheGetAttrNotNull(PROCOID, procedureTuple,
+												Anum_pg_proc_prosrc);
 
 			*mod = NULL;		/* core binary */
 			*fn = TextDatumGetCString(prosrcattr);
 			break;
 
 		case ClanguageId:
-			prosrcattr = SysCacheGetAttr(PROCOID, procedureTuple,
-										 Anum_pg_proc_prosrc, &isnull);
-			if (isnull)
-				elog(ERROR, "null prosrc for C function %u", functionId);
+			prosrcattr = SysCacheGetAttrNotNull(PROCOID, procedureTuple,
+												Anum_pg_proc_prosrc);
 
-			probinattr = SysCacheGetAttr(PROCOID, procedureTuple,
-										 Anum_pg_proc_probin, &isnull);
-			if (isnull)
-				elog(ERROR, "null probin for C function %u", functionId);
+			probinattr = SysCacheGetAttrNotNull(PROCOID, procedureTuple,
+												Anum_pg_proc_probin);
 
 			/*
 			 * No need to check symbol presence / API version here, already
@@ -404,7 +397,6 @@ fmgr_info_C_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 	CFuncHashTabEntry *hashentry;
 	PGFunction	user_fn;
 	const Pg_finfo_record *inforec;
-	bool		isnull;
 
 	/*
 	 * See if we have the function address cached already
@@ -428,16 +420,12 @@ fmgr_info_C_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 		 * While in general these columns might be null, that's not allowed
 		 * for C-language functions.
 		 */
-		prosrcattr = SysCacheGetAttr(PROCOID, procedureTuple,
-									 Anum_pg_proc_prosrc, &isnull);
-		if (isnull)
-			elog(ERROR, "null prosrc for C function %u", functionId);
+		prosrcattr = SysCacheGetAttrNotNull(PROCOID, procedureTuple,
+											Anum_pg_proc_prosrc);
 		prosrcstring = TextDatumGetCString(prosrcattr);
 
-		probinattr = SysCacheGetAttr(PROCOID, procedureTuple,
-									 Anum_pg_proc_probin, &isnull);
-		if (isnull)
-			elog(ERROR, "null probin for C function %u", functionId);
+		probinattr = SysCacheGetAttrNotNull(PROCOID, procedureTuple,
+											Anum_pg_proc_probin);
 		probinstring = TextDatumGetCString(probinattr);
 
 		/* Look up the function itself */
@@ -673,7 +661,9 @@ struct fmgr_security_definer_cache
 {
 	FmgrInfo	flinfo;			/* lookup info for target function */
 	Oid			userid;			/* userid to set, or InvalidOid */
-	ArrayType  *proconfig;		/* GUC values to set, or NULL */
+	List	   *configNames;	/* GUC names to set, or NIL */
+	List	   *configHandles;	/* GUC handles to set, or NIL */
+	List	   *configValues;	/* GUC values to set, or NIL */
 	Datum		arg;			/* passthrough argument for plugin modules */
 };
 
@@ -695,7 +685,10 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 	FmgrInfo   *save_flinfo;
 	Oid			save_userid;
 	int			save_sec_context;
-	volatile int save_nestlevel;
+	ListCell   *lc1,
+			   *lc2,
+			   *lc3;
+	int			save_nestlevel;
 	PgStat_FunctionCallUsage fcusage;
 
 	if (!fcinfo->flinfo->fn_extra)
@@ -727,8 +720,24 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 								&isnull);
 		if (!isnull)
 		{
+			ArrayType  *array;
+			ListCell   *lc;
+
 			oldcxt = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
-			fcache->proconfig = DatumGetArrayTypePCopy(datum);
+			array = DatumGetArrayTypeP(datum);
+			TransformGUCArray(array, &fcache->configNames,
+							  &fcache->configValues);
+
+			/* transform names to config handles to avoid lookup cost */
+			fcache->configHandles = NIL;
+			foreach(lc, fcache->configNames)
+			{
+				char	   *name = (char *) lfirst(lc);
+
+				fcache->configHandles = lappend(fcache->configHandles,
+												get_config_handle(name));
+			}
+
 			MemoryContextSwitchTo(oldcxt);
 		}
 
@@ -741,7 +750,7 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 
 	/* GetUserIdAndSecContext is cheap enough that no harm in a wasted call */
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
-	if (fcache->proconfig)		/* Need a new GUC nesting level */
+	if (fcache->configNames != NIL) /* Need a new GUC nesting level */
 		save_nestlevel = NewGUCNestLevel();
 	else
 		save_nestlevel = 0;		/* keep compiler quiet */
@@ -750,12 +759,20 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 		SetUserIdAndSecContext(fcache->userid,
 							   save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
 
-	if (fcache->proconfig)
+	forthree(lc1, fcache->configNames,
+			 lc2, fcache->configHandles,
+			 lc3, fcache->configValues)
 	{
-		ProcessGUCArray(fcache->proconfig,
-						(superuser() ? PGC_SUSET : PGC_USERSET),
-						PGC_S_SESSION,
-						GUC_ACTION_SAVE);
+		GucContext	context = superuser() ? PGC_SUSET : PGC_USERSET;
+		GucSource	source = PGC_S_SESSION;
+		GucAction	action = GUC_ACTION_SAVE;
+		char	   *name = lfirst(lc1);
+		config_handle *handle = lfirst(lc2);
+		char	   *value = lfirst(lc3);
+
+		(void) set_config_with_handle(name, handle, value,
+									  context, source, GetUserId(),
+									  action, true, 0, false);
 	}
 
 	/* function manager hook */
@@ -798,7 +815,7 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 
 	fcinfo->flinfo = save_flinfo;
 
-	if (fcache->proconfig)
+	if (fcache->configNames != NIL)
 		AtEOXact_GUC(true, save_nestlevel);
 	if (OidIsValid(fcache->userid))
 		SetUserIdAndSecContext(save_userid, save_sec_context);
@@ -1596,6 +1613,114 @@ InputFunctionCall(FmgrInfo *flinfo, char *str, Oid typioparam, int32 typmod)
 }
 
 /*
+ * Call a previously-looked-up datatype input function, with non-exception
+ * handling of "soft" errors.
+ *
+ * This is basically like InputFunctionCall, but the converted Datum is
+ * returned into *result while the function result is true for success or
+ * false for failure.  Also, the caller may pass an ErrorSaveContext node.
+ *
+ * If escontext points to an ErrorSaveContext, any "soft" errors detected by
+ * the input function will be reported by filling the escontext struct and
+ * returning false.  (The caller can choose to test SOFT_ERROR_OCCURRED(),
+ * but checking the function result instead is usually cheaper.)
+ *
+ * If escontext does not point to an ErrorSaveContext, errors are reported
+ * via ereport(ERROR), so that there is no functional difference from
+ * InputFunctionCall; the result will always be true if control returns.
+ */
+bool
+InputFunctionCallSafe(FmgrInfo *flinfo, char *str,
+					  Oid typioparam, int32 typmod,
+					  Node *escontext,
+					  Datum *result)
+{
+	LOCAL_FCINFO(fcinfo, 3);
+
+	if (str == NULL && flinfo->fn_strict)
+	{
+		*result = (Datum) 0;	/* just return null result */
+		return true;
+	}
+
+	InitFunctionCallInfoData(*fcinfo, flinfo, 3, InvalidOid, escontext, NULL);
+
+	fcinfo->args[0].value = CStringGetDatum(str);
+	fcinfo->args[0].isnull = false;
+	fcinfo->args[1].value = ObjectIdGetDatum(typioparam);
+	fcinfo->args[1].isnull = false;
+	fcinfo->args[2].value = Int32GetDatum(typmod);
+	fcinfo->args[2].isnull = false;
+
+	*result = FunctionCallInvoke(fcinfo);
+
+	/* Result value is garbage, and could be null, if an error was reported */
+	if (SOFT_ERROR_OCCURRED(escontext))
+		return false;
+
+	/* Otherwise, should get null result if and only if str is NULL */
+	if (str == NULL)
+	{
+		if (!fcinfo->isnull)
+			elog(ERROR, "input function %u returned non-NULL",
+				 flinfo->fn_oid);
+	}
+	else
+	{
+		if (fcinfo->isnull)
+			elog(ERROR, "input function %u returned NULL",
+				 flinfo->fn_oid);
+	}
+
+	return true;
+}
+
+/*
+ * Call a directly-named datatype input function, with non-exception
+ * handling of "soft" errors.
+ *
+ * This is like InputFunctionCallSafe, except that it is given a direct
+ * pointer to the C function to call.  We assume that that function is
+ * strict.  Also, the function cannot be one that needs to
+ * look at FmgrInfo, since there won't be any.
+ */
+bool
+DirectInputFunctionCallSafe(PGFunction func, char *str,
+							Oid typioparam, int32 typmod,
+							Node *escontext,
+							Datum *result)
+{
+	LOCAL_FCINFO(fcinfo, 3);
+
+	if (str == NULL)
+	{
+		*result = (Datum) 0;	/* just return null result */
+		return true;
+	}
+
+	InitFunctionCallInfoData(*fcinfo, NULL, 3, InvalidOid, escontext, NULL);
+
+	fcinfo->args[0].value = CStringGetDatum(str);
+	fcinfo->args[0].isnull = false;
+	fcinfo->args[1].value = ObjectIdGetDatum(typioparam);
+	fcinfo->args[1].isnull = false;
+	fcinfo->args[2].value = Int32GetDatum(typmod);
+	fcinfo->args[2].isnull = false;
+
+	*result = (*func) (fcinfo);
+
+	/* Result value is garbage, and could be null, if an error was reported */
+	if (SOFT_ERROR_OCCURRED(escontext))
+		return false;
+
+	/* Otherwise, shouldn't get null result */
+	if (fcinfo->isnull)
+		elog(ERROR, "input function %p returned NULL", (void *) func);
+
+	return true;
+}
+
+/*
  * Call a previously-looked-up datatype output function.
  *
  * Do not call this on NULL datums.
@@ -1740,47 +1865,12 @@ OidSendFunctionCall(Oid functionId, Datum val)
 
 
 /*-------------------------------------------------------------------------
- *		Support routines for standard maybe-pass-by-reference datatypes
- *
- * int8 and float8 can be passed by value if Datum is wide enough.
- * (For backwards-compatibility reasons, we allow pass-by-ref to be chosen
- * at compile time even if pass-by-val is possible.)
- *
- * Note: there is only one switch controlling the pass-by-value option for
- * both int8 and float8; this is to avoid making things unduly complicated
- * for the timestamp types, which might have either representation.
- *-------------------------------------------------------------------------
- */
-
-#ifndef USE_FLOAT8_BYVAL		/* controls int8 too */
-
-Datum
-Int64GetDatum(int64 X)
-{
-	int64	   *retval = (int64 *) palloc(sizeof(int64));
-
-	*retval = X;
-	return PointerGetDatum(retval);
-}
-
-Datum
-Float8GetDatum(float8 X)
-{
-	float8	   *retval = (float8 *) palloc(sizeof(float8));
-
-	*retval = X;
-	return PointerGetDatum(retval);
-}
-#endif							/* USE_FLOAT8_BYVAL */
-
-
-/*-------------------------------------------------------------------------
  *		Support routines for toastable datatypes
  *-------------------------------------------------------------------------
  */
 
-struct varlena *
-pg_detoast_datum(struct varlena *datum)
+varlena *
+pg_detoast_datum(varlena *datum)
 {
 	if (VARATT_IS_EXTENDED(datum))
 		return detoast_attr(datum);
@@ -1788,8 +1878,8 @@ pg_detoast_datum(struct varlena *datum)
 		return datum;
 }
 
-struct varlena *
-pg_detoast_datum_copy(struct varlena *datum)
+varlena *
+pg_detoast_datum_copy(varlena *datum)
 {
 	if (VARATT_IS_EXTENDED(datum))
 		return detoast_attr(datum);
@@ -1797,22 +1887,22 @@ pg_detoast_datum_copy(struct varlena *datum)
 	{
 		/* Make a modifiable copy of the varlena object */
 		Size		len = VARSIZE(datum);
-		struct varlena *result = (struct varlena *) palloc(len);
+		varlena    *result = (varlena *) palloc(len);
 
 		memcpy(result, datum, len);
 		return result;
 	}
 }
 
-struct varlena *
-pg_detoast_datum_slice(struct varlena *datum, int32 first, int32 count)
+varlena *
+pg_detoast_datum_slice(varlena *datum, int32 first, int32 count)
 {
 	/* Only get the specified portion from the toast rel */
 	return detoast_attr_slice(datum, first, count);
 }
 
-struct varlena *
-pg_detoast_datum_packed(struct varlena *datum)
+varlena *
+pg_detoast_datum_packed(varlena *datum)
 {
 	if (VARATT_IS_COMPRESSED(datum) || VARATT_IS_EXTERNAL(datum))
 		return detoast_attr(datum);
@@ -2129,8 +2219,8 @@ CheckFunctionValidatorAccess(Oid validatorOid, Oid functionOid)
 						langStruct->lanvalidator)));
 
 	/* first validate that we have permissions to use the language */
-	aclresult = pg_language_aclcheck(procStruct->prolang, GetUserId(),
-									 ACL_USAGE);
+	aclresult = object_aclcheck(LanguageRelationId, procStruct->prolang, GetUserId(),
+								ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_LANGUAGE,
 					   NameStr(langStruct->lanname));
@@ -2140,7 +2230,7 @@ CheckFunctionValidatorAccess(Oid validatorOid, Oid functionOid)
 	 * execute it, there should be no possible side-effect of
 	 * compiling/validation that execution can't have.
 	 */
-	aclresult = pg_proc_aclcheck(functionOid, GetUserId(), ACL_EXECUTE);
+	aclresult = object_aclcheck(ProcedureRelationId, functionOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_FUNCTION, NameStr(procStruct->proname));
 

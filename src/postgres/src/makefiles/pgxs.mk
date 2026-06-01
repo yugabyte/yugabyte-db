@@ -101,8 +101,11 @@ endif # PGXS
 
 override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
 
+# See equivalent block in Makefile.shlib
 ifdef MODULES
-override CFLAGS += $(CFLAGS_SL)
+override LDFLAGS_SL += $(CFLAGS_SL_MODULE)
+override CFLAGS += $(CFLAGS_SL) $(CFLAGS_SL_MODULE)
+override CXXFLAGS += $(CFLAGS_SL) $(CXXFLAGS_SL_MODULE)
 endif
 
 ifdef MODULEDIR
@@ -373,10 +376,7 @@ endif
 ifdef REGRESS
 # things created by various check targets
 	rm -rf $(pg_regress_clean_files)
-ifeq ($(PORTNAME), win)
-	rm -f regress.def
 endif
-endif # REGRESS
 ifdef TAP_TESTS
 	rm -rf tmp_check/
 endif
@@ -388,7 +388,7 @@ ifdef MODULE_big
 clean: clean-lib
 endif
 
-distclean maintainer-clean: clean
+distclean: clean
 
 
 ifdef REGRESS

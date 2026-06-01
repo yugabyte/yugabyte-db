@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# Copyright (c) 2007-2022, PostgreSQL Global Development Group
+# Copyright (c) 2007-2026, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/UCS_to_SHIFT_JIS_2004.pl
 #
@@ -8,7 +8,7 @@
 # "sjis-0213-2004-std.txt" (http://x0213.org)
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use convutils;
 
@@ -37,13 +37,13 @@ while (my $line = <$in>)
 
 		push @mapping,
 		  {
-			code       => $code,
-			ucs        => $ucs1,
+			code => $code,
+			ucs => $ucs1,
 			ucs_second => $ucs2,
-			comment    => $rest,
-			direction  => BOTH,
-			f          => $in_file,
-			l          => $.
+			comment => $rest,
+			direction => BOTH,
+			f => $in_file,
+			l => $.
 		  };
 	}
 	elsif ($line =~ /^0x(\w+)\s*U\+(\w+)\s*#\s*(\S.*)?\s*$/)
@@ -51,7 +51,7 @@ while (my $line = <$in>)
 
 		# non-combined characters
 		my ($c, $u, $rest) = ($1, $2, "U+" . $2 . $3);
-		my $ucs  = hex($u);
+		my $ucs = hex($u);
 		my $code = hex($c);
 		my $direction;
 
@@ -74,12 +74,12 @@ while (my $line = <$in>)
 
 		push @mapping,
 		  {
-			code      => $code,
-			ucs       => $ucs,
-			comment   => $rest,
+			code => $code,
+			ucs => $ucs,
+			comment => $rest,
 			direction => $direction,
-			f         => $in_file,
-			l         => $.
+			f => $in_file,
+			l => $.
 		  };
 	}
 }

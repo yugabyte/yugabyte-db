@@ -8,7 +8,7 @@
  * and only the receiver may receive.  This is intended to allow a user
  * backend to communicate with worker backends that it has registered.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/storage/ipc/shm_mq.c
@@ -22,10 +22,11 @@
 #include "pgstat.h"
 #include "port/pg_bitutils.h"
 #include "postmaster/bgworker.h"
-#include "storage/procsignal.h"
+#include "storage/proc.h"
 #include "storage/shm_mq.h"
 #include "storage/spin.h"
 #include "utils/memutils.h"
+#include "utils/wait_event.h"
 
 /*
  * This structure represents the actual queue, stored in shared memory.
@@ -290,7 +291,7 @@ shm_mq_get_sender(shm_mq *mq)
 shm_mq_handle *
 shm_mq_attach(shm_mq *mq, dsm_segment *seg, BackgroundWorkerHandle *handle)
 {
-	shm_mq_handle *mqh = palloc(sizeof(shm_mq_handle));
+	shm_mq_handle *mqh = palloc_object(shm_mq_handle);
 
 	Assert(mq->mq_receiver == MyProc || mq->mq_sender == MyProc);
 	mqh->mqh_queue = mq;
@@ -1017,7 +1018,7 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, const void *data,
 			 * cheaper than setting one that has been reset.
 			 */
 			(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
-							 WAIT_EVENT_MQ_SEND);
+							 WAIT_EVENT_MESSAGE_QUEUE_SEND);
 
 			/* Reset the latch so we don't spin. */
 			ResetLatch(MyLatch);
@@ -1042,7 +1043,7 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, const void *data,
 			 */
 			pg_memory_barrier();
 			memcpy(&mq->mq_ring[mq->mq_ring_offset + offset],
-				   (char *) data + sent, sendnow);
+				   (const char *) data + sent, sendnow);
 			sent += sendnow;
 
 			/*
@@ -1163,7 +1164,7 @@ shm_mq_receive_bytes(shm_mq_handle *mqh, Size bytes_needed, bool nowait,
 		 * setting one that has been reset.
 		 */
 		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
-						 WAIT_EVENT_MQ_RECEIVE);
+						 WAIT_EVENT_MESSAGE_QUEUE_RECEIVE);
 
 		/* Reset the latch so we don't spin. */
 		ResetLatch(MyLatch);
@@ -1252,7 +1253,7 @@ shm_mq_wait_internal(shm_mq *mq, PGPROC **ptr, BackgroundWorkerHandle *handle)
 
 		/* Wait to be signaled. */
 		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
-						 WAIT_EVENT_MQ_INTERNAL);
+						 WAIT_EVENT_MESSAGE_QUEUE_INTERNAL);
 
 		/* Reset the latch so we don't spin. */
 		ResetLatch(MyLatch);

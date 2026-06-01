@@ -2,7 +2,7 @@
  * Copyright (c) 1983, 1995, 1996 Eric P. Allman
  * Copyright (c) 1988, 1993
  *	The Regents of the University of California.  All rights reserved.
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -108,16 +108,6 @@
 #undef	fprintf
 #undef	vprintf
 #undef	printf
-
-/*
- * We use the platform's native snprintf() for some machine-dependent cases.
- * While that's required by C99, Microsoft Visual Studio lacks it before
- * VS2015.  Fortunately, we don't really need the length check in practice,
- * so just fall back to native sprintf() on that platform.
- */
-#if defined(_MSC_VER) && _MSC_VER < 1900	/* pre-VS2015 */
-#define snprintf(str,size,...) sprintf(str,__VA_ARGS__)
-#endif
 
 /*
  * Info about where the formatted output is going.
@@ -472,8 +462,7 @@ nextch2:
 				/* set zero padding if no nonzero digits yet */
 				if (accum == 0 && !pointflag)
 					zpad = '0';
-				/* FALL THRU */
-				yb_switch_fallthrough();
+				pg_fallthrough;
 			case '1':
 			case '2':
 			case '3':
@@ -574,17 +563,22 @@ nextch2:
 				else
 					longflag = 1;
 				goto nextch2;
-			case 'z':
-#if SIZEOF_SIZE_T == 8
-#ifdef HAVE_LONG_INT_64
+			case 'j':
+#if SIZEOF_INTMAX_T == SIZEOF_LONG
 				longflag = 1;
-#elif defined(HAVE_LONG_LONG_INT_64)
+#elif SIZEOF_INTMAX_T == SIZEOF_LONG_LONG
 				longlongflag = 1;
 #else
-#error "Don't know how to print 64bit integers"
+#error "cannot find integer type of the same size as intmax_t"
 #endif
+				goto nextch2;
+			case 'z':
+#if SIZEOF_SIZE_T == SIZEOF_LONG
+				longflag = 1;
+#elif SIZEOF_SIZE_T == SIZEOF_LONG_LONG
+				longlongflag = 1;
 #else
-				/* assume size_t is same size as int */
+#error "cannot find integer type of the same size as size_t"
 #endif
 				goto nextch2;
 			case 'h':
@@ -764,12 +758,8 @@ find_arguments(const char *format, va_list args,
 	int			longflag;
 	int			fmtpos;
 	int			i;
-	int			last_dollar;
-	PrintfArgType argtypes[PG_NL_ARGMAX + 1];
-
-	/* Initialize to "no dollar arguments known" */
-	last_dollar = 0;
-	MemSet(argtypes, 0, sizeof(argtypes));
+	int			last_dollar = 0;	/* Init to "no dollar arguments known" */
+	PrintfArgType argtypes[PG_NL_ARGMAX + 1] = {0};
 
 	/*
 	 * This loop must accept the same format strings as the one in dopr().
@@ -845,17 +835,22 @@ nextch1:
 				else
 					longflag = 1;
 				goto nextch1;
-			case 'z':
-#if SIZEOF_SIZE_T == 8
-#ifdef HAVE_LONG_INT_64
+			case 'j':
+#if SIZEOF_INTMAX_T == SIZEOF_LONG
 				longflag = 1;
-#elif defined(HAVE_LONG_LONG_INT_64)
+#elif SIZEOF_INTMAX_T == SIZEOF_LONG_LONG
 				longlongflag = 1;
 #else
-#error "Don't know how to print 64bit integers"
+#error "cannot find integer type of the same size as intmax_t"
 #endif
+				goto nextch1;
+			case 'z':
+#if SIZEOF_SIZE_T == SIZEOF_LONG
+				longflag = 1;
+#elif SIZEOF_SIZE_T == SIZEOF_LONG_LONG
+				longlongflag = 1;
 #else
-				/* assume size_t is same size as int */
+#error "cannot find integer type of the same size as size_t"
 #endif
 				goto nextch1;
 			case 'h':
@@ -1228,22 +1223,6 @@ fmtfloat(double value, char type, int forcesign, int leftjust,
 		}
 		if (vallen < 0)
 			goto fail;
-
-		/*
-		 * Windows, alone among our supported platforms, likes to emit
-		 * three-digit exponent fields even when two digits would do.  Hack
-		 * such results to look like the way everyone else does it.
-		 */
-#ifdef WIN32
-		if (vallen >= 6 &&
-			convert[vallen - 5] == 'e' &&
-			convert[vallen - 3] == '0')
-		{
-			convert[vallen - 3] = convert[vallen - 2];
-			convert[vallen - 2] = convert[vallen - 1];
-			vallen--;
-		}
-#endif
 	}
 
 	padlen = compute_padlen(minlen, vallen + zeropadlen, leftjust);
@@ -1359,17 +1338,6 @@ pg_strfromd(char *str, size_t count, int precision, double value)
 				target.failed = true;
 				goto fail;
 			}
-
-#ifdef WIN32
-			if (vallen >= 6 &&
-				convert[vallen - 5] == 'e' &&
-				convert[vallen - 3] == '0')
-			{
-				convert[vallen - 3] = convert[vallen - 2];
-				convert[vallen - 2] = convert[vallen - 1];
-				vallen--;
-			}
-#endif
 		}
 	}
 

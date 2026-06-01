@@ -17,17 +17,20 @@
 
 #include "access/xlog_internal.h"
 #include "common/logging.h"
-#include "pg_getopt.h"
+#include "getopt_long.h"
 
-const char *progname;
+static const char *progname;
 
 /* Options and defaults */
-bool		dryrun = false;		/* are we performing a dry-run operation? */
-char	   *additional_ext = NULL;	/* Extension to remove from filenames */
+static bool dryrun = false;		/* are we performing a dry-run operation? */
+static bool cleanBackupHistory = false; /* remove files including backup
+										 * history files */
+static char *additional_ext = NULL; /* Extension to remove from filenames */
 
-char	   *archiveLocation;	/* where to find the archive? */
-char	   *restartWALFileName; /* the file from which we can restart restore */
-char		exclusiveCleanupFileName[MAXFNAMELEN];	/* the oldest file we want
+static char *archiveLocation;	/* where to find the archive? */
+static char *restartWALFileName;	/* the file from which we can restart
+									 * restore */
+static char exclusiveCleanupFileName[MAXFNAMELEN];	/* the oldest file we want
 													 * to remain in archive */
 
 
@@ -93,75 +96,81 @@ CleanupPriorWALFiles(void)
 	struct dirent *xlde;
 	char		walfile[MAXPGPATH];
 
-	if ((xldir = opendir(archiveLocation)) != NULL)
+	xldir = opendir(archiveLocation);
+	if (xldir == NULL)
+		pg_fatal("could not open archive location \"%s\": %m",
+				 archiveLocation);
+
+	while (errno = 0, (xlde = readdir(xldir)) != NULL)
 	{
-		while (errno = 0, (xlde = readdir(xldir)) != NULL)
+		char		WALFilePath[MAXPGPATH * 2]; /* the file path including
+												 * archive */
+
+		/*
+		 * Truncation is essentially harmless, because we skip files whose
+		 * format is different from WAL files and backup history files. (In
+		 * principle, one could use a 1000-character additional_ext and get
+		 * trouble.)
+		 */
+		strlcpy(walfile, xlde->d_name, MAXPGPATH);
+		TrimExtension(walfile, additional_ext);
+
+		/*
+		 * Ignore anything does that not look like a WAL segment, a .partial
+		 * WAL segment or a backup history file (if requested).
+		 */
+		if (!IsXLogFileName(walfile) && !IsPartialXLogFileName(walfile) &&
+			!(cleanBackupHistory && IsBackupHistoryFileName(walfile)))
+			continue;
+
+		/*
+		 * We ignore the timeline part of the XLOG segment identifiers in
+		 * deciding whether a segment is still needed.  This ensures that we
+		 * won't prematurely remove a segment from a parent timeline. We could
+		 * probably be a little more proactive about removing segments of
+		 * non-parent timelines, but that would be a whole lot more
+		 * complicated.
+		 *
+		 * We use the alphanumeric sorting property of the filenames to decide
+		 * which ones are earlier than the exclusiveCleanupFileName file. Note
+		 * that this means files are not removed in the order they were
+		 * originally written, in case this worries you.
+		 */
+		if (strcmp(walfile + 8, exclusiveCleanupFileName + 8) >= 0)
+			continue;
+
+		/*
+		 * Use the original file name again now, including any extension that
+		 * might have been chopped off before testing the sequence.
+		 */
+		snprintf(WALFilePath, sizeof(WALFilePath), "%s/%s",
+				 archiveLocation, xlde->d_name);
+
+		if (dryrun)
 		{
 			/*
-			 * Truncation is essentially harmless, because we skip names of
-			 * length other than XLOG_FNAME_LEN.  (In principle, one could use
-			 * a 1000-character additional_ext and get trouble.)
+			 * Prints the name of the file to be removed and skips the actual
+			 * removal.  The regular printout is so that the user can pipe the
+			 * output into some other program.
 			 */
-			strlcpy(walfile, xlde->d_name, MAXPGPATH);
-			TrimExtension(walfile, additional_ext);
-
-			/*
-			 * We ignore the timeline part of the XLOG segment identifiers in
-			 * deciding whether a segment is still needed.  This ensures that
-			 * we won't prematurely remove a segment from a parent timeline.
-			 * We could probably be a little more proactive about removing
-			 * segments of non-parent timelines, but that would be a whole lot
-			 * more complicated.
-			 *
-			 * We use the alphanumeric sorting property of the filenames to
-			 * decide which ones are earlier than the exclusiveCleanupFileName
-			 * file. Note that this means files are not removed in the order
-			 * they were originally written, in case this worries you.
-			 */
-			if ((IsXLogFileName(walfile) || IsPartialXLogFileName(walfile)) &&
-				strcmp(walfile + 8, exclusiveCleanupFileName + 8) < 0)
-			{
-				char		WALFilePath[MAXPGPATH * 2]; /* the file path
-														 * including archive */
-
-				/*
-				 * Use the original file name again now, including any
-				 * extension that might have been chopped off before testing
-				 * the sequence.
-				 */
-				snprintf(WALFilePath, sizeof(WALFilePath), "%s/%s",
-						 archiveLocation, xlde->d_name);
-
-				if (dryrun)
-				{
-					/*
-					 * Prints the name of the file to be removed and skips the
-					 * actual removal.  The regular printout is so that the
-					 * user can pipe the output into some other program.
-					 */
-					printf("%s\n", WALFilePath);
-					pg_log_debug("file \"%s\" would be removed", WALFilePath);
-					continue;
-				}
-
-				pg_log_debug("removing file \"%s\"", WALFilePath);
-
-				rc = unlink(WALFilePath);
-				if (rc != 0)
-					pg_fatal("could not remove file \"%s\": %m",
-							 WALFilePath);
-			}
+			printf("%s\n", WALFilePath);
+			pg_log_debug("file \"%s\" would be removed", WALFilePath);
+			continue;
 		}
 
-		if (errno)
-			pg_fatal("could not read archive location \"%s\": %m",
-					 archiveLocation);
-		if (closedir(xldir))
-			pg_fatal("could not close archive location \"%s\": %m",
-					 archiveLocation);
+		pg_log_debug("removing file \"%s\"", WALFilePath);
+
+		rc = unlink(WALFilePath);
+		if (rc != 0)
+			pg_fatal("could not remove file \"%s\": %m",
+					 WALFilePath);
 	}
-	else
-		pg_fatal("could not open archive location \"%s\": %m",
+
+	if (errno)
+		pg_fatal("could not read archive location \"%s\": %m",
+				 archiveLocation);
+	if (closedir(xldir))
+		pg_fatal("could not close archive location \"%s\": %m",
 				 archiveLocation);
 }
 
@@ -252,13 +261,16 @@ usage(void)
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]... ARCHIVELOCATION OLDESTKEPTWALFILE\n"), progname);
 	printf(_("\nOptions:\n"));
-	printf(_("  -d             generate debug output (verbose mode)\n"));
-	printf(_("  -n             dry run, show the names of the files that would be removed\n"));
-	printf(_("  -V, --version  output version information, then exit\n"));
-	printf(_("  -x EXT         clean up files if they have this extension\n"));
-	printf(_("  -?, --help     show this help, then exit\n"));
+	printf(_("  -b, --clean-backup-history  clean up files including backup history files\n"));
+	printf(_("  -d, --debug                 generate debug output (verbose mode)\n"));
+	printf(_("  -n, --dry-run               dry run, show the names of the files that would be\n"
+			 "                              removed\n"));
+	printf(_("  -V, --version               output version information, then exit\n"));
+	printf(_("  -x, --strip-extension=EXT   strip this extension before identifying files for\n"
+			 "                              clean up\n"));
+	printf(_("  -?, --help                  show this help, then exit\n"));
 	printf(_("\n"
-			 "For use as archive_cleanup_command in postgresql.conf:\n"
+			 "For use as \"archive_cleanup_command\" in postgresql.conf:\n"
 			 "  archive_cleanup_command = 'pg_archivecleanup [OPTION]... ARCHIVELOCATION %%r'\n"
 			 "e.g.\n"
 			 "  archive_cleanup_command = 'pg_archivecleanup /mnt/server/archiverdir %%r'\n"));
@@ -274,6 +286,13 @@ usage(void)
 int
 main(int argc, char **argv)
 {
+	static struct option long_options[] = {
+		{"clean-backup-history", no_argument, NULL, 'b'},
+		{"debug", no_argument, NULL, 'd'},
+		{"dry-run", no_argument, NULL, 'n'},
+		{"strip-extension", required_argument, NULL, 'x'},
+		{NULL, 0, NULL, 0}
+	};
 	int			c;
 
 	pg_logging_init(argv[0]);
@@ -294,10 +313,13 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt(argc, argv, "x:dn")) != -1)
+	while ((c = getopt_long(argc, argv, "bdnx:", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
+			case 'b':			/* Remove backup history files as well */
+				cleanBackupHistory = true;
+				break;
 			case 'd':			/* Debug mode */
 				pg_logging_increase_verbosity();
 				break;
@@ -352,6 +374,10 @@ main(int argc, char **argv)
 		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(2);
 	}
+
+	if (dryrun)
+		pg_log_info("Executing in dry-run mode.\n"
+					"No files will be removed.");
 
 	/*
 	 * Check archive exists and other initialization if required.

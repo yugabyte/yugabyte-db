@@ -4,7 +4,7 @@
  *	  definition of the "text search parser" system catalog (pg_ts_parser)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_ts_parser.h
@@ -19,13 +19,15 @@
 #define PG_TS_PARSER_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_ts_parser_d.h"
+#include "catalog/pg_ts_parser_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_ts_parser definition.  cpp turns this into
  *		typedef struct FormData_pg_ts_parser
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_ts_parser,3601,TSParserRelationId)
 {
 	Oid			oid;			/* oid */
@@ -52,9 +54,14 @@ CATALOG(pg_ts_parser,3601,TSParserRelationId)
 	regproc		prslextype BKI_LOOKUP(pg_proc);
 } FormData_pg_ts_parser;
 
+END_CATALOG_STRUCT
+
 typedef FormData_pg_ts_parser *Form_pg_ts_parser;
 
-DECLARE_UNIQUE_INDEX(pg_ts_parser_prsname_index, 3606, TSParserNameNspIndexId, on pg_ts_parser using btree(prsname name_ops, prsnamespace oid_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_ts_parser_oid_index, 3607, TSParserOidIndexId, on pg_ts_parser using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_ts_parser_prsname_index, 3606, TSParserNameNspIndexId, pg_ts_parser, btree(prsname name_ops, prsnamespace oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_ts_parser_oid_index, 3607, TSParserOidIndexId, pg_ts_parser, btree(oid oid_ops));
+
+MAKE_SYSCACHE(TSPARSERNAMENSP, pg_ts_parser_prsname_index, 2);
+MAKE_SYSCACHE(TSPARSEROID, pg_ts_parser_oid_index, 2);
 
 #endif							/* PG_TS_PARSER_H */

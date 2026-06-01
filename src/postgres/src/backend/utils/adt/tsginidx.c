@@ -3,7 +3,7 @@
  * tsginidx.c
  *	 GIN support functions for tsvector_ops
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -14,11 +14,10 @@
 #include "postgres.h"
 
 #include "access/gin.h"
-#include "access/stratnum.h"
-#include "miscadmin.h"
 #include "tsearch/ts_type.h"
 #include "tsearch/ts_utils.h"
 #include "utils/builtins.h"
+#include "varatt.h"
 
 
 Datum
@@ -74,7 +73,7 @@ gin_extract_tsvector(PG_FUNCTION_ARGS)
 		int			i;
 		WordEntry  *we = ARRPTR(vector);
 
-		entries = (Datum *) palloc(sizeof(Datum) * vector->size);
+		entries = palloc_array(Datum, vector->size);
 
 		for (i = 0; i < vector->size; i++)
 		{
@@ -96,12 +95,14 @@ gin_extract_tsquery(PG_FUNCTION_ARGS)
 {
 	TSQuery		query = PG_GETARG_TSQUERY(0);
 	int32	   *nentries = (int32 *) PG_GETARG_POINTER(1);
-
-	/* StrategyNumber strategy = PG_GETARG_UINT16(2); */
+#ifdef NOT_USED
+	StrategyNumber strategy = PG_GETARG_UINT16(2);
+#endif
 	bool	  **ptr_partialmatch = (bool **) PG_GETARG_POINTER(3);
 	Pointer   **extra_data = (Pointer **) PG_GETARG_POINTER(4);
-
-	/* bool   **nullFlags = (bool **) PG_GETARG_POINTER(5); */
+#ifdef NOT_USED
+	bool	  **nullFlags = (bool **) PG_GETARG_POINTER(5);
+#endif
 	int32	   *searchMode = (int32 *) PG_GETARG_POINTER(6);
 	Datum	   *entries = NULL;
 
@@ -134,16 +135,16 @@ gin_extract_tsquery(PG_FUNCTION_ARGS)
 		}
 		*nentries = j;
 
-		entries = (Datum *) palloc(sizeof(Datum) * j);
-		partialmatch = *ptr_partialmatch = (bool *) palloc(sizeof(bool) * j);
+		entries = palloc_array(Datum, j);
+		partialmatch = *ptr_partialmatch = palloc_array(bool, j);
 
 		/*
 		 * Make map to convert item's number to corresponding operand's (the
 		 * same, entry's) number. Entry's number is used in check array in
 		 * consistent method. We use the same map for each entry.
 		 */
-		*extra_data = (Pointer *) palloc(sizeof(Pointer) * j);
-		map_item_operand = (int *) palloc0(sizeof(int) * query->size);
+		*extra_data = palloc_array(Pointer, j);
+		map_item_operand = palloc0_array(int, query->size);
 
 		/* Now rescan the VAL items and fill in the arrays */
 		j = 0;
@@ -215,11 +216,13 @@ Datum
 gin_tsquery_consistent(PG_FUNCTION_ARGS)
 {
 	bool	   *check = (bool *) PG_GETARG_POINTER(0);
-
-	/* StrategyNumber strategy = PG_GETARG_UINT16(1); */
+#ifdef NOT_USED
+	StrategyNumber strategy = PG_GETARG_UINT16(1);
+#endif
 	TSQuery		query = PG_GETARG_TSQUERY(2);
-
-	/* int32	nkeys = PG_GETARG_INT32(3); */
+#ifdef NOT_USED
+	int32		nkeys = PG_GETARG_INT32(3);
+#endif
 	Pointer    *extra_data = (Pointer *) PG_GETARG_POINTER(4);
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(5);
 	bool		res = false;
@@ -236,8 +239,6 @@ gin_tsquery_consistent(PG_FUNCTION_ARGS)
 		 * query.
 		 */
 		gcv.first_item = GETQUERY(query);
-		StaticAssertStmt(sizeof(GinTernaryValue) == sizeof(bool),
-						 "sizes of GinTernaryValue and bool are not equal");
 		gcv.check = (GinTernaryValue *) check;
 		gcv.map_item_operand = (int *) (extra_data[0]);
 
@@ -266,11 +267,13 @@ Datum
 gin_tsquery_triconsistent(PG_FUNCTION_ARGS)
 {
 	GinTernaryValue *check = (GinTernaryValue *) PG_GETARG_POINTER(0);
-
-	/* StrategyNumber strategy = PG_GETARG_UINT16(1); */
+#ifdef NOT_USED
+	StrategyNumber strategy = PG_GETARG_UINT16(1);
+#endif
 	TSQuery		query = PG_GETARG_TSQUERY(2);
-
-	/* int32	nkeys = PG_GETARG_INT32(3); */
+#ifdef NOT_USED
+	int32		nkeys = PG_GETARG_INT32(3);
+#endif
 	Pointer    *extra_data = (Pointer *) PG_GETARG_POINTER(4);
 	GinTernaryValue res = GIN_FALSE;
 

@@ -5,13 +5,11 @@
  *
  * A bitmap set can represent any set of nonnegative integers, although
  * it is mainly intended for sets where the maximum value is not large,
- * say at most a few hundred.  By convention, a NULL pointer is always
- * accepted by all operations to represent the empty set.  (But beware
- * that this is not the only representation of the empty set.  Use
- * bms_is_empty() in preference to testing for NULL.)
+ * say at most a few hundred.  By convention, we always represent the
+ * empty set by a NULL pointer.
  *
  *
- * Copyright (c) 2003-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2026, PostgreSQL Global Development Group
  *
  * src/include/nodes/bitmapset.h
  *
@@ -19,6 +17,8 @@
  */
 #ifndef BITMAPSET_H
 #define BITMAPSET_H
+
+#include "nodes/nodes.h"
 
 /*
  * Forward decl to save including pg_list.h
@@ -48,6 +48,9 @@ typedef int32 signedbitmapword; /* must be the matching signed type */
 
 typedef struct Bitmapset
 {
+	pg_node_attr(custom_copy_equal, special_read_write, no_query_jumble)
+
+	NodeTag		type;
 	int			nwords;			/* number of words in array */
 	bitmapword	words[FLEXIBLE_ARRAY_MEMBER];	/* really [nwords] */
 } Bitmapset;
@@ -59,7 +62,7 @@ typedef enum
 	BMS_EQUAL,					/* sets are equal */
 	BMS_SUBSET1,				/* first set is a subset of the second */
 	BMS_SUBSET2,				/* second set is a subset of the first */
-	BMS_DIFFERENT				/* neither set is a subset of the other */
+	BMS_DIFFERENT,				/* neither set is a subset of the other */
 } BMS_Comparison;
 
 /* result of bms_membership */
@@ -67,8 +70,21 @@ typedef enum
 {
 	BMS_EMPTY_SET,				/* 0 members */
 	BMS_SINGLETON,				/* 1 member */
-	BMS_MULTIPLE				/* >1 member */
+	BMS_MULTIPLE,				/* >1 member */
 } BMS_Membership;
+
+/* Select appropriate bit-twiddling functions for bitmap word size */
+#if BITS_PER_BITMAPWORD == 32
+#define bmw_leftmost_one_pos(w)		pg_leftmost_one_pos32(w)
+#define bmw_rightmost_one_pos(w)	pg_rightmost_one_pos32(w)
+#define bmw_popcount(w)				pg_popcount32(w)
+#elif BITS_PER_BITMAPWORD == 64
+#define bmw_leftmost_one_pos(w)		pg_leftmost_one_pos64(w)
+#define bmw_rightmost_one_pos(w)	pg_rightmost_one_pos64(w)
+#define bmw_popcount(w)				pg_popcount64(w)
+#else
+#error "invalid BITS_PER_BITMAPWORD"
+#endif
 
 
 /*
@@ -97,20 +113,22 @@ extern int	bms_num_members(const Bitmapset *a);
 
 /* optimized tests when we don't need to know exact membership count: */
 extern BMS_Membership bms_membership(const Bitmapset *a);
-extern bool bms_is_empty(const Bitmapset *a);
+
+/* NULL is now the only allowed representation of an empty bitmapset */
+#define bms_is_empty(a)  ((a) == NULL)
 
 /* these routines recycle (modify or free) their non-const inputs: */
 
 extern Bitmapset *bms_add_member(Bitmapset *a, int x);
 extern Bitmapset *bms_del_member(Bitmapset *a, int x);
 extern Bitmapset *bms_add_members(Bitmapset *a, const Bitmapset *b);
+extern Bitmapset *bms_replace_members(Bitmapset *a, const Bitmapset *b);
 extern Bitmapset *bms_add_range(Bitmapset *a, int lower, int upper);
 extern Bitmapset *bms_int_members(Bitmapset *a, const Bitmapset *b);
 extern Bitmapset *bms_del_members(Bitmapset *a, const Bitmapset *b);
 extern Bitmapset *bms_join(Bitmapset *a, Bitmapset *b);
 
 /* support for iterating through the integer elements of a set: */
-extern int	bms_first_member(Bitmapset *a);
 extern int	bms_next_member(const Bitmapset *a, int prevbit);
 extern int	bms_prev_member(const Bitmapset *a, int prevbit);
 

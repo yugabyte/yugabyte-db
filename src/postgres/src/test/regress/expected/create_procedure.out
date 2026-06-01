@@ -2,7 +2,7 @@ CALL nonexistent();  -- error
 ERROR:  procedure nonexistent() does not exist
 LINE 1: CALL nonexistent();
              ^
-HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  There is no procedure of that name.
 CALL random();  -- error
 ERROR:  random() is not a procedure
 LINE 1: CALL random();
@@ -100,7 +100,7 @@ SELECT * FROM cp_test ORDER BY b COLLATE "C";
  1 | xyzzy
 (4 rows)
 
--- utitlity functions currently not supported here
+-- utility functions currently not supported here
 CREATE PROCEDURE ptestx()
 LANGUAGE SQL
 BEGIN ATOMIC
@@ -299,7 +299,8 @@ CALL ptest9(1./0.);  -- error
 ERROR:  procedure ptest9(numeric) does not exist
 LINE 1: CALL ptest9(1./0.);
              ^
-HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No procedure of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 -- check named-parameter matching
 CREATE PROCEDURE ptest10(OUT a int, IN b int, IN c int)
 LANGUAGE SQL AS $$ SELECT b - c $$;
@@ -401,9 +402,13 @@ LINE 1: CREATE PROCEDURE ptestx() LANGUAGE SQL STRICT AS $$ INSERT I...
 CREATE PROCEDURE ptestx(a VARIADIC int[], b OUT int) LANGUAGE SQL
   AS $$ SELECT a[1] $$;
 ERROR:  VARIADIC parameter must be the last parameter
+LINE 1: CREATE PROCEDURE ptestx(a VARIADIC int[], b OUT int) LANGUAG...
+                                                  ^
 CREATE PROCEDURE ptestx(a int DEFAULT 42, b OUT int) LANGUAGE SQL
   AS $$ SELECT a $$;
 ERROR:  procedure OUT parameters cannot appear after one with a default value
+LINE 1: CREATE PROCEDURE ptestx(a int DEFAULT 42, b OUT int) LANGUAG...
+                                                  ^
 ALTER PROCEDURE ptest1(text) STRICT;
 ERROR:  invalid attribute in procedure definition
 LINE 1: ALTER PROCEDURE ptest1(text) STRICT;

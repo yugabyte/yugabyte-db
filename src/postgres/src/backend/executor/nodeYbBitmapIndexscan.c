@@ -102,6 +102,7 @@ MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 		node->biss_ScanDesc =
 			index_beginscan_bitmap(node->biss_RelationDesc,
 								   estate->es_snapshot,
+								   NULL /* instrument */ ,
 								   node->biss_NumScanKeys);
 
 		node->biss_ScanDesc->xs_want_itup = true;

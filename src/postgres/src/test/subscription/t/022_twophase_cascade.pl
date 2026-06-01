@@ -1,12 +1,14 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Test cascading logical replication of 2PC.
 #
 # Includes tests for options 2PC (not-streaming) and also for 2PC (streaming).
 #
+# Two-phase and parallel apply will be tested in 023_twophase_stream, so we
+# didn't add a parallel apply version for the tests in this file.
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -37,7 +39,7 @@ logical_decoding_work_mem = 64kB
 $node_B->start;
 # node_C
 my $node_C = PostgreSQL::Test::Cluster->new('node_C');
-$node_C->init(allows_streaming => 'logical');
+$node_C->init;
 $node_C->append_conf(
 	'postgresql.conf', qq(
 max_prepared_transactions = 10
@@ -57,17 +59,17 @@ $node_C->safe_psql('postgres', "CREATE TABLE tab_full (a int PRIMARY KEY)");
 
 # Create some pre-existing content on node_A (for streaming tests)
 $node_A->safe_psql('postgres',
-	"CREATE TABLE test_tab (a int primary key, b varchar)");
+	"CREATE TABLE test_tab (a int primary key, b bytea)");
 $node_A->safe_psql('postgres',
 	"INSERT INTO test_tab VALUES (1, 'foo'), (2, 'bar')");
 
 # Create the same tables on node_B and node_C
 # columns a and b are compatible with same table name on node_A
 $node_B->safe_psql('postgres',
-	"CREATE TABLE test_tab (a int primary key, b text, c timestamptz DEFAULT now(), d bigint DEFAULT 999)"
+	"CREATE TABLE test_tab (a int primary key, b bytea, c timestamptz DEFAULT now(), d bigint DEFAULT 999)"
 );
 $node_C->safe_psql('postgres',
-	"CREATE TABLE test_tab (a int primary key, b text, c timestamptz DEFAULT now(), d bigint DEFAULT 999)"
+	"CREATE TABLE test_tab (a int primary key, b bytea, c timestamptz DEFAULT now(), d bigint DEFAULT 999)"
 );
 
 # Setup logical replication
@@ -86,7 +88,7 @@ $node_B->safe_psql(
 	CREATE SUBSCRIPTION tap_sub_B
 	CONNECTION '$node_A_connstr application_name=$appname_B'
 	PUBLICATION tap_pub_A
-	WITH (two_phase = on)");
+	WITH (two_phase = on, streaming = off)");
 
 # node_B (pub) -> node_C (sub)
 my $node_B_connstr = $node_B->connstr . ' dbname=postgres';
@@ -98,7 +100,7 @@ $node_C->safe_psql(
 	CREATE SUBSCRIPTION tap_sub_C
 	CONNECTION '$node_B_connstr application_name=$appname_C'
 	PUBLICATION tap_pub_B
-	WITH (two_phase = on)");
+	WITH (two_phase = on, streaming = off)");
 
 # Wait for subscribers to finish initialization
 $node_A->wait_for_catchup($appname_B);
@@ -306,8 +308,8 @@ $node_B->poll_query_until(
 $node_A->safe_psql(
 	'postgres', q{
 	BEGIN;
-	INSERT INTO test_tab SELECT i, md5(i::text) FROM generate_series(3, 5000) s(i);
-	UPDATE test_tab SET b = md5(b) WHERE mod(a,2) = 0;
+	INSERT INTO test_tab SELECT i, sha256(i::text::bytea) FROM generate_series(3, 5000) s(i);
+	UPDATE test_tab SET b =  sha256(b) WHERE mod(a,2) = 0;
 	DELETE FROM test_tab WHERE mod(a,3) = 0;
 	PREPARE TRANSACTION 'test_prepared_tab';});
 
@@ -369,8 +371,8 @@ $node_A->safe_psql(
 	BEGIN;
 	INSERT INTO test_tab VALUES (9999, 'foobar');
 	SAVEPOINT sp_inner;
-	INSERT INTO test_tab SELECT i, md5(i::text) FROM generate_series(3, 5000) s(i);
-	UPDATE test_tab SET b = md5(b) WHERE mod(a,2) = 0;
+	INSERT INTO test_tab SELECT i, sha256(i::text::bytea) FROM generate_series(3, 5000) s(i);
+	UPDATE test_tab SET b = sha256(b) WHERE mod(a,2) = 0;
 	DELETE FROM test_tab WHERE mod(a,3) = 0;
 	ROLLBACK TO SAVEPOINT sp_inner;
 	PREPARE TRANSACTION 'outer';

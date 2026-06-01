@@ -4,7 +4,7 @@
  *		Common code for control data file output.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -28,8 +28,8 @@
 #include "access/xlog_internal.h"
 #include "catalog/pg_control.h"
 #include "common/controldata_utils.h"
-#include "common/file_perm.h"
 #ifdef FRONTEND
+#include "common/file_perm.h"
 #include "common/logging.h"
 #endif
 #include "port/pg_crc32c.h"
@@ -37,6 +37,7 @@
 #ifndef FRONTEND
 #include "pgstat.h"
 #include "storage/fd.h"
+#include "utils/wait_event.h"
 #endif
 
 /*
@@ -51,9 +52,24 @@
 ControlFileData *
 get_controlfile(const char *DataDir, bool *crc_ok_p)
 {
+	char		ControlFilePath[MAXPGPATH];
+
+	snprintf(ControlFilePath, MAXPGPATH, "%s/%s", DataDir, XLOG_CONTROL_FILE);
+
+	return get_controlfile_by_exact_path(ControlFilePath, crc_ok_p);
+}
+
+/*
+ * get_controlfile_by_exact_path()
+ *
+ * As above, but the caller specifies the path to the control file itself,
+ * rather than the path to the data directory.
+ */
+ControlFileData *
+get_controlfile_by_exact_path(const char *ControlFilePath, bool *crc_ok_p)
+{
 	ControlFileData *ControlFile;
 	int			fd;
-	char		ControlFilePath[MAXPGPATH];
 	pg_crc32c	crc;
 	int			r;
 #ifdef FRONTEND
@@ -61,10 +77,9 @@ get_controlfile(const char *DataDir, bool *crc_ok_p)
 	int			retries = 0;
 #endif
 
-	AssertArg(crc_ok_p);
+	Assert(crc_ok_p);
 
-	ControlFile = palloc(sizeof(ControlFileData));
-	snprintf(ControlFilePath, MAXPGPATH, "%s/global/pg_control", DataDir);
+	ControlFile = palloc_object(ControlFileData);
 
 #ifdef FRONTEND
 	INIT_CRC32C(last_crc);
@@ -121,7 +136,7 @@ retry:
 	/* Check the CRC. */
 	INIT_CRC32C(crc);
 	COMP_CRC32C(crc,
-				(char *) ControlFile,
+				ControlFile,
 				offsetof(ControlFileData, crc));
 	FIN_CRC32C(crc);
 
@@ -179,21 +194,13 @@ update_controlfile(const char *DataDir,
 	char		buffer[PG_CONTROL_FILE_SIZE];
 	char		ControlFilePath[MAXPGPATH];
 
-	/*
-	 * Apply the same static assertions as in backend's WriteControlFile().
-	 */
-	StaticAssertStmt(sizeof(ControlFileData) <= PG_CONTROL_MAX_SAFE_SIZE,
-					 "pg_control is too large for atomic disk writes");
-	StaticAssertStmt(sizeof(ControlFileData) <= PG_CONTROL_FILE_SIZE,
-					 "sizeof(ControlFileData) exceeds PG_CONTROL_FILE_SIZE");
-
 	/* Update timestamp  */
 	ControlFile->time = (pg_time_t) time(NULL);
 
 	/* Recalculate CRC of control file */
 	INIT_CRC32C(ControlFile->crc);
 	COMP_CRC32C(ControlFile->crc,
-				(char *) ControlFile,
+				ControlFile,
 				offsetof(ControlFileData, crc));
 	FIN_CRC32C(ControlFile->crc);
 

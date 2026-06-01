@@ -3,7 +3,7 @@
  * relptr.h
  *	  This file contains basic declarations for relative pointers.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/relptr.h
@@ -38,18 +38,14 @@
 #define relptr_declare(type, relptrtype) \
 	typedef relptr(type) relptrtype
 
-#ifdef HAVE__BUILTIN_TYPES_COMPATIBLE_P
+#ifdef HAVE_TYPEOF
 #define relptr_access(base, rp) \
-	(AssertVariableIsOfTypeMacro(base, char *), \
-	 (__typeof__((rp).relptr_type)) ((rp).relptr_off == 0 ? NULL : \
+	(StaticAssertVariableIsOfTypeMacro(base, char *), \
+	 (typeof((rp).relptr_type)) ((rp).relptr_off == 0 ? NULL : \
 		(base) + (rp).relptr_off - 1))
 #else
-/*
- * If we don't have __builtin_types_compatible_p, assume we might not have
- * __typeof__ either.
- */
 #define relptr_access(base, rp) \
-	(AssertVariableIsOfTypeMacro(base, char *), \
+	(StaticAssertVariableIsOfTypeMacro(base, char *), \
 	 (void *) ((rp).relptr_off == 0 ? NULL : (base) + (rp).relptr_off - 1))
 #endif
 
@@ -72,18 +68,14 @@ relptr_store_eval(char *base, char *val)
 	}
 }
 
-#ifdef HAVE__BUILTIN_TYPES_COMPATIBLE_P
+#ifdef HAVE_TYPEOF
 #define relptr_store(base, rp, val) \
-	(AssertVariableIsOfTypeMacro(base, char *), \
-	 AssertVariableIsOfTypeMacro(val, __typeof__((rp).relptr_type)), \
+	(StaticAssertVariableIsOfTypeMacro(base, char *), \
+	 StaticAssertVariableIsOfTypeMacro(val, typeof((rp).relptr_type)), \
 	 (rp).relptr_off = relptr_store_eval((base), (char *) (val)))
 #else
-/*
- * If we don't have __builtin_types_compatible_p, assume we might not have
- * __typeof__ either.
- */
 #define relptr_store(base, rp, val) \
-	(AssertVariableIsOfTypeMacro(base, char *), \
+	(StaticAssertVariableIsOfTypeMacro(base, char *), \
 	 (rp).relptr_off = relptr_store_eval((base), (char *) (val)))
 #endif
 

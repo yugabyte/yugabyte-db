@@ -8,7 +8,7 @@
  *
  * See fe_utils/psqlscan_int.h for additional commentary.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -18,7 +18,11 @@
  */
 #include "postgres_fe.h"
 
+#include <ctype.h>
+
+#include "common.h"
 #include "psqlscanslash.h"
+
 #include "common/logging.h"
 #include "fe_utils/conditional.h"
 
@@ -33,12 +37,6 @@
  * doesn't presently make use of that argument, so just declare it as int.
  */
 typedef int YYSTYPE;
-
-/*
- * Set the type of yyextra; we use it as a pointer back to the containing
- * PsqlScanState.
- */
-#define YY_EXTRA_TYPE PsqlScanState
 
 /*
  * These variables do not need to be saved across calls.  Yeah, it's a bit
@@ -59,15 +57,6 @@ static void evaluate_backtick(PsqlScanState state);
 
 #define ECHO psqlscan_emit(cur_state, yytext, yyleng)
 
-/*
- * Work around a bug in flex 2.5.35: it emits a couple of functions that
- * it forgets to emit declarations for.  Since we use -Wmissing-prototypes,
- * this would cause warnings.  Providing our own declarations should be
- * harmless even when the bug gets fixed.
- */
-extern int	slash_yyget_column(yyscan_t yyscanner);
-extern void slash_yyset_column(int column_no, yyscan_t yyscanner);
-
 /* LCOV_EXCL_START */
 
 %}
@@ -83,6 +72,12 @@ extern void slash_yyset_column(int column_no, yyscan_t yyscanner);
 %option noyywrap
 %option warn
 %option prefix="slash_yy"
+
+/*
+ * Set the type of yyextra; we use it as a pointer back to the containing
+ * PsqlScanState.
+ */
+%option extra-type="PsqlScanState"
 
 /*
  * OK, here is a short description of lex/flex rules behavior.
@@ -106,7 +101,7 @@ extern void slash_yyset_column(int column_no, yyscan_t yyscanner);
 /*
  * Assorted character class definitions that should match psqlscan.l.
  */
-space			[ \t\n\r\f]
+space			[ \t\n\r\f\v]
 quote			'
 xeoctesc		[\\][0-7]{1,3}
 xehexesc		[\\]x[0-9A-Fa-f]{1,2}
@@ -594,9 +589,9 @@ psql_scan_slash_option(PsqlScanState state,
 	psql_scan_reselect_sql_lexer(state);
 
 	/*
-	 * Check the lex result: we should have gotten back either LEXRES_OK
-	 * or LEXRES_EOL (the latter indicating end of string).  If we were inside
-	 * a quoted string, as indicated by final_state, EOL is an error.
+	 * Check the lex result: we should have gotten back either LEXRES_OK or
+	 * LEXRES_EOL (the latter indicating end of string).  If we were inside a
+	 * quoted string, as indicated by final_state, EOL is an error.
 	 */
 	Assert(lexresult == LEXRES_EOL || lexresult == LEXRES_OK);
 
@@ -606,7 +601,7 @@ psql_scan_slash_option(PsqlScanState state,
 			/* empty arg */
 			break;
 		case xslasharg:
-			/* Strip any unquoted trailing semi-colons if requested */
+			/* Strip any unquoted trailing semicolons if requested */
 			if (semicolon)
 			{
 				while (unquoted_option_chars-- > 0 &&
@@ -638,7 +633,23 @@ psql_scan_slash_option(PsqlScanState state,
 			termPQExpBuffer(&mybuf);
 			return NULL;
 		case xslashwholeline:
-			/* always okay */
+
+			/*
+			 * In whole-line mode, we interpret semicolon = true as stripping
+			 * trailing whitespace as well as semicolons; this gives the
+			 * nearest equivalent to what semicolon = true does in normal
+			 * mode.  Note there's no concept of quoting in this mode.
+			 */
+			if (semicolon)
+			{
+				while (mybuf.len > 0 &&
+					   (mybuf.data[mybuf.len - 1] == ';' ||
+						(isascii((unsigned char) mybuf.data[mybuf.len - 1]) &&
+						 isspace((unsigned char) mybuf.data[mybuf.len - 1]))))
+				{
+					mybuf.data[--mybuf.len] = '\0';
+				}
+			}
 			break;
 		default:
 			/* can't get here */
@@ -772,16 +783,19 @@ evaluate_backtick(PsqlScanState state)
 	PQExpBufferData cmd_output;
 	FILE	   *fd;
 	bool		error = false;
+	int			exit_code = 0;
 	char		buf[512];
 	size_t		result;
 
 	initPQExpBuffer(&cmd_output);
 
+	fflush(NULL);
 	fd = popen(cmd, "r");
 	if (!fd)
 	{
 		pg_log_error("%s: %m", cmd);
 		error = true;
+		exit_code = -1;
 	}
 
 	if (!error)
@@ -799,10 +813,19 @@ evaluate_backtick(PsqlScanState state)
 		} while (!feof(fd));
 	}
 
-	if (fd && pclose(fd) == -1)
+	if (fd)
 	{
-		pg_log_error("%s: %m", cmd);
-		error = true;
+		/*
+		 * Although pclose's result always sets the shell result variables, we
+		 * historically have abandoned the backtick substitution only if it
+		 * returns -1.
+		 */
+		exit_code = pclose(fd);
+		if (exit_code == -1)
+		{
+			pg_log_error("%s: %m", cmd);
+			error = true;
+		}
 	}
 
 	if (PQExpBufferDataBroken(cmd_output))
@@ -824,6 +847,9 @@ evaluate_backtick(PsqlScanState state)
 			cmd_output.len--;
 		appendBinaryPQExpBuffer(output_buf, cmd_output.data, cmd_output.len);
 	}
+
+	/* And finally, set the shell result variables */
+	SetShellResultVariables(exit_code);
 
 	termPQExpBuffer(&cmd_output);
 }

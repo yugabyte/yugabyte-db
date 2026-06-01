@@ -6,7 +6,7 @@
 #	Perl script that tries to add PGDLLIMPORT markings to PostgreSQL
 #	header files.
 #
-# This relies on a few idiosyncracies of the PostgreSQL coding style,
+# This relies on a few idiosyncrasies of the PostgreSQL coding style,
 # such as the fact that we always use "extern" in function
 # declarations, and that we don't use // comments. It's not very
 # smart and may not catch all cases.
@@ -15,7 +15,7 @@
 # script modifies before committing.  This script uses as arguments
 # a list of the header files to scan for the markings.
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/tools/mark_pgdllimport.pl
@@ -23,12 +23,12 @@
 #----------------------------------------------------------------------
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 for my $include_file (@ARGV)
 {
 	open(my $rfh, '<', $include_file) || die "$include_file: $!";
-	my $buffer                = '';
+	my $buffer = '';
 	my $num_pgdllimport_added = 0;
 
 	while (my $raw_line = <$rfh>)

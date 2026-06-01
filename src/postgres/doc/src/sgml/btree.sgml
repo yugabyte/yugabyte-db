@@ -1,6 +1,6 @@
 <!-- doc/src/sgml/btree.sgml -->
 
-<chapter id="btree">
+<sect1 id="btree">
 <title>B-Tree Indexes</title>
 
    <indexterm>
@@ -8,7 +8,7 @@
     <secondary>B-Tree</secondary>
    </indexterm>
 
-<sect1 id="btree-intro">
+<sect2 id="btree-intro">
  <title>Introduction</title>
 
  <para>
@@ -27,12 +27,12 @@
   and understanding of sorting semantics.  Therefore, they've acquired
   some features that go beyond what would be needed just to support btree
   indexes, and parts of the system that are quite distant from the
-  btree AM make use of them.
+  btree <acronym>AM</acronym> make use of them.
  </para>
 
-</sect1>
+</sect2>
 
-<sect1 id="btree-behavior">
+<sect2 id="btree-behavior">
  <title>Behavior of B-Tree Operator Classes</title>
 
  <para>
@@ -200,14 +200,14 @@
   planner relies on them for optimization purposes.
  </para>
 
-</sect1>
+</sect2>
 
-<sect1 id="btree-support-funcs">
+<sect2 id="btree-support-funcs">
  <title>B-Tree Support Functions</title>
 
  <para>
   As shown in <xref linkend="xindex-btree-support-table"/>, btree defines
-  one required and four optional support functions.  The five
+  one required and five optional support functions.  The six
   user-defined methods are:
  </para>
  <variablelist>
@@ -583,11 +583,40 @@ options(<replaceable>relopts</replaceable> <type>local_relopts *</type>) returns
     </para>
    </listitem>
   </varlistentry>
+  <varlistentry>
+   <term><function>skipsupport</function></term>
+   <listitem>
+    <para>
+     Optionally, a btree operator family may provide a <firstterm>skip
+      support</firstterm> function, registered under support function number 6.
+     These functions give the B-tree code a way to iterate through every
+     possible value that can be represented by an operator class's underlying
+     input type, in key space order.  This is used by the core code when it
+     applies the skip scan optimization.  The APIs involved in this are
+     defined in <filename>src/include/utils/skipsupport.h</filename>.
+    </para>
+    <para>
+     Operator classes that do not provide a skip support function are still
+     eligible to use skip scan.  The core code can still use its fallback
+     strategy, though that might be suboptimal for some discrete types.  It
+     usually doesn't make sense (and may not even be feasible) for operator
+     classes on continuous types to provide a skip support function.
+    </para>
+    <para>
+     It is not sensible for an operator family to register a cross-type
+     <function>skipsupport</function> function, and attempting to do so will
+     result in an error.  This is because determining the next indexable value
+     must happen by incrementing a value copied from an index tuple.  The
+     values generated must all be of the same underlying data type (the
+     <quote>skipped</quote> index column's opclass input type).
+    </para>
+   </listitem>
+  </varlistentry>
  </variablelist>
 
-</sect1>
+</sect2>
 
-<sect1 id="btree-implementation">
+<sect2 id="btree-implementation">
  <title>Implementation</title>
 
  <para>
@@ -597,7 +626,7 @@ options(<replaceable>relopts</replaceable> <type>local_relopts *</type>) returns
   distribution for a much more detailed, internals-focused description
   of the B-Tree implementation.
  </para>
- <sect2 id="btree-structure">
+ <sect3 id="btree-structure">
   <title>B-Tree Structure</title>
   <para>
    <productname>PostgreSQL</productname> B-Tree indexes are
@@ -627,9 +656,9 @@ options(<replaceable>relopts</replaceable> <type>local_relopts *</type>) returns
    the tree structure by creating a new root page that is one level
    above the original root page.
   </para>
- </sect2>
+ </sect3>
 
- <sect2 id="btree-deletion">
+ <sect3 id="btree-deletion">
   <title>Bottom-up Index Deletion</title>
   <para>
    B-Tree indexes are not directly aware that under MVCC, there might
@@ -731,9 +760,9 @@ options(<replaceable>relopts</replaceable> <type>local_relopts *</type>) returns
    two logical rows whose lifetimes span the same
    <command>VACUUM</command> cycle).
   </para>
- </sect2>
+ </sect3>
 
- <sect2 id="btree-deduplication">
+ <sect3 id="btree-deduplication">
   <title>Deduplication</title>
   <para>
    A duplicate is a leaf page tuple (a tuple that points to a table
@@ -908,7 +937,7 @@ options(<replaceable>relopts</replaceable> <type>local_relopts *</type>) returns
    </itemizedlist>
   </para>
 
- </sect2>
-</sect1>
+ </sect3>
+</sect2>
 
-</chapter>
+</sect1>

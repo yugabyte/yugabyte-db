@@ -1287,7 +1287,10 @@ ts_headline(<optional> <replaceable class="parameter">config</replaceable> <type
    <para>
     <function>ts_headline</function> accepts a document along
     with a query, and returns an excerpt from
-    the document in which terms from the query are highlighted.  The
+    the document in which terms from the query are highlighted.
+    Specifically, the function will use the query to select relevant
+    text fragments, and then highlight all words that appear in the query,
+    even if those word positions do not match the query's restrictions.  The
     configuration to be used to parse the document can be specified by
     <replaceable>config</replaceable>; if <replaceable>config</replaceable>
     is omitted, the
@@ -1339,7 +1342,7 @@ ts_headline(<optional> <replaceable class="parameter">config</replaceable> <type
        document, to distinguish them from other excerpted words.  The
        default values are <quote><literal>&lt;b&gt;</literal></quote> and
        <quote><literal>&lt;/b&gt;</literal></quote>, which can be suitable
-       for HTML output.
+       for HTML output (but see the warning below).
       </para>
      </listitem>
      <listitem>
@@ -1350,6 +1353,21 @@ ts_headline(<optional> <replaceable class="parameter">config</replaceable> <type
       </para>
      </listitem>
     </itemizedlist>
+
+    <warning>
+     <title>Warning: Cross-site Scripting (XSS) Safety</title>
+     <para>
+      The output from <function>ts_headline</function> is not guaranteed to
+      be safe for direct inclusion in web pages. When
+      <literal>HighlightAll</literal> is <literal>false</literal> (the
+      default), some simple XML tags are removed from the document, but this
+      is not guaranteed to remove all HTML markup. Therefore, this does not
+      provide an effective defense against attacks such as cross-site
+      scripting (XSS) attacks, when working with untrusted input. To guard
+      against such attacks, all HTML markup should be removed from the input
+      document, or an HTML sanitizer should be used on the output.
+     </para>
+    </warning>
 
     These option names are recognized case-insensitively.
     You must double-quote string values if they contain spaces or commas.
@@ -1956,12 +1974,12 @@ SELECT title, body FROM messages WHERE tsv @@ to_tsquery('title &amp; body');
 
 <programlisting>
 CREATE FUNCTION messages_trigger() RETURNS trigger AS $$
-begin
+BEGIN
   new.tsv :=
      setweight(to_tsvector('pg_catalog.english', coalesce(new.title,'')), 'A') ||
      setweight(to_tsvector('pg_catalog.english', coalesce(new.body,'')), 'D');
-  return new;
-end
+  RETURN new;
+END
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
@@ -2221,6 +2239,18 @@ LIMIT 10;
     defined by <ulink url="https://datatracker.ietf.org/doc/html/rfc5322">RFC 5322</ulink>.
     Specifically, the only non-alphanumeric characters supported for
     email user names are period, dash, and underscore.
+   </para>
+
+   <para>
+    <literal>tag</literal> does not support all valid tag names as defined by
+    <ulink url="https://www.w3.org/TR/xml/">W3C Recommendation, XML</ulink>.
+    Specifically, the only tag names supported are those starting with an
+    ASCII letter, underscore, or colon, and containing only letters, digits,
+    hyphens, underscores, periods, and colons. <literal>tag</literal> also
+    includes XML comments starting with <literal>&lt;!--</literal> and ending
+    with <literal>--&gt;</literal>, and XML declarations (but note that this
+    includes anything starting with <literal>&lt;?x</literal> and ending with
+    <literal>&gt;</literal>).
    </para>
   </note>
 
@@ -3115,6 +3145,56 @@ largehearted
     <literal>stopword</literal> file name that gives a list of words to eliminate.
     (<productname>PostgreSQL</productname>'s standard stopword lists are also
     provided by the Snowball project.)
+   </para>
+
+   <para>
+    The available values of the <literal>language</literal> parameter are:
+
+    <literal>arabic</literal>,
+    <literal>armenian</literal>,
+    <literal>basque</literal>,
+    <literal>catalan</literal>,
+    <literal>danish</literal>,
+    <literal>dutch</literal>,
+    <literal>dutch_porter</literal>,
+    <literal>english</literal>,
+    <literal>esperanto</literal>,
+    <literal>estonian</literal>,
+    <literal>finnish</literal>,
+    <literal>french</literal>,
+    <literal>german</literal>,
+    <literal>greek</literal>,
+    <literal>hindi</literal>,
+    <literal>hungarian</literal>,
+    <literal>indonesian</literal>,
+    <literal>irish</literal>,
+    <literal>italian</literal>,
+    <literal>lithuanian</literal>,
+    <literal>nepali</literal>,
+    <literal>norwegian</literal>,
+    <literal>polish</literal>,
+    <literal>porter</literal>,
+    <literal>portuguese</literal>,
+    <literal>romanian</literal>,
+    <literal>russian</literal>,
+    <literal>serbian</literal>,
+    <literal>spanish</literal>,
+    <literal>swedish</literal>,
+    <literal>tamil</literal>,
+    <literal>turkish</literal>,
+    and
+    <literal>yiddish</literal>.
+
+    The <literal>porter</literal> algorithm is an old stemmer for English,
+    and the <literal>dutch_porter</literal> algorithm is an old stemmer
+    for Dutch (it was called <literal>dutch</literal>
+    in <productname>PostgreSQL</productname> releases before 19).
+    The rest are the currently-recommended stemmers for their
+    respective languages.
+
+    All these algorithms except <literal>porter</literal>
+    and <literal>dutch_porter</literal> have built-in dictionaries
+    provided, most with stopword lists attached.
     For example, there is a built-in definition equivalent to
 
 <programlisting>
@@ -3849,6 +3929,8 @@ Parser: "pg_catalog.default"
  pg_catalog | danish_stem     | snowball stemmer for danish language
  pg_catalog | dutch_stem      | snowball stemmer for dutch language
  pg_catalog | english_stem    | snowball stemmer for english language
+ pg_catalog | esperanto_stem  | snowball stemmer for esperanto language
+ pg_catalog | estonian_stem   | snowball stemmer for estonian language
  pg_catalog | finnish_stem    | snowball stemmer for finnish language
  pg_catalog | french_stem     | snowball stemmer for french language
  pg_catalog | german_stem     | snowball stemmer for german language
@@ -3861,6 +3943,7 @@ Parser: "pg_catalog.default"
  pg_catalog | lithuanian_stem | snowball stemmer for lithuanian language
  pg_catalog | nepali_stem     | snowball stemmer for nepali language
  pg_catalog | norwegian_stem  | snowball stemmer for norwegian language
+ pg_catalog | polish_stem     | snowball stemmer for polish language
  pg_catalog | portuguese_stem | snowball stemmer for portuguese language
  pg_catalog | romanian_stem   | snowball stemmer for romanian language
  pg_catalog | russian_stem    | snowball stemmer for russian language
@@ -3965,11 +4048,6 @@ Parser: "pg_catalog.default"
     <listitem>
      <para>The length of a <type>tsvector</type> (lexemes + positions) must be
      less than 1 megabyte</para>
-    </listitem>
-    <listitem>
-     <!-- TODO: number of lexemes in what?  This is unclear -->
-     <para>The number of lexemes must be less than
-     2<superscript>64</superscript></para>
     </listitem>
     <listitem>
      <para>Position values in <type>tsvector</type> must be greater than 0 and

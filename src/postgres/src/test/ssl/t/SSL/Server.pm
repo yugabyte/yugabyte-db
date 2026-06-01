@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 =pod
 
@@ -64,7 +64,7 @@ specific infrastructure. Currently only OpenSSL is supported.
 package SSL::Server;
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -100,7 +100,7 @@ sub new
 	bless $self, $class;
 	if ($flavor =~ /\Aopenssl\z/i)
 	{
-		$self->{flavor}  = 'openssl';
+		$self->{flavor} = 'openssl';
 		$self->{backend} = SSL::Backend::OpenSSL->new();
 	}
 	else
@@ -121,7 +121,7 @@ string.
 
 sub sslkey
 {
-	my $self    = shift;
+	my $self = shift;
 	my $keyfile = shift;
 	my $backend = $self->{backend};
 
@@ -149,10 +149,10 @@ sub configure_test_server_for_ssl
 	my $self = shift;
 	my ($node, $serverhost, $servercidr, $authmethod, %params) = @_;
 	my $backend = $self->{backend};
-	my $pgdata  = $node->data_dir;
+	my $pgdata = $node->data_dir;
 
 	my @databases = (
-		'trustdb',   'certdb', 'certdb_dn', 'certdb_dn_re',
+		'trustdb', 'certdb', 'certdb_dn', 'certdb_dn_re',
 		'certdb_cn', 'verifydb');
 
 	# Create test users and databases
@@ -197,20 +197,21 @@ sub configure_test_server_for_ssl
 	}
 
 	# enable logging etc.
-	open my $conf, '>>', "$pgdata/postgresql.conf";
-	print $conf "fsync=off\n";
-	print $conf "log_connections=on\n";
-	print $conf "log_hostname=on\n";
-	print $conf "listen_addresses='$serverhost'\n";
-	print $conf "log_statement=all\n";
+	$node->append_conf(
+		'postgresql.conf', <<EOF
+fsync=off
+log_connections=all
+log_hostname=on
+listen_addresses='$serverhost'
+log_statement=all
+EOF
+	);
 
 	# enable SSL and set up server key
-	print $conf "include 'sslconfig.conf'\n";
-
-	close $conf;
+	$node->append_conf('postgresql.conf', "include 'sslconfig.conf'");
 
 	# SSL configuration will be placed here
-	open my $sslconf, '>', "$pgdata/sslconfig.conf";
+	open my $sslconf, '>', "$pgdata/sslconfig.conf" or die $!;
 	close $sslconf;
 
 	# Perform backend specific configuration
@@ -235,10 +236,27 @@ Get the name of the currently used SSL backend.
 
 sub ssl_library
 {
-	my $self    = shift;
+	my $self = shift;
 	my $backend = $self->{backend};
 
 	return $backend->get_library();
+}
+
+=pod
+
+=item $server->is_libressl()
+
+Detect whether the currently used SSL backend is LibreSSL.
+(Ideally we'd not need this hack, but presently we do.)
+
+=cut
+
+sub is_libressl
+{
+	my $self = shift;
+	my $backend = $self->{backend};
+
+	return $backend->library_is_libressl();
 }
 
 =pod
@@ -263,7 +281,7 @@ The certificate file to use. Implementation is SSL backend specific.
 
 =item keyfile => B<value>
 
-The private key to use. Implementation is SSL backend specific.
+The private key file to use. Implementation is SSL backend specific.
 
 =item crlfile => B<value>
 
@@ -278,6 +296,11 @@ The CRL directory to use. Implementation is SSL backend specific.
 The passphrase command to use. If not set, an empty passphrase command will
 be set.
 
+=item passphrase_cmd_reload => B<value>
+
+Whether or not to allow passphrase command reloading. If set the passphrase
+command reload configuration setting will be set to the value.
+
 =item restart => B<value>
 
 If set to 'no', the server won't be restarted after updating the settings.
@@ -290,19 +313,29 @@ returning.
 
 sub switch_server_cert
 {
-	my $self    = shift;
-	my $node    = shift;
+	my $self = shift;
+	my $node = shift;
 	my $backend = $self->{backend};
-	my %params  = @_;
-	my $pgdata  = $node->data_dir;
+	my %params = @_;
+	my $pgdata = $node->data_dir;
 
-	open my $sslconf, '>', "$pgdata/sslconfig.conf";
-	print $sslconf "ssl=on\n";
-	print $sslconf $backend->set_server_cert(\%params);
-	print $sslconf "ssl_passphrase_command='"
-	  . $params{passphrase_cmd} . "'\n"
+	ok(unlink($node->data_dir . '/sslconfig.conf'));
+	$node->append_conf('sslconfig.conf', 'ssl=on');
+	$node->append_conf('sslconfig.conf', $backend->set_server_cert(\%params));
+	# use lists of ECDH curves and cipher suites for syntax testing
+	$node->append_conf('sslconfig.conf',
+		'ssl_groups=prime256v1:secp521r1');
+	$node->append_conf('sslconfig.conf',
+		'ssl_tls13_ciphers=TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256');
+
+	$node->append_conf('sslconfig.conf',
+		'ssl_passphrase_command=\'' . $params{passphrase_cmd} . '\'')
 	  if defined $params{passphrase_cmd};
-	close $sslconf;
+
+	$node->append_conf('sslconfig.conf',
+		'ssl_passphrase_command_supports_reload=\''
+		  . $params{passphrase_cmd_reload} . '\'')
+	  if defined $params{passphrase_cmd_reload};
 
 	return if (defined($params{restart}) && $params{restart} eq 'no');
 
@@ -321,35 +354,32 @@ sub _configure_hba_for_ssl
 	# but seems best to keep it as narrow as possible for security reasons.
 	#
 	# When connecting to certdb, also check the client certificate.
-	open my $hba, '>', "$pgdata/pg_hba.conf";
-	print $hba
-	  "# TYPE  DATABASE        USER            ADDRESS                 METHOD             OPTIONS\n";
-	print $hba
-	  "hostssl trustdb         md5testuser     $servercidr            md5\n";
-	print $hba
-	  "hostssl trustdb         all             $servercidr            $authmethod\n";
-	print $hba
-	  "hostssl verifydb        ssltestuser     $servercidr            $authmethod        clientcert=verify-full\n";
-	print $hba
-	  "hostssl verifydb        anotheruser     $servercidr            $authmethod        clientcert=verify-full\n";
-	print $hba
-	  "hostssl verifydb        yetanotheruser  $servercidr            $authmethod        clientcert=verify-ca\n";
-	print $hba
-	  "hostssl certdb          all             $servercidr            cert\n";
-	print $hba
-	  "hostssl certdb_dn       all             $servercidr            cert clientname=DN map=dn\n",
-	  "hostssl certdb_dn_re    all             $servercidr            cert clientname=DN map=dnre\n",
-	  "hostssl certdb_cn       all             $servercidr            cert clientname=CN map=cn\n";
-	close $hba;
+	ok(unlink($node->data_dir . '/pg_hba.conf'));
+	$node->append_conf(
+		'pg_hba.conf', <<EOF
+# TYPE  DATABASE      USER            ADDRESS       METHOD         OPTIONS
+hostssl trustdb       md5testuser     $servercidr   md5
+hostssl trustdb       all             $servercidr   $authmethod
+hostssl verifydb      ssltestuser     $servercidr   $authmethod    clientcert=verify-full
+hostssl verifydb      anotheruser     $servercidr   $authmethod    clientcert=verify-full
+hostssl verifydb      yetanotheruser  $servercidr   $authmethod    clientcert=verify-ca
+hostssl certdb        all             $servercidr   cert
+hostssl certdb_dn     all             $servercidr   cert clientname=DN map=dn
+hostssl certdb_dn_re  all             $servercidr   cert clientname=DN map=dnre
+hostssl certdb_cn     all             $servercidr   cert clientname=CN map=cn
+EOF
+	);
 
 	# Also set the ident maps. Note: fields with commas must be quoted
-	open my $map, ">", "$pgdata/pg_ident.conf";
-	print $map
-	  "# MAPNAME       SYSTEM-USERNAME                           PG-USERNAME\n",
-	  "dn             \"CN=ssltestuser-dn,OU=Testing,OU=Engineering,O=PGDG\"    ssltestuser\n",
-	  "dnre           \"/^.*OU=Testing,.*\$\"                    ssltestuser\n",
-	  "cn              ssltestuser-dn                            ssltestuser\n";
-
+	ok(unlink($node->data_dir . '/pg_ident.conf'));
+	$node->append_conf(
+		'pg_ident.conf', <<EOF
+# MAPNAME SYSTEM-USERNAME                                         PG-USERNAME
+dn        "CN=ssltestuser-dn,OU=Testing,OU=Engineering,O=PGDG"    ssltestuser
+dnre      "/^.*OU=Testing,.*\$"                                   ssltestuser
+cn        ssltestuser-dn                                          ssltestuser
+EOF
+	);
 	return;
 }
 

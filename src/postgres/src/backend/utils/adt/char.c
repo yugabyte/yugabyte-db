@@ -4,7 +4,7 @@
  *	  Functions for the built-in type "char" (not to be confused with
  *	  bpchar, which is the SQL CHAR(n) type).
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,7 +18,8 @@
 #include <limits.h>
 
 #include "libpq/pqformat.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
+#include "varatt.h"
 
 #define ISOCTAL(c)   (((c) >= '0') && ((c) <= '7'))
 #define TOOCTAL(c)   ((c) + '0')
@@ -191,7 +192,7 @@ i4tochar(PG_FUNCTION_ARGS)
 	int32		arg1 = PG_GETARG_INT32(0);
 
 	if (arg1 < SCHAR_MIN || arg1 > SCHAR_MAX)
-		ereport(ERROR,
+		ereturn(fcinfo->context, (Datum) 0,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("\"char\" out of range")));
 

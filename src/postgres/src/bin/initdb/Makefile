@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/initdb
 #
-# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/bin/initdb/Makefile
@@ -16,15 +16,14 @@ subdir = src/bin/initdb
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) -I$(top_srcdir)/src/timezone $(CPPFLAGS)
-
 # Note: it's important that we link to encnames.o from libpgcommon, not
 # from libpq, else we have risks of version skew if we run with a libpq
-# shared library from a different PG version.  The libpq_pgport macro
-# should ensure that that happens.
-#
+# shared library from a different PG version.  Define
+# USE_PRIVATE_ENCODING_FUNCS to ensure that that happens.
+override CPPFLAGS := -DUSE_PRIVATE_ENCODING_FUNCS -I$(libpq_srcdir) -I$(top_srcdir)/src/timezone $(CPPFLAGS) $(ICU_CFLAGS)
+
 # We need libpq only because fe_utils does.
-LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
+LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport) $(ICU_LIBS)
 
 # use system timezone data?
 ifneq (,$(with_system_tzdata))
@@ -62,7 +61,7 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/initdb$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f initdb$(X) $(OBJS) localtime.c
 	rm -rf tmp_check
 

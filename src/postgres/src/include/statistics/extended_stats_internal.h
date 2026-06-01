@@ -3,7 +3,7 @@
  * extended_stats_internal.h
  *	  POSTGRES extended statistics internal declarations
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -72,15 +72,29 @@ typedef struct StatsBuildData
 extern MVNDistinct *statext_ndistinct_build(double totalrows, StatsBuildData *data);
 extern bytea *statext_ndistinct_serialize(MVNDistinct *ndistinct);
 extern MVNDistinct *statext_ndistinct_deserialize(bytea *data);
+extern bool statext_ndistinct_validate(const MVNDistinct *ndistinct,
+									   const int2vector *stxkeys,
+									   int numexprs, int elevel);
+extern void statext_ndistinct_free(MVNDistinct *ndistinct);
 
 extern MVDependencies *statext_dependencies_build(StatsBuildData *data);
 extern bytea *statext_dependencies_serialize(MVDependencies *dependencies);
 extern MVDependencies *statext_dependencies_deserialize(bytea *data);
+extern bool statext_dependencies_validate(const MVDependencies *dependencies,
+										  const int2vector *stxkeys,
+										  int numexprs, int elevel);
+extern void statext_dependencies_free(MVDependencies *dependencies);
 
 extern MCVList *statext_mcv_build(StatsBuildData *data,
 								  double totalrows, int stattarget);
-extern bytea *statext_mcv_serialize(MCVList *mcv, VacAttrStats **stats);
+extern bytea *statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats);
 extern MCVList *statext_mcv_deserialize(bytea *data);
+extern void statext_mcv_free(MCVList *mcvlist);
+extern Datum statext_mcv_import(int elevel, int numattrs, Oid *atttypids,
+								int32 *atttypmods, Oid *atttypcolls,
+								int nitems, Datum *mcv_elems,
+								bool *mcv_nulls, float8 *freqs,
+								float8 *base_freqs);
 
 extern MultiSortSupport multi_sort_init(int ndims);
 extern void multi_sort_add_dimension(MultiSortSupport mss, int sortdim,

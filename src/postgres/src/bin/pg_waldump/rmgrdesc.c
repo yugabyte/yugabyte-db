@@ -24,7 +24,7 @@
 #include "access/xlog_internal.h"
 #include "catalog/storage_xlog.h"
 #include "commands/dbcommands_xlog.h"
-#include "commands/sequence.h"
+#include "commands/sequence_xlog.h"
 #include "commands/tablespace.h"
 #include "replication/message.h"
 #include "replication/origin.h"
@@ -41,8 +41,8 @@ static const RmgrDescData RmgrDescTable[RM_N_BUILTIN_IDS] = {
 
 #define CUSTOM_NUMERIC_NAME_LEN sizeof("custom###")
 
-static char CustomNumericNames[RM_N_CUSTOM_IDS][CUSTOM_NUMERIC_NAME_LEN] = {{0}};
-static RmgrDescData CustomRmgrDesc[RM_N_CUSTOM_IDS] = {{0}};
+static char CustomNumericNames[RM_N_CUSTOM_IDS][CUSTOM_NUMERIC_NAME_LEN] = {0};
+static RmgrDescData CustomRmgrDesc[RM_N_CUSTOM_IDS] = {0};
 static bool CustomRmgrDescInitialized = false;
 
 /*

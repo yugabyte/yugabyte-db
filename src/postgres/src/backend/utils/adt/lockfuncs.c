@@ -3,7 +3,7 @@
  * lockfuncs.c
  *		Functions for SQL access to various lock-manager capabilities.
  *
- * Copyright (c) 2002-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/backend/utils/adt/lockfuncs.c
@@ -13,8 +13,6 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
-#include "access/xact.h"
-#include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "storage/predicate_internals.h"
@@ -117,7 +115,8 @@ do { \
 
 /*
  * This must match enum LockTagType!  Also, be sure to document any changes
- * in the docs for the pg_locks view and for wait event types.
+ * in the docs for the pg_locks view and update the WaitEventLOCK section in
+ * src/backend/utils/activity/wait_event_names.txt.
  */
 const char *const LockTagTypeNames[] = {
 	"relation",
@@ -130,10 +129,11 @@ const char *const LockTagTypeNames[] = {
 	"spectoken",
 	"object",
 	"userlock",
-	"advisory"
+	"advisory",
+	"applytransaction"
 };
 
-StaticAssertDecl(lengthof(LockTagTypeNames) == (LOCKTAG_ADVISORY + 1),
+StaticAssertDecl(lengthof(LockTagTypeNames) == (LOCKTAG_LAST_TYPE + 1),
 				 "array length mismatch");
 
 /* This must match enum PredicateLockTargetType (predicate_internals.h) */
@@ -164,15 +164,16 @@ typedef struct
  * This is currently only used in pg_lock_status, so we put it here.
  */
 static Datum
-VXIDGetDatum(BackendId bid, LocalTransactionId lxid)
+VXIDGetDatum(ProcNumber procNumber, LocalTransactionId lxid)
 {
 	/*
-	 * The representation is "<bid>/<lxid>", decimal and unsigned decimal
-	 * respectively.  Note that elog.c also knows how to format a vxid.
+	 * The representation is "<procNumber>/<lxid>", decimal and unsigned
+	 * decimal respectively.  Note that elog.c also knows how to format a
+	 * vxid.
 	 */
 	char		vxidstr[32];
 
-	snprintf(vxidstr, sizeof(vxidstr), "%d/%u", bid, lxid);
+	snprintf(vxidstr, sizeof(vxidstr), "%d/%u", procNumber, lxid);
 
 	return CStringGetTextDatum(vxidstr);
 }
@@ -238,14 +239,15 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 16, "waitstart",
 						   TIMESTAMPTZOID, -1, 0);
 
+		TupleDescFinalize(tupdesc);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
 		/*
 		 * Collect all the locking information that we will format and send
 		 * out as a result set.
 		 */
-		mystatus = (PG_Lock_Status *) palloc(sizeof(PG_Lock_Status));
-		funcctx->user_fctx = (void *) mystatus;
+		mystatus = palloc_object(PG_Lock_Status);
+		funcctx->user_fctx = mystatus;
 
 		mystatus->lockData = GetLockStatusData();
 		mystatus->currIdx = 0;
@@ -265,8 +267,8 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		LOCKMODE	mode = 0;
 		const char *locktypename;
 		char		tnbuf[32];
-		Datum		values[NUM_LOCK_STATUS_COLUMNS];
-		bool		nulls[NUM_LOCK_STATUS_COLUMNS];
+		Datum		values[NUM_LOCK_STATUS_COLUMNS] = {0};
+		bool		nulls[NUM_LOCK_STATUS_COLUMNS] = {0};
 		HeapTuple	tuple;
 		Datum		result;
 		LockInstanceData *instance;
@@ -323,8 +325,6 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		/*
 		 * Form tuple with appropriate data.
 		 */
-		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, false, sizeof(nulls));
 
 		if (instance->locktag.locktag_type <= LOCKTAG_LAST_TYPE)
 			locktypename = LockTagTypeNames[instance->locktag.locktag_type];
@@ -407,6 +407,29 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				nulls[8] = true;
 				nulls[9] = true;
 				break;
+			case LOCKTAG_SPECULATIVE_TOKEN:
+				values[6] =
+					TransactionIdGetDatum(instance->locktag.locktag_field1);
+				values[8] = ObjectIdGetDatum(instance->locktag.locktag_field2);
+				nulls[1] = true;
+				nulls[2] = true;
+				nulls[3] = true;
+				nulls[4] = true;
+				nulls[5] = true;
+				nulls[7] = true;
+				nulls[9] = true;
+				break;
+			case LOCKTAG_APPLY_TRANSACTION:
+				values[1] = ObjectIdGetDatum(instance->locktag.locktag_field1);
+				values[8] = ObjectIdGetDatum(instance->locktag.locktag_field2);
+				values[6] = ObjectIdGetDatum(instance->locktag.locktag_field3);
+				values[9] = UInt16GetDatum(instance->locktag.locktag_field4);
+				nulls[2] = true;
+				nulls[3] = true;
+				nulls[4] = true;
+				nulls[5] = true;
+				nulls[7] = true;
+				break;
 			case LOCKTAG_OBJECT:
 			case LOCKTAG_USERLOCK:
 			case LOCKTAG_ADVISORY:
@@ -414,7 +437,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				values[1] = ObjectIdGetDatum(instance->locktag.locktag_field1);
 				values[7] = ObjectIdGetDatum(instance->locktag.locktag_field2);
 				values[8] = ObjectIdGetDatum(instance->locktag.locktag_field3);
-				values[9] = Int16GetDatum(instance->locktag.locktag_field4);
+				values[9] = UInt16GetDatum(instance->locktag.locktag_field4);
 				nulls[2] = true;
 				nulls[3] = true;
 				nulls[4] = true;
@@ -423,7 +446,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				break;
 		}
 
-		values[10] = VXIDGetDatum(instance->backend, instance->lxid);
+		values[10] = VXIDGetDatum(instance->vxid.procNumber, instance->vxid.localTransactionId);
 		if (instance->pid != 0)
 			values[11] = Int32GetDatum(instance->pid);
 		else
@@ -452,8 +475,8 @@ pg_lock_status(PG_FUNCTION_ARGS)
 
 		PREDICATELOCKTARGETTAG *predTag = &(predLockData->locktags[mystatus->predLockIdx]);
 		SERIALIZABLEXACT *xact = &(predLockData->xacts[mystatus->predLockIdx]);
-		Datum		values[NUM_LOCK_STATUS_COLUMNS];
-		bool		nulls[NUM_LOCK_STATUS_COLUMNS];
+		Datum		values[NUM_LOCK_STATUS_COLUMNS] = {0};
+		bool		nulls[NUM_LOCK_STATUS_COLUMNS] = {0};
 		HeapTuple	tuple;
 		Datum		result;
 
@@ -462,8 +485,6 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		/*
 		 * Form tuple with appropriate data.
 		 */
-		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, false, sizeof(nulls));
 
 		/* lock type */
 		lockType = GET_PREDICATELOCKTARGETTAG_TYPE(*predTag);
@@ -471,15 +492,15 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		values[0] = CStringGetTextDatum(PredicateLockTagTypeNames[lockType]);
 
 		/* lock target */
-		values[1] = GET_PREDICATELOCKTARGETTAG_DB(*predTag);
-		values[2] = GET_PREDICATELOCKTARGETTAG_RELATION(*predTag);
+		values[1] = ObjectIdGetDatum(GET_PREDICATELOCKTARGETTAG_DB(*predTag));
+		values[2] = ObjectIdGetDatum(GET_PREDICATELOCKTARGETTAG_RELATION(*predTag));
 		if (lockType == PREDLOCKTAG_TUPLE)
-			values[4] = GET_PREDICATELOCKTARGETTAG_OFFSET(*predTag);
+			values[4] = UInt16GetDatum(GET_PREDICATELOCKTARGETTAG_OFFSET(*predTag));
 		else
 			nulls[4] = true;
 		if ((lockType == PREDLOCKTAG_TUPLE) ||
 			(lockType == PREDLOCKTAG_PAGE))
-			values[3] = GET_PREDICATELOCKTARGETTAG_PAGE(*predTag);
+			values[3] = UInt32GetDatum(GET_PREDICATELOCKTARGETTAG_PAGE(*predTag));
 		else
 			nulls[3] = true;
 
@@ -491,7 +512,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		nulls[9] = true;		/* objsubid */
 
 		/* lock holder */
-		values[10] = VXIDGetDatum(xact->vxid.backendId,
+		values[10] = VXIDGetDatum(xact->vxid.procNumber,
 								  xact->vxid.localTransactionId);
 		if (xact->pid != 0)
 			values[11] = Int32GetDatum(xact->pid);
@@ -631,10 +652,7 @@ pg_blocking_pids(PG_FUNCTION_ARGS)
 	/* Assert we didn't overrun arrayelems[] */
 	Assert(narrayelems <= lockData->nlocks);
 
-	/* Construct array, using hardwired knowledge about int4 type */
-	PG_RETURN_ARRAYTYPE_P(construct_array(arrayelems, narrayelems,
-										  INT4OID,
-										  sizeof(int32), true, TYPALIGN_INT));
+	PG_RETURN_ARRAYTYPE_P(construct_array_builtin(arrayelems, narrayelems, INT4OID));
 }
 
 
@@ -672,88 +690,7 @@ pg_safe_snapshot_blocking_pids(PG_FUNCTION_ARGS)
 	else
 		blocker_datums = NULL;
 
-	/* Construct array, using hardwired knowledge about int4 type */
-	PG_RETURN_ARRAYTYPE_P(construct_array(blocker_datums, num_blockers,
-										  INT4OID,
-										  sizeof(int32), true, TYPALIGN_INT));
-}
-
-
-/*
- * pg_isolation_test_session_is_blocked - support function for isolationtester
- *
- * Check if specified PID is blocked by any of the PIDs listed in the second
- * argument.  Currently, this looks for blocking caused by waiting for
- * heavyweight locks or safe snapshots.  We ignore blockage caused by PIDs
- * not directly under the isolationtester's control, eg autovacuum.
- *
- * This is an undocumented function intended for use by the isolation tester,
- * and may change in future releases as required for testing purposes.
- */
-Datum
-pg_isolation_test_session_is_blocked(PG_FUNCTION_ARGS)
-{
-	int			blocked_pid = PG_GETARG_INT32(0);
-	ArrayType  *interesting_pids_a = PG_GETARG_ARRAYTYPE_P(1);
-	ArrayType  *blocking_pids_a;
-	int32	   *interesting_pids;
-	int32	   *blocking_pids;
-	int			num_interesting_pids;
-	int			num_blocking_pids;
-	int			dummy;
-	int			i,
-				j;
-
-	/* Validate the passed-in array */
-	Assert(ARR_ELEMTYPE(interesting_pids_a) == INT4OID);
-	if (array_contains_nulls(interesting_pids_a))
-		elog(ERROR, "array must not contain nulls");
-	interesting_pids = (int32 *) ARR_DATA_PTR(interesting_pids_a);
-	num_interesting_pids = ArrayGetNItems(ARR_NDIM(interesting_pids_a),
-										  ARR_DIMS(interesting_pids_a));
-
-	/*
-	 * Get the PIDs of all sessions blocking the given session's attempt to
-	 * acquire heavyweight locks.
-	 */
-	blocking_pids_a =
-		DatumGetArrayTypeP(DirectFunctionCall1(pg_blocking_pids, blocked_pid));
-
-	Assert(ARR_ELEMTYPE(blocking_pids_a) == INT4OID);
-	Assert(!array_contains_nulls(blocking_pids_a));
-	blocking_pids = (int32 *) ARR_DATA_PTR(blocking_pids_a);
-	num_blocking_pids = ArrayGetNItems(ARR_NDIM(blocking_pids_a),
-									   ARR_DIMS(blocking_pids_a));
-
-	/*
-	 * Check if any of these are in the list of interesting PIDs, that being
-	 * the sessions that the isolation tester is running.  We don't use
-	 * "arrayoverlaps" here, because it would lead to cache lookups and one of
-	 * our goals is to run quickly with debug_discard_caches > 0.  We expect
-	 * blocking_pids to be usually empty and otherwise a very small number in
-	 * isolation tester cases, so make that the outer loop of a naive search
-	 * for a match.
-	 */
-	for (i = 0; i < num_blocking_pids; i++)
-		for (j = 0; j < num_interesting_pids; j++)
-		{
-			if (blocking_pids[i] == interesting_pids[j])
-				PG_RETURN_BOOL(true);
-		}
-
-	/*
-	 * Check if blocked_pid is waiting for a safe snapshot.  We could in
-	 * theory check the resulting array of blocker PIDs against the
-	 * interesting PIDs list, but since there is no danger of autovacuum
-	 * blocking GetSafeSnapshot there seems to be no point in expending cycles
-	 * on allocating a buffer and searching for overlap; so it's presently
-	 * sufficient for the isolation tester's purposes to use a single element
-	 * buffer and check if the number of safe snapshot blockers is non-zero.
-	 */
-	if (GetSafeSnapshotBlockingPids(blocked_pid, &dummy, 1) > 0)
-		PG_RETURN_BOOL(true);
-
-	PG_RETURN_BOOL(false);
+	PG_RETURN_ARRAYTYPE_P(construct_array_builtin(blocker_datums, num_blockers, INT4OID));
 }
 
 

@@ -93,7 +93,7 @@
  * look like original postgres errors.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -116,12 +116,17 @@
 #include <execinfo.h>
 #endif
 
-#include "access/transam.h"
+#ifdef _MSC_VER
+#include <dbghelp.h>
+#endif
+
 #include "access/xact.h"
+#include "common/ip.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/miscnodes.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/postmaster.h"
@@ -129,9 +134,10 @@
 #include "storage/ipc.h"
 #include "storage/proc.h"
 #include "tcop/tcopprot.h"
-#include "utils/guc.h"
+#include "utils/guc_hooks.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
+#include "utils/varlena.h"
 
 /* YB includes */
 #include "common/pg_yb_common.h"
@@ -149,8 +155,6 @@ ErrorContextCallback *error_context_stack = NULL;
 
 sigjmp_buf *PG_exception_stack = NULL;
 
-extern bool redirection_done;
-
 /*
  * Hook for intercepting messages before they are sent to the server log.
  * Note that the hook will not get called for messages that are suppressed
@@ -161,12 +165,15 @@ extern bool redirection_done;
 emit_log_hook_type emit_log_hook = NULL;
 
 /* GUC parameters */
-int			Log_error_verbosity = PGERROR_VERBOSE;
+int			Log_error_verbosity = PGERROR_DEFAULT;
 char	   *Log_line_prefix = NULL; /* format for extra log line info */
 int			Log_destination = LOG_DESTINATION_STDERR;
 char	   *Log_destination_string = NULL;
 bool		syslog_sequence_numbers = true;
 bool		syslog_split_messages = true;
+
+/* Processed form of backtrace_functions GUC */
+static char *backtrace_function_list;
 
 #ifdef HAVE_SYSLOG
 
@@ -189,9 +196,12 @@ static void write_syslog(int level, const char *line);
 #endif
 
 #ifdef WIN32
-extern char *event_source;
-
 static void write_eventlog(int level, const char *line, int len);
+#endif
+
+#ifdef _MSC_VER
+static bool backtrace_symbols_initialized = false;
+static HANDLE backtrace_process = NULL;
 #endif
 
 /* We provide a small stack of ErrorData records for re-entrant cases */
@@ -424,7 +434,7 @@ yb_errfinish(const char *filename, int lineno, const char *funcname)
 
 /*
  * Saved timeval and buffers for formatted timestamps that might be used by
- * both log_line_prefix and csv logs.
+ * log_line_prefix, csv logs and JSON logs.
  */
 static struct timeval saved_timeval;
 static bool saved_timeval_set = false;
@@ -455,10 +465,19 @@ static char formatted_log_time[FORMATTED_TS_LEN];
 	} while(0)
 
 static const char *err_gettext(const char *str) pg_attribute_format_arg(1);
+static ErrorData *get_error_stack_entry(void);
+static void set_stack_entry_domain(ErrorData *edata, const char *domain);
+static void set_stack_entry_location(ErrorData *edata,
+									 const char *filename, int lineno,
+									 const char *funcname);
+static bool matches_backtrace_functions(const char *funcname);
 static pg_noinline void set_backtrace(ErrorData *edata, int num_skip);
+static void backtrace_cleanup(int code, Datum arg);
 static void set_errdata_field(MemoryContextData *cxt, char **ptr, const char *str);
+static void FreeErrorDataContents(ErrorData *edata);
+static int	log_min_messages_cmp(const ListCell *a, const ListCell *b);
 static void write_console(const char *line, int len);
-static const char *process_log_prefix_padding(const char *p, int *padding);
+static const char *process_log_prefix_padding(const char *p, int *ppadding);
 static void log_line_prefix(StringInfo buf, ErrorData *edata);
 static void send_message_to_server_log(ErrorData *edata);
 static void send_message_to_frontend(ErrorData *edata);
@@ -481,7 +500,7 @@ is_log_level_output(int elevel, int log_min_level)
 		if (log_min_level == LOG || log_min_level <= ERROR)
 			return true;
 	}
-	else if (elevel == WARNING_CLIENT_ONLY)
+	else if (elevel == WARNING_CLIENT_ONLY || elevel == FATAL_CLIENT_ONLY)
 	{
 		/* never sent to log, regardless of log_min_level */
 		return false;
@@ -510,7 +529,7 @@ is_log_level_output(int elevel, int log_min_level)
 static inline bool
 should_output_to_server(int elevel)
 {
-	return is_log_level_output(elevel, log_min_messages);
+	return is_log_level_output(elevel, log_min_messages[MyBackendType]);
 }
 
 /*
@@ -714,27 +733,13 @@ errstart(int elevel, const char *domain)
 			debug_query_string = NULL;
 		}
 	}
-	if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
-	{
-		/*
-		 * Wups, stack not big enough.  We treat this as a PANIC condition
-		 * because it suggests an infinite loop of errors during error
-		 * recovery.
-		 */
-		errordata_stack_depth = -1; /* make room on stack */
-		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
-	}
 
 	/* Initialize data for this error frame */
-	edata = &errordata[errordata_stack_depth];
-	MemSet(edata, 0, sizeof(ErrorData));
+	edata = get_error_stack_entry();
 	edata->elevel = elevel;
 	edata->output_to_server = output_to_server;
 	edata->output_to_client = output_to_client;
-	/* the default text domain is the backend's */
-	edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
-	/* initialize context_domain the same way (see set_errcontext_domain()) */
-	edata->context_domain = edata->domain;
+	set_stack_entry_domain(edata, domain);
 	/* Select default errcode based on elevel */
 	if (elevel >= ERROR)
 		edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
@@ -742,8 +747,6 @@ errstart(int elevel, const char *domain)
 		edata->sqlerrcode = ERRCODE_WARNING;
 	else
 		edata->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
-	/* errno is saved here so that error parameter eval can't change it */
-	edata->saved_errno = errno;
 
 	/*
 	 * Any allocations for this error state level should go into ErrorContext
@@ -752,32 +755,6 @@ errstart(int elevel, const char *domain)
 
 	recursion_depth--;
 	return true;
-}
-
-/*
- * Checks whether the given funcname matches backtrace_functions; see
- * check_backtrace_functions.
- */
-static bool
-matches_backtrace_functions(const char *funcname)
-{
-	char	   *p;
-
-	if (!backtrace_symbol_list || funcname == NULL || funcname[0] == '\0')
-		return false;
-
-	p = backtrace_symbol_list;
-	for (;;)
-	{
-		if (*p == '\0')			/* end of backtrace_symbol_list */
-			break;
-
-		if (strcmp(funcname, p) == 0)
-			return true;
-		p += strlen(p) + 1;
-	}
-
-	return false;
 }
 
 /*
@@ -812,23 +789,7 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	else
 	{
 		/* Save the last few bits of error state into the stack entry */
-		if (filename)
-		{
-			const char *slash;
-
-			/* keep only base name, useful especially for vpath builds */
-			slash = strrchr(filename, '/');
-			if (slash)
-				filename = slash + 1;
-			/* Some Windows compilers use backslashes in __FILE__ strings */
-			slash = strrchr(filename, '\\');
-			if (slash)
-				filename = slash + 1;
-		}
-
-		edata->filename = filename;
-		edata->lineno = lineno;
-		edata->funcname = funcname;
+		set_stack_entry_location(edata, filename, lineno, funcname);
 	}
 
 	elevel = edata->elevel;
@@ -839,6 +800,7 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	 */
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
+	/* Collect backtrace, if enabled and we didn't already */
 	if (!edata->backtrace &&
 		((edata->funcname &&
 		  backtrace_functions &&
@@ -890,42 +852,27 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	/* Emit the message to the right places */
 	EmitErrorReport();
 
-	/* Now free up subsidiary data attached to stack entry, and release it */
-	if (edata->message)
-		pfree(edata->message);
-	if (edata->detail)
-		pfree(edata->detail);
-	if (edata->detail_log)
-		pfree(edata->detail_log);
-	if (edata->hint)
-		pfree(edata->hint);
-	if (edata->context)
-		pfree(edata->context);
-	if (edata->backtrace)
-		pfree(edata->backtrace);
-	if (edata->schema_name)
-		pfree(edata->schema_name);
-	if (edata->table_name)
-		pfree(edata->table_name);
-	if (edata->column_name)
-		pfree(edata->column_name);
-	if (edata->datatype_name)
-		pfree(edata->datatype_name);
-	if (edata->constraint_name)
-		pfree(edata->constraint_name);
-	if (edata->internalquery)
-		pfree(edata->internalquery);
+	/*
+	 * If this is the outermost recursion level, we can clean up by resetting
+	 * ErrorContext altogether (compare FlushErrorState), which is good
+	 * because it cleans up any random leakages that might have occurred in
+	 * places such as context callback functions.  If we're nested, we can
+	 * only safely remove the subsidiary data of the current stack entry.
+	 */
+	if (errordata_stack_depth == 0 && recursion_depth == 1)
+		MemoryContextReset(ErrorContext);
+	else
+		FreeErrorDataContents(edata);
 
+	/* Release stack entry and exit error-handling context */
 	errordata_stack_depth--;
-
-	/* Exit error-handling context */
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
 
 	/*
 	 * Perform error recovery action as specified by elevel.
 	 */
-	if (elevel == FATAL)
+	if (elevel == FATAL || elevel == FATAL_CLIENT_ONLY)
 	{
 		/*
 		 * For a FATAL error, we let proc_exit clean up and exit.
@@ -953,8 +900,7 @@ errfinish(const char *filename, int lineno, const char *funcname)
 		 * Any other code you might be tempted to add here should probably be
 		 * in an on_proc_exit or on_shmem_exit callback instead.
 		 */
-		fflush(stdout);
-		fflush(stderr);
+		fflush(NULL);
 
 		/*
 		 * Let the cumulative stats system know. Only mark the session as
@@ -980,8 +926,7 @@ errfinish(const char *filename, int lineno, const char *funcname)
 		 * XXX: what if we are *in* the postmaster?  abort() won't kill our
 		 * children...
 		 */
-		fflush(stdout);
-		fflush(stderr);
+		fflush(NULL);
 		abort();
 	}
 
@@ -991,6 +936,242 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	 * in a loop that otherwise fails to check for interrupts.
 	 */
 	CHECK_FOR_INTERRUPTS();
+}
+
+
+/*
+ * errsave_start --- begin a "soft" error-reporting cycle
+ *
+ * If "context" isn't an ErrorSaveContext node, this behaves as
+ * errstart(ERROR, domain), and the errsave() macro ends up acting
+ * exactly like ereport(ERROR, ...).
+ *
+ * If "context" is an ErrorSaveContext node, but the node creator only wants
+ * notification of the fact of a soft error without any details, we just set
+ * the error_occurred flag in the ErrorSaveContext node and return false,
+ * which will cause us to skip the remaining error processing steps.
+ *
+ * Otherwise, create and initialize error stack entry and return true.
+ * Subsequently, errmsg() and perhaps other routines will be called to further
+ * populate the stack entry.  Finally, errsave_finish() will be called to
+ * tidy up.
+ */
+bool
+errsave_start(struct Node *context, const char *domain)
+{
+	ErrorSaveContext *escontext;
+	ErrorData  *edata;
+
+	/*
+	 * Do we have a context for soft error reporting?  If not, just punt to
+	 * errstart().
+	 */
+	if (context == NULL || !IsA(context, ErrorSaveContext))
+		return errstart(ERROR, domain);
+
+	/* Report that a soft error was detected */
+	escontext = (ErrorSaveContext *) context;
+	escontext->error_occurred = true;
+
+	/* Nothing else to do if caller wants no further details */
+	if (!escontext->details_wanted)
+		return false;
+
+	/*
+	 * Okay, crank up a stack entry to store the info in.
+	 */
+
+	recursion_depth++;
+
+	/* Initialize data for this error frame */
+	edata = get_error_stack_entry();
+	edata->elevel = LOG;		/* signal all is well to errsave_finish */
+	set_stack_entry_domain(edata, domain);
+	/* Select default errcode based on the assumed elevel of ERROR */
+	edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
+
+	/*
+	 * Any allocations for this error state level should go into the caller's
+	 * context.  We don't need to pollute ErrorContext, or even require it to
+	 * exist, in this code path.
+	 */
+	edata->assoc_context = CurrentMemoryContext;
+
+	recursion_depth--;
+	return true;
+}
+
+/*
+ * errsave_finish --- end a "soft" error-reporting cycle
+ *
+ * If errsave_start() decided this was a regular error, behave as
+ * errfinish().  Otherwise, package up the error details and save
+ * them in the ErrorSaveContext node.
+ */
+void
+errsave_finish(struct Node *context, const char *filename, int lineno,
+			   const char *funcname)
+{
+	ErrorSaveContext *escontext = (ErrorSaveContext *) context;
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	/* verify stack depth before accessing *edata */
+	CHECK_STACK_DEPTH();
+
+	/*
+	 * If errsave_start punted to errstart, then elevel will be ERROR or
+	 * perhaps even PANIC.  Punt likewise to errfinish.
+	 */
+	if (edata->elevel >= ERROR)
+	{
+		errfinish(filename, lineno, funcname);
+		pg_unreachable();
+	}
+
+	/*
+	 * Else, we should package up the stack entry contents and deliver them to
+	 * the caller.
+	 */
+	recursion_depth++;
+
+	/* Save the last few bits of error state into the stack entry */
+	set_stack_entry_location(edata, filename, lineno, funcname);
+
+	/* Replace the LOG value that errsave_start inserted */
+	edata->elevel = ERROR;
+
+	/*
+	 * We skip calling backtrace and context functions, which are more likely
+	 * to cause trouble than provide useful context; they might act on the
+	 * assumption that a transaction abort is about to occur.
+	 */
+
+	/*
+	 * Make a copy of the error info for the caller.  All the subsidiary
+	 * strings are already in the caller's context, so it's sufficient to
+	 * flat-copy the stack entry.
+	 */
+	escontext->error_data = palloc_object(ErrorData);
+	memcpy(escontext->error_data, edata, sizeof(ErrorData));
+
+	/* Exit error-handling context */
+	errordata_stack_depth--;
+	recursion_depth--;
+}
+
+
+/*
+ * get_error_stack_entry --- allocate and initialize a new stack entry
+ *
+ * The entry should be freed, when we're done with it, by calling
+ * FreeErrorDataContents() and then decrementing errordata_stack_depth.
+ *
+ * Returning the entry's address is just a notational convenience,
+ * since it had better be errordata[errordata_stack_depth].
+ *
+ * Although the error stack is not large, we don't expect to run out of space.
+ * Using more than one entry implies a new error report during error recovery,
+ * which is possible but already suggests we're in trouble.  If we exhaust the
+ * stack, almost certainly we are in an infinite loop of errors during error
+ * recovery, so we give up and PANIC.
+ *
+ * (Note that this is distinct from the recursion_depth checks, which
+ * guard against recursion while handling a single stack entry.)
+ */
+static ErrorData *
+get_error_stack_entry(void)
+{
+	ErrorData  *edata;
+
+	/* Allocate error frame */
+	errordata_stack_depth++;
+	if (unlikely(errordata_stack_depth >= ERRORDATA_STACK_SIZE))
+	{
+		/* Wups, stack not big enough */
+		errordata_stack_depth = -1; /* make room on stack */
+		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
+	}
+
+	/* Initialize error frame to all zeroes/NULLs */
+	edata = &errordata[errordata_stack_depth];
+	memset(edata, 0, sizeof(ErrorData));
+
+	/* Save errno immediately to ensure error parameter eval can't change it */
+	edata->saved_errno = errno;
+
+	return edata;
+}
+
+/*
+ * set_stack_entry_domain --- fill in the internationalization domain
+ */
+static void
+set_stack_entry_domain(ErrorData *edata, const char *domain)
+{
+	/* the default text domain is the backend's */
+	edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
+	/* initialize context_domain the same way (see set_errcontext_domain()) */
+	edata->context_domain = edata->domain;
+}
+
+/*
+ * set_stack_entry_location --- fill in code-location details
+ *
+ * Store the values of __FILE__, __LINE__, and __func__ from the call site.
+ * We make an effort to normalize __FILE__, since compilers are inconsistent
+ * about how much of the path they'll include, and we'd prefer that the
+ * behavior not depend on that (especially, that it not vary with build path).
+ */
+static void
+set_stack_entry_location(ErrorData *edata,
+						 const char *filename, int lineno,
+						 const char *funcname)
+{
+	if (filename)
+	{
+		const char *slash;
+
+		/* keep only base name, useful especially for vpath builds */
+		slash = strrchr(filename, '/');
+		if (slash)
+			filename = slash + 1;
+		/* Some Windows compilers use backslashes in __FILE__ strings */
+		slash = strrchr(filename, '\\');
+		if (slash)
+			filename = slash + 1;
+	}
+
+	edata->filename = filename;
+	edata->lineno = lineno;
+	edata->funcname = funcname;
+}
+
+/*
+ * matches_backtrace_functions --- checks whether the given funcname matches
+ * backtrace_functions
+ *
+ * See check_backtrace_functions.
+ */
+static bool
+matches_backtrace_functions(const char *funcname)
+{
+	const char *p;
+
+	if (!backtrace_function_list || funcname == NULL || funcname[0] == '\0')
+		return false;
+
+	p = backtrace_function_list;
+	for (;;)
+	{
+		if (*p == '\0')			/* end of backtrace_function_list */
+			break;
+
+		if (strcmp(funcname, p) == 0)
+			return true;
+		p += strlen(p) + 1;
+	}
+
+	return false;
 }
 
 
@@ -1105,6 +1286,10 @@ errcode_for_file_access(void)
 			/* Hardware failure */
 		case EIO:				/* I/O error */
 			edata->sqlerrcode = ERRCODE_IO_ERROR;
+			break;
+
+		case ENAMETOOLONG:		/* File name too long */
+			edata->sqlerrcode = ERRCODE_FILE_NAME_TOO_LONG;
 			break;
 
 			/* All else is classified as internal errors */
@@ -1305,6 +1490,13 @@ errbacktrace(void)
  * specifies how many inner frames to skip.  Use this to avoid showing the
  * internal backtrace support functions in the backtrace.  This requires that
  * this and related functions are not inlined.
+ *
+ * The implementation is, unsurprisingly, platform-specific:
+ * - GNU libc and copycats: Uses backtrace() and backtrace_symbols()
+ * - Windows: Uses CaptureStackBackTrace() with DbgHelp for symbol resolution
+ * 	 (requires PDB files; falls back to exported functions/raw addresses if
+ * 	 unavailable)
+ * - Others (musl libc): unsupported
  */
 static void
 set_backtrace(ErrorData *edata, int num_skip)
@@ -1329,18 +1521,159 @@ set_backtrace(ErrorData *edata, int num_skip)
 
 #ifdef HAVE_BACKTRACE_SYMBOLS
 	{
-		void	   *buf[100];
+		void	   *frames[100];
 		int			nframes;
 		char	  **strfrms;
 
-		nframes = backtrace(buf, lengthof(buf));
-		strfrms = backtrace_symbols(buf, nframes);
-		if (strfrms == NULL)
+		nframes = backtrace(frames, lengthof(frames));
+		strfrms = backtrace_symbols(frames, nframes);
+		if (strfrms != NULL)
+		{
+			for (int i = num_skip; i < nframes; i++)
+				appendStringInfo(&errtrace, "\n%s", strfrms[i]);
+			free(strfrms);
+		}
+		else
+			appendStringInfoString(&errtrace,
+								   "insufficient memory for backtrace generation");
+	}
+#elif defined(_MSC_VER)
+	{
+		void	   *frames[100];
+		int			nframes;
+		char		buffer[sizeof(SYMBOL_INFOW) + MAX_SYM_NAME * sizeof(wchar_t)];
+		PSYMBOL_INFOW psymbol;
+
+		/*
+		 * This is arranged so that we don't retry if we happen to fail to
+		 * initialize state on the first attempt in any one process.
+		 */
+		if (!backtrace_symbols_initialized)
+		{
+			backtrace_symbols_initialized = true;
+
+			if (DuplicateHandle(GetCurrentProcess(),
+								GetCurrentProcess(),
+								GetCurrentProcess(),
+								&backtrace_process,
+								0,
+								FALSE,
+								DUPLICATE_SAME_ACCESS) == 0)
+			{
+				appendStringInfo(&errtrace,
+								 "could not get process handle for backtrace: error code %lu",
+								 GetLastError());
+				edata->backtrace = errtrace.data;
+				return;
+			}
+
+			SymSetOptions(SYMOPT_DEFERRED_LOADS |
+						  SYMOPT_FAIL_CRITICAL_ERRORS |
+						  SYMOPT_LOAD_LINES |
+						  SYMOPT_UNDNAME);
+
+			if (!SymInitialize(backtrace_process, NULL, TRUE))
+			{
+				CloseHandle(backtrace_process);
+				backtrace_process = NULL;
+				appendStringInfo(&errtrace,
+								 "could not initialize symbol handler: error code %lu",
+								 GetLastError());
+				edata->backtrace = errtrace.data;
+				return;
+			}
+
+			on_proc_exit(backtrace_cleanup, 0);
+		}
+
+		if (backtrace_process == NULL)
 			return;
 
-		for (int i = num_skip; i < nframes; i++)
-			appendStringInfo(&errtrace, "\n%s", strfrms[i]);
-		free(strfrms);
+		nframes = CaptureStackBackTrace(num_skip, lengthof(frames), frames, NULL);
+
+		if (nframes == 0)
+		{
+			appendStringInfoString(&errtrace, "zero stack frames captured");
+			edata->backtrace = errtrace.data;
+			return;
+		}
+
+		psymbol = (PSYMBOL_INFOW) buffer;
+		psymbol->MaxNameLen = MAX_SYM_NAME;
+		psymbol->SizeOfStruct = sizeof(SYMBOL_INFOW);
+
+		for (int i = 0; i < nframes; i++)
+		{
+			DWORD64		address = (DWORD64) frames[i];
+			DWORD64		displacement = 0;
+			BOOL		sym_result;
+
+			sym_result = SymFromAddrW(backtrace_process,
+									  address,
+									  &displacement,
+									  psymbol);
+			if (sym_result == TRUE)
+			{
+				char		symbol_name[MAX_SYM_NAME];
+				size_t		result;
+
+				/*
+				 * Convert symbol name from UTF-16 to database encoding using
+				 * wchar2char(), which handles both UTF-8 and non-UTF-8
+				 * databases correctly on Windows.
+				 */
+				result = wchar2char(symbol_name, (const wchar_t *) psymbol->Name,
+									sizeof(symbol_name), NULL);
+
+				if (result == (size_t) -1 || result == sizeof(symbol_name))
+				{
+					/* Conversion failed, use address only */
+					appendStringInfo(&errtrace,
+									 "\n[0x%llx]",
+									 (unsigned long long) address);
+				}
+				else
+				{
+					IMAGEHLP_LINEW64 line;
+					DWORD		line_displacement = 0;
+					char		filename[MAX_PATH];
+
+					line.SizeOfStruct = sizeof(IMAGEHLP_LINEW64);
+
+					/* Start with the common part: symbol+offset [address] */
+					appendStringInfo(&errtrace,
+									 "\n%s+0x%llx [0x%llx]",
+									 symbol_name,
+									 (unsigned long long) displacement,
+									 (unsigned long long) address);
+
+					/* Try to append line info if available */
+					if (SymGetLineFromAddrW64(backtrace_process,
+											  address,
+											  &line_displacement,
+											  &line))
+					{
+						result = wchar2char(filename, (const wchar_t *) line.FileName,
+											sizeof(filename), NULL);
+
+						if (result != (size_t) -1 && result != sizeof(filename))
+						{
+							appendStringInfo(&errtrace,
+											 " [%s:%lu]",
+											 filename,
+											 (unsigned long) line.LineNumber);
+						}
+					}
+				}
+			}
+			else
+			{
+				appendStringInfo(&errtrace,
+								 "\n[0x%llx] (symbol lookup failed: error code %lu)",
+								 (unsigned long long) address,
+								 GetLastError());
+			}
+		}
 	}
 #else
 		appendStringInfoString(&errtrace,
@@ -1348,6 +1681,26 @@ set_backtrace(ErrorData *edata, int num_skip)
 #endif
 
 	edata->backtrace = errtrace.data;
+}
+
+/*
+ * Cleanup function for set_backtrace().
+ */
+pg_attribute_unused()
+static void
+backtrace_cleanup(int code, Datum arg)
+{
+#ifdef _MSC_VER
+	/*
+	 * Currently only used to clean up after SymInitialize.  We shouldn't ever
+	 * be called if backtrace_process is NULL, but better be safe.
+	 */
+	if (backtrace_process)
+	{
+		SymCleanup(backtrace_process);
+		backtrace_process = NULL;
+	}
+#endif
 }
 
 /*
@@ -1586,6 +1939,27 @@ errhint(const char *fmt,...)
 	return 0;					/* return value does not matter */
 }
 
+/*
+ * errhint_internal --- add a hint error message text to the current error
+ *
+ * Non-translated version of errhint(), see also errmsg_internal().
+ */
+int
+errhint_internal(const char *fmt,...)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+	EVALUATE_MESSAGE(edata->domain, hint, false, false);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
+	return 0;					/* return value does not matter */
+}
 
 /*
  * errhint_plural --- add a hint error message text to the current error,
@@ -2030,6 +2404,14 @@ EmitErrorReport(void)
 	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
 
 	/*
+	 * Reset the formatted timestamp fields before emitting any logs.  This
+	 * includes all the log destinations and emit_log_hook, as the latter
+	 * could use log_line_prefix or the formatted timestamps.
+	 */
+	saved_timeval_set = false;
+	formatted_log_time[0] = '\0';
+
+	/*
 	 * Call hook before sending message to log.  The hook function is allowed
 	 * to turn off edata->output_to_server, so we must recheck that afterward.
 	 * Making any other change in the content of edata is not considered
@@ -2165,7 +2547,7 @@ CopyErrorData(void)
 	Assert(CurrentMemoryContext != ErrorContext);
 
 	/* Copy the struct itself */
-	newedata = (ErrorData *) palloc(sizeof(ErrorData));
+	newedata = palloc_object(ErrorData);
 	memcpy(newedata, edata, sizeof(ErrorData));
 
 	/*
@@ -2233,6 +2615,18 @@ CopyErrorData(void)
 void
 FreeErrorData(ErrorData *edata)
 {
+	FreeErrorDataContents(edata);
+	pfree(edata);
+}
+
+/*
+ * FreeErrorDataContents --- free the subsidiary data of an ErrorData.
+ *
+ * This can be used on either an error stack entry or a copied ErrorData.
+ */
+static void
+FreeErrorDataContents(ErrorData *edata)
+{
 	if (edata->message)
 		pfree(edata->message);
 	if (edata->detail)
@@ -2264,7 +2658,6 @@ FreeErrorData(ErrorData *edata)
 		if (edata->funcname)
 			pfree((char *) edata->funcname);
 	}
-	pfree(edata);
 }
 
 /*
@@ -2300,18 +2693,21 @@ FlushErrorState(void)
 	errordata_stack_depth = -1;
 	recursion_depth = 0;
 	/* Delete all data in ErrorContext */
-	MemoryContextResetAndDeleteChildren(ErrorContext);
+	MemoryContextReset(ErrorContext);
 }
 
 /*
  * ThrowErrorData --- report an error described by an ErrorData structure
  *
- * This is somewhat like ReThrowError, but it allows elevels besides ERROR,
- * and the boolean flags such as output_to_server are computed via the
- * default rules rather than being copied from the given ErrorData.
- * This is primarily used to re-report errors originally reported by
- * background worker processes and then propagated (with or without
- * modification) to the backend responsible for them.
+ * This function should be called on an ErrorData structure that isn't stored
+ * on the errordata stack and hasn't been processed yet. It will call
+ * errstart() and errfinish() as needed, so those should not have already been
+ * called.
+ *
+ * ThrowErrorData() is useful for handling soft errors. It's also useful for
+ * re-reporting errors originally reported by background worker processes and
+ * then propagated (with or without modification) to the backend responsible
+ * for them.
  */
 void
 ThrowErrorData(ErrorData *edata)
@@ -2398,18 +2794,7 @@ ReThrowError(ErrorData *edata)
 	recursion_depth++;
 	MemoryContextSwitchTo(ErrorContext);
 
-	if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
-	{
-		/*
-		 * Wups, stack not big enough.  We treat this as a PANIC condition
-		 * because it suggests an infinite loop of errors during error
-		 * recovery.
-		 */
-		errordata_stack_depth = -1; /* make room on stack */
-		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
-	}
-
-	newedata = &errordata[errordata_stack_depth];
+	newedata = get_error_stack_entry();
 	memcpy(newedata, edata, sizeof(ErrorData));
 
 	/* Make copies of separately-allocated fields */
@@ -2513,8 +2898,7 @@ pg_re_throw(void)
 	}
 
 	/* Doesn't return ... */
-	ExceptionalCondition("pg_re_throw tried to return", "FailedAssertion",
-						 __FILE__, __LINE__);
+	ExceptionalCondition("pg_re_throw tried to return", __FILE__, __LINE__);
 }
 
 
@@ -2536,26 +2920,11 @@ GetErrorContextStack(void)
 	ErrorContextCallback *econtext;
 
 	/*
-	 * Okay, crank up a stack entry to store the info in.
+	 * Crank up a stack entry to store the info in.
 	 */
 	recursion_depth++;
 
-	if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
-	{
-		/*
-		 * Wups, stack not big enough.  We treat this as a PANIC condition
-		 * because it suggests an infinite loop of errors during error
-		 * recovery.
-		 */
-		errordata_stack_depth = -1; /* make room on stack */
-		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
-	}
-
-	/*
-	 * Things look good so far, so initialize our error frame
-	 */
-	edata = &errordata[errordata_stack_depth];
-	MemSet(edata, 0, sizeof(ErrorData));
+	edata = get_error_stack_entry();
 
 	/*
 	 * Set up assoc_context to be the caller's context, so any allocations
@@ -2642,14 +3011,408 @@ DebugFileOpen(void)
 }
 
 
-#ifdef HAVE_SYSLOG
+/*
+ * GUC check_hook for log_min_messages
+ *
+ * This value is parsed as a comma-separated list of zero or more TYPE:LEVEL
+ * elements.  For each element, TYPE corresponds to a bk_category value (see
+ * postmaster/proctypelist.h); LEVEL is one of server_message_level_options.
+ *
+ * In addition, there must be a single LEVEL element (with no TYPE part)
+ * which sets the default level for process types that aren't specified.
+ */
+bool
+check_log_min_messages(char **newval, void **extra, GucSource source)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	StringInfoData buf;
+	char	   *result;
+	int			newlevel[BACKEND_NUM_TYPES];
+	bool		assigned[BACKEND_NUM_TYPES] = {0};
+	int			defaultlevel = -1;	/* -1 means not assigned */
+
+	const char *const process_types[] = {
+#define PG_PROCTYPE(bktype, bkcategory, description, main_func, shmem_attach) \
+		[bktype] = bkcategory,
+#include "postmaster/proctypelist.h"
+#undef PG_PROCTYPE
+	};
+
+	/* Need a modifiable copy of string. */
+	rawstring = guc_strdup(LOG, *newval);
+	if (rawstring == NULL)
+		return false;
+
+	/* Parse the string into a list. */
+	if (!SplitGUCList(rawstring, ',', &elemlist))
+	{
+		/* syntax error in list */
+		GUC_check_errdetail("List syntax is invalid.");
+		list_free(elemlist);
+		guc_free(rawstring);
+		return false;
+	}
+
+	/* Validate and assign log level and process type. */
+	foreach_ptr(char, elem, elemlist)
+	{
+		char	   *sep = strchr(elem, ':');
+
+		/*
+		 * If there's no ':' separator in the entry, this is the default log
+		 * level.  Otherwise it's a process type-specific entry.
+		 */
+		if (sep == NULL)
+		{
+			const struct config_enum_entry *entry;
+			bool		found;
+
+			/* Reject duplicates for default log level. */
+			if (defaultlevel != -1)
+			{
+				GUC_check_errdetail("Redundant specification of default log level.");
+				goto lmm_fail;
+			}
+
+			/* Validate the log level */
+			found = false;
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, elem) == 0)
+				{
+					defaultlevel = entry->val;
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level: \"%s\".", elem);
+				goto lmm_fail;
+			}
+		}
+		else
+		{
+			char	   *loglevel = sep + 1;
+			char	   *ptype = elem;
+			bool		found;
+			int			level;
+			const struct config_enum_entry *entry;
+
+			/*
+			 * Temporarily clobber the ':' with a string terminator, so that
+			 * we can validate it.  We restore this at the bottom.
+			 */
+			*sep = '\0';
+
+			/* Validate the log level */
+			found = false;
+			for (entry = server_message_level_options; entry && entry->name; entry++)
+			{
+				if (pg_strcasecmp(entry->name, loglevel) == 0)
+				{
+					level = entry->val;
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized log level for process type \"%s\": \"%s\".",
+									ptype, loglevel);
+				goto lmm_fail;
+			}
+
+			/* Is the process type name valid and unique? */
+			found = false;
+			for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+			{
+				if (pg_strcasecmp(process_types[i], ptype) == 0)
+				{
+					/* Reject duplicates for a process type. */
+					if (assigned[i])
+					{
+						GUC_check_errdetail("Redundant log level specification for process type \"%s\".",
+											ptype);
+						goto lmm_fail;
+					}
+
+					newlevel[i] = level;
+					assigned[i] = true;
+					found = true;
+
+					/*
+					 * note: we must keep looking! some process types appear
+					 * multiple times in proctypelist.h.
+					 */
+				}
+			}
+
+			if (!found)
+			{
+				GUC_check_errdetail("Unrecognized process type \"%s\".", ptype);
+				goto lmm_fail;
+			}
+
+			/* Put the separator back in place */
+			*sep = ':';
+		}
+
+		/* all good */
+		continue;
+
+lmm_fail:
+		guc_free(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	/*
+	 * The default log level must be specified. It is the fallback value.
+	 */
+	if (defaultlevel == -1)
+	{
+		GUC_check_errdetail("Default log level was not defined.");
+		guc_free(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	/* Apply the default log level to all processes not listed. */
+	for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+	{
+		if (!assigned[i])
+			newlevel[i] = defaultlevel;
+	}
+
+	/*
+	 * Save an ordered representation of the user-specified string, for the
+	 * show_hook.
+	 */
+	list_sort(elemlist, log_min_messages_cmp);
+
+	initStringInfoExt(&buf, strlen(rawstring) + 1);
+	foreach_ptr(char, elem, elemlist)
+	{
+		if (foreach_current_index(elem) == 0)
+			appendStringInfoString(&buf, elem);
+		else
+			appendStringInfo(&buf, ", %s", elem);
+	}
+
+	result = guc_strdup(LOG, buf.data);
+	if (!result)
+	{
+		pfree(buf.data);
+		return false;
+	}
+
+	guc_free(*newval);
+	*newval = result;
+
+	guc_free(rawstring);
+	list_free(elemlist);
+	pfree(buf.data);
+
+	/*
+	 * Pass back data for assign_log_min_messages to use.
+	 */
+	*extra = guc_malloc(LOG, BACKEND_NUM_TYPES * sizeof(int));
+	if (!*extra)
+		return false;
+	memcpy(*extra, newlevel, BACKEND_NUM_TYPES * sizeof(int));
+
+	return true;
+}
 
 /*
- * Set or update the parameters for syslog logging
+ * list_sort() callback for check_log_min_messages.  The default element
+ * goes first; the rest are ordered by strcmp() of the process type.
+ */
+static int
+log_min_messages_cmp(const ListCell *a, const ListCell *b)
+{
+	const char *s = lfirst(a);
+	const char *t = lfirst(b);
+
+	if (strchr(s, ':') == NULL)
+		return -1;
+	else if (strchr(t, ':') == NULL)
+		return 1;
+	else
+		return strcmp(s, t);
+}
+
+/*
+ * GUC assign_hook for log_min_messages
  */
 void
-set_syslog_parameters(const char *ident, int facility)
+assign_log_min_messages(const char *newval, void *extra)
 {
+	for (int i = 0; i < BACKEND_NUM_TYPES; i++)
+		log_min_messages[i] = ((int *) extra)[i];
+}
+
+/*
+ * GUC check_hook for backtrace_functions
+ *
+ * We split the input string, where commas separate function names
+ * and certain whitespace chars are ignored, into a \0-separated (and
+ * \0\0-terminated) list of function names.  This formulation allows
+ * easy scanning when an error is thrown while avoiding the use of
+ * non-reentrant strtok(), as well as keeping the output data in a
+ * single palloc() chunk.
+ */
+bool
+check_backtrace_functions(char **newval, void **extra, GucSource source)
+{
+	int			newvallen = strlen(*newval);
+	char	   *someval;
+	int			validlen;
+	int			i;
+	int			j;
+
+	/*
+	 * Allow characters that can be C identifiers and commas as separators, as
+	 * well as some whitespace for readability.
+	 */
+	validlen = strspn(*newval,
+					  "0123456789_"
+					  "abcdefghijklmnopqrstuvwxyz"
+					  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+					  ", \n\t");
+	if (validlen != newvallen)
+	{
+		GUC_check_errdetail("Invalid character.");
+		return false;
+	}
+
+	if ((*newval)[0] == '\0')
+	{
+		*extra = NULL;
+		return true;
+	}
+
+	/*
+	 * Allocate space for the output and create the copy.  We could discount
+	 * whitespace chars to save some memory, but it doesn't seem worth the
+	 * trouble.
+	 */
+	someval = guc_malloc(LOG, newvallen + 1 + 1);
+	if (!someval)
+		return false;
+	for (i = 0, j = 0; i < newvallen; i++)
+	{
+		if ((*newval)[i] == ',')
+			someval[j++] = '\0';	/* next item */
+		else if ((*newval)[i] == ' ' ||
+				 (*newval)[i] == '\n' ||
+				 (*newval)[i] == '\t')
+			;					/* ignore these */
+		else
+			someval[j++] = (*newval)[i];	/* copy anything else */
+	}
+
+	/* two \0s end the setting */
+	someval[j] = '\0';
+	someval[j + 1] = '\0';
+
+	*extra = someval;
+	return true;
+}
+
+/*
+ * GUC assign_hook for backtrace_functions
+ */
+void
+assign_backtrace_functions(const char *newval, void *extra)
+{
+	backtrace_function_list = (char *) extra;
+}
+
+/*
+ * GUC check_hook for log_destination
+ */
+bool
+check_log_destination(char **newval, void **extra, GucSource source)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	ListCell   *l;
+	int			newlogdest = 0;
+	int		   *myextra;
+
+	/* Need a modifiable copy of string */
+	rawstring = pstrdup(*newval);
+
+	/* Parse string into list of identifiers */
+	if (!SplitIdentifierString(rawstring, ',', &elemlist))
+	{
+		/* syntax error in list */
+		GUC_check_errdetail("List syntax is invalid.");
+		pfree(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	foreach(l, elemlist)
+	{
+		char	   *tok = (char *) lfirst(l);
+
+		if (pg_strcasecmp(tok, "stderr") == 0)
+			newlogdest |= LOG_DESTINATION_STDERR;
+		else if (pg_strcasecmp(tok, "csvlog") == 0)
+			newlogdest |= LOG_DESTINATION_CSVLOG;
+		else if (pg_strcasecmp(tok, "jsonlog") == 0)
+			newlogdest |= LOG_DESTINATION_JSONLOG;
+#ifdef HAVE_SYSLOG
+		else if (pg_strcasecmp(tok, "syslog") == 0)
+			newlogdest |= LOG_DESTINATION_SYSLOG;
+#endif
+#ifdef WIN32
+		else if (pg_strcasecmp(tok, "eventlog") == 0)
+			newlogdest |= LOG_DESTINATION_EVENTLOG;
+#endif
+		else
+		{
+			GUC_check_errdetail("Unrecognized key word: \"%s\".", tok);
+			pfree(rawstring);
+			list_free(elemlist);
+			return false;
+		}
+	}
+
+	pfree(rawstring);
+	list_free(elemlist);
+
+	myextra = (int *) guc_malloc(LOG, sizeof(int));
+	if (!myextra)
+		return false;
+	*myextra = newlogdest;
+	*extra = myextra;
+
+	return true;
+}
+
+/*
+ * GUC assign_hook for log_destination
+ */
+void
+assign_log_destination(const char *newval, void *extra)
+{
+	Log_destination = *((int *) extra);
+}
+
+/*
+ * GUC assign_hook for syslog_ident
+ */
+void
+assign_syslog_ident(const char *newval, void *extra)
+{
+#ifdef HAVE_SYSLOG
 	/*
 	 * guc.c is likely to call us repeatedly with same parameters, so don't
 	 * thrash the syslog connection unnecessarily.  Also, we do not re-open
@@ -2660,22 +3423,45 @@ set_syslog_parameters(const char *ident, int facility)
 	 * on guc.c's.  This may be overly paranoid, but it ensures that we cannot
 	 * accidentally free a string that syslog is still using.
 	 */
-	if (syslog_ident == NULL || strcmp(syslog_ident, ident) != 0 ||
-		syslog_facility != facility)
+	if (syslog_ident == NULL || strcmp(syslog_ident, newval) != 0)
 	{
 		if (openlog_done)
 		{
 			closelog();
 			openlog_done = false;
 		}
-		if (syslog_ident)
-			free(syslog_ident);
-		syslog_ident = strdup(ident);
+		free(syslog_ident);
+		syslog_ident = strdup(newval);
 		/* if the strdup fails, we will cope in write_syslog() */
-		syslog_facility = facility;
 	}
+#endif
+	/* Without syslog support, just ignore it */
 }
 
+/*
+ * GUC assign_hook for syslog_facility
+ */
+void
+assign_syslog_facility(int newval, void *extra)
+{
+#ifdef HAVE_SYSLOG
+	/*
+	 * As above, don't thrash the syslog connection unnecessarily.
+	 */
+	if (syslog_facility != newval)
+	{
+		if (openlog_done)
+		{
+			closelog();
+			openlog_done = false;
+		}
+		syslog_facility = newval;
+	}
+#endif
+	/* Without syslog support, just ignore it */
+}
+
+#ifdef HAVE_SYSLOG
 
 /*
  * Write a message line to syslog
@@ -2809,7 +3595,6 @@ GetACPEncoding(void)
 static void
 write_eventlog(int level, const char *line, int len)
 {
-	WCHAR	   *utf16;
 	int			eventlevel = EVENTLOG_ERROR_TYPE;
 	static HANDLE evtHandle = INVALID_HANDLE_VALUE;
 
@@ -2843,6 +3628,7 @@ write_eventlog(int level, const char *line, int len)
 			break;
 		case ERROR:
 		case FATAL:
+		case FATAL_CLIENT_ONLY:
 		case PANIC:
 		default:
 			eventlevel = EVENTLOG_ERROR_TYPE;
@@ -2866,9 +3652,13 @@ write_eventlog(int level, const char *line, int len)
 		CurrentMemoryContext != NULL &&
 		GetMessageEncoding() != GetACPEncoding())
 	{
+		WCHAR	   *utf16;
+
 		utf16 = pgwin32_message_to_UTF16(line, len, NULL);
 		if (utf16)
 		{
+			const WCHAR *utf16_const = utf16;
+
 			ReportEventW(evtHandle,
 						 eventlevel,
 						 0,
@@ -2876,7 +3666,7 @@ write_eventlog(int level, const char *line, int len)
 						 NULL,
 						 1,
 						 0,
-						 (LPCWSTR *) &utf16,
+						 &utf16_const,
 						 NULL);
 			/* XXX Try ReportEventA() when ReportEventW() fails? */
 
@@ -2995,7 +3785,7 @@ get_formatted_log_time(void)
 	/*
 	 * Note: we expect that guc.c will ensure that log_timezone is set up (at
 	 * least with a minimal GMT value) before Log_line_prefix can become
-	 * nonempty or CSV mode can be selected.
+	 * nonempty or CSV/JSON mode can be selected.
 	 */
 	pg_strftime(formatted_log_time, FORMATTED_TS_LEN,
 	/* leave room for milliseconds... */
@@ -3036,7 +3826,7 @@ get_formatted_start_time(void)
 	/*
 	 * Note: we expect that guc.c will ensure that log_timezone is set up (at
 	 * least with a minimal GMT value) before Log_line_prefix can become
-	 * nonempty or CSV mode can be selected.
+	 * nonempty or CSV/JSON mode can be selected.
 	 */
 	pg_strftime(formatted_start_time, FORMATTED_TS_LEN,
 				"%Y-%m-%d %H:%M:%S %Z",
@@ -3079,7 +3869,12 @@ get_backend_type_for_log(void)
 	if (MyProcPid == PostmasterPid)
 		backend_type_str = "postmaster";
 	else if (MyBackendType == B_BG_WORKER)
-		backend_type_str = MyBgworkerEntry->bgw_type;
+	{
+		if (MyBgworkerEntry)
+			backend_type_str = MyBgworkerEntry->bgw_type;
+		else
+			backend_type_str = "early bgworker";
+	}
 	else
 		backend_type_str = GetBackendTypeDesc(MyBackendType);
 
@@ -3122,10 +3917,19 @@ process_log_prefix_padding(const char *p, int *ppadding)
 }
 
 /*
- * Format tag info for log lines; append to the provided buffer.
+ * Format log status information using Log_line_prefix.
  */
 static void
 log_line_prefix(StringInfo buf, ErrorData *edata)
+{
+	log_status_format(buf, Log_line_prefix, edata);
+}
+
+/*
+ * Format log status info; append to the provided buffer.
+ */
+void
+log_status_format(StringInfo buf, const char *format, ErrorData *edata)
 {
 	/* static counter for line numbers */
 	static long log_line_number = 0;
@@ -3149,10 +3953,10 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 	}
 	log_line_number++;
 
-	if (Log_line_prefix == NULL)
+	if (format == NULL)
 		return;					/* in case guc hasn't run yet */
 
-	for (p = Log_line_prefix; *p != '\0'; p++)
+	for (p = format; *p != '\0'; p++)
 	{
 		if (*p != '%')
 		{
@@ -3259,12 +4063,12 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				{
 					char		strfbuf[128];
 
-					snprintf(strfbuf, sizeof(strfbuf) - 1, "%" INT64_MODIFIER "x.%x",
+					snprintf(strfbuf, sizeof(strfbuf) - 1, "%" PRIx64 ".%x",
 							 MyStartTime, MyProcPid);
 					appendStringInfo(buf, "%*s", padding, strfbuf);
 				}
 				else
-					appendStringInfo(buf, "%" INT64_MODIFIER "x.%x", MyStartTime, MyProcPid);
+					appendStringInfo(buf, "%" PRIx64 ".%x", MyStartTime, MyProcPid);
 				break;
 			case 'p':
 				if (padding != 0)
@@ -3371,6 +4175,38 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 					appendStringInfoSpaces(buf,
 										   padding > 0 ? padding : -padding);
 				break;
+			case 'L':
+				{
+					const char *local_host;
+
+					if (MyProcPort)
+					{
+						if (MyProcPort->local_host[0] == '\0')
+						{
+							/*
+							 * First time through: cache the lookup, since it
+							 * might not have trivial cost.
+							 */
+							(void) pg_getnameinfo_all(&MyProcPort->laddr.addr,
+													  MyProcPort->laddr.salen,
+													  MyProcPort->local_host,
+													  sizeof(MyProcPort->local_host),
+													  NULL, 0,
+													  NI_NUMERICHOST | NI_NUMERICSERV);
+						}
+						local_host = MyProcPort->local_host;
+					}
+					else
+					{
+						/* Background process, or connection not yet made */
+						local_host = "[none]";
+					}
+					if (padding != 0)
+						appendStringInfo(buf, "%*s", padding, local_host);
+					else
+						appendStringInfoString(buf, local_host);
+				}
+				break;
 			case 'r':
 				if (MyProcPort && MyProcPort->remote_host)
 				{
@@ -3429,18 +4265,18 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				break;
 			case 'v':
 				/* keep VXID format in sync with lockfuncs.c */
-				if (MyProc != NULL && MyProc->backendId != InvalidBackendId)
+				if (MyProc != NULL && MyProc->vxid.procNumber != INVALID_PROC_NUMBER)
 				{
 					if (padding != 0)
 					{
 						char		strfbuf[128];
 
 						snprintf(strfbuf, sizeof(strfbuf) - 1, "%d/%u",
-								 MyProc->backendId, MyProc->lxid);
+								 MyProc->vxid.procNumber, MyProc->vxid.lxid);
 						appendStringInfo(buf, "%*s", padding, strfbuf);
 					}
 					else
-						appendStringInfo(buf, "%d/%u", MyProc->backendId, MyProc->lxid);
+						appendStringInfo(buf, "%d/%u", MyProc->vxid.procNumber, MyProc->vxid.lxid);
 				}
 				else if (padding != 0)
 					appendStringInfoSpaces(buf,
@@ -3539,11 +4375,11 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 				}
 			case 'Q':
 				if (padding != 0)
-					appendStringInfo(buf, "%*lld", padding,
-									 (long long) pgstat_get_my_query_id());
+					appendStringInfo(buf, "%*" PRId64, padding,
+									 pgstat_get_my_query_id());
 				else
-					appendStringInfo(buf, "%lld",
-									 (long long) pgstat_get_my_query_id());
+					appendStringInfo(buf, "%" PRId64,
+									 pgstat_get_my_query_id());
 				break;
 			default:
 				/* format error - ignore it */
@@ -3583,9 +4419,6 @@ send_message_to_server_log(ErrorData *edata)
 	bool		fallback_to_stderr = false;
 
 	initStringInfo(&buf);
-
-	saved_timeval_set = false;
-	formatted_log_time[0] = '\0';
 
 	log_line_prefix(&buf, edata);
 	appendStringInfo(&buf, "%s:  ", _(error_severity(edata->elevel)));
@@ -3710,6 +4543,7 @@ send_message_to_server_log(ErrorData *edata)
 				syslog_level = LOG_WARNING;
 				break;
 			case FATAL:
+			case FATAL_CLIENT_ONLY:
 				syslog_level = LOG_ERR;
 				break;
 			case PANIC:
@@ -3901,7 +4735,10 @@ send_message_to_frontend(ErrorData *edata)
 		char		tbuf[12];
 
 		/* 'N' (Notice) is for nonfatal conditions, 'E' is for errors */
-		pq_beginmessage(&msgbuf, (edata->elevel < ERROR) ? 'N' : 'E');
+		if (edata->elevel < ERROR)
+			pq_beginmessage(&msgbuf, PqMsg_NoticeResponse);
+		else
+			pq_beginmessage(&msgbuf, PqMsg_ErrorResponse);
 
 		sev = error_severity(edata->elevel);
 		pq_sendbyte(&msgbuf, PG_DIAG_SEVERITY);
@@ -4102,6 +4939,7 @@ error_severity(int elevel)
 			prefix = gettext_noop("ERROR");
 			break;
 		case FATAL:
+		case FATAL_CLIENT_ONLY:
 			prefix = gettext_noop("FATAL");
 			break;
 		case PANIC:
@@ -4146,13 +4984,24 @@ write_stderr(const char *fmt,...)
 {
 	va_list		ap;
 
+	va_start(ap, fmt);
+	vwrite_stderr(fmt, ap);
+	va_end(ap);
+}
+
+
+/*
+ * Write errors to stderr (or by equal means when stderr is
+ * not available) - va_list version
+ */
+void
+vwrite_stderr(const char *fmt, va_list ap)
+{
 #ifdef WIN32
 	char		errbuf[2048];	/* Arbitrary size? */
 #endif
 
 	fmt = _(fmt);
-
-	va_start(ap, fmt);
 #ifndef WIN32
 	/* On Unix, we just fprintf to stderr */
 	vfprintf(stderr, fmt, ap);
@@ -4175,61 +5024,6 @@ write_stderr(const char *fmt,...)
 		fflush(stderr);
 	}
 #endif
-	va_end(ap);
-}
-
-
-/*
- * Write a message to STDERR using only async-signal-safe functions.  This can
- * be used to safely emit a message from a signal handler.
- *
- * TODO: It is likely possible to safely do a limited amount of string
- * interpolation (e.g., %s and %d), but that is not presently supported.
- */
-void
-write_stderr_signal_safe(const char *str)
-{
-	int			nwritten = 0;
-	int			ntotal = strlen(str);
-
-	while (nwritten < ntotal)
-	{
-		int			rc;
-
-		rc = write(STDERR_FILENO, str + nwritten, ntotal - nwritten);
-
-		/* Just give up on error.  There isn't much else we can do. */
-		if (rc == -1)
-			return;
-
-		nwritten += rc;
-	}
-}
-
-
-/*
- * Adjust the level of a recovery-related message per trace_recovery_messages.
- *
- * The argument is the default log level of the message, eg, DEBUG2.  (This
- * should only be applied to DEBUGn log messages, otherwise it's a no-op.)
- * If the level is >= trace_recovery_messages, we return LOG, causing the
- * message to be logged unconditionally (for most settings of
- * log_min_messages).  Otherwise, we return the argument unchanged.
- * The message will then be shown based on the setting of log_min_messages.
- *
- * Intention is to keep this for at least the whole of the 9.0 production
- * release, so we can more easily diagnose production problems in the field.
- * It should go away eventually, though, because it's an ugly and
- * hard-to-explain kluge.
- */
-int
-trace_recovery(int trace_level)
-{
-	if (trace_level < LOG &&
-		trace_level >= trace_recovery_messages)
-		return LOG;
-
-	return trace_level;
 }
 
 /*

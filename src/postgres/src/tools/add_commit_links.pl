@@ -3,7 +3,7 @@
 #################################################################
 # add_commit_links.pl -- add commit links to the release notes
 #
-# Copyright (c) 2024, PostgreSQL Global Development Group
+# Copyright (c) 2024-2026, PostgreSQL Global Development Group
 #
 # src/tools/add_commit_links.pl
 #################################################################
@@ -50,6 +50,8 @@ sub process_file
 	# Get major version number from the file name.
 	$file =~ m/-(\d+)\./;
 	my $major_version = $1;
+	die "file name $file is not in the expected format\n"
+		unless defined $major_version;
 
 	open(my $fh, '<', $file) || die "could not open file $file: $!\n";
 	open(my $tfh, '>', $tmpfile) || die "could not open file $tmpfile: $!\n";
@@ -62,8 +64,9 @@ sub process_file
 
 		# skip over commit links because we will add them below
 		next
-		  if (!$in_comment &&
-			m{^\s*<ulink url="&commit_baseurl;[[:xdigit:]]+">&sect;</ulink>\s*$});
+		  if (!$in_comment
+			&& m{^\s*<ulink url="&commit_baseurl;[[:xdigit:]]+">&sect;</ulink>\s*$}
+		  );
 
 		if ($in_comment && m/\[([[:xdigit:]]+)\]/)
 		{
@@ -73,10 +76,10 @@ sub process_file
 			(!m/^Branch:/) && push(@hashes, $hash);
 
 			# minor release item
-			m/^Branch:/ &&
-			  defined($major_version) &&
-			  m/_${major_version}_/ &&
-			  push(@hashes, $hash);
+			m/^Branch:/
+			  && defined($major_version)
+			  && m/_${major_version}_/
+			  && push(@hashes, $hash);
 		}
 
 		if (!$in_comment && m{</para>})

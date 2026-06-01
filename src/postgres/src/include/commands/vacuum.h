@@ -4,7 +4,7 @@
  *	  header file for postgres vacuum cleaner and statistics analyzer
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/vacuum.h
@@ -17,12 +17,12 @@
 #include "access/htup.h"
 #include "access/genam.h"
 #include "access/parallel.h"
+#include "access/tidstore.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
 #include "parser/parse_node.h"
 #include "storage/buf.h"
-#include "storage/lock.h"
 #include "utils/relcache.h"
 
 /*
@@ -116,16 +116,12 @@ typedef struct VacAttrStats
 {
 	/*
 	 * These fields are set up by the main ANALYZE code before invoking the
-	 * type-specific typanalyze function.
-	 *
-	 * Note: do not assume that the data being analyzed has the same datatype
-	 * shown in attr, ie do not trust attr->atttypid, attlen, etc.  This is
-	 * because some index opclasses store a different type than the underlying
-	 * column/expression.  Instead use attrtypid, attrtypmod, and attrtype for
+	 * type-specific typanalyze function.  They don't necessarily match what
+	 * is in pg_attribute, because some index opclasses store a different type
+	 * than the underlying column/expression.  Therefore, use these fields for
 	 * information about the datatype being fed to the typanalyze function.
-	 * Likewise, use attrcollid not attr->attcollation.
 	 */
-	Form_pg_attribute attr;		/* copy of pg_attribute row for column */
+	int			attstattarget;	/* -1 to use default */
 	Oid			attrtypid;		/* type of data being analyzed */
 	int32		attrtypmod;		/* typmod of data being analyzed */
 	Form_pg_type attrtype;		/* copy of pg_type row for attrtypid */
@@ -186,8 +182,11 @@ typedef struct VacAttrStats
 #define VACOPT_FREEZE 0x08		/* FREEZE option */
 #define VACOPT_FULL 0x10		/* FULL (non-concurrent) vacuum */
 #define VACOPT_SKIP_LOCKED 0x20 /* skip if cannot get lock */
-#define VACOPT_PROCESS_TOAST 0x40	/* process the TOAST table, if any */
-#define VACOPT_DISABLE_PAGE_SKIPPING 0x80	/* don't skip any pages */
+#define VACOPT_PROCESS_MAIN 0x40	/* process main relation */
+#define VACOPT_PROCESS_TOAST 0x80	/* process the TOAST table, if any */
+#define VACOPT_DISABLE_PAGE_SKIPPING 0x100	/* don't skip any pages */
+#define VACOPT_SKIP_DATABASE_STATS 0x200	/* skip vac_update_datfrozenxid() */
+#define VACOPT_ONLY_DATABASE_STATS 0x400	/* only vac_update_datfrozenxid() */
 
 /*
  * Values used by index_cleanup and truncate params.
@@ -210,10 +209,13 @@ typedef enum VacOptValue
  *
  * Note that at least one of VACOPT_VACUUM and VACOPT_ANALYZE must be set
  * in options.
+ *
+ * When adding a new VacuumParam member, consider adding it to vacuumdb as
+ * well.
  */
 typedef struct VacuumParams
 {
-	bits32		options;		/* bitmask of VACOPT_* */
+	uint32		options;		/* bitmask of VACOPT_* */
 	int			freeze_min_age; /* min freeze age, -1 to use default */
 	int			freeze_table_age;	/* age at which to scan whole table */
 	int			multixact_freeze_min_age;	/* min multixact freeze age, -1 to
@@ -221,11 +223,24 @@ typedef struct VacuumParams
 	int			multixact_freeze_table_age; /* multixact age at which to scan
 											 * whole table */
 	bool		is_wraparound;	/* force a for-wraparound vacuum */
-	int			log_min_duration;	/* minimum execution threshold in ms at
-									 * which autovacuum is logged, -1 to use
-									 * default */
+	int			log_vacuum_min_duration;	/* minimum execution threshold in
+											 * ms at which vacuum by
+											 * autovacuum is logged, -1 to use
+											 * default */
+	int			log_analyze_min_duration;	/* minimum execution threshold in
+											 * ms at which analyze by
+											 * autovacuum is logged, -1 to use
+											 * default */
 	VacOptValue index_cleanup;	/* Do index vacuum and cleanup */
 	VacOptValue truncate;		/* Truncate empty pages at the end */
+	Oid			toast_parent;	/* for privilege checks when recursing */
+
+	/*
+	 * Fraction of pages in a relation that vacuum can eagerly scan and fail
+	 * to freeze. Only applicable for table AMs using visibility maps. Derived
+	 * from GUC or table storage parameter. 0 if disabled.
+	 */
+	double		max_eager_freeze_failure_rate;
 
 	/*
 	 * The number of parallel vacuum workers.  0 by default which means choose
@@ -236,19 +251,75 @@ typedef struct VacuumParams
 } VacuumParams;
 
 /*
- * VacDeadItems stores TIDs whose index tuples are deleted by index vacuuming.
+ * VacuumCutoffs is immutable state that describes the cutoffs used by VACUUM.
+ * Established at the beginning of each VACUUM operation.
  */
-typedef struct VacDeadItems
+struct VacuumCutoffs
 {
-	int			max_items;		/* # slots allocated in array */
-	int			num_items;		/* current # of entries */
+	/*
+	 * Existing pg_class fields at start of VACUUM
+	 */
+	TransactionId relfrozenxid;
+	MultiXactId relminmxid;
 
-	/* Sorted array of TIDs to delete from indexes */
-	ItemPointerData items[FLEXIBLE_ARRAY_MEMBER];
-} VacDeadItems;
+	/*
+	 * OldestXmin is the Xid below which tuples deleted by any xact (that
+	 * committed) should be considered DEAD, not just RECENTLY_DEAD.
+	 *
+	 * OldestMxact is the Mxid below which MultiXacts are definitely not seen
+	 * as visible by any running transaction.
+	 *
+	 * OldestXmin and OldestMxact are also the most recent values that can
+	 * ever be passed to vac_update_relstats() as frozenxid and minmulti
+	 * arguments at the end of VACUUM.  These same values should be passed
+	 * when it turns out that VACUUM will leave no unfrozen XIDs/MXIDs behind
+	 * in the table.
+	 */
+	TransactionId OldestXmin;
+	MultiXactId OldestMxact;
 
-#define MAXDEADITEMS(avail_mem) \
-	(((avail_mem) - offsetof(VacDeadItems, items)) / sizeof(ItemPointerData))
+	/*
+	 * FreezeLimit is the Xid below which all Xids are definitely frozen or
+	 * removed in pages VACUUM scans and cleanup locks.
+	 *
+	 * MultiXactCutoff is the value below which all MultiXactIds are
+	 * definitely removed from Xmax in pages VACUUM scans and cleanup locks.
+	 */
+	TransactionId FreezeLimit;
+	MultiXactId MultiXactCutoff;
+};
+
+/*
+ * VacDeadItemsInfo stores supplemental information for dead tuple TID
+ * storage (i.e. TidStore).
+ */
+typedef struct VacDeadItemsInfo
+{
+	size_t		max_bytes;		/* the maximum bytes TidStore can use */
+	int64		num_items;		/* current # of entries */
+} VacDeadItemsInfo;
+
+/*
+ * Statistics for parallel vacuum workers (planned vs. actual)
+ */
+typedef struct PVWorkerStats
+{
+	/* Number of parallel workers planned to launch */
+	int			nplanned;
+
+	/* Number of parallel workers that were successfully launched */
+	int			nlaunched;
+} PVWorkerStats;
+
+/*
+ * PVWorkerUsage stores information about total number of launched and
+ * planned workers during parallel vacuum (both for index vacuum and cleanup).
+ */
+typedef struct PVWorkerUsage
+{
+	PVWorkerStats vacuum;
+	PVWorkerStats cleanup;
+} PVWorkerUsage;
 
 /* GUC parameters */
 extern PGDLLIMPORT int default_statistics_target;	/* PGDLLIMPORT for PostGIS */
@@ -258,17 +329,42 @@ extern PGDLLIMPORT int vacuum_multixact_freeze_min_age;
 extern PGDLLIMPORT int vacuum_multixact_freeze_table_age;
 extern PGDLLIMPORT int vacuum_failsafe_age;
 extern PGDLLIMPORT int vacuum_multixact_failsafe_age;
+extern PGDLLIMPORT bool track_cost_delay_timing;
+extern PGDLLIMPORT bool vacuum_truncate;
+
+/*
+ * Relevant for vacuums implementing eager scanning. Normal vacuums may
+ * eagerly scan some all-visible but not all-frozen pages. Since the goal
+ * is to freeze these pages, an eager scan that fails to set the page
+ * all-frozen in the VM is considered to have "failed". This is the
+ * fraction of pages in the relation vacuum may scan and fail to freeze
+ * before disabling eager scanning.
+ */
+extern PGDLLIMPORT double vacuum_max_eager_freeze_failure_rate;
+
+/*
+ * Maximum value for default_statistics_target and per-column statistics
+ * targets.  This is fairly arbitrary, mainly to prevent users from creating
+ * unreasonably large statistics that the system cannot handle well.
+ */
+#define MAX_STATISTICS_TARGET 10000
 
 /* Variables for cost-based parallel vacuum */
 extern PGDLLIMPORT pg_atomic_uint32 *VacuumSharedCostBalance;
 extern PGDLLIMPORT pg_atomic_uint32 *VacuumActiveNWorkers;
 extern PGDLLIMPORT int VacuumCostBalanceLocal;
 
+extern PGDLLIMPORT bool VacuumFailsafeActive;
+extern PGDLLIMPORT double vacuum_cost_delay;
+extern PGDLLIMPORT int vacuum_cost_limit;
+
+extern PGDLLIMPORT int64 parallel_vacuum_worker_delay_ns;
 
 /* in commands/vacuum.c */
 extern void ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel);
-extern void vacuum(List *relations, VacuumParams *params,
-				   BufferAccessStrategy bstrategy, bool isTopLevel);
+extern void vacuum(List *relations, const VacuumParams *params,
+				   BufferAccessStrategy bstrategy, MemoryContext vac_context,
+				   bool isTopLevel);
 extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
 							 int *nindexes, Relation **Irel);
 extern void vac_close_indexes(int nindexes, Relation *Irel, LOCKMODE lockmode);
@@ -280,56 +376,62 @@ extern void vac_update_relstats(Relation relation,
 								BlockNumber num_pages,
 								double num_tuples,
 								BlockNumber num_all_visible_pages,
+								BlockNumber num_all_frozen_pages,
 								bool hasindex,
 								TransactionId frozenxid,
 								MultiXactId minmulti,
 								bool *frozenxid_updated,
 								bool *minmulti_updated,
 								bool in_outer_xact);
-extern bool vacuum_set_xid_limits(Relation rel,
-								  int freeze_min_age, int freeze_table_age,
-								  int multixact_freeze_min_age,
-								  int multixact_freeze_table_age,
-								  TransactionId *oldestXmin,
-								  MultiXactId *oldestMxact,
-								  TransactionId *freezeLimit,
-								  MultiXactId *multiXactCutoff);
-extern bool vacuum_xid_failsafe_check(TransactionId relfrozenxid,
-									  MultiXactId relminmxid);
+extern bool vacuum_get_cutoffs(Relation rel, const VacuumParams *params,
+							   struct VacuumCutoffs *cutoffs);
+extern bool vacuum_xid_failsafe_check(const struct VacuumCutoffs *cutoffs);
 extern void vac_update_datfrozenxid(void);
-extern void vacuum_delay_point(void);
-extern bool vacuum_is_relation_owner(Oid relid, Form_pg_class reltuple,
-									 bits32 options);
+extern void vacuum_delay_point(bool is_analyze);
+extern bool vacuum_is_permitted_for_relation(Oid relid, Form_pg_class reltuple,
+											 uint32 options);
 extern Relation vacuum_open_relation(Oid relid, RangeVar *relation,
-									 bits32 options, bool verbose,
+									 uint32 options, bool verbose,
 									 LOCKMODE lmode);
 extern IndexBulkDeleteResult *vac_bulkdel_one_index(IndexVacuumInfo *ivinfo,
 													IndexBulkDeleteResult *istat,
-													VacDeadItems *dead_items);
+													TidStore *dead_items,
+													VacDeadItemsInfo *dead_items_info);
 extern IndexBulkDeleteResult *vac_cleanup_one_index(IndexVacuumInfo *ivinfo,
 													IndexBulkDeleteResult *istat);
-extern Size vac_max_items_to_alloc_size(int max_items);
+
+/* In postmaster/autovacuum.c */
+extern void AutoVacuumUpdateCostLimit(void);
+extern void VacuumUpdateCosts(void);
 
 /* in commands/vacuumparallel.c */
 extern ParallelVacuumState *parallel_vacuum_init(Relation rel, Relation *indrels,
 												 int nindexes, int nrequested_workers,
-												 int max_items, int elevel,
+												 int vac_work_mem, int elevel,
 												 BufferAccessStrategy bstrategy);
 extern void parallel_vacuum_end(ParallelVacuumState *pvs, IndexBulkDeleteResult **istats);
-extern VacDeadItems *parallel_vacuum_get_dead_items(ParallelVacuumState *pvs);
+extern TidStore *parallel_vacuum_get_dead_items(ParallelVacuumState *pvs,
+												VacDeadItemsInfo **dead_items_info_p);
+extern void parallel_vacuum_reset_dead_items(ParallelVacuumState *pvs);
 extern void parallel_vacuum_bulkdel_all_indexes(ParallelVacuumState *pvs,
 												long num_table_tuples,
-												int num_index_scans);
+												int num_index_scans,
+												PVWorkerStats *wstats);
 extern void parallel_vacuum_cleanup_all_indexes(ParallelVacuumState *pvs,
 												long num_table_tuples,
 												int num_index_scans,
-												bool estimated_count);
+												bool estimated_count,
+												PVWorkerStats *wstats);
+extern void parallel_vacuum_update_shared_delay_params(void);
+extern void parallel_vacuum_propagate_shared_delay_params(void);
 extern void parallel_vacuum_main(dsm_segment *seg, shm_toc *toc);
 
 /* in commands/analyze.c */
 extern void analyze_rel(Oid relid, RangeVar *relation,
-						VacuumParams *params, List *va_cols, bool in_outer_xact,
+						const VacuumParams *params, List *va_cols, bool in_outer_xact,
 						BufferAccessStrategy bstrategy);
+extern bool attribute_is_analyzable(Relation onerel, int attnum, Form_pg_attribute attr,
+									int *p_attstattarget);
 extern bool std_typanalyze(VacAttrStats *stats);
 
 /* in utils/misc/sampling.c --- duplicate of declarations in utils/sampling.h */

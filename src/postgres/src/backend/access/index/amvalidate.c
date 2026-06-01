@@ -4,7 +4,7 @@
  *	  Support routines for index access methods' amvalidate and
  *	  amadjustmembers functions.
  *
- * Copyright (c) 2016-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -118,7 +118,7 @@ identify_opfamily_groups(CatCList *oprlist, CatCList *proclist)
 		}
 
 		/* Time for a new group */
-		thisgroup = (OpFamilyOpFuncGroup *) palloc(sizeof(OpFamilyOpFuncGroup));
+		thisgroup = palloc_object(OpFamilyOpFuncGroup);
 		if (oprform &&
 			(!procform ||
 			 (oprform->amoplefttype < procform->amproclefttype ||

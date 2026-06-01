@@ -17,7 +17,10 @@
 #include "utils/array.h"
 #include "utils/float.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "cube",
+					.version = PG_VERSION
+);
 
 /*
  * Taken from the intarray contrib header
@@ -96,7 +99,7 @@ int32		cube_cmp_v0(NDBOX *a, NDBOX *b);
 bool		cube_contains_v0(NDBOX *a, NDBOX *b);
 bool		cube_overlap_v0(NDBOX *a, NDBOX *b);
 NDBOX	   *cube_union_v0(NDBOX *a, NDBOX *b);
-void		rt_cube_size(NDBOX *a, double *sz);
+void		rt_cube_size(NDBOX *a, double *size);
 NDBOX	   *g_cube_binary_union(NDBOX *r1, NDBOX *r2, int *sizep);
 bool		g_cube_leaf_consistent(NDBOX *key, NDBOX *query, StrategyNumber strategy);
 bool		g_cube_internal_consistent(NDBOX *key, NDBOX *query, StrategyNumber strategy);
@@ -119,13 +122,15 @@ cube_in(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
 	NDBOX	   *result;
+	Size		scanbuflen;
+	yyscan_t	scanner;
 
-	cube_scanner_init(str);
+	cube_scanner_init(str, &scanbuflen, &scanner);
 
-	if (cube_yyparse(&result) != 0)
-		cube_yyerror(&result, "cube parser failed");
+	cube_yyparse(&result, scanbuflen, fcinfo->context, scanner);
 
-	cube_scanner_finish();
+	/* We might as well run this even on failure. */
+	cube_scanner_finish(scanner);
 
 	PG_RETURN_NDBOX_P(result);
 }
@@ -392,8 +397,9 @@ g_cube_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	NDBOX	   *query = PG_GETARG_NDBOX_P(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	bool		res;
 
@@ -466,7 +472,7 @@ g_cube_decompress(PG_FUNCTION_ARGS)
 
 	if (key != DatumGetNDBOXP(entry->key))
 	{
-		GISTENTRY  *retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		GISTENTRY  *retval = palloc_object(GISTENTRY);
 
 		gistentryinit(*retval, PointerGetDatum(key),
 					  entry->rel, entry->page,
@@ -713,16 +719,16 @@ g_cube_internal_consistent(NDBOX *key,
 	switch (strategy)
 	{
 		case RTOverlapStrategyNumber:
-			retval = (bool) cube_overlap_v0(key, query);
+			retval = cube_overlap_v0(key, query);
 			break;
 		case RTSameStrategyNumber:
 		case RTContainsStrategyNumber:
 		case RTOldContainsStrategyNumber:
-			retval = (bool) cube_contains_v0(key, query);
+			retval = cube_contains_v0(key, query);
 			break;
 		case RTContainedByStrategyNumber:
 		case RTOldContainedByStrategyNumber:
-			retval = (bool) cube_overlap_v0(key, query);
+			retval = cube_overlap_v0(key, query);
 			break;
 		default:
 			retval = false;
@@ -925,7 +931,7 @@ rt_cube_size(NDBOX *a, double *size)
 	{
 		result = 1.0;
 		for (i = 0; i < DIM(a); i++)
-			result *= Abs(UR_COORD(a, i) - LL_COORD(a, i));
+			result *= fabs(UR_COORD(a, i) - LL_COORD(a, i));
 	}
 	*size = result;
 }

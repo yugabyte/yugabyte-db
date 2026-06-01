@@ -6,7 +6,7 @@
  *	  Furthermore, new targets can be defined by extensions. This file
  *	  contains code to support that functionality.
  *
- * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/backup/basebackup_target.c
@@ -96,7 +96,7 @@ BaseBackupAddTarget(char *name,
 	 * name into a newly-allocated chunk of memory.
 	 */
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-	newtype = palloc(sizeof(BaseBackupTargetType));
+	newtype = palloc_object(BaseBackupTargetType);
 	newtype->name = pstrdup(name);
 	newtype->check_detail = check_detail;
 	newtype->get_sink = get_sink;
@@ -132,7 +132,7 @@ BaseBackupGetTargetHandle(char *target, char *target_detail)
 			BaseBackupTargetHandle *handle;
 
 			/* Found the target. */
-			handle = palloc(sizeof(BaseBackupTargetHandle));
+			handle = palloc_object(BaseBackupTargetHandle);
 			handle->type = ttype;
 			handle->detail_arg = ttype->check_detail(target, target_detail);
 

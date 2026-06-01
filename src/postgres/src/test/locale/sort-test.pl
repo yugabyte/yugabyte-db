@@ -1,9 +1,9 @@
 #! /usr/bin/perl
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use locale;
 
 open(my $in_fh, '<', $ARGV[0]) || die;

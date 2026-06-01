@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pg_rewind
 #
-# Portions Copyright (c) 2013-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 2013-2026, PostgreSQL Global Development Group
 #
 # src/bin/pg_rewind/Makefile
 #
@@ -49,7 +49,7 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_rewind$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f pg_rewind$(X) $(OBJS) xlogreader.c
 	rm -rf tmp_check
 

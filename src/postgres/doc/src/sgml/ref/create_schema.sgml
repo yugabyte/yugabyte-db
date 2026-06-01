@@ -89,8 +89,8 @@ CREATE SCHEMA IF NOT EXISTS AUTHORIZATION <replaceable class="parameter">role_sp
        <para>
         The role name of the user who will own the new schema.  If omitted,
         defaults to the user executing the command.  To create a schema
-        owned by another role, you must be a direct or indirect member of
-        that role, or be a superuser.
+        owned by another role, you must be able to
+        <literal>SET ROLE</literal> to that role.
        </para>
       </listitem>
      </varlistentry>
@@ -100,12 +100,27 @@ CREATE SCHEMA IF NOT EXISTS AUTHORIZATION <replaceable class="parameter">role_sp
       <listitem>
        <para>
         An SQL statement defining an object to be created within the
-        schema. Currently, only <command>CREATE
-        TABLE</command>, <command>CREATE VIEW</command>, <command>CREATE
-        INDEX</command>, <command>CREATE SEQUENCE</command>, <command>CREATE
-        TRIGGER</command> and <command>GRANT</command> are accepted as clauses
+        schema. Currently, only
+        <command>CREATE AGGREGATE</command>,
+        <command>CREATE COLLATION</command>,
+        <command>CREATE DOMAIN</command>,
+        <command>CREATE FUNCTION</command>,
+        <command>CREATE INDEX</command>,
+        <command>CREATE OPERATOR</command>,
+        <command>CREATE PROCEDURE</command>,
+        <command>CREATE SEQUENCE</command>,
+        <command>CREATE TABLE</command>,
+        <command>CREATE TEXT SEARCH CONFIGURATION</command>,
+        <command>CREATE TEXT SEARCH DICTIONARY</command>,
+        <command>CREATE TEXT SEARCH PARSER</command>,
+        <command>CREATE TEXT SEARCH TEMPLATE</command>,
+        <command>CREATE TRIGGER</command>,
+        <command>CREATE TYPE</command>,
+        <command>CREATE VIEW</command>,
+        and <command>GRANT</command> are accepted as clauses
         within <command>CREATE SCHEMA</command>. Other kinds of objects may
-        be created in separate commands after the schema is created.
+        be created within the schema in separate commands after the schema
+        is created.
        </para>
       </listitem>
      </varlistentry>
@@ -130,6 +145,14 @@ CREATE SCHEMA IF NOT EXISTS AUTHORIZATION <replaceable class="parameter">role_sp
    To create a schema, the invoking user must have the
    <literal>CREATE</literal> privilege for the current database.
    (Of course, superusers bypass this check.)
+  </para>
+
+  <para>
+   The <replaceable class="parameter">schema_element</replaceable>
+   subcommands, if any, are executed in the order they are written.
+   An exception is that foreign key constraint clauses in <command>CREATE
+   TABLE</command> subcommands are postponed and added at the end.
+   This allows circular foreign key references, which are sometimes useful.
   </para>
  </refsect1>
 
@@ -193,12 +216,12 @@ CREATE VIEW hollywood.winners AS
   </para>
 
   <para>
-   The SQL standard specifies that the subcommands in <command>CREATE
-   SCHEMA</command> can appear in any order.  The present
-   <productname>PostgreSQL</productname> implementation does not
-   handle all cases of forward references in subcommands; it might
-   sometimes be necessary to reorder the subcommands in order to avoid
-   forward references.
+   Some other SQL implementations attempt to allow more kinds of forward
+   references to objects defined in
+   later <replaceable class="parameter">schema_element</replaceable>
+   subcommands than just foreign key constraints.  This is difficult or
+   impossible to do correctly in general, and it is not clear that the SQL
+   standard requires any such behavior except for foreign keys.
   </para>
 
   <para>

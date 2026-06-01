@@ -3,7 +3,7 @@
  * appendinfo.c
  *	  Routines for mapping between append parent(s) and children
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#include "access/sysattr.h"
 #include "access/table.h"
 #include "foreign/fdwapi.h"
 #include "nodes/makefuncs.h"
@@ -163,11 +164,15 @@ make_inh_translation_list(Relation oldrelation, Relation newrelation,
 
 		/* Found it, check type and collation match */
 		if (atttypid != att->atttypid || atttypmod != att->atttypmod)
-			elog(ERROR, "attribute \"%s\" of relation \"%s\" does not match parent's type",
-				 attname, RelationGetRelationName(newrelation));
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+					 errmsg("attribute \"%s\" of relation \"%s\" does not match parent's type",
+							attname, RelationGetRelationName(newrelation))));
 		if (attcollation != att->attcollation)
-			elog(ERROR, "attribute \"%s\" of relation \"%s\" does not match parent's collation",
-				 attname, RelationGetRelationName(newrelation));
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+					 errmsg("attribute \"%s\" of relation \"%s\" does not match parent's collation",
+							attname, RelationGetRelationName(newrelation))));
 
 		vars = lappend(vars, makeVar(newvarno,
 									 (AttrNumber) (new_attno + 1),
@@ -232,6 +237,36 @@ adjust_appendrel_attrs_mutator(Node *node,
 		if (var->varlevelsup != 0)
 			return (Node *) var;	/* no changes needed */
 
+		/*
+		 * You might think we need to adjust var->varnullingrels, but that
+		 * shouldn't need any changes.  It will contain outer-join relids,
+		 * while the transformation we are making affects only baserels.
+		 * Below, we just merge var->varnullingrels into the translated Var.
+		 * (We must merge not just copy: the child Var could have some
+		 * nullingrel bits set already, and we mustn't drop those.)
+		 *
+		 * If var->varnullingrels isn't empty, and the translation wouldn't be
+		 * a Var, we have to fail.  One could imagine wrapping the translated
+		 * expression in a PlaceHolderVar, but that won't work because this is
+		 * typically used after freezing placeholders.  Fortunately, the case
+		 * appears unreachable at the moment.  We can see nonempty
+		 * var->varnullingrels here, but only in cases involving partitionwise
+		 * joining, and in such cases the translations will always be Vars.
+		 * (Non-Var translations occur only for appendrels made by flattening
+		 * UNION ALL subqueries.)  Should we need to make this work in future,
+		 * a possible fix is to mandate that prepjointree.c create PHVs for
+		 * all non-Var outputs of such subqueries, and then we could look up
+		 * the pre-existing PHV here.  Or perhaps just wrap the translations
+		 * that way to begin with?
+		 *
+		 * If var->varreturningtype is not VAR_RETURNING_DEFAULT, then that
+		 * also needs to be copied to the translated Var.  That too would fail
+		 * if the translation wasn't a Var, but that should never happen since
+		 * a non-default var->varreturningtype is only used for Vars referring
+		 * to the result relation, which should never be a flattened UNION ALL
+		 * subquery.
+		 */
+
 		for (cnt = 0; cnt < nappinfos; cnt++)
 		{
 			if (var->varno == appinfos[cnt]->parent_relid)
@@ -259,6 +294,21 @@ adjust_appendrel_attrs_mutator(Node *node,
 				if (newnode == NULL)
 					elog(ERROR, "attribute %d of relation \"%s\" does not exist",
 						 var->varattno, get_rel_name(appinfo->parent_reloid));
+				if (IsA(newnode, Var))
+				{
+					Var		   *newvar = (Var *) newnode;
+
+					newvar->varreturningtype = var->varreturningtype;
+					newvar->varnullingrels = bms_add_members(newvar->varnullingrels,
+															 var->varnullingrels);
+				}
+				else
+				{
+					if (var->varreturningtype != VAR_RETURNING_DEFAULT)
+						elog(ERROR, "failed to apply returningtype to a non-Var");
+					if (var->varnullingrels != NULL)
+						elog(ERROR, "failed to apply nullingrels to a non-Var");
+				}
 				return newnode;
 			}
 			else if (var->varattno == 0)
@@ -312,6 +362,11 @@ adjust_appendrel_attrs_mutator(Node *node,
 					rowexpr->colnames = copyObject(rte->eref->colnames);
 					rowexpr->location = -1;
 
+					if (var->varreturningtype != VAR_RETURNING_DEFAULT)
+						elog(ERROR, "failed to apply returningtype to a non-Var");
+					if (var->varnullingrels != NULL)
+						elog(ERROR, "failed to apply nullingrels to a non-Var");
+
 					return (Node *) rowexpr;
 				}
 			}
@@ -352,6 +407,8 @@ adjust_appendrel_attrs_mutator(Node *node,
 					var = copyObject(ridinfo->rowidvar);
 					/* ... but use the correct relid */
 					var->varno = leaf_relid;
+					/* identity vars shouldn't have nulling rels */
+					Assert(var->varnullingrels == NULL);
 					/* varnosyn in the RowIdentityVarInfo is probably wrong */
 					var->varnosyn = 0;
 					var->varattnosyn = 0;
@@ -393,11 +450,14 @@ adjust_appendrel_attrs_mutator(Node *node,
 
 		phv = (PlaceHolderVar *) expression_tree_mutator(node,
 														 adjust_appendrel_attrs_mutator,
-														 (void *) context);
+														 context);
 		/* now fix PlaceHolderVar's relid sets */
 		if (phv->phlevelsup == 0)
-			phv->phrels = adjust_child_relids(phv->phrels, context->nappinfos,
-											  context->appinfos);
+		{
+			phv->phrels = adjust_child_relids(phv->phrels,
+											  nappinfos, appinfos);
+			/* as above, we needn't touch phnullingrels */
+		}
 		return (Node *) phv;
 	}
 	/* Shouldn't need to handle planner auxiliary nodes here */
@@ -416,7 +476,7 @@ adjust_appendrel_attrs_mutator(Node *node,
 		RestrictInfo *oldinfo = (RestrictInfo *) node;
 		RestrictInfo *newinfo = makeNode(RestrictInfo);
 
-		/* Copy all flat-copiable fields */
+		/* Copy all flat-copiable fields, notably including rinfo_serial */
 		memcpy(newinfo, oldinfo, sizeof(RestrictInfo));
 
 		/* Recursively fix the clause itself */
@@ -437,9 +497,6 @@ adjust_appendrel_attrs_mutator(Node *node,
 		newinfo->outer_relids = adjust_child_relids(oldinfo->outer_relids,
 													context->nappinfos,
 													context->appinfos);
-		newinfo->nullable_relids = adjust_child_relids(oldinfo->nullable_relids,
-													   context->nappinfos,
-													   context->appinfos);
 		newinfo->left_relids = adjust_child_relids(oldinfo->left_relids,
 												   context->nappinfos,
 												   context->appinfos);
@@ -474,6 +531,57 @@ adjust_appendrel_attrs_mutator(Node *node,
 	}
 
 	/*
+	 * We have to process RelAggInfo nodes specially.
+	 */
+	if (IsA(node, RelAggInfo))
+	{
+		RelAggInfo *oldinfo = (RelAggInfo *) node;
+		RelAggInfo *newinfo = makeNode(RelAggInfo);
+
+		newinfo->target = (PathTarget *)
+			adjust_appendrel_attrs_mutator((Node *) oldinfo->target,
+										   context);
+
+		newinfo->agg_input = (PathTarget *)
+			adjust_appendrel_attrs_mutator((Node *) oldinfo->agg_input,
+										   context);
+
+		newinfo->group_clauses = oldinfo->group_clauses;
+
+		newinfo->group_exprs = (List *)
+			adjust_appendrel_attrs_mutator((Node *) oldinfo->group_exprs,
+										   context);
+
+		return (Node *) newinfo;
+	}
+
+	/*
+	 * We have to process PathTarget nodes specially.
+	 */
+	if (IsA(node, PathTarget))
+	{
+		PathTarget *oldtarget = (PathTarget *) node;
+		PathTarget *newtarget = makeNode(PathTarget);
+
+		/* Copy all flat-copiable fields */
+		memcpy(newtarget, oldtarget, sizeof(PathTarget));
+
+		newtarget->exprs = (List *)
+			adjust_appendrel_attrs_mutator((Node *) oldtarget->exprs,
+										   context);
+
+		if (oldtarget->sortgrouprefs)
+		{
+			Size		nbytes = list_length(oldtarget->exprs) * sizeof(Index);
+
+			newtarget->sortgrouprefs = (Index *) palloc(nbytes);
+			memcpy(newtarget->sortgrouprefs, oldtarget->sortgrouprefs, nbytes);
+		}
+
+		return (Node *) newtarget;
+	}
+
+	/*
 	 * NOTE: we do not need to recurse into sublinks, because they should
 	 * already have been converted to subplans before we see them.
 	 */
@@ -483,45 +591,39 @@ adjust_appendrel_attrs_mutator(Node *node,
 	Assert(!IsA(node, RangeTblRef));
 	Assert(!IsA(node, JoinExpr));
 
-	return expression_tree_mutator(node, adjust_appendrel_attrs_mutator,
-								   (void *) context);
+	return expression_tree_mutator(node, adjust_appendrel_attrs_mutator, context);
 }
 
 /*
  * adjust_appendrel_attrs_multilevel
- *	  Apply Var translations from a toplevel appendrel parent down to a child.
+ *	  Apply Var translations from an appendrel parent down to a child.
  *
- * In some cases we need to translate expressions referencing a parent relation
- * to reference an appendrel child that's multiple levels removed from it.
+ * Replace Vars in the "node" expression that reference "parentrel" with
+ * the appropriate Vars for "childrel".  childrel can be more than one
+ * inheritance level removed from parentrel.
  */
 Node *
 adjust_appendrel_attrs_multilevel(PlannerInfo *root, Node *node,
-								  Relids child_relids,
-								  Relids top_parent_relids)
+								  RelOptInfo *childrel,
+								  RelOptInfo *parentrel)
 {
 	AppendRelInfo **appinfos;
-	Bitmapset  *parent_relids = NULL;
 	int			nappinfos;
-	int			cnt;
-
-	Assert(bms_num_members(child_relids) == bms_num_members(top_parent_relids));
-
-	appinfos = find_appinfos_by_relids(root, child_relids, &nappinfos);
-
-	/* Construct relids set for the immediate parent of given child. */
-	for (cnt = 0; cnt < nappinfos; cnt++)
-	{
-		AppendRelInfo *appinfo = appinfos[cnt];
-
-		parent_relids = bms_add_member(parent_relids, appinfo->parent_relid);
-	}
 
 	/* Recurse if immediate parent is not the top parent. */
-	if (!bms_equal(parent_relids, top_parent_relids))
-		node = adjust_appendrel_attrs_multilevel(root, node, parent_relids,
-												 top_parent_relids);
+	if (childrel->parent != parentrel)
+	{
+		if (childrel->parent)
+			node = adjust_appendrel_attrs_multilevel(root, node,
+													 childrel->parent,
+													 parentrel);
+		else
+			elog(ERROR, "childrel is not a child of parentrel");
+	}
 
-	/* Now translate for this child */
+	/* Now translate for this child. */
+	appinfos = find_appinfos_by_relids(root, childrel->relids, &nappinfos);
+
 	node = adjust_appendrel_attrs(root, node, nappinfos, appinfos);
 
 	pfree(appinfos);
@@ -564,56 +666,43 @@ adjust_child_relids(Relids relids, int nappinfos, AppendRelInfo **appinfos)
 }
 
 /*
- * Replace any relid present in top_parent_relids with its child in
- * child_relids. Members of child_relids can be multiple levels below top
- * parent in the partition hierarchy.
+ * Substitute child's relids for parent's relids in a Relid set.
+ * The childrel can be multiple inheritance levels below the parent.
  */
 Relids
 adjust_child_relids_multilevel(PlannerInfo *root, Relids relids,
-							   Relids child_relids, Relids top_parent_relids)
+							   RelOptInfo *childrel,
+							   RelOptInfo *parentrel)
 {
 	AppendRelInfo **appinfos;
 	int			nappinfos;
-	Relids		parent_relids = NULL;
-	Relids		result;
-	Relids		tmp_result = NULL;
-	int			cnt;
 
 	/*
-	 * If the given relids set doesn't contain any of the top parent relids,
-	 * it will remain unchanged.
+	 * If the given relids set doesn't contain any of the parent relids, it
+	 * will remain unchanged.
 	 */
-	if (!bms_overlap(relids, top_parent_relids))
+	if (!bms_overlap(relids, parentrel->relids))
 		return relids;
 
-	appinfos = find_appinfos_by_relids(root, child_relids, &nappinfos);
-
-	/* Construct relids set for the immediate parent of the given child. */
-	for (cnt = 0; cnt < nappinfos; cnt++)
-	{
-		AppendRelInfo *appinfo = appinfos[cnt];
-
-		parent_relids = bms_add_member(parent_relids, appinfo->parent_relid);
-	}
-
 	/* Recurse if immediate parent is not the top parent. */
-	if (!bms_equal(parent_relids, top_parent_relids))
+	if (childrel->parent != parentrel)
 	{
-		tmp_result = adjust_child_relids_multilevel(root, relids,
-													parent_relids,
-													top_parent_relids);
-		relids = tmp_result;
+		if (childrel->parent)
+			relids = adjust_child_relids_multilevel(root, relids,
+													childrel->parent,
+													parentrel);
+		else
+			elog(ERROR, "childrel is not a child of parentrel");
 	}
 
-	result = adjust_child_relids(relids, nappinfos, appinfos);
+	/* Now translate for this child. */
+	appinfos = find_appinfos_by_relids(root, childrel->relids, &nappinfos);
 
-	/* Free memory consumed by any intermediate result. */
-	if (tmp_result)
-		bms_free(tmp_result);
-	bms_free(parent_relids);
+	relids = adjust_child_relids(relids, nappinfos, appinfos);
+
 	pfree(appinfos);
 
-	return result;
+	return relids;
 }
 
 /*
@@ -704,8 +793,8 @@ get_translated_update_targetlist(PlannerInfo *root, Index relid,
 		*processed_tlist = (List *)
 			adjust_appendrel_attrs_multilevel(root,
 											  (Node *) root->processed_tlist,
-											  bms_make_singleton(relid),
-											  bms_make_singleton(root->parse->resultRelation));
+											  find_base_rel(root, relid),
+											  find_base_rel(root, root->parse->resultRelation));
 		if (update_colnos)
 			*update_colnos =
 				adjust_inherited_attnums_multilevel(root, root->update_colnos,
@@ -716,7 +805,11 @@ get_translated_update_targetlist(PlannerInfo *root, Index relid,
 
 /*
  * find_appinfos_by_relids
- * 		Find AppendRelInfo structures for all relations specified by relids.
+ * 		Find AppendRelInfo structures for base relations listed in relids.
+ *
+ * The relids argument is typically a join relation's relids, which can
+ * include outer-join RT indexes in addition to baserels.  We silently
+ * ignore the outer joins.
  *
  * The AppendRelInfos are returned in an array, which can be pfree'd by the
  * caller. *nappinfos is set to the number of entries in the array.
@@ -728,8 +821,8 @@ find_appinfos_by_relids(PlannerInfo *root, Relids relids, int *nappinfos)
 	int			cnt = 0;
 	int			i;
 
-	*nappinfos = bms_num_members(relids);
-	appinfos = (AppendRelInfo **) palloc(sizeof(AppendRelInfo *) * *nappinfos);
+	/* Allocate an array that's certainly big enough */
+	appinfos = palloc_array(AppendRelInfo *, bms_num_members(relids));
 
 	i = -1;
 	while ((i = bms_next_member(relids, i)) >= 0)
@@ -737,10 +830,17 @@ find_appinfos_by_relids(PlannerInfo *root, Relids relids, int *nappinfos)
 		AppendRelInfo *appinfo = root->append_rel_array[i];
 
 		if (!appinfo)
+		{
+			/* Probably i is an OJ index, but let's check */
+			if (find_base_rel_ignore_join(root, i) == NULL)
+				continue;
+			/* It's a base rel, but we lack an append_rel_array entry */
 			elog(ERROR, "child rel %d not found in append_rel_array", i);
+		}
 
 		appinfos[cnt++] = appinfo;
 	}
+	*nappinfos = cnt;
 	return appinfos;
 }
 
@@ -782,6 +882,7 @@ add_row_identity_var(PlannerInfo *root, Var *orig_var,
 	Assert(IsA(orig_var, Var));
 	Assert(orig_var->varno == rtindex);
 	Assert(orig_var->varlevelsup == 0);
+	Assert(orig_var->varnullingrels == NULL);
 
 	/*
 	 * If we're doing non-inherited UPDATE/DELETE/MERGE, there's little need
@@ -894,10 +995,9 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 					  InvalidOid, 0);
 		add_row_identity_var(root, var, rtindex, "ybctid");
 	}
-	else if (commandType == CMD_MERGE ||
-			 relkind == RELKIND_RELATION ||
-			 relkind == RELKIND_MATVIEW ||
-			 relkind == RELKIND_PARTITIONED_TABLE)
+	else if (relkind == RELKIND_RELATION ||
+		relkind == RELKIND_MATVIEW ||
+		relkind == RELKIND_PARTITIONED_TABLE)
 	{
 		/*
 		 * Emit CTID so that executor can find the row to merge, update or

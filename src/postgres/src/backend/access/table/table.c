@@ -3,7 +3,7 @@
  * table.c
  *	  Generic routines for table related code.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -23,8 +23,9 @@
 
 #include "access/relation.h"
 #include "access/table.h"
-#include "storage/lmgr.h"
+#include "utils/rel.h"
 
+static inline void validate_relation_as_table(Relation r);
 
 /* ----------------
  *		table_open - open a table relation by relation OID
@@ -42,17 +43,7 @@ table_open(Oid relationId, LOCKMODE lockmode)
 
 	r = relation_open(relationId, lockmode);
 
-	if (r->rd_rel->relkind == RELKIND_INDEX ||
-		r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is an index",
-						RelationGetRelationName(r))));
-	else if (r->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is a composite type",
-						RelationGetRelationName(r))));
+	validate_relation_as_table(r);
 
 	return r;
 }
@@ -76,17 +67,7 @@ try_table_open(Oid relationId, LOCKMODE lockmode)
 	if (!r)
 		return NULL;
 
-	if (r->rd_rel->relkind == RELKIND_INDEX ||
-		r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is an index",
-						RelationGetRelationName(r))));
-	else if (r->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is a composite type",
-						RelationGetRelationName(r))));
+	validate_relation_as_table(r);
 
 	return r;
 }
@@ -105,17 +86,7 @@ table_openrv(const RangeVar *relation, LOCKMODE lockmode)
 
 	r = relation_openrv(relation, lockmode);
 
-	if (r->rd_rel->relkind == RELKIND_INDEX ||
-		r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is an index",
-						RelationGetRelationName(r))));
-	else if (r->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is a composite type",
-						RelationGetRelationName(r))));
+	validate_relation_as_table(r);
 
 	return r;
 }
@@ -137,19 +108,7 @@ table_openrv_extended(const RangeVar *relation, LOCKMODE lockmode,
 	r = relation_openrv_extended(relation, lockmode, missing_ok);
 
 	if (r)
-	{
-		if (r->rd_rel->relkind == RELKIND_INDEX ||
-			r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("\"%s\" is an index",
-							RelationGetRelationName(r))));
-		else if (r->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("\"%s\" is a composite type",
-							RelationGetRelationName(r))));
-	}
+		validate_relation_as_table(r);
 
 	return r;
 }
@@ -167,4 +126,28 @@ void
 table_close(Relation relation, LOCKMODE lockmode)
 {
 	relation_close(relation, lockmode);
+}
+
+/* ----------------
+ *		validate_relation_as_table
+ *
+ *		Make sure relkind is table-like, that is, something that could be read
+ *		from or written to directly in a query.
+ * ----------------
+ */
+static inline void
+validate_relation_as_table(Relation r)
+{
+	if (r->rd_rel->relkind != RELKIND_RELATION &&
+		r->rd_rel->relkind != RELKIND_SEQUENCE &&
+		r->rd_rel->relkind != RELKIND_TOASTVALUE &&
+		r->rd_rel->relkind != RELKIND_VIEW &&
+		r->rd_rel->relkind != RELKIND_MATVIEW &&
+		r->rd_rel->relkind != RELKIND_FOREIGN_TABLE &&
+		r->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot open relation \"%s\"",
+						RelationGetRelationName(r)),
+				 errdetail_relkind_not_supported(r->rd_rel->relkind)));
 }

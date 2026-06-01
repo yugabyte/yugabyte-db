@@ -3,7 +3,7 @@
  * proclang.c
  *	  PostgreSQL LANGUAGE support code.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -13,16 +13,15 @@
  */
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "access/table.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_language.h"
-#include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "commands/defrem.h"
 #include "commands/proclang.h"
 #include "miscadmin.h"
 #include "parser/parse_func.h"
@@ -134,7 +133,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 
 		/* This is currently pointless, since we already checked superuser */
 #ifdef NOT_USED
-		if (!pg_language_ownercheck(oldform->oid, languageOwner))
+		if (!object_ownercheck(LanguageRelationId, oldform->oid, languageOwner))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_LANGUAGE,
 						   languageName);
 #endif

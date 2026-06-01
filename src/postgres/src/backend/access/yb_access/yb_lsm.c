@@ -518,6 +518,21 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 }
 
 /*
+ * yb_estimate_parallel_size_am
+ *
+ * Wrapper that matches amestimateparallelscan callback signature
+ * (Relation, int, int).
+ */
+static Size
+yb_estimate_parallel_size_am(Relation indexRelation, int nkeys, int norderbys)
+{
+	(void) indexRelation;
+	(void) nkeys;
+	(void) norderbys;
+	return yb_estimate_parallel_size();
+}
+
+/*
  * ybcinparallel_prepare
  *
  * Prepare the YB parallel scan state to fetch the key ranges from DocDB:
@@ -533,7 +548,7 @@ ybcinparallel_prepare(IndexScanDesc scan)
 	ParallelIndexScanDesc target = scan->parallel_scan;
 	ScanDirection direction = ForwardScanDirection;
 
-	pscan = (YBParallelPartitionKeys) OffsetToPointer(target, target->ps_offset);
+	pscan = (YBParallelPartitionKeys) OffsetToPointer(target, target->ps_offset_am);
 	Relation	rel = scan->indexRelation;
 
 	/* If scan is by the PK, use the main relation instead */
@@ -743,8 +758,8 @@ static void
 ybcinbindschema(YbcPgStatement handle,
 				struct IndexInfo *indexInfo,
 				TupleDesc indexTupleDesc,
-				int16 *coloptions,
-				Oid *opclassOids,
+				const int16 *coloptions,
+				const Oid *opclassOids,
 				Datum reloptions)
 {
 	YBCBindCreateIndexColumns(handle,
@@ -766,6 +781,10 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->amstrategies = BTMaxStrategyNumber;
 	amroutine->amsupport = BTNProcs;
 	amroutine->amcanorder = true;
+	amroutine->amconsistentequality = true;
+	amroutine->amconsistentordering = true;
+	amroutine->amtranslatestrategy = bttranslatestrategy;
+	amroutine->amtranslatecmptype = bttranslatecmptype;
 	amroutine->amcanorderbyop = false;
 	amroutine->amcanbackward = true;
 	amroutine->amcanunique = true;
@@ -799,7 +818,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->ammarkpos = NULL;	/* TODO: support mark/restore pos with
 									 * ordering */
 	amroutine->amrestrpos = NULL;
-	amroutine->amestimateparallelscan = yb_estimate_parallel_size;
+	amroutine->amestimateparallelscan = yb_estimate_parallel_size_am;
 	amroutine->aminitparallelscan = yb_init_partition_key_data;
 	amroutine->amparallelrescan = ybcinparallelrescan;
 	amroutine->yb_amisforybrelation = true;

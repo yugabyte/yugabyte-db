@@ -3,7 +3,7 @@
  * cryptohash.h
  *	  Generic headers for cryptographic hash functions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -23,7 +23,7 @@ typedef enum
 	PG_SHA224,
 	PG_SHA256,
 	PG_SHA384,
-	PG_SHA512
+	PG_SHA512,
 } pg_cryptohash_type;
 
 /* opaque context, private to each cryptohash implementation */

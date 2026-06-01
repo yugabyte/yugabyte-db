@@ -11,19 +11,20 @@
  * Portions Copyright (c) 1987, 1993, 1994
  * The Regents of the University of California.  All rights reserved.
  *
- * Portions Copyright (c) 2003-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2003-2026, PostgreSQL Global Development Group
  *
  * src/include/pg_getopt.h
  */
+/* IWYU pragma: always_keep */
 #ifndef PG_GETOPT_H
 #define PG_GETOPT_H
 
 /* POSIX says getopt() is provided by unistd.h */
-#include <unistd.h>
+#include <unistd.h>				/* IWYU pragma: export */
 
 /* rely on the system's getopt.h if present */
 #ifdef HAVE_GETOPT_H
-#include <getopt.h>
+#include <getopt.h>				/* IWYU pragma: export */
 #endif
 
 /*

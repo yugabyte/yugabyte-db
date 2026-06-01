@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# Copyright (c) 2001-2022, PostgreSQL Global Development Group
+# Copyright (c) 2001-2026, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/UCS_to_EUC_KR.pl
 #
@@ -17,7 +17,7 @@
 #		 # and Unicode name (not used in this script)
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use convutils;
 
@@ -36,27 +36,27 @@ foreach my $i (@$mapping)
 push @$mapping,
   ( {
 		direction => BOTH,
-		ucs       => 0x20AC,
-		code      => 0xa2e6,
-		comment   => '# EURO SIGN',
-		f         => $this_script,
-		l         => __LINE__
+		ucs => 0x20AC,
+		code => 0xa2e6,
+		comment => '# EURO SIGN',
+		f => $this_script,
+		l => __LINE__
 	},
 	{
 		direction => BOTH,
-		ucs       => 0x00AE,
-		code      => 0xa2e7,
-		comment   => '# REGISTERED SIGN',
-		f         => $this_script,
-		l         => __LINE__
+		ucs => 0x00AE,
+		code => 0xa2e7,
+		comment => '# REGISTERED SIGN',
+		f => $this_script,
+		l => __LINE__
 	},
 	{
 		direction => BOTH,
-		ucs       => 0x327E,
-		code      => 0xa2e8,
-		comment   => '# CIRCLED HANGUL IEUNG U',
-		f         => $this_script,
-		l         => __LINE__
+		ucs => 0x327E,
+		code => 0xa2e8,
+		comment => '# CIRCLED HANGUL IEUNG U',
+		f => $this_script,
+		l => __LINE__
 	});
 
 print_conversion_tables($this_script, "EUC_KR", $mapping);

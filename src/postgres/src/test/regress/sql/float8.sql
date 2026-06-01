@@ -34,6 +34,12 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('5.   0');
 INSERT INTO FLOAT8_TBL(f1) VALUES ('    - 3');
 INSERT INTO FLOAT8_TBL(f1) VALUES ('123           5');
 
+-- Also try it with non-error-throwing API
+SELECT pg_input_is_valid('34.5', 'float8');
+SELECT pg_input_is_valid('xyz', 'float8');
+SELECT pg_input_is_valid('1e4000', 'float8');
+SELECT * FROM pg_input_error_info('1e4000', 'float8');
+
 -- special inputs
 SELECT 'NaN'::float8;
 SELECT 'nan'::float8;
@@ -191,7 +197,7 @@ SELECT exp(f.f1) from FLOAT8_TBL f;
 
 SELECT f.f1 / '0.0' from FLOAT8_TBL f;
 
-SELECT * FROM FLOAT8_TBL;
+SELECT * FROM FLOAT8_TBL ORDER BY 1;
 
 -- hyperbolic functions
 -- we run these with extra_float_digits = 0 too, since different platforms
@@ -223,6 +229,43 @@ SELECT atanh(float8 'infinity');
 SELECT atanh(float8 '-infinity');
 SELECT atanh(float8 'nan');
 
+-- error functions
+-- we run these with extra_float_digits = -1, to get consistently rounded
+-- results on all platforms.
+SET extra_float_digits = -1;
+SELECT x,
+       erf(x),
+       erfc(x)
+FROM (VALUES (float8 '-infinity'),
+      (-28), (-6), (-3.4), (-2.1), (-1.1), (-0.45),
+      (-1.2e-9), (-2.3e-13), (-1.2e-17), (0),
+      (1.2e-17), (2.3e-13), (1.2e-9),
+      (0.45), (1.1), (2.1), (3.4), (6), (28),
+      (float8 'infinity'), (float8 'nan')) AS t(x);
+
+RESET extra_float_digits;
+
+-- gamma functions
+-- we run these with extra_float_digits = -1, to get consistently rounded
+-- results on all platforms.
+SET extra_float_digits = -1;
+SELECT x,
+       gamma(x),
+       lgamma(x)
+FROM (VALUES (0.5), (1), (2), (3), (4), (5),
+             (float8 'infinity'), (float8 'nan')) AS t(x);
+-- test overflow/underflow handling
+SELECT gamma(float8 '-infinity');
+SELECT lgamma(float8 '-infinity');
+SELECT gamma(float8 '-1000.5');
+SELECT lgamma(float8 '-1000.5');
+SELECT gamma(float8 '-1');
+SELECT lgamma(float8 '-1');
+SELECT gamma(float8 '0');
+SELECT lgamma(float8 '0');
+SELECT gamma(float8 '1000');
+SELECT lgamma(float8 '1000');
+SELECT lgamma(float8 '1e308');
 RESET extra_float_digits;
 
 -- test for over- and underflow
@@ -308,6 +351,7 @@ create function xfloat8in(cstring) returns xfloat8 immutable strict
   language internal as 'int8in';
 create function xfloat8out(xfloat8) returns cstring immutable strict
   language internal as 'int8out';
+create type xfloat8 (input = xfloat8in, output = xfloat8out, like = no_such_type);
 create type xfloat8 (input = xfloat8in, output = xfloat8out, like = float8);
 create cast (xfloat8 as float8) without function;
 create cast (float8 as xfloat8) without function;

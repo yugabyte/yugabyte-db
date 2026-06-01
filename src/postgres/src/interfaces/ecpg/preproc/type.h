@@ -33,15 +33,19 @@ struct ECPGtype
 };
 
 /* Everything is malloced. */
-void		ECPGmake_struct_member(const char *, struct ECPGtype *, struct ECPGstruct_member **);
-struct ECPGtype *ECPGmake_simple_type(enum ECPGttype, char *, int);
-struct ECPGtype *ECPGmake_array_type(struct ECPGtype *, char *);
-struct ECPGtype *ECPGmake_struct_type(struct ECPGstruct_member *, enum ECPGttype, char *, char *);
-struct ECPGstruct_member *ECPGstruct_member_dup(struct ECPGstruct_member *);
+void		ECPGmake_struct_member(const char *name, struct ECPGtype *type,
+								   struct ECPGstruct_member **start);
+struct ECPGtype *ECPGmake_simple_type(enum ECPGttype type, const char *size, int counter);
+struct ECPGtype *ECPGmake_array_type(struct ECPGtype *type, const char *size);
+struct ECPGtype *ECPGmake_struct_type(struct ECPGstruct_member *rm,
+									  enum ECPGttype type,
+									  const char *type_name,
+									  const char *struct_sizeof);
+struct ECPGstruct_member *ECPGstruct_member_dup(struct ECPGstruct_member *rm);
 
 /* Frees a type. */
-void		ECPGfree_struct_member(struct ECPGstruct_member *);
-void		ECPGfree_type(struct ECPGtype *);
+void		ECPGfree_struct_member(struct ECPGstruct_member *rm);
+void		ECPGfree_type(struct ECPGtype *type);
 
 /* Dump a type.
    The type is dumped as:
@@ -53,10 +57,12 @@ void		ECPGfree_type(struct ECPGtype *);
    size is the maxsize in case it is a varchar. Otherwise it is the size of
 	   the variable (required to do array fetches of structs).
  */
-void		ECPGdump_a_type(FILE *, const char *, struct ECPGtype *, const int,
-							const char *, struct ECPGtype *, const int,
-							const char *, const char *, char *,
-							const char *, const char *);
+void		ECPGdump_a_type(FILE *o, const char *name, struct ECPGtype *type,
+							const int brace_level, const char *ind_name,
+							struct ECPGtype *ind_type, const int ind_brace_level,
+							const char *prefix, const char *ind_prefix,
+							char *arr_str_size, const char *struct_sizeof,
+							const char *ind_struct_sizeof);
 
 /* A simple struct to keep a variable and its type. */
 struct ECPGtemp_type
@@ -88,28 +94,28 @@ struct when
 
 struct index
 {
-	char	   *index1;
-	char	   *index2;
-	char	   *str;
+	const char *index1;
+	const char *index2;
+	const char *str;
 };
 
 struct su_symbol
 {
-	char	   *su;
-	char	   *symbol;
+	const char *su;
+	const char *symbol;
 };
 
 struct prep
 {
-	char	   *name;
-	char	   *stmt;
-	char	   *type;
+	const char *name;
+	const char *stmt;
+	const char *type;
 };
 
 struct exec
 {
-	char	   *name;
-	char	   *type;
+	const char *name;
+	const char *type;
 };
 
 struct this_type
@@ -216,14 +222,14 @@ enum errortype
 
 struct fetch_desc
 {
-	char	   *str;
-	char	   *name;
+	const char *str;
+	const char *name;
 };
 
 struct describe
 {
 	int			input;
-	char	   *stmt_name;
+	const char *stmt_name;
 };
 
 #endif							/* _ECPG_PREPROC_TYPE_H */

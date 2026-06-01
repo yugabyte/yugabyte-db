@@ -29,34 +29,24 @@
  * in the current environment, but that may change if the row_security GUC or
  * the current role changes.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  */
 #include "postgres.h"
 
-#include "access/htup_details.h"
-#include "access/sysattr.h"
 #include "access/table.h"
 #include "catalog/pg_class.h"
-#include "catalog/pg_inherits.h"
-#include "catalog/pg_policy.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#include "nodes/nodeFuncs.h"
 #include "nodes/pg_list.h"
-#include "nodes/plannodes.h"
-#include "parser/parsetree.h"
+#include "parser/parse_relation.h"
 #include "rewrite/rewriteDefine.h"
-#include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rowsecurity.h"
-#include "tcop/utility.h"
 #include "utils/acl.h"
-#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/rls.h"
-#include "utils/syscache.h"
 
 static void get_policies_for_relation(Relation relation,
 									  CmdType cmd, Oid user_id,
@@ -115,6 +105,7 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 	CmdType		commandType;
 	List	   *permissive_policies;
 	List	   *restrictive_policies;
+	RTEPermissionInfo *perminfo;
 
 	/* Defaults for the return values */
 	*securityQuals = NIL;
@@ -122,16 +113,21 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 	*hasRowSecurity = false;
 	*hasSubLinks = false;
 
+	Assert(rte->rtekind == RTE_RELATION);
+
 	/* If this is not a normal relation, just return immediately */
 	if (rte->relkind != RELKIND_RELATION &&
 		rte->relkind != RELKIND_PARTITIONED_TABLE)
 		return;
 
+	perminfo = getRTEPermissionInfo(root->rteperminfos, rte);
+
 	/* Switch to checkAsUser if it's set */
-	user_id = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+	user_id = OidIsValid(perminfo->checkAsUser) ?
+		perminfo->checkAsUser : GetUserId();
 
 	/* Determine the state of RLS for this, pass checkAsUser explicitly */
-	rls_status = check_enable_rls(rte->relid, rte->checkAsUser, false);
+	rls_status = check_enable_rls(rte->relid, perminfo->checkAsUser, false);
 
 	/* If there is no RLS on this table at all, nothing to do */
 	if (rls_status == RLS_NONE)
@@ -196,7 +192,7 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 	 * which the user does not have access to via the UPDATE USING policies,
 	 * similar to how we require normal UPDATE rights for these queries.
 	 */
-	if (commandType == CMD_SELECT && rte->requiredPerms & ACL_UPDATE)
+	if (commandType == CMD_SELECT && perminfo->requiredPerms & ACL_UPDATE)
 	{
 		List	   *update_permissive_policies;
 		List	   *update_restrictive_policies;
@@ -243,7 +239,7 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 	 */
 	if ((commandType == CMD_UPDATE || commandType == CMD_DELETE ||
 		 commandType == CMD_MERGE) &&
-		rte->requiredPerms & ACL_SELECT)
+		perminfo->requiredPerms & ACL_SELECT)
 	{
 		List	   *select_permissive_policies;
 		List	   *select_restrictive_policies;
@@ -286,7 +282,7 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 		 * raised if a policy is violated; otherwise, we might end up silently
 		 * dropping rows to be added.
 		 */
-		if (rte->requiredPerms & ACL_SELECT)
+		if (perminfo->requiredPerms & ACL_SELECT)
 		{
 			List	   *select_permissive_policies = NIL;
 			List	   *select_restrictive_policies = NIL;
@@ -305,44 +301,52 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 		}
 
 		/*
-		 * For INSERT ... ON CONFLICT DO UPDATE we need additional policy
-		 * checks for the UPDATE which may be applied to the same RTE.
+		 * For INSERT ... ON CONFLICT DO SELECT/UPDATE we need additional
+		 * policy checks for the SELECT/UPDATE which may be applied to the
+		 * same RTE.
 		 */
-		if (commandType == CMD_INSERT &&
-			root->onConflict && root->onConflict->action == ONCONFLICT_UPDATE)
+		if (commandType == CMD_INSERT && root->onConflict &&
+			(root->onConflict->action == ONCONFLICT_UPDATE ||
+			 root->onConflict->action == ONCONFLICT_SELECT))
 		{
-			List	   *conflict_permissive_policies;
-			List	   *conflict_restrictive_policies;
+			List	   *conflict_permissive_policies = NIL;
+			List	   *conflict_restrictive_policies = NIL;
 			List	   *conflict_select_permissive_policies = NIL;
 			List	   *conflict_select_restrictive_policies = NIL;
 
-			/* Get the policies that apply to the auxiliary UPDATE */
-			get_policies_for_relation(rel, CMD_UPDATE, user_id,
-									  &conflict_permissive_policies,
-									  &conflict_restrictive_policies);
+			if (perminfo->requiredPerms & ACL_UPDATE)
+			{
+				/*
+				 * Get the policies that apply to the auxiliary UPDATE or
+				 * SELECT FOR UPDATE/SHARE.
+				 */
+				get_policies_for_relation(rel, CMD_UPDATE, user_id,
+										  &conflict_permissive_policies,
+										  &conflict_restrictive_policies);
 
-			/*
-			 * Enforce the USING clauses of the UPDATE policies using WCOs
-			 * rather than security quals.  This ensures that an error is
-			 * raised if the conflicting row cannot be updated due to RLS,
-			 * rather than the change being silently dropped.
-			 */
-			add_with_check_options(rel, rt_index,
-								   WCO_RLS_CONFLICT_CHECK,
-								   conflict_permissive_policies,
-								   conflict_restrictive_policies,
-								   withCheckOptions,
-								   hasSubLinks,
-								   true);
+				/*
+				 * Enforce the USING clauses of the UPDATE policies using WCOs
+				 * rather than security quals.  This ensures that an error is
+				 * raised if the conflicting row cannot be updated/locked due
+				 * to RLS, rather than the change being silently dropped.
+				 */
+				add_with_check_options(rel, rt_index,
+									   WCO_RLS_CONFLICT_CHECK,
+									   conflict_permissive_policies,
+									   conflict_restrictive_policies,
+									   withCheckOptions,
+									   hasSubLinks,
+									   true);
+			}
 
 			/*
 			 * Get and add ALL/SELECT policies, as WCO_RLS_CONFLICT_CHECK WCOs
-			 * to ensure they are considered when taking the UPDATE path of an
-			 * INSERT .. ON CONFLICT DO UPDATE, if SELECT rights are required
+			 * to ensure they are considered when taking the SELECT/UPDATE
+			 * path of an INSERT .. ON CONFLICT, if SELECT rights are required
 			 * for this relation, also as WCO policies, again, to avoid
 			 * silently dropping data.  See above.
 			 */
-			if (rte->requiredPerms & ACL_SELECT)
+			if (perminfo->requiredPerms & ACL_SELECT)
 			{
 				get_policies_for_relation(rel, CMD_SELECT, user_id,
 										  &conflict_select_permissive_policies,
@@ -356,29 +360,36 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 									   true);
 			}
 
-			/* Enforce the WITH CHECK clauses of the UPDATE policies */
-			add_with_check_options(rel, rt_index,
-								   WCO_RLS_UPDATE_CHECK,
-								   conflict_permissive_policies,
-								   conflict_restrictive_policies,
-								   withCheckOptions,
-								   hasSubLinks,
-								   false);
-
 			/*
-			 * Add ALL/SELECT policies as WCO_RLS_UPDATE_CHECK WCOs, to ensure
-			 * that the final updated row is visible when taking the UPDATE
-			 * path of an INSERT .. ON CONFLICT DO UPDATE, if SELECT rights
-			 * are required for this relation.
+			 * For INSERT .. ON CONFLICT DO UPDATE, add additional policies to
+			 * be checked when the auxiliary UPDATE is executed.
 			 */
-			if (rte->requiredPerms & ACL_SELECT)
+			if (root->onConflict->action == ONCONFLICT_UPDATE)
+			{
+				/* Enforce the WITH CHECK clauses of the UPDATE policies */
 				add_with_check_options(rel, rt_index,
 									   WCO_RLS_UPDATE_CHECK,
-									   conflict_select_permissive_policies,
-									   conflict_select_restrictive_policies,
+									   conflict_permissive_policies,
+									   conflict_restrictive_policies,
 									   withCheckOptions,
 									   hasSubLinks,
-									   true);
+									   false);
+
+				/*
+				 * Add ALL/SELECT policies as WCO_RLS_UPDATE_CHECK WCOs, to
+				 * ensure that the final updated row is visible when taking
+				 * the UPDATE path of an INSERT .. ON CONFLICT, if SELECT
+				 * rights are required for this relation.
+				 */
+				if (perminfo->requiredPerms & ACL_SELECT)
+					add_with_check_options(rel, rt_index,
+										   WCO_RLS_UPDATE_CHECK,
+										   conflict_select_permissive_policies,
+										   conflict_select_restrictive_policies,
+										   withCheckOptions,
+										   hasSubLinks,
+										   true);
+			}
 		}
 	}
 
@@ -388,10 +399,10 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 	 * on the final action we take.
 	 *
 	 * We already fetched the SELECT policies above, to check existing rows,
-	 * but we must also check that new rows created by UPDATE actions are
-	 * visible, if SELECT rights are required for this relation. We don't do
-	 * this for INSERT actions, since an INSERT command would only do this
-	 * check if it had a RETURNING list, and MERGE does not support RETURNING.
+	 * but we must also check that new rows created by INSERT/UPDATE actions
+	 * are visible, if SELECT rights are required. For INSERT actions, we only
+	 * do this if RETURNING is specified, to be consistent with a plain INSERT
+	 * command, which can only require SELECT rights when RETURNING is used.
 	 *
 	 * We don't push the UPDATE/DELETE USING quals to the RTE because we don't
 	 * really want to apply them while scanning the relation since we don't
@@ -402,8 +413,8 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 	 * XXX We are setting up USING quals as WITH CHECK. If RLS prohibits
 	 * UPDATE/DELETE on the target row, we shall throw an error instead of
 	 * silently ignoring the row. This is different than how normal
-	 * UPDATE/DELETE works and more in line with INSERT ON CONFLICT DO UPDATE
-	 * handling.
+	 * UPDATE/DELETE works and more in line with INSERT ON CONFLICT DO
+	 * SELECT/UPDATE handling.
 	 */
 	if (commandType == CMD_MERGE)
 	{
@@ -413,6 +424,8 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 		List	   *merge_delete_restrictive_policies;
 		List	   *merge_insert_permissive_policies;
 		List	   *merge_insert_restrictive_policies;
+		List	   *merge_select_permissive_policies = NIL;
+		List	   *merge_select_restrictive_policies = NIL;
 
 		/*
 		 * Fetch the UPDATE policies and set them up to execute on the
@@ -448,11 +461,8 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 		 * that the updated row is visible when executing an UPDATE action, if
 		 * SELECT rights are required for this relation.
 		 */
-		if (rte->requiredPerms & ACL_SELECT)
+		if (perminfo->requiredPerms & ACL_SELECT)
 		{
-			List	   *merge_select_permissive_policies;
-			List	   *merge_select_restrictive_policies;
-
 			get_policies_for_relation(rel, CMD_SELECT, user_id,
 									  &merge_select_permissive_policies,
 									  &merge_select_restrictive_policies);
@@ -501,6 +511,21 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 							   withCheckOptions,
 							   hasSubLinks,
 							   false);
+
+		/*
+		 * Add ALL/SELECT policies as WCO_RLS_INSERT_CHECK WCOs, to ensure
+		 * that the inserted row is visible when executing an INSERT action,
+		 * if RETURNING is specified and SELECT rights are required for this
+		 * relation.
+		 */
+		if (perminfo->requiredPerms & ACL_SELECT && root->returningList)
+			add_with_check_options(rel, rt_index,
+								   WCO_RLS_INSERT_CHECK,
+								   merge_select_permissive_policies,
+								   merge_select_restrictive_policies,
+								   withCheckOptions,
+								   hasSubLinks,
+								   true);
 	}
 
 	table_close(rel, NoLock);
@@ -509,8 +534,8 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 	 * Copy checkAsUser to the row security quals and WithCheckOption checks,
 	 * in case they contain any subqueries referring to other relations.
 	 */
-	setRuleCheckAsUser((Node *) *securityQuals, rte->checkAsUser);
-	setRuleCheckAsUser((Node *) *withCheckOptions, rte->checkAsUser);
+	setRuleCheckAsUser((Node *) *securityQuals, perminfo->checkAsUser);
+	setRuleCheckAsUser((Node *) *withCheckOptions, perminfo->checkAsUser);
 
 	/*
 	 * Mark this query as having row security, so plancache can invalidate it
@@ -774,9 +799,9 @@ add_security_quals(int rt_index,
  * added by an INSERT or UPDATE are consistent with the specified RLS
  * policies.  Normally new data must satisfy the WITH CHECK clauses from the
  * policies.  If a policy has no explicit WITH CHECK clause, its USING clause
- * is used instead.  In the special case of an UPDATE arising from an
- * INSERT ... ON CONFLICT DO UPDATE, existing records are first checked using
- * a WCO_RLS_CONFLICT_CHECK WithCheckOption, which always uses the USING
+ * is used instead.  In the special case of a SELECT or UPDATE arising from an
+ * INSERT ... ON CONFLICT DO SELECT/UPDATE, existing records are first checked
+ * using a WCO_RLS_CONFLICT_CHECK WithCheckOption, which always uses the USING
  * clauses from RLS policies.
  *
  * New WCOs are added to withCheckOptions, and hasSubLinks is set to true if
@@ -859,7 +884,6 @@ add_with_check_options(Relation rel,
 		{
 			RowSecurityPolicy *policy = (RowSecurityPolicy *) lfirst(item);
 			Expr	   *qual = QUAL_FOR_WCO(policy);
-			WithCheckOption *wco;
 
 			if (qual != NULL)
 			{

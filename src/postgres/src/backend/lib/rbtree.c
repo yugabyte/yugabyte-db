@@ -7,9 +7,9 @@
  * This code comes from Thomas Niemann's "Sorting and Searching Algorithms:
  * a Cookbook".
  *
- * See http://www.cs.auckland.ac.nz/software/AlgAnim/niemann/s_man.htm for
- * license terms: "Source code, when part of a software project, may be used
- * freely without reference to the author."
+ * See https://web.archive.org/web/20131202103513/http://www.cs.auckland.ac.nz/software/AlgAnim/niemann/s_man.htm
+ * for license terms: "Source code, when part of a software project, may be
+ * used freely without reference to the author."
  *
  * Red-black trees are a type of balanced binary tree wherein (1) any child of
  * a red node is always black, and (2) every path from root to leaf traverses
@@ -17,7 +17,7 @@
  * longest path from root to leaf is only about twice as long as the shortest,
  * so lookups are guaranteed to run in O(lg n) time.
  *
- * Copyright (c) 2009-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2009-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/rbtree.c
@@ -62,7 +62,7 @@ struct RBTree
 
 static RBTNode sentinel =
 {
-	RBTBLACK, RBTNIL, RBTNIL, NULL
+	.color = RBTBLACK,.left = RBTNIL,.right = RBTNIL,.parent = NULL
 };
 
 
@@ -106,7 +106,7 @@ rbt_create(Size node_size,
 		   rbt_freefunc freefunc,
 		   void *arg)
 {
-	RBTree	   *tree = (RBTree *) palloc(sizeof(RBTree));
+	RBTree	   *tree = palloc_object(RBTree);
 
 	Assert(node_size > sizeof(RBTNode));
 
@@ -159,6 +159,68 @@ rbt_find(RBTree *rbt, const RBTNode *data)
 	}
 
 	return NULL;
+}
+
+/*
+ * rbt_find_great: search for a greater value in an RBTree
+ *
+ * If equal_match is true, this will be a great or equal search.
+ *
+ * Returns the matching tree entry, or NULL if no match is found.
+ */
+RBTNode *
+rbt_find_great(RBTree *rbt, const RBTNode *data, bool equal_match)
+{
+	RBTNode    *node = rbt->root;
+	RBTNode    *greater = NULL;
+
+	while (node != RBTNIL)
+	{
+		int			cmp = rbt->comparator(data, node, rbt->arg);
+
+		if (equal_match && cmp == 0)
+			return node;
+		else if (cmp < 0)
+		{
+			greater = node;
+			node = node->left;
+		}
+		else
+			node = node->right;
+	}
+
+	return greater;
+}
+
+/*
+ * rbt_find_less: search for a lesser value in an RBTree
+ *
+ * If equal_match is true, this will be a less or equal search.
+ *
+ * Returns the matching tree entry, or NULL if no match is found.
+ */
+RBTNode *
+rbt_find_less(RBTree *rbt, const RBTNode *data, bool equal_match)
+{
+	RBTNode    *node = rbt->root;
+	RBTNode    *lesser = NULL;
+
+	while (node != RBTNIL)
+	{
+		int			cmp = rbt->comparator(data, node, rbt->arg);
+
+		if (equal_match && cmp == 0)
+			return node;
+		else if (cmp > 0)
+		{
+			lesser = node;
+			node = node->right;
+		}
+		else
+			node = node->left;
+	}
+
+	return lesser;
 }
 
 /*

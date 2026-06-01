@@ -6,7 +6,7 @@
  * As of Postgres 8.0, pg_cast describes not only type coercion functions
  * but also length coercion functions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_cast.h
@@ -22,13 +22,15 @@
 
 #include "catalog/dependency.h"
 #include "catalog/genbki.h"
-#include "catalog/pg_cast_d.h"
+#include "catalog/pg_cast_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_cast definition.  cpp turns this into
  *		typedef struct FormData_pg_cast
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_cast,2605,CastRelationId)
 {
 	Oid			oid;			/* oid */
@@ -49,6 +51,8 @@ CATALOG(pg_cast,2605,CastRelationId)
 	char		castmethod;
 } FormData_pg_cast;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_cast corresponds to a pointer to a tuple with
  *		the format of pg_cast relation.
@@ -56,8 +60,10 @@ CATALOG(pg_cast,2605,CastRelationId)
  */
 typedef FormData_pg_cast *Form_pg_cast;
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_cast_oid_index, 2660, CastOidIndexId, on pg_cast using btree(oid oid_ops));
-DECLARE_UNIQUE_INDEX(pg_cast_source_target_index, 2661, CastSourceTargetIndexId, on pg_cast using btree(castsource oid_ops, casttarget oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_cast_oid_index, 2660, CastOidIndexId, pg_cast, btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_cast_source_target_index, 2661, CastSourceTargetIndexId, pg_cast, btree(castsource oid_ops, casttarget oid_ops));
+
+MAKE_SYSCACHE(CASTSOURCETARGET, pg_cast_source_target_index, 256);
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 
@@ -74,8 +80,8 @@ typedef enum CoercionCodes
 {
 	COERCION_CODE_IMPLICIT = 'i',	/* coercion in context of expression */
 	COERCION_CODE_ASSIGNMENT = 'a', /* coercion in context of assignment */
-	COERCION_CODE_EXPLICIT = 'e'	/* explicit cast operation */
-} CoercionCodes;
+	COERCION_CODE_EXPLICIT = 'e',	/* explicit cast operation */
+}			CoercionCodes;
 
 /*
  * The allowable values for pg_cast.castmethod are specified by this enum.
@@ -86,8 +92,8 @@ typedef enum CoercionMethod
 {
 	COERCION_METHOD_FUNCTION = 'f', /* use a function */
 	COERCION_METHOD_BINARY = 'b',	/* types are binary-compatible */
-	COERCION_METHOD_INOUT = 'i' /* use input/output functions */
-} CoercionMethod;
+	COERCION_METHOD_INOUT = 'i',	/* use input/output functions */
+}			CoercionMethod;
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
@@ -95,6 +101,8 @@ typedef enum CoercionMethod
 extern ObjectAddress CastCreate(Oid sourcetypeid,
 								Oid targettypeid,
 								Oid funcid,
+								Oid incastid,
+								Oid outcastid,
 								char castcontext,
 								char castmethod,
 								DependencyType behavior);

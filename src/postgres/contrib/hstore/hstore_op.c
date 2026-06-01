@@ -80,9 +80,7 @@ hstoreArrayToPairs(ArrayType *a, int *npairs)
 	int			i,
 				j;
 
-	deconstruct_array(a,
-					  TEXTOID, -1, false, TYPALIGN_INT,
-					  &key_datums, &key_nulls, &key_count);
+	deconstruct_array_builtin(a, TEXTOID, &key_datums, &key_nulls, &key_count);
 
 	if (key_count == 0)
 	{
@@ -109,8 +107,8 @@ hstoreArrayToPairs(ArrayType *a, int *npairs)
 	{
 		if (!key_nulls[i])
 		{
-			key_pairs[j].key = VARDATA(key_datums[i]);
-			key_pairs[j].keylen = VARSIZE(key_datums[i]) - VARHDRSZ;
+			key_pairs[j].key = VARDATA(DatumGetPointer(key_datums[i]));
+			key_pairs[j].keylen = VARSIZE(DatumGetPointer(key_datums[i])) - VARHDRSZ;
 			key_pairs[j].val = NULL;
 			key_pairs[j].vallen = 0;
 			key_pairs[j].needfree = 0;
@@ -582,9 +580,7 @@ hstore_slice_to_array(PG_FUNCTION_ARGS)
 	int			key_count;
 	int			i;
 
-	deconstruct_array(key_array,
-					  TEXTOID, -1, false, TYPALIGN_INT,
-					  &key_datums, &key_nulls, &key_count);
+	deconstruct_array_builtin(key_array, TEXTOID, &key_datums, &key_nulls, &key_count);
 
 	if (key_count == 0)
 	{
@@ -719,8 +715,7 @@ hstore_akeys(PG_FUNCTION_ARGS)
 		d[i] = PointerGetDatum(t);
 	}
 
-	a = construct_array(d, count,
-						TEXTOID, -1, false, TYPALIGN_INT);
+	a = construct_array_builtin(d, count, TEXTOID);
 
 	PG_RETURN_POINTER(a);
 }
@@ -863,7 +858,7 @@ setup_firstcall(FuncCallContext *funcctx, HStore *hs,
 	st = (HStore *) palloc(VARSIZE(hs));
 	memcpy(st, hs, VARSIZE(hs));
 
-	funcctx->user_fctx = (void *) st;
+	funcctx->user_fctx = st;
 
 	if (fcinfo)
 	{

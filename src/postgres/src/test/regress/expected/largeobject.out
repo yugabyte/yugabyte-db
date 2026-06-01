@@ -6,7 +6,7 @@
 \getenv abs_builddir PG_ABS_BUILDDIR
 -- ensure consistent test output regardless of the default bytea format
 SET bytea_output TO escape;
--- Test ALTER LARGE OBJECT OWNER, GRANT, COMMENT
+-- Test ALTER LARGE OBJECT OWNER
 CREATE ROLE regress_lo_user;
 SELECT lo_create(42);
  lo_create 
@@ -15,8 +15,11 @@ SELECT lo_create(42);
 (1 row)
 
 ALTER LARGE OBJECT 42 OWNER TO regress_lo_user;
+-- Test GRANT, COMMENT as non-superuser
+SET SESSION AUTHORIZATION regress_lo_user;
 GRANT SELECT ON LARGE OBJECT 42 TO public;
 COMMENT ON LARGE OBJECT 42 IS 'the ultimate answer';
+RESET SESSION AUTHORIZATION;
 -- Test psql's \lo_list et al (we assume no other LOs exist yet)
 \lo_list
                Large objects
@@ -441,7 +444,7 @@ TRUNCATE lotest_stash_values;
 \set newloid_1 :LASTOID
 SELECT lo_from_bytea(0, lo_get(:newloid_1)) AS newloid_2
 \gset
-SELECT md5(lo_get(:newloid_1)) = md5(lo_get(:newloid_2));
+SELECT fipshash(lo_get(:newloid_1)) = fipshash(lo_get(:newloid_2));
  ?column? 
 ----------
  t
@@ -506,6 +509,55 @@ SELECT lo_create(2121);
 (1 row)
 
 COMMENT ON LARGE OBJECT 2121 IS 'testing comments';
+-- Test writes on large objects in read-only transactions
+START TRANSACTION READ ONLY;
+-- INV_READ ... ok
+SELECT lo_open(2121, x'40000'::int);
+ lo_open 
+---------
+       0
+(1 row)
+
+-- INV_WRITE ... error
+SELECT lo_open(2121, x'20000'::int);
+ERROR:  cannot execute lo_open(INV_WRITE) in a read-only transaction
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT lo_create(42);
+ERROR:  cannot execute lo_create() in a read-only transaction
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT lo_creat(42);
+ERROR:  cannot execute lo_creat() in a read-only transaction
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT lo_unlink(42);
+ERROR:  cannot execute lo_unlink() in a read-only transaction
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT lowrite(42, 'x');
+ERROR:  cannot execute lowrite() in a read-only transaction
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT lo_import(:'filename');
+ERROR:  cannot execute lo_import() in a read-only transaction
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT lo_truncate(42, 0);
+ERROR:  cannot execute lo_truncate() in a read-only transaction
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT lo_truncate64(42, 0);
+ERROR:  cannot execute lo_truncate64() in a read-only transaction
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT lo_from_bytea(0, 'x');
+ERROR:  cannot execute lo_from_bytea() in a read-only transaction
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT lo_put(42, 0, 'x');
+ERROR:  cannot execute lo_put() in a read-only transaction
+ROLLBACK;
 -- Clean up
 DROP TABLE lotest_stash_values;
 DROP ROLE regress_lo_user;

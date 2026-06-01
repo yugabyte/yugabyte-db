@@ -149,9 +149,9 @@ select * from vw_ord;
 select definition from pg_views where viewname='vw_ord';
                                        definition                                       
 ----------------------------------------------------------------------------------------
-  SELECT z.a,                                                                          +
-     z.b,                                                                              +
-     z.c                                                                               +
+  SELECT a,                                                                            +
+     b,                                                                                +
+     c                                                                                 +
     FROM UNNEST(ARRAY[10, 20], ARRAY['foo'::text, 'bar'::text], ARRAY[1.0]) z(a, b, c);
 (1 row)
 
@@ -167,9 +167,9 @@ select * from vw_ord;
 select definition from pg_views where viewname='vw_ord';
                                        definition                                       
 ----------------------------------------------------------------------------------------
-  SELECT z.a,                                                                          +
-     z.b,                                                                              +
-     z.c                                                                               +
+  SELECT a,                                                                            +
+     b,                                                                                +
+     c                                                                                 +
     FROM UNNEST(ARRAY[10, 20], ARRAY['foo'::text, 'bar'::text], ARRAY[1.0]) z(a, b, c);
 (1 row)
 
@@ -185,9 +185,9 @@ select * from vw_ord;
 select definition from pg_views where viewname='vw_ord';
                                                       definition                                                      
 ----------------------------------------------------------------------------------------------------------------------
-  SELECT z.a,                                                                                                        +
-     z.b,                                                                                                            +
-     z.c                                                                                                             +
+  SELECT a,                                                                                                          +
+     b,                                                                                                              +
+     c                                                                                                               +
     FROM ROWS FROM(unnest(ARRAY[10, 20]), unnest(ARRAY['foo'::text, 'bar'::text]), generate_series(1, 2)) z(a, b, c);
 (1 row)
 
@@ -669,14 +669,14 @@ select * from vw_rngfunc;
 select pg_get_viewdef('vw_rngfunc');
                                                                                 pg_get_viewdef                                                                                
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  SELECT t1.a,                                                                                                                                                               +
-     t1.b,                                                                                                                                                                   +
-     t1.c,                                                                                                                                                                   +
-     t1.d,                                                                                                                                                                   +
-     t1.e,                                                                                                                                                                   +
-     t1.f,                                                                                                                                                                   +
-     t1.g,                                                                                                                                                                   +
-     t1.n                                                                                                                                                                    +
+  SELECT a,                                                                                                                                                                  +
+     b,                                                                                                                                                                      +
+     c,                                                                                                                                                                      +
+     d,                                                                                                                                                                      +
+     e,                                                                                                                                                                      +
+     f,                                                                                                                                                                      +
+     g,                                                                                                                                                                      +
+     n                                                                                                                                                                       +
     FROM ROWS FROM(getrngfunc9(1), getrngfunc7(1) AS (rngfuncid integer, rngfuncsubid integer, rngfuncname text), getrngfunc1(1)) WITH ORDINALITY t1(a, b, c, d, e, f, g, n);
 (1 row)
 
@@ -1885,7 +1885,7 @@ select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
 select * from array_to_set(array['one', 'two']) as t(f1 point,f2 text);
 ERROR:  return type mismatch in function declared to return record
 DETAIL:  Final statement returns integer instead of point at column 1.
-CONTEXT:  SQL function "array_to_set" during startup
+CONTEXT:  SQL function "array_to_set" statement 1
 -- with "strict", this function can't be inlined in FROM
 explain (verbose, costs off)
   select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
@@ -2130,10 +2130,10 @@ select testrngfunc();
 
 explain (verbose, costs off)
 select * from testrngfunc();
-                        QUERY PLAN                        
-----------------------------------------------------------
- Subquery Scan on "*SELECT*"
-   Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1"
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Subquery Scan on unnamed_subquery
+   Output: unnamed_subquery."?column?", unnamed_subquery."?column?_1"
    ->  Unique
          Output: (1), (2)
          ->  Sort
@@ -2178,6 +2178,8 @@ alter table users drop column todrop;
 create or replace function get_first_user() returns users as
 $$ SELECT * FROM users ORDER BY userid LIMIT 1; $$
 language sql stable;
+NOTICE:  function "get_first_user" will be effectively temporary
+DETAIL:  It depends on temporary type users.
 SELECT get_first_user();
   get_first_user   
 -------------------
@@ -2193,6 +2195,8 @@ SELECT * FROM get_first_user();
 create or replace function get_users() returns setof users as
 $$ SELECT * FROM users ORDER BY userid; $$
 language sql stable;
+NOTICE:  function "get_users" will be effectively temporary
+DETAIL:  It depends on temporary type users.
 SELECT get_users();
       get_users      
 ---------------------

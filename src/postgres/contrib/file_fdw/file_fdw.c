@@ -3,7 +3,7 @@
  * file_fdw.c
  *		  foreign-data wrapper for server-side flat files (or programs).
  *
- * Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/file_fdw/file_fdw.c
@@ -22,9 +22,12 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_foreign_table.h"
 #include "commands/copy.h"
+#include "commands/copyfrom_internal.h"
 #include "commands/defrem.h"
-#include "commands/explain.h"
+#include "commands/explain_format.h"
+#include "commands/explain_state.h"
 #include "commands/vacuum.h"
+#include "executor/executor.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
 #include "miscadmin.h"
@@ -37,12 +40,16 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/sampling.h"
+#include "utils/varlena.h"
 
 /* YB includes */
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "file_fdw",
+					.version = PG_VERSION
+);
 
 /*
  * Describes the valid options for objects that use this wrapper.
@@ -75,7 +82,11 @@ static const struct FileFdwOption valid_options[] = {
 	{"quote", ForeignTableRelationId},
 	{"escape", ForeignTableRelationId},
 	{"null", ForeignTableRelationId},
+	{"default", ForeignTableRelationId},
 	{"encoding", ForeignTableRelationId},
+	{"on_error", ForeignTableRelationId},
+	{"log_verbosity", ForeignTableRelationId},
+	{"reject_limit", ForeignTableRelationId},
 	{"force_not_null", AttributeRelationId},
 	{"force_null", AttributeRelationId},
 
@@ -218,27 +229,32 @@ file_fdw_validator(PG_FUNCTION_ARGS)
 		if (!is_valid_option(def->defname, catalog))
 		{
 			const struct FileFdwOption *opt;
-			StringInfoData buf;
+			const char *closest_match;
+			ClosestMatchState match_state;
+			bool		has_valid_options = false;
 
 			/*
 			 * Unknown option specified, complain about it. Provide a hint
-			 * with list of valid options for the object.
+			 * with a valid option that looks similar, if there is one.
 			 */
-			initStringInfo(&buf);
+			initClosestMatch(&match_state, def->defname, 4);
 			for (opt = valid_options; opt->optname; opt++)
 			{
 				if (catalog == opt->optcontext)
-					appendStringInfo(&buf, "%s%s", (buf.len > 0) ? ", " : "",
-									 opt->optname);
+				{
+					has_valid_options = true;
+					updateClosestMatch(&match_state, opt->optname);
+				}
 			}
 
+			closest_match = getClosestMatch(&match_state);
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 buf.len > 0
-					 ? errhint("Valid options in this context are: %s",
-							   buf.data)
-					 : errhint("There are no valid options in this context.")));
+					 has_valid_options ? closest_match ?
+					 errhint("Perhaps you meant the option \"%s\".",
+							 closest_match) : 0 :
+					 errhint("There are no valid options in this context.")));
 		}
 
 		/*
@@ -278,13 +294,19 @@ file_fdw_validator(PG_FUNCTION_ARGS)
 				!has_privs_of_role(GetUserId(), ROLE_PG_READ_SERVER_FILES))
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("only superuser or a role with privileges of the pg_read_server_files role may specify the filename option of a file_fdw foreign table")));
+						 errmsg("permission denied to set the \"%s\" option of a file_fdw foreign table",
+								"filename"),
+						 errdetail("Only roles with privileges of the \"%s\" role may set this option.",
+								   "pg_read_server_files")));
 
 			if (strcmp(def->defname, "program") == 0 &&
 				!has_privs_of_role(GetUserId(), ROLE_PG_EXECUTE_SERVER_PROGRAM))
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("only superuser or a role with privileges of the pg_execute_server_program role may specify the program option of a file_fdw foreign table")));
+						 errmsg("permission denied to set the \"%s\" option of a file_fdw foreign table",
+								"program"),
+						 errdetail("Only roles with privileges of the \"%s\" role may set this option.",
+								   "pg_execute_server_program")));
 
 			filename = defGetString(def);
 		}
@@ -450,15 +472,15 @@ get_file_fdw_attribute_options(Oid relid)
 	for (attnum = 1; attnum <= natts; attnum++)
 	{
 		Form_pg_attribute attr = TupleDescAttr(tupleDesc, attnum - 1);
-		List	   *options;
+		List	   *column_options;
 		ListCell   *lc;
 
 		/* Skip dropped attributes. */
 		if (attr->attisdropped)
 			continue;
 
-		options = GetForeignColumnOptions(relid, attnum);
-		foreach(lc, options)
+		column_options = GetForeignColumnOptions(relid, attnum);
+		foreach(lc, column_options)
 		{
 			DefElem    *def = (DefElem *) lfirst(lc);
 
@@ -480,7 +502,7 @@ get_file_fdw_attribute_options(Oid relid)
 					fncolumns = lappend(fncolumns, makeString(attname));
 				}
 			}
-			/* maybe in future handle other options here */
+			/* maybe in future handle other column options here */
 		}
 	}
 
@@ -515,12 +537,12 @@ fileGetForeignRelSize(PlannerInfo *root,
 	 * we might as well get everything and not need to re-fetch it later in
 	 * planning.
 	 */
-	fdw_private = (FileFdwPlanState *) palloc(sizeof(FileFdwPlanState));
+	fdw_private = palloc_object(FileFdwPlanState);
 	fileGetOptions(foreigntableid,
 				   &fdw_private->filename,
 				   &fdw_private->is_program,
 				   &fdw_private->options);
-	baserel->fdw_private = (void *) fdw_private;
+	baserel->fdw_private = fdw_private;
 
 	/* Estimate relation size */
 	estimate_size(root, baserel, fdw_private);
@@ -569,11 +591,13 @@ fileGetForeignPaths(PlannerInfo *root,
 			 create_foreignscan_path(root, baserel,
 									 NULL,	/* default pathtarget */
 									 baserel->rows,
+									 0,
 									 startup_cost,
 									 total_cost,
 									 NIL,	/* no pathkeys */
 									 baserel->lateral_relids,
 									 NULL,	/* no extra plan */
+									 NIL,	/* no fdw_restrictinfo list */
 									 coptions));
 
 	/*
@@ -694,13 +718,13 @@ fileBeginForeignScan(ForeignScanState *node, int eflags)
 	 * Save state in node->fdw_state.  We must save enough information to call
 	 * BeginCopyFrom() again.
 	 */
-	festate = (FileFdwExecutionState *) palloc(sizeof(FileFdwExecutionState));
+	festate = palloc_object(FileFdwExecutionState);
 	festate->filename = filename;
 	festate->is_program = is_program;
 	festate->options = options;
 	festate->cstate = cstate;
 
-	node->fdw_state = (void *) festate;
+	node->fdw_state = festate;
 }
 
 /*
@@ -712,15 +736,32 @@ static TupleTableSlot *
 fileIterateForeignScan(ForeignScanState *node)
 {
 	FileFdwExecutionState *festate = (FileFdwExecutionState *) node->fdw_state;
+	EState	   *estate = CreateExecutorState();
+	ExprContext *econtext;
+	MemoryContext oldcontext = CurrentMemoryContext;
 	TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
-	bool		found;
+	CopyFromState cstate = festate->cstate;
 	ErrorContextCallback errcallback;
 
 	/* Set up callback to identify error line number. */
 	errcallback.callback = CopyFromErrorCallback;
-	errcallback.arg = (void *) festate->cstate;
+	errcallback.arg = cstate;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
+
+	/*
+	 * We pass ExprContext because there might be a use of the DEFAULT option
+	 * in COPY FROM, so we may need to evaluate default expressions.
+	 */
+	econtext = GetPerTupleExprContext(estate);
+
+retry:
+
+	/*
+	 * DEFAULT expressions need to be evaluated in a per-tuple context, so
+	 * switch in case we are doing that.
+	 */
+	MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 	/*
 	 * The protocol for loading a virtual tuple into a slot is first
@@ -728,15 +769,54 @@ fileIterateForeignScan(ForeignScanState *node)
 	 * ExecStoreVirtualTuple.  If we don't find another row in the file, we
 	 * just skip the last step, leaving the slot empty as required.
 	 *
-	 * We can pass ExprContext = NULL because we read all columns from the
-	 * file, so no need to evaluate default expressions.
 	 */
 	ExecClearTuple(slot);
-	found = NextCopyFrom(festate->cstate, NULL,
-						 slot->tts_values, slot->tts_isnull,
-						 false /* skip_row */ );
-	if (found)
+
+	if (NextCopyFrom(cstate, econtext, slot->tts_values, slot->tts_isnull,
+					 false /* skip_row */ ))
+	{
+		if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE &&
+			cstate->escontext->error_occurred)
+		{
+			/*
+			 * Soft error occurred, skip this tuple and just make
+			 * ErrorSaveContext ready for the next NextCopyFrom. Since we
+			 * don't set details_wanted and error_data is not to be filled,
+			 * just resetting error_occurred is enough.
+			 */
+			cstate->escontext->error_occurred = false;
+
+			/* Switch back to original memory context */
+			MemoryContextSwitchTo(oldcontext);
+
+			/*
+			 * Make sure we are interruptible while repeatedly calling
+			 * NextCopyFrom() until no soft error occurs.
+			 */
+			CHECK_FOR_INTERRUPTS();
+
+			/*
+			 * Reset the per-tuple exprcontext, to clean-up after expression
+			 * evaluations etc.
+			 */
+			ResetPerTupleExprContext(estate);
+
+			if (cstate->opts.reject_limit > 0 &&
+				cstate->num_errors > cstate->opts.reject_limit)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						 errmsg("skipped more than REJECT_LIMIT (%" PRId64 ") rows due to data type incompatibility",
+								cstate->opts.reject_limit)));
+
+			/* Repeat NextCopyFrom() until no soft error occurs */
+			goto retry;
+		}
+
 		ExecStoreVirtualTuple(slot);
+	}
+
+	/* Switch back to original memory context */
+	MemoryContextSwitchTo(oldcontext);
 
 	/* Remove error callback. */
 	error_context_stack = errcallback.previous;
@@ -775,8 +855,19 @@ fileEndForeignScan(ForeignScanState *node)
 	FileFdwExecutionState *festate = (FileFdwExecutionState *) node->fdw_state;
 
 	/* if festate is NULL, we are in EXPLAIN; nothing to do */
-	if (festate)
-		EndCopyFrom(festate->cstate);
+	if (!festate)
+		return;
+
+	if (festate->cstate->opts.on_error == COPY_ON_ERROR_IGNORE &&
+		festate->cstate->num_errors > 0 &&
+		festate->cstate->opts.log_verbosity >= COPY_LOG_VERBOSITY_DEFAULT)
+		ereport(NOTICE,
+				errmsg_plural("%" PRIu64 " row was skipped due to data type incompatibility",
+							  "%" PRIu64 " rows were skipped due to data type incompatibility",
+							  festate->cstate->num_errors,
+							  festate->cstate->num_errors));
+
+	EndCopyFrom(festate->cstate);
 }
 
 /*
@@ -859,7 +950,7 @@ check_selective_binary_conversion(RelOptInfo *baserel,
 	ListCell   *lc;
 	Relation	rel;
 	TupleDesc	tupleDesc;
-	AttrNumber	attnum;
+	int			attidx;
 	Bitmapset  *attrs_used = NULL;
 	bool		has_wholerow = false;
 	int			numattrs;
@@ -902,10 +993,11 @@ check_selective_binary_conversion(RelOptInfo *baserel,
 	rel = table_open(foreigntableid, AccessShareLock);
 	tupleDesc = RelationGetDescr(rel);
 
-	while ((attnum = bms_first_member(attrs_used)) >= 0)
+	attidx = -1;
+	while ((attidx = bms_next_member(attrs_used, attidx)) >= 0)
 	{
-		/* Adjust for system attributes. */
-		attnum += FirstLowInvalidHeapAttributeNumber;
+		/* attidx is zero-based, attnum is the normal attribute number */
+		AttrNumber	attnum = attidx + FirstLowInvalidHeapAttributeNumber;
 
 		if (attnum == 0)
 		{
@@ -941,9 +1033,7 @@ check_selective_binary_conversion(RelOptInfo *baserel,
 	numattrs = 0;
 	for (i = 0; i < tupleDesc->natts; i++)
 	{
-		Form_pg_attribute attr = TupleDescAttr(tupleDesc, i);
-
-		if (attr->attisdropped)
+		if (TupleDescCompactAttr(tupleDesc, i)->attisdropped)
 			continue;
 		numattrs++;
 	}
@@ -1091,7 +1181,8 @@ estimate_costs(PlannerInfo *root, RelOptInfo *baserel,
  * which must have at least targrows entries.
  * The actual number of rows selected is returned as the function result.
  * We also count the total number of rows in the file and return it into
- * *totalrows.  Note that *totaldeadrows is always set to 0.
+ * *totalrows.  Rows skipped due to on_error = 'ignore' are not included
+ * in this count.  Note that *totaldeadrows is always set to 0.
  *
  * Note that the returned list of rows is not always in order by physical
  * position in the file.  Therefore, correlation estimates derived later
@@ -1147,7 +1238,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 
 	/* Set up callback to identify error line number. */
 	errcallback.callback = CopyFromErrorCallback;
-	errcallback.arg = (void *) cstate;
+	errcallback.arg = cstate;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1156,7 +1247,7 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 	for (;;)
 	{
 		/* Check for user-requested abort or sleep */
-		vacuum_delay_point();
+		vacuum_delay_point(true);
 
 		/* Fetch next row */
 		MemoryContextReset(tupcontext);
@@ -1168,6 +1259,21 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 
 		if (!found)
 			break;
+
+		if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE &&
+			cstate->escontext->error_occurred)
+		{
+			/*
+			 * Soft error occurred, skip this tuple and just make
+			 * ErrorSaveContext ready for the next NextCopyFrom. Since we
+			 * don't set details_wanted and error_data is not to be filled,
+			 * just resetting error_occurred is enough.
+			 */
+			cstate->escontext->error_occurred = false;
+
+			/* Repeat NextCopyFrom() until no soft error occurs */
+			continue;
+		}
 
 		/*
 		 * The first targrows sample rows are simply copied into the
@@ -1213,6 +1319,15 @@ file_acquire_sample_rows(Relation onerel, int elevel,
 
 	/* Clean up. */
 	MemoryContextDelete(tupcontext);
+
+	if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE &&
+		cstate->num_errors > 0 &&
+		cstate->opts.log_verbosity >= COPY_LOG_VERBOSITY_DEFAULT)
+		ereport(NOTICE,
+				errmsg_plural("%" PRIu64 " row was skipped due to data type incompatibility",
+							  "%" PRIu64 " rows were skipped due to data type incompatibility",
+							  cstate->num_errors,
+							  cstate->num_errors));
 
 	EndCopyFrom(cstate);
 

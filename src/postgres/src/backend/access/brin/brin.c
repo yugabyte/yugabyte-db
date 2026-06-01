@@ -4,7 +4,7 @@
  *
  * See src/backend/access/brin/README for details.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -28,21 +28,129 @@
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "commands/vacuum.h"
+#include "executor/instrument.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "storage/bufmgr.h"
+#include "storage/condition_variable.h"
 #include "storage/freespace.h"
+#include "storage/proc.h"
+#include "tcop/tcopprot.h"
 #include "utils/acl.h"
-#include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/fmgrprotos.h"
+#include "utils/guc.h"
 #include "utils/index_selfuncs.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/tuplesort.h"
+#include "utils/wait_event.h"
 
-/* YB includes */
-#include "utils/guc.h"
+/* Magic numbers for parallel state sharing */
+#define PARALLEL_KEY_BRIN_SHARED		UINT64CONST(0xB000000000000001)
+#define PARALLEL_KEY_TUPLESORT			UINT64CONST(0xB000000000000002)
+#define PARALLEL_KEY_QUERY_TEXT			UINT64CONST(0xB000000000000003)
+#define PARALLEL_KEY_WAL_USAGE			UINT64CONST(0xB000000000000004)
+#define PARALLEL_KEY_BUFFER_USAGE		UINT64CONST(0xB000000000000005)
 
+/*
+ * Status for index builds performed in parallel.  This is allocated in a
+ * dynamic shared memory segment.
+ */
+typedef struct BrinShared
+{
+	/*
+	 * These fields are not modified during the build.  They primarily exist
+	 * for the benefit of worker processes that need to create state
+	 * corresponding to that used by the leader.
+	 */
+	Oid			heaprelid;
+	Oid			indexrelid;
+	bool		isconcurrent;
+	BlockNumber pagesPerRange;
+	int			scantuplesortstates;
+
+	/* Query ID, for report in worker processes */
+	int64		queryid;
+
+	/*
+	 * workersdonecv is used to monitor the progress of workers.  All parallel
+	 * participants must indicate that they are done before leader can use
+	 * results built by the workers (and before leader can write the data into
+	 * the index).
+	 */
+	ConditionVariable workersdonecv;
+
+	/*
+	 * mutex protects all fields before heapdesc.
+	 *
+	 * These fields contain status information of interest to BRIN index
+	 * builds that must work just the same when an index is built in parallel.
+	 */
+	slock_t		mutex;
+
+	/*
+	 * Mutable state that is maintained by workers, and reported back to
+	 * leader at end of the scans.
+	 *
+	 * nparticipantsdone is number of worker processes finished.
+	 *
+	 * reltuples is the total number of input heap tuples.
+	 *
+	 * indtuples is the total number of tuples that made it into the index.
+	 */
+	int			nparticipantsdone;
+	double		reltuples;
+	double		indtuples;
+
+	/*
+	 * ParallelTableScanDescData data follows. Can't directly embed here, as
+	 * implementations of the parallel table scan desc interface might need
+	 * stronger alignment.
+	 */
+} BrinShared;
+
+/*
+ * Return pointer to a BrinShared's parallel table scan.
+ *
+ * c.f. shm_toc_allocate as to why BUFFERALIGN is used, rather than just
+ * MAXALIGN.
+ */
+#define ParallelTableScanFromBrinShared(shared) \
+	(ParallelTableScanDesc) ((char *) (shared) + BUFFERALIGN(sizeof(BrinShared)))
+
+/*
+ * Status for leader in parallel index build.
+ */
+typedef struct BrinLeader
+{
+	/* parallel context itself */
+	ParallelContext *pcxt;
+
+	/*
+	 * nparticipanttuplesorts is the exact number of worker processes
+	 * successfully launched, plus one leader process if it participates as a
+	 * worker (only DISABLE_LEADER_PARTICIPATION builds avoid leader
+	 * participating as a worker).
+	 */
+	int			nparticipanttuplesorts;
+
+	/*
+	 * Leader process convenience pointers to shared state (leader avoids TOC
+	 * lookups).
+	 *
+	 * brinshared is the shared state for entire build.  sharedsort is the
+	 * shared, tuplesort-managed state passed to each process tuplesort.
+	 * snapshot is the snapshot used by the scan iff an MVCC snapshot is
+	 * required.
+	 */
+	BrinShared *brinshared;
+	Sharedsort *sharedsort;
+	Snapshot	snapshot;
+	WalUsage   *walusage;
+	BufferUsage *bufferusage;
+} BrinLeader;
 
 /*
  * We use a BrinBuildState during initial construction of a BRIN index.
@@ -51,14 +159,46 @@
 typedef struct BrinBuildState
 {
 	Relation	bs_irel;
-	int			bs_numtuples;
+	double		bs_numtuples;
+	double		bs_reltuples;
 	Buffer		bs_currentInsertBuf;
 	BlockNumber bs_pagesPerRange;
 	BlockNumber bs_currRangeStart;
+	BlockNumber bs_maxRangeStart;
 	BrinRevmap *bs_rmAccess;
 	BrinDesc   *bs_bdesc;
 	BrinMemTuple *bs_dtuple;
+
+	BrinTuple  *bs_emptyTuple;
+	Size		bs_emptyTupleLen;
+	MemoryContext bs_context;
+
+	/*
+	 * bs_leader is only present when a parallel index build is performed, and
+	 * only in the leader process. (Actually, only the leader process has a
+	 * BrinBuildState.)
+	 */
+	BrinLeader *bs_leader;
+	int			bs_worker_id;
+
+	/*
+	 * The sortstate is used by workers (including the leader). It has to be
+	 * part of the build state, because that's the only thing passed to the
+	 * build callback etc.
+	 */
+	Tuplesortstate *bs_sortstate;
 } BrinBuildState;
+
+/*
+ * We use a BrinInsertState to capture running state spanning multiple
+ * brininsert invocations, within the same command.
+ */
+typedef struct BrinInsertState
+{
+	BrinRevmap *bis_rmAccess;
+	BrinDesc   *bis_desc;
+	BlockNumber bis_pages_per_range;
+} BrinInsertState;
 
 /*
  * Struct used as "opaque" during index scans
@@ -73,17 +213,38 @@ typedef struct BrinOpaque
 #define BRIN_ALL_BLOCKRANGES	InvalidBlockNumber
 
 static BrinBuildState *initialize_brin_buildstate(Relation idxRel,
-												  BrinRevmap *revmap, BlockNumber pagesPerRange);
+												  BrinRevmap *revmap,
+												  BlockNumber pagesPerRange,
+												  BlockNumber tablePages);
+static BrinInsertState *initialize_brin_insertstate(Relation idxRel, IndexInfo *indexInfo);
 static void terminate_brin_buildstate(BrinBuildState *state);
 static void brinsummarize(Relation index, Relation heapRel, BlockNumber pageRange,
 						  bool include_partial, double *numSummarized, double *numExisting);
 static void form_and_insert_tuple(BrinBuildState *state);
+static void form_and_spill_tuple(BrinBuildState *state);
 static void union_tuples(BrinDesc *bdesc, BrinMemTuple *a,
 						 BrinTuple *b);
 static void brin_vacuum_scan(Relation idxrel, BufferAccessStrategy strategy);
 static bool add_values_to_range(Relation idxRel, BrinDesc *bdesc,
-								BrinMemTuple *dtup, Datum *values, bool *nulls);
+								BrinMemTuple *dtup, const Datum *values, const bool *nulls);
 static bool check_null_keys(BrinValues *bval, ScanKey *nullkeys, int nnullkeys);
+static void brin_fill_empty_ranges(BrinBuildState *state,
+								   BlockNumber prevRange, BlockNumber nextRange);
+
+/* parallel index builds */
+static void _brin_begin_parallel(BrinBuildState *buildstate, Relation heap, Relation index,
+								 bool isconcurrent, int request);
+static void _brin_end_parallel(BrinLeader *brinleader, BrinBuildState *state);
+static Size _brin_parallel_estimate_shared(Relation heap, Snapshot snapshot);
+static double _brin_parallel_heapscan(BrinBuildState *state);
+static double _brin_parallel_merge(BrinBuildState *state);
+static void _brin_leader_participate_as_worker(BrinBuildState *buildstate,
+											   Relation heap, Relation index);
+static void _brin_parallel_scan_and_build(BrinBuildState *state,
+										  BrinShared *brinshared,
+										  Sharedsort *sharedsort,
+										  Relation heap, Relation index,
+										  int sortmem, bool progress);
 
 /*
  * BRIN handler function: return IndexAmRoutine with access method parameters
@@ -92,53 +253,84 @@ static bool check_null_keys(BrinValues *bval, ScanKey *nullkeys, int nnullkeys);
 Datum
 brinhandler(PG_FUNCTION_ARGS)
 {
-	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
+	static const IndexAmRoutine amroutine = {
+		.type = T_IndexAmRoutine,
+		.amstrategies = 0,
+		.amsupport = BRIN_LAST_OPTIONAL_PROCNUM,
+		.amoptsprocnum = BRIN_PROCNUM_OPTIONS,
+		.amcanorder = false,
+		.amcanorderbyop = false,
+		.amcanhash = false,
+		.amconsistentequality = false,
+		.amconsistentordering = false,
+		.amcanbackward = false,
+		.amcanunique = false,
+		.amcanmulticol = true,
+		.amoptionalkey = true,
+		.amsearcharray = false,
+		.amsearchnulls = true,
+		.amstorage = true,
+		.amclusterable = false,
+		.ampredlocks = false,
+		.amcanparallel = false,
+		.amcanbuildparallel = true,
+		.amcaninclude = false,
+		.amusemaintenanceworkmem = false,
+		.amsummarizing = true,
+		.amparallelvacuumoptions =
+		VACUUM_OPTION_PARALLEL_CLEANUP,
+		.amkeytype = InvalidOid,
 
-	amroutine->amstrategies = 0;
-	amroutine->amsupport = BRIN_LAST_OPTIONAL_PROCNUM;
-	amroutine->amoptsprocnum = BRIN_PROCNUM_OPTIONS;
-	amroutine->amcanorder = false;
-	amroutine->amcanorderbyop = false;
-	amroutine->amcanbackward = false;
-	amroutine->amcanunique = false;
-	amroutine->amcanmulticol = true;
-	amroutine->amoptionalkey = true;
-	amroutine->amsearcharray = false;
-	amroutine->amsearchnulls = true;
-	amroutine->amstorage = true;
-	amroutine->amclusterable = false;
-	amroutine->ampredlocks = false;
-	amroutine->amcanparallel = false;
-	amroutine->amcaninclude = false;
-	amroutine->amusemaintenanceworkmem = false;
-	amroutine->amparallelvacuumoptions =
-		VACUUM_OPTION_PARALLEL_CLEANUP;
-	amroutine->amkeytype = InvalidOid;
+		.ambuild = brinbuild,
+		.ambuildempty = brinbuildempty,
+		.aminsert = brininsert,
+		.aminsertcleanup = brininsertcleanup,
+		.ambulkdelete = brinbulkdelete,
+		.amvacuumcleanup = brinvacuumcleanup,
+		.amcanreturn = NULL,
+		.amcostestimate = brincostestimate,
+		.amgettreeheight = NULL,
+		.amoptions = brinoptions,
+		.amproperty = NULL,
+		.ambuildphasename = NULL,
+		.amvalidate = brinvalidate,
+		.amadjustmembers = NULL,
+		.ambeginscan = brinbeginscan,
+		.amrescan = brinrescan,
+		.amgettuple = NULL,
+		.amgetbitmap = bringetbitmap,
+		.amendscan = brinendscan,
+		.ammarkpos = NULL,
+		.amrestrpos = NULL,
+		.amestimateparallelscan = NULL,
+		.aminitparallelscan = NULL,
+		.amparallelrescan = NULL,
+		.amtranslatestrategy = NULL,
+		.amtranslatecmptype = NULL,
+	};
 
-	amroutine->ambuild = brinbuild;
-	amroutine->ambuildempty = brinbuildempty;
-	amroutine->aminsert = brininsert;
-	amroutine->ambulkdelete = brinbulkdelete;
-	amroutine->amvacuumcleanup = brinvacuumcleanup;
-	amroutine->amcanreturn = NULL;
-	amroutine->amcostestimate = brincostestimate;
-	amroutine->amoptions = brinoptions;
-	amroutine->amproperty = NULL;
-	amroutine->ambuildphasename = NULL;
-	amroutine->amvalidate = brinvalidate;
-	amroutine->amadjustmembers = NULL;
-	amroutine->ambeginscan = brinbeginscan;
-	amroutine->amrescan = brinrescan;
-	amroutine->amgettuple = NULL;
-	amroutine->amgetbitmap = bringetbitmap;
-	amroutine->amendscan = brinendscan;
-	amroutine->ammarkpos = NULL;
-	amroutine->amrestrpos = NULL;
-	amroutine->amestimateparallelscan = NULL;
-	amroutine->aminitparallelscan = NULL;
-	amroutine->amparallelrescan = NULL;
+	PG_RETURN_POINTER(&amroutine);
+}
 
-	PG_RETURN_POINTER(amroutine);
+/*
+ * Initialize a BrinInsertState to maintain state to be used across multiple
+ * tuple inserts, within the same command.
+ */
+static BrinInsertState *
+initialize_brin_insertstate(Relation idxRel, IndexInfo *indexInfo)
+{
+	BrinInsertState *bistate;
+	MemoryContext oldcxt;
+
+	oldcxt = MemoryContextSwitchTo(indexInfo->ii_Context);
+	bistate = palloc0_object(BrinInsertState);
+	bistate->bis_desc = brin_build_desc(idxRel);
+	bistate->bis_rmAccess = brinRevmapInitialize(idxRel,
+												 &bistate->bis_pages_per_range);
+	indexInfo->ii_AmCache = bistate;
+	MemoryContextSwitchTo(oldcxt);
+
+	return bistate;
 }
 
 /*
@@ -163,14 +355,24 @@ brininsert(Relation idxRel, Datum *values, bool *nulls,
 	BlockNumber pagesPerRange;
 	BlockNumber origHeapBlk;
 	BlockNumber heapBlk;
-	BrinDesc   *bdesc = (BrinDesc *) indexInfo->ii_AmCache;
+	BrinInsertState *bistate = (BrinInsertState *) indexInfo->ii_AmCache;
 	BrinRevmap *revmap;
+	BrinDesc   *bdesc;
 	Buffer		buf = InvalidBuffer;
 	MemoryContext tupcxt = NULL;
 	MemoryContext oldcxt = CurrentMemoryContext;
 	bool		autosummarize = BrinGetAutoSummarize(idxRel);
 
-	revmap = brinRevmapInitialize(idxRel, &pagesPerRange, NULL);
+	/*
+	 * If first time through in this statement, initialize the insert state
+	 * that we keep for all the inserts in the command.
+	 */
+	if (!bistate)
+		bistate = initialize_brin_insertstate(idxRel, indexInfo);
+
+	revmap = bistate->bis_rmAccess;
+	bdesc = bistate->bis_desc;
+	pagesPerRange = bistate->bis_pages_per_range;
 
 	/*
 	 * origHeapBlk is the block number where the insertion occurred.  heapBlk
@@ -203,7 +405,7 @@ brininsert(Relation idxRel, Datum *values, bool *nulls,
 
 			lastPageTuple =
 				brinGetTupleForHeapBlock(revmap, lastPageRange, &buf, &off,
-										 NULL, BUFFER_LOCK_SHARE, NULL);
+										 NULL, BUFFER_LOCK_SHARE);
 			if (!lastPageTuple)
 			{
 				bool		recorded;
@@ -223,20 +425,12 @@ brininsert(Relation idxRel, Datum *values, bool *nulls,
 		}
 
 		brtup = brinGetTupleForHeapBlock(revmap, heapBlk, &buf, &off,
-										 NULL, BUFFER_LOCK_SHARE, NULL);
+										 NULL, BUFFER_LOCK_SHARE);
 
 		/* if range is unsummarized, there's nothing to do */
 		if (!brtup)
 			break;
 
-		/* First time through in this statement? */
-		if (bdesc == NULL)
-		{
-			MemoryContextSwitchTo(indexInfo->ii_Context);
-			bdesc = brin_build_desc(idxRel);
-			indexInfo->ii_AmCache = (void *) bdesc;
-			MemoryContextSwitchTo(oldcxt);
-		}
 		/* First time through in this brininsert call? */
 		if (tupcxt == NULL)
 		{
@@ -298,7 +492,7 @@ brininsert(Relation idxRel, Datum *values, bool *nulls,
 							   samepage))
 			{
 				/* no luck; start over */
-				MemoryContextResetAndDeleteChildren(tupcxt);
+				MemoryContextReset(tupcxt);
 				continue;
 			}
 		}
@@ -307,7 +501,6 @@ brininsert(Relation idxRel, Datum *values, bool *nulls,
 		break;
 	}
 
-	brinRevmapTerminate(revmap);
 	if (BufferIsValid(buf))
 		ReleaseBuffer(buf);
 	MemoryContextSwitchTo(oldcxt);
@@ -315,6 +508,29 @@ brininsert(Relation idxRel, Datum *values, bool *nulls,
 		MemoryContextDelete(tupcxt);
 
 	return false;
+}
+
+/*
+ * Callback to clean up the BrinInsertState once all tuple inserts are done.
+ */
+void
+brininsertcleanup(Relation index, IndexInfo *indexInfo)
+{
+	BrinInsertState *bistate = (BrinInsertState *) indexInfo->ii_AmCache;
+
+	/* bail out if cache not initialized */
+	if (bistate == NULL)
+		return;
+
+	/* do this first to avoid dangling pointer if we fail partway through */
+	indexInfo->ii_AmCache = NULL;
+
+	/*
+	 * Clean up the revmap. Note that the brinDesc has already been cleaned up
+	 * as part of its own memory context.
+	 */
+	brinRevmapTerminate(bistate->bis_rmAccess);
+	pfree(bistate);
 }
 
 /*
@@ -332,9 +548,8 @@ brinbeginscan(Relation r, int nkeys, int norderbys)
 
 	scan = RelationGetIndexScan(r, nkeys, norderbys);
 
-	opaque = (BrinOpaque *) palloc(sizeof(BrinOpaque));
-	opaque->bo_rmAccess = brinRevmapInitialize(r, &opaque->bo_pagesPerRange,
-											   scan->xs_snapshot);
+	opaque = palloc_object(BrinOpaque);
+	opaque->bo_rmAccess = brinRevmapInitialize(r, &opaque->bo_pagesPerRange);
 	opaque->bo_bdesc = brin_build_desc(r);
 	scan->opaque = opaque;
 
@@ -363,7 +578,6 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	Relation	heapRel;
 	BrinOpaque *opaque;
 	BlockNumber nblocks;
-	BlockNumber heapBlk;
 	int64		totalpages = 0;
 	FmgrInfo   *consistentFn;
 	MemoryContext oldcxt;
@@ -375,7 +589,6 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 			  **nullkeys;
 	int		   *nkeys,
 			   *nnullkeys;
-	int			keyno;
 	char	   *ptr;
 	Size		len;
 	char	   *tmp PG_USED_FOR_ASSERTS_ONLY;
@@ -383,6 +596,8 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	opaque = (BrinOpaque *) scan->opaque;
 	bdesc = opaque->bo_bdesc;
 	pgstat_count_index_scan(idxRel);
+	if (scan->instrument)
+		scan->instrument->nsearches++;
 
 	/*
 	 * We need to know the size of the table so that we know how long to
@@ -398,7 +613,7 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	 * don't look them up here; we do that lazily the first time we see a scan
 	 * key reference each of them.  We rely on zeroing fn_oid to InvalidOid.
 	 */
-	consistentFn = palloc0(sizeof(FmgrInfo) * bdesc->bd_tupdesc->natts);
+	consistentFn = palloc0_array(FmgrInfo, bdesc->bd_tupdesc->natts);
 
 	/*
 	 * Make room for per-attribute lists of scan keys that we'll pass to the
@@ -457,7 +672,7 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	memset(nnullkeys, 0, sizeof(int) * bdesc->bd_tupdesc->natts);
 
 	/* Preprocess the scan keys - split them into per-attribute arrays. */
-	for (keyno = 0; keyno < scan->numberOfKeys; keyno++)
+	for (int keyno = 0; keyno < scan->numberOfKeys; keyno++)
 	{
 		ScanKey		key = &scan->keyData[keyno];
 		AttrNumber	keyattno = key->sk_attno;
@@ -524,9 +739,10 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	/*
 	 * Now scan the revmap.  We start by querying for heap page 0,
 	 * incrementing by the number of pages per range; this gives us a full
-	 * view of the table.
+	 * view of the table.  We make use of uint64 for heapBlk as a BlockNumber
+	 * could wrap for tables with close to 2^32 pages.
 	 */
-	for (heapBlk = 0; heapBlk < nblocks; heapBlk += opaque->bo_pagesPerRange)
+	for (uint64 heapBlk = 0; heapBlk < nblocks; heapBlk += opaque->bo_pagesPerRange)
 	{
 		bool		addrange;
 		bool		gottuple = false;
@@ -536,11 +752,10 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 
 		CHECK_FOR_INTERRUPTS();
 
-		MemoryContextResetAndDeleteChildren(perRangeCxt);
+		MemoryContextReset(perRangeCxt);
 
-		tup = brinGetTupleForHeapBlock(opaque->bo_rmAccess, heapBlk, &buf,
-									   &off, &size, BUFFER_LOCK_SHARE,
-									   scan->xs_snapshot);
+		tup = brinGetTupleForHeapBlock(opaque->bo_rmAccess, (BlockNumber) heapBlk, &buf,
+									   &off, &size, BUFFER_LOCK_SHARE);
 		if (tup)
 		{
 			gottuple = true;
@@ -714,7 +929,7 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 		/* add the pages in the range to the output bitmap, if needed */
 		if (addrange)
 		{
-			BlockNumber pageno;
+			uint64		pageno;
 
 			for (pageno = heapBlk;
 				 pageno <= Min(nblocks, heapBlk + opaque->bo_pagesPerRange) - 1;
@@ -758,8 +973,7 @@ brinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	 */
 
 	if (scankey && scan->numberOfKeys > 0)
-		memmove(scan->keyData, scankey,
-				scan->numberOfKeys * sizeof(ScanKeyData));
+		memcpy(scan->keyData, scankey, scan->numberOfKeys * sizeof(ScanKeyData));
 }
 
 /*
@@ -825,6 +1039,71 @@ brinbuildCallback(Relation index,
 }
 
 /*
+ * Per-heap-tuple callback for table_index_build_scan with parallelism.
+ *
+ * A version of the callback used by parallel index builds. The main difference
+ * is that instead of writing the BRIN tuples into the index, we write them
+ * into a shared tuplesort, and leave the insertion up to the leader (which may
+ * reorder them a bit etc.). The callback also does not generate empty ranges,
+ * those will be added by the leader when merging results from workers.
+ */
+static void
+brinbuildCallbackParallel(Relation index,
+						  ItemPointer tid,
+						  Datum *values,
+						  bool *isnull,
+						  bool tupleIsAlive,
+						  void *brstate)
+{
+	BrinBuildState *state = (BrinBuildState *) brstate;
+	BlockNumber thisblock;
+
+	thisblock = ItemPointerGetBlockNumber(tid);
+
+	/*
+	 * If we're in a block that belongs to a different range, summarize what
+	 * we've got and start afresh.  Note the scan might have skipped many
+	 * pages, if they were devoid of live tuples; we do not create empty BRIN
+	 * ranges here - the leader is responsible for filling them in.
+	 *
+	 * Unlike serial builds, parallel index builds allow synchronized seqscans
+	 * (because that's what parallel scans do). This means the block may wrap
+	 * around to the beginning of the relation, so the condition needs to
+	 * check for both future and past ranges.
+	 */
+	if ((thisblock < state->bs_currRangeStart) ||
+		(thisblock > state->bs_currRangeStart + state->bs_pagesPerRange - 1))
+	{
+
+		BRIN_elog((DEBUG2,
+				   "brinbuildCallbackParallel: completed a range: %u--%u",
+				   state->bs_currRangeStart,
+				   state->bs_currRangeStart + state->bs_pagesPerRange));
+
+		/* create the index tuple and write it into the tuplesort */
+		form_and_spill_tuple(state);
+
+		/*
+		 * Set state to correspond to the next range (for this block).
+		 *
+		 * This skips ranges that are either empty (and so we don't get any
+		 * tuples to summarize), or processed by other workers. We can't
+		 * differentiate those cases here easily, so we leave it up to the
+		 * leader to fill empty ranges where needed.
+		 */
+		state->bs_currRangeStart
+			= state->bs_pagesPerRange * (thisblock / state->bs_pagesPerRange);
+
+		/* re-initialize state for it */
+		brin_memtuple_initialize(state->bs_dtuple, state->bs_bdesc);
+	}
+
+	/* Accumulate the current tuple into the running state */
+	(void) add_values_to_range(index, state->bs_bdesc, state->bs_dtuple,
+							   values, isnull);
+}
+
+/*
  * brinbuild() -- build a new BRIN index.
  */
 IndexBuildResult *
@@ -850,9 +1129,9 @@ brinbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	 * whole relation will be rolled back.
 	 */
 
-	meta = ReadBuffer(index, P_NEW);
+	meta = ExtendBufferedRel(BMR_REL(index), MAIN_FORKNUM, NULL,
+							 EB_LOCK_FIRST | EB_SKIP_EXTENSION_LOCK);
 	Assert(BufferGetBlockNumber(meta) == BRIN_METAPAGE_BLKNO);
-	LockBuffer(meta, BUFFER_LOCK_EXCLUSIVE);
 
 	brin_metapage_init(BufferGetPage(meta), BrinGetPagesPerRange(index),
 					   BRIN_CURRENT_VERSION);
@@ -868,7 +1147,7 @@ brinbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 		xlrec.pagesPerRange = BrinGetPagesPerRange(index);
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, SizeOfBrinCreateIdx);
+		XLogRegisterData(&xlrec, SizeOfBrinCreateIdx);
 		XLogRegisterBuffer(0, meta, REGBUF_WILL_INIT | REGBUF_STANDARD);
 
 		recptr = XLogInsert(RM_BRIN_ID, XLOG_BRIN_CREATE_INDEX);
@@ -882,18 +1161,103 @@ brinbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	/*
 	 * Initialize our state, including the deformed tuple state.
 	 */
-	revmap = brinRevmapInitialize(index, &pagesPerRange, NULL);
-	state = initialize_brin_buildstate(index, revmap, pagesPerRange);
+	revmap = brinRevmapInitialize(index, &pagesPerRange);
+	state = initialize_brin_buildstate(index, revmap, pagesPerRange,
+									   RelationGetNumberOfBlocks(heap));
 
 	/*
-	 * Now scan the relation.  No syncscan allowed here because we want the
-	 * heap blocks in physical order.
+	 * Attempt to launch parallel worker scan when required
+	 *
+	 * XXX plan_create_index_workers makes the number of workers dependent on
+	 * maintenance_work_mem, requiring 32MB for each worker. That makes sense
+	 * for btree, but not for BRIN, which can do with much less memory. So
+	 * maybe make that somehow less strict, optionally?
 	 */
-	reltuples = table_index_build_scan(heap, index, indexInfo, false, true,
-									   brinbuildCallback, (void *) state, NULL);
+	if (indexInfo->ii_ParallelWorkers > 0)
+		_brin_begin_parallel(state, heap, index, indexInfo->ii_Concurrent,
+							 indexInfo->ii_ParallelWorkers);
 
-	/* process the final batch */
-	form_and_insert_tuple(state);
+	/*
+	 * If parallel build requested and at least one worker process was
+	 * successfully launched, set up coordination state, wait for workers to
+	 * complete. Then read all tuples from the shared tuplesort and insert
+	 * them into the index.
+	 *
+	 * In serial mode, simply scan the table and build the index one index
+	 * tuple at a time.
+	 */
+	if (state->bs_leader)
+	{
+		SortCoordinate coordinate;
+
+		coordinate = palloc0_object(SortCoordinateData);
+		coordinate->isWorker = false;
+		coordinate->nParticipants =
+			state->bs_leader->nparticipanttuplesorts;
+		coordinate->sharedsort = state->bs_leader->sharedsort;
+
+		/*
+		 * Begin leader tuplesort.
+		 *
+		 * In cases where parallelism is involved, the leader receives the
+		 * same share of maintenance_work_mem as a serial sort (it is
+		 * generally treated in the same way as a serial sort once we return).
+		 * Parallel worker Tuplesortstates will have received only a fraction
+		 * of maintenance_work_mem, though.
+		 *
+		 * We rely on the lifetime of the Leader Tuplesortstate almost not
+		 * overlapping with any worker Tuplesortstate's lifetime.  There may
+		 * be some small overlap, but that's okay because we rely on leader
+		 * Tuplesortstate only allocating a small, fixed amount of memory
+		 * here. When its tuplesort_performsort() is called (by our caller),
+		 * and significant amounts of memory are likely to be used, all
+		 * workers must have already freed almost all memory held by their
+		 * Tuplesortstates (they are about to go away completely, too).  The
+		 * overall effect is that maintenance_work_mem always represents an
+		 * absolute high watermark on the amount of memory used by a CREATE
+		 * INDEX operation, regardless of the use of parallelism or any other
+		 * factor.
+		 */
+		state->bs_sortstate =
+			tuplesort_begin_index_brin(maintenance_work_mem, coordinate,
+									   TUPLESORT_NONE);
+
+		/* scan the relation and merge per-worker results */
+		reltuples = _brin_parallel_merge(state);
+
+		_brin_end_parallel(state->bs_leader, state);
+	}
+	else						/* no parallel index build */
+	{
+		/*
+		 * Now scan the relation.  No syncscan allowed here because we want
+		 * the heap blocks in physical order (we want to produce the ranges
+		 * starting from block 0, and the callback also relies on this to not
+		 * generate summary for the same range twice).
+		 */
+		reltuples = table_index_build_scan(heap, index, indexInfo, false, true,
+										   brinbuildCallback, state, NULL);
+
+		/*
+		 * process the final batch
+		 *
+		 * XXX Note this does not update state->bs_currRangeStart, i.e. it
+		 * stays set to the last range added to the index. This is OK, because
+		 * that's what brin_fill_empty_ranges expects.
+		 */
+		form_and_insert_tuple(state);
+
+		/*
+		 * Backfill the final ranges with empty data.
+		 *
+		 * This saves us from doing what amounts to full table scans when the
+		 * index with a predicate like WHERE (nonnull_column IS NULL), or
+		 * other very selective predicates.
+		 */
+		brin_fill_empty_ranges(state,
+							   state->bs_currRangeStart,
+							   state->bs_maxRangeStart);
+	}
 
 	/* release resources */
 	idxtuples = state->bs_numtuples;
@@ -903,7 +1267,7 @@ brinbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	/*
 	 * Return statistics
 	 */
-	result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
+	result = palloc_object(IndexBuildResult);
 
 	result->heap_tuples = reltuples;
 	result->index_tuples = idxtuples;
@@ -917,9 +1281,8 @@ brinbuildempty(Relation index)
 	Buffer		metabuf;
 
 	/* An empty BRIN index has a metapage only. */
-	metabuf =
-		ReadBufferExtended(index, INIT_FORKNUM, P_NEW, RBM_NORMAL, NULL);
-	LockBuffer(metabuf, BUFFER_LOCK_EXCLUSIVE);
+	metabuf = ExtendBufferedRel(BMR_REL(index), INIT_FORKNUM, NULL,
+								EB_LOCK_FIRST | EB_SKIP_EXTENSION_LOCK);
 
 	/* Initialize and xlog metabuffer. */
 	START_CRIT_SECTION();
@@ -947,7 +1310,7 @@ brinbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 {
 	/* allocate stats if first time through, else re-use existing struct */
 	if (stats == NULL)
-		stats = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
+		stats = palloc0_object(IndexBulkDeleteResult);
 
 	return stats;
 }
@@ -966,7 +1329,7 @@ brinvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 		return stats;
 
 	if (!stats)
-		stats = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
+		stats = palloc0_object(IndexBulkDeleteResult);
 	stats->num_pages = RelationGetNumberOfBlocks(info->index);
 	/* rest of stats is initialized by zeroing */
 
@@ -1042,8 +1405,7 @@ brin_summarize_range(PG_FUNCTION_ARGS)
 	if (heapBlk64 > BRIN_ALL_BLOCKRANGES || heapBlk64 < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("block number out of range: %lld",
-						(long long) heapBlk64)));
+				 errmsg("block number out of range: %" PRId64, heapBlk64)));
 	heapBlk = (BlockNumber) heapBlk64;
 
 	/*
@@ -1069,6 +1431,7 @@ brin_summarize_range(PG_FUNCTION_ARGS)
 		SetUserIdAndSecContext(heapRel->rd_rel->relowner,
 							   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 		save_nestlevel = NewGUCNestLevel();
+		RestrictSearchPath();
 	}
 	else
 	{
@@ -1090,7 +1453,7 @@ brin_summarize_range(PG_FUNCTION_ARGS)
 						RelationGetRelationName(indexRel))));
 
 	/* User must own the index (comparable to privileges needed for VACUUM) */
-	if (heapRel != NULL && !pg_class_ownercheck(indexoid, save_userid))
+	if (heapRel != NULL && !object_ownercheck(RelationRelationId, indexoid, save_userid))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_INDEX,
 					   RelationGetRelationName(indexRel));
 
@@ -1120,8 +1483,8 @@ brin_summarize_range(PG_FUNCTION_ARGS)
 	/* Restore userid and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 
-	relation_close(indexRel, ShareUpdateExclusiveLock);
-	relation_close(heapRel, ShareUpdateExclusiveLock);
+	index_close(indexRel, ShareUpdateExclusiveLock);
+	table_close(heapRel, ShareUpdateExclusiveLock);
 
 	PG_RETURN_INT32((int32) numSummarized);
 }
@@ -1149,8 +1512,8 @@ brin_desummarize_range(PG_FUNCTION_ARGS)
 	if (heapBlk64 > MaxBlockNumber || heapBlk64 < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("block number out of range: %lld",
-						(long long) heapBlk64)));
+				 errmsg("block number out of range: %" PRId64,
+						heapBlk64)));
 	heapBlk = (BlockNumber) heapBlk64;
 
 	/*
@@ -1179,7 +1542,7 @@ brin_desummarize_range(PG_FUNCTION_ARGS)
 						RelationGetRelationName(indexRel))));
 
 	/* User must own the index (comparable to privileges needed for VACUUM) */
-	if (!pg_class_ownercheck(indexoid, GetUserId()))
+	if (!object_ownercheck(RelationRelationId, indexoid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_INDEX,
 					   RelationGetRelationName(indexRel));
 
@@ -1210,8 +1573,8 @@ brin_desummarize_range(PG_FUNCTION_ARGS)
 				 errmsg("index \"%s\" is not valid",
 						RelationGetRelationName(indexRel))));
 
-	relation_close(indexRel, ShareUpdateExclusiveLock);
-	relation_close(heapRel, ShareUpdateExclusiveLock);
+	index_close(indexRel, ShareUpdateExclusiveLock);
+	table_close(heapRel, ShareUpdateExclusiveLock);
 
 	PG_RETURN_VOID();
 }
@@ -1241,7 +1604,7 @@ brin_build_desc(Relation rel)
 	 * Obtain BrinOpcInfo for each indexed column.  While at it, accumulate
 	 * the number of columns stored, since the number is opclass-defined.
 	 */
-	opcinfo = (BrinOpcInfo **) palloc(sizeof(BrinOpcInfo *) * tupdesc->natts);
+	opcinfo = palloc_array(BrinOpcInfo *, tupdesc->natts);
 	for (keyno = 0; keyno < tupdesc->natts; keyno++)
 	{
 		FmgrInfo   *opcInfoFn;
@@ -1250,7 +1613,7 @@ brin_build_desc(Relation rel)
 		opcInfoFn = index_getprocinfo(rel, keyno + 1, BRIN_PROCNUM_OPCINFO);
 
 		opcinfo[keyno] = (BrinOpcInfo *)
-			DatumGetPointer(FunctionCall1(opcInfoFn, attr->atttypid));
+			DatumGetPointer(FunctionCall1(opcInfoFn, ObjectIdGetDatum(attr->atttypid)));
 		totalstored += opcinfo[keyno]->oi_nstored;
 	}
 
@@ -1309,20 +1672,41 @@ brinGetStats(Relation index, BrinStatsData *stats)
  */
 static BrinBuildState *
 initialize_brin_buildstate(Relation idxRel, BrinRevmap *revmap,
-						   BlockNumber pagesPerRange)
+						   BlockNumber pagesPerRange, BlockNumber tablePages)
 {
 	BrinBuildState *state;
+	BlockNumber lastRange = 0;
 
-	state = palloc(sizeof(BrinBuildState));
+	state = palloc_object(BrinBuildState);
 
 	state->bs_irel = idxRel;
 	state->bs_numtuples = 0;
+	state->bs_reltuples = 0;
 	state->bs_currentInsertBuf = InvalidBuffer;
 	state->bs_pagesPerRange = pagesPerRange;
 	state->bs_currRangeStart = 0;
 	state->bs_rmAccess = revmap;
 	state->bs_bdesc = brin_build_desc(idxRel);
 	state->bs_dtuple = brin_new_memtuple(state->bs_bdesc);
+	state->bs_leader = NULL;
+	state->bs_worker_id = 0;
+	state->bs_sortstate = NULL;
+
+	/* Remember the memory context to use for an empty tuple, if needed. */
+	state->bs_context = CurrentMemoryContext;
+	state->bs_emptyTuple = NULL;
+	state->bs_emptyTupleLen = 0;
+
+	/*
+	 * Calculate the start of the last page range. Page numbers are 0-based,
+	 * so to calculate the index we need to subtract one. The integer division
+	 * gives us the index of the page range.
+	 */
+	if (tablePages > 0)
+		lastRange = ((tablePages - 1) / pagesPerRange) * pagesPerRange;
+
+	/* Now calculate the start of the next range. */
+	state->bs_maxRangeStart = lastRange + state->bs_pagesPerRange;
 
 	return state;
 }
@@ -1434,8 +1818,8 @@ summarize_range(IndexInfo *indexInfo, BrinBuildState *state, Relation heapRel,
 	state->bs_currRangeStart = heapBlk;
 	table_index_build_range_scan(heapRel, state->bs_irel, indexInfo, false, true, false,
 								 heapBlk, scanNumBlks,
-								 brinbuildCallback, (void *) state, NULL,
-								 NULL /* bfinfo */ , NULL /* bfresult */ );
+								 brinbuildCallback, state, NULL,
+								 NULL /* bfinfo */, NULL /* bfresult */);
 
 	/*
 	 * Now we update the values obtained by the scan with the placeholder
@@ -1477,8 +1861,7 @@ summarize_range(IndexInfo *indexInfo, BrinBuildState *state, Relation heapRel,
 		 * the same.)
 		 */
 		phtup = brinGetTupleForHeapBlock(state->bs_rmAccess, heapBlk, &phbuf,
-										 &offset, &phsz, BUFFER_LOCK_SHARE,
-										 NULL);
+										 &offset, &phsz, BUFFER_LOCK_SHARE);
 		/* the placeholder tuple must exist */
 		if (phtup == NULL)
 			elog(ERROR, "missing placeholder tuple");
@@ -1515,7 +1898,7 @@ brinsummarize(Relation index, Relation heapRel, BlockNumber pageRange,
 	Buffer		buf;
 	BlockNumber startBlk;
 
-	revmap = brinRevmapInitialize(index, &pagesPerRange, NULL);
+	revmap = brinRevmapInitialize(index, &pagesPerRange);
 
 	/* determine range of pages to process */
 	heapNumBlocks = RelationGetNumberOfBlocks(heapRel);
@@ -1556,7 +1939,7 @@ brinsummarize(Relation index, Relation heapRel, BlockNumber pageRange,
 		CHECK_FOR_INTERRUPTS();
 
 		tup = brinGetTupleForHeapBlock(revmap, startBlk, &buf, &off, NULL,
-									   BUFFER_LOCK_SHARE, NULL);
+									   BUFFER_LOCK_SHARE);
 		if (tup == NULL)
 		{
 			/* no revmap entry for this heap range. Summarize it. */
@@ -1565,7 +1948,8 @@ brinsummarize(Relation index, Relation heapRel, BlockNumber pageRange,
 				/* first time through */
 				Assert(!indexInfo);
 				state = initialize_brin_buildstate(index, revmap,
-												   pagesPerRange);
+												   pagesPerRange,
+												   InvalidBlockNumber);
 				indexInfo = BuildIndexInfo(index);
 			}
 			summarize_range(indexInfo, state, heapRel, startBlk, heapNumBlocks);
@@ -1611,6 +1995,32 @@ form_and_insert_tuple(BrinBuildState *state)
 	brin_doinsert(state->bs_irel, state->bs_pagesPerRange, state->bs_rmAccess,
 				  &state->bs_currentInsertBuf, state->bs_currRangeStart,
 				  tup, size);
+	state->bs_numtuples++;
+
+	pfree(tup);
+}
+
+/*
+ * Given a deformed tuple in the build state, convert it into the on-disk
+ * format and write it to a (shared) tuplesort (the leader will insert it
+ * into the index later).
+ */
+static void
+form_and_spill_tuple(BrinBuildState *state)
+{
+	BrinTuple  *tup;
+	Size		size;
+
+	/* don't insert empty tuples in parallel build */
+	if (state->bs_dtuple->bt_empty_range)
+		return;
+
+	tup = brin_form_tuple(state->bs_bdesc, state->bs_currRangeStart,
+						  state->bs_dtuple, &size);
+
+	/* write the BRIN tuple to the tuplesort */
+	tuplesort_putbrintuple(state->bs_sortstate, tup, size);
+
 	state->bs_numtuples++;
 
 	pfree(tup);
@@ -1757,34 +2167,48 @@ union_tuples(BrinDesc *bdesc, BrinMemTuple *a, BrinTuple *b)
  * brin_vacuum_scan
  *		Do a complete scan of the index during VACUUM.
  *
- * This routine scans the complete index looking for uncatalogued index pages,
+ * This routine scans the complete index looking for uncataloged index pages,
  * i.e. those that might have been lost due to a crash after index extension
  * and such.
  */
 static void
 brin_vacuum_scan(Relation idxrel, BufferAccessStrategy strategy)
 {
-	BlockNumber nblocks;
-	BlockNumber blkno;
+	BlockRangeReadStreamPrivate p;
+	ReadStream *stream;
+	Buffer		buf;
+
+	p.current_blocknum = 0;
+	p.last_exclusive = RelationGetNumberOfBlocks(idxrel);
+
+	/*
+	 * It is safe to use batchmode as block_range_read_stream_cb takes no
+	 * locks.
+	 */
+	stream = read_stream_begin_relation(READ_STREAM_MAINTENANCE |
+										READ_STREAM_FULL |
+										READ_STREAM_USE_BATCHING,
+										strategy,
+										idxrel,
+										MAIN_FORKNUM,
+										block_range_read_stream_cb,
+										&p,
+										0);
 
 	/*
 	 * Scan the index in physical order, and clean up any possible mess in
 	 * each page.
 	 */
-	nblocks = RelationGetNumberOfBlocks(idxrel);
-	for (blkno = 0; blkno < nblocks; blkno++)
+	while ((buf = read_stream_next_buffer(stream, NULL)) != InvalidBuffer)
 	{
-		Buffer		buf;
-
 		CHECK_FOR_INTERRUPTS();
-
-		buf = ReadBufferExtended(idxrel, MAIN_FORKNUM, blkno,
-								 RBM_NORMAL, strategy);
 
 		brin_page_cleanup(idxrel, buf);
 
 		ReleaseBuffer(buf);
 	}
+
+	read_stream_end(stream);
 
 	/*
 	 * Update all upper pages in the index's FSM, as well.  This ensures not
@@ -1796,7 +2220,7 @@ brin_vacuum_scan(Relation idxrel, BufferAccessStrategy strategy)
 
 static bool
 add_values_to_range(Relation idxRel, BrinDesc *bdesc, BrinMemTuple *dtup,
-					Datum *values, bool *nulls)
+					const Datum *values, const bool *nulls)
 {
 	int			keyno;
 
@@ -1855,7 +2279,7 @@ add_values_to_range(Relation idxRel, BrinDesc *bdesc, BrinMemTuple *dtup,
 								   PointerGetDatum(bdesc),
 								   PointerGetDatum(bval),
 								   values[keyno],
-								   nulls[keyno]);
+								   BoolGetDatum(nulls[keyno]));
 		/* if that returned true, we need to insert the updated tuple */
 		modified |= DatumGetBool(result);
 
@@ -1934,4 +2358,678 @@ check_null_keys(BrinValues *bval, ScanKey *nullkeys, int nnullkeys)
 	}
 
 	return true;
+}
+
+/*
+ * Create parallel context, and launch workers for leader.
+ *
+ * buildstate argument should be initialized (with the exception of the
+ * tuplesort states, which may later be created based on shared
+ * state initially set up here).
+ *
+ * isconcurrent indicates if operation is CREATE INDEX CONCURRENTLY.
+ *
+ * request is the target number of parallel worker processes to launch.
+ *
+ * Sets buildstate's BrinLeader, which caller must use to shut down parallel
+ * mode by passing it to _brin_end_parallel() at the very end of its index
+ * build.  If not even a single worker process can be launched, this is
+ * never set, and caller should proceed with a serial index build.
+ */
+static void
+_brin_begin_parallel(BrinBuildState *buildstate, Relation heap, Relation index,
+					 bool isconcurrent, int request)
+{
+	ParallelContext *pcxt;
+	int			scantuplesortstates;
+	Snapshot	snapshot;
+	Size		estbrinshared;
+	Size		estsort;
+	BrinShared *brinshared;
+	Sharedsort *sharedsort;
+	BrinLeader *brinleader = palloc0_object(BrinLeader);
+	WalUsage   *walusage;
+	BufferUsage *bufferusage;
+	bool		leaderparticipates = true;
+	int			querylen;
+
+#ifdef DISABLE_LEADER_PARTICIPATION
+	leaderparticipates = false;
+#endif
+
+	/*
+	 * Enter parallel mode, and create context for parallel build of brin
+	 * index
+	 */
+	EnterParallelMode();
+	Assert(request > 0);
+	pcxt = CreateParallelContext("postgres", "_brin_parallel_build_main",
+								 request);
+
+	scantuplesortstates = leaderparticipates ? request + 1 : request;
+
+	/*
+	 * Prepare for scan of the base relation.  In a normal index build, we use
+	 * SnapshotAny because we must retrieve all tuples and do our own time
+	 * qual checks (because we have to index RECENTLY_DEAD tuples).  In a
+	 * concurrent build, we take a regular MVCC snapshot and index whatever's
+	 * live according to that.
+	 */
+	if (!isconcurrent)
+		snapshot = SnapshotAny;
+	else
+		snapshot = RegisterSnapshot(GetTransactionSnapshot());
+
+	/*
+	 * Estimate size for our own PARALLEL_KEY_BRIN_SHARED workspace.
+	 */
+	estbrinshared = _brin_parallel_estimate_shared(heap, snapshot);
+	shm_toc_estimate_chunk(&pcxt->estimator, estbrinshared);
+	estsort = tuplesort_estimate_shared(scantuplesortstates);
+	shm_toc_estimate_chunk(&pcxt->estimator, estsort);
+
+	shm_toc_estimate_keys(&pcxt->estimator, 2);
+
+	/*
+	 * Estimate space for WalUsage and BufferUsage -- PARALLEL_KEY_WAL_USAGE
+	 * and PARALLEL_KEY_BUFFER_USAGE.
+	 *
+	 * If there are no extensions loaded that care, we could skip this.  We
+	 * have no way of knowing whether anyone's looking at pgWalUsage or
+	 * pgBufferUsage, so do it unconditionally.
+	 */
+	shm_toc_estimate_chunk(&pcxt->estimator,
+						   mul_size(sizeof(WalUsage), pcxt->nworkers));
+	shm_toc_estimate_keys(&pcxt->estimator, 1);
+	shm_toc_estimate_chunk(&pcxt->estimator,
+						   mul_size(sizeof(BufferUsage), pcxt->nworkers));
+	shm_toc_estimate_keys(&pcxt->estimator, 1);
+
+	/* Finally, estimate PARALLEL_KEY_QUERY_TEXT space */
+	if (debug_query_string)
+	{
+		querylen = strlen(debug_query_string);
+		shm_toc_estimate_chunk(&pcxt->estimator, querylen + 1);
+		shm_toc_estimate_keys(&pcxt->estimator, 1);
+	}
+	else
+		querylen = 0;			/* keep compiler quiet */
+
+	/* Everyone's had a chance to ask for space, so now create the DSM */
+	InitializeParallelDSM(pcxt);
+
+	/* If no DSM segment was available, back out (do serial build) */
+	if (pcxt->seg == NULL)
+	{
+		if (IsMVCCSnapshot(snapshot))
+			UnregisterSnapshot(snapshot);
+		DestroyParallelContext(pcxt);
+		ExitParallelMode();
+		return;
+	}
+
+	/* Store shared build state, for which we reserved space */
+	brinshared = (BrinShared *) shm_toc_allocate(pcxt->toc, estbrinshared);
+	/* Initialize immutable state */
+	brinshared->heaprelid = RelationGetRelid(heap);
+	brinshared->indexrelid = RelationGetRelid(index);
+	brinshared->isconcurrent = isconcurrent;
+	brinshared->scantuplesortstates = scantuplesortstates;
+	brinshared->pagesPerRange = buildstate->bs_pagesPerRange;
+	brinshared->queryid = pgstat_get_my_query_id();
+	ConditionVariableInit(&brinshared->workersdonecv);
+	SpinLockInit(&brinshared->mutex);
+
+	/* Initialize mutable state */
+	brinshared->nparticipantsdone = 0;
+	brinshared->reltuples = 0.0;
+	brinshared->indtuples = 0.0;
+
+	table_parallelscan_initialize(heap,
+								  ParallelTableScanFromBrinShared(brinshared),
+								  snapshot);
+
+	/*
+	 * Store shared tuplesort-private state, for which we reserved space.
+	 * Then, initialize opaque state using tuplesort routine.
+	 */
+	sharedsort = (Sharedsort *) shm_toc_allocate(pcxt->toc, estsort);
+	tuplesort_initialize_shared(sharedsort, scantuplesortstates,
+								pcxt->seg);
+
+	/*
+	 * Store shared tuplesort-private state, for which we reserved space.
+	 * Then, initialize opaque state using tuplesort routine.
+	 */
+	shm_toc_insert(pcxt->toc, PARALLEL_KEY_BRIN_SHARED, brinshared);
+	shm_toc_insert(pcxt->toc, PARALLEL_KEY_TUPLESORT, sharedsort);
+
+	/* Store query string for workers */
+	if (debug_query_string)
+	{
+		char	   *sharedquery;
+
+		sharedquery = (char *) shm_toc_allocate(pcxt->toc, querylen + 1);
+		memcpy(sharedquery, debug_query_string, querylen + 1);
+		shm_toc_insert(pcxt->toc, PARALLEL_KEY_QUERY_TEXT, sharedquery);
+	}
+
+	/*
+	 * Allocate space for each worker's WalUsage and BufferUsage; no need to
+	 * initialize.
+	 */
+	walusage = shm_toc_allocate(pcxt->toc,
+								mul_size(sizeof(WalUsage), pcxt->nworkers));
+	shm_toc_insert(pcxt->toc, PARALLEL_KEY_WAL_USAGE, walusage);
+	bufferusage = shm_toc_allocate(pcxt->toc,
+								   mul_size(sizeof(BufferUsage), pcxt->nworkers));
+	shm_toc_insert(pcxt->toc, PARALLEL_KEY_BUFFER_USAGE, bufferusage);
+
+	/* Launch workers, saving status for leader/caller */
+	LaunchParallelWorkers(pcxt);
+	brinleader->pcxt = pcxt;
+	brinleader->nparticipanttuplesorts = pcxt->nworkers_launched;
+	if (leaderparticipates)
+		brinleader->nparticipanttuplesorts++;
+	brinleader->brinshared = brinshared;
+	brinleader->sharedsort = sharedsort;
+	brinleader->snapshot = snapshot;
+	brinleader->walusage = walusage;
+	brinleader->bufferusage = bufferusage;
+
+	/* If no workers were successfully launched, back out (do serial build) */
+	if (pcxt->nworkers_launched == 0)
+	{
+		_brin_end_parallel(brinleader, NULL);
+		return;
+	}
+
+	/* Save leader state now that it's clear build will be parallel */
+	buildstate->bs_leader = brinleader;
+
+	/* Join heap scan ourselves */
+	if (leaderparticipates)
+		_brin_leader_participate_as_worker(buildstate, heap, index);
+
+	/*
+	 * Caller needs to wait for all launched workers when we return.  Make
+	 * sure that the failure-to-start case will not hang forever.
+	 */
+	WaitForParallelWorkersToAttach(pcxt);
+}
+
+/*
+ * Shut down workers, destroy parallel context, and end parallel mode.
+ */
+static void
+_brin_end_parallel(BrinLeader *brinleader, BrinBuildState *state)
+{
+	int			i;
+
+	/* Shutdown worker processes */
+	WaitForParallelWorkersToFinish(brinleader->pcxt);
+
+	/*
+	 * Next, accumulate WAL usage.  (This must wait for the workers to finish,
+	 * or we might get incomplete data.)
+	 */
+	for (i = 0; i < brinleader->pcxt->nworkers_launched; i++)
+		InstrAccumParallelQuery(&brinleader->bufferusage[i], &brinleader->walusage[i]);
+
+	/* Free last reference to MVCC snapshot, if one was used */
+	if (IsMVCCSnapshot(brinleader->snapshot))
+		UnregisterSnapshot(brinleader->snapshot);
+	DestroyParallelContext(brinleader->pcxt);
+	ExitParallelMode();
+}
+
+/*
+ * Within leader, wait for end of heap scan.
+ *
+ * When called, parallel heap scan started by _brin_begin_parallel() will
+ * already be underway within worker processes (when leader participates
+ * as a worker, we should end up here just as workers are finishing).
+ *
+ * Returns the total number of heap tuples scanned.
+ */
+static double
+_brin_parallel_heapscan(BrinBuildState *state)
+{
+	BrinShared *brinshared = state->bs_leader->brinshared;
+	int			nparticipanttuplesorts;
+
+	nparticipanttuplesorts = state->bs_leader->nparticipanttuplesorts;
+	for (;;)
+	{
+		SpinLockAcquire(&brinshared->mutex);
+		if (brinshared->nparticipantsdone == nparticipanttuplesorts)
+		{
+			/* copy the data into leader state */
+			state->bs_reltuples = brinshared->reltuples;
+			state->bs_numtuples = brinshared->indtuples;
+
+			SpinLockRelease(&brinshared->mutex);
+			break;
+		}
+		SpinLockRelease(&brinshared->mutex);
+
+		ConditionVariableSleep(&brinshared->workersdonecv,
+							   WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+	}
+
+	ConditionVariableCancelSleep();
+
+	return state->bs_reltuples;
+}
+
+/*
+ * Within leader, wait for end of heap scan and merge per-worker results.
+ *
+ * After waiting for all workers to finish, merge the per-worker results into
+ * the complete index. The results from each worker are sorted by block number
+ * (start of the page range). While combining the per-worker results we merge
+ * summaries for the same page range, and also fill-in empty summaries for
+ * ranges without any tuples.
+ *
+ * Returns the total number of heap tuples scanned.
+ */
+static double
+_brin_parallel_merge(BrinBuildState *state)
+{
+	BrinTuple  *btup;
+	BrinMemTuple *memtuple = NULL;
+	Size		tuplen;
+	BlockNumber prevblkno = InvalidBlockNumber;
+	MemoryContext rangeCxt,
+				oldCxt;
+	double		reltuples;
+
+	/* wait for workers to scan table and produce partial results */
+	reltuples = _brin_parallel_heapscan(state);
+
+	/* do the actual sort in the leader */
+	tuplesort_performsort(state->bs_sortstate);
+
+	/*
+	 * Initialize BrinMemTuple we'll use to union summaries from workers (in
+	 * case they happened to produce parts of the same page range).
+	 */
+	memtuple = brin_new_memtuple(state->bs_bdesc);
+
+	/*
+	 * Create a memory context we'll reset to combine results for a single
+	 * page range (received from the workers). We don't expect huge number of
+	 * overlaps under regular circumstances, because for large tables the
+	 * chunk size is likely larger than the BRIN page range), but it can
+	 * happen, and the union functions may do all kinds of stuff. So we better
+	 * reset the context once in a while.
+	 */
+	rangeCxt = AllocSetContextCreate(CurrentMemoryContext,
+									 "brin union",
+									 ALLOCSET_DEFAULT_SIZES);
+	oldCxt = MemoryContextSwitchTo(rangeCxt);
+
+	/*
+	 * Read the BRIN tuples from the shared tuplesort, sorted by block number.
+	 * That probably gives us an index that is cheaper to scan, thanks to
+	 * mostly getting data from the same index page as before.
+	 */
+	while ((btup = tuplesort_getbrintuple(state->bs_sortstate, &tuplen, true)) != NULL)
+	{
+		/* Ranges should be multiples of pages_per_range for the index. */
+		Assert(btup->bt_blkno % state->bs_leader->brinshared->pagesPerRange == 0);
+
+		/*
+		 * Do we need to union summaries for the same page range?
+		 *
+		 * If this is the first brin tuple we read, then just deform it into
+		 * the memtuple, and continue with the next one from tuplesort. We
+		 * however may need to insert empty summaries into the index.
+		 *
+		 * If it's the same block as the last we saw, we simply union the brin
+		 * tuple into it, and we're done - we don't even need to insert empty
+		 * ranges, because that was done earlier when we saw the first brin
+		 * tuple (for this range).
+		 *
+		 * Finally, if it's not the first brin tuple, and it's not the same
+		 * page range, we need to do the insert and then deform the tuple into
+		 * the memtuple. Then we'll insert empty ranges before the new brin
+		 * tuple, if needed.
+		 */
+		if (prevblkno == InvalidBlockNumber)
+		{
+			/* First brin tuples, just deform into memtuple. */
+			memtuple = brin_deform_tuple(state->bs_bdesc, btup, memtuple);
+
+			/* continue to insert empty pages before thisblock */
+		}
+		else if (memtuple->bt_blkno == btup->bt_blkno)
+		{
+			/*
+			 * Not the first brin tuple, but same page range as the previous
+			 * one, so we can merge it into the memtuple.
+			 */
+			union_tuples(state->bs_bdesc, memtuple, btup);
+			continue;
+		}
+		else
+		{
+			BrinTuple  *tmp;
+			Size		len;
+
+			/*
+			 * We got brin tuple for a different page range, so form a brin
+			 * tuple from the memtuple, insert it, and re-init the memtuple
+			 * from the new brin tuple.
+			 */
+			tmp = brin_form_tuple(state->bs_bdesc, memtuple->bt_blkno,
+								  memtuple, &len);
+
+			brin_doinsert(state->bs_irel, state->bs_pagesPerRange, state->bs_rmAccess,
+						  &state->bs_currentInsertBuf, tmp->bt_blkno, tmp, len);
+
+			/*
+			 * Reset the per-output-range context. This frees all the memory
+			 * possibly allocated by the union functions, and also the BRIN
+			 * tuple we just formed and inserted.
+			 */
+			MemoryContextReset(rangeCxt);
+
+			memtuple = brin_deform_tuple(state->bs_bdesc, btup, memtuple);
+
+			/* continue to insert empty pages before thisblock */
+		}
+
+		/* Fill empty ranges for all ranges missing in the tuplesort. */
+		brin_fill_empty_ranges(state, prevblkno, btup->bt_blkno);
+
+		prevblkno = btup->bt_blkno;
+	}
+
+	tuplesort_end(state->bs_sortstate);
+
+	/* Fill the BRIN tuple for the last page range with data. */
+	if (prevblkno != InvalidBlockNumber)
+	{
+		BrinTuple  *tmp;
+		Size		len;
+
+		tmp = brin_form_tuple(state->bs_bdesc, memtuple->bt_blkno,
+							  memtuple, &len);
+
+		brin_doinsert(state->bs_irel, state->bs_pagesPerRange, state->bs_rmAccess,
+					  &state->bs_currentInsertBuf, tmp->bt_blkno, tmp, len);
+
+		pfree(tmp);
+	}
+
+	/* Fill empty ranges at the end, for all ranges missing in the tuplesort. */
+	brin_fill_empty_ranges(state, prevblkno, state->bs_maxRangeStart);
+
+	/*
+	 * Switch back to the original memory context, and destroy the one we
+	 * created to isolate the union_tuple calls.
+	 */
+	MemoryContextSwitchTo(oldCxt);
+	MemoryContextDelete(rangeCxt);
+
+	return reltuples;
+}
+
+/*
+ * Returns size of shared memory required to store state for a parallel
+ * brin index build based on the snapshot its parallel scan will use.
+ */
+static Size
+_brin_parallel_estimate_shared(Relation heap, Snapshot snapshot)
+{
+	/* c.f. shm_toc_allocate as to why BUFFERALIGN is used */
+	return add_size(BUFFERALIGN(sizeof(BrinShared)),
+					table_parallelscan_estimate(heap, snapshot));
+}
+
+/*
+ * Within leader, participate as a parallel worker.
+ */
+static void
+_brin_leader_participate_as_worker(BrinBuildState *buildstate, Relation heap, Relation index)
+{
+	BrinLeader *brinleader = buildstate->bs_leader;
+	int			sortmem;
+
+	/*
+	 * Might as well use reliable figure when doling out maintenance_work_mem
+	 * (when requested number of workers were not launched, this will be
+	 * somewhat higher than it is for other workers).
+	 */
+	sortmem = maintenance_work_mem / brinleader->nparticipanttuplesorts;
+
+	/* Perform work common to all participants */
+	_brin_parallel_scan_and_build(buildstate, brinleader->brinshared,
+								  brinleader->sharedsort, heap, index, sortmem, true);
+}
+
+/*
+ * Perform a worker's portion of a parallel sort.
+ *
+ * This generates a tuplesort for the worker portion of the table.
+ *
+ * sortmem is the amount of working memory to use within each worker,
+ * expressed in KBs.
+ *
+ * When this returns, workers are done, and need only release resources.
+ */
+static void
+_brin_parallel_scan_and_build(BrinBuildState *state,
+							  BrinShared *brinshared, Sharedsort *sharedsort,
+							  Relation heap, Relation index,
+							  int sortmem, bool progress)
+{
+	SortCoordinate coordinate;
+	TableScanDesc scan;
+	double		reltuples;
+	IndexInfo  *indexInfo;
+
+	/* Initialize local tuplesort coordination state */
+	coordinate = palloc0_object(SortCoordinateData);
+	coordinate->isWorker = true;
+	coordinate->nParticipants = -1;
+	coordinate->sharedsort = sharedsort;
+
+	/* Begin "partial" tuplesort */
+	state->bs_sortstate = tuplesort_begin_index_brin(sortmem, coordinate,
+													 TUPLESORT_NONE);
+
+	/* Join parallel scan */
+	indexInfo = BuildIndexInfo(index);
+	indexInfo->ii_Concurrent = brinshared->isconcurrent;
+
+	scan = table_beginscan_parallel(heap,
+									ParallelTableScanFromBrinShared(brinshared),
+									SO_NONE);
+
+	reltuples = table_index_build_scan(heap, index, indexInfo, true, true,
+									   brinbuildCallbackParallel, state, scan);
+
+	/* insert the last item */
+	form_and_spill_tuple(state);
+
+	/* sort the BRIN ranges built by this worker */
+	tuplesort_performsort(state->bs_sortstate);
+
+	state->bs_reltuples += reltuples;
+
+	/*
+	 * Done.  Record ambuild statistics.
+	 */
+	SpinLockAcquire(&brinshared->mutex);
+	brinshared->nparticipantsdone++;
+	brinshared->reltuples += state->bs_reltuples;
+	brinshared->indtuples += state->bs_numtuples;
+	SpinLockRelease(&brinshared->mutex);
+
+	/* Notify leader */
+	ConditionVariableSignal(&brinshared->workersdonecv);
+
+	tuplesort_end(state->bs_sortstate);
+}
+
+/*
+ * Perform work within a launched parallel process.
+ */
+void
+_brin_parallel_build_main(dsm_segment *seg, shm_toc *toc)
+{
+	char	   *sharedquery;
+	BrinShared *brinshared;
+	Sharedsort *sharedsort;
+	BrinBuildState *buildstate;
+	Relation	heapRel;
+	Relation	indexRel;
+	LOCKMODE	heapLockmode;
+	LOCKMODE	indexLockmode;
+	WalUsage   *walusage;
+	BufferUsage *bufferusage;
+	int			sortmem;
+
+	/*
+	 * The only possible status flag that can be set to the parallel worker is
+	 * PROC_IN_SAFE_IC.
+	 */
+	Assert((MyProc->statusFlags == 0) ||
+		   (MyProc->statusFlags == PROC_IN_SAFE_IC));
+
+	/* Set debug_query_string for individual workers first */
+	sharedquery = shm_toc_lookup(toc, PARALLEL_KEY_QUERY_TEXT, true);
+	debug_query_string = sharedquery;
+
+	/* Report the query string from leader */
+	pgstat_report_activity(STATE_RUNNING, debug_query_string);
+
+	/* Look up brin shared state */
+	brinshared = shm_toc_lookup(toc, PARALLEL_KEY_BRIN_SHARED, false);
+
+	/* Open relations using lock modes known to be obtained by index.c */
+	if (!brinshared->isconcurrent)
+	{
+		heapLockmode = ShareLock;
+		indexLockmode = AccessExclusiveLock;
+	}
+	else
+	{
+		heapLockmode = ShareUpdateExclusiveLock;
+		indexLockmode = RowExclusiveLock;
+	}
+
+	/* Track query ID */
+	pgstat_report_query_id(brinshared->queryid, false);
+
+	/* Open relations within worker */
+	heapRel = table_open(brinshared->heaprelid, heapLockmode);
+	indexRel = index_open(brinshared->indexrelid, indexLockmode);
+
+	buildstate = initialize_brin_buildstate(indexRel, NULL,
+											brinshared->pagesPerRange,
+											InvalidBlockNumber);
+
+	/* Look up shared state private to tuplesort.c */
+	sharedsort = shm_toc_lookup(toc, PARALLEL_KEY_TUPLESORT, false);
+	tuplesort_attach_shared(sharedsort, seg);
+
+	/* Prepare to track buffer usage during parallel execution */
+	InstrStartParallelQuery();
+
+	/*
+	 * Might as well use reliable figure when doling out maintenance_work_mem
+	 * (when requested number of workers were not launched, this will be
+	 * somewhat higher than it is for other workers).
+	 */
+	sortmem = maintenance_work_mem / brinshared->scantuplesortstates;
+
+	_brin_parallel_scan_and_build(buildstate, brinshared, sharedsort,
+								  heapRel, indexRel, sortmem, false);
+
+	/* Report WAL/buffer usage during parallel execution */
+	bufferusage = shm_toc_lookup(toc, PARALLEL_KEY_BUFFER_USAGE, false);
+	walusage = shm_toc_lookup(toc, PARALLEL_KEY_WAL_USAGE, false);
+	InstrEndParallelQuery(&bufferusage[ParallelWorkerNumber],
+						  &walusage[ParallelWorkerNumber]);
+
+	index_close(indexRel, indexLockmode);
+	table_close(heapRel, heapLockmode);
+}
+
+/*
+ * brin_build_empty_tuple
+ *		Maybe initialize a BRIN tuple representing empty range.
+ *
+ * Returns a BRIN tuple representing an empty page range starting at the
+ * specified block number. The empty tuple is initialized only once, when it's
+ * needed for the first time, stored in the memory context bs_context to ensure
+ * proper life span, and reused on following calls. All empty tuples are
+ * exactly the same except for the bt_blkno field, which is set to the value
+ * in blkno parameter.
+ */
+static void
+brin_build_empty_tuple(BrinBuildState *state, BlockNumber blkno)
+{
+	/* First time an empty tuple is requested? If yes, initialize it. */
+	if (state->bs_emptyTuple == NULL)
+	{
+		MemoryContext oldcxt;
+		BrinMemTuple *dtuple = brin_new_memtuple(state->bs_bdesc);
+
+		/* Allocate the tuple in context for the whole index build. */
+		oldcxt = MemoryContextSwitchTo(state->bs_context);
+
+		state->bs_emptyTuple = brin_form_tuple(state->bs_bdesc, blkno, dtuple,
+											   &state->bs_emptyTupleLen);
+
+		MemoryContextSwitchTo(oldcxt);
+	}
+	else
+	{
+		/* If we already have an empty tuple, just update the block. */
+		state->bs_emptyTuple->bt_blkno = blkno;
+	}
+}
+
+/*
+ * brin_fill_empty_ranges
+ *		Add BRIN index tuples representing empty page ranges.
+ *
+ * prevRange/nextRange determine for which page ranges to add empty summaries.
+ * Both boundaries are exclusive, i.e. only ranges starting at blkno for which
+ * (prevRange < blkno < nextRange) will be added to the index.
+ *
+ * If prevRange is InvalidBlockNumber, this means there was no previous page
+ * range (i.e. the first empty range to add is for blkno=0).
+ *
+ * The empty tuple is built only once, and then reused for all future calls.
+ */
+static void
+brin_fill_empty_ranges(BrinBuildState *state,
+					   BlockNumber prevRange, BlockNumber nextRange)
+{
+	BlockNumber blkno;
+
+	/*
+	 * If we already summarized some ranges, we need to start with the next
+	 * one. Otherwise start from the first range of the table.
+	 */
+	blkno = (prevRange == InvalidBlockNumber) ? 0 : (prevRange + state->bs_pagesPerRange);
+
+	/* Generate empty ranges until we hit the next non-empty range. */
+	while (blkno < nextRange)
+	{
+		/* Did we already build the empty tuple? If not, do it now. */
+		brin_build_empty_tuple(state, blkno);
+
+		brin_doinsert(state->bs_irel, state->bs_pagesPerRange, state->bs_rmAccess,
+					  &state->bs_currentInsertBuf,
+					  blkno, state->bs_emptyTuple, state->bs_emptyTupleLen);
+
+		/* try next page range */
+		blkno += state->bs_pagesPerRange;
+	}
 }

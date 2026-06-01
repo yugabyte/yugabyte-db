@@ -3,7 +3,7 @@
  * hashutil.c
  *	  Utility code for Postgres hash implementation.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,7 +18,6 @@
 #include "access/reloptions.h"
 #include "access/relscan.h"
 #include "port/pg_bitutils.h"
-#include "storage/buf_internals.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
@@ -317,7 +316,7 @@ _hash_get_indextuple_hashkey(IndexTuple itup)
  */
 bool
 _hash_convert_tuple(Relation index,
-					Datum *user_values, bool *user_isnull,
+					const Datum *user_values, const bool *user_isnull,
 					Datum *index_values, bool *index_isnull)
 {
 	uint32		hashkey;
@@ -436,7 +435,7 @@ _hash_get_oldblock_from_newbucket(Relation rel, Bucket new_bucket)
 	 * started.  Masking the most significant bit of new bucket would give us
 	 * old bucket.
 	 */
-	mask = (((uint32) 1) << (fls(new_bucket) - 1)) - 1;
+	mask = (((uint32) 1) << pg_leftmost_one_pos32(new_bucket)) - 1;
 	old_bucket = new_bucket & mask;
 
 	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_READ, LH_META_PAGE);
@@ -594,6 +593,17 @@ _hash_kill_items(IndexScanDesc scan)
 
 			if (ItemPointerEquals(&ituple->t_tid, &currItem->heapTid))
 			{
+				if (!killedsomething)
+				{
+					/*
+					 * Use the hint bit infrastructure to check if we can
+					 * update the page while just holding a share lock. If we
+					 * are not allowed, there's no point continuing.
+					 */
+					if (!BufferBeginSetHintBits(buf))
+						goto unlock_page;
+				}
+
 				/* found the item */
 				ItemIdMarkDead(iid);
 				killedsomething = true;
@@ -611,11 +621,11 @@ _hash_kill_items(IndexScanDesc scan)
 	if (killedsomething)
 	{
 		opaque->hasho_flag |= LH_PAGE_HAS_DEAD_TUPLES;
-		MarkBufferDirtyHint(buf, true);
+		BufferFinishSetHintBits(buf, true, true);
 	}
 
-	if (so->hashso_bucket_buf == so->currPos.buf ||
-		havePin)
+unlock_page:
+	if (havePin)
 		LockBuffer(so->currPos.buf, BUFFER_LOCK_UNLOCK);
 	else
 		_hash_relbuf(rel, buf);

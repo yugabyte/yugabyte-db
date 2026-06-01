@@ -4,7 +4,7 @@
  *	  solution to the query optimization problem
  *	  by means of a Genetic Algorithm (GA)
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/optimizer/geqo/geqo_main.c
@@ -26,10 +26,15 @@
 
 #include <math.h>
 
+#include "optimizer/geqo.h"
+
 #include "optimizer/geqo_misc.h"
+#if defined(CX)
 #include "optimizer/geqo_mutation.h"
+#endif
 #include "optimizer/geqo_pool.h"
 #include "optimizer/geqo_random.h"
+#include "optimizer/geqo_recombination.h"
 #include "optimizer/geqo_selection.h"
 
 
@@ -42,6 +47,8 @@ int			Geqo_generations;
 double		Geqo_selection_bias;
 double		Geqo_seed;
 
+/* GEQO is treated as an in-core planner extension */
+int			Geqo_planner_extension_id = -1;
 
 static int	gimme_pool_size(int nr_rel);
 static int	gimme_number_generations(int pool_size);
@@ -93,9 +100,15 @@ geqo(PlannerInfo *root, int number_of_rels, List *initial_rels)
 	int			mutations = 0;
 #endif
 
+	if (Geqo_planner_extension_id < 0)
+		Geqo_planner_extension_id = GetPlannerExtensionId("geqo");
+
 /* set up private information */
-	root->join_search_private = (void *) &private;
+	SetPlannerInfoExtensionState(root, Geqo_planner_extension_id, &private);
 	private.initial_rels = initial_rels;
+
+/* inform core planner that we may replan */
+	root->assumeReplanning = true;
 
 /* initialize private number generator */
 	geqo_set_seed(root, Geqo_seed);
@@ -299,7 +312,7 @@ geqo(PlannerInfo *root, int number_of_rels, List *initial_rels)
 	free_pool(root, pool);
 
 	/* ... clear root pointer to our private storage */
-	root->join_search_private = NULL;
+	SetPlannerInfoExtensionState(root, Geqo_planner_extension_id, NULL);
 
 	return best_rel;
 }

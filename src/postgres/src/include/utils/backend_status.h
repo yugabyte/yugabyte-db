@@ -2,7 +2,7 @@
  * backend_status.h
  *	  Definitions related to backend status reporting
  *
- * Copyright (c) 2001-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * src/include/utils/backend_status.h
  * ----------
@@ -13,6 +13,7 @@
 #include "datatype/timestamp.h"
 #include "libpq/pqcomm.h"
 #include "miscadmin.h"			/* for BackendType */
+#include "storage/procnumber.h"
 #include "utils/backend_progress.h"
 
 
@@ -31,12 +32,13 @@
 typedef enum BackendState
 {
 	STATE_UNDEFINED,
+	STATE_STARTING,
 	STATE_IDLE,
 	STATE_RUNNING,
 	STATE_IDLEINTRANSACTION,
 	STATE_FASTPATH,
 	STATE_IDLEINTRANSACTION_ABORTED,
-	STATE_DISABLED
+	STATE_DISABLED,
 } BackendState;
 
 
@@ -84,6 +86,7 @@ typedef struct PgBackendGSSStatus
 	char		gss_princ[NAMEDATALEN]; /* GSSAPI Principal used to auth */
 	bool		gss_auth;		/* If GSSAPI authentication was used */
 	bool		gss_enc;		/* If encryption is being used */
+	bool		gss_delegation; /* If credentials delegated */
 
 } PgBackendGSSStatus;
 
@@ -111,7 +114,7 @@ typedef struct YbPgBackendCatalogVersionStatus
  *
  * Each live backend maintains a PgBackendStatus struct in shared memory
  * showing its current activity.  (The structs are allocated according to
- * BackendId, but that is not critical.)  Note that this is unrelated to the
+ * ProcNumber, but that is not critical.)  Note that this is unrelated to the
  * cumulative stats system (i.e. pgstat.c et al).
  *
  * Each auxiliary process also maintains a PgBackendStatus struct in shared
@@ -193,7 +196,10 @@ typedef struct PgBackendStatus
 	int64		st_progress_param[PGSTAT_NUM_PROGRESS_PARAM];
 
 	/* query identifier, optionally computed using post_parse_analyze_hook */
-	uint64		st_query_id;
+	int64		st_query_id;
+
+	/* plan identifier, optionally computed using planner_hook */
+	int64		st_plan_id;
 
 	/* Yugabyte attributes */
 	char	   *st_databasename;	/* Used in YB Mode */
@@ -210,7 +216,6 @@ typedef struct PgBackendStatus
 
 	/* YB (pg_client <--> tserver) Session ID */
 	uint64_t	yb_session_id;
-
 } PgBackendStatus;
 
 
@@ -292,6 +297,11 @@ typedef struct LocalPgBackendStatus
 	PgBackendStatus backendStatus;
 
 	/*
+	 * The proc number.
+	 */
+	ProcNumber	proc_number;
+
+	/*
 	 * The xid of the current transaction if available, InvalidTransactionId
 	 * if not.
 	 */
@@ -302,6 +312,17 @@ typedef struct LocalPgBackendStatus
 	 * not.
 	 */
 	TransactionId backend_xmin;
+
+	/*
+	 * Number of cached subtransactions in the current session.
+	 */
+	int			backend_subxact_count;
+
+	/*
+	 * The number of subtransactions in the current session which exceeded the
+	 * cached subtransaction limit.
+	 */
+	bool		backend_subxact_overflowed;
 
 	/* YB: Backend's memory usage */
 	int64_t		yb_backend_rss_mem_bytes;
@@ -325,34 +346,30 @@ extern PGDLLIMPORT PgBackendStatus *MyBEEntry;
 
 
 /* ----------
- * Functions called from postmaster
- * ----------
- */
-extern Size BackendStatusShmemSize(void);
-extern void CreateSharedBackendStatus(void);
-
-
-/* ----------
  * Functions called from backends
  * ----------
  */
 
 /* Initialization functions */
 extern void pgstat_beinit(void);
-extern void pgstat_bestart(void);
+extern void pgstat_bestart_initial(void);
+extern void pgstat_bestart_security(void);
+extern void pgstat_bestart_final(void);
 
 extern void pgstat_clear_backend_activity_snapshot(void);
 
 /* Activity reporting functions */
 extern void pgstat_report_activity(BackendState state, const char *cmd_str);
-extern void pgstat_report_query_id(uint64 query_id, bool force);
+extern void pgstat_report_query_id(int64 query_id, bool force);
+extern void pgstat_report_plan_id(int64 plan_id, bool force);
 extern void pgstat_report_tempfile(size_t filesize);
 extern void pgstat_report_appname(const char *appname);
 extern void pgstat_report_xact_timestamp(TimestampTz tstamp);
 extern const char *pgstat_get_backend_current_activity(int pid, bool checkUser);
 extern const char *pgstat_get_crashed_backend_activity(int pid, char *buffer,
 													   int buflen);
-extern uint64 pgstat_get_my_query_id(void);
+extern int64 pgstat_get_my_query_id(void);
+extern int64 pgstat_get_my_plan_id(void);
 
 
 /* ----------
@@ -361,8 +378,9 @@ extern uint64 pgstat_get_my_query_id(void);
  * ----------
  */
 extern int	pgstat_fetch_stat_numbackends(void);
-extern PgBackendStatus *pgstat_fetch_stat_beentry(int beid);
-extern LocalPgBackendStatus *pgstat_fetch_stat_local_beentry(int beid);
+extern PgBackendStatus *pgstat_get_beentry_by_proc_number(ProcNumber procNumber);
+extern LocalPgBackendStatus *pgstat_get_local_beentry_by_proc_number(ProcNumber procNumber);
+extern LocalPgBackendStatus *pgstat_get_local_beentry_by_index(int idx);
 extern char *pgstat_clip_activity(const char *raw_activity);
 
 /* ----------

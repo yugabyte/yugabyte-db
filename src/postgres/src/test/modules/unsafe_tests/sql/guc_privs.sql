@@ -98,6 +98,19 @@ GRANT ALL ON PARAMETER none.such TO regress_host_resource_admin;
 SELECT 1 FROM pg_parameter_acl WHERE parname = 'none.such';
 REVOKE ALL ON PARAMETER "None.Such" FROM regress_host_resource_admin;
 SELECT 1 FROM pg_parameter_acl WHERE parname = 'none.such';
+
+-- Superuser should be able to ALTER SYSTEM SET a non-existent custom GUC.
+ALTER SYSTEM SET none.such = 'whiz bang';
+-- None of the above should have created a placeholder GUC for none.such.
+SHOW none.such;  -- error
+-- However, if we reload ...
+SELECT pg_reload_conf();
+-- and start a new session to avoid race condition ...
+\c -
+SET SESSION AUTHORIZATION regress_admin;
+-- then it should be there.
+SHOW none.such;
+
 -- Can't grant on a non-existent core GUC.
 GRANT ALL ON PARAMETER no_such_guc TO regress_host_resource_admin;  -- fail
 
@@ -133,7 +146,7 @@ GRANT SET, ALTER SYSTEM ON PARAMETER
     autovacuum_work_mem, hash_mem_multiplier, max_stack_depth,
     shared_buffers, temp_file_limit, work_mem
 TO regress_host_resource_admin;
--- Check the new role now has privilges on parameters
+-- Check the new role now has privileges on parameters
 SELECT has_parameter_privilege('regress_host_resource_admin', 'work_mem', 'SET, ALTER SYSTEM');
 SELECT has_parameter_privilege('regress_host_resource_admin', 'work_mem', 'SET');
 SELECT has_parameter_privilege('regress_host_resource_admin', 'work_mem', 'ALTER SYSTEM');
@@ -190,6 +203,7 @@ ALTER SYSTEM RESET lc_messages;  -- fail, insufficient privileges
 SELECT set_config ('temp_buffers', '8192', false); -- ok
 ALTER SYSTEM RESET autovacuum_work_mem;  -- ok, privileges have been granted
 ALTER SYSTEM RESET ALL;  -- fail, insufficient privileges
+ALTER SYSTEM SET none.such2 = 'whiz bang';  -- fail, not superuser
 ALTER ROLE regress_host_resource_admin SET lc_messages = 'POSIX';  -- fail
 ALTER ROLE regress_host_resource_admin SET max_stack_depth = '1MB';  -- ok
 SELECT setconfig FROM pg_db_role_setting
@@ -247,6 +261,16 @@ DROP ROLE regress_host_resource_newadmin;  -- ok, nothing was transferred
 -- Use "drop owned by" so we can drop the role
 DROP OWNED BY regress_host_resource_admin;  -- ok
 DROP ROLE regress_host_resource_admin;  -- ok
+
+-- Test for GUC synchronized standby slots
+-- Cannot set synchronized_standby_slots to a reserved slot name
+ALTER SYSTEM SET synchronized_standby_slots='pg_conflict_detection';
+-- Cannot set synchronized_standby_slots to an invalid slot name
+ALTER SYSTEM SET synchronized_standby_slots='invalid*';
+-- Can set synchronized_standby_slots to a non-existent slot name
+ALTER SYSTEM SET synchronized_standby_slots='missing';
+-- Reset the GUC
+ALTER SYSTEM RESET synchronized_standby_slots;
 
 -- Clean up
 RESET SESSION AUTHORIZATION;

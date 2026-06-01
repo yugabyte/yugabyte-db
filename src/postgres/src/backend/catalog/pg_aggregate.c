@@ -3,7 +3,7 @@
  * pg_aggregate.c
  *	  routines to support manipulation of the pg_aggregate relation
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -586,23 +586,23 @@ AggregateCreate(const char *aggName,
 	 */
 	for (i = 0; i < numArgs; i++)
 	{
-		aclresult = pg_type_aclcheck(aggArgTypes[i], GetUserId(), ACL_USAGE);
+		aclresult = object_aclcheck(TypeRelationId, aggArgTypes[i], GetUserId(), ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error_type(aclresult, aggArgTypes[i]);
 	}
 
-	aclresult = pg_type_aclcheck(aggTransType, GetUserId(), ACL_USAGE);
+	aclresult = object_aclcheck(TypeRelationId, aggTransType, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error_type(aclresult, aggTransType);
 
 	if (OidIsValid(aggmTransType))
 	{
-		aclresult = pg_type_aclcheck(aggmTransType, GetUserId(), ACL_USAGE);
+		aclresult = object_aclcheck(TypeRelationId, aggmTransType, GetUserId(), ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error_type(aclresult, aggmTransType);
 	}
 
-	aclresult = pg_type_aclcheck(finaltype, GetUserId(), ACL_USAGE);
+	aclresult = object_aclcheck(TypeRelationId, finaltype, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error_type(aclresult, finaltype);
 
@@ -637,6 +637,7 @@ AggregateCreate(const char *aggName,
 							 parameterNames,	/* parameterNames */
 							 parameterDefaults, /* parameterDefaults */
 							 PointerGetDatum(NULL), /* trftypes */
+							 NIL,	/* trfoids */
 							 PointerGetDatum(NULL), /* proconfig */
 							 InvalidOid,	/* no prosupport */
 							 1, /* procost */
@@ -653,7 +654,7 @@ AggregateCreate(const char *aggName,
 	for (i = 0; i < Natts_pg_aggregate; i++)
 	{
 		nulls[i] = false;
-		values[i] = (Datum) NULL;
+		values[i] = (Datum) 0;
 		replaces[i] = true;
 	}
 	values[Anum_pg_aggregate_aggfnoid - 1] = ObjectIdGetDatum(procOid);
@@ -835,6 +836,7 @@ lookup_agg_function(List *fnName,
 	Oid			vatype;
 	Oid		   *true_oid_array;
 	FuncDetailCode fdresult;
+	int			fgc_flags;
 	AclResult	aclresult;
 	int			i;
 
@@ -847,6 +849,7 @@ lookup_agg_function(List *fnName,
 	 */
 	fdresult = func_get_detail(fnName, NIL, NIL,
 							   nargs, input_types, false, false, false,
+							   &fgc_flags,
 							   &fnOid, rettype, &retset,
 							   &nvargs, &vatype,
 							   &true_oid_array, NULL);
@@ -906,7 +909,7 @@ lookup_agg_function(List *fnName,
 	}
 
 	/* Check aggregate creator has permission to call the function */
-	aclresult = pg_proc_aclcheck(fnOid, GetUserId(), ACL_EXECUTE);
+	aclresult = object_aclcheck(ProcedureRelationId, fnOid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(fnOid));
 

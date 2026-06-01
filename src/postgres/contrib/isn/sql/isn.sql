@@ -107,6 +107,32 @@ SELECT '12345679'::ISSN = '9771234567003'::EAN13 AS "ok",
        'M-1234-5678-5'::ISMN = '9790123456785'::EAN13 AS "ok",
        '9791234567896'::EAN13 != '123456789X'::ISBN AS "nope";
 
+-- test non-error-throwing input API
+SELECT str as isn, typ as "type",
+       pg_input_is_valid(str,typ) as ok,
+       errinfo.sql_error_code,
+       errinfo.message,
+       errinfo.detail,
+       errinfo.hint
+FROM (VALUES ('9780123456786', 'UPC'),
+             ('postgresql...','EAN13'),
+             ('9771234567003','ISSN'))
+      AS a(str,typ),
+     LATERAL pg_input_error_info(a.str, a.typ) as errinfo;
+
+--
+-- test weak mode
+--
+SELECT '2222222222221'::ean13;  -- fail
+SET isn.weak TO TRUE;
+SELECT '2222222222221'::ean13;
+SELECT is_valid('2222222222221'::ean13);
+SELECT make_valid('2222222222221'::ean13);
+
+SELECT isn_weak();  -- backwards-compatibility wrappers for accessing the GUC
+SELECT isn_weak(false);
+SHOW isn.weak;
+
 --
 -- cleanup
 --

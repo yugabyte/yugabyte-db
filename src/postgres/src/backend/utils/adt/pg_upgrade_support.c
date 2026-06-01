@@ -2,23 +2,33 @@
  *	pg_upgrade_support.c
  *
  *	server-side functions to set backend global variables
- *	to control oid and relfilenode assignment, and do other special
+ *	to control oid and relfilenumber assignment, and do other special
  *	hacks needed for pg_upgrade.
  *
- *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *	src/backend/utils/adt/pg_upgrade_support.c
  */
 
 #include "postgres.h"
 
+#include "access/relation.h"
+#include "access/table.h"
 #include "catalog/binary_upgrade.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_subscription_rel.h"
 #include "catalog/pg_type.h"
 #include "commands/extension.h"
 #include "miscadmin.h"
+#include "replication/logical.h"
+#include "replication/logicallauncher.h"
+#include "replication/origin.h"
+#include "replication/worker_internal.h"
+#include "storage/lmgr.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
+#include "utils/pg_lsn.h"
 
 
 #define CHECK_IS_BINARY_UPGRADE									\
@@ -98,10 +108,10 @@ binary_upgrade_set_next_heap_pg_class_oid(PG_FUNCTION_ARGS)
 Datum
 binary_upgrade_set_next_heap_relfilenode(PG_FUNCTION_ARGS)
 {
-	Oid			nodeoid = PG_GETARG_OID(0);
+	RelFileNumber relfilenumber = PG_GETARG_OID(0);
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_heap_pg_class_relfilenode = nodeoid;
+	binary_upgrade_next_heap_pg_class_relfilenumber = relfilenumber;
 
 	PG_RETURN_VOID();
 }
@@ -120,10 +130,10 @@ binary_upgrade_set_next_index_pg_class_oid(PG_FUNCTION_ARGS)
 Datum
 binary_upgrade_set_next_index_relfilenode(PG_FUNCTION_ARGS)
 {
-	Oid			nodeoid = PG_GETARG_OID(0);
+	RelFileNumber relfilenumber = PG_GETARG_OID(0);
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_index_pg_class_relfilenode = nodeoid;
+	binary_upgrade_next_index_pg_class_relfilenumber = relfilenumber;
 
 	PG_RETURN_VOID();
 }
@@ -142,10 +152,10 @@ binary_upgrade_set_next_toast_pg_class_oid(PG_FUNCTION_ARGS)
 Datum
 binary_upgrade_set_next_toast_relfilenode(PG_FUNCTION_ARGS)
 {
-	Oid			nodeoid = PG_GETARG_OID(0);
+	RelFileNumber relfilenumber = PG_GETARG_OID(0);
 
 	CHECK_IS_BINARY_UPGRADE;
-	binary_upgrade_next_toast_pg_class_relfilenode = nodeoid;
+	binary_upgrade_next_toast_pg_class_relfilenumber = relfilenumber;
 
 	PG_RETURN_VOID();
 }
@@ -236,9 +246,7 @@ binary_upgrade_create_empty_extension(PG_FUNCTION_ARGS)
 		int			ndatums;
 		int			i;
 
-		deconstruct_array(textArray,
-						  TEXTOID, -1, false, TYPALIGN_INT,
-						  &textDatums, NULL, &ndatums);
+		deconstruct_array_builtin(textArray, TEXTOID, &textDatums, NULL, &ndatums);
 		for (i = 0; i < ndatums; i++)
 		{
 			char	   *extName = TextDatumGetCString(textDatums[i]);
@@ -282,6 +290,170 @@ binary_upgrade_set_missing_value(PG_FUNCTION_ARGS)
 
 	CHECK_IS_BINARY_UPGRADE;
 	SetAttrMissing(table_id, cattname, cvalue);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Verify the given slot has already consumed all the WAL changes.
+ *
+ * Returns true if there are no decodable WAL records after the
+ * confirmed_flush_lsn. Otherwise false.
+ *
+ * This is a special purpose function to ensure that the given slot can be
+ * upgraded without data loss.
+ */
+Datum
+binary_upgrade_check_logical_slot_pending_wal(PG_FUNCTION_ARGS)
+{
+	Name		slot_name;
+	XLogRecPtr	end_of_wal;
+	XLogRecPtr	scan_cutoff_lsn;
+	XLogRecPtr	last_pending_wal;
+
+	CHECK_IS_BINARY_UPGRADE;
+
+	/*
+	 * Binary upgrades only allowed super-user connections so we must have
+	 * permission to use replication slots.
+	 */
+	Assert(has_rolreplication(GetUserId()));
+
+	slot_name = PG_GETARG_NAME(0);
+	scan_cutoff_lsn = PG_GETARG_LSN(1);
+
+	/* Acquire the given slot */
+	ReplicationSlotAcquire(NameStr(*slot_name), true, true);
+
+	Assert(SlotIsLogical(MyReplicationSlot));
+
+	/* Slots must be valid as otherwise we won't be able to scan the WAL */
+	Assert(MyReplicationSlot->data.invalidated == RS_INVAL_NONE);
+
+	end_of_wal = GetFlushRecPtr(NULL);
+	last_pending_wal = LogicalReplicationSlotCheckPendingWal(end_of_wal,
+															 scan_cutoff_lsn);
+
+	/* Clean up */
+	ReplicationSlotRelease();
+
+	if (XLogRecPtrIsValid(last_pending_wal))
+		PG_RETURN_LSN(last_pending_wal);
+	else
+		PG_RETURN_NULL();
+}
+
+/*
+ * binary_upgrade_add_sub_rel_state
+ *
+ * Add the relation with the specified relation state to pg_subscription_rel
+ * catalog.
+ */
+Datum
+binary_upgrade_add_sub_rel_state(PG_FUNCTION_ARGS)
+{
+	Relation	subrel;
+	Relation	rel;
+	Oid			subid;
+	char	   *subname;
+	Oid			relid;
+	char		relstate;
+	XLogRecPtr	sublsn;
+
+	CHECK_IS_BINARY_UPGRADE;
+
+	/* We must check these things before dereferencing the arguments */
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		elog(ERROR, "null argument to binary_upgrade_add_sub_rel_state is not allowed");
+
+	subname = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	relid = PG_GETARG_OID(1);
+	relstate = PG_GETARG_CHAR(2);
+	sublsn = PG_ARGISNULL(3) ? InvalidXLogRecPtr : PG_GETARG_LSN(3);
+
+	subrel = table_open(SubscriptionRelationId, RowExclusiveLock);
+	subid = get_subscription_oid(subname, false);
+	rel = relation_open(relid, AccessShareLock);
+
+	/*
+	 * Since there are no concurrent ALTER/DROP SUBSCRIPTION commands during
+	 * the upgrade process, and the apply worker (which builds cache based on
+	 * the subscription catalog) is not running, the locks can be released
+	 * immediately.
+	 */
+	AddSubscriptionRelState(subid, relid, relstate, sublsn, false);
+	relation_close(rel, AccessShareLock);
+	table_close(subrel, RowExclusiveLock);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * binary_upgrade_replorigin_advance
+ *
+ * Update the remote_lsn for the subscriber's replication origin.
+ */
+Datum
+binary_upgrade_replorigin_advance(PG_FUNCTION_ARGS)
+{
+	Relation	rel;
+	Oid			subid;
+	char	   *subname;
+	char		originname[NAMEDATALEN];
+	ReplOriginId node;
+	XLogRecPtr	remote_commit;
+
+	CHECK_IS_BINARY_UPGRADE;
+
+	/*
+	 * We must ensure a non-NULL subscription name before dereferencing the
+	 * arguments.
+	 */
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "null argument to binary_upgrade_replorigin_advance is not allowed");
+
+	subname = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	remote_commit = PG_ARGISNULL(1) ? InvalidXLogRecPtr : PG_GETARG_LSN(1);
+
+	rel = table_open(SubscriptionRelationId, RowExclusiveLock);
+	subid = get_subscription_oid(subname, false);
+
+	ReplicationOriginNameForLogicalRep(subid, InvalidOid, originname, sizeof(originname));
+
+	/* Lock to prevent the replication origin from vanishing */
+	LockRelationOid(ReplicationOriginRelationId, RowExclusiveLock);
+	node = replorigin_by_name(originname, false);
+
+	/*
+	 * The server will be stopped after setting up the objects in the new
+	 * cluster and the origins will be flushed during the shutdown checkpoint.
+	 * This will ensure that the latest LSN values for origin will be
+	 * available after the upgrade.
+	 */
+	replorigin_advance(node, remote_commit, InvalidXLogRecPtr,
+					   false /* backward */ ,
+					   false /* WAL log */ );
+
+	UnlockRelationOid(ReplicationOriginRelationId, RowExclusiveLock);
+	table_close(rel, RowExclusiveLock);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * binary_upgrade_create_conflict_detection_slot
+ *
+ * Create a replication slot to retain information necessary for conflict
+ * detection such as dead tuples, commit timestamps, and origins.
+ */
+Datum
+binary_upgrade_create_conflict_detection_slot(PG_FUNCTION_ARGS)
+{
+	CHECK_IS_BINARY_UPGRADE;
+
+	CreateConflictDetectionSlot();
+
+	ReplicationSlotRelease();
 
 	PG_RETURN_VOID();
 }

@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Demonstrate that logical can follow timeline switches.
 #
@@ -22,7 +22,7 @@
 # on logical slots).
 #
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -94,8 +94,8 @@ is( $node_replica->safe_psql(
 		'postgres', q[SELECT 1 FROM pg_database WHERE datname = 'dropme']),
 	'',
 	'dropped DB dropme on standby');
-is($node_primary->slot('dropme_slot')->{'slot_name'},
-	undef, 'logical slot was actually dropped on standby');
+is($node_replica->slot('dropme_slot')->{'plugin'},
+	'', 'logical slot was actually dropped on standby');
 
 # Back to testing failover...
 $node_primary->safe_psql('postgres',
@@ -187,8 +187,8 @@ my $endpos = $node_replica->safe_psql('postgres',
 
 $stdout = $node_replica->pg_recvlogical_upto(
 	'postgres', 'before_basebackup',
-	$endpos,    $PostgreSQL::Test::Utils::timeout_default,
-	'include-xids'     => '0',
+	$endpos, $PostgreSQL::Test::Utils::timeout_default,
+	'include-xids' => '0',
 	'skip-empty-xacts' => '1');
 
 # walsender likes to add a newline

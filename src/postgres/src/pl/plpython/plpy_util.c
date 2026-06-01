@@ -9,8 +9,6 @@
 #include "mb/pg_wchar.h"
 #include "plpy_elog.h"
 #include "plpy_util.h"
-#include "plpython.h"
-#include "utils/memutils.h"
 
 /*
  * Convert a Python unicode object to a Python string/bytes object in
@@ -42,8 +40,8 @@ PLyUnicode_Bytes(PyObject *unicode)
 	 *
 	 * PyUnicode_AsEncodedString could be used to encode the object directly
 	 * in the server encoding, but Python doesn't support all the encodings
-	 * that PostgreSQL does (EUC_TW and MULE_INTERNAL). UTF-8 is used as an
-	 * intermediary in PLyUnicode_FromString as well.
+	 * that PostgreSQL does (EUC_TW). UTF-8 is used as an intermediary in
+	 * PLyUnicode_FromString as well.
 	 */
 	if (GetDatabaseEncoding() != PG_UTF8)
 	{

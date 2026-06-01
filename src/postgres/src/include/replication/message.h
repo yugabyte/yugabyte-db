@@ -2,7 +2,7 @@
  * message.h
  *	   Exports from replication/logical/message.c
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  * src/include/replication/message.h
  *-------------------------------------------------------------------------
@@ -30,7 +30,8 @@ typedef struct xl_logical_message
 #define SizeOfLogicalMessage	(offsetof(xl_logical_message, message))
 
 extern XLogRecPtr LogLogicalMessage(const char *prefix, const char *message,
-									size_t size, bool transactional);
+									size_t size, bool transactional,
+									bool flush);
 
 /* RMGR API */
 #define XLOG_LOGICAL_MESSAGE	0x00

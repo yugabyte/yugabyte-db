@@ -4,7 +4,7 @@
  *	  definition of the "enum" system catalog (pg_enum)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_enum.h
@@ -19,7 +19,7 @@
 #define PG_ENUM_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_enum_d.h"
+#include "catalog/pg_enum_d.h"	/* IWYU pragma: export */
 
 #include "nodes/pg_list.h"
 
@@ -28,6 +28,8 @@
  *		typedef struct FormData_pg_enum
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_enum,3501,EnumRelationId)
 {
 	Oid			oid;			/* oid */
@@ -36,6 +38,8 @@ CATALOG(pg_enum,3501,EnumRelationId)
 	NameData	enumlabel;		/* text representation of enum value */
 } FormData_pg_enum;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_enum corresponds to a pointer to a tuple with
  *		the format of pg_enum relation.
@@ -43,9 +47,12 @@ CATALOG(pg_enum,3501,EnumRelationId)
  */
 typedef FormData_pg_enum *Form_pg_enum;
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_enum_oid_index, 3502, EnumOidIndexId, on pg_enum using btree(oid oid_ops));
-DECLARE_UNIQUE_INDEX(pg_enum_typid_label_index, 3503, EnumTypIdLabelIndexId, on pg_enum using btree(enumtypid oid_ops, enumlabel name_ops));
-DECLARE_UNIQUE_INDEX(pg_enum_typid_sortorder_index, 3534, EnumTypIdSortOrderIndexId, on pg_enum using btree(enumtypid oid_ops, enumsortorder float4_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_enum_oid_index, 3502, EnumOidIndexId, pg_enum, btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_enum_typid_label_index, 3503, EnumTypIdLabelIndexId, pg_enum, btree(enumtypid oid_ops, enumlabel name_ops));
+DECLARE_UNIQUE_INDEX(pg_enum_typid_sortorder_index, 3534, EnumTypIdSortOrderIndexId, pg_enum, btree(enumtypid oid_ops, enumsortorder float4_ops));
+
+MAKE_SYSCACHE(ENUMOID, pg_enum_oid_index, 8);
+MAKE_SYSCACHE(ENUMTYPOIDNAME, pg_enum_typid_label_index, 8);
 
 /*
  * prototypes for functions in pg_enum.c

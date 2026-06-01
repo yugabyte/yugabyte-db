@@ -3,7 +3,7 @@
  * message.c
  *	  Generic logical messages.
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/message.c
@@ -34,19 +34,17 @@
 #include "access/xact.h"
 #include "access/xloginsert.h"
 #include "miscadmin.h"
-#include "nodes/execnodes.h"
-#include "replication/logical.h"
 #include "replication/message.h"
-#include "utils/memutils.h"
 
 /*
  * Write logical decoding message into XLog.
  */
 XLogRecPtr
 LogLogicalMessage(const char *prefix, const char *message, size_t size,
-				  bool transactional)
+				  bool transactional, bool flush)
 {
 	xl_logical_message xlrec;
+	XLogRecPtr	lsn;
 
 	/*
 	 * Force xid to be allocated if we're emitting a transactional message.
@@ -64,14 +62,22 @@ LogLogicalMessage(const char *prefix, const char *message, size_t size,
 	xlrec.message_size = size;
 
 	XLogBeginInsert();
-	XLogRegisterData((char *) &xlrec, SizeOfLogicalMessage);
-	XLogRegisterData(unconstify(char *, prefix), xlrec.prefix_size);
-	XLogRegisterData(unconstify(char *, message), size);
+	XLogRegisterData(&xlrec, SizeOfLogicalMessage);
+	XLogRegisterData(prefix, xlrec.prefix_size);
+	XLogRegisterData(message, size);
 
 	/* allow origin filtering */
 	XLogSetRecordFlags(XLOG_INCLUDE_ORIGIN);
 
-	return XLogInsert(RM_LOGICALMSG_ID, XLOG_LOGICAL_MESSAGE);
+	lsn = XLogInsert(RM_LOGICALMSG_ID, XLOG_LOGICAL_MESSAGE);
+
+	/*
+	 * Make sure that the message hits disk before leaving if emitting a
+	 * non-transactional message when flush is requested.
+	 */
+	if (!transactional && flush)
+		XLogFlush(lsn);
+	return lsn;
 }
 
 /*

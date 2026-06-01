@@ -10,7 +10,9 @@ DATA = pg_visibility--1.1.sql pg_visibility--1.1--1.2.sql \
 	pg_visibility--1.0--1.1.sql
 PGFILEDESC = "pg_visibility - page visibility information"
 
+EXTRA_INSTALL = contrib/pageinspect
 REGRESS = pg_visibility
+TAP_TESTS = 1
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

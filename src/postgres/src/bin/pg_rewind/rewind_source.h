@@ -8,7 +8,7 @@
  * operations to fetch data from the source system, so that the rest of
  * the code doesn't need to care what kind of a source its dealing with.
  *
- * Copyright (c) 2013-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -83,4 +83,4 @@ extern rewind_source *init_libpq_source(PGconn *conn);
 /* in local_source.c */
 extern rewind_source *init_local_source(const char *datadir);
 
-#endif							/* FETCH_H */
+#endif							/* REWIND_SOURCE_H */

@@ -8,7 +8,7 @@
  *	  interrupted, unlike LWLock waits.  Condition variables are safe
  *	  to use within dynamic shared memory segments.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/storage/lmgr/condition_variable.c
@@ -18,14 +18,14 @@
 
 #include "postgres.h"
 
+#include <limits.h>
+
 #include "miscadmin.h"
 #include "portability/instr_time.h"
 #include "storage/condition_variable.h"
-#include "storage/ipc.h"
 #include "storage/proc.h"
 #include "storage/proclist.h"
 #include "storage/spin.h"
-#include "utils/memutils.h"
 
 /* Initially, we are not prepared to sleep on any condition variable. */
 static ConditionVariable *cv_sleep_target = NULL;
@@ -57,7 +57,7 @@ ConditionVariableInit(ConditionVariable *cv)
 void
 ConditionVariablePrepareToSleep(ConditionVariable *cv)
 {
-	int			pgprocno = MyProc->pgprocno;
+	int			pgprocno = MyProcNumber;
 
 	/*
 	 * If some other sleep is already prepared, cancel it; this is necessary
@@ -78,7 +78,6 @@ ConditionVariablePrepareToSleep(ConditionVariable *cv)
 	proclist_push_tail(&cv->wakeup, pgprocno, cvWaitLink);
 	SpinLockRelease(&cv->mutex);
 }
-
 /*
  * Wait for the given condition variable to be signaled.
  *
@@ -103,6 +102,8 @@ ConditionVariableSleep(ConditionVariable *cv, uint32 wait_event_info)
 
 /*
  * Wait for a condition variable to be signaled or a timeout to be reached.
+ *
+ * The "timeout" is given in milliseconds.
  *
  * Returns true when timeout expires, otherwise returns false.
  *
@@ -181,10 +182,10 @@ ConditionVariableTimedSleep(ConditionVariable *cv, long timeout,
 		 * guarantee not to return spuriously, we'll avoid this obvious case.
 		 */
 		SpinLockAcquire(&cv->mutex);
-		if (!proclist_contains(&cv->wakeup, MyProc->pgprocno, cvWaitLink))
+		if (!proclist_contains(&cv->wakeup, MyProcNumber, cvWaitLink))
 		{
 			done = true;
-			proclist_push_tail(&cv->wakeup, MyProc->pgprocno, cvWaitLink);
+			proclist_push_tail(&cv->wakeup, MyProcNumber, cvWaitLink);
 		}
 		SpinLockRelease(&cv->mutex);
 
@@ -223,31 +224,28 @@ ConditionVariableTimedSleep(ConditionVariable *cv, long timeout,
  *
  * Do nothing if nothing is pending; this allows this function to be called
  * during transaction abort to clean up any unfinished CV sleep.
+ *
+ * Return true if we've been signaled.
  */
-void
+bool
 ConditionVariableCancelSleep(void)
 {
 	ConditionVariable *cv = cv_sleep_target;
 	bool		signaled = false;
 
 	if (cv == NULL)
-		return;
+		return false;
 
 	SpinLockAcquire(&cv->mutex);
-	if (proclist_contains(&cv->wakeup, MyProc->pgprocno, cvWaitLink))
-		proclist_delete(&cv->wakeup, MyProc->pgprocno, cvWaitLink);
+	if (proclist_contains(&cv->wakeup, MyProcNumber, cvWaitLink))
+		proclist_delete(&cv->wakeup, MyProcNumber, cvWaitLink);
 	else
 		signaled = true;
 	SpinLockRelease(&cv->mutex);
 
-	/*
-	 * If we've received a signal, pass it on to another waiting process, if
-	 * there is one.  Otherwise a call to ConditionVariableSignal() might get
-	 * lost, despite there being another process ready to handle it.
-	 */
-	if (signaled)
-		ConditionVariableSignal(cv);
 	cv_sleep_target = NULL;
+
+	return signaled;
 }
 
 /*
@@ -260,6 +258,9 @@ ConditionVariableCancelSleep(void)
  * during transaction abort to clean up any unfinished CV sleep.
  *
  * TODO(#23274): Rewrite / delete YbConditionVariableCancelSleepForProc
+ * YB_TODO_PG19MERGE: this function seems to be adapated from the one above. It
+ * looks like PG changed some stuff, so adding a todo to check if the YB function
+ * needs an update.
  */
 void
 YbConditionVariableCancelSleepForProc(volatile PGPROC *proc)
@@ -270,8 +271,8 @@ YbConditionVariableCancelSleepForProc(volatile PGPROC *proc)
 		return;
 
 	SpinLockAcquire(&cv->mutex);
-	if (proclist_contains(&cv->wakeup, proc->pgprocno, cvWaitLink))
-		proclist_delete(&cv->wakeup, proc->pgprocno, cvWaitLink);
+	if (proclist_contains(&cv->wakeup, proc->vxid.procNumber, cvWaitLink))
+		proclist_delete(&cv->wakeup, proc->vxid.procNumber, cvWaitLink);
 	SpinLockRelease(&cv->mutex);
 	cv_sleep_target = NULL;
 }
@@ -317,7 +318,7 @@ void
 YbConditionVariableBroadcastForProc(ConditionVariable *cv,
 									volatile PGPROC *given_proc)
 {
-	int			pgprocno = given_proc->pgprocno;
+	int			pgprocno = given_proc->vxid.procNumber;
 	PGPROC	   *proc = NULL;
 	bool		have_sentinel = false;
 

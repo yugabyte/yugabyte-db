@@ -11,7 +11,7 @@
  * on callers, since this is an opaque structure.  This is the reason to
  * require a create function.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -38,7 +38,7 @@ struct QueryEnvironment
 QueryEnvironment *
 create_queryEnv(void)
 {
-	return (QueryEnvironment *) palloc0(sizeof(QueryEnvironment));
+	return palloc0_object(QueryEnvironment);
 }
 
 EphemeralNamedRelationMetadata

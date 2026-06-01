@@ -779,8 +779,10 @@ class PostgresBuilder(YbBuildToolBase):
 
         pg_compile_commands_paths = []
 
-        external_extension_dirs = [os.path.join(self.pg_build_root, d) for d
-                                   in ('third-party-extensions', 'yb-extensions')]
+        # YB_TODO_PG19MERGE: skip third party extensions for now
+        external_extension_subdirs = ['yb-extensions']
+        external_extension_dirs = [os.path.join(self.pg_build_root, d)
+                                   for d in external_extension_subdirs]
         work_dirs = [
             self.pg_build_root,
             os.path.join(self.pg_build_root, 'contrib'),
@@ -1057,7 +1059,7 @@ class PostgresBuilder(YbBuildToolBase):
                 make_start_time_sec = time.time()
                 self.run_make_with_retries(
                     self.pg_build_root,
-                    shlex_join(['make', '-C', 'src/backend/catalog', 'bki-stamp']))
+                    shlex_join(['make', '-C', 'src/include/catalog', 'generated-headers']))
                 logging.info("The genbki step of building PostgreSQL took %.1f sec",
                              time.time() - make_start_time_sec)
             if self.should_make:

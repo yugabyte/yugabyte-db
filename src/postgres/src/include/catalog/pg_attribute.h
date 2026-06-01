@@ -8,7 +8,7 @@
  * relations need be included.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_attribute.h
@@ -23,7 +23,7 @@
 #define PG_ATTRIBUTE_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_attribute_d.h"
+#include "catalog/pg_attribute_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_attribute definition.  cpp turns this into
@@ -34,6 +34,8 @@
  *		You may need to change catalog/genbki.pl as well.
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,AttributeRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			attrelid BKI_LOOKUP(pg_class);	/* OID of relation containing
@@ -51,15 +53,6 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
 	 * table are.
 	 */
 	Oid			atttypid BKI_LOOKUP_OPT(pg_type);
-
-	/*
-	 * attstattarget is the target number of statistics datapoints to collect
-	 * during VACUUM ANALYZE of this column.  A zero here indicates that we do
-	 * not wish to collect any stats about this column. A "-1" here indicates
-	 * that no value has been explicitly set for this column, so ANALYZE
-	 * should use the default setting.
-	 */
-	int32		attstattarget BKI_DEFAULT(-1);
 
 	/*
 	 * attlen is a copy of the typlen field from pg_type for this attribute.
@@ -83,27 +76,18 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
 	int16		attnum;
 
 	/*
-	 * attndims is the declared number of dimensions, if an array type,
-	 * otherwise zero.
-	 */
-	int32		attndims;
-
-	/*
-	 * fastgetattr() uses attcacheoff to cache byte offsets of attributes in
-	 * heap tuples.  The value actually stored in pg_attribute (-1) indicates
-	 * no cached value.  But when we copy these tuples into a tuple
-	 * descriptor, we may then update attcacheoff in the copies. This speeds
-	 * up the attribute walking process.
-	 */
-	int32		attcacheoff BKI_DEFAULT(-1);
-
-	/*
 	 * atttypmod records type-specific data supplied at table creation time
 	 * (for example, the max length of a varchar field).  It is passed to
 	 * type-specific input and output functions as the third argument. The
 	 * value will generally be -1 for types that do not need typmod.
 	 */
 	int32		atttypmod BKI_DEFAULT(-1);
+
+	/*
+	 * attndims is the declared number of dimensions, if an array type,
+	 * otherwise zero.
+	 */
+	int16		attndims;
 
 	/*
 	 * attbyval is a copy of the typbyval field from pg_type for this
@@ -135,7 +119,9 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
 	 */
 	char		attcompression BKI_DEFAULT('\0');
 
-	/* This flag represents the "NOT NULL" constraint */
+	/*
+	 * Whether a (possibly invalid) not-null constraint exists for the column
+	 */
 	bool		attnotnull;
 
 	/* Has DEFAULT value or not */
@@ -165,13 +151,24 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
 	bool		attislocal BKI_DEFAULT(t);
 
 	/* Number of times inherited from direct parent relation(s) */
-	int32		attinhcount BKI_DEFAULT(0);
+	int16		attinhcount BKI_DEFAULT(0);
 
 	/* attribute's collation, if any */
 	Oid			attcollation BKI_LOOKUP_OPT(pg_collation);
 
-#ifdef CATALOG_VARLEN			/* variable-length fields start here */
+#ifdef CATALOG_VARLEN			/* variable-length/nullable fields start here */
 	/* NOTE: The following fields are not present in tuple descriptors. */
+
+	/*
+	 * attstattarget is the target number of statistics datapoints to collect
+	 * during VACUUM ANALYZE of this column.  A zero here indicates that we do
+	 * not wish to collect any stats about this column. A null value here
+	 * indicates that no value has been explicitly set for this column, so
+	 * ANALYZE should use the default setting.
+	 *
+	 * int16 is sufficient for the current max value (MAX_STATISTICS_TARGET).
+	 */
+	int16		attstattarget BKI_DEFAULT(_null_) BKI_FORCE_NULL;
 
 	/* Column-level access permissions */
 	aclitem		attacl[1] BKI_DEFAULT(_null_);
@@ -190,6 +187,8 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
 #endif
 } FormData_pg_attribute;
 
+END_CATALOG_STRUCT
+
 /*
  * ATTRIBUTE_FIXED_PART_SIZE is the size of the fixed-layout,
  * guaranteed-not-null part of a pg_attribute row.  This is in fact as much
@@ -206,8 +205,25 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
  */
 typedef FormData_pg_attribute *Form_pg_attribute;
 
-DECLARE_UNIQUE_INDEX(pg_attribute_relid_attnam_index, 2658, AttributeRelidNameIndexId, on pg_attribute using btree(attrelid oid_ops, attname name_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_attribute_relid_attnum_index, 2659, AttributeRelidNumIndexId, on pg_attribute using btree(attrelid oid_ops, attnum int2_ops));
+/*
+ * FormExtraData_pg_attribute contains (some of) the fields that are not in
+ * FormData_pg_attribute because they are excluded by CATALOG_VARLEN.  It is
+ * meant to be used by DDL code so that the combination of
+ * FormData_pg_attribute (often via tuple descriptor) and
+ * FormExtraData_pg_attribute can be used to pass around all the information
+ * about an attribute.  Fields can be included here as needed.
+ */
+typedef struct FormExtraData_pg_attribute
+{
+	NullableDatum attstattarget;
+	NullableDatum attoptions;
+} FormExtraData_pg_attribute;
+
+DECLARE_UNIQUE_INDEX(pg_attribute_relid_attnam_index, 2658, AttributeRelidNameIndexId, pg_attribute, btree(attrelid oid_ops, attname name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_attribute_relid_attnum_index, 2659, AttributeRelidNumIndexId, pg_attribute, btree(attrelid oid_ops, attnum int2_ops));
+
+MAKE_SYSCACHE(ATTNAME, pg_attribute_relid_attnam_index, 32);
+MAKE_SYSCACHE(ATTNUM, pg_attribute_relid_attnum_index, 128);
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 
@@ -215,6 +231,7 @@ DECLARE_UNIQUE_INDEX_PKEY(pg_attribute_relid_attnum_index, 2659, AttributeRelidN
 #define		  ATTRIBUTE_IDENTITY_BY_DEFAULT 'd'
 
 #define		  ATTRIBUTE_GENERATED_STORED	's'
+#define		  ATTRIBUTE_GENERATED_VIRTUAL	'v'
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 

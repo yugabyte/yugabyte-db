@@ -3,7 +3,7 @@
  * nodeSort.c
  *	  Routines to handle sorting of relations.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -135,7 +135,7 @@ ExecSort(PlanState *pstate)
 												  tuplesortopts);
 		if (node->bounded)
 			tuplesort_set_bound(tuplesortstate, node->bound);
-		node->tuplesortstate = (void *) tuplesortstate;
+		node->tuplesortstate = tuplesortstate;
 
 		/*
 		 * Scan the subplan and feed all the tuples to tuplesort using the
@@ -188,7 +188,7 @@ ExecSort(PlanState *pstate)
 			TuplesortInstrumentation *si;
 
 			Assert(IsParallelWorker());
-			Assert(ParallelWorkerNumber <= node->shared_info->num_workers);
+			Assert(ParallelWorkerNumber < node->shared_info->num_workers);
 			si = &node->shared_info->sinstrument[ParallelWorkerNumber];
 			tuplesort_get_stats(tuplesortstate, si);
 		}
@@ -211,7 +211,8 @@ ExecSort(PlanState *pstate)
 	{
 		ExecClearTuple(slot);
 		if (tuplesort_getdatum(tuplesortstate, ScanDirectionIsForward(dir),
-							   &(slot->tts_values[0]), &(slot->tts_isnull[0]), NULL))
+							   false, &(slot->tts_values[0]),
+							   &(slot->tts_isnull[0]), NULL))
 			ExecStoreVirtualTuple(slot);
 	}
 	else
@@ -291,10 +292,10 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	outerTupDesc = ExecGetResultType(outerPlanState(sortstate));
 
 	/*
-	 * We perform a Datum sort when we're sorting just a single byval column,
+	 * We perform a Datum sort when we're sorting just a single column,
 	 * otherwise we perform a tuple sort.
 	 */
-	if (outerTupDesc->natts == 1 && TupleDescAttr(outerTupDesc, 0)->attbyval)
+	if (outerTupDesc->natts == 1)
 		sortstate->datumSort = true;
 	else
 		sortstate->datumSort = false;
@@ -314,13 +315,6 @@ ExecEndSort(SortState *node)
 {
 	SO1_printf("ExecEndSort: %s\n",
 			   "shutting down sort node");
-
-	/*
-	 * clean out the tuple table
-	 */
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	/* must drop pointer to sort result tuple */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
 	/*
 	 * Release tuplesort resources

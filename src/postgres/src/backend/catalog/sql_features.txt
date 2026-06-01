@@ -6,12 +6,13 @@ B015	Embedded MUMPS			NO
 B016	Embedded Pascal			NO	
 B017	Embedded PL/I			NO	
 B021	Direct SQL			YES	
+B030	Enhanced dynamic SQL			NO	
 B031	Basic dynamic SQL			NO	
 B032	Extended dynamic SQL			NO	
-B032	Extended dynamic SQL	01	<describe input statement>	NO	
 B033	Untyped SQL-invoked function arguments			NO	
 B034	Dynamic specification of cursor attributes			NO	
 B035	Non-extended descriptor names			NO	
+B036	Describe input statement			NO	
 B041	Extensions to embedded SQL exception declarations			NO	
 B051	Enhanced execution rights			NO	
 B111	Module language Ada			NO	
@@ -31,7 +32,7 @@ B127	Routine language PL/I			NO
 B128	Routine language SQL			YES	
 B200	Polymorphic table functions			NO	
 B201	More than one PTF generic table parameter			NO	
-B202	PTF Copartitioning			NO	
+B202	PTF copartitioning			NO	
 B203	More than one copartition specification			NO	
 B204	PRUNE WHEN EMPTY			NO	
 B205	Pass-through columns			NO	
@@ -166,9 +167,10 @@ F031	Basic schema manipulation	19	REVOKE statement: RESTRICT clause	YES
 F032	CASCADE drop behavior			YES	
 F033	ALTER TABLE statement: DROP COLUMN clause			YES	
 F034	Extended REVOKE statement			YES	
-F034	Extended REVOKE statement	01	REVOKE statement performed by other than the owner of a schema object	YES	
-F034	Extended REVOKE statement	02	REVOKE statement: GRANT OPTION FOR clause	YES	
-F034	Extended REVOKE statement	03	REVOKE statement to revoke a privilege that the grantee has WITH GRANT OPTION	YES	
+F035	REVOKE with CASCADE			YES	
+F036	REVOKE statement performed by non-owner			YES	
+F037	REVOKE statement: GRANT OPTION FOR clause			YES	
+F038	REVOKE of a WITH GRANT OPTION privilege			YES	
 F041	Basic joined table			YES	
 F041	Basic joined table	01	Inner join (but not necessarily the INNER keyword)	YES	
 F041	Basic joined table	02	INNER keyword	YES	
@@ -191,14 +193,14 @@ F053	OVERLAPS predicate			YES
 F054	TIMESTAMP in DATE type precedence list			NO	
 F081	UNION and EXCEPT in views			YES	
 F111	Isolation levels other than SERIALIZABLE			YES	
-F111	Isolation levels other than SERIALIZABLE	01	READ UNCOMMITTED isolation level	YES	
-F111	Isolation levels other than SERIALIZABLE	02	READ COMMITTED isolation level	YES	
-F111	Isolation levels other than SERIALIZABLE	03	REPEATABLE READ isolation level	YES	
+F112	Isolation level READ UNCOMMITTED			YES	
+F113	Isolation level READ COMMITTED			YES	
+F114	Isolation level REPEATABLE READ			YES	
+F120	Get diagnostics statement			NO	
 F121	Basic diagnostics management			NO	
-F121	Basic diagnostics management	01	GET DIAGNOSTICS statement	NO	
-F121	Basic diagnostics management	02	SET TRANSACTION statement: DIAGNOSTICS SIZE clause	NO	
 F122	Enhanced diagnostics management			NO	
 F123	All diagnostics			NO	
+F124	SET TRANSACTION statement: DIAGNOSTICS SIZE clause			NO	
 F131	Grouped operations			YES	
 F131	Grouped operations	01	WHERE, GROUP BY, and HAVING clauses supported in queries with grouped views	YES	
 F131	Grouped operations	02	Multiple tables supported in queries with grouped views	YES	
@@ -214,9 +216,6 @@ F202	TRUNCATE TABLE: identity column restart option			YES
 F221	Explicit defaults			YES	
 F222	INSERT statement: DEFAULT VALUES clause			YES	
 F231	Privilege tables			YES	
-F231	Privilege tables	01	TABLE_PRIVILEGES view	YES	
-F231	Privilege tables	02	COLUMN_PRIVILEGES view	YES	
-F231	Privilege tables	03	USAGE_PRIVILEGES view	YES	
 F251	Domain support			YES	
 F261	CASE expression			YES	
 F261	CASE expression	01	Simple CASE	YES	
@@ -228,12 +227,12 @@ F263	Comma-separated predicates in simple CASE expression			NO
 F271	Compound character literals			YES	
 F281	LIKE enhancements			YES	
 F291	UNIQUE predicate			NO	
-F292	UNIQUE null treatment			YES	SQL:202x draft
+F292	UNIQUE null treatment			YES	
 F301	CORRESPONDING in query expressions			NO	
 F302	INTERSECT table operator			YES	
-F302	INTERSECT table operator	01	INTERSECT DISTINCT table operator	YES	
-F302	INTERSECT table operator	02	INTERSECT ALL table operator	YES	
+F303	INTERSECT DISTINCT table operator			YES	
 F304	EXCEPT ALL table operator			YES	
+F305	INTERSECT ALL table operator			YES	
 F311	Schema definition statement			YES	
 F311	Schema definition statement	01	CREATE SCHEMA	YES	
 F311	Schema definition statement	02	CREATE TABLE for persistent base tables	YES	
@@ -247,34 +246,34 @@ F321	User authorization			YES
 F341	Usage tables			YES	
 F361	Subprogram support			YES	
 F381	Extended schema manipulation			YES	
-F381	Extended schema manipulation	01	ALTER TABLE statement: ALTER COLUMN clause	YES	
-F381	Extended schema manipulation	02	ALTER TABLE statement: ADD CONSTRAINT clause	YES	
-F381	Extended schema manipulation	03	ALTER TABLE statement: DROP CONSTRAINT clause	YES	
 F382	Alter column data type			YES	
 F383	Set column not null clause			YES	
 F384	Drop identity property clause			YES	
 F385	Drop column generation expression clause			YES	
 F386	Set identity column generation clause			YES	
+F387	ALTER TABLE statement: ALTER COLUMN clause			YES	
+F388	ALTER TABLE statement: ADD/DROP CONSTRAINT clause			YES	
 F391	Long identifiers			YES	
 F392	Unicode escapes in identifiers			YES	
 F393	Unicode escapes in literals			YES	
 F394	Optional normal form specification			YES	
 F401	Extended joined table			YES	
-F401	Extended joined table	01	NATURAL JOIN	YES	
-F401	Extended joined table	02	FULL OUTER JOIN	YES	
-F401	Extended joined table	04	CROSS JOIN	YES	
 F402	Named column joins for LOBs, arrays, and multisets			YES	
-F403	Partitioned joined tables			NO	
+F403	Partitioned join tables			NO	
 F404	Range variable for common column names			YES	
+F405	NATURAL JOIN			YES	
+F406	FULL OUTER JOIN			YES	
+F407	CROSS JOIN			YES	
 F411	Time zone specification			YES	differences regarding literal interpretation
 F421	National character			YES	
 F431	Read-only scrollable cursors			YES	
-F431	Read-only scrollable cursors	01	FETCH with explicit NEXT	YES	
-F431	Read-only scrollable cursors	02	FETCH FIRST	YES	
-F431	Read-only scrollable cursors	03	FETCH LAST	YES	
-F431	Read-only scrollable cursors	04	FETCH PRIOR	YES	
-F431	Read-only scrollable cursors	05	FETCH ABSOLUTE	YES	
-F431	Read-only scrollable cursors	06	FETCH RELATIVE	YES	
+F432	FETCH with explicit NEXT			YES	
+F433	FETCH FIRST			YES	
+F434	FETCH LAST			YES	
+F435	FETCH PRIOR			YES	
+F436	FETCH ABSOLUTE			YES	
+F437	FETCH RELATIVE			YES	
+F438	Scrollable cursors			YES	
 F441	Extended set function support			YES	
 F442	Mixed column references in set functions			YES	
 F451	Character set definition			NO	
@@ -282,7 +281,7 @@ F461	Named character sets			NO
 F471	Scalar subquery values			YES	
 F481	Expanded NULL predicate			YES	
 F491	Constraint management			YES	
-F492	Optional table constraint enforcement			NO	
+F492	Optional table constraint enforcement			YES	except not-null constraints
 F501	Features and conformance views			YES	
 F501	Features and conformance views	01	SQL_FEATURES view	YES	
 F501	Features and conformance views	02	SQL_SIZING view	YES	
@@ -297,10 +296,10 @@ F611	Indicator data types			YES
 F641	Row and table constructors			YES	
 F651	Catalog name qualifiers			YES	
 F661	Simple tables			YES	
-F671	Subqueries in CHECK			NO	intentionally omitted
-F672	Retrospective check constraints			YES	
+F671	Subqueries in CHECK constraints			NO	intentionally omitted
+F672	Retrospective CHECK constraints			YES	
 F673	Reads SQL-data routine invocations in CHECK constraints			NO	
-F690	Collation support			YES	but no character set support
+F690	Collation support			YES	
 F692	Extended collation support			YES	
 F693	SQL-session and client module collations			NO	
 F695	Translation support			NO	
@@ -322,31 +321,133 @@ F812	Basic flagging			NO
 F813	Extended flagging			NO	
 F821	Local table references			NO	
 F831	Full cursor update			NO	
-F831	Full cursor update	01	Updatable scrollable cursors	NO	
-F831	Full cursor update	02	Updatable ordered cursors	NO	
+F832	Updatable scrollable cursors			NO	
+F833	Updatable ordered cursors			NO	
 F841	LIKE_REGEX predicate			NO	consider regexp_like()
 F842	OCCURRENCES_REGEX function			NO	consider regexp_matches()
 F843	POSITION_REGEX function			NO	consider regexp_instr()
 F844	SUBSTRING_REGEX function			NO	consider regexp_substr()
 F845	TRANSLATE_REGEX function			NO	consider regexp_replace()
 F846	Octet support in regular expression operators			NO	
-F847	Nonconstant regular expressions			NO	
-F850	Top-level <order by clause> in <query expression>			YES	
-F851	<order by clause> in subqueries			YES	
-F852	Top-level <order by clause> in views			YES	
-F855	Nested <order by clause> in <query expression>			YES	
-F856	Nested <fetch first clause> in <query expression>			YES	
-F857	Top-level <fetch first clause> in <query expression>			YES	
-F858	<fetch first clause> in subqueries			YES	
-F859	Top-level <fetch first clause> in views			YES	
-F860	<fetch first row count> in <fetch first clause>			YES	
-F861	Top-level <result offset clause> in <query expression>			YES	
-F862	<result offset clause> in subqueries			YES	
-F863	Nested <result offset clause> in <query expression>			YES	
-F864	Top-level <result offset clause> in views			YES	
-F865	<offset row count> in <result offset clause>			YES	
+F847	Non-constant regular expressions			NO	
+F850	Top-level ORDER BY in query expression			YES	
+F851	ORDER BY in subqueries			YES	
+F852	Top-level ORDER BY in views			YES	
+F855	Nested ORDER BY in query expression			YES	
+F856	Nested FETCH FIRST in query expression			YES	
+F857	Top-level FETCH FIRST in query expression			YES	
+F858	FETCH FIRST in subqueries			YES	
+F859	Top-level FETCH FIRST in views			YES	
+F860	Dynamic FETCH FIRST row count			YES	
+F861	Top-level OFFSET in query expression			YES	
+F862	OFFSET in subqueries			YES	
+F863	Nested OFFSET in query expression			YES	
+F864	Top-level OFFSET in views			YES	
+F865	Dynamic offset row count in OFFSET			YES	
 F866	FETCH FIRST clause: PERCENT option			NO	
 F867	FETCH FIRST clause: WITH TIES option			YES	
+F868	ORDER BY in grouped table			YES	
+F869	SQL implementation info population			YES	
+G000	Graph pattern			YES	SQL/PGQ required
+G001	Repeatable-elements match mode			YES	SQL/PGQ required
+G002	Different-edges match mode			NO	
+G003	Explicit REPEATABLE ELEMENTS keyword			NO	
+G004	Path variables			NO	
+G005	Path search prefix in a path pattern			NO	
+G006	Graph pattern KEEP clause: path mode prefix			NO	
+G007	Graph pattern KEEP clause: path search prefix			NO	
+G008	Graph pattern WHERE clause			YES	SQL/PGQ required
+G010	Explicit WALK keyword			NO	
+G011	Advanced path modes: TRAIL			NO	
+G012	Advanced path modes: SIMPLE			NO	
+G013	Advanced path modes: ACYCLIC			NO	
+G014	Explicit PATH/PATHS keywords			NO	
+G015	All path search: explicit ALL keyword			NO	
+G016	Any path search			NO	
+G017	All shortest path search			NO	
+G018	Any shortest path search			NO	
+G019	Counted shortest path search			NO	
+G020	Counted shortest group search			NO	
+G030	Path multiset alternation			NO	
+G031	Path multiset alternation: variable length path operands			NO	
+G032	Path pattern union			NO	
+G033	Path pattern union: variable length path operands			NO	
+G034	Path concatenation			YES	SQL/PGQ required
+G035	Quantified paths			NO	
+G036	Quantified edges			NO	
+G037	Questioned paths			NO	
+G038	Parenthesized path pattern expression			NO	
+G039	Simplified path pattern expression: full defaulting			NO	
+G040	Vertex pattern			YES	SQL/PGQ required
+G041	Non-local element pattern predicates			NO	
+G042	Basic full edge patterns			YES	SQL/PGQ required
+G043	Complete full edge patterns			NO	
+G044	Basic abbreviated edge patterns			YES	
+G045	Complete abbreviated edge patterns			NO	
+G046	Relaxed topological consistency: adjacent vertex patterns			NO	
+G047	Relaxed topological consistency: concise edge patterns			NO	
+G048	Parenthesized path pattern: subpath variable declaration			NO	
+G049	Parenthesized path pattern: path mode prefix			NO	
+G050	Parenthesized path pattern: WHERE clause			NO	
+G051	Parenthesized path pattern: non-local predicates			NO	
+G060	Bounded graph pattern quantifiers			NO	
+G061	Unbounded graph pattern quantifiers			NO	
+G070	Label expression: label disjunction			YES	SQL/PGQ required
+G071	Label expression: label conjunction			NO	
+G072	Label expression: label negation			NO	
+G073	Label expression: individual label name			YES	SQL/PGQ required
+G074	Label expression: wildcard label			NO	
+G075	Parenthesized label expression			NO	
+G080	Simplified path pattern expression: basic defaulting			NO	
+G081	Simplified path pattern expression: full overrides			NO	
+G082	Simplified path pattern expression: basic overrides			NO	
+G090	Property reference			YES	SQL/PGQ required
+G100	ELEMENT_ID function			NO	
+G110	IS DIRECTED predicate			NO	
+G111	IS LABELED predicate			NO	
+G112	IS SOURCE and IS DESTINATION predicate			NO	
+G113	ALL_DIFFERENT predicate			NO	
+G114	SAME predicate			NO	
+G115	PROPERTY_EXISTS predicate			NO	
+G120	Within-match aggregates			NO	
+G800	PATH_NAME function			NO	
+G801	ELEMENT_NUMBER function			NO	
+G802	PATH_LENGTH function			NO	
+G803	MATCHNUM function			NO	
+G810	IS BOUND predicate			NO	
+G811	IS BOUND predicate: AS option			NO	
+G820	BINDING_COUNT			NO	
+G830	Colon in 'is label' expression			NO	
+G840	Path-ordered aggregates			NO	
+G850	SQL/PGQ Information Schema views			YES	
+G860	GET DIAGNOSTICS enhancements for SQL-property graphs			NO	
+G900	GRAPH_TABLE			YES	SQL/PGQ required
+G901	GRAPH_TABLE: ONE ROW PER VERTEX			NO	
+G902	GRAPH_TABLE: ONE ROW PER STEP			NO	
+G903	GRAPH_TABLE: explicit ONE ROW PER MATCH keywords			NO	
+G904	All properties reference			NO	
+G905	GRAPH_TABLE: optional COLUMNS clause			NO	
+G906	GRAPH_TABLE: explicit EXPORT ALL			NO	
+G907	GRAPH_TABLE: EXPORT ALL EXCEPT			NO	
+G908	GRAPH_TABLE: EXPORT SINGLETONS list			NO	
+G909	GRAPH_TABLE: explicit EXPORT NO SINGLETONS			NO	
+G910	GRAPH_TABLE: 'in paths clause'			NO	
+G920	DDL-based SQL-property graphs			YES	SQL/PGQ required
+G921	Empty SQL-property graph			YES	
+G922	Views as element tables			YES	
+G923	In-line views as element tables			NO	
+G924	Explicit key clause for element tables			YES	SQL/PGQ required
+G925	Explicit label and properties clause for element tables			YES	SQL/PGQ required
+G926	More than one label for vertex tables			YES	
+G927	More than one label for edge tables			YES	
+G928	Value expressions as properties and renaming of properties			YES	
+G929	Labels and properties: EXCEPT list			NO	
+G940	Multi-sourced/destined edges			YES	
+G941	Implicit removal of incomplete edges			YES	
+G950	Alter property graph statement: ADD/DROP element table			YES	
+G960	Alter element table definition: ADD/DROP LABEL			YES	
+G970	Alter element table definition: ALTER LABEL			YES	
+G980	DROP PROPERTY GRAPH: CASCADE drop behavior			YES	
 R010	Row pattern recognition: FROM clause			NO	
 R020	Row pattern recognition: WINDOW clause			NO	
 R030	Row pattern recognition: full aggregate support			NO	
@@ -363,24 +464,24 @@ S043	Enhanced reference types			NO
 S051	Create table of type			NO	partially supported
 S071	SQL paths in function and type name resolution			YES	
 S081	Subtables			NO	
+S090	Minimal array support			YES	
 S091	Basic array support			NO	partially supported
-S091	Basic array support	01	Arrays of built-in data types	YES	
-S091	Basic array support	02	Arrays of distinct types	NO	
-S091	Basic array support	03	Array expressions	YES	
 S092	Arrays of user-defined types			YES	
+S093	Arrays of distinct types			NO	
 S094	Arrays of reference types			NO	
 S095	Array constructors by query			YES	
 S096	Optional array bounds			YES	
 S097	Array element assignment			NO	
 S098	ARRAY_AGG			YES	
+S099	Array expressions			YES	
 S111	ONLY in query expressions			YES	
 S151	Type predicate			NO	see pg_typeof()
 S161	Subtype treatment			NO	
 S162	Subtype treatment for references			NO	
 S201	SQL-invoked routines on arrays			YES	
-S201	SQL-invoked routines on arrays	01	Array parameters	YES	
-S201	SQL-invoked routines on arrays	02	Array as result type of functions	YES	
 S202	SQL-invoked routines on multisets			NO	
+S203	Array parameters			YES	
+S204	Array as result type of functions			YES	
 S211	User-defined cast functions			YES	
 S231	Structured type locators			NO	
 S232	Array locators			NO	
@@ -397,36 +498,44 @@ S281	Nested collection types			NO
 S291	Unique constraint on entire row			NO	
 S301	Enhanced UNNEST			YES	
 S401	Distinct types based on array types			NO	
-S402	Distinct types based on distinct types			NO	
+S402	Distinct types based on multiset types			NO	
 S403	ARRAY_MAX_CARDINALITY			NO	
 S404	TRIM_ARRAY			YES	
 T011	Timestamp in Information Schema			NO	
 T021	BINARY and VARBINARY data types			NO	
 T022	Advanced support for BINARY and VARBINARY data types			NO	
-T023	Compound binary literal			NO	
+T023	Compound binary literals			NO	
 T024	Spaces in binary literals			NO	
 T031	BOOLEAN data type			YES	
+T039	CLOB locator: non-holdable			NO	
+T040	Concatenation of CLOBs			NO	
 T041	Basic LOB data type support			NO	
-T041	Basic LOB data type support	01	BLOB data type	NO	
-T041	Basic LOB data type support	02	CLOB data type	NO	
-T041	Basic LOB data type support	03	POSITION, LENGTH, LOWER, TRIM, UPPER, and SUBSTRING functions for LOB data types	NO	
-T041	Basic LOB data type support	04	Concatenation of LOB data types	NO	
-T041	Basic LOB data type support	05	LOB locator: non-holdable	NO	
 T042	Extended LOB data type support			NO	
 T043	Multiplier T			NO	
 T044	Multiplier P			NO	
+T045	BLOB data type			NO	
+T046	CLOB data type			NO	
+T047	POSITION, OCTET_LENGTH, TRIM, and SUBSTRING for BLOBs			NO	
+T048	Concatenation of BLOBs			NO	
+T049	BLOB locator: non-holdable			NO	
+T050	POSITION, CHAR_LENGTH, OCTET_LENGTH, LOWER, TRIM, UPPER, and SUBSTRING for CLOBs			NO	
 T051	Row types			NO	
 T053	Explicit aliases for all-fields reference			NO	
-T061	UCS support			NO	
+T054	GREATEST and LEAST			YES	different null handling
+T055	String padding functions			YES	
+T056	Multi-character TRIM functions			YES	
+T061	UCS support			YES	
+T062	Character length units			NO	
 T071	BIGINT data type			YES	
 T076	DECFLOAT data type			NO	
+T081	Optional string types maximum length			YES	
 T101	Enhanced nullability determination			NO	
 T111	Updatable joins, unions, and columns			NO	
 T121	WITH (excluding RECURSIVE) in query expression			YES	
 T122	WITH (excluding RECURSIVE) in subquery			YES	
 T131	Recursive query			YES	
 T132	Recursive query in subquery			YES	
-T133	Enhanced cycle mark values			YES	SQL:202x draft
+T133	Enhanced cycle mark values			YES	
 T141	SIMILAR predicate			YES	
 T151	DISTINCT predicate			YES	
 T152	DISTINCT predicate with negation			YES	
@@ -437,26 +546,25 @@ T174	Identity columns			YES
 T175	Generated columns			NO	mostly supported
 T176	Sequence generator support			NO	supported except for NEXT VALUE FOR
 T177	Sequence generator support: simple restart option			YES	
-T178	Identity columns:  simple restart option			YES	
+T178	Identity columns: simple restart option			YES	
 T180	System-versioned tables			NO	
 T181	Application-time period tables			NO	
 T191	Referential action RESTRICT			YES	
+T200	Trigger DDL			NO	similar but not fully compatible
 T201	Comparable data types for referential constraints			YES	
 T211	Basic trigger capability			NO	
-T211	Basic trigger capability	01	Triggers activated on UPDATE, INSERT, or DELETE of one base table	YES	
-T211	Basic trigger capability	02	BEFORE triggers	YES	
-T211	Basic trigger capability	03	AFTER triggers	YES	
-T211	Basic trigger capability	04	FOR EACH ROW triggers	YES	
-T211	Basic trigger capability	05	Ability to specify a search condition that must be true before the trigger is invoked	YES	
-T211	Basic trigger capability	06	Support for run-time rules for the interaction of triggers and constraints	NO	
-T211	Basic trigger capability	07	TRIGGER privilege	YES	
-T211	Basic trigger capability	08	Multiple triggers for the same event are executed in the order in which they were created in the catalog	NO	intentionally omitted
 T212	Enhanced trigger capability			YES	
 T213	INSTEAD OF triggers			YES	
+T214	BEFORE triggers			YES	
+T215	AFTER triggers			YES	
+T216	Ability to require true search condition before trigger is invoked			YES	
+T217	TRIGGER privilege			YES	
+T218	Multiple triggers for the same event executed in the order created			NO	intentionally omitted
 T231	Sensitive cursors			NO	
 T241	START TRANSACTION statement			YES	
 T251	SET TRANSACTION statement: LOCAL option			NO	
 T261	Chained transactions			YES	
+T262	Multiple server transactions			NO	
 T271	Savepoints			YES	
 T272	Enhanced savepoint management			NO	
 T281	SELECT privilege with column granularity			YES	
@@ -478,11 +586,11 @@ T325	Qualified SQL parameter references			YES
 T326	Table functions			NO	
 T331	Basic roles			YES	
 T332	Extended roles			YES	
-T341	Overloading of SQL-invoked functions and procedures			YES	
-T351	Bracketed SQL comments (/*...*/ comments)			YES	
+T341	Overloading of SQL-invoked functions and SQL-invoked procedures			YES	
+T351	Bracketed comments			YES	
 T431	Extended grouping capabilities			YES	
 T432	Nested and concatenated GROUPING SETS			YES	
-T433	Multiargument GROUPING function			YES	
+T433	Multi-argument GROUPING function			YES	
 T434	GROUP BY DISTINCT			YES	
 T441	ABS and MOD functions			YES	
 T461	Symmetric BETWEEN predicate			YES	
@@ -510,8 +618,8 @@ T612	Advanced OLAP operations			YES
 T613	Sampling			YES	
 T614	NTILE function			YES	
 T615	LEAD and LAG functions			YES	
-T616	Null treatment option for LEAD and LAG functions			NO	
-T617	FIRST_VALUE and LAST_VALUE function			YES	
+T616	Null treatment option for LEAD and LAG functions			YES	
+T617	FIRST_VALUE and LAST_VALUE functions			YES	
 T618	NTH_VALUE function			NO	function exists, but some options missing
 T619	Nested window functions			NO	
 T620	WINDOW clause: GROUPS option			YES	
@@ -520,6 +628,8 @@ T622	Trigonometric functions			YES
 T623	General logarithm functions			YES	
 T624	Common logarithm functions			YES	
 T625	LISTAGG			NO	
+T626	ANY_VALUE			YES	
+T627	Window framed COUNT DISTINCT			YES	
 T631	IN predicate with one list element			YES	
 T641	Multiple column assignment			NO	only some syntax variants supported
 T651	SQL-schema statements in SQL routines			YES	
@@ -527,20 +637,26 @@ T652	SQL-dynamic statements in SQL routines			NO
 T653	SQL-schema statements in external routines			YES	
 T654	SQL-dynamic statements in external routines			NO	
 T655	Cyclically dependent routines			YES	
-T811	Basic SQL/JSON constructor functions			NO	
-T812	SQL/JSON: JSON_OBJECTAGG			NO	
-T813	SQL/JSON: JSON_ARRAYAGG with ORDER BY			NO	
-T814	Colon in JSON_OBJECT or JSON_OBJECTAGG			NO	
-T821	Basic SQL/JSON query operators			NO	
-T822	SQL/JSON: IS JSON WITH UNIQUE KEYS predicate			NO	
-T823	SQL/JSON: PASSING clause			NO	
+T661	Non-decimal integer literals			YES	
+T662	Underscores in numeric literals			YES	
+T670	Schema and data statement mixing			YES	
+T801	JSON data type			NO	
+T802	Enhanced JSON data type			NO	
+T803	String-based JSON			YES	
+T811	Basic SQL/JSON constructor functions			YES	
+T812	SQL/JSON: JSON_OBJECTAGG			YES	
+T813	SQL/JSON: JSON_ARRAYAGG with ORDER BY			YES	
+T814	Colon in JSON_OBJECT or JSON_OBJECTAGG			YES	
+T821	Basic SQL/JSON query operators			YES	
+T822	SQL/JSON: IS JSON WITH UNIQUE KEYS predicate			YES	
+T823	SQL/JSON: PASSING clause			YES	
 T824	JSON_TABLE: specific PLAN clause			NO	
-T825	SQL/JSON: ON EMPTY and ON ERROR clauses			NO	
-T826	General value expression in ON ERROR or ON EMPTY clauses			NO	
-T827	JSON_TABLE: sibling NESTED COLUMNS clauses			NO	
-T828	JSON_QUERY			NO	
-T829	JSON_QUERY: array wrapper options			NO	
-T830	Enforcing unique keys in SQL/JSON constructor functions			NO	
+T825	SQL/JSON: ON EMPTY and ON ERROR clauses			YES	
+T826	General value expression in ON ERROR or ON EMPTY clauses			YES	
+T827	JSON_TABLE: sibling NESTED COLUMNS clauses			YES	
+T828	JSON_QUERY			YES	
+T829	JSON_QUERY: array wrapper options			YES	
+T830	Enforcing unique keys in SQL/JSON constructor functions			YES	
 T831	SQL/JSON path language: strict mode			YES	
 T832	SQL/JSON path language: item method			YES	
 T833	SQL/JSON path language: multiple subscripts			YES	
@@ -550,6 +666,31 @@ T836	SQL/JSON path language: starts with predicate			YES
 T837	SQL/JSON path language: regex_like predicate			YES	
 T838	JSON_TABLE: PLAN DEFAULT clause			NO	
 T839	Formatted cast of datetimes to/from character strings			NO	
+T840	Hex integer literals in SQL/JSON path language			YES	
+T851	SQL/JSON: optional keywords for default syntax			YES	
+T860	SQL/JSON simplified accessor: column reference only			NO	
+T861	SQL/JSON simplified accessor: case-sensitive JSON member accessor			NO	
+T862	SQL/JSON simplified accessor: wildcard member accessor			NO	
+T863	SQL/JSON simplified accessor: single-quoted string literal as member accessor			NO	
+T864	SQL/JSON simplified accessor			NO	
+T865	SQL/JSON item method: bigint()			YES	
+T866	SQL/JSON item method: boolean()			YES	
+T867	SQL/JSON item method: date()			YES	
+T868	SQL/JSON item method: decimal()			YES	
+T869	SQL/JSON item method: decimal() with precision and scale			YES	
+T870	SQL/JSON item method: integer()			YES	
+T871	SQL/JSON item method: number()			YES	
+T872	SQL/JSON item method: string()			YES	
+T873	SQL/JSON item method: time()			YES	
+T874	SQL/JSON item method: time_tz()			YES	
+T875	SQL/JSON item method: time precision			YES	
+T876	SQL/JSON item method: timestamp()			YES	
+T877	SQL/JSON item method: timestamp_tz()			YES	
+T878	SQL/JSON item method: timestamp precision			YES	
+T879	JSON in equality operations			YES	with jsonb
+T880	JSON in grouping operations			YES	with jsonb
+T881	JSON in ordering operations			NO	with jsonb, partially supported
+T882	JSON in multiset element grouping operations			NO	
 M001	Datalinks			NO	
 M002	Datalinks via SQL/CLI			NO	
 M003	Datalinks via Embedded SQL			NO	
@@ -558,7 +699,7 @@ M005	Foreign schema support			NO
 M006	GetSQLString routine			NO	
 M007	TransmitRequest			NO	
 M009	GetOpts and GetStatistics routines			NO	
-M010	Foreign data wrapper support			NO	different API
+M010	Foreign-data wrapper support			NO	different API
 M011	Datalinks via Ada			NO	
 M012	Datalinks via C			NO	
 M013	Datalinks via COBOL			NO	
@@ -566,15 +707,15 @@ M014	Datalinks via Fortran			NO
 M015	Datalinks via M			NO	
 M016	Datalinks via Pascal			NO	
 M017	Datalinks via PL/I			NO	
-M018	Foreign data wrapper interface routines in Ada			NO	
-M019	Foreign data wrapper interface routines in C			NO	different API
-M020	Foreign data wrapper interface routines in COBOL			NO	
-M021	Foreign data wrapper interface routines in Fortran			NO	
-M022	Foreign data wrapper interface routines in MUMPS			NO	
-M023	Foreign data wrapper interface routines in Pascal			NO	
-M024	Foreign data wrapper interface routines in PL/I			NO	
+M018	Foreign-data wrapper interface routines in Ada			NO	
+M019	Foreign-data wrapper interface routines in C			NO	different API
+M020	Foreign-data wrapper interface routines in COBOL			NO	
+M021	Foreign-data wrapper interface routines in Fortran			NO	
+M022	Foreign-data wrapper interface routines in MUMPS			NO	
+M023	Foreign-data wrapper interface routines in Pascal			NO	
+M024	Foreign-data wrapper interface routines in PL/I			NO	
 M030	SQL-server foreign data support			NO	
-M031	Foreign data wrapper general routines			NO	
+M031	Foreign-data wrapper general routines			NO	
 X010	XML type			YES	
 X011	Arrays of XML type			YES	
 X012	Multisets of XML type			NO	
@@ -591,9 +732,9 @@ X034	XMLAgg			YES
 X035	XMLAgg: ORDER BY option			YES	
 X036	XMLComment			YES	
 X037	XMLPI			YES	
-X038	XMLText			NO	
+X038	XMLText			YES	supported except for RETURNING
 X040	Basic table mapping			YES	
-X041	Basic table mapping: nulls absent			YES	
+X041	Basic table mapping: null absent			YES	
 X042	Basic table mapping: null as nil			YES	
 X043	Basic table mapping: table as forest			YES	
 X044	Basic table mapping: table as element			YES	
@@ -603,7 +744,7 @@ X047	Basic table mapping: metadata mapping			YES
 X048	Basic table mapping: base64 encoding of binary strings			YES	
 X049	Basic table mapping: hex encoding of binary strings			YES	
 X050	Advanced table mapping			YES	
-X051	Advanced table mapping: nulls absent			YES	
+X051	Advanced table mapping: null absent			YES	
 X052	Advanced table mapping: null as nil			YES	
 X053	Advanced table mapping: table as forest			YES	
 X054	Advanced table mapping: table as element			YES	
@@ -614,16 +755,16 @@ X058	Advanced table mapping: base64 encoding of binary strings			YES
 X059	Advanced table mapping: hex encoding of binary strings			YES	
 X060	XMLParse: character string input and CONTENT option			YES	
 X061	XMLParse: character string input and DOCUMENT option			YES	
-X065	XMLParse: BLOB input and CONTENT option			NO	
-X066	XMLParse: BLOB input and DOCUMENT option			NO	
+X065	XMLParse: binary string input and CONTENT option			NO	
+X066	XMLParse: binary string input and DOCUMENT option			NO	
 X068	XMLSerialize: BOM			NO	
-X069	XMLSerialize: INDENT			NO	
+X069	XMLSerialize: INDENT			YES	
 X070	XMLSerialize: character string serialization and CONTENT option			YES	
 X071	XMLSerialize: character string serialization and DOCUMENT option			YES	
 X072	XMLSerialize: character string serialization			YES	
-X073	XMLSerialize: BLOB serialization and CONTENT option			NO	
-X074	XMLSerialize: BLOB serialization and DOCUMENT option			NO	
-X075	XMLSerialize: BLOB serialization			NO	
+X073	XMLSerialize: binary string serialization and CONTENT option			NO	
+X074	XMLSerialize: binary string serialization and DOCUMENT option			NO	
+X075	XMLSerialize: binary string serialization			NO	
 X076	XMLSerialize: VERSION			NO	
 X077	XMLSerialize: explicit ENCODING option			NO	
 X078	XMLSerialize: explicit XML declaration			NO	
@@ -656,13 +797,13 @@ X142	IS VALID predicate: ACCORDING TO clause			NO
 X143	IS VALID predicate: ELEMENT clause			NO	
 X144	IS VALID predicate: schema location			NO	
 X145	IS VALID predicate outside check constraints			NO	
-X151	IS VALID predicate with DOCUMENT option			NO	
-X152	IS VALID predicate with CONTENT option			NO	
-X153	IS VALID predicate with SEQUENCE option			NO	
+X151	IS VALID predicate: with DOCUMENT option			NO	
+X152	IS VALID predicate: with CONTENT option			NO	
+X153	IS VALID predicate: with SEQUENCE option			NO	
 X155	IS VALID predicate: NAMESPACE without ELEMENT clause			NO	
 X157	IS VALID predicate: NO NAMESPACE with ELEMENT clause			NO	
-X160	Basic Information Schema for registered XML Schemas			NO	
-X161	Advanced Information Schema for registered XML Schemas			NO	
+X160	Basic Information Schema for registered XML schemas			NO	
+X161	Advanced Information Schema for registered XML schemas			NO	
 X170	XML null handling options			NO	
 X171	NIL ON NO CONTENT option			NO	
 X181	XML(DOCUMENT(UNTYPED)) type			NO	

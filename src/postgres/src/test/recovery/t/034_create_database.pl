@@ -1,10 +1,10 @@
 
-# Copyright (c) 2023, PostgreSQL Global Development Group
+# Copyright (c) 2023-2026, PostgreSQL Global Development Group
 
 # Test WAL replay for CREATE DATABASE .. STRATEGY WAL_LOG.
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -17,7 +17,7 @@ $node->start;
 # are persisted after creating a database from it using the WAL_LOG strategy,
 # as a direct copy of the template database's pg_class is used in this case.
 my $db_template = "template1";
-my $db_new      = "test_db_1";
+my $db_new = "test_db_1";
 
 # Create table.  It should persist on the template database.
 $node->safe_psql("postgres",

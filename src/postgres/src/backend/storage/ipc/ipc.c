@@ -8,7 +8,7 @@
  * exit-time cleanup for either a postmaster or a backend.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -29,6 +29,7 @@
 #endif
 #include "storage/dsm.h"
 #include "storage/ipc.h"
+#include "storage/lwlock.h"
 #include "tcop/tcopprot.h"
 
 /* YB includes */
@@ -140,7 +141,7 @@ proc_exit(int code)
 		 */
 		char		gprofDirName[32];
 
-		if (IsAutoVacuumWorkerProcess())
+		if (AmAutoVacuumWorkerProcess())
 			snprintf(gprofDirName, 32, "gprof/avworker");
 		else
 			snprintf(gprofDirName, 32, "gprof/%d", (int) getpid());
@@ -234,12 +235,18 @@ shmem_exit(int code)
 	shmem_exit_inprogress = true;
 
 	/*
+	 * Release any LWLocks we might be holding before callbacks run. This
+	 * prevents accessing locks in detached DSM segments and allows callbacks
+	 * to acquire new locks.
+	 */
+	LWLockReleaseAll();
+
+	/*
 	 * Call before_shmem_exit callbacks.
 	 *
 	 * These should be things that need most of the system to still be up and
 	 * working, such as cleanup of temp relations, which requires catalog
-	 * access; or things that need to be completed because later cleanup steps
-	 * depend on them, such as releasing lwlocks.
+	 * access.
 	 */
 	elog(DEBUG3, "shmem_exit(%d): %d before_shmem_exit callbacks to make",
 		 code, before_shmem_exit_index);
@@ -403,8 +410,8 @@ cancel_before_shmem_exit(pg_on_exit_callback function, Datum arg)
 		before_shmem_exit_list[before_shmem_exit_index - 1].arg == arg)
 		--before_shmem_exit_index;
 	else
-		elog(ERROR, "before_shmem_exit callback (%p,0x%llx) is not the latest entry",
-			 function, (long long) arg);
+		elog(ERROR, "before_shmem_exit callback (%p,0x%" PRIx64 ") is not the latest entry",
+			 function, arg);
 }
 
 /* ----------------------------------------------------------------

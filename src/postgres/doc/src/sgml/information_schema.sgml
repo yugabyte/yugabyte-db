@@ -917,6 +917,13 @@
    domain is the owner of the constraint.)
   </para>
 
+  <para>
+   The SQL standard considers not-null constraints to be check constraints
+   with a <literal>CHECK (<replaceable>column_name</replaceable> IS NOT
+   NULL)</literal> expression.  So not-null constraints are also included here
+   and don't have a separate view.
+  </para>
+
   <table>
    <title><structname>check_constraints</structname> Columns</title>
    <tgroup cols="1">
@@ -2082,15 +2089,15 @@
    Since data types can be defined in a variety of ways in SQL, and
    <productname>PostgreSQL</productname> contains additional ways to
    define data types, their representation in the information schema
-   can be somewhat difficult.  The column <literal>data_type</literal>
+   can be somewhat difficult.  The column <structfield>data_type</structfield>
    is supposed to identify the underlying built-in type of the column.
    In <productname>PostgreSQL</productname>, this means that the type
    is defined in the system catalog schema
    <literal>pg_catalog</literal>.  This column might be useful if the
    application can handle the well-known built-in types specially (for
    example, format the numeric types differently or use the data in
-   the precision columns).  The columns <literal>udt_name</literal>,
-   <literal>udt_schema</literal>, and <literal>udt_catalog</literal>
+   the precision columns).  The columns <structfield>udt_name</structfield>,
+   <structfield>udt_schema</structfield>, and <structfield>udt_catalog</structfield>
    always identify the underlying data type of the column, even if the
    column is based on a domain.  (Since
    <productname>PostgreSQL</productname> treats built-in types like
@@ -2100,8 +2107,8 @@
    type, because in that case it wouldn't matter if the column is
    really based on a domain.  If the column is based on a domain, the
    identity of the domain is stored in the columns
-   <literal>domain_name</literal>, <literal>domain_schema</literal>,
-   and <literal>domain_catalog</literal>.  If you want to pair up
+   <structfield>domain_name</structfield>, <structfield>domain_schema</structfield>,
+   and <structfield>domain_catalog</structfield>.  If you want to pair up
    columns with their associated data types and treat domains as
    separate types, you could write <literal>coalesce(domain_name,
    udt_name)</literal>, etc.
@@ -2116,7 +2123,9 @@
    columns in the current database that are used by some constraint.
    Only those columns are shown that are contained in a table owned by
    a currently enabled role.  For a check constraint, this view
-   identifies the columns that are used in the check expression.  For
+   identifies the columns that are used in the check expression.  For a
+   not-null constraint, this view identifies the column that the constraint is
+   defined on.  For
    a foreign key constraint, this view identifies the columns that the
    foreign key references.  For a unique or primary key constraint,
    this view identifies the constrained columns.
@@ -3131,15 +3140,6 @@ ORDER BY c.ordinal_position;
       </para>
       <para>
        Always null, since this information is not applied to array element data types in <productname>PostgreSQL</productname>
-      </para></entry>
-     </row>
-
-     <row>
-      <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>domain_default</structfield> <type>character_data</type>
-      </para>
-      <para>
-       Not yet implemented
       </para></entry>
      </row>
 
@@ -4164,6 +4164,1098 @@ ORDER BY c.ordinal_position;
       <para>
        The default expression of the parameter, or null if none or if the
        function is not owned by a currently enabled role.
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-pg-edge-table-components">
+  <title><literal>pg_edge_table_components</literal></title>
+
+  <para>
+   The view <literal>pg_edge_table_components</literal> identifies which
+   columns are part of the source or destination vertex keys, as well as their
+   corresponding columns in the vertex tables being linked to, in the edge
+   tables of property graphs defined in the current database.  Only those
+   property graphs are shown that the current user has access to (by way of
+   being the owner or having some privilege).
+  </para>
+
+  <para>
+   The source and destination vertex links of edge tables are specified in
+   <command>CREATE PROPERTY GRAPH</command> and default to foreign keys in
+   certain cases.
+  </para>
+
+  <table>
+   <title><structname>pg_edge_table_components</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>edge_table_alias</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       The element table alias of the edge table being described
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>vertex_table_alias</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       The element table alias of the source or destination vertex table being linked to
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>edge_end</structfield> <type>character_data</type>
+      </para>
+      <para>
+       Either <literal>SOURCE</literal> or <literal>DESTINATION</literal>;
+       specifies which edge link is being described.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>edge_table_column_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the column that is part of the source or destination vertex key in this edge table
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>vertex_table_column_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the column that is part of the key in the source or destination
+       vertex table being linked to
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>ordinal_position</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       Ordinal position of the columns within the key (count starts at 1)
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-pg-element-table-key-columns">
+  <title><literal>pg_element_table_key_columns</literal></title>
+
+  <para>
+   The view <literal>pg_element_table_key_columns</literal> identifies which
+   columns are part of the keys of the element tables of property graphs defined
+   in the current database.  Only those property graphs are shown that the
+   current user has access to (by way of being the owner or having some
+   privilege).
+  </para>
+
+  <para>
+   The key of an element table uniquely identifies the rows in it.  It is
+   either specified using the <literal>KEY</literal> clause in <command>CREATE
+   PROPERTY GRAPH</command> or defaults to the primary key.
+  </para>
+
+  <table>
+   <title><structname>pg_element_table_key_columns</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>element_table_alias</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Element table alias (unique identifier of an element table within a
+       property graph)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>column_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the column that is part of the key
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>ordinal_position</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       Ordinal position of the column within the key (count starts at 1)
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-pg-element-table-labels">
+  <title><literal>pg_element_table_labels</literal></title>
+
+  <para>
+   The view <literal>pg_element_table_labels</literal> shows which labels are
+   defined on the element tables of property graphs defined in the current
+   database.  Only those property graphs are shown that the current user has
+   access to (by way of being the owner or having some privilege).
+  </para>
+
+  <table>
+   <title><structname>pg_element_table_labels</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>element_table_alias</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Element table alias (unique identifier of an element table within a
+       property graph)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>label_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the label
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-pg-element-table-properties">
+  <title><literal>pg_element_table_properties</literal></title>
+
+  <para>
+   The view <literal>pg_element_table_properties</literal> shows the definitions
+   of the properties for the element tables of property graphs defined in the
+   current database.  Only those property graphs are shown that the current user
+   has access to (by way of being the owner or having some privilege).
+  </para>
+
+  <table>
+   <title><structname>pg_element_table_properties</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>element_table_alias</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Element table alias (unique identifier of an element table within a
+       property graph)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_expression</structfield> <type>character_data</type>
+      </para>
+      <para>
+       Expression of the property definition for this element table
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-pg-element-tables">
+  <title><literal>pg_element_tables</literal></title>
+
+  <para>
+   The view <literal>pg_element_tables</literal> contains information about
+   the element tables of property graphs defined in the current database.
+   Only those property graphs are shown that the current user has access to
+   (by way of being the owner or having some privilege).
+  </para>
+
+  <table>
+   <title><structname>pg_element_tables</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>element_table_alias</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Element table alias (unique identifier of an element table within a
+       property graph)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>element_table_kind</structfield> <type>character_data</type>
+      </para>
+      <para>
+       The kind of the element table: <literal>EDGE</literal> or <literal>VERTEX</literal>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>table_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the referenced table (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>table_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the referenced table
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>table_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the table being referenced by the element table definition
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>element_table_definition</structfield> <type>character_data</type>
+      </para>
+      <para>
+       Applies to a feature not available in <productname>PostgreSQL</productname>
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-pg-label-properties">
+  <title><literal>pg_label_properties</literal></title>
+
+  <para>
+   The view <literal>pg_label_properties</literal> shows which properties are
+   defined on labels defined in property graphs defined in the current
+   database.  Only those property graphs are shown that the current user has
+   access to (by way of being the owner or having some privilege).
+  </para>
+
+  <table>
+   <title><structname>pg_label_properties</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>label_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the label
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-pg-labels">
+  <title><literal>pg_labels</literal></title>
+
+  <para>
+   The view <literal>pg_labels</literal> contains all the labels defined in
+   property graphs defined in the current database.  Only those property
+   graphs are shown that the current user has access to (by way of being the
+   owner or having some privilege).
+  </para>
+
+  <table>
+   <title><structname>pg_labels</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>label_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the label
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-pg-property-data-types">
+  <title><literal>pg_property_data_types</literal></title>
+
+  <para>
+   The view <literal>pg_property_data_types</literal> shows the data types of
+   the properties in property graphs defined in the current database.  Only
+   those property graphs are shown that the current user has access to (by way
+   of being the owner or having some privilege).
+  </para>
+
+  <table>
+   <title><structname>pg_property_data_types</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>data_type</structfield> <type>character_data</type>
+      </para>
+      <para>
+       Data type of the property, if it is a built-in type, or
+       <literal>ARRAY</literal> if it is some array (in that case, see the
+       view <literal>element_types</literal>), else
+       <literal>USER-DEFINED</literal> (in that case, the type is identified
+       in <literal>attribute_udt_name</literal> and associated columns).
+       </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>character_maximum_length</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       If <literal>data_type</literal> identifies a character or bit
+       string type, the declared maximum length; null for all other
+       data types or if no maximum length was declared.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>character_octet_length</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       If <literal>data_type</literal> identifies a character type,
+       the maximum possible length in octets (bytes) of a datum; null
+       for all other data types.  The maximum octet length depends on
+       the declared character maximum length (see above) and the
+       server encoding.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>character_set_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Applies to a feature not available in <productname>PostgreSQL</productname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>character_set_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Applies to a feature not available in <productname>PostgreSQL</productname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>character_set_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Applies to a feature not available in <productname>PostgreSQL</productname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>collation_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database containing the collation of the property (always
+       the current database), null if default or the data type of the
+       property is not collatable
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>collation_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema containing the collation of the property, null if
+       default or the data type of the property is not collatable
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>collation_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the collation of the property, null if default or the data type
+       of the property is not collatable
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>numeric_precision</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       If <literal>data_type</literal> identifies a numeric type, this
+       column contains the (declared or implicit) precision of the
+       type for this attribute.  The precision indicates the number of
+       significant digits.  It can be expressed in decimal (base 10)
+       or binary (base 2) terms, as specified in the column
+       <literal>numeric_precision_radix</literal>.  For all other data
+       types, this column is null.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>numeric_precision_radix</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       If <literal>data_type</literal> identifies a numeric type, this
+       column indicates in which base the values in the columns
+       <literal>numeric_precision</literal> and
+       <literal>numeric_scale</literal> are expressed.  The value is
+       either 2 or 10.  For all other data types, this column is null.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>numeric_scale</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       If <literal>data_type</literal> identifies an exact numeric
+       type, this column contains the (declared or implicit) scale of
+       the type for this attribute.  The scale indicates the number of
+       significant digits to the right of the decimal point.  It can
+       be expressed in decimal (base 10) or binary (base 2) terms, as
+       specified in the column
+       <literal>numeric_precision_radix</literal>.  For all other data
+       types, this column is null.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>datetime_precision</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       If <literal>data_type</literal> identifies a date, time,
+       timestamp, or interval type, this column contains the (declared
+       or implicit) fractional seconds precision of the type for this
+       attribute, that is, the number of decimal digits maintained
+       following the decimal point in the seconds value.  For all
+       other data types, this column is null.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>interval_type</structfield> <type>character_data</type>
+      </para>
+      <para>
+       If <literal>data_type</literal> identifies an interval type,
+       this column contains the specification which fields the
+       intervals include for this attribute, e.g., <literal>YEAR TO
+       MONTH</literal>, <literal>DAY TO SECOND</literal>, etc.  If no
+       field restrictions were specified (that is, the interval
+       accepts all fields), and for all other data types, this field
+       is null.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>interval_precision</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       Applies to a feature not available
+       in <productname>PostgreSQL</productname>
+       (see <literal>datetime_precision</literal> for the fractional
+       seconds precision of interval type properties)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>user_defined_type_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that the property data type is defined in
+       (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>user_defined_type_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that the property data type is defined in
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>user_defined_type_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property data type
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>scope_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Applies to a feature not available in <productname>PostgreSQL</productname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>scope_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Applies to a feature not available in <productname>PostgreSQL</productname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>scope_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Applies to a feature not available in <productname>PostgreSQL</productname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>maximum_cardinality</structfield> <type>cardinal_number</type>
+      </para>
+      <para>
+       Always null, because arrays always have unlimited maximum cardinality in <productname>PostgreSQL</productname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>dtd_identifier</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       An identifier of the data type descriptor of the property, unique
+       among the data type descriptors pertaining to the property graph.  This
+       is mainly useful for joining with other instances of such
+       identifiers.  (The specific format of the identifier is not
+       defined and not guaranteed to remain the same in future
+       versions.)
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-pg-property-graph-privileges">
+  <title><literal>pg_property_graph_privileges</literal></title>
+
+  <para>
+   The view <literal>pg_property_graph_privileges</literal> identifies all
+   privileges granted on property graphs to a currently enabled role or by a
+   currently enabled role.  There is one row for each combination of property
+   graph, grantor, and grantee.
+  </para>
+
+  <table>
+   <title><structname>pg_property_graph_privileges</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>grantor</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the role that granted the privilege
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>grantee</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the role that the privilege was granted to
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>privilege_type</structfield> <type>character_data</type>
+      </para>
+      <para>
+       Type of the privilege: <literal>SELECT</literal> is the only privilege
+       type applicable to property graphs.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>is_grantable</structfield> <type>yes_or_no</type>
+      </para>
+      <para>
+       <literal>YES</literal> if the privilege is grantable, <literal>NO</literal> if not
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="infoschema-property-graphs">
+  <title><literal>property_graphs</literal></title>
+
+  <para>
+   The view <literal>property_graphs</literal> contains all property graphs
+   defined in the current database.  Only those property graphs are shown that
+   the current user has access to (by way of being the owner or having some
+   privilege).
+  </para>
+
+  <table>
+   <title><structname>property_graphs</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_catalog</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the database that contains the property graph (always the current database)
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_schema</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the schema that contains the property graph
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>property_graph_name</structfield> <type>sql_identifier</type>
+      </para>
+      <para>
+       Name of the property graph
       </para></entry>
      </row>
     </tbody>
@@ -6376,7 +7468,7 @@ ORDER BY c.ordinal_position;
        the sequence data type (see above).  The precision indicates
        the number of significant digits.  It can be expressed in
        decimal (base 10) or binary (base 2) terms, as specified in the
-       column <literal>numeric_precision_radix</literal>.
+       column <structfield>numeric_precision_radix</structfield>.
       </para></entry>
      </row>
 
@@ -6386,8 +7478,8 @@ ORDER BY c.ordinal_position;
       </para>
       <para>
        This column indicates in which base the values in the columns
-       <literal>numeric_precision</literal> and
-       <literal>numeric_scale</literal> are expressed.  The value is
+       <structfield>numeric_precision</structfield> and
+       <structfield>numeric_scale</structfield> are expressed.  The value is
        either 2 or 10.
       </para></entry>
      </row>
@@ -6402,7 +7494,7 @@ ORDER BY c.ordinal_position;
        of significant digits to the right of the decimal point.  It
        can be expressed in decimal (base 10) or binary (base 2) terms,
        as specified in the column
-       <literal>numeric_precision_radix</literal>.
+       <structfield>numeric_precision_radix</structfield>.
       </para></entry>
      </row>
 
@@ -6461,10 +7553,10 @@ ORDER BY c.ordinal_position;
  </sect1>
 
  <sect1 id="infoschema-sql-features">
-  <title><literal>sql_features</literal></title>
+  <title><structname>sql_features</structname></title>
 
   <para>
-   The table <literal>sql_features</literal> contains information
+   The table <structname>sql_features</structname> contains information
    about which formal features defined in the SQL standard are
    supported by <productname>PostgreSQL</productname>.  This is the
    same information that is presented in <xref linkend="features"/>.
@@ -6556,10 +7648,10 @@ ORDER BY c.ordinal_position;
  </sect1>
 
  <sect1 id="infoschema-sql-implementation-info">
-  <title><literal>sql_implementation_info</literal></title>
+  <title><structname>sql_implementation_info</structname></title>
 
   <para>
-   The table <literal>sql_implementation_info</literal> contains
+   The table <structname>sql_implementation_info</structname> contains
    information about various aspects that are left
    implementation-defined by the SQL standard.  This information is
    primarily intended for use in the context of the ODBC interface;
@@ -6638,10 +7730,10 @@ ORDER BY c.ordinal_position;
  </sect1>
 
  <sect1 id="infoschema-sql-parts">
-  <title><literal>sql_parts</literal></title>
+  <title><structname>sql_parts</structname></title>
 
   <para>
-   The table <literal>sql_parts</literal> contains information about
+   The table <structname>sql_parts</structname> contains information about
    which of the several parts of the SQL standard are supported by
    <productname>PostgreSQL</productname>.
   </para>
@@ -6714,10 +7806,10 @@ ORDER BY c.ordinal_position;
  </sect1>
 
  <sect1 id="infoschema-sql-sizing">
-  <title><literal>sql_sizing</literal></title>
+  <title><structname>sql_sizing</structname></title>
 
   <para>
-   The table <literal>sql_sizing</literal> contains information about
+   The table <structname>sql_sizing</structname> contains information about
    various size limits and maximum values in
    <productname>PostgreSQL</productname>.  This information is
    primarily intended for use in the context of the ODBC interface;
@@ -6867,7 +7959,7 @@ ORDER BY c.ordinal_position;
        <structfield>constraint_type</structfield> <type>character_data</type>
       </para>
       <para>
-       Type of the constraint: <literal>CHECK</literal>,
+       Type of the constraint: <literal>CHECK</literal> (includes not-null constraints),
        <literal>FOREIGN KEY</literal>, <literal>PRIMARY KEY</literal>,
        or <literal>UNIQUE</literal>
       </para></entry>
@@ -6896,9 +7988,7 @@ ORDER BY c.ordinal_position;
        <structfield>enforced</structfield> <type>yes_or_no</type>
       </para>
       <para>
-       Applies to a feature not available in
-       <productname>PostgreSQL</productname> (currently always
-       <literal>YES</literal>)
+       <literal>YES</literal> if the constraint is enforced, <literal>NO</literal> if not
       </para></entry>
      </row>
 
@@ -7845,7 +8935,7 @@ ORDER BY c.ordinal_position;
    in <productname>PostgreSQL</productname>) and distinct types (not
    implemented in <productname>PostgreSQL</productname>).  To be
    future-proof, use the
-   column <literal>user_defined_type_category</literal> to
+   column <structfield>user_defined_type_category</structfield> to
    differentiate between these.  Other user-defined types such as base
    types and enums, which are <productname>PostgreSQL</productname>
    extensions, are not shown here.  For domains,

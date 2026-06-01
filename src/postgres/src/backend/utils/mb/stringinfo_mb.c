@@ -8,7 +8,7 @@
  * code.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -19,8 +19,8 @@
  */
 #include "postgres.h"
 
-#include "mb/stringinfo_mb.h"
 #include "mb/pg_wchar.h"
+#include "mb/stringinfo_mb.h"
 
 
 /*

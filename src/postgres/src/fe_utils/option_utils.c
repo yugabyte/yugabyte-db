@@ -2,7 +2,7 @@
  *
  * Command line option processing facilities for frontend code
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/fe_utils/option_utils.c
@@ -81,4 +81,66 @@ option_parse_int(const char *optarg, const char *optname,
 	if (result)
 		*result = val;
 	return true;
+}
+
+/*
+ * Provide strictly harmonized handling of the --sync-method option.
+ */
+bool
+parse_sync_method(const char *optarg, DataDirSyncMethod *sync_method)
+{
+	if (strcmp(optarg, "fsync") == 0)
+		*sync_method = DATA_DIR_SYNC_METHOD_FSYNC;
+	else if (strcmp(optarg, "syncfs") == 0)
+	{
+#ifdef HAVE_SYNCFS
+		*sync_method = DATA_DIR_SYNC_METHOD_SYNCFS;
+#else
+		pg_log_error("this build does not support sync method \"%s\"",
+					 "syncfs");
+		return false;
+#endif
+	}
+	else
+	{
+		pg_log_error("unrecognized sync method: %s", optarg);
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ * Fail with appropriate error if 2 or more of the specified options are set.
+ * The first parameter is the number of arguments.  Following that is an
+ * arbitrary number of bool/string pairs.  The bool indicates whether the
+ * option is set, and the string is used for the error message.  Note that only
+ * the first pair of enabled options we find are reported.
+ *
+ * Don't call this directly.  Use the check_mut_excl_opts() macro in
+ * option_utils.h, which is the exact same except it doesn't take the first
+ * parameter (it discovers the number of arguments automagically).
+ */
+void
+check_mut_excl_opts_internal(int n,...)
+{
+	char	   *first = NULL;
+	va_list		args;
+
+	Assert(n % 2 == 0);
+
+	va_start(args, n);
+	for (int i = 0; i < n; i += 2)
+	{
+		bool		set = va_arg(args, int);
+		char	   *opt = va_arg(args, char *);
+
+		if (set && first)
+			pg_fatal("options %s and %s cannot be used together",
+					 first, opt);
+
+		if (set)
+			first = opt;
+	}
+	va_end(args);
 }

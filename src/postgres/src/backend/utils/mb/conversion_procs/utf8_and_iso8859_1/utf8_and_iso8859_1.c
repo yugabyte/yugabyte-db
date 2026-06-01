@@ -2,7 +2,7 @@
  *
  *	  ISO8859_1 <--> UTF8
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -15,7 +15,10 @@
 #include "fmgr.h"
 #include "mb/pg_wchar.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "utf8_and_iso8859_1",
+					.version = PG_VERSION
+);
 
 PG_FUNCTION_INFO_V1(iso8859_1_to_utf8);
 PG_FUNCTION_INFO_V1(utf8_to_iso8859_1);

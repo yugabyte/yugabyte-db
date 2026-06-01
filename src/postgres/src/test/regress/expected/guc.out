@@ -6,6 +6,10 @@ SHOW datestyle;
  Postgres, MDY
 (1 row)
 
+-- Check output style of CamelCase enum options
+SET intervalstyle to 'asd';
+ERROR:  invalid value for parameter "IntervalStyle": "asd"
+HINT:  Available values: postgres, postgres_verbose, sql_standard, iso_8601.
 -- SET to some nondefault value
 SET vacuum_cost_delay TO 40;
 SET datestyle = 'ISO, YMD';
@@ -27,6 +31,28 @@ SELECT '2006-08-13 12:34:56'::timestamptz;
  2006-08-13 12:34:56-07
 (1 row)
 
+-- Check handling of list GUCs
+SET search_path = 'pg_catalog', Foo, 'Bar', '';
+SHOW search_path;
+        search_path         
+----------------------------
+ pg_catalog, foo, "Bar", ""
+(1 row)
+
+SET search_path = null;  -- means empty list
+SHOW search_path;
+ search_path 
+-------------
+ 
+(1 row)
+
+SET search_path = null, null;  -- syntax error
+ERROR:  syntax error at or near ","
+LINE 1: SET search_path = null, null;
+                              ^
+SET enable_seqscan = null;  -- error
+ERROR:  NULL is an invalid value for enable_seqscan
+RESET search_path;
 -- SET LOCAL has no effect outside of a transaction
 SET LOCAL vacuum_cost_delay TO 50;
 WARNING:  SET LOCAL can only be used in transaction blocks
@@ -510,7 +536,7 @@ SELECT '2006-08-13 12:34:56'::timestamptz;
 SET seq_page_cost TO 'NaN';
 ERROR:  invalid value for parameter "seq_page_cost": "NaN"
 SET vacuum_cost_delay TO '10s';
-ERROR:  10000 ms is outside the valid range for parameter "vacuum_cost_delay" (0 .. 100)
+ERROR:  10000 ms is outside the valid range for parameter "vacuum_cost_delay" (0 ms .. 100 ms)
 SET no_such_variable TO 42;
 ERROR:  unrecognized configuration parameter "no_such_variable"
 -- Test "custom" GUCs created on the fly (which aren't really an
@@ -685,6 +711,63 @@ select current_schemas(false);
 
 reset search_path;
 --
+-- Test parsing of log_min_messages
+--
+SET log_min_messages TO foo;  -- fail
+ERROR:  invalid value for parameter "log_min_messages": "foo"
+DETAIL:  Unrecognized log level: "foo".
+SET log_min_messages TO fatal;
+SHOW log_min_messages;
+ log_min_messages 
+------------------
+ fatal
+(1 row)
+
+SET log_min_messages TO 'fatal';
+SHOW log_min_messages;
+ log_min_messages 
+------------------
+ fatal
+(1 row)
+
+SET log_min_messages TO 'checkpointer:debug2, autovacuum:debug1';  -- fail
+ERROR:  invalid value for parameter "log_min_messages": "checkpointer:debug2, autovacuum:debug1"
+DETAIL:  Default log level was not defined.
+SET log_min_messages TO 'debug1, backend:error, fatal';  -- fail
+ERROR:  invalid value for parameter "log_min_messages": "debug1, backend:error, fatal"
+DETAIL:  Redundant specification of default log level.
+SET log_min_messages TO 'backend:error, debug1, backend:warning';  -- fail
+ERROR:  invalid value for parameter "log_min_messages": "backend:error, debug1, backend:warning"
+DETAIL:  Redundant log level specification for process type "backend".
+SET log_min_messages TO 'backend:error, foo:fatal, archiver:debug1';  -- fail
+ERROR:  invalid value for parameter "log_min_messages": "backend:error, foo:fatal, archiver:debug1"
+DETAIL:  Unrecognized process type "foo".
+SET log_min_messages TO 'backend:error, checkpointer:bar, archiver:debug1';  -- fail
+ERROR:  invalid value for parameter "log_min_messages": "backend:error, checkpointer:bar, archiver:debug1"
+DETAIL:  Unrecognized log level for process type "checkpointer": "bar".
+SET log_min_messages TO 'backend:error, checkpointer:debug3, fatal, archiver:debug2, autovacuum:debug1, walsender:debug3';
+SHOW log_min_messages;
+                                        log_min_messages                                         
+-------------------------------------------------------------------------------------------------
+ fatal, archiver:debug2, autovacuum:debug1, backend:error, checkpointer:debug3, walsender:debug3
+(1 row)
+
+SET log_min_messages TO 'warning, autovacuum:debug1';
+SHOW log_min_messages;
+      log_min_messages      
+----------------------------
+ warning, autovacuum:debug1
+(1 row)
+
+SET log_min_messages TO 'autovacuum:debug1, warning';
+SHOW log_min_messages;
+      log_min_messages      
+----------------------------
+ warning, autovacuum:debug1
+(1 row)
+
+RESET log_min_messages;
+--
 -- Tests for function-local GUC settings
 --
 set work_mem = '3MB';
@@ -824,6 +907,27 @@ set default_with_oids to f;
 -- Should not allow to set it to true.
 set default_with_oids to t;
 ERROR:  tables declared WITH OIDS are not supported
+-- Test that disabling track_activities disables query ID reporting in
+-- pg_stat_activity.
+SET compute_query_id = on;
+SET track_activities = on;
+SELECT query_id IS NOT NULL AS qid_set FROM pg_stat_activity
+  WHERE pid = pg_backend_pid();
+ qid_set 
+---------
+ t
+(1 row)
+
+SET track_activities = off;
+SELECT query_id IS NOT NULL AS qid_set FROM pg_stat_activity
+  WHERE pid = pg_backend_pid();
+ qid_set 
+---------
+ f
+(1 row)
+
+RESET track_activities;
+RESET compute_query_id;
 -- Test GUC categories and flag patterns
 SELECT pg_settings_get_flags(NULL);
  pg_settings_get_flags 
@@ -839,6 +943,7 @@ SELECT pg_settings_get_flags('does_not_exist');
 
 CREATE TABLE tab_settings_flags AS SELECT name, category,
     'EXPLAIN'          = ANY(flags) AS explain,
+    'NO_RESET'         = ANY(flags) AS no_reset,
     'NO_RESET_ALL'     = ANY(flags) AS no_reset_all,
     'NOT_IN_SAMPLE'    = ANY(flags) AS not_in_sample,
     'RUNTIME_COMPUTED' = ANY(flags) AS runtime_computed
@@ -873,6 +978,14 @@ SELECT name FROM tab_settings_flags
 -- Preset GUCs are flagged as NOT_IN_SAMPLE.
 SELECT name FROM tab_settings_flags
   WHERE category = 'Preset Options' AND NOT not_in_sample
+  ORDER BY 1;
+ name 
+------
+(0 rows)
+
+-- NO_RESET implies NO_RESET_ALL.
+SELECT name FROM tab_settings_flags
+  WHERE no_reset AND NOT no_reset_all
   ORDER BY 1;
  name 
 ------

@@ -8,13 +8,15 @@
 #
 # CATALOG_NAME          -- name of the message catalog (xxx.po); probably
 #                          name of the program
-# AVAIL_LANGUAGES       -- list of languages that are provided/supported
 # GETTEXT_FILES         -- list of source files that contain message strings
 # GETTEXT_TRIGGERS      -- (optional) list of functions that contain
 #                          translatable strings
 # GETTEXT_FLAGS         -- (optional) list of gettext --flag arguments to mark
 #                          function arguments that contain C format strings
 #                          (functions must be listed in TRIGGERS and FLAGS)
+#
+# Also, provide a text file 'po/LINGUAS' with a space-separated list
+# of languages that are provided/supported.
 #
 # That's all, the rest is done here, if --enable-nls was specified.
 #
@@ -26,6 +28,8 @@
 
 # existence checked by Makefile.global; otherwise we won't get here
 include $(srcdir)/nls.mk
+
+AVAIL_LANGUAGES := $(shell cat $(srcdir)/po/LINGUAS)
 
 # If user specified the languages he wants in --enable-nls=LANGUAGES,
 # filter out the rest.  Else use all available ones.
@@ -138,8 +142,13 @@ init-po: po/$(CATALOG_NAME).pot
 # For performance reasons, only calculate these when the user actually
 # requested update-po or a specific file.
 ifneq (,$(filter update-po %.po.new,$(MAKECMDGOALS)))
+ifdef PGXS
+ALL_LANGUAGES := $(shell find . -name '*.po' -print | sed 's,^.*/\([^/]*\).po$$,\1,' | LC_ALL=C sort -u)
+all_compendia := $(shell find . -name '*.po' -print | LC_ALL=C sort)
+else
 ALL_LANGUAGES := $(shell find $(top_srcdir) -name '*.po' -print | sed 's,^.*/\([^/]*\).po$$,\1,' | LC_ALL=C sort -u)
 all_compendia := $(shell find $(top_srcdir) -name '*.po' -print | LC_ALL=C sort)
+endif
 else
 ALL_LANGUAGES = $(AVAIL_LANGUAGES)
 all_compendia = FORCE
@@ -167,7 +176,7 @@ all: all-po
 install: install-po
 installdirs: installdirs-po
 uninstall: uninstall-po
-clean distclean maintainer-clean: clean-po
+clean distclean: clean-po
 
 .PHONY: all-po install-po installdirs-po uninstall-po clean-po \
         init-po update-po

@@ -4,7 +4,7 @@
  *	  routines for fast build of inverted index
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -42,7 +42,7 @@ ginCombineData(RBTNode *existing, const RBTNode *newdata, void *arg)
 			ereport(ERROR,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 					 errmsg("posting list is too long"),
-					 errhint("Reduce maintenance_work_mem.")));
+					 errhint("Reduce \"maintenance_work_mem\".")));
 
 		accum->allocatedMemory -= GetMemoryChunkSpace(eo->list);
 		eo->maxcount *= 2;
@@ -93,7 +93,7 @@ ginAllocEntryAccumulator(void *arg)
 	 */
 	if (accum->entryallocator == NULL || accum->eas_used >= DEF_NENTRY)
 	{
-		accum->entryallocator = palloc(sizeof(GinEntryAccumulator) * DEF_NENTRY);
+		accum->entryallocator = palloc_array(GinEntryAccumulator, DEF_NENTRY);
 		accum->allocatedMemory += GetMemoryChunkSpace(accum->entryallocator);
 		accum->eas_used = 0;
 	}
@@ -117,7 +117,7 @@ ginInitBA(BuildAccumulator *accum)
 							 ginCombineData,
 							 ginAllocEntryAccumulator,
 							 NULL,	/* no freefunc needed */
-							 (void *) accum);
+							 accum);
 }
 
 /*
@@ -127,10 +127,10 @@ ginInitBA(BuildAccumulator *accum)
 static Datum
 getDatumCopy(BuildAccumulator *accum, OffsetNumber attnum, Datum value)
 {
-	Form_pg_attribute att;
+	CompactAttribute *att;
 	Datum		res;
 
-	att = TupleDescAttr(accum->ginstate->origTupdesc, attnum - 1);
+	att = TupleDescCompactAttr(accum->ginstate->origTupdesc, attnum - 1);
 	if (att->attbyval)
 		res = value;
 	else
@@ -177,8 +177,7 @@ ginInsertBAEntry(BuildAccumulator *accum,
 		ea->maxcount = DEF_NPTR;
 		ea->count = 1;
 		ea->shouldSort = false;
-		ea->list =
-			(ItemPointerData *) palloc(sizeof(ItemPointerData) * DEF_NPTR);
+		ea->list = palloc_array(ItemPointerData, DEF_NPTR);
 		ea->list[0] = *heapptr;
 		accum->allocatedMemory += GetMemoryChunkSpace(ea->list);
 	}
@@ -245,7 +244,7 @@ ginInsertBAEntries(BuildAccumulator *accum,
 static int
 qsortCompareItemPointers(const void *a, const void *b)
 {
-	int			res = ginCompareItemPointers((ItemPointer) a, (ItemPointer) b);
+	int			res = ginCompareItemPointers((const ItemPointerData *) a, (const ItemPointerData *) b);
 
 	/* Assert that there are no equal item pointers being sorted */
 	Assert(res != 0);

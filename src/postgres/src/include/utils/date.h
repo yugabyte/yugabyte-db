@@ -4,7 +4,7 @@
  *	  Definitions for the SQL "date" and "time" types.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/date.h
@@ -13,8 +13,6 @@
  */
 #ifndef DATE_H
 #define DATE_H
-
-#include <math.h>
 
 #include "datatype/timestamp.h"
 #include "fmgr.h"
@@ -31,6 +29,14 @@ typedef struct
 } TimeTzADT;
 
 /*
+ * sizeof(TimeTzADT) will be 16 on most platforms due to alignment padding.
+ * However, timetz's typlen is 12 according to pg_type.  In most places
+ * we can get away with using sizeof(TimeTzADT), but where it's important
+ * to match the declared typlen, use TIMETZ_TYPLEN.
+ */
+#define TIMETZ_TYPLEN		12
+
+/*
  * Infinity and minus infinity must be the max and min values of DateADT.
  */
 #define DATEVAL_NOBEGIN		((DateADT) PG_INT32_MIN)
@@ -42,21 +48,49 @@ typedef struct
 #define DATE_IS_NOEND(j)	((j) == DATEVAL_NOEND)
 #define DATE_NOT_FINITE(j)	(DATE_IS_NOBEGIN(j) || DATE_IS_NOEND(j))
 
+#define MAX_TIME_PRECISION 6
+
 /*
- * Macros for fmgr-callable functions.
+ * Functions for fmgr-callable functions.
  *
  * For TimeADT, we make use of the same support routines as for int64.
  * Therefore TimeADT is pass-by-reference if and only if int64 is!
  */
-#define MAX_TIME_PRECISION 6
+static inline DateADT
+DatumGetDateADT(Datum X)
+{
+	return (DateADT) DatumGetInt32(X);
+}
 
-#define DatumGetDateADT(X)	  ((DateADT) DatumGetInt32(X))
-#define DatumGetTimeADT(X)	  ((TimeADT) DatumGetInt64(X))
-#define DatumGetTimeTzADTP(X) ((TimeTzADT *) DatumGetPointer(X))
+static inline TimeADT
+DatumGetTimeADT(Datum X)
+{
+	return (TimeADT) DatumGetInt64(X);
+}
 
-#define DateADTGetDatum(X)	  Int32GetDatum(X)
-#define TimeADTGetDatum(X)	  Int64GetDatum(X)
-#define TimeTzADTPGetDatum(X) PointerGetDatum(X)
+static inline TimeTzADT *
+DatumGetTimeTzADTP(Datum X)
+{
+	return (TimeTzADT *) DatumGetPointer(X);
+}
+
+static inline Datum
+DateADTGetDatum(DateADT X)
+{
+	return Int32GetDatum(X);
+}
+
+static inline Datum
+TimeADTGetDatum(TimeADT X)
+{
+	return Int64GetDatum(X);
+}
+
+static inline Datum
+TimeTzADTPGetDatum(const TimeTzADT *X)
+{
+	return PointerGetDatum(X);
+}
 
 #define PG_GETARG_DATEADT(n)	 DatumGetDateADT(PG_GETARG_DATUM(n))
 #define PG_GETARG_TIMEADT(n)	 DatumGetTimeADT(PG_GETARG_DATUM(n))
@@ -70,8 +104,10 @@ typedef struct
 /* date.c */
 extern int32 anytime_typmod_check(bool istz, int32 typmod);
 extern double date2timestamp_no_overflow(DateADT dateVal);
-extern Timestamp date2timestamp_opt_overflow(DateADT dateVal, int *overflow);
-extern TimestampTz date2timestamptz_opt_overflow(DateADT dateVal, int *overflow);
+extern Timestamp date2timestamp_safe(DateADT dateVal, Node *escontext);
+extern TimestampTz date2timestamptz_safe(DateADT dateVal, Node *escontext);
+extern DateADT timestamp2date_safe(Timestamp timestamp, Node *escontext);
+extern DateADT timestamptz2date_safe(TimestampTz timestamp, Node *escontext);
 extern int32 date_cmp_timestamp_internal(DateADT dateVal, Timestamp dt2);
 extern int32 date_cmp_timestamptz_internal(DateADT dateVal, TimestampTz dt2);
 

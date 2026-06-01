@@ -61,6 +61,11 @@ in both master and the branch.
 * Ports
 	o update ports list in doc/src/sgml/installation.sgml
 
+* Create .abi-compliance-history file with initial entry shortly before the .0
+  stamp.  The easiest way to do this is to copy it from the previous
+  REL_*_STABLE branch, remove all entries, and follow the instructions in the
+  file to add the initial reference point for the major version.
+
 
 Pre-Beta Tasks
 ==============
@@ -79,8 +84,7 @@ but there may be reasons to do them at other times as well.
 * Update config.guess and config.sub
   (from https://savannah.gnu.org/projects/config)
 
-* Update Unicode data: Edit UNICODE_VERSION and CLDR_VERSION in
-  src/Makefile.global.in, run make update-unicode, and commit.
+* Update Unicode data (see src/common/unicode/README)
 
 
 Starting a New Development Cycle
@@ -88,6 +92,9 @@ Starting a New Development Cycle
 
 * Typically, we do pgindent and perltidy runs just before branching,
   as well as before beta (complete steps from src/tools/pgindent/README)
+
+* It's also advisable to check that copyright years are up-to-date
+  (run src/tools/copyright.pl, commit any changes it finds)
 
 * Create a branch in git for maintenance of the previous release
 	o on master branch, do:
@@ -107,6 +114,13 @@ Starting a New Development Cycle
 * Create a new doc/src/sgml/release-NN.sgml file (initially just a
   placeholder), "git rm" the previous one, and update release.sgml and
   filelist.sgml to match.
+
+* In the newly-made branch, replace "devel" with the branch's major version
+  number in the URLs appearing in the top-level README and Makefile files.
+
+* In the newly-made branch, change src/backend/nodes/gen_node_support.pl
+  to enforce ABI stability of the NodeTag list (see "ARM ABI STABILITY
+  CHECK HERE" therein).
 
 * Notify the private committers email list, to ensure all committers
   are aware of the new branch even if they're not paying close attention

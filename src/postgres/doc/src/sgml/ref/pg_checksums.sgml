@@ -33,7 +33,7 @@ PostgreSQL documentation
   </cmdsynopsis>
  </refsynopsisdiv>
 
- <refsect1 id="r1-app-pg_checksums-1">
+ <refsect1 id="r1-app-pgchecksums-1">
   <title>Description</title>
   <para>
    <application>pg_checksums</application> checks, enables or disables data
@@ -43,6 +43,12 @@ PostgreSQL documentation
    status is zero if there are no checksum errors, and nonzero if at least one
    checksum failure is detected. When enabling or disabling checksums, the
    exit status is nonzero if the operation failed.
+  </para>
+
+  <para>
+   When enabling checksums, if checksums were in the process of being enabled
+   when the cluster was shut down, <application>pg_checksums</application>
+   will still process all relations regardless of the online processing.
   </para>
 
   <para>
@@ -61,8 +67,8 @@ PostgreSQL documentation
 
     <variablelist>
      <varlistentry>
-      <term><option>-D <replaceable>directory</replaceable></option></term>
-      <term><option>--pgdata=<replaceable>directory</replaceable></option></term>
+      <term><option>-D <replaceable>datadir</replaceable></option></term>
+      <term><option>--pgdata=<replaceable>datadir</replaceable></option></term>
       <listitem>
        <para>
         Specifies the directory where the database cluster is stored.
@@ -135,6 +141,28 @@ PostgreSQL documentation
        <para>
         Enable progress reporting. Turning this on will deliver a progress
         report while checking or enabling checksums.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--sync-method=<replaceable>method</replaceable></option></term>
+      <listitem>
+       <para>
+        When set to <literal>fsync</literal>, which is the default,
+        <command>pg_checksums</command> will recursively open and synchronize
+        all files in the data directory.  The search for files will follow
+        symbolic links for the WAL directory and each configured tablespace.
+       </para>
+       <para>
+        On Linux, <literal>syncfs</literal> may be used instead to ask the
+        operating system to synchronize the whole file systems that contain the
+        data directory, the WAL files, and each tablespace.  See
+        <xref linkend="guc-recovery-init-sync-method"/> for information about
+        the caveats to be aware of when using <literal>syncfs</literal>.
+       </para>
+       <para>
+        This option has no effect when <option>--no-sync</option> is used.
        </para>
       </listitem>
      </varlistentry>
@@ -224,6 +252,10 @@ PostgreSQL documentation
    enabling or disabling checksums, the cluster's data checksum configuration
    remains unchanged, and <application>pg_checksums</application> can be
    re-run to perform the same operation.
+  </para>
+  <para>
+   The target cluster must have the same major version as
+   <application>pg_checksums</application>.
   </para>
  </refsect1>
 </refentry>

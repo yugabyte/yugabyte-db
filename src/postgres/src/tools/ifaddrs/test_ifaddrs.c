@@ -26,11 +26,9 @@ print_addr(struct sockaddr *addr)
 		case AF_INET:
 			len = sizeof(struct sockaddr_in);
 			break;
-#ifdef HAVE_IPV6
 		case AF_INET6:
 			len = sizeof(struct sockaddr_in6);
 			break;
-#endif
 		default:
 			len = sizeof(struct sockaddr_storage);
 			break;
@@ -68,6 +66,6 @@ main(int argc, char *argv[])
 #endif
 
 	if (pg_foreach_ifaddr(callback, NULL) < 0)
-		fprintf(stderr, "pg_foreach_ifaddr failed: %s\n", strerror(errno));
+		fprintf(stderr, "pg_foreach_ifaddr failed: %m\n");
 	return 0;
 }

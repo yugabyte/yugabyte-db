@@ -3,7 +3,7 @@
  * username.c
  *	  get user name
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -35,11 +35,18 @@ static char user_id[MAXPGPATH] = "";
 const char *
 read_user_id()
 {
+	char	   *line;
+	
 	if (user_id[0] != '\0')
 		return user_id;
 
-	if (exec_pipe_read_line("id -un", user_id, MAXPGPATH) != NULL)
+	line = exec_pipe_read_line("id -un");
+	if (line != NULL)
 	{
+		/* Copy into buffer */
+		strlcpy(user_id, line, MAXPGPATH);
+		pfree(line);
+		
 		/* Trim trailing whitespace */
 		for (int i = strlen(user_id) - 1; i >= 0; i--)
 		{

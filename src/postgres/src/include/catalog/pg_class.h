@@ -4,7 +4,7 @@
  *	  definition of the "relation" system catalog (pg_class)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_class.h
@@ -19,7 +19,7 @@
 #define PG_CLASS_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_class_d.h"
+#include "catalog/pg_class_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_class definition.  cpp turns this into
@@ -29,6 +29,8 @@
  * BKI_BOOTSTRAP catalogs, since only those rows appear in pg_class.dat.
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,RelationRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	/* oid */
@@ -67,6 +69,9 @@ CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,Relat
 
 	/* # of all-visible blocks (not always up-to-date) */
 	int32		relallvisible BKI_DEFAULT(0);
+
+	/* # of all-frozen blocks (not always up-to-date) */
+	int32		relallfrozen BKI_DEFAULT(0);
 
 	/* OID of toast table; 0 if none */
 	Oid			reltoastrelid BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_class);
@@ -141,6 +146,8 @@ CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,Relat
 #endif
 } FormData_pg_class;
 
+END_CATALOG_STRUCT
+
 /* Size of fixed part of pg_class tuples, not counting var-length fields */
 #define CLASS_TUPLE_SIZE \
 	 (offsetof(FormData_pg_class,relminmxid) + sizeof(TransactionId))
@@ -152,9 +159,12 @@ CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,Relat
  */
 typedef FormData_pg_class *Form_pg_class;
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_class_oid_index, 2662, ClassOidIndexId, on pg_class using btree(oid oid_ops));
-DECLARE_UNIQUE_INDEX(pg_class_relname_nsp_index, 2663, ClassNameNspIndexId, on pg_class using btree(relname name_ops, relnamespace oid_ops));
-DECLARE_INDEX(pg_class_tblspc_relfilenode_index, 3455, ClassTblspcRelfilenodeIndexId, on pg_class using btree(reltablespace oid_ops, relfilenode oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_class_oid_index, 2662, ClassOidIndexId, pg_class, btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_class_relname_nsp_index, 2663, ClassNameNspIndexId, pg_class, btree(relname name_ops, relnamespace oid_ops));
+DECLARE_INDEX(pg_class_tblspc_relfilenode_index, 3455, ClassTblspcRelfilenodeIndexId, pg_class, btree(reltablespace oid_ops, relfilenode oid_ops));
+
+MAKE_SYSCACHE(RELOID, pg_class_oid_index, 128);
+MAKE_SYSCACHE(RELNAMENSP, pg_class_relname_nsp_index, 128);
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 
@@ -168,6 +178,7 @@ DECLARE_INDEX(pg_class_tblspc_relfilenode_index, 3455, ClassTblspcRelfilenodeInd
 #define		  RELKIND_FOREIGN_TABLE   'f'	/* foreign table */
 #define		  RELKIND_PARTITIONED_TABLE 'p' /* partitioned table */
 #define		  RELKIND_PARTITIONED_INDEX 'I' /* partitioned index */
+#define		  RELKIND_PROPGRAPH		  'g'	/* property graph */
 
 #define		  RELPERSISTENCE_PERMANENT	'p' /* regular table */
 #define		  RELPERSISTENCE_UNLOGGED	'u' /* unlogged permanent table */
@@ -226,15 +237,17 @@ DECLARE_INDEX(pg_class_tblspc_relfilenode_index, 3455, ClassTblspcRelfilenodeInd
 /*
  * Relation kinds with a table access method (rd_tableam).  Although sequences
  * use the heap table AM, they are enough of a special case in most uses that
- * they are not included here.
+ * they are not included here.  Likewise, partitioned tables can have an access
+ * method defined so that their partitions can inherit it, but they do not set
+ * rd_tableam; hence, this is handled specially outside of this macro.
  */
 #define RELKIND_HAS_TABLE_AM(relkind) \
 	((relkind) == RELKIND_RELATION || \
 	 (relkind) == RELKIND_TOASTVALUE || \
 	 (relkind) == RELKIND_MATVIEW)
 
-extern int	errdetail_relkind_not_supported(char relkind);
-
 #endif							/* EXPOSE_TO_CLIENT_CODE */
+
+extern int	errdetail_relkind_not_supported(char relkind);
 
 #endif							/* PG_CLASS_H */

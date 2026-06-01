@@ -99,6 +99,7 @@ The remaining code is authored by Andrew Dunstan <amdunstan@ncshp.org> and
 #include "postgres.h"
 
 #include "utils/builtins.h"
+#include "utils/formatting.h"
 
 /* turn off assertions for embedded function */
 #if 0							/* Commented out by Yugabyte: NDEBUG should
@@ -120,7 +121,7 @@ The remaining code is authored by Andrew Dunstan <amdunstan@ncshp.org> and
 #include <ctype.h>
 
 /* prototype for the main function we got from the perl module */
-static void DoubleMetaphone(char *, char **);
+static void DoubleMetaphone(const char *str, Oid collid, char **codes);
 
 #ifndef DMETAPHONE_MAIN
 
@@ -145,7 +146,7 @@ dmetaphone(PG_FUNCTION_ARGS)
 	arg = PG_GETARG_TEXT_PP(0);
 	aptr = text_to_cstring(arg);
 
-	DoubleMetaphone(aptr, codes);
+	DoubleMetaphone(aptr, PG_GET_COLLATION(), codes);
 	code = codes[0];
 	if (!code)
 		code = "";
@@ -174,7 +175,7 @@ dmetaphone_alt(PG_FUNCTION_ARGS)
 	arg = PG_GETARG_TEXT_PP(0);
 	aptr = text_to_cstring(arg);
 
-	DoubleMetaphone(aptr, codes);
+	DoubleMetaphone(aptr, PG_GET_COLLATION(), codes);
 	code = codes[1];
 	if (!code)
 		code = "";
@@ -281,13 +282,17 @@ IncreaseBuffer(metastring *s, int chars_needed)
 }
 
 
-static void
-MakeUpper(metastring *s)
+static metastring *
+MakeUpper(metastring *s, Oid collid)
 {
-	char	   *i;
+	char	   *newstr;
+	metastring *newms;
 
-	for (i = s->str; *i; i++)
-		*i = toupper((unsigned char) *i);
+	newstr = str_toupper(s->str, s->length, collid);
+	newms = NewMetaString(newstr);
+	DestroyMetaString(s);
+
+	return newms;
 }
 
 
@@ -311,13 +316,13 @@ IsVowel(metastring *s, int pos)
 static int
 SlavoGermanic(metastring *s)
 {
-	if ((char *) strstr(s->str, "W"))
+	if (strstr(s->str, "W"))
 		return 1;
-	else if ((char *) strstr(s->str, "K"))
+	else if (strstr(s->str, "K"))
 		return 1;
-	else if ((char *) strstr(s->str, "CZ"))
+	else if (strstr(s->str, "CZ"))
 		return 1;
-	else if ((char *) strstr(s->str, "WITZ"))
+	else if (strstr(s->str, "WITZ"))
 		return 1;
 	else
 		return 0;
@@ -330,7 +335,7 @@ GetAt(metastring *s, int pos)
 	if ((pos < 0) || (pos >= s->length))
 		return '\0';
 
-	return ((char) *(s->str + pos));
+	return *(s->str + pos);
 }
 
 
@@ -395,7 +400,7 @@ MetaphAdd(metastring *s, const char *new_str)
 
 
 static void
-DoubleMetaphone(char *str, char **codes)
+DoubleMetaphone(const char *str, Oid collid, char **codes)
 {
 	int			length;
 	metastring *original;
@@ -417,7 +422,7 @@ DoubleMetaphone(char *str, char **codes)
 	primary->free_string_on_destroy = 0;
 	secondary->free_string_on_destroy = 0;
 
-	MakeUpper(original);
+	original = MakeUpper(original, collid);
 
 	/* skip these when at start of word */
 	if (StringAt(original, 0, 2, "GN", "KN", "PN", "WR", "PS", ""))
@@ -1433,7 +1438,7 @@ main(int argc, char **argv)
 
 	if (argc > 1)
 	{
-		DoubleMetaphone(argv[1], codes);
+		DoubleMetaphone(argv[1], DEFAULT_COLLATION_OID, codes);
 		printf("%s|%s\n", codes[0], codes[1]);
 	}
 }

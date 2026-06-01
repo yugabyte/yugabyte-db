@@ -2,7 +2,7 @@
  * output_plugin.h
  *	   PostgreSQL Logical Decode Plugin Interface
  *
- * Copyright (c) 2012-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2026, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -20,7 +20,7 @@ struct OutputPluginCallbacks;
 typedef enum OutputPluginOutputType
 {
 	OUTPUT_PLUGIN_BINARY_OUTPUT,
-	OUTPUT_PLUGIN_TEXTUAL_OUTPUT
+	OUTPUT_PLUGIN_TEXTUAL_OUTPUT,
 } OutputPluginOutputType;
 
 /*
@@ -30,6 +30,7 @@ typedef struct OutputPluginOptions
 {
 	OutputPluginOutputType output_type;
 	bool		receive_rewrites;
+	bool		need_shared_catalogs;
 
 	/* YB */
 	List	   *yb_publication_names;
@@ -40,6 +41,8 @@ typedef struct OutputPluginOptions
  * when loading an output plugin shared library.
  */
 typedef void (*LogicalOutputPluginInit) (struct OutputPluginCallbacks *cb);
+
+extern PGDLLEXPORT void _PG_output_plugin_init(struct OutputPluginCallbacks *cb);
 
 /*
  * Callback that gets called in a user-defined plugin. ctx->private_data can
@@ -98,7 +101,7 @@ typedef void (*LogicalDecodeMessageCB) (struct LogicalDecodingContext *ctx,
  * Filter changes by origin.
  */
 typedef bool (*LogicalDecodeFilterByOriginCB) (struct LogicalDecodingContext *ctx,
-											   RepOriginId origin_id);
+											   ReplOriginId origin_id);
 
 /*
  * Called to shutdown an output plugin.
@@ -116,7 +119,7 @@ typedef bool (*LogicalDecodeFilterPrepareCB) (struct LogicalDecodingContext *ctx
 											  const char *gid);
 
 /*
- * Callback called for every BEGIN of a prepared trnsaction.
+ * Callback called for every BEGIN of a prepared transaction.
  */
 typedef void (*LogicalDecodeBeginPrepareCB) (struct LogicalDecodingContext *ctx,
 											 ReorderBufferTXN *txn);

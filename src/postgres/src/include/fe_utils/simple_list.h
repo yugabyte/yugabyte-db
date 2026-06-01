@@ -7,7 +7,7 @@
  * facilities, but it's all we need in, eg, pg_dump.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/fe_utils/simple_list.h
@@ -65,6 +65,7 @@ extern void simple_string_list_destroy(SimpleStringList *list);
 
 extern const char *simple_string_list_not_touched(SimpleStringList *list);
 
-extern void simple_ptr_list_append(SimplePtrList *list, void *val);
+extern void simple_ptr_list_append(SimplePtrList *list, void *ptr);
+extern void simple_ptr_list_destroy(SimplePtrList *list);
 
 #endif							/* SIMPLE_LIST_H */

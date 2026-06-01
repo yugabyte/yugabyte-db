@@ -8,7 +8,7 @@
  * None of this code is used during normal system operation.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/xlogutils.c
@@ -22,13 +22,10 @@
 #include "access/timeline.h"
 #include "access/xlogrecovery.h"
 #include "access/xlog_internal.h"
-#include "access/xlogprefetcher.h"
 #include "access/xlogutils.h"
 #include "miscadmin.h"
-#include "pgstat.h"
 #include "storage/fd.h"
 #include "storage/smgr.h"
-#include "utils/guc.h"
 #include "utils/hsearch.h"
 #include "utils/rel.h"
 
@@ -67,7 +64,7 @@ HotStandbyState standbyState = STANDBY_DISABLED;
  */
 typedef struct xl_invalid_page_key
 {
-	RelFileNode node;			/* the relation */
+	RelFileLocator locator;		/* the relation */
 	ForkNumber	forkno;			/* the fork number */
 	BlockNumber blkno;			/* the page */
 } xl_invalid_page_key;
@@ -86,23 +83,22 @@ static int	read_local_xlog_page_guts(XLogReaderState *state, XLogRecPtr targetPa
 
 /* Report a reference to an invalid page */
 static void
-report_invalid_page(int elevel, RelFileNode node, ForkNumber forkno,
+report_invalid_page(int elevel, RelFileLocator locator, ForkNumber forkno,
 					BlockNumber blkno, bool present)
 {
-	char	   *path = relpathperm(node, forkno);
+	RelPathStr	path = relpathperm(locator, forkno);
 
 	if (present)
 		elog(elevel, "page %u of relation %s is uninitialized",
-			 blkno, path);
+			 blkno, path.str);
 	else
 		elog(elevel, "page %u of relation %s does not exist",
-			 blkno, path);
-	pfree(path);
+			 blkno, path.str);
 }
 
 /* Log a reference to an invalid page */
 static void
-log_invalid_page(RelFileNode node, ForkNumber forkno, BlockNumber blkno,
+log_invalid_page(RelFileLocator locator, ForkNumber forkno, BlockNumber blkno,
 				 bool present)
 {
 	xl_invalid_page_key key;
@@ -119,7 +115,7 @@ log_invalid_page(RelFileNode node, ForkNumber forkno, BlockNumber blkno,
 	 */
 	if (reachedConsistency)
 	{
-		report_invalid_page(WARNING, node, forkno, blkno, present);
+		report_invalid_page(WARNING, locator, forkno, blkno, present);
 		elog(ignore_invalid_pages ? WARNING : PANIC,
 			 "WAL contains references to invalid pages");
 	}
@@ -130,7 +126,7 @@ log_invalid_page(RelFileNode node, ForkNumber forkno, BlockNumber blkno,
 	 * something about the XLOG record that generated the reference).
 	 */
 	if (message_level_is_interesting(DEBUG1))
-		report_invalid_page(DEBUG1, node, forkno, blkno, present);
+		report_invalid_page(DEBUG1, locator, forkno, blkno, present);
 
 	if (invalid_page_tab == NULL)
 	{
@@ -147,11 +143,11 @@ log_invalid_page(RelFileNode node, ForkNumber forkno, BlockNumber blkno,
 	}
 
 	/* we currently assume xl_invalid_page_key contains no padding */
-	key.node = node;
+	key.locator = locator;
 	key.forkno = forkno;
 	key.blkno = blkno;
 	hentry = (xl_invalid_page *)
-		hash_search(invalid_page_tab, (void *) &key, HASH_ENTER, &found);
+		hash_search(invalid_page_tab, &key, HASH_ENTER, &found);
 
 	if (!found)
 	{
@@ -166,7 +162,8 @@ log_invalid_page(RelFileNode node, ForkNumber forkno, BlockNumber blkno,
 
 /* Forget any invalid pages >= minblkno, because they've been dropped */
 static void
-forget_invalid_pages(RelFileNode node, ForkNumber forkno, BlockNumber minblkno)
+forget_invalid_pages(RelFileLocator locator, ForkNumber forkno,
+					 BlockNumber minblkno)
 {
 	HASH_SEQ_STATUS status;
 	xl_invalid_page *hentry;
@@ -178,21 +175,16 @@ forget_invalid_pages(RelFileNode node, ForkNumber forkno, BlockNumber minblkno)
 
 	while ((hentry = (xl_invalid_page *) hash_seq_search(&status)) != NULL)
 	{
-		if (RelFileNodeEquals(hentry->key.node, node) &&
+		if (RelFileLocatorEquals(hentry->key.locator, locator) &&
 			hentry->key.forkno == forkno &&
 			hentry->key.blkno >= minblkno)
 		{
-			if (message_level_is_interesting(DEBUG2))
-			{
-				char	   *path = relpathperm(hentry->key.node, forkno);
-
-				elog(DEBUG2, "page %u of relation %s has been dropped",
-					 hentry->key.blkno, path);
-				pfree(path);
-			}
+			elog(DEBUG2, "page %u of relation %s has been dropped",
+				 hentry->key.blkno,
+				 relpathperm(hentry->key.locator, forkno).str);
 
 			if (hash_search(invalid_page_tab,
-							(void *) &hentry->key,
+							&hentry->key,
 							HASH_REMOVE, NULL) == NULL)
 				elog(ERROR, "hash table corrupted");
 		}
@@ -213,19 +205,14 @@ forget_invalid_pages_db(Oid dbid)
 
 	while ((hentry = (xl_invalid_page *) hash_seq_search(&status)) != NULL)
 	{
-		if (hentry->key.node.dbNode == dbid)
+		if (hentry->key.locator.dbOid == dbid)
 		{
-			if (message_level_is_interesting(DEBUG2))
-			{
-				char	   *path = relpathperm(hentry->key.node, hentry->key.forkno);
-
-				elog(DEBUG2, "page %u of relation %s has been dropped",
-					 hentry->key.blkno, path);
-				pfree(path);
-			}
+			elog(DEBUG2, "page %u of relation %s has been dropped",
+				 hentry->key.blkno,
+				 relpathperm(hentry->key.locator, hentry->key.forkno).str);
 
 			if (hash_search(invalid_page_tab,
-							(void *) &hentry->key,
+							&hentry->key,
 							HASH_REMOVE, NULL) == NULL)
 				elog(ERROR, "hash table corrupted");
 		}
@@ -261,7 +248,7 @@ XLogCheckInvalidPages(void)
 	 */
 	while ((hentry = (xl_invalid_page *) hash_seq_search(&status)) != NULL)
 	{
-		report_invalid_page(WARNING, hentry->key.node, hentry->key.forkno,
+		report_invalid_page(WARNING, hentry->key.locator, hentry->key.forkno,
 							hentry->key.blkno, hentry->present);
 		foundone = true;
 	}
@@ -356,7 +343,7 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
 							  Buffer *buf)
 {
 	XLogRecPtr	lsn = record->EndRecPtr;
-	RelFileNode rnode;
+	RelFileLocator rlocator;
 	ForkNumber	forknum;
 	BlockNumber blkno;
 	Buffer		prefetch_buffer;
@@ -364,7 +351,7 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
 	bool		zeromode;
 	bool		willinit;
 
-	if (!XLogRecGetBlockTagExtended(record, block_id, &rnode, &forknum, &blkno,
+	if (!XLogRecGetBlockTagExtended(record, block_id, &rlocator, &forknum, &blkno,
 									&prefetch_buffer))
 	{
 		/* Caller specified a bogus block_id */
@@ -387,7 +374,7 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
 	if (XLogRecBlockImageApply(record, block_id))
 	{
 		Assert(XLogRecHasBlockImage(record, block_id));
-		*buf = XLogReadBufferExtended(rnode, forknum, blkno,
+		*buf = XLogReadBufferExtended(rlocator, forknum, blkno,
 									  get_cleanup_lock ? RBM_ZERO_AND_CLEANUP_LOCK : RBM_ZERO_AND_LOCK,
 									  prefetch_buffer);
 		page = BufferGetPage(*buf);
@@ -420,7 +407,7 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
 	}
 	else
 	{
-		*buf = XLogReadBufferExtended(rnode, forknum, blkno, mode, prefetch_buffer);
+		*buf = XLogReadBufferExtended(rlocator, forknum, blkno, mode, prefetch_buffer);
 		if (BufferIsValid(*buf))
 		{
 			if (mode != RBM_ZERO_AND_LOCK && mode != RBM_ZERO_AND_CLEANUP_LOCK)
@@ -470,7 +457,7 @@ XLogReadBufferForRedoExtended(XLogReaderState *record,
  * they will be invisible to tools that need to know which pages are modified.
  */
 Buffer
-XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
+XLogReadBufferExtended(RelFileLocator rlocator, ForkNumber forknum,
 					   BlockNumber blkno, ReadBufferMode mode,
 					   Buffer recent_buffer)
 {
@@ -483,14 +470,14 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 	/* Do we have a clue where the buffer might be already? */
 	if (BufferIsValid(recent_buffer) &&
 		mode == RBM_NORMAL &&
-		ReadRecentBuffer(rnode, forknum, blkno, recent_buffer))
+		ReadRecentBuffer(rlocator, forknum, blkno, recent_buffer))
 	{
 		buffer = recent_buffer;
 		goto recent_buffer_fast_path;
 	}
 
 	/* Open the relation at smgr level */
-	smgr = smgropen(rnode, InvalidBackendId);
+	smgr = smgropen(rlocator, INVALID_PROC_NUMBER);
 
 	/*
 	 * Create the target file if it doesn't already exist.  This lets us cope
@@ -507,7 +494,7 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 	if (blkno < lastblock)
 	{
 		/* page exists in file */
-		buffer = ReadBufferWithoutRelcache(rnode, forknum, blkno,
+		buffer = ReadBufferWithoutRelcache(rlocator, forknum, blkno,
 										   mode, NULL, true);
 	}
 	else
@@ -515,7 +502,7 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 		/* hm, page doesn't exist in file */
 		if (mode == RBM_NORMAL)
 		{
-			log_invalid_page(rnode, forknum, blkno, false);
+			log_invalid_page(rlocator, forknum, blkno, false);
 			return InvalidBuffer;
 		}
 		if (mode == RBM_NORMAL_NO_LOG)
@@ -523,35 +510,20 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 		/* OK to extend the file */
 		/* we do this in recovery only - no rel-extension lock needed */
 		Assert(InRecovery);
-		buffer = InvalidBuffer;
-		do
-		{
-			if (buffer != InvalidBuffer)
-			{
-				if (mode == RBM_ZERO_AND_LOCK || mode == RBM_ZERO_AND_CLEANUP_LOCK)
-					LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-				ReleaseBuffer(buffer);
-			}
-			buffer = ReadBufferWithoutRelcache(rnode, forknum,
-											   P_NEW, mode, NULL, true);
-		}
-		while (BufferGetBlockNumber(buffer) < blkno);
-		/* Handle the corner case that P_NEW returns non-consecutive pages */
-		if (BufferGetBlockNumber(buffer) != blkno)
-		{
-			if (mode == RBM_ZERO_AND_LOCK || mode == RBM_ZERO_AND_CLEANUP_LOCK)
-				LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-			ReleaseBuffer(buffer);
-			buffer = ReadBufferWithoutRelcache(rnode, forknum, blkno,
-											   mode, NULL, true);
-		}
+		buffer = ExtendBufferedRelTo(BMR_SMGR(smgr, RELPERSISTENCE_PERMANENT),
+									 forknum,
+									 NULL,
+									 EB_PERFORMING_RECOVERY |
+									 EB_SKIP_EXTENSION_LOCK,
+									 blkno + 1,
+									 mode);
 	}
 
 recent_buffer_fast_path:
 	if (mode == RBM_NORMAL)
 	{
 		/* check that page has been initialized */
-		Page		page = (Page) BufferGetPage(buffer);
+		Page		page = BufferGetPage(buffer);
 
 		/*
 		 * We assume that PageIsNew is safe without a lock. During recovery,
@@ -561,7 +533,7 @@ recent_buffer_fast_path:
 		if (PageIsNew(page))
 		{
 			ReleaseBuffer(buffer);
-			log_invalid_page(rnode, forknum, blkno, true);
+			log_invalid_page(rlocator, forknum, blkno, true);
 			return InvalidBuffer;
 		}
 	}
@@ -596,41 +568,45 @@ typedef FakeRelCacheEntryData *FakeRelCacheEntry;
  * Caller must free the returned entry with FreeFakeRelcacheEntry().
  */
 Relation
-CreateFakeRelcacheEntry(RelFileNode rnode)
+CreateFakeRelcacheEntry(RelFileLocator rlocator)
 {
 	FakeRelCacheEntry fakeentry;
 	Relation	rel;
 
 	/* Allocate the Relation struct and all related space in one block. */
-	fakeentry = palloc0(sizeof(FakeRelCacheEntryData));
+	fakeentry = palloc0_object(FakeRelCacheEntryData);
 	rel = (Relation) fakeentry;
 
 	rel->rd_rel = &fakeentry->pgc;
-	rel->rd_node = rnode;
+	rel->rd_locator = rlocator;
 
 	/*
 	 * We will never be working with temp rels during recovery or while
 	 * syncing WAL-skipped files.
 	 */
-	rel->rd_backend = InvalidBackendId;
+	rel->rd_backend = INVALID_PROC_NUMBER;
 
 	/* It must be a permanent table here */
 	rel->rd_rel->relpersistence = RELPERSISTENCE_PERMANENT;
 
-	/* We don't know the name of the relation; use relfilenode instead */
-	sprintf(RelationGetRelationName(rel), "%u", rnode.relNode);
+	/* We don't know the name of the relation; use relfilenumber instead */
+	sprintf(RelationGetRelationName(rel), "%u", rlocator.relNumber);
 
 	/*
 	 * We set up the lockRelId in case anything tries to lock the dummy
-	 * relation.  Note that this is fairly bogus since relNode may be
+	 * relation.  Note that this is fairly bogus since relNumber may be
 	 * different from the relation's OID.  It shouldn't really matter though.
 	 * In recovery, we are running by ourselves and can't have any lock
 	 * conflicts.  While syncing, we already hold AccessExclusiveLock.
 	 */
-	rel->rd_lockInfo.lockRelId.dbId = rnode.dbNode;
-	rel->rd_lockInfo.lockRelId.relId = rnode.relNode;
+	rel->rd_lockInfo.lockRelId.dbId = rlocator.dbOid;
+	rel->rd_lockInfo.lockRelId.relId = rlocator.relNumber;
 
-	rel->rd_smgr = NULL;
+	/*
+	 * Set up a non-pinned SMgrRelation reference, so that we don't need to
+	 * worry about unpinning it on error.
+	 */
+	rel->rd_smgr = smgropen(rlocator, INVALID_PROC_NUMBER);
 
 	return rel;
 }
@@ -641,9 +617,6 @@ CreateFakeRelcacheEntry(RelFileNode rnode)
 void
 FreeFakeRelcacheEntry(Relation fakerel)
 {
-	/* make sure the fakerel is not referenced by the SmgrRelation anymore */
-	if (fakerel->rd_smgr != NULL)
-		smgrclearowner(&fakerel->rd_smgr, fakerel->rd_smgr);
 	pfree(fakerel);
 }
 
@@ -654,9 +627,9 @@ FreeFakeRelcacheEntry(Relation fakerel)
  * any open "invalid-page" records for the relation.
  */
 void
-XLogDropRelation(RelFileNode rnode, ForkNumber forknum)
+XLogDropRelation(RelFileLocator rlocator, ForkNumber forknum)
 {
-	forget_invalid_pages(rnode, forknum, 0);
+	forget_invalid_pages(rlocator, forknum, 0);
 }
 
 /*
@@ -670,10 +643,10 @@ XLogDropDatabase(Oid dbid)
 	/*
 	 * This is unnecessarily heavy-handed, as it will close SMgrRelation
 	 * objects for other databases as well. DROP DATABASE occurs seldom enough
-	 * that it's not worth introducing a variant of smgrclose for just this
-	 * purpose. XXX: Or should we rather leave the smgr entries dangling?
+	 * that it's not worth introducing a variant of smgrdestroy for just this
+	 * purpose.
 	 */
-	smgrcloseall();
+	smgrdestroyall();
 
 	forget_invalid_pages_db(dbid);
 }
@@ -684,10 +657,10 @@ XLogDropDatabase(Oid dbid)
  * We need to clean up any open "invalid-page" records for the dropped pages.
  */
 void
-XLogTruncateRelation(RelFileNode rnode, ForkNumber forkNum,
+XLogTruncateRelation(RelFileLocator rlocator, ForkNumber forkNum,
 					 BlockNumber nblocks)
 {
-	forget_invalid_pages(rnode, forkNum, nblocks);
+	forget_invalid_pages(rlocator, forkNum, nblocks);
 }
 
 /*
@@ -737,7 +710,7 @@ XLogReadDetermineTimeline(XLogReaderState *state, XLogRecPtr wantPage,
 	const XLogRecPtr lastReadPage = (state->seg.ws_segno *
 									 state->segcxt.ws_segsize + state->segoff);
 
-	Assert(wantPage != InvalidXLogRecPtr && wantPage % XLOG_BLCKSZ == 0);
+	Assert(XLogRecPtrIsValid(wantPage) && wantPage % XLOG_BLCKSZ == 0);
 	Assert(wantLength <= XLOG_BLCKSZ);
 	Assert(state->readLen == 0 || state->readLen <= XLOG_BLCKSZ);
 	Assert(currTLI != 0);
@@ -768,7 +741,7 @@ XLogReadDetermineTimeline(XLogReaderState *state, XLogRecPtr wantPage,
 	 */
 	if (state->currTLI == currTLI && wantPage >= lastReadPage)
 	{
-		Assert(state->currTLIValidUntil == InvalidXLogRecPtr);
+		Assert(!XLogRecPtrIsValid(state->currTLIValidUntil));
 		return;
 	}
 
@@ -777,7 +750,7 @@ XLogReadDetermineTimeline(XLogReaderState *state, XLogRecPtr wantPage,
 	 * timeline and the timeline we're reading from is valid until the end of
 	 * the current segment we can just keep reading.
 	 */
-	if (state->currTLIValidUntil != InvalidXLogRecPtr &&
+	if (XLogRecPtrIsValid(state->currTLIValidUntil) &&
 		state->currTLI != currTLI &&
 		state->currTLI != 0 &&
 		((wantPage + wantLength) / state->segcxt.ws_segsize) <
@@ -817,12 +790,12 @@ XLogReadDetermineTimeline(XLogReaderState *state, XLogRecPtr wantPage,
 		state->currTLIValidUntil = tliSwitchPoint(state->currTLI, timelineHistory,
 												  &state->nextTLI);
 
-		Assert(state->currTLIValidUntil == InvalidXLogRecPtr ||
+		Assert(!XLogRecPtrIsValid(state->currTLIValidUntil) ||
 			   wantPage + wantLength < state->currTLIValidUntil);
 
 		list_free_deep(timelineHistory);
 
-		elog(DEBUG3, "switched to timeline %u valid until %X/%X",
+		elog(DEBUG3, "switched to timeline %u valid until %X/%08X",
 			 state->currTLI,
 			 LSN_FORMAT_ARGS(state->currTLIValidUntil));
 	}
@@ -867,11 +840,6 @@ wal_segment_close(XLogReaderState *state)
  *
  * Public because it would likely be very helpful for someone writing another
  * output method outside walsender, e.g. in a bgworker.
- *
- * TODO: The walsender has its own version of this, but it relies on the
- * walsender's latch being set whenever WAL is flushed. No such infrastructure
- * exists for normal backends, so we have to do a check/sleep/repeat style of
- * loop for now.
  */
 int
 read_local_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr,
@@ -911,7 +879,14 @@ read_local_xlog_page_guts(XLogReaderState *state, XLogRecPtr targetPagePtr,
 
 	loc = targetPagePtr + reqLen;
 
-	/* Loop waiting for xlog to be available if necessary */
+	/*
+	 * Loop waiting for xlog to be available if necessary
+	 *
+	 * TODO: The walsender has its own version of this function, which uses a
+	 * condition variable to wake up whenever WAL is flushed. We could use the
+	 * same infrastructure here, instead of the check/sleep/repeat style of
+	 * loop.
+	 */
 	while (1)
 	{
 		/*
@@ -1020,12 +995,7 @@ read_local_xlog_page_guts(XLogReaderState *state, XLogRecPtr targetPagePtr,
 		count = read_upto - targetPagePtr;
 	}
 
-	/*
-	 * Even though we just determined how much of the page can be validly read
-	 * as 'count', read the whole page anyway. It's guaranteed to be
-	 * zero-padded up to the page boundary if it's incomplete.
-	 */
-	if (!WALRead(state, cur_page, targetPagePtr, XLOG_BLCKSZ, tli,
+	if (!WALRead(state, cur_page, targetPagePtr, count, tli,
 				 &errinfo))
 		WALReadRaiseError(&errinfo);
 
@@ -1050,14 +1020,14 @@ WALReadRaiseError(WALReadError *errinfo)
 		errno = errinfo->wre_errno;
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not read from log segment %s, offset %d: %m",
+				 errmsg("could not read from WAL segment %s, offset %d: %m",
 						fname, errinfo->wre_off)));
 	}
 	else if (errinfo->wre_read == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
-				 errmsg("could not read from log segment %s, offset %d: read %d of %d",
+				 errmsg("could not read from WAL segment %s, offset %d: read %d of %d",
 						fname, errinfo->wre_off, errinfo->wre_read,
 						errinfo->wre_req)));
 	}

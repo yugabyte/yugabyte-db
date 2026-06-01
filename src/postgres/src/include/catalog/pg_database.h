@@ -4,7 +4,7 @@
  *	  definition of the "database" system catalog (pg_database)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_database.h
@@ -19,13 +19,15 @@
 #define PG_DATABASE_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_database_d.h"
+#include "catalog/pg_database_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_database definition.  cpp turns this into
  *		typedef struct FormData_pg_database
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_database,1262,DatabaseRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(1248,DatabaseRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	/* oid */
@@ -48,6 +50,9 @@ CATALOG(pg_database,1262,DatabaseRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID
 
 	/* new connections allowed? */
 	bool		datallowconn;
+
+	/* database has login event triggers? */
+	bool		dathasloginevt;
 
 	/*
 	 * Max connections allowed. Negative values have special meaning, see
@@ -72,7 +77,10 @@ CATALOG(pg_database,1262,DatabaseRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID
 	text		datctype BKI_FORCE_NOT_NULL;
 
 	/* ICU locale ID */
-	text		daticulocale;
+	text		datlocale;
+
+	/* ICU collation rules */
+	text		daticurules;
 
 	/* provider-dependent version of collation data */
 	text		datcollversion BKI_DEFAULT(_null_);
@@ -81,6 +89,8 @@ CATALOG(pg_database,1262,DatabaseRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID
 	aclitem		datacl[1];
 #endif
 } FormData_pg_database;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_database corresponds to a pointer to a tuple with
@@ -91,8 +101,10 @@ typedef FormData_pg_database *Form_pg_database;
 
 DECLARE_TOAST_WITH_MACRO(pg_database, 4177, 4178, PgDatabaseToastTable, PgDatabaseToastIndex);
 
-DECLARE_UNIQUE_INDEX(pg_database_datname_index, 2671, DatabaseNameIndexId, on pg_database using btree(datname name_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_database_oid_index, 2672, DatabaseOidIndexId, on pg_database using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_database_datname_index, 2671, DatabaseNameIndexId, pg_database, btree(datname name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_database_oid_index, 2672, DatabaseOidIndexId, pg_database, btree(oid oid_ops));
+
+MAKE_SYSCACHE(DATABASEOID, pg_database_oid_index, 4);
 
 /*
  * pg_database.dat contains an entry for template1, but not for the template0
@@ -115,6 +127,7 @@ DECLARE_OID_DEFINING_MACRO(PostgresDbOid, 5);
  */
 #define		  DATCONNLIMIT_INVALID_DB	-2
 
+extern Oid	get_database_oid(const char *dbname, bool missing_ok);
 extern bool database_is_invalid_form(Form_pg_database datform);
 extern bool database_is_invalid_oid(Oid dboid);
 

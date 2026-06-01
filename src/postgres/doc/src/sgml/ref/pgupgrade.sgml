@@ -40,9 +40,9 @@ PostgreSQL documentation
   <application>pg_upgrade</application> (formerly called <application>pg_migrator</application>) allows data
   stored in <productname>PostgreSQL</productname> data files to be upgraded to a later <productname>PostgreSQL</productname>
   major version without the data dump/restore typically required for
-  major version upgrades, e.g., from 9.5.8 to 9.6.4 or from 10.7 to 11.2.
-  It is not required for minor version upgrades, e.g., from 9.6.2 to 9.6.3
-  or from 10.1 to 10.2.
+  major version upgrades, e.g., from 12.14 to 13.10 or from 14.9 to 15.5.
+  It is not required for minor version upgrades, e.g., from 12.7 to 12.8
+  or from 14.1 to 14.5.
  </para>
 
  <para>
@@ -67,9 +67,17 @@ PostgreSQL documentation
  </para>
 
   <para>
-   pg_upgrade supports upgrades from 9.2.X and later to the current
+   <application>pg_upgrade</application> supports upgrades from 9.2.X and later to the current
    major release of <productname>PostgreSQL</productname>, including snapshot and beta releases.
   </para>
+
+  <warning>
+   <para>
+    Upgrading a cluster causes the destination to execute arbitrary code of the
+    source superusers' choice.  Ensure that the source superusers are trusted
+    before upgrading.
+   </para>
+  </warning>
  </refsect1>
 
  <refsect1>
@@ -118,7 +126,7 @@ PostgreSQL documentation
      <varlistentry>
       <term><option>-j <replaceable class="parameter">njobs</replaceable></option></term>
       <term><option>--jobs=<replaceable class="parameter">njobs</replaceable></option></term>
-      <listitem><para>number of simultaneous processes or threads to use
+      <listitem><para>number of simultaneous connections and processes/threads to use
       </para></listitem>
      </varlistentry>
 
@@ -141,15 +149,6 @@ PostgreSQL documentation
         the data directory corrupt.  Generally, this option is
         useful for testing but should not be used on a production
         installation.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
-      <term><option>--no-statistics</option></term>
-      <listitem>
-       <para>
-        Do not restore statistics from the old cluster into the new cluster.
        </para>
       </listitem>
      </varlistentry>
@@ -240,6 +239,141 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--copy</option></term>
+      <listitem>
+       <para>
+        Copy files to the new cluster.  This is the default.  (See also
+        <option>--link</option>, <option>--clone</option>,
+        <option>--copy-file-range</option>, and <option>--swap</option>.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--copy-file-range</option></term>
+      <listitem>
+       <para>
+        Use the <function>copy_file_range</function> system call for efficient
+        copying.  On some file systems this gives results similar to
+        <option>--clone</option>, sharing physical disk blocks, while on others
+        it may still copy blocks, but do so via an optimized path.  At present,
+        it is supported on Linux and FreeBSD.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-statistics</option></term>
+      <listitem>
+       <para>
+        Do not restore statistics from the old cluster into the new cluster.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--set-char-signedness=</option><replaceable>option</replaceable></term>
+      <listitem>
+       <para>
+        Manually set the default char signedness of new clusters. Possible values
+        are <literal>signed</literal> and <literal>unsigned</literal>.
+       </para>
+       <para>
+        In the C language, the default signedness of the <type>char</type> type
+        (when not explicitly specified) varies across platforms. For example,
+        <type>char</type> defaults to <type>signed char</type> on x86 CPUs but
+        to <type>unsigned char</type> on ARM CPUs.
+       </para>
+       <para>
+        Starting from <productname>PostgreSQL</productname> 18, database clusters
+        maintain their own default char signedness setting, which can be used to
+        ensure consistent behavior across platforms with different default char
+        signedness. By default, <application>pg_upgrade</application> preserves
+        the char signedness setting when upgrading from an existing cluster.
+        However, when upgrading from <productname>PostgreSQL</productname> 17 or
+        earlier, <application>pg_upgrade</application> adopts the char signedness
+        of the platform on which it was built.
+       </para>
+       <para>
+        This option allows you to explicitly set the default char signedness for
+        the new cluster, overriding any inherited values. There are two specific
+        scenarios where this option is relevant:
+        <itemizedlist>
+         <listitem>
+          <para>
+           If you are planning to migrate to a different platform after the upgrade,
+           you should not use this option. The default behavior is right in this case.
+           Instead, perform the upgrade on the original platform without this flag,
+           and then migrate the cluster afterward. This is the recommended and safest
+           approach.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           If you have already migrated the cluster to a platform with different
+           char signedness (for example, from an x86-based system to an ARM-based
+           system), you should use this option to specify the signedness matching
+           the original platform's default char signedness. Additionally, it's
+           essential not to modify any data files between migrating data files and
+           running <command>pg_upgrade</command>. <command>pg_upgrade</command>
+           should be the first operation that starts the cluster on the new platform.
+          </para>
+         </listitem>
+        </itemizedlist>
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--swap</option></term>
+      <listitem>
+       <para>
+        Move the data directories from the old cluster to the new cluster.
+        Then, replace the catalog files with those generated for the new
+        cluster.  This mode can outperform <option>--link</option>,
+        <option>--clone</option>, <option>--copy</option>, and
+        <option>--copy-file-range</option>, especially on clusters with many
+        relations.
+       </para>
+       <para>
+        However, this mode creates many garbage files in the old cluster, which
+        can prolong the file synchronization step if
+        <option>--sync-method=syncfs</option> is used.  Therefore, it is
+        recommended to use <option>--sync-method=fsync</option> with
+        <option>--swap</option>.
+       </para>
+       <para>
+        Additionally, once the file transfer step begins, the old cluster will
+        be destructively modified and therefore will no longer be safe to
+        start.  See <xref linkend="pgupgrade-step-revert"/> for details.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--sync-method=</option><replaceable>method</replaceable></term>
+      <listitem>
+       <para>
+        When set to <literal>fsync</literal>, which is the default,
+        <command>pg_upgrade</command> will recursively open and synchronize all
+        files in the upgraded cluster's data directory.  The search for files
+        will follow symbolic links for the WAL directory and each configured
+        tablespace.
+       </para>
+       <para>
+        On Linux, <literal>syncfs</literal> may be used instead to ask the
+        operating system to synchronize the whole file systems that contain the
+        upgraded cluster's data directory, its WAL files, and each tablespace.
+        See <xref linkend="guc-recovery-init-sync-method"/> for information
+        about the caveats to be aware of when using <literal>syncfs</literal>.
+       </para>
+       <para>
+        This option has no effect when <option>--no-sync</option> is used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-?</option></term>
       <term><option>--help</option></term>
       <listitem><para>show help, then exit</para></listitem>
@@ -257,6 +391,14 @@ PostgreSQL documentation
    These are the steps to perform an upgrade
    with <application>pg_upgrade</application>:
   </para>
+
+   <note>
+    <para>
+     The steps to upgrade <glossterm linkend="glossary-logical-replication-cluster">logical replication clusters</glossterm>
+     are not covered here;
+     refer to <xref linkend="logical-replication-upgrade"/> for details.
+    </para>
+   </note>
 
   <procedure>
    <step performance="optional">
@@ -366,14 +508,14 @@ make prefix=/usr/local/pgsql.new install
      Make sure both database servers are stopped using, on Unix, e.g.:
 
 <programlisting>
-pg_ctl -D /opt/PostgreSQL/9.6 stop
+pg_ctl -D /opt/PostgreSQL/12 stop
 pg_ctl -D /opt/PostgreSQL/&majorversion; stop
 </programlisting>
 
      or on Windows, using the proper service names:
 
 <programlisting>
-NET STOP postgresql-9.6
+NET STOP postgresql-12
 NET STOP postgresql-&majorversion;
 </programlisting>
     </para>
@@ -406,7 +548,7 @@ NET STOP postgresql-&majorversion;
      Always run the <application>pg_upgrade</application> binary of the new server, not the old one.
      <application>pg_upgrade</application> requires the specification of the old and new cluster's
      data and executable (<filename>bin</filename>) directories. You can also specify
-     user and port values, and whether you want the data files linked or cloned
+     user and port values, and whether you want the data files linked, cloned, or swapped
      instead of the default copy behavior.
     </para>
 
@@ -423,33 +565,30 @@ NET STOP postgresql-&majorversion;
      is started.  Clone mode also requires that the old and new data
      directories be in the same file system.  This mode is only available
      on certain operating systems and file systems.
+     Swap mode may be the fastest if there are many relations, but you will not
+     be able to access your old cluster once the file transfer step begins.
+     Swap mode also requires that the old and new cluster data directories be
+     in the same file system.
     </para>
 
     <para>
-     The <option>--jobs</option> option allows multiple CPU cores to be used
-     for copying/linking of files and to dump and restore database schemas
-     in parallel;  a good place to start is the maximum of the number of
-     CPU cores and tablespaces.  This option can dramatically reduce the
-     time to upgrade a multi-database server running on a multiprocessor
-     machine.
+     Setting <option>--jobs</option> to 2 or higher allows pg_upgrade to
+     process multiple databases and tablespaces in parallel.  A good starting
+     point is the number of CPU cores on the machine.  This option can
+     substantially reduce the upgrade time for multi-database and
+     multi-tablespace servers.
     </para>
 
     <para>
-     For Windows users, you must be logged into an administrative account, and
-     then start a shell as the <literal>postgres</literal> user and set the proper path:
-
-<programlisting>
-RUNAS /USER:postgres "CMD.EXE"
-SET PATH=%PATH%;C:\Program Files\PostgreSQL\&majorversion;\bin;
-</programlisting>
-
-     and then run <application>pg_upgrade</application> with quoted directories, e.g.:
+     For Windows users, you must be logged into an administrative account,
+     and then run <application>pg_upgrade</application> with quoted
+     directories, e.g.:
 
 <programlisting>
 pg_upgrade.exe
-        --old-datadir "C:/Program Files/PostgreSQL/9.6/data"
+        --old-datadir "C:/Program Files/PostgreSQL/12/data"
         --new-datadir "C:/Program Files/PostgreSQL/&majorversion;/data"
-        --old-bindir "C:/Program Files/PostgreSQL/9.6/bin"
+        --old-bindir "C:/Program Files/PostgreSQL/12/bin"
         --new-bindir "C:/Program Files/PostgreSQL/&majorversion;/bin"
 </programlisting>
 
@@ -458,8 +597,9 @@ pg_upgrade.exe
      to perform only the checks, even if the old server is still
      running. <command>pg_upgrade --check</command> will also outline any
      manual adjustments you will need to make after the upgrade.  If you
-     are going to be using link or clone mode, you should use the option
-     <option>--link</option> or <option>--clone</option> with
+     are going to be using link, clone, copy-file-range, or swap mode, you
+     should use the option <option>--link</option>, <option>--clone</option>,
+     <option>--copy-file-range</option>, or <option>--swap</option> with
      <option>--check</option> to enable mode-specific checks.
      <command>pg_upgrade</command> requires write permission in the current directory.
     </para>
@@ -579,8 +719,8 @@ rsync --archive --delete --hard-links --size-only --no-inc-recursive old_cluster
        remote directory, e.g.,
 
 <programlisting>
-rsync --archive --delete --hard-links --size-only --no-inc-recursive /opt/PostgreSQL/9.5 \
-      /opt/PostgreSQL/9.6 standby.example.com:/opt/PostgreSQL
+rsync --archive --delete --hard-links --size-only --no-inc-recursive /opt/PostgreSQL/12 \
+      /opt/PostgreSQL/&majorversion; standby.example.com:/opt/PostgreSQL
 </programlisting>
 
        You can verify what the command will do using
@@ -609,8 +749,8 @@ rsync --archive --delete --hard-links --size-only --no-inc-recursive /opt/Postgr
        <application>rsync</application> command for each tablespace directory, e.g.:
 
 <programlisting>
-rsync --archive --delete --hard-links --size-only --no-inc-recursive /vol1/pg_tblsp/PG_9.5_201510051 \
-      /vol1/pg_tblsp/PG_9.6_201608131 standby.example.com:/vol1/pg_tblsp
+rsync --archive --delete --hard-links --size-only --no-inc-recursive /vol1/pg_tblsp/PG_12_201909212 \
+      /vol1/pg_tblsp/PG_&majorversion;_202307071 standby.example.com:/vol1/pg_tblsp
 </programlisting>
 
        If you have relocated <filename>pg_wal</filename> outside the data
@@ -626,8 +766,12 @@ rsync --archive --delete --hard-links --size-only --no-inc-recursive /vol1/pg_tb
        Configure the servers for log shipping.  (You do not need to run
        <function>pg_backup_start()</function> and <function>pg_backup_stop()</function>
        or take a file system backup as the standbys are still synchronized
-       with the primary.)  Replication slots are not copied and must
-       be recreated.
+       with the primary.) If the old primary is prior to version 17.0, then no
+       slots on the primary are copied to the new standby, so all the slots on
+       the old standby must be recreated manually. If the old primary is
+       version 17.0 or later, then only logical slots on the primary are copied
+       to the new standby, but other slots on the old standby are not copied,
+       so must be recreated manually.
       </para>
      </step>
 
@@ -687,10 +831,33 @@ psql --username=postgres --file=script.sql postgres
     <title>Statistics</title>
 
     <para>
-     Because optimizer statistics are not transferred by <command>pg_upgrade</command>, you will
-     be instructed to run a command to regenerate that information at the end
-     of the upgrade.  You might need to set connection parameters to
-     match your new cluster.
+     Unless the <option>--no-statistics</option> option is specified,
+     <command>pg_upgrade</command> will transfer most optimizer statistics
+     from the old cluster to the new cluster.  This does not transfer
+     all statistics, such as those created explicitly with
+     <xref linkend="sql-createstatistics"/>, custom statistics added by
+     an extension, or statistics collected by the cumulative statistics system.
+    </para>
+
+    <para>
+     Because not all statistics are transferred by
+     <command>pg_upgrade</command>, you will be instructed to run commands to
+     regenerate that information at the end of the upgrade.  You might need to
+     set connection parameters to match your new cluster.
+    </para>
+
+    <para>
+     First, use
+     <command>vacuumdb --all --analyze-in-stages --missing-stats-only</command>
+     to quickly generate minimal optimizer statistics for relations without
+     any.  Then, use <command>vacuumdb --all --analyze-only</command> to ensure
+     all relations have updated cumulative statistics for triggering vacuum and
+     analyze.  For both commands, the use of <option>--jobs</option> can speed
+     it up.
+     If <varname>vacuum_cost_delay</varname> is set to a non-zero
+     value, this can be overridden to speed up statistics generation
+     using <envar>PGOPTIONS</envar>, e.g., <literal>PGOPTIONS='-c
+     vacuum_cost_delay=0' vacuumdb ...</literal>.
     </para>
    </step>
 
@@ -724,7 +891,7 @@ psql --username=postgres --file=script.sql postgres
 
       <listitem>
        <para>
-        If the <option>--link</option> option was <emphasis>not</emphasis>
+        If neither <option>--link</option> nor <option>--swap</option> was
         used, the old cluster was unmodified;  it can be restarted.
        </para>
       </listitem>
@@ -764,10 +931,134 @@ psql --username=postgres --file=script.sql postgres
 
         </itemizedlist></para>
       </listitem>
+
+      <listitem>
+       <para>
+        If the <option>--swap</option> option was used, the old cluster might
+        be destructively modified:
+
+        <itemizedlist>
+         <listitem>
+          <para>
+           If <command>pg_upgrade</command> aborts before reporting that the
+           old cluster is no longer safe to start, the old cluster was
+           unmodified; it can be restarted.
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           If <command>pg_upgrade</command> has reported that the old cluster
+           is no longer safe to start, the old cluster was destructively
+           modified.  The old cluster will need to be restored from backup in
+           this case.
+          </para>
+         </listitem>
+        </itemizedlist>
+       </para>
+      </listitem>
      </itemizedlist></para>
    </step>
   </procedure>
 
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <para>
+   Some environment variables can be used to provide defaults for command-line options:
+
+   <variablelist>
+    <varlistentry>
+     <term><envar>PGBINOLD</envar></term>
+
+     <listitem>
+      <para>
+       The old PostgreSQL executable directory; option
+       <option>-b</option>/<option>--old-bindir</option>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>PGBINNEW</envar></term>
+
+     <listitem>
+      <para>
+       The new PostgreSQL executable directory; option
+       <option>-B</option>/<option>--new-bindir</option>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>PGDATAOLD</envar></term>
+
+     <listitem>
+      <para>
+       The old database cluster configuration directory; option
+       <option>-d</option>/<option>--old-datadir</option>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>PGDATANEW</envar></term>
+
+     <listitem>
+      <para>
+       The new database cluster configuration directory; option
+       <option>-D</option>/<option>--new-datadir</option>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>PGPORTOLD</envar></term>
+
+     <listitem>
+      <para>
+       The old cluster port number; option
+       <option>-p</option>/<option>--old-port</option>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>PGPORTNEW</envar></term>
+
+     <listitem>
+      <para>
+       The new cluster port number; option
+       <option>-P</option>/<option>--new-port</option>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>PGSOCKETDIR</envar></term>
+
+     <listitem>
+      <para>
+       Directory to use for postmaster sockets during upgrade; option
+       <option>-s</option>/<option>--socketdir</option>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>PGUSER</envar></term>
+
+     <listitem>
+      <para>
+       Cluster's install user name; option
+       <option>-U</option>/<option>--username</option>.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
  </refsect1>
 
  <refsect1>
@@ -827,7 +1118,8 @@ psql --username=postgres --file=script.sql postgres
     <member><type>regproc</type></member>
     <member><type>regprocedure</type></member>
    </simplelist>
-   (<type>regclass</type>, <type>regrole</type>, and <type>regtype</type> can be upgraded.)
+   (<type>regclass</type>, <type>regdatabase</type>, <type>regrole</type>, and
+   <type>regtype</type> can be upgraded.)
   </para>
 
   <para>

@@ -34,7 +34,7 @@
  * twice as fast as for a simpler design in which a single field doubles as
  * the common prefix length and the minimum ip_bits value.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -49,8 +49,9 @@
 
 #include "access/gist.h"
 #include "access/stratnum.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/inet.h"
+#include "varatt.h"
 
 /*
  * Operator strategy numbers used in the GiST inet_ops opclass
@@ -116,8 +117,9 @@ inet_gist_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *ent = (GISTENTRY *) PG_GETARG_POINTER(0);
 	inet	   *query = PG_GETARG_INET_PP(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	GistInetKey *key = DatumGetInetKeyP(ent->key);
 	int			minbits,
@@ -474,7 +476,7 @@ build_inet_union_key(int family, int minbits, int commonbits,
 	GistInetKey *result;
 
 	/* Make sure any unused bits are zeroed. */
-	result = (GistInetKey *) palloc0(sizeof(GistInetKey));
+	result = palloc0_object(GistInetKey);
 
 	gk_ip_family(result) = family;
 	gk_ip_minbits(result) = minbits;
@@ -545,13 +547,13 @@ inet_gist_compress(PG_FUNCTION_ARGS)
 
 	if (entry->leafkey)
 	{
-		retval = palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		if (DatumGetPointer(entry->key) != NULL)
 		{
 			inet	   *in = DatumGetInetPP(entry->key);
 			GistInetKey *r;
 
-			r = (GistInetKey *) palloc0(sizeof(GistInetKey));
+			r = palloc0_object(GistInetKey);
 
 			gk_ip_family(r) = ip_family(in);
 			gk_ip_minbits(r) = ip_bits(in);
@@ -593,14 +595,14 @@ inet_gist_fetch(PG_FUNCTION_ARGS)
 	GISTENTRY  *retval;
 	inet	   *dst;
 
-	dst = (inet *) palloc0(sizeof(inet));
+	dst = palloc0_object(inet);
 
 	ip_family(dst) = gk_ip_family(key);
 	ip_bits(dst) = gk_ip_minbits(key);
 	memcpy(ip_addr(dst), gk_ip_addr(key), ip_addrsize(dst));
 	SET_INET_VARSIZE(dst);
 
-	retval = palloc(sizeof(GISTENTRY));
+	retval = palloc_object(GISTENTRY);
 	gistentryinit(*retval, InetPGetDatum(dst), entry->rel, entry->page,
 				  entry->offset, false);
 

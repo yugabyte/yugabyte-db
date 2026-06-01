@@ -10,7 +10,7 @@
  * About these generators: https://prng.di.unimi.it/
  * See also https://en.wikipedia.org/wiki/List_of_random_number_generators
  *
- * Copyright (c) 2021-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2021-2026, PostgreSQL Global Development Group
  *
  * src/common/pg_prng.c
  *
@@ -19,10 +19,16 @@
 
 #include "c.h"
 
-#include <math.h>				/* for ldexp() */
+#include <math.h>
 
 #include "common/pg_prng.h"
 #include "port/pg_bitutils.h"
+
+/* X/Open (XSI) requires <math.h> to provide M_PI, but core POSIX does not */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 
 /* process-wide state vector */
 pg_prng_state pg_global_prng_state;
@@ -179,6 +185,42 @@ pg_prng_int64p(pg_prng_state *state)
 }
 
 /*
+ * Select a random int64 uniformly from the range [rmin, rmax].
+ * If the range is empty, rmin is always produced.
+ */
+int64
+pg_prng_int64_range(pg_prng_state *state, int64 rmin, int64 rmax)
+{
+	int64		val;
+
+	if (likely(rmax > rmin))
+	{
+		uint64		uval;
+
+		/*
+		 * Use pg_prng_uint64_range().  Can't simply pass it rmin and rmax,
+		 * since (uint64) rmin will be larger than (uint64) rmax if rmin < 0.
+		 */
+		uval = (uint64) rmin +
+			pg_prng_uint64_range(state, 0, (uint64) rmax - (uint64) rmin);
+
+		/*
+		 * Safely convert back to int64, avoiding implementation-defined
+		 * behavior for values larger than PG_INT64_MAX.  Modern compilers
+		 * will reduce this to a simple assignment.
+		 */
+		if (uval > PG_INT64_MAX)
+			val = (int64) (uval - PG_INT64_MIN) + PG_INT64_MIN;
+		else
+			val = (int64) uval;
+	}
+	else
+		val = rmin;
+
+	return val;
+}
+
+/*
  * Select a random uint32 uniformly from the range [0, PG_UINT32_MAX].
  */
 uint32
@@ -233,6 +275,35 @@ pg_prng_double(pg_prng_state *state)
 	 * assume IEEE float arithmetic elsewhere in Postgres, so this seems OK.
 	 */
 	return ldexp((double) (v >> (64 - 52)), -52);
+}
+
+/*
+ * Select a random double from the normal distribution with
+ * mean = 0.0 and stddev = 1.0.
+ *
+ * To get a result from a different normal distribution use
+ *   STDDEV * pg_prng_double_normal() + MEAN
+ *
+ * Uses https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
+ */
+double
+pg_prng_double_normal(pg_prng_state *state)
+{
+	double		u1,
+				u2,
+				z0;
+
+	/*
+	 * pg_prng_double generates [0, 1), but for the basic version of the
+	 * Box-Muller transform the two uniformly distributed random numbers are
+	 * expected to be in (0, 1]; in particular we'd better not compute log(0).
+	 */
+	u1 = 1.0 - pg_prng_double(state);
+	u2 = 1.0 - pg_prng_double(state);
+
+	/* Apply Box-Muller transform to get one normal-valued output */
+	z0 = sqrt(-2.0 * log(u1)) * sin(2.0 * M_PI * u2);
+	return z0;
 }
 
 /*

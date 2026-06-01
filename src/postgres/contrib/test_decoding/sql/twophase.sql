@@ -129,6 +129,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
 -- cleanup and make sure results are also empty
 DROP TABLE test_prepared1;
 DROP TABLE test_prepared2;
+DROP TABLE test_prepared_savepoint;
 DROP TABLE test_tab;
 -- show results. There should be nothing to show
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');

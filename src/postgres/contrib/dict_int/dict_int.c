@@ -3,7 +3,7 @@
  * dict_int.c
  *	  Text search dictionary for integers
  *
- * Copyright (c) 2007-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/dict_int/dict_int.c
@@ -15,7 +15,10 @@
 #include "commands/defrem.h"
 #include "tsearch/ts_public.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "dict_int",
+					.version = PG_VERSION
+);
 
 typedef struct
 {
@@ -35,7 +38,7 @@ dintdict_init(PG_FUNCTION_ARGS)
 	DictInt    *d;
 	ListCell   *l;
 
-	d = (DictInt *) palloc0(sizeof(DictInt));
+	d = palloc0_object(DictInt);
 	d->maxlen = 6;
 	d->rejectlong = false;
 	d->absval = false;
@@ -80,7 +83,7 @@ dintdict_lexize(PG_FUNCTION_ARGS)
 	char	   *in = (char *) PG_GETARG_POINTER(1);
 	int			len = PG_GETARG_INT32(2);
 	char	   *txt;
-	TSLexeme   *res = palloc0(sizeof(TSLexeme) * 2);
+	TSLexeme   *res = palloc0_array(TSLexeme, 2);
 
 	res[1].lexeme = NULL;
 

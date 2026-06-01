@@ -1,9 +1,9 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Test logical replication with partitioned tables
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -15,11 +15,11 @@ $node_publisher->init(allows_streaming => 'logical');
 $node_publisher->start;
 
 my $node_subscriber1 = PostgreSQL::Test::Cluster->new('subscriber1');
-$node_subscriber1->init(allows_streaming => 'logical');
+$node_subscriber1->init;
 $node_subscriber1->start;
 
 my $node_subscriber2 = PostgreSQL::Test::Cluster->new('subscriber2');
-$node_subscriber2->init(allows_streaming => 'logical');
+$node_subscriber2->init;
 $node_subscriber2->start;
 
 my $publisher_connstr = $node_publisher->connstr . ' dbname=postgres';
@@ -49,6 +49,9 @@ $node_publisher->safe_psql('postgres',
 $node_subscriber1->safe_psql('postgres',
 	"CREATE TABLE tab1 (c text, a int PRIMARY KEY, b text) PARTITION BY LIST (a)"
 );
+# make a BRIN index to test aminsertcleanup logic in subscriber
+$node_subscriber1->safe_psql('postgres',
+	"CREATE INDEX tab1_c_brin_idx ON tab1 USING brin (c)");
 $node_subscriber1->safe_psql('postgres',
 	"CREATE TABLE tab1_1 (b text, c text DEFAULT 'sub1_tab1', a int NOT NULL)"
 );
@@ -343,13 +346,6 @@ $result =
   $node_subscriber2->safe_psql('postgres', "SELECT a FROM tab1 ORDER BY 1");
 is($result, qq(), 'truncate of tab1 replicated');
 
-# Check that subscriber handles cases where update/delete target tuple
-# is missing.  We have to look for the DEBUG1 log messages about that,
-# so temporarily bump up the log verbosity.
-$node_subscriber1->append_conf('postgresql.conf',
-	"log_min_messages = debug1");
-$node_subscriber1->reload;
-
 $node_publisher->safe_psql('postgres',
 	"INSERT INTO tab1 VALUES (1, 'foo'), (4, 'bar'), (10, 'baz')");
 
@@ -371,22 +367,22 @@ $node_publisher->wait_for_catchup('sub1');
 $node_publisher->wait_for_catchup('sub2');
 
 my $logfile = slurp_file($node_subscriber1->logfile(), $log_location);
-ok( $logfile =~
-	  qr/logical replication did not find row to be updated in replication target relation's partition "tab1_2_2"/,
+like(
+	$logfile,
+	qr/conflict detected on relation "public.tab1_2_2": conflict=update_missing.*\n.*DETAIL:.* Could not find the row to be updated: remote row \(null, 4, quux\), replica identity \(a\)=\(4\)/,
 	'update target row is missing in tab1_2_2');
-ok( $logfile =~
-	  qr/logical replication did not find row to be deleted in replication target relation "tab1_1"/,
+like(
+	$logfile,
+	qr/conflict detected on relation "public.tab1_1": conflict=delete_missing.*\n.*DETAIL:.* Could not find the row to be deleted: replica identity \(a\)=\(1\)/,
 	'delete target row is missing in tab1_1');
-ok( $logfile =~
-	  qr/logical replication did not find row to be deleted in replication target relation "tab1_2_2"/,
+like(
+	$logfile,
+	qr/conflict detected on relation "public.tab1_2_2": conflict=delete_missing.*\n.*DETAIL:.* Could not find the row to be deleted: replica identity \(a\)=\(4\)/,
 	'delete target row is missing in tab1_2_2');
-ok( $logfile =~
-	  qr/logical replication did not find row to be deleted in replication target relation "tab1_def"/,
+like(
+	$logfile,
+	qr/conflict detected on relation "public.tab1_def": conflict=delete_missing.*\n.*DETAIL:.* Could not find the row to be deleted: replica identity \(a\)=\(10\)/,
 	'delete target row is missing in tab1_def');
-
-$node_subscriber1->append_conf('postgresql.conf',
-	"log_min_messages = warning");
-$node_subscriber1->reload;
 
 # Tests for replication using root table identity and schema
 
@@ -409,10 +405,10 @@ $node_publisher->safe_psql('postgres',
 $node_publisher->safe_psql('postgres',
 	"CREATE TABLE tab4 (a int PRIMARY KEY) PARTITION BY LIST (a)");
 $node_publisher->safe_psql('postgres',
-	"CREATE TABLE tab4_1 PARTITION OF tab4 FOR VALUES IN (0, 1) PARTITION BY LIST (a)"
+	"CREATE TABLE tab4_1 PARTITION OF tab4 FOR VALUES IN (-1, 0, 1) PARTITION BY LIST (a)"
 );
 $node_publisher->safe_psql('postgres',
-	"CREATE TABLE tab4_1_1 PARTITION OF tab4_1 FOR VALUES IN (0, 1)");
+	"CREATE TABLE tab4_1_1 PARTITION OF tab4_1 FOR VALUES IN (-1, 0, 1)");
 
 $node_publisher->safe_psql('postgres',
 	"ALTER PUBLICATION pub_all SET (publish_via_partition_root = true)");
@@ -424,13 +420,13 @@ $node_publisher->safe_psql('postgres',
 	"CREATE PUBLICATION pub_viaroot FOR TABLE tab2, tab2_1, tab3_1 WITH (publish_via_partition_root = true)"
 );
 
-# for tab4, we publish changes through the "middle" partitioned table
 $node_publisher->safe_psql('postgres',
 	"CREATE PUBLICATION pub_lower_level FOR TABLE tab4_1 WITH (publish_via_partition_root = true)"
 );
 
 # prepare data for the initial sync
 $node_publisher->safe_psql('postgres', "INSERT INTO tab2 VALUES (1)");
+$node_publisher->safe_psql('postgres', "INSERT INTO tab4 VALUES (-1)");
 
 # subscriber 1
 $node_subscriber1->safe_psql('postgres', "DROP SUBSCRIPTION sub1");
@@ -479,9 +475,10 @@ $node_subscriber2->safe_psql('postgres',
 	"CREATE TABLE tab4 (a int PRIMARY KEY)");
 $node_subscriber2->safe_psql('postgres',
 	"CREATE TABLE tab4_1 (a int PRIMARY KEY)");
-# Publication that sub2 points to now publishes via root, so must update
-# subscription target relations. We set the list of publications so that
-# the FOR ALL TABLES publication is second (the list order matters).
+# Since we specified publish_via_partition_root in pub_all and
+# pub_lower_level, all partition tables use their root tables' identity and
+# schema. We set the list of publications so that the FOR ALL TABLES
+# publication is second (the list order matters).
 $node_subscriber2->safe_psql('postgres',
 	"ALTER SUBSCRIPTION sub2 SET PUBLICATION pub_lower_level, pub_all");
 
@@ -492,6 +489,12 @@ $node_subscriber2->wait_for_subscription_sync;
 # check that data is synced correctly
 $result = $node_subscriber1->safe_psql('postgres', "SELECT c, a FROM tab2");
 is($result, qq(sub1_tab2|1), 'initial data synced for pub_viaroot');
+$result =
+  $node_subscriber2->safe_psql('postgres', "SELECT a FROM tab4 ORDER BY 1");
+is($result, qq(-1), 'initial data synced for pub_lower_level and pub_all');
+$result =
+  $node_subscriber2->safe_psql('postgres', "SELECT a FROM tab4_1 ORDER BY 1");
+is($result, qq(), 'initial data synced for pub_lower_level and pub_all');
 
 # insert
 $node_publisher->safe_psql('postgres', "INSERT INTO tab1 VALUES (1), (0)");
@@ -548,7 +551,8 @@ sub2_tab3|5), 'inserts into tab3 replicated');
 # maps to the tab4 relation on subscriber.
 $result =
   $node_subscriber2->safe_psql('postgres', "SELECT a FROM tab4 ORDER BY 1");
-is($result, qq(0), 'inserts into tab4 replicated');
+is( $result, qq(-1
+0), 'inserts into tab4 replicated');
 
 $result =
   $node_subscriber2->safe_psql('postgres', "SELECT a FROM tab4_1 ORDER BY 1");
@@ -556,7 +560,7 @@ is($result, qq(), 'inserts into tab4_1 replicated');
 
 
 # now switch the order of publications in the list, try again, the result
-# should be the same (no dependence on order of pulications)
+# should be the same (no dependence on order of publications)
 $node_subscriber2->safe_psql('postgres',
 	"ALTER SUBSCRIPTION sub2 SET PUBLICATION pub_all, pub_lower_level");
 
@@ -574,7 +578,8 @@ $node_publisher->wait_for_catchup('sub2');
 # maps to the tab4 relation on subscriber.
 $result =
   $node_subscriber2->safe_psql('postgres', "SELECT a FROM tab4 ORDER BY 1");
-is( $result, qq(0
+is( $result, qq(-1
+0
 1), 'inserts into tab4 replicated');
 
 $result =
@@ -764,13 +769,6 @@ pub_tab2|3|yyy
 pub_tab2|5|zzz
 xxx_c|6|aaa), 'inserts into tab2 replicated');
 
-# Check that subscriber handles cases where update/delete target tuple
-# is missing.  We have to look for the DEBUG1 log messages about that,
-# so temporarily bump up the log verbosity.
-$node_subscriber1->append_conf('postgresql.conf',
-	"log_min_messages = debug1");
-$node_subscriber1->reload;
-
 $node_subscriber1->safe_psql('postgres', "DELETE FROM tab2");
 
 # Note that the current location of the log file is not grabbed immediately
@@ -786,16 +784,38 @@ $node_publisher->wait_for_catchup('sub_viaroot');
 $node_publisher->wait_for_catchup('sub2');
 
 $logfile = slurp_file($node_subscriber1->logfile(), $log_location);
-ok( $logfile =~
-	  qr/logical replication did not find row to be updated in replication target relation's partition "tab2_1"/,
+like(
+	$logfile,
+	qr/conflict detected on relation "public.tab2_1": conflict=update_missing.*\n.*DETAIL:.* Could not find the row to be updated: remote row \(pub_tab2, quux, 5\), replica identity \(a\)=\(5\)/,
 	'update target row is missing in tab2_1');
-ok( $logfile =~
-	  qr/logical replication did not find row to be deleted in replication target relation "tab2_1"/,
+like(
+	$logfile,
+	qr/conflict detected on relation "public.tab2_1": conflict=delete_missing.*\n.*DETAIL:.* Could not find the row to be deleted: replica identity \(a\)=\(1\)/,
 	'delete target row is missing in tab2_1');
 
+# Enable the track_commit_timestamp to detect the conflict when attempting
+# to update a row that was previously modified by a different origin.
 $node_subscriber1->append_conf('postgresql.conf',
-	"log_min_messages = warning");
-$node_subscriber1->reload;
+	'track_commit_timestamp = on');
+$node_subscriber1->restart;
+
+$node_subscriber1->safe_psql('postgres',
+	"INSERT INTO tab2 VALUES (3, 'yyy')");
+$node_publisher->safe_psql('postgres',
+	"UPDATE tab2 SET b = 'quux' WHERE a = 3");
+
+$node_publisher->wait_for_catchup('sub_viaroot');
+
+$logfile = slurp_file($node_subscriber1->logfile(), $log_location);
+like(
+	$logfile,
+	qr/conflict detected on relation "public.tab2_1": conflict=update_origin_differs.*\n.*DETAIL:.* Updating the row that was modified locally in transaction [0-9]+ at .*: local row \(yyy, null, 3\), remote row \(pub_tab2, quux, 3\), replica identity \(a\)=\(3\)./,
+	'updating a row that was modified by a different origin');
+
+# The remaining tests no longer test conflict detection.
+$node_subscriber1->append_conf('postgresql.conf',
+	'track_commit_timestamp = off');
+$node_subscriber1->restart;
 
 # Test that replication continues to work correctly after altering the
 # partition of a partitioned target table.

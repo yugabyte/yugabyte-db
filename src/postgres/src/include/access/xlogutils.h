@@ -3,7 +3,7 @@
  *
  * Utilities for replaying WAL records.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xlogutils.h
@@ -13,6 +13,9 @@
 
 #include "access/xlogreader.h"
 #include "storage/bufmgr.h"
+
+/* GUC variable */
+extern PGDLLIMPORT bool ignore_invalid_pages;
 
 /*
  * Prior to 8.4, all activity during recovery was carried out by the startup
@@ -49,7 +52,7 @@ typedef enum
 	STANDBY_DISABLED,
 	STANDBY_INITIALIZED,
 	STANDBY_SNAPSHOT_PENDING,
-	STANDBY_SNAPSHOT_READY
+	STANDBY_SNAPSHOT_READY,
 } HotStandbyState;
 
 extern PGDLLIMPORT HotStandbyState standbyState;
@@ -60,9 +63,9 @@ extern PGDLLIMPORT HotStandbyState standbyState;
 extern bool XLogHaveInvalidPages(void);
 extern void XLogCheckInvalidPages(void);
 
-extern void XLogDropRelation(RelFileNode rnode, ForkNumber forknum);
+extern void XLogDropRelation(RelFileLocator rlocator, ForkNumber forknum);
 extern void XLogDropDatabase(Oid dbid);
-extern void XLogTruncateRelation(RelFileNode rnode, ForkNumber forkNum,
+extern void XLogTruncateRelation(RelFileLocator rlocator, ForkNumber forkNum,
 								 BlockNumber nblocks);
 
 /* Result codes for XLogReadBufferForRedo[Extended] */
@@ -71,7 +74,7 @@ typedef enum
 	BLK_NEEDS_REDO,				/* changes from WAL record need to be applied */
 	BLK_DONE,					/* block is already up-to-date */
 	BLK_RESTORED,				/* block was restored from a full-page image */
-	BLK_NOTFOUND				/* block was not found (and hence does not
+	BLK_NOTFOUND,				/* block was not found (and hence does not
 								 * need to be replayed) */
 } XLogRedoAction;
 
@@ -82,18 +85,18 @@ typedef struct ReadLocalXLogPageNoWaitPrivate
 } ReadLocalXLogPageNoWaitPrivate;
 
 extern XLogRedoAction XLogReadBufferForRedo(XLogReaderState *record,
-											uint8 buffer_id, Buffer *buf);
+											uint8 block_id, Buffer *buf);
 extern Buffer XLogInitBufferForRedo(XLogReaderState *record, uint8 block_id);
 extern XLogRedoAction XLogReadBufferForRedoExtended(XLogReaderState *record,
-													uint8 buffer_id,
+													uint8 block_id,
 													ReadBufferMode mode, bool get_cleanup_lock,
 													Buffer *buf);
 
-extern Buffer XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
+extern Buffer XLogReadBufferExtended(RelFileLocator rlocator, ForkNumber forknum,
 									 BlockNumber blkno, ReadBufferMode mode,
 									 Buffer recent_buffer);
 
-extern Relation CreateFakeRelcacheEntry(RelFileNode rnode);
+extern Relation CreateFakeRelcacheEntry(RelFileLocator rlocator);
 extern void FreeFakeRelcacheEntry(Relation fakerel);
 
 extern int	read_local_xlog_page(XLogReaderState *state,

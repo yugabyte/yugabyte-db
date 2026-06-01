@@ -6,7 +6,7 @@
  * See also lsyscache.h, which provides convenience routines for
  * common cache-lookup operations.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/syscache.h
@@ -20,17 +20,21 @@
 #include "access/htup.h"
 /* we intentionally do not include utils/catcache.h here */
 
+#include "catalog/syscache_ids.h"	/* IWYU pragma: export */
+
 /* YB includes */
 #include "relcache.h"
 
 /*
- *		SysCache identifiers.
+ * YB_TODO_PG19MERGE: PG now autogenerates the SysCacheIdentifier enum from
+ * MAKE_SYSCACHE() macros in catalog headers, sorted alphabetically (see
+ * src/backend/catalog/genbki.pl `foreach my $syscache (sort keys
+ * %syscaches)`), so their enum values may change, but the comment below
+ * says the values should be stable across versions, or does the comment
+ * refer to the enum below?
  *
- *		The order of these identifiers must match the order
- *		of the entries in the array cacheinfo[] in syscache.c.
- *		Keep them in alphabetical order (renumbering only costs a
- *		backend rebuild).
- * YB Note:
+ * Original YB note (kept for context):
+ *
  * Starting from 2025-03-11, we try to keep existing ids to have same integer
  * value. In other words, newly added ids should be appended at the end
  * and the alphabetical order can no longer be maintained. The purpose is
@@ -41,97 +45,6 @@
  * The function YbCheckCatalogCacheIds() is used to detect any change in
  * this enum list.
  */
-
-enum SysCacheIdentifier
-{
-	AGGFNOID = 0,
-	AMNAME,
-	AMOID,
-	AMOPOPID,
-	AMOPSTRATEGY,
-	AMPROCNUM,
-	ATTNAME,
-	ATTNUM,
-	AUTHMEMMEMROLE,
-	AUTHMEMROLEMEM,
-	AUTHNAME,
-	AUTHOID,
-	CASTSOURCETARGET,
-	CLAAMNAMENSP,
-	CLAOID,
-	COLLNAMEENCNSP,
-	COLLOID,
-	CONDEFAULT,
-	CONNAMENSP,
-	CONSTROID,
-	CONVOID,
-	DATABASEOID,
-	DEFACLROLENSPOBJ,
-	ENUMOID,
-	ENUMTYPOIDNAME,
-	EVENTTRIGGERNAME,
-	EVENTTRIGGEROID,
-	FOREIGNDATAWRAPPERNAME,
-	FOREIGNDATAWRAPPEROID,
-	FOREIGNSERVERNAME,
-	FOREIGNSERVEROID,
-	FOREIGNTABLEREL,
-	INDEXRELID,
-	LANGNAME,
-	LANGOID,
-	NAMESPACENAME,
-	NAMESPACEOID,
-	OPERNAMENSP,
-	OPEROID,
-	OPFAMILYAMNAMENSP,
-	OPFAMILYOID,
-	PARAMETERACLNAME,
-	PARAMETERACLOID,
-	PARTRELID,
-	PROCNAMEARGSNSP,
-	PROCOID,
-	PUBLICATIONNAME,
-	PUBLICATIONNAMESPACE,
-	PUBLICATIONNAMESPACEMAP,
-	PUBLICATIONOID,
-	PUBLICATIONREL,
-	PUBLICATIONRELMAP,
-	RANGEMULTIRANGE,
-	RANGETYPE,
-	RELNAMENSP,
-	RELOID,
-	REPLORIGIDENT,
-	REPLORIGNAME,
-	RULERELNAME,
-	SEQRELID,
-	STATEXTDATASTXOID,
-	STATEXTNAMENSP,
-	STATEXTOID,
-	STATRELATTINH,
-	SUBSCRIPTIONNAME,
-	SUBSCRIPTIONOID,
-	SUBSCRIPTIONRELMAP,
-	TABLESPACEOID,
-	TRFOID,
-	TRFTYPELANG,
-	TSCONFIGMAP,
-	TSCONFIGNAMENSP,
-	TSCONFIGOID,
-	TSDICTNAMENSP,
-	TSDICTOID,
-	TSPARSERNAMENSP,
-	TSPARSEROID,
-	TSTEMPLATENAMENSP,
-	TSTEMPLATEOID,
-	TYPENAMENSP,
-	TYPEOID,
-	USERMAPPINGOID,
-	USERMAPPINGUSERSERVER,
-	YBTABLEGROUPOID,
-	YBCONSTRAINTRELIDTYPIDNAME
-
-#define SysCacheSize (YBCONSTRAINTRELIDTYPIDNAME + 1)
-};
 
 typedef enum YbCatalogCacheTable
 {
@@ -151,6 +64,7 @@ typedef enum YbCatalogCacheTable
 	YbCatalogCacheTable_pg_default_acl,
 	YbCatalogCacheTable_pg_enum,
 	YbCatalogCacheTable_pg_event_trigger,
+	YbCatalogCacheTable_pg_extension,
 	YbCatalogCacheTable_pg_foreign_data_wrapper,
 	YbCatalogCacheTable_pg_foreign_server,
 	YbCatalogCacheTable_pg_foreign_table,
@@ -163,6 +77,11 @@ typedef enum YbCatalogCacheTable
 	YbCatalogCacheTable_pg_parameter_acl,
 	YbCatalogCacheTable_pg_partitioned_table,
 	YbCatalogCacheTable_pg_proc,
+	YbCatalogCacheTable_pg_propgraph_element,
+	YbCatalogCacheTable_pg_propgraph_element_label,
+	YbCatalogCacheTable_pg_propgraph_label,
+	YbCatalogCacheTable_pg_propgraph_label_property,
+	YbCatalogCacheTable_pg_propgraph_property,
 	YbCatalogCacheTable_pg_publication,
 	YbCatalogCacheTable_pg_publication_namespace,
 	YbCatalogCacheTable_pg_publication_rel,
@@ -197,35 +116,35 @@ extern long YbNumCatalogCacheNegMisses[];
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);
 
-extern HeapTuple SearchSysCache(int cacheId,
+extern HeapTuple SearchSysCache(SysCacheIdentifier cacheId,
 								Datum key1, Datum key2, Datum key3, Datum key4);
 
 /*
  * The use of argument specific numbers is encouraged. They're faster, and
  * insulates the caller from changes in the maximum number of keys.
  */
-extern HeapTuple SearchSysCache1(int cacheId,
+extern HeapTuple SearchSysCache1(SysCacheIdentifier cacheId,
 								 Datum key1);
-extern HeapTuple SearchSysCache2(int cacheId,
+extern HeapTuple SearchSysCache2(SysCacheIdentifier cacheId,
 								 Datum key1, Datum key2);
-extern HeapTuple SearchSysCache3(int cacheId,
+extern HeapTuple SearchSysCache3(SysCacheIdentifier cacheId,
 								 Datum key1, Datum key2, Datum key3);
-extern HeapTuple SearchSysCache4(int cacheId,
+extern HeapTuple SearchSysCache4(SysCacheIdentifier cacheId,
 								 Datum key1, Datum key2, Datum key3, Datum key4);
 
 extern void ReleaseSysCache(HeapTuple tuple);
 
-extern HeapTuple SearchSysCacheLocked1(int cacheId,
+extern HeapTuple SearchSysCacheLocked1(SysCacheIdentifier cacheId,
 									   Datum key1);
 
 /* convenience routines */
-extern HeapTuple SearchSysCacheCopy(int cacheId,
+extern HeapTuple SearchSysCacheCopy(SysCacheIdentifier cacheId,
 									Datum key1, Datum key2, Datum key3, Datum key4);
-extern HeapTuple SearchSysCacheLockedCopy1(int cacheId,
+extern HeapTuple SearchSysCacheLockedCopy1(SysCacheIdentifier cacheId,
 										   Datum key1);
-extern bool SearchSysCacheExists(int cacheId,
+extern bool SearchSysCacheExists(SysCacheIdentifier cacheId,
 								 Datum key1, Datum key2, Datum key3, Datum key4);
-extern Oid	GetSysCacheOid(int cacheId, AttrNumber oidcol,
+extern Oid	GetSysCacheOid(SysCacheIdentifier cacheId, AttrNumber oidcol,
 						   Datum key1, Datum key2, Datum key3, Datum key4);
 
 extern HeapTuple SearchSysCacheAttName(Oid relid, const char *attname);
@@ -235,18 +154,21 @@ extern bool SearchSysCacheExistsAttName(Oid relid, const char *attname);
 extern HeapTuple SearchSysCacheAttNum(Oid relid, int16 attnum);
 extern HeapTuple SearchSysCacheCopyAttNum(Oid relid, int16 attnum);
 
-extern Datum SysCacheGetAttr(int cacheId, HeapTuple tup,
+extern Datum SysCacheGetAttr(SysCacheIdentifier cacheId, HeapTuple tup,
 							 AttrNumber attributeNumber, bool *isNull);
 
-extern uint32 GetSysCacheHashValue(int cacheId,
+extern Datum SysCacheGetAttrNotNull(SysCacheIdentifier cacheId, HeapTuple tup,
+									AttrNumber attributeNumber);
+
+extern uint32 GetSysCacheHashValue(SysCacheIdentifier cacheId,
 								   Datum key1, Datum key2, Datum key3, Datum key4);
 
 /* list-search interface.  Users of this must import catcache.h too */
 struct catclist;
-extern struct catclist *SearchSysCacheList(int cacheId, int nkeys,
+extern struct catclist *SearchSysCacheList(SysCacheIdentifier cacheId, int nkeys,
 										   Datum key1, Datum key2, Datum key3);
 
-extern void SysCacheInvalidate(int cacheId, uint32 hashValue);
+extern void SysCacheInvalidate(SysCacheIdentifier cacheId, uint32 hashValue);
 
 extern bool RelationInvalidatesSnapshotsOnly(Oid relid);
 extern bool RelationHasSysCache(Oid relid);

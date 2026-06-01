@@ -8,10 +8,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: plpython (PostgreSQL) 15\n"
+"Project-Id-Version: plpython (PostgreSQL) 17\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2025-02-16 20:12+0000\n"
-"PO-Revision-Date: 2022-10-20 09:06+0200\n"
+"POT-Creation-Date: 2025-02-16 19:39+0000\n"
+"PO-Revision-Date: 2024-11-16 14:24+0100\n"
 "Last-Translator: Carlos Chapi <carlos.chapi@2ndquadrant.com>\n"
 "Language-Team: PgSQL-es-Ayuda <pgsql-es-ayuda@lists.postgresql.org>\n"
 "Language: es\n"
@@ -113,7 +113,7 @@ msgstr "función PL/Python con tipo de retorno «void» no retorna None"
 msgid "function returning record called in context that cannot accept type record"
 msgstr "se llamó una función que retorna un registro en un contexto que no puede aceptarlo"
 
-#: plpy_exec.c:392 plpy_exec.c:418
+#: plpy_exec.c:392 plpy_exec.c:416
 #, c-format
 msgid "unexpected return value from trigger procedure"
 msgstr "valor de retorno no esperado desde el procedimiento disparador"
@@ -123,108 +123,108 @@ msgstr "valor de retorno no esperado desde el procedimiento disparador"
 msgid "Expected None or a string."
 msgstr "Se esperaba None o una cadena."
 
-#: plpy_exec.c:408
+#: plpy_exec.c:406
 #, c-format
 msgid "PL/Python trigger function returned \"MODIFY\" in a DELETE trigger -- ignored"
 msgstr "función de disparador de PL/Python retorno «MODIFY» en un disparador de tipo DELETE -- ignorado"
 
-#: plpy_exec.c:419
+#: plpy_exec.c:417
 #, c-format
 msgid "Expected None, \"OK\", \"SKIP\", or \"MODIFY\"."
 msgstr "Se esperaba None, «OK», «SKIP» o «MODIFY»."
 
-#: plpy_exec.c:470
+#: plpy_exec.c:468
 #, c-format
 msgid "PyList_SetItem() failed, while setting up arguments"
 msgstr "PyList_SetItem() falló, mientras se inicializaban los argumentos"
 
-#: plpy_exec.c:474
+#: plpy_exec.c:472
 #, c-format
 msgid "PyDict_SetItemString() failed, while setting up arguments"
 msgstr "PyDict_SetItemString() falló, mientras se inicializaban los argumentos"
 
-#: plpy_exec.c:703
+#: plpy_exec.c:701
 #, c-format
 msgid "while creating return value"
 msgstr "mientras se creaba el valor de retorno"
 
-#: plpy_exec.c:954
+#: plpy_exec.c:952
 #, c-format
 msgid "TD[\"new\"] deleted, cannot modify row"
 msgstr "TD[\"new\"] borrado, no se puede modicar el registro"
 
-#: plpy_exec.c:959
+#: plpy_exec.c:957
 #, c-format
 msgid "TD[\"new\"] is not a dictionary"
 msgstr "TD[\"new\"] no es un diccionario"
 
-#: plpy_exec.c:984
+#: plpy_exec.c:982
 #, c-format
 msgid "TD[\"new\"] dictionary key at ordinal position %d is not a string"
 msgstr "el nombre del atributo de TD[\"new\"] en la posición %d no es una cadena"
 
-#: plpy_exec.c:991
+#: plpy_exec.c:989
 #, c-format
 msgid "key \"%s\" found in TD[\"new\"] does not exist as a column in the triggering row"
 msgstr "la llave «%s» en TD[\"new\"] no existe como columna en la fila disparadora"
 
-#: plpy_exec.c:996
+#: plpy_exec.c:994
 #, c-format
 msgid "cannot set system attribute \"%s\""
 msgstr "no se puede definir el atributo de sistema «%s»"
 
-#: plpy_exec.c:1001
+#: plpy_exec.c:999
 #, c-format
 msgid "cannot set generated column \"%s\""
 msgstr "no se puede definir el atributo generado «%s»"
 
-#: plpy_exec.c:1059
+#: plpy_exec.c:1057
 #, c-format
 msgid "while modifying trigger row"
 msgstr "mientras se modificaba la fila de disparador"
 
 # FIXME not very happy with this
-#: plpy_exec.c:1117
+#: plpy_exec.c:1115
 #, c-format
 msgid "forcibly aborting a subtransaction that has not been exited"
 msgstr "abortando una subtransacción que no se ha cerrado"
 
-#: plpy_main.c:111
+#: plpy_main.c:109
 #, c-format
 msgid "multiple Python libraries are present in session"
 msgstr "hay múltiples librerías de Python presentes en esta sesión"
 
-#: plpy_main.c:112
+#: plpy_main.c:110
 #, c-format
 msgid "Only one Python major version can be used in one session."
 msgstr "Sólo se puede usar una versión mayor de Python en cada sesión."
 
-#: plpy_main.c:124
+#: plpy_main.c:122
 #, c-format
 msgid "untrapped error in initialization"
 msgstr "error no capturado en la inicialización"
 
-#: plpy_main.c:147
+#: plpy_main.c:145
 #, c-format
 msgid "could not import \"__main__\" module"
 msgstr "no se pudo importar el módulo «__main__»"
 
-#: plpy_main.c:156
+#: plpy_main.c:154
 #, c-format
 msgid "could not initialize globals"
 msgstr "no se pudo inicializar las globales"
 
-#: plpy_main.c:354
+#: plpy_main.c:352
 #, c-format
 msgid "PL/Python procedure \"%s\""
 msgstr "procedimiento PL/Python «%s»"
 
-#: plpy_main.c:357
+#: plpy_main.c:355
 #, c-format
 msgid "PL/Python function \"%s\""
 msgstr "función PL/Python «%s»"
 
-#: plpy_main.c:365
+#: plpy_main.c:363
 #, c-format
 msgid "PL/Python anonymous code block"
 msgstr "bloque de código anónimo de PL/Python"
@@ -288,12 +288,12 @@ msgstr "las funciones PL/Python no pueden retornar el tipo %s"
 msgid "PL/Python functions cannot accept type %s"
 msgstr "la funciones PL/Python no pueden aceptar el tipo %s"
 
-#: plpy_procedure.c:398
+#: plpy_procedure.c:396
 #, c-format
 msgid "could not compile PL/Python function \"%s\""
 msgstr "no se pudo compilar la función PL/Python «%s»"
 
-#: plpy_procedure.c:401
+#: plpy_procedure.c:399
 #, c-format
 msgid "could not compile anonymous PL/Python code block"
 msgstr "no se pudo compilar el bloque anónimo PL/Python"

@@ -4,7 +4,7 @@
  *	  This file contains routines to support indexes defined on system
  *	  catalogs.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -84,7 +84,8 @@ CatalogCloseIndexes(CatalogIndexState indstate)
  * This flag should not be used during initdb bootstrap.
  */
 static void
-CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple, bool yb_shared_insert)
+CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple,
+				   TU_UpdateIndexes updateIndexes, bool yb_shared_insert)
 {
 	int			i;
 	int			numIndexes;
@@ -94,6 +95,7 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple, bool yb_shar
 	IndexInfo **indexInfoArray;
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
+	bool		onlySummarized = (updateIndexes == TU_Summarizing);
 
 	/*
 	 * HOT update does not require index inserts. But with asserts enabled we
@@ -101,9 +103,12 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple, bool yb_shar
 	 * table/index.
 	 */
 #ifndef USE_ASSERT_CHECKING
-	if (HeapTupleIsHeapOnly(heapTuple))
+	if (HeapTupleIsHeapOnly(heapTuple) && !onlySummarized)
 		return;
 #endif
+
+	/* When only updating summarized indexes, the tuple has to be HOT. */
+	Assert((!onlySummarized) || HeapTupleIsHeapOnly(heapTuple));
 
 	/*
 	 * Get information from the state structure.  Fall out if nothing to do.
@@ -154,12 +159,19 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple, bool yb_shar
 
 		/* see earlier check above */
 #ifdef USE_ASSERT_CHECKING
-		if (HeapTupleIsHeapOnly(heapTuple))
+		if (HeapTupleIsHeapOnly(heapTuple) && !onlySummarized)
 		{
 			Assert(!ReindexIsProcessingIndex(RelationGetRelid(index)));
 			continue;
 		}
 #endif							/* USE_ASSERT_CHECKING */
+
+		/*
+		 * Skip insertions into non-summarizing indexes if we only need to
+		 * update summarizing indexes.
+		 */
+		if (onlySummarized && !indexInfo->ii_Summarizing)
+			continue;
 
 		/*
 		 * FormIndexDatum fills in its values and isnull parameters with the
@@ -297,7 +309,7 @@ CatalogTupleCheckConstraints(Relation heapRel, HeapTuple tup)
 	if (HeapTupleHasNulls(tup))
 	{
 		TupleDesc	tupdesc = RelationGetDescr(heapRel);
-		bits8	   *bp = tup->t_data->t_bits;
+		uint8	   *bp = tup->t_data->t_bits;
 
 		for (int attnum = 0; attnum < tupdesc->natts; attnum++)
 		{
@@ -341,7 +353,7 @@ CatalogTupleInsert(Relation heapRel, HeapTuple tup)
 
 	simple_heap_insert(heapRel, tup);
 
-	CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */ );
+	CatalogIndexInsert(indstate, tup, TU_All, false /* yb_shared_insert */);
 	CatalogCloseIndexes(indstate);
 }
 
@@ -400,7 +412,7 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 	YbSetSysCacheTuple(heapRel, tup);
 
 	indstate = CatalogOpenIndexes(heapRel);
-	CatalogIndexInsert(indstate, tup, yb_shared_insert);
+	CatalogIndexInsert(indstate, tup, TU_All, yb_shared_insert);
 	CatalogCloseIndexes(indstate);
 }
 
@@ -464,7 +476,7 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 		simple_heap_insert(heapRel, tup);
 	}
 
-	CatalogIndexInsert(indstate, tup, yb_shared_insert);
+	CatalogIndexInsert(indstate, tup, TU_All, yb_shared_insert);
 }
 
 /*
@@ -514,7 +526,7 @@ CatalogTuplesMultiInsertWithInfo(Relation heapRel, TupleTableSlot **slot,
 
 		tuple = ExecFetchSlotHeapTuple(slot[i], true, &should_free);
 		tuple->t_tableOid = slot[i]->tts_tableOid;
-		CatalogIndexInsert(indstate, tuple, yb_shared_insert);
+		CatalogIndexInsert(indstate, tuple, TU_All, yb_shared_insert);
 
 		if (should_free)
 			heap_freetuple(tuple);
@@ -541,7 +553,7 @@ YBCatalogTupleUpdate(Relation heapRel, HeapTuple tup,
 	YbSetSysCacheTuple(heapRel, tup);
 
 	if (has_indices)
-		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */ );
+		CatalogIndexInsert(indstate, tup, TU_All, false /* yb_shared_insert */);
 }
 
 /*
@@ -556,9 +568,10 @@ YBCatalogTupleUpdate(Relation heapRel, HeapTuple tup,
  * (Use CatalogTupleUpdateWithInfo in such cases.)
  */
 void
-CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
+CatalogTupleUpdate(Relation heapRel, const ItemPointerData *otid, HeapTuple tup)
 {
 	CatalogIndexState indstate;
+	TU_UpdateIndexes updateIndexes = TU_All;
 
 	CatalogTupleCheckConstraints(heapRel, tup);
 
@@ -570,9 +583,9 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 	}
 	else
 	{
-		simple_heap_update(heapRel, otid, tup);
+		simple_heap_update(heapRel, otid, tup, &updateIndexes);
 
-		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */ );
+		CatalogIndexInsert(indstate, tup, updateIndexes, false /* yb_shared_insert */);
 	}
 
 	CatalogCloseIndexes(indstate);
@@ -587,9 +600,11 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
  * so that callers needn't trouble over this ... but we don't do so today.
  */
 void
-CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
+CatalogTupleUpdateWithInfo(Relation heapRel, const ItemPointerData *otid, HeapTuple tup,
 						   CatalogIndexState indstate)
 {
+	TU_UpdateIndexes updateIndexes = TU_All;
+
 	CatalogTupleCheckConstraints(heapRel, tup);
 
 	if (IsYugaByteEnabled())
@@ -598,11 +613,9 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 	}
 	else
 	{
-		CatalogTupleCheckConstraints(heapRel, tup);
+		simple_heap_update(heapRel, otid, tup, &updateIndexes);
 
-		simple_heap_update(heapRel, otid, tup);
-
-		CatalogIndexInsert(indstate, tup, false /* yb_shared_insert */ );
+		CatalogIndexInsert(indstate, tup, updateIndexes, false /* yb_shared_insert */);
 	}
 }
 

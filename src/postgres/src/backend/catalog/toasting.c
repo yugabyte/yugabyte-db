@@ -4,7 +4,7 @@
  *	  This file contains routines to support creation of toast tables
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -27,12 +27,9 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
-#include "catalog/pg_type.h"
 #include "catalog/toasting.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#include "storage/lock.h"
-#include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
@@ -150,8 +147,8 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	char		toast_relname[NAMEDATALEN];
 	char		toast_idxname[NAMEDATALEN];
 	IndexInfo  *indexInfo;
-	Oid			collationObjectId[2];
-	Oid			classObjectId[2];
+	Oid			collationIds[2];
+	Oid			opclassIds[2];
 	int16		coloptions[2];
 	ObjectAddress baseobject,
 				toastobject;
@@ -239,6 +236,12 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	TupleDescAttr(tupdesc, 1)->attcompression = InvalidCompressionMethod;
 	TupleDescAttr(tupdesc, 2)->attcompression = InvalidCompressionMethod;
 
+	populate_compact_attribute(tupdesc, 0);
+	populate_compact_attribute(tupdesc, 1);
+	populate_compact_attribute(tupdesc, 2);
+
+	TupleDescFinalize(tupdesc);
+
 	/*
 	 * Toast tables for regular relations go in pg_toast; those for temp
 	 * relations go into the per-backend temp-toast-table namespace.
@@ -309,7 +312,6 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	indexInfo->ii_ExclusionOps = NULL;
 	indexInfo->ii_ExclusionProcs = NULL;
 	indexInfo->ii_ExclusionStrats = NULL;
-	indexInfo->ii_OpclassOptions = NULL;
 	indexInfo->ii_Unique = true;
 	indexInfo->ii_NullsNotDistinct = false;
 	indexInfo->ii_ReadyForInserts = true;
@@ -322,11 +324,11 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	indexInfo->ii_AmCache = NULL;
 	indexInfo->ii_Context = CurrentMemoryContext;
 
-	collationObjectId[0] = InvalidOid;
-	collationObjectId[1] = InvalidOid;
+	collationIds[0] = InvalidOid;
+	collationIds[1] = InvalidOid;
 
-	classObjectId[0] = OID_BTREE_OPS_OID;
-	classObjectId[1] = INT4_BTREE_OPS_OID;
+	opclassIds[0] = OID_BTREE_OPS_OID;
+	opclassIds[1] = INT4_BTREE_OPS_OID;
 
 	coloptions[0] = 0;
 	coloptions[1] = 0;
@@ -337,7 +339,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 				 list_make2("chunk_id", "chunk_seq"),
 				 BTREE_AM_OID,
 				 rel->rd_rel->reltablespace,
-				 collationObjectId, classObjectId, coloptions, (Datum) 0,
+				 collationIds, opclassIds, NULL, coloptions, NULL, (Datum) 0,
 				 INDEX_CREATE_IS_PRIMARY, 0, true, true, NULL, NULL,
 				 true /* skip_index_backfill */ , false /* is_colocated */ ,
 				 InvalidOid /* tablegroupId */ , InvalidOid /* colocationId */,

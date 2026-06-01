@@ -4,7 +4,7 @@
  *	  fetch tuples from a GiST scan.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -17,10 +17,10 @@
 #include "access/genam.h"
 #include "access/gist_private.h"
 #include "access/relscan.h"
+#include "executor/instrument_node.h"
 #include "lib/pairingheap.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "storage/lmgr.h"
 #include "storage/predicate.h"
 #include "utils/float.h"
 #include "utils/memutils.h"
@@ -47,7 +47,7 @@ gistkillitems(IndexScanDesc scan)
 	bool		killedsomething = false;
 
 	Assert(so->curBlkno != InvalidBlockNumber);
-	Assert(!XLogRecPtrIsInvalid(so->curPageLSN));
+	Assert(XLogRecPtrIsValid(so->curPageLSN));
 	Assert(so->killedItems != NULL);
 
 	buffer = ReadBuffer(scan->indexRelation, so->curBlkno);
@@ -64,11 +64,7 @@ gistkillitems(IndexScanDesc scan)
 	 * safe.
 	 */
 	if (BufferGetLSNAtomic(buffer) != so->curPageLSN)
-	{
-		UnlockReleaseBuffer(buffer);
-		so->numKilled = 0;		/* reset counter */
-		return;
-	}
+		goto unlock;
 
 	Assert(GistPageIsLeaf(page));
 
@@ -78,6 +74,17 @@ gistkillitems(IndexScanDesc scan)
 	 */
 	for (i = 0; i < so->numKilled; i++)
 	{
+		if (!killedsomething)
+		{
+			/*
+			 * Use the hint bit infrastructure to check if we can update the
+			 * page while just holding a share lock. If we are not allowed,
+			 * there's no point continuing.
+			 */
+			if (!BufferBeginSetHintBits(buffer))
+				goto unlock;
+		}
+
 		offnum = so->killedItems[i];
 		iid = PageGetItemId(page, offnum);
 		ItemIdMarkDead(iid);
@@ -87,9 +94,10 @@ gistkillitems(IndexScanDesc scan)
 	if (killedsomething)
 	{
 		GistMarkPageHasGarbage(page);
-		MarkBufferDirtyHint(buffer, true);
+		BufferFinishSetHintBits(buffer, true, true);
 	}
 
+unlock:
 	UnlockReleaseBuffer(buffer);
 
 	/*
@@ -223,7 +231,7 @@ gistindex_keytest(IndexScanDesc scan,
 									 key->sk_collation,
 									 PointerGetDatum(&de),
 									 key->sk_argument,
-									 Int16GetDatum(key->sk_strategy),
+									 UInt16GetDatum(key->sk_strategy),
 									 ObjectIdGetDatum(key->sk_subtype),
 									 PointerGetDatum(&recheck));
 
@@ -287,7 +295,7 @@ gistindex_keytest(IndexScanDesc scan,
 									 key->sk_collation,
 									 PointerGetDatum(&de),
 									 key->sk_argument,
-									 Int16GetDatum(key->sk_strategy),
+									 UInt16GetDatum(key->sk_strategy),
 									 ObjectIdGetDatum(key->sk_subtype),
 									 PointerGetDatum(&recheck));
 			*recheck_distances_p |= recheck;
@@ -346,7 +354,6 @@ gistScanPage(IndexScanDesc scan, GISTSearchItem *pageItem,
 	PredicateLockPage(r, BufferGetBlockNumber(buffer), scan->xs_snapshot);
 	gistcheckpage(scan->indexRelation, buffer);
 	page = BufferGetPage(buffer);
-	TestForOldSnapshot(scan->xs_snapshot, r, page);
 	opaque = GistPageGetOpaque(page);
 
 	/*
@@ -355,7 +362,7 @@ gistScanPage(IndexScanDesc scan, GISTSearchItem *pageItem,
 	 * parentlsn < nsn), or if the system crashed after a page split but
 	 * before the downlink was inserted into the parent.
 	 */
-	if (!XLogRecPtrIsInvalid(pageItem->data.parentlsn) &&
+	if (XLogRecPtrIsValid(pageItem->data.parentlsn) &&
 		(GistFollowRight(page) ||
 		 pageItem->data.parentlsn < GistPageGetNSN(page)) &&
 		opaque->rightlink != InvalidBlockNumber /* sanity check */ )
@@ -403,8 +410,8 @@ gistScanPage(IndexScanDesc scan, GISTSearchItem *pageItem,
 
 	/*
 	 * We save the LSN of the page as we read it, so that we know whether it
-	 * safe to apply LP_DEAD hints to the page later. This allows us to drop
-	 * the pin for MVCC scans, which allows vacuum to avoid blocking.
+	 * is safe to apply LP_DEAD hints to the page later. This allows us to
+	 * drop the pin for MVCC scans, which allows vacuum to avoid blocking.
 	 */
 	so->curPageLSN = BufferGetLSNAtomic(buffer);
 
@@ -627,6 +634,8 @@ gistgettuple(IndexScanDesc scan, ScanDirection dir)
 		GISTSearchItem fakeItem;
 
 		pgstat_count_index_scan(scan->indexRelation);
+		if (scan->instrument)
+			scan->instrument->nsearches++;
 
 		so->firstCall = false;
 		so->curPageData = so->nPageData = 0;
@@ -752,6 +761,8 @@ gistgetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 		return 0;
 
 	pgstat_count_index_scan(scan->indexRelation);
+	if (scan->instrument)
+		scan->instrument->nsearches++;
 
 	/* Begin the scan by processing the root page */
 	so->curPageData = so->nPageData = 0;

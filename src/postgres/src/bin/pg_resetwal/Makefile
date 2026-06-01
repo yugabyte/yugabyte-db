@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pg_resetwal
 #
-# Copyright (c) 1998-2022, PostgreSQL Global Development Group
+# Copyright (c) 1998-2026, PostgreSQL Global Development Group
 #
 # src/bin/pg_resetwal/Makefile
 #
@@ -14,6 +14,8 @@ PGAPPICON=win32
 subdir = src/bin/pg_resetwal
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
+
+LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils
 
 OBJS = \
 	$(WIN32RES) \
@@ -33,7 +35,7 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_resetwal$(X)'
 
-clean distclean maintainer-clean:
+clean distclean:
 	rm -f pg_resetwal$(X) $(OBJS)
 	rm -rf tmp_check
 

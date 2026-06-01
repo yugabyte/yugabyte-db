@@ -3,7 +3,7 @@
  *
  *	options functions
  *
- *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/option.c
  */
 
@@ -14,6 +14,7 @@
 #endif
 
 #include "common/string.h"
+#include "fe_utils/option_utils.h"
 #include "getopt_long.h"
 #include "pg_upgrade.h"
 #include "utils/pidfile.h"
@@ -58,7 +59,12 @@ parseCommandLine(int argc, char *argv[])
 		{"jobs", required_argument, NULL, 'j'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"clone", no_argument, NULL, 1},
+		{"copy", no_argument, NULL, 2},
+		{"copy-file-range", no_argument, NULL, 3},
+		{"sync-method", required_argument, NULL, 4},
 		{"no-statistics", no_argument, NULL, 5},
+		{"set-char-signedness", required_argument, NULL, 6},
+		{"swap", no_argument, NULL, 7},
 
 		/* Yugabyte flags */
 		{"old-host", required_argument, NULL, 'h'},
@@ -71,10 +77,12 @@ parseCommandLine(int argc, char *argv[])
 	int			option;			/* Command line option */
 	int			optindex = 0;	/* used by getopt_long */
 	int			os_user_effective_id;
+	DataDirSyncMethod unused;
 
 	user_opts.do_sync = true;
 	user_opts.transfer_mode = TRANSFER_MODE_COPY;
 	user_opts.do_statistics = true;
+	user_opts.char_signedness = -1;
 
 	os_info.progname = get_progname(argv[0]);
 
@@ -118,10 +126,13 @@ parseCommandLine(int argc, char *argv[])
 
 	/* Allow help and version to be run as root, so do the test here. */
 	if (os_user_effective_id == 0)
-		pg_fatal("%s: cannot be run as root\n", os_info.progname);
+		pg_fatal("%s: cannot be run as root", os_info.progname);
 
-	/* YB: added 'w:' for --yb-working-dir option */
-	while ((option = getopt_long(argc, argv, "d:D:b:B:ch:H:j:kNo:O:p:P:rs:S:U:vw:",
+	/*
+	 * YB: added 'h:', 'H:', 'S:', 'w:' for YB-specific options
+	 * 'w:' is for --yb-working-dir option
+	 */
+	while ((option = getopt_long(argc, argv, "b:B:cd:D:h:H:j:kNo:O:p:P:rs:S:U:vw:",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -194,12 +205,12 @@ parseCommandLine(int argc, char *argv[])
 
 			case 'p':
 				if ((old_cluster.port = atoi(optarg)) <= 0)
-					pg_fatal("invalid old port number\n");
+					pg_fatal("invalid old port number");
 				break;
 
 			case 'P':
 				if ((new_cluster.port = atoi(optarg)) <= 0)
-					pg_fatal("invalid new port number\n");
+					pg_fatal("invalid new port number");
 				break;
 
 			case 'r':
@@ -232,8 +243,34 @@ parseCommandLine(int argc, char *argv[])
 				user_opts.transfer_mode = TRANSFER_MODE_CLONE;
 				break;
 
+			case 2:
+				user_opts.transfer_mode = TRANSFER_MODE_COPY;
+				break;
+
+			case 3:
+				user_opts.transfer_mode = TRANSFER_MODE_COPY_FILE_RANGE;
+				break;
+			case 4:
+				if (!parse_sync_method(optarg, &unused))
+					exit(1);
+				user_opts.sync_method = pg_strdup(optarg);
+				break;
+
 			case 5:
 				user_opts.do_statistics = false;
+				break;
+
+			case 6:
+				if (pg_strcasecmp(optarg, "signed") == 0)
+					user_opts.char_signedness = 1;
+				else if (pg_strcasecmp(optarg, "unsigned") == 0)
+					user_opts.char_signedness = 0;
+				else
+					pg_fatal("invalid argument for option %s", "--set-char-signedness");
+				break;
+
+			case 7:
+				user_opts.transfer_mode = TRANSFER_MODE_SWAP;
 				break;
 
 			default:
@@ -244,7 +281,10 @@ parseCommandLine(int argc, char *argv[])
 	}
 
 	if (optind < argc)
-		pg_fatal("too many command-line arguments (first is \"%s\")\n", argv[optind]);
+		pg_fatal("too many command-line arguments (first is \"%s\")", argv[optind]);
+
+	if (!user_opts.sync_method)
+		user_opts.sync_method = pg_strdup("fsync");
 
 	if (is_yugabyte_enabled())
 	{
@@ -257,7 +297,7 @@ parseCommandLine(int argc, char *argv[])
 	}
 
 	if (log_opts.verbose)
-		pg_log(PG_REPORT, "Running in verbose mode\n");
+		pg_log(PG_REPORT, "Running in verbose mode");
 
 	log_opts.isatty = isatty(fileno(stdout));
 
@@ -311,10 +351,10 @@ parseCommandLine(int argc, char *argv[])
 		canonicalize_path(new_cluster_pgdata);
 
 		if (!getcwd(cwd, MAXPGPATH))
-			pg_fatal("could not determine current directory\n");
+			pg_fatal("could not determine current directory");
 		canonicalize_path(cwd);
 		if (path_is_prefix_of_path(new_cluster_pgdata, cwd))
-			pg_fatal("cannot run pg_upgrade from inside the new cluster data directory on Windows\n");
+			pg_fatal("cannot run pg_upgrade from inside the new cluster data directory on Windows");
 	}
 #endif
 }
@@ -345,7 +385,13 @@ usage(void)
 	printf(_("  -v, --verbose                 enable verbose internal logging\n"));
 	printf(_("  -V, --version                 display version information, then exit\n"));
 	printf(_("  --clone                       clone instead of copying files to new cluster\n"));
+	printf(_("  --copy                        copy files to new cluster (default)\n"));
+	printf(_("  --copy-file-range             copy files to new cluster with copy_file_range\n"));
 	printf(_("  --no-statistics               do not import statistics from old cluster\n"));
+	printf(_("  --set-char-signedness=OPTION  set new cluster char signedness to \"signed\" or\n"
+			 "                                \"unsigned\"\n"));
+	printf(_("  --swap                        move data directories to new cluster\n"));
+	printf(_("  --sync-method=METHOD          set method for syncing files to disk\n"));
 	printf(_("  -h, --old-host=HOST           old cluster host address\n"));	/* YB */
 	printf(_("  -H, --new-host=HOST           new cluster host address\n"));	/* YB */
 	printf(_("  -s, --old-socketdir=DIR       old cluster socket directory\n"));	/* YB */
@@ -415,14 +461,14 @@ check_required_directory(char **dirpath, const char *envVarName, bool useCwd,
 			char		cwd[MAXPGPATH];
 
 			if (!getcwd(cwd, MAXPGPATH))
-				pg_fatal("could not determine current directory\n");
+				pg_fatal("could not determine current directory");
 			*dirpath = pg_strdup(cwd);
 		}
 		else if (missingOk)
 			return;
 		else
 			pg_fatal("You must identify the directory where the %s.\n"
-					 "Please use the %s command-line option or the %s environment variable.\n",
+					 "Please use the %s command-line option or the %s environment variable.",
 					 description, cmdLineOption, envVarName);
 	}
 
@@ -452,6 +498,7 @@ adjust_data_dir(ClusterInfo *cluster)
 				cmd_output[MAX_STRING];
 	FILE	   *fp,
 			   *output;
+	int			rc;
 
 	/* Initially assume config dir and data dir are the same */
 	cluster->pgconfig = pg_strdup(cluster->pgdata);
@@ -484,13 +531,16 @@ adjust_data_dir(ClusterInfo *cluster)
 	 */
 	snprintf(cmd, sizeof(cmd), "\"%s/postgres\" -D \"%s\" -C data_directory",
 			 cluster->bindir, cluster->pgconfig);
+	fflush(NULL);
 
 	if ((output = popen(cmd, "r")) == NULL ||
 		fgets(cmd_output, sizeof(cmd_output), output) == NULL)
-		pg_fatal("could not get data directory using %s: %s\n",
-				 cmd, strerror(errno));
+		pg_fatal("could not get data directory using %s: %m", cmd);
 
-	pclose(output);
+	rc = pclose(output);
+	if (rc != 0)
+		pg_fatal("could not get data directory using %s: %s",
+				 cmd, wait_result_to_str(rc));
 
 	/* strip trailing newline and carriage return */
 	(void) pg_strip_crlf(cmd_output);
@@ -510,13 +560,13 @@ adjust_data_dir(ClusterInfo *cluster)
  * directory.
  */
 void
-get_sock_dir(ClusterInfo *cluster, bool live_check)
+get_sock_dir(ClusterInfo *cluster)
 {
 	/* In Yugabyte socket directory are specified via the input arguments. */
 	Assert(!is_yugabyte_enabled());
 
-#if defined(HAVE_UNIX_SOCKETS) && !defined(WIN32)
-	if (!live_check)
+#if !defined(WIN32)
+	if (!user_opts.live_check || cluster == &new_cluster)
 		cluster->sockdir = user_opts.socketdir;
 	else
 	{
@@ -533,16 +583,15 @@ get_sock_dir(ClusterInfo *cluster, bool live_check)
 		snprintf(filename, sizeof(filename), "%s/postmaster.pid",
 				 cluster->pgdata);
 		if ((fp = fopen(filename, "r")) == NULL)
-			pg_fatal("could not open file \"%s\": %s\n",
-					 filename, strerror(errno));
+			pg_fatal("could not open file \"%s\": %m", filename);
 
 		for (lineno = 1;
 			 lineno <= Max(LOCK_FILE_LINE_PORT, LOCK_FILE_LINE_SOCKET_DIR);
 			 lineno++)
 		{
 			if (fgets(line, sizeof(line), fp) == NULL)
-				pg_fatal("could not read line %d from file \"%s\": %s\n",
-						 lineno, filename, strerror(errno));
+				pg_fatal("could not read line %d from file \"%s\": %m",
+						 lineno, filename);
 
 			/* potentially overwrite user-supplied value */
 			if (lineno == LOCK_FILE_LINE_PORT)
@@ -558,10 +607,10 @@ get_sock_dir(ClusterInfo *cluster, bool live_check)
 
 		/* warn of port number correction */
 		if (orig_port != DEF_PGUPORT && old_cluster.port != orig_port)
-			pg_log(PG_WARNING, "user-supplied old port number %hu corrected to %hu\n",
+			pg_log(PG_WARNING, "user-supplied old port number %hu corrected to %hu",
 				   orig_port, cluster->port);
 	}
-#else							/* !HAVE_UNIX_SOCKETS || WIN32 */
+#else							/* WIN32 */
 	cluster->sockdir = NULL;
 #endif
 }

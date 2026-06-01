@@ -3,7 +3,7 @@
  * pg_lsn.c
  *	  Operations for the pg_lsn datatype.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -13,9 +13,8 @@
  */
 #include "postgres.h"
 
-#include "funcapi.h"
 #include "libpq/pqformat.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/numeric.h"
 #include "utils/pg_lsn.h"
 
@@ -26,8 +25,11 @@
  * Formatting and conversion routines.
  *---------------------------------------------------------*/
 
+/*
+ * Internal version of pg_lsn_in() with support for soft error reporting.
+ */
 XLogRecPtr
-pg_lsn_in_internal(const char *str, bool *have_error)
+pg_lsn_in_safe(const char *str, Node *escontext)
 {
 	int			len1,
 				len2;
@@ -35,22 +37,14 @@ pg_lsn_in_internal(const char *str, bool *have_error)
 				off;
 	XLogRecPtr	result;
 
-	Assert(have_error != NULL);
-	*have_error = false;
-
 	/* Sanity check input format. */
 	len1 = strspn(str, "0123456789abcdefABCDEF");
 	if (len1 < 1 || len1 > MAXPG_LSNCOMPONENT || str[len1] != '/')
-	{
-		*have_error = true;
-		return InvalidXLogRecPtr;
-	}
+		goto syntax_error;
+
 	len2 = strspn(str + len1 + 1, "0123456789abcdefABCDEF");
 	if (len2 < 1 || len2 > MAXPG_LSNCOMPONENT || str[len1 + 1 + len2] != '\0')
-	{
-		*have_error = true;
-		return InvalidXLogRecPtr;
-	}
+		goto syntax_error;
 
 	/* Decode result. */
 	id = (uint32) strtoul(str, NULL, 16);
@@ -58,6 +52,12 @@ pg_lsn_in_internal(const char *str, bool *have_error)
 	result = ((uint64) id << 32) | off;
 
 	return result;
+
+syntax_error:
+	ereturn(escontext, InvalidXLogRecPtr,
+			(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+			 errmsg("invalid input syntax for type %s: \"%s\"",
+					"pg_lsn", str)));
 }
 
 Datum
@@ -65,14 +65,8 @@ pg_lsn_in(PG_FUNCTION_ARGS)
 {
 	char	   *str = PG_GETARG_CSTRING(0);
 	XLogRecPtr	result;
-	bool		have_error = false;
 
-	result = pg_lsn_in_internal(str, &have_error);
-	if (have_error)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid input syntax for type %s: \"%s\"",
-						"pg_lsn", str)));
+	result = pg_lsn_in_safe(str, fcinfo->context);
 
 	PG_RETURN_LSN(result);
 }
@@ -84,7 +78,7 @@ pg_lsn_out(PG_FUNCTION_ARGS)
 	char		buf[MAXPG_LSNLEN + 1];
 	char	   *result;
 
-	snprintf(buf, sizeof buf, "%X/%X", LSN_FORMAT_ARGS(lsn));
+	snprintf(buf, sizeof buf, "%X/%08X", LSN_FORMAT_ARGS(lsn));
 	result = pstrdup(buf);
 	PG_RETURN_CSTRING(result);
 }

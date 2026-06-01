@@ -4,7 +4,7 @@
  *	  definition of the "type" system catalog (pg_type)
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_type.h
@@ -20,7 +20,7 @@
 
 #include "catalog/genbki.h"
 #include "catalog/objectaddress.h"
-#include "catalog/pg_type_d.h"
+#include "catalog/pg_type_d.h"	/* IWYU pragma: export */
 #include "nodes/nodes.h"
 
 #define BSONOID				8095
@@ -37,6 +37,8 @@
  *		See struct FormData_pg_attribute for details.
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_type,1247,TypeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71,TypeRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			oid;			/* oid */
@@ -257,6 +259,8 @@ CATALOG(pg_type,1247,TypeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71,TypeRelati
 #endif
 } FormData_pg_type;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_type corresponds to a pointer to a row with
  *		the format of pg_type relation.
@@ -266,8 +270,11 @@ typedef FormData_pg_type *Form_pg_type;
 
 DECLARE_TOAST(pg_type, 4171, 4172);
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_type_oid_index, 2703, TypeOidIndexId, on pg_type using btree(oid oid_ops));
-DECLARE_UNIQUE_INDEX(pg_type_typname_nsp_index, 2704, TypeNameNspIndexId, on pg_type using btree(typname name_ops, typnamespace oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_type_oid_index, 2703, TypeOidIndexId, pg_type, btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_type_typname_nsp_index, 2704, TypeNameNspIndexId, pg_type, btree(typname name_ops, typnamespace oid_ops));
+
+MAKE_SYSCACHE(TYPEOID, pg_type_oid_index, 64);
+MAKE_SYSCACHE(TYPENAMENSP, pg_type_typname_nsp_index, 64);
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

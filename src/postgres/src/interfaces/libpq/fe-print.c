@@ -3,7 +3,7 @@
  * fe-print.c
  *	  functions for pretty-printing query results
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * These functions were formerly part of fe-exec.c, but they
@@ -33,6 +33,7 @@
 #endif
 #endif
 
+#include "common/int.h"
 #include "libpq-fe.h"
 #include "libpq-int.h"
 
@@ -88,13 +89,10 @@ PQprint(FILE *fout, const PGresult *res, const PQprintOpt *po)
 		bool		usePipe = false;
 		char	   *pagerenv;
 
-#if defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
+#if !defined(WIN32)
 		sigset_t	osigset;
 		bool		sigpipe_masked = false;
 		bool		sigpipe_pending;
-#endif
-#if !defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
-		pqsigfunc	oldsigpipehandler = NULL;
 #endif
 
 #ifdef TIOCGWINSZ
@@ -106,6 +104,16 @@ PQprint(FILE *fout, const PGresult *res, const PQprintOpt *po)
 			int			ws_col;
 		}			screen_size;
 #endif
+
+		/*
+		 * Quick sanity check on po->fieldSep, since we make heavy use of int
+		 * math throughout.
+		 */
+		if (fs_len < strlen(po->fieldSep))
+		{
+			fprintf(stderr, libpq_gettext("overlong field separator\n"));
+			goto exit;
+		}
 
 		nTups = PQntuples(res);
 		fieldNames = (const char **) calloc(nFields, sizeof(char *));
@@ -180,17 +188,14 @@ PQprint(FILE *fout, const PGresult *res, const PQprintOpt *po)
 				  - (po->header != 0) * 2	/* row count and newline */
 				  )))
 			{
+				fflush(NULL);
 				fout = popen(pagerenv, "w");
 				if (fout)
 				{
 					usePipe = true;
 #ifndef WIN32
-#ifdef ENABLE_THREAD_SAFETY
 					if (pq_block_sigpipe(&osigset, &sigpipe_pending) == 0)
 						sigpipe_masked = true;
-#else
-					oldsigpipehandler = pqsignal(SIGPIPE, SIG_IGN);
-#endif							/* ENABLE_THREAD_SAFETY */
 #endif							/* WIN32 */
 				}
 				else
@@ -303,26 +308,19 @@ PQprint(FILE *fout, const PGresult *res, const PQprintOpt *po)
 			fputs("</table>\n", fout);
 
 exit:
-		if (fieldMax)
-			free(fieldMax);
-		if (fieldNotNum)
-			free(fieldNotNum);
-		if (border)
-			free(border);
+		free(fieldMax);
+		free(fieldNotNum);
+		free(border);
 		if (fields)
 		{
 			/* if calloc succeeded, this shouldn't overflow size_t */
 			size_t		numfields = ((size_t) nTups + 1) * (size_t) nFields;
 
 			while (numfields-- > 0)
-			{
-				if (fields[numfields])
-					free(fields[numfields]);
-			}
+				free(fields[numfields]);
 			free(fields);
 		}
-		if (fieldNames)
-			free((void *) fieldNames);
+		free(fieldNames);
 		if (usePipe)
 		{
 #ifdef WIN32
@@ -330,13 +328,9 @@ exit:
 #else
 			pclose(fout);
 
-#ifdef ENABLE_THREAD_SAFETY
 			/* we can't easily verify if EPIPE occurred, so say it did */
 			if (sigpipe_masked)
 				pq_reset_sigpipe(&osigset, sigpipe_pending, true);
-#else
-			pqsignal(SIGPIPE, oldsigpipehandler);
-#endif							/* ENABLE_THREAD_SAFETY */
 #endif							/* WIN32 */
 		}
 	}
@@ -408,7 +402,7 @@ do_field(const PQprintOpt *po, const PGresult *res,
 		{
 			if (plen > fieldMax[j])
 				fieldMax[j] = plen;
-			if (!(fields[i * nFields + j] = (char *) malloc(plen + 1)))
+			if (!(fields[i * nFields + j] = (char *) malloc((size_t) plen + 1)))
 			{
 				fprintf(stderr, libpq_gettext("out of memory\n"));
 				return false;
@@ -470,15 +464,31 @@ do_header(FILE *fout, const PQprintOpt *po, const int nFields, int *fieldMax,
 		fputs("<tr>", fout);
 	else
 	{
-		int			tot = 0;
+		size_t		tot = 0;
 		int			n = 0;
 		char	   *p = NULL;
 
+		/* Calculate the border size, checking for overflow. */
 		for (; n < nFields; n++)
-			tot += fieldMax[n] + fs_len + (po->standard ? 2 : 0);
+		{
+			/* Field plus separator, plus 2 extra '-' in standard format. */
+			if (pg_add_size_overflow(tot, fieldMax[n], &tot) ||
+				pg_add_size_overflow(tot, fs_len, &tot) ||
+				(po->standard && pg_add_size_overflow(tot, 2, &tot)))
+				goto overflow;
+		}
 		if (po->standard)
-			tot += fs_len * 2 + 2;
-		border = malloc(tot + 1);
+		{
+			/* An extra separator at the front and back. */
+			if (pg_add_size_overflow(tot, fs_len, &tot) ||
+				pg_add_size_overflow(tot, fs_len, &tot) ||
+				pg_add_size_overflow(tot, 2, &tot))
+				goto overflow;
+		}
+		if (pg_add_size_overflow(tot, 1, &tot)) /* terminator */
+			goto overflow;
+
+		border = malloc(tot);
 		if (!border)
 		{
 			fprintf(stderr, libpq_gettext("out of memory\n"));
@@ -541,6 +551,10 @@ do_header(FILE *fout, const PQprintOpt *po, const int nFields, int *fieldMax,
 	else
 		fprintf(fout, "\n%s\n", border);
 	return border;
+
+overflow:
+	fprintf(stderr, libpq_gettext("header size exceeds the maximum allowed\n"));
+	return NULL;
 }
 
 
@@ -679,8 +693,7 @@ PQdisplayTuples(const PGresult *res,
 
 	fflush(fp);
 
-	if (fLength)
-		free(fLength);
+	free(fLength);
 }
 
 
@@ -763,8 +776,7 @@ PQprintTuples(const PGresult *res,
 		}
 	}
 
-	if (tborder)
-		free(tborder);
+	free(tborder);
 }
 
 

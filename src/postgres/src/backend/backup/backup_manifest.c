@@ -3,7 +3,7 @@
  * backup_manifest.c
  *	  code for generating and sending a backup manifest
  *
- * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/backup/backup_manifest.c
@@ -13,15 +13,15 @@
 #include "postgres.h"
 
 #include "access/timeline.h"
+#include "access/xlog.h"
 #include "backup/backup_manifest.h"
 #include "backup/basebackup_sink.h"
-#include "libpq/libpq.h"
-#include "libpq/pqformat.h"
+#include "common/relpath.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
 #include "utils/json.h"
 
-static void AppendStringToManifest(backup_manifest_info *manifest, char *s);
+static void AppendStringToManifest(backup_manifest_info *manifest, const char *s);
 
 /*
  * Does the user want a backup manifest?
@@ -79,8 +79,10 @@ InitializeBackupManifest(backup_manifest_info *manifest,
 
 	if (want_manifest != MANIFEST_OPTION_NO)
 		AppendToManifest(manifest,
-						 "{ \"PostgreSQL-Backup-Manifest-Version\": 1,\n"
-						 "\"Files\": [");
+						 "{ \"PostgreSQL-Backup-Manifest-Version\": 2,\n"
+						 "\"System-Identifier\": " UINT64_FORMAT ",\n"
+						 "\"Files\": [",
+						 GetSystemIdentifier());
 }
 
 /*
@@ -97,7 +99,7 @@ FreeBackupManifest(backup_manifest_info *manifest)
  * Add an entry to the backup manifest for a file.
  */
 void
-AddFileToBackupManifest(backup_manifest_info *manifest, const char *spcoid,
+AddFileToBackupManifest(backup_manifest_info *manifest, Oid spcoid,
 						const char *pathname, size_t size, pg_time_t mtime,
 						pg_checksum_context *checksum_ctx)
 {
@@ -114,9 +116,9 @@ AddFileToBackupManifest(backup_manifest_info *manifest, const char *spcoid,
 	 * pathname relative to the data directory (ignoring the intermediate
 	 * symlink traversal).
 	 */
-	if (spcoid != NULL)
+	if (OidIsValid(spcoid))
 	{
-		snprintf(pathbuf, sizeof(pathbuf), "pg_tblspc/%s/%s", spcoid,
+		snprintf(pathbuf, sizeof(pathbuf), "%s/%u/%s", PG_TBLSPC_DIR, spcoid,
 				 pathname);
 		pathname = pathbuf;
 	}
@@ -147,7 +149,7 @@ AddFileToBackupManifest(backup_manifest_info *manifest, const char *spcoid,
 		pg_verify_mbstr(PG_UTF8, pathname, pathlen, true))
 	{
 		appendStringInfoString(&buf, "{ \"Path\": ");
-		escape_json(&buf, pathname);
+		escape_json_with_len(&buf, pathname, pathlen);
 		appendStringInfoString(&buf, ", ");
 	}
 	else
@@ -240,7 +242,7 @@ AddWALInfoToBackupManifest(backup_manifest_info *manifest, XLogRecPtr startptr,
 		 * entry->end is InvalidXLogRecPtr, it means that the timeline has not
 		 * yet ended.)
 		 */
-		if (!XLogRecPtrIsInvalid(entry->end) && entry->end < startptr)
+		if (XLogRecPtrIsValid(entry->end) && entry->end < startptr)
 			continue;
 
 		/*
@@ -251,7 +253,7 @@ AddWALInfoToBackupManifest(backup_manifest_info *manifest, XLogRecPtr startptr,
 		if (first_wal_range && endtli != entry->tli)
 			ereport(ERROR,
 					errmsg("expected end timeline %u but found timeline %u",
-						   starttli, entry->tli));
+						   endtli, entry->tli));
 
 		/*
 		 * If this timeline entry matches with the timeline on which the
@@ -272,14 +274,14 @@ AddWALInfoToBackupManifest(backup_manifest_info *manifest, XLogRecPtr startptr,
 			 * better have arrived at the expected starting TLI. If not,
 			 * something's gone horribly wrong.
 			 */
-			if (XLogRecPtrIsInvalid(entry->begin))
+			if (!XLogRecPtrIsValid(entry->begin))
 				ereport(ERROR,
 						errmsg("expected start timeline %u but found timeline %u",
 							   starttli, entry->tli));
 		}
 
 		AppendToManifest(manifest,
-						 "%s{ \"Timeline\": %u, \"Start-LSN\": \"%X/%X\", \"End-LSN\": \"%X/%X\" }",
+						 "%s{ \"Timeline\": %u, \"Start-LSN\": \"%X/%08X\", \"End-LSN\": \"%X/%08X\" }",
 						 first_wal_range ? "" : ",\n",
 						 entry->tli,
 						 LSN_FORMAT_ARGS(tl_beginptr),
@@ -349,7 +351,7 @@ SendBackupManifest(backup_manifest_info *manifest, bbsink *sink)
 	 * We've written all the data to the manifest file.  Rewind the file so
 	 * that we can read it all back.
 	 */
-	if (BufFileSeek(manifest->buffile, 0, 0L, SEEK_SET))
+	if (BufFileSeek(manifest->buffile, 0, 0, SEEK_SET))
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not rewind temporary file")));
@@ -362,17 +364,10 @@ SendBackupManifest(backup_manifest_info *manifest, bbsink *sink)
 	while (manifest_bytes_done < manifest->manifest_size)
 	{
 		size_t		bytes_to_read;
-		size_t		rc;
 
 		bytes_to_read = Min(sink->bbs_buffer_length,
 							manifest->manifest_size - manifest_bytes_done);
-		rc = BufFileRead(manifest->buffile, sink->bbs_buffer,
-						 bytes_to_read);
-		if (rc != bytes_to_read)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not read from temporary file: read only %zu of %zu bytes",
-							rc, bytes_to_read)));
+		BufFileReadExact(manifest->buffile, sink->bbs_buffer, bytes_to_read);
 		bbsink_manifest_contents(sink, bytes_to_read);
 		manifest_bytes_done += bytes_to_read;
 	}
@@ -386,14 +381,14 @@ SendBackupManifest(backup_manifest_info *manifest, bbsink *sink)
  * Append a cstring to the manifest.
  */
 static void
-AppendStringToManifest(backup_manifest_info *manifest, char *s)
+AppendStringToManifest(backup_manifest_info *manifest, const char *s)
 {
 	int			len = strlen(s);
 
 	Assert(manifest != NULL);
 	if (manifest->still_checksumming)
 	{
-		if (pg_cryptohash_update(manifest->manifest_ctx, (uint8 *) s, len) < 0)
+		if (pg_cryptohash_update(manifest->manifest_ctx, (const uint8 *) s, len) < 0)
 			elog(ERROR, "failed to update checksum of backup manifest: %s",
 				 pg_cryptohash_error(manifest->manifest_ctx));
 	}

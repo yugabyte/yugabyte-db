@@ -4,7 +4,7 @@
  *	  Implement higher level operations based on some lower level atomic
  *	  operations.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port/atomics/generic.h
@@ -135,19 +135,9 @@ pg_atomic_unlocked_test_flag_impl(volatile pg_atomic_flag *ptr)
 static inline void
 pg_atomic_clear_flag_impl(volatile pg_atomic_flag *ptr)
 {
-	/*
-	 * Use a memory barrier + plain write if we have a native memory
-	 * barrier. But don't do so if memory barriers use spinlocks - that'd lead
-	 * to circularity if flags are used to implement spinlocks.
-	 */
-#ifndef PG_HAVE_MEMORY_BARRIER_EMULATION
 	/* XXX: release semantics suffice? */
 	pg_memory_barrier_impl();
 	pg_atomic_write_u32_impl(ptr, 0);
-#else
-	uint32 value = 1;
-	pg_atomic_compare_exchange_u32_impl(ptr, &value, 0);
-#endif
 }
 
 #elif !defined(PG_HAVE_ATOMIC_TEST_SET_FLAG)
@@ -243,6 +233,24 @@ pg_atomic_sub_fetch_u32_impl(volatile pg_atomic_uint32 *ptr, int32 sub_)
 }
 #endif
 
+#if !defined(PG_HAVE_ATOMIC_READ_MEMBARRIER_U32) && defined(PG_HAVE_ATOMIC_FETCH_ADD_U32)
+#define PG_HAVE_ATOMIC_READ_MEMBARRIER_U32
+static inline uint32
+pg_atomic_read_membarrier_u32_impl(volatile pg_atomic_uint32 *ptr)
+{
+	return pg_atomic_fetch_add_u32_impl(ptr, 0);
+}
+#endif
+
+#if !defined(PG_HAVE_ATOMIC_WRITE_MEMBARRIER_U32) && defined(PG_HAVE_ATOMIC_EXCHANGE_U32)
+#define PG_HAVE_ATOMIC_WRITE_MEMBARRIER_U32
+static inline void
+pg_atomic_write_membarrier_u32_impl(volatile pg_atomic_uint32 *ptr, uint32 val)
+{
+	(void) pg_atomic_exchange_u32_impl(ptr, val);
+}
+#endif
+
 #if !defined(PG_HAVE_ATOMIC_EXCHANGE_U64) && defined(PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U64)
 #define PG_HAVE_ATOMIC_EXCHANGE_U64
 static inline uint64
@@ -288,6 +296,15 @@ pg_atomic_write_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 val)
 
 #endif /* PG_HAVE_8BYTE_SINGLE_COPY_ATOMICITY && !PG_HAVE_ATOMIC_U64_SIMULATION */
 #endif /* PG_HAVE_ATOMIC_WRITE_U64 */
+
+#ifndef PG_HAVE_ATOMIC_UNLOCKED_WRITE_U64
+#define PG_HAVE_ATOMIC_UNLOCKED_WRITE_U64
+static inline void
+pg_atomic_unlocked_write_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 val)
+{
+	ptr->value = val;
+}
+#endif
 
 #ifndef PG_HAVE_ATOMIC_READ_U64
 #define PG_HAVE_ATOMIC_READ_U64
@@ -397,5 +414,23 @@ static inline uint64
 pg_atomic_sub_fetch_u64_impl(volatile pg_atomic_uint64 *ptr, int64 sub_)
 {
 	return pg_atomic_fetch_sub_u64_impl(ptr, sub_) - sub_;
+}
+#endif
+
+#if !defined(PG_HAVE_ATOMIC_READ_MEMBARRIER_U64) && defined(PG_HAVE_ATOMIC_FETCH_ADD_U64)
+#define PG_HAVE_ATOMIC_READ_MEMBARRIER_U64
+static inline uint64
+pg_atomic_read_membarrier_u64_impl(volatile pg_atomic_uint64 *ptr)
+{
+	return pg_atomic_fetch_add_u64_impl(ptr, 0);
+}
+#endif
+
+#if !defined(PG_HAVE_ATOMIC_WRITE_MEMBARRIER_U64) && defined(PG_HAVE_ATOMIC_EXCHANGE_U64)
+#define PG_HAVE_ATOMIC_WRITE_MEMBARRIER_U64
+static inline void
+pg_atomic_write_membarrier_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 val)
+{
+	(void) pg_atomic_exchange_u64_impl(ptr, val);
 }
 #endif

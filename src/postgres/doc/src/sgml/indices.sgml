@@ -460,20 +460,56 @@ CREATE INDEX test2_mm_idx ON test2 (major, minor);
    efficient when there are constraints on the leading (leftmost) columns.
    The exact rule is that equality constraints on leading columns, plus
    any inequality constraints on the first column that does not have an
-   equality constraint, will be used to limit the portion of the index
+   equality constraint, will always be used to limit the portion of the index
    that is scanned.  Constraints on columns to the right of these columns
-   are checked in the index, so they save visits to the table proper, but
-   they do not reduce the portion of the index that has to be scanned.
+   are checked in the index, so they'll always save visits to the table
+   proper, but they do not necessarily reduce the portion of the index that
+   has to be scanned.  If a B-tree index scan can apply the skip scan
+   optimization effectively, it will apply every column constraint when
+   navigating through the index via repeated index searches.  This can reduce
+   the portion of the index that has to be read, even though one or more
+   columns (prior to the least significant index column from the query
+   predicate) lacks a conventional equality constraint.  Skip scan works by
+   generating a dynamic equality constraint internally, that matches every
+   possible value in an index column (though only given a column that lacks
+   an equality constraint that comes from the query predicate, and only when
+   the generated constraint can be used in conjunction with a later column
+   constraint from the query predicate).
+  </para>
+
+  <para>
+   For example, given an index on <literal>(x, y)</literal>, and a query
+   condition <literal>WHERE y = 7700</literal>, a B-tree index scan might be
+   able to apply the skip scan optimization.  This generally happens when the
+   query planner expects that repeated <literal>WHERE x = N AND y = 7700</literal>
+   searches for every possible value of <literal>N</literal> (or for every
+   <literal>x</literal> value that is actually stored in the index) is the
+   fastest possible approach, given the available indexes on the table.  This
+   approach is generally only taken when there are so few distinct
+   <literal>x</literal> values that the planner expects the scan to skip over
+   most of the index (because most of its leaf pages cannot possibly contain
+   relevant tuples).  If there are many distinct <literal>x</literal> values,
+   then the entire index will have to be scanned, so in most cases the planner
+   will prefer a sequential table scan over using the index.
+  </para>
+
+  <para>
+   The skip scan optimization can also be applied selectively, during B-tree
+   scans that have at least some useful constraints from the query predicate.
    For example, given an index on <literal>(a, b, c)</literal> and a
    query condition <literal>WHERE a = 5 AND b &gt;= 42 AND c &lt; 77</literal>,
-   the index would have to be scanned from the first entry with
-   <literal>a</literal> = 5 and <literal>b</literal> = 42 up through the last entry with
-   <literal>a</literal> = 5.  Index entries with <literal>c</literal> &gt;= 77 would be
-   skipped, but they'd still have to be scanned through.
-   This index could in principle be used for queries that have constraints
-   on <literal>b</literal> and/or <literal>c</literal> with no constraint on <literal>a</literal>
-   &mdash; but the entire index would have to be scanned, so in most cases
-   the planner would prefer a sequential table scan over using the index.
+   the index might have to be scanned from the first entry with
+   <literal>a</literal> = 5 and <literal>b</literal> = 42 up through the last
+   entry with <literal>a</literal> = 5.  Index entries with
+   <literal>c</literal> &gt;= 77 will never need to be filtered at the table
+   level, but it may or may not be profitable to skip over them within the
+   index.  When skipping takes place, the scan starts a new index search to
+   reposition itself from the end of the current <literal>a</literal> = 5 and
+   <literal>b</literal> = N grouping (i.e. from the position in the index
+   where the first tuple <literal>a = 5 AND b = N AND c &gt;= 77</literal>
+   appears), to the start of the next such grouping (i.e. the position in the
+   index where the first tuple <literal>a = 5 AND b = N + 1</literal>
+   appears).
   </para>
 
   <para>
@@ -557,7 +593,7 @@ CREATE INDEX test2_mm_idx ON test2 (major, minor);
    By default, B-tree indexes store their entries in ascending order
    with nulls last (table TID is treated as a tiebreaker column among
    otherwise equal entries).  This means that a forward scan of an
-   index on column <literal>x</literal> produces output satisfying <literal>ORDER BY x</literal>
+   index on column <structfield>x</structfield> produces output satisfying <literal>ORDER BY x</literal>
    (or more verbosely, <literal>ORDER BY x ASC NULLS LAST</literal>).  The
    index can also be scanned backward, producing output satisfying
    <literal>ORDER BY x DESC</literal>
@@ -662,19 +698,23 @@ CREATE INDEX test3_desc_index ON test3 (id DESC NULLS LAST);
    indexes are best, but sometimes it's better to create separate indexes
    and rely on the index-combination feature.  For example, if your
    workload includes a mix of queries that sometimes involve only column
-   <literal>x</literal>, sometimes only column <literal>y</literal>, and sometimes both
+   <structfield>x</structfield>, sometimes only column <structfield>y</structfield>, and sometimes both
    columns, you might choose to create two separate indexes on
-   <literal>x</literal> and <literal>y</literal>, relying on index combination to
+   <structfield>x</structfield> and <structfield>y</structfield>, relying on index combination to
    process the queries that use both columns.  You could also create a
    multicolumn index on <literal>(x, y)</literal>.  This index would typically be
    more efficient than index combination for queries involving both
    columns, but as discussed in <xref linkend="indexes-multicolumn"/>, it
-   would be almost useless for queries involving only <literal>y</literal>, so it
-   should not be the only index.  A combination of the multicolumn index
-   and a separate index on <literal>y</literal> would serve reasonably well.  For
-   queries involving only <literal>x</literal>, the multicolumn index could be
+   would be less useful for queries involving only <literal>y</literal>.  Just
+   how useful will depend on how effective the B-tree index skip scan
+   optimization is; if <structfield>x</structfield> has no more than several hundred
+   distinct values, skip scan will make searches for specific
+   <structfield>y</structfield> values execute reasonably efficiently.  A combination
+   of a multicolumn index on <literal>(x, y)</literal> and a separate index on
+   <structfield>y</structfield> might also serve reasonably well.  For
+   queries involving only <structfield>x</structfield>, the multicolumn index could be
    used, though it would be larger and hence slower than an index on
-   <literal>x</literal> alone.  The last alternative is to create all three
+   <structfield>x</structfield> alone.  The last alternative is to create all three
    indexes, but this is probably only reasonable if the table is searched
    much more often than it is updated and all three types of query are
    common.  If one of the types of query is much less common than the
@@ -787,7 +827,7 @@ CREATE INDEX people_names ON people ((first_name || ' ' || last_name));
   <para>
    Index expressions are relatively expensive to maintain, because the
    derived expression(s) must be computed for each row insertion
-   and <link linkend="storage-hot">non-HOT update.</link>  However, the index expressions are
+   and <link linkend="storage-hot">non-HOT update</link>. However, the index expressions are
    <emphasis>not</emphasis> recomputed during an indexed search, since they are
    already stored in the index.  In both examples above, the system
    sees the query as just <literal>WHERE indexedcolumn = 'constant'</literal>
@@ -909,19 +949,19 @@ WHERE url = '/index.html' AND client_ip = inet '192.168.100.23';
     command to create the index would look like this:
 <programlisting>
 CREATE INDEX orders_unbilled_index ON orders (order_nr)
-    WHERE billed is not true;
+    WHERE billed IS NOT TRUE;
 </programlisting>
    </para>
 
    <para>
     A possible query to use this index would be:
 <programlisting>
-SELECT * FROM orders WHERE billed is not true AND order_nr &lt; 10000;
+SELECT * FROM orders WHERE billed IS NOT TRUE AND order_nr &lt; 10000;
 </programlisting>
     However, the index can also be used in queries that do not involve
     <structfield>order_nr</structfield> at all, e.g.:
 <programlisting>
-SELECT * FROM orders WHERE billed is not true AND amount &gt; 5000.00;
+SELECT * FROM orders WHERE billed IS NOT TRUE AND amount &gt; 5000.00;
 </programlisting>
     This is not as efficient as a partial index on the
     <structfield>amount</structfield> column would be, since the system has to
@@ -1139,9 +1179,9 @@ CREATE INDEX mytable_cat_data ON mytable (category, data);
     <listitem>
      <para>
       The query must reference only columns stored in the index.  For
-      example, given an index on columns <literal>x</literal>
-      and <literal>y</literal> of a table that also has a
-      column <literal>z</literal>, these queries could use index-only scans:
+      example, given an index on columns <structfield>x</structfield>
+      and <structfield>y</structfield> of a table that also has a
+      column <structfield>z</structfield>, these queries could use index-only scans:
 <programlisting>
 SELECT x, y FROM tab WHERE x = 'key';
 SELECT x FROM tab WHERE x = 'key' AND y &lt; 42;
@@ -1222,15 +1262,15 @@ CREATE INDEX tab_x_y ON tab(x) INCLUDE (y);
   </para>
 
   <para>
-   Because column <literal>y</literal> is not part of the index's search
+   Because column <structfield>y</structfield> is not part of the index's search
    key, it does not have to be of a data type that the index can handle;
    it's merely stored in the index and is not interpreted by the index
    machinery.  Also, if the index is a unique index, that is
 <programlisting>
 CREATE UNIQUE INDEX tab_x_y ON tab(x) INCLUDE (y);
 </programlisting>
-   the uniqueness condition applies to just column <literal>x</literal>,
-   not to the combination of <literal>x</literal> and <literal>y</literal>.
+   the uniqueness condition applies to just column <structfield>x</structfield>,
+   not to the combination of <structfield>x</structfield> and <structfield>y</structfield>.
    (An <literal>INCLUDE</literal> clause can also be written
    in <literal>UNIQUE</literal> and <literal>PRIMARY KEY</literal>
    constraints, providing alternative syntax for setting up an index like
@@ -1260,7 +1300,7 @@ CREATE UNIQUE INDEX tab_x_y ON tab(x) INCLUDE (y);
 <programlisting>
 CREATE INDEX tab_x_y ON tab(x, y);
 </programlisting>
-   even though they had no intention of ever using <literal>y</literal> as
+   even though they had no intention of ever using <structfield>y</structfield> as
    part of a <literal>WHERE</literal> clause.  This works fine as long as
    the extra columns are trailing columns; making them be leading columns is
    unwise for the reasons explained in <xref linkend="indexes-multicolumn"/>.
@@ -1300,7 +1340,7 @@ SELECT f(x) FROM tab WHERE f(x) &lt; 1;
    context <literal>f(x)</literal>, but the planner does not notice that and
    concludes that an index-only scan is not possible.  If an index-only scan
    seems sufficiently worthwhile, this can be worked around by
-   adding <literal>x</literal> as an included column, for example
+   adding <structfield>x</structfield> as an included column, for example
 <programlisting>
 CREATE INDEX tab_f_x ON tab (f(x)) INCLUDE (x);
 </programlisting>

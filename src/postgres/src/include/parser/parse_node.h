@@ -4,7 +4,7 @@
  *		Internal definitions for parser
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/parser/parse_node.h
@@ -56,12 +56,14 @@ typedef enum ParseExprKind
 	EXPR_KIND_UPDATE_SOURCE,	/* UPDATE assignment source item */
 	EXPR_KIND_UPDATE_TARGET,	/* UPDATE assignment target item */
 	EXPR_KIND_MERGE_WHEN,		/* MERGE WHEN [NOT] MATCHED condition */
+	EXPR_KIND_FOR_PORTION,		/* UPDATE/DELETE FOR PORTION OF item */
 	EXPR_KIND_GROUP_BY,			/* GROUP BY */
 	EXPR_KIND_ORDER_BY,			/* ORDER BY */
 	EXPR_KIND_DISTINCT_ON,		/* DISTINCT ON */
 	EXPR_KIND_LIMIT,			/* LIMIT */
 	EXPR_KIND_OFFSET,			/* OFFSET */
-	EXPR_KIND_RETURNING,		/* RETURNING */
+	EXPR_KIND_RETURNING,		/* RETURNING in INSERT/UPDATE/DELETE */
+	EXPR_KIND_MERGE_RETURNING,	/* RETURNING in MERGE */
 	EXPR_KIND_VALUES,			/* VALUES */
 	EXPR_KIND_VALUES_SINGLE,	/* single-row VALUES (in INSERT only) */
 	EXPR_KIND_CHECK_CONSTRAINT, /* CHECK constraint for a table */
@@ -81,6 +83,7 @@ typedef enum ParseExprKind
 	EXPR_KIND_COPY_WHERE,		/* WHERE condition in COPY FROM */
 	EXPR_KIND_GENERATED_COLUMN, /* generation expression for a column */
 	EXPR_KIND_CYCLE_MARK,		/* cycle mark value */
+	EXPR_KIND_PROPGRAPH_PROPERTY,	/* derived property expression */
 } ParseExprKind;
 
 
@@ -94,6 +97,24 @@ typedef Node *(*CoerceParamHook) (ParseState *pstate, Param *param,
 								  Oid targetTypeId, int32 targetTypeMod,
 								  int location);
 
+/*
+ * Namespace for the GRAPH_TABLE reference being transformed.
+ *
+ * Labels, properties and variables used in the GRAPH_TABLE form the namespace.
+ * The names of the labels and properties used in GRAPH_TABLE are looked up using
+ * the OID of the property graph. Variables are collected in a list as graph
+ * patterns are transformed. This namespace is used to resolve label and property
+ * references in the GRAPH_TABLE.
+ */
+typedef struct GraphTableParseState
+{
+	Oid			graphid;		/* OID of the graph being referenced */
+	List	   *variables;		/* list of element pattern variables in
+								 * GRAPH_TABLE */
+	GraphElementPattern *cur_gep;	/* The element pattern being transformed.
+									 * NULL if no element pattern is being
+									 * transformed. */
+} GraphTableParseState;
 
 /*
  * State information used during parse analysis
@@ -111,9 +132,19 @@ typedef Node *(*CoerceParamHook) (ParseState *pstate, Param *param,
  * Note that neither relname nor refname of these entries are necessarily
  * unique; searching the rtable by name is a bad idea.
  *
+ * p_rteperminfos: list of RTEPermissionInfo containing an entry corresponding
+ * to each RTE_RELATION entry in p_rtable.
+ *
  * p_joinexprs: list of JoinExpr nodes associated with p_rtable entries.
  * This is one-for-one with p_rtable, but contains NULLs for non-join
  * RTEs, and may be shorter than p_rtable if the last RTE(s) aren't joins.
+ *
+ * p_nullingrels: list of Bitmapsets associated with p_rtable entries, each
+ * containing the set of outer-join RTE indexes that can null that relation
+ * at the current point in the parse tree.  This is one-for-one with p_rtable,
+ * but may be shorter than p_rtable, in which case the missing entries are
+ * implicitly empty (NULL).  That rule allows us to save work when the query
+ * contains no outer joins.
  *
  * p_joinlist: list of join items (RangeTblRef and JoinExpr nodes) that
  * will become the fromlist of the query's top-level FromExpr node.
@@ -140,9 +171,7 @@ typedef Node *(*CoerceParamHook) (ParseState *pstate, Param *param,
  *
  * p_target_nsitem: target relation's ParseNamespaceItem.
  *
- * p_is_insert: true to process assignment expressions like INSERT, false
- * to process them like UPDATE.  (Note this can change intra-statement, for
- * cases like INSERT ON CONFLICT UPDATE.)
+ * p_grouping_nsitem: the ParseNamespaceItem that represents the grouping step.
  *
  * p_windowdefs: list of WindowDefs representing WINDOW and OVER clauses.
  * We collect these while transforming expressions and then transform them
@@ -165,6 +194,9 @@ typedef Node *(*CoerceParamHook) (ParseState *pstate, Param *param,
  * p_resolve_unknowns: resolve unknown-type SELECT output columns as type TEXT
  * (this is true by default).
  *
+ * p_graph_table_pstate: Namespace for the GRAPH_TABLE reference being
+ * transformed, if any.
+ *
  * p_hasAggs, p_hasWindowFuncs, etc: true if we've found any of the indicated
  * constructs in the query.
  *
@@ -181,7 +213,10 @@ struct ParseState
 	ParseState *parentParseState;	/* stack link */
 	const char *p_sourcetext;	/* source text, or NULL if not available */
 	List	   *p_rtable;		/* range table so far */
+	List	   *p_rteperminfos; /* list of RTEPermissionInfo nodes for each
+								 * RTE_RELATION entry in rtable */
 	List	   *p_joinexprs;	/* JoinExprs for RTE_JOIN p_rtable entries */
+	List	   *p_nullingrels;	/* Bitmapsets showing nulling outer joins */
 	List	   *p_joinlist;		/* join items so far (will become FromExpr
 								 * node's fromlist) */
 	List	   *p_namespace;	/* currently-referenceable RTEs (List of
@@ -192,7 +227,7 @@ struct ParseState
 	CommonTableExpr *p_parent_cte;	/* this query's containing CTE */
 	Relation	p_target_relation;	/* INSERT/UPDATE/DELETE/MERGE target rel */
 	ParseNamespaceItem *p_target_nsitem;	/* target rel's NSItem, or NULL */
-	bool		p_is_insert;	/* process assignment like INSERT not UPDATE */
+	ParseNamespaceItem *p_grouping_nsitem;	/* NSItem for grouping, or NULL */
 	List	   *p_windowdefs;	/* raw representations of window clauses */
 	ParseExprKind p_expr_kind;	/* what kind of expression we're parsing */
 	int			p_next_resno;	/* next targetlist resno to assign */
@@ -204,6 +239,8 @@ struct ParseState
 									 * type text */
 
 	QueryEnvironment *p_queryEnv;	/* curr env, incl refs to enclosing env */
+	GraphTableParseState *p_graph_table_pstate; /* Current graph table
+												 * namespace, if any */
 
 	/* Flags telling about things found in the query: */
 	bool		p_hasAggs;
@@ -234,7 +271,8 @@ struct ParseState
  * join's first N columns, the net effect is just that we expose only those
  * join columns via this nsitem.)
  *
- * p_rte and p_rtindex link to the underlying rangetable entry.
+ * p_rte and p_rtindex link to the underlying rangetable entry, and
+ * p_perminfo to the entry in rteperminfos.
  *
  * The p_nscolumns array contains info showing how to construct Vars
  * referencing the names appearing in the p_names->colnames list.
@@ -246,8 +284,11 @@ struct ParseState
  * visible for qualified references) but it does hide their columns
  * (unqualified references to the columns refer to the JOIN, not the member
  * tables, so we must not complain that such a reference is ambiguous).
- * Various special RTEs such as NEW/OLD for rules may also appear with only
- * one flag set.
+ * Conversely, a subquery without an alias does not hide the columns selected
+ * by the subquery, but it does hide the auto-generated relation name (so the
+ * subquery columns are visible for unqualified references only).  Various
+ * special RTEs such as NEW/OLD for rules may also appear with only one flag
+ * set.
  *
  * While processing the FROM clause, namespace items may appear with
  * p_lateral_only set, meaning they are visible only to LATERAL
@@ -257,6 +298,11 @@ struct ParseState
  * would be better to just exclude such items from visibility, but the wording
  * of SQL:2008 requires us to do it this way.  We also use p_lateral_ok to
  * forbid LATERAL references to an UPDATE/DELETE target table.
+ *
+ * While processing the RETURNING clause, special namespace items are added to
+ * refer to the OLD and NEW state of the result relation.  These namespace
+ * items have p_returning_type set appropriately, for use when creating Vars.
+ * For convenience, this information is duplicated on each namespace column.
  *
  * At no time should a namespace list contain two entries that conflict
  * according to the rules in checkNameSpaceConflicts; but note that those
@@ -268,12 +314,14 @@ struct ParseNamespaceItem
 	Alias	   *p_names;		/* Table and column names */
 	RangeTblEntry *p_rte;		/* The relation's rangetable entry */
 	int			p_rtindex;		/* The relation's index in the rangetable */
+	RTEPermissionInfo *p_perminfo;	/* The relation's rteperminfos entry */
 	/* array of same length as p_names->colnames: */
 	ParseNamespaceColumn *p_nscolumns;	/* per-column data */
 	bool		p_rel_visible;	/* Relation name is visible? */
 	bool		p_cols_visible; /* Column names visible as unqualified refs? */
 	bool		p_lateral_only; /* Is only visible to LATERAL expressions? */
 	bool		p_lateral_ok;	/* If so, does join type allow use? */
+	VarReturningType p_returning_type;	/* Is OLD/NEW for use in RETURNING? */
 };
 
 /*
@@ -304,6 +352,7 @@ struct ParseNamespaceColumn
 	Oid			p_vartype;		/* pg_type OID */
 	int32		p_vartypmod;	/* type modifier value */
 	Oid			p_varcollid;	/* OID of collation, or InvalidOid */
+	VarReturningType p_varreturningtype;	/* for RETURNING OLD/NEW */
 	Index		p_varnosyn;		/* rangetable index of syntactic referent */
 	AttrNumber	p_varattnosyn;	/* attribute number of syntactic referent */
 	bool		p_dontexpand;	/* not included in star expansion */

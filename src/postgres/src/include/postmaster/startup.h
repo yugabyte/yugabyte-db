@@ -3,7 +3,7 @@
  * startup.h
  *	  Exports from postmaster/startup.c.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * src/include/postmaster/startup.h
  *
@@ -25,8 +25,8 @@
 
 extern PGDLLIMPORT int log_startup_progress_interval;
 
-extern void HandleStartupProcInterrupts(void);
-extern void StartupProcessMain(void) pg_attribute_noreturn();
+extern void ProcessStartupProcInterrupts(void);
+pg_noreturn extern void StartupProcessMain(const void *startup_data, size_t startup_data_len);
 extern void PreRestoreCommand(void);
 extern void PostRestoreCommand(void);
 extern bool IsPromoteSignaled(void);

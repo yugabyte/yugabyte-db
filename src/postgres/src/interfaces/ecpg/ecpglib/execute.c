@@ -54,7 +54,7 @@ quote_postgres(char *arg, bool quote, int lineno)
 	{
 		length = strlen(arg);
 		buffer_len = 2 * length + 1;
-		res = (char *) ecpg_alloc(buffer_len + 3, lineno);
+		res = ecpg_alloc(buffer_len + 3, lineno);
 		if (!res)
 			return res;
 		escaped_len = PQescapeString(res + 1, arg, buffer_len);
@@ -145,7 +145,7 @@ next_insert(char *text, int pos, bool questionmarks, bool std_strings)
 }
 
 static bool
-ecpg_type_infocache_push(struct ECPGtype_information_cache **cache, int oid, enum ARRAY_TYPE isarray, int lineno)
+ecpg_type_infocache_push(struct ECPGtype_information_cache **cache, Oid oid, enum ARRAY_TYPE isarray, int lineno)
 {
 	struct ECPGtype_information_cache *new_entry
 	= (struct ECPGtype_information_cache *) ecpg_alloc(sizeof(struct ECPGtype_information_cache), lineno);
@@ -161,7 +161,7 @@ ecpg_type_infocache_push(struct ECPGtype_information_cache **cache, int oid, enu
 }
 
 static enum ARRAY_TYPE
-ecpg_is_type_an_array(int type, const struct statement *stmt, const struct variable *var)
+ecpg_is_type_an_array(Oid type, const struct statement *stmt, const struct variable *var)
 {
 	char	   *array_query;
 	enum ARRAY_TYPE isarray = ECPG_ARRAY_NOT_SET;
@@ -263,11 +263,11 @@ ecpg_is_type_an_array(int type, const struct statement *stmt, const struct varia
 			return cache_entry->isarray;
 	}
 
-	array_query = (char *) ecpg_alloc(strlen("select typlen from pg_type where oid= and typelem<>0") + 11, stmt->lineno);
+	array_query = ecpg_alloc(strlen("select typlen from pg_type where oid= and typelem<>0") + 11, stmt->lineno);
 	if (array_query == NULL)
 		return ECPG_ARRAY_ERROR;
 
-	sprintf(array_query, "select typlen from pg_type where oid=%d and typelem<>0", type);
+	sprintf(array_query, "select typlen from pg_type where oid=%u and typelem<>0", type);
 	query = PQexec(stmt->connection->connection, array_query);
 	ecpg_free(array_query);
 	if (!ecpg_check_PQresult(query, stmt->lineno, stmt->connection->connection, stmt->compat))
@@ -278,7 +278,7 @@ ecpg_is_type_an_array(int type, const struct statement *stmt, const struct varia
 			isarray = ECPG_ARRAY_NONE;
 		else
 		{
-			isarray = (atol((char *) PQgetvalue(query, 0, 0)) == -1) ? ECPG_ARRAY_ARRAY : ECPG_ARRAY_VECTOR;
+			isarray = (atoi(PQgetvalue(query, 0, 0)) == -1) ? ECPG_ARRAY_ARRAY : ECPG_ARRAY_VECTOR;
 			if (ecpg_dynamic_type(type) == SQL3_CHARACTER ||
 				ecpg_dynamic_type(type) == SQL3_CHARACTER_VARYING)
 			{
@@ -294,7 +294,8 @@ ecpg_is_type_an_array(int type, const struct statement *stmt, const struct varia
 		return ECPG_ARRAY_ERROR;
 
 	ecpg_type_infocache_push(&(stmt->connection->cache_head), type, isarray, stmt->lineno);
-	ecpg_log("ecpg_is_type_an_array on line %d: type (%d); C (%d); array (%s)\n", stmt->lineno, type, var->type, ECPG_IS_ARRAY(isarray) ? "yes" : "no");
+	ecpg_log("ecpg_is_type_an_array on line %d: type (%u); C (%d); array (%s)\n",
+			 stmt->lineno, type, var->type, ECPG_IS_ARRAY(isarray) ? "yes" : "no");
 	return isarray;
 }
 
@@ -367,10 +368,10 @@ ecpg_store_result(const PGresult *results, int act_field,
 						/* check strlen for each tuple */
 						for (act_tuple = 0; act_tuple < ntuples; act_tuple++)
 						{
-							int			len = strlen(PQgetvalue(results, act_tuple, act_field)) + 1;
+							int			slen = strlen(PQgetvalue(results, act_tuple, act_field)) + 1;
 
-							if (len > var->varcharsize)
-								var->varcharsize = len;
+							if (slen > var->varcharsize)
+								var->varcharsize = slen;
 						}
 						var->offset *= var->varcharsize;
 						len = var->offset * ntuples;
@@ -391,7 +392,7 @@ ecpg_store_result(const PGresult *results, int act_field,
 		}
 
 		ecpg_log("ecpg_store_result on line %d: allocating memory for %d tuples\n", stmt->lineno, ntuples);
-		var->value = (char *) ecpg_auto_alloc(len, stmt->lineno);
+		var->value = ecpg_auto_alloc(len, stmt->lineno);
 		if (!var->value)
 			return false;
 		*((char **) var->pointer) = var->value;
@@ -402,7 +403,7 @@ ecpg_store_result(const PGresult *results, int act_field,
 	{
 		int			len = var->ind_offset * ntuples;
 
-		var->ind_value = (char *) ecpg_auto_alloc(len, stmt->lineno);
+		var->ind_value = ecpg_auto_alloc(len, stmt->lineno);
 		if (!var->ind_value)
 			return false;
 		*((char **) var->ind_pointer) = var->ind_value;
@@ -822,7 +823,7 @@ ecpg_store_input(const int lineno, const bool force_indicator, const struct vari
 					struct ECPGgeneric_bytea *variable =
 						(struct ECPGgeneric_bytea *) (var->value);
 
-					if (!(mallocedval = (char *) ecpg_alloc(variable->len, lineno)))
+					if (!(mallocedval = ecpg_alloc(variable->len, lineno)))
 						return false;
 
 					memcpy(mallocedval, variable->arr, variable->len);
@@ -835,7 +836,7 @@ ecpg_store_input(const int lineno, const bool force_indicator, const struct vari
 					struct ECPGgeneric_varchar *variable =
 						(struct ECPGgeneric_varchar *) (var->value);
 
-					if (!(newcopy = (char *) ecpg_alloc(variable->len + 1, lineno)))
+					if (!(newcopy = ecpg_alloc(variable->len + 1, lineno)))
 						return false;
 
 					strncpy(newcopy, variable->arr, variable->len);
@@ -860,9 +861,9 @@ ecpg_store_input(const int lineno, const bool force_indicator, const struct vari
 					numeric    *nval;
 
 					if (var->arrsize > 1)
-						mallocedval = ecpg_strdup("{", lineno);
+						mallocedval = ecpg_strdup("{", lineno, NULL);
 					else
-						mallocedval = ecpg_strdup("", lineno);
+						mallocedval = ecpg_strdup("", lineno, NULL);
 
 					if (!mallocedval)
 						return false;
@@ -923,9 +924,9 @@ ecpg_store_input(const int lineno, const bool force_indicator, const struct vari
 					int			slen;
 
 					if (var->arrsize > 1)
-						mallocedval = ecpg_strdup("{", lineno);
+						mallocedval = ecpg_strdup("{", lineno, NULL);
 					else
-						mallocedval = ecpg_strdup("", lineno);
+						mallocedval = ecpg_strdup("", lineno, NULL);
 
 					if (!mallocedval)
 						return false;
@@ -970,9 +971,9 @@ ecpg_store_input(const int lineno, const bool force_indicator, const struct vari
 					int			slen;
 
 					if (var->arrsize > 1)
-						mallocedval = ecpg_strdup("{", lineno);
+						mallocedval = ecpg_strdup("{", lineno, NULL);
 					else
-						mallocedval = ecpg_strdup("", lineno);
+						mallocedval = ecpg_strdup("", lineno, NULL);
 
 					if (!mallocedval)
 						return false;
@@ -1017,9 +1018,9 @@ ecpg_store_input(const int lineno, const bool force_indicator, const struct vari
 					int			slen;
 
 					if (var->arrsize > 1)
-						mallocedval = ecpg_strdup("{", lineno);
+						mallocedval = ecpg_strdup("{", lineno, NULL);
 					else
-						mallocedval = ecpg_strdup("", lineno);
+						mallocedval = ecpg_strdup("", lineno, NULL);
 
 					if (!mallocedval)
 						return false;
@@ -1128,9 +1129,7 @@ insert_tobeinserted(int position, int ph_len, struct statement *stmt, char *tobe
 {
 	char	   *newcopy;
 
-	if (!(newcopy = (char *) ecpg_alloc(strlen(stmt->command)
-										+ strlen(tobeinserted)
-										+ 1, stmt->lineno)))
+	if (!(newcopy = ecpg_alloc(strlen(stmt->command) + strlen(tobeinserted) + 1, stmt->lineno)))
 	{
 		ecpg_free(tobeinserted);
 		return false;
@@ -1536,7 +1535,7 @@ ecpg_build_params(struct statement *stmt)
 				int			buffersize = sizeof(int) * CHAR_BIT * 10 / 3;	/* a rough guess of the
 																			 * size we need */
 
-				if (!(tobeinserted = (char *) ecpg_alloc(buffersize, stmt->lineno)))
+				if (!(tobeinserted = ecpg_alloc(buffersize, stmt->lineno)))
 				{
 					ecpg_free_params(stmt, false);
 					return false;
@@ -1714,8 +1713,7 @@ ecpg_process_output(struct statement *stmt, bool clear_result)
 					status = false;
 				else
 				{
-					if (desc->result)
-						PQclear(desc->result);
+					PQclear(desc->result);
 					desc->result = stmt->results;
 					clear_result = false;
 					ecpg_log("ecpg_process_output on line %d: putting result (%d tuples) into descriptor %s\n",
@@ -1962,9 +1960,7 @@ ecpg_do_prologue(int lineno, const int compat, const int force_indicator,
 		return false;
 	}
 
-#ifdef ENABLE_THREAD_SAFETY
 	ecpg_pthreads_init();
-#endif
 
 	con = ecpg_get_connection(connection_name);
 
@@ -1980,9 +1976,7 @@ ecpg_do_prologue(int lineno, const int compat, const int force_indicator,
 	 * Make sure we do NOT honor the locale for numeric input/output since the
 	 * database wants the standard decimal point.  If available, use
 	 * uselocale() for this because it's thread-safe.  Windows doesn't have
-	 * that, but it usually does have _configthreadlocale().  In some versions
-	 * of MinGW, _configthreadlocale() exists but always returns -1 --- so
-	 * treat that situation as if the function doesn't exist.
+	 * that, but it does have _configthreadlocale().
 	 */
 #ifdef HAVE_USELOCALE
 
@@ -1998,10 +1992,16 @@ ecpg_do_prologue(int lineno, const int compat, const int force_indicator,
 		return false;
 	}
 #else
-#ifdef HAVE__CONFIGTHREADLOCALE
+#ifdef WIN32
 	stmt->oldthreadlocale = _configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
+	if (stmt->oldthreadlocale == -1)
+	{
+		ecpg_do_epilogue(stmt);
+		return false;
+	}
 #endif
-	stmt->oldlocale = ecpg_strdup(setlocale(LC_NUMERIC, NULL), lineno);
+	stmt->oldlocale = ecpg_strdup(setlocale(LC_NUMERIC, NULL), lineno,
+								  NULL);
 	if (stmt->oldlocale == NULL)
 	{
 		ecpg_do_epilogue(stmt);
@@ -2030,7 +2030,14 @@ ecpg_do_prologue(int lineno, const int compat, const int force_indicator,
 		statement_type = ECPGst_execute;
 	}
 	else
-		stmt->command = ecpg_strdup(query, lineno);
+	{
+		stmt->command = ecpg_strdup(query, lineno, NULL);
+		if (!stmt->command)
+		{
+			ecpg_do_epilogue(stmt);
+			return false;
+		}
+	}
 
 	stmt->name = NULL;
 
@@ -2042,7 +2049,12 @@ ecpg_do_prologue(int lineno, const int compat, const int force_indicator,
 		if (command)
 		{
 			stmt->name = stmt->command;
-			stmt->command = ecpg_strdup(command, lineno);
+			stmt->command = ecpg_strdup(command, lineno, NULL);
+			if (!stmt->command)
+			{
+				ecpg_do_epilogue(stmt);
+				return false;
+			}
 		}
 		else
 		{
@@ -2175,7 +2187,12 @@ ecpg_do_prologue(int lineno, const int compat, const int force_indicator,
 
 			if (!is_prepared_name_set && stmt->statement_type == ECPGst_prepare)
 			{
-				stmt->name = ecpg_strdup(var->value, lineno);
+				stmt->name = ecpg_strdup(var->value, lineno, NULL);
+				if (!stmt->name)
+				{
+					ecpg_do_epilogue(stmt);
+					return false;
+				}
 				is_prepared_name_set = true;
 			}
 		}
@@ -2221,17 +2238,12 @@ ecpg_do_epilogue(struct statement *stmt)
 		uselocale(stmt->oldlocale);
 #else
 	if (stmt->oldlocale)
+	{
 		setlocale(LC_NUMERIC, stmt->oldlocale);
-#ifdef HAVE__CONFIGTHREADLOCALE
-
-	/*
-	 * This is a bit trickier than it looks: if we failed partway through
-	 * statement initialization, oldthreadlocale could still be 0.  But that's
-	 * okay because a call with 0 is defined to be a no-op.
-	 */
-	if (stmt->oldthreadlocale != -1)
-		(void) _configthreadlocale(stmt->oldthreadlocale);
+#ifdef WIN32
+		_configthreadlocale(stmt->oldthreadlocale);
 #endif
+	}
 #endif
 
 	free_statement(stmt);

@@ -28,7 +28,7 @@
   If you need help immediately, consider obtaining a commercial support contract.
  </para>
 
- <sect2>
+ <sect2 id="bug-reporting-identifying-bugs">
   <title>Identifying Bugs</title>
 
   <para>
@@ -96,7 +96,7 @@
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="bug-reporting-what-to-report">
   <title>What to Report</title>
 
   <para>
@@ -291,7 +291,7 @@
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="bug-reporting-where-to-report-bugs">
   <title>Where to Report Bugs</title>
 
   <para>
@@ -304,7 +304,7 @@
   <para>
    Another method is to fill in the bug report web-form available
    at the project's
-   <ulink url="https://www.postgresql.org/">web site</ulink>.
+   <ulink url="https://www.postgresql.org/account/submitbug/">web site</ulink>.
    Entering a bug report this way causes it to be mailed to the
    <email>pgsql-bugs@lists.postgresql.org</email> mailing list.
   </para>

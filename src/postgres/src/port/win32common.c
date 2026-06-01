@@ -3,7 +3,7 @@
  * win32common.c
  *	  Common routines shared among the win32*.c ports.
  *
- * Portions Copyright (c) 1996-2023, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,8 +18,6 @@
 #else
 #include "postgres.h"
 #endif
-
-#ifdef WIN32
 
 /*
  * pgwin32_get_file_type
@@ -64,5 +62,3 @@ pgwin32_get_file_type(HANDLE hFile)
 
 	return fileType;
 }
-
-#endif							/* WIN32 */

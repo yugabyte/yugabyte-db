@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/bin/psql/psqlscanslash.h
  */
@@ -18,7 +18,7 @@ enum slash_option_type
 	OT_SQLID,					/* treat as SQL identifier */
 	OT_SQLIDHACK,				/* SQL identifier, but don't downcase */
 	OT_FILEPIPE,				/* it's a filename or pipe */
-	OT_WHOLE_LINE				/* just snarf the rest of the line */
+	OT_WHOLE_LINE,				/* just snarf the rest of the line */
 };
 
 

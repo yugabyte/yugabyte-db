@@ -50,6 +50,6 @@ CATALOG(pg_yb_invalidation_messages,8080,YbInvalidationMessagesRelationId) BKI_S
  */
 typedef FormData_yb_pg_invalidation_messages *Form_yb_pg_invalidation_messages;
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_yb_invalidation_messages_db_oid_current_version_index, 8082, YbInvalidationMessagesIndexId, on pg_yb_invalidation_messages using btree(db_oid oid_ops, current_version int8_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_yb_invalidation_messages_db_oid_current_version_index, 8082, YbInvalidationMessagesIndexId, pg_yb_invalidation_messages, btree(db_oid oid_ops, current_version int8_ops));
 
 #endif							/* PG_YB_INVALIDATION_MESSAGES_H */

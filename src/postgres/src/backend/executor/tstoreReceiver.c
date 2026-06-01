@@ -11,7 +11,7 @@
  * Also optionally, we can apply a tuple conversion map before storing.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -25,6 +25,7 @@
 #include "access/detoast.h"
 #include "access/tupconvert.h"
 #include "executor/tstoreReceiver.h"
+#include "varatt.h"
 
 
 typedef struct
@@ -65,7 +66,7 @@ tstoreStartupReceiver(DestReceiver *self, int operation, TupleDesc typeinfo)
 	{
 		for (i = 0; i < natts; i++)
 		{
-			Form_pg_attribute attr = TupleDescAttr(typeinfo, i);
+			CompactAttribute *attr = TupleDescCompactAttr(typeinfo, i);
 
 			if (attr->attisdropped)
 				continue;
@@ -154,13 +155,13 @@ tstoreReceiveSlot_detoast(TupleTableSlot *slot, DestReceiver *self)
 	for (i = 0; i < natts; i++)
 	{
 		Datum		val = slot->tts_values[i];
-		Form_pg_attribute attr = TupleDescAttr(typeinfo, i);
+		CompactAttribute *attr = TupleDescCompactAttr(typeinfo, i);
 
 		if (!attr->attisdropped && attr->attlen == -1 && !slot->tts_isnull[i])
 		{
 			if (VARATT_IS_EXTERNAL(DatumGetPointer(val)))
 			{
-				val = PointerGetDatum(detoast_external_attr((struct varlena *)
+				val = PointerGetDatum(detoast_external_attr((varlena *)
 															DatumGetPointer(val)));
 				myState->tofree[nfree++] = val;
 			}
@@ -237,7 +238,7 @@ tstoreDestroyReceiver(DestReceiver *self)
 DestReceiver *
 CreateTuplestoreDestReceiver(void)
 {
-	TStoreState *self = (TStoreState *) palloc0(sizeof(TStoreState));
+	TStoreState *self = palloc0_object(TStoreState);
 
 	self->pub.receiveSlot = tstoreReceiveSlot_notoast;	/* might change */
 	self->pub.rStartup = tstoreStartupReceiver;

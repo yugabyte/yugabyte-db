@@ -6,7 +6,7 @@
  * Attribute options are cached separately from the fixed-size portion of
  * pg_attribute entries, which are handled by the relcache.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -22,6 +22,7 @@
 #include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/syscache.h"
+#include "varatt.h"
 
 
 /* Hash table for information about each attribute's options */
@@ -43,30 +44,50 @@ typedef struct
 
 /*
  * InvalidateAttoptCacheCallback
- *		Flush all cache entries when pg_attribute is updated.
+ *		Flush cache entry (or entries) when pg_attribute is updated.
  *
  * When pg_attribute is updated, we must flush the cache entry at least
- * for that attribute.  Currently, we just flush them all.  Since attribute
- * options are not currently used in performance-critical paths (such as
- * query execution), this seems OK.
+ * for that attribute.
  */
 static void
-InvalidateAttoptCacheCallback(Datum arg, int cacheid, uint32 hashvalue)
+InvalidateAttoptCacheCallback(Datum arg, SysCacheIdentifier cacheid,
+							  uint32 hashvalue)
 {
 	HASH_SEQ_STATUS status;
 	AttoptCacheEntry *attopt;
 
-	hash_seq_init(&status, AttoptCacheHash);
+	/*
+	 * By convention, zero hash value is passed to the callback as a sign that
+	 * it's time to invalidate the whole cache. See sinval.c, inval.c and
+	 * InvalidateSystemCachesExtended().
+	 */
+	if (hashvalue == 0)
+		hash_seq_init(&status, AttoptCacheHash);
+	else
+		hash_seq_init_with_hash_value(&status, AttoptCacheHash, hashvalue);
+
 	while ((attopt = (AttoptCacheEntry *) hash_seq_search(&status)) != NULL)
 	{
 		if (attopt->opts)
 			pfree(attopt->opts);
 		if (hash_search(AttoptCacheHash,
-						(void *) &attopt->key,
+						&attopt->key,
 						HASH_REMOVE,
 						NULL) == NULL)
 			elog(ERROR, "hash table corrupted");
 	}
+}
+
+/*
+ * Hash function compatible with two-arg system cache hash function.
+ */
+static uint32
+relatt_cache_syshash(const void *key, Size keysize)
+{
+	const AttoptCacheKey *ckey = key;
+
+	Assert(keysize == sizeof(*ckey));
+	return GetSysCacheHashValue2(ATTNUM, ObjectIdGetDatum(ckey->attrelid), Int32GetDatum(ckey->attnum));
 }
 
 /*
@@ -81,9 +102,17 @@ InitializeAttoptCache(void)
 	/* Initialize the hash table. */
 	ctl.keysize = sizeof(AttoptCacheKey);
 	ctl.entrysize = sizeof(AttoptCacheEntry);
+
+	/*
+	 * AttoptCacheEntry takes hash value from the system cache. For
+	 * AttoptCacheHash we use the same hash in order to speedup search by hash
+	 * value. This is used by hash_seq_init_with_hash_value().
+	 */
+	ctl.hash = relatt_cache_syshash;
+
 	AttoptCacheHash =
 		hash_create("Attopt cache", 256, &ctl,
-					HASH_ELEM | HASH_BLOBS);
+					HASH_ELEM | HASH_FUNCTION);
 
 	/* Make sure we've initialized CacheMemoryContext. */
 	if (!CacheMemoryContext)
@@ -115,7 +144,7 @@ get_attribute_options(Oid attrelid, int attnum)
 	key.attnum = attnum;
 	attopt =
 		(AttoptCacheEntry *) hash_search(AttoptCacheHash,
-										 (void *) &key,
+										 &key,
 										 HASH_FIND,
 										 NULL);
 
@@ -162,7 +191,7 @@ get_attribute_options(Oid attrelid, int attnum)
 		 * pg_attribute, since the read could cause a cache flush.
 		 */
 		attopt = (AttoptCacheEntry *) hash_search(AttoptCacheHash,
-												  (void *) &key,
+												  &key,
 												  HASH_ENTER,
 												  NULL);
 		attopt->opts = opts;

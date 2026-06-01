@@ -3,7 +3,7 @@
  * snapshot.h
  *	  POSTGRES snapshot definition
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/snapshot.h
@@ -13,11 +13,7 @@
 #ifndef SNAPSHOT_H
 #define SNAPSHOT_H
 
-#include "access/htup.h"
-#include "access/xlogdefs.h"
-#include "datatype/timestamp.h"
 #include "lib/pairingheap.h"
-#include "storage/buf.h"
 
 /* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -118,7 +114,7 @@ typedef enum SnapshotType
 	 * For visibility checks snapshot->min must have been set up with the xmin
 	 * horizon to use.
 	 */
-	SNAPSHOT_NON_VACUUMABLE
+	SNAPSHOT_NON_VACUUMABLE,
 } SnapshotType;
 
 typedef struct SnapshotData *Snapshot;
@@ -213,9 +209,6 @@ typedef struct SnapshotData
 	uint32		active_count;	/* refcount on ActiveSnapshot stack */
 	uint32		regd_count;		/* refcount on RegisteredSnapshots */
 	pairingheap_node ph_node;	/* link in the RegisteredSnapshots heap */
-
-	TimestampTz whenTaken;		/* timestamp when snapshot was taken */
-	XLogRecPtr	lsn;			/* position in the WAL stream when taken */
 
 	/*
 	 * The transaction completion count at the time GetSnapshotData() built

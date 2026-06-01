@@ -3,7 +3,7 @@
  * nbtvalidate.c
  *	  Opclass validator for btree.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -21,7 +21,6 @@
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_opclass.h"
-#include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -46,8 +45,6 @@ btvalidate(Oid opclassoid)
 	Oid			opfamilyoid;
 	Oid			opcintype;
 	char	   *opclassname;
-	HeapTuple	familytup;
-	Form_pg_opfamily familyform;
 	char	   *opfamilyname;
 	CatCList   *proclist,
 			   *oprlist;
@@ -69,12 +66,7 @@ btvalidate(Oid opclassoid)
 	opclassname = NameStr(classform->opcname);
 
 	/* Fetch opfamily information */
-	familytup = SearchSysCache1(OPFAMILYOID, ObjectIdGetDatum(opfamilyoid));
-	if (!HeapTupleIsValid(familytup))
-		elog(ERROR, "cache lookup failed for operator family %u", opfamilyoid);
-	familyform = (Form_pg_opfamily) GETSTRUCT(familytup);
-
-	opfamilyname = NameStr(familyform->opfname);
+	opfamilyname = get_opfamily_name(opfamilyoid, false);
 
 	/* Fetch all operators and support functions of the opfamily */
 	oprlist = SearchSysCacheList1(AMOPSTRATEGY, ObjectIdGetDatum(opfamilyoid));
@@ -113,6 +105,10 @@ btvalidate(Oid opclassoid)
 				break;
 			case BTOPTIONS_PROC:
 				ok = check_amoptsproc_signature(procform->amproc);
+				break;
+			case BTSKIPSUPPORT_PROC:
+				ok = check_amproc_signature(procform->amproc, VOIDOID, true,
+											1, 1, INTERNALOID);
 				break;
 			default:
 				ereport(INFO,
@@ -280,7 +276,6 @@ btvalidate(Oid opclassoid)
 
 	ReleaseCatCacheList(proclist);
 	ReleaseCatCacheList(oprlist);
-	ReleaseSysCache(familytup);
 	ReleaseSysCache(classtup);
 
 	return result;

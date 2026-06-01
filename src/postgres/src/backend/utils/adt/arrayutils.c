@@ -3,7 +3,7 @@
  * arrayutils.c
  *	  This file contains some support routines required for array functions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -44,21 +44,6 @@ ArrayGetOffset(int n, const int *dim, const int *lb, const int *indx)
 }
 
 /*
- * Same, but subscripts are assumed 0-based, and use a scale array
- * instead of raw dimension data (see mda_get_prod to create scale array)
- */
-int
-ArrayGetOffset0(int n, const int *tup, const int *scale)
-{
-	int			i,
-				lin = 0;
-
-	for (i = 0; i < n; i++)
-		lin += tup[i] * scale[i];
-	return lin;
-}
-
-/*
  * Convert array dimensions into number of elements
  *
  * This must do overflow checking, since it is used to validate that a user
@@ -70,6 +55,16 @@ ArrayGetOffset0(int n, const int *tup, const int *scale)
  */
 int
 ArrayGetNItems(int ndim, const int *dims)
+{
+	return ArrayGetNItemsSafe(ndim, dims, NULL);
+}
+
+/*
+ * This entry point can return the error into an ErrorSaveContext
+ * instead of throwing an exception.  -1 is returned after an error.
+ */
+int
+ArrayGetNItemsSafe(int ndim, const int *dims, struct Node *escontext)
 {
 	int32		ret;
 	int			i;
@@ -83,7 +78,7 @@ ArrayGetNItems(int ndim, const int *dims)
 
 		/* A negative dimension implies that UB-LB overflowed ... */
 		if (dims[i] < 0)
-			ereport(ERROR,
+			ereturn(escontext, -1,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 					 errmsg("array size exceeds the maximum allowed (%d)",
 							(int) MaxArraySize)));
@@ -92,14 +87,14 @@ ArrayGetNItems(int ndim, const int *dims)
 
 		ret = (int32) prod;
 		if ((int64) ret != prod)
-			ereport(ERROR,
+			ereturn(escontext, -1,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 					 errmsg("array size exceeds the maximum allowed (%d)",
 							(int) MaxArraySize)));
 	}
 	Assert(ret >= 0);
 	if ((Size) ret > MaxArraySize)
-		ereport(ERROR,
+		ereturn(escontext, -1,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("array size exceeds the maximum allowed (%d)",
 						(int) MaxArraySize)));
@@ -121,6 +116,17 @@ ArrayGetNItems(int ndim, const int *dims)
 void
 ArrayCheckBounds(int ndim, const int *dims, const int *lb)
 {
+	(void) ArrayCheckBoundsSafe(ndim, dims, lb, NULL);
+}
+
+/*
+ * This entry point can return the error into an ErrorSaveContext
+ * instead of throwing an exception.
+ */
+bool
+ArrayCheckBoundsSafe(int ndim, const int *dims, const int *lb,
+					 struct Node *escontext)
+{
 	int			i;
 
 	for (i = 0; i < ndim; i++)
@@ -129,11 +135,13 @@ ArrayCheckBounds(int ndim, const int *dims, const int *lb)
 		int32		sum PG_USED_FOR_ASSERTS_ONLY;
 
 		if (pg_add_s32_overflow(dims[i], lb[i], &sum))
-			ereport(ERROR,
+			ereturn(escontext, false,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 					 errmsg("array lower bound is too large: %d",
 							lb[i])));
 	}
+
+	return true;
 }
 
 /*
@@ -243,10 +251,7 @@ ArrayGetIntegerTypmods(ArrayType *arr, int *n)
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("typmod array must not contain nulls")));
 
-	/* hardwired knowledge about cstring's representation details here */
-	deconstruct_array(arr, CSTRINGOID,
-					  -2, false, TYPALIGN_CHAR,
-					  &elem_values, NULL, n);
+	deconstruct_array_builtin(arr, CSTRINGOID, &elem_values, NULL, n);
 
 	result = (int32 *) palloc(*n * sizeof(int32));
 

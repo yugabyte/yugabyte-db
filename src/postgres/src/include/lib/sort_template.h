@@ -5,7 +5,7 @@
  *	  A template for a sort algorithm that supports varying degrees of
  *	  specialization.
  *
- * Copyright (c) 2021-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2021-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1992-1994, Regents of the University of California
  *
  * Usage notes:
@@ -33,6 +33,16 @@
  *	  - ST_COMPARE(a, b) - a simple comparison expression
  *	  - ST_COMPARE(a, b, arg) - variant that takes an extra argument
  *	  - ST_COMPARE_RUNTIME_POINTER - sort function takes a function pointer
+ *
+ *	  NB: If the comparator function is inlined, some compilers may produce
+ *	  worse code with the optimized comparison routines in common/int.h than
+ *	  with code with the following form:
+ *
+ *	      if (a < b)
+ *	          return -1;
+ *	      if (a > b)
+ *	          return 1;
+ *	      return 0;
  *
  *	  To say that the comparator and therefore also sort function should
  *	  receive an extra pass-through argument, specify the type of the
@@ -243,6 +253,9 @@ ST_SCOPE void ST_SORT(ST_ELEMENT_TYPE * first, size_t n
  * Find the median of three values.  Currently, performance seems to be best
  * if the comparator is inlined here, but the med3 function is not inlined
  * in the qsort function.
+ *
+ * Refer to the comment at the top of this file for known caveats to consider
+ * when writing inlined comparator functions.
  */
 static pg_noinline ST_ELEMENT_TYPE *
 ST_MED3(ST_ELEMENT_TYPE * a,
@@ -307,6 +320,14 @@ loop:
 	}
 	if (n < 7)
 	{
+		/*
+		 * Not strictly necessary, but a caller may pass a NULL pointer input
+		 * and zero length, and this silences warnings about applying offsets
+		 * to NULL pointers.
+		 */
+		if (n < 2)
+			return;
+
 		for (pm = a + ST_POINTER_STEP; pm < a + n * ST_POINTER_STEP;
 			 pm += ST_POINTER_STEP)
 			for (pl = pm; pl > a && DO_COMPARE(pl - ST_POINTER_STEP, pl) > 0;
@@ -383,29 +404,23 @@ loop:
 	if (d1 <= d2)
 	{
 		/* Recurse on left partition, then iterate on right partition */
-		if (d1 > ST_POINTER_STEP)
-			DO_SORT(a, d1 / ST_POINTER_STEP);
-		if (d2 > ST_POINTER_STEP)
-		{
-			/* Iterate rather than recurse to save stack space */
-			/* DO_SORT(pn - d2, d2 / ST_POINTER_STEP) */
-			a = pn - d2;
-			n = d2 / ST_POINTER_STEP;
-			goto loop;
-		}
+		DO_SORT(a, d1 / ST_POINTER_STEP);
+
+		/* Iterate rather than recurse to save stack space */
+		/* DO_SORT(pn - d2, d2 / ST_POINTER_STEP) */
+		a = pn - d2;
+		n = d2 / ST_POINTER_STEP;
+		goto loop;
 	}
 	else
 	{
 		/* Recurse on right partition, then iterate on left partition */
-		if (d2 > ST_POINTER_STEP)
-			DO_SORT(pn - d2, d2 / ST_POINTER_STEP);
-		if (d1 > ST_POINTER_STEP)
-		{
-			/* Iterate rather than recurse to save stack space */
-			/* DO_SORT(a, d1 / ST_POINTER_STEP) */
-			n = d1 / ST_POINTER_STEP;
-			goto loop;
-		}
+		DO_SORT(pn - d2, d2 / ST_POINTER_STEP);
+
+		/* Iterate rather than recurse to save stack space */
+		/* DO_SORT(a, d1 / ST_POINTER_STEP) */
+		n = d1 / ST_POINTER_STEP;
+		goto loop;
 	}
 }
 #endif

@@ -1,9 +1,9 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Tests dedicated to subtransactions in recovery
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -35,7 +35,7 @@ $node_primary->append_conf(
 $node_primary->psql('postgres', "SELECT pg_reload_conf()");
 
 my $psql_out = '';
-my $psql_rc  = '';
+my $psql_rc = '';
 
 ###############################################################################
 # Check that replay will correctly set SUBTRANS and properly advance nextXid

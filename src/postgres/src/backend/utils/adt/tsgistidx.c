@@ -3,7 +3,7 @@
  * tsgistidx.c
  *	  GiST support functions for tsvector_ops
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -17,10 +17,11 @@
 #include "access/gist.h"
 #include "access/heaptoast.h"
 #include "access/reloptions.h"
+#include "common/int.h"
 #include "lib/qunique.h"
 #include "port/pg_bitutils.h"
 #include "tsearch/ts_utils.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/pg_crc.h"
 
 
@@ -87,17 +88,13 @@ static int32 sizebitvec(BITVECP sign, int siglen);
 Datum
 gtsvectorin(PG_FUNCTION_ARGS)
 {
+	/* There's no need to support input of gtsvectors */
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("gtsvector_in not implemented")));
-	PG_RETURN_DATUM(0);
+			 errmsg("cannot accept a value of type %s", "gtsvector")));
+
+	PG_RETURN_VOID();			/* keep compiler quiet */
 }
-
-#define SINGOUTSTR	"%d true bits, %d false bits"
-#define ARROUTSTR	"%d unique words"
-#define EXTRALEN	( 2*13 )
-
-static int	outbuf_maxlen = 0;
 
 Datum
 gtsvectorout(PG_FUNCTION_ARGS)
@@ -105,18 +102,20 @@ gtsvectorout(PG_FUNCTION_ARGS)
 	SignTSVector *key = (SignTSVector *) PG_DETOAST_DATUM(PG_GETARG_DATUM(0));
 	char	   *outbuf;
 
-	if (outbuf_maxlen == 0)
-		outbuf_maxlen = 2 * EXTRALEN + Max(strlen(SINGOUTSTR), strlen(ARROUTSTR)) + 1;
-	outbuf = palloc(outbuf_maxlen);
-
 	if (ISARRKEY(key))
-		sprintf(outbuf, ARROUTSTR, (int) ARRNELEM(key));
+		outbuf = psprintf("%d unique words", (int) ARRNELEM(key));
 	else
 	{
-		int			siglen = GETSIGLEN(key);
-		int			cnttrue = (ISALLTRUE(key)) ? SIGLENBIT(siglen) : sizebitvec(GETSIGN(key), siglen);
+		if (ISALLTRUE(key))
+			outbuf = pstrdup("all true bits");
+		else
+		{
+			int			siglen = GETSIGLEN(key);
+			int			cnttrue = sizebitvec(GETSIGN(key), siglen);
 
-		sprintf(outbuf, SINGOUTSTR, cnttrue, (int) SIGLENBIT(siglen) - cnttrue);
+			outbuf = psprintf("%d true bits, %d false bits",
+							  cnttrue, (int) SIGLENBIT(siglen) - cnttrue);
+		}
 	}
 
 	PG_FREE_IF_COPY(key, 0);
@@ -129,9 +128,7 @@ compareint(const void *va, const void *vb)
 	int32		a = *((const int32 *) va);
 	int32		b = *((const int32 *) vb);
 
-	if (a == b)
-		return 0;
-	return (a > b) ? 1 : -1;
+	return pg_cmp_s32(a, b);
 }
 
 static void
@@ -141,7 +138,7 @@ makesign(BITVECP sign, SignTSVector *a, int siglen)
 				len = ARRNELEM(a);
 	int32	   *ptr = GETARR(a);
 
-	MemSet((void *) sign, 0, siglen);
+	MemSet(sign, 0, siglen);
 	for (k = 0; k < len; k++)
 		HASH(sign, ptr[k], siglen);
 }
@@ -202,7 +199,7 @@ gtsvector_compress(PG_FUNCTION_ARGS)
 			 * val->size
 			 */
 			len = CALCGTSIZE(ARRKEY, len);
-			res = (SignTSVector *) repalloc((void *) res, len);
+			res = (SignTSVector *) repalloc(res, len);
 			SET_VARSIZE(res, len);
 		}
 
@@ -215,7 +212,7 @@ gtsvector_compress(PG_FUNCTION_ARGS)
 			res = ressign;
 		}
 
-		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(res),
 					  entry->rel, entry->page,
 					  entry->offset, false);
@@ -234,7 +231,7 @@ gtsvector_compress(PG_FUNCTION_ARGS)
 		}
 
 		res = gtsvector_alloc(SIGNKEY | ALLISTRUE, siglen, sign);
-		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(res),
 					  entry->rel, entry->page,
 					  entry->offset, false);
@@ -254,7 +251,7 @@ gtsvector_decompress(PG_FUNCTION_ARGS)
 
 	if (key != (SignTSVector *) DatumGetPointer(entry->key))
 	{
-		GISTENTRY  *retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		GISTENTRY  *retval = palloc_object(GISTENTRY);
 
 		gistentryinit(*retval, PointerGetDatum(key),
 					  entry->rel, entry->page,
@@ -329,9 +326,10 @@ gtsvector_consistent(PG_FUNCTION_ARGS)
 {
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	TSQuery		query = PG_GETARG_TSQUERY(1);
-
-	/* StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2); */
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	SignTSVector *key = (SignTSVector *) DatumGetPointer(entry->key);
 
@@ -358,7 +356,7 @@ gtsvector_consistent(PG_FUNCTION_ARGS)
 		chkval.arrb = GETARR(key);
 		chkval.arre = chkval.arrb + ARRNELEM(key);
 		PG_RETURN_BOOL(TS_execute(GETQUERY(query),
-								  (void *) &chkval,
+								  &chkval,
 								  TS_EXEC_PHRASE_NO_POS,
 								  checkcondition_arr));
 	}
@@ -575,7 +573,7 @@ fillcache(CACHESIGN *item, SignTSVector *key, int siglen)
 	else if (ISALLTRUE(key))
 		item->allistrue = true;
 	else
-		memcpy((void *) item->sign, (void *) GETSIGN(key), siglen);
+		memcpy(item->sign, GETSIGN(key), siglen);
 }
 
 #define WISH_F(a,b,c) (double)( -(double)(((a)-(b))*((a)-(b))*((a)-(b)))*(c) )
@@ -591,10 +589,7 @@ comparecost(const void *va, const void *vb)
 	const SPLITCOST *a = (const SPLITCOST *) va;
 	const SPLITCOST *b = (const SPLITCOST *) vb;
 
-	if (a->cost == b->cost)
-		return 0;
-	else
-		return (a->cost > b->cost) ? 1 : -1;
+	return pg_cmp_s32(a->cost, b->cost);
 }
 
 
@@ -647,7 +642,7 @@ gtsvector_picksplit(PG_FUNCTION_ARGS)
 	v->spl_left = (OffsetNumber *) palloc(nbytes);
 	v->spl_right = (OffsetNumber *) palloc(nbytes);
 
-	cache = (CACHESIGN *) palloc(sizeof(CACHESIGN) * (maxoff + 2));
+	cache = palloc_array(CACHESIGN, maxoff + 2);
 	cache_sign = palloc(siglen * (maxoff + 2));
 
 	for (j = 0; j < maxoff + 2; j++)
@@ -694,15 +689,15 @@ gtsvector_picksplit(PG_FUNCTION_ARGS)
 	maxoff = OffsetNumberNext(maxoff);
 	fillcache(&cache[maxoff], GETENTRY(entryvec, maxoff), siglen);
 	/* sort before ... */
-	costvector = (SPLITCOST *) palloc(sizeof(SPLITCOST) * maxoff);
+	costvector = palloc_array(SPLITCOST, maxoff);
 	for (j = FirstOffsetNumber; j <= maxoff; j = OffsetNumberNext(j))
 	{
 		costvector[j - 1].pos = j;
 		size_alpha = hemdistcache(&(cache[seed_1]), &(cache[j]), siglen);
 		size_beta = hemdistcache(&(cache[seed_2]), &(cache[j]), siglen);
-		costvector[j - 1].cost = Abs(size_alpha - size_beta);
+		costvector[j - 1].cost = abs(size_alpha - size_beta);
 	}
-	qsort((void *) costvector, maxoff, sizeof(SPLITCOST), comparecost);
+	qsort(costvector, maxoff, sizeof(SPLITCOST), comparecost);
 
 	for (k = 0; k < maxoff; k++)
 	{
@@ -753,7 +748,7 @@ gtsvector_picksplit(PG_FUNCTION_ARGS)
 			if (ISALLTRUE(datum_l) || cache[j].allistrue)
 			{
 				if (!ISALLTRUE(datum_l))
-					MemSet((void *) GETSIGN(datum_l), 0xff, siglen);
+					memset(GETSIGN(datum_l), 0xff, siglen);
 			}
 			else
 			{
@@ -769,7 +764,7 @@ gtsvector_picksplit(PG_FUNCTION_ARGS)
 			if (ISALLTRUE(datum_r) || cache[j].allistrue)
 			{
 				if (!ISALLTRUE(datum_r))
-					MemSet((void *) GETSIGN(datum_r), 0xff, siglen);
+					memset(GETSIGN(datum_r), 0xff, siglen);
 			}
 			else
 			{

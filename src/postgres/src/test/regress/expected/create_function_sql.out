@@ -304,7 +304,8 @@ CREATE FUNCTION functest_S_xx(x date) RETURNS boolean
 ERROR:  operator does not exist: date > integer
 LINE 3:     RETURN x > 1;
                      ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 -- tricky parsing
 CREATE FUNCTION functest_S_15(x int) RETURNS boolean
 LANGUAGE SQL
@@ -454,6 +455,16 @@ DROP TABLE functest3 CASCADE;
 NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to view functestv3
 drop cascades to function functest_s_14()
+-- Check reporting of temporary-object dependencies within SQL-standard body
+-- (tests elsewhere already cover dependencies on arg and result types)
+CREATE TEMP SEQUENCE mytempseq;
+CREATE FUNCTION functest_tempseq() RETURNS int
+    RETURN nextval('mytempseq');
+NOTICE:  function "functest_tempseq" will be effectively temporary
+DETAIL:  It depends on temporary sequence mytempseq.
+-- This discards mytempseq and therefore functest_tempseq().  If it fails to,
+-- the function will appear in the information_schema tests below.
+DISCARD TEMP;
 -- information_schema tests
 CREATE FUNCTION functest_IS_1(a int, b int default 1, c text default 'foo')
     RETURNS int
@@ -563,6 +574,20 @@ CREATE OR REPLACE PROCEDURE functest1(a int) LANGUAGE SQL AS 'SELECT $1';
 ERROR:  cannot change routine kind
 DETAIL:  "functest1" is a function.
 DROP FUNCTION functest1(a int);
+-- early shutdown of set-returning functions
+CREATE FUNCTION functest_srf0() RETURNS SETOF int
+LANGUAGE SQL
+AS $$ SELECT i FROM generate_series(1, 100) i $$;
+SELECT functest_srf0() LIMIT 5;
+ functest_srf0 
+---------------
+             1
+             2
+             3
+             4
+             5
+(5 rows)
+
 -- inlining of set-returning functions
 CREATE TABLE functest3 (a int);
 INSERT INTO functest3 VALUES (1), (2), (3);
@@ -666,6 +691,43 @@ SELECT * FROM voidtest5(3);
 -----------
 (0 rows)
 
+-- DDL within a SQL function can now affect later statements in the function;
+-- though that doesn't work if check_function_bodies is on.
+SET check_function_bodies TO off;
+CREATE FUNCTION create_and_insert() RETURNS VOID LANGUAGE sql AS $$
+  create table ddl_test (f1 int);
+  insert into ddl_test values (1.2);
+$$;
+SELECT create_and_insert();
+ create_and_insert 
+-------------------
+ 
+(1 row)
+
+TABLE ddl_test;
+ f1 
+----
+  1
+(1 row)
+
+CREATE FUNCTION alter_and_insert() RETURNS VOID LANGUAGE sql AS $$
+  alter table ddl_test alter column f1 type numeric;
+  insert into ddl_test values (1.2);
+$$;
+SELECT alter_and_insert();
+ alter_and_insert 
+------------------
+ 
+(1 row)
+
+TABLE ddl_test;
+ f1  
+-----
+   1
+ 1.2
+(2 rows)
+
+RESET check_function_bodies;
 -- Regression tests for bugs:
 -- Check that arguments that are R/W expanded datums aren't corrupted by
 -- multiple uses.  This test knows that array_append() returns a R/W datum
@@ -682,6 +744,22 @@ SELECT double_append(array_append(ARRAY[q1], q2), q3)
  {4,5,6,4,5,6}
 (2 rows)
 
+-- Check that we can re-use a SQLFunctionCache after a run-time error.
+-- This function will fail with zero-divide at run time (not plan time).
+CREATE FUNCTION part_hashint4_error(value int4, seed int8) RETURNS int8
+LANGUAGE SQL STRICT IMMUTABLE PARALLEL SAFE AS
+$$ SELECT value + seed + random()::int/0 $$;
+-- Put it into an operator class so that FmgrInfo will be cached in relcache.
+CREATE OPERATOR CLASS part_test_int4_ops_bad FOR TYPE int4 USING hash AS
+  FUNCTION 2 part_hashint4_error(int4, int8);
+CREATE TABLE pt(i int) PARTITION BY hash (i part_test_int4_ops_bad);
+CREATE TABLE p1 PARTITION OF pt FOR VALUES WITH (modulus 4, remainder 0);
+INSERT INTO pt VALUES (1);
+ERROR:  division by zero
+CONTEXT:  SQL function "part_hashint4_error" statement 1
+INSERT INTO pt VALUES (1);
+ERROR:  division by zero
+CONTEXT:  SQL function "part_hashint4_error" statement 1
 -- Things that shouldn't work:
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'SELECT ''not an integer'';';
@@ -706,9 +784,23 @@ LINE 2:     AS 'SELECT $2;';
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'a', 'b';
 ERROR:  only one AS item needed for language "sql"
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
+    AS '';
+ERROR:  return type mismatch in function declared to return integer
+DETAIL:  Function's final statement must be SELECT or INSERT/UPDATE/DELETE/MERGE RETURNING.
+CONTEXT:  SQL function "test1"
+-- make sure empty-body case is handled at execution time, too
+SET check_function_bodies = off;
+CREATE FUNCTION test1 (anyelement) RETURNS anyarray LANGUAGE SQL
+    AS '';
+SELECT test1(0);
+ERROR:  return type mismatch in function declared to return integer[]
+DETAIL:  Function's final statement must be SELECT or INSERT/UPDATE/DELETE/MERGE RETURNING.
+CONTEXT:  SQL function "test1" during startup
+RESET check_function_bodies;
 -- Cleanup
 DROP SCHEMA temp_func_test CASCADE;
-NOTICE:  drop cascades to 30 other objects
+NOTICE:  drop cascades to 38 other objects
 DETAIL:  drop cascades to function functest_a_1(text,date)
 drop cascades to function functest_a_2(text[])
 drop cascades to function functest_a_3()
@@ -732,12 +824,20 @@ drop cascades to function functest_s_10(text,date)
 drop cascades to function functest_s_13()
 drop cascades to function functest_s_15(integer)
 drop cascades to function functest_b_2(bigint)
+drop cascades to function functest_srf0()
 drop cascades to function functest_sri1()
 drop cascades to function voidtest1(integer)
 drop cascades to function voidtest2(integer,integer)
 drop cascades to function voidtest3(integer)
 drop cascades to function voidtest4(integer)
 drop cascades to function voidtest5(integer)
+drop cascades to function create_and_insert()
+drop cascades to table ddl_test
+drop cascades to function alter_and_insert()
 drop cascades to function double_append(anyarray,anyelement)
+drop cascades to function part_hashint4_error(integer,bigint)
+drop cascades to operator family part_test_int4_ops_bad for access method hash
+drop cascades to table pt
+drop cascades to function test1(anyelement)
 DROP USER regress_unpriv_user;
 RESET search_path;

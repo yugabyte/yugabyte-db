@@ -3,7 +3,7 @@
  * arraysubs.c
  *	  Subscripting support functions for arrays.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,14 +14,16 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_type_d.h"
 #include "executor/execExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/subscripting.h"
+#include "nodes/supportnodes.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
 #include "utils/array.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
 
 
@@ -139,7 +141,7 @@ array_subscript_transform(SubscriptingRef *sbsref,
 		upperIndexpr = lappend(upperIndexpr, subexpr);
 	}
 
-	/* ... and store the transformed lists into the SubscriptRef node */
+	/* ... and store the transformed lists into the SubscriptingRef node */
 	sbsref->refupperindexpr = upperIndexpr;
 	sbsref->reflowerindexpr = lowerIndexpr;
 
@@ -496,7 +498,7 @@ array_exec_setup(const SubscriptingRef *sbsref,
 	/*
 	 * Allocate type-specific workspace.
 	 */
-	workspace = (ArraySubWorkspace *) palloc(sizeof(ArraySubWorkspace));
+	workspace = palloc_object(ArraySubWorkspace);
 	sbsrefstate->workspace = workspace;
 
 	/*
@@ -574,4 +576,37 @@ raw_array_subscript_handler(PG_FUNCTION_ARGS)
 	};
 
 	PG_RETURN_POINTER(&sbsroutines);
+}
+
+/*
+ * array_subscript_handler_support()
+ *
+ * Planner support function for array_subscript_handler()
+ */
+Datum
+array_subscript_handler_support(PG_FUNCTION_ARGS)
+{
+	Node	   *rawreq = (Node *) PG_GETARG_POINTER(0);
+	Node	   *ret = NULL;
+
+	if (IsA(rawreq, SupportRequestModifyInPlace))
+	{
+		/*
+		 * We can optimize in-place subscripted assignment if the refexpr is
+		 * the array being assigned to.  We don't need to worry about array
+		 * references within the refassgnexpr or the subscripts; however, if
+		 * there's no refassgnexpr then it's a fetch which there's no need to
+		 * optimize.
+		 */
+		SupportRequestModifyInPlace *req = (SupportRequestModifyInPlace *) rawreq;
+		Param	   *refexpr = (Param *) linitial(req->args);
+
+		if (refexpr && IsA(refexpr, Param) &&
+			refexpr->paramkind == PARAM_EXTERN &&
+			refexpr->paramid == req->paramid &&
+			lsecond(req->args) != NULL)
+			ret = (Node *) refexpr;
+	}
+
+	PG_RETURN_POINTER(ret);
 }

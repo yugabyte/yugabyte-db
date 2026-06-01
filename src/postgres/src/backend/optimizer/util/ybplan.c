@@ -561,7 +561,7 @@ YbConsiderColumnAndEntityForUpdate(const Relation rel,
 static void
 YbLogUpdateMatrix(const YbUpdateAffectedEntities *affected_entities)
 {
-	if (log_min_messages >= DEBUG1)
+	if (log_min_messages[MyBackendType] >= DEBUG1)
 		return;
 
 	const int	nfields = YB_UPDATE_AFFECTED_ENTITIES_NUM_FIELDS(affected_entities);
@@ -860,7 +860,7 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 	 * Add the primary key to the head of the entity list so that it gets
 	 * evaluated first.
 	 */
-	if (RelationGetPrimaryKeyIndex(rel) != InvalidOid)
+	if (RelationGetPrimaryKeyIndex(rel, false /* YB_TODO_PG19MERGE: deferrable_ok */) != InvalidOid)
 	{
 		Bitmapset  *pkbms = RelationGetIndexAttrBitmap(rel,
 													   INDEX_ATTR_BITMAP_PRIMARY_KEY);
@@ -973,7 +973,7 @@ YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
 								   SKIP_REFERENCING_FKEY :
 								   SKIP_REFERENCED_FKEY);
 	const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(rel);
-	Oid			pk_oid = RelationGetPrimaryKeyIndex(rel);
+	Oid			pk_oid = RelationGetPrimaryKeyIndex(rel, false /* YB_TODO_PG19MERGE: deferrable_ok */);
 	bool		pk_maybe_modified = !(OidIsValid(pk_oid) &&
 									  list_member_oid(skip_entities->index_list,
 													  pk_oid));

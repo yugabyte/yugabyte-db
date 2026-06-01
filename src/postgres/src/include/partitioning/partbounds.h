@@ -2,7 +2,7 @@
  *
  * partbounds.h
  *
- * Copyright (c) 2007-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2026, PostgreSQL Global Development Group
  *
  * src/include/partitioning/partbounds.h
  *
@@ -15,7 +15,7 @@
 #include "parser/parse_node.h"
 #include "partitioning/partdefs.h"
 
-struct RelOptInfo;				/* avoid including pathnodes.h here */
+typedef struct RelOptInfo RelOptInfo;	/* avoid including pathnodes.h here */
 
 
 /*
@@ -78,7 +78,7 @@ struct RelOptInfo;				/* avoid including pathnodes.h here */
  */
 typedef struct PartitionBoundInfoData
 {
-	char		strategy;		/* hash, list or range? */
+	PartitionStrategy strategy; /* hash, list or range? */
 	int			ndatums;		/* Length of the datums[] array */
 	Datum	  **datums;
 	PartitionRangeDatumKind **kind; /* The kind of each range bound datum;
@@ -98,10 +98,10 @@ typedef struct PartitionBoundInfoData
 #define partition_bound_accepts_nulls(bi) ((bi)->null_index != -1)
 #define partition_bound_has_default(bi) ((bi)->default_index != -1)
 
-extern int	get_hash_partition_greatest_modulus(PartitionBoundInfo b);
+extern int	get_hash_partition_greatest_modulus(PartitionBoundInfo bound);
 extern uint64 compute_partition_hash_value(int partnatts, FmgrInfo *partsupfunc,
-										   Oid *partcollation,
-										   Datum *values, bool *isnull);
+										   const Oid *partcollation,
+										   const Datum *values, const bool *isnull);
 extern List *get_qual_from_partbound(Relation parent,
 									 PartitionBoundSpec *spec);
 extern PartitionBoundInfo partition_bounds_create(PartitionBoundSpec **boundspecs,
@@ -114,8 +114,8 @@ extern PartitionBoundInfo partition_bounds_copy(PartitionBoundInfo src,
 extern PartitionBoundInfo partition_bounds_merge(int partnatts,
 												 FmgrInfo *partsupfunc,
 												 Oid *partcollation,
-												 struct RelOptInfo *outer_rel,
-												 struct RelOptInfo *inner_rel,
+												 RelOptInfo *outer_rel,
+												 RelOptInfo *inner_rel,
 												 JoinType jointype,
 												 List **outer_parts,
 												 List **inner_parts);
@@ -125,13 +125,13 @@ extern void check_new_partition_bound(char *relname, Relation parent,
 									  PartitionBoundSpec *spec,
 									  ParseState *pstate);
 extern void check_default_partition_contents(Relation parent,
-											 Relation defaultRel,
+											 Relation default_rel,
 											 PartitionBoundSpec *new_spec);
 
 extern int32 partition_rbound_datum_cmp(FmgrInfo *partsupfunc,
 										Oid *partcollation,
-										Datum *rb_datums, PartitionRangeDatumKind *rb_kind,
-										Datum *tuple_datums, int n_tuple_datums);
+										const Datum *rb_datums, PartitionRangeDatumKind *rb_kind,
+										const Datum *tuple_datums, int n_tuple_datums);
 extern int	partition_list_bsearch(FmgrInfo *partsupfunc,
 								   Oid *partcollation,
 								   PartitionBoundInfo boundinfo,
@@ -139,8 +139,18 @@ extern int	partition_list_bsearch(FmgrInfo *partsupfunc,
 extern int	partition_range_datum_bsearch(FmgrInfo *partsupfunc,
 										  Oid *partcollation,
 										  PartitionBoundInfo boundinfo,
-										  int nvalues, Datum *values, bool *is_equal);
+										  int nvalues, const Datum *values, bool *is_equal);
 extern int	partition_hash_bsearch(PartitionBoundInfo boundinfo,
 								   int modulus, int remainder);
+
+extern void check_partitions_for_split(Relation parent,
+									   Oid splitPartOid,
+									   List *partlist,
+									   ParseState *pstate);
+extern void calculate_partition_bound_for_merge(Relation parent,
+												List *partNames,
+												List *partOids,
+												PartitionBoundSpec *spec,
+												ParseState *pstate);
 
 #endif							/* PARTBOUNDS_H */

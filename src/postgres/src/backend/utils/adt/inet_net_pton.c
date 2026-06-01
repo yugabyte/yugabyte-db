@@ -29,8 +29,7 @@ static const char rcsid[] = "Id: inet_net_pton.c,v 1.4.2.3 2004/03/17 00:40:11 m
 #include <assert.h>
 #include <ctype.h>
 
-#include "utils/builtins.h" /* pgrminclude ignore */	/* needed on some
-														 * platforms */
+#include "utils/builtins.h"		/* needed on some platforms */
 #include "utils/inet.h"
 
 
@@ -116,8 +115,7 @@ inet_cidr_pton_ipv4(const char *src, u_char *dst, size_t size)
 		src++;					/* skip x or X. */
 		while ((ch = *src++) != '\0' && isxdigit((unsigned char) ch))
 		{
-			if (isupper((unsigned char) ch))
-				ch = tolower((unsigned char) ch);
+			ch = pg_ascii_tolower((unsigned char) ch);
 			n = strchr(xdigits, ch) - xdigits;
 			assert(n >= 0 && n <= 15);
 			if (dirty == 0)

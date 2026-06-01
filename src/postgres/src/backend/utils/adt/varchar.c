@@ -3,7 +3,7 @@
  * varchar.c
  *	  Functions for the built-in types char(n) and varchar(n).
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/detoast.h"
+#include "access/htup_details.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "common/hashfn.h"
@@ -24,7 +25,6 @@
 #include "nodes/supportnodes.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
-#include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/varlena.h"
 
@@ -121,9 +121,13 @@ anychar_typmodout(int32 typmod)
  *
  * If the input string is too long, raise an error, unless the extra
  * characters are spaces, in which case they're truncated.  (per SQL)
+ *
+ * If escontext points to an ErrorSaveContext node, that is filled instead
+ * of throwing an error; the caller must check SOFT_ERROR_OCCURRED()
+ * to detect errors.
  */
 static BpChar *
-bpchar_input(const char *s, size_t len, int32 atttypmod)
+bpchar_input(const char *s, size_t len, int32 atttypmod, Node *escontext)
 {
 	BpChar	   *result;
 	char	   *r;
@@ -152,10 +156,10 @@ bpchar_input(const char *s, size_t len, int32 atttypmod)
 			for (j = mbmaxlen; j < len; j++)
 			{
 				if (s[j] != ' ')
-					ereport(ERROR,
+					ereturn(escontext, NULL,
 							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-							 errmsg("value too long for type character(%d)",
-									(int) maxlen)));
+							 errmsg("value too long for type character(%zu)",
+									maxlen)));
 			}
 
 			/*
@@ -194,14 +198,13 @@ Datum
 bpcharin(PG_FUNCTION_ARGS)
 {
 	char	   *s = PG_GETARG_CSTRING(0);
-
 #ifdef NOT_USED
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
 	int32		atttypmod = PG_GETARG_INT32(2);
 	BpChar	   *result;
 
-	result = bpchar_input(s, strlen(s), atttypmod);
+	result = bpchar_input(s, strlen(s), atttypmod, fcinfo->context);
 	PG_RETURN_BPCHAR_P(result);
 }
 
@@ -227,7 +230,6 @@ Datum
 bpcharrecv(PG_FUNCTION_ARGS)
 {
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
-
 #ifdef NOT_USED
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
@@ -237,7 +239,7 @@ bpcharrecv(PG_FUNCTION_ARGS)
 	int			nbytes;
 
 	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
-	result = bpchar_input(str, nbytes, atttypmod);
+	result = bpchar_input(str, nbytes, atttypmod, NULL);
 	pfree(str);
 	PG_RETURN_BPCHAR_P(result);
 }
@@ -305,7 +307,7 @@ bpchar(PG_FUNCTION_ARGS)
 		{
 			for (i = maxmblen; i < len; i++)
 				if (s[i] != ' ')
-					ereport(ERROR,
+					ereturn(fcinfo->context, (Datum) 0,
 							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 							 errmsg("value too long for type character(%d)",
 									maxlen)));
@@ -447,11 +449,12 @@ bpchartypmodout(PG_FUNCTION_ARGS)
  * If the input string is too long, raise an error, unless the extra
  * characters are spaces, in which case they're truncated.  (per SQL)
  *
- * Uses the C string to text conversion function, which is only appropriate
- * if VarChar and text are equivalent types.
+ * If escontext points to an ErrorSaveContext node, that is filled instead
+ * of throwing an error; the caller must check SOFT_ERROR_OCCURRED()
+ * to detect errors.
  */
 static VarChar *
-varchar_input(const char *s, size_t len, int32 atttypmod)
+varchar_input(const char *s, size_t len, int32 atttypmod, Node *escontext)
 {
 	VarChar    *result;
 	size_t		maxlen;
@@ -467,15 +470,19 @@ varchar_input(const char *s, size_t len, int32 atttypmod)
 		for (j = mbmaxlen; j < len; j++)
 		{
 			if (s[j] != ' ')
-				ereport(ERROR,
+				ereturn(escontext, NULL,
 						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-						 errmsg("value too long for type character varying(%d)",
-								(int) maxlen)));
+						 errmsg("value too long for type character varying(%zu)",
+								maxlen)));
 		}
 
 		len = mbmaxlen;
 	}
 
+	/*
+	 * We can use cstring_to_text_with_len because VarChar and text are
+	 * binary-compatible types.
+	 */
 	result = (VarChar *) cstring_to_text_with_len(s, len);
 	return result;
 }
@@ -488,14 +495,13 @@ Datum
 varcharin(PG_FUNCTION_ARGS)
 {
 	char	   *s = PG_GETARG_CSTRING(0);
-
 #ifdef NOT_USED
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
 	int32		atttypmod = PG_GETARG_INT32(2);
 	VarChar    *result;
 
-	result = varchar_input(s, strlen(s), atttypmod);
+	result = varchar_input(s, strlen(s), atttypmod, fcinfo->context);
 	PG_RETURN_VARCHAR_P(result);
 }
 
@@ -521,7 +527,6 @@ Datum
 varcharrecv(PG_FUNCTION_ARGS)
 {
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
-
 #ifdef NOT_USED
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
@@ -531,7 +536,7 @@ varcharrecv(PG_FUNCTION_ARGS)
 	int			nbytes;
 
 	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
-	result = varchar_input(str, nbytes, atttypmod);
+	result = varchar_input(str, nbytes, atttypmod, NULL);
 	pfree(str);
 	PG_RETURN_VARCHAR_P(result);
 }
@@ -629,7 +634,7 @@ varchar(PG_FUNCTION_ARGS)
 	{
 		for (i = maxmblen; i < len; i++)
 			if (s_data[i] != ' ')
-				ereport(ERROR,
+				ereturn(fcinfo->context, (Datum) 0,
 						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 						 errmsg("value too long for type character varying(%d)",
 								maxlen)));
@@ -743,20 +748,16 @@ bpchareq(PG_FUNCTION_ARGS)
 				len2;
 	bool		result;
 	Oid			collid = PG_GET_COLLATION();
-	bool		locale_is_c = false;
-	pg_locale_t mylocale = 0;
+	pg_locale_t mylocale;
 
 	check_collation_set(collid);
 
 	len1 = bcTruelen(arg1);
 	len2 = bcTruelen(arg2);
 
-	if (lc_collate_is_c(collid))
-		locale_is_c = true;
-	else
-		mylocale = pg_newlocale_from_collation(collid);
+	mylocale = pg_newlocale_from_collation(collid);
 
-	if (locale_is_c || !mylocale || mylocale->deterministic)
+	if (mylocale->deterministic)
 	{
 		/*
 		 * Since we only care about equality or not-equality, we can avoid all
@@ -788,20 +789,16 @@ bpcharne(PG_FUNCTION_ARGS)
 				len2;
 	bool		result;
 	Oid			collid = PG_GET_COLLATION();
-	bool		locale_is_c = false;
-	pg_locale_t mylocale = 0;
+	pg_locale_t mylocale;
 
 	check_collation_set(collid);
 
 	len1 = bcTruelen(arg1);
 	len2 = bcTruelen(arg2);
 
-	if (lc_collate_is_c(collid))
-		locale_is_c = true;
-	else
-		mylocale = pg_newlocale_from_collation(collid);
+	mylocale = pg_newlocale_from_collation(collid);
 
-	if (locale_is_c || !mylocale || mylocale->deterministic)
+	if (mylocale->deterministic)
 	{
 		/*
 		 * Since we only care about equality or not-equality, we can avoid all
@@ -994,7 +991,7 @@ hashbpchar(PG_FUNCTION_ARGS)
 	Oid			collid = PG_GET_COLLATION();
 	char	   *keydata;
 	int			keylen;
-	pg_locale_t mylocale = 0;
+	pg_locale_t mylocale;
 	Datum		result;
 
 	if (!collid)
@@ -1006,40 +1003,35 @@ hashbpchar(PG_FUNCTION_ARGS)
 	keydata = VARDATA_ANY(key);
 	keylen = bcTruelen(key);
 
-	if (!lc_collate_is_c(collid))
-		mylocale = pg_newlocale_from_collation(collid);
+	mylocale = pg_newlocale_from_collation(collid);
 
-	if (!mylocale || mylocale->deterministic)
+	if (mylocale->deterministic)
 	{
 		result = hash_any((unsigned char *) keydata, keylen);
 	}
 	else
 	{
-#ifdef USE_ICU
-		if (mylocale->provider == COLLPROVIDER_ICU)
-		{
-			int32_t		ulen = -1;
-			UChar	   *uchar = NULL;
-			Size		bsize;
-			uint8_t    *buf;
+		Size		bsize,
+					rsize;
+		char	   *buf;
 
-			ulen = icu_to_uchar(&uchar, keydata, keylen);
+		bsize = pg_strnxfrm(NULL, 0, keydata, keylen, mylocale);
+		buf = palloc(bsize + 1);
 
-			bsize = ucol_getSortKey(mylocale->info.icu.ucol,
-									uchar, ulen, NULL, 0);
-			buf = palloc(bsize);
-			ucol_getSortKey(mylocale->info.icu.ucol,
-							uchar, ulen, buf, bsize);
-			pfree(uchar);
+		rsize = pg_strnxfrm(buf, bsize + 1, keydata, keylen, mylocale);
 
-			result = hash_any(buf, bsize);
+		/* the second call may return a smaller value than the first */
+		if (rsize > bsize)
+			elog(ERROR, "pg_strnxfrm() returned unexpected result");
 
-			pfree(buf);
-		}
-		else
-#endif
-			/* shouldn't happen */
-			elog(ERROR, "unsupported collprovider: %c", mylocale->provider);
+		/*
+		 * In principle, there's no reason to include the terminating NUL
+		 * character in the hash, but it was done before and the behavior must
+		 * be preserved.
+		 */
+		result = hash_any((uint8_t *) buf, bsize + 1);
+
+		pfree(buf);
 	}
 
 	/* Avoid leaking memory for toasted inputs */
@@ -1055,7 +1047,7 @@ hashbpcharextended(PG_FUNCTION_ARGS)
 	Oid			collid = PG_GET_COLLATION();
 	char	   *keydata;
 	int			keylen;
-	pg_locale_t mylocale = 0;
+	pg_locale_t mylocale;
 	Datum		result;
 
 	if (!collid)
@@ -1067,41 +1059,37 @@ hashbpcharextended(PG_FUNCTION_ARGS)
 	keydata = VARDATA_ANY(key);
 	keylen = bcTruelen(key);
 
-	if (!lc_collate_is_c(collid))
-		mylocale = pg_newlocale_from_collation(collid);
+	mylocale = pg_newlocale_from_collation(collid);
 
-	if (!mylocale || mylocale->deterministic)
+	if (mylocale->deterministic)
 	{
 		result = hash_any_extended((unsigned char *) keydata, keylen,
 								   PG_GETARG_INT64(1));
 	}
 	else
 	{
-#ifdef USE_ICU
-		if (mylocale->provider == COLLPROVIDER_ICU)
-		{
-			int32_t		ulen = -1;
-			UChar	   *uchar = NULL;
-			Size		bsize;
-			uint8_t    *buf;
+		Size		bsize,
+					rsize;
+		char	   *buf;
 
-			ulen = icu_to_uchar(&uchar, VARDATA_ANY(key), VARSIZE_ANY_EXHDR(key));
+		bsize = pg_strnxfrm(NULL, 0, keydata, keylen, mylocale);
+		buf = palloc(bsize + 1);
 
-			bsize = ucol_getSortKey(mylocale->info.icu.ucol,
-									uchar, ulen, NULL, 0);
-			buf = palloc(bsize);
-			ucol_getSortKey(mylocale->info.icu.ucol,
-							uchar, ulen, buf, bsize);
-			pfree(uchar);
+		rsize = pg_strnxfrm(buf, bsize + 1, keydata, keylen, mylocale);
 
-			result = hash_any_extended(buf, bsize, PG_GETARG_INT64(1));
+		/* the second call may return a smaller value than the first */
+		if (rsize > bsize)
+			elog(ERROR, "pg_strnxfrm() returned unexpected result");
 
-			pfree(buf);
-		}
-		else
-#endif
-			/* shouldn't happen */
-			elog(ERROR, "unsupported collprovider: %c", mylocale->provider);
+		/*
+		 * In principle, there's no reason to include the terminating NUL
+		 * character in the hash, but it was done before and the behavior must
+		 * be preserved.
+		 */
+		result = hash_any_extended((uint8_t *) buf, bsize + 1,
+								   PG_GETARG_INT64(1));
+
+		pfree(buf);
 	}
 
 	PG_FREE_IF_COPY(key, 0);

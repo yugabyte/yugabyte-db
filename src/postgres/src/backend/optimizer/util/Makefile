@@ -18,6 +18,7 @@ OBJS = \
 	\
 	appendinfo.o \
 	clauses.o \
+	extendplan.o \
 	inherit.o \
 	joininfo.o \
 	orclauses.o \

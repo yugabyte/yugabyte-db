@@ -506,23 +506,29 @@ insert into gb18030_inputs  values
   ('\x666f6fcff3',	'valid'),
   ('\x666f6f8431a530',	'valid, no translation to UTF-8'),
   ('\x666f6f84309c38',	'valid, translates to UTF-8 by mapping function'),
+  ('\xa6d9',  'valid, changed from version 2000 to 2022'),
   ('\x666f6f84309c',	'incomplete char '),
   ('\x666f6f84309c0a',	'incomplete char, followed by newline '),
+  ('\x666f6f84',		'incomplete char at end'),
   ('\x666f6f84309c3800', 'invalid, NUL byte'),
   ('\x666f6f84309c0038', 'invalid, NUL byte');
--- Test GB18030 verification
-select description, inbytes, (test_conv(inbytes, 'gb18030', 'gb18030')).* from gb18030_inputs;
+-- Test GB18030 verification.  Round-trip through text so the backing of the
+-- bytea values is palloc, not shared_buffers.  This lets Valgrind detect
+-- reads past the end.
+select description, inbytes, (test_conv(inbytes::text::bytea, 'gb18030', 'gb18030')).* from gb18030_inputs;
                   description                   |      inbytes       |      result      |   errorat    |                               error                               
 ------------------------------------------------+--------------------+------------------+--------------+-------------------------------------------------------------------
  valid, pure ASCII                              | \x666f6f           | \x666f6f         |              | 
  valid                                          | \x666f6fcff3       | \x666f6fcff3     |              | 
  valid, no translation to UTF-8                 | \x666f6f8431a530   | \x666f6f8431a530 |              | 
  valid, translates to UTF-8 by mapping function | \x666f6f84309c38   | \x666f6f84309c38 |              | 
+ valid, changed from version 2000 to 2022       | \xa6d9             | \xa6d9           |              | 
  incomplete char                                | \x666f6f84309c     | \x666f6f         | \x84309c     | invalid byte sequence for encoding "GB18030": 0x84 0x30 0x9c
  incomplete char, followed by newline           | \x666f6f84309c0a   | \x666f6f         | \x84309c0a   | invalid byte sequence for encoding "GB18030": 0x84 0x30 0x9c 0x0a
+ incomplete char at end                         | \x666f6f84         | \x666f6f         | \x84         | invalid byte sequence for encoding "GB18030": 0x84
  invalid, NUL byte                              | \x666f6f84309c3800 | \x666f6f84309c38 | \x00         | invalid byte sequence for encoding "GB18030": 0x00
  invalid, NUL byte                              | \x666f6f84309c0038 | \x666f6f         | \x84309c0038 | invalid byte sequence for encoding "GB18030": 0x84 0x30 0x9c 0x00
-(8 rows)
+(10 rows)
 
 -- Test conversions from GB18030
 select description, inbytes, (test_conv(inbytes, 'gb18030', 'utf8')).* from gb18030_inputs;
@@ -532,11 +538,13 @@ select description, inbytes, (test_conv(inbytes, 'gb18030', 'utf8')).* from gb18
  valid                                          | \x666f6fcff3       | \x666f6fe8b1a1 |              | 
  valid, no translation to UTF-8                 | \x666f6f8431a530   | \x666f6f       | \x8431a530   | character with byte sequence 0x84 0x31 0xa5 0x30 in encoding "GB18030" has no equivalent in encoding "UTF8"
  valid, translates to UTF-8 by mapping function | \x666f6f84309c38   | \x666f6fefa8aa |              | 
+ valid, changed from version 2000 to 2022       | \xa6d9             | \xefb890       |              | 
  incomplete char                                | \x666f6f84309c     | \x666f6f       | \x84309c     | invalid byte sequence for encoding "GB18030": 0x84 0x30 0x9c
  incomplete char, followed by newline           | \x666f6f84309c0a   | \x666f6f       | \x84309c0a   | invalid byte sequence for encoding "GB18030": 0x84 0x30 0x9c 0x0a
+ incomplete char at end                         | \x666f6f84         | \x666f6f       | \x84         | invalid byte sequence for encoding "GB18030": 0x84
  invalid, NUL byte                              | \x666f6f84309c3800 | \x666f6fefa8aa | \x00         | invalid byte sequence for encoding "GB18030": 0x00
  invalid, NUL byte                              | \x666f6f84309c0038 | \x666f6f       | \x84309c0038 | invalid byte sequence for encoding "GB18030": 0x84 0x30 0x9c 0x00
-(8 rows)
+(10 rows)
 
 --
 -- ISO-8859-5
@@ -580,16 +588,6 @@ select description, inbytes, (test_conv(inbytes, 'iso8859-5', 'koi8r')).* from i
  invalid, NUL byte | \xe4dede00 | \xc6cfcf | \x00     | invalid byte sequence for encoding "ISO_8859_5": 0x00
 (5 rows)
 
-select description, inbytes, (test_conv(inbytes, 'iso8859_5', 'mule_internal')).* from iso8859_5_inputs;
-    description    |  inbytes   |     result     | errorat  |                         error                         
--------------------+------------+----------------+----------+-------------------------------------------------------
- valid, pure ASCII | \x666f6f   | \x666f6f       |          | 
- valid             | \xe4dede   | \x8bc68bcf8bcf |          | 
- invalid, NUL byte | \x00       | \x             | \x00     | invalid byte sequence for encoding "ISO_8859_5": 0x00
- invalid, NUL byte | \xe400dede | \x8bc6         | \x00dede | invalid byte sequence for encoding "ISO_8859_5": 0x00
- invalid, NUL byte | \xe4dede00 | \x8bc68bcf8bcf | \x00     | invalid byte sequence for encoding "ISO_8859_5": 0x00
-(5 rows)
-
 --
 -- Big5
 --
@@ -621,121 +619,4 @@ select description, inbytes, (test_conv(inbytes, 'big5', 'utf8')).* from big5_in
  invalid, NUL byte              | \x666f6fb60048 | \x666f6f       | \xb60048 | invalid byte sequence for encoding "BIG5": 0xb6 0x00
  invalid, NUL byte              | \x666f6fb64800 | \x666f6fe8b1a1 | \x00     | invalid byte sequence for encoding "BIG5": 0x00
 (5 rows)
-
-select description, inbytes, (test_conv(inbytes, 'big5', 'mule_internal')).* from big5_inputs;
-          description           |    inbytes     |     result     | errorat  |                        error                         
---------------------------------+----------------+----------------+----------+------------------------------------------------------
- valid, pure ASCII              | \x666f6f       | \x666f6f       |          | 
- valid                          | \x666f6fb648   | \x666f6f95e2af |          | 
- valid, no translation to UTF-8 | \x666f6fa27f   | \x666f6f95a3c1 |          | 
- invalid, NUL byte              | \x666f6fb60048 | \x666f6f       | \xb60048 | invalid byte sequence for encoding "BIG5": 0xb6 0x00
- invalid, NUL byte              | \x666f6fb64800 | \x666f6f95e2af | \x00     | invalid byte sequence for encoding "BIG5": 0x00
-(5 rows)
-
---
--- MULE_INTERNAL
---
-CREATE TABLE mic_inputs (inbytes bytea, description text);
-insert into mic_inputs  values
-  ('\x666f6f',		'valid, pure ASCII'),
-  ('\x8bc68bcf8bcf',	'valid (in KOI8R)'),
-  ('\x8bc68bcf8b',	'invalid,incomplete char'),
-  ('\x92bedd',		'valid (in SHIFT_JIS)'),
-  ('\x92be',		'invalid, incomplete char)'),
-  ('\x666f6f95a3c1',	'valid (in Big5)'),
-  ('\x666f6f95a3',	'invalid, incomplete char'),
-  ('\x9200bedd',	'invalid, NUL byte'),
-  ('\x92bedd00',	'invalid, NUL byte'),
-  ('\x8b00c68bcf8bcf',	'invalid, NUL byte');
--- Test MULE_INTERNAL verification
-select description, inbytes, (test_conv(inbytes, 'mule_internal', 'mule_internal')).* from mic_inputs;
-        description        |     inbytes      |     result     |     errorat      |                               error                                
----------------------------+------------------+----------------+------------------+--------------------------------------------------------------------
- valid, pure ASCII         | \x666f6f         | \x666f6f       |                  | 
- valid (in KOI8R)          | \x8bc68bcf8bcf   | \x8bc68bcf8bcf |                  | 
- invalid,incomplete char   | \x8bc68bcf8b     | \x8bc68bcf     | \x8b             | invalid byte sequence for encoding "MULE_INTERNAL": 0x8b
- valid (in SHIFT_JIS)      | \x92bedd         | \x92bedd       |                  | 
- invalid, incomplete char) | \x92be           | \x             | \x92be           | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0xbe
- valid (in Big5)           | \x666f6f95a3c1   | \x666f6f95a3c1 |                  | 
- invalid, incomplete char  | \x666f6f95a3     | \x666f6f       | \x95a3           | invalid byte sequence for encoding "MULE_INTERNAL": 0x95 0xa3
- invalid, NUL byte         | \x9200bedd       | \x             | \x9200bedd       | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0x00 0xbe
- invalid, NUL byte         | \x92bedd00       | \x92bedd       | \x00             | invalid byte sequence for encoding "MULE_INTERNAL": 0x00
- invalid, NUL byte         | \x8b00c68bcf8bcf | \x             | \x8b00c68bcf8bcf | invalid byte sequence for encoding "MULE_INTERNAL": 0x8b 0x00
-(10 rows)
-
--- Test conversions from MULE_INTERNAL
-select description, inbytes, (test_conv(inbytes, 'mule_internal', 'koi8r')).* from mic_inputs;
-        description        |     inbytes      |  result  |     errorat      |                                                     error                                                     
----------------------------+------------------+----------+------------------+---------------------------------------------------------------------------------------------------------------
- valid, pure ASCII         | \x666f6f         | \x666f6f |                  | 
- valid (in KOI8R)          | \x8bc68bcf8bcf   | \xc6cfcf |                  | 
- invalid,incomplete char   | \x8bc68bcf8b     | \xc6cf   | \x8b             | invalid byte sequence for encoding "MULE_INTERNAL": 0x8b
- valid (in SHIFT_JIS)      | \x92bedd         | \x       | \x92bedd         | character with byte sequence 0x92 0xbe 0xdd in encoding "MULE_INTERNAL" has no equivalent in encoding "KOI8R"
- invalid, incomplete char) | \x92be           | \x       | \x92be           | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0xbe
- valid (in Big5)           | \x666f6f95a3c1   | \x666f6f | \x95a3c1         | character with byte sequence 0x95 0xa3 0xc1 in encoding "MULE_INTERNAL" has no equivalent in encoding "KOI8R"
- invalid, incomplete char  | \x666f6f95a3     | \x666f6f | \x95a3           | invalid byte sequence for encoding "MULE_INTERNAL": 0x95 0xa3
- invalid, NUL byte         | \x9200bedd       | \x       | \x9200bedd       | character with byte sequence 0x92 0x00 0xbe in encoding "MULE_INTERNAL" has no equivalent in encoding "KOI8R"
- invalid, NUL byte         | \x92bedd00       | \x       | \x92bedd00       | character with byte sequence 0x92 0xbe 0xdd in encoding "MULE_INTERNAL" has no equivalent in encoding "KOI8R"
- invalid, NUL byte         | \x8b00c68bcf8bcf | \x       | \x8b00c68bcf8bcf | character with byte sequence 0x8b 0x00 in encoding "MULE_INTERNAL" has no equivalent in encoding "KOI8R"
-(10 rows)
-
-select description, inbytes, (test_conv(inbytes, 'mule_internal', 'iso8859-5')).* from mic_inputs;
-        description        |     inbytes      |  result  |     errorat      |                                                       error                                                        
----------------------------+------------------+----------+------------------+--------------------------------------------------------------------------------------------------------------------
- valid, pure ASCII         | \x666f6f         | \x666f6f |                  | 
- valid (in KOI8R)          | \x8bc68bcf8bcf   | \xe4dede |                  | 
- invalid,incomplete char   | \x8bc68bcf8b     | \xe4de   | \x8b             | invalid byte sequence for encoding "MULE_INTERNAL": 0x8b
- valid (in SHIFT_JIS)      | \x92bedd         | \x       | \x92bedd         | character with byte sequence 0x92 0xbe 0xdd in encoding "MULE_INTERNAL" has no equivalent in encoding "ISO_8859_5"
- invalid, incomplete char) | \x92be           | \x       | \x92be           | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0xbe
- valid (in Big5)           | \x666f6f95a3c1   | \x666f6f | \x95a3c1         | character with byte sequence 0x95 0xa3 0xc1 in encoding "MULE_INTERNAL" has no equivalent in encoding "ISO_8859_5"
- invalid, incomplete char  | \x666f6f95a3     | \x666f6f | \x95a3           | invalid byte sequence for encoding "MULE_INTERNAL": 0x95 0xa3
- invalid, NUL byte         | \x9200bedd       | \x       | \x9200bedd       | character with byte sequence 0x92 0x00 0xbe in encoding "MULE_INTERNAL" has no equivalent in encoding "ISO_8859_5"
- invalid, NUL byte         | \x92bedd00       | \x       | \x92bedd00       | character with byte sequence 0x92 0xbe 0xdd in encoding "MULE_INTERNAL" has no equivalent in encoding "ISO_8859_5"
- invalid, NUL byte         | \x8b00c68bcf8bcf | \x       | \x8b00c68bcf8bcf | character with byte sequence 0x8b 0x00 in encoding "MULE_INTERNAL" has no equivalent in encoding "ISO_8859_5"
-(10 rows)
-
-select description, inbytes, (test_conv(inbytes, 'mule_internal', 'sjis')).* from mic_inputs;
-        description        |     inbytes      |  result  |     errorat      |                                                    error                                                     
----------------------------+------------------+----------+------------------+--------------------------------------------------------------------------------------------------------------
- valid, pure ASCII         | \x666f6f         | \x666f6f |                  | 
- valid (in KOI8R)          | \x8bc68bcf8bcf   | \x       | \x8bc68bcf8bcf   | character with byte sequence 0x8b 0xc6 in encoding "MULE_INTERNAL" has no equivalent in encoding "SJIS"
- invalid,incomplete char   | \x8bc68bcf8b     | \x       | \x8bc68bcf8b     | character with byte sequence 0x8b 0xc6 in encoding "MULE_INTERNAL" has no equivalent in encoding "SJIS"
- valid (in SHIFT_JIS)      | \x92bedd         | \x8fdb   |                  | 
- invalid, incomplete char) | \x92be           | \x       | \x92be           | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0xbe
- valid (in Big5)           | \x666f6f95a3c1   | \x666f6f | \x95a3c1         | character with byte sequence 0x95 0xa3 0xc1 in encoding "MULE_INTERNAL" has no equivalent in encoding "SJIS"
- invalid, incomplete char  | \x666f6f95a3     | \x666f6f | \x95a3           | invalid byte sequence for encoding "MULE_INTERNAL": 0x95 0xa3
- invalid, NUL byte         | \x9200bedd       | \x       | \x9200bedd       | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0x00 0xbe
- invalid, NUL byte         | \x92bedd00       | \x8fdb   | \x00             | invalid byte sequence for encoding "MULE_INTERNAL": 0x00
- invalid, NUL byte         | \x8b00c68bcf8bcf | \x       | \x8b00c68bcf8bcf | invalid byte sequence for encoding "MULE_INTERNAL": 0x8b 0x00
-(10 rows)
-
-select description, inbytes, (test_conv(inbytes, 'mule_internal', 'big5')).* from mic_inputs;
-        description        |     inbytes      |    result    |     errorat      |                                                    error                                                     
----------------------------+------------------+--------------+------------------+--------------------------------------------------------------------------------------------------------------
- valid, pure ASCII         | \x666f6f         | \x666f6f     |                  | 
- valid (in KOI8R)          | \x8bc68bcf8bcf   | \x           | \x8bc68bcf8bcf   | character with byte sequence 0x8b 0xc6 in encoding "MULE_INTERNAL" has no equivalent in encoding "BIG5"
- invalid,incomplete char   | \x8bc68bcf8b     | \x           | \x8bc68bcf8b     | character with byte sequence 0x8b 0xc6 in encoding "MULE_INTERNAL" has no equivalent in encoding "BIG5"
- valid (in SHIFT_JIS)      | \x92bedd         | \x           | \x92bedd         | character with byte sequence 0x92 0xbe 0xdd in encoding "MULE_INTERNAL" has no equivalent in encoding "BIG5"
- invalid, incomplete char) | \x92be           | \x           | \x92be           | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0xbe
- valid (in Big5)           | \x666f6f95a3c1   | \x666f6fa2a1 |                  | 
- invalid, incomplete char  | \x666f6f95a3     | \x666f6f     | \x95a3           | invalid byte sequence for encoding "MULE_INTERNAL": 0x95 0xa3
- invalid, NUL byte         | \x9200bedd       | \x           | \x9200bedd       | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0x00 0xbe
- invalid, NUL byte         | \x92bedd00       | \x           | \x92bedd00       | character with byte sequence 0x92 0xbe 0xdd in encoding "MULE_INTERNAL" has no equivalent in encoding "BIG5"
- invalid, NUL byte         | \x8b00c68bcf8bcf | \x           | \x8b00c68bcf8bcf | invalid byte sequence for encoding "MULE_INTERNAL": 0x8b 0x00
-(10 rows)
-
-select description, inbytes, (test_conv(inbytes, 'mule_internal', 'euc_jp')).* from mic_inputs;
-        description        |     inbytes      |  result  |     errorat      |                                                     error                                                      
----------------------------+------------------+----------+------------------+----------------------------------------------------------------------------------------------------------------
- valid, pure ASCII         | \x666f6f         | \x666f6f |                  | 
- valid (in KOI8R)          | \x8bc68bcf8bcf   | \x       | \x8bc68bcf8bcf   | character with byte sequence 0x8b 0xc6 in encoding "MULE_INTERNAL" has no equivalent in encoding "EUC_JP"
- invalid,incomplete char   | \x8bc68bcf8b     | \x       | \x8bc68bcf8b     | character with byte sequence 0x8b 0xc6 in encoding "MULE_INTERNAL" has no equivalent in encoding "EUC_JP"
- valid (in SHIFT_JIS)      | \x92bedd         | \xbedd   |                  | 
- invalid, incomplete char) | \x92be           | \x       | \x92be           | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0xbe
- valid (in Big5)           | \x666f6f95a3c1   | \x666f6f | \x95a3c1         | character with byte sequence 0x95 0xa3 0xc1 in encoding "MULE_INTERNAL" has no equivalent in encoding "EUC_JP"
- invalid, incomplete char  | \x666f6f95a3     | \x666f6f | \x95a3           | invalid byte sequence for encoding "MULE_INTERNAL": 0x95 0xa3
- invalid, NUL byte         | \x9200bedd       | \x       | \x9200bedd       | invalid byte sequence for encoding "MULE_INTERNAL": 0x92 0x00 0xbe
- invalid, NUL byte         | \x92bedd00       | \xbedd   | \x00             | invalid byte sequence for encoding "MULE_INTERNAL": 0x00
- invalid, NUL byte         | \x8b00c68bcf8bcf | \x       | \x8b00c68bcf8bcf | invalid byte sequence for encoding "MULE_INTERNAL": 0x8b 0x00
-(10 rows)
 

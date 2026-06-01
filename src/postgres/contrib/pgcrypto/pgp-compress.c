@@ -80,7 +80,7 @@ compress_init(PushFilter *next, void *init_arg, void **priv_p)
 	/*
 	 * init
 	 */
-	st = palloc0(sizeof(*st));
+	st = palloc0_object(struct ZipStat);
 	st->buf_len = ZIP_OUT_BUF;
 	st->stream.zalloc = z_alloc;
 	st->stream.zfree = z_free;
@@ -113,7 +113,7 @@ compress_process(PushFilter *next, void *priv, const uint8 *data, int len)
 	/*
 	 * process data
 	 */
-	st->stream.next_in = unconstify(uint8 *, data);
+	st->stream.next_in = data;
 	st->stream.avail_in = len;
 	while (st->stream.avail_in > 0)
 	{
@@ -211,7 +211,7 @@ decompress_init(void **priv_p, void *arg, PullFilter *src)
 		&& ctx->compress_algo != PGP_COMPR_ZIP)
 		return PXE_PGP_UNSUPPORTED_COMPR;
 
-	dec = palloc0(sizeof(*dec));
+	dec = palloc0_object(struct DecomprData);
 	dec->buf_len = ZIP_OUT_BUF;
 	*priv_p = dec;
 

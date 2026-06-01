@@ -22,16 +22,16 @@ PostgreSQL documentation
  <refsynopsisdiv>
 <synopsis>
 ANALYZE [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] [ <replaceable class="parameter">table_and_columns</replaceable> [, ...] ]
-ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replaceable> [, ...] ]
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
     VERBOSE [ <replaceable class="parameter">boolean</replaceable> ]
     SKIP_LOCKED [ <replaceable class="parameter">boolean</replaceable> ]
+    BUFFER_USAGE_LIMIT <replaceable class="parameter">size</replaceable>
 
 <phrase>and <replaceable class="parameter">table_and_columns</replaceable> is:</phrase>
 
-    <replaceable class="parameter">table_name</replaceable> [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ]
+    [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ * ] [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ]
 </synopsis>
  </refsynopsisdiv>
 
@@ -55,13 +55,6 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
    It is further possible to give a list of column names for a table,
    in which case only the statistics for those columns are collected.
   </para>
-
-  <para>
-   When the option list is surrounded by parentheses, the options can be
-   written in any order.  The parenthesized syntax was added in
-   <productname>PostgreSQL</productname> 11;  the unparenthesized syntax
-   is deprecated.
-  </para>
  </refsect1>
 
  <refsect1>
@@ -72,7 +65,7 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
     <term><literal>VERBOSE</literal></term>
     <listitem>
      <para>
-      Enables display of progress messages.
+      Enables display of progress messages at <literal>INFO</literal> level.
      </para>
     </listitem>
    </varlistentry>
@@ -96,6 +89,26 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
    </varlistentry>
 
    <varlistentry>
+    <term><literal>BUFFER_USAGE_LIMIT</literal></term>
+    <listitem>
+     <para>
+      Specifies the
+      <glossterm linkend="glossary-buffer-access-strategy">Buffer Access Strategy</glossterm>
+      ring buffer size for <command>ANALYZE</command>.  This size is used to
+      calculate the number of shared buffers which will be reused as part of
+      this strategy.  <literal>0</literal> disables use of a
+      <literal>Buffer Access Strategy</literal>.   When this option is not
+      specified, <command>ANALYZE</command> uses the value from
+      <xref linkend="guc-vacuum-buffer-usage-limit"/>.  Higher settings can
+      allow <command>ANALYZE</command> to run more quickly, but having too
+      large a setting may cause too many other useful pages to be evicted from
+      shared buffers.  The minimum value is <literal>128 kB</literal> and the
+      maximum value is <literal>16 GB</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><replaceable class="parameter">boolean</replaceable></term>
     <listitem>
      <para>
@@ -110,15 +123,31 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
    </varlistentry>
 
    <varlistentry>
+    <term><replaceable class="parameter">size</replaceable></term>
+    <listitem>
+     <para>
+      Specifies an amount of memory in kilobytes.  Sizes may also be specified
+      as a string containing the numerical size followed by any one of the
+      following memory units: <literal>B</literal> (bytes),
+      <literal>kB</literal> (kilobytes), <literal>MB</literal> (megabytes),
+      <literal>GB</literal> (gigabytes), or <literal>TB</literal> (terabytes).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><replaceable class="parameter">table_name</replaceable></term>
     <listitem>
      <para>
       The name (possibly schema-qualified) of a specific table to
       analyze.  If omitted, all regular tables, partitioned tables, and
       materialized views in the current database are analyzed (but not
-      foreign tables).  If the specified table is a partitioned table, both the
-      inheritance statistics of the partitioned table as a whole and
-      statistics of the individual partitions are updated.
+      foreign tables).  If <literal>ONLY</literal> is specified before
+      the table name, only that table is analyzed.  If <literal>ONLY</literal>
+      is not specified, the table and all its inheritance child tables or
+      partitions (if any) are analyzed.  Optionally, <literal>*</literal>
+      can be specified after the table name to explicitly indicate that
+      inheritance child tables (or partitions) are to be analyzed.
      </para>
     </listitem>
    </varlistentry>
@@ -148,11 +177,9 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
   <title>Notes</title>
 
   <para>
-   To analyze a table, one must ordinarily be the table's owner or a
-   superuser.  However, database owners are allowed to
+   To analyze a table, one must ordinarily have the <literal>MAINTAIN</literal>
+   privilege on the table.  However, database owners are allowed to
    analyze all tables in their databases, except shared catalogs.
-   (The restriction for shared catalogs means that a true database-wide
-   <command>ANALYZE</command> can only be performed by a superuser.)
    <command>ANALYZE</command> will skip over any tables that the calling user
    does not have permission to analyze.
   </para>
@@ -180,9 +207,15 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
   </para>
 
   <para>
+   While <command>ANALYZE</command> is running, the <xref
+   linkend="guc-search-path"/> is temporarily changed to <literal>pg_catalog,
+   pg_temp</literal>.
+  </para>
+
+  <para>
    <command>ANALYZE</command>
    requires only a read lock on the target table, so it can run in
-   parallel with other activity on the table.
+   parallel with other non-DDL activity on the table.
   </para>
 
   <para>
@@ -254,22 +287,23 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
     <command>ANALYZE</command> gathers two sets of statistics: one on the rows
     of the parent table only, and a second including rows of both the parent
     table and all of its children.  This second set of statistics is needed when
-    planning queries that process the inheritance tree as a whole.  The child
-    tables themselves are not individually analyzed in this case.
-    The autovacuum daemon, however, will only consider inserts or
-    updates on the parent table itself when deciding whether to trigger an
-    automatic analyze for that table.  If that table is rarely inserted into
-    or updated, the inheritance statistics will not be up to date unless you
-    run <command>ANALYZE</command> manually.
+    planning queries that process the inheritance tree as a whole.  The
+    autovacuum daemon, however, will only consider inserts or updates on the
+    parent table itself when deciding whether to trigger an automatic analyze
+    for that table.  If that table is rarely inserted into or updated, the
+    inheritance statistics will not be up to date unless you run
+    <command>ANALYZE</command> manually.  By default,
+    <command>ANALYZE</command> will also recursively collect and update the
+    statistics for each inheritance child table.  The <literal>ONLY</literal>
+    keyword may be used to disable this.
   </para>
 
   <para>
     For partitioned tables, <command>ANALYZE</command> gathers statistics by
-    sampling rows from all partitions; in addition, it will recurse into each
-    partition and update its statistics.  Each leaf partition is analyzed only
-    once, even with multi-level partitioning.  No statistics are collected for
-    only the parent table (without data from its partitions), because with
-    partitioning it's guaranteed to be empty.
+    sampling rows from all partitions.  By default,
+    <command>ANALYZE</command> will also recursively collect and update the
+    statistics for each partition.  The <literal>ONLY</literal> keyword may be
+    used to disable this.
   </para>
 
   <para>
@@ -304,6 +338,14 @@ ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replacea
 
   <para>
    There is no <command>ANALYZE</command> statement in the SQL standard.
+  </para>
+
+  <para>
+   The following syntax was used before <productname>PostgreSQL</productname>
+   version 11 and is still supported:
+<synopsis>
+ANALYZE [ VERBOSE ] [ <replaceable class="parameter">table_and_columns</replaceable> [, ...] ]
+</synopsis>
   </para>
  </refsect1>
 

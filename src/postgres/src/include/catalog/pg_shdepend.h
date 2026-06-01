@@ -13,7 +13,7 @@
  * from a relation to its database.  Currently, only dependencies on roles
  * are explicitly stored in pg_shdepend.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_shdepend.h
@@ -28,13 +28,15 @@
 #define PG_SHDEPEND_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_shdepend_d.h"
+#include "catalog/pg_shdepend_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_shdepend definition.  cpp turns this into
  *		typedef struct FormData_pg_shdepend
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_shdepend,1214,SharedDependRelationId) BKI_SHARED_RELATION
 {
 	/*
@@ -65,6 +67,8 @@ CATALOG(pg_shdepend,1214,SharedDependRelationId) BKI_SHARED_RELATION
 	char		deptype;		/* see codes in dependency.h */
 } FormData_pg_shdepend;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_shdepend corresponds to a pointer to a row with
  *		the format of pg_shdepend relation.
@@ -72,7 +76,7 @@ CATALOG(pg_shdepend,1214,SharedDependRelationId) BKI_SHARED_RELATION
  */
 typedef FormData_pg_shdepend *Form_pg_shdepend;
 
-DECLARE_INDEX(pg_shdepend_depender_index, 1232, SharedDependDependerIndexId, on pg_shdepend using btree(dbid oid_ops, classid oid_ops, objid oid_ops, objsubid int4_ops));
-DECLARE_INDEX(pg_shdepend_reference_index, 1233, SharedDependReferenceIndexId, on pg_shdepend using btree(refclassid oid_ops, refobjid oid_ops));
+DECLARE_INDEX(pg_shdepend_depender_index, 1232, SharedDependDependerIndexId, pg_shdepend, btree(dbid oid_ops, classid oid_ops, objid oid_ops, objsubid int4_ops));
+DECLARE_INDEX(pg_shdepend_reference_index, 1233, SharedDependReferenceIndexId, pg_shdepend, btree(refclassid oid_ops, refobjid oid_ops));
 
 #endif							/* PG_SHDEPEND_H */

@@ -41,7 +41,7 @@ install-world-bin-contrib-recurse: install-world-bin-src-recurse
 
 $(call recurse,installdirs uninstall init-po update-po,doc src config)
 
-$(call recurse,distprep coverage,doc src config contrib)
+$(call recurse,coverage,doc src config contrib)
 
 # clean, distclean, etc should apply to contrib too, even though
 # it's not built by default
@@ -53,7 +53,7 @@ clean:
 
 # Important: distclean `src' last, otherwise Makefile.global
 # will be gone too soon.
-distclean maintainer-clean:
+distclean:
 	$(MAKE) -C doc $@
 	$(MAKE) -C contrib $@
 	$(MAKE) -C config $@
@@ -87,33 +87,28 @@ update-unicode: | submake-generated-headers submake-libpgport
 distdir	= postgresql-$(VERSION)
 dummy	= =install=
 
+# git revision to be packaged
+PG_GIT_REVISION = HEAD
+
+GIT = git
+
 dist: $(distdir).tar.gz $(distdir).tar.bz2
-	rm -rf $(distdir)
 
-$(distdir).tar: distdir
-	$(TAR) chf $@ $(distdir)
-
-.INTERMEDIATE: $(distdir).tar
+.PHONY: $(distdir).tar.gz $(distdir).tar.bz2
 
 distdir-location:
 	@echo $(distdir)
 
-distdir:
-	rm -rf $(distdir)* $(dummy)
-	for x in `cd $(top_srcdir) && find . \( -name CVS -prune \) -o \( -name .git -prune \) -o -print`; do \
-	  file=`expr X$$x : 'X\./\(.*\)'`; \
-	  if test -d "$(top_srcdir)/$$file" ; then \
-	    mkdir "$(distdir)/$$file" && chmod 777 "$(distdir)/$$file";	\
-	  else \
-	    ln "$(top_srcdir)/$$file" "$(distdir)/$$file" >/dev/null 2>&1 \
-	      || cp "$(top_srcdir)/$$file" "$(distdir)/$$file"; \
-	  fi || exit; \
-	done
-	$(MAKE) -C $(distdir) distprep
-	$(MAKE) -C $(distdir)/doc/src/sgml/ INSTALL
-	cp $(distdir)/doc/src/sgml/INSTALL $(distdir)/
-	$(MAKE) -C $(distdir) distclean
-	rm -f $(distdir)/README.git
+# Note: core.autocrlf=false is needed to avoid line-ending conversion
+# in case the environment has a different setting.  Without this, a
+# tarball created on Windows might be different than on, and unusable
+# on, Unix machines.
+
+$(distdir).tar.gz:
+	$(GIT) -C $(srcdir) -c core.autocrlf=false archive --format tar.gz -9 --prefix $(distdir)/ $(PG_GIT_REVISION) -o $(abs_top_builddir)/$@
+
+$(distdir).tar.bz2:
+	$(GIT) -C $(srcdir) -c core.autocrlf=false -c tar.tar.bz2.command='$(BZIP2) -c' archive --format tar.bz2 --prefix $(distdir)/ $(PG_GIT_REVISION) -o $(abs_top_builddir)/$@
 
 distcheck: dist
 	rm -rf $(dummy)
@@ -122,7 +117,6 @@ distcheck: dist
 	install_prefix=`cd $(dummy) && pwd`; \
 	cd $(distdir) \
 	&& ./configure --prefix="$$install_prefix"
-	$(MAKE) -C $(distdir) -q distprep
 	$(MAKE) -C $(distdir)
 	$(MAKE) -C $(distdir) install
 	$(MAKE) -C $(distdir) uninstall
@@ -138,6 +132,6 @@ headerscheck: submake-generated-headers
 	$(top_srcdir)/src/tools/pginclude/headerscheck $(top_srcdir) $(abs_top_builddir)
 
 cpluspluscheck: submake-generated-headers
-	$(top_srcdir)/src/tools/pginclude/cpluspluscheck $(top_srcdir) $(abs_top_builddir)
+	$(top_srcdir)/src/tools/pginclude/headerscheck --cplusplus $(top_srcdir) $(abs_top_builddir)
 
-.PHONY: dist distdir distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck
+.PHONY: dist distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck

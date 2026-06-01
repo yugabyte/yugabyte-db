@@ -4,7 +4,7 @@
  *	  prototypes for nodeHash.c
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/nodeHash.h
@@ -24,8 +24,7 @@ extern Node *MultiExecHash(HashState *node);
 extern void ExecEndHash(HashState *node);
 extern void ExecReScanHash(HashState *node);
 
-extern HashJoinTable ExecHashTableCreate(HashState *state, List *hashOperators, List *hashCollations,
-										 bool keepNulls);
+extern HashJoinTable ExecHashTableCreate(HashState *state);
 extern void ExecParallelHashTableAlloc(HashJoinTable hashtable,
 									   int batchno);
 extern void ExecHashTableDestroy(HashJoinTable hashtable);
@@ -43,12 +42,6 @@ extern void ExecParallelHashTableInsert(HashJoinTable hashtable,
 extern void ExecParallelHashTableInsertCurrentBatch(HashJoinTable hashtable,
 													TupleTableSlot *slot,
 													uint32 hashvalue);
-extern bool ExecHashGetHashValue(HashJoinTable hashtable,
-								 ExprContext *econtext,
-								 List *hashkeys,
-								 bool outer_tuple,
-								 bool keep_nulls,
-								 uint32 *hashvalue);
 extern void ExecHashGetBucketAndBatch(HashJoinTable hashtable,
 									  uint32 hashvalue,
 									  int *bucketno,
@@ -56,8 +49,11 @@ extern void ExecHashGetBucketAndBatch(HashJoinTable hashtable,
 extern bool ExecScanHashBucket(HashJoinState *hjstate, ExprContext *econtext);
 extern bool ExecParallelScanHashBucket(HashJoinState *hjstate, ExprContext *econtext);
 extern void ExecPrepHashTableForUnmatched(HashJoinState *hjstate);
+extern bool ExecParallelPrepHashTableForUnmatched(HashJoinState *hjstate);
 extern bool ExecScanHashTableForUnmatched(HashJoinState *hjstate,
 										  ExprContext *econtext);
+extern bool ExecParallelScanHashTableForUnmatched(HashJoinState *hjstate,
+												  ExprContext *econtext);
 extern void ExecHashTableReset(HashJoinTable hashtable);
 extern void ExecHashTableResetMatchFlags(HashJoinTable hashtable);
 extern void ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
@@ -68,6 +64,7 @@ extern void ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
 									int *numbatches,
 									int *num_skew_mcvs);
 extern int	ExecHashGetSkewBucket(HashJoinTable hashtable, uint32 hashvalue);
+extern Tuplestorestate *ExecHashBuildNullTupleStore(HashJoinTable hashtable);
 extern void ExecHashEstimate(HashState *node, ParallelContext *pcxt);
 extern void ExecHashInitializeDSM(HashState *node, ParallelContext *pcxt);
 extern void ExecHashInitializeWorker(HashState *node, ParallelWorkerContext *pwcxt);

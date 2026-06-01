@@ -13,7 +13,7 @@
  * cutoff value computed from the selection probability by BeginSampleScan.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -26,12 +26,11 @@
 
 #include <math.h>
 
-#include "access/relscan.h"
 #include "access/tsmapi.h"
 #include "catalog/pg_type.h"
 #include "common/hashfn.h"
 #include "optimizer/optimizer.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 
 
 /* Private state */
@@ -130,7 +129,7 @@ system_samplescangetsamplesize(PlannerInfo *root,
 static void
 system_initsamplescan(SampleScanState *node, int eflags)
 {
-	node->tsm_state = palloc0(sizeof(SystemSamplerData));
+	node->tsm_state = palloc0_object(SystemSamplerData);
 }
 
 /*

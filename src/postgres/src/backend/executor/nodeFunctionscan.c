@@ -3,7 +3,7 @@
  * nodeFunctionscan.c
  *	  Support routines for scanning RangeFunctions (functions in rangetable).
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -26,8 +26,8 @@
 #include "executor/nodeFunctionscan.h"
 #include "funcapi.h"
 #include "nodes/nodeFuncs.h"
-#include "utils/builtins.h"
 #include "utils/memutils.h"
+#include "utils/tuplestore.h"
 
 
 /*
@@ -334,7 +334,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	 */
 	ExecAssignExprContext(estate, &scanstate->ss.ps);
 
-	scanstate->funcstates = palloc(nfuncs * sizeof(FunctionScanPerFuncState));
+	scanstate->funcstates = palloc_array(FunctionScanPerFuncState, nfuncs);
 
 	natts = 0;
 	i = 0;
@@ -415,6 +415,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 				TupleDescInitEntryCollation(tupdesc,
 											(AttrNumber) 1,
 											exprCollation(funcexpr));
+				TupleDescFinalize(tupdesc);
 			}
 			else
 			{
@@ -486,6 +487,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 							   0);
 		}
 
+		TupleDescFinalize(scan_tupdesc);
 		Assert(attno == natts);
 	}
 
@@ -493,7 +495,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	 * Initialize scan slot and type.
 	 */
 	ExecInitScanTupleSlot(estate, &scanstate->ss, scan_tupdesc,
-						  &TTSOpsMinimalTuple);
+						  &TTSOpsMinimalTuple, 0);
 
 	/*
 	 * Initialize result slot, type and projection.
@@ -533,26 +535,11 @@ ExecEndFunctionScan(FunctionScanState *node)
 	int			i;
 
 	/*
-	 * Free the exprcontext
-	 */
-	ExecFreeExprContext(&node->ss.ps);
-
-	/*
-	 * clean out the tuple table
-	 */
-	if (node->ss.ps.ps_ResultTupleSlot)
-		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-
-	/*
 	 * Release slots and tuplestore resources
 	 */
 	for (i = 0; i < node->nfuncs; i++)
 	{
 		FunctionScanPerFuncState *fs = &node->funcstates[i];
-
-		if (fs->func_slot)
-			ExecClearTuple(fs->func_slot);
 
 		if (fs->tstore != NULL)
 		{

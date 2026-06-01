@@ -2,6 +2,14 @@
 
 TAP_TESTS = 1
 
+EXTRA_INSTALL=src/test/modules/injection_points \
+	contrib/test_decoding
+
+# The injection points are cluster-wide, so disable installcheck
+NO_INSTALLCHECK = 1
+
+export enable_injection_points
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

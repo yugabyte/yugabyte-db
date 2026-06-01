@@ -21,7 +21,7 @@
  * are loaded near the end of initdb.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_init_privs.h
@@ -36,13 +36,15 @@
 #define PG_INIT_PRIVS_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_init_privs_d.h"
+#include "catalog/pg_init_privs_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_init_privs definition.  cpp turns this into
  *		typedef struct FormData_pg_init_privs
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_init_privs,3394,InitPrivsRelationId)
 {
 	Oid			objoid;			/* OID of object itself */
@@ -56,6 +58,8 @@ CATALOG(pg_init_privs,3394,InitPrivsRelationId)
 #endif
 } FormData_pg_init_privs;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_init_privs corresponds to a pointer to a tuple with
  *		the format of pg_init_privs relation.
@@ -65,7 +69,7 @@ typedef FormData_pg_init_privs * Form_pg_init_privs;
 
 DECLARE_TOAST(pg_init_privs, 4155, 4156);
 
-DECLARE_UNIQUE_INDEX_PKEY(pg_init_privs_o_c_o_index, 3395, InitPrivsObjIndexId, on pg_init_privs using btree(objoid oid_ops, classoid oid_ops, objsubid int4_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_init_privs_o_c_o_index, 3395, InitPrivsObjIndexId, pg_init_privs, btree(objoid oid_ops, classoid oid_ops, objsubid int4_ops));
 
 /*
  * It is important to know if the initial privileges are from initdb or from an
@@ -77,7 +81,7 @@ DECLARE_UNIQUE_INDEX_PKEY(pg_init_privs_o_c_o_index, 3395, InitPrivsObjIndexId, 
 typedef enum InitPrivsType
 {
 	INITPRIVS_INITDB = 'i',
-	INITPRIVS_EXTENSION = 'e'
-} InitPrivsType;
+	INITPRIVS_EXTENSION = 'e',
+}			InitPrivsType;
 
 #endif							/* PG_INIT_PRIVS_H */

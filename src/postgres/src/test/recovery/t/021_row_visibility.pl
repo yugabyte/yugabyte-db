@@ -1,10 +1,10 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Checks that snapshots on standbys behave in a minimally reasonable
 # way.
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -38,24 +38,26 @@ my $psql_timeout =
 # to check uncommitted changes being replicated and such.
 my %psql_primary = (stdin => '', stdout => '', stderr => '');
 $psql_primary{run} = IPC::Run::start(
-	[ 'psql', '-XA', '-f', '-', '-d', $node_primary->connstr('postgres') ],
-	'<',
-	\$psql_primary{stdin},
-	'>',
-	\$psql_primary{stdout},
-	'2>',
-	\$psql_primary{stderr},
+	[
+		'psql', '--no-psqlrc', '--no-align',
+		'--file' => '-',
+		'--dbname' => $node_primary->connstr('postgres'),
+	],
+	'<' => \$psql_primary{stdin},
+	'>' => \$psql_primary{stdout},
+	'2>' => \$psql_primary{stderr},
 	$psql_timeout);
 
 my %psql_standby = ('stdin' => '', 'stdout' => '', 'stderr' => '');
 $psql_standby{run} = IPC::Run::start(
-	[ 'psql', '-XA', '-f', '-', '-d', $node_standby->connstr('postgres') ],
-	'<',
-	\$psql_standby{stdin},
-	'>',
-	\$psql_standby{stdout},
-	'2>',
-	\$psql_standby{stderr},
+	[
+		'psql', '--no-psqlrc', '--no-align',
+		'--file' => '-',
+		'--dbname' => $node_standby->connstr('postgres'),
+	],
+	'<' => \$psql_standby{stdin},
+	'>' => \$psql_standby{stdout},
+	'2>' => \$psql_standby{stderr},
 	$psql_timeout);
 
 #
@@ -168,7 +170,6 @@ $node_standby->stop;
 sub send_query_and_wait
 {
 	my ($psql, $query, $untl) = @_;
-	my $ret;
 
 	# send query
 	$$psql{stdin} .= $query;

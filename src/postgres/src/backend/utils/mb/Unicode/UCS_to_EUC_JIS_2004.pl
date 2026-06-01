@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# Copyright (c) 2007-2022, PostgreSQL Global Development Group
+# Copyright (c) 2007-2026, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/UCS_to_EUC_JIS_2004.pl
 #
@@ -8,7 +8,7 @@
 # "euc-jis-2004-std.txt" (http://x0213.org)
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use convutils;
 
@@ -37,13 +37,13 @@ while (my $line = <$in>)
 
 		push @all,
 		  {
-			direction  => BOTH,
-			ucs        => $ucs1,
+			direction => BOTH,
+			ucs => $ucs1,
 			ucs_second => $ucs2,
-			code       => $code,
-			comment    => $rest,
-			f          => $in_file,
-			l          => $.
+			code => $code,
+			comment => $rest,
+			f => $in_file,
+			l => $.
 		  };
 	}
 	elsif ($line =~ /^0x(\w+)\s*U\+(\w+)\s*#\s*(\S.*)?\s*$/)
@@ -51,7 +51,7 @@ while (my $line = <$in>)
 
 		# non-combined characters
 		my ($c, $u, $rest) = ($1, $2, "U+" . $2 . $3);
-		my $ucs  = hex($u);
+		my $ucs = hex($u);
 		my $code = hex($c);
 
 		next if ($code < 0x80 && $ucs < 0x80);
@@ -59,11 +59,11 @@ while (my $line = <$in>)
 		push @all,
 		  {
 			direction => BOTH,
-			ucs       => $ucs,
-			code      => $code,
-			comment   => $rest,
-			f         => $in_file,
-			l         => $.
+			ucs => $ucs,
+			code => $code,
+			comment => $rest,
+			f => $in_file,
+			l => $.
 		  };
 	}
 }

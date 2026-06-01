@@ -25,9 +25,6 @@
 
 #include <limits.h>
 #include <math.h>
-#ifdef HAVE_SYS_RESOURCE_H
-#include <sys/resource.h>
-#endif
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
@@ -40,9 +37,7 @@
 #include "catalog/pg_type_d.h"
 #include "funcapi.h"
 #include "pg_yb_utils.h"
-#ifndef HAVE_GETRUSAGE
-#include "rusagestub.h"
-#endif
+#include <sys/resource.h>
 #include "utils/builtins.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -213,7 +208,7 @@ yb_mem_usage_sql(PG_FUNCTION_ARGS)
 	char		s[1024];
 	int64		usage = MemoryContextStatsUsage(TopMemoryContext, 100);
 
-	sprintf(s, "SQL layer memory usage = %ld bytes", usage);
+	sprintf(s, "SQL layer memory usage = %lld bytes", (long long) usage);
 	PG_RETURN_TEXT_P(cstring_to_text(s));
 }
 

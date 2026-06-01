@@ -85,7 +85,7 @@ YbSeqNext(YbSeqScanState *node)
 			 */
 			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->aggrefs));
 
-			ExecInitScanTupleSlot(estate, &node->ss, tupdesc, &TTSOpsVirtual);
+			ExecInitScanTupleSlot(estate, &node->ss, tupdesc, &TTSOpsVirtual, 0);
 			/* Refresh the local pointer. */
 			slot = node->ss.ss_ScanTupleSlot;
 		}
@@ -308,7 +308,7 @@ ExecInitYbSeqScan(YbSeqScan *node, EState *estate, int eflags)
 	/* and create slot with the appropriate rowtype */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  RelationGetDescr(scanstate->ss.ss_currentRelation),
-						  &TTSOpsVirtual);
+						  &TTSOpsVirtual, 0 /* flags */ );
 
 	/*
 	 * Initialize result type and projection.
@@ -342,10 +342,9 @@ ExecEndYbSeqScan(YbSeqScanState *node)
 	tsdesc = node->ss.ss_currentScanDesc;
 
 	/*
-	 * Free the exprcontext
+	 * YB_TODO_PG19MERGE: PG commit d060e921ea5aa47b6265174c32e1128cebdbc3df
+	 * removed ExecFreeExprContext
 	 */
-	ExecFreeExprContext(&node->ss.ps);
-
 	/*
 	 * clean out the tuple table
 	 */

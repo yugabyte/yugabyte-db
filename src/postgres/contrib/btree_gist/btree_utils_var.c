@@ -3,15 +3,14 @@
  */
 #include "postgres.h"
 
-#include <math.h>
 #include <limits.h>
 #include <float.h>
 
 #include "btree_gist.h"
 #include "btree_utils_var.h"
-#include "utils/builtins.h"
-#include "utils/pg_locale.h"
+#include "mb/pg_wchar.h"
 #include "utils/rel.h"
+#include "varatt.h"
 
 /* used for key sorting */
 typedef struct
@@ -40,7 +39,7 @@ gbt_var_decompress(PG_FUNCTION_ARGS)
 
 	if (key != (GBT_VARKEY *) DatumGetPointer(entry->key))
 	{
-		GISTENTRY  *retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		GISTENTRY  *retval = palloc_object(GISTENTRY);
 
 		gistentryinit(*retval, PointerGetDatum(key),
 					  entry->rel, entry->page,
@@ -71,7 +70,7 @@ gbt_var_key_readable(const GBT_VARKEY *k)
  * Create a leaf-entry to store in the index, from a single Datum.
  */
 static GBT_VARKEY *
-gbt_var_key_from_datum(const struct varlena *u)
+gbt_var_key_from_datum(const varlena *u)
 {
 	int32		lowersize = VARSIZE(u);
 	GBT_VARKEY *r;
@@ -116,36 +115,47 @@ gbt_var_leaf2node(GBT_VARKEY *leaf, const gbtree_vinfo *tinfo, FmgrInfo *flinfo)
 
 /*
  * returns the common prefix length of a node key
+ *
+ * If the underlying type is character data, the prefix length may point in
+ * the middle of a multibyte character.
 */
 static int32
 gbt_var_node_cp_len(const GBT_VARKEY *node, const gbtree_vinfo *tinfo)
 {
 	GBT_VARKEY_R r = gbt_var_key_readable(node);
 	int32		i = 0;
-	int32		l = 0;
+	int32		l_left_to_match = 0;
+	int32		l_total = 0;
 	int32		t1len = VARSIZE(r.lower) - VARHDRSZ;
 	int32		t2len = VARSIZE(r.upper) - VARHDRSZ;
 	int32		ml = Min(t1len, t2len);
 	char	   *p1 = VARDATA(r.lower);
 	char	   *p2 = VARDATA(r.upper);
+	const char *end1 = p1 + t1len;
+	const char *end2 = p2 + t2len;
 
 	if (ml == 0)
 		return 0;
 
 	while (i < ml)
 	{
-		if (tinfo->eml > 1 && l == 0)
+		if (tinfo->eml > 1 && l_left_to_match == 0)
 		{
-			if ((l = pg_mblen(p1)) != pg_mblen(p2))
+			l_total = pg_mblen_range(p1, end1);
+			if (l_total != pg_mblen_range(p2, end2))
 			{
 				return i;
 			}
+			l_left_to_match = l_total;
 		}
 		if (*p1 != *p2)
 		{
 			if (tinfo->eml > 1)
 			{
-				return (i - l + 1);
+				int32		l_matched_subset = l_total - l_left_to_match;
+
+				/* end common prefix at final byte of last matching char */
+				return i - l_matched_subset;
 			}
 			else
 			{
@@ -155,7 +165,7 @@ gbt_var_node_cp_len(const GBT_VARKEY *node, const gbtree_vinfo *tinfo)
 
 		p1++;
 		p2++;
-		l--;
+		l_left_to_match--;
 		i++;
 	}
 	return ml;					/* lower == upper */
@@ -284,12 +294,12 @@ gbt_var_compress(GISTENTRY *entry, const gbtree_vinfo *tinfo)
 
 	if (entry->leafkey)
 	{
-		struct varlena *leaf = PG_DETOAST_DATUM(entry->key);
+		varlena    *leaf = PG_DETOAST_DATUM(entry->key);
 		GBT_VARKEY *r;
 
 		r = gbt_var_key_from_datum(leaf);
 
-		retval = palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(r),
 					  entry->rel, entry->page,
 					  entry->offset, true);
@@ -309,7 +319,7 @@ gbt_var_fetch(PG_FUNCTION_ARGS)
 	GBT_VARKEY_R r = gbt_var_key_readable(key);
 	GISTENTRY  *retval;
 
-	retval = palloc(sizeof(GISTENTRY));
+	retval = palloc_object(GISTENTRY);
 	gistentryinit(*retval, PointerGetDatum(r.lower),
 				  entry->rel, entry->page,
 				  entry->offset, true);
@@ -426,7 +436,7 @@ gbt_var_penalty(float *res, const GISTENTRY *o, const GISTENTRY *n,
 			tmp[1] = (unsigned char) (((VARSIZE(uk.lower) - VARHDRSZ) <= ul) ? 0 : (VARDATA(uk.lower)[ul]));
 			tmp[2] = (unsigned char) (((VARSIZE(ok.upper) - VARHDRSZ) <= ul) ? 0 : (VARDATA(ok.upper)[ul]));
 			tmp[3] = (unsigned char) (((VARSIZE(uk.upper) - VARHDRSZ) <= ul) ? 0 : (VARDATA(uk.upper)[ul]));
-			dres = Abs(tmp[0] - tmp[1]) + Abs(tmp[3] - tmp[2]);
+			dres = abs(tmp[0] - tmp[1]) + abs(tmp[3] - tmp[2]);
 			dres /= 256.0;
 		}
 
@@ -467,7 +477,7 @@ gbt_var_picksplit(const GistEntryVector *entryvec, GIST_SPLITVEC *v,
 	GBT_VARKEY **sv = NULL;
 	gbt_vsrt_arg varg;
 
-	arr = (Vsrt *) palloc((maxoff + 1) * sizeof(Vsrt));
+	arr = palloc_array(Vsrt, maxoff + 1);
 	nbytes = (maxoff + 2) * sizeof(OffsetNumber);
 	v->spl_left = (OffsetNumber *) palloc(nbytes);
 	v->spl_right = (OffsetNumber *) palloc(nbytes);
@@ -476,7 +486,7 @@ gbt_var_picksplit(const GistEntryVector *entryvec, GIST_SPLITVEC *v,
 	v->spl_nleft = 0;
 	v->spl_nright = 0;
 
-	sv = palloc(sizeof(bytea *) * (maxoff + 1));
+	sv = palloc_array(GBT_VARKEY *, maxoff + 1);
 
 	/* Sort entries */
 
@@ -502,11 +512,11 @@ gbt_var_picksplit(const GistEntryVector *entryvec, GIST_SPLITVEC *v,
 	varg.tinfo = tinfo;
 	varg.collation = collation;
 	varg.flinfo = flinfo;
-	qsort_arg((void *) &arr[FirstOffsetNumber],
+	qsort_arg(&arr[FirstOffsetNumber],
 			  maxoff - FirstOffsetNumber + 1,
 			  sizeof(Vsrt),
 			  gbt_vsrt_cmp,
-			  (void *) &varg);
+			  &varg);
 
 	/* We do simply create two parts */
 

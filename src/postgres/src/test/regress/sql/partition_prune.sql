@@ -2,6 +2,25 @@
 -- Test partitioning planner code
 --
 
+-- Helper function which can be used for masking out portions of EXPLAIN
+-- ANALYZE which could contain information that's not consistent on all
+-- platforms.
+create function explain_analyze(query text) returns setof text
+language plpgsql as
+$$
+declare
+    ln text;
+begin
+    for ln in
+        execute format('explain (analyze, costs off, summary off, timing off, buffers off) %s',
+            query)
+    loop
+        ln := regexp_replace(ln, 'Maximum Storage: \d+', 'Maximum Storage: N');
+        return next ln;
+    end loop;
+end;
+$$;
+
 -- Force generic plans to be used for all prepared statements in this file.
 set plan_cache_mode = force_generic_plan;
 
@@ -186,10 +205,17 @@ insert into boolpart values(null);
 explain (costs off) select * from boolpart where a is not true;
 explain (costs off) select * from boolpart where a is not true and a is not false;
 explain (costs off) select * from boolpart where a is not false;
+explain (costs off) select * from boolpart where a is not unknown;
 
 select * from boolpart where a is not true;
 select * from boolpart where a is not true and a is not false;
 select * from boolpart where a is not false;
+select * from boolpart where a is not unknown;
+
+-- check that all partitions are pruned when faced with conflicting clauses
+explain (costs off) select * from boolpart where a is not unknown and a is unknown;
+explain (costs off) select * from boolpart where a is false and a is unknown;
+explain (costs off) select * from boolpart where a is true and a is unknown;
 
 -- inverse boolean partitioning - a seemingly unlikely design, but we've got
 -- code for it, so we'd better test it.
@@ -349,16 +375,16 @@ explain (costs off) select * from like_op_noprune where a like '%BC';
 create table lparted_by_int2 (a smallint) partition by list (a);
 create table lparted_by_int2_1 partition of lparted_by_int2 for values in (1);
 create table lparted_by_int2_16384 partition of lparted_by_int2 for values in (16384);
-explain (costs off) select * from lparted_by_int2 where a = 100000000000000;
+explain (costs off) select * from lparted_by_int2 where a = 100_000_000_000_000;
 
 create table rparted_by_int2 (a smallint) partition by range (a);
 create table rparted_by_int2_1 partition of rparted_by_int2 for values from (1) to (10);
 create table rparted_by_int2_16384 partition of rparted_by_int2 for values from (10) to (16384);
 -- all partitions pruned
-explain (costs off) select * from rparted_by_int2 where a > 100000000000000;
+explain (costs off) select * from rparted_by_int2 where a > 100_000_000_000_000;
 create table rparted_by_int2_maxvalue partition of rparted_by_int2 for values from (16384) to (maxvalue);
 -- all partitions but rparted_by_int2_maxvalue pruned
-explain (costs off) select * from rparted_by_int2 where a > 100000000000000;
+explain (costs off) select * from rparted_by_int2 where a > 100_000_000_000_000;
 
 drop table lp, coll_pruning, rlp, mc3p, mc2p, boolpart, iboolpart, boolrangep, rp, coll_pruning_multi, like_op_noprune, lparted_by_int2, rparted_by_int2;
 
@@ -382,7 +408,7 @@ drop table asptab;
 --
 -- Use hand-rolled hash functions and operator classes to get predictable
 -- result on different machines.  See the definitions of
--- part_part_test_int4_ops and part_test_text_ops in insert.sql.
+-- part_test_int4_ops and part_test_text_ops in test_setup.sql.
 --
 
 create table hp (a int, b text, c int)
@@ -454,8 +480,8 @@ set enable_indexonlyscan = off;
 prepare ab_q1 (int, int, int) as
 select * from ab where a between $1 and $2 and b <= $3;
 
-explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 2, 3);
-explain (analyze, costs off, summary off, timing off) execute ab_q1 (1, 2, 3);
+explain (analyze, costs off, summary off, timing off, buffers off) execute ab_q1 (2, 2, 3);
+explain (analyze, costs off, summary off, timing off, buffers off) execute ab_q1 (1, 2, 3);
 
 deallocate ab_q1;
 
@@ -463,21 +489,21 @@ deallocate ab_q1;
 prepare ab_q1 (int, int) as
 select a from ab where a between $1 and $2 and b < 3;
 
-explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 2);
-explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 4);
+explain (analyze, costs off, summary off, timing off, buffers off) execute ab_q1 (2, 2);
+explain (analyze, costs off, summary off, timing off, buffers off) execute ab_q1 (2, 4);
 
 -- Ensure a mix of PARAM_EXTERN and PARAM_EXEC Params work together at
 -- different levels of partitioning.
 prepare ab_q2 (int, int) as
 select a from ab where a between $1 and $2 and b < (select 3);
 
-explain (analyze, costs off, summary off, timing off) execute ab_q2 (2, 2);
+explain (analyze, costs off, summary off, timing off, buffers off) execute ab_q2 (2, 2);
 
 -- As above, but swap the PARAM_EXEC Param to the first partition level
 prepare ab_q3 (int, int) as
 select a from ab where b between $1 and $2 and a < (select 3);
 
-explain (analyze, costs off, summary off, timing off) execute ab_q3 (2, 2);
+explain (analyze, costs off, summary off, timing off, buffers off) execute ab_q3 (2, 2);
 
 --
 -- Test runtime pruning with hash partitioned tables
@@ -527,13 +553,13 @@ begin;
 create function list_part_fn(int) returns int as $$ begin return $1; end;$$ language plpgsql stable;
 
 -- Ensure pruning works using a stable function containing no Vars
-explain (analyze, costs off, summary off, timing off) select * from list_part where a = list_part_fn(1);
+explain (analyze, costs off, summary off, timing off, buffers off) select * from list_part where a = list_part_fn(1);
 
 -- Ensure pruning does not take place when the function has a Var parameter
-explain (analyze, costs off, summary off, timing off) select * from list_part where a = list_part_fn(a);
+explain (analyze, costs off, summary off, timing off, buffers off) select * from list_part where a = list_part_fn(a);
 
 -- Ensure pruning does not take place when the expression contains a Var.
-explain (analyze, costs off, summary off, timing off) select * from list_part where a = list_part_fn(1) + a;
+explain (analyze, costs off, summary off, timing off, buffers off) select * from list_part where a = list_part_fn(1) + a;
 
 rollback;
 
@@ -556,12 +582,16 @@ declare
     ln text;
 begin
     for ln in
-        execute format('explain (analyze, costs off, summary off, timing off) %s',
+        execute format('explain (analyze, costs off, summary off, timing off, buffers off) %s',
             $1)
     loop
         ln := regexp_replace(ln, 'Workers Launched: \d+', 'Workers Launched: N');
-        ln := regexp_replace(ln, 'actual rows=\d+ loops=\d+', 'actual rows=N loops=N');
+        ln := regexp_replace(ln, 'actual rows=\d+(?:\.\d+)? loops=\d+', 'actual rows=N loops=N');
         ln := regexp_replace(ln, 'Rows Removed by Filter: \d+', 'Rows Removed by Filter: N');
+        perform regexp_matches(ln, 'Index Searches: \d+');
+        if found then
+          continue;
+        end if;
         return next ln;
     end loop;
 end;
@@ -639,15 +669,15 @@ reset min_parallel_table_scan_size;
 reset max_parallel_workers_per_gather;
 
 -- Test run-time partition pruning with an initplan
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from ab where a = (select max(a) from lprt_a) and b = (select max(a)-1 from lprt_a);
 
 -- Test run-time partition pruning with UNION ALL parents
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from (select * from ab where a = 1 union all select * from ab) ab where b = (select 1);
 
 -- A case containing a UNION ALL with a non-partitioned child.
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from (select * from ab where a = 1 union all (values(10,5)) union all select * from ab) ab where b = (select 1);
 
 -- Another UNION ALL test, but containing a mix of exec init and exec run-time pruning.
@@ -667,7 +697,7 @@ union all
 ) ab where a = $1 and b = (select -10);
 
 -- Ensure the xy_1 subplan is not pruned.
-explain (analyze, costs off, summary off, timing off) execute ab_q6(1);
+explain (analyze, costs off, summary off, timing off, buffers off) execute ab_q6(1);
 
 -- Ensure we see just the xy_1 row.
 execute ab_q6(100);
@@ -684,15 +714,15 @@ deallocate ab_q6;
 
 -- UPDATE on a partition subtree has been seen to have problems.
 insert into ab values (1,2);
-explain (analyze, costs off, summary off, timing off)
-update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
+select explain_analyze('
+update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;');
 table ab;
 
 -- Test UPDATE where source relation has run-time pruning enabled
 truncate ab;
 insert into ab values (1, 1), (1, 2), (1, 3), (2, 1);
-explain (analyze, costs off, summary off, timing off)
-update ab_a1 set b = 3 from ab_a2 where ab_a2.b = (select 1);
+select explain_analyze('
+update ab_a1 set b = 3 from ab_a2 where ab_a2.b = (select 1);');
 select tableoid::regclass, * from ab;
 
 drop table ab, lprt_a;
@@ -722,10 +752,10 @@ insert into tprt values (10), (20), (501), (502), (505), (1001), (4500);
 set enable_hashjoin = off;
 set enable_mergejoin = off;
 
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from tbl1 join tprt on tbl1.col1 > tprt.col1;
 
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
 
 select tbl1.col1, tprt.col1 from tbl1
@@ -738,10 +768,10 @@ order by tbl1.col1, tprt.col1;
 
 -- Multiple partitions
 insert into tbl1 values (1001), (1010), (1011);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from tbl1 inner join tprt on tbl1.col1 > tprt.col1;
 
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from tbl1 inner join tprt on tbl1.col1 = tprt.col1;
 
 select tbl1.col1, tprt.col1 from tbl1
@@ -755,7 +785,7 @@ order by tbl1.col1, tprt.col1;
 -- Last partition
 delete from tbl1;
 insert into tbl1 values (4400);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from tbl1 join tprt on tbl1.col1 < tprt.col1;
 
 select tbl1.col1, tprt.col1 from tbl1
@@ -765,7 +795,7 @@ order by tbl1.col1, tprt.col1;
 -- No matching partition
 delete from tbl1;
 insert into tbl1 values (10000);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
 
 select tbl1.col1, tprt.col1 from tbl1
@@ -788,7 +818,7 @@ prepare part_abc_q1 (int, int, int) as
 select * from part_abc where a = $1 and b = $2 and c = $3;
 
 -- Single partition should be scanned.
-explain (analyze, costs off, summary off, timing off) execute part_abc_q1 (1, 2, 3);
+explain (analyze, costs off, summary off, timing off, buffers off) execute part_abc_q1 (1, 2, 3);
 
 deallocate part_abc_q1;
 
@@ -808,12 +838,12 @@ select * from listp where b = 1;
 -- which match the given parameter.
 prepare q1 (int,int) as select * from listp where b in ($1,$2);
 
-explain (analyze, costs off, summary off, timing off)  execute q1 (1,1);
+explain (analyze, costs off, summary off, timing off, buffers off)  execute q1 (1,1);
 
-explain (analyze, costs off, summary off, timing off)  execute q1 (2,2);
+explain (analyze, costs off, summary off, timing off, buffers off)  execute q1 (2,2);
 
 -- Try with no matching partitions.
-explain (analyze, costs off, summary off, timing off)  execute q1 (0,0);
+explain (analyze, costs off, summary off, timing off, buffers off)  execute q1 (0,0);
 
 deallocate q1;
 
@@ -821,13 +851,13 @@ deallocate q1;
 prepare q1 (int,int,int,int) as select * from listp where b in($1,$2) and $3 <> b and $4 <> b;
 
 -- Both partitions allowed by IN clause, but one disallowed by <> clause
-explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,0);
+explain (analyze, costs off, summary off, timing off, buffers off)  execute q1 (1,2,2,0);
 
 -- Both partitions allowed by IN clause, then both excluded again by <> clauses.
-explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,1);
+explain (analyze, costs off, summary off, timing off, buffers off)  execute q1 (1,2,2,1);
 
 -- Ensure Params that evaluate to NULL properly prune away all partitions
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from listp where a = (select null::int);
 
 drop table listp;
@@ -844,30 +874,30 @@ create table stable_qual_pruning3 partition of stable_qual_pruning
   for values from ('3000-02-01') to ('3000-03-01');
 
 -- comparison against a stable value requires run-time pruning
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from stable_qual_pruning where a < localtimestamp;
 
 -- timestamp < timestamptz comparison is only stable, not immutable
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from stable_qual_pruning where a < '2000-02-01'::timestamptz;
 
 -- check ScalarArrayOp cases
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from stable_qual_pruning
   where a = any(array['2010-02-01', '2020-01-01']::timestamp[]);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from stable_qual_pruning
   where a = any(array['2000-02-01', '2010-01-01']::timestamp[]);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from stable_qual_pruning
   where a = any(array['2000-02-01', localtimestamp]::timestamp[]);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from stable_qual_pruning
   where a = any(array['2010-02-01', '2020-01-01']::timestamptz[]);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from stable_qual_pruning
   where a = any(array['2000-02-01', '2010-01-01']::timestamptz[]);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from stable_qual_pruning
   where a = any(null::timestamptz[]);
 
@@ -887,7 +917,7 @@ create table mc3p2 partition of mc3p
   for values from (2, minvalue, minvalue) to (3, maxvalue, maxvalue);
 insert into mc3p values (0, 1, 1), (1, 1, 1), (2, 1, 1);
 
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from mc3p where a < 3 and abs(b) = 1;
 
 --
@@ -897,12 +927,12 @@ select * from mc3p where a < 3 and abs(b) = 1;
 --
 prepare ps1 as
   select * from mc3p where a = $1 and abs(b) < (select 3);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 execute ps1(1);
 deallocate ps1;
 prepare ps2 as
   select * from mc3p where a <= $1 and abs(b) < (select 3);
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 execute ps2(1);
 deallocate ps2;
 
@@ -916,10 +946,10 @@ create table boolp (a bool) partition by list (a);
 create table boolp_t partition of boolp for values in('t');
 create table boolp_f partition of boolp for values in('f');
 
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from boolp where a = (select value from boolvalues where value);
 
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from boolp where a = (select value from boolvalues where not value);
 
 drop table boolp;
@@ -939,12 +969,12 @@ create index on ma_test (b);
 analyze ma_test;
 prepare mt_q1 (int) as select a from ma_test where a >= $1 and a % 10 = 5 order by b;
 
-explain (analyze, costs off, summary off, timing off) execute mt_q1(15);
+explain (analyze, costs off, summary off, timing off, buffers off) execute mt_q1(15);
 execute mt_q1(15);
-explain (analyze, costs off, summary off, timing off) execute mt_q1(25);
+explain (analyze, costs off, summary off, timing off, buffers off) execute mt_q1(25);
 execute mt_q1(25);
 -- Ensure MergeAppend behaves correctly when no subplans match
-explain (analyze, costs off, summary off, timing off) execute mt_q1(35);
+explain (analyze, costs off, summary off, timing off, buffers off) execute mt_q1(35);
 execute mt_q1(35);
 
 deallocate mt_q1;
@@ -952,12 +982,12 @@ deallocate mt_q1;
 prepare mt_q2 (int) as select * from ma_test where a >= $1 order by b limit 1;
 
 -- Ensure output list looks sane when the MergeAppend has no subplans.
-explain (analyze, verbose, costs off, summary off, timing off) execute mt_q2 (35);
+explain (analyze, verbose, costs off, summary off, timing off, buffers off) execute mt_q2 (35);
 
 deallocate mt_q2;
 
 -- ensure initplan params properly prune partitions
-explain (analyze, costs off, summary off, timing off) select * from ma_test where a >= (select min(b) from ma_test_p2) order by b;
+explain (analyze, costs off, summary off, timing off, buffers off) select * from ma_test where a >= (select min(b) from ma_test_p2) order by b;
 
 reset enable_seqscan;
 reset enable_sort;
@@ -1137,7 +1167,7 @@ create table listp1 partition of listp for values in(1);
 create table listp2 partition of listp for values in(2) partition by list(b);
 create table listp2_10 partition of listp2 for values in (10);
 
-explain (analyze, costs off, summary off, timing off)
+explain (analyze, costs off, summary off, timing off, buffers off)
 select * from listp where a = (select 2) and b <> 10;
 
 --
@@ -1205,7 +1235,7 @@ create table rangep_100_to_200 partition of rangep for values from (100) to (200
 create index on rangep (a);
 
 -- Ensure run-time pruning works on the nested Merge Append
-explain (analyze on, costs off, timing off, summary off)
+explain (analyze on, costs off, timing off, summary off, buffers off)
 select * from rangep where b IN((select 1),(select 2)) order by a;
 reset enable_sort;
 drop table rangep;
@@ -1326,3 +1356,165 @@ explain (costs off) select * from hp_contradict_test where a === 1 and b === 1 a
 drop table hp_contradict_test;
 drop operator class part_test_int4_ops2 using hash;
 drop operator ===(int4, int4);
+
+drop function explain_analyze(text);
+
+-- Runtime pruning on UPDATE using WITH CHECK OPTIONS and RETURNING
+create table part_abc (a int, b text, c bool) partition by list (a);
+create table part_abc_1 (b text, a int, c bool);
+create table part_abc_2 (a int, c bool, b text);
+alter table part_abc attach partition part_abc_1 for values in (1);
+alter table part_abc attach partition part_abc_2 for values in (2);
+insert into part_abc values (1, 'b', true);
+insert into part_abc values (2, 'c', true);
+create view part_abc_view as select * from part_abc where b <> 'a' with check option;
+prepare update_part_abc_view as update part_abc_view set b = $2 where a = $1 returning *;
+-- Only the unpruned partition should be shown in the list of relations to be
+-- updated
+explain (verbose, costs off) execute update_part_abc_view (1, 'd');
+execute update_part_abc_view (1, 'd');
+explain (verbose, costs off) execute update_part_abc_view (2, 'a');
+execute update_part_abc_view (2, 'a');
+-- All pruned.
+explain (verbose, costs off) execute update_part_abc_view (3, 'a');
+execute update_part_abc_view (3, 'a');
+deallocate update_part_abc_view;
+
+-- Runtime pruning on MERGE using a stable function
+create function stable_one() returns int as $$ begin return 1; end; $$ language plpgsql stable;
+explain (costs off)
+merge into part_abc_view pt
+using (select stable_one() as pid) as q join part_abc_1 pt1 on (q.pid = pt1.a) on pt.a = pt1.a
+when matched then delete returning pt.a;
+merge into part_abc_view pt
+using (select stable_one() as pid) as q join part_abc_1 pt1 on (q.pid = pt1.a) on pt.a = pt1.a
+when matched then delete returning pt.a;
+table part_abc_view;
+
+-- All pruned.
+explain (costs off)
+merge into part_abc_view pt
+using (select stable_one() + 2 as pid) as q join part_abc_1 pt1 on (q.pid = pt1.a) on pt.a = pt1.a
+when matched then delete returning pt.a;
+merge into part_abc_view pt
+using (select stable_one() + 2 as pid) as q join part_abc_1 pt1 on (q.pid = pt1.a) on pt.a = pt1.a
+when matched then delete returning pt.a;
+table part_abc_view;
+
+-- MERGE ... INSERT when all pruned from MERGE source.
+begin;
+explain (costs off)
+merge into part_abc_view pt
+using (select stable_one() + 1 as pid) as q join part_abc_2 pt2 on (q.pid = pt2.a) on pt.a = stable_one() + 2
+when not matched then insert values (1, 'd', false) returning pt.a;
+merge into part_abc_view pt
+using (select stable_one() + 1 as pid) as q join part_abc_2 pt2 on (q.pid = pt2.a) on pt.a = stable_one() + 2
+when not matched then insert values (1, 'd', false) returning pt.a;
+table part_abc_view;
+rollback;
+
+-- A case with multiple ModifyTable nodes.
+begin;
+create table part_abc_log (action text, a int, b text, c bool);
+explain (costs off)
+with t as (
+  merge into part_abc_view pt
+  using (select stable_one() + 1 as pid) as q join part_abc_2 pt2 on (q.pid = pt2.a) on pt.a = stable_one() + 2
+  when not matched then insert values (1, 'd', false) returning merge_action(), pt.*
+)
+insert into part_abc_log select * from t returning *;
+with t as (
+  merge into part_abc_view pt
+  using (select stable_one() + 1 as pid) as q join part_abc_2 pt2 on (q.pid = pt2.a) on pt.a = stable_one() + 2
+  when not matched then insert values (1, 'd', false) returning merge_action(), pt.*
+)
+insert into part_abc_log select * from t returning *;
+table part_abc_view;
+table part_abc_log;
+rollback;
+
+-- A case with nested MergeAppend with its own PartitionPruneInfo.
+create index on part_abc (a);
+alter table part_abc add d int;
+create table part_abc_3 partition of part_abc for values in (3, 4) partition by range (d);
+create table part_abc_3_1 partition of part_abc_3 for values from (minvalue) to (1);
+create table part_abc_3_2 partition of part_abc_3 for values from (1) to (100);
+create table part_abc_3_3 partition of part_abc_3 for values from (100) to (maxvalue);
+explain (costs off)
+select min(a) over (partition by a order by a) from part_abc where a >= stable_one() + 1 and d <= stable_one()
+union all
+select min(a) over (partition by a order by a) from part_abc where a >= stable_one() + 1 and d >= stable_one();
+
+drop view part_abc_view;
+drop table part_abc;
+
+--
+-- Check that operands wrapped in PlaceHolderVars are matched to partition
+-- keys, allowing partition pruning to occur.  PlaceHolderVars can be
+-- introduced when a subquery's output is used with grouping sets.
+--
+create table phv_part (a int, b text) partition by list (a);
+create table phv_part_1 partition of phv_part for values in (1);
+create table phv_part_2 partition of phv_part for values in (2);
+create table phv_part_null partition of phv_part for values in (null);
+insert into phv_part values (1, 'one'), (2, 'two'), (null, 'null');
+
+-- OpExpr: PHV-wrapped operand matched via equal()
+explain (costs off)
+select * from (select a, b from phv_part) t
+  where a = 1
+  group by grouping sets (a, b);
+
+select * from (select a, b from phv_part) t
+  where a = 1
+  group by grouping sets (a, b);
+
+-- OpExpr with RelabelType: PHV wrapped around a casted column
+explain (costs off)
+select * from (select a::oid as x, b from phv_part) t
+  where x::int = 1
+  group by grouping sets (x, b);
+
+select * from (select a::oid as x, b from phv_part) t
+  where x::int = 1
+  group by grouping sets (x, b);
+
+-- ScalarArrayOpExpr: IN clause with PHV-wrapped operand
+explain (costs off)
+select * from (select a, b from phv_part) t
+  where a in (1, null)
+  group by grouping sets (a, b);
+
+select * from (select a, b from phv_part) t
+  where a in (1, null)
+  group by grouping sets (a, b);
+
+-- NullTest: IS NULL with PHV-wrapped operand
+explain (costs off)
+select * from (select a, b from phv_part) t
+  where a is null
+  group by grouping sets (a, b);
+
+select * from (select a, b from phv_part) t
+  where a is null
+  group by grouping sets (a, b);
+
+drop table phv_part;
+
+-- BooleanTest: IS TRUE with PHV-wrapped boolean partition key
+create table phv_boolpart (a bool, b text) partition by list (a);
+create table phv_boolpart_t partition of phv_boolpart for values in (true);
+create table phv_boolpart_f partition of phv_boolpart for values in (false);
+create table phv_boolpart_null partition of phv_boolpart default;
+insert into phv_boolpart values (true, 'yes'), (false, 'no'), (null, 'unknown');
+
+explain (costs off)
+select * from (select a, b from phv_boolpart) t
+  where a is true
+  group by grouping sets (a, b);
+
+select * from (select a, b from phv_boolpart) t
+  where a is true
+  group by grouping sets (a, b);
+
+drop table phv_boolpart;

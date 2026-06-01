@@ -16,7 +16,7 @@
  * PHP 4.0.6 distribution for inspiration.  Configurable penalty costs
  * extension is introduced by Volkan YAZICI <volkan.yazici@gmail.com.
  *
- * Copyright (c) 2001-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	src/backend/utils/adt/levenshtein.c
@@ -81,9 +81,10 @@ varstr_levenshtein(const char *source, int slen,
 	int		   *prev;
 	int		   *curr;
 	int		   *s_char_len = NULL;
-	int			i,
-				j;
+	int			j;
 	const char *y;
+	const char *send = source + slen;
+	const char *tend = target + tlen;
 
 	/*
 	 * For varstr_levenshtein_less_equal, we have real variables called
@@ -184,10 +185,10 @@ varstr_levenshtein(const char *source, int slen,
 #endif
 
 	/*
-	 * In order to avoid calling pg_mblen() repeatedly on each character in s,
-	 * we cache all the lengths before starting the main loop -- but if all
-	 * the characters in both strings are single byte, then we skip this and
-	 * use a fast-path in the main loop.  If only one string contains
+	 * In order to avoid calling pg_mblen_range() repeatedly on each character
+	 * in s, we cache all the lengths before starting the main loop -- but if
+	 * all the characters in both strings are single byte, then we skip this
+	 * and use a fast-path in the main loop.  If only one string contains
 	 * multi-byte characters, we still build the array, so that the fast-path
 	 * needn't deal with the case where the array hasn't been initialized.
 	 */
@@ -199,7 +200,7 @@ varstr_levenshtein(const char *source, int slen,
 		s_char_len = (int *) palloc((m + 1) * sizeof(int));
 		for (i = 0; i < m; ++i)
 		{
-			s_char_len[i] = pg_mblen(cp);
+			s_char_len[i] = pg_mblen_range(cp, send);
 			cp += s_char_len[i];
 		}
 		s_char_len[i] = 0;
@@ -217,7 +218,7 @@ varstr_levenshtein(const char *source, int slen,
 	 * To transform the first i characters of s into the first 0 characters of
 	 * t, we must perform i deletions.
 	 */
-	for (i = START_COLUMN; i < STOP_COLUMN; i++)
+	for (int i = START_COLUMN; i < STOP_COLUMN; i++)
 		prev[i] = i * del_c;
 
 	/* Loop through rows of the notional array */
@@ -225,7 +226,8 @@ varstr_levenshtein(const char *source, int slen,
 	{
 		int		   *temp;
 		const char *x = source;
-		int			y_char_len = n != tlen + 1 ? pg_mblen(y) : 1;
+		int			y_char_len = n != tlen + 1 ? pg_mblen_range(y, tend) : 1;
+		int			i;
 
 #ifdef LEVENSHTEIN_LESS_EQUAL
 

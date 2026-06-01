@@ -3,7 +3,7 @@
  * pqformat.h
  *		Definitions for formatting and parsing frontend/backend messages
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/pqformat.h
@@ -22,9 +22,8 @@ extern void pq_beginmessage_reuse(StringInfo buf, char msgtype);
 extern void pq_endmessage(StringInfo buf);
 extern void pq_endmessage_reuse(StringInfo buf);
 
-extern void pq_sendbytes(StringInfo buf, const char *data, int datalen);
-extern void pq_sendcountedtext(StringInfo buf, const char *str, int slen,
-							   bool countincludesself);
+extern void pq_sendbytes(StringInfo buf, const void *data, int datalen);
+extern void pq_sendcountedtext(StringInfo buf, const char *str, int slen);
 extern void pq_sendtext(StringInfo buf, const char *str, int slen);
 extern void pq_sendstring(StringInfo buf, const char *str);
 extern void pq_send_ascii_string(StringInfo buf, const char *str);
@@ -49,7 +48,7 @@ pq_writeint8(StringInfoData *pg_restrict buf, uint8 i)
 	uint8		ni = i;
 
 	Assert(buf->len + (int) sizeof(uint8) <= buf->maxlen);
-	memcpy((char *pg_restrict) (buf->data + buf->len), &ni, sizeof(uint8));
+	memcpy(buf->data + buf->len, &ni, sizeof(uint8));
 	buf->len += sizeof(uint8);
 }
 
@@ -63,7 +62,7 @@ pq_writeint16(StringInfoData *pg_restrict buf, uint16 i)
 	uint16		ni = pg_hton16(i);
 
 	Assert(buf->len + (int) sizeof(uint16) <= buf->maxlen);
-	memcpy((char *pg_restrict) (buf->data + buf->len), &ni, sizeof(uint16));
+	memcpy(buf->data + buf->len, &ni, sizeof(uint16));
 	buf->len += sizeof(uint16);
 }
 
@@ -77,7 +76,7 @@ pq_writeint32(StringInfoData *pg_restrict buf, uint32 i)
 	uint32		ni = pg_hton32(i);
 
 	Assert(buf->len + (int) sizeof(uint32) <= buf->maxlen);
-	memcpy((char *pg_restrict) (buf->data + buf->len), &ni, sizeof(uint32));
+	memcpy(buf->data + buf->len, &ni, sizeof(uint32));
 	buf->len += sizeof(uint32);
 }
 
@@ -91,7 +90,7 @@ pq_writeint64(StringInfoData *pg_restrict buf, uint64 i)
 	uint64		ni = pg_hton64(i);
 
 	Assert(buf->len + (int) sizeof(uint64) <= buf->maxlen);
-	memcpy((char *pg_restrict) (buf->data + buf->len), &ni, sizeof(uint64));
+	memcpy(buf->data + buf->len, &ni, sizeof(uint64));
 	buf->len += sizeof(uint64);
 }
 
@@ -117,7 +116,7 @@ pq_writestring(StringInfoData *pg_restrict buf, const char *pg_restrict str)
 
 	Assert(buf->len + slen + 1 <= buf->maxlen);
 
-	memcpy(((char *pg_restrict) buf->data + buf->len), p, slen + 1);
+	memcpy(buf->data + buf->len, p, slen + 1);
 	buf->len += slen + 1;
 
 	if (p != str)
@@ -201,7 +200,7 @@ extern int64 pq_getmsgint64(StringInfo msg);
 extern float4 pq_getmsgfloat4(StringInfo msg);
 extern float8 pq_getmsgfloat8(StringInfo msg);
 extern const char *pq_getmsgbytes(StringInfo msg, int datalen);
-extern void pq_copymsgbytes(StringInfo msg, char *buf, int datalen);
+extern void pq_copymsgbytes(StringInfo msg, void *buf, int datalen);
 extern char *pq_getmsgtext(StringInfo msg, int rawbytes, int *nbytes);
 extern const char *pq_getmsgstring(StringInfo msg);
 extern const char *pq_getmsgrawstring(StringInfo msg);

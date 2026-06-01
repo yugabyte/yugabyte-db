@@ -1,14 +1,14 @@
 # Swedish message translation file for plpython
 # Copyright (C) 2017 PostgreSQL Global Development Group
 # This file is distributed under the same license as the PostgreSQL package.
-# Dennis Björklund <db@zigo.dhs.org>, 2017, 2018, 2019, 2020, 2021, 2022, 2023.
+# Dennis Björklund <db@zigo.dhs.org>, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: PostgreSQL 15\n"
+"Project-Id-Version: PostgreSQL 17\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2023-08-07 20:24+0000\n"
-"PO-Revision-Date: 2023-08-02 12:03+0200\n"
+"POT-Creation-Date: 2024-07-13 15:38+0000\n"
+"PO-Revision-Date: 2024-07-13 18:15+0200\n"
 "Last-Translator: Dennis Björklund <db@zigo.dhs.org>\n"
 "Language-Team: Swedish <pgsql-translators@postgresql.org>\n"
 "Language: sv\n"
@@ -64,7 +64,7 @@ msgstr "frågeresultet har för många rader för att få plats i en Python-list
 msgid "closing a cursor in an aborted subtransaction"
 msgstr "stänger en markör i en avbruten subtransaktion"
 
-#: plpy_elog.c:125 plpy_elog.c:126 plpy_plpymodule.c:530
+#: plpy_elog.c:122 plpy_elog.c:123 plpy_plpymodule.c:530
 #, c-format
 msgid "%s"
 msgstr "%s"
@@ -104,122 +104,122 @@ msgstr "PL/Python-procedur returnerade inte None"
 msgid "PL/Python function with return type \"void\" did not return None"
 msgstr "PL/Python-funktion med returtyp \"void\" returnerade inte None"
 
-#: plpy_exec.c:369 plpy_exec.c:395
-#, c-format
-msgid "unexpected return value from trigger procedure"
-msgstr "oväntat returvärde från triggerprocedur"
-
-#: plpy_exec.c:370
-#, c-format
-msgid "Expected None or a string."
-msgstr "Förväntade None eller en sträng."
-
-#: plpy_exec.c:385
-#, c-format
-msgid "PL/Python trigger function returned \"MODIFY\" in a DELETE trigger -- ignored"
-msgstr "PL/Python-triggerfunktion returnerade \"MODIFY\" i en DELETE-trigger -- ignorerad"
-
-#: plpy_exec.c:396
-#, c-format
-msgid "Expected None, \"OK\", \"SKIP\", or \"MODIFY\"."
-msgstr "Förväntade None, \"OK\", \"SKIP\" eller \"MODIFY\"."
-
-#: plpy_exec.c:446
-#, c-format
-msgid "PyList_SetItem() failed, while setting up arguments"
-msgstr "PyList_SetItem() misslyckades vid uppsättning av argument"
-
-#: plpy_exec.c:450
-#, c-format
-msgid "PyDict_SetItemString() failed, while setting up arguments"
-msgstr "PyDict_SetItemString() misslyckades vid uppsättning av argument"
-
-#: plpy_exec.c:462
+#: plpy_exec.c:246
 #, c-format
 msgid "function returning record called in context that cannot accept type record"
 msgstr "en funktion med post som värde anropades i sammanhang där poster inte kan godtagas."
 
-#: plpy_exec.c:679
+#: plpy_exec.c:392 plpy_exec.c:416
+#, c-format
+msgid "unexpected return value from trigger procedure"
+msgstr "oväntat returvärde från triggerprocedur"
+
+#: plpy_exec.c:393
+#, c-format
+msgid "Expected None or a string."
+msgstr "Förväntade None eller en sträng."
+
+#: plpy_exec.c:406
+#, c-format
+msgid "PL/Python trigger function returned \"MODIFY\" in a DELETE trigger -- ignored"
+msgstr "PL/Python-triggerfunktion returnerade \"MODIFY\" i en DELETE-trigger -- ignorerad"
+
+#: plpy_exec.c:417
+#, c-format
+msgid "Expected None, \"OK\", \"SKIP\", or \"MODIFY\"."
+msgstr "Förväntade None, \"OK\", \"SKIP\" eller \"MODIFY\"."
+
+#: plpy_exec.c:468
+#, c-format
+msgid "PyList_SetItem() failed, while setting up arguments"
+msgstr "PyList_SetItem() misslyckades vid uppsättning av argument"
+
+#: plpy_exec.c:472
+#, c-format
+msgid "PyDict_SetItemString() failed, while setting up arguments"
+msgstr "PyDict_SetItemString() misslyckades vid uppsättning av argument"
+
+#: plpy_exec.c:701
 #, c-format
 msgid "while creating return value"
 msgstr "vid skapande av returvärde"
 
-#: plpy_exec.c:926
+#: plpy_exec.c:952
 #, c-format
 msgid "TD[\"new\"] deleted, cannot modify row"
 msgstr "TD[\"new\"] raderad, kan inte modifiera rad"
 
-#: plpy_exec.c:931
+#: plpy_exec.c:957
 #, c-format
 msgid "TD[\"new\"] is not a dictionary"
 msgstr "TD[\"new\"] är inte en dictionary"
 
-#: plpy_exec.c:956
+#: plpy_exec.c:982
 #, c-format
 msgid "TD[\"new\"] dictionary key at ordinal position %d is not a string"
 msgstr "TD[\"new\"] dictionary-nyckel vid numerisk position %d är inte en sträng"
 
-#: plpy_exec.c:963
+#: plpy_exec.c:989
 #, c-format
 msgid "key \"%s\" found in TD[\"new\"] does not exist as a column in the triggering row"
 msgstr "nyckel \"%s\" hittad i TD[\"new\"] finns inte som en kolumn i den triggande raden"
 
-#: plpy_exec.c:968
+#: plpy_exec.c:994
 #, c-format
 msgid "cannot set system attribute \"%s\""
 msgstr "kan inte sätta systemattribut \"%s\""
 
-#: plpy_exec.c:973
+#: plpy_exec.c:999
 #, c-format
 msgid "cannot set generated column \"%s\""
 msgstr "kan inte sätta genererad kolumn \"%s\""
 
-#: plpy_exec.c:1031
+#: plpy_exec.c:1057
 #, c-format
 msgid "while modifying trigger row"
 msgstr "vid modifiering av triggerrad"
 
-#: plpy_exec.c:1089
+#: plpy_exec.c:1115
 #, c-format
 msgid "forcibly aborting a subtransaction that has not been exited"
 msgstr "tvingar avbrytande av subtransaktion som inte har avslutats"
 
-#: plpy_main.c:111
+#: plpy_main.c:109
 #, c-format
 msgid "multiple Python libraries are present in session"
 msgstr "multipla Python-bibliotek är aktiva i sessionen"
 
-#: plpy_main.c:112
+#: plpy_main.c:110
 #, c-format
 msgid "Only one Python major version can be used in one session."
 msgstr "Bara en major-version av Python kan användas i en session."
 
-#: plpy_main.c:124
+#: plpy_main.c:122
 #, c-format
 msgid "untrapped error in initialization"
 msgstr "ej fångar fel i initiering"
 
-#: plpy_main.c:147
+#: plpy_main.c:145
 #, c-format
 msgid "could not import \"__main__\" module"
 msgstr "kunde inte importera \"__main__\"-modul"
 
-#: plpy_main.c:156
+#: plpy_main.c:154
 #, c-format
 msgid "could not initialize globals"
 msgstr "kunde inte initierar globaler"
 
-#: plpy_main.c:354
+#: plpy_main.c:352
 #, c-format
 msgid "PL/Python procedure \"%s\""
 msgstr "PL/Python-procedur \"%s\""
 
-#: plpy_main.c:357
+#: plpy_main.c:355
 #, c-format
 msgid "PL/Python function \"%s\""
 msgstr "PL/Python-funktion \"%s\""
 
-#: plpy_main.c:365
+#: plpy_main.c:363
 #, c-format
 msgid "PL/Python anonymous code block"
 msgstr "PL/Python anonymt kodblock"
@@ -268,27 +268,27 @@ msgstr "'%s' är ett ogiltigt nyckelordsargument för denna funktion"
 msgid "invalid SQLSTATE code"
 msgstr "ogiltig SQLSTATE-kod"
 
-#: plpy_procedure.c:225
+#: plpy_procedure.c:226
 #, c-format
 msgid "trigger functions can only be called as triggers"
 msgstr "Triggningsfunktioner kan bara anropas vid triggning."
 
-#: plpy_procedure.c:229
+#: plpy_procedure.c:230
 #, c-format
 msgid "PL/Python functions cannot return type %s"
 msgstr "PL/Python-funktioner kan inte returnera typ %s"
 
-#: plpy_procedure.c:307
+#: plpy_procedure.c:308
 #, c-format
 msgid "PL/Python functions cannot accept type %s"
 msgstr "PL/Python-funktioner kan inte ta emot typ %s"
 
-#: plpy_procedure.c:397
+#: plpy_procedure.c:396
 #, c-format
 msgid "could not compile PL/Python function \"%s\""
 msgstr "kunde inte kompilera PL/Python-funktion \"%s\""
 
-#: plpy_procedure.c:400
+#: plpy_procedure.c:399
 #, c-format
 msgid "could not compile anonymous PL/Python code block"
 msgstr "kunde inte kompilera anonymt PL/Python-kodblock"

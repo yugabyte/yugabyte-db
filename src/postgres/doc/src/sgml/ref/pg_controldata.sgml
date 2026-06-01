@@ -47,12 +47,47 @@ PostgreSQL documentation
    This utility can only be run by the user who initialized the cluster because
    it requires read access to the data directory.
    You can specify the data directory on the command line, or use
-   the environment variable <envar>PGDATA</envar>.  This utility supports the options
-   <option>-V</option> and <option>--version</option>, which print the
-   <application>pg_controldata</application> version and exit.  It also
-   supports options <option>-?</option> and <option>--help</option>, which output the
-   supported arguments.
+   the environment variable <envar>PGDATA</envar>.
   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Options</title>
+
+   <para>
+    <variablelist>
+     <varlistentry>
+      <term><option>-D <replaceable>datadir</replaceable></option></term>
+      <term><option>--pgdata=<replaceable>datadir</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the directory where the database cluster is stored.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-V</option></term>
+       <term><option>--version</option></term>
+       <listitem>
+       <para>
+        Print the <application>pg_controldata</application> version and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-?</option></term>
+      <term><option>--help</option></term>
+       <listitem>
+        <para>
+         Show help about <application>pg_controldata</application> command line
+         arguments, and exit.
+        </para>
+       </listitem>
+      </varlistentry>
+    </variablelist>
+   </para>
  </refsect1>
 
  <refsect1>

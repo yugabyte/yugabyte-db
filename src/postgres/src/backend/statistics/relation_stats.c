@@ -6,7 +6,7 @@
  * Code supporting the direct import of relation statistics, similar to
  * what is done by the ANALYZE command.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -20,6 +20,7 @@
 #include "access/heapam.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "nodes/makefuncs.h"
 #include "statistics/stat_utils.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -40,6 +41,7 @@ enum relation_stats_argnum
 	RELPAGES_ARG,
 	RELTUPLES_ARG,
 	RELALLVISIBLE_ARG,
+	RELALLFROZEN_ARG,
 	NUM_RELATION_STATS_ARGS
 };
 
@@ -50,6 +52,7 @@ static struct StatsArgInfo relarginfo[] =
 	[RELPAGES_ARG] = {"relpages", INT4OID},
 	[RELTUPLES_ARG] = {"reltuples", FLOAT4OID},
 	[RELALLVISIBLE_ARG] = {"relallvisible", INT4OID},
+	[RELALLFROZEN_ARG] = {"relallfrozen", INT4OID},
 	[NUM_RELATION_STATS_ARGS] = {0}
 };
 
@@ -72,12 +75,15 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	bool		update_reltuples = false;
 	BlockNumber relallvisible = 0;
 	bool		update_relallvisible = false;
+	BlockNumber relallfrozen = 0;
+	bool		update_relallfrozen = false;
 	HeapTuple	ctup;
 	Form_pg_class pgcform;
-	int			replaces[3] = {0};
-	Datum		values[3] = {0};
-	bool		nulls[3] = {0};
+	int			replaces[4] = {0};
+	Datum		values[4] = {0};
+	bool		nulls[4] = {0};
 	int			nreplaces = 0;
+	Oid			locked_table = InvalidOid;
 
 	stats_check_required_arg(fcinfo, relarginfo, RELSCHEMA_ARG);
 	stats_check_required_arg(fcinfo, relarginfo, RELNAME_ARG);
@@ -85,15 +91,15 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	nspname = TextDatumGetCString(PG_GETARG_DATUM(RELSCHEMA_ARG));
 	relname = TextDatumGetCString(PG_GETARG_DATUM(RELNAME_ARG));
 
-	reloid = stats_lookup_relid(nspname, relname);
-
 	if (RecoveryInProgress())
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("recovery is in progress"),
 				 errhint("Statistics cannot be modified during recovery.")));
 
-	stats_lock_check_privileges(reloid);
+	reloid = RangeVarGetRelidExtended(makeRangeVar(nspname, relname, -1),
+									  ShareUpdateExclusiveLock, 0,
+									  RangeVarCallbackForStats, &locked_table);
 
 	if (!PG_ARGISNULL(RELPAGES_ARG))
 	{
@@ -108,7 +114,7 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 		{
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("reltuples cannot be < -1.0")));
+					 errmsg("argument \"%s\" must not be less than -1.0", "reltuples")));
 			result = false;
 		}
 		else
@@ -119,6 +125,12 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	{
 		relallvisible = PG_GETARG_UINT32(RELALLVISIBLE_ARG);
 		update_relallvisible = true;
+	}
+
+	if (!PG_ARGISNULL(RELALLFROZEN_ARG))
+	{
+		relallfrozen = PG_GETARG_UINT32(RELALLFROZEN_ARG);
+		update_relallfrozen = true;
 	}
 
 	/*
@@ -164,6 +176,13 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 		nreplaces++;
 	}
 
+	if (update_relallfrozen && relallfrozen != pgcform->relallfrozen)
+	{
+		replaces[nreplaces] = Anum_pg_class_relallfrozen;
+		values[nreplaces] = UInt32GetDatum(relallfrozen);
+		nreplaces++;
+	}
+
 	if (nreplaces > 0)
 	{
 		TupleDesc	tupdesc = RelationGetDescr(crel);
@@ -200,9 +219,9 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 Datum
 pg_clear_relation_stats(PG_FUNCTION_ARGS)
 {
-	LOCAL_FCINFO(newfcinfo, 5);
+	LOCAL_FCINFO(newfcinfo, 6);
 
-	InitFunctionCallInfoData(*newfcinfo, NULL, 5, InvalidOid, NULL, NULL);
+	InitFunctionCallInfoData(*newfcinfo, NULL, 6, InvalidOid, NULL, NULL);
 
 	newfcinfo->args[0].value = PG_GETARG_DATUM(0);
 	newfcinfo->args[0].isnull = PG_ARGISNULL(0);
@@ -214,6 +233,8 @@ pg_clear_relation_stats(PG_FUNCTION_ARGS)
 	newfcinfo->args[3].isnull = false;
 	newfcinfo->args[4].value = UInt32GetDatum(0);
 	newfcinfo->args[4].isnull = false;
+	newfcinfo->args[5].value = UInt32GetDatum(0);
+	newfcinfo->args[5].isnull = false;
 
 	relation_statistics_update(newfcinfo);
 	PG_RETURN_VOID();

@@ -1,18 +1,17 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Single-node test: value can be set, and is still present after recovery
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Utils;
 use Test::More;
 use PostgreSQL::Test::Cluster;
 
 my $node = PostgreSQL::Test::Cluster->new('foxtrot');
-$node->init;
-$node->append_conf('postgresql.conf', 'track_commit_timestamp = on');
+$node->init(extra => [ '-c', "track_commit_timestamp=on" ]);
 $node->start;
 
 # Create a table, compare "now()" to the commit TS of its xmin

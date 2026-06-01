@@ -3,7 +3,7 @@
  * timeout.c
  *	  Routines to multiplex SIGALRM interrupts for multiple timeout reasons.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,7 +17,7 @@
 #include <sys/time.h>
 
 #include "miscadmin.h"
-#include "storage/proc.h"
+#include "storage/latch.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 
@@ -384,8 +384,6 @@ schedule_alarm(TimestampTz now)
 static void
 handle_sig_alarm(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
-
 	/*
 	 * Bump the holdoff counter, to make sure nothing we call will process
 	 * interrupts directly. No timeout handler should do that, but these
@@ -473,8 +471,6 @@ handle_sig_alarm(SIGNAL_ARGS)
 	}
 
 	RESUME_INTERRUPTS();
-
-	errno = save_errno;
 }
 
 

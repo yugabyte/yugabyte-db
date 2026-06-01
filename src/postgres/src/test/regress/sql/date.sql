@@ -193,6 +193,13 @@ SELECT date '4714-11-23 BC';  -- out of range
 SELECT date '5874897-12-31';
 SELECT date '5874898-01-01';  -- out of range
 
+-- Test non-error-throwing API
+SELECT pg_input_is_valid('now', 'date');
+SELECT pg_input_is_valid('garbage', 'date');
+SELECT pg_input_is_valid('6874898-01-01', 'date');
+SELECT * FROM pg_input_error_info('garbage', 'date');
+SELECT * FROM pg_input_error_info('6874898-01-01', 'date');
+
 RESET datestyle;
 
 --
@@ -322,6 +329,8 @@ select 'infinity'::date, '-infinity'::date;
 select 'infinity'::date > 'today'::date as t;
 select '-infinity'::date < 'today'::date as t;
 select isfinite('infinity'::date), isfinite('-infinity'::date), isfinite('today'::date);
+select 'infinity'::date = '+infinity'::date as t;
+
 --
 -- oscillating fields from non-finite date:
 --
@@ -362,5 +371,6 @@ select make_date(0, 7, 15);
 select make_date(2013, 2, 30);
 select make_date(2013, 13, 1);
 select make_date(2013, 11, -1);
+SELECT make_date(-2147483648, 1, 1);
 select make_time(10, 55, 100.1);
 select make_time(24, 0, 2.1);

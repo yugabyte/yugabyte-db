@@ -3,7 +3,7 @@
  * basebackup_zstd.c
  *	  Basebackup sink implementing zstd compression.
  *
- * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/backup/basebackup_zstd.c
@@ -34,7 +34,7 @@ typedef struct bbsink_zstd
 
 static void bbsink_zstd_begin_backup(bbsink *sink);
 static void bbsink_zstd_begin_archive(bbsink *sink, const char *archive_name);
-static void bbsink_zstd_archive_contents(bbsink *sink, size_t avail_in);
+static void bbsink_zstd_archive_contents(bbsink *sink, size_t len);
 static void bbsink_zstd_manifest_contents(bbsink *sink, size_t len);
 static void bbsink_zstd_end_archive(bbsink *sink);
 static void bbsink_zstd_cleanup(bbsink *sink);
@@ -70,7 +70,7 @@ bbsink_zstd_new(bbsink *next, pg_compress_specification *compress)
 
 	Assert(next != NULL);
 
-	sink = palloc0(sizeof(bbsink_zstd));
+	sink = palloc0_object(bbsink_zstd);
 	*((const bbsink_ops **) &sink->base.bbs_ops) = &bbsink_zstd_ops;
 	sink->base.bbs_next = next;
 	sink->compress = compress;
@@ -116,6 +116,18 @@ bbsink_zstd_begin_backup(bbsink *sink)
 					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("could not set compression worker count to %d: %s",
 						   compress->workers, ZSTD_getErrorName(ret)));
+	}
+
+	if ((compress->options & PG_COMPRESSION_OPTION_LONG_DISTANCE) != 0)
+	{
+		ret = ZSTD_CCtx_setParameter(mysink->cctx,
+									 ZSTD_c_enableLongDistanceMatching,
+									 compress->long_distance);
+		if (ZSTD_isError(ret))
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("could not enable long-distance mode: %s",
+						   ZSTD_getErrorName(ret)));
 	}
 
 	/*

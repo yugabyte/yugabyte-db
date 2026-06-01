@@ -7,6 +7,7 @@
 #include "access/reloptions.h"
 #include "access/stratnum.h"
 #include "catalog/pg_type.h"
+#include "common/int.h"
 #include "hstore.h"
 #include "utils/pg_crc.h"
 
@@ -77,7 +78,7 @@ typedef struct
 
 /* shorthand for calculating CRC-32 of a single chunk of data. */
 static pg_crc32
-crc32_sz(char *buf, int size)
+crc32_sz(const char *buf, int size)
 {
 	pg_crc32	crc;
 
@@ -96,15 +97,21 @@ PG_FUNCTION_INFO_V1(ghstore_out);
 Datum
 ghstore_in(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "Not implemented");
-	PG_RETURN_DATUM(0);
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("cannot accept a value of type %s", "ghstore")));
+
+	PG_RETURN_VOID();			/* keep compiler quiet */
 }
 
 Datum
 ghstore_out(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "Not implemented");
-	PG_RETURN_DATUM(0);
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("cannot display a value of type %s", "ghstore")));
+
+	PG_RETURN_VOID();			/* keep compiler quiet */
 }
 
 static GISTTYPE *
@@ -168,7 +175,7 @@ ghstore_compress(PG_FUNCTION_ARGS)
 			}
 		}
 
-		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(res),
 					  entry->rel, entry->page,
 					  entry->offset,
@@ -188,7 +195,7 @@ ghstore_compress(PG_FUNCTION_ARGS)
 
 		res = ghstore_alloc(true, siglen, NULL);
 
-		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(res),
 					  entry->rel, entry->page,
 					  entry->offset,
@@ -350,7 +357,8 @@ typedef struct
 static int
 comparecost(const void *a, const void *b)
 {
-	return ((const SPLITCOST *) a)->cost - ((const SPLITCOST *) b)->cost;
+	return pg_cmp_s32(((const SPLITCOST *) a)->cost,
+					  ((const SPLITCOST *) b)->cost);
 }
 
 
@@ -421,7 +429,7 @@ ghstore_picksplit(PG_FUNCTION_ARGS)
 
 	maxoff = OffsetNumberNext(maxoff);
 	/* sort before ... */
-	costvector = (SPLITCOST *) palloc(sizeof(SPLITCOST) * maxoff);
+	costvector = palloc_array(SPLITCOST, maxoff);
 	for (j = FirstOffsetNumber; j <= maxoff; j = OffsetNumberNext(j))
 	{
 		costvector[j - 1].pos = j;
@@ -430,7 +438,7 @@ ghstore_picksplit(PG_FUNCTION_ARGS)
 		size_beta = hemdist(datum_r, _j, siglen);
 		costvector[j - 1].cost = abs(size_alpha - size_beta);
 	}
-	qsort((void *) costvector, maxoff, sizeof(SPLITCOST), comparecost);
+	qsort(costvector, maxoff, sizeof(SPLITCOST), comparecost);
 
 	union_l = GETSIGN(datum_l);
 	union_r = GETSIGN(datum_r);
@@ -459,7 +467,7 @@ ghstore_picksplit(PG_FUNCTION_ARGS)
 			if (ISALLTRUE(datum_l) || ISALLTRUE(_j))
 			{
 				if (!ISALLTRUE(datum_l))
-					MemSet((void *) union_l, 0xff, siglen);
+					memset(union_l, 0xff, siglen);
 			}
 			else
 			{
@@ -475,7 +483,7 @@ ghstore_picksplit(PG_FUNCTION_ARGS)
 			if (ISALLTRUE(datum_r) || ISALLTRUE(_j))
 			{
 				if (!ISALLTRUE(datum_r))
-					MemSet((void *) union_r, 0xff, siglen);
+					memset(union_r, 0xff, siglen);
 			}
 			else
 			{
@@ -502,8 +510,9 @@ ghstore_consistent(PG_FUNCTION_ARGS)
 {
 	GISTTYPE   *entry = (GISTTYPE *) DatumGetPointer(((GISTENTRY *) PG_GETARG_POINTER(0))->key);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	int			siglen = GET_SIGLEN();
 	bool		res = true;
@@ -560,9 +569,7 @@ ghstore_consistent(PG_FUNCTION_ARGS)
 		int			key_count;
 		int			i;
 
-		deconstruct_array(query,
-						  TEXTOID, -1, false, TYPALIGN_INT,
-						  &key_datums, &key_nulls, &key_count);
+		deconstruct_array_builtin(query, TEXTOID, &key_datums, &key_nulls, &key_count);
 
 		for (i = 0; res && i < key_count; ++i)
 		{
@@ -570,7 +577,7 @@ ghstore_consistent(PG_FUNCTION_ARGS)
 
 			if (key_nulls[i])
 				continue;
-			crc = crc32_sz(VARDATA(key_datums[i]), VARSIZE(key_datums[i]) - VARHDRSZ);
+			crc = crc32_sz(VARDATA(DatumGetPointer(key_datums[i])), VARSIZE(DatumGetPointer(key_datums[i])) - VARHDRSZ);
 			if (!(GETBIT(sign, HASHVAL(crc, siglen))))
 				res = false;
 		}
@@ -583,9 +590,7 @@ ghstore_consistent(PG_FUNCTION_ARGS)
 		int			key_count;
 		int			i;
 
-		deconstruct_array(query,
-						  TEXTOID, -1, false, TYPALIGN_INT,
-						  &key_datums, &key_nulls, &key_count);
+		deconstruct_array_builtin(query, TEXTOID, &key_datums, &key_nulls, &key_count);
 
 		res = false;
 
@@ -595,7 +600,7 @@ ghstore_consistent(PG_FUNCTION_ARGS)
 
 			if (key_nulls[i])
 				continue;
-			crc = crc32_sz(VARDATA(key_datums[i]), VARSIZE(key_datums[i]) - VARHDRSZ);
+			crc = crc32_sz(VARDATA(DatumGetPointer(key_datums[i])), VARSIZE(DatumGetPointer(key_datums[i])) - VARHDRSZ);
 			if (GETBIT(sign, HASHVAL(crc, siglen)))
 				res = true;
 		}

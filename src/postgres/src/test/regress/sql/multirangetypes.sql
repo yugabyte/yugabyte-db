@@ -58,6 +58,13 @@ select '{[a,a)}'::textmultirange;
 select '{(a,a]}'::textmultirange;
 select '{(a,a)}'::textmultirange;
 
+-- Also try it with non-error-throwing API
+select pg_input_is_valid('{[1,2], [4,5]}', 'int4multirange');
+select pg_input_is_valid('{[1,2], [4,5]', 'int4multirange');
+select * from pg_input_error_info('{[1,2], [4,5]', 'int4multirange');
+select pg_input_is_valid('{[1,2], [4,zed]}', 'int4multirange');
+select * from pg_input_error_info('{[1,2], [4,zed]}', 'int4multirange');
+
 --
 -- test the constructor
 ---
@@ -407,6 +414,28 @@ SELECT nummultirange(numrange(1,3), numrange(4,5)) - nummultirange(numrange(2,9)
 SELECT nummultirange(numrange(1,2), numrange(4,5)) - nummultirange(numrange(8,9));
 SELECT nummultirange(numrange(1,2), numrange(4,5)) - nummultirange(numrange(-2,0), numrange(8,9));
 
+-- multirange_minus_multi
+SELECT multirange_minus_multi(nummultirange(), nummultirange());
+SELECT multirange_minus_multi(nummultirange(), nummultirange(numrange(1,2)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,2)), nummultirange());
+SELECT multirange_minus_multi(nummultirange(numrange(1,2), numrange(3,4)), nummultirange());
+SELECT multirange_minus_multi(nummultirange(numrange(1,2)), nummultirange(numrange(1,2)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,2)), nummultirange(numrange(2,4)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,2)), nummultirange(numrange(3,4)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,4)), nummultirange(numrange(1,2)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,4)), nummultirange(numrange(2,3)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,4)), nummultirange(numrange(0,8)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,4)), nummultirange(numrange(0,2)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,8)), nummultirange(numrange(0,2), numrange(3,4)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,8)), nummultirange(numrange(2,3), numrange(5,null)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,2), numrange(4,5)), nummultirange(numrange(-2,0)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,2), numrange(4,5)), nummultirange(numrange(2,4)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,2), numrange(4,5)), nummultirange(numrange(3,5)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,2), numrange(4,5)), nummultirange(numrange(0,9)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,3), numrange(4,5)), nummultirange(numrange(2,9)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,2), numrange(4,5)), nummultirange(numrange(8,9)));
+SELECT multirange_minus_multi(nummultirange(numrange(1,2), numrange(4,5)), nummultirange(numrange(-2,0), numrange(8,9)));
+
 -- intersection
 SELECT nummultirange() * nummultirange();
 SELECT nummultirange() * nummultirange(numrange(1,2));
@@ -694,6 +723,27 @@ drop type textrange1;
 drop type textrange2;
 
 --
+-- Multiranges don't have their own ownership or permissions.
+--
+create type textrange1 as range(subtype=text, multirange_type_name=multitextrange1, collation="C");
+create role regress_multirange_owner;
+
+alter type multitextrange1 owner to regress_multirange_owner;  -- fail
+alter type textrange1 owner to regress_multirange_owner;
+set role regress_multirange_owner;
+revoke usage on type multitextrange1 from public;  -- fail
+revoke usage on type textrange1 from public;
+\dT+ *textrange1*
+create temp table test1(f1 multitextrange1[]);
+revoke usage on type textrange1 from regress_multirange_owner;
+create temp table test2(f1 multitextrange1[]);  -- fail
+
+drop table test1;
+drop type textrange1;
+reset role;
+drop role regress_multirange_owner;
+
+--
 -- Test polymorphic type system
 --
 
@@ -782,7 +832,7 @@ select array[1,3] <@ arraymultirange(arrayrange(array[1,2], array[2,1]));
 create type two_ints as (a int, b int);
 create type two_ints_range as range (subtype = two_ints);
 
--- with force_parallel_mode on, this exercises tqueue.c's range remapping
+-- with debug_parallel_query on, this exercises tqueue.c's range remapping
 select *, row_to_json(upper(t)) as u from
   (values (two_ints_multirange(two_ints_range(row(1,2), row(3,4)))),
           (two_ints_multirange(two_ints_range(row(5,6), row(7,8))))) v(t);
@@ -795,7 +845,7 @@ drop type two_ints cascade;
 
 set enable_sort = off;  -- try to make it pick a hash setop implementation
 
-select '{(2,5)}'::cashmultirange except select '{(5,6)}'::cashmultirange;
+select '{(01,10)}'::varbitmultirange except select '{(10,11)}'::varbitmultirange;
 
 reset enable_sort;
 

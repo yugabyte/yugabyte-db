@@ -2,7 +2,7 @@
  *
  * aclchk_internal.h
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/aclchk_internal.h
@@ -38,6 +38,7 @@ typedef struct
 	List	   *col_privs;
 	List	   *grantees;
 	bool		grant_option;
+	RoleSpec   *grantor;
 	DropBehavior behavior;
 } InternalGrant;
 

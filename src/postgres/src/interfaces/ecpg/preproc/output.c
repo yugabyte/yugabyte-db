@@ -4,7 +4,7 @@
 
 #include "preproc_extern.h"
 
-static void output_escaped_str(char *cmd, bool quoted);
+static void output_escaped_str(const char *str, bool quoted);
 
 void
 output_line_number(void)
@@ -12,17 +12,15 @@ output_line_number(void)
 	char	   *line = hashline_number();
 
 	fprintf(base_yyout, "%s", line);
-	free(line);
 }
 
 void
-output_simple_statement(char *stmt, int whenever_mode)
+output_simple_statement(const char *stmt, int whenever_mode)
 {
 	output_escaped_str(stmt, false);
 	if (whenever_mode)
 		whenever_action(whenever_mode);
 	output_line_number();
-	free(stmt);
 }
 
 
@@ -101,7 +99,7 @@ hashline_number(void)
 		)
 	{
 		/* "* 2" here is for escaping '\' and '"' below */
-		char	   *line = mm_alloc(strlen("\n#line %d \"%s\"\n") + sizeof(int) * CHAR_BIT * 10 / 3 + strlen(input_filename) * 2);
+		char	   *line = loc_alloc(strlen("\n#line %d \"%s\"\n") + sizeof(int) * CHAR_BIT * 10 / 3 + strlen(input_filename) * 2);
 		char	   *src,
 				   *dest;
 
@@ -120,7 +118,7 @@ hashline_number(void)
 		return line;
 	}
 
-	return EMPTY;
+	return "";
 }
 
 static char *ecpg_statement_type_name[] = {
@@ -133,7 +131,7 @@ static char *ecpg_statement_type_name[] = {
 };
 
 void
-output_statement(char *stmt, int whenever_mode, enum ECPG_statement_type st)
+output_statement(const char *stmt, int whenever_mode, enum ECPG_statement_type st)
 {
 	fprintf(base_yyout, "{ ECPGdo(__LINE__, %d, %d, %s, %d, ", compat, force_indicator, connection ? connection : "NULL", questionmarks);
 
@@ -157,17 +155,17 @@ output_statement(char *stmt, int whenever_mode, enum ECPG_statement_type st)
 
 	/* dump variables to C file */
 	dump_variables(argsinsert, 1);
+	argsinsert = NULL;
 	fputs("ECPGt_EOIT, ", base_yyout);
 	dump_variables(argsresult, 1);
+	argsresult = NULL;
 	fputs("ECPGt_EORT);", base_yyout);
-	reset_variables();
 
 	whenever_action(whenever_mode | 2);
-	free(stmt);
 }
 
 void
-output_prepare_statement(char *name, char *stmt)
+output_prepare_statement(const char *name, const char *stmt)
 {
 	fprintf(base_yyout, "{ ECPGprepare(__LINE__, %s, %d, ", connection ? connection : "NULL", questionmarks);
 	output_escaped_str(name, true);
@@ -175,11 +173,10 @@ output_prepare_statement(char *name, char *stmt)
 	output_escaped_str(stmt, true);
 	fputs(");", base_yyout);
 	whenever_action(2);
-	free(name);
 }
 
 void
-output_deallocate_prepare_statement(char *name)
+output_deallocate_prepare_statement(const char *name)
 {
 	const char *con = connection ? connection : "NULL";
 
@@ -193,11 +190,10 @@ output_deallocate_prepare_statement(char *name)
 		fprintf(base_yyout, "{ ECPGdeallocate_all(__LINE__, %d, %s);", compat, con);
 
 	whenever_action(2);
-	free(name);
 }
 
 static void
-output_escaped_str(char *str, bool quoted)
+output_escaped_str(const char *str, bool quoted)
 {
 	int			i = 0;
 	int			len = strlen(str);

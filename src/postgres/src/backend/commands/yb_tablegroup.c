@@ -71,6 +71,9 @@
 #include "utils/varlena.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+/* YB include */
+#include "catalog/pg_database.h"
+
 Oid			binary_upgrade_next_tablegroup_oid = InvalidOid;
 bool		binary_upgrade_next_tablegroup_default = false;
 
@@ -108,7 +111,7 @@ CreateTableGroup(YbCreateTableGroupStmt *stmt)
 		 * Check that user has create privs on the database to allow creation
 		 * of a new tablegroup.
 		 */
-		aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(), ACL_CREATE);
+		aclresult = object_aclcheck(DatabaseRelationId, MyDatabaseId, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_DATABASE,
 						   get_database_name(MyDatabaseId));
@@ -571,7 +574,7 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_YBTABLEGROUP, grpname);
 
 		/* Must be able to become new owner */
-		check_is_member_of_role(GetUserId(), newOwnerId);
+		check_can_set_role(GetUserId(), newOwnerId);
 
 		memset(repl_null, false, sizeof(repl_null));
 		memset(repl_repl, false, sizeof(repl_repl));

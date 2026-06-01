@@ -6,10 +6,10 @@
  * handler for SIGINT.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * src/fe-utils/cancel.c
+ * src/fe_utils/cancel.c
  *
  *------------------------------------------------------------------------
  */
@@ -152,7 +152,6 @@ ResetCancelConn(void)
 static void
 handle_sigint(SIGNAL_ARGS)
 {
-	int			save_errno = errno;
 	char		errbuf[256];
 
 	CancelRequested = true;
@@ -173,8 +172,6 @@ handle_sigint(SIGNAL_ARGS)
 			write_stderr(errbuf);
 		}
 	}
-
-	errno = save_errno;			/* just in case the write changed it */
 }
 
 /*
@@ -183,9 +180,9 @@ handle_sigint(SIGNAL_ARGS)
  * Register query cancellation callback for SIGINT.
  */
 void
-setup_cancel_handler(void (*callback) (void))
+setup_cancel_handler(void (*query_cancel_callback) (void))
 {
-	cancel_callback = callback;
+	cancel_callback = query_cancel_callback;
 	cancel_sent_msg = _("Cancel request sent\n");
 	cancel_not_sent_msg = _("Could not send cancel request: ");
 

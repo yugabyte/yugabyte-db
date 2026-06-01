@@ -9,7 +9,7 @@
  * exist, though, because mmap'd shmem provides no way to find out how
  * many processes are attached, which we need for interlocking purposes.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -22,14 +22,10 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/file.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#ifdef HAVE_SYS_IPC_H
 #include <sys/ipc.h>
-#endif
-#ifdef HAVE_SYS_SHM_H
+#include <sys/mman.h>
 #include <sys/shm.h>
-#endif
+#include <sys/stat.h>
 
 #include "miscadmin.h"
 #include "port/pg_bitutils.h"
@@ -38,7 +34,9 @@
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
+#include "storage/shmem.h"
 #include "utils/guc.h"
+#include "utils/guc_hooks.h"
 #include "utils/pidfile.h"
 
 
@@ -90,7 +88,7 @@ typedef enum
 	SHMSTATE_ATTACHED,			/* pertinent to DataDir, has attached PIDs */
 	SHMSTATE_ENOENT,			/* no segment of that ID */
 	SHMSTATE_FOREIGN,			/* exists, but not pertinent to DataDir */
-	SHMSTATE_UNATTACHED			/* pertinent to DataDir, no attached PIDs */
+	SHMSTATE_UNATTACHED,		/* pertinent to DataDir, no attached PIDs */
 } IpcMemoryState;
 
 
@@ -209,7 +207,7 @@ InternalIpcMemoryCreate(IpcMemoryKey memKey, Size size)
 				 */
 				if (shmctl(shmid, IPC_RMID, NULL) < 0)
 					elog(LOG, "shmctl(%d, %d, 0) failed: %m",
-						 (int) shmid, IPC_RMID);
+						 shmid, IPC_RMID);
 			}
 		}
 
@@ -289,7 +287,7 @@ static void
 IpcMemoryDetach(int status, Datum shmaddr)
 {
 	/* Detach System V shared memory block. */
-	if (shmdt((void *) DatumGetPointer(shmaddr)) < 0)
+	if (shmdt(DatumGetPointer(shmaddr)) < 0)
 		elog(LOG, "shmdt(%p) failed: %m", DatumGetPointer(shmaddr));
 }
 
@@ -323,7 +321,7 @@ PGSharedMemoryIsInUse(unsigned long id1, unsigned long id2)
 	IpcMemoryState state;
 
 	state = PGSharedMemoryAttach((IpcMemoryId) id2, NULL, &memAddress);
-	if (memAddress && shmdt((void *) memAddress) < 0)
+	if (memAddress && shmdt(memAddress) < 0)
 		elog(LOG, "shmdt(%p) failed: %m", memAddress);
 	switch (state)
 	{
@@ -575,6 +573,23 @@ GetHugePageSize(Size *hugepagesize, int *mmap_flags)
 }
 
 /*
+ * GUC check_hook for huge_page_size
+ */
+bool
+check_huge_page_size(int *newval, void **extra, GucSource source)
+{
+#if !(defined(MAP_HUGE_MASK) && defined(MAP_HUGE_SHIFT))
+	/* Recent enough Linux only, for now.  See GetHugePageSize(). */
+	if (*newval != 0)
+	{
+		GUC_check_errdetail("\"huge_page_size\" must be 0 on this platform.");
+		return false;
+	}
+#endif
+	return true;
+}
+
+/*
  * Creates an anonymous mmap()ed shared memory segment.
  *
  * Pass the requested size in *size.  This function will modify *size to the
@@ -587,6 +602,7 @@ CreateAnonymousSegment(Size *size)
 	Size		allocsize = *size;
 	void	   *ptr = MAP_FAILED;
 	int			mmap_errno = 0;
+	int			mmap_flags = MAP_SHARED | MAP_ANONYMOUS | MAP_HASSEMAPHORE;
 
 #ifndef MAP_HUGETLB
 	/* PGSharedMemoryCreate should have dealt with this case */
@@ -598,21 +614,29 @@ CreateAnonymousSegment(Size *size)
 		 * Round up the request size to a suitable large value.
 		 */
 		Size		hugepagesize;
-		int			mmap_flags;
+		int			huge_mmap_flags;
 
-		GetHugePageSize(&hugepagesize, &mmap_flags);
+		GetHugePageSize(&hugepagesize, &huge_mmap_flags);
 
 		if (allocsize % hugepagesize != 0)
-			allocsize += hugepagesize - (allocsize % hugepagesize);
+			allocsize = add_size(allocsize, hugepagesize - (allocsize % hugepagesize));
 
 		ptr = mmap(NULL, allocsize, PROT_READ | PROT_WRITE,
-				   PG_MMAP_FLAGS | mmap_flags, -1, 0);
+				   mmap_flags | huge_mmap_flags, -1, 0);
 		mmap_errno = errno;
 		if (huge_pages == HUGE_PAGES_TRY && ptr == MAP_FAILED)
 			elog(DEBUG1, "mmap(%zu) with MAP_HUGETLB failed, huge pages disabled: %m",
 				 allocsize);
 	}
 #endif
+
+	/*
+	 * Report whether huge pages are in use.  This needs to be tracked before
+	 * the second mmap() call if attempting to use huge pages failed
+	 * previously.
+	 */
+	SetConfigOption("huge_pages_status", (ptr == MAP_FAILED) ? "off" : "on",
+					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 
 	if (ptr == MAP_FAILED && huge_pages != HUGE_PAGES_ON)
 	{
@@ -622,7 +646,7 @@ CreateAnonymousSegment(Size *size)
 		 */
 		allocsize = *size;
 		ptr = mmap(NULL, allocsize, PROT_READ | PROT_WRITE,
-				   PG_MMAP_FLAGS, -1, 0);
+				   mmap_flags, -1, 0);
 		mmap_errno = errno;
 	}
 
@@ -636,8 +660,8 @@ CreateAnonymousSegment(Size *size)
 						 "for a shared memory segment exceeded available memory, "
 						 "swap space, or huge pages. To reduce the request size "
 						 "(currently %zu bytes), reduce PostgreSQL's shared "
-						 "memory usage, perhaps by reducing shared_buffers or "
-						 "max_connections.",
+						 "memory usage, perhaps by reducing \"shared_buffers\" or "
+						 "\"max_connections\".",
 						 allocsize) : 0));
 	}
 
@@ -707,7 +731,7 @@ PGSharedMemoryCreate(Size size,
 	if (huge_pages == HUGE_PAGES_ON && shared_memory_type != SHMEM_TYPE_MMAP)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("huge pages not supported with the current shared_memory_type setting")));
+				 errmsg("huge pages not supported with the current \"shared_memory_type\" setting")));
 
 	/* Room for a header? */
 	Assert(size > MAXALIGN(sizeof(PGShmemHeader)));
@@ -724,7 +748,13 @@ PGSharedMemoryCreate(Size size,
 		sysvsize = sizeof(PGShmemHeader);
 	}
 	else
+	{
 		sysvsize = size;
+
+		/* huge pages are only available with mmap */
+		SetConfigOption("huge_pages_status", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+	}
 
 	/*
 	 * Loop till we find a free IPC key.  Trust CreateDataDirLockFile() to
@@ -807,7 +837,7 @@ PGSharedMemoryCreate(Size size,
 				break;
 		}
 
-		if (oldhdr && shmdt((void *) oldhdr) < 0)
+		if (oldhdr && shmdt(oldhdr) < 0)
 			elog(LOG, "shmdt(%p) failed: %m", oldhdr);
 	}
 
@@ -825,7 +855,7 @@ PGSharedMemoryCreate(Size size,
 	 * Initialize space allocation status for segment.
 	 */
 	hdr->totalsize = size;
-	hdr->freeoffset = MAXALIGN(sizeof(PGShmemHeader));
+	hdr->content_offset = MAXALIGN(sizeof(PGShmemHeader));
 	*shim = hdr;
 
 	/* Save info for possible future use */

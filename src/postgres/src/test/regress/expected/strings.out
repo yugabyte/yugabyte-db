@@ -22,7 +22,6 @@ ERROR:  syntax error at or near "' - third line'"
 LINE 3: ' - third line'
         ^
 -- Unicode escapes
-SET standard_conforming_strings TO on;
 SELECT U&'d\0061t\+000061' AS U&"d\0061t\+000061";
  data 
 ------
@@ -142,43 +141,12 @@ SELECT E'wrong: \U002FFFFF';
 ERROR:  invalid Unicode escape value at or near "\U002FFFFF"
 LINE 1: SELECT E'wrong: \U002FFFFF';
                         ^
+-- this is no longer allowed:
 SET standard_conforming_strings TO off;
-SELECT U&'d\0061t\+000061' AS U&"d\0061t\+000061";
-ERROR:  unsafe use of string constant with Unicode escapes
-LINE 1: SELECT U&'d\0061t\+000061' AS U&"d\0061t\+000061";
-               ^
-DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
-SELECT U&'d!0061t\+000061' UESCAPE '!' AS U&"d*0061t\+000061" UESCAPE '*';
-ERROR:  unsafe use of string constant with Unicode escapes
-LINE 1: SELECT U&'d!0061t\+000061' UESCAPE '!' AS U&"d*0061t\+000061...
-               ^
-DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
-SELECT U&' \' UESCAPE '!' AS "tricky";
-ERROR:  unsafe use of string constant with Unicode escapes
-LINE 1: SELECT U&' \' UESCAPE '!' AS "tricky";
-               ^
-DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
-SELECT 'tricky' AS U&"\" UESCAPE '!';
-   \    
---------
- tricky
-(1 row)
-
-SELECT U&'wrong: \061';
-ERROR:  unsafe use of string constant with Unicode escapes
-LINE 1: SELECT U&'wrong: \061';
-               ^
-DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
-SELECT U&'wrong: \+0061';
-ERROR:  unsafe use of string constant with Unicode escapes
-LINE 1: SELECT U&'wrong: \+0061';
-               ^
-DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
-SELECT U&'wrong: +0061' UESCAPE '+';
-ERROR:  unsafe use of string constant with Unicode escapes
-LINE 1: SELECT U&'wrong: +0061' UESCAPE '+';
-               ^
-DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
+ERROR:  non-standard string literals are not supported
+-- but this should be acceptable:
+SET standard_conforming_strings TO on;
+-- or this:
 RESET standard_conforming_strings;
 -- bytea
 SET bytea_output TO hex;
@@ -236,6 +204,88 @@ SELECT E'De\\678dBeEf'::bytea;
 ERROR:  invalid input syntax for type bytea
 LINE 1: SELECT E'De\\678dBeEf'::bytea;
                ^
+SELECT E'DeAd\\\\BeEf'::bytea;
+        bytea         
+----------------------
+ \x446541645c42654566
+(1 row)
+
+SELECT reverse(''::bytea);
+ reverse 
+---------
+ \x
+(1 row)
+
+SELECT reverse('\xaa'::bytea);
+ reverse 
+---------
+ \xaa
+(1 row)
+
+SELECT reverse('\xabcd'::bytea);
+ reverse 
+---------
+ \xcdab
+(1 row)
+
+SELECT ('\x' || repeat(' ', 32))::bytea;
+ bytea 
+-------
+ \x
+(1 row)
+
+SELECT ('\x' || repeat('!', 32))::bytea;
+ERROR:  invalid hexadecimal digit: "!"
+SELECT ('\x' || repeat('/', 34))::bytea;
+ERROR:  invalid hexadecimal digit: "/"
+SELECT ('\x' || repeat('0', 34))::bytea;
+                bytea                 
+--------------------------------------
+ \x0000000000000000000000000000000000
+(1 row)
+
+SELECT ('\x' || repeat('9', 32))::bytea;
+               bytea                
+------------------------------------
+ \x99999999999999999999999999999999
+(1 row)
+
+SELECT ('\x' || repeat(':', 32))::bytea;
+ERROR:  invalid hexadecimal digit: ":"
+SELECT ('\x' || repeat('@', 34))::bytea;
+ERROR:  invalid hexadecimal digit: "@"
+SELECT ('\x' || repeat('A', 34))::bytea;
+                bytea                 
+--------------------------------------
+ \xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+(1 row)
+
+SELECT ('\x' || repeat('F', 32))::bytea;
+               bytea                
+------------------------------------
+ \xffffffffffffffffffffffffffffffff
+(1 row)
+
+SELECT ('\x' || repeat('G', 32))::bytea;
+ERROR:  invalid hexadecimal digit: "G"
+SELECT ('\x' || repeat('`', 34))::bytea;
+ERROR:  invalid hexadecimal digit: "`"
+SELECT ('\x' || repeat('a', 34))::bytea;
+                bytea                 
+--------------------------------------
+ \xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+(1 row)
+
+SELECT ('\x' || repeat('f', 32))::bytea;
+               bytea                
+------------------------------------
+ \xffffffffffffffffffffffffffffffff
+(1 row)
+
+SELECT ('\x' || repeat('g', 32))::bytea;
+ERROR:  invalid hexadecimal digit: "g"
+SELECT ('\x' || repeat('~', 34))::bytea;
+ERROR:  invalid hexadecimal digit: "~"
 SET bytea_output TO escape;
 SELECT E'\\xDeAdBeEf'::bytea;
       bytea       
@@ -271,6 +321,37 @@ SELECT E'De\\123dBeEf'::bytea;
   bytea   
 ----------
  DeSdBeEf
+(1 row)
+
+SELECT E'DeAd\\\\BeEf'::bytea;
+   bytea    
+------------
+ DeAd\\BeEf
+(1 row)
+
+-- Test non-error-throwing API too
+SELECT pg_input_is_valid(E'\\xDeAdBeE', 'bytea');
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
+SELECT * FROM pg_input_error_info(E'\\xDeAdBeE', 'bytea');
+                    message                     | detail | hint | sql_error_code 
+------------------------------------------------+--------+------+----------------
+ invalid hexadecimal data: odd number of digits |        |      | 22023
+(1 row)
+
+SELECT * FROM pg_input_error_info(E'\\xDeAdBeEx', 'bytea');
+            message             | detail | hint | sql_error_code 
+--------------------------------+--------+------+----------------
+ invalid hexadecimal digit: "x" |        |      | 22023
+(1 row)
+
+SELECT * FROM pg_input_error_info(E'foo\\99bar', 'bytea');
+               message               | detail | hint | sql_error_code 
+-------------------------------------+--------+------+----------------
+ invalid input syntax for type bytea |        |      | 22P02
 (1 row)
 
 --
@@ -571,6 +652,82 @@ SELECT 'abcdefg' SIMILAR TO '_bcd%' ESCAPE NULL AS null;
 SELECT 'abcdefg' SIMILAR TO '_bcd#%' ESCAPE '##' AS error;
 ERROR:  invalid escape string
 HINT:  Escape string must be empty or one character.
+-- Characters that should be left alone in character classes when a
+-- SIMILAR TO regexp pattern is converted to POSIX style.
+-- Underscore "_"
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '_[_[:alpha:]_]_';
+                   QUERY PLAN                   
+------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:.[_[:alpha:]_].)$'::text)
+(2 rows)
+
+-- Percentage "%"
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '%[%[:alnum:]%]%';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:.*[%[:alnum:]%].*)$'::text)
+(2 rows)
+
+-- Dot "."
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '.[.[:alnum:].].';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:\.[.[:alnum:].]\.)$'::text)
+(2 rows)
+
+-- Dollar "$"
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '$[$[:alnum:]$]$';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:\$[$[:alnum:]$]\$)$'::text)
+(2 rows)
+
+-- Opening parenthesis "("
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '()[([:alnum:](]()';
+                      QUERY PLAN                      
+------------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:(?:)[([:alnum:](](?:))$'::text)
+(2 rows)
+
+-- Caret "^"
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '^[^[:alnum:]^[^^][[^^]][\^][[\^]]\^]^';
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:\^[^[:alnum:]^[^^][[^^]][\^][[\^]]\^]\^)$'::text)
+(2 rows)
+
+-- Closing square bracket "]" at the beginning of character class
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '[]%][^]%][^%]%';
+                   QUERY PLAN                   
+------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:[]%][^]%][^%].*)$'::text)
+(2 rows)
+
+-- Closing square bracket effective after two carets at the beginning
+-- of character class.
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '[^^]^';
+              QUERY PLAN               
+---------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:[^^]\^)$'::text)
+(2 rows)
+
+-- Closing square bracket after an escape sequence at the beginning of
+-- a character closes the character class
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '[|a]%' ESCAPE '|';
+              QUERY PLAN               
+---------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:[\a].*)$'::text)
+(2 rows)
+
 -- Test backslash escapes in regexp_replace's replacement string
 SELECT regexp_replace('1112223333', E'(\\d{3})(\\d{3})(\\d{4})', E'(\\1) \\2-\\3');
  regexp_replace 
@@ -1310,6 +1467,36 @@ SELECT POSITION('5' IN '1234567890') = '5' AS "5";
  t
 (1 row)
 
+SELECT POSITION('\x11'::bytea IN ''::bytea) = 0 AS "0";
+ 0 
+---
+ t
+(1 row)
+
+SELECT POSITION('\x33'::bytea IN '\x1122'::bytea) = 0 AS "0";
+ 0 
+---
+ t
+(1 row)
+
+SELECT POSITION(''::bytea IN '\x1122'::bytea) = 1 AS "1";
+ 1 
+---
+ t
+(1 row)
+
+SELECT POSITION('\x22'::bytea IN '\x1122'::bytea) = 2 AS "2";
+ 2 
+---
+ t
+(1 row)
+
+SELECT POSITION('\x5678'::bytea IN '\x1234567890'::bytea) = 3 AS "3";
+ 3 
+---
+ t
+(1 row)
+
 -- T312 character overlay function
 SELECT OVERLAY('abcdef' PLACING '45' FROM 4) AS "abc45f";
  abc45f 
@@ -1939,6 +2126,94 @@ SELECT c FROM toasttest;
 (1 row)
 
 DROP TABLE toasttest;
+-- test with short varlenas (up to 126 data bytes reduced to a 1-byte header)
+-- being toasted.
+CREATE TABLE toasttest (f1 text, f2 text);
+ALTER TABLE toasttest SET (toast_tuple_target = 128);
+ALTER TABLE toasttest ALTER COLUMN f1 SET STORAGE EXTERNAL;
+ALTER TABLE toasttest ALTER COLUMN f2 SET STORAGE EXTERNAL;
+-- Here, the first value is a varlena large enough to make it toasted and
+-- stored uncompressed.  The second value is a short varlena, toasted
+-- and stored uncompressed.
+INSERT INTO toasttest values(repeat('1234', 1000), repeat('5678', 30));
+SELECT reltoastrelid::regclass AS reltoastname FROM pg_class
+  WHERE oid = 'toasttest'::regclass \gset
+-- There should be two values inserted in the toast relation.
+SELECT count(*) FROM :reltoastname WHERE chunk_seq = 0;
+ count 
+-------
+     2
+(1 row)
+
+SELECT substr(f1, 5, 10) AS f1_data, substr(f2, 5, 10) AS f2_data
+  FROM toasttest;
+  f1_data   |  f2_data   
+------------+------------
+ 1234123412 | 5678567856
+(1 row)
+
+SELECT pg_column_compression(f1) AS f1_comp, pg_column_compression(f2) AS f2_comp
+  FROM toasttest;
+ f1_comp | f2_comp 
+---------+---------
+         | 
+(1 row)
+
+TRUNCATE toasttest;
+-- test with inline compressible varlenas.
+SET default_toast_compression = 'pglz';
+ALTER TABLE toasttest ALTER COLUMN f1 SET STORAGE MAIN;
+ALTER TABLE toasttest ALTER COLUMN f2 SET STORAGE MAIN;
+INSERT INTO toasttest values(repeat('1234', 1024), repeat('5678', 1024));
+-- There should be no values in the toast relation.
+SELECT substr(f1, 5, 10) AS f1_data, substr(f2, 5, 10) AS f2_data
+  FROM toasttest;
+  f1_data   |  f2_data   
+------------+------------
+ 1234123412 | 5678567856
+(1 row)
+
+SELECT pg_column_compression(f1) AS f1_comp, pg_column_compression(f2) AS f2_comp
+  FROM toasttest;
+ f1_comp | f2_comp 
+---------+---------
+ pglz    | pglz
+(1 row)
+
+SELECT count(*) FROM :reltoastname;
+ count 
+-------
+     0
+(1 row)
+
+TRUNCATE toasttest;
+-- test with external compressed data (default).
+ALTER TABLE toasttest ALTER COLUMN f1 SET STORAGE EXTENDED;
+ALTER TABLE toasttest ALTER COLUMN f2 SET STORAGE EXTENDED;
+INSERT INTO toasttest values(repeat('1234', 10240), NULL);
+-- There should be one value in the toast relation.
+SELECT substr(f1, 5, 10) AS f1_data, substr(f2, 5, 10) AS f2_data
+  FROM toasttest;
+  f1_data   | f2_data 
+------------+---------
+ 1234123412 | 
+(1 row)
+
+SELECT pg_column_compression(f1) AS f1_comp, pg_column_compression(f2) AS f2_comp
+  FROM toasttest;
+ f1_comp | f2_comp 
+---------+---------
+ pglz    | 
+(1 row)
+
+SELECT count(*) FROM :reltoastname WHERE chunk_seq = 0;
+ count 
+-------
+     1
+(1 row)
+
+RESET default_toast_compression;
+DROP TABLE toasttest;
 --
 -- test length
 --
@@ -2104,8 +2379,68 @@ select split_part('@joeuser@mydatabase@','@',-2) AS "mydatabase";
 (1 row)
 
 --
--- test to_hex
+-- test to_bin, to_oct, and to_hex
 --
+select to_bin(-1234) AS "11111111111111111111101100101110";
+ 11111111111111111111101100101110 
+----------------------------------
+ 11111111111111111111101100101110
+(1 row)
+
+select to_bin(-1234::bigint);
+                              to_bin                              
+------------------------------------------------------------------
+ 1111111111111111111111111111111111111111111111111111101100101110
+(1 row)
+
+select to_bin(256*256*256 - 1) AS "111111111111111111111111";
+ 111111111111111111111111 
+--------------------------
+ 111111111111111111111111
+(1 row)
+
+select to_bin(256::bigint*256::bigint*256::bigint*256::bigint - 1) AS "11111111111111111111111111111111";
+ 11111111111111111111111111111111 
+----------------------------------
+ 11111111111111111111111111111111
+(1 row)
+
+select to_oct(-1234) AS "37777775456";
+ 37777775456 
+-------------
+ 37777775456
+(1 row)
+
+select to_oct(-1234::bigint) AS "1777777777777777775456";
+ 1777777777777777775456 
+------------------------
+ 1777777777777777775456
+(1 row)
+
+select to_oct(256*256*256 - 1) AS "77777777";
+ 77777777 
+----------
+ 77777777
+(1 row)
+
+select to_oct(256::bigint*256::bigint*256::bigint*256::bigint - 1) AS "37777777777";
+ 37777777777 
+-------------
+ 37777777777
+(1 row)
+
+select to_hex(-1234) AS "fffffb2e";
+ fffffb2e 
+----------
+ fffffb2e
+(1 row)
+
+select to_hex(-1234::bigint) AS "fffffffffffffb2e";
+ fffffffffffffb2e 
+------------------
+ fffffffffffffb2e
+(1 row)
+
 select to_hex(256*256*256 - 1) AS "ffffff";
  ffffff 
 --------
@@ -2116,94 +2451,6 @@ select to_hex(256::bigint*256::bigint*256::bigint*256::bigint - 1) AS "ffffffff"
  ffffffff 
 ----------
  ffffffff
-(1 row)
-
---
--- MD5 test suite - from IETF RFC 1321
--- (see: ftp://ftp.rfc-editor.org/in-notes/rfc1321.txt)
---
-select md5('') = 'd41d8cd98f00b204e9800998ecf8427e' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('a') = '0cc175b9c0f1b6a831c399e269772661' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('abc') = '900150983cd24fb0d6963f7d28e17f72' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('message digest') = 'f96b697d7cb7938d525a2f31aaf161d0' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('abcdefghijklmnopqrstuvwxyz') = 'c3fcd3d76192e4007dfb496cca67e13b' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789') = 'd174ab98d277d9f5a5611c2c9f419d9f' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('12345678901234567890123456789012345678901234567890123456789012345678901234567890') = '57edf4a22be3c955ac49da2e2107b67a' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5(''::bytea) = 'd41d8cd98f00b204e9800998ecf8427e' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('a'::bytea) = '0cc175b9c0f1b6a831c399e269772661' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('abc'::bytea) = '900150983cd24fb0d6963f7d28e17f72' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('message digest'::bytea) = 'f96b697d7cb7938d525a2f31aaf161d0' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('abcdefghijklmnopqrstuvwxyz'::bytea) = 'c3fcd3d76192e4007dfb496cca67e13b' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'::bytea) = 'd174ab98d277d9f5a5611c2c9f419d9f' AS "TRUE";
- TRUE 
-------
- t
-(1 row)
-
-select md5('12345678901234567890123456789012345678901234567890123456789012345678901234567890'::bytea) = '57edf4a22be3c955ac49da2e2107b67a' AS "TRUE";
- TRUE 
-------
- t
 (1 row)
 
 --
@@ -2259,6 +2506,57 @@ SELECT sha512('The quick brown fox jumps over the lazy dog.');
 (1 row)
 
 --
+-- CRC
+--
+SELECT crc32('');
+ crc32 
+-------
+     0
+(1 row)
+
+SELECT crc32('The quick brown fox jumps over the lazy dog.');
+   crc32    
+------------
+ 1368401385
+(1 row)
+
+SELECT crc32c('');
+ crc32c 
+--------
+      0
+(1 row)
+
+SELECT crc32c('The quick brown fox jumps over the lazy dog.');
+  crc32c   
+-----------
+ 419469235
+(1 row)
+
+SELECT crc32c(repeat('A', 127)::bytea);
+  crc32c   
+-----------
+ 291820082
+(1 row)
+
+SELECT crc32c(repeat('A', 128)::bytea);
+  crc32c   
+-----------
+ 816091258
+(1 row)
+
+SELECT crc32c(repeat('A', 129)::bytea);
+   crc32c   
+------------
+ 4213642571
+(1 row)
+
+SELECT crc32c(repeat('A', 800)::bytea);
+   crc32c   
+------------
+ 3134039419
+(1 row)
+
+--
 -- encode/decode
 --
 SELECT encode('\x1234567890abcdef00', 'hex');
@@ -2299,6 +2597,319 @@ SELECT decode(encode('\x1234567890abcdef00', 'escape'), 'escape');
  \x1234567890abcdef00
 (1 row)
 
+-- report an error with a hint listing valid encodings when an invalid encoding is specified
+SELECT encode('\x01'::bytea, 'invalid');  -- error
+ERROR:  unrecognized encoding: "invalid"
+HINT:  Valid encodings are "base32hex", "base64", "base64url", "escape", and "hex".
+SELECT decode('00', 'invalid');           -- error
+ERROR:  unrecognized encoding: "invalid"
+HINT:  Valid encodings are "base32hex", "base64", "base64url", "escape", and "hex".
+--
+-- base32hex encoding/decoding
+--
+SET bytea_output TO hex;
+SELECT encode('', 'base32hex');  -- ''
+ encode 
+--------
+ 
+(1 row)
+
+SELECT encode('\x11', 'base32hex');  -- '24======'
+  encode  
+----------
+ 24======
+(1 row)
+
+SELECT encode('\x1122', 'base32hex');  -- '24H0===='
+  encode  
+----------
+ 24H0====
+(1 row)
+
+SELECT encode('\x112233', 'base32hex');  -- '24H36==='
+  encode  
+----------
+ 24H36===
+(1 row)
+
+SELECT encode('\x11223344', 'base32hex');  -- '24H36H0='
+  encode  
+----------
+ 24H36H0=
+(1 row)
+
+SELECT encode('\x1122334455', 'base32hex');  -- '24H36H2L'
+  encode  
+----------
+ 24H36H2L
+(1 row)
+
+SELECT encode('\x112233445566', 'base32hex');  -- '24H36H2LCO======'
+      encode      
+------------------
+ 24H36H2LCO======
+(1 row)
+
+SELECT decode('', 'base32hex');  -- ''
+ decode 
+--------
+ \x
+(1 row)
+
+SELECT decode('24======', 'base32hex');  -- \x11
+ decode 
+--------
+ \x11
+(1 row)
+
+SELECT decode('24H0====', 'base32hex');  -- \x1122
+ decode 
+--------
+ \x1122
+(1 row)
+
+SELECT decode('24H36===', 'base32hex');  -- \x112233
+  decode  
+----------
+ \x112233
+(1 row)
+
+SELECT decode('24H36H0=', 'base32hex');  -- \x11223344
+   decode   
+------------
+ \x11223344
+(1 row)
+
+SELECT decode('24H36H2L', 'base32hex');  -- \x1122334455
+    decode    
+--------------
+ \x1122334455
+(1 row)
+
+SELECT decode('24H36H2LCO======', 'base32hex');  -- \x112233445566
+     decode     
+----------------
+ \x112233445566
+(1 row)
+
+SELECT decode('24h36h2lco', 'base32hex');  -- OK, the encoding is case-insensitive
+     decode     
+----------------
+ \x112233445566
+(1 row)
+
+-- Tests for decoding unpadded base32hex strings. Padding '=' are optional.
+SELECT decode('24', 'base32hex');
+ decode 
+--------
+ \x11
+(1 row)
+
+SELECT decode('24H', 'base32hex');
+ decode 
+--------
+ \x11
+(1 row)
+
+SELECT decode('24H36', 'base32hex');
+  decode  
+----------
+ \x112233
+(1 row)
+
+SELECT decode('24H36H0', 'base32hex');
+   decode   
+------------
+ \x11223344
+(1 row)
+
+SELECT decode('2', 'base32hex'); -- \x, 5 bits isn't enough for a byte, so nothing is emitted
+ decode 
+--------
+ \x
+(1 row)
+
+SELECT decode('11=', 'base32hex');  -- OK, non-zero padding bits are accepted (consistent with base64)
+ decode 
+--------
+ \x08
+(1 row)
+
+SELECT decode('2=', 'base32hex'); -- error
+ERROR:  unexpected "=" while decoding base32hex sequence
+SELECT decode('=', 'base32hex');  -- error
+ERROR:  unexpected "=" while decoding base32hex sequence
+SELECT decode('W', 'base32hex');  -- error
+ERROR:  invalid symbol "W" found while decoding base32hex sequence
+SELECT decode('24H36H0=24', 'base32hex'); -- error
+ERROR:  invalid symbol "2" found while decoding base32hex sequence
+-- Check round-trip capability of base32hex encoding for multiple random UUIDs.
+DO $$
+DECLARE
+  v1 uuid;
+  v2 uuid;
+BEGIN
+  FOR i IN 1..10 LOOP
+    v1 := gen_random_uuid();
+    v2 := decode(encode(v1::bytea, 'base32hex'), 'base32hex')::uuid;
+
+    IF v1 != v2 THEN
+      RAISE EXCEPTION 'base32hex encoding round-trip failed, expected % got %', v1, v2;
+    END IF;
+  END LOOP;
+  RAISE NOTICE 'OK';
+END;
+$$;
+NOTICE:  OK
+--
+-- base64url encoding/decoding
+--
+-- Simple encoding/decoding
+SELECT encode('\x69b73eff', 'base64url');  -- abc-_w
+ encode 
+--------
+ abc-_w
+(1 row)
+
+SELECT decode('abc-_w', 'base64url');      -- \x69b73eff
+   decode   
+------------
+ \x69b73eff
+(1 row)
+
+-- Round-trip: decode(encode(x)) = x
+SELECT decode(encode('\x1234567890abcdef00', 'base64url'), 'base64url');  -- \x1234567890abcdef00
+        decode        
+----------------------
+ \x1234567890abcdef00
+(1 row)
+
+-- Empty input
+SELECT encode('', 'base64url');  -- ''
+ encode 
+--------
+ 
+(1 row)
+
+SELECT decode('', 'base64url');  -- ''
+ decode 
+--------
+ \x
+(1 row)
+
+-- 1 byte input
+SELECT encode('\x01', 'base64url');  -- AQ
+ encode 
+--------
+ AQ
+(1 row)
+
+SELECT decode('AQ', 'base64url');    -- \x01
+ decode 
+--------
+ \x01
+(1 row)
+
+-- 2 byte input
+SELECT encode('\x0102'::bytea, 'base64url');  -- AQI
+ encode 
+--------
+ AQI
+(1 row)
+
+SELECT decode('AQI', 'base64url');            -- \x0102
+ decode 
+--------
+ \x0102
+(1 row)
+
+-- 3 byte input (no padding needed)
+SELECT encode('\x010203'::bytea, 'base64url');  -- AQID
+ encode 
+--------
+ AQID
+(1 row)
+
+SELECT decode('AQID', 'base64url');             -- \x010203
+  decode  
+----------
+ \x010203
+(1 row)
+
+-- 4 byte input (results in 6 base64 chars)
+SELECT encode('\xdeadbeef'::bytea, 'base64url');  -- 3q2-7w
+ encode 
+--------
+ 3q2-7w
+(1 row)
+
+SELECT decode('3q2-7w', 'base64url');             -- \xdeadbeef
+   decode   
+------------
+ \xdeadbeef
+(1 row)
+
+-- Round-trip test for all lengths from 0–4
+SELECT encode(decode(encode(E'\\x', 'base64url'), 'base64url'), 'base64url');
+ encode 
+--------
+ 
+(1 row)
+
+SELECT encode(decode(encode(E'\\x00', 'base64url'), 'base64url'), 'base64url');
+ encode 
+--------
+ AA
+(1 row)
+
+SELECT encode(decode(encode(E'\\x0001', 'base64url'), 'base64url'), 'base64url');
+ encode 
+--------
+ AAE
+(1 row)
+
+SELECT encode(decode(encode(E'\\x000102', 'base64url'), 'base64url'), 'base64url');
+ encode 
+--------
+ AAEC
+(1 row)
+
+SELECT encode(decode(encode(E'\\x00010203', 'base64url'), 'base64url'), 'base64url');
+ encode 
+--------
+ AAECAw
+(1 row)
+
+-- Invalid inputs (should ERROR)
+-- invalid character '@'
+SELECT decode('QQ@=', 'base64url');
+ERROR:  invalid symbol "@" found while decoding base64url sequence
+-- missing characters (incomplete group)
+SELECT decode('QQ', 'base64url');  -- ok (1 byte)
+ decode 
+--------
+ \x41
+(1 row)
+
+SELECT decode('QQI', 'base64url'); -- ok (2 bytes)
+ decode 
+--------
+ \x4102
+(1 row)
+
+SELECT decode('QQIDQ', 'base64url'); -- ERROR: invalid base64url end sequence
+ERROR:  invalid base64url end sequence
+HINT:  Input data is missing padding, is truncated, or is otherwise corrupted.
+-- unexpected '=' at start
+SELECT decode('=QQQ', 'base64url');
+ERROR:  unexpected "=" while decoding base64url sequence
+-- valid base64 padding in base64url (optional, but accepted)
+SELECT decode('abc-_w==', 'base64url');  -- should decode to \x69b73eff
+   decode   
+------------
+ \x69b73eff
+(1 row)
+
 --
 -- get_bit/set_bit etc
 --
@@ -2335,89 +2946,107 @@ SELECT set_byte('\x1234567890abcdef00'::bytea, 7, 11);
 SELECT set_byte('\x1234567890abcdef00'::bytea, 99, 11);  -- error
 ERROR:  index 99 out of valid range, 0..8
 --
--- test behavior of escape_string_warning and standard_conforming_strings options
+-- conversions between bytea and integer types
 --
-set escape_string_warning = off;
-set standard_conforming_strings = off;
-show escape_string_warning;
- escape_string_warning 
------------------------
- off
+SELECT 0x1234::int2::bytea AS "\x1234", (-0x1234)::int2::bytea AS "\xedcc";
+ \x1234 | \xedcc 
+--------+--------
+ \x1234 | \xedcc
 (1 row)
 
-show standard_conforming_strings;
- standard_conforming_strings 
------------------------------
- off
+SELECT 0x12345678::int4::bytea AS "\x12345678", (-0x12345678)::int4::bytea AS "\xedcba988";
+ \x12345678 | \xedcba988 
+------------+------------
+ \x12345678 | \xedcba988
 (1 row)
 
-set escape_string_warning = on;
-set standard_conforming_strings = on;
-show escape_string_warning;
- escape_string_warning 
------------------------
- on
+SELECT 0x1122334455667788::int8::bytea AS "\x1122334455667788",
+       (-0x1122334455667788)::int8::bytea AS "\xeeddccbbaa998878";
+ \x1122334455667788 | \xeeddccbbaa998878 
+--------------------+--------------------
+ \x1122334455667788 | \xeeddccbbaa998878
 (1 row)
 
-show standard_conforming_strings;
- standard_conforming_strings 
------------------------------
- on
+SELECT ''::bytea::int2 AS "0";
+ 0 
+---
+ 0
 (1 row)
 
-select 'a\bcd' as f1, 'a\b''cd' as f2, 'a\b''''cd' as f3, 'abcd\'   as f4, 'ab\''cd' as f5, '\\' as f6;
-  f1   |   f2   |   f3    |  f4   |   f5   | f6 
--------+--------+---------+-------+--------+----
- a\bcd | a\b'cd | a\b''cd | abcd\ | ab\'cd | \\
+SELECT '\x12'::bytea::int2 AS "18";
+ 18 
+----
+ 18
 (1 row)
 
-set standard_conforming_strings = off;
-select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd' as f5, '\\\\' as f6;
-WARNING:  nonstandard use of \\ in a string literal
-LINE 1: select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3,...
-               ^
-HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
-WARNING:  nonstandard use of \\ in a string literal
-LINE 1: select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3,...
-                               ^
-HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
-WARNING:  nonstandard use of \\ in a string literal
-LINE 1: select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3,...
-                                                 ^
-HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
-WARNING:  nonstandard use of \\ in a string literal
-LINE 1: ...bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'  ...
-                                                             ^
-HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
-WARNING:  nonstandard use of \\ in a string literal
-LINE 1: ...'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd'...
-                                                             ^
-HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
-WARNING:  nonstandard use of \\ in a string literal
-LINE 1: ...'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd' as f5, '\\\\' as ...
-                                                             ^
-HINT:  Use the escape string syntax for backslashes, e.g., E'\\'.
-  f1   |   f2   |   f3    |  f4   |   f5   | f6 
--------+--------+---------+-------+--------+----
- a\bcd | a\b'cd | a\b''cd | abcd\ | ab\'cd | \\
+SELECT '\x1234'::bytea::int2 AS "4460";
+ 4460 
+------
+ 4660
 (1 row)
 
-set escape_string_warning = off;
-set standard_conforming_strings = on;
-select 'a\bcd' as f1, 'a\b''cd' as f2, 'a\b''''cd' as f3, 'abcd\'   as f4, 'ab\''cd' as f5, '\\' as f6;
-  f1   |   f2   |   f3    |  f4   |   f5   | f6 
--------+--------+---------+-------+--------+----
- a\bcd | a\b'cd | a\b''cd | abcd\ | ab\'cd | \\
+SELECT '\x123456'::bytea::int2; -- error
+ERROR:  smallint out of range
+SELECT ''::bytea::int4 AS "0";
+ 0 
+---
+ 0
 (1 row)
 
-set standard_conforming_strings = off;
-select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'   as f4, 'ab\\\'cd' as f5, '\\\\' as f6;
-  f1   |   f2   |   f3    |  f4   |   f5   | f6 
--------+--------+---------+-------+--------+----
- a\bcd | a\b'cd | a\b''cd | abcd\ | ab\'cd | \\
+SELECT '\x12'::bytea::int4 AS "18";
+ 18 
+----
+ 18
 (1 row)
 
-reset standard_conforming_strings;
+SELECT '\x12345678'::bytea::int4 AS "305419896";
+ 305419896 
+-----------
+ 305419896
+(1 row)
+
+SELECT '\x123456789A'::bytea::int4; -- error
+ERROR:  integer out of range
+SELECT ''::bytea::int8 AS "0";
+ 0 
+---
+ 0
+(1 row)
+
+SELECT '\x12'::bytea::int8 AS "18";
+ 18 
+----
+ 18
+(1 row)
+
+SELECT '\x1122334455667788'::bytea::int8 AS "1234605616436508552";
+ 1234605616436508552 
+---------------------
+ 1234605616436508552
+(1 row)
+
+SELECT '\x112233445566778899'::bytea::int8; -- error
+ERROR:  bigint out of range
+-- min/max integer values
+SELECT '\x8000'::bytea::int2 AS "-32768", '\x7FFF'::bytea::int2 AS "32767";
+ -32768 | 32767 
+--------+-------
+ -32768 | 32767
+(1 row)
+
+SELECT '\x80000000'::bytea::int4 AS "-2147483648", '\x7FFFFFFF'::bytea::int4 AS "2147483647";
+ -2147483648 | 2147483647 
+-------------+------------
+ -2147483648 | 2147483647
+(1 row)
+
+SELECT '\x8000000000000000'::bytea::int8 AS "-9223372036854775808",
+       '\x7FFFFFFFFFFFFFFF'::bytea::int8 AS "9223372036854775807";
+ -9223372036854775808 | 9223372036854775807 
+----------------------+---------------------
+ -9223372036854775808 | 9223372036854775807
+(1 row)
+
 --
 -- Additional string functions
 --

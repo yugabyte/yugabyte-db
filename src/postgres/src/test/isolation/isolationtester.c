@@ -7,10 +7,8 @@
 
 #include "postgres_fe.h"
 
-#include <sys/time.h>
-#ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
-#endif
+#include <sys/time.h>
 
 #include "datatype/timestamp.h"
 #include "isolationtester.h"
@@ -46,7 +44,7 @@ static int	nconns = 0;
 static bool any_new_notice = false;
 
 /* Maximum time to wait before giving up on a step (in usec) */
-static int64 max_step_wait = 300 * USECS_PER_SEC;
+static int64 max_step_wait = 360 * USECS_PER_SEC;
 
 
 static void check_testspec(TestSpec *testspec);
@@ -137,12 +135,12 @@ main(int argc, char **argv)
 		conninfo = "dbname = postgres";
 
 	/*
-	 * If PGISOLATIONTIMEOUT is set in the environment, adopt its value (given
-	 * in seconds) as the max time to wait for any one step to complete.
+	 * If PG_TEST_TIMEOUT_DEFAULT is set, adopt its value (given in seconds)
+	 * as half the max time to wait for any one step to complete.
 	 */
-	env_wait = getenv("PGISOLATIONTIMEOUT");
+	env_wait = getenv("PG_TEST_TIMEOUT_DEFAULT");
 	if (env_wait != NULL)
-		max_step_wait = ((int64) atoi(env_wait)) * USECS_PER_SEC;
+		max_step_wait = 2 * ((int64) atoi(env_wait)) * USECS_PER_SEC;
 
 	/* Read the test spec from stdin */
 	spec_yyparse();
@@ -161,7 +159,7 @@ main(int argc, char **argv)
 	 * extra for lock wait detection and global work.
 	 */
 	nconns = 1 + testspec->nsessions;
-	conns = (IsoConnInfo *) pg_malloc0(nconns * sizeof(IsoConnInfo));
+	conns = pg_malloc0_array(IsoConnInfo, nconns);
 	atexit(disconnect_atexit);
 
 	for (i = 0; i < nconns; i++)
@@ -192,7 +190,7 @@ main(int argc, char **argv)
 		if (i != 0)
 			PQsetNoticeProcessor(conns[i].conn,
 								 isotesterNoticeProcessor,
-								 (void *) &conns[i]);
+								 &conns[i]);
 		else
 			PQsetNoticeProcessor(conns[i].conn,
 								 blackholeNoticeProcessor,
@@ -279,7 +277,7 @@ check_testspec(TestSpec *testspec)
 	for (i = 0; i < testspec->nsessions; i++)
 		nallsteps += testspec->sessions[i]->nsteps;
 
-	allsteps = pg_malloc(nallsteps * sizeof(Step *));
+	allsteps = pg_malloc_array(Step *, nallsteps);
 
 	k = 0;
 	for (i = 0; i < testspec->nsessions; i++)
@@ -434,8 +432,8 @@ run_all_permutations(TestSpec *testspec)
 		nsteps += testspec->sessions[i]->nsteps;
 
 	/* Create PermutationStep workspace array */
-	steps = (PermutationStep *) pg_malloc0(sizeof(PermutationStep) * nsteps);
-	stepptrs = (PermutationStep **) pg_malloc(sizeof(PermutationStep *) * nsteps);
+	steps = pg_malloc0_array(PermutationStep, nsteps);
+	stepptrs = pg_malloc_array(PermutationStep *, nsteps);
 	for (i = 0; i < nsteps; i++)
 		stepptrs[i] = steps + i;
 
@@ -448,7 +446,7 @@ run_all_permutations(TestSpec *testspec)
 	 * A pile is actually just an integer which tells how many steps we've
 	 * already picked from this pile.
 	 */
-	piles = pg_malloc(sizeof(int) * testspec->nsessions);
+	piles = pg_malloc_array(int, testspec->nsessions);
 	for (i = 0; i < testspec->nsessions; i++)
 		piles[i] = 0;
 
@@ -515,8 +513,8 @@ run_named_permutations(TestSpec *testspec)
 static int
 step_qsort_cmp(const void *a, const void *b)
 {
-	Step	   *stepa = *((Step **) a);
-	Step	   *stepb = *((Step **) b);
+	Step	   *stepa = *((Step *const *) a);
+	Step	   *stepb = *((Step *const *) b);
 
 	return strcmp(stepa->name, stepb->name);
 }
@@ -524,8 +522,8 @@ step_qsort_cmp(const void *a, const void *b)
 static int
 step_bsearch_cmp(const void *a, const void *b)
 {
-	char	   *stepname = (char *) a;
-	Step	   *step = *((Step **) b);
+	const char *stepname = (const char *) a;
+	Step	   *step = *((Step *const *) b);
 
 	return strcmp(stepname, step->name);
 }
@@ -541,7 +539,7 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 	int			nwaiting = 0;
 	PermutationStep **waiting;
 
-	waiting = pg_malloc(sizeof(PermutationStep *) * testspec->nsessions);
+	waiting = pg_malloc_array(PermutationStep *, testspec->nsessions);
 
 	printf("\nstarting permutation:");
 	for (i = 0; i < nsteps; i++)
@@ -916,7 +914,7 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 		{
 			if (errno == EINTR)
 				continue;
-			fprintf(stderr, "select failed: %s\n", strerror(errno));
+			fprintf(stderr, "select failed: %m\n");
 			exit(1);
 		}
 		else if (ret == 0)		/* select() timeout: check for lock wait */
@@ -1012,26 +1010,21 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 			 */
 			if (td > max_step_wait && !canceled)
 			{
-				PGcancel   *cancel = PQgetCancel(conn);
+				PGcancelConn *cancel_conn = PQcancelCreate(conn);
 
-				if (cancel != NULL)
+				if (PQcancelBlocking(cancel_conn))
 				{
-					char		buf[256];
-
-					if (PQcancel(cancel, buf, sizeof(buf)))
-					{
-						/*
-						 * print to stdout not stderr, as this should appear
-						 * in the test case's results
-						 */
-						printf("isolationtester: canceling step %s after %d seconds\n",
-							   step->name, (int) (td / USECS_PER_SEC));
-						canceled = true;
-					}
-					else
-						fprintf(stderr, "PQcancel failed: %s\n", buf);
-					PQfreeCancel(cancel);
+					/*
+					 * print to stdout not stderr, as this should appear in
+					 * the test case's results
+					 */
+					printf("isolationtester: canceling step %s after %d seconds\n",
+						   step->name, (int) (td / USECS_PER_SEC));
+					canceled = true;
 				}
+				else
+					fprintf(stderr, "PQcancel failed: %s\n", PQcancelErrorMessage(cancel_conn));
+				PQcancelFinish(cancel_conn);
 			}
 
 			/*

@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Testing of logical decoding using SQL interface and/or pg_recvlogical
 #
@@ -7,7 +7,7 @@
 # is for work that doesn't fit well there, like where server restarts
 # are required.
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -21,7 +21,6 @@ $node_primary->append_conf(
 wal_level = logical
 ));
 $node_primary->start;
-my $backup_name = 'primary_backup';
 
 $node_primary->safe_psql('postgres',
 	qq[CREATE TABLE decoding_test(x integer, y text);]);
@@ -35,8 +34,9 @@ my ($result, $stdout, $stderr) = $node_primary->psql(
 	'template1',
 	qq[START_REPLICATION SLOT test_slot LOGICAL 0/0],
 	replication => 'database');
-ok( $stderr =~
-	  m/replication slot "test_slot" was not created in this database/,
+like(
+	$stderr,
+	qr/replication slot "test_slot" was not created in this database/,
 	"Logical decoding correctly fails to start");
 
 ($result, $stdout, $stderr) = $node_primary->psql(
@@ -54,7 +54,9 @@ like(
 	'template1',
 	qq[START_REPLICATION SLOT s1 LOGICAL 0/1],
 	replication => 'true');
-ok($stderr =~ /ERROR:  logical decoding requires a database connection/,
+like(
+	$stderr,
+	qr/ERROR:  logical decoding requires a database connection/,
 	"Logical decoding fails on non-database connection");
 
 $node_primary->safe_psql('postgres',
@@ -70,7 +72,7 @@ is(scalar(my @foobar = split /^/m, $result),
 # If we immediately crash the server we might lose the progress we just made
 # and replay the same changes again. But a clean shutdown should never repeat
 # the same changes when we use the SQL decoding interface.
-$node_primary->restart('fast');
+$node_primary->restart;
 
 # There are no new writes, so the result should be empty.
 $result = $node_primary->safe_psql('postgres',
@@ -109,7 +111,7 @@ $node_primary->safe_psql('postgres',
 my $stdout_recv = $node_primary->pg_recvlogical_upto(
 	'postgres', 'test_slot', $endpos,
 	$PostgreSQL::Test::Utils::timeout_default,
-	'include-xids'     => '0',
+	'include-xids' => '0',
 	'skip-empty-xacts' => '1');
 chomp($stdout_recv);
 is($stdout_recv, $expected,
@@ -122,7 +124,7 @@ $node_primary->poll_query_until('postgres',
 $stdout_recv = $node_primary->pg_recvlogical_upto(
 	'postgres', 'test_slot', $endpos,
 	$PostgreSQL::Test::Utils::timeout_default,
-	'include-xids'     => '0',
+	'include-xids' => '0',
 	'skip-empty-xacts' => '1');
 chomp($stdout_recv);
 is($stdout_recv, '', 'pg_recvlogical acknowledged changes');
@@ -149,8 +151,11 @@ SKIP:
 
 	my $pg_recvlogical = IPC::Run::start(
 		[
-			'pg_recvlogical', '-d', $node_primary->connstr('otherdb'),
-			'-S', 'otherdb_slot', '-f', '-', '--start'
+			'pg_recvlogical',
+			'--dbname' => $node_primary->connstr('otherdb'),
+			'--slot' => 'otherdb_slot',
+			'--file' => '-',
+			'--start'
 		]);
 	$node_primary->poll_query_until('otherdb',
 		"SELECT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'otherdb_slot' AND active_pid IS NOT NULL)"
@@ -158,8 +163,8 @@ SKIP:
 	is($node_primary->psql('postgres', 'DROP DATABASE otherdb'),
 		3, 'dropping a DB with active logical slots fails');
 	$pg_recvlogical->kill_kill;
-	is($node_primary->slot('otherdb_slot')->{'slot_name'},
-		undef, 'logical slot still exists');
+	is($node_primary->slot('otherdb_slot')->{'plugin'},
+		'test_decoding', 'logical slot still exists');
 }
 
 $node_primary->poll_query_until('otherdb',
@@ -168,13 +173,14 @@ $node_primary->poll_query_until('otherdb',
 
 is($node_primary->psql('postgres', 'DROP DATABASE otherdb'),
 	0, 'dropping a DB with inactive logical slots succeeds');
-is($node_primary->slot('otherdb_slot')->{'slot_name'},
-	undef, 'logical slot was actually dropped with DB');
+is($node_primary->slot('otherdb_slot')->{'plugin'},
+	'', 'logical slot was actually dropped with DB');
 
 # Test logical slot advancing and its durability.
+# Passing failover=true (last arg) should not have any impact on advancing.
 my $logical_slot = 'logical_slot';
 $node_primary->safe_psql('postgres',
-	"SELECT pg_create_logical_replication_slot('$logical_slot', 'test_decoding', false);"
+	"SELECT pg_create_logical_replication_slot('$logical_slot', 'test_decoding', false, false, true);"
 );
 $node_primary->psql(
 	'postgres', "
@@ -197,7 +203,7 @@ my $logical_restart_lsn_post = $node_primary->safe_psql('postgres',
 	"SELECT restart_lsn from pg_replication_slots WHERE slot_name = '$logical_slot';"
 );
 chomp($logical_restart_lsn_post);
-ok(($logical_restart_lsn_pre cmp $logical_restart_lsn_post) == 0,
+is($logical_restart_lsn_pre, $logical_restart_lsn_post,
 	"logical slot advance persists across restarts");
 
 my $stats_test_slot1 = 'test_slot';

@@ -6,7 +6,7 @@
  * and interpreting backend output.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/fe_utils/string_utils.c
@@ -449,9 +449,9 @@ appendStringLiteralConn(PQExpBuffer buf, const char *str, PGconn *conn)
 
 	/*
 	 * XXX This is a kluge to silence escape_string_warning in our utility
-	 * programs.  It should go away someday.
+	 * programs.  It can go away once pre-v19 servers are out of support.
 	 */
-	if (strchr(str, '\\') != NULL && PQserverVersion(conn) >= 80100)
+	if (strchr(str, '\\') != NULL && PQserverVersion(conn) < 190000)
 	{
 		/* ensure we are not adjacent to an identifier */
 		if (buf->len > 0 && buf->data[buf->len - 1] != ' ')
@@ -567,12 +567,6 @@ appendByteaLiteral(PQExpBuffer buf, const unsigned char *str, size_t length,
 /*
  * Append the given string to the shell command being built in the buffer,
  * with shell-style quoting as needed to create exactly one argument.
- *
- * Forbid LF or CR characters, which have scant practical use beyond designing
- * security breaches.  The Windows command shell is unusable as a conduit for
- * arguments containing LF or CR characters.  A future major release should
- * reject those characters in CREATE ROLE and CREATE DATABASE, because use
- * there eventually leads to errors here.
  *
  * appendShellString() simply prints an error and dies if LF or CR appears.
  * appendShellStringNoError() omits those characters from the result, and
@@ -923,7 +917,7 @@ appendPGArray(PQExpBuffer buffer, const char *value)
 
 			if (ch == '"' || ch == '\\' ||
 				ch == '{' || ch == '}' || ch == ',' ||
-			/* these match array_isspace(): */
+			/* these match scanner_isspace(): */
 				ch == ' ' || ch == '\t' || ch == '\n' ||
 				ch == '\r' || ch == '\v' || ch == '\f')
 			{
@@ -973,8 +967,7 @@ appendReloptionsArray(PQExpBuffer buffer, const char *reloptions,
 
 	if (!parsePGArray(reloptions, &options, &noptions))
 	{
-		if (options)
-			free(options);
+		free(options);
 		return false;
 	}
 
@@ -1028,8 +1021,7 @@ appendReloptionsArray(PQExpBuffer buffer, const char *reloptions,
 			appendStringLiteral(buffer, value, encoding, std_strings);
 	}
 
-	if (options)
-		free(options);
+	free(options);
 
 	return true;
 }

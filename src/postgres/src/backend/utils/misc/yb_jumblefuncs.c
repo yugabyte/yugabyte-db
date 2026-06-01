@@ -18,6 +18,7 @@
   */
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "access/transam.h"
 #include "catalog/pg_type.h"
 #include "common/hashfn.h"
@@ -912,8 +913,7 @@ _jumbleRowCompareExpr(YbJumbleState *jstate, Node *node)
 {
 	RowCompareExpr *expr = (RowCompareExpr *) node;
 
-	/* JUMBLE_FIELD(cmptype); */
-	JUMBLE_FIELD(rctype);
+	JUMBLE_FIELD(cmptype);
 	JUMBLE_NODE(largs);
 	JUMBLE_NODE(rargs);
 }
@@ -2106,8 +2106,7 @@ _jumbleInsertStmt(YbJumbleState *jstate, Node *node)
 	JUMBLE_NODE(cols);
 	JUMBLE_NODE(selectStmt);
 	JUMBLE_NODE(onConflictClause);
-	/* JUMBLE_NODE(returningClause); */
-	JUMBLE_NODE(returningList);
+	JUMBLE_NODE(returningClause);
 	JUMBLE_NODE(withClause);
 	JUMBLE_FIELD(override);
 }
@@ -2120,8 +2119,7 @@ _jumbleDeleteStmt(YbJumbleState *jstate, Node *node)
 	JUMBLE_NODE(relation);
 	JUMBLE_NODE(usingClause);
 	JUMBLE_NODE(whereClause);
-	/* JUMBLE_NODE(returningClause); */
-	JUMBLE_NODE(returningList);
+	JUMBLE_NODE(returningClause);
 	JUMBLE_NODE(withClause);
 }
 
@@ -2134,8 +2132,7 @@ _jumbleUpdateStmt(YbJumbleState *jstate, Node *node)
 	JUMBLE_NODE(targetList);
 	JUMBLE_NODE(whereClause);
 	JUMBLE_NODE(fromClause);
-	/* JUMBLE_NODE(returningClause); */
-	JUMBLE_NODE(returningList);
+	JUMBLE_NODE(returningClause);
 	JUMBLE_NODE(withClause);
 }
 
@@ -3264,9 +3261,9 @@ _jumbleAlterSystemStmt(YbJumbleState *jstate, Node *node)
 }
 
 static void
-_jumbleClusterStmt(YbJumbleState *jstate, Node *node)
+_jumbleRepackStmt(YbJumbleState *jstate, Node *node)
 {
-	ClusterStmt *expr = (ClusterStmt *) node;
+	RepackStmt *expr = (RepackStmt *) node;
 
 	JUMBLE_NODE(relation);
 	JUMBLE_STRING(indexname);
@@ -3612,7 +3609,6 @@ _jumbleModifyTable(YbJumbleState *jstate, Node *node)
 	JUMBLE_FIELD(canSetTag);
 	JUMBLE_FIELD(nominalRelation);
 	JUMBLE_FIELD(rootRelation);
-	JUMBLE_FIELD(partColsUpdated);
 	JUMBLE_NODE(resultRelations);
 	JUMBLE_NODE(updateColnosLists);
 	JUMBLE_NODE(withCheckOptionLists);
@@ -5506,8 +5502,8 @@ YbJumbleNode(YbJumbleState *jstate, Node *node)
 		case T_AlterSystemStmt:
 			_jumbleAlterSystemStmt(jstate, expr);
 			break;
-		case T_ClusterStmt:
-			_jumbleClusterStmt(jstate, expr);
+		case T_RepackStmt:
+			_jumbleRepackStmt(jstate, expr);
 			break;
 		case T_VacuumStmt:
 			_jumbleVacuumStmt(jstate, expr);

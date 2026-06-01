@@ -4,7 +4,7 @@
  *	  support for communication destinations
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -33,13 +33,13 @@
 #include "access/xact.h"
 #include "commands/copy.h"
 #include "commands/createas.h"
+#include "commands/explain_dr.h"
 #include "commands/matview.h"
 #include "executor/functions.h"
 #include "executor/tqueue.h"
 #include "executor/tstoreReceiver.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
-#include "utils/portal.h"
 
 
 /* ----------------
@@ -152,6 +152,9 @@ CreateDestReceiver(CommandDest dest)
 
 		case DestTupleQueue:
 			return CreateTupleQueueDestReceiver(NULL);
+
+		case DestExplainSerialize:
+			return CreateExplainSerializeDestReceiver(NULL);
 	}
 
 	/* should never get here */
@@ -166,8 +169,7 @@ void
 EndCommand(const QueryCompletion *qc, CommandDest dest, bool force_undecorated_output)
 {
 	char		completionTag[COMPLETION_TAG_BUFSIZE];
-	CommandTag	tag;
-	const char *tagname;
+	Size		len;
 
 	switch (dest)
 	{
@@ -175,28 +177,10 @@ EndCommand(const QueryCompletion *qc, CommandDest dest, bool force_undecorated_o
 		case DestRemoteExecute:
 		case DestRemoteSimple:
 
-			/*
-			 * We assume the tagname is plain ASCII and therefore requires no
-			 * encoding conversion.
-			 *
-			 * We no longer display LastOid, but to preserve the wire
-			 * protocol, we write InvalidOid where the LastOid used to be
-			 * written.
-			 *
-			 * All cases where LastOid was written also write nprocessed
-			 * count, so just Assert that rather than having an extra test.
-			 */
-			tag = qc->commandTag;
-			tagname = GetCommandTagName(tag);
-
-			if (command_tag_display_rowcount(tag) && !force_undecorated_output)
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 tag == CMDTAG_INSERT ?
-						 "%s 0 " UINT64_FORMAT : "%s " UINT64_FORMAT,
-						 tagname, qc->nprocessed);
-			else
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE, "%s", tagname);
-			pq_putmessage('C', completionTag, strlen(completionTag) + 1);
+			len = BuildQueryCompletionString(completionTag, qc,
+											 force_undecorated_output);
+			pq_putmessage(PqMsg_CommandComplete, completionTag, len + 1);
+			break;
 
 			yb_switch_fallthrough();
 		case DestNone:
@@ -208,6 +192,7 @@ EndCommand(const QueryCompletion *qc, CommandDest dest, bool force_undecorated_o
 		case DestSQLFunction:
 		case DestTransientRel:
 		case DestTupleQueue:
+		case DestExplainSerialize:
 			break;
 	}
 }
@@ -221,7 +206,7 @@ EndCommand(const QueryCompletion *qc, CommandDest dest, bool force_undecorated_o
 void
 EndReplicationCommand(const char *commandTag)
 {
-	pq_putmessage('C', commandTag, strlen(commandTag) + 1);
+	pq_putmessage(PqMsg_CommandComplete, commandTag, strlen(commandTag) + 1);
 }
 
 /* ----------------
@@ -241,7 +226,7 @@ NullCommand(CommandDest dest)
 		case DestRemoteSimple:
 
 			/* Tell the FE that we saw an empty query string */
-			pq_putemptymessage('I');
+			pq_putemptymessage(PqMsg_EmptyQueryResponse);
 			break;
 
 		case DestNone:
@@ -253,6 +238,7 @@ NullCommand(CommandDest dest)
 		case DestSQLFunction:
 		case DestTransientRel:
 		case DestTupleQueue:
+		case DestExplainSerialize:
 			break;
 	}
 }
@@ -279,7 +265,7 @@ ReadyForQuery(CommandDest dest)
 			{
 				StringInfoData buf;
 
-				pq_beginmessage(&buf, 'Z');
+				pq_beginmessage(&buf, PqMsg_ReadyForQuery);
 				pq_sendbyte(&buf, TransactionBlockStatusCode());
 				pq_endmessage(&buf);
 			}
@@ -296,6 +282,7 @@ ReadyForQuery(CommandDest dest)
 		case DestSQLFunction:
 		case DestTransientRel:
 		case DestTupleQueue:
+		case DestExplainSerialize:
 			break;
 	}
 }

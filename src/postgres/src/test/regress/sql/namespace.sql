@@ -7,15 +7,16 @@
 SELECT pg_catalog.set_config('search_path', ' ', false);
 
 CREATE SCHEMA test_ns_schema_1
+       CREATE TABLE abc (
+              a serial,
+              b int UNIQUE
+       )
+
        CREATE UNIQUE INDEX abc_a_idx ON abc (a)
 
        CREATE VIEW abc_view AS
               SELECT a+1 AS a, b+1 AS b FROM abc
-
-       CREATE TABLE abc (
-              a serial,
-              b int UNIQUE
-       );
+;
 
 -- verify that the correct search_path restored on abort
 SET search_path to public;
@@ -66,3 +67,35 @@ DROP SCHEMA test_ns_schema_renamed CASCADE;
 -- verify that the objects were dropped
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =
     (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_renamed');
+
+--
+-- Verify that search_path is set to a safe value during maintenance
+-- commands.
+--
+
+CREATE SCHEMA test_maint_search_path;
+SET search_path = test_maint_search_path;
+
+CREATE FUNCTION fn(INT) RETURNS INT IMMUTABLE LANGUAGE plpgsql AS $$
+  BEGIN
+    RAISE NOTICE 'current search_path: %', current_setting('search_path');
+    RETURN $1;
+  END;
+$$;
+
+CREATE TABLE test_maint(i INT);
+INSERT INTO test_maint VALUES (1), (2);
+CREATE MATERIALIZED VIEW test_maint_mv AS SELECT fn(i) FROM test_maint;
+
+-- the following commands should see search_path as pg_catalog, pg_temp
+
+CREATE INDEX test_maint_idx ON test_maint_search_path.test_maint (fn(i));
+REINDEX TABLE test_maint_search_path.test_maint;
+ANALYZE test_maint_search_path.test_maint;
+VACUUM FULL test_maint_search_path.test_maint;
+CLUSTER test_maint_search_path.test_maint USING test_maint_idx;
+REFRESH MATERIALIZED VIEW test_maint_search_path.test_maint_mv;
+
+RESET search_path;
+
+DROP SCHEMA test_maint_search_path CASCADE;

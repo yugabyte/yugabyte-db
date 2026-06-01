@@ -4,7 +4,7 @@
  *	  routines for scanning SP-GiST indexes
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -18,6 +18,7 @@
 #include "access/genam.h"
 #include "access/relscan.h"
 #include "access/spgist_private.h"
+#include "executor/instrument_node.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
@@ -309,9 +310,9 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 
 	scan = RelationGetIndexScan(rel, keysz, orderbysz);
 
-	so = (SpGistScanOpaque) palloc0(sizeof(SpGistScanOpaqueData));
+	so = palloc0_object(SpGistScanOpaqueData);
 	if (keysz > 0)
-		so->keyData = (ScanKey) palloc(sizeof(ScanKeyData) * keysz);
+		so->keyData = palloc_array(ScanKeyData, keysz);
 	else
 		so->keyData = NULL;
 	initSpGistState(&so->state, scan->indexRelation);
@@ -336,16 +337,12 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 	if (scan->numberOfOrderBys > 0)
 	{
 		/* This will be filled in spgrescan, but allocate the space here */
-		so->orderByTypes = (Oid *)
-			palloc(sizeof(Oid) * scan->numberOfOrderBys);
-		so->nonNullOrderByOffsets = (int *)
-			palloc(sizeof(int) * scan->numberOfOrderBys);
+		so->orderByTypes = palloc_array(Oid, scan->numberOfOrderBys);
+		so->nonNullOrderByOffsets = palloc_array(int, scan->numberOfOrderBys);
 
 		/* These arrays have constant contents, so we can fill them now */
-		so->zeroDistances = (double *)
-			palloc(sizeof(double) * scan->numberOfOrderBys);
-		so->infDistances = (double *)
-			palloc(sizeof(double) * scan->numberOfOrderBys);
+		so->zeroDistances = palloc_array(double, scan->numberOfOrderBys);
+		so->infDistances = palloc_array(double, scan->numberOfOrderBys);
 
 		for (i = 0; i < scan->numberOfOrderBys; i++)
 		{
@@ -353,10 +350,8 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 			so->infDistances[i] = get_float8_infinity();
 		}
 
-		scan->xs_orderbyvals = (Datum *)
-			palloc0(sizeof(Datum) * scan->numberOfOrderBys);
-		scan->xs_orderbynulls = (bool *)
-			palloc(sizeof(bool) * scan->numberOfOrderBys);
+		scan->xs_orderbyvals = palloc0_array(Datum, scan->numberOfOrderBys);
+		scan->xs_orderbynulls = palloc_array(bool, scan->numberOfOrderBys);
 		memset(scan->xs_orderbynulls, true,
 			   sizeof(bool) * scan->numberOfOrderBys);
 	}
@@ -384,16 +379,14 @@ spgrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 
 	/* copy scankeys into local storage */
 	if (scankey && scan->numberOfKeys > 0)
-		memmove(scan->keyData, scankey,
-				scan->numberOfKeys * sizeof(ScanKeyData));
+		memcpy(scan->keyData, scankey, scan->numberOfKeys * sizeof(ScanKeyData));
 
 	/* initialize order-by data if needed */
 	if (orderbys && scan->numberOfOrderBys > 0)
 	{
 		int			i;
 
-		memmove(scan->orderByData, orderbys,
-				scan->numberOfOrderBys * sizeof(ScanKeyData));
+		memcpy(scan->orderByData, orderbys, scan->numberOfOrderBys * sizeof(ScanKeyData));
 
 		for (i = 0; i < scan->numberOfOrderBys; i++)
 		{
@@ -423,6 +416,8 @@ spgrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 
 	/* count an indexscan for stats */
 	pgstat_count_index_scan(scan->indexRelation);
+	if (scan->instrument)
+		scan->instrument->nsearches++;
 }
 
 void
@@ -690,7 +685,7 @@ spgInnerTest(SpGistScanOpaque so, SpGistSearchItem *item,
 	{
 		/* force all children to be visited */
 		out.nNodes = nNodes;
-		out.nodeNumbers = (int *) palloc(sizeof(int) * nNodes);
+		out.nodeNumbers = palloc_array(int, nNodes);
 		for (i = 0; i < nNodes; i++)
 			out.nodeNumbers[i] = i;
 	}
@@ -703,7 +698,7 @@ spgInnerTest(SpGistScanOpaque so, SpGistSearchItem *item,
 	{
 		/* collect node pointers */
 		SpGistNodeTuple node;
-		SpGistNodeTuple *nodes = (SpGistNodeTuple *) palloc(sizeof(SpGistNodeTuple) * nNodes);
+		SpGistNodeTuple *nodes = palloc_array(SpGistNodeTuple, nNodes);
 
 		SGITITERATE(innerTuple, i, node)
 		{
@@ -756,7 +751,7 @@ enum SpGistSpecialOffsetNumbers
 {
 	SpGistBreakOffsetNumber = InvalidOffsetNumber,
 	SpGistRedirectOffsetNumber = MaxOffsetNumber + 1,
-	SpGistErrorOffsetNumber = MaxOffsetNumber + 2
+	SpGistErrorOffsetNumber = MaxOffsetNumber + 2,
 };
 
 static OffsetNumber
@@ -815,7 +810,7 @@ spgTestLeafTuple(SpGistScanOpaque so,
  */
 static void
 spgWalk(Relation index, SpGistScanOpaque so, bool scanWholeIndex,
-		storeRes_func storeRes, Snapshot snapshot)
+		storeRes_func storeRes)
 {
 	Buffer		buffer = InvalidBuffer;
 	bool		reportedSome = false;
@@ -862,13 +857,12 @@ redirect:
 			/* else new pointer points to the same page, no work needed */
 
 			page = BufferGetPage(buffer);
-			TestForOldSnapshot(snapshot, index, page);
 
 			isnull = SpGistPageStoresNulls(page) ? true : false;
 
 			if (SpGistPageIsLeaf(page))
 			{
-				/* Page is a leaf - that is, all it's tuples are heap items */
+				/* Page is a leaf - that is, all its tuples are heap items */
 				OffsetNumber max = PageGetMaxOffsetNumber(page);
 
 				if (SpGistBlockIsRoot(blkno))
@@ -950,7 +944,7 @@ spggetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	so->tbm = tbm;
 	so->ntids = 0;
 
-	spgWalk(scan->indexRelation, so, true, storeBitmap, scan->xs_snapshot);
+	spgWalk(scan->indexRelation, so, true, storeBitmap);
 
 	return so->ntids;
 }
@@ -973,8 +967,8 @@ storeGettuple(SpGistScanOpaque so, ItemPointer heapPtr,
 			so->distances[so->nPtrs] = NULL;
 		else
 		{
-			IndexOrderByDistance *distances =
-				palloc(sizeof(distances[0]) * so->numberOfOrderBys);
+			IndexOrderByDistance *distances = palloc_array(IndexOrderByDistance,
+														   so->numberOfOrderBys);
 			int			i;
 
 			for (i = 0; i < so->numberOfOrderBys; i++)
@@ -1071,8 +1065,7 @@ spggettuple(IndexScanDesc scan, ScanDirection dir)
 		}
 		so->iPtr = so->nPtrs = 0;
 
-		spgWalk(scan->indexRelation, so, false, storeGettuple,
-				scan->xs_snapshot);
+		spgWalk(scan->indexRelation, so, false, storeGettuple);
 
 		if (so->nPtrs == 0)
 			break;				/* must have completed scan */

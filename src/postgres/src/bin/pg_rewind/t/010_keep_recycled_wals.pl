@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 #
 # Test situation where a target data directory contains
 # WAL files that were already recycled by the new primary.
@@ -49,8 +49,8 @@ $node_primary->stop();
 my ($stdout, $stderr) = run_command(
 	[
 		'pg_rewind', '--debug',
-		'--source-pgdata', $node_standby->data_dir,
-		'--target-pgdata', $node_primary->data_dir,
+		'--source-pgdata' => $node_standby->data_dir,
+		'--target-pgdata' => $node_primary->data_dir,
 		'--no-sync',
 	]);
 

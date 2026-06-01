@@ -3,7 +3,7 @@
  * dsa.h
  *	  Dynamic shared memory areas.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -66,7 +66,7 @@ typedef pg_atomic_uint64 dsa_pointer_atomic;
 #define dsa_pointer_atomic_write pg_atomic_write_u64
 #define dsa_pointer_atomic_fetch_add pg_atomic_fetch_add_u64
 #define dsa_pointer_atomic_compare_exchange pg_atomic_compare_exchange_u64
-#define DSA_POINTER_FORMAT "%016" INT64_MODIFIER "x"
+#define DSA_POINTER_FORMAT "%016" PRIx64
 #endif
 
 /* Flags for dsa_allocate_extended. */
@@ -76,6 +76,31 @@ typedef pg_atomic_uint64 dsa_pointer_atomic;
 
 /* A sentinel value for dsa_pointer used to indicate failure to allocate. */
 #define InvalidDsaPointer ((dsa_pointer) 0)
+
+/*
+ * The number of bits used to represent the offset part of a dsa_pointer.
+ * This controls the maximum size of a segment, the maximum possible
+ * allocation size and also the maximum number of segments per area.
+ */
+#if SIZEOF_DSA_POINTER == 4
+#define DSA_OFFSET_WIDTH 27		/* 32 segments of size up to 128MB */
+#else
+#define DSA_OFFSET_WIDTH 40		/* 1024 segments of size up to 1TB */
+#endif
+
+/*
+ * The default size of the initial DSM segment that backs a dsa_area created
+ * by dsa_create.  After creating some number of segments of the initial size
+ * we'll double this size, and so on.  Larger segments may be created if
+ * necessary to satisfy large requests.
+ */
+#define DSA_DEFAULT_INIT_SEGMENT_SIZE ((size_t) (1 * 1024 * 1024))
+
+/* The minimum size of a DSM segment. */
+#define DSA_MIN_SEGMENT_SIZE	((size_t) (256 * 1024))
+
+/* The maximum size of a DSM segment. */
+#define DSA_MAX_SEGMENT_SIZE ((size_t) 1 << DSA_OFFSET_WIDTH)
 
 /* Check if a dsa_pointer value is valid. */
 #define DsaPointerIsValid(x) ((x) != InvalidDsaPointer)
@@ -88,6 +113,17 @@ typedef pg_atomic_uint64 dsa_pointer_atomic;
 #define dsa_allocate0(area, size) \
 	dsa_allocate_extended(area, size, DSA_ALLOC_ZERO)
 
+/* Create dsa_area with default segment sizes */
+#define dsa_create(tranche_id) \
+	dsa_create_ext(tranche_id, DSA_DEFAULT_INIT_SEGMENT_SIZE, \
+				   DSA_MAX_SEGMENT_SIZE)
+
+/* Create dsa_area with default segment sizes in an existing share memory space */
+#define dsa_create_in_place(place, size, tranche_id, segment) \
+	dsa_create_in_place_ext(place, size, tranche_id, segment, \
+							DSA_DEFAULT_INIT_SEGMENT_SIZE, \
+							DSA_MAX_SEGMENT_SIZE)
+
 /*
  * The type used for dsa_area handles.  dsa_handle values can be shared with
  * other processes, so that they can attach to them.  This provides a way to
@@ -99,10 +135,17 @@ typedef pg_atomic_uint64 dsa_pointer_atomic;
  */
 typedef dsm_handle dsa_handle;
 
-extern dsa_area *dsa_create(int tranche_id);
-extern dsa_area *dsa_create_in_place(void *place, size_t size,
-									 int tranche_id, dsm_segment *segment);
+/* Sentinel value to use for invalid dsa_handles. */
+#define DSA_HANDLE_INVALID ((dsa_handle) DSM_HANDLE_INVALID)
+
+extern dsa_area *dsa_create_ext(int tranche_id, size_t init_segment_size,
+								size_t max_segment_size);
+extern dsa_area *dsa_create_in_place_ext(void *place, size_t size,
+										 int tranche_id, dsm_segment *segment,
+										 size_t init_segment_size,
+										 size_t max_segment_size);
 extern dsa_area *dsa_attach(dsa_handle handle);
+extern bool dsa_is_attached(dsa_handle handle);
 extern dsa_area *dsa_attach_in_place(void *place, dsm_segment *segment);
 extern void dsa_release_in_place(void *place);
 extern void dsa_on_dsm_detach_release_in_place(dsm_segment *, Datum);
@@ -117,6 +160,8 @@ extern dsa_handle dsa_get_handle(dsa_area *area);
 extern dsa_pointer dsa_allocate_extended(dsa_area *area, size_t size, int flags);
 extern void dsa_free(dsa_area *area, dsa_pointer dp);
 extern void *dsa_get_address(dsa_area *area, dsa_pointer dp);
+extern size_t dsa_get_total_size(dsa_area *area);
+extern size_t dsa_get_total_size_from_handle(dsa_handle handle);
 extern void dsa_trim(dsa_area *area);
 extern void dsa_dump(dsa_area *area);
 

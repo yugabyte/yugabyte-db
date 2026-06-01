@@ -3,7 +3,7 @@
  * test_rls_hooks.c
  *		Code for testing RLS hooks.
  *
- * Copyright (c) 2015-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_rls_hooks/test_rls_hooks.c
@@ -15,7 +15,6 @@
 
 #include "catalog/pg_type.h"
 #include "fmgr.h"
-#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_collate.h"
@@ -28,8 +27,6 @@
 #include "utils/relcache.h"
 
 PG_MODULE_MAGIC;
-
-void		_PG_init(void);
 
 /* Install hooks */
 void
@@ -47,7 +44,7 @@ List *
 test_rls_hooks_permissive(CmdType cmdtype, Relation relation)
 {
 	List	   *policies = NIL;
-	RowSecurityPolicy *policy = palloc0(sizeof(RowSecurityPolicy));
+	RowSecurityPolicy *policy = palloc0_object(RowSecurityPolicy);
 	Datum		role;
 	FuncCall   *n;
 	Node	   *e;
@@ -70,7 +67,7 @@ test_rls_hooks_permissive(CmdType cmdtype, Relation relation)
 
 	policy->policy_name = pstrdup("extension policy");
 	policy->polcmd = '*';
-	policy->roles = construct_array(&role, 1, OIDOID, sizeof(Oid), true, TYPALIGN_INT);
+	policy->roles = construct_array_builtin(&role, 1, OIDOID);
 
 	/*
 	 * policy->qual = (Expr *) makeConst(BOOLOID, -1, InvalidOid,
@@ -115,7 +112,7 @@ List *
 test_rls_hooks_restrictive(CmdType cmdtype, Relation relation)
 {
 	List	   *policies = NIL;
-	RowSecurityPolicy *policy = palloc0(sizeof(RowSecurityPolicy));
+	RowSecurityPolicy *policy = palloc0_object(RowSecurityPolicy);
 	Datum		role;
 	FuncCall   *n;
 	Node	   *e;
@@ -138,7 +135,7 @@ test_rls_hooks_restrictive(CmdType cmdtype, Relation relation)
 
 	policy->policy_name = pstrdup("extension policy");
 	policy->polcmd = '*';
-	policy->roles = construct_array(&role, 1, OIDOID, sizeof(Oid), true, TYPALIGN_INT);
+	policy->roles = construct_array_builtin(&role, 1, OIDOID);
 
 	n = makeFuncCall(list_make2(makeString("pg_catalog"),
 								makeString("current_user")),

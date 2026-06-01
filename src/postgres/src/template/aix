@@ -1,28 +1,19 @@
 # src/template/aix
 
-# Set default options if using xlc.  This formerly included -qsrcmsg, but that
-# option elicits internal compiler errors from xlc v16.1.0.  Note: configure
-# will add -qnoansialias if the compiler accepts it, even if user specifies a
-# non-default CFLAGS setting.
-if test "$GCC" != yes ; then
-  case $host_os in
-    aix3.2.5 | aix4.1*)
-      CFLAGS="-O -qmaxmem=16384"
-      ;;
-    *)
-      CFLAGS="-O2 -qmaxmem=16384"
-      ;;
-  esac
-
-  # Due to a compiler bug, see 20171013023536.GA492146@rfd.leadboat.com for details,
-  # force restrict not to be used when compiling with xlc.
-  FORCE_DISABLE_RESTRICT=yes
+# Prefer unnamed POSIX semaphores if available, unless user overrides choice
+if test x"$PREFERRED_SEMAPHORES" = x"" ; then
+  PREFERRED_SEMAPHORES=UNNAMED_POSIX
 fi
 
 # Extra CFLAGS for code that will go into a shared library
 CFLAGS_SL=""
 
-# Native memset() is faster, tested on:
-# 	AIX 5.1 and 5.2, XLC 6.0 (IBM's cc)
-# 	AIX 5.3 ML3, gcc 4.0.1
-MEMSET_LOOP_LIMIT=0
+if test "$GCC" = yes; then
+  # We force 64-bit builds, because AIX doesn't play very nice with dynamic
+  # library loading in 32-bit mode: there's not enough address space.
+  CPPFLAGS="$CPPFLAGS -maix64"
+
+  # For large binaries/libraries, there will be TOC overflows in AIX. To
+  # avoid this, pass -bbigtoc linker option to enlarge TOC access range.
+  LDFLAGS="$LDFLAGS -maix64 -Wl,-bbigtoc"
+fi

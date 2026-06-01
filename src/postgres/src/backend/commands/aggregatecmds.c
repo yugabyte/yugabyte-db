@@ -4,7 +4,7 @@
  *
  *	  Routines for aggregate-manipulation commands
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -12,30 +12,27 @@
  *	  src/backend/commands/aggregatecmds.c
  *
  * DESCRIPTION
- *	  The "DefineFoo" routines take the parse tree and pick out the
+ *	  The "DefineAggregate" routine takes the parse tree and picks out the
  *	  appropriate arguments/flags, passing the results to the
- *	  corresponding "FooDefine" routines (in src/catalog) that do
- *	  the actual catalog-munging.  These routines also verify permission
- *	  of the user to execute the command.
+ *	  "AggregateCreate" routine (in src/backend/catalog), which does the
+ *	  actual catalog-munging.  DefineAggregate also verifies the permission of
+ *	  the user to execute the command.
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/htup_details.h"
-#include "catalog/dependency.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_aggregate.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "commands/alter.h"
 #include "commands/defrem.h"
 #include "miscadmin.h"
-#include "parser/parse_func.h"
 #include "parser/parse_type.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
 
 /* YB includes */
 #include "commands/extension.h"
@@ -108,7 +105,7 @@ DefineAggregate(ParseState *pstate,
 	aggNamespace = QualifiedNameGetCreationNamespace(name, &aggName);
 
 	/* Check we have creation rights in target namespace */
-	aclresult = pg_namespace_aclcheck(aggNamespace, GetUserId(), ACL_CREATE);
+	aclresult = object_aclcheck(NamespaceRelationId, aggNamespace, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(aggNamespace));

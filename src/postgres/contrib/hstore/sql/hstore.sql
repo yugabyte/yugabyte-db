@@ -5,8 +5,6 @@ SELECT amname, opcname
 FROM pg_opclass opc LEFT JOIN pg_am am ON am.oid = opcmethod
 WHERE opc.oid >= 16384 AND NOT amvalidate(opc.oid);
 
-set escape_string_warning=off;
-
 --hstore;
 
 select ''::hstore;
@@ -52,6 +50,17 @@ select e'\\"a=>q"w'::hstore;
 
 select ''::hstore;
 select '	'::hstore;
+
+-- invalid input
+select '  =>null'::hstore;
+select 'aa=>"'::hstore;
+
+-- also try it with non-error-throwing API
+select pg_input_is_valid('a=>b', 'hstore');
+select pg_input_is_valid('a=b', 'hstore');
+select * from pg_input_error_info('a=b', 'hstore');
+select * from pg_input_error_info(' =>b', 'hstore');
+
 
 -- -> operator
 

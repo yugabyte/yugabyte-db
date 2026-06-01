@@ -18,16 +18,22 @@ OBJS = \
 	yb_decode.o \
 	yb_virtual_wal_client.o \
 	\
+	applyparallelworker.o \
+	conflict.o \
 	decode.o \
 	launcher.o \
 	logical.o \
+	logicalctl.o \
 	logicalfuncs.o \
 	message.o \
 	origin.o \
 	proto.o \
 	relation.o \
 	reorderbuffer.o \
+	sequencesync.o \
+	slotsync.o \
 	snapbuild.o \
+	syncutils.o \
 	tablesync.o \
 	worker.o
 

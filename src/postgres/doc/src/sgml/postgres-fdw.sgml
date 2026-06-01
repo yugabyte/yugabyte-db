@@ -1,7 +1,9 @@
 <!-- doc/src/sgml/postgres-fdw.sgml -->
 
 <sect1 id="postgres-fdw" xreflabel="postgres_fdw">
- <title>postgres_fdw</title>
+ <title>postgres_fdw &mdash;
+   access data stored in external <productname>PostgreSQL</productname>
+   servers</title>
 
  <indexterm zone="postgres-fdw">
   <primary>postgres_fdw</primary>
@@ -80,7 +82,7 @@
  <para>
   Note that <filename>postgres_fdw</filename> currently lacks support for
   <command>INSERT</command> statements with an <literal>ON CONFLICT DO
-  UPDATE</literal> clause.  However, the <literal>ON CONFLICT DO NOTHING</literal>
+  SELECT/UPDATE</literal> clause.  However, the <literal>ON CONFLICT DO NOTHING</literal>
   clause is supported, provided a unique index inference specification
   is omitted.
   Note also that <filename>postgres_fdw</filename> supports row movement
@@ -106,10 +108,10 @@
   of columns to the remote table is by name, not position.
  </para>
 
- <sect2>
+ <sect2 id="postgres-fdw-options">
   <title>FDW Options of postgres_fdw</title>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-connection">
    <title>Connection Options</title>
 
    <para>
@@ -122,7 +124,7 @@
      <listitem>
       <para>
        <literal>user</literal>, <literal>password</literal> and <literal>sslpassword</literal> (specify these
-       in a user mapping, instead, or use a service file)
+       in a user mapping instead, or use a service file)
       </para>
      </listitem>
      <listitem>
@@ -167,9 +169,10 @@
     <literal>sslcert</literal> or <literal>sslkey</literal> settings.
    </para>
    <para>
-    Only superusers may connect to foreign servers without password
-    authentication, so always specify the <literal>password</literal> option
-    for user mappings belonging to non-superusers.
+    Non-superusers may connect to foreign servers using password
+    authentication or with GSSAPI delegated credentials, so specify the
+    <literal>password</literal> option for user mappings belonging to
+    non-superusers where password authentication is required.
    </para>
    <para>
     A superuser may override this check on a per-user-mapping basis by setting
@@ -191,13 +194,15 @@ OPTIONS (ADD password_required 'false');
     user can potentially use any client certificates,
     <filename>.pgpass</filename>,
     <filename>.pg_service.conf</filename> etc. in the unix home directory of the
-    system user the postgres server runs as. They can also use any trust
+    system user the postgres server runs as.   (For details on how home
+    directories are found, see <xref linkend="libpq-pgpass"/>.)  They can
+    also use any trust
     relationship granted by authentication modes like <literal>peer</literal>
     or <literal>ident</literal> authentication.
    </para>
   </sect3>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-object-name">
    <title>Object Name Options</title>
 
    <para>
@@ -246,7 +251,7 @@ OPTIONS (ADD password_required 'false');
 
   </sect3>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-cost-estimation">
    <title>Cost Estimation Options</title>
 
    <para>
@@ -300,7 +305,7 @@ OPTIONS (ADD password_required 'false');
        scans on that server.  This represents the additional overhead of
        data transfer between servers.  You might increase or decrease this
        number to reflect higher or lower network delay to the remote server.
-       The default value is <literal>0.01</literal>.
+       The default value is <literal>0.2</literal>.
       </para>
      </listitem>
     </varlistentry>
@@ -326,9 +331,71 @@ OPTIONS (ADD password_required 'false');
     frequently updated, the local statistics will soon be obsolete.
    </para>
 
+   <para>
+    The following options control how such an <command>ANALYZE</command>
+    operation behaves:
+   </para>
+
+   <variablelist>
+
+    <varlistentry>
+     <term><literal>analyze_sampling</literal> (<type>string</type>)</term>
+     <listitem>
+      <para>
+       This option, which can be specified for a foreign table or a foreign
+       server, determines if <command>ANALYZE</command> on a foreign table
+       samples the data on the remote side, or reads and transfers all data
+       and performs the sampling locally. The supported values
+       are <literal>off</literal>, <literal>random</literal>,
+       <literal>system</literal>, <literal>bernoulli</literal>
+       and <literal>auto</literal>. <literal>off</literal> disables remote
+       sampling, so all data are transferred and sampled locally.
+       <literal>random</literal> performs remote sampling using the
+       <literal>random()</literal> function to choose returned rows,
+       while <literal>system</literal> and <literal>bernoulli</literal> rely
+       on the built-in <literal>TABLESAMPLE</literal> methods of those
+       names. <literal>random</literal> works on all remote server versions,
+       while <literal>TABLESAMPLE</literal> is supported only since 9.5.
+       <literal>auto</literal> (the default) picks the recommended sampling
+       method automatically; currently it means
+       either <literal>bernoulli</literal> or <literal>random</literal>
+       depending on the remote server version.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>restore_stats</literal> (<type>boolean</type>)</term>
+     <listitem>
+      <para>
+       This option, which can be specified for a foreign table or a foreign
+       server, determines if <command>ANALYZE</command> on a foreign table
+       will instead attempt to fetch the existing statistics for the foreign
+       table on the remote server, and restore those statistics directly to
+       the local server.  If the attempt failed, statistics are collected by
+       row sampling on the foreign table.
+       This option is only useful if the remote table is one that can have
+       regular statistics (tables and materialized views).
+       When using this option, <emphasis>it is the user's responsibility
+       </emphasis> to ensure that the existing statistics for the foreign
+       table are up-to-date.
+       The default is <literal>false</literal>.
+      </para>
+
+      <para>
+       If the foreign table is a partition of a partitioned table, analyzing
+       the partitioned table will still result in row sampling on the foreign
+       table regardless of this setting, though direct analysis of the foreign
+       table would have attempted to fetch and restore remote statistics first.
+      </para>
+     </listitem>
+    </varlistentry>
+
+   </variablelist>
+
   </sect3>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-remote-execution">
    <title>Remote Execution Options</title>
 
    <para>
@@ -398,6 +465,14 @@ OPTIONS (ADD password_required 'false');
        exceeds the limit, the <literal>batch_size</literal> will be adjusted to
        avoid an error.
       </para>
+
+      <para>
+       This option also applies when copying into foreign tables.  In that case
+       the actual number of rows <filename>postgres_fdw</filename> copies at
+       once is determined in a similar way to the insert case, but it is
+       limited to at most 1000 due to implementation restrictions of the
+       <command>COPY</command> command.
+      </para>
      </listitem>
     </varlistentry>
 
@@ -405,7 +480,7 @@ OPTIONS (ADD password_required 'false');
 
   </sect3>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-asynchronous-execution">
    <title>Asynchronous Execution Options</title>
 
    <para>
@@ -456,7 +531,7 @@ OPTIONS (ADD password_required 'false');
    </variablelist>
   </sect3>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-transaction-management">
    <title>Transaction Management Options</title>
 
    <para>
@@ -465,12 +540,13 @@ OPTIONS (ADD password_required 'false');
     corresponding remote transactions, and subtransactions are managed by
     creating corresponding remote subtransactions. When multiple remote
     transactions are involved in the current local transaction, by default
-    <filename>postgres_fdw</filename> commits those remote transactions
-    serially when the local transaction is committed. When multiple remote
-    subtransactions are involved in the current local subtransaction, by
-    default <filename>postgres_fdw</filename> commits those remote
-    subtransactions serially when the local subtransaction is committed.
-    Performance can be improved with the following option:
+    <filename>postgres_fdw</filename> commits or aborts those remote
+    transactions serially when the local transaction is committed or aborted.
+    When multiple remote subtransactions are involved in the current local
+    subtransaction, by default <filename>postgres_fdw</filename> commits or
+    aborts those remote subtransactions serially when the local subtransaction
+    is committed or aborted.
+    Performance can be improved with the following options:
    </para>
 
    <variablelist>
@@ -479,34 +555,48 @@ OPTIONS (ADD password_required 'false');
      <term><literal>parallel_commit</literal> (<type>boolean</type>)</term>
      <listitem>
       <para>
-       This option controls whether <filename>postgres_fdw</filename> commits
-       in parallel remote transactions opened on a foreign server in a local
+       This option controls whether <filename>postgres_fdw</filename> commits,
+       in parallel, remote transactions opened on a foreign server in a local
        transaction when the local transaction is committed. This setting also
        applies to remote and local subtransactions. This option can only be
        specified for foreign servers, not per-table. The default is
        <literal>false</literal>.
       </para>
+     </listitem>
+    </varlistentry>
 
+    <varlistentry>
+     <term><literal>parallel_abort</literal> (<type>boolean</type>)</term>
+     <listitem>
       <para>
-       If multiple foreign servers with this option enabled are involved in a
-       local transaction, multiple remote transactions on those foreign
-       servers are committed in parallel across those foreign servers when
-       the local transaction is committed.
-      </para>
-
-      <para>
-       When this option is enabled, a foreign server with many remote
-       transactions may see a negative performance impact when the local
-       transaction is committed.
+       This option controls whether <filename>postgres_fdw</filename> aborts,
+       in parallel, remote transactions opened on a foreign server in a local
+       transaction when the local transaction is aborted. This setting also
+       applies to remote and local subtransactions. This option can only be
+       specified for foreign servers, not per-table. The default is
+       <literal>false</literal>.
       </para>
      </listitem>
     </varlistentry>
 
    </variablelist>
 
+   <para>
+    If multiple foreign servers with these options enabled are involved in a
+    local transaction, multiple remote transactions on those foreign servers
+    are committed or aborted in parallel across those foreign servers when
+    the local transaction is committed or aborted.
+   </para>
+
+   <para>
+    When these options are enabled, a foreign server with many remote
+    transactions may see a negative performance impact when the local
+    transaction is committed or aborted.
+   </para>
+
   </sect3>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-updatability">
    <title>Updatability Options</title>
 
    <para>
@@ -543,7 +633,7 @@ OPTIONS (ADD password_required 'false');
    </variablelist>
   </sect3>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-truncatability">
    <title>Truncatability Options</title>
 
    <para>
@@ -574,7 +664,7 @@ OPTIONS (ADD password_required 'false');
    </variablelist>
   </sect3>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-importing">
    <title>Importing Options</title>
 
    <para>
@@ -682,7 +772,7 @@ OPTIONS (ADD password_required 'false');
 
   </sect3>
 
-  <sect3>
+  <sect3 id="postgres-fdw-options-connection-management">
     <title>Connection Management Options</title>
 
     <para>
@@ -693,7 +783,7 @@ OPTIONS (ADD password_required 'false');
 
     <variablelist>
 
-     <varlistentry>
+     <varlistentry id="postgres-fdw-option-keep-connections">
       <term><literal>keep_connections</literal> (<type>boolean</type>)</term>
       <listitem>
        <para>
@@ -707,38 +797,197 @@ OPTIONS (ADD password_required 'false');
       </listitem>
      </varlistentry>
 
+     <varlistentry id="postgres-fdw-option-use-scram-passthrough">
+      <term><literal>use_scram_passthrough</literal> (<type>boolean</type>)</term>
+      <listitem>
+       <para>
+        This option controls whether <filename>postgres_fdw</filename> will
+        use the SCRAM pass-through authentication to connect to the foreign
+        server.  With SCRAM pass-through authentication,
+        <filename>postgres_fdw</filename> uses SCRAM-hashed secrets instead of
+        plain-text user passwords to connect to the remote server.  This
+        avoids storing plain-text user passwords in PostgreSQL system
+        catalogs.
+       </para>
+
+       <para>
+        To use SCRAM pass-through authentication:
+        <itemizedlist>
+         <listitem>
+          <para>
+           The remote server must request the <literal>scram-sha-256</literal>
+           authentication method; otherwise, the connection will fail.
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           The remote server can be of any PostgreSQL version that supports
+           SCRAM.  Support for <literal>use_scram_passthrough</literal> is
+           only required on the client side (FDW side).
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           The user mapping password is not used.
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           The server running <filename>postgres_fdw</filename> and the remote
+           server must have identical SCRAM secrets (encrypted passwords) for
+           the user being used on <filename>postgres_fdw</filename> to
+           authenticate on the foreign server (same salt and iterations, not
+           merely the same password).
+          </para>
+
+          <para>
+           As a corollary, if FDW connections to multiple hosts are to be
+           made, for example for partitioned foreign tables/sharding, then all
+           hosts must have identical SCRAM secrets for the users involved.
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           The current session on the PostgreSQL instance that makes the
+           outgoing FDW connections also must also use SCRAM authentication
+           for its incoming client connection.  (Hence
+           <quote>pass-through</quote>: SCRAM must be used going in and out.)
+           This is a technical requirement of the SCRAM protocol.
+          </para>
+         </listitem>
+        </itemizedlist>
+       </para>
+      </listitem>
+     </varlistentry>
+
     </variablelist>
    </sect3>
  </sect2>
 
-<sect2>
+<sect2 id="postgres-fdw-functions">
   <title>Functions</title>
 
   <variablelist>
    <varlistentry>
-    <term><function>postgres_fdw_get_connections(OUT server_name text, OUT valid boolean) returns setof record</function></term>
+    <term><function>postgres_fdw_get_connections(
+      IN check_conn boolean DEFAULT false, OUT server_name text,
+      OUT user_name text, OUT valid boolean, OUT used_in_xact boolean,
+      OUT closed boolean, OUT remote_backend_pid int4)
+      returns setof record</function></term>
     <listitem>
      <para>
-      This function returns the foreign server names of all the open
-      connections that <filename>postgres_fdw</filename> established from
-      the local session to the foreign servers. It also returns whether
-      each connection is valid or not. <literal>false</literal> is returned
-      if the foreign server connection is used in the current local
-      transaction but its foreign server or user mapping is changed or
-      dropped (Note that server name of an invalid connection will be
-      <literal>NULL</literal> if the server is dropped),
-      and then such invalid connection will be closed at
-      the end of that transaction. <literal>true</literal> is returned
-      otherwise. If there are no open connections, no record is returned.
+      This function returns information about all open connections postgres_fdw
+      has established from the local session to foreign servers. If there are
+      no open connections, no records are returned.
+     </para>
+     <para>
+      If <literal>check_conn</literal> is set to <literal>true</literal>,
+      the function checks the status of each connection and shows
+      the result in the <literal>closed</literal> column.
+      This feature is currently available only on systems that support
+      the non-standard <symbol>POLLRDHUP</symbol> extension to
+      the <symbol>poll</symbol> system call, including Linux.
+      This is useful to check if all connections used within
+      a transaction are still open. If any connections are closed,
+      the transaction cannot be committed successfully,
+      so it is better to roll back as soon as a closed connection is detected,
+      rather than continuing to the end. Users can roll back the transaction
+      immediately if the function reports connections where both
+      <literal>used_in_xact</literal> and <literal>closed</literal> are
+      <literal>true</literal>.
+     </para>
+     <para>
       Example usage of the function:
 <screen>
-postgres=# SELECT * FROM postgres_fdw_get_connections() ORDER BY 1;
- server_name | valid
--------------+-------
- loopback1   | t
- loopback2   | f
+postgres=# SELECT * FROM postgres_fdw_get_connections(true);
+ server_name | user_name | valid | used_in_xact | closed | remote_backend_pid
+-------------+-----------+-------+--------------+-----------------------------
+ loopback1   | postgres  | t     | t            | f      |            1353340
+ loopback2   | public    | t     | t            | f      |            1353120
+ loopback3   |           | f     | t            | f      |            1353156
 </screen>
+      The output columns are described in
+      <xref linkend="postgres-fdw-get-connections-columns"/>.
      </para>
+
+    <table id="postgres-fdw-get-connections-columns">
+     <title><function>postgres_fdw_get_connections</function> Output Columns</title>
+     <tgroup cols="3">
+      <thead>
+       <row>
+        <entry>Column</entry>
+        <entry>Type</entry>
+        <entry>Description</entry>
+       </row>
+      </thead>
+
+      <tbody>
+       <row>
+        <entry><structfield>server_name</structfield></entry>
+        <entry><type>text</type></entry>
+        <entry>
+         The foreign server name of this connection. If the server is
+         dropped but the connection remains open (i.e., marked as
+         invalid), this will be <literal>NULL</literal>.
+        </entry>
+       </row>
+       <row>
+        <entry><structfield>user_name</structfield></entry>
+        <entry><type>text</type></entry>
+        <entry>
+         Name of the local user mapped to the foreign server of this
+         connection, or <literal>public</literal> if a public mapping is used.
+         If the user mapping is dropped but the connection remains open
+         (i.e., marked as invalid), this will be <literal>NULL</literal>.
+        </entry>
+       </row>
+       <row>
+        <entry><structfield>valid</structfield></entry>
+        <entry><type>boolean</type></entry>
+        <entry>
+         False if this connection is invalid, meaning it is used in
+         the current transaction, but its foreign server or
+         user mapping has been changed or dropped.
+         The invalid connection will be closed at the end of
+         the transaction. True is returned otherwise.
+        </entry>
+       </row>
+       <row>
+        <entry><structfield>used_in_xact</structfield></entry>
+        <entry><type>boolean</type></entry>
+        <entry>
+         True if this connection is used in the current transaction.
+        </entry>
+       </row>
+       <row>
+        <entry><structfield>closed</structfield></entry>
+        <entry><type>boolean</type></entry>
+        <entry>
+         True if this connection is closed, false otherwise.
+         <literal>NULL</literal> is returned if <literal>check_conn</literal>
+         is set to <literal>false</literal> or if the connection status check
+         is not available on this platform.
+        </entry>
+       </row>
+       <row>
+        <entry><structfield>remote_backend_pid</structfield></entry>
+        <entry><type>int4</type></entry>
+        <entry>
+         Process ID of the remote backend, on the foreign server,
+         handling the connection.  If the remote backend is terminated and
+         the connection is closed (with <literal>closed</literal> set to
+         <literal>true</literal>), this still shows the process ID of
+         the terminated backend.
+        </entry>
+       </row>
+      </tbody>
+     </tgroup>
+    </table>
+
     </listitem>
    </varlistentry>
 
@@ -790,7 +1039,7 @@ postgres=# SELECT postgres_fdw_disconnect_all();
 
 </sect2>
 
- <sect2>
+ <sect2 id="postgres-fdw-connection-management">
   <title>Connection Management</title>
 
   <para>
@@ -827,7 +1076,33 @@ postgres=# SELECT postgres_fdw_disconnect_all();
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="postgres-fdw-server-subscription">
+  <title>Subscription Management</title>
+
+  <para>
+   <filename>postgres_fdw</filename> supports subscription connections using
+   the same options described in <xref
+   linkend="postgres-fdw-options-connection"/>.
+  </para>
+
+  <para>
+   For example, assuming the remote server <literal>foreign-host</literal> has
+   a publication <literal>testpub</literal>:
+<programlisting>
+CREATE SERVER subscription_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'foreign-host', dbname 'foreign_db');
+CREATE USER MAPPING FOR local_user SERVER subscription_server OPTIONS (user 'foreign_user', password 'password');
+CREATE SUBSCRIPTION my_subscription SERVER subscription_server PUBLICATION testpub;
+</programlisting>
+  </para>
+
+  <para>
+   To create a subscription, the user must be a member of the <xref
+   linkend="predefined-role-pg-create-subscription"/> role and have
+   <literal>USAGE</literal> privileges on the server.
+  </para>
+ </sect2>
+
+ <sect2 id="postgres-fdw-transaction-management">
   <title>Transaction Management</title>
 
   <para>
@@ -856,13 +1131,30 @@ postgres=# SELECT postgres_fdw_disconnect_all();
   </para>
 
   <para>
+   The remote transaction is opened in the same read/write mode as the local
+   transaction: if the local transaction is <literal>READ ONLY</literal>,
+   the remote transaction is opened in <literal>READ ONLY</literal> mode,
+   otherwise it is opened in <literal>READ WRITE</literal> mode.
+   (This rule is also applied to remote and local subtransactions.)
+   Note that this does not prevent login triggers executed on the remote
+   server from writing.
+  </para>
+
+  <para>
+   The remote transaction is also opened in the same deferrable mode as the
+   local transaction: if the local transaction is <literal>DEFERRABLE</literal>,
+   the remote transaction is opened in <literal>DEFERRABLE</literal> mode,
+   otherwise it is opened in <literal>NOT DEFERRABLE</literal> mode.
+  </para>
+
+  <para>
    Note that it is currently not supported by
    <filename>postgres_fdw</filename> to prepare the remote transaction for
    two-phase commit.
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="postgres-fdw-remote-query-optimization">
   <title>Remote Query Optimization</title>
 
   <para>
@@ -905,7 +1197,7 @@ postgres=# SELECT postgres_fdw_disconnect_all();
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="postgres-fdw-remote-query-execution-environment">
   <title>Remote Query Execution Environment</title>
 
   <para>
@@ -961,13 +1253,16 @@ postgres=# SELECT postgres_fdw_disconnect_all();
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="postgres-fdw-cross-version-compatibility">
   <title>Cross-Version Compatibility</title>
 
   <para>
    <filename>postgres_fdw</filename> can be used with remote servers dating back
    to <productname>PostgreSQL</productname> 8.3.  Read-only capability is available
-   back to 8.1.  A limitation however is that <filename>postgres_fdw</filename>
+   back to 8.1.
+  </para>
+  <para>
+   A limitation however is that <filename>postgres_fdw</filename>
    generally assumes that immutable built-in functions and operators are
    safe to send to the remote server for execution, if they appear in a
    <literal>WHERE</literal> clause for a foreign table.  Thus, a built-in
@@ -979,9 +1274,54 @@ postgres=# SELECT postgres_fdw_disconnect_all();
    optimization fence, and placing the problematic function or operator
    outside the sub-<literal>SELECT</literal>.
   </para>
+  <para>
+   Another limitation is that when executing <command>INSERT</command>
+   statements with an <literal>ON CONFLICT DO NOTHING</literal> clause on
+   a foreign table, the remote server must be running
+   <productname>PostgreSQL</productname> 9.5 or later,
+   as earlier versions do not support this feature.
+  </para>
  </sect2>
 
- <sect2>
+ <sect2 id="postgres-fdw-wait-events">
+  <title>Wait Events</title>
+
+  <para>
+   <filename>postgres_fdw</filename> can report the following wait events
+   under the wait event type <literal>Extension</literal>:
+  </para>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>PostgresFdwCleanupResult</literal></term>
+    <listitem>
+     <para>
+      Waiting for transaction abort on a remote server.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>PostgresFdwConnect</literal></term>
+    <listitem>
+     <para>
+      Waiting to establish a connection to a remote server.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>PostgresFdwGetResult</literal></term>
+    <listitem>
+     <para>
+      Waiting to receive the results of a query from a remote server.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+ <sect2 id="postgres-fdw-configuration-parameters">
   <title>Configuration Parameters</title>
 
   <variablelist>
@@ -1006,9 +1346,9 @@ postgres=# SELECT postgres_fdw_disconnect_all();
       of any length and contain even non-ASCII characters.  However when
       it's passed to and used as <varname>application_name</varname>
       in a foreign server, note that it will be truncated to less than
-      <symbol>NAMEDATALEN</symbol> characters and anything other than
-      printable ASCII characters will be replaced with question
-      marks (<literal>?</literal>).
+      <symbol>NAMEDATALEN</symbol> characters.
+      Anything other than printable ASCII characters are replaced with <link
+      linkend="sql-syntax-strings-escape">C-style hexadecimal escapes</link>.
       See <xref linkend="guc-application-name"/> for details.
      </para>
 
@@ -1081,7 +1421,7 @@ postgres=# SELECT postgres_fdw_disconnect_all();
   </variablelist>
  </sect2>
 
- <sect2>
+ <sect2 id="postgres-fdw-examples">
   <title>Examples</title>
 
   <para>
@@ -1145,7 +1485,7 @@ CREATE FOREIGN TABLE foreign_table (
   </para>
  </sect2>
 
- <sect2>
+ <sect2 id="postgres-fdw-author">
   <title>Author</title>
   <para>
    Shigeru Hanada <email>shigeru.hanada@gmail.com</email>

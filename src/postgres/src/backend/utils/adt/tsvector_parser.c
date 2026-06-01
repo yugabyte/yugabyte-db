@@ -3,7 +3,7 @@
  * tsvector_parser.c
  *	  Parser for tsvector
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -20,9 +20,19 @@
 
 /*
  * Private state of tsvector parser.  Note that tsquery also uses this code to
- * parse its input, hence the boolean flags.  The two flags are both true or
- * both false in current usage, but we keep them separate for clarity.
+ * parse its input, hence the boolean flags.  The oprisdelim and is_tsquery
+ * flags are both true or both false in current usage, but we keep them
+ * separate for clarity.
+ *
+ * If oprisdelim is set, the following characters are treated as delimiters
+ * (in addition to whitespace): ! | & ( )
+ *
  * is_tsquery affects *only* the content of error messages.
+ *
+ * is_web can be true to further modify tsquery parsing.
+ *
+ * If escontext is an ErrorSaveContext node, then soft errors can be
+ * captured there rather than being thrown.
  */
 struct TSVectorParseStateData
 {
@@ -34,20 +44,21 @@ struct TSVectorParseStateData
 	bool		oprisdelim;		/* treat ! | * ( ) as delimiters? */
 	bool		is_tsquery;		/* say "tsquery" not "tsvector" in errors? */
 	bool		is_web;			/* we're in websearch_to_tsquery() */
+	Node	   *escontext;		/* for soft error reporting */
 };
 
 
 /*
- * Initializes parser for the input string. If oprisdelim is set, the
- * following characters are treated as delimiters in addition to whitespace:
- * ! | & ( )
+ * Initializes a parser state object for the given input string.
+ * A bitmask of flags (see ts_utils.h) and an error context object
+ * can be provided as well.
  */
 TSVectorParseState
-init_tsvector_parser(char *input, int flags)
+init_tsvector_parser(char *input, int flags, Node *escontext)
 {
 	TSVectorParseState state;
 
-	state = (TSVectorParseState) palloc(sizeof(struct TSVectorParseStateData));
+	state = palloc_object(struct TSVectorParseStateData);
 	state->prsbuf = input;
 	state->bufstart = input;
 	state->len = 32;
@@ -56,12 +67,15 @@ init_tsvector_parser(char *input, int flags)
 	state->oprisdelim = (flags & P_TSV_OPR_IS_DELIM) != 0;
 	state->is_tsquery = (flags & P_TSV_IS_TSQUERY) != 0;
 	state->is_web = (flags & P_TSV_IS_WEB) != 0;
+	state->escontext = escontext;
 
 	return state;
 }
 
 /*
  * Reinitializes parser to parse 'input', instead of previous input.
+ *
+ * Note that bufstart (the string reported in errors) is not changed.
  */
 void
 reset_tsvector_parser(TSVectorParseState state, char *input)
@@ -122,23 +136,26 @@ do { \
 #define WAITPOSDELIM	7
 #define WAITCHARCMPLX	8
 
-#define PRSSYNTAXERROR prssyntaxerror(state)
+#define PRSSYNTAXERROR return prssyntaxerror(state)
 
-static void
+static bool
 prssyntaxerror(TSVectorParseState state)
 {
-	ereport(ERROR,
+	errsave(state->escontext,
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 state->is_tsquery ?
 			 errmsg("syntax error in tsquery: \"%s\"", state->bufstart) :
 			 errmsg("syntax error in tsvector: \"%s\"", state->bufstart)));
+	/* In soft error situation, return false as convenience for caller */
+	return false;
 }
 
 
 /*
  * Get next token from string being parsed. Returns true if successful,
- * false if end of input string is reached.  On success, these output
- * parameters are filled in:
+ * false if end of input string is reached or soft error.
+ *
+ * On success, these output parameters are filled in:
  *
  * *strval		pointer to token
  * *lenval		length of *strval
@@ -149,7 +166,11 @@ prssyntaxerror(TSVectorParseState state)
  * *poslen		number of elements in *pos_ptr
  * *endptr		scan resumption point
  *
- * Pass NULL for unwanted output parameters.
+ * Pass NULL for any unwanted output parameters.
+ *
+ * If state->escontext is an ErrorSaveContext, then caller must check
+ * SOFT_ERROR_OCCURRED() to determine whether a "false" result means
+ * error or normal end-of-string.
  */
 bool
 gettoken_tsvector(TSVectorParseState state,
@@ -185,25 +206,23 @@ gettoken_tsvector(TSVectorParseState state,
 			else if ((state->oprisdelim && ISOPERATOR(state->prsbuf)) ||
 					 (state->is_web && t_iseq(state->prsbuf, '"')))
 				PRSSYNTAXERROR;
-			else if (!t_isspace(state->prsbuf))
+			else if (!isspace((unsigned char) *state->prsbuf))
 			{
-				COPYCHAR(curpos, state->prsbuf);
-				curpos += pg_mblen(state->prsbuf);
+				curpos += ts_copychar_cstr(curpos, state->prsbuf);
 				statecode = WAITENDWORD;
 			}
 		}
 		else if (statecode == WAITNEXTCHAR)
 		{
 			if (*(state->prsbuf) == '\0')
-				ereport(ERROR,
+				ereturn(state->escontext, false,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("there is no escaped character: \"%s\"",
 								state->bufstart)));
 			else
 			{
 				RESIZEPRSBUF;
-				COPYCHAR(curpos, state->prsbuf);
-				curpos += pg_mblen(state->prsbuf);
+				curpos += ts_copychar_cstr(curpos, state->prsbuf);
 				Assert(oldstate != 0);
 				statecode = oldstate;
 			}
@@ -215,7 +234,7 @@ gettoken_tsvector(TSVectorParseState state,
 				statecode = WAITNEXTCHAR;
 				oldstate = WAITENDWORD;
 			}
-			else if (t_isspace(state->prsbuf) || *(state->prsbuf) == '\0' ||
+			else if (isspace((unsigned char) *state->prsbuf) || *(state->prsbuf) == '\0' ||
 					 (state->oprisdelim && ISOPERATOR(state->prsbuf)) ||
 					 (state->is_web && t_iseq(state->prsbuf, '"')))
 			{
@@ -238,8 +257,7 @@ gettoken_tsvector(TSVectorParseState state,
 			else
 			{
 				RESIZEPRSBUF;
-				COPYCHAR(curpos, state->prsbuf);
-				curpos += pg_mblen(state->prsbuf);
+				curpos += ts_copychar_cstr(curpos, state->prsbuf);
 			}
 		}
 		else if (statecode == WAITENDCMPLX)
@@ -258,8 +276,7 @@ gettoken_tsvector(TSVectorParseState state,
 			else
 			{
 				RESIZEPRSBUF;
-				COPYCHAR(curpos, state->prsbuf);
-				curpos += pg_mblen(state->prsbuf);
+				curpos += ts_copychar_cstr(curpos, state->prsbuf);
 			}
 		}
 		else if (statecode == WAITCHARCMPLX)
@@ -267,8 +284,7 @@ gettoken_tsvector(TSVectorParseState state,
 			if (!state->is_web && t_iseq(state->prsbuf, '\''))
 			{
 				RESIZEPRSBUF;
-				COPYCHAR(curpos, state->prsbuf);
-				curpos += pg_mblen(state->prsbuf);
+				curpos += ts_copychar_cstr(curpos, state->prsbuf);
 				statecode = WAITENDCMPLX;
 			}
 			else
@@ -279,7 +295,7 @@ gettoken_tsvector(TSVectorParseState state,
 					PRSSYNTAXERROR;
 				if (state->oprisdelim)
 				{
-					/* state->prsbuf+=pg_mblen(state->prsbuf); */
+					/* state->prsbuf+=pg_mblen_cstr(state->prsbuf); */
 					RETURN_TOKEN;
 				}
 				else
@@ -296,24 +312,24 @@ gettoken_tsvector(TSVectorParseState state,
 		}
 		else if (statecode == INPOSINFO)
 		{
-			if (t_isdigit(state->prsbuf))
+			if (isdigit((unsigned char) *state->prsbuf))
 			{
 				if (posalen == 0)
 				{
 					posalen = 4;
-					pos = (WordEntryPos *) palloc(sizeof(WordEntryPos) * posalen);
+					pos = palloc_array(WordEntryPos, posalen);
 					npos = 0;
 				}
 				else if (npos + 1 >= posalen)
 				{
 					posalen *= 2;
-					pos = (WordEntryPos *) repalloc(pos, sizeof(WordEntryPos) * posalen);
+					pos = repalloc_array(pos, WordEntryPos, posalen);
 				}
 				npos++;
 				WEP_SETPOS(pos[npos - 1], LIMITPOS(atoi(state->prsbuf)));
 				/* we cannot get here in tsquery, so no need for 2 errmsgs */
 				if (WEP_GETPOS(pos[npos - 1]) == 0)
-					ereport(ERROR,
+					ereturn(state->escontext, false,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("wrong position info in tsvector: \"%s\"",
 									state->bufstart)));
@@ -351,10 +367,10 @@ gettoken_tsvector(TSVectorParseState state,
 					PRSSYNTAXERROR;
 				WEP_SETWEIGHT(pos[npos - 1], 0);
 			}
-			else if (t_isspace(state->prsbuf) ||
+			else if (isspace((unsigned char) *state->prsbuf) ||
 					 *(state->prsbuf) == '\0')
 				RETURN_TOKEN;
-			else if (!t_isdigit(state->prsbuf))
+			else if (!isdigit((unsigned char) *state->prsbuf))
 				PRSSYNTAXERROR;
 		}
 		else					/* internal error */
@@ -362,6 +378,6 @@ gettoken_tsvector(TSVectorParseState state,
 				 statecode);
 
 		/* get next char */
-		state->prsbuf += pg_mblen(state->prsbuf);
+		state->prsbuf += pg_mblen_cstr(state->prsbuf);
 	}
 }

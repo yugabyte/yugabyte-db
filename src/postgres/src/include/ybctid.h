@@ -44,8 +44,9 @@
 	do {                                                            \
 		if (IsYugaByteEnabled()) {                                  \
 			dest = (src == 0) ? 0 :                                 \
-				PointerGetDatum(cstring_to_text_with_len(VARDATA_ANY(src), \
-														 VARSIZE_ANY_EXHDR(src))); \
+				PointerGetDatum(cstring_to_text_with_len( \
+					VARDATA_ANY(DatumGetPointer(src)), \
+					VARSIZE_ANY_EXHDR(DatumGetPointer(src)))); \
 		} else {                                                    \
 			dest = 0;                                               \
 		}                                                           \

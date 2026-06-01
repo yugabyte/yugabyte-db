@@ -3,7 +3,7 @@
  * pgstatfuncs.c
  *	  Functions for accessing various forms of statistics data
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -24,14 +24,15 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "postmaster/bgworker_internals.h"
-#include "postmaster/postmaster.h"
+#include "postmaster/bgworker.h"
+#include "replication/logicallauncher.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/inet.h"
 #include "utils/timestamp.h"
+#include "utils/tuplestore.h"
+#include "utils/wait_event.h"
 
 /* YB includes */
 #include "commands/progress.h"
@@ -41,353 +42,157 @@
 #include "utils/uuid.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-#define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
-
-#define HAS_PGSTAT_PERMISSIONS(role)	 (has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS) || has_privs_of_role(GetUserId(), role))
-
 extern bool yb_retrieved_concurrent_index_progress;
 
 uint64_t   *yb_pg_stat_retrieve_concurrent_index_progress();
 
-Datum
-pg_stat_get_numscans(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
+#define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
 
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->numscans);
+#define HAS_PGSTAT_PERMISSIONS(role)	 (has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS) || has_privs_of_role(GetUserId(), role))
 
-	PG_RETURN_INT64(result);
+#define PG_STAT_GET_RELENTRY_INT64(stat)						\
+Datum															\
+CppConcat(pg_stat_get_,stat)(PG_FUNCTION_ARGS)					\
+{																\
+	Oid			relid = PG_GETARG_OID(0);						\
+	int64		result;											\
+	PgStat_StatTabEntry *tabentry;								\
+																\
+	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)	\
+		result = 0;												\
+	else														\
+		result = (int64) (tabentry->stat);						\
+																\
+	PG_RETURN_INT64(result);									\
 }
 
+/* pg_stat_get_analyze_count */
+PG_STAT_GET_RELENTRY_INT64(analyze_count)
 
-Datum
-pg_stat_get_tuples_returned(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
+/* pg_stat_get_autoanalyze_count */
+PG_STAT_GET_RELENTRY_INT64(autoanalyze_count)
 
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->tuples_returned);
+/* pg_stat_get_autovacuum_count */
+PG_STAT_GET_RELENTRY_INT64(autovacuum_count)
 
-	PG_RETURN_INT64(result);
+/* pg_stat_get_blocks_fetched */
+PG_STAT_GET_RELENTRY_INT64(blocks_fetched)
+
+/* pg_stat_get_blocks_hit */
+PG_STAT_GET_RELENTRY_INT64(blocks_hit)
+
+/* pg_stat_get_dead_tuples */
+PG_STAT_GET_RELENTRY_INT64(dead_tuples)
+
+/* pg_stat_get_ins_since_vacuum */
+PG_STAT_GET_RELENTRY_INT64(ins_since_vacuum)
+
+/* pg_stat_get_live_tuples */
+PG_STAT_GET_RELENTRY_INT64(live_tuples)
+
+/* pg_stat_get_mod_since_analyze */
+PG_STAT_GET_RELENTRY_INT64(mod_since_analyze)
+
+/* pg_stat_get_numscans */
+PG_STAT_GET_RELENTRY_INT64(numscans)
+
+/* pg_stat_get_tuples_deleted */
+PG_STAT_GET_RELENTRY_INT64(tuples_deleted)
+
+/* pg_stat_get_tuples_fetched */
+PG_STAT_GET_RELENTRY_INT64(tuples_fetched)
+
+/* pg_stat_get_tuples_hot_updated */
+PG_STAT_GET_RELENTRY_INT64(tuples_hot_updated)
+
+/* pg_stat_get_tuples_newpage_updated */
+PG_STAT_GET_RELENTRY_INT64(tuples_newpage_updated)
+
+/* pg_stat_get_tuples_inserted */
+PG_STAT_GET_RELENTRY_INT64(tuples_inserted)
+
+/* pg_stat_get_tuples_returned */
+PG_STAT_GET_RELENTRY_INT64(tuples_returned)
+
+/* pg_stat_get_tuples_updated */
+PG_STAT_GET_RELENTRY_INT64(tuples_updated)
+
+/* pg_stat_get_vacuum_count */
+PG_STAT_GET_RELENTRY_INT64(vacuum_count)
+
+#define PG_STAT_GET_RELENTRY_FLOAT8(stat)						\
+Datum															\
+CppConcat(pg_stat_get_,stat)(PG_FUNCTION_ARGS)					\
+{																\
+	Oid			relid = PG_GETARG_OID(0);						\
+	double		result;											\
+	PgStat_StatTabEntry *tabentry;								\
+																\
+	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)	\
+		result = 0;												\
+	else														\
+		result = (double) (tabentry->stat);						\
+																\
+	PG_RETURN_FLOAT8(result);									\
 }
 
+/* pg_stat_get_total_vacuum_time */
+PG_STAT_GET_RELENTRY_FLOAT8(total_vacuum_time)
 
-Datum
-pg_stat_get_tuples_fetched(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
+/* pg_stat_get_total_autovacuum_time */
+PG_STAT_GET_RELENTRY_FLOAT8(total_autovacuum_time)
 
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->tuples_fetched);
+/* pg_stat_get_total_analyze_time */
+PG_STAT_GET_RELENTRY_FLOAT8(total_analyze_time)
 
-	PG_RETURN_INT64(result);
+/* pg_stat_get_total_autoanalyze_time */
+PG_STAT_GET_RELENTRY_FLOAT8(total_autoanalyze_time)
+
+#define PG_STAT_GET_RELENTRY_TIMESTAMPTZ(stat)					\
+Datum															\
+CppConcat(pg_stat_get_,stat)(PG_FUNCTION_ARGS)					\
+{																\
+	Oid			relid = PG_GETARG_OID(0);						\
+	TimestampTz result;											\
+	PgStat_StatTabEntry *tabentry;								\
+																\
+	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)	\
+		result = 0;												\
+	else														\
+		result = tabentry->stat;								\
+																\
+	if (result == 0)											\
+		PG_RETURN_NULL();										\
+	else														\
+		PG_RETURN_TIMESTAMPTZ(result);							\
 }
 
-
-Datum
-pg_stat_get_tuples_inserted(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->tuples_inserted);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_tuples_updated(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->tuples_updated);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_tuples_deleted(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->tuples_deleted);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_tuples_hot_updated(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->tuples_hot_updated);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_live_tuples(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->n_live_tuples);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_dead_tuples(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->n_dead_tuples);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_mod_since_analyze(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->changes_since_analyze);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_ins_since_vacuum(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->inserts_since_vacuum);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_blocks_fetched(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->blocks_fetched);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_blocks_hit(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->blocks_hit);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_last_vacuum_time(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	TimestampTz result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = tabentry->vacuum_timestamp;
-
-	if (result == 0)
-		PG_RETURN_NULL();
-	else
-		PG_RETURN_TIMESTAMPTZ(result);
-}
-
-Datum
-pg_stat_get_last_autovacuum_time(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	TimestampTz result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = tabentry->autovac_vacuum_timestamp;
-
-	if (result == 0)
-		PG_RETURN_NULL();
-	else
-		PG_RETURN_TIMESTAMPTZ(result);
-}
-
-Datum
-pg_stat_get_last_analyze_time(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	TimestampTz result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = tabentry->analyze_timestamp;
-
-	if (result == 0)
-		PG_RETURN_NULL();
-	else
-		PG_RETURN_TIMESTAMPTZ(result);
-}
-
-Datum
-pg_stat_get_last_autoanalyze_time(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	TimestampTz result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = tabentry->autovac_analyze_timestamp;
-
-	if (result == 0)
-		PG_RETURN_NULL();
-	else
-		PG_RETURN_TIMESTAMPTZ(result);
-}
-
-Datum
-pg_stat_get_vacuum_count(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->vacuum_count);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_autovacuum_count(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->autovac_vacuum_count);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_analyze_count(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->analyze_count);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_autoanalyze_count(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatTabEntry *tabentry;
-
-	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->autovac_analyze_count);
-
-	PG_RETURN_INT64(result);
-}
-
+/* pg_stat_get_last_analyze_time */
+PG_STAT_GET_RELENTRY_TIMESTAMPTZ(last_analyze_time)
+
+/* pg_stat_get_last_autoanalyze_time */
+PG_STAT_GET_RELENTRY_TIMESTAMPTZ(last_autoanalyze_time)
+
+/* pg_stat_get_last_autovacuum_time */
+PG_STAT_GET_RELENTRY_TIMESTAMPTZ(last_autovacuum_time)
+
+/* pg_stat_get_last_vacuum_time */
+PG_STAT_GET_RELENTRY_TIMESTAMPTZ(last_vacuum_time)
+
+/* pg_stat_get_lastscan */
+PG_STAT_GET_RELENTRY_TIMESTAMPTZ(lastscan)
+
+/* pg_stat_get_stat_reset_time */
+PG_STAT_GET_RELENTRY_TIMESTAMPTZ(stat_reset_time)
+
+/*
+ * YB_TODO_PG19MERGE: PG commits 3d51cb5197ea7eabc65f5e0184aae60b8f7f9528 and
+ * 024c521117579a6d356050ad3d78fdc95e44eefa reworked/renamed pgstate beentry
+ * retrieval functions. Temporarily patched up YB call sites for now; however,
+ * these need to be revisited (should the YB functions expect a proc number as an
+ * argument or an index? Also there seems to be no equivalent of the old
+ * pgstat_fetch_stat_local_beentry).
+ */
 Datum
 pg_stat_get_function_calls(PG_FUNCTION_ARGS)
 {
@@ -396,31 +201,46 @@ pg_stat_get_function_calls(PG_FUNCTION_ARGS)
 
 	if ((funcentry = pgstat_fetch_stat_funcentry(funcid)) == NULL)
 		PG_RETURN_NULL();
-	PG_RETURN_INT64(funcentry->f_numcalls);
+	PG_RETURN_INT64(funcentry->numcalls);
 }
 
+/* convert counter from microsec to millisec for display */
+#define PG_STAT_GET_FUNCENTRY_FLOAT8_MS(stat)						\
+Datum																\
+CppConcat(pg_stat_get_function_,stat)(PG_FUNCTION_ARGS)				\
+{																	\
+	Oid			funcid = PG_GETARG_OID(0);							\
+	double		result;												\
+	PgStat_StatFuncEntry *funcentry;								\
+																	\
+	if ((funcentry = pgstat_fetch_stat_funcentry(funcid)) == NULL)	\
+		PG_RETURN_NULL();											\
+	result = ((double) funcentry->stat) / 1000.0;					\
+	PG_RETURN_FLOAT8(result);										\
+}
+
+/* pg_stat_get_function_total_time */
+PG_STAT_GET_FUNCENTRY_FLOAT8_MS(total_time)
+
+/* pg_stat_get_function_self_time */
+PG_STAT_GET_FUNCENTRY_FLOAT8_MS(self_time)
+
 Datum
-pg_stat_get_function_total_time(PG_FUNCTION_ARGS)
+pg_stat_get_function_stat_reset_time(PG_FUNCTION_ARGS)
 {
 	Oid			funcid = PG_GETARG_OID(0);
+	TimestampTz result;
 	PgStat_StatFuncEntry *funcentry;
 
 	if ((funcentry = pgstat_fetch_stat_funcentry(funcid)) == NULL)
-		PG_RETURN_NULL();
-	/* convert counter from microsec to millisec for display */
-	PG_RETURN_FLOAT8(((double) funcentry->f_total_time) / 1000.0);
-}
+		result = 0;
+	else
+		result = funcentry->stat_reset_timestamp;
 
-Datum
-pg_stat_get_function_self_time(PG_FUNCTION_ARGS)
-{
-	Oid			funcid = PG_GETARG_OID(0);
-	PgStat_StatFuncEntry *funcentry;
-
-	if ((funcentry = pgstat_fetch_stat_funcentry(funcid)) == NULL)
+	if (result == 0)
 		PG_RETURN_NULL();
-	/* convert counter from microsec to millisec for display */
-	PG_RETURN_FLOAT8(((double) funcentry->f_self_time) / 1000.0);
+	else
+		PG_RETURN_TIMESTAMPTZ(result);
 }
 
 Datum
@@ -428,7 +248,6 @@ pg_stat_get_backend_idset(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 	int		   *fctx;
-	int32		result;
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
@@ -437,11 +256,10 @@ pg_stat_get_backend_idset(PG_FUNCTION_ARGS)
 		funcctx = SRF_FIRSTCALL_INIT();
 
 		fctx = MemoryContextAlloc(funcctx->multi_call_memory_ctx,
-								  2 * sizeof(int));
+								  sizeof(int));
 		funcctx->user_fctx = fctx;
 
 		fctx[0] = 0;
-		fctx[1] = pgstat_fetch_stat_numbackends();
 	}
 
 	/* stuff done on every call of the function */
@@ -449,12 +267,22 @@ pg_stat_get_backend_idset(PG_FUNCTION_ARGS)
 	fctx = funcctx->user_fctx;
 
 	fctx[0] += 1;
-	result = fctx[0];
 
-	if (result <= fctx[1])
+	/*
+	 * We recheck pgstat_fetch_stat_numbackends() each time through, just in
+	 * case the local status data has been refreshed since we started.  It's
+	 * plenty cheap enough if not.  If a refresh does happen, we'll likely
+	 * miss or duplicate some backend IDs, but we're content not to crash.
+	 * (Refreshing midway through such a query would be problematic usage
+	 * anyway, since the backend IDs we've already returned might no longer
+	 * refer to extant sessions.)
+	 */
+	if (fctx[0] <= pgstat_fetch_stat_numbackends())
 	{
 		/* do when there is more left to send */
-		SRF_RETURN_NEXT(funcctx, Int32GetDatum(result));
+		LocalPgBackendStatus *local_beentry = pgstat_get_local_beentry_by_index(fctx[0]);
+
+		SRF_RETURN_NEXT(funcctx, Int32GetDatum(local_beentry->proc_number));
 	}
 	else
 	{
@@ -484,14 +312,16 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		cmdtype = PROGRESS_COMMAND_VACUUM;
 	else if (pg_strcasecmp(cmd, "ANALYZE") == 0)
 		cmdtype = PROGRESS_COMMAND_ANALYZE;
-	else if (pg_strcasecmp(cmd, "CLUSTER") == 0)
-		cmdtype = PROGRESS_COMMAND_CLUSTER;
+	else if (pg_strcasecmp(cmd, "REPACK") == 0)
+		cmdtype = PROGRESS_COMMAND_REPACK;
 	else if (pg_strcasecmp(cmd, "CREATE INDEX") == 0)
 		cmdtype = PROGRESS_COMMAND_CREATE_INDEX;
 	else if (pg_strcasecmp(cmd, "BASEBACKUP") == 0)
 		cmdtype = PROGRESS_COMMAND_BASEBACKUP;
 	else if (pg_strcasecmp(cmd, "COPY") == 0)
 		cmdtype = PROGRESS_COMMAND_COPY;
+	else if (pg_strcasecmp(cmd, "DATACHECKSUMS") == 0)
+		cmdtype = PROGRESS_COMMAND_DATACHECKSUMS;
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -525,18 +355,11 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 	{
 		LocalPgBackendStatus *local_beentry;
 		PgBackendStatus *beentry;
-		Datum		values[PG_STAT_GET_PROGRESS_COLS];
-		bool		nulls[PG_STAT_GET_PROGRESS_COLS];
+		Datum		values[PG_STAT_GET_PROGRESS_COLS] = {0};
+		bool		nulls[PG_STAT_GET_PROGRESS_COLS] = {0};
 		int			i;
 
-		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, 0, sizeof(nulls));
-
-		local_beentry = pgstat_fetch_stat_local_beentry(curr_backend);
-
-		if (!local_beentry)
-			continue;
-
+		local_beentry = pgstat_get_local_beentry_by_index(curr_backend);
 		beentry = &local_beentry->backendStatus;
 
 		/*
@@ -545,8 +368,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		 *
 		 * YB: for COPY, report even if the command finished.
 		 */
-		if (!beentry || (beentry->st_progress_command != cmdtype &&
-						 beentry->st_progress_command != PROGRESS_COMMAND_COPY))
+		if (beentry->st_progress_command != cmdtype &&
+			beentry->st_progress_command != PROGRESS_COMMAND_COPY)
 			continue;
 
 		/*
@@ -639,7 +462,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_activity(PG_FUNCTION_ARGS)
 {
-#define PG_STAT_GET_ACTIVITY_COLS	30
+#define PG_STAT_GET_ACTIVITY_COLS	31
 /* YB specific fields in pg_stat_activity */
 #define YB_PG_STAT_GET_ACTIVITY_COLS 1
 #define YB_BACKEND_XID_COL			PG_STAT_GET_ACTIVITY_COLS
@@ -660,8 +483,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		/* 1-based index */
 		for (curr_backend = 1; curr_backend <= num_backends; ++curr_backend)
 		{
-			const PgBackendStatus *beentry = pgstat_fetch_stat_beentry(curr_backend);
-
+			const PgBackendStatus *beentry = pgstat_get_beentry_by_proc_number(curr_backend - 1);
 			if (!beentry)
 				break;
 			txn_infos[curr_backend - 1].session_id = beentry->yb_session_id;
@@ -675,38 +497,17 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 	{
 		/* for each row */
 		Datum		values[PG_STAT_GET_ACTIVITY_COLS +
-						   YB_PG_STAT_GET_ACTIVITY_COLS];
+						   YB_PG_STAT_GET_ACTIVITY_COLS] = {0};
 		bool		nulls[PG_STAT_GET_ACTIVITY_COLS +
-						  YB_PG_STAT_GET_ACTIVITY_COLS];
+						  YB_PG_STAT_GET_ACTIVITY_COLS] = {0};
 		LocalPgBackendStatus *local_beentry;
 		PgBackendStatus *beentry;
 		PGPROC	   *proc;
 		const char *wait_event_type = NULL;
 		const char *wait_event = NULL;
 
-		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, 0, sizeof(nulls));
-
 		/* Get the next one in the list */
-		local_beentry = pgstat_fetch_stat_local_beentry(curr_backend);
-		if (!local_beentry)
-		{
-			int			i;
-
-			/* Ignore missing entries if looking for specific PID */
-			if (pid != -1)
-				continue;
-
-			for (i = 0; i < lengthof(nulls); i++)
-				nulls[i] = true;
-
-			nulls[5] = false;
-			values[5] = CStringGetTextDatum("<backend information not available>");
-
-			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
-			continue;
-		}
-
+		local_beentry = pgstat_get_local_beentry_by_index(curr_backend);
 		beentry = &local_beentry->backendStatus;
 
 		/* If looking for specific PID, ignore all the others */
@@ -744,11 +545,13 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		/* Values only available to role member or pg_read_all_stats */
 		if (HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		{
-			SockAddr	zero_clientaddr;
 			char	   *clipped_activity;
 
 			switch (beentry->st_state)
 			{
+				case STATE_STARTING:
+					values[4] = CStringGetTextDatum("starting");
+					break;
 				case STATE_IDLE:
 					values[4] = CStringGetTextDatum("idle");
 					break;
@@ -777,7 +580,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			pfree(clipped_activity);
 
 			/* leader_pid */
-			nulls[28] = true;
+			nulls[29] = true;
 
 			proc = BackendPidGetProc(beentry->st_procpid);
 
@@ -794,9 +597,9 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 			/*
 			 * If a PGPROC entry was retrieved, display wait events and lock
-			 * group leader information if any.  To avoid extra overhead, no
-			 * extra lock is being held, so there is no guarantee of
-			 * consistency across multiple rows.
+			 * group leader or apply leader information if any.  To avoid
+			 * extra overhead, no extra lock is being held, so there is no
+			 * guarantee of consistency across multiple rows.
 			 */
 			if (proc != NULL)
 			{
@@ -811,13 +614,23 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 				/*
 				 * Show the leader only for active parallel workers.  This
-				 * leaves the field as NULL for the leader of a parallel
-				 * group.
+				 * leaves the field as NULL for the leader of a parallel group
+				 * or the leader of parallel apply workers.
 				 */
 				if (leader && leader->pid != beentry->st_procpid)
 				{
-					values[28] = Int32GetDatum(leader->pid);
-					nulls[28] = false;
+					values[29] = Int32GetDatum(leader->pid);
+					nulls[29] = false;
+				}
+				else if (beentry->st_backendType == B_BG_WORKER)
+				{
+					int			leader_pid = GetLeaderApplyWorkerPid(beentry->st_procpid);
+
+					if (leader_pid != InvalidPid)
+					{
+						values[29] = Int32GetDatum(leader_pid);
+						nulls[29] = false;
+					}
 				}
 			}
 
@@ -859,9 +672,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 				nulls[11] = true;
 
 			/* A zeroed client addr means we don't know */
-			memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
-			if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
-					   sizeof(zero_clientaddr)) == 0)
+			if (pg_memory_is_all_zeros(&beentry->st_clientaddr,
+									   sizeof(beentry->st_clientaddr)))
 			{
 				nulls[12] = true;
 				nulls[13] = true;
@@ -869,11 +681,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			}
 			else
 			{
-				if (beentry->st_clientaddr.addr.ss_family == AF_INET
-#ifdef HAVE_IPV6
-					|| beentry->st_clientaddr.addr.ss_family == AF_INET6
-#endif
-					)
+				if (beentry->st_clientaddr.addr.ss_family == AF_INET ||
+					beentry->st_clientaddr.addr.ss_family == AF_INET6)
 				{
 					char		remote_host[NI_MAXHOST];
 					char		remote_port[NI_MAXSERV];
@@ -978,6 +787,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 				values[25] = BoolGetDatum(beentry->st_gssstatus->gss_auth); /* gss_auth */
 				values[26] = CStringGetTextDatum(beentry->st_gssstatus->gss_princ);
 				values[27] = BoolGetDatum(beentry->st_gssstatus->gss_enc);	/* GSS Encryption in use */
+				values[28] = BoolGetDatum(beentry->st_gssstatus->gss_delegation);	/* GSS credentials
+																					 * delegated */
 			}
 			else
 			{
@@ -985,11 +796,13 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 				nulls[26] = true;	/* No GSS principal */
 				values[27] = BoolGetDatum(false);	/* GSS Encryption not in
 													 * use */
+				values[28] = BoolGetDatum(false);	/* GSS credentials not
+													 * delegated */
 			}
-			if (beentry->st_query_id == 0)
-				nulls[29] = true;
+			if (beentry->st_query_id == INT64CONST(0))
+				nulls[30] = true;
 			else
-				values[29] = UInt64GetDatum(beentry->st_query_id);
+				values[30] = Int64GetDatum(beentry->st_query_id);
 		}
 		else
 		{
@@ -1018,6 +831,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			nulls[27] = true;
 			nulls[28] = true;
 			nulls[29] = true;
+			nulls[30] = true;
 		}
 
 		nulls[YB_BACKEND_XID_COL] = true;
@@ -1037,7 +851,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 			if (info->is_not_null)
 			{
-				values[YB_BACKEND_XID_COL] = UUIDPGetDatum(&info->txn_id);
+				values[YB_BACKEND_XID_COL] = UUIDPGetDatum((const pg_uuid_t *) &info->txn_id);
 				nulls[YB_BACKEND_XID_COL] = false;
 			}
 		}
@@ -1063,10 +877,10 @@ pg_backend_pid(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_pid(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	PgBackendStatus *beentry;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	PG_RETURN_INT32(beentry->st_procpid);
@@ -1076,10 +890,10 @@ pg_stat_get_backend_pid(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_dbid(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	PgBackendStatus *beentry;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	PG_RETURN_OID(beentry->st_databaseid);
@@ -1089,26 +903,61 @@ pg_stat_get_backend_dbid(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_userid(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	PgBackendStatus *beentry;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	PG_RETURN_OID(beentry->st_userid);
 }
 
+Datum
+pg_stat_get_backend_subxact(PG_FUNCTION_ARGS)
+{
+#define PG_STAT_GET_SUBXACT_COLS	2
+	TupleDesc	tupdesc;
+	Datum		values[PG_STAT_GET_SUBXACT_COLS] = {0};
+	bool		nulls[PG_STAT_GET_SUBXACT_COLS] = {0};
+	int32		procNumber = PG_GETARG_INT32(0);
+	LocalPgBackendStatus *local_beentry;
+
+	/* Initialise attributes information in the tuple descriptor */
+	tupdesc = CreateTemplateTupleDesc(PG_STAT_GET_SUBXACT_COLS);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "subxact_count",
+					   INT4OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "subxact_overflow",
+					   BOOLOID, -1, 0);
+
+	TupleDescFinalize(tupdesc);
+	BlessTupleDesc(tupdesc);
+
+	if ((local_beentry = pgstat_get_local_beentry_by_proc_number(procNumber)) != NULL)
+	{
+		/* Fill values and NULLs */
+		values[0] = Int32GetDatum(local_beentry->backend_subxact_count);
+		values[1] = BoolGetDatum(local_beentry->backend_subxact_overflowed);
+	}
+	else
+	{
+		nulls[0] = true;
+		nulls[1] = true;
+	}
+
+	/* Returns the record as Datum */
+	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
+}
 
 Datum
 pg_stat_get_backend_activity(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	PgBackendStatus *beentry;
 	const char *activity;
 	char	   *clipped_activity;
 	text	   *ret;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		activity = "<backend information not available>";
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		activity = "<insufficient privilege>";
@@ -1118,7 +967,7 @@ pg_stat_get_backend_activity(PG_FUNCTION_ARGS)
 		activity = beentry->st_activity_raw;
 
 	clipped_activity = pgstat_clip_activity(activity);
-	ret = cstring_to_text(activity);
+	ret = cstring_to_text(clipped_activity);
 	pfree(clipped_activity);
 
 	PG_RETURN_TEXT_P(ret);
@@ -1127,17 +976,23 @@ pg_stat_get_backend_activity(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_wait_event_type(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	PgBackendStatus *beentry;
 	PGPROC	   *proc;
 	const char *wait_event_type = NULL;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		wait_event_type = "<backend information not available>";
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		wait_event_type = "<insufficient privilege>";
-	else if ((proc = BackendPidGetProc(beentry->st_procpid)) != NULL)
-		wait_event_type = pgstat_get_wait_event_type(proc->wait_event_info);
+	else
+	{
+		proc = BackendPidGetProc(beentry->st_procpid);
+		if (!proc)
+			proc = AuxiliaryPidGetProc(beentry->st_procpid);
+		if (proc)
+			wait_event_type = pgstat_get_wait_event_type(proc->wait_event_info);
+	}
 
 	if (!wait_event_type)
 		PG_RETURN_NULL();
@@ -1148,17 +1003,23 @@ pg_stat_get_backend_wait_event_type(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_wait_event(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	PgBackendStatus *beentry;
 	PGPROC	   *proc;
 	const char *wait_event = NULL;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		wait_event = "<backend information not available>";
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		wait_event = "<insufficient privilege>";
-	else if ((proc = BackendPidGetProc(beentry->st_procpid)) != NULL)
-		wait_event = pgstat_get_wait_event(proc->wait_event_info);
+	else
+	{
+		proc = BackendPidGetProc(beentry->st_procpid);
+		if (!proc)
+			proc = AuxiliaryPidGetProc(beentry->st_procpid);
+		if (proc)
+			wait_event = pgstat_get_wait_event(proc->wait_event_info);
+	}
 
 	if (!wait_event)
 		PG_RETURN_NULL();
@@ -1170,11 +1031,11 @@ pg_stat_get_backend_wait_event(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_activity_start(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	TimestampTz result;
 	PgBackendStatus *beentry;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
@@ -1196,11 +1057,11 @@ pg_stat_get_backend_activity_start(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_xact_start(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	TimestampTz result;
 	PgBackendStatus *beentry;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
@@ -1218,11 +1079,11 @@ pg_stat_get_backend_xact_start(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_start(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	TimestampTz result;
 	PgBackendStatus *beentry;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
@@ -1240,30 +1101,26 @@ pg_stat_get_backend_start(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	PgBackendStatus *beentry;
-	SockAddr	zero_clientaddr;
 	char		remote_host[NI_MAXHOST];
 	int			ret;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		PG_RETURN_NULL();
 
 	/* A zeroed client addr means we don't know */
-	memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
-	if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
-			   sizeof(zero_clientaddr)) == 0)
+	if (pg_memory_is_all_zeros(&beentry->st_clientaddr,
+							   sizeof(beentry->st_clientaddr)))
 		PG_RETURN_NULL();
 
 	switch (beentry->st_clientaddr.addr.ss_family)
 	{
 		case AF_INET:
-#ifdef HAVE_IPV6
 		case AF_INET6:
-#endif
 			break;
 		default:
 			PG_RETURN_NULL();
@@ -1287,30 +1144,26 @@ pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_client_port(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	PgBackendStatus *beentry;
-	SockAddr	zero_clientaddr;
 	char		remote_port[NI_MAXSERV];
 	int			ret;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	else if (!HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		PG_RETURN_NULL();
 
 	/* A zeroed client addr means we don't know */
-	memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
-	if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
-			   sizeof(zero_clientaddr)) == 0)
+	if (pg_memory_is_all_zeros(&beentry->st_clientaddr,
+							   sizeof(beentry->st_clientaddr)))
 		PG_RETURN_NULL();
 
 	switch (beentry->st_clientaddr.addr.ss_family)
 	{
 		case AF_INET:
-#ifdef HAVE_IPV6
 		case AF_INET6:
-#endif
 			break;
 		case AF_UNIX:
 			PG_RETURN_INT32(-1);
@@ -1334,10 +1187,10 @@ pg_stat_get_backend_client_port(PG_FUNCTION_ARGS)
 Datum
 yb_pg_stat_get_backend_catalog_version(PG_FUNCTION_ARGS)
 {
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	PgBackendStatus *beentry;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	if (beentry->yb_st_catalog_version.has_version)
@@ -1366,7 +1219,7 @@ yb_pg_stat_get_backend_local_catalog_version(PG_FUNCTION_ARGS)
 	for (i = 1; i <= num_backends; i++)
 	{
 		PgBackendStatus *beentry;
-		LocalPgBackendStatus *local_beentry = pgstat_fetch_stat_local_beentry(i);
+		LocalPgBackendStatus *local_beentry = pgstat_get_local_beentry_by_index(i);
 
 		if (!local_beentry)
 			continue;
@@ -1407,14 +1260,14 @@ pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
 	Oid			dbid = PG_GETARG_OID(0);
 	int32		result;
 	int			tot_backends = pgstat_fetch_stat_numbackends();
-	int			beid;
+	int			idx;
 
 	result = 0;
-	for (beid = 1; beid <= tot_backends; beid++)
+	for (idx = 1; idx <= tot_backends; idx++)
 	{
-		PgBackendStatus *beentry = pgstat_fetch_stat_beentry(beid);
+		LocalPgBackendStatus *local_beentry = pgstat_get_local_beentry_by_index(idx);
 
-		if (beentry && beentry->st_databaseid == dbid)
+		if (local_beentry->backendStatus.st_databaseid == dbid)
 			result++;
 	}
 
@@ -1422,148 +1275,93 @@ pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
 }
 
 
-Datum
-pg_stat_get_db_xact_commit(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_xact_commit);
-
-	PG_RETURN_INT64(result);
+#define PG_STAT_GET_DBENTRY_INT64(stat)							\
+Datum															\
+CppConcat(pg_stat_get_db_,stat)(PG_FUNCTION_ARGS)				\
+{																\
+	Oid			dbid = PG_GETARG_OID(0);						\
+	int64		result;											\
+	PgStat_StatDBEntry *dbentry;								\
+																\
+	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)	\
+		result = 0;												\
+	else														\
+		result = (int64) (dbentry->stat);						\
+																\
+	PG_RETURN_INT64(result);									\
 }
 
+/* pg_stat_get_db_blocks_fetched */
+PG_STAT_GET_DBENTRY_INT64(blocks_fetched)
 
-Datum
-pg_stat_get_db_xact_rollback(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
+/* pg_stat_get_db_blocks_hit */
+PG_STAT_GET_DBENTRY_INT64(blocks_hit)
 
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_xact_rollback);
+/* pg_stat_get_db_conflict_bufferpin */
+PG_STAT_GET_DBENTRY_INT64(conflict_bufferpin)
 
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_db_conflict_lock */
+PG_STAT_GET_DBENTRY_INT64(conflict_lock)
 
+/* pg_stat_get_db_conflict_snapshot */
+PG_STAT_GET_DBENTRY_INT64(conflict_snapshot)
 
-Datum
-pg_stat_get_db_blocks_fetched(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
+/* pg_stat_get_db_conflict_startup_deadlock */
+PG_STAT_GET_DBENTRY_INT64(conflict_startup_deadlock)
 
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_blocks_fetched);
+/* pg_stat_get_db_conflict_tablespace */
+PG_STAT_GET_DBENTRY_INT64(conflict_tablespace)
 
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_db_deadlocks */
+PG_STAT_GET_DBENTRY_INT64(deadlocks)
 
+/* pg_stat_get_db_sessions */
+PG_STAT_GET_DBENTRY_INT64(sessions)
 
-Datum
-pg_stat_get_db_blocks_hit(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
+/* pg_stat_get_db_sessions_abandoned */
+PG_STAT_GET_DBENTRY_INT64(sessions_abandoned)
 
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_blocks_hit);
+/* pg_stat_get_db_sessions_fatal */
+PG_STAT_GET_DBENTRY_INT64(sessions_fatal)
 
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_db_sessions_killed */
+PG_STAT_GET_DBENTRY_INT64(sessions_killed)
 
+/* pg_stat_get_db_parallel_workers_to_launch */
+PG_STAT_GET_DBENTRY_INT64(parallel_workers_to_launch)
 
-Datum
-pg_stat_get_db_tuples_returned(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
+/* pg_stat_get_db_parallel_workers_launched */
+PG_STAT_GET_DBENTRY_INT64(parallel_workers_launched)
 
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_tuples_returned);
+/* pg_stat_get_db_temp_bytes */
+PG_STAT_GET_DBENTRY_INT64(temp_bytes)
 
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_db_temp_files */
+PG_STAT_GET_DBENTRY_INT64(temp_files)
 
+/* pg_stat_get_db_tuples_deleted */
+PG_STAT_GET_DBENTRY_INT64(tuples_deleted)
 
-Datum
-pg_stat_get_db_tuples_fetched(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
+/* pg_stat_get_db_tuples_fetched */
+PG_STAT_GET_DBENTRY_INT64(tuples_fetched)
 
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_tuples_fetched);
+/* pg_stat_get_db_tuples_inserted */
+PG_STAT_GET_DBENTRY_INT64(tuples_inserted)
 
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_db_tuples_returned */
+PG_STAT_GET_DBENTRY_INT64(tuples_returned)
 
+/* pg_stat_get_db_tuples_updated */
+PG_STAT_GET_DBENTRY_INT64(tuples_updated)
 
-Datum
-pg_stat_get_db_tuples_inserted(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
+/* pg_stat_get_db_xact_commit */
+PG_STAT_GET_DBENTRY_INT64(xact_commit)
 
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_tuples_inserted);
+/* pg_stat_get_db_xact_rollback */
+PG_STAT_GET_DBENTRY_INT64(xact_rollback)
 
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_db_tuples_updated(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_tuples_updated);
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_db_tuples_deleted(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_tuples_deleted);
-
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_db_conflict_logicalslot */
+PG_STAT_GET_DBENTRY_INT64(conflict_logicalslot)
 
 Datum
 pg_stat_get_db_stat_reset_time(PG_FUNCTION_ARGS)
@@ -1583,111 +1381,6 @@ pg_stat_get_db_stat_reset_time(PG_FUNCTION_ARGS)
 		PG_RETURN_TIMESTAMPTZ(result);
 }
 
-Datum
-pg_stat_get_db_temp_files(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = dbentry->n_temp_files;
-
-	PG_RETURN_INT64(result);
-}
-
-
-Datum
-pg_stat_get_db_temp_bytes(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = dbentry->n_temp_bytes;
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_db_conflict_tablespace(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_conflict_tablespace);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_db_conflict_lock(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_conflict_lock);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_db_conflict_snapshot(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_conflict_snapshot);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_db_conflict_bufferpin(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_conflict_bufferpin);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_db_conflict_startup_deadlock(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_conflict_startup_deadlock);
-
-	PG_RETURN_INT64(result);
-}
 
 Datum
 pg_stat_get_db_conflict_all(PG_FUNCTION_ARGS)
@@ -1699,26 +1392,12 @@ pg_stat_get_db_conflict_all(PG_FUNCTION_ARGS)
 	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
 		result = 0;
 	else
-		result = (int64) (dbentry->n_conflict_tablespace +
-						  dbentry->n_conflict_lock +
-						  dbentry->n_conflict_snapshot +
-						  dbentry->n_conflict_bufferpin +
-						  dbentry->n_conflict_startup_deadlock);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_db_deadlocks(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (dbentry->n_deadlocks);
+		result = (int64) (dbentry->conflict_tablespace +
+						  dbentry->conflict_lock +
+						  dbentry->conflict_snapshot +
+						  dbentry->conflict_logicalslot +
+						  dbentry->conflict_bufferpin +
+						  dbentry->conflict_startup_deadlock);
 
 	PG_RETURN_INT64(result);
 }
@@ -1730,13 +1409,10 @@ pg_stat_get_db_checksum_failures(PG_FUNCTION_ARGS)
 	int64		result;
 	PgStat_StatDBEntry *dbentry;
 
-	if (!DataChecksumsEnabled())
-		PG_RETURN_NULL();
-
 	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
 		result = 0;
 	else
-		result = (int64) (dbentry->n_checksum_failures);
+		result = (int64) (dbentry->checksum_failures);
 
 	PG_RETURN_INT64(result);
 }
@@ -1747,9 +1423,6 @@ pg_stat_get_db_checksum_last_failure(PG_FUNCTION_ARGS)
 	Oid			dbid = PG_GETARG_OID(0);
 	TimestampTz result;
 	PgStat_StatDBEntry *dbentry;
-
-	if (!DataChecksumsEnabled())
-		PG_RETURN_NULL();
 
 	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
 		result = 0;
@@ -1762,148 +1435,84 @@ pg_stat_get_db_checksum_last_failure(PG_FUNCTION_ARGS)
 		PG_RETURN_TIMESTAMPTZ(result);
 }
 
+/* convert counter from microsec to millisec for display */
+#define PG_STAT_GET_DBENTRY_FLOAT8_MS(stat)						\
+Datum															\
+CppConcat(pg_stat_get_db_,stat)(PG_FUNCTION_ARGS)				\
+{																\
+	Oid			dbid = PG_GETARG_OID(0);						\
+	double		result;											\
+	PgStat_StatDBEntry *dbentry;								\
+																\
+	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)	\
+		result = 0;												\
+	else														\
+		result = ((double) dbentry->stat) / 1000.0;				\
+																\
+	PG_RETURN_FLOAT8(result);									\
+}
+
+/* pg_stat_get_db_active_time */
+PG_STAT_GET_DBENTRY_FLOAT8_MS(active_time)
+
+/* pg_stat_get_db_blk_read_time */
+PG_STAT_GET_DBENTRY_FLOAT8_MS(blk_read_time)
+
+/* pg_stat_get_db_blk_write_time */
+PG_STAT_GET_DBENTRY_FLOAT8_MS(blk_write_time)
+
+/* pg_stat_get_db_idle_in_transaction_time */
+PG_STAT_GET_DBENTRY_FLOAT8_MS(idle_in_transaction_time)
+
+/* pg_stat_get_db_session_time */
+PG_STAT_GET_DBENTRY_FLOAT8_MS(session_time)
+
 Datum
-pg_stat_get_db_blk_read_time(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_num_timed(PG_FUNCTION_ARGS)
 {
-	Oid			dbid = PG_GETARG_OID(0);
-	double		result;
-	PgStat_StatDBEntry *dbentry;
-
-	/* convert counter from microsec to millisec for display */
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = ((double) dbentry->n_block_read_time) / 1000.0;
-
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->num_timed);
 }
 
 Datum
-pg_stat_get_db_blk_write_time(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_num_requested(PG_FUNCTION_ARGS)
 {
-	Oid			dbid = PG_GETARG_OID(0);
-	double		result;
-	PgStat_StatDBEntry *dbentry;
-
-	/* convert counter from microsec to millisec for display */
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
-		result = 0;
-	else
-		result = ((double) dbentry->n_block_write_time) / 1000.0;
-
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->num_requested);
 }
 
 Datum
-pg_stat_get_db_session_time(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_num_performed(PG_FUNCTION_ARGS)
 {
-	Oid			dbid = PG_GETARG_OID(0);
-	double		result = 0.0;
-	PgStat_StatDBEntry *dbentry;
-
-	/* convert counter from microsec to millisec for display */
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) != NULL)
-		result = ((double) dbentry->total_session_time) / 1000.0;
-
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->num_performed);
 }
 
 Datum
-pg_stat_get_db_active_time(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_restartpoints_timed(PG_FUNCTION_ARGS)
 {
-	Oid			dbid = PG_GETARG_OID(0);
-	double		result = 0.0;
-	PgStat_StatDBEntry *dbentry;
-
-	/* convert counter from microsec to millisec for display */
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) != NULL)
-		result = ((double) dbentry->total_active_time) / 1000.0;
-
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->restartpoints_timed);
 }
 
 Datum
-pg_stat_get_db_idle_in_transaction_time(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_restartpoints_requested(PG_FUNCTION_ARGS)
 {
-	Oid			dbid = PG_GETARG_OID(0);
-	double		result = 0.0;
-	PgStat_StatDBEntry *dbentry;
-
-	/* convert counter from microsec to millisec for display */
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) != NULL)
-		result = ((double) dbentry->total_idle_in_xact_time) / 1000.0;
-
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->restartpoints_requested);
 }
 
 Datum
-pg_stat_get_db_sessions(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_restartpoints_performed(PG_FUNCTION_ARGS)
 {
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result = 0;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) != NULL)
-		result = (int64) (dbentry->n_sessions);
-
-	PG_RETURN_INT64(result);
+	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->restartpoints_performed);
 }
 
 Datum
-pg_stat_get_db_sessions_abandoned(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_buffers_written(PG_FUNCTION_ARGS)
 {
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result = 0;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) != NULL)
-		result = (int64) (dbentry->n_sessions_abandoned);
-
-	PG_RETURN_INT64(result);
+	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->buffers_written);
 }
 
 Datum
-pg_stat_get_db_sessions_fatal(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_slru_written(PG_FUNCTION_ARGS)
 {
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result = 0;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) != NULL)
-		result = (int64) (dbentry->n_sessions_fatal);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_db_sessions_killed(PG_FUNCTION_ARGS)
-{
-	Oid			dbid = PG_GETARG_OID(0);
-	int64		result = 0;
-	PgStat_StatDBEntry *dbentry;
-
-	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) != NULL)
-		result = (int64) (dbentry->n_sessions_killed);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_bgwriter_timed_checkpoints(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->timed_checkpoints);
-}
-
-Datum
-pg_stat_get_bgwriter_requested_checkpoints(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->requested_checkpoints);
-}
-
-Datum
-pg_stat_get_bgwriter_buf_written_checkpoints(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->buf_written_checkpoints);
+	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->slru_written);
 }
 
 Datum
@@ -1919,19 +1528,25 @@ pg_stat_get_bgwriter_maxwritten_clean(PG_FUNCTION_ARGS)
 }
 
 Datum
-pg_stat_get_checkpoint_write_time(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_write_time(PG_FUNCTION_ARGS)
 {
 	/* time is already in msec, just convert to double for presentation */
 	PG_RETURN_FLOAT8((double)
-					 pgstat_fetch_stat_checkpointer()->checkpoint_write_time);
+					 pgstat_fetch_stat_checkpointer()->write_time);
 }
 
 Datum
-pg_stat_get_checkpoint_sync_time(PG_FUNCTION_ARGS)
+pg_stat_get_checkpointer_sync_time(PG_FUNCTION_ARGS)
 {
 	/* time is already in msec, just convert to double for presentation */
 	PG_RETURN_FLOAT8((double)
-					 pgstat_fetch_stat_checkpointer()->checkpoint_sync_time);
+					 pgstat_fetch_stat_checkpointer()->sync_time);
+}
+
+Datum
+pg_stat_get_checkpointer_stat_reset_time(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TIMESTAMPTZ(pgstat_fetch_stat_checkpointer()->stat_reset_timestamp);
 }
 
 Datum
@@ -1941,21 +1556,395 @@ pg_stat_get_bgwriter_stat_reset_time(PG_FUNCTION_ARGS)
 }
 
 Datum
-pg_stat_get_buf_written_backend(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->buf_written_backend);
-}
-
-Datum
-pg_stat_get_buf_fsync_backend(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_INT64(pgstat_fetch_stat_checkpointer()->buf_fsync_backend);
-}
-
-Datum
 pg_stat_get_buf_alloc(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_INT64(pgstat_fetch_stat_bgwriter()->buf_alloc);
+}
+
+/*
+* When adding a new column to the pg_stat_io view and the
+* pg_stat_get_backend_io() function, add a new enum value here above
+* IO_NUM_COLUMNS.
+*/
+typedef enum io_stat_col
+{
+	IO_COL_INVALID = -1,
+	IO_COL_BACKEND_TYPE,
+	IO_COL_OBJECT,
+	IO_COL_CONTEXT,
+	IO_COL_READS,
+	IO_COL_READ_BYTES,
+	IO_COL_READ_TIME,
+	IO_COL_WRITES,
+	IO_COL_WRITE_BYTES,
+	IO_COL_WRITE_TIME,
+	IO_COL_WRITEBACKS,
+	IO_COL_WRITEBACK_TIME,
+	IO_COL_EXTENDS,
+	IO_COL_EXTEND_BYTES,
+	IO_COL_EXTEND_TIME,
+	IO_COL_HITS,
+	IO_COL_EVICTIONS,
+	IO_COL_REUSES,
+	IO_COL_FSYNCS,
+	IO_COL_FSYNC_TIME,
+	IO_COL_RESET_TIME,
+	IO_NUM_COLUMNS,
+} io_stat_col;
+
+/*
+ * When adding a new IOOp, add a new io_stat_col and add a case to this
+ * function returning the corresponding io_stat_col.
+ */
+static io_stat_col
+pgstat_get_io_op_index(IOOp io_op)
+{
+	switch (io_op)
+	{
+		case IOOP_EVICT:
+			return IO_COL_EVICTIONS;
+		case IOOP_EXTEND:
+			return IO_COL_EXTENDS;
+		case IOOP_FSYNC:
+			return IO_COL_FSYNCS;
+		case IOOP_HIT:
+			return IO_COL_HITS;
+		case IOOP_READ:
+			return IO_COL_READS;
+		case IOOP_REUSE:
+			return IO_COL_REUSES;
+		case IOOP_WRITE:
+			return IO_COL_WRITES;
+		case IOOP_WRITEBACK:
+			return IO_COL_WRITEBACKS;
+	}
+
+	elog(ERROR, "unrecognized IOOp value: %d", io_op);
+	pg_unreachable();
+}
+
+/*
+ * Get the number of the column containing IO bytes for the specified IOOp.
+ * If an IOOp is not tracked in bytes, IO_COL_INVALID is returned.
+ */
+static io_stat_col
+pgstat_get_io_byte_index(IOOp io_op)
+{
+	switch (io_op)
+	{
+		case IOOP_EXTEND:
+			return IO_COL_EXTEND_BYTES;
+		case IOOP_READ:
+			return IO_COL_READ_BYTES;
+		case IOOP_WRITE:
+			return IO_COL_WRITE_BYTES;
+		case IOOP_EVICT:
+		case IOOP_FSYNC:
+		case IOOP_HIT:
+		case IOOP_REUSE:
+		case IOOP_WRITEBACK:
+			return IO_COL_INVALID;
+	}
+
+	elog(ERROR, "unrecognized IOOp value: %d", io_op);
+	pg_unreachable();
+}
+
+/*
+ * Get the number of the column containing IO times for the specified IOOp.
+ * If an op has no associated time, IO_COL_INVALID is returned.
+ */
+static io_stat_col
+pgstat_get_io_time_index(IOOp io_op)
+{
+	switch (io_op)
+	{
+		case IOOP_READ:
+			return IO_COL_READ_TIME;
+		case IOOP_WRITE:
+			return IO_COL_WRITE_TIME;
+		case IOOP_WRITEBACK:
+			return IO_COL_WRITEBACK_TIME;
+		case IOOP_EXTEND:
+			return IO_COL_EXTEND_TIME;
+		case IOOP_FSYNC:
+			return IO_COL_FSYNC_TIME;
+		case IOOP_EVICT:
+		case IOOP_HIT:
+		case IOOP_REUSE:
+			return IO_COL_INVALID;
+	}
+
+	elog(ERROR, "unrecognized IOOp value: %d", io_op);
+	pg_unreachable();
+}
+
+static inline double
+pg_stat_us_to_ms(PgStat_Counter val_ms)
+{
+	return val_ms * (double) 0.001;
+}
+
+/*
+ * pg_stat_io_build_tuples
+ *
+ * Helper routine for pg_stat_get_io() and pg_stat_get_backend_io()
+ * filling a result tuplestore with one tuple for each object and each
+ * context supported by the caller, based on the contents of bktype_stats.
+ */
+static void
+pg_stat_io_build_tuples(ReturnSetInfo *rsinfo,
+						PgStat_BktypeIO *bktype_stats,
+						BackendType bktype,
+						TimestampTz stat_reset_timestamp)
+{
+	Datum		bktype_desc = CStringGetTextDatum(GetBackendTypeDesc(bktype));
+
+	for (int io_obj = 0; io_obj < IOOBJECT_NUM_TYPES; io_obj++)
+	{
+		const char *obj_name = pgstat_get_io_object_name(io_obj);
+
+		for (int io_context = 0; io_context < IOCONTEXT_NUM_TYPES; io_context++)
+		{
+			const char *context_name = pgstat_get_io_context_name(io_context);
+
+			Datum		values[IO_NUM_COLUMNS] = {0};
+			bool		nulls[IO_NUM_COLUMNS] = {0};
+
+			/*
+			 * Some combinations of BackendType, IOObject, and IOContext are
+			 * not valid for any type of IOOp. In such cases, omit the entire
+			 * row from the view.
+			 */
+			if (!pgstat_tracks_io_object(bktype, io_obj, io_context))
+				continue;
+
+			values[IO_COL_BACKEND_TYPE] = bktype_desc;
+			values[IO_COL_CONTEXT] = CStringGetTextDatum(context_name);
+			values[IO_COL_OBJECT] = CStringGetTextDatum(obj_name);
+			if (stat_reset_timestamp != 0)
+				values[IO_COL_RESET_TIME] = TimestampTzGetDatum(stat_reset_timestamp);
+			else
+				nulls[IO_COL_RESET_TIME] = true;
+
+			for (int io_op = 0; io_op < IOOP_NUM_TYPES; io_op++)
+			{
+				int			op_idx = pgstat_get_io_op_index(io_op);
+				int			time_idx = pgstat_get_io_time_index(io_op);
+				int			byte_idx = pgstat_get_io_byte_index(io_op);
+
+				/*
+				 * Some combinations of BackendType and IOOp, of IOContext and
+				 * IOOp, and of IOObject and IOOp are not tracked. Set these
+				 * cells in the view NULL.
+				 */
+				if (pgstat_tracks_io_op(bktype, io_obj, io_context, io_op))
+				{
+					PgStat_Counter count =
+						bktype_stats->counts[io_obj][io_context][io_op];
+
+					values[op_idx] = Int64GetDatum(count);
+				}
+				else
+					nulls[op_idx] = true;
+
+				if (!nulls[op_idx])
+				{
+					/* not every operation is timed */
+					if (time_idx != IO_COL_INVALID)
+					{
+						PgStat_Counter time =
+							bktype_stats->times[io_obj][io_context][io_op];
+
+						values[time_idx] = Float8GetDatum(pg_stat_us_to_ms(time));
+					}
+
+					/* not every IO is tracked in bytes */
+					if (byte_idx != IO_COL_INVALID)
+					{
+						char		buf[256];
+						PgStat_Counter byte =
+							bktype_stats->bytes[io_obj][io_context][io_op];
+
+						/* Convert to numeric */
+						snprintf(buf, sizeof buf, INT64_FORMAT, byte);
+						values[byte_idx] = DirectFunctionCall3(numeric_in,
+															   CStringGetDatum(buf),
+															   ObjectIdGetDatum(0),
+															   Int32GetDatum(-1));
+					}
+				}
+				else
+				{
+					if (time_idx != IO_COL_INVALID)
+						nulls[time_idx] = true;
+					if (byte_idx != IO_COL_INVALID)
+						nulls[byte_idx] = true;
+				}
+			}
+
+			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+								 values, nulls);
+		}
+	}
+}
+
+Datum
+pg_stat_get_io(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo;
+	PgStat_IO  *backends_io_stats;
+
+	InitMaterializedSRF(fcinfo, 0);
+	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+
+	backends_io_stats = pgstat_fetch_stat_io();
+
+	for (int bktype = 0; bktype < BACKEND_NUM_TYPES; bktype++)
+	{
+		PgStat_BktypeIO *bktype_stats = &backends_io_stats->stats[bktype];
+
+		/*
+		 * In Assert builds, we can afford an extra loop through all of the
+		 * counters (in pg_stat_io_build_tuples()), checking that only
+		 * expected stats are non-zero, since it keeps the non-Assert code
+		 * cleaner.
+		 */
+		Assert(pgstat_bktype_io_stats_valid(bktype_stats, bktype));
+
+		/*
+		 * For those BackendTypes without IO Operation stats, skip
+		 * representing them in the view altogether.
+		 */
+		if (!pgstat_tracks_io_bktype(bktype))
+			continue;
+
+		/* save tuples with data from this PgStat_BktypeIO */
+		pg_stat_io_build_tuples(rsinfo, bktype_stats, bktype,
+								backends_io_stats->stat_reset_timestamp);
+	}
+
+	return (Datum) 0;
+}
+
+/*
+ * Returns I/O statistics for a backend with given PID.
+ */
+Datum
+pg_stat_get_backend_io(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo;
+	BackendType bktype;
+	int			pid;
+	PgStat_Backend *backend_stats;
+	PgStat_BktypeIO *bktype_stats;
+
+	InitMaterializedSRF(fcinfo, 0);
+	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+
+	pid = PG_GETARG_INT32(0);
+	backend_stats = pgstat_fetch_stat_backend_by_pid(pid, &bktype);
+
+	if (!backend_stats)
+		return (Datum) 0;
+
+	bktype_stats = &backend_stats->io_stats;
+
+	/*
+	 * In Assert builds, we can afford an extra loop through all of the
+	 * counters (in pg_stat_io_build_tuples()), checking that only expected
+	 * stats are non-zero, since it keeps the non-Assert code cleaner.
+	 */
+	Assert(pgstat_bktype_io_stats_valid(bktype_stats, bktype));
+
+	/* save tuples with data from this PgStat_BktypeIO */
+	pg_stat_io_build_tuples(rsinfo, bktype_stats, bktype,
+							backend_stats->stat_reset_timestamp);
+	return (Datum) 0;
+}
+
+/*
+ * pg_stat_wal_build_tuple
+ *
+ * Helper routine for pg_stat_get_wal() and pg_stat_get_backend_wal()
+ * returning one tuple based on the contents of wal_counters.
+ */
+static Datum
+pg_stat_wal_build_tuple(PgStat_WalCounters wal_counters,
+						TimestampTz stat_reset_timestamp)
+{
+#define PG_STAT_WAL_COLS	6
+	TupleDesc	tupdesc;
+	Datum		values[PG_STAT_WAL_COLS] = {0};
+	bool		nulls[PG_STAT_WAL_COLS] = {0};
+	char		buf[256];
+
+	/* Initialise attributes information in the tuple descriptor */
+	tupdesc = CreateTemplateTupleDesc(PG_STAT_WAL_COLS);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "wal_records",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "wal_fpi",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "wal_bytes",
+					   NUMERICOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "wal_fpi_bytes",
+					   NUMERICOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "wal_buffers_full",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 6, "stats_reset",
+					   TIMESTAMPTZOID, -1, 0);
+
+	TupleDescFinalize(tupdesc);
+	BlessTupleDesc(tupdesc);
+
+	/* Fill values and NULLs */
+	values[0] = Int64GetDatum(wal_counters.wal_records);
+	values[1] = Int64GetDatum(wal_counters.wal_fpi);
+
+	/* Convert to numeric. */
+	snprintf(buf, sizeof buf, UINT64_FORMAT, wal_counters.wal_bytes);
+	values[2] = DirectFunctionCall3(numeric_in,
+									CStringGetDatum(buf),
+									ObjectIdGetDatum(0),
+									Int32GetDatum(-1));
+
+	snprintf(buf, sizeof buf, UINT64_FORMAT, wal_counters.wal_fpi_bytes);
+	values[3] = DirectFunctionCall3(numeric_in,
+									CStringGetDatum(buf),
+									ObjectIdGetDatum(0),
+									Int32GetDatum(-1));
+
+	values[4] = Int64GetDatum(wal_counters.wal_buffers_full);
+
+	if (stat_reset_timestamp != 0)
+		values[5] = TimestampTzGetDatum(stat_reset_timestamp);
+	else
+		nulls[5] = true;
+
+	/* Returns the record as Datum */
+	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
+}
+
+/*
+ * Returns WAL statistics for a backend with given PID.
+ */
+Datum
+pg_stat_get_backend_wal(PG_FUNCTION_ARGS)
+{
+	int			pid;
+	PgStat_Backend *backend_stats;
+	PgStat_WalCounters bktype_stats;
+
+	pid = PG_GETARG_INT32(0);
+	backend_stats = pgstat_fetch_stat_backend_by_pid(pid, NULL);
+
+	if (!backend_stats)
+		PG_RETURN_NULL();
+
+	bktype_stats = backend_stats->wal_counters;
+
+	/* save tuples with data from this PgStat_WalCounters */
+	return (pg_stat_wal_build_tuple(bktype_stats, backend_stats->stat_reset_timestamp));
 }
 
 /*
@@ -1964,66 +1953,49 @@ pg_stat_get_buf_alloc(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_wal(PG_FUNCTION_ARGS)
 {
-#define PG_STAT_GET_WAL_COLS	9
-	TupleDesc	tupdesc;
-	Datum		values[PG_STAT_GET_WAL_COLS];
-	bool		nulls[PG_STAT_GET_WAL_COLS];
-	char		buf[256];
 	PgStat_WalStats *wal_stats;
-
-	/* Initialise values and NULL flags arrays */
-	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, 0, sizeof(nulls));
-
-	/* Initialise attributes information in the tuple descriptor */
-	tupdesc = CreateTemplateTupleDesc(PG_STAT_GET_WAL_COLS);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "wal_records",
-					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "wal_fpi",
-					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "wal_bytes",
-					   NUMERICOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "wal_buffers_full",
-					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "wal_write",
-					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 6, "wal_sync",
-					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 7, "wal_write_time",
-					   FLOAT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 8, "wal_sync_time",
-					   FLOAT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 9, "stats_reset",
-					   TIMESTAMPTZOID, -1, 0);
-
-	BlessTupleDesc(tupdesc);
 
 	/* Get statistics about WAL activity */
 	wal_stats = pgstat_fetch_stat_wal();
 
-	/* Fill values and NULLs */
-	values[0] = Int64GetDatum(wal_stats->wal_records);
-	values[1] = Int64GetDatum(wal_stats->wal_fpi);
+	return (pg_stat_wal_build_tuple(wal_stats->wal_counters,
+									wal_stats->stat_reset_timestamp));
+}
 
-	/* Convert to numeric. */
-	snprintf(buf, sizeof buf, UINT64_FORMAT, wal_stats->wal_bytes);
-	values[2] = DirectFunctionCall3(numeric_in,
-									CStringGetDatum(buf),
-									ObjectIdGetDatum(0),
-									Int32GetDatum(-1));
+Datum
+pg_stat_get_lock(PG_FUNCTION_ARGS)
+{
+#define PG_STAT_LOCK_COLS	5
+	ReturnSetInfo *rsinfo;
+	PgStat_Lock *lock_stats;
 
-	values[3] = Int64GetDatum(wal_stats->wal_buffers_full);
-	values[4] = Int64GetDatum(wal_stats->wal_write);
-	values[5] = Int64GetDatum(wal_stats->wal_sync);
+	InitMaterializedSRF(fcinfo, 0);
+	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 
-	/* Convert counters from microsec to millisec for display */
-	values[6] = Float8GetDatum(((double) wal_stats->wal_write_time) / 1000.0);
-	values[7] = Float8GetDatum(((double) wal_stats->wal_sync_time) / 1000.0);
+	lock_stats = pgstat_fetch_stat_lock();
 
-	values[8] = TimestampTzGetDatum(wal_stats->stat_reset_timestamp);
+	for (int lcktype = 0; lcktype <= LOCKTAG_LAST_TYPE; lcktype++)
+	{
+		const char *locktypename;
+		Datum		values[PG_STAT_LOCK_COLS] = {0};
+		bool		nulls[PG_STAT_LOCK_COLS] = {0};
+		PgStat_LockEntry *lck_stats = &lock_stats->stats[lcktype];
+		int			i = 0;
 
-	/* Returns the record as Datum */
-	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
+		locktypename = LockTagTypeNames[lcktype];
+
+		values[i++] = CStringGetTextDatum(locktypename);
+		values[i++] = Int64GetDatum(lck_stats->waits);
+		values[i++] = Int64GetDatum(lck_stats->wait_time);
+		values[i++] = Int64GetDatum(lck_stats->fastpath_exceeded);
+		values[i] = TimestampTzGetDatum(lock_stats->stat_reset_timestamp);
+
+		Assert(i + 1 == PG_STAT_LOCK_COLS);
+
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+	}
+
+	return (Datum) 0;
 }
 
 /*
@@ -2045,8 +2017,8 @@ pg_stat_get_slru(PG_FUNCTION_ARGS)
 	for (i = 0;; i++)
 	{
 		/* for each row */
-		Datum		values[PG_STAT_GET_SLRU_COLS];
-		bool		nulls[PG_STAT_GET_SLRU_COLS];
+		Datum		values[PG_STAT_GET_SLRU_COLS] = {0};
+		bool		nulls[PG_STAT_GET_SLRU_COLS] = {0};
 		PgStat_SLRUStats stat;
 		const char *name;
 
@@ -2056,8 +2028,6 @@ pg_stat_get_slru(PG_FUNCTION_ARGS)
 			break;
 
 		stat = stats[i];
-		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, 0, sizeof(nulls));
 
 		values[0] = PointerGetDatum(cstring_to_text(name));
 		values[1] = Int64GetDatum(stat.blocks_zeroed);
@@ -2075,192 +2045,80 @@ pg_stat_get_slru(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
-Datum
-pg_stat_get_xact_numscans(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_TableStatus *tabentry;
-
-	if ((tabentry = find_tabstat_entry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->t_counts.t_numscans);
-
-	PG_RETURN_INT64(result);
+#define PG_STAT_GET_XACT_RELENTRY_INT64(stat)			\
+Datum													\
+CppConcat(pg_stat_get_xact_,stat)(PG_FUNCTION_ARGS)		\
+{														\
+	Oid         relid = PG_GETARG_OID(0);				\
+	int64       result;									\
+	PgStat_TableStatus *tabentry;						\
+														\
+	if ((tabentry = find_tabstat_entry(relid)) == NULL)	\
+		result = 0;										\
+	else												\
+		result = (int64) (tabentry->counts.stat);		\
+														\
+	PG_RETURN_INT64(result);							\
 }
 
-Datum
-pg_stat_get_xact_tuples_returned(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_TableStatus *tabentry;
+/* pg_stat_get_xact_numscans */
+PG_STAT_GET_XACT_RELENTRY_INT64(numscans)
 
-	if ((tabentry = find_tabstat_entry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->t_counts.t_tuples_returned);
+/* pg_stat_get_xact_tuples_returned */
+PG_STAT_GET_XACT_RELENTRY_INT64(tuples_returned)
 
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_xact_tuples_fetched */
+PG_STAT_GET_XACT_RELENTRY_INT64(tuples_fetched)
 
-Datum
-pg_stat_get_xact_tuples_fetched(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_TableStatus *tabentry;
+/* pg_stat_get_xact_tuples_hot_updated */
+PG_STAT_GET_XACT_RELENTRY_INT64(tuples_hot_updated)
 
-	if ((tabentry = find_tabstat_entry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->t_counts.t_tuples_fetched);
+/* pg_stat_get_xact_tuples_newpage_updated */
+PG_STAT_GET_XACT_RELENTRY_INT64(tuples_newpage_updated)
 
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_xact_blocks_fetched */
+PG_STAT_GET_XACT_RELENTRY_INT64(blocks_fetched)
 
-Datum
-pg_stat_get_xact_tuples_inserted(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_TableStatus *tabentry;
-	PgStat_TableXactStatus *trans;
+/* pg_stat_get_xact_blocks_hit */
+PG_STAT_GET_XACT_RELENTRY_INT64(blocks_hit)
 
-	if ((tabentry = find_tabstat_entry(relid)) == NULL)
-		result = 0;
-	else
-	{
-		result = tabentry->t_counts.t_tuples_inserted;
-		/* live subtransactions' counts aren't in t_tuples_inserted yet */
-		for (trans = tabentry->trans; trans != NULL; trans = trans->upper)
-			result += trans->tuples_inserted;
-	}
+/* pg_stat_get_xact_tuples_inserted */
+PG_STAT_GET_XACT_RELENTRY_INT64(tuples_inserted)
 
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_xact_tuples_updated */
+PG_STAT_GET_XACT_RELENTRY_INT64(tuples_updated)
 
-Datum
-pg_stat_get_xact_tuples_updated(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_TableStatus *tabentry;
-	PgStat_TableXactStatus *trans;
-
-	if ((tabentry = find_tabstat_entry(relid)) == NULL)
-		result = 0;
-	else
-	{
-		result = tabentry->t_counts.t_tuples_updated;
-		/* live subtransactions' counts aren't in t_tuples_updated yet */
-		for (trans = tabentry->trans; trans != NULL; trans = trans->upper)
-			result += trans->tuples_updated;
-	}
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_xact_tuples_deleted(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_TableStatus *tabentry;
-	PgStat_TableXactStatus *trans;
-
-	if ((tabentry = find_tabstat_entry(relid)) == NULL)
-		result = 0;
-	else
-	{
-		result = tabentry->t_counts.t_tuples_deleted;
-		/* live subtransactions' counts aren't in t_tuples_deleted yet */
-		for (trans = tabentry->trans; trans != NULL; trans = trans->upper)
-			result += trans->tuples_deleted;
-	}
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_xact_tuples_hot_updated(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_TableStatus *tabentry;
-
-	if ((tabentry = find_tabstat_entry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->t_counts.t_tuples_hot_updated);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_xact_blocks_fetched(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_TableStatus *tabentry;
-
-	if ((tabentry = find_tabstat_entry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->t_counts.t_blocks_fetched);
-
-	PG_RETURN_INT64(result);
-}
-
-Datum
-pg_stat_get_xact_blocks_hit(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	int64		result;
-	PgStat_TableStatus *tabentry;
-
-	if ((tabentry = find_tabstat_entry(relid)) == NULL)
-		result = 0;
-	else
-		result = (int64) (tabentry->t_counts.t_blocks_hit);
-
-	PG_RETURN_INT64(result);
-}
+/* pg_stat_get_xact_tuples_deleted */
+PG_STAT_GET_XACT_RELENTRY_INT64(tuples_deleted)
 
 Datum
 pg_stat_get_xact_function_calls(PG_FUNCTION_ARGS)
 {
 	Oid			funcid = PG_GETARG_OID(0);
-	PgStat_BackendFunctionEntry *funcentry;
+	PgStat_FunctionCounts *funcentry;
 
 	if ((funcentry = find_funcstat_entry(funcid)) == NULL)
 		PG_RETURN_NULL();
-	PG_RETURN_INT64(funcentry->f_counts.f_numcalls);
+	PG_RETURN_INT64(funcentry->numcalls);
 }
 
-Datum
-pg_stat_get_xact_function_total_time(PG_FUNCTION_ARGS)
-{
-	Oid			funcid = PG_GETARG_OID(0);
-	PgStat_BackendFunctionEntry *funcentry;
-
-	if ((funcentry = find_funcstat_entry(funcid)) == NULL)
-		PG_RETURN_NULL();
-	PG_RETURN_FLOAT8(INSTR_TIME_GET_MILLISEC(funcentry->f_counts.f_total_time));
+#define PG_STAT_GET_XACT_FUNCENTRY_FLOAT8_MS(stat)				\
+Datum															\
+CppConcat(pg_stat_get_xact_function_,stat)(PG_FUNCTION_ARGS)	\
+{																\
+	Oid			funcid = PG_GETARG_OID(0);						\
+	PgStat_FunctionCounts *funcentry;							\
+																\
+	if ((funcentry = find_funcstat_entry(funcid)) == NULL)		\
+		PG_RETURN_NULL();										\
+	PG_RETURN_FLOAT8(INSTR_TIME_GET_MILLISEC(funcentry->stat));	\
 }
 
-Datum
-pg_stat_get_xact_function_self_time(PG_FUNCTION_ARGS)
-{
-	Oid			funcid = PG_GETARG_OID(0);
-	PgStat_BackendFunctionEntry *funcentry;
+/* pg_stat_get_xact_function_total_time */
+PG_STAT_GET_XACT_FUNCENTRY_FLOAT8_MS(total_time)
 
-	if ((funcentry = find_funcstat_entry(funcid)) == NULL)
-		PG_RETURN_NULL();
-	PG_RETURN_FLOAT8(INSTR_TIME_GET_MILLISEC(funcentry->f_counts.f_self_time));
-}
-
+/* pg_stat_get_xact_function_self_time */
+PG_STAT_GET_XACT_FUNCENTRY_FLOAT8_MS(self_time)
 
 /* Get the timestamp of the current statistics snapshot */
 Datum
@@ -2306,38 +2164,61 @@ pg_stat_reset(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-/* Reset some shared cluster-wide counters */
+/*
+ * Reset some shared cluster-wide counters
+ *
+ * When adding a new reset target, ideally the name should match that in
+ * pgstat_kind_builtin_infos, if relevant.
+ */
 Datum
 pg_stat_reset_shared(PG_FUNCTION_ARGS)
 {
-	char	   *target = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	char	   *target = NULL;
+
+	if (PG_ARGISNULL(0))
+	{
+		/* Reset all the statistics when nothing is specified */
+		pgstat_reset_of_kind(PGSTAT_KIND_ARCHIVER);
+		pgstat_reset_of_kind(PGSTAT_KIND_BGWRITER);
+		pgstat_reset_of_kind(PGSTAT_KIND_CHECKPOINTER);
+		pgstat_reset_of_kind(PGSTAT_KIND_IO);
+		pgstat_reset_of_kind(PGSTAT_KIND_LOCK);
+		XLogPrefetchResetStats();
+		pgstat_reset_of_kind(PGSTAT_KIND_SLRU);
+		pgstat_reset_of_kind(PGSTAT_KIND_WAL);
+
+		PG_RETURN_VOID();
+	}
+
+	target = text_to_cstring(PG_GETARG_TEXT_PP(0));
 
 	if (strcmp(target, "archiver") == 0)
 		pgstat_reset_of_kind(PGSTAT_KIND_ARCHIVER);
 	else if (strcmp(target, "bgwriter") == 0)
-	{
-		/*
-		 * Historically checkpointer was part of bgwriter, continue to reset
-		 * both for now.
-		 */
 		pgstat_reset_of_kind(PGSTAT_KIND_BGWRITER);
+	else if (strcmp(target, "checkpointer") == 0)
 		pgstat_reset_of_kind(PGSTAT_KIND_CHECKPOINTER);
-	}
+	else if (strcmp(target, "io") == 0)
+		pgstat_reset_of_kind(PGSTAT_KIND_IO);
+	else if (strcmp(target, "lock") == 0)
+		pgstat_reset_of_kind(PGSTAT_KIND_LOCK);
 	else if (strcmp(target, "recovery_prefetch") == 0)
 		XLogPrefetchResetStats();
+	else if (strcmp(target, "slru") == 0)
+		pgstat_reset_of_kind(PGSTAT_KIND_SLRU);
 	else if (strcmp(target, "wal") == 0)
 		pgstat_reset_of_kind(PGSTAT_KIND_WAL);
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("unrecognized reset target: \"%s\"", target),
-				 errhint("Target must be \"archiver\", \"bgwriter\", \"recovery_prefetch\", or \"wal\".")));
+				 errhint("Target must be \"archiver\", \"bgwriter\", \"checkpointer\", \"io\", \"recovery_prefetch\", \"slru\", or \"wal\".")));
 
 	PG_RETURN_VOID();
 }
 
 /*
- * Reset a statistics for a single object, which may be of current
+ * Reset statistics for a single object, which may be of current
  * database or shared across all databases in the cluster.
  */
 Datum
@@ -2357,6 +2238,41 @@ pg_stat_reset_single_function_counters(PG_FUNCTION_ARGS)
 	Oid			funcoid = PG_GETARG_OID(0);
 
 	pgstat_reset(PGSTAT_KIND_FUNCTION, MyDatabaseId, funcoid);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Reset statistics of backend with given PID.
+ */
+Datum
+pg_stat_reset_backend_stats(PG_FUNCTION_ARGS)
+{
+	PGPROC	   *proc;
+	PgBackendStatus *beentry;
+	ProcNumber	procNumber;
+	int			backend_pid = PG_GETARG_INT32(0);
+
+	proc = BackendPidGetProc(backend_pid);
+
+	/* This could be an auxiliary process */
+	if (!proc)
+		proc = AuxiliaryPidGetProc(backend_pid);
+
+	if (!proc)
+		PG_RETURN_VOID();
+
+	procNumber = GetNumberFromPGProc(proc);
+
+	beentry = pgstat_get_beentry_by_proc_number(procNumber);
+	if (!beentry)
+		PG_RETURN_VOID();
+
+	/* Check if the backend type tracks statistics */
+	if (!pgstat_tracks_backend_bktype(beentry->st_backendType))
+		PG_RETURN_VOID();
+
+	pgstat_reset(PGSTAT_KIND_BACKEND, InvalidOid, procNumber);
 
 	PG_RETURN_VOID();
 }
@@ -2424,13 +2340,9 @@ Datum
 pg_stat_get_archiver(PG_FUNCTION_ARGS)
 {
 	TupleDesc	tupdesc;
-	Datum		values[7];
-	bool		nulls[7];
+	Datum		values[7] = {0};
+	bool		nulls[7] = {0};
 	PgStat_ArchiverStats *archiver_stats;
-
-	/* Initialise values and NULL flags arrays */
-	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, 0, sizeof(nulls));
 
 	/* Initialise attributes information in the tuple descriptor */
 	tupdesc = CreateTemplateTupleDesc(7);
@@ -2449,6 +2361,7 @@ pg_stat_get_archiver(PG_FUNCTION_ARGS)
 	TupleDescInitEntry(tupdesc, (AttrNumber) 7, "stats_reset",
 					   TIMESTAMPTZOID, -1, 0);
 
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	/* Get statistics about the archiver process */
@@ -2493,18 +2406,14 @@ pg_stat_get_archiver(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_replication_slot(PG_FUNCTION_ARGS)
 {
-#define PG_STAT_GET_REPLICATION_SLOT_COLS 10
+#define PG_STAT_GET_REPLICATION_SLOT_COLS 13
 	text	   *slotname_text = PG_GETARG_TEXT_P(0);
 	NameData	slotname;
 	TupleDesc	tupdesc;
-	Datum		values[PG_STAT_GET_REPLICATION_SLOT_COLS];
-	bool		nulls[PG_STAT_GET_REPLICATION_SLOT_COLS];
+	Datum		values[PG_STAT_GET_REPLICATION_SLOT_COLS] = {0};
+	bool		nulls[PG_STAT_GET_REPLICATION_SLOT_COLS] = {0};
 	PgStat_StatReplSlotEntry *slotent;
 	PgStat_StatReplSlotEntry allzero;
-
-	/* Initialise values and NULL flags arrays */
-	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, 0, sizeof(nulls));
 
 	/* Initialise attributes information in the tuple descriptor */
 	tupdesc = CreateTemplateTupleDesc(PG_STAT_GET_REPLICATION_SLOT_COLS);
@@ -2522,12 +2431,19 @@ pg_stat_get_replication_slot(PG_FUNCTION_ARGS)
 					   INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 7, "stream_bytes",
 					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 8, "total_txns",
+	TupleDescInitEntry(tupdesc, (AttrNumber) 8, "mem_exceeded_count",
 					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 9, "total_bytes",
+	TupleDescInitEntry(tupdesc, (AttrNumber) 9, "total_txns",
 					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 10, "stats_reset",
+	TupleDescInitEntry(tupdesc, (AttrNumber) 10, "total_bytes",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 11, "slotsync_skip_count",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 12, "slotsync_last_skip",
 					   TIMESTAMPTZOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 13, "stats_reset",
+					   TIMESTAMPTZOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	namestrcpy(&slotname, text_to_cstring(slotname_text));
@@ -2549,13 +2465,20 @@ pg_stat_get_replication_slot(PG_FUNCTION_ARGS)
 	values[4] = Int64GetDatum(slotent->stream_txns);
 	values[5] = Int64GetDatum(slotent->stream_count);
 	values[6] = Int64GetDatum(slotent->stream_bytes);
-	values[7] = Int64GetDatum(slotent->total_txns);
-	values[8] = Int64GetDatum(slotent->total_bytes);
+	values[7] = Int64GetDatum(slotent->mem_exceeded_count);
+	values[8] = Int64GetDatum(slotent->total_txns);
+	values[9] = Int64GetDatum(slotent->total_bytes);
+	values[10] = Int64GetDatum(slotent->slotsync_skip_count);
+
+	if (slotent->slotsync_last_skip == 0)
+		nulls[11] = true;
+	else
+		values[11] = TimestampTzGetDatum(slotent->slotsync_last_skip);
 
 	if (slotent->stat_reset_timestamp == 0)
-		nulls[9] = true;
+		nulls[12] = true;
 	else
-		values[9] = TimestampTzGetDatum(slotent->stat_reset_timestamp);
+		values[12] = TimestampTzGetDatum(slotent->stat_reset_timestamp);
 
 	/* Returns the record as Datum */
 	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
@@ -2568,13 +2491,14 @@ pg_stat_get_replication_slot(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_subscription_stats(PG_FUNCTION_ARGS)
 {
-#define PG_STAT_GET_SUBSCRIPTION_STATS_COLS	4
+#define PG_STAT_GET_SUBSCRIPTION_STATS_COLS	13
 	Oid			subid = PG_GETARG_OID(0);
 	TupleDesc	tupdesc;
-	Datum		values[PG_STAT_GET_SUBSCRIPTION_STATS_COLS];
-	bool		nulls[PG_STAT_GET_SUBSCRIPTION_STATS_COLS];
+	Datum		values[PG_STAT_GET_SUBSCRIPTION_STATS_COLS] = {0};
+	bool		nulls[PG_STAT_GET_SUBSCRIPTION_STATS_COLS] = {0};
 	PgStat_StatSubEntry *subentry;
 	PgStat_StatSubEntry allzero;
+	int			i = 0;
 
 	/* Get subscription stats */
 	subentry = pgstat_fetch_stat_subscription(subid);
@@ -2585,15 +2509,30 @@ pg_stat_get_subscription_stats(PG_FUNCTION_ARGS)
 					   OIDOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "apply_error_count",
 					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "sync_error_count",
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "sync_seq_error_count",
 					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "stats_reset",
+	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "sync_table_error_count",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "confl_insert_exists",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 6, "confl_update_origin_differs",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 7, "confl_update_exists",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 8, "confl_update_deleted",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 9, "confl_update_missing",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 10, "confl_delete_origin_differs",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 11, "confl_delete_missing",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 12, "confl_multiple_unique_conflicts",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 13, "stats_reset",
 					   TIMESTAMPTZOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
-
-	/* Initialise values and NULL flags arrays */
-	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, 0, sizeof(nulls));
 
 	if (!subentry)
 	{
@@ -2603,19 +2542,28 @@ pg_stat_get_subscription_stats(PG_FUNCTION_ARGS)
 	}
 
 	/* subid */
-	values[0] = ObjectIdGetDatum(subid);
+	values[i++] = ObjectIdGetDatum(subid);
 
 	/* apply_error_count */
-	values[1] = Int64GetDatum(subentry->apply_error_count);
+	values[i++] = Int64GetDatum(subentry->apply_error_count);
 
-	/* sync_error_count */
-	values[2] = Int64GetDatum(subentry->sync_error_count);
+	/* sync_seq_error_count */
+	values[i++] = Int64GetDatum(subentry->sync_seq_error_count);
+
+	/* sync_table_error_count */
+	values[i++] = Int64GetDatum(subentry->sync_table_error_count);
+
+	/* conflict count */
+	for (int nconflict = 0; nconflict < CONFLICT_NUM_TYPES; nconflict++)
+		values[i++] = Int64GetDatum(subentry->conflict_count[nconflict]);
 
 	/* stats_reset */
 	if (subentry->stat_reset_timestamp == 0)
-		nulls[3] = true;
+		nulls[i] = true;
 	else
-		values[3] = TimestampTzGetDatum(subentry->stat_reset_timestamp);
+		values[i] = TimestampTzGetDatum(subentry->stat_reset_timestamp);
+
+	Assert(i + 1 == PG_STAT_GET_SUBSCRIPTION_STATS_COLS);
 
 	/* Returns the record as Datum */
 	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
@@ -2633,10 +2581,10 @@ pg_stat_have_stats(PG_FUNCTION_ARGS)
 {
 	char	   *stats_type = text_to_cstring(PG_GETARG_TEXT_P(0));
 	Oid			dboid = PG_GETARG_OID(1);
-	Oid			objoid = PG_GETARG_OID(2);
+	uint64		objid = PG_GETARG_INT64(2);
 	PgStat_Kind kind = pgstat_get_kind_from_str(stats_type);
 
-	PG_RETURN_BOOL(pgstat_have_entry(kind, dboid, objoid));
+	PG_RETURN_BOOL(pgstat_have_entry(kind, dboid, objid));
 }
 
 /* Returns backend_allocated_mem_bytes from the process's beid */
@@ -2646,11 +2594,11 @@ yb_pg_stat_get_backend_allocated_mem_bytes(PG_FUNCTION_ARGS)
 	if (!yb_enable_memory_tracking)
 		PG_RETURN_NULL();
 
-	int32		beid = PG_GETARG_INT32(0);
+	int32		procNumber = PG_GETARG_INT32(0);
 	int64		result;
 	PgBackendStatus *beentry;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+	if ((beentry = pgstat_get_beentry_by_proc_number(procNumber)) == NULL)
 		PG_RETURN_NULL();
 
 	result = beentry->yb_st_allocated_mem_bytes;
@@ -2669,7 +2617,7 @@ yb_pg_stat_get_backend_rss_mem_bytes(PG_FUNCTION_ARGS)
 	int64		result;
 	LocalPgBackendStatus *local_beentry;
 
-	if ((local_beentry = pgstat_fetch_stat_local_beentry(beid)) == NULL)
+	if ((local_beentry = pgstat_get_local_beentry_by_index(beid)) == NULL)
 		PG_RETURN_NULL();
 
 	result = local_beentry->yb_backend_rss_mem_bytes;
@@ -2688,7 +2636,7 @@ yb_pg_stat_get_backend_pss_mem_bytes(PG_FUNCTION_ARGS)
 	int64		result;
 	LocalPgBackendStatus *local_beentry;
 
-	if ((local_beentry = pgstat_fetch_stat_local_beentry(beid)) == NULL)
+	if ((local_beentry = pgstat_get_local_beentry_by_index(beid)) == NULL)
 		PG_RETURN_NULL();
 
 	result = local_beentry->yb_backend_pss_mem_bytes;
@@ -2715,7 +2663,7 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 		PgBackendStatus *beentry;
 		LocalPgBackendStatus *local_beentry;
 
-		local_beentry = pgstat_fetch_stat_local_beentry(curr_backend);
+		local_beentry = pgstat_get_local_beentry_by_index(curr_backend);
 
 		if (!local_beentry)
 			continue;

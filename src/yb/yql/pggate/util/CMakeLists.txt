@@ -14,7 +14,7 @@
 set(YB_PCH_PATH ../)
 
 # We need access to the generated pg_type_d.h header from this directory.
-include_directories("${YB_BUILD_ROOT}/postgres_build/src/backend")
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
 set(PGGATE_UTIL_SRCS
     pg_wire.cc

@@ -5,7 +5,7 @@
  *	  (pg_parameter_acl).
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_parameter_acl.h
@@ -20,13 +20,15 @@
 #define PG_PARAMETER_ACL_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_parameter_acl_d.h"
+#include "catalog/pg_parameter_acl_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_parameter_acl definition.  cpp turns this into
  *		typedef struct FormData_pg_parameter_acl
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_parameter_acl,6243,ParameterAclRelationId) BKI_SHARED_RELATION
 {
 	Oid			oid;			/* oid */
@@ -40,6 +42,8 @@ CATALOG(pg_parameter_acl,6243,ParameterAclRelationId) BKI_SHARED_RELATION
 #endif
 } FormData_pg_parameter_acl;
 
+END_CATALOG_STRUCT
+
 
 /* ----------------
  *		Form_pg_parameter_acl corresponds to a pointer to a tuple with
@@ -50,9 +54,11 @@ typedef FormData_pg_parameter_acl * Form_pg_parameter_acl;
 
 DECLARE_TOAST_WITH_MACRO(pg_parameter_acl, 6244, 6245, PgParameterAclToastTable, PgParameterAclToastIndex);
 
-DECLARE_UNIQUE_INDEX(pg_parameter_acl_parname_index, 6246, ParameterAclParnameIndexId, on pg_parameter_acl using btree(parname text_ops));
-DECLARE_UNIQUE_INDEX_PKEY(pg_parameter_acl_oid_index, 6247, ParameterAclOidIndexId, on pg_parameter_acl using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_parameter_acl_parname_index, 6246, ParameterAclParnameIndexId, pg_parameter_acl, btree(parname text_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_parameter_acl_oid_index, 6247, ParameterAclOidIndexId, pg_parameter_acl, btree(oid oid_ops));
 
+MAKE_SYSCACHE(PARAMETERACLNAME, pg_parameter_acl_parname_index, 4);
+MAKE_SYSCACHE(PARAMETERACLOID, pg_parameter_acl_oid_index, 4);
 
 extern Oid	ParameterAclLookup(const char *parameter, bool missing_ok);
 extern Oid	ParameterAclCreate(const char *parameter);

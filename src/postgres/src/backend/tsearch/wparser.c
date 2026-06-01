@@ -3,7 +3,7 @@
  * wparser.c
  *		Standard interface to word parser
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -14,13 +14,11 @@
 #include "postgres.h"
 
 #include "catalog/namespace.h"
-#include "catalog/pg_type.h"
 #include "commands/defrem.h"
-#include "common/jsonapi.h"
 #include "funcapi.h"
 #include "tsearch/ts_cache.h"
 #include "tsearch/ts_utils.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/jsonfuncs.h"
 #include "utils/varlena.h"
 
@@ -46,7 +44,8 @@ typedef struct HeadlineJsonState
 static text *headline_json_value(void *_state, char *elem_value, int elem_len);
 
 static void
-tt_setup_firstcall(FuncCallContext *funcctx, Oid prsid)
+tt_setup_firstcall(FuncCallContext *funcctx, FunctionCallInfo fcinfo,
+				   Oid prsid)
 {
 	TupleDesc	tupdesc;
 	MemoryContext oldcontext;
@@ -59,22 +58,18 @@ tt_setup_firstcall(FuncCallContext *funcctx, Oid prsid)
 
 	oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-	st = (TSTokenTypeStorage *) palloc(sizeof(TSTokenTypeStorage));
+	st = palloc_object(TSTokenTypeStorage);
 	st->cur = 0;
 	/* lextype takes one dummy argument */
 	st->list = (LexDescr *) DatumGetPointer(OidFunctionCall1(prs->lextypeOid,
 															 (Datum) 0));
-	funcctx->user_fctx = (void *) st;
+	funcctx->user_fctx = st;
 
-	tupdesc = CreateTemplateTupleDesc(3);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "tokid",
-					   INT4OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "alias",
-					   TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "description",
-					   TEXTOID, -1, 0);
-
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+	funcctx->tuple_desc = tupdesc;
 	funcctx->attinmeta = TupleDescGetAttInMetadata(tupdesc);
+
 	MemoryContextSwitchTo(oldcontext);
 }
 
@@ -116,7 +111,7 @@ ts_token_type_byid(PG_FUNCTION_ARGS)
 	if (SRF_IS_FIRSTCALL())
 	{
 		funcctx = SRF_FIRSTCALL_INIT();
-		tt_setup_firstcall(funcctx, PG_GETARG_OID(0));
+		tt_setup_firstcall(funcctx, fcinfo, PG_GETARG_OID(0));
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
@@ -139,7 +134,7 @@ ts_token_type_byname(PG_FUNCTION_ARGS)
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		prsId = get_ts_parser_oid(textToQualifiedNameList(prsname), false);
-		tt_setup_firstcall(funcctx, prsId);
+		tt_setup_firstcall(funcctx, fcinfo, prsId);
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
@@ -164,7 +159,8 @@ typedef struct
 
 
 static void
-prs_setup_firstcall(FuncCallContext *funcctx, Oid prsid, text *txt)
+prs_setup_firstcall(FuncCallContext *funcctx, FunctionCallInfo fcinfo,
+					Oid prsid, text *txt)
 {
 	TupleDesc	tupdesc;
 	MemoryContext oldcontext;
@@ -177,14 +173,14 @@ prs_setup_firstcall(FuncCallContext *funcctx, Oid prsid, text *txt)
 
 	oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-	st = (PrsStorage *) palloc(sizeof(PrsStorage));
+	st = palloc_object(PrsStorage);
 	st->cur = 0;
 	st->len = 16;
-	st->list = (LexemeEntry *) palloc(sizeof(LexemeEntry) * st->len);
+	st->list = palloc_array(LexemeEntry, st->len);
 
-	prsdata = (void *) DatumGetPointer(FunctionCall2(&prs->prsstart,
-													 PointerGetDatum(VARDATA_ANY(txt)),
-													 Int32GetDatum(VARSIZE_ANY_EXHDR(txt))));
+	prsdata = DatumGetPointer(FunctionCall2(&prs->prsstart,
+											PointerGetDatum(VARDATA_ANY(txt)),
+											Int32GetDatum(VARSIZE_ANY_EXHDR(txt))));
 
 	while ((type = DatumGetInt32(FunctionCall3(&prs->prstoken,
 											   PointerGetDatum(prsdata),
@@ -208,13 +204,10 @@ prs_setup_firstcall(FuncCallContext *funcctx, Oid prsid, text *txt)
 	st->len = st->cur;
 	st->cur = 0;
 
-	funcctx->user_fctx = (void *) st;
-	tupdesc = CreateTemplateTupleDesc(2);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "tokid",
-					   INT4OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "token",
-					   TEXTOID, -1, 0);
-
+	funcctx->user_fctx = st;
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+	funcctx->tuple_desc = tupdesc;
 	funcctx->attinmeta = TupleDescGetAttInMetadata(tupdesc);
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -256,7 +249,7 @@ ts_parse_byid(PG_FUNCTION_ARGS)
 		text	   *txt = PG_GETARG_TEXT_PP(1);
 
 		funcctx = SRF_FIRSTCALL_INIT();
-		prs_setup_firstcall(funcctx, PG_GETARG_OID(0), txt);
+		prs_setup_firstcall(funcctx, fcinfo, PG_GETARG_OID(0), txt);
 		PG_FREE_IF_COPY(txt, 1);
 	}
 
@@ -281,7 +274,7 @@ ts_parse_byname(PG_FUNCTION_ARGS)
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		prsId = get_ts_parser_oid(textToQualifiedNameList(prsname), false);
-		prs_setup_firstcall(funcctx, prsId, txt);
+		prs_setup_firstcall(funcctx, fcinfo, prsId, txt);
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
@@ -314,7 +307,7 @@ ts_headline_byid_opt(PG_FUNCTION_ARGS)
 
 	memset(&prs, 0, sizeof(HeadlineParsedText));
 	prs.lenwords = 32;
-	prs.words = (HeadlineWordEntry *) palloc(sizeof(HeadlineWordEntry) * prs.lenwords);
+	prs.words = palloc_array(HeadlineWordEntry, prs.lenwords);
 
 	hlparsetext(cfg->cfgId, &prs, query,
 				VARDATA_ANY(in), VARSIZE_ANY_EXHDR(in));
@@ -380,11 +373,11 @@ ts_headline_jsonb_byid_opt(PG_FUNCTION_ARGS)
 	Jsonb	   *out;
 	JsonTransformStringValuesAction action = (JsonTransformStringValuesAction) headline_json_value;
 	HeadlineParsedText prs;
-	HeadlineJsonState *state = palloc0(sizeof(HeadlineJsonState));
+	HeadlineJsonState *state = palloc0_object(HeadlineJsonState);
 
 	memset(&prs, 0, sizeof(HeadlineParsedText));
 	prs.lenwords = 32;
-	prs.words = (HeadlineWordEntry *) palloc(sizeof(HeadlineWordEntry) * prs.lenwords);
+	prs.words = palloc_array(HeadlineWordEntry, prs.lenwords);
 
 	state->prs = &prs;
 	state->cfg = lookup_ts_config_cache(tsconfig);
@@ -457,11 +450,11 @@ ts_headline_json_byid_opt(PG_FUNCTION_ARGS)
 	JsonTransformStringValuesAction action = (JsonTransformStringValuesAction) headline_json_value;
 
 	HeadlineParsedText prs;
-	HeadlineJsonState *state = palloc0(sizeof(HeadlineJsonState));
+	HeadlineJsonState *state = palloc0_object(HeadlineJsonState);
 
 	memset(&prs, 0, sizeof(HeadlineParsedText));
 	prs.lenwords = 32;
-	prs.words = (HeadlineWordEntry *) palloc(sizeof(HeadlineWordEntry) * prs.lenwords);
+	prs.words = palloc_array(HeadlineWordEntry, prs.lenwords);
 
 	state->prs = &prs;
 	state->cfg = lookup_ts_config_cache(tsconfig);

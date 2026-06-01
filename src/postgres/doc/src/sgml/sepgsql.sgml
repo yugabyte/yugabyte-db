@@ -1,7 +1,8 @@
 <!-- doc/src/sgml/sepgsql.sgml -->
 
 <sect1 id="sepgsql" xreflabel="sepgsql">
- <title>sepgsql</title>
+ <title>sepgsql &mdash;
+   SELinux-, label-based mandatory access control (MAC) security module</title>
 
  <indexterm zone="sepgsql">
   <primary>sepgsql</primary>
@@ -86,9 +87,14 @@ Policy from config file:        targeted
   </para>
 
   <para>
-   To build this module, include the option <literal>--with-selinux</literal> in
-   your PostgreSQL <literal>configure</literal> command.  Be sure that the
-   <filename>libselinux-devel</filename> RPM is installed at build time.
+   To build this module, specify <xref
+   linkend="configure-option-with-sepgsql"/> (when using <link
+   linkend="install-make">make and autoconf</link> ) or <xref
+   linkend="configure-with-sepgsql-meson"/> (when using <link
+   linkend="install-meson">meson</link>).
+
+   Be sure that the <filename>libselinux-devel</filename> RPM is installed at
+   build time.
   </para>
 
   <para>
@@ -146,13 +152,22 @@ $ for DBNAME in template0 template1 postgres; do
   <title>Regression Tests</title>
 
   <para>
+   The <filename>sepgsql</filename> test suite is run if
+   <literal>PG_TEST_EXTRA</literal> contains <literal>sepgsql</literal> (see
+   <xref linkend="regress-additional"/>).  This method is suitable during
+   development of <productname>PostgreSQL</productname>.  Alternatively, there
+   is a way to run the tests to checks whether a database instance has been
+   set up properly for <literal>sepgsql</literal>.
+  </para>
+
+  <para>
    Due to the nature of <productname>SELinux</productname>, running the
    regression tests for <filename>sepgsql</filename> requires several extra
    configuration steps, some of which must be done as root.
-   The regression tests will not be run by an ordinary
-   <literal>make check</literal> or <literal>make installcheck</literal> command; you must
-   set up the configuration and then invoke the test script manually.
-   The tests must be run in the <filename>contrib/sepgsql</filename> directory
+  </para>
+
+  <para>
+   The manual tests must be run in the <filename>contrib/sepgsql</filename> directory
    of a configured PostgreSQL build tree.  Although they require a build tree,
    the tests are designed to be executed against an installed server,
    that is they are comparable to <literal>make installcheck</literal> not
@@ -315,7 +330,7 @@ $ sudo semodule -r sepgsql-regtest
 
  <sect2 id="sepgsql-features">
   <title>Features</title>
-  <sect3>
+  <sect3 id="sepgsql-features-controlled-obj-classes">
    <title>Controlled Object Classes</title>
    <para>
     The security model of <productname>SELinux</productname> describes all the access
@@ -348,7 +363,7 @@ $ sudo semodule -r sepgsql-regtest
    </para>
   </sect3>
 
-  <sect3>
+  <sect3 id="sepgsql-features-dml-permissions">
    <title>DML Permissions</title>
 
    <para>
@@ -427,12 +442,12 @@ UPDATE t1 SET x = 2, y = func1(y) WHERE z = 100;
    <para>
     The default database privilege system allows database superusers to
     modify system catalogs using DML commands, and reference or modify
-    toast tables.  These operations are prohibited when
+    TOAST tables.  These operations are prohibited when
     <filename>sepgsql</filename> is enabled.
    </para>
   </sect3>
 
-  <sect3>
+  <sect3 id="sepgsql-features-ddl-permissions">
    <title>DDL Permissions</title>
    <para>
     <productname>SELinux</productname> defines several permissions to control common
@@ -523,7 +538,7 @@ UPDATE t1 SET x = 2, y = func1(y) WHERE z = 100;
 
   </sect3>
 
-  <sect3>
+  <sect3 id="sepgsql-features-trusted-procedures">
    <title>Trusted Procedures</title>
    <para>
     Trusted procedures are similar to security definer functions or setuid
@@ -579,7 +594,7 @@ postgres=# SELECT cid, cname, show_credit(cid) FROM customer;
    </para>
   </sect3>
 
-  <sect3>
+  <sect3 id="sepgsql-features-dynamic-domain-transitions">
    <title>Dynamic Domain Transitions</title>
    <para>
     It is possible to use SELinux's dynamic domain transition feature
@@ -598,7 +613,7 @@ postgres=# SELECT cid, cname, show_credit(cid) FROM customer;
     the original one. For example:
    </para>
 <screen>
-regression=# select sepgsql_getcon();
+regression=# SELECT sepgsql_getcon();
                     sepgsql_getcon
 -------------------------------------------------------
  unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
@@ -641,7 +656,7 @@ ERROR:  SELinux: security policy violation
    </para>
   </sect3>
 
-  <sect3>
+  <sect3 id="sepgsql-features-misc">
    <title>Miscellaneous</title>
    <para>
     We reject the <link linkend="sql-load"><command>LOAD</command></link> command across the board, because
@@ -788,7 +803,7 @@ ERROR:  SELinux: security policy violation
   <title>External Resources</title>
   <variablelist>
    <varlistentry>
-    <term><ulink url="https://wiki.postgresql.org/wiki/SEPostgreSQL">SE-PostgreSQL Introduction</ulink></term>
+    <term><ulink url="https://wiki.postgresql.org/wiki/SEPostgreSQL_Introduction">SE-PostgreSQL Introduction</ulink></term>
     <listitem>
      <para>
       This wiki page provides a brief overview, security design, architecture,

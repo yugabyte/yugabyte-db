@@ -3,7 +3,7 @@
  * bufpage.c
  *	  POSTGRES standard buffer page code.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -61,7 +61,7 @@ PageInit(Page page, Size pageSize, Size specialSize)
 
 
 /*
- * PageIsVerifiedExtended
+ * PageIsVerified
  *		Check that the page header and checksum (if any) appear valid.
  *
  * This is called when a page has just been read in from disk.  The idea is
@@ -78,35 +78,55 @@ PageInit(Page page, Size pageSize, Size specialSize)
  * treat such a page as empty and without free space.  Eventually, VACUUM
  * will clean up such a page and make it usable.
  *
- * If flag PIV_LOG_WARNING is set, a WARNING is logged in the event of
- * a checksum failure.
+ * If flag PIV_LOG_WARNING/PIV_LOG_LOG is set, a WARNING/LOG message is logged
+ * in the event of a checksum failure.
  *
- * If flag PIV_REPORT_STAT is set, a checksum failure is reported directly
- * to pgstat.
+ * If flag PIV_IGNORE_CHECKSUM_FAILURE is set, checksum failures will cause a
+ * message about the failure to be emitted, but will not cause
+ * PageIsVerified() to return false.
+ *
+ * To allow the caller to report statistics about checksum failures,
+ * *checksum_failure_p can be passed in. Note that there may be checksum
+ * failures even if this function returns true, due to
+ * PIV_IGNORE_CHECKSUM_FAILURE.
  */
 bool
-PageIsVerifiedExtended(Page page, BlockNumber blkno, int flags)
+PageIsVerified(PageData *page, BlockNumber blkno, int flags, bool *checksum_failure_p)
 {
-	PageHeader	p = (PageHeader) page;
+	const PageHeaderData *p = (const PageHeaderData *) page;
 	size_t	   *pagebytes;
-	int			i;
 	bool		checksum_failure = false;
 	bool		header_sane = false;
-	bool		all_zeroes = false;
 	uint16		checksum = 0;
+
+	if (checksum_failure_p)
+		*checksum_failure_p = false;
 
 	/*
 	 * Don't verify page data unless the page passes basic non-zero test
 	 */
 	if (!PageIsNew(page))
 	{
-		if (DataChecksumsEnabled())
+		/*
+		 * There shouldn't be any check for interrupt calls happening in this
+		 * codepath, but just to be on the safe side we hold interrupts since
+		 * if they did happen the data checksum state could change during
+		 * verifying checksums, which could lead to incorrect verification
+		 * results.
+		 */
+		HOLD_INTERRUPTS();
+		if (DataChecksumsNeedVerify())
 		{
-			checksum = pg_checksum_page((char *) page, blkno);
+			checksum = pg_checksum_page(page, blkno);
 
 			if (checksum != p->pd_checksum)
+			{
 				checksum_failure = true;
+				if (checksum_failure_p)
+					*checksum_failure_p = true;
+			}
 		}
+		RESUME_INTERRUPTS();
 
 		/*
 		 * The following checks don't prove the header is correct, only that
@@ -126,36 +146,25 @@ PageIsVerifiedExtended(Page page, BlockNumber blkno, int flags)
 	}
 
 	/* Check all-zeroes case */
-	all_zeroes = true;
 	pagebytes = (size_t *) page;
-	for (i = 0; i < (BLCKSZ / sizeof(size_t)); i++)
-	{
-		if (pagebytes[i] != 0)
-		{
-			all_zeroes = false;
-			break;
-		}
-	}
 
-	if (all_zeroes)
+	if (pg_memory_is_all_zeros(pagebytes, BLCKSZ))
 		return true;
 
 	/*
-	 * Throw a WARNING if the checksum fails, but only after we've checked for
-	 * the all-zeroes case.
+	 * Throw a WARNING/LOG, as instructed by PIV_LOG_*, if the checksum fails,
+	 * but only after we've checked for the all-zeroes case.
 	 */
 	if (checksum_failure)
 	{
-		if ((flags & PIV_LOG_WARNING) != 0)
-			ereport(WARNING,
+		if ((flags & (PIV_LOG_WARNING | PIV_LOG_LOG)) != 0)
+			ereport(flags & PIV_LOG_WARNING ? WARNING : LOG,
 					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg("page verification failed, calculated checksum %u but expected %u",
-							checksum, p->pd_checksum)));
+					 errmsg("page verification failed, calculated checksum %u but expected %u%s",
+							checksum, p->pd_checksum,
+							(flags & PIV_ZERO_BUFFERS_ON_ERROR ? ", buffer will be zeroed" : ""))));
 
-		if ((flags & PIV_REPORT_STAT) != 0)
-			pgstat_report_checksum_failure();
-
-		if (header_sane && ignore_checksum_failure)
+		if (header_sane && (flags & PIV_IGNORE_CHECKSUM_FAILURE))
 			return true;
 	}
 
@@ -192,7 +201,7 @@ PageIsVerifiedExtended(Page page, BlockNumber blkno, int flags)
  */
 OffsetNumber
 PageAddItemExtended(Page page,
-					Item item,
+					const void *item,
 					Size size,
 					OffsetNumber offsetNumber,
 					int flags)
@@ -230,7 +239,7 @@ PageAddItemExtended(Page page,
 		{
 			if (offsetNumber < limit)
 			{
-				itemId = PageGetItemId(phdr, offsetNumber);
+				itemId = PageGetItemId(page, offsetNumber);
 				if (ItemIdIsUsed(itemId) || ItemIdHasStorage(itemId))
 				{
 					elog(WARNING, "will not overwrite a used ItemId");
@@ -248,7 +257,7 @@ PageAddItemExtended(Page page,
 	{
 		/* offsetNumber was not passed in, so find a free slot */
 		/* if no free slot, we'll put it at limit (1st open slot) */
-		if (PageHasFreeLinePointers(phdr))
+		if (PageHasFreeLinePointers(page))
 		{
 			/*
 			 * Scan line pointer array to locate a "recyclable" (unused)
@@ -262,7 +271,7 @@ PageAddItemExtended(Page page,
 				 offsetNumber < limit;	/* limit is maxoff+1 */
 				 offsetNumber++)
 			{
-				itemId = PageGetItemId(phdr, offsetNumber);
+				itemId = PageGetItemId(page, offsetNumber);
 
 				/*
 				 * We check for no storage as well, just to be paranoid;
@@ -277,7 +286,7 @@ PageAddItemExtended(Page page,
 			if (offsetNumber >= limit)
 			{
 				/* the hint is wrong, so reset it */
-				PageClearHasFreeLinePointers(phdr);
+				PageClearHasFreeLinePointers(page);
 			}
 		}
 		else
@@ -322,7 +331,7 @@ PageAddItemExtended(Page page,
 	/*
 	 * OK to insert the item.  First, shuffle the existing pointers if needed.
 	 */
-	itemId = PageGetItemId(phdr, offsetNumber);
+	itemId = PageGetItemId(page, offsetNumber);
 
 	if (needshuffle)
 		memmove(itemId + 1, itemId,
@@ -362,7 +371,7 @@ PageAddItemExtended(Page page,
  *		The returned page is not initialized at all; caller must do that.
  */
 Page
-PageGetTempPage(Page page)
+PageGetTempPage(const PageData *page)
 {
 	Size		pageSize;
 	Page		temp;
@@ -379,7 +388,7 @@ PageGetTempPage(Page page)
  *		The page is initialized by copying the contents of the given page.
  */
 Page
-PageGetTempPageCopy(Page page)
+PageGetTempPageCopy(const PageData *page)
 {
 	Size		pageSize;
 	Page		temp;
@@ -399,7 +408,7 @@ PageGetTempPageCopy(Page page)
  *		given page, and the special space is copied from the given page.
  */
 Page
-PageGetTempPageCopySpecial(Page page)
+PageGetTempPageCopySpecial(const PageData *page)
 {
 	Size		pageSize;
 	Page		temp;
@@ -426,7 +435,7 @@ PageRestoreTempPage(Page tempPage, Page oldPage)
 	Size		pageSize;
 
 	pageSize = PageGetPageSize(tempPage);
-	memcpy((char *) oldPage, (char *) tempPage, pageSize);
+	memcpy(oldPage, tempPage, pageSize);
 
 	pfree(tempPage);
 }
@@ -786,8 +795,8 @@ PageRepairFragmentation(Page page)
 		if (totallen > (Size) (pd_special - pd_lower))
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg("corrupted item lengths: total %u, available space %u",
-							(unsigned int) totallen, pd_special - pd_lower)));
+					 errmsg("corrupted item lengths: total %zu, available space %u",
+							totallen, pd_special - pd_lower)));
 
 		compactify_tuples(itemidbase, nstorage, page, presorted);
 	}
@@ -904,16 +913,16 @@ PageTruncateLinePointerArray(Page page)
  * PageGetHeapFreeSpace on heap pages.
  */
 Size
-PageGetFreeSpace(Page page)
+PageGetFreeSpace(const PageData *page)
 {
+	const PageHeaderData *phdr = (const PageHeaderData *) page;
 	int			space;
 
 	/*
 	 * Use signed arithmetic here so that we behave sensibly if pd_lower >
 	 * pd_upper.
 	 */
-	space = (int) ((PageHeader) page)->pd_upper -
-		(int) ((PageHeader) page)->pd_lower;
+	space = (int) phdr->pd_upper - (int) phdr->pd_lower;
 
 	if (space < (int) sizeof(ItemIdData))
 		return 0;
@@ -931,16 +940,16 @@ PageGetFreeSpace(Page page)
  * PageGetHeapFreeSpace on heap pages.
  */
 Size
-PageGetFreeSpaceForMultipleTuples(Page page, int ntups)
+PageGetFreeSpaceForMultipleTuples(const PageData *page, int ntups)
 {
+	const PageHeaderData *phdr = (const PageHeaderData *) page;
 	int			space;
 
 	/*
 	 * Use signed arithmetic here so that we behave sensibly if pd_lower >
 	 * pd_upper.
 	 */
-	space = (int) ((PageHeader) page)->pd_upper -
-		(int) ((PageHeader) page)->pd_lower;
+	space = (int) phdr->pd_upper - (int) phdr->pd_lower;
 
 	if (space < (int) (ntups * sizeof(ItemIdData)))
 		return 0;
@@ -955,16 +964,16 @@ PageGetFreeSpaceForMultipleTuples(Page page, int ntups)
  *		without any consideration for adding/removing line pointers.
  */
 Size
-PageGetExactFreeSpace(Page page)
+PageGetExactFreeSpace(const PageData *page)
 {
+	const PageHeaderData *phdr = (const PageHeaderData *) page;
 	int			space;
 
 	/*
 	 * Use signed arithmetic here so that we behave sensibly if pd_lower >
 	 * pd_upper.
 	 */
-	space = (int) ((PageHeader) page)->pd_upper -
-		(int) ((PageHeader) page)->pd_lower;
+	space = (int) phdr->pd_upper - (int) phdr->pd_lower;
 
 	if (space < 0)
 		return 0;
@@ -988,7 +997,7 @@ PageGetExactFreeSpace(Page page)
  * on the number of line pointers, we make this extra check.)
  */
 Size
-PageGetHeapFreeSpace(Page page)
+PageGetHeapFreeSpace(const PageData *page)
 {
 	Size		space;
 
@@ -1004,7 +1013,7 @@ PageGetHeapFreeSpace(Page page)
 		nline = PageGetMaxOffsetNumber(page);
 		if (nline >= MaxHeapTuplesPerPage)
 		{
-			if (PageHasFreeLinePointers((PageHeader) page))
+			if (PageHasFreeLinePointers(page))
 			{
 				/*
 				 * Since this is just a hint, we must confirm that there is
@@ -1012,7 +1021,7 @@ PageGetHeapFreeSpace(Page page)
 				 */
 				for (offnum = FirstOffsetNumber; offnum <= nline; offnum = OffsetNumberNext(offnum))
 				{
-					ItemId		lp = PageGetItemId(page, offnum);
+					ItemId		lp = PageGetItemId(unconstify(PageData *, page), offnum);
 
 					if (!ItemIdIsUsed(lp))
 						break;
@@ -1089,8 +1098,8 @@ PageIndexTupleDelete(Page page, OffsetNumber offnum)
 		offset != MAXALIGN(offset))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
-				 errmsg("corrupted line pointer: offset = %u, size = %u",
-						offset, (unsigned int) size)));
+				 errmsg("corrupted line pointer: offset = %u, size = %zu",
+						offset, size)));
 
 	/* Amount of space to actually be deleted */
 	size = MAXALIGN(size);
@@ -1105,8 +1114,8 @@ PageIndexTupleDelete(Page page, OffsetNumber offnum)
 		((char *) &phdr->pd_linp[offidx + 1] - (char *) phdr);
 
 	if (nbytes > 0)
-		memmove((char *) &(phdr->pd_linp[offidx]),
-				(char *) &(phdr->pd_linp[offidx + 1]),
+		memmove(&(phdr->pd_linp[offidx]),
+				&(phdr->pd_linp[offidx + 1]),
 				nbytes);
 
 	/*
@@ -1139,7 +1148,7 @@ PageIndexTupleDelete(Page page, OffsetNumber offnum)
 		nline--;				/* there's one less than when we started */
 		for (i = 1; i <= nline; i++)
 		{
-			ItemId		ii = PageGetItemId(phdr, i);
+			ItemId		ii = PageGetItemId(page, i);
 
 			Assert(ItemIdHasStorage(ii));
 			if (ItemIdGetOffset(ii) <= offset)
@@ -1230,8 +1239,8 @@ PageIndexMultiDelete(Page page, OffsetNumber *itemnos, int nitems)
 			offset != MAXALIGN(offset))
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg("corrupted line pointer: offset = %u, size = %u",
-							offset, (unsigned int) size)));
+					 errmsg("corrupted line pointer: offset = %u, size = %zu",
+							offset, size)));
 
 		if (nextitm < nitems && offnum == itemnos[nextitm])
 		{
@@ -1263,8 +1272,8 @@ PageIndexMultiDelete(Page page, OffsetNumber *itemnos, int nitems)
 	if (totallen > (Size) (pd_special - pd_lower))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
-				 errmsg("corrupted item lengths: total %u, available space %u",
-						(unsigned int) totallen, pd_special - pd_lower)));
+				 errmsg("corrupted item lengths: total %zu, available space %u",
+						totallen, pd_special - pd_lower)));
 
 	/*
 	 * Looks good. Overwrite the line pointers with the copy, from which we've
@@ -1327,8 +1336,8 @@ PageIndexTupleDeleteNoCompact(Page page, OffsetNumber offnum)
 		offset != MAXALIGN(offset))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
-				 errmsg("corrupted line pointer: offset = %u, size = %u",
-						offset, (unsigned int) size)));
+				 errmsg("corrupted line pointer: offset = %u, size = %zu",
+						offset, size)));
 
 	/* Amount of space to actually be deleted */
 	size = MAXALIGN(size);
@@ -1374,7 +1383,7 @@ PageIndexTupleDeleteNoCompact(Page page, OffsetNumber offnum)
 
 		for (i = 1; i <= nline; i++)
 		{
-			ItemId		ii = PageGetItemId(phdr, i);
+			ItemId		ii = PageGetItemId(page, i);
 
 			if (ItemIdHasStorage(ii) && ItemIdGetOffset(ii) <= offset)
 				ii->lp_off += size;
@@ -1403,7 +1412,7 @@ PageIndexTupleDeleteNoCompact(Page page, OffsetNumber offnum)
  */
 bool
 PageIndexTupleOverwrite(Page page, OffsetNumber offnum,
-						Item newtup, Size newsize)
+						const void *newtup, Size newsize)
 {
 	PageHeader	phdr = (PageHeader) page;
 	ItemId		tupid;
@@ -1439,8 +1448,8 @@ PageIndexTupleOverwrite(Page page, OffsetNumber offnum,
 		offset != MAXALIGN(offset))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
-				 errmsg("corrupted line pointer: offset = %u, size = %u",
-						offset, (unsigned int) oldsize)));
+				 errmsg("corrupted line pointer: offset = %u, size = %d",
+						offset, oldsize)));
 
 	/*
 	 * Determine actual change in space requirement, check for page overflow.
@@ -1473,7 +1482,7 @@ PageIndexTupleOverwrite(Page page, OffsetNumber offnum,
 		/* adjust affected line pointers too */
 		for (i = FirstOffsetNumber; i <= itemcount; i++)
 		{
-			ItemId		ii = PageGetItemId(phdr, i);
+			ItemId		ii = PageGetItemId(page, i);
 
 			/* Allow items without storage; currently only BRIN needs that */
 			if (ItemIdHasStorage(ii) && ItemIdGetOffset(ii) <= offset)
@@ -1493,54 +1502,29 @@ PageIndexTupleOverwrite(Page page, OffsetNumber offnum,
 
 
 /*
- * Set checksum for a page in shared buffers.
+ * Set checksum on a page.
  *
- * If checksums are disabled, or if the page is not initialized, just return
- * the input.  Otherwise, we must make a copy of the page before calculating
- * the checksum, to prevent concurrent modifications (e.g. setting hint bits)
- * from making the final checksum invalid.  It doesn't matter if we include or
- * exclude hints during the copy, as long as we write a valid page and
- * associated checksum.
+ * If the page is in shared buffers, it needs to be locked in at least
+ * share-exclusive mode.
  *
- * Returns a pointer to the block-sized data that needs to be written. Uses
- * statically-allocated memory, so the caller must immediately write the
- * returned page and not refer to it again.
- */
-char *
-PageSetChecksumCopy(Page page, BlockNumber blkno)
-{
-	static char *pageCopy = NULL;
-
-	/* If we don't need a checksum, just return the passed-in data */
-	if (PageIsNew(page) || !DataChecksumsEnabled())
-		return (char *) page;
-
-	/*
-	 * We allocate the copy space once and use it over on each subsequent
-	 * call.  The point of palloc'ing here, rather than having a static char
-	 * array, is first to ensure adequate alignment for the checksumming code
-	 * and second to avoid wasting space in processes that never call this.
-	 */
-	if (pageCopy == NULL)
-		pageCopy = MemoryContextAlloc(TopMemoryContext, BLCKSZ);
-
-	memcpy(pageCopy, (char *) page, BLCKSZ);
-	((PageHeader) pageCopy)->pd_checksum = pg_checksum_page(pageCopy, blkno);
-	return pageCopy;
-}
-
-/*
- * Set checksum for a page in private memory.
+ * If checksums are disabled, or if the page is not initialized, just
+ * return. Otherwise compute and set the checksum.
  *
- * This must only be used when we know that no other process can be modifying
- * the page buffer.
+ * In the past this needed to be done on a copy of the page, due to the
+ * possibility of e.g., hint bits being set concurrently. However, this is not
+ * necessary anymore as hint bits won't be set while IO is going on.
  */
 void
-PageSetChecksumInplace(Page page, BlockNumber blkno)
+PageSetChecksum(Page page, BlockNumber blkno)
 {
+	HOLD_INTERRUPTS();
 	/* If we don't need a checksum, just return */
-	if (PageIsNew(page) || !DataChecksumsEnabled())
+	if (PageIsNew(page) || !DataChecksumsNeedWrite())
+	{
+		RESUME_INTERRUPTS();
 		return;
+	}
 
-	((PageHeader) page)->pd_checksum = pg_checksum_page((char *) page, blkno);
+	((PageHeader) page)->pd_checksum = pg_checksum_page(page, blkno);
+	RESUME_INTERRUPTS();
 }

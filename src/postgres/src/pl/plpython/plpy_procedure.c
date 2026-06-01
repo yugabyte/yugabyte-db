@@ -7,24 +7,21 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
-#include "access/transam.h"
-#include "funcapi.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "funcapi.h"
 #include "plpy_elog.h"
 #include "plpy_main.h"
 #include "plpy_procedure.h"
-#include "plpython.h"
+#include "plpy_util.h"
 #include "utils/builtins.h"
 #include "utils/hsearch.h"
-#include "utils/inval.h"
-#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
 static HTAB *PLy_procedure_cache = NULL;
 
-static PLyProcedure *PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger);
+static PLyProcedure *PLy_procedure_create(HeapTuple procTup, Oid fn_oid, PLyTrigType is_trigger);
 static bool PLy_procedure_valid(PLyProcedure *proc, HeapTuple procTup);
 static char *PLy_procedure_munge_source(const char *name, const char *src);
 
@@ -63,17 +60,27 @@ PLy_procedure_name(PLyProcedure *proc)
  *
  * The reason that both fn_rel and is_trigger need to be passed is that when
  * trigger functions get validated we don't know which relation(s) they'll
- * be used with, so no sensible fn_rel can be passed.
+ * be used with, so no sensible fn_rel can be passed.  Also, in that case
+ * we can't make a cache entry because we can't construct the right cache key.
+ * To forestall leakage of the PLyProcedure in such cases, delete it after
+ * construction and return NULL.  That's okay because the only caller that
+ * would pass that set of values is plpython3_validator, which ignores our
+ * result anyway.
  */
 PLyProcedure *
-PLy_procedure_get(Oid fn_oid, Oid fn_rel, bool is_trigger)
+PLy_procedure_get(Oid fn_oid, Oid fn_rel, PLyTrigType is_trigger)
 {
-	bool		use_cache = !(is_trigger && fn_rel == InvalidOid);
+	bool		use_cache;
 	HeapTuple	procTup;
 	PLyProcedureKey key;
 	PLyProcedureEntry *volatile entry = NULL;
 	PLyProcedure *volatile proc = NULL;
 	bool		found = false;
+
+	if (is_trigger == PLPY_TRIGGER && fn_rel == InvalidOid)
+		use_cache = false;
+	else
+		use_cache = true;
 
 	procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(fn_oid));
 	if (!HeapTupleIsValid(procTup))
@@ -100,6 +107,12 @@ PLy_procedure_get(Oid fn_oid, Oid fn_rel, bool is_trigger)
 			proc = PLy_procedure_create(procTup, fn_oid, is_trigger);
 			if (use_cache)
 				entry->proc = proc;
+			else
+			{
+				/* Delete the proc, otherwise it's a memory leak */
+				PLy_procedure_delete(proc);
+				proc = NULL;
+			}
 		}
 		else if (!PLy_procedure_valid(proc, procTup))
 		{
@@ -130,7 +143,7 @@ PLy_procedure_get(Oid fn_oid, Oid fn_rel, bool is_trigger)
  * Create a new PLyProcedure structure
  */
 static PLyProcedure *
-PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger)
+PLy_procedure_create(HeapTuple procTup, Oid fn_oid, PLyTrigType is_trigger)
 {
 	char		procName[NAMEDATALEN + 256];
 	Form_pg_proc procStruct;
@@ -164,7 +177,7 @@ PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger)
 
 	oldcxt = MemoryContextSwitchTo(cxt);
 
-	proc = (PLyProcedure *) palloc0(sizeof(PLyProcedure));
+	proc = palloc0_object(PLyProcedure);
 	proc->mcxt = cxt;
 
 	PG_TRY();
@@ -204,7 +217,7 @@ PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger)
 		 * get information required for output conversion of the return value,
 		 * but only if this isn't a trigger.
 		 */
-		if (!is_trigger)
+		if (is_trigger == PLPY_NOT_TRIGGER)
 		{
 			Oid			rettype = procStruct->prorettype;
 			HeapTuple	rvTypeTup;
@@ -281,8 +294,8 @@ PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger)
 			}
 
 			/* Allocate arrays for per-input-argument data */
-			proc->argnames = (char **) palloc0(sizeof(char *) * proc->nargs);
-			proc->args = (PLyDatumToOb *) palloc0(sizeof(PLyDatumToOb) * proc->nargs);
+			proc->argnames = (char **) palloc0_array(char *, proc->nargs);
+			proc->args = (PLyDatumToOb *) palloc0_array(PLyDatumToOb, proc->nargs);
 
 			for (i = pos = 0; i < total; i++)
 			{
@@ -326,10 +339,8 @@ PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger)
 		/*
 		 * get the text of the function.
 		 */
-		prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
-									  Anum_pg_proc_prosrc, &isnull);
-		if (isnull)
-			elog(ERROR, "null prosrc");
+		prosrcdatum = SysCacheGetAttrNotNull(PROCOID, procTup,
+											 Anum_pg_proc_prosrc);
 		procSource = TextDatumGetCString(prosrcdatum);
 
 		PLy_procedure_compile(proc, procSource);
@@ -356,6 +367,7 @@ PLy_procedure_compile(PLyProcedure *proc, const char *src)
 {
 	PyObject   *crv = NULL;
 	char	   *msrc;
+	PyObject   *code0;
 
 	proc->globals = PyDict_Copy(PLy_interp_globals);
 
@@ -374,7 +386,9 @@ PLy_procedure_compile(PLyProcedure *proc, const char *src)
 	msrc = PLy_procedure_munge_source(proc->pyname, src);
 	/* Save the mangled source for later inclusion in tracebacks */
 	proc->src = MemoryContextStrdup(proc->mcxt, msrc);
-	crv = PyRun_String(msrc, Py_file_input, proc->globals, NULL);
+	code0 = Py_CompileString(msrc, "<string>", Py_file_input);
+	if (code0)
+		crv = PyEval_EvalCode(code0, proc->globals, NULL);
 	pfree(msrc);
 
 	if (crv != NULL)

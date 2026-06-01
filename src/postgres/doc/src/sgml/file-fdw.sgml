@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/file-fdw.sgml -->
 
 <sect1 id="file-fdw" xreflabel="file_fdw">
- <title>file_fdw</title>
+ <title>file_fdw &mdash; access data files in the server's file system</title>
 
  <indexterm zone="file-fdw">
   <primary>file_fdw</primary>
@@ -65,7 +65,7 @@
 
    <listitem>
     <para>
-     Specifies whether the data has a header line,
+     Specifies whether to skip a header line, or how many header lines to skip,
      the same as <command>COPY</command>'s <literal>HEADER</literal> option.
     </para>
    </listitem>
@@ -116,12 +116,58 @@
   </varlistentry>
 
   <varlistentry>
+   <term><literal>default</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the string that represents a default value,
+     the same as <command>COPY</command>'s <literal>DEFAULT</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
    <term><literal>encoding</literal></term>
 
    <listitem>
     <para>
      Specifies the data encoding,
      the same as <command>COPY</command>'s <literal>ENCODING</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>on_error</literal></term>
+
+   <listitem>
+    <para>
+     Specifies how to behave when encountering an error converting a column's
+     input value into its data type,
+     the same as <command>COPY</command>'s <literal>ON_ERROR</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>reject_limit</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the maximum number of errors tolerated while converting a column's
+     input value to its data type, the same as <command>COPY</command>'s
+    <literal>REJECT_LIMIT</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>log_verbosity</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the amount of messages emitted by <literal>file_fdw</literal>,
+     the same as <command>COPY</command>'s <literal>LOG_VERBOSITY</literal> option.
     </para>
    </listitem>
   </varlistentry>
@@ -133,7 +179,7 @@
   to be specified without a corresponding value, the foreign table option
   syntax requires a value to be present in all cases.  To activate
   <command>COPY</command> options typically written without a value, you can pass
-  the value TRUE, since all such options are Booleans.
+  the value TRUE, since all such options accept Booleans.
  </para>
 
  <para>
@@ -277,6 +323,22 @@ OPTIONS ( filename 'log/pglog.csv', format 'csv' );
    That's it &mdash; now you can query your log directly. In production, of
    course, you would need to define some way to deal with log rotation.
   </para>
+ </example>
+
+ <example>
+  <title>Create a Foreign Table with an Option on a Column</title>
+  <para>
+   To set the <literal>force_null</literal> option for a column, use the
+   <literal>OPTIONS</literal> keyword.
+  </para>
+<programlisting>
+CREATE FOREIGN TABLE films (
+ code char(5) NOT NULL,
+ title text NOT NULL,
+ rating text OPTIONS (force_null 'true')
+) SERVER film_server
+OPTIONS ( filename 'films/db.csv', format 'csv' );
+</programlisting>
  </example>
 
 </sect1>

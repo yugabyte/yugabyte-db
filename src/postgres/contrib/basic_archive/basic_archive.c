@@ -17,7 +17,7 @@
  * a file is successfully archived and then the system crashes before
  * a durable record of the success has been made.
  *
- * Copyright (c) 2022, PostgreSQL Global Development Group
+ * Copyright (c) 2022-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/basic_archive/basic_archive.c
@@ -30,27 +30,31 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include "archive/archive_module.h"
 #include "common/int.h"
 #include "miscadmin.h"
-#include "postmaster/pgarch.h"
 #include "storage/copydir.h"
 #include "storage/fd.h"
 #include "utils/guc.h"
-#include "utils/memutils.h"
 
-PG_MODULE_MAGIC;
-
-void		_PG_init(void);
-void		_PG_archive_module_init(ArchiveModuleCallbacks *cb);
+PG_MODULE_MAGIC_EXT(
+					.name = "basic_archive",
+					.version = PG_VERSION
+);
 
 static char *archive_directory = NULL;
-static MemoryContext basic_archive_context;
 
-static bool basic_archive_configured(void);
-static bool basic_archive_file(const char *file, const char *path);
-static void basic_archive_file_internal(const char *file, const char *path);
+static bool basic_archive_configured(ArchiveModuleState *state);
+static bool basic_archive_file(ArchiveModuleState *state, const char *file, const char *path);
 static bool check_archive_directory(char **newval, void **extra, GucSource source);
 static bool compare_files(const char *file1, const char *file2);
+
+static const ArchiveModuleCallbacks basic_archive_callbacks = {
+	.startup_cb = NULL,
+	.check_configured_cb = basic_archive_configured,
+	.archive_file_cb = basic_archive_file,
+	.shutdown_cb = NULL
+};
 
 /*
  * _PG_init
@@ -61,7 +65,7 @@ void
 _PG_init(void)
 {
 	DefineCustomStringVariable("basic_archive.archive_directory",
-							   gettext_noop("Archive file destination directory."),
+							   "Archive file destination directory.",
 							   NULL,
 							   &archive_directory,
 							   "",
@@ -70,10 +74,6 @@ _PG_init(void)
 							   check_archive_directory, NULL, NULL);
 
 	MarkGUCPrefixReserved("basic_archive");
-
-	basic_archive_context = AllocSetContextCreate(TopMemoryContext,
-												  "basic_archive",
-												  ALLOCSET_DEFAULT_SIZES);
 }
 
 /*
@@ -81,31 +81,26 @@ _PG_init(void)
  *
  * Returns the module's archiving callbacks.
  */
-void
-_PG_archive_module_init(ArchiveModuleCallbacks *cb)
+const ArchiveModuleCallbacks *
+_PG_archive_module_init(void)
 {
-	AssertVariableIsOfType(&_PG_archive_module_init, ArchiveModuleInit);
-
-	cb->check_configured_cb = basic_archive_configured;
-	cb->archive_file_cb = basic_archive_file;
+	return &basic_archive_callbacks;
 }
 
 /*
  * check_archive_directory
  *
- * Checks that the provided archive directory exists.
+ * Checks that the provided archive directory path isn't too long.
  */
 static bool
 check_archive_directory(char **newval, void **extra, GucSource source)
 {
-	struct stat st;
-
 	/*
 	 * The default value is an empty string, so we have to accept that value.
 	 * Our check_configured callback also checks for this and prevents
 	 * archiving from proceeding if it is still empty.
 	 */
-	if (*newval == NULL || *newval[0] == '\0')
+	if (*newval == NULL || (*newval)[0] == '\0')
 		return true;
 
 	/*
@@ -118,17 +113,6 @@ check_archive_directory(char **newval, void **extra, GucSource source)
 		return false;
 	}
 
-	/*
-	 * Do a basic sanity check that the specified archive directory exists. It
-	 * could be removed at some point in the future, so we still need to be
-	 * prepared for it not to exist in the actual archiving logic.
-	 */
-	if (stat(*newval, &st) != 0 || !S_ISDIR(st.st_mode))
-	{
-		GUC_check_errdetail("Specified archive directory does not exist.");
-		return false;
-	}
-
 	return true;
 }
 
@@ -138,9 +122,14 @@ check_archive_directory(char **newval, void **extra, GucSource source)
  * Checks that archive_directory is not blank.
  */
 static bool
-basic_archive_configured(void)
+basic_archive_configured(ArchiveModuleState *state)
 {
-	return archive_directory != NULL && archive_directory[0] != '\0';
+	if (archive_directory != NULL && archive_directory[0] != '\0')
+		return true;
+
+	arch_module_check_errdetail("%s is not set.",
+								"basic_archive.archive_directory");
+	return false;
 }
 
 /*
@@ -149,73 +138,7 @@ basic_archive_configured(void)
  * Archives one file.
  */
 static bool
-basic_archive_file(const char *file, const char *path)
-{
-	sigjmp_buf	local_sigjmp_buf;
-	MemoryContext oldcontext;
-
-	/*
-	 * We run basic_archive_file_internal() in our own memory context so that
-	 * we can easily reset it during error recovery (thus avoiding memory
-	 * leaks).
-	 */
-	oldcontext = MemoryContextSwitchTo(basic_archive_context);
-
-	/*
-	 * Since the archiver operates at the bottom of the exception stack,
-	 * ERRORs turn into FATALs and cause the archiver process to restart.
-	 * However, using ereport(ERROR, ...) when there are problems is easy to
-	 * code and maintain.  Therefore, we create our own exception handler to
-	 * catch ERRORs and return false instead of restarting the archiver
-	 * whenever there is a failure.
-	 */
-	if (sigsetjmp(local_sigjmp_buf, 1) != 0)
-	{
-		/* Since not using PG_TRY, must reset error stack by hand */
-		error_context_stack = NULL;
-
-		/* Prevent interrupts while cleaning up */
-		HOLD_INTERRUPTS();
-
-		/* Report the error and clear ErrorContext for next time */
-		EmitErrorReport();
-		FlushErrorState();
-
-		/* Close any files left open by copy_file() or compare_files() */
-		AtEOSubXact_Files(false, InvalidSubTransactionId, InvalidSubTransactionId);
-
-		/* Reset our memory context and switch back to the original one */
-		MemoryContextSwitchTo(oldcontext);
-		MemoryContextReset(basic_archive_context);
-
-		/* Remove our exception handler */
-		PG_exception_stack = NULL;
-
-		/* Now we can allow interrupts again */
-		RESUME_INTERRUPTS();
-
-		/* Report failure so that the archiver retries this file */
-		return false;
-	}
-
-	/* Enable our exception handler */
-	PG_exception_stack = &local_sigjmp_buf;
-
-	/* Archive the file! */
-	basic_archive_file_internal(file, path);
-
-	/* Remove our exception handler */
-	PG_exception_stack = NULL;
-
-	/* Reset our memory context and switch back to the original one */
-	MemoryContextSwitchTo(oldcontext);
-	MemoryContextReset(basic_archive_context);
-
-	return true;
-}
-
-static void
-basic_archive_file_internal(const char *file, const char *path)
+basic_archive_file(ArchiveModuleState *state, const char *file, const char *path)
 {
 	char		destination[MAXPGPATH];
 	char		temp[MAXPGPATH + 256];
@@ -249,7 +172,7 @@ basic_archive_file_internal(const char *file, const char *path)
 			fsync_fname(destination, false);
 			fsync_fname(archive_directory, true);
 
-			return;
+			return true;
 		}
 
 		ereport(ERROR,
@@ -278,7 +201,7 @@ basic_archive_file_internal(const char *file, const char *path)
 	 * Copy the file to its temporary destination.  Note that this will fail
 	 * if temp already exists.
 	 */
-	copy_file(unconstify(char *, path), temp);
+	copy_file(path, temp);
 
 	/*
 	 * Sync the temporary file to disk and move it to its final destination.
@@ -289,6 +212,8 @@ basic_archive_file_internal(const char *file, const char *path)
 
 	ereport(DEBUG1,
 			(errmsg("archived \"%s\" via basic_archive", file)));
+
+	return true;
 }
 
 /*

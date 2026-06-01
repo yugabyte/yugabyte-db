@@ -3,7 +3,7 @@
  * nodeCtescan.c
  *	  routines to handle CteScan nodes.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,9 +15,10 @@
 
 #include "postgres.h"
 
-#include "executor/execdebug.h"
+#include "executor/executor.h"
 #include "executor/nodeCtescan.h"
 #include "miscadmin.h"
+#include "utils/tuplestore.h"
 
 static TupleTableSlot *CteScanNext(CteScanState *node);
 
@@ -261,7 +262,7 @@ ExecInitCteScan(CteScan *node, EState *estate, int eflags)
 	 */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  ExecGetResultType(scanstate->cteplanstate),
-						  &TTSOpsMinimalTuple);
+						  &TTSOpsMinimalTuple, 0);
 
 	/*
 	 * Initialize result type and projection.
@@ -287,18 +288,6 @@ ExecInitCteScan(CteScan *node, EState *estate, int eflags)
 void
 ExecEndCteScan(CteScanState *node)
 {
-	/*
-	 * Free exprcontext
-	 */
-	ExecFreeExprContext(&node->ss.ps);
-
-	/*
-	 * clean out the tuple table
-	 */
-	if (node->ss.ps.ps_ResultTupleSlot)
-		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-
 	/*
 	 * If I am the leader, free the tuplestore.
 	 */

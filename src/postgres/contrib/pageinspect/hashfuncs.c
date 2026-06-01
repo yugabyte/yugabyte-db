@@ -2,7 +2,7 @@
  * hashfuncs.c
  *		Functions to investigate the content of HASH indexes
  *
- * Copyright (c) 2017-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		contrib/pageinspect/hashfuncs.c
@@ -240,7 +240,7 @@ hash_page_stats(PG_FUNCTION_ARGS)
 	Page		page;
 	int			j;
 	Datum		values[9];
-	bool		nulls[9];
+	bool		nulls[9] = {0};
 	HashPageStat stat;
 	HeapTuple	tuple;
 	TupleDesc	tupleDesc;
@@ -262,8 +262,6 @@ hash_page_stats(PG_FUNCTION_ARGS)
 	if (get_call_result_type(fcinfo, NULL, &tupleDesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
 	tupleDesc = BlessTupleDesc(tupleDesc);
-
-	MemSet(nulls, 0, sizeof(nulls));
 
 	j = 0;
 	values[j++] = Int32GetDatum(stat.live_items);
@@ -305,7 +303,7 @@ hash_page_items(PG_FUNCTION_ARGS)
 	Page		page;
 	Datum		result;
 	Datum		values[3];
-	bool		nulls[3];
+	bool		nulls[3] = {0};
 	uint32		hashkey;
 	HeapTuple	tuple;
 	FuncCallContext *fctx;
@@ -327,7 +325,7 @@ hash_page_items(PG_FUNCTION_ARGS)
 
 		page = verify_hash_page(raw_page, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 
-		uargs = palloc(sizeof(struct user_args));
+		uargs = palloc_object(struct user_args);
 
 		uargs->page = page;
 
@@ -362,8 +360,6 @@ hash_page_items(PG_FUNCTION_ARGS)
 			elog(ERROR, "invalid ItemId");
 
 		itup = (IndexTuple) PageGetItem(uargs->page, id);
-
-		MemSet(nulls, 0, sizeof(nulls));
 
 		j = 0;
 		values[j++] = Int32GetDatum((int32) uargs->offset);
@@ -411,7 +407,7 @@ hash_bitmap_info(PG_FUNCTION_ARGS)
 	int			i,
 				j;
 	Datum		values[3];
-	bool		nulls[3];
+	bool		nulls[3] = {0};
 	uint32	   *freep;
 
 	if (!superuser())
@@ -419,6 +415,10 @@ hash_bitmap_info(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to use raw page functions")));
 
+	/*
+	 * This uses relation_open() and not index_open().  The latter allows
+	 * partitioned indexes, and these are forbidden here.
+	 */
 	indexRel = relation_open(indexRelid, AccessShareLock);
 
 	if (!IS_INDEX(indexRel) || !IS_HASH(indexRel))
@@ -440,8 +440,8 @@ hash_bitmap_info(PG_FUNCTION_ARGS)
 	if (ovflblkno >= RelationGetNumberOfBlocks(indexRel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("block number %lld is out of range for relation \"%s\"",
-						(long long int) ovflblkno, RelationGetRelationName(indexRel))));
+				 errmsg("block number %" PRId64 " is out of range for relation \"%s\"",
+						ovflblkno, RelationGetRelationName(indexRel))));
 
 	/* Read the metapage so we can determine which bitmap page to use */
 	metabuf = _hash_getbuf(indexRel, HASH_METAPAGE, HASH_READ, LH_META_PAGE);
@@ -490,14 +490,12 @@ hash_bitmap_info(PG_FUNCTION_ARGS)
 	bit = ISSET(freep, bitmapbit) != 0;
 
 	_hash_relbuf(indexRel, mapbuf);
-	index_close(indexRel, AccessShareLock);
+	relation_close(indexRel, AccessShareLock);
 
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupleDesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
 	tupleDesc = BlessTupleDesc(tupleDesc);
-
-	MemSet(nulls, 0, sizeof(nulls));
 
 	j = 0;
 	values[j++] = Int64GetDatum((int64) bitmapblkno);
@@ -528,7 +526,7 @@ hash_metapage_info(PG_FUNCTION_ARGS)
 	int			i,
 				j;
 	Datum		values[16];
-	bool		nulls[16];
+	bool		nulls[16] = {0};
 	Datum		spares[HASH_MAX_SPLITPOINTS];
 	Datum		mapp[HASH_MAX_BITMAPS];
 
@@ -545,8 +543,6 @@ hash_metapage_info(PG_FUNCTION_ARGS)
 	tupleDesc = BlessTupleDesc(tupleDesc);
 
 	metad = HashPageGetMeta(page);
-
-	MemSet(nulls, 0, sizeof(nulls));
 
 	j = 0;
 	values[j++] = Int64GetDatum((int64) metad->hashm_magic);
@@ -566,21 +562,11 @@ hash_metapage_info(PG_FUNCTION_ARGS)
 
 	for (i = 0; i < HASH_MAX_SPLITPOINTS; i++)
 		spares[i] = Int64GetDatum((int64) metad->hashm_spares[i]);
-	values[j++] = PointerGetDatum(construct_array(spares,
-												  HASH_MAX_SPLITPOINTS,
-												  INT8OID,
-												  sizeof(int64),
-												  FLOAT8PASSBYVAL,
-												  TYPALIGN_DOUBLE));
+	values[j++] = PointerGetDatum(construct_array_builtin(spares, HASH_MAX_SPLITPOINTS, INT8OID));
 
 	for (i = 0; i < HASH_MAX_BITMAPS; i++)
 		mapp[i] = Int64GetDatum((int64) metad->hashm_mapp[i]);
-	values[j++] = PointerGetDatum(construct_array(mapp,
-												  HASH_MAX_BITMAPS,
-												  INT8OID,
-												  sizeof(int64),
-												  FLOAT8PASSBYVAL,
-												  TYPALIGN_DOUBLE));
+	values[j++] = PointerGetDatum(construct_array_builtin(mapp, HASH_MAX_BITMAPS, INT8OID));
 
 	tuple = heap_form_tuple(tupleDesc, values, nulls);
 

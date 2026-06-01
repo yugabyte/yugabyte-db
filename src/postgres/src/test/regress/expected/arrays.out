@@ -182,6 +182,31 @@ SELECT a,b,c FROM arrtest;
  [4:4]={NULL}  | {3,4}                 | {foo,new_word}
 (3 rows)
 
+-- test non-error-throwing API
+SELECT pg_input_is_valid('{1,2,3}', 'integer[]');
+ pg_input_is_valid 
+-------------------
+ t
+(1 row)
+
+SELECT pg_input_is_valid('{1,2', 'integer[]');
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
+SELECT pg_input_is_valid('{1,zed}', 'integer[]');
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
+SELECT * FROM pg_input_error_info('{1,zed}', 'integer[]');
+                   message                    | detail | hint | sql_error_code 
+----------------------------------------------+--------+------+----------------
+ invalid input syntax for type integer: "zed" |        |      | 22P02
+(1 row)
+
 -- test mixed slice/scalar subscripting
 select '{{1,2,3},{4,5,6},{7,8,9}}'::int[];
            int4            
@@ -1471,20 +1496,35 @@ select '{{1,{2}},{2,3}}'::text[];
 ERROR:  malformed array literal: "{{1,{2}},{2,3}}"
 LINE 1: select '{{1,{2}},{2,3}}'::text[];
                ^
-DETAIL:  Unexpected "{" character.
-select '{{},{}}'::text[];
-ERROR:  malformed array literal: "{{},{}}"
-LINE 1: select '{{},{}}'::text[];
-               ^
-DETAIL:  Unexpected "}" character.
+DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
 select E'{{1,2},\\{2,3}}'::text[];
 ERROR:  malformed array literal: "{{1,2},\{2,3}}"
 LINE 1: select E'{{1,2},\\{2,3}}'::text[];
                ^
-DETAIL:  Unexpected "\" character.
+DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
+select '{"a"b}'::text[];
+ERROR:  malformed array literal: "{"a"b}"
+LINE 1: select '{"a"b}'::text[];
+               ^
+DETAIL:  Incorrectly quoted array element.
+select '{a"b"}'::text[];
+ERROR:  malformed array literal: "{a"b"}"
+LINE 1: select '{a"b"}'::text[];
+               ^
+DETAIL:  Incorrectly quoted array element.
+select '{"a""b"}'::text[];
+ERROR:  malformed array literal: "{"a""b"}"
+LINE 1: select '{"a""b"}'::text[];
+               ^
+DETAIL:  Incorrectly quoted array element.
 select '{{"1 2" x},{3}}'::text[];
 ERROR:  malformed array literal: "{{"1 2" x},{3}}"
 LINE 1: select '{{"1 2" x},{3}}'::text[];
+               ^
+DETAIL:  Incorrectly quoted array element.
+select '{{"1 2"} x,{3}}'::text[];
+ERROR:  malformed array literal: "{{"1 2"} x,{3}}"
+LINE 1: select '{{"1 2"} x,{3}}'::text[];
                ^
 DETAIL:  Unexpected array element.
 select '{}}'::text[];
@@ -1497,14 +1537,125 @@ ERROR:  malformed array literal: "{ }}"
 LINE 1: select '{ }}'::text[];
                ^
 DETAIL:  Junk after closing right brace.
+select '}{'::text[];
+ERROR:  malformed array literal: "}{"
+LINE 1: select '}{'::text[];
+               ^
+DETAIL:  Array value must start with "{" or dimension information.
+select '{foo{}}'::text[];
+ERROR:  malformed array literal: "{foo{}}"
+LINE 1: select '{foo{}}'::text[];
+               ^
+DETAIL:  Unexpected "{" character.
+select '{"foo"{}}'::text[];
+ERROR:  malformed array literal: "{"foo"{}}"
+LINE 1: select '{"foo"{}}'::text[];
+               ^
+DETAIL:  Unexpected "{" character.
+select '{foo,,bar}'::text[];
+ERROR:  malformed array literal: "{foo,,bar}"
+LINE 1: select '{foo,,bar}'::text[];
+               ^
+DETAIL:  Unexpected "," character.
+select '{{1},{{2}}}'::text[];
+ERROR:  malformed array literal: "{{1},{{2}}}"
+LINE 1: select '{{1},{{2}}}'::text[];
+               ^
+DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
+select '{{{1}},{2}}'::text[];
+ERROR:  malformed array literal: "{{{1}},{2}}"
+LINE 1: select '{{{1}},{2}}'::text[];
+               ^
+DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
+select '{{},{{}}}'::text[];
+ERROR:  malformed array literal: "{{},{{}}}"
+LINE 1: select '{{},{{}}}'::text[];
+               ^
+DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
+select '{{{}},{}}'::text[];
+ERROR:  malformed array literal: "{{{}},{}}"
+LINE 1: select '{{{}},{}}'::text[];
+               ^
+DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
+select '{{1},{}}'::text[];
+ERROR:  malformed array literal: "{{1},{}}"
+LINE 1: select '{{1},{}}'::text[];
+               ^
+DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
+select '{{},{1}}'::text[];
+ERROR:  malformed array literal: "{{},{1}}"
+LINE 1: select '{{},{1}}'::text[];
+               ^
+DETAIL:  Multidimensional arrays must have sub-arrays with matching dimensions.
+select '[1:0]={}'::int[];
+ERROR:  upper bound cannot be less than lower bound
+LINE 1: select '[1:0]={}'::int[];
+               ^
+select '[2147483646:2147483647]={1,2}'::int[];
+ERROR:  array upper bound is too large: 2147483647
+LINE 1: select '[2147483646:2147483647]={1,2}'::int[];
+               ^
+select '[1:-1]={}'::int[];
+ERROR:  upper bound cannot be less than lower bound
+LINE 1: select '[1:-1]={}'::int[];
+               ^
+select '[2]={1}'::int[];
+ERROR:  malformed array literal: "[2]={1}"
+LINE 1: select '[2]={1}'::int[];
+               ^
+DETAIL:  Specified array dimensions do not match array contents.
+select '[1:]={1}'::int[];
+ERROR:  malformed array literal: "[1:]={1}"
+LINE 1: select '[1:]={1}'::int[];
+               ^
+DETAIL:  Missing array dimension value.
+select '[:1]={1}'::int[];
+ERROR:  malformed array literal: "[:1]={1}"
+LINE 1: select '[:1]={1}'::int[];
+               ^
+DETAIL:  "[" must introduce explicitly-specified array dimensions.
 select array[];
 ERROR:  cannot determine type of empty array
 LINE 1: select array[];
                ^
 HINT:  Explicitly cast to the desired type, for example ARRAY[]::integer[].
+select '{{1,},{1},}'::text[];
+ERROR:  malformed array literal: "{{1,},{1},}"
+LINE 1: select '{{1,},{1},}'::text[];
+               ^
+DETAIL:  Unexpected "}" character.
+select '{{1,},{1}}'::text[];
+ERROR:  malformed array literal: "{{1,},{1}}"
+LINE 1: select '{{1,},{1}}'::text[];
+               ^
+DETAIL:  Unexpected "}" character.
+select '{{1,}}'::text[];
+ERROR:  malformed array literal: "{{1,}}"
+LINE 1: select '{{1,}}'::text[];
+               ^
+DETAIL:  Unexpected "}" character.
+select '{1,}'::text[];
+ERROR:  malformed array literal: "{1,}"
+LINE 1: select '{1,}'::text[];
+               ^
+DETAIL:  Unexpected "}" character.
+select '[21474836488:21474836489]={1,2}'::int[];
+ERROR:  array bound is out of integer range
+LINE 1: select '[21474836488:21474836489]={1,2}'::int[];
+               ^
+select '[-2147483649:-2147483648]={1,2}'::int[];
+ERROR:  array bound is out of integer range
+LINE 1: select '[-2147483649:-2147483648]={1,2}'::int[];
+               ^
 -- none of the above should be accepted
 -- all of the following should be accepted
 select '{}'::text[];
+ text 
+------
+ {}
+(1 row)
+
+select '{{},{}}'::text[];
  text 
 ------
  {}
@@ -1514,6 +1665,18 @@ select '{{{1,2,3,4},{2,3,4,5}},{{3,4,5,6},{4,5,6,7}}}'::text[];
                      text                      
 -----------------------------------------------
  {{{1,2,3,4},{2,3,4,5}},{{3,4,5,6},{4,5,6,7}}}
+(1 row)
+
+select '{null,n\ull,"null"}'::text[];
+         text         
+----------------------
+ {NULL,"null","null"}
+(1 row)
+
+select '{ ab\c , "ab\"c" }'::text[];
+     text      
+---------------
+ {abc,"ab\"c"}
 (1 row)
 
 select '{0 second  ,0 second}'::interval[];
@@ -1549,13 +1712,36 @@ select array[]::text[];
  {}
 (1 row)
 
+select '[2]={1,7}'::int[];
+ int4  
+-------
+ {1,7}
+(1 row)
+
 select '[0:1]={1.1,2.2}'::float8[];
      float8      
 -----------------
  [0:1]={1.1,2.2}
 (1 row)
 
+select '[2147483646:2147483646]={1}'::int[];
+            int4             
+-----------------------------
+ [2147483646:2147483646]={1}
+(1 row)
+
+select '[-2147483648:-2147483647]={1,2}'::int[];
+              int4               
+---------------------------------
+ [-2147483648:-2147483647]={1,2}
+(1 row)
+
 -- all of the above should be accepted
+-- some day we might allow these cases, but for now they're errors:
+select array[]::oidvector;
+ERROR:  array is not a valid oidvector
+select array[]::int2vector;
+ERROR:  array is not a valid int2vector
 -- tests for array aggregates
 CREATE TEMP TABLE arraggtest ( f1 INT[], f2 TEXT[][], f3 FLOAT[]);
 INSERT INTO arraggtest (f1, f2, f3) VALUES
@@ -1601,17 +1787,17 @@ SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
 (1 row)
 
 -- A few simple tests for arrays of composite types
-create type comptype as (f1 int, f2 text);
+create type comptype as (f1 int, f2 text, f3 int[]);
 create table comptable (c1 comptype, c2 comptype[]);
 -- XXX would like to not have to specify row() construct types here ...
 insert into comptable
-  values (row(1,'foo'), array[row(2,'bar')::comptype, row(3,'baz')::comptype]);
+  values (row(1,'foo',array[10,20]), array[row(2,'bar',array[30,40])::comptype, row(3,'baz',array[50,60])::comptype]);
 -- check that implicitly named array type _comptype isn't a problem
 create type _comptype as enum('fooey');
 select * from comptable;
-   c1    |          c2           
----------+-----------------------
- (1,foo) | {"(2,bar)","(3,baz)"}
+        c1         |                      c2                       
+-------------------+-----------------------------------------------
+ (1,foo,"{10,20}") | {"(2,bar,\"{30,40}\")","(3,baz,\"{50,60}\")"}
 (1 row)
 
 select c2[2].f2 from comptable;
@@ -1620,6 +1806,22 @@ select c2[2].f2 from comptable;
  baz
 (1 row)
 
+select c2[2].f3 from comptable;
+   f3    
+---------
+ {50,60}
+(1 row)
+
+select c2[2].f3[1:2] from comptable;
+   f3    
+---------
+ {50,60}
+(1 row)
+
+select c2[1:2].f3[1:2] from comptable;
+ERROR:  column notation .f3 applied to type comptype[], which is not a composite type
+LINE 1: select c2[1:2].f3[1:2] from comptable;
+               ^
 drop type _comptype;
 drop table comptable;
 drop type comptype;
@@ -2276,6 +2478,132 @@ select array(select array['Hello', i::text] from generate_series(9,11) i);
  {{Hello,9},{Hello,10},{Hello,11}}
 (1 row)
 
+-- int2vector and oidvector should be treated as scalar types for this purpose
+select pg_typeof(array(select '11 22 33'::int2vector from generate_series(1,5)));
+  pg_typeof   
+--------------
+ int2vector[]
+(1 row)
+
+select array(select '11 22 33'::int2vector from generate_series(1,5));
+                          array                           
+----------------------------------------------------------
+ {"11 22 33","11 22 33","11 22 33","11 22 33","11 22 33"}
+(1 row)
+
+select unnest(array(select '11 22 33'::int2vector from generate_series(1,5)));
+  unnest  
+----------
+ 11 22 33
+ 11 22 33
+ 11 22 33
+ 11 22 33
+ 11 22 33
+(5 rows)
+
+select pg_typeof(array(select '11 22 33'::oidvector from generate_series(1,5)));
+  pg_typeof  
+-------------
+ oidvector[]
+(1 row)
+
+select array(select '11 22 33'::oidvector from generate_series(1,5));
+                          array                           
+----------------------------------------------------------
+ {"11 22 33","11 22 33","11 22 33","11 22 33","11 22 33"}
+(1 row)
+
+select unnest(array(select '11 22 33'::oidvector from generate_series(1,5)));
+  unnest  
+----------
+ 11 22 33
+ 11 22 33
+ 11 22 33
+ 11 22 33
+ 11 22 33
+(5 rows)
+
+-- array[] should do the same
+select pg_typeof(array['11 22 33'::int2vector]);
+  pg_typeof   
+--------------
+ int2vector[]
+(1 row)
+
+select array['11 22 33'::int2vector];
+    array     
+--------------
+ {"11 22 33"}
+(1 row)
+
+select pg_typeof(unnest(array['11 22 33'::int2vector]));
+ pg_typeof  
+------------
+ int2vector
+(1 row)
+
+select unnest(array['11 22 33'::int2vector]);
+  unnest  
+----------
+ 11 22 33
+(1 row)
+
+select pg_typeof(unnest('11 22 33'::int2vector));
+ pg_typeof 
+-----------
+ smallint
+ smallint
+ smallint
+(3 rows)
+
+select unnest('11 22 33'::int2vector);
+ unnest 
+--------
+     11
+     22
+     33
+(3 rows)
+
+select pg_typeof(array['11 22 33'::oidvector]);
+  pg_typeof  
+-------------
+ oidvector[]
+(1 row)
+
+select array['11 22 33'::oidvector];
+    array     
+--------------
+ {"11 22 33"}
+(1 row)
+
+select pg_typeof(unnest(array['11 22 33'::oidvector]));
+ pg_typeof 
+-----------
+ oidvector
+(1 row)
+
+select unnest(array['11 22 33'::oidvector]);
+  unnest  
+----------
+ 11 22 33
+(1 row)
+
+select pg_typeof(unnest('11 22 33'::oidvector));
+ pg_typeof 
+-----------
+ oid
+ oid
+ oid
+(3 rows)
+
+select unnest('11 22 33'::oidvector);
+ unnest 
+--------
+     11
+     22
+     33
+(3 rows)
+
 -- Insert/update on a column that is array of composite
 create temp table t1 (f1 int8_tbl[]);
 insert into t1 (f1[5].q1) values(42);
@@ -2299,14 +2627,14 @@ insert into src
 create type textandtext as (c1 text, c2 text);
 create temp table dest (f1 textandtext[]);
 insert into dest select array[row(f1,f1)::textandtext] from src;
-select length(md5((f1[1]).c2)) from dest;
+select length(fipshash((f1[1]).c2)) from dest;
  length 
 --------
      32
 (1 row)
 
 delete from src;
-select length(md5((f1[1]).c2)) from dest;
+select length(fipshash((f1[1]).c2)) from dest;
  length 
 --------
      32
@@ -2314,7 +2642,7 @@ select length(md5((f1[1]).c2)) from dest;
 
 truncate table src;
 drop table src;
-select length(md5((f1[1]).c2)) from dest;
+select length(fipshash((f1[1]).c2)) from dest;
  length 
 --------
      32
@@ -2440,7 +2768,8 @@ SELECT width_bucket('5'::text, ARRAY[3, 4]::integer[]);
 ERROR:  function width_bucket(text, integer[]) does not exist
 LINE 1: SELECT width_bucket('5'::text, ARRAY[3, 4]::integer[]);
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT width_bucket(5, ARRAY[3, 4, NULL]);
 ERROR:  thresholds array must not contain NULLs
 SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]]);
@@ -2468,3 +2797,230 @@ SELECT trim_array(ARRAY[1, 2, 3], 10); -- fail
 ERROR:  number of elements to trim must be between 0 and 3
 SELECT trim_array(ARRAY[]::int[], 1); -- fail
 ERROR:  number of elements to trim must be between 0 and 0
+-- array_shuffle
+SELECT array_shuffle('{1,2,3,4,5,6}'::int[]) <@ '{1,2,3,4,5,6}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT array_shuffle('{1,2,3,4,5,6}'::int[]) @> '{1,2,3,4,5,6}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT array_dims(array_shuffle('[-1:2][2:3]={{1,2},{3,NULL},{5,6},{7,8}}'::int[]));
+ array_dims  
+-------------
+ [-1:2][2:3]
+(1 row)
+
+SELECT array_dims(array_shuffle('{{{1,2},{3,NULL}},{{5,6},{7,8}},{{9,10},{11,12}}}'::int[]));
+   array_dims    
+-----------------
+ [1:3][1:2][1:2]
+(1 row)
+
+-- array_sample
+SELECT array_sample('{1,2,3,4,5,6}'::int[], 3) <@ '{1,2,3,4,5,6}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT array_length(array_sample('{1,2,3,4,5,6}'::int[], 3), 1);
+ array_length 
+--------------
+            3
+(1 row)
+
+SELECT array_dims(array_sample('[-1:2][2:3]={{1,2},{3,NULL},{5,6},{7,8}}'::int[], 3));
+ array_dims 
+------------
+ [1:3][2:3]
+(1 row)
+
+SELECT array_dims(array_sample('{{{1,2},{3,NULL}},{{5,6},{7,8}},{{9,10},{11,12}}}'::int[], 2));
+   array_dims    
+-----------------
+ [1:2][1:2][1:2]
+(1 row)
+
+SELECT array_sample('{1,2,3,4,5,6}'::int[], -1); -- fail
+ERROR:  sample size must be between 0 and 6
+SELECT array_sample('{1,2,3,4,5,6}'::int[], 7); --fail
+ERROR:  sample size must be between 0 and 6
+-- array_reverse
+SELECT array_reverse('{}'::int[]);
+ array_reverse 
+---------------
+ {}
+(1 row)
+
+SELECT array_reverse('{1}'::int[]);
+ array_reverse 
+---------------
+ {1}
+(1 row)
+
+SELECT array_reverse('{1,2}'::int[]);
+ array_reverse 
+---------------
+ {2,1}
+(1 row)
+
+SELECT array_reverse('{1,2,3,NULL,4,5,6}'::int[]);
+   array_reverse    
+--------------------
+ {6,5,4,NULL,3,2,1}
+(1 row)
+
+SELECT array_reverse('{{1,2},{3,4},{5,6},{7,8}}'::int[]);
+       array_reverse       
+---------------------------
+ {{7,8},{5,6},{3,4},{1,2}}
+(1 row)
+
+-- array_sort
+SELECT array_sort('{}'::int[]);
+ array_sort 
+------------
+ {}
+(1 row)
+
+SELECT array_sort('{1}'::int[]);
+ array_sort 
+------------
+ {1}
+(1 row)
+
+SELECT array_sort('{1,3,5,2,4,6}'::int[]);
+  array_sort   
+---------------
+ {1,2,3,4,5,6}
+(1 row)
+
+SELECT array_sort('{1.1,3.3,5.5,2.2,4.4,6.6}'::numeric[]);
+        array_sort         
+---------------------------
+ {1.1,2.2,3.3,4.4,5.5,6.6}
+(1 row)
+
+SELECT array_sort('{foo,bar,CCC,Abc,bbc}'::text[] COLLATE "C");
+      array_sort       
+-----------------------
+ {Abc,CCC,bar,bbc,foo}
+(1 row)
+
+SELECT array_sort('{foo,bar,null,CCC,Abc,bbc}'::text[] COLLATE "C");
+         array_sort         
+----------------------------
+ {Abc,CCC,bar,bbc,foo,NULL}
+(1 row)
+
+SELECT array_sort(ARRAY(SELECT '1 4'::int2vector UNION ALL SELECT '1 2'::int2vector));
+  array_sort   
+---------------
+ {"1 2","1 4"}
+(1 row)
+
+-- array_sort with order specified
+SELECT array_sort('{1.1,3.3,5.5,2.2,null,4.4,6.6}'::float8[], true);
+           array_sort           
+--------------------------------
+ {NULL,6.6,5.5,4.4,3.3,2.2,1.1}
+(1 row)
+
+SELECT array_sort('{1.1,3.3,5.5,2.2,null,4.4,6.6}'::float8[], false);
+           array_sort           
+--------------------------------
+ {1.1,2.2,3.3,4.4,5.5,6.6,NULL}
+(1 row)
+
+-- array_sort with order and nullsfirst flag specified
+SELECT array_sort('{1.1,3.3,5.5,2.2,null,4.4,6.6}'::float8[], true, true);
+           array_sort           
+--------------------------------
+ {NULL,6.6,5.5,4.4,3.3,2.2,1.1}
+(1 row)
+
+SELECT array_sort('{1.1,3.3,5.5,2.2,null,4.4,6.6}'::float8[], true, false);
+           array_sort           
+--------------------------------
+ {6.6,5.5,4.4,3.3,2.2,1.1,NULL}
+(1 row)
+
+SELECT array_sort('{1.1,3.3,5.5,2.2,null,4.4,6.6}'::float8[], false, true);
+           array_sort           
+--------------------------------
+ {NULL,1.1,2.2,3.3,4.4,5.5,6.6}
+(1 row)
+
+SELECT array_sort('{1.1,3.3,5.5,2.2,null,4.4,6.6}'::float8[], false, false);
+           array_sort           
+--------------------------------
+ {1.1,2.2,3.3,4.4,5.5,6.6,NULL}
+(1 row)
+
+-- multidimensional array tests
+SELECT array_sort('{{1}}'::int[]);
+ array_sort 
+------------
+ {{1}}
+(1 row)
+
+SELECT array_sort(ARRAY[[2,4],[2,1],[6,5]]);
+     array_sort      
+---------------------
+ {{2,1},{2,4},{6,5}}
+(1 row)
+
+SELECT array_sort('{{"1 2","3 4"}, {"1 -2","-1 4"}}'::int2vector[]);
+           array_sort            
+---------------------------------
+ {{"1 -2","-1 4"},{"1 2","3 4"}}
+(1 row)
+
+-- no ordering operator tests
+SELECT array_sort('{1}'::xid[]);  -- no error because no sort is required
+ array_sort 
+------------
+ {1}
+(1 row)
+
+SELECT array_sort('{1,2,3}'::xid[]);
+ERROR:  could not identify a comparison function for type xid
+SELECT array_sort('{{1,2,3},{2,3,4}}'::xid[]);
+ERROR:  could not identify a comparison function for type xid
+-- bounds preservation tests
+SELECT array_sort(a) FROM (VALUES ('[10:12][20:21]={{1,2},{10,20},{3,4}}'::int[])) v(a);
+              array_sort              
+--------------------------------------
+ [10:12][20:21]={{1,2},{3,4},{10,20}}
+(1 row)
+
+SELECT array_sort(a) FROM (VALUES ('[-1:0]={7,1}'::int[])) v(a);
+  array_sort  
+--------------
+ [-1:0]={1,7}
+(1 row)
+
+SELECT array_sort(a) FROM (VALUES ('[-2:0][20:21]={{1,2},{10,20},{1,-4}}'::int[])) v(a);
+              array_sort              
+--------------------------------------
+ [-2:0][20:21]={{1,-4},{1,2},{10,20}}
+(1 row)
+
+SELECT array_sort(a [-1:0]) FROM (VALUES ('[-2:0][20:21]={{1,2},{10,20},{1,-4}}'::int[])) v(a);
+    array_sort    
+------------------
+ {{1,-4},{10,20}}
+(1 row)
+
+SELECT array_sort(a [-1:0][20:20]) FROM (VALUES ('[-2:0][20:21]={{1,2},{10,20},{1,-4}}'::int[])) v(a);
+ array_sort 
+------------
+ {{1},{10}}
+(1 row)
+

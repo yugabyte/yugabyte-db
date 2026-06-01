@@ -5,10 +5,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: pgscripts (PostgreSQL) 15\n"
+"Project-Id-Version: pgscripts (PostgreSQL) 18\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-07-02 04:49+0000\n"
-"PO-Revision-Date: 2022-07-04 15:48+0200\n"
+"POT-Creation-Date: 2025-04-25 17:51+0000\n"
+"PO-Revision-Date: 2025-04-26 05:06+0200\n"
 "Last-Translator: Temuri Doghonadze <temuri.doghonadze@gmail.com>\n"
 "Language-Team: Georgian <nothing>\n"
 "Language: ka\n"
@@ -16,38 +16,80 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 3.1\n"
+"X-Generator: Poedit 3.5\n"
 
-#: ../../../src/common/logging.c:276
+#: ../../../src/common/logging.c:279
 #, c-format
 msgid "error: "
 msgstr "შეცდომა: "
 
-#: ../../../src/common/logging.c:283
+#: ../../../src/common/logging.c:286
 #, c-format
 msgid "warning: "
 msgstr "warning: "
 
-#: ../../../src/common/logging.c:294
+#: ../../../src/common/logging.c:297
 #, c-format
 msgid "detail: "
 msgstr "დეტალები: "
 
-#: ../../../src/common/logging.c:301
+#: ../../../src/common/logging.c:304
 #, c-format
 msgid "hint: "
 msgstr "მინიშნება: "
 
 #: ../../common/fe_memutils.c:35 ../../common/fe_memutils.c:75
-#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:162
+#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:161
 #, c-format
 msgid "out of memory\n"
 msgstr "არასაკმარისი მეხსიერება\n"
 
-#: ../../common/fe_memutils.c:92 ../../common/fe_memutils.c:154
+#: ../../common/fe_memutils.c:92 ../../common/fe_memutils.c:153
 #, c-format
 msgid "cannot duplicate null pointer (internal error)\n"
 msgstr "ნულოვანი მაჩვენებლის დუბლირება შეუძლებელია (შიდა შეცდომა)\n"
+
+#: ../../common/file_utils.c:69 ../../common/file_utils.c:370
+#: ../../common/file_utils.c:428 ../../common/file_utils.c:502
+#, c-format
+msgid "could not open file \"%s\": %m"
+msgstr "ფაილის (%s) გახსნის შეცდომა: %m"
+
+#: ../../common/file_utils.c:75
+#, c-format
+msgid "could not synchronize file system for file \"%s\": %m"
+msgstr "შეუძლებელია ფაილური სისტემის სინქრონიზაცია ფაილისთვის \"%s\": %m"
+
+#: ../../common/file_utils.c:123 ../../common/file_utils.c:588
+#, c-format
+msgid "could not stat file \"%s\": %m"
+msgstr "ფაილი \"%s\" არ არსებობს: %m"
+
+#: ../../common/file_utils.c:133 ../../common/file_utils.c:243
+#: ../../fe_utils/option_utils.c:99
+#, c-format
+msgid "this build does not support sync method \"%s\""
+msgstr "ამ აგებას სინქრონიზაციის მეთოდის \"%s\" მხარდაჭერა არ გააჩნია"
+
+#: ../../common/file_utils.c:156 ../../common/file_utils.c:304
+#, c-format
+msgid "could not open directory \"%s\": %m"
+msgstr "საქაღალდის (%s) გახსნის შეცდომა: %m"
+
+#: ../../common/file_utils.c:174 ../../common/file_utils.c:338
+#, c-format
+msgid "could not read directory \"%s\": %m"
+msgstr "საქაღალდის (%s) წაკითხვის შეცდომა: %m"
+
+#: ../../common/file_utils.c:440 ../../common/file_utils.c:510
+#, c-format
+msgid "could not fsync file \"%s\": %m"
+msgstr "ფაილის (%s) fsync-ის შეცდომა: %m"
+
+#: ../../common/file_utils.c:520
+#, c-format
+msgid "could not rename file \"%s\" to \"%s\": %m"
+msgstr "გადარქმევის შეცდომა %s - %s: %m"
 
 #: ../../common/username.c:43
 #, c-format
@@ -63,15 +105,15 @@ msgstr "მომხმარებელი არ არსებობს"
 msgid "user name lookup failure: error code %lu"
 msgstr "მომხარებლის სახელის ამოხსნის პრობლემა: შეცდომის კოდი: %lu"
 
-#: ../../fe_utils/cancel.c:189 ../../fe_utils/cancel.c:238
+#: ../../fe_utils/cancel.c:186 ../../fe_utils/cancel.c:235
 msgid "Cancel request sent\n"
 msgstr "გაუქმების მოთხოვნა გაგზავნილია\n"
 
-#: ../../fe_utils/cancel.c:190 ../../fe_utils/cancel.c:239
+#: ../../fe_utils/cancel.c:187 ../../fe_utils/cancel.c:236
 msgid "Could not send cancel request: "
 msgstr "გაუქმების მოთხოვნის გაგზავნა შეუძლებელია: "
 
-#: ../../fe_utils/connect_utils.c:49 ../../fe_utils/connect_utils.c:104
+#: ../../fe_utils/connect_utils.c:49 ../../fe_utils/connect_utils.c:103
 msgid "Password: "
 msgstr "პაროლი: "
 
@@ -80,7 +122,7 @@ msgstr "პაროლი: "
 msgid "could not connect to database %s: out of memory"
 msgstr "ბაზასთან (%s) მიერთება შეუძლებელია: არასაკმარისი მეხსიერება"
 
-#: ../../fe_utils/connect_utils.c:117 pg_isready.c:146
+#: ../../fe_utils/connect_utils.c:116 pg_isready.c:146
 #, c-format
 msgid "%s"
 msgstr "%s"
@@ -95,12 +137,27 @@ msgstr "არასწორი მნიშვნელობა \"%s\" პა
 msgid "%s must be in range %d..%d"
 msgstr "%s არაა საზღვრებში %d-დან %d-მდე"
 
-#: ../../fe_utils/parallel_slot.c:301
+#: ../../fe_utils/option_utils.c:106
 #, c-format
-msgid "too many jobs for this platform"
-msgstr "მეტისმეტად ბევრი დავალება ამ პლატფორმისთვის"
+msgid "unrecognized sync method: %s"
+msgstr "უცნობი სინქრონიზაციის მეთოდი: %s"
 
-#: ../../fe_utils/parallel_slot.c:519
+#: ../../fe_utils/parallel_slot.c:317
+#, c-format
+msgid "too many jobs for this platform: %d"
+msgstr "მეტისმეტად ბევრი დავალება ამ პლატფორმისთვის: %d"
+
+#: ../../fe_utils/parallel_slot.c:326
+#, c-format
+msgid "socket file descriptor out of range for select(): %d"
+msgstr "სოკეტის ფაილის დესკრიპტორი დასაშვებ შუალედს გარეთაა ფუნქციისთვის select(): %d"
+
+#: ../../fe_utils/parallel_slot.c:328
+#, c-format
+msgid "Try fewer jobs."
+msgstr "სცადეთ ნაკლები დავალება."
+
+#: ../../fe_utils/parallel_slot.c:553
 #, c-format
 msgid "processing of database \"%s\" failed: %s"
 msgstr "ბაზის (%s) დამუშავების შეცდომა:%s"
@@ -112,26 +169,27 @@ msgid_plural "(%lu rows)"
 msgstr[0] "(%lu მწკრივი)"
 msgstr[1] "(%lu მწკრივი)"
 
-#: ../../fe_utils/print.c:3109
+#: ../../fe_utils/print.c:3154
 #, c-format
 msgid "Interrupted\n"
 msgstr "შეწყვეტილია\n"
 
-#: ../../fe_utils/print.c:3173
+#: ../../fe_utils/print.c:3188
+#, c-format
+msgid "Cannot print table contents: number of cells %<PRIu64> is equal to or exceeds maximum %zu.\n"
+msgstr "ვერ გამოვიტანე ცხრილის შემცველობა: უჯრედების რაოდენობა %<PRIu64> მაქსიმუმის %zu ტოლი ან მასზე მეტია.\n"
+
+#: ../../fe_utils/print.c:3229
 #, c-format
 msgid "Cannot add header to table content: column count of %d exceeded.\n"
-msgstr ""
-"ცხრილის შემცველობაზე თავსართის დამატება შეუძლებელია: სვეტების რაოდენობა %d "
-"გადაჭარბებულია.\n"
+msgstr "ცხრილის შემცველობაზე თავსართის დამატება შეუძლებელია: სვეტების რაოდენობა %d გადაჭარბებულია.\n"
 
-#: ../../fe_utils/print.c:3213
+#: ../../fe_utils/print.c:3272
 #, c-format
-msgid "Cannot add cell to table content: total cell count of %d exceeded.\n"
-msgstr ""
-"ცხრილის შემცველობაზე უჯრედის დამატება შეუძლებელია: უჯრედების რაოდენობა %d-ზე "
-"მეტია.\n"
+msgid "Cannot add cell to table content: total cell count of %<PRIu64> exceeded.\n"
+msgstr "ცხრილის შემცველობაზე უჯრედის დამატება შეუძლებელია: უჯრედების ჯამური რაოდენობა %<PRIu64>-ზე მეტია.\n"
 
-#: ../../fe_utils/print.c:3471
+#: ../../fe_utils/print.c:3530
 #, c-format
 msgid "invalid output format (internal error): %d"
 msgstr "გამოტანის არასწორი ფორმატი (შიდა შეცდომა): %d"
@@ -146,16 +204,26 @@ msgstr "მოთხოვნის შეცდომა: %s"
 msgid "Query was: %s"
 msgstr "მოთხოვნის შინაარსი: %s"
 
-#: clusterdb.c:113 clusterdb.c:132 createdb.c:139 createdb.c:158
-#: createuser.c:170 createuser.c:185 dropdb.c:104 dropdb.c:113 dropdb.c:121
+#: ../../fe_utils/string_utils.c:587
+#, c-format
+msgid "shell command argument contains a newline or carriage return: \"%s\"\n"
+msgstr "გარსის ბრძანების არგუმენტი ხაზის გადატანას ან კარეტის დაბრუნებას შეიცავს: \"%s\"\n"
+
+#: ../../fe_utils/string_utils.c:760
+#, c-format
+msgid "database name contains a newline or carriage return: \"%s\"\n"
+msgstr "მონაცემთა ბაზის სახელი ხაზის გადატანას ან კარეტის დაბრუნებას შეიცავს: \"%s\"\n"
+
+#: clusterdb.c:113 clusterdb.c:132 createdb.c:149 createdb.c:168
+#: createuser.c:195 createuser.c:210 dropdb.c:104 dropdb.c:113 dropdb.c:121
 #: dropuser.c:95 dropuser.c:110 dropuser.c:123 pg_isready.c:97 pg_isready.c:111
-#: reindexdb.c:174 reindexdb.c:193 vacuumdb.c:241 vacuumdb.c:260
+#: reindexdb.c:184 reindexdb.c:203 vacuumdb.c:291 vacuumdb.c:311
 #, c-format
 msgid "Try \"%s --help\" for more information."
 msgstr "მეტი ინფორმაციისთვის სცადეთ '%s --help'."
 
-#: clusterdb.c:130 createdb.c:156 createuser.c:183 dropdb.c:119 dropuser.c:108
-#: pg_isready.c:109 reindexdb.c:191 vacuumdb.c:258
+#: clusterdb.c:130 createdb.c:166 createuser.c:208 dropdb.c:119 dropuser.c:108
+#: pg_isready.c:109 reindexdb.c:201 vacuumdb.c:309
 #, c-format
 msgid "too many command-line arguments (first is \"%s\")"
 msgstr "მეტისმეტად ბევრი ბრძანების-სტრიქონის არგუმენტი (პირველია \"%s\")"
@@ -165,27 +233,22 @@ msgstr "მეტისმეტად ბევრი ბრძანები�
 msgid "cannot cluster all databases and a specific one at the same time"
 msgstr "ყველა და მითითებული ბაზების ერთდროული დაკლასტერება შეუძლებელია"
 
-#: clusterdb.c:151
-#, c-format
-msgid "cannot cluster specific table(s) in all databases"
-msgstr "მითითებული ცხრილების ყველა ბაზაში დაკლასტერება შეუძლებელია"
-
-#: clusterdb.c:215
+#: clusterdb.c:213
 #, c-format
 msgid "clustering of table \"%s\" in database \"%s\" failed: %s"
 msgstr "ცხრილის (\"%s\"), ბაზაში \"%s\" დაკლასტერების პრობლემა: %s"
 
-#: clusterdb.c:218
+#: clusterdb.c:216
 #, c-format
 msgid "clustering of database \"%s\" failed: %s"
 msgstr "ბაზის (\"%s\") დაკლასტერების შეცდომა: %s"
 
-#: clusterdb.c:246
+#: clusterdb.c:247
 #, c-format
 msgid "%s: clustering database \"%s\"\n"
 msgstr "%s: ბაზის დაკლასტერება: \"%s\"\n"
 
-#: clusterdb.c:262
+#: clusterdb.c:273
 #, c-format
 msgid ""
 "%s clusters all previously clustered tables in a database.\n"
@@ -194,19 +257,19 @@ msgstr ""
 "%s ალაგებს ბაზაში ადრე დალაგებული ცხრილებს.\n"
 "\n"
 
-#: clusterdb.c:263 createdb.c:283 createuser.c:346 dropdb.c:172 dropuser.c:170
-#: pg_isready.c:226 reindexdb.c:760 vacuumdb.c:964
+#: clusterdb.c:274 createdb.c:300 createuser.c:417 dropdb.c:171 dropuser.c:171
+#: pg_isready.c:226 reindexdb.c:898 vacuumdb.c:1337
 #, c-format
 msgid "Usage:\n"
 msgstr "გამოყენება:\n"
 
-#: clusterdb.c:264 reindexdb.c:761 vacuumdb.c:965
+#: clusterdb.c:275 reindexdb.c:899 vacuumdb.c:1338
 #, c-format
 msgid "  %s [OPTION]... [DBNAME]\n"
 msgstr "  %s [პარამეტრი]... [ბაზისსახელი]\n"
 
-#: clusterdb.c:265 createdb.c:285 createuser.c:348 dropdb.c:174 dropuser.c:172
-#: pg_isready.c:229 reindexdb.c:762 vacuumdb.c:966
+#: clusterdb.c:276 createdb.c:302 createuser.c:419 dropdb.c:173 dropuser.c:173
+#: pg_isready.c:229 reindexdb.c:900 vacuumdb.c:1339
 #, c-format
 msgid ""
 "\n"
@@ -215,50 +278,48 @@ msgstr ""
 "\n"
 "პარამეტრები:\n"
 
-#: clusterdb.c:266
+#: clusterdb.c:277
 #, c-format
 msgid "  -a, --all                 cluster all databases\n"
 msgstr "  -a, --all                 ყველა ბაზის დაკლასტერება\n"
 
-#: clusterdb.c:267
+#: clusterdb.c:278
 #, c-format
 msgid "  -d, --dbname=DBNAME       database to cluster\n"
 msgstr "  -d, --dbname=ბაზისსახელი       დასაკლასერებელი ბაზის სახელი\n"
 
-#: clusterdb.c:268 createuser.c:352 dropdb.c:175 dropuser.c:173
+#: clusterdb.c:279 createuser.c:425 dropdb.c:174 dropuser.c:174
 #, c-format
-msgid ""
-"  -e, --echo                show the commands being sent to the server\n"
+msgid "  -e, --echo                show the commands being sent to the server\n"
 msgstr "  -e, --echo-queries       სერვერზე გაგზავნილი ბრძანებების გამოტანა\n"
 
-#: clusterdb.c:269
+#: clusterdb.c:280
 #, c-format
 msgid "  -q, --quiet               don't write any messages\n"
 msgstr "  -q, --quiet               არ გამოიტანო შეტყობინებები\n"
 
-#: clusterdb.c:270
+#: clusterdb.c:281
 #, c-format
 msgid "  -t, --table=TABLE         cluster specific table(s) only\n"
-msgstr ""
-"  -t, --table=ცხრილი         მხოლოდ მითითებული ცხრილების დაკლასტერება\n"
+msgstr "  -t, --table=ცხრილი         მხოლოდ მითითებული ცხრილების დაკლასტერება\n"
 
-#: clusterdb.c:271
+#: clusterdb.c:282
 #, c-format
 msgid "  -v, --verbose             write a lot of output\n"
 msgstr "  -v, --verbose                   დამატებითი ინფორმაციის გამოტანა\n"
 
-#: clusterdb.c:272 createuser.c:364 dropdb.c:178 dropuser.c:176
+#: clusterdb.c:283 createuser.c:441 dropdb.c:177 dropuser.c:177
 #, c-format
 msgid "  -V, --version             output version information, then exit\n"
 msgstr "  -V, --version            ვერსიის ინფორმაციის გამოტანა და გასვლა\n"
 
-#: clusterdb.c:273 createuser.c:369 dropdb.c:180 dropuser.c:178
+#: clusterdb.c:284 createuser.c:449 dropdb.c:179 dropuser.c:179
 #, c-format
 msgid "  -?, --help                show this help, then exit\n"
 msgstr "  -?, --help     ამ დახმარების ჩვენება და გასვლა\n"
 
-#: clusterdb.c:274 createdb.c:300 createuser.c:370 dropdb.c:181 dropuser.c:179
-#: pg_isready.c:235 reindexdb.c:777 vacuumdb.c:991
+#: clusterdb.c:285 createdb.c:319 createuser.c:450 dropdb.c:180 dropuser.c:180
+#: pg_isready.c:235 reindexdb.c:915 vacuumdb.c:1369
 #, c-format
 msgid ""
 "\n"
@@ -267,50 +328,47 @@ msgstr ""
 "\n"
 "შეერთების პარამეტრები:\n"
 
-#: clusterdb.c:275 createuser.c:371 dropdb.c:182 dropuser.c:180 vacuumdb.c:992
+#: clusterdb.c:286 createuser.c:451 dropdb.c:181 dropuser.c:181 vacuumdb.c:1370
 #, c-format
 msgid "  -h, --host=HOSTNAME       database server host or socket directory\n"
-msgstr ""
-"  -h, --host=HOSTNAME      მონაცემთა ბაზის სერვერის ჰოსტის ან სოკეტის "
-"საქაღალდე\n"
+msgstr "  -h, --host=HOSTNAME      მონაცემთა ბაზის სერვერის ჰოსტის ან სოკეტის საქაღალდე\n"
 
-#: clusterdb.c:276 createuser.c:372 dropdb.c:183 dropuser.c:181 vacuumdb.c:993
+#: clusterdb.c:287 createuser.c:452 dropdb.c:182 dropuser.c:182 vacuumdb.c:1371
 #, c-format
 msgid "  -p, --port=PORT           database server port\n"
 msgstr "  -p, --port=PORT          მონაცემთა ბაზის სერვერის პორტი\n"
 
-#: clusterdb.c:277 dropdb.c:184 vacuumdb.c:994
+#: clusterdb.c:288 dropdb.c:183 vacuumdb.c:1372
 #, c-format
 msgid "  -U, --username=USERNAME   user name to connect as\n"
-msgstr "  -U, --username=მომხმარებელი  ბაზის მომხმარებლის სახელი\n"
+msgstr "  -U, --username=მომხმარებ.  ბაზის მომხმარებლის სახელი\n"
 
-#: clusterdb.c:278 createuser.c:374 dropdb.c:185 dropuser.c:183 vacuumdb.c:995
+#: clusterdb.c:289 createuser.c:454 dropdb.c:184 dropuser.c:184 vacuumdb.c:1373
 #, c-format
 msgid "  -w, --no-password         never prompt for password\n"
 msgstr "  -w, --no-password        არასოდეს მკითხო პაროლი\n"
 
-#: clusterdb.c:279 createuser.c:375 dropdb.c:186 dropuser.c:184 vacuumdb.c:996
+#: clusterdb.c:290 createuser.c:455 dropdb.c:185 dropuser.c:185 vacuumdb.c:1374
 #, c-format
 msgid "  -W, --password            force password prompt\n"
 msgstr "  -W, --password           პაროლის ყოველთვის კითხვა\n"
 
-#: clusterdb.c:280 dropdb.c:187 vacuumdb.c:997
+#: clusterdb.c:291 dropdb.c:186 vacuumdb.c:1375
 #, c-format
 msgid "  --maintenance-db=DBNAME   alternate maintenance database\n"
 msgstr "  --maintenance-db=ბაზისსახელი     ალტერნატიული საავარიო ბაზა\n"
 
-#: clusterdb.c:281
+#: clusterdb.c:292
 #, c-format
 msgid ""
 "\n"
 "Read the description of the SQL command CLUSTER for details.\n"
 msgstr ""
 "\n"
-"დაკლასტერების შესახებ მეტი ინფორმაციის მიღება SQL ბრძანების, CLUSTER, "
-"დეტალებში შეგიძლიათ.\n"
+"დაკლასტერების შესახებ მეტი ინფორმაციის მიღება SQL ბრძანების, CLUSTER, დეტალებში შეგიძლიათ.\n"
 
-#: clusterdb.c:282 createdb.c:308 createuser.c:376 dropdb.c:188 dropuser.c:185
-#: pg_isready.c:240 reindexdb.c:785 vacuumdb.c:999
+#: clusterdb.c:293 createdb.c:327 createuser.c:456 dropdb.c:187 dropuser.c:186
+#: pg_isready.c:240 reindexdb.c:923 vacuumdb.c:1377
 #, c-format
 msgid ""
 "\n"
@@ -319,13 +377,13 @@ msgstr ""
 "\n"
 "შეცდომების შესახებ მიწერეთ: %s\n"
 
-#: clusterdb.c:283 createdb.c:309 createuser.c:377 dropdb.c:189 dropuser.c:186
-#: pg_isready.c:241 reindexdb.c:786 vacuumdb.c:1000
+#: clusterdb.c:294 createdb.c:328 createuser.c:457 dropdb.c:188 dropuser.c:187
+#: pg_isready.c:241 reindexdb.c:924 vacuumdb.c:1378
 #, c-format
 msgid "%s home page: <%s>\n"
 msgstr "%s-ის საწყისი გვერდია: <%s>\n"
 
-#: common.c:107
+#: common.c:106
 #, c-format
 msgid "query returned %d row instead of one: %s"
 msgid_plural "query returned %d rows instead of one: %s"
@@ -354,32 +412,22 @@ msgstr "%s (%s/%s) "
 msgid "Please answer \"%s\" or \"%s\".\n"
 msgstr "უპასუხეთ \"%s\" ან \"%s\".\n"
 
-#: createdb.c:165
-#, c-format
-msgid "only one of --locale and --lc-ctype can be specified"
-msgstr "--locale და --lc-ctype მხოლოდ ერთ ერთი შეიძლება იყოს მითითებული"
-
-#: createdb.c:167
-#, c-format
-msgid "only one of --locale and --lc-collate can be specified"
-msgstr "--locale და --lc-collate მხოლოდ ერთ ერთი შეიძლება იყოს მითითებული"
-
 #: createdb.c:175
 #, c-format
 msgid "\"%s\" is not a valid encoding name"
 msgstr "\"%s\" კოდირების სწორ სახელს არ წარმოადგენს"
 
-#: createdb.c:245
+#: createdb.c:262
 #, c-format
 msgid "database creation failed: %s"
 msgstr "ბაზის შექმნის შეცდომა:%s"
 
-#: createdb.c:264
+#: createdb.c:281
 #, c-format
 msgid "comment creation failed (database was created): %s"
 msgstr "კომენტარის შექმნის შეცდომა (ბაზა შეიქმნა): %s"
 
-#: createdb.c:282
+#: createdb.c:299
 #, c-format
 msgid ""
 "%s creates a PostgreSQL database.\n"
@@ -388,172 +436,169 @@ msgstr ""
 "%s PostgreSQL-ის ბაზას ქმნის.\n"
 "\n"
 
-#: createdb.c:284
+#: createdb.c:301
 #, c-format
 msgid "  %s [OPTION]... [DBNAME] [DESCRIPTION]\n"
 msgstr "  %s [პარამეტრი]... [ბაზისსახელი] [აღწერა]\n"
 
-#: createdb.c:286
+#: createdb.c:303
 #, c-format
 msgid "  -D, --tablespace=TABLESPACE  default tablespace for the database\n"
-msgstr ""
-"  -D, --tablespace=ცხრილებისსივრცე  მონაცემთა ბაზის ცხრილების ნაგულისხმები "
-"სივრცე\n"
+msgstr "  -D, --tablespace=ცხრილებისსივრცე  მონაცემთა ბაზის ცხრილების ნაგულისხმები სივრცე\n"
 
-#: createdb.c:287 reindexdb.c:766
+#: createdb.c:304 reindexdb.c:904
 #, c-format
-msgid ""
-"  -e, --echo                   show the commands being sent to the server\n"
+msgid "  -e, --echo                   show the commands being sent to the server\n"
 msgstr "  -e, --echo-queries       სერვერზე გაგზავნილი ბრძანებების გამოტანა\n"
 
-#: createdb.c:288
+#: createdb.c:305
 #, c-format
 msgid "  -E, --encoding=ENCODING      encoding for the database\n"
-msgstr "  \\encoding [კოდირება]   კლიენტის კოდირების ჩვენება ან დაყენება\n"
+msgstr "  \\encoding [კოდირება]     კლიენტის კოდირების ჩვენება ან დაყენება\n"
 
-#: createdb.c:289
+#: createdb.c:306
 #, c-format
 msgid "  -l, --locale=LOCALE          locale settings for the database\n"
 msgstr "  -l, --locale=ენა          ბაზის ენის პარამეტრები\n"
 
-#: createdb.c:290
+#: createdb.c:307
 #, c-format
 msgid "      --lc-collate=LOCALE      LC_COLLATE setting for the database\n"
 msgstr "      --lc-collate=ენა      ბაზის LC_COLLATE პარამეტრი\n"
 
-#: createdb.c:291
+#: createdb.c:308
 #, c-format
 msgid "      --lc-ctype=LOCALE        LC_CTYPE setting for the database\n"
 msgstr "      --lc-ctype=ენა        ბაზის LC_CTYPE პარამეტრი\n"
 
-#: createdb.c:292
+#: createdb.c:309
+#, c-format
+msgid "      --builtin-locale=LOCALE  builtin locale setting for the database\n"
+msgstr "      --builtin-locale=ლოკალი  ჩაშენებული ლოკალის პარამეტრი მონაცემთა ბაზისთვის\n"
+
+#: createdb.c:310
 #, c-format
 msgid "      --icu-locale=LOCALE      ICU locale setting for the database\n"
 msgstr "      --icu-locale=ენა      ბაზის ICU ენის პარამეტრი\n"
 
-#: createdb.c:293
+#: createdb.c:311
+#, c-format
+msgid "      --icu-rules=RULES        ICU rules setting for the database\n"
+msgstr "      --icu-rules=წესი      ბაზის ICU წესის პარამეტრი\n"
+
+#: createdb.c:312
 #, c-format
 msgid ""
-"      --locale-provider={libc|icu}\n"
-"                               locale provider for the database's default "
-"collation\n"
+"      --locale-provider={builtin|libc|icu}\n"
+"                               locale provider for the database's default collation\n"
 msgstr ""
-"      --locale-provider={libc|icu}\n"
+"      --locale-provider={builtin|libc|icu}\n"
 "                               ბაზის ნაგულისხმები კოლაციის ენის მომწოდებელი\n"
 
-#: createdb.c:295
+#: createdb.c:314
 #, c-format
 msgid "  -O, --owner=OWNER            database user to own the new database\n"
-msgstr ""
-"  -O, --owner=მფლობელი            ახალი ბაზის მფლობელი მომხმარებლის სახელი\n"
+msgstr "  -O, --owner=მფლობელი     ახალი ბაზის მფლობელი მომხმარებლის სახელი\n"
 
-#: createdb.c:296
+#: createdb.c:315
 #, c-format
-msgid ""
-"  -S, --strategy=STRATEGY      database creation strategy wal_log or "
-"file_copy\n"
-msgstr ""
-"  -S, --strategy=სტრატეგია      ბაზის შექმნის სტრატეგია: wal_log ან "
-"file_copy\n"
+msgid "  -S, --strategy=STRATEGY      database creation strategy wal_log or file_copy\n"
+msgstr "  -S, --strategy=სტრატეგია     ბაზის შექმნის სტრატეგია: wal_log ან file_copy\n"
 
-#: createdb.c:297
+#: createdb.c:316
 #, c-format
 msgid "  -T, --template=TEMPLATE      template database to copy\n"
 msgstr "  -T, --template=შაბლონი      ბაზის დასაკოპირებელი შაბლონი\n"
 
-#: createdb.c:298 reindexdb.c:775
+#: createdb.c:317 reindexdb.c:913
 #, c-format
 msgid "  -V, --version                output version information, then exit\n"
 msgstr "  -V, --version            ვერსიის ინფორმაციის გამოტანა და გასვლა\n"
 
-#: createdb.c:299 reindexdb.c:776
+#: createdb.c:318 reindexdb.c:914
 #, c-format
 msgid "  -?, --help                   show this help, then exit\n"
 msgstr "  -?, --help     ამ დახმარების ჩვენება და გასვლა\n"
 
-#: createdb.c:301 reindexdb.c:778
+#: createdb.c:320 reindexdb.c:916
 #, c-format
-msgid ""
-"  -h, --host=HOSTNAME          database server host or socket directory\n"
-msgstr ""
-"  -h, --host=HOSTNAME      მონაცემთა ბაზის სერვერის ჰოსტის ან სოკეტის "
-"საქაღალდე\n"
+msgid "  -h, --host=HOSTNAME          database server host or socket directory\n"
+msgstr "  -h, --host=HOSTNAME      მონაცემთა ბაზის სერვერის ჰოსტის ან სოკეტის საქაღალდე\n"
 
-#: createdb.c:302 reindexdb.c:779
+#: createdb.c:321 reindexdb.c:917
 #, c-format
 msgid "  -p, --port=PORT              database server port\n"
 msgstr "  -p, --port=PORT          მონაცემთა ბაზის სერვერის პორტი\n"
 
-#: createdb.c:303 reindexdb.c:780
+#: createdb.c:322 reindexdb.c:918
 #, c-format
 msgid "  -U, --username=USERNAME      user name to connect as\n"
 msgstr "  -U, --username=მომხმარებელი  ბაზის მომხმარებლის სახელი\n"
 
-#: createdb.c:304 reindexdb.c:781
+#: createdb.c:323 reindexdb.c:919
 #, c-format
 msgid "  -w, --no-password            never prompt for password\n"
 msgstr "  -w, --no-password        არასოდეს მკითხო პაროლი\n"
 
-#: createdb.c:305 reindexdb.c:782
+#: createdb.c:324 reindexdb.c:920
 #, c-format
 msgid "  -W, --password               force password prompt\n"
 msgstr "  -W, --password           პაროლის ყოველთვის კითხვა\n"
 
-#: createdb.c:306 reindexdb.c:783
+#: createdb.c:325 reindexdb.c:921
 #, c-format
 msgid "  --maintenance-db=DBNAME      alternate maintenance database\n"
 msgstr "      --maintenance-db=ბაზისსახელი     ალტერნატიული საავარიო ბაზა\n"
 
-#: createdb.c:307
+#: createdb.c:326
 #, c-format
 msgid ""
 "\n"
 "By default, a database with the same name as the current user is created.\n"
 msgstr ""
 "\n"
-"ნაგულისხმებად შექმნილი ბაზის სახელად მიმდინარე მომხმარებლის სახელი "
-"გამოიყენება.\n"
+"ნაგულისხმებად შექმნილი ბაზის სახელად მიმდინარე მომხმარებლის სახელი გამოიყენება.\n"
 
-#: createuser.c:193
+#: createuser.c:218
 msgid "Enter name of role to add: "
 msgstr "შეიყვანეთ დასამატებელი როლის სახელი: "
 
-#: createuser.c:208
+#: createuser.c:233
 msgid "Enter password for new role: "
 msgstr "შეყვანეთ ახალი როლის პაროლი: "
 
-#: createuser.c:209
+#: createuser.c:234
 msgid "Enter it again: "
 msgstr "შეიყვანეთ კდევ ერთხელ: "
 
-#: createuser.c:212
+#: createuser.c:237
 #, c-format
 msgid "Passwords didn't match.\n"
 msgstr "პაროლები არ ემთხვევა.\n"
 
-#: createuser.c:220
+#: createuser.c:245
 msgid "Shall the new role be a superuser?"
 msgstr "იქნება ახალი როლი ზემომხმარებელი?"
 
-#: createuser.c:235
+#: createuser.c:260
 msgid "Shall the new role be allowed to create databases?"
 msgstr "ექნება ახალ როლს ბაზების შექმნის უფლება?"
 
-#: createuser.c:243
+#: createuser.c:268
 msgid "Shall the new role be allowed to create more new roles?"
 msgstr "ექნება ახალ როლს სხვა როლების შექმნს უფლება?"
 
-#: createuser.c:278
+#: createuser.c:311
 #, c-format
 msgid "password encryption failed: %s"
 msgstr "პაროლის დაშიფვრის შეცდომა: %s"
 
-#: createuser.c:331
+#: createuser.c:402
 #, c-format
 msgid "creation of new role failed: %s"
 msgstr "ახალი როლის შექმნის შეცდომა: %s"
 
-#: createuser.c:345
+#: createuser.c:416
 #, c-format
 msgid ""
 "%s creates a new PostgreSQL role.\n"
@@ -562,36 +607,46 @@ msgstr ""
 "%s PostgreSQL-ის როლს ქმნის.\n"
 "\n"
 
-#: createuser.c:347 dropuser.c:171
+#: createuser.c:418 dropuser.c:172
 #, c-format
 msgid "  %s [OPTION]... [ROLENAME]\n"
 msgstr "  %s [პარამეტრი]... [როლისსახელი]\n"
 
-#: createuser.c:349
+#: createuser.c:420
 #, c-format
 msgid ""
-"  -c, --connection-limit=N  connection limit for role (default: no limit)\n"
+"  -a, --with-admin=ROLE     ROLE will be a member of new role with admin\n"
+"                            option\n"
 msgstr ""
-"  -c, --connection-limit=N  როლის შეერთებების ლიმიტი (ნაგულისხმები: ლიმიტის "
-"გარეშე)\n"
+"  -a, --admin=როლი          როლი ახალი როლის წევრი იქნება, ადმინისტრირების\n"
+"                            პარამეტრით\n"
 
-#: createuser.c:350
+#: createuser.c:422
+#, c-format
+msgid "  -c, --connection-limit=N  connection limit for role (default: no limit)\n"
+msgstr "  -c, --connection-limit=N  როლის შეერთებების ლიმიტი (ნაგულისხმები: ლიმიტის გარეშე)\n"
+
+#: createuser.c:423
 #, c-format
 msgid "  -d, --createdb            role can create new databases\n"
 msgstr "  -d, --createdb            როლს შეუძლია ახალი ბაზების შექმნა\n"
 
-#: createuser.c:351
+#: createuser.c:424
 #, c-format
 msgid "  -D, --no-createdb         role cannot create databases (default)\n"
-msgstr ""
-"  -D, --no-createdb         როლს ბაზების შექმნა არ შეუძლია (ნაგულისხმები)\n"
+msgstr "  -D, --no-createdb         როლს ბაზების შექმნა არ შეუძლია (ნაგულისხმები)\n"
 
-#: createuser.c:353
+#: createuser.c:426
 #, c-format
-msgid "  -g, --role=ROLE           new role will be a member of this role\n"
-msgstr "  -g, --role=როლი           ახალი როლი ამ როლის წევრი იქნება\n"
+msgid "  -g, --member-of=ROLE      new role will be a member of ROLE\n"
+msgstr "  -g, --member-of=როლი           ახალი როლი ამ როლის წევრი იქნება\n"
 
-#: createuser.c:354
+#: createuser.c:427
+#, c-format
+msgid "  --role=ROLE               (same as --member-of, deprecated)\n"
+msgstr "  --role=როლი           (იგივე, რაც --member-of, რომელიც მოძველებულია)\n"
+
+#: createuser.c:428
 #, c-format
 msgid ""
 "  -i, --inherit             role inherits privileges of roles it is a\n"
@@ -600,79 +655,97 @@ msgstr ""
 "  -i, --inherit             რომლი მემკვიდრეობით იღებს იმ როლებსაც, რომლის\n"
 "                            წევრიც თვითონაა (ნაგულისხმები)\n"
 
-#: createuser.c:356
+#: createuser.c:430
 #, c-format
 msgid "  -I, --no-inherit          role does not inherit privileges\n"
-msgstr ""
-"  -I, --no-inherit          როლი პრივილეგიებს მემკვიდრეობით არ მიიღებს\n"
+msgstr "  -I, --no-inherit          როლი პრივილეგიებს მემკვიდრეობით არ მიიღებს\n"
 
-#: createuser.c:357
+#: createuser.c:431
 #, c-format
 msgid "  -l, --login               role can login (default)\n"
 msgstr "  -l, --login               როლით შესვლა შეიძლება (ნაგულისხმები)\n"
 
-#: createuser.c:358
+#: createuser.c:432
 #, c-format
 msgid "  -L, --no-login            role cannot login\n"
 msgstr "  -L, --no-login            როლს შესვლა არ შეუძლია\n"
 
-#: createuser.c:359
+#: createuser.c:433
+#, c-format
+msgid "  -m, --with-member=ROLE    ROLE will be a member of new role\n"
+msgstr "  -m, --with-member=როლი           როლი ახალი როლის წევრი იქნება\n"
+
+#: createuser.c:434
 #, c-format
 msgid "  -P, --pwprompt            assign a password to new role\n"
 msgstr "  -P, --pwprompt            როლისთვის პაროლის მინიჭება\n"
 
-#: createuser.c:360
+#: createuser.c:435
 #, c-format
 msgid "  -r, --createrole          role can create new roles\n"
 msgstr "  -r, --createrole          როლს ახალი როლების შექმნა შეუძლია\n"
 
-#: createuser.c:361
+#: createuser.c:436
 #, c-format
 msgid "  -R, --no-createrole       role cannot create roles (default)\n"
-msgstr ""
-"  -R, --no-createrole       როლს ახალი როლების შექმნა არ შეუძლია "
-"(ნაგულისხმები)\n"
+msgstr "  -R, --no-createrole       როლს ახალი როლების შექმნა არ შეუძლია (ნაგულისხმები)\n"
 
-#: createuser.c:362
+#: createuser.c:437
 #, c-format
 msgid "  -s, --superuser           role will be superuser\n"
 msgstr "  -s, --superuser           როლი ახალი ზემომხმარებელი იქნება\n"
 
-#: createuser.c:363
+#: createuser.c:438
 #, c-format
 msgid "  -S, --no-superuser        role will not be superuser (default)\n"
-msgstr ""
-"  -S, --no-superuser        როლი ზემომხმარებელი არ იქნება (ნაგულისხმები)\n"
+msgstr "  -S, --no-superuser        როლი ზემომხმარებელი არ იქნება (ნაგულისხმები)\n"
 
-#: createuser.c:365
+#: createuser.c:439
 #, c-format
 msgid ""
-"  --interactive             prompt for missing role name and attributes "
-"rather\n"
+"  -v, --valid-until=TIMESTAMP\n"
+"                            password expiration date and time for role\n"
+msgstr ""
+"  -v, --valid-until=დროისშტამპი\n"
+"                            პაროლის ამოწურვის თარიღი და დრო როლისთვის\n"
+
+#: createuser.c:442
+#, c-format
+msgid ""
+"  --interactive             prompt for missing role name and attributes rather\n"
 "                            than using defaults\n"
 msgstr ""
-"  --interactive             ნაგულისხმები მნიშვნელობების გამოყენების მაგიერ "
-"როლის \n"
-"                            ნაკლული სახელისა და ატრიბუტების ინტერაქტიურად "
-"კითხვაs\n"
+"  --interactive             ნაგულისხმები მნიშვნელობების გამოყენების მაგიერ როლის \n"
+"                            ნაკლული სახელისა და ატრიბუტების ინტერაქტიურად კითხვაs\n"
 
-#: createuser.c:367
+#: createuser.c:444
+#, c-format
+msgid "  --bypassrls               role can bypass row-level security (RLS) policy\n"
+msgstr "  --bypassrls               როლს შეუძლია აიცილოს მწკრივის დონის უსაფრთხოების (RLS) წესები\n"
+
+#: createuser.c:445
+#, c-format
+msgid ""
+"  --no-bypassrls            role cannot bypass row-level security (RLS) policy\n"
+"                            (default)\n"
+msgstr ""
+"  --no-bypassrls            როლს მწკრივის დონის უსაფრთხოების წესების (RLS) აცილება\n"
+"                            არ შეუძლია (ნაგულისხმები)\n"
+
+#: createuser.c:447
 #, c-format
 msgid "  --replication             role can initiate replication\n"
 msgstr "  --replication             როლს შეუძლია რეპლიკაციის ინიცირება\n"
 
-#: createuser.c:368
+#: createuser.c:448
 #, c-format
-msgid "  --no-replication          role cannot initiate replication\n"
-msgstr "  --no-replication          როლს რეპლიკაციის ინიცირება არ შეუძლია\n"
+msgid "  --no-replication          role cannot initiate replication (default)\n"
+msgstr "  --no-replication          როლს რეპლიკაციის ინიცირება არ შეუძლია (ნაგულისხმები)\n"
 
-#: createuser.c:373
+#: createuser.c:453
 #, c-format
-msgid ""
-"  -U, --username=USERNAME   user name to connect as (not the one to create)\n"
-msgstr ""
-"  -U, --username=მომხმარებელი   სერვერთან მიერთების მომხმარებლის სახელი (ის "
-"არა, რომელსაც ქმნით)\n"
+msgid "  -U, --username=USERNAME   user name to connect as (not the one to create)\n"
+msgstr "  -U, --username=მომხმარებელი   სერვერთან მიერთების მომხმარებლის სახელი (ის არა, რომელსაც ქმნით)\n"
 
 #: dropdb.c:112
 #, c-format
@@ -688,12 +761,12 @@ msgstr "მონაცემთა ბაზა \"%s\" სამუდამო
 msgid "Are you sure?"
 msgstr "დარწმუნებული ბრძანდებით?"
 
-#: dropdb.c:157
+#: dropdb.c:156
 #, c-format
 msgid "database removal failed: %s"
 msgstr "ბაზის წაშლის შეცდომა:%s"
 
-#: dropdb.c:171
+#: dropdb.c:170
 #, c-format
 msgid ""
 "%s removes a PostgreSQL database.\n"
@@ -702,27 +775,24 @@ msgstr ""
 "%s წაშლის PostgreSQL ბაზას.\n"
 "\n"
 
-#: dropdb.c:173
+#: dropdb.c:172
 #, c-format
 msgid "  %s [OPTION]... DBNAME\n"
 msgstr "  %s [პარამეტრი]... [ბაზისსახელი]\n"
 
-#: dropdb.c:176
+#: dropdb.c:175
 #, c-format
-msgid ""
-"  -f, --force               try to terminate other connections before "
-"dropping\n"
+msgid "  -f, --force               try to terminate other connections before dropping\n"
 msgstr "  -f, --force               შეერთებების დახურვა მათ გათიშვამდე\n"
 
-#: dropdb.c:177
+#: dropdb.c:176
 #, c-format
 msgid "  -i, --interactive         prompt before deleting anything\n"
 msgstr "  -i, --interactive         გკითხავ, სანამ რამეს წავშლი\n"
 
-#: dropdb.c:179
+#: dropdb.c:178
 #, c-format
-msgid ""
-"  --if-exists               don't report error if database doesn't exist\n"
+msgid "  --if-exists               don't report error if database doesn't exist\n"
 msgstr "  --if-exists               თუ ბაზა არ არსებობს, შეცდომა არ ამოაგდო\n"
 
 #: dropuser.c:118
@@ -739,12 +809,12 @@ msgstr "აკლია აუცილებელი არგუმენტ�
 msgid "Role \"%s\" will be permanently removed.\n"
 msgstr "როლი \"%s\" სამუდამოდ წაიშლება.\n"
 
-#: dropuser.c:154
+#: dropuser.c:155
 #, c-format
 msgid "removal of role \"%s\" failed: %s"
 msgstr "როლის (\"%s\") წაშლის შეცდომა: %s"
 
-#: dropuser.c:169
+#: dropuser.c:170
 #, c-format
 msgid ""
 "%s removes a PostgreSQL role.\n"
@@ -753,7 +823,7 @@ msgstr ""
 "%s წაშლის PostgreSQL-ის როლს.\n"
 "\n"
 
-#: dropuser.c:174
+#: dropuser.c:175
 #, c-format
 msgid ""
 "  -i, --interactive         prompt before deleting anything, and prompt for\n"
@@ -762,19 +832,15 @@ msgstr ""
 "  -i, --interactive         გკითხავ, სანამ რამეს წავშლი\n"
 "                            და გკითხავ როლის სახელსაც, თუ მითითბული არაა\n"
 
-#: dropuser.c:177
+#: dropuser.c:178
 #, c-format
 msgid "  --if-exists               don't report error if user doesn't exist\n"
-msgstr ""
-"  --if-exists               თუ მომხმარებელი არ არსებობს, შეცდომა არ ამოაგდო\n"
+msgstr "  --if-exists               თუ მომხმარებელი არ არსებობს, შეცდომა არ ამოაგდო\n"
 
-#: dropuser.c:182
+#: dropuser.c:183
 #, c-format
-msgid ""
-"  -U, --username=USERNAME   user name to connect as (not the one to drop)\n"
-msgstr ""
-"  -U, --username=მომხმარებელი   სერვერთან მიერთების მომხმარებლის სახელი (ის "
-"არა, რომელსაც შლით)\n"
+msgid "  -U, --username=USERNAME   user name to connect as (not the one to drop)\n"
+msgstr "  -U, --username=მომხმარებელი   სერვერთან მიერთების მომხმარებლის სახელი (ის არა, რომელსაც შლით)\n"
 
 #: pg_isready.c:154
 #, c-format
@@ -843,9 +909,7 @@ msgstr "  -?, --help     ამ დახმარების ჩვენე�
 #: pg_isready.c:236
 #, c-format
 msgid "  -h, --host=HOSTNAME      database server host or socket directory\n"
-msgstr ""
-"  -h, --host=HOSTNAME      მონაცემთა ბაზის სერვერის ჰოსტის ან სოკეტის "
-"საქაღალდე\n"
+msgstr "  -h, --host=HOSTNAME      მონაცემთა ბაზის სერვერის ჰოსტის ან სოკეტის საქაღალდე\n"
 
 #: pg_isready.c:237
 #, c-format
@@ -854,118 +918,62 @@ msgstr "  -p, --port=PORT          მონაცემთა ბაზის �
 
 #: pg_isready.c:238
 #, c-format
-msgid ""
-"  -t, --timeout=SECS       seconds to wait when attempting connection, 0 "
-"disables (default: %s)\n"
-msgstr ""
-"  -t, --timeout=წამი       შეერთების ლოდინის ვადა, წამებში. 0 გათიშავს "
-"(ნაგულისხმები: %s)\n"
+msgid "  -t, --timeout=SECS       seconds to wait when attempting connection, 0 disables (default: %s)\n"
+msgstr "  -t, --timeout=წამი       შეერთების ლოდინის ვადა, წამებში. 0 გათიშავს (ნაგულისხმები: %s)\n"
 
 #: pg_isready.c:239
 #, c-format
 msgid "  -U, --username=USERNAME  user name to connect as\n"
 msgstr "  -U, --username=მომხმარებელი  ბაზის მომხმარებლის სახელი\n"
 
-#: reindexdb.c:209
+#: reindexdb.c:217
+#, c-format
+msgid "cannot use multiple jobs to reindex system catalogs"
+msgstr "სისტემური კატალოგების რეინდექსისთვის ბევრი დავალების გამოყენება შეუძლებელია"
+
+#: reindexdb.c:222
 #, c-format
 msgid "cannot reindex all databases and a specific one at the same time"
 msgstr "ყველა და მითითებული ბაზების ერთდროული რეინდექსი შეუძლებელია"
 
-#: reindexdb.c:211
+#: reindexdb.c:302 reindexdb.c:309 vacuumdb.c:558 vacuumdb.c:565 vacuumdb.c:572
+#: vacuumdb.c:579 vacuumdb.c:586 vacuumdb.c:593 vacuumdb.c:600 vacuumdb.c:607
+#: vacuumdb.c:614 vacuumdb.c:621 vacuumdb.c:628 vacuumdb.c:635
 #, c-format
-msgid "cannot reindex all databases and system catalogs at the same time"
-msgstr "ყველა ბაზის და სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია"
+msgid "cannot use the \"%s\" option on server versions older than PostgreSQL %s"
+msgstr "პარამეტრი \"%s\" არ გამოიყენება PostgreSQL-ის ვერსიაში \"%s\" ან უფრო ძველში"
 
-#: reindexdb.c:213
-#, c-format
-msgid "cannot reindex specific schema(s) in all databases"
-msgstr "მითითებული სქემის ყველა ბაზაში რეინდექსი შეუძლებელია"
-
-#: reindexdb.c:215
-#, c-format
-msgid "cannot reindex specific table(s) in all databases"
-msgstr "მითითებული ცხრილის ყველა ბაზაში რეინდექსი შეუძლებელია"
-
-#: reindexdb.c:217
-#, c-format
-msgid "cannot reindex specific index(es) in all databases"
-msgstr "მითითებული ინდექსის ყველა ბაზაში რეინდექსი შეუძლებელია"
-
-#: reindexdb.c:227
-#, c-format
-msgid "cannot reindex specific schema(s) and system catalogs at the same time"
-msgstr ""
-"მითითებული სქემის და სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია"
-
-#: reindexdb.c:229
-#, c-format
-msgid "cannot reindex specific table(s) and system catalogs at the same time"
-msgstr ""
-"მითითებული ცხრილის და სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია"
-
-#: reindexdb.c:231
-#, c-format
-msgid "cannot reindex specific index(es) and system catalogs at the same time"
-msgstr ""
-"მითითებული ინდექსის და სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია"
-
-#: reindexdb.c:234
-#, c-format
-msgid "cannot use multiple jobs to reindex system catalogs"
-msgstr ""
-"სისტემური კატალოგების რეინდექსისთვის ბევრი დავალების გამოყენება შეუძლებელია"
-
-#: reindexdb.c:260
-#, c-format
-msgid "cannot use multiple jobs to reindex indexes"
-msgstr "ინდექსების რეინდექსისთვის ბევრი დავალების გამოყენება შეუძლებელია"
-
-#: reindexdb.c:323 reindexdb.c:330 vacuumdb.c:425 vacuumdb.c:432 vacuumdb.c:439
-#: vacuumdb.c:446 vacuumdb.c:453 vacuumdb.c:460 vacuumdb.c:465 vacuumdb.c:469
-#: vacuumdb.c:473
-#, c-format
-msgid ""
-"cannot use the \"%s\" option on server versions older than PostgreSQL %s"
-msgstr ""
-"პარამეტრი \"%s\" არ გამოიყენება PostgreSQL-ის ვერსიაში \"%s\" ან უფრო ძველში"
-
-#: reindexdb.c:369
-#, c-format
-msgid "cannot reindex system catalogs concurrently, skipping all"
-msgstr ""
-"სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია. ყველას გამოტოვება"
-
-#: reindexdb.c:573
+#: reindexdb.c:597
 #, c-format
 msgid "reindexing of database \"%s\" failed: %s"
 msgstr "ბაზის (\"%s\") რეინდექსის პრობლემა: %s"
 
-#: reindexdb.c:577
+#: reindexdb.c:601
 #, c-format
 msgid "reindexing of index \"%s\" in database \"%s\" failed: %s"
 msgstr "რეინდექსის შეცდომა ინდექსისთვის \"%s\" ბაზაში \"%s\": %s"
 
-#: reindexdb.c:581
+#: reindexdb.c:605
 #, c-format
 msgid "reindexing of schema \"%s\" in database \"%s\" failed: %s"
 msgstr "რეინდექსის შეცდომა სქემისთვის \"%s\" ბაზაში \"%s\": %s"
 
-#: reindexdb.c:585
+#: reindexdb.c:609
 #, c-format
 msgid "reindexing of system catalogs in database \"%s\" failed: %s"
 msgstr "სისტემური კატალოგების რეინდექსის შეცდომა ბაზაში \"%s\": %s"
 
-#: reindexdb.c:589
+#: reindexdb.c:613
 #, c-format
 msgid "reindexing of table \"%s\" in database \"%s\" failed: %s"
 msgstr "რეინდექსის შეცდომა ცხრილისთვის \"%s\" ბაზაში \"%s\": %s"
 
-#: reindexdb.c:742
+#: reindexdb.c:854
 #, c-format
 msgid "%s: reindexing database \"%s\"\n"
 msgstr "%s: ბაზის თავიდან ინდექსირება \"%s\"\n"
 
-#: reindexdb.c:759
+#: reindexdb.c:897
 #, c-format
 msgid ""
 "%s reindexes a PostgreSQL database.\n"
@@ -974,75 +982,62 @@ msgstr ""
 "%s PostgreSQL ბაზის თავიდან ინდექსირება.\n"
 "\n"
 
-#: reindexdb.c:763
+#: reindexdb.c:901
 #, c-format
 msgid "  -a, --all                    reindex all databases\n"
 msgstr "  -a, --all                       ყველა ბაზის თავიდან ინდექსირება\n"
 
-#: reindexdb.c:764
+#: reindexdb.c:902
 #, c-format
 msgid "      --concurrently           reindex concurrently\n"
 msgstr "      --concurrently           ერთდროული ინდექსირება\n"
 
-#: reindexdb.c:765
+#: reindexdb.c:903
 #, c-format
 msgid "  -d, --dbname=DBNAME          database to reindex\n"
 msgstr "  -d, --dbname=ბაზისსახელი          დასაინდექსებელი ბაზის სახელი\n"
 
-#: reindexdb.c:767
+#: reindexdb.c:905
 #, c-format
 msgid "  -i, --index=INDEX            recreate specific index(es) only\n"
-msgstr ""
-"  -i, --index=ინდექსი            მითითებული ინდექს(ებ)-ი თავიდან შეიქმნება\n"
+msgstr "  -i, --index=ინდექსი            მითითებული ინდექს(ებ)-ი თავიდან შეიქმნება\n"
 
-#: reindexdb.c:768
+#: reindexdb.c:906
 #, c-format
-msgid ""
-"  -j, --jobs=NUM               use this many concurrent connections to "
-"reindex\n"
-msgstr ""
-"  -j, --jobs=რიცხვი               თავიდან ინდექსირებისთვის მითითებული "
-"რაოდენობის შეერთებების გამოყენება\n"
+msgid "  -j, --jobs=NUM               use this many concurrent connections to reindex\n"
+msgstr "  -j, --jobs=რიცხვი               თავიდან ინდექსირებისთვის მითითებული რაოდენობის შეერთებების გამოყენება\n"
 
-#: reindexdb.c:769
+#: reindexdb.c:907
 #, c-format
 msgid "  -q, --quiet                  don't write any messages\n"
 msgstr "  -q, --quiet               არ გამოიტანო შეტყობინებები\n"
 
-#: reindexdb.c:770
+#: reindexdb.c:908
 #, c-format
 msgid "  -s, --system                 reindex system catalogs only\n"
-msgstr ""
-"  -s, --system                 მოხდება მხოლოდ სისტემური კატალოგების თავიდან "
-"ინდექსირება\n"
+msgstr "  -s, --system                 მოხდება მხოლოდ სისტემური კატალოგების თავიდან ინდექსირება\n"
 
-#: reindexdb.c:771
+#: reindexdb.c:909
 #, c-format
 msgid "  -S, --schema=SCHEMA          reindex specific schema(s) only\n"
-msgstr ""
-"  -S, --schema=სქემა          მოხდება მხოლოდ მითითებული სქემების თავიდან "
-"ინდექსირება\n"
+msgstr "  -S, --schema=სქემა          მოხდება მხოლოდ მითითებული სქემების თავიდან ინდექსირება\n"
 
-#: reindexdb.c:772
+#: reindexdb.c:910
 #, c-format
 msgid "  -t, --table=TABLE            reindex specific table(s) only\n"
-msgstr ""
-"  -t, --table=ცხრილი            მოხდება მხოლოდ მითითებული ცხრილების თავიდან "
-"ინდექსირება\n"
+msgstr "  -t, --table=ცხრილი            მოხდება მხოლოდ მითითებული ცხრილების თავიდან ინდექსირება\n"
 
-#: reindexdb.c:773
+#: reindexdb.c:911
 #, c-format
 msgid "      --tablespace=TABLESPACE  tablespace where indexes are rebuilt\n"
-msgstr ""
-"      --tablespace=ცხრილებისსივრცე  ცხრილების სივრცე, სადაც რეინდექსი "
-"მოხდება\n"
+msgstr "      --tablespace=ცხრილებისსივრცე  ცხრილების სივრცე, სადაც რეინდექსი მოხდება\n"
 
-#: reindexdb.c:774
+#: reindexdb.c:912
 #, c-format
 msgid "  -v, --verbose                write a lot of output\n"
 msgstr "  -v, --verbose                   დამატებითი ინფორმაციის გამოტანა\n"
 
-#: reindexdb.c:784
+#: reindexdb.c:922
 #, c-format
 msgid ""
 "\n"
@@ -1051,65 +1046,85 @@ msgstr ""
 "\n"
 "მეტი დეტალებისთვის იხილეთ SQL-ის ბრძანების, REINDEX-ის დეტალები.\n"
 
-#: vacuumdb.c:267 vacuumdb.c:270 vacuumdb.c:273 vacuumdb.c:276 vacuumdb.c:279
-#: vacuumdb.c:282 vacuumdb.c:285 vacuumdb.c:294
+#: vacuumdb.c:324 vacuumdb.c:327 vacuumdb.c:330 vacuumdb.c:333 vacuumdb.c:336
+#: vacuumdb.c:339 vacuumdb.c:342 vacuumdb.c:345 vacuumdb.c:354
 #, c-format
 msgid "cannot use the \"%s\" option when performing only analyze"
 msgstr "მხოლოდ ანალიზის დროს პარამეტრის \"%s\" გამოყენება შეუძლებელია"
 
-#: vacuumdb.c:297
+#: vacuumdb.c:357
 #, c-format
 msgid "cannot use the \"%s\" option when performing full vacuum"
 msgstr "სრული დამტვერსასრუტების დროს პარამეტრის \"%s\" გამოყენება შეუძლებელია"
 
-#: vacuumdb.c:303
+#: vacuumdb.c:363 vacuumdb.c:371
 #, c-format
 msgid "cannot use the \"%s\" option with the \"%s\" option"
 msgstr "\"%s\" პარამეტრთან ერთად \"%s\"-ის გამოყენება შეუძლებელია"
 
-#: vacuumdb.c:322
+#: vacuumdb.c:379
+#, c-format
+msgid "cannot use the \"%s\" option without \"%s\" or \"%s\""
+msgstr "\"%s\" პარამეტრთან ერთად \"%s\"-ის, ან \"%s\"-ის გამოყენება შეუძლებელია"
+
+#: vacuumdb.c:453
 #, c-format
 msgid "cannot vacuum all databases and a specific one at the same time"
 msgstr "ყველა და მითითებული ბაზების ერთდროული დამტვერსასრუტება შეუძლებელია"
 
-#: vacuumdb.c:324
+#: vacuumdb.c:457
 #, c-format
-msgid "cannot vacuum specific table(s) in all databases"
-msgstr "მითითებული ცხრილების ყველა ბაზაში დამტვერსასრუტება შეუძლებელია"
+msgid "cannot vacuum all tables in schema(s) and specific table(s) at the same time"
+msgstr "სქემებში ყველა ცხრილის და მითითებული ცხრილების ერთდროული მომტვერსასრუტება შეუძლებელია"
 
-#: vacuumdb.c:412
+#: vacuumdb.c:461
+#, c-format
+msgid "cannot vacuum specific table(s) and exclude schema(s) at the same time"
+msgstr "მითითებულ ცხრილების მომტვერსასრუტება და სქემების გამორიცხვა ერთდროულად შეუძლებელია"
+
+#: vacuumdb.c:465
+#, c-format
+msgid "cannot vacuum all tables in schema(s) and exclude schema(s) at the same time"
+msgstr "სქემებში ყველა ცხრილის მომტვერსასრუტება და ამავე დროს სქემების გამორიცხვა შეუძლებელია"
+
+#: vacuumdb.c:478
+#, c-format
+msgid "out of memory"
+msgstr "არასაკმარისი მეხსიერება"
+
+#: vacuumdb.c:545
 msgid "Generating minimal optimizer statistics (1 target)"
 msgstr "ოპტიმიზატორის მინიმალური სტატისტიკის გენერაცია (1 სამიზნე)"
 
-#: vacuumdb.c:413
+#: vacuumdb.c:546
 msgid "Generating medium optimizer statistics (10 targets)"
 msgstr "ოპტიმიზატორის საშუალო სტატისტიკის გენერაცია (10 სამიზნე)"
 
-#: vacuumdb.c:414
+#: vacuumdb.c:547
 msgid "Generating default (full) optimizer statistics"
 msgstr "ოპტიმიზატორის ნაგულისხმები (სრული) სტატისტიკის გენერაცია"
 
-#: vacuumdb.c:479
+#: vacuumdb.c:645
 #, c-format
 msgid "%s: processing database \"%s\": %s\n"
 msgstr "%s: ბაზის დამუშავება \"%s\": %s\n"
 
-#: vacuumdb.c:482
+#: vacuumdb.c:648
 #, c-format
 msgid "%s: vacuuming database \"%s\"\n"
 msgstr "%s: ბაზის \"%s\" დამტვერასრუტება\n"
 
-#: vacuumdb.c:952
+#: vacuumdb.c:1325
 #, c-format
 msgid "vacuuming of table \"%s\" in database \"%s\" failed: %s"
 msgstr "ცხრილის (\"%s\") (ბაზაში \"%s\") დამტვერსასრუტების პრობლემა: %s"
 
-#: vacuumdb.c:955
+#: vacuumdb.c:1328
 #, c-format
 msgid "vacuuming of database \"%s\" failed: %s"
 msgstr "ბაზის (\"%s\") დამტვერსასრუტების პრობლემა: %s"
 
-#: vacuumdb.c:963
+#: vacuumdb.c:1336
 #, c-format
 msgid ""
 "%s cleans and analyzes a PostgreSQL database.\n"
@@ -1118,178 +1133,151 @@ msgstr ""
 "%s PostgreSQL ბაზის გასუფთავება და ოპტიმიზაცია.\n"
 "\n"
 
-#: vacuumdb.c:967
+#: vacuumdb.c:1340
 #, c-format
 msgid "  -a, --all                       vacuum all databases\n"
 msgstr "  -a, --all                       ყველა ბაზის დამტვერსასრუტება\n"
 
-#: vacuumdb.c:968
+#: vacuumdb.c:1341
+#, c-format
+msgid "      --buffer-usage-limit=SIZE   size of ring buffer used for vacuum\n"
+msgstr "      --buffer-usage-limit=ზომა   მომტვერსასრუტებისთვის გამოყენებული რგოლის ბაფერის ზომა\n"
+
+#: vacuumdb.c:1342
 #, c-format
 msgid "  -d, --dbname=DBNAME             database to vacuum\n"
 msgstr "  -d, --dbname=ბაზისსახელი             დასამტვერსასრუტებელი ბაზები\n"
 
-#: vacuumdb.c:969
+#: vacuumdb.c:1343
 #, c-format
 msgid "      --disable-page-skipping     disable all page-skipping behavior\n"
-msgstr ""
-"      --disable-page-skipping     გვერდის გამოტოვების ყველა ვარიანტის "
-"გამორთვა\n"
+msgstr "      --disable-page-skipping     გვერდის გამოტოვების ყველა ვარიანტის გამორთვა\n"
 
-#: vacuumdb.c:970
+#: vacuumdb.c:1344
 #, c-format
-msgid ""
-"  -e, --echo                      show the commands being sent to the "
-"server\n"
+msgid "  -e, --echo                      show the commands being sent to the server\n"
 msgstr "  -e, --echo-queries       სერვერზე გაგზავნილი ბრძანებების გამოტანა\n"
 
-#: vacuumdb.c:971
+#: vacuumdb.c:1345
 #, c-format
 msgid "  -f, --full                      do full vacuuming\n"
 msgstr "  -f, --full                      სრული დამტვერსასრუტება\n"
 
-#: vacuumdb.c:972
+#: vacuumdb.c:1346
 #, c-format
 msgid "  -F, --freeze                    freeze row transaction information\n"
-msgstr ""
-"  -F, --freeze                    მწკრივის ტრანზაქციის ინფორმაციის გაყინვა\n"
+msgstr "  -F, --freeze                    მწკრივის ტრანზაქციის ინფორმაციის გაყინვა\n"
 
-#: vacuumdb.c:973
+#: vacuumdb.c:1347
 #, c-format
-msgid ""
-"      --force-index-cleanup       always remove index entries that point to "
-"dead tuples\n"
-msgstr ""
-"      --force-index-cleanup       ინდექსის ჩანაწერები, რომლებიც მკვდარ "
-"მონაცემებზე მიუთითებენ, ყოველთვის წაიშლება\n"
+msgid "      --force-index-cleanup       always remove index entries that point to dead tuples\n"
+msgstr "      --force-index-cleanup       ინდექსის ჩანაწერები, რომლებიც მკვდარ მონაცემებზე მიუთითებენ, ყოველთვის წაიშლება\n"
 
-#: vacuumdb.c:974
+#: vacuumdb.c:1348
 #, c-format
-msgid ""
-"  -j, --jobs=NUM                  use this many concurrent connections to "
-"vacuum\n"
-msgstr ""
-"  -j, --jobs=რიცხვი               დამტვერსასრუტებისას მითითებული რაოდენობის "
-"შეერთებების გამოყენება\n"
+msgid "  -j, --jobs=NUM                  use this many concurrent connections to vacuum\n"
+msgstr "  -j, --jobs=რიცხვი               დამტვერსასრუტებისას მითითებული რაოდენობის შეერთებების გამოყენება\n"
 
-#: vacuumdb.c:975
+#: vacuumdb.c:1349
 #, c-format
-msgid ""
-"      --min-mxid-age=MXID_AGE     minimum multixact ID age of tables to "
-"vacuum\n"
-msgstr ""
-"      --min-mxid-age=MXID_AGE     დასამტვერსასრუტებელი ცხრილების "
-"მულტიტრანზაქციის ID-ის მინიმალური ასაკი\n"
+msgid "      --min-mxid-age=MXID_AGE     minimum multixact ID age of tables to vacuum\n"
+msgstr "      --min-mxid-age=MXID_AGE     დასამტვერსასრუტებელი ცხრილების მულტიტრანზაქციის ID-ის მინიმალური ასაკი\n"
 
-#: vacuumdb.c:976
+#: vacuumdb.c:1350
 #, c-format
-msgid ""
-"      --min-xid-age=XID_AGE       minimum transaction ID age of tables to "
-"vacuum\n"
-msgstr ""
-"      --min-xid-age=XID_AGE       დასამტვერსასრუტებელი ცხრილების "
-"ტრანზაქციების ID-ის მინიმალური ასაკი\n"
+msgid "      --min-xid-age=XID_AGE       minimum transaction ID age of tables to vacuum\n"
+msgstr "      --min-xid-age=XID_AGE       დასამტვერსასრუტებელი ცხრილების ტრანზაქციების ID-ის მინიმალური ასაკი\n"
 
-#: vacuumdb.c:977
+#: vacuumdb.c:1351
 #, c-format
-msgid ""
-"      --no-index-cleanup          don't remove index entries that point to "
-"dead tuples\n"
-msgstr ""
-"      --no-index-cleanup          ინდექსის ჩანაწერები, რომლებიც მკვდარ "
-"მონაცემებზე მიუთითებენ, არ წაიშლება\n"
+msgid "      --missing-stats-only        only analyze relations with missing statistics\n"
+msgstr "      --missing-stats-only        მხოლოდ, იმ ურთიერთობების ანალიზი, რომლებსაც სტატისტიკა აკლია\n"
 
-#: vacuumdb.c:978
+#: vacuumdb.c:1352
 #, c-format
-msgid ""
-"      --no-process-toast          skip the TOAST table associated with the "
-"table to vacuum\n"
-msgstr ""
-"      --no-process-toast          მომტვერსასრუტებისას ცხრილთან ასოცირებული "
-"TOAST cxrilis gamotoveba\n"
+msgid "      --no-index-cleanup          don't remove index entries that point to dead tuples\n"
+msgstr "      --no-index-cleanup          ინდექსის ჩანაწერები, რომლებიც მკვდარ მონაცემებზე მიუთითებენ, არ წაიშლება\n"
 
-#: vacuumdb.c:979
+#: vacuumdb.c:1353
 #, c-format
-msgid ""
-"      --no-truncate               don't truncate empty pages at the end of "
-"the table\n"
-msgstr ""
-"      --no-truncate               ცხრილის ბოლოში ცარიელი გვერდები არ "
-"მოიკვეთება\n"
+msgid "      --no-process-main           skip the main relation\n"
+msgstr "      --no-process-main           მთავარი ურთიერთობის გამოტოვება\n"
 
-#: vacuumdb.c:980
+#: vacuumdb.c:1354
 #, c-format
-msgid ""
-"  -P, --parallel=PARALLEL_WORKERS use this many background workers for "
-"vacuum, if available\n"
-msgstr ""
-"  -P, --parallel=პარალელური_დამხმარე_პროცესი დასამტვერსასრუტებლად მითითებული "
-"რაოდენობის დამხმარე პროცესის გამოყენება, თუ ეს შესაძლებელია\n"
+msgid "      --no-process-toast          skip the TOAST table associated with the table to vacuum\n"
+msgstr "      --no-process-toast          მომტვერსასრუტებისას ცხრილთან ასოცირებული TOAST cxrilis gamotoveba\n"
 
-#: vacuumdb.c:981
+#: vacuumdb.c:1355
+#, c-format
+msgid "      --no-truncate               don't truncate empty pages at the end of the table\n"
+msgstr "      --no-truncate               ცხრილის ბოლოში ცარიელი გვერდები არ მოიკვეთება\n"
+
+#: vacuumdb.c:1356
+#, c-format
+msgid "  -n, --schema=SCHEMA             vacuum tables in the specified schema(s) only\n"
+msgstr "  -n, --schema=სქემა         ცხრილების, მხოლოდ, მითითებულ სქემებში მომტვერსასრუტება\n"
+
+#: vacuumdb.c:1357
+#, c-format
+msgid "  -N, --exclude-schema=SCHEMA     do not vacuum tables in the specified schema(s)\n"
+msgstr "  -N, --exclude-schema=სქემა    მითითებული სქემებში ცხრილები მომტვერსასრუტებული არ იქნება\n"
+
+#: vacuumdb.c:1358
+#, c-format
+msgid "  -P, --parallel=PARALLEL_WORKERS use this many background workers for vacuum, if available\n"
+msgstr "  -P, --parallel=პარალელური_დამხმარე_პროცესი დასამტვერსასრუტებლად მითითებული რაოდენობის დამხმარე პროცესის გამოყენება, თუ ეს შესაძლებელია\n"
+
+#: vacuumdb.c:1359
 #, c-format
 msgid "  -q, --quiet                     don't write any messages\n"
 msgstr "  -q, --quiet               არ გამოიტანო შეტყობინებები\n"
 
-#: vacuumdb.c:982
+#: vacuumdb.c:1360
 #, c-format
-msgid ""
-"      --skip-locked               skip relations that cannot be immediately "
-"locked\n"
-msgstr ""
-"      --skip-locked               გამოტოვებული იქნება ურთიერთობები, რომლის "
-"მაშინვე ჩაკეტვაც შეუძლებელია\n"
+msgid "      --skip-locked               skip relations that cannot be immediately locked\n"
+msgstr "      --skip-locked               გამოტოვებული იქნება ურთიერთობები, რომლის მაშინვე ჩაკეტვაც შეუძლებელია\n"
 
-#: vacuumdb.c:983
+#: vacuumdb.c:1361
 #, c-format
 msgid "  -t, --table='TABLE[(COLUMNS)]'  vacuum specific table(s) only\n"
-msgstr ""
-"  -t, --table='ცხრილი[(სვეტები)]'         მხოლოდ მითითებული ცხრილების "
-"დამტვერსასრუტება\n"
+msgstr "  -t, --table='ცხრილი[(სვეტები)]'         მხოლოდ მითითებული ცხრილების დამტვერსასრუტება\n"
 
-#: vacuumdb.c:984
+#: vacuumdb.c:1362
 #, c-format
 msgid "  -v, --verbose                   write a lot of output\n"
 msgstr "  -v, --verbose                   დამატებითი ინფორმაციის გამოტანა\n"
 
-#: vacuumdb.c:985
+#: vacuumdb.c:1363
 #, c-format
-msgid ""
-"  -V, --version                   output version information, then exit\n"
+msgid "  -V, --version                   output version information, then exit\n"
 msgstr "  -V, --version            ვერსიის ინფორმაციის გამოტანა და გასვლა\n"
 
-#: vacuumdb.c:986
+#: vacuumdb.c:1364
 #, c-format
 msgid "  -z, --analyze                   update optimizer statistics\n"
-msgstr ""
-"  -z, --analyze                   ოპტიმიზატორის სტატისტიკის განახლება\n"
+msgstr "  -z, --analyze                   ოპტიმიზატორის სტატისტიკის განახლება\n"
 
-#: vacuumdb.c:987
+#: vacuumdb.c:1365
+#, c-format
+msgid "  -Z, --analyze-only              only update optimizer statistics; no vacuum\n"
+msgstr "  -Z, --analyze-only              მხოლოდ ოპტიმიზატორის სტატისტიკის განახლება; დამტვერსასრუტების გარეშე\n"
+
+#: vacuumdb.c:1366
 #, c-format
 msgid ""
-"  -Z, --analyze-only              only update optimizer statistics; no "
-"vacuum\n"
-msgstr ""
-"  -Z, --analyze-only              მხოლოდ ოპტიმიზატორის სტატისტიკის "
-"განახლება; დამტვერსასრუტების გარეშე\n"
-
-#: vacuumdb.c:988
-#, c-format
-msgid ""
-"      --analyze-in-stages         only update optimizer statistics, in "
-"multiple\n"
+"      --analyze-in-stages         only update optimizer statistics, in multiple\n"
 "                                  stages for faster results; no vacuum\n"
 msgstr ""
-"      --analyze-in-stages         უკეთესი შედეგებისთვის ოპტიმიზატორის "
-"სტატისტიკის\n"
-"                                  მრავალსაფეხურიანი რეჟიმი; "
-"დამტვერსასრუტების გარეშე\n"
+"      --analyze-in-stages         უკეთესი შედეგებისთვის ოპტიმიზატორის სტატისტიკის\n"
+"                                  მრავალსაფეხურიანი რეჟიმი; დამტვერსასრუტების გარეშე\n"
 
-#: vacuumdb.c:990
+#: vacuumdb.c:1368
 #, c-format
 msgid "  -?, --help                      show this help, then exit\n"
 msgstr "  -?, --help     ამ დახმარების ჩვენება და გასვლა\n"
 
-#: vacuumdb.c:998
+#: vacuumdb.c:1376
 #, c-format
 msgid ""
 "\n"
@@ -1297,3 +1285,63 @@ msgid ""
 msgstr ""
 "\n"
 "მეტი ინფორმაციისთვის იხილეთ SQL ბრძანების, VACUUM -ის დეტალები.\n"
+
+#, c-format
+#~ msgid "cannot cluster specific table(s) in all databases"
+#~ msgstr "მითითებული ცხრილების ყველა ბაზაში დაკლასტერება შეუძლებელია"
+
+#, c-format
+#~ msgid "cannot exclude specific schema(s) in all databases"
+#~ msgstr "ყველა ბაზიდან მითითებულ სქემებს ვერ ამოვიღებ"
+
+#, c-format
+#~ msgid "cannot reindex all databases and system catalogs at the same time"
+#~ msgstr "ყველა ბაზის და სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია"
+
+#, c-format
+#~ msgid "cannot reindex specific index(es) and system catalogs at the same time"
+#~ msgstr "მითითებული ინდექსის და სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია"
+
+#, c-format
+#~ msgid "cannot reindex specific index(es) in all databases"
+#~ msgstr "მითითებული ინდექსის ყველა ბაზაში რეინდექსი შეუძლებელია"
+
+#, c-format
+#~ msgid "cannot reindex specific schema(s) and system catalogs at the same time"
+#~ msgstr "მითითებული სქემის და სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია"
+
+#, c-format
+#~ msgid "cannot reindex specific schema(s) in all databases"
+#~ msgstr "მითითებული სქემის ყველა ბაზაში რეინდექსი შეუძლებელია"
+
+#, c-format
+#~ msgid "cannot reindex specific table(s) and system catalogs at the same time"
+#~ msgstr "მითითებული ცხრილის და სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია"
+
+#, c-format
+#~ msgid "cannot reindex specific table(s) in all databases"
+#~ msgstr "მითითებული ცხრილის ყველა ბაზაში რეინდექსი შეუძლებელია"
+
+#, c-format
+#~ msgid "cannot reindex system catalogs concurrently, skipping all"
+#~ msgstr "სისტემური კატალოგების ერთდროული რეინდექსი შეუძლებელია. ყველას გამოტოვება"
+
+#, c-format
+#~ msgid "cannot use multiple jobs to reindex indexes"
+#~ msgstr "ინდექსების რეინდექსისთვის ბევრი დავალების გამოყენება შეუძლებელია"
+
+#, c-format
+#~ msgid "cannot vacuum specific schema(s) in all databases"
+#~ msgstr "ყველა ბაზაში მითითებულ სქემებს ვერ მოვამტვერსასრუტებ"
+
+#, c-format
+#~ msgid "cannot vacuum specific table(s) in all databases"
+#~ msgstr "მითითებული ცხრილების ყველა ბაზაში დამტვერსასრუტება შეუძლებელია"
+
+#, c-format
+#~ msgid "only one of --locale and --lc-collate can be specified"
+#~ msgstr "--locale და --lc-collate მხოლოდ ერთ ერთი შეიძლება იყოს მითითებული"
+
+#, c-format
+#~ msgid "only one of --locale and --lc-ctype can be specified"
+#~ msgstr "--locale და --lc-ctype მხოლოდ ერთ ერთი შეიძლება იყოს მითითებული"

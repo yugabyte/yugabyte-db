@@ -20,7 +20,8 @@ ALTER TABLE persons DROP COLUMN name;
 ALTER TABLE persons RENAME COLUMN id TO num;
 ALTER TABLE persons ALTER COLUMN name TYPE varchar;
 CREATE TABLE stuff (id int);
-ALTER TABLE persons INHERIT stuff;
+ALTER TABLE persons INHERIT stuff; -- error
+ALTER TABLE persons NO INHERIT stuff; -- error
 
 CREATE TABLE personsx OF person_type (myname WITH OPTIONS NOT NULL); -- error
 
@@ -47,6 +48,10 @@ DROP TYPE person_type RESTRICT;
 DROP TYPE person_type CASCADE;
 
 CREATE TABLE persons5 OF stuff; -- only CREATE TYPE AS types may be used
+
+CREATE TYPE tt_enum_type AS ENUM ('a');
+CREATE TABLE of_tt_enum_type OF tt_enum_type; -- not a composite type at all
+DROP TYPE tt_enum_type;
 
 DROP TABLE stuff;
 

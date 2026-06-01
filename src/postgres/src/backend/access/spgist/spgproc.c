@@ -4,7 +4,7 @@
  *	  Common supporting procedures for SP-GiST opclasses.
  *
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -18,8 +18,8 @@
 #include <math.h>
 
 #include "access/spgist_private.h"
-#include "utils/builtins.h"
 #include "utils/float.h"
+#include "utils/fmgrprotos.h"
 #include "utils/geo_decls.h"
 
 #define point_point_distance(p1,p2) \
@@ -51,7 +51,7 @@ point_box_distance(Point *point, BOX *box)
 	else
 		dy = 0.0;
 
-	return HYPOT(dx, dy);
+	return hypot(dx, dy);
 }
 
 /*
@@ -64,7 +64,7 @@ spg_key_orderbys_distances(Datum key, bool isLeaf,
 						   ScanKey orderbys, int norderbys)
 {
 	int			sk_num;
-	double	   *distances = (double *) palloc(norderbys * sizeof(double)),
+	double	   *distances = palloc_array(double, norderbys),
 			   *distance = distances;
 
 	for (sk_num = 0; sk_num < norderbys; ++sk_num, ++orderbys, ++distance)
@@ -81,7 +81,7 @@ spg_key_orderbys_distances(Datum key, bool isLeaf,
 BOX *
 box_copy(BOX *orig)
 {
-	BOX		   *result = palloc(sizeof(BOX));
+	BOX		   *result = palloc_object(BOX);
 
 	*result = *orig;
 	return result;

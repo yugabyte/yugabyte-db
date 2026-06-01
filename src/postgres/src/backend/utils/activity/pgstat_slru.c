@@ -8,7 +8,7 @@
  * storage implementation and the details about individual types of
  * statistics.
  *
- * Copyright (c) 2001-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat_slru.c
@@ -32,7 +32,7 @@ static void pgstat_reset_slru_counter_internal(int index, TimestampTz ts);
  * in order to avoid memory allocation.
  */
 static PgStat_SLRUStats pending_SLRUStats[SLRU_NUM_ELEMENTS];
-bool		have_slrustats = false;
+static bool have_slrustats = false;
 
 
 /*
@@ -46,7 +46,7 @@ pgstat_reset_slru(const char *name)
 {
 	TimestampTz ts = GetCurrentTimestamp();
 
-	AssertArg(name != NULL);
+	Assert(name != NULL);
 
 	pgstat_reset_slru_counter_internal(pgstat_get_slru_index(name), ts);
 }
@@ -55,47 +55,33 @@ pgstat_reset_slru(const char *name)
  * SLRU statistics count accumulation functions --- called from slru.c
  */
 
-void
-pgstat_count_slru_page_zeroed(int slru_idx)
-{
-	get_slru_entry(slru_idx)->blocks_zeroed += 1;
+#define PGSTAT_COUNT_SLRU(stat)						\
+void												\
+CppConcat(pgstat_count_slru_,stat)(int slru_idx)	\
+{													\
+	get_slru_entry(slru_idx)->stat += 1;			\
 }
 
-void
-pgstat_count_slru_page_hit(int slru_idx)
-{
-	get_slru_entry(slru_idx)->blocks_hit += 1;
-}
+/* pgstat_count_slru_blocks_zeroed */
+PGSTAT_COUNT_SLRU(blocks_zeroed)
 
-void
-pgstat_count_slru_page_exists(int slru_idx)
-{
-	get_slru_entry(slru_idx)->blocks_exists += 1;
-}
+/* pgstat_count_slru_blocks_hit */
+PGSTAT_COUNT_SLRU(blocks_hit)
 
-void
-pgstat_count_slru_page_read(int slru_idx)
-{
-	get_slru_entry(slru_idx)->blocks_read += 1;
-}
+/* pgstat_count_slru_blocks_exists */
+PGSTAT_COUNT_SLRU(blocks_exists)
 
-void
-pgstat_count_slru_page_written(int slru_idx)
-{
-	get_slru_entry(slru_idx)->blocks_written += 1;
-}
+/* pgstat_count_slru_blocks_read */
+PGSTAT_COUNT_SLRU(blocks_read)
 
-void
-pgstat_count_slru_flush(int slru_idx)
-{
-	get_slru_entry(slru_idx)->flush += 1;
-}
+/* pgstat_count_slru_blocks_written */
+PGSTAT_COUNT_SLRU(blocks_written)
 
-void
-pgstat_count_slru_truncate(int slru_idx)
-{
-	get_slru_entry(slru_idx)->truncate += 1;
-}
+/* pgstat_count_slru_flush */
+PGSTAT_COUNT_SLRU(flush)
+
+/* pgstat_count_slru_truncate */
+PGSTAT_COUNT_SLRU(truncate)
 
 /*
  * Support function for the SQL-callable pgstat* functions. Returns
@@ -133,6 +119,7 @@ pgstat_get_slru_index(const char *name)
 {
 	int			i;
 
+	Assert(name);
 	for (i = 0; i < SLRU_NUM_ELEMENTS; i++)
 	{
 		if (strcmp(slru_names[i], name) == 0)
@@ -153,7 +140,7 @@ pgstat_get_slru_index(const char *name)
  * acquired. Otherwise return false.
  */
 bool
-pgstat_slru_flush(bool nowait)
+pgstat_slru_flush_cb(bool nowait)
 {
 	PgStatShared_SLRU *stats_shmem = &pgStatLocal.shmem->slru;
 	int			i;
@@ -190,6 +177,14 @@ pgstat_slru_flush(bool nowait)
 	have_slrustats = false;
 
 	return false;
+}
+
+void
+pgstat_slru_init_shmem_cb(void *stats)
+{
+	PgStatShared_SLRU *stats_shmem = (PgStatShared_SLRU *) stats;
+
+	LWLockInitialize(&stats_shmem->lock, LWTRANCHE_PGSTATS_DATA);
 }
 
 void
@@ -230,6 +225,7 @@ get_slru_entry(int slru_idx)
 	Assert((slru_idx >= 0) && (slru_idx < SLRU_NUM_ELEMENTS));
 
 	have_slrustats = true;
+	pgstat_report_fixed = true;
 
 	return &pending_SLRUStats[slru_idx];
 }

@@ -3,7 +3,7 @@
  * statistics.h
  *	  Extended statistics and selectivity estimation functions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/statistics/statistics.h
@@ -66,8 +66,8 @@ typedef struct MVDependencies
 #define STATS_MCV_MAGIC			0xE1A651C2	/* marks serialized bytea */
 #define STATS_MCV_TYPE_BASIC	1	/* basic MCV list type */
 
-/* max items in MCV list (should be equal to max default_statistics_target) */
-#define STATS_MCVLIST_MAX_ITEMS        10000
+/* max items in MCV list */
+#define STATS_MCVLIST_MAX_ITEMS        MAX_STATISTICS_TARGET
 
 /*
  * Multivariate MCV (most-common value) lists
@@ -101,9 +101,10 @@ extern MCVList *statext_mcv_load(Oid mvoid, bool inh);
 extern void BuildRelationExtStatistics(Relation onerel, bool inh, double totalrows,
 									   int numrows, HeapTuple *rows,
 									   int natts, VacAttrStats **vacattrstats);
+extern bool HasRelationExtStatistics(Relation onerel);
 extern int	ComputeExtStatisticsRows(Relation onerel,
-									 int natts, VacAttrStats **stats);
-extern bool statext_is_kind_built(HeapTuple htup, char kind);
+									 int natts, VacAttrStats **vacattrstats);
+extern bool statext_is_kind_built(HeapTuple htup, char type);
 extern Selectivity dependencies_clauselist_selectivity(PlannerInfo *root,
 													   List *clauses,
 													   int varRelid,

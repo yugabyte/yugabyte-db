@@ -122,6 +122,8 @@ LINE 1: ...* FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "e...
 CREATE DOMAIN testdomain_sv AS text COLLATE "sv_SE";
 CREATE DOMAIN testdomain_i AS int COLLATE "sv_SE"; -- fails
 ERROR:  collations are not supported by type integer
+LINE 1: CREATE DOMAIN testdomain_i AS int COLLATE "sv_SE";
+                                      ^
 CREATE TABLE collate_test4 (
     a int,
     b testdomain_sv
@@ -483,18 +485,18 @@ CREATE VIEW collview2 AS SELECT a, b FROM collate_test1 ORDER BY b COLLATE "C";
 CREATE VIEW collview3 AS SELECT a, lower((x || x) COLLATE "C") FROM collate_test10;
 SELECT table_name, view_definition FROM information_schema.views
   WHERE table_name LIKE 'collview%' ORDER BY 1;
- table_name |                             view_definition                              
-------------+--------------------------------------------------------------------------
- collview1  |  SELECT collate_test1.a,                                                +
-            |     collate_test1.b                                                     +
-            |    FROM collate_test1                                                   +
-            |   WHERE ((collate_test1.b COLLATE "C") >= 'bbc'::text);
- collview2  |  SELECT collate_test1.a,                                                +
-            |     collate_test1.b                                                     +
-            |    FROM collate_test1                                                   +
-            |   ORDER BY (collate_test1.b COLLATE "C");
- collview3  |  SELECT collate_test10.a,                                               +
-            |     lower(((collate_test10.x || collate_test10.x) COLLATE "C")) AS lower+
+ table_name |              view_definition               
+------------+--------------------------------------------
+ collview1  |  SELECT a,                                +
+            |     b                                     +
+            |    FROM collate_test1                     +
+            |   WHERE ((b COLLATE "C") >= 'bbc'::text);
+ collview2  |  SELECT a,                                +
+            |     b                                     +
+            |    FROM collate_test1                     +
+            |   ORDER BY (b COLLATE "C");
+ collview3  |  SELECT a,                                +
+            |     lower(((x || x) COLLATE "C")) AS lower+
             |    FROM collate_test10;
 (3 rows)
 
@@ -1007,6 +1009,8 @@ CREATE INDEX collate_test1_idx3 ON collate_test1 ((b COLLATE "C")); -- this is d
 CREATE INDEX collate_test1_idx4 ON collate_test1 (((b||'foo') COLLATE "POSIX"));
 CREATE INDEX collate_test1_idx5 ON collate_test1 (a COLLATE "C"); -- fail
 ERROR:  collations are not supported by type integer
+LINE 1: CREATE INDEX collate_test1_idx5 ON collate_test1 (a COLLATE ...
+                                                          ^
 CREATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "C")); -- fail
 ERROR:  collations are not supported by type integer
 LINE 1: ...ATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "C...
@@ -1027,7 +1031,7 @@ CREATE SCHEMA test_schema;
 do $$
 BEGIN
   EXECUTE 'CREATE COLLATION test0 (locale = ' ||
-          quote_literal(current_setting('lc_collate')) || ');';
+          quote_literal((SELECT datcollate FROM pg_database WHERE datname = current_database())) || ');';
 END
 $$;
 CREATE COLLATION test0 FROM "C"; -- fail, duplicate name
@@ -1039,9 +1043,9 @@ NOTICE:  collation "test0" for encoding "UTF8" already exists, skipping
 do $$
 BEGIN
   EXECUTE 'CREATE COLLATION test1 (lc_collate = ' ||
-          quote_literal(current_setting('lc_collate')) ||
+          quote_literal((SELECT datcollate FROM pg_database WHERE datname = current_database())) ||
           ', lc_ctype = ' ||
-          quote_literal(current_setting('lc_ctype')) || ');';
+          quote_literal((SELECT datctype FROM pg_database WHERE datname = current_database())) || ');';
 END
 $$;
 CREATE COLLATION test3 (lc_collate = 'en_US.utf8'); -- fail, need lc_ctype
@@ -1154,6 +1158,16 @@ select textrange_en_us('A','Z') @> 'b'::text;
 
 drop type textrange_c;
 drop type textrange_en_us;
+-- standard collations
+SELECT * FROM collate_test2 ORDER BY b COLLATE UCS_BASIC;
+ a |  b  
+---+-----
+ 4 | ABC
+ 1 | abc
+ 3 | bbc
+ 2 | äbc
+(4 rows)
+
 -- nondeterministic collations
 -- (not supported with libc provider)
 CREATE COLLATION ctest_det (locale = 'en_US.utf8', deterministic = true);

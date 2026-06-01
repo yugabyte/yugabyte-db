@@ -199,6 +199,46 @@ begin
   raise notice 'r1.nosuchfield = %', r1.nosuchfield;
 end$$;
 
+-- check %type with block-qualified variable names
+do $$
+<<blk>>
+declare
+  v int;
+  r two_int8s;
+  v1 v%type;
+  v2 blk.v%type;
+  r1 r%type;
+  r2 blk.r%type;
+begin
+  raise notice '%', pg_typeof(v1);
+  raise notice '%', pg_typeof(v2);
+  raise notice '%', pg_typeof(r1);
+  raise notice '%', pg_typeof(r2);
+end$$;
+
+-- check that type record can be passed through %type
+do $$
+declare r1 record;
+        r2 r1%type;
+begin
+  r2 := row(1,2);
+  raise notice 'r2 = %', r2;
+  r2 := row(3,4,5);
+  raise notice 'r2 = %', r2;
+end$$;
+
+-- arrays of record are not supported at the moment
+do $$
+declare r1 record[];
+begin
+end$$;
+
+do $$
+declare r1 record;
+        r2 r1%type[];
+begin
+end$$;
+
 -- check repeated assignments to composite fields
 create table some_table (id int, data text);
 
@@ -298,6 +338,7 @@ begin
   return next h;
   return next row(5,6);
   return next row(7,8)::has_hole;
+  return query select 9, 10;
 end$$;
 select returnssetofholes();
 
@@ -313,6 +354,13 @@ create or replace function returnssetofholes() returns setof has_hole language p
 $$
 begin
   return next row(1,2,3);  -- fails
+end$$;
+select returnssetofholes();
+
+create or replace function returnssetofholes() returns setof has_hole language plpgsql as
+$$
+begin
+  return query select 1, 2.0;  -- fails
 end$$;
 select returnssetofholes();
 

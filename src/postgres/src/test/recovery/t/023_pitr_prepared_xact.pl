@@ -1,9 +1,9 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
-# Test for point-in-time-recovery (PITR) with prepared transactions
+# Test for point-in-time recovery (PITR) with prepared transactions
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -27,7 +27,7 @@ $node_primary->backup($backup_name);
 my $node_pitr = PostgreSQL::Test::Cluster->new('node_pitr');
 $node_pitr->init_from_backup(
 	$node_primary, $backup_name,
-	standby       => 0,
+	standby => 0,
 	has_restoring => 1);
 $node_pitr->append_conf(
 	'postgresql.conf', qq{

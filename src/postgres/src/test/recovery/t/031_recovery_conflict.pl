@@ -1,16 +1,15 @@
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Test that connections to a hot standby are correctly canceled when a
 # recovery conflict is detected Also, test that statistics in
 # pg_stat_database_conflicts are populated correctly
 
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
 
-plan skip_all => "disabled due to instability";
 
 # Set up nodes
 my $node_primary = PostgreSQL::Test::Cluster->new('primary');
@@ -64,13 +63,12 @@ CREATE TABLE ${table1}(a int, b int);
 INSERT INTO $table1 SELECT i % 3, 0 FROM generate_series(1,20) i;
 CREATE TABLE ${table2}(a int, b int);
 ]);
-my $primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 
 # a longrunning psql that we can use to trigger conflicts
-my $psql_standby = $node_standby->background_psql($test_db,
-	on_error_stop => 0);
+my $psql_standby =
+  $node_standby->background_psql($test_db, on_error_stop => 0);
 my $expected_conflicts = 0;
 
 
@@ -92,14 +90,14 @@ $node_primary->safe_psql(
 	BEGIN; LOCK $table1; COMMIT;
 	]);
 
-$primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 my $cursor1 = "test_recovery_conflict_cursor";
 
 # DECLARE and use a cursor on standby, causing buffer with the only block of
 # the relation to be pinned on the standby
-my $res = $psql_standby->query_safe(qq[
+my $res = $psql_standby->query_safe(
+	qq[
     BEGIN;
     DECLARE $cursor1 CURSOR FOR SELECT b FROM $table1;
     FETCH FORWARD FROM $cursor1;
@@ -111,15 +109,14 @@ like($res, qr/^0$/m, "$sect: cursor with conflicting pin established");
 # to check the log starting now for recovery conflict messages
 my $log_location = -s $node_standby->logfile;
 
-# VACUUM on the primary
-$node_primary->safe_psql($test_db, qq[VACUUM $table1;]);
+# VACUUM FREEZE on the primary
+$node_primary->safe_psql($test_db, qq[VACUUM FREEZE $table1;]);
 
 # Wait for catchup. Existing connection will be terminated before replay is
 # finished, so waiting for catchup ensures that there is no race between
 # encountering the recovery conflict which causes the disconnect and checking
 # the logfile for the terminated connection.
-$primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 check_conflict_log("User was holding shared buffer pin for too long");
 $psql_standby->reconnect_and_clear();
@@ -132,11 +129,11 @@ $expected_conflicts++;
 
 $node_primary->safe_psql($test_db,
 	qq[INSERT INTO $table1 SELECT i, 0 FROM generate_series(1,20) i]);
-$primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 # DECLARE and FETCH from cursor on the standby
-$res = $psql_standby->query_safe(qq[
+$res = $psql_standby->query_safe(
+	qq[
         BEGIN;
         DECLARE $cursor1 CURSOR FOR SELECT b FROM $table1;
         FETCH FORWARD FROM $cursor1;
@@ -147,12 +144,11 @@ like($res, qr/^0$/m, "$sect: cursor with conflicting snapshot established");
 $node_primary->safe_psql($test_db,
 	qq[UPDATE $table1 SET a = a + 1 WHERE a > 2;]);
 
-# VACUUM, pruning those dead tuples
-$node_primary->safe_psql($test_db, qq[VACUUM $table1;]);
+# VACUUM FREEZE, pruning those dead tuples
+$node_primary->safe_psql($test_db, qq[VACUUM FREEZE $table1;]);
 
 # Wait for attempted replay of PRUNE records
-$primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 check_conflict_log(
 	"User query might have needed to see row versions that must be removed");
@@ -165,7 +161,8 @@ $sect = "lock conflict";
 $expected_conflicts++;
 
 # acquire lock to conflict with
-$res = $psql_standby->query_safe(qq[
+$res = $psql_standby->query_safe(
+	qq[
         BEGIN;
         LOCK TABLE $table1 IN ACCESS SHARE MODE;
         SELECT 1;
@@ -175,8 +172,7 @@ like($res, qr/^1$/m, "$sect: conflicting lock acquired");
 # DROP TABLE containing block which standby has in a pinned buffer
 $node_primary->safe_psql($test_db, qq[DROP TABLE $table1;]);
 
-$primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 check_conflict_log("User was holding a relation lock for too long");
 $psql_standby->reconnect_and_clear();
@@ -190,7 +186,8 @@ $expected_conflicts++;
 # DECLARE a cursor for a query which, with sufficiently low work_mem, will
 # spill tuples into temp files in the temporary tablespace created during
 # setup.
-$res = $psql_standby->query_safe(qq[
+$res = $psql_standby->query_safe(
+	qq[
         BEGIN;
         SET work_mem = '64kB';
         DECLARE $cursor1 CURSOR FOR
@@ -204,8 +201,7 @@ like($res, qr/^6000$/m,
 # standby
 $node_primary->safe_psql($test_db, qq[DROP TABLESPACE $tablespace1;]);
 
-$primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 check_conflict_log(
 	"User was or might have been using tablespace that must be dropped");
@@ -246,10 +242,10 @@ INSERT INTO $table1(a) VALUES (170);
 SELECT txid_current();
 ]);
 
-$primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+$node_primary->wait_for_replay_catchup($node_standby);
 
-$res = $psql_standby->query_until(qr/^1$/m, qq[
+$res = $psql_standby->query_until(
+	qr/^1$/m, qq[
     BEGIN;
     -- hold pin
     DECLARE $cursor1 CURSOR FOR SELECT a FROM $table1;
@@ -257,7 +253,9 @@ $res = $psql_standby->query_until(qr/^1$/m, qq[
     -- wait for lock held by prepared transaction
 	SELECT * FROM $table2;
     ]);
-ok( 1, "$sect: cursor holding conflicting pin, also waiting for lock, established");
+ok(1,
+	"$sect: cursor holding conflicting pin, also waiting for lock, established"
+);
 
 # just to make sure we're waiting for lock already
 ok( $node_standby->poll_query_until(
@@ -266,11 +264,10 @@ SELECT 'waiting' FROM pg_locks WHERE locktype = 'relation' AND NOT granted;
 ], 'waiting'),
 	"$sect: lock acquisition is waiting");
 
-# VACUUM will prune away rows, causing a buffer pin conflict, while standby
-# psql is waiting on lock
-$node_primary->safe_psql($test_db, qq[VACUUM $table1;]);
-$primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+# VACUUM FREEZE will prune away rows, causing a buffer pin conflict, while
+# standby psql is waiting on lock
+$node_primary->safe_psql($test_db, qq[VACUUM FREEZE $table1;]);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 check_conflict_log("User transaction caused buffer deadlock with recovery.");
 $psql_standby->reconnect_and_clear();
@@ -298,8 +295,7 @@ $sect = "database conflict";
 
 $node_primary->safe_psql('postgres', qq[DROP DATABASE $test_db;]);
 
-$primary_lsn = $node_primary->lsn('flush');
-$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
+$node_primary->wait_for_replay_catchup($node_standby);
 
 check_conflict_log("User was connected to a database that must be dropped");
 
@@ -316,7 +312,7 @@ done_testing();
 
 sub check_conflict_log
 {
-	my $message          = shift;
+	my $message = shift;
 	my $old_log_location = $log_location;
 
 	$log_location = $node_standby->wait_for_log(qr/$message/, $log_location);
@@ -329,7 +325,7 @@ sub check_conflict_log
 sub check_conflict_stat
 {
 	my $conflict_type = shift;
-	my $count         = $node_standby->safe_psql($test_db,
+	my $count = $node_standby->safe_psql($test_db,
 		qq[SELECT confl_$conflict_type FROM pg_stat_database_conflicts WHERE datname='$test_db';]
 	);
 

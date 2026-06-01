@@ -392,7 +392,7 @@ FROM <replaceable>table_reference</replaceable> <optional>, <replaceable>table_r
         input tables.  As with <literal>USING</literal>, these columns appear
         only once in the output table.  If there are no common
         column names, <literal>NATURAL JOIN</literal> behaves like
-        <literal>JOIN ... ON TRUE</literal>, producing a cross-product join.
+        <literal>CROSS JOIN</literal>.
        </para>
 
        <note>
@@ -410,7 +410,7 @@ FROM <replaceable>table_reference</replaceable> <optional>, <replaceable>table_r
     </variablelist>
 
     <para>
-     To put this together, assume we have tables <literal>t1</literal>:
+     To put this together, assume we have tables <structname>t1</structname>:
 <programlisting>
  num | name
 -----+------
@@ -418,7 +418,7 @@ FROM <replaceable>table_reference</replaceable> <optional>, <replaceable>table_r
    2 | b
    3 | c
 </programlisting>
-     and <literal>t2</literal>:
+     and <structname>t2</structname>:
 <programlisting>
  num | value
 -----+-------
@@ -588,8 +588,6 @@ SELECT * FROM my_table AS m WHERE my_table.a &gt; 5;    -- wrong
 <programlisting>
 SELECT * FROM people AS mother JOIN people AS child ON mother.id = child.mother_id;
 </programlisting>
-     Additionally, an alias is required if the table reference is a
-     subquery (see <xref linkend="queries-subqueries"/>).
     </para>
 
     <para>
@@ -639,9 +637,9 @@ SELECT a.* FROM (my_table AS a JOIN your_table AS b ON ...) AS c
 
     <para>
      Subqueries specifying a derived table must be enclosed in
-     parentheses and <emphasis>must</emphasis> be assigned a table
-     alias name (as in <xref linkend="queries-table-aliases"/>).  For
-     example:
+     parentheses.  They may be assigned a table alias name, and optionally
+     column alias names (as in <xref linkend="queries-table-aliases"/>).
+     For example:
 <programlisting>
 FROM (SELECT * FROM table1) AS alias_name
 </programlisting>
@@ -660,9 +658,17 @@ FROM (SELECT * FROM table1) AS alias_name
 FROM (VALUES ('anne', 'smith'), ('bob', 'jones'), ('joe', 'blow'))
      AS names(first, last)
 </programlisting>
-     Again, a table alias is required.  Assigning alias names to the columns
+     Again, a table alias is optional.  Assigning alias names to the columns
      of the <command>VALUES</command> list is optional, but is good practice.
      For more information see <xref linkend="queries-values"/>.
+    </para>
+
+    <para>
+     According to the SQL standard, a table alias name must be supplied
+     for a subquery.  <productname>PostgreSQL</productname>
+     allows <literal>AS</literal> and the alias to be omitted, but
+     writing one is good practice in SQL code that might be ported to
+     another system.
     </para>
    </sect3>
 
@@ -855,6 +861,11 @@ ORDER BY p;
      preceded by the key word <literal>LATERAL</literal>, but for functions the
      key word is optional; the function's arguments can contain references
      to columns provided by preceding <literal>FROM</literal> items in any case.
+    </para>
+
+    <para>
+     A <literal>GRAPH_TABLE</literal> <literal>FROM</literal> item can also
+     always contain lateral references.
     </para>
 
     <para>
@@ -1073,7 +1084,7 @@ SELECT <replaceable>select_list</replaceable>
    <para>
     In the second query, we could not have written <literal>SELECT *
     FROM test1 GROUP BY x</literal>, because there is no single value
-    for the column <literal>y</literal> that could be associated with each
+    for the column <structfield>y</structfield> that could be associated with each
     group.  The grouped-by columns can be referenced in the select list since
     they have a single value in each group.
    </para>
@@ -1139,10 +1150,36 @@ SELECT product_id, p.name, (sum(s.units) * p.price) AS sales
 
    <para>
     In strict SQL, <literal>GROUP BY</literal> can only group by columns of
-    the source table but <productname>PostgreSQL</productname> extends
+    the source table, but <productname>PostgreSQL</productname> extends
     this to also allow <literal>GROUP BY</literal> to group by columns in the
     select list.  Grouping by value expressions instead of simple
-    column names is also allowed.
+    column names is also allowed (but <literal>GROUP BY</literal>
+    expressions cannot contain aggregate functions or window functions).
+   </para>
+
+   <para>
+    PostgreSQL also supports the syntax <literal>GROUP BY ALL</literal>,
+    which is equivalent to explicitly writing all select-list entries that
+    do not contain either an aggregate function or a window function.
+    This can greatly simplify ad-hoc exploration of data.
+    As an example, these queries are equivalent:
+<screen>
+<prompt>=&gt;</prompt> <userinput>SELECT a, b, a + b, sum(c) FROM test1 GROUP BY ALL;</userinput>
+ a | b | ?column? | sum
+---+---+----------+----
+ 1 | 4 |        5 |  9
+ 2 | 5 |        7 | 12
+ 3 | 6 |        9 | 15
+(3 rows)
+
+<prompt>=&gt;</prompt> <userinput>SELECT a, b, a + b, sum(c) FROM test1 GROUP BY a, b, a + b;</userinput>
+ a | b | ?column? | sum
+---+---+----------+----
+ 1 | 4 |        5 |  9
+ 2 | 5 |        7 | 12
+ 3 | 6 |        9 | 15
+(3 rows)
+</screen>
    </para>
 
    <indexterm>
@@ -1356,7 +1393,7 @@ GROUPING SETS (
 
    <para>
     If multiple grouping items are specified in a single <literal>GROUP BY</literal>
-    clause, then the final list of grouping sets is the cross product of the
+    clause, then the final list of grouping sets is the Cartesian product of the
     individual items.  For example:
 <programlisting>
 GROUP BY a, CUBE (b, c), GROUPING SETS ((d), (e))
@@ -1455,10 +1492,10 @@ GROUP BY GROUPING SETS (
 
    <para>
     When multiple window functions are used, all the window functions having
-    syntactically equivalent <literal>PARTITION BY</literal> and <literal>ORDER BY</literal>
-    clauses in their window definitions are guaranteed to be evaluated in a
-    single pass over the data. Therefore they will see the same sort ordering,
-    even if the <literal>ORDER BY</literal> does not uniquely determine an ordering.
+    equivalent <literal>PARTITION BY</literal> and <literal>ORDER BY</literal>
+    clauses in their window definitions are guaranteed to see the same
+    ordering of the input rows, even if the <literal>ORDER BY</literal> does
+    not uniquely determine the ordering.
     However, no guarantees are made about the evaluation of functions having
     different <literal>PARTITION BY</literal> or <literal>ORDER BY</literal> specifications.
     (In such cases a sort step is typically required between the passes of
@@ -1906,7 +1943,8 @@ SELECT a + b AS sum, c FROM table1 ORDER BY sum + c;          -- wrong
 SELECT <replaceable>select_list</replaceable>
     FROM <replaceable>table_expression</replaceable>
     <optional> ORDER BY ... </optional>
-    <optional> LIMIT { <replaceable>number</replaceable> | ALL } </optional> <optional> OFFSET <replaceable>number</replaceable> </optional>
+    <optional> LIMIT { <replaceable class="parameter">count</replaceable> | ALL } </optional>
+    <optional> OFFSET <replaceable class="parameter">start</replaceable> </optional>
 </synopsis>
   </para>
 
@@ -2056,9 +2094,10 @@ SELECT <replaceable>select_list</replaceable> FROM <replaceable>table_expression
    Table Expressions or <acronym>CTE</acronym>s, can be thought of as defining
    temporary tables that exist just for one query.  Each auxiliary statement
    in a <literal>WITH</literal> clause can be a <command>SELECT</command>,
-   <command>INSERT</command>, <command>UPDATE</command>, or <command>DELETE</command>; and the
+   <command>INSERT</command>, <command>UPDATE</command>, <command>DELETE</command>,
+   or <command>MERGE</command>; and the
    <literal>WITH</literal> clause itself is attached to a primary statement that can
-   be a <command>SELECT</command>, <command>INSERT</command>, <command>UPDATE</command>,
+   also be a <command>SELECT</command>, <command>INSERT</command>, <command>UPDATE</command>,
    <command>DELETE</command>, or <command>MERGE</command>.
   </para>
 
@@ -2198,7 +2237,7 @@ WITH RECURSIVE included_parts(sub_part, part, quantity) AS (
     FROM included_parts pr, parts p
     WHERE p.part = pr.sub_part
 )
-SELECT sub_part, SUM(quantity) as total_quantity
+SELECT sub_part, SUM(quantity) AS total_quantity
 FROM included_parts
 GROUP BY sub_part
 </programlisting>
@@ -2486,7 +2525,7 @@ SELECT n FROM t <emphasis>LIMIT 100</emphasis>;
   </sect3>
  </sect2>
 
- <sect2>
+ <sect2 id="queries-with-cte-materialization">
   <title>Common Table Expression Materialization</title>
 
   <para>
@@ -2569,7 +2608,7 @@ WHERE w2.key = 123;
    undesirable is
 <programlisting>
 WITH w AS (
-    SELECT key, very_expensive_function(val) as f FROM some_table
+    SELECT key, very_expensive_function(val) AS f FROM some_table
 )
 SELECT * FROM w AS w1 JOIN w AS w2 ON w1.f = w2.f;
 </programlisting>
@@ -2592,8 +2631,8 @@ SELECT * FROM w AS w1 JOIN w AS w2 ON w1.f = w2.f;
    <title>Data-Modifying Statements in <literal>WITH</literal></title>
 
    <para>
-    You can use most data-modifying statements (<command>INSERT</command>,
-    <command>UPDATE</command>, or <command>DELETE</command>, but not
+    You can use data-modifying statements (<command>INSERT</command>,
+    <command>UPDATE</command>, <command>DELETE</command>, or
     <command>MERGE</command>) in <literal>WITH</literal>.  This
     allows you to perform several different operations in the same query.
     An example is:
@@ -2735,6 +2774,163 @@ SELECT * FROM t;
 
   </sect2>
 
+ </sect1>
+
+ <sect1 id="queries-graph">
+  <title>Graph Queries</title>
+
+  <para>
+   This section describes the sublanguage for querying property graphs,
+   defined as described in <xref linkend="ddl-property-graphs"/>.
+  </para>
+
+  <sect2 id="queries-graph-overview">
+   <title>Overview</title>
+
+   <para>
+    Consider this example from <xref linkend="ddl-property-graphs"/>:
+<programlisting>
+-- get list of customers active today
+SELECT customer_name FROM GRAPH_TABLE (myshop MATCH (c IS customers)-[IS customer_orders]->(o IS orders WHERE o.ordered_when = current_date) COLUMNS (c.name AS customer_name));
+</programlisting>
+    The graph query part happens inside the <literal>GRAPH_TABLE</literal>
+    construct.  As far as the rest of the query is concerned, this acts like a
+    table function in that it produces a computed table as output.  Like other
+    <literal>FROM</literal> clause elements, table alias and column alias
+    names can be assigned to the result, and the result can be joined with
+    other tables, subsequently filtered, and so on, for example:
+<programlisting>
+SELECT ... FROM GRAPH_TABLE (mygraph MATCH ... COLUMNS (...)) AS myresult (a, b, c) JOIN othertable USING (a) WHERE b > 0 ORDER BY c;
+</programlisting>
+   </para>
+
+   <para>
+    The <literal>GRAPH_TABLE</literal> clause consists of the graph name,
+    followed by the keyword <literal>MATCH</literal>, followed by a graph
+    pattern expression (see below), followed by the keyword
+    <literal>COLUMNS</literal> and a column list.
+   </para>
+  </sect2>
+
+  <sect2 id="queries-graph-patterns">
+   <title>Graph Patterns</title>
+
+   <para>
+    The core of the graph querying functionality is the graph pattern, which
+    appears after the keyword <literal>MATCH</literal>.  Formally, a graph
+    pattern consists of one or more path patterns.  A path is a sequence of
+    graph elements, starting and ending with a vertex and alternating between
+    vertices and edges.  A path pattern is a syntactic expressions that
+    matches paths.
+   </para>
+
+   <para>
+    A path pattern thus matches a sequence of vertices and edges.  The
+    simplest possible path pattern is
+<programlisting>
+()
+</programlisting>
+    which matches a single vertex.  The next simplest pattern would be
+<programlisting>
+()-[]->()
+</programlisting>
+    which matches a vertex followed by an edge followed by a vertex.  The
+    characters <literal>()</literal> are a vertex pattern and the characters
+    <literal>-[]-></literal> are an edge pattern.
+   </para>
+
+   <para>
+    These characters can also be separated by whitespace, for example:
+<programlisting>
+( ) - [ ] - > ( )
+</programlisting>
+   </para>
+
+   <tip>
+    <para>
+     A way to remember these symbols is that in visual representations of
+     property graphs, vertices are usually circles (like
+     <literal>()</literal>) and edges have rectangular labels (like
+     <literal>[]</literal>).
+    </para>
+   </tip>
+
+   <para>
+    The above patterns would match any vertex, or any two vertices connected
+    by any edge, which isn't very interesting.  Normally, we want to search
+    for elements (vertices and edges) that have certain characteristics.
+    These characteristics are written in between the parentheses or brackets.
+    (This is also called an element pattern filler.)  Typically, we would
+    search for elements with a certain label.  This is written by <literal>IS
+    <replaceable>labelname</replaceable></literal>.  For example, this would
+    match all vertices with the label <literal>person</literal>:
+<programlisting>
+(IS person)
+</programlisting>
+    The next
+    example would match a vertex with the label <literal>person</literal>
+    connected to a vertex with the label <literal>account</literal> connected
+    by an edge with the label <literal>has</literal>.
+<programlisting>
+(IS person)-[IS has]->(IS account)
+</programlisting>
+    Multiple labels can also be matched, using <quote>or</quote> semantics:
+<programlisting>
+(IS person)-[IS has]->(IS account|creditcard)
+</programlisting>
+   </para>
+
+   <para>
+    Recall that edges are directed.  The other direction is also possible in a
+    path pattern, for example:
+<programlisting>
+(IS account)&lt;-[IS has]-(IS person)
+</programlisting>
+    It is also possible to match both directions:
+<programlisting>
+(IS person)-[IS is_friend_of]-(IS person)
+</programlisting>
+    This has a meaning of <quote>or</quote>: An edge in either direction would
+    match.
+   </para>
+
+   <para>
+    In many cases, the edge patterns don't need a filler.  (All the filtering
+    then happens on the vertices.)  For these cases, an abbreviated edge
+    pattern syntax is available that omits the brackets, for example:
+<programlisting>
+(IS person)->(IS account)
+(IS account)&lt;-(IS person)
+(IS person)-(IS person)
+</programlisting>
+    As is often the case, abbreviated syntax can make expressions more compact
+    but also sometimes harder to understand.
+   </para>
+
+   <para>
+    Furthermore, it is possible to define graph pattern variables in the path
+    pattern expressions.  These are bound to the matched elements and can be
+    used to refer to the property values from those elements.  The most
+    important use is to use them in the <literal>COLUMNS</literal> clause to
+    define the tabular result of the <literal>GRAPH_TABLE</literal> clause.
+    For example (assuming appropriate definitions of the property graph as
+    well as the underlying tables):
+<programlisting>
+GRAPH_TABLE (mygraph MATCH (p IS person)-[h IS has]->(a IS account)
+             COLUMNS (p.name AS person_name, h.since AS has_account_since, a.num AS account_number)
+</programlisting>
+    <literal>WHERE</literal> clauses can be used inside element patterns to
+    filter matches:
+<programlisting>
+(IS person)-[IS has]->(a IS account WHERE a.type = 'savings')
+</programlisting>
+   </para>
+
+   <!-- TODO: multiple path patterns in a graph pattern (comma-separated) -->
+
+   <!-- TODO: quantifiers -->
+
+  </sect2>
  </sect1>
 
 </chapter>

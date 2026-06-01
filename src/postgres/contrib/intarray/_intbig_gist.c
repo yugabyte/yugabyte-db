@@ -7,6 +7,7 @@
 #include "access/gist.h"
 #include "access/reloptions.h"
 #include "access/stratnum.h"
+#include "common/int.h"
 #include "port/pg_bitutils.h"
 
 #define GETENTRY(vec,pos) ((GISTTYPE *) DatumGetPointer((vec)->vector[(pos)].key))
@@ -30,8 +31,9 @@ _intbig_in(PG_FUNCTION_ARGS)
 {
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("_intbig_in() not implemented")));
-	PG_RETURN_DATUM(0);
+			 errmsg("cannot accept a value of type %s", "intbig_gkey")));
+
+	PG_RETURN_VOID();			/* keep compiler quiet */
 }
 
 Datum
@@ -39,8 +41,9 @@ _intbig_out(PG_FUNCTION_ARGS)
 {
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("_intbig_out() not implemented")));
-	PG_RETURN_DATUM(0);
+			 errmsg("cannot display a value of type %s", "intbig_gkey")));
+
+	PG_RETURN_VOID();			/* keep compiler quiet */
 }
 
 static GISTTYPE *
@@ -169,7 +172,7 @@ g_intbig_compress(PG_FUNCTION_ARGS)
 			ptr++;
 		}
 
-		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(res),
 					  entry->rel, entry->page,
 					  entry->offset, false);
@@ -190,7 +193,7 @@ g_intbig_compress(PG_FUNCTION_ARGS)
 		}
 
 		res = _intbig_alloc(true, siglen, sign);
-		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(res),
 					  entry->rel, entry->page,
 					  entry->offset, false);
@@ -308,7 +311,8 @@ typedef struct
 static int
 comparecost(const void *a, const void *b)
 {
-	return ((const SPLITCOST *) a)->cost - ((const SPLITCOST *) b)->cost;
+	return pg_cmp_s32(((const SPLITCOST *) a)->cost,
+					  ((const SPLITCOST *) b)->cost);
 }
 
 
@@ -379,16 +383,16 @@ g_intbig_picksplit(PG_FUNCTION_ARGS)
 
 	maxoff = OffsetNumberNext(maxoff);
 	/* sort before ... */
-	costvector = (SPLITCOST *) palloc(sizeof(SPLITCOST) * maxoff);
+	costvector = palloc_array(SPLITCOST, maxoff);
 	for (j = FirstOffsetNumber; j <= maxoff; j = OffsetNumberNext(j))
 	{
 		costvector[j - 1].pos = j;
 		_j = GETENTRY(entryvec, j);
 		size_alpha = hemdist(datum_l, _j, siglen);
 		size_beta = hemdist(datum_r, _j, siglen);
-		costvector[j - 1].cost = Abs(size_alpha - size_beta);
+		costvector[j - 1].cost = abs(size_alpha - size_beta);
 	}
-	qsort((void *) costvector, maxoff, sizeof(SPLITCOST), comparecost);
+	qsort(costvector, maxoff, sizeof(SPLITCOST), comparecost);
 
 	union_l = GETSIGN(datum_l);
 	union_r = GETSIGN(datum_r);
@@ -417,7 +421,7 @@ g_intbig_picksplit(PG_FUNCTION_ARGS)
 			if (ISALLTRUE(datum_l) || ISALLTRUE(_j))
 			{
 				if (!ISALLTRUE(datum_l))
-					MemSet((void *) union_l, 0xff, siglen);
+					memset(union_l, 0xff, siglen);
 			}
 			else
 			{
@@ -433,7 +437,7 @@ g_intbig_picksplit(PG_FUNCTION_ARGS)
 			if (ISALLTRUE(datum_r) || ISALLTRUE(_j))
 			{
 				if (!ISALLTRUE(datum_r))
-					MemSet((void *) union_r, 0xff, siglen);
+					memset(union_r, 0xff, siglen);
 			}
 			else
 			{
@@ -461,8 +465,9 @@ g_intbig_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	ArrayType  *query = PG_GETARG_ARRAYTYPE_P(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	int			siglen = GET_SIGLEN();
 	bool		retval;

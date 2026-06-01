@@ -3,7 +3,7 @@
  * pg_namespace.c
  *	  routines to support manipulation of the pg_namespace relation
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -76,7 +76,7 @@ NamespaceCreate(const char *nspName, Oid ownerId, bool isTemp)
 	for (i = 0; i < Natts_pg_namespace; i++)
 	{
 		nulls[i] = false;
-		values[i] = (Datum) NULL;
+		values[i] = (Datum) 0;
 	}
 
 	nspoid = GetNewOidWithIndex(nspdesc, NamespaceOidIndexId,

@@ -3,7 +3,7 @@
  * varlena.h
  *	  Functions for the variable-length built-in types.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/varlena.h
@@ -27,6 +27,9 @@ extern int	varstr_levenshtein_less_equal(const char *source, int slen,
 										  int ins_c, int del_c, int sub_c,
 										  int max_d, bool trusted);
 extern List *textToQualifiedNameList(text *textval);
+extern char *scan_quoted_identifier(char **endp, char **nextp);
+extern char *scan_identifier(char **endp, char **nextp, char separator,
+							 bool downcase_unquoted);
 extern bool SplitIdentifierString(char *rawstring, char separator,
 								  List **namelist);
 extern bool SplitDirectoriesString(char *rawstring, char separator,
@@ -37,5 +40,17 @@ extern text *replace_text_regexp(text *src_text, text *pattern_text,
 								 text *replace_text,
 								 int cflags, Oid collation,
 								 int search_start, int n);
+
+typedef struct ClosestMatchState
+{
+	const char *source;
+	int			min_d;
+	int			max_d;
+	const char *match;
+} ClosestMatchState;
+
+extern void initClosestMatch(ClosestMatchState *state, const char *source, int max_d);
+extern void updateClosestMatch(ClosestMatchState *state, const char *candidate);
+extern const char *getClosestMatch(ClosestMatchState *state);
 
 #endif

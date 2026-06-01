@@ -96,8 +96,7 @@ parse(int tk) /* tk: the code for the construct scanned */
 		 */
 		ps.i_l_follow = ps.il[ps.tos--];
 	/* the rest is the same as for dolit and forstmt */
-	/* FALLTHROUGH */
-	yb_switch_fallthrough();
+	pg_fallthrough;
     case dolit:		/* 'do' */
     case forstmt:		/* for (...) */
 	ps.p_stack[++ps.tos] = tk;
@@ -304,8 +303,7 @@ reduce(void)
 	    case swstmt:
 		/* <switch> <stmt> */
 		case_ind = ps.cstk[ps.tos - 1];
-		/* FALLTHROUGH */
-		yb_switch_fallthrough();
+		pg_fallthrough;
 	    case decl:		/* finish of a declaration */
 	    case elsehead:
 		/* <<if> <stmt> else> <stmt> */

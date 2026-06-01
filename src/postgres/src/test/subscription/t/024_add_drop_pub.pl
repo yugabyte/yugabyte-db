@@ -1,9 +1,11 @@
 
-# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
-# This test checks behaviour of ALTER SUBSCRIPTION ... ADD/DROP PUBLICATION
+# This test checks behaviour of ALTER SUBSCRIPTION ... ADD/DROP PUBLICATION and
+# ensures that creating a publication associated with a subscription at a later
+# point of time does not break logical replication.
 use strict;
-use warnings;
+use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -15,7 +17,7 @@ $node_publisher->start;
 
 # Create subscriber node
 my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
-$node_subscriber->init(allows_streaming => 'logical');
+$node_subscriber->init;
 $node_subscriber->start;
 
 # Create table on publisher
@@ -63,7 +65,7 @@ $node_subscriber->safe_psql('postgres',
 # Wait for initial table sync to finish
 $node_subscriber->wait_for_subscription_sync($node_publisher, 'tap_sub');
 
-# Check the initial data of tab_drop_refresh was copied to subscriber
+# Check the initial data of tab_2 was copied to subscriber
 $result = $node_subscriber->safe_psql('postgres',
 	"SELECT count(*), min(a), max(a) FROM tab_2");
 is($result, qq(10|1|10), 'check initial data is copied to subscriber');
@@ -79,6 +81,59 @@ $node_subscriber->wait_for_subscription_sync($node_publisher, 'tap_sub');
 $result = $node_subscriber->safe_psql('postgres',
 	"SELECT count(*), min(a), max(a) FROM tab_1");
 is($result, qq(20|1|10), 'check initial data is copied to subscriber');
+
+# Ensure that setting a missing publication to the subscription does not
+# disrupt existing logical replication. Instead, it should log a warning
+# while allowing replication to continue. Additionally, verify that replication
+# resumes after the missing publication is created for the publication table.
+
+# Create table on publisher and subscriber
+$node_publisher->safe_psql('postgres', "CREATE TABLE tab_3 (a int)");
+$node_subscriber->safe_psql('postgres', "CREATE TABLE tab_3 (a int)");
+
+my $oldpid = $node_publisher->safe_psql('postgres',
+	"SELECT pid FROM pg_stat_replication WHERE application_name = 'tap_sub' AND state = 'streaming';"
+);
+
+# Set the subscription with a missing publication
+$node_subscriber->safe_psql('postgres',
+	"ALTER SUBSCRIPTION tap_sub SET PUBLICATION tap_pub_3");
+
+# Wait for the walsender to restart after altering the subscription
+$node_publisher->poll_query_until('postgres',
+	"SELECT pid != $oldpid FROM pg_stat_replication WHERE application_name = 'tap_sub' AND state = 'streaming';"
+  )
+  or die
+  "Timed out while waiting for apply worker to restart after altering the subscription";
+
+my $offset = -s $node_publisher->logfile;
+
+$node_publisher->safe_psql('postgres', "INSERT INTO tab_3 values(1)");
+
+# Verify that a warning is logged.
+$node_publisher->wait_for_log(
+	qr/WARNING: ( [A-Z0-9]+:)? skipped loading publication "tap_pub_3"/,
+	$offset);
+
+$node_publisher->safe_psql('postgres',
+	"CREATE PUBLICATION tap_pub_3 FOR TABLE tab_3");
+
+$node_subscriber->safe_psql('postgres',
+	"ALTER SUBSCRIPTION tap_sub REFRESH  PUBLICATION");
+
+$node_subscriber->wait_for_subscription_sync($node_publisher, 'tap_sub');
+
+$node_publisher->safe_psql('postgres', "INSERT INTO tab_3 values(2)");
+
+$node_publisher->wait_for_catchup('tap_sub');
+
+# Verify that the insert operation gets replicated to subscriber after
+# publication is created.
+$result = $node_subscriber->safe_psql('postgres', "SELECT * FROM tab_3");
+is( $result, qq(1
+2),
+	'check that the incremental data is replicated after the publication is created'
+);
 
 # shutdown
 $node_subscriber->stop('fast');

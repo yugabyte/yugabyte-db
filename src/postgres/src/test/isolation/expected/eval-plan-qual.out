@@ -746,6 +746,36 @@ savings  |    600|    1200
 (2 rows)
 
 
+starting permutation: read wx2 wb1 c2 c1 read
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid|balance|balance2
+---------+-------+--------
+checking |    600|    1200
+savings  |    600|    1200
+(2 rows)
+
+step wx2: UPDATE accounts SET balance = balance + 450 WHERE accountid = 'checking' RETURNING balance;
+balance
+-------
+   1050
+(1 row)
+
+step wb1: DELETE FROM accounts WHERE balance = 600 RETURNING *; <waiting ...>
+step c2: COMMIT;
+step wb1: <... completed>
+accountid|balance|balance2
+---------+-------+--------
+savings  |    600|    1200
+(1 row)
+
+step c1: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid|balance|balance2
+---------+-------+--------
+checking |   1050|    2100
+(1 row)
+
+
 starting permutation: upsert1 upsert2 c1 c2 read
 step upsert1: 
 	WITH upsert AS
@@ -1188,6 +1218,100 @@ subid|id
 (1 row)
 
 
+starting permutation: tid1 tid2 c1 c2 read
+step tid1: UPDATE accounts SET balance = balance + 100 WHERE ctid = '(0,1)' RETURNING accountid, balance;
+accountid|balance
+---------+-------
+checking |    700
+(1 row)
+
+step tid2: UPDATE accounts SET balance = balance + 200 WHERE ctid = '(0,1)' RETURNING accountid, balance; <waiting ...>
+step c1: COMMIT;
+step tid2: <... completed>
+accountid|balance
+---------+-------
+(0 rows)
+
+step c2: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid|balance|balance2
+---------+-------+--------
+checking |    700|    1400
+savings  |    600|    1200
+(2 rows)
+
+
+starting permutation: tid1 tidsucceed2 c1 c2 read
+step tid1: UPDATE accounts SET balance = balance + 100 WHERE ctid = '(0,1)' RETURNING accountid, balance;
+accountid|balance
+---------+-------
+checking |    700
+(1 row)
+
+step tidsucceed2: UPDATE accounts SET balance = balance + 200 WHERE ctid = '(0,1)' OR ctid = '(0,3)' RETURNING accountid, balance; <waiting ...>
+step c1: COMMIT;
+step tidsucceed2: <... completed>
+accountid|balance
+---------+-------
+checking |    900
+(1 row)
+
+step c2: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid|balance|balance2
+---------+-------+--------
+checking |    900|    1800
+savings  |    600|    1200
+(2 rows)
+
+
+starting permutation: tidrange1 tidrange2 c1 c2 read
+step tidrange1: UPDATE accounts SET balance = balance + 100 WHERE ctid BETWEEN '(0,1)' AND '(0,1)' RETURNING accountid, balance;
+accountid|balance
+---------+-------
+checking |    700
+(1 row)
+
+step tidrange2: UPDATE accounts SET balance = balance + 200 WHERE ctid BETWEEN '(0,1)' AND '(0,1)' RETURNING accountid, balance; <waiting ...>
+step c1: COMMIT;
+step tidrange2: <... completed>
+accountid|balance
+---------+-------
+(0 rows)
+
+step c2: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid|balance|balance2
+---------+-------+--------
+checking |    700|    1400
+savings  |    600|    1200
+(2 rows)
+
+
+starting permutation: tid1 tid2 r1 c2 read
+step tid1: UPDATE accounts SET balance = balance + 100 WHERE ctid = '(0,1)' RETURNING accountid, balance;
+accountid|balance
+---------+-------
+checking |    700
+(1 row)
+
+step tid2: UPDATE accounts SET balance = balance + 200 WHERE ctid = '(0,1)' RETURNING accountid, balance; <waiting ...>
+step r1: ROLLBACK;
+step tid2: <... completed>
+accountid|balance
+---------+-------
+checking |    800
+(1 row)
+
+step c2: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid|balance|balance2
+---------+-------+--------
+checking |    800|    1600
+savings  |    600|    1200
+(2 rows)
+
+
 starting permutation: simplepartupdate conditionalpartupdate c1 c2 read_part
 step simplepartupdate: 
 	update parttbl set b = b + 10;
@@ -1199,10 +1323,10 @@ step c1: COMMIT;
 step conditionalpartupdate: <... completed>
 step c2: COMMIT;
 step read_part: SELECT * FROM parttbl ORDER BY a, c;
-a| b|c| d
--+--+-+--
-1|11|1|12
-2|12|2|14
+a| b|c|   d
+-+--+-+----
+1|11|1|  12
+2|12|2|1014
 (2 rows)
 
 
@@ -1218,10 +1342,10 @@ step c1: COMMIT;
 step complexpartupdate: <... completed>
 step c2: COMMIT;
 step read_part: SELECT * FROM parttbl ORDER BY a, c;
-a| b|c| d
--+--+-+--
-1|12|1|13
-2|13|2|15
+a| b|c|   d
+-+--+-+----
+1|12|1|  13
+2|13|2|1015
 (2 rows)
 
 
@@ -1229,9 +1353,9 @@ starting permutation: simplepartupdate_route1to2 complexpartupdate_route_err1 c1
 step simplepartupdate_route1to2: 
 	update parttbl set a = 2 where c = 1 returning *;
 
-a|b|c|d
--+-+-+-
-2|1|1|3
+a|b|c|   d
+-+-+-+----
+2|1|1|1003
 (1 row)
 
 step complexpartupdate_route_err1: 
@@ -1243,10 +1367,10 @@ step complexpartupdate_route_err1: <... completed>
 ERROR:  tuple to be locked was already moved to another partition due to concurrent update
 step c2: COMMIT;
 step read_part: SELECT * FROM parttbl ORDER BY a, c;
-a|b|c|d
--+-+-+-
-2|1|1|3
-2|2|2|4
+a|b|c|   d
+-+-+-+----
+2|1|1|1003
+2|2|2|1004
 (2 rows)
 
 
@@ -1265,17 +1389,17 @@ step complexpartupdate_route:
  <waiting ...>
 step c1: COMMIT;
 step complexpartupdate_route: <... completed>
-a|b|c|d
--+-+-+-
-2|2|1|4
+a|b|c|   d
+-+-+-+----
+2|2|1|1004
 (1 row)
 
 step c2: COMMIT;
 step read_part: SELECT * FROM parttbl ORDER BY a, c;
-a|b|c|d
--+-+-+-
-2|2|1|4
-2|2|2|4
+a|b|c|   d
+-+-+-+----
+2|2|1|1004
+2|2|2|1004
 (2 rows)
 
 
@@ -1301,10 +1425,10 @@ a|b|c|d
 
 step c2: COMMIT;
 step read_part: SELECT * FROM parttbl ORDER BY a, c;
-a|b|c|d
--+-+-+-
-1|2|1|3
-2|2|2|4
+a|b|c|   d
+-+-+-+----
+1|2|1|   3
+2|2|2|1004
 (2 rows)
 
 
@@ -1333,3 +1457,39 @@ step sysmerge2:
 step c1: COMMIT;
 step sysmerge2: <... completed>
 step c2: COMMIT;
+
+starting permutation: s1pp1 s2pp1 s2pp2 s2pp3 c1 c2
+step s1pp1: UPDATE another_parttbl SET b = b + 1 WHERE a = 1;
+step s2pp1: SET plan_cache_mode TO force_generic_plan;
+step s2pp2: PREPARE epd AS DELETE FROM another_parttbl WHERE a = $1;
+step s2pp3: EXECUTE epd(1); <waiting ...>
+step c1: COMMIT;
+step s2pp3: <... completed>
+step c2: COMMIT;
+
+starting permutation: s1pp1 s2pp4 c1 c2
+step s1pp1: UPDATE another_parttbl SET b = b + 1 WHERE a = 1;
+step s2pp4: DELETE FROM another_parttbl WHERE a = (SELECT 1); <waiting ...>
+step c1: COMMIT;
+step s2pp4: <... completed>
+step c2: COMMIT;
+
+starting permutation: updateformergevalues mergevalues c1 c2 read
+step updateformergevalues: UPDATE accounts SET balance = balance + 100;
+step mergevalues: 
+	MERGE INTO accounts
+	USING (VALUES ('checking', 610), ('savings', 620)) v(accountid, balance)
+	ON v.accountid = accounts.accountid
+	WHEN MATCHED THEN UPDATE SET balance = v.balance
+	WHEN NOT MATCHED THEN INSERT VALUES ('unmatched', -1);
+ <waiting ...>
+step c1: COMMIT;
+step mergevalues: <... completed>
+step c2: COMMIT;
+step read: SELECT * FROM accounts ORDER BY accountid;
+accountid|balance|balance2
+---------+-------+--------
+checking |    610|    1220
+savings  |    620|    1240
+(2 rows)
+

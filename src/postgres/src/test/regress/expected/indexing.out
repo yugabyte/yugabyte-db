@@ -248,7 +248,7 @@ alter index idxpart_a_b_idx attach partition idxpart1_a_b_idx; -- quiet
 create index idxpart1_2_a_b on idxpart1 (a, b);
 alter index idxpart_a_b_idx attach partition idxpart1_2_a_b;
 ERROR:  cannot attach index "idxpart1_2_a_b" as a partition of index "idxpart_a_b_idx"
-DETAIL:  Another index is already attached for partition "idxpart1".
+DETAIL:  Another index "idxpart1_a_b_idx" is already attached for partition "idxpart1".
 drop table idxpart;
 -- make sure everything's gone
 select indexrelid::regclass, indrelid::regclass
@@ -972,25 +972,46 @@ Indexes:
 drop table idxpart;
 -- Failing to use the full partition key is not allowed
 create table idxpart (a int unique, b int) partition by range (a, b);
-ERROR:  unique constraint on partitioned table must include all partitioning columns
+ERROR:  UNIQUE constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "b" which is part of the partition key.
 create table idxpart (a int, b int unique) partition by range (a, b);
-ERROR:  unique constraint on partitioned table must include all partitioning columns
+ERROR:  UNIQUE constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "a" which is part of the partition key.
 create table idxpart (a int primary key, b int) partition by range (b, a);
-ERROR:  unique constraint on partitioned table must include all partitioning columns
+ERROR:  PRIMARY KEY constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is part of the partition key.
 create table idxpart (a int, b int primary key) partition by range (b, a);
-ERROR:  unique constraint on partitioned table must include all partitioning columns
+ERROR:  PRIMARY KEY constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "a" which is part of the partition key.
 -- OK if you use them in some other order
 create table idxpart (a int, b int, c text, primary key  (a, b, c)) partition by range (b, c, a);
 drop table idxpart;
--- not other types of index-based constraints
-create table idxpart (a int, exclude (a with = )) partition by range (a);
-ERROR:  exclusion constraints are not supported on partitioned tables
-LINE 1: create table idxpart (a int, exclude (a with = )) partition ...
-                                     ^
+-- OK to add an exclusion constraint if partitioning by its equal column
+create table idxpart (a int4range, exclude USING GIST (a with = )) partition by range (a);
+drop table idxpart;
+-- OK more than one equal column
+create table idxpart (a int4range, b int4range, exclude USING GIST (a with =, b with =)) partition by range (a, b);
+drop table idxpart;
+-- OK with more than one equal column: constraint is a proper superset of partition key
+create table idxpart (a int4range, b int4range, exclude USING GIST (a with =, b with =)) partition by range (a);
+drop table idxpart;
+-- Not OK more than one equal column: partition keys are a proper superset of constraint
+create table idxpart (a int4range, b int4range, exclude USING GIST (a with = )) partition by range (a, b);
+ERROR:  EXCLUDE constraint on partitioned table must include all partitioning columns
+DETAIL:  EXCLUDE constraint on table "idxpart" lacks column "b" which is part of the partition key.
+-- Not OK with just -|-
+create table idxpart (a int4range, exclude USING GIST (a with -|- )) partition by range (a);
+ERROR:  cannot match partition key to index on column "a" using non-equal operator "-|-"
+-- OK with equals and &&, and equals is the partition key
+create table idxpart (a int4range, b int4range, exclude USING GIST (a with =, b with &&)) partition by range (a);
+drop table idxpart;
+-- Not OK with equals and &&, and equals is not the partition key
+create table idxpart (a int4range, b int4range, c int4range, exclude USING GIST (b with =, c with &&)) partition by range (a);
+ERROR:  EXCLUDE constraint on partitioned table must include all partitioning columns
+DETAIL:  EXCLUDE constraint on table "idxpart" lacks column "a" which is part of the partition key.
+-- OK more than one equal column and a && column
+create table idxpart (a int4range, b int4range, c int4range, exclude USING GIST (a with =, b with =, c with &&)) partition by range (a, b);
+drop table idxpart;
 -- no expressions in partition key for PK/UNIQUE
 create table idxpart (a int primary key, b int) partition by range ((b + a));
 ERROR:  unsupported PRIMARY KEY constraint with partition key definition
@@ -1001,7 +1022,7 @@ DETAIL:  UNIQUE constraints cannot be used when partition keys include expressio
 -- use ALTER TABLE to add a primary key
 create table idxpart (a int, b int, c text) partition by range (a, b);
 alter table idxpart add primary key (a);	-- not an incomplete one though
-ERROR:  unique constraint on partitioned table must include all partitioning columns
+ERROR:  PRIMARY KEY constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add primary key (a, b);	-- this works
 \d idxpart
@@ -1032,7 +1053,7 @@ drop table idxpart;
 -- use ALTER TABLE to add a unique constraint
 create table idxpart (a int, b int) partition by range (a, b);
 alter table idxpart add unique (a);			-- not an incomplete one though
-ERROR:  unique constraint on partitioned table must include all partitioning columns
+ERROR:  UNIQUE constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add unique (b, a);		-- this works
 \d idxpart
@@ -1047,12 +1068,42 @@ Indexes:
 Number of partitions: 0
 
 drop table idxpart;
--- Exclusion constraints cannot be added
-create table idxpart (a int, b int) partition by range (a);
-alter table idxpart add exclude (a with =);
-ERROR:  exclusion constraints are not supported on partitioned tables
-LINE 1: alter table idxpart add exclude (a with =);
-                                ^
+-- Exclusion constraints can be added if partitioning by their equal column
+create table idxpart (a int4range, b int4range) partition by range (a);
+alter table idxpart add exclude USING GIST (a with =);
+drop table idxpart;
+-- OK more than one equal column
+create table idxpart (a int4range, b int4range) partition by range (a, b);
+alter table idxpart add exclude USING GIST (a with =, b with =);
+drop table idxpart;
+-- OK with more than one equal column: constraint is a proper superset of partition key
+create table idxpart (a int4range, b int4range) partition by range (a);
+alter table idxpart add exclude USING GIST (a with =, b with =);
+drop table idxpart;
+-- Not OK more than one equal column: partition keys are a proper superset of constraint
+create table idxpart (a int4range, b int4range) partition by range (a, b);
+alter table idxpart add exclude USING GIST (a with =);
+ERROR:  EXCLUDE constraint on partitioned table must include all partitioning columns
+DETAIL:  EXCLUDE constraint on table "idxpart" lacks column "b" which is part of the partition key.
+drop table idxpart;
+-- Not OK with just -|-
+create table idxpart (a int4range, b int4range) partition by range (a, b);
+alter table idxpart add exclude USING GIST (a with -|-);
+ERROR:  cannot match partition key to index on column "a" using non-equal operator "-|-"
+drop table idxpart;
+-- OK with equals and &&, and equals is the partition key
+create table idxpart (a int4range, b int4range) partition by range (a);
+alter table idxpart add exclude USING GIST (a with =, b with &&);
+drop table idxpart;
+-- Not OK with equals and &&, and equals is not the partition key
+create table idxpart (a int4range, b int4range, c int4range) partition by range (a);
+alter table idxpart add exclude USING GIST (b with =, c with &&);
+ERROR:  EXCLUDE constraint on partitioned table must include all partitioning columns
+DETAIL:  EXCLUDE constraint on table "idxpart" lacks column "a" which is part of the partition key.
+drop table idxpart;
+-- OK more than one equal column and a && column
+create table idxpart (a int4range, b int4range, c int4range) partition by range (a, b);
+alter table idxpart add exclude USING GIST (a with =, b with =, c with &&);
 drop table idxpart;
 -- When (sub)partitions are created, they also contain the constraint
 create table idxpart (a int, b int, primary key (a, b)) partition by range (a, b);
@@ -1065,16 +1116,28 @@ create table idxpart3 (b int not null, a int not null);
 alter table idxpart attach partition idxpart3 for values from (20, 20) to (30, 30);
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
-  order by conname;
-    conname     | contype | conrelid  |    conindid    | conkey 
-----------------+---------+-----------+----------------+--------
- idxpart1_pkey  | p       | idxpart1  | idxpart1_pkey  | {1,2}
- idxpart21_pkey | p       | idxpart21 | idxpart21_pkey | {1,2}
- idxpart22_pkey | p       | idxpart22 | idxpart22_pkey | {1,2}
- idxpart2_pkey  | p       | idxpart2  | idxpart2_pkey  | {1,2}
- idxpart3_pkey  | p       | idxpart3  | idxpart3_pkey  | {2,1}
- idxpart_pkey   | p       | idxpart   | idxpart_pkey   | {1,2}
-(6 rows)
+  order by conrelid::regclass::text, conname;
+       conname       | contype | conrelid  |    conindid    | conkey 
+---------------------+---------+-----------+----------------+--------
+ idxpart_a_not_null  | n       | idxpart   | -              | {1}
+ idxpart_b_not_null  | n       | idxpart   | -              | {2}
+ idxpart_pkey        | p       | idxpart   | idxpart_pkey   | {1,2}
+ idxpart1_pkey       | p       | idxpart1  | idxpart1_pkey  | {1,2}
+ idxpart_a_not_null  | n       | idxpart1  | -              | {1}
+ idxpart_b_not_null  | n       | idxpart1  | -              | {2}
+ idxpart2_pkey       | p       | idxpart2  | idxpart2_pkey  | {1,2}
+ idxpart_a_not_null  | n       | idxpart2  | -              | {1}
+ idxpart_b_not_null  | n       | idxpart2  | -              | {2}
+ idxpart21_pkey      | p       | idxpart21 | idxpart21_pkey | {1,2}
+ idxpart_a_not_null  | n       | idxpart21 | -              | {1}
+ idxpart_b_not_null  | n       | idxpart21 | -              | {2}
+ idxpart22_pkey      | p       | idxpart22 | idxpart22_pkey | {1,2}
+ idxpart_a_not_null  | n       | idxpart22 | -              | {1}
+ idxpart_b_not_null  | n       | idxpart22 | -              | {2}
+ idxpart3_a_not_null | n       | idxpart3  | -              | {2}
+ idxpart3_b_not_null | n       | idxpart3  | -              | {1}
+ idxpart3_pkey       | p       | idxpart3  | idxpart3_pkey  | {2,1}
+(18 rows)
 
 drop table idxpart;
 -- Verify that multi-layer partitioning honors the requirement that all
@@ -1082,7 +1145,7 @@ drop table idxpart;
 create table idxpart (a int, b int, primary key (a)) partition by range (a);
 create table idxpart2 partition of idxpart
 for values from (0) to (1000) partition by range (b); -- fail
-ERROR:  unique constraint on partitioned table must include all partitioning columns
+ERROR:  PRIMARY KEY constraint on partitioned table must include all partitioning columns
 DETAIL:  PRIMARY KEY constraint on table "idxpart2" lacks column "b" which is part of the partition key.
 drop table idxpart;
 -- Ditto for the ATTACH PARTITION case
@@ -1090,7 +1153,7 @@ create table idxpart (a int unique, b int) partition by range (a);
 create table idxpart1 (a int not null, b int, unique (a, b))
   partition by range (a, b);
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
-ERROR:  unique constraint on partitioned table must include all partitioning columns
+ERROR:  UNIQUE constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "idxpart1" lacks column "b" which is part of the partition key.
 DROP TABLE idxpart, idxpart1;
 -- Multi-layer partitioning works correctly in this case:
@@ -1099,13 +1162,19 @@ create table idxpart2 partition of idxpart for values from (0) to (1000) partiti
 create table idxpart21 partition of idxpart2 for values from (0) to (1000);
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
-  order by conname;
-    conname     | contype | conrelid  |    conindid    | conkey 
-----------------+---------+-----------+----------------+--------
- idxpart21_pkey | p       | idxpart21 | idxpart21_pkey | {1,2}
- idxpart2_pkey  | p       | idxpart2  | idxpart2_pkey  | {1,2}
- idxpart_pkey   | p       | idxpart   | idxpart_pkey   | {1,2}
-(3 rows)
+  order by conrelid::regclass::text, conname;
+      conname       | contype | conrelid  |    conindid    | conkey 
+--------------------+---------+-----------+----------------+--------
+ idxpart_a_not_null | n       | idxpart   | -              | {1}
+ idxpart_b_not_null | n       | idxpart   | -              | {2}
+ idxpart_pkey       | p       | idxpart   | idxpart_pkey   | {1,2}
+ idxpart2_pkey      | p       | idxpart2  | idxpart2_pkey  | {1,2}
+ idxpart_a_not_null | n       | idxpart2  | -              | {1}
+ idxpart_b_not_null | n       | idxpart2  | -              | {2}
+ idxpart21_pkey     | p       | idxpart21 | idxpart21_pkey | {1,2}
+ idxpart_a_not_null | n       | idxpart21 | -              | {1}
+ idxpart_b_not_null | n       | idxpart21 | -              | {2}
+(9 rows)
 
 drop table idxpart;
 -- If a partitioned table has a unique/PK constraint, then it's not possible
@@ -1207,14 +1276,11 @@ create table idxpart (a int) partition by range (a);
 create table idxpart0 (like idxpart);
 alter table idxpart0 add unique (a);
 alter table idxpart attach partition idxpart0 default;
-alter table only idxpart add primary key (a);  -- fail, no NOT NULL constraint
-ERROR:  constraint must be added to child tables too
-DETAIL:  Column "a" of relation "idxpart0" is not already NOT NULL.
-HINT:  Do not specify the ONLY keyword.
+alter table only idxpart add primary key (a);  -- fail, no not-null constraint
+ERROR:  column "a" of table "idxpart0" is not marked NOT NULL
 alter table idxpart0 alter column a set not null;
 alter table only idxpart add primary key (a);  -- now it works
-alter table idxpart0 alter column a drop not null;  -- fail, pkey needs it
-ERROR:  column "a" is marked NOT NULL in parent table
+alter index idxpart_pkey attach partition idxpart0_a_key;
 drop table idxpart;
 -- if a partition has a unique index without a constraint, does not attach
 -- automatically; creates a new index instead.
@@ -1382,7 +1448,7 @@ insert into covidxpart values (4, 1);
 ERROR:  duplicate key value violates unique constraint "covidxpart4_a_b_idx"
 DETAIL:  Key (a)=(4) already exists.
 create unique index on covidxpart (b) include (a); -- should fail
-ERROR:  unique constraint on partitioned table must include all partitioning columns
+ERROR:  UNIQUE constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "covidxpart" lacks column "a" which is part of the partition key.
 -- check that detaching a partition also detaches the primary key constraint
 create table parted_pk_detach_test (a int primary key) partition by list (a);
@@ -1588,3 +1654,29 @@ select indexrelid::regclass, indisvalid, indisreplident,
 (3 rows)
 
 drop table parted_replica_tab;
+-- test that indexing commands work with TOASTed values in pg_index
+create table test_pg_index_toast_table (a int);
+create or replace function test_pg_index_toast_func (a int, b int[])
+  returns bool as $$ select true $$ language sql immutable;
+select array_agg(n) b from generate_series(1, 10000) n \gset
+create index concurrently test_pg_index_toast_index
+  on test_pg_index_toast_table (test_pg_index_toast_func(a, :'b'));
+reindex index concurrently test_pg_index_toast_index;
+drop index concurrently test_pg_index_toast_index;
+create index test_pg_index_toast_index
+  on test_pg_index_toast_table (test_pg_index_toast_func(a, :'b'));
+reindex index test_pg_index_toast_index;
+drop index test_pg_index_toast_index;
+drop function test_pg_index_toast_func;
+drop table test_pg_index_toast_table;
+-- test creation of an index involving a whole-row expression
+create table test_pg_wholerow_index (a int, b text, c numeric);
+create or replace function row_image(test_pg_wholerow_index)
+    returns test_pg_wholerow_index as $$select $1$$ language sql immutable;
+insert into test_pg_wholerow_index values (1, 'multiplication', 1.0);
+create index row_image_index
+    on test_pg_wholerow_index ((row_image(test_pg_wholerow_index)));
+insert into test_pg_wholerow_index values (2, 'addition', 0);
+drop index row_image_index;
+drop function row_image(test_pg_wholerow_index);
+drop table test_pg_wholerow_index;

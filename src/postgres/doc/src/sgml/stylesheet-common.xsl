@@ -4,7 +4,7 @@
 
 <!--
   This file contains XSLT stylesheet customizations that are common to
-  all output formats (HTML, HTML Help, XSL-FO, etc.).
+  all output formats (HTML, XSL-FO, man, etc.).
   -->
 
 <xsl:include href="stylesheet-speedup-common.xsl" />
@@ -28,6 +28,7 @@
 </xsl:param>
 
 <xsl:param name="callout.graphics" select="'0'"></xsl:param>
+<xsl:param name="glossentry.show.acronym">yes</xsl:param>
 <xsl:param name="toc.section.depth">2</xsl:param>
 <xsl:param name="linenumbering.extension" select="'0'"></xsl:param>
 <xsl:param name="section.autolabel" select="1"></xsl:param>
@@ -41,6 +42,13 @@
 <xsl:param name="variablelist.term.break.after">1</xsl:param>
 <xsl:param name="variablelist.term.separator"></xsl:param>
 <xsl:param name="xref.with.number.and.title" select="0"></xsl:param>
+
+<!--
+  This is the default setting, but putting it here makes sure the variable
+  exists even with older (<1.79) stylesheet versions, because it is used in
+  our customization layer.
+-->
+<xsl:param name="autolink.index.see" select="1"/>
 
 
 <!-- Change display of some elements -->
@@ -100,5 +108,27 @@
 <xsl:template match="function" mode="xref-to">
   <xsl:apply-templates select="." mode="xref"/>
 </xsl:template>
+
+
+<!--
+  Support for copying images to the output directory, so the output is self
+  contained.
+-->
+<xsl:template name="write-image">
+ <xsl:variable name="input_filename">
+   <xsl:value-of select="imagedata/@fileref"/>
+ </xsl:variable>
+
+ <!-- references images directly, without images/ -->
+ <xsl:variable name="output_filename">
+   <xsl:value-of select="concat($chunk.base.dir, substring-after($input_filename, '/'))"/>
+ </xsl:variable>
+
+ <xsl:call-template name="write.chunk">
+  <xsl:with-param name="filename" select="$output_filename"/>
+  <xsl:with-param name="content" select="document($input_filename)"/>
+ </xsl:call-template>
+</xsl:template>
+
 
 </xsl:stylesheet>

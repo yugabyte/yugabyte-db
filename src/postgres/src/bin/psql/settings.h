@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/bin/psql/settings.h
  */
@@ -27,6 +27,12 @@
 #define DEFAULT_PROMPT2 "%/%R%x%# "
 #define DEFAULT_PROMPT3 ">> "
 
+#define DEFAULT_WATCH_INTERVAL "2"
+/*
+ * Limit the max default setting to a value which should be safe for the
+ * itimer call, yet large enough to cover all realistic usecases.
+ */
+#define DEFAULT_WATCH_INTERVAL_MAX (1000*1000)
 /*
  * Note: these enums should generally be chosen so that zero corresponds
  * to the default behavior.
@@ -37,21 +43,21 @@ typedef enum
 	PSQL_ECHO_NONE,
 	PSQL_ECHO_QUERIES,
 	PSQL_ECHO_ERRORS,
-	PSQL_ECHO_ALL
+	PSQL_ECHO_ALL,
 } PSQL_ECHO;
 
 typedef enum
 {
 	PSQL_ECHO_HIDDEN_OFF,
 	PSQL_ECHO_HIDDEN_ON,
-	PSQL_ECHO_HIDDEN_NOEXEC
+	PSQL_ECHO_HIDDEN_NOEXEC,
 } PSQL_ECHO_HIDDEN;
 
 typedef enum
 {
 	PSQL_ERROR_ROLLBACK_OFF,
 	PSQL_ERROR_ROLLBACK_INTERACTIVE,
-	PSQL_ERROR_ROLLBACK_ON
+	PSQL_ERROR_ROLLBACK_ON,
 } PSQL_ERROR_ROLLBACK;
 
 typedef enum
@@ -59,22 +65,37 @@ typedef enum
 	PSQL_COMP_CASE_PRESERVE_UPPER,
 	PSQL_COMP_CASE_PRESERVE_LOWER,
 	PSQL_COMP_CASE_UPPER,
-	PSQL_COMP_CASE_LOWER
+	PSQL_COMP_CASE_LOWER,
 } PSQL_COMP_CASE;
+
+typedef enum
+{
+	PSQL_SEND_QUERY,
+	PSQL_SEND_EXTENDED_CLOSE,
+	PSQL_SEND_EXTENDED_PARSE,
+	PSQL_SEND_EXTENDED_QUERY_PARAMS,
+	PSQL_SEND_EXTENDED_QUERY_PREPARED,
+	PSQL_SEND_PIPELINE_SYNC,
+	PSQL_SEND_START_PIPELINE_MODE,
+	PSQL_SEND_END_PIPELINE_MODE,
+	PSQL_SEND_FLUSH,
+	PSQL_SEND_FLUSH_REQUEST,
+	PSQL_SEND_GET_RESULTS,
+} PSQL_SEND_MODE;
 
 typedef enum
 {
 	hctl_none = 0,
 	hctl_ignorespace = 1,
 	hctl_ignoredups = 2,
-	hctl_ignoreboth = hctl_ignorespace | hctl_ignoredups
+	hctl_ignoreboth = hctl_ignorespace | hctl_ignoredups,
 } HistControl;
 
 enum trivalue
 {
 	TRI_DEFAULT,
 	TRI_NO,
-	TRI_YES
+	TRI_YES,
 };
 
 typedef struct _psqlSettings
@@ -96,6 +117,18 @@ typedef struct _psqlSettings
 	char	   *gset_prefix;	/* one-shot prefix argument for \gset */
 	bool		gdesc_flag;		/* one-shot request to describe query result */
 	bool		gexec_flag;		/* one-shot request to execute query result */
+	PSQL_SEND_MODE send_mode;	/* one-shot request to send query with normal
+								 * or extended query protocol */
+	int			bind_nparams;	/* number of parameters */
+	char	  **bind_params;	/* parameters for extended query protocol call */
+	char	   *stmtName;		/* prepared statement name used for extended
+								 * query protocol commands */
+	int			piped_commands; /* number of piped commands */
+	int			piped_syncs;	/* number of piped syncs */
+	int			available_results;	/* number of results available to get */
+	int			requested_results;	/* number of requested results, including
+									 * sync messages.  Used to read a limited
+									 * subset of the available_results. */
 	bool		crosstab_flag;	/* one-shot request to crosstab result */
 	char	   *ctv_args[4];	/* \crosstabview arguments */
 
@@ -139,6 +172,7 @@ typedef struct _psqlSettings
 	int			fetch_count;
 	int			histsize;
 	int			ignoreeof;
+	double		watch_interval;
 	PSQL_ECHO	echo;
 	PSQL_ECHO_HIDDEN echo_hidden;
 	PSQL_ERROR_ROLLBACK on_error_rollback;

@@ -11,21 +11,24 @@
  * shared buffer content lock on the buffer containing the tuple.
  *
  * NOTE: When using a non-MVCC snapshot, we must check
- * TransactionIdIsInProgress (which looks in the PGPROC array)
- * before TransactionIdDidCommit/TransactionIdDidAbort (which look in
- * pg_xact).  Otherwise we have a race condition: we might decide that a
- * just-committed transaction crashed, because none of the tests succeed.
- * xact.c is careful to record commit/abort in pg_xact before it unsets
- * MyProc->xid in the PGPROC array.  That fixes that problem, but it
- * also means there is a window where TransactionIdIsInProgress and
- * TransactionIdDidCommit will both return true.  If we check only
- * TransactionIdDidCommit, we could consider a tuple committed when a
- * later GetSnapshotData call will still think the originating transaction
- * is in progress, which leads to application-level inconsistency.  The
- * upshot is that we gotta check TransactionIdIsInProgress first in all
- * code paths, except for a few cases where we are looking at
- * subtransactions of our own main transaction and so there can't be any
- * race condition.
+ * TransactionIdIsInProgress (which looks in the PGPROC array) before
+ * TransactionIdDidCommit (which look in pg_xact).  Otherwise we have a race
+ * condition: we might decide that a just-committed transaction crashed,
+ * because none of the tests succeed.  xact.c is careful to record
+ * commit/abort in pg_xact before it unsets MyProc->xid in the PGPROC array.
+ * That fixes that problem, but it also means there is a window where
+ * TransactionIdIsInProgress and TransactionIdDidCommit will both return true.
+ * If we check only TransactionIdDidCommit, we could consider a tuple
+ * committed when a later GetSnapshotData call will still think the
+ * originating transaction is in progress, which leads to application-level
+ * inconsistency.  The upshot is that we gotta check TransactionIdIsInProgress
+ * first in all code paths, except for a few cases where we are looking at
+ * subtransactions of our own main transaction and so there can't be any race
+ * condition.
+ *
+ * We can't use TransactionIdDidAbort here because it won't treat transactions
+ * that were in progress during a crash as aborted.  We determine that
+ * transactions aborted/crashed through process of elimination instead.
  *
  * When using an MVCC snapshot, we rely on XidInMVCCSnapshot rather than
  * TransactionIdIsInProgress, but the logic is otherwise the same: do not
@@ -52,7 +55,7 @@
  *	 HeapTupleSatisfiesAny()
  *		  all tuples are visible
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -66,7 +69,6 @@
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/multixact.h"
-#include "access/subtrans.h"
 #include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xact.h"
@@ -74,14 +76,41 @@
 #include "storage/bufmgr.h"
 #include "storage/procarray.h"
 #include "utils/builtins.h"
-#include "utils/combocid.h"
 #include "utils/snapmgr.h"
 
 
 /*
- * SetHintBits()
+ * To be allowed to set hint bits, SetHintBits() needs to call
+ * BufferBeginSetHintBits(). However, that's not free, and some callsites call
+ * SetHintBits() on many tuples in a row. For those it makes sense to amortize
+ * the cost of BufferBeginSetHintBits(). Additionally it's desirable to defer
+ * the cost of BufferBeginSetHintBits() until a hint bit needs to actually be
+ * set. This enum serves as the necessary state space passed to
+ * SetHintBitsExt().
+ */
+typedef enum SetHintBitsState
+{
+	/* not yet checked if hint bits may be set */
+	SHB_INITIAL,
+	/* failed to get permission to set hint bits, don't check again */
+	SHB_DISABLED,
+	/* allowed to set hint bits */
+	SHB_ENABLED,
+} SetHintBitsState;
+
+/*
+ * SetHintBitsExt()
  *
  * Set commit/abort hint bits on a tuple, if appropriate at this time.
+ *
+ * To be allowed to set a hint bit on a tuple, the page must not be undergoing
+ * IO at this time (otherwise we e.g. could corrupt PG's page checksum or even
+ * the filesystem's, as is known to happen with btrfs).
+ *
+ * The right to set a hint bit can be acquired on a page level with
+ * BufferBeginSetHintBits(). Only a single backend gets the right to set hint
+ * bits at a time.  Alternatively, if called with a NULL SetHintBitsState*,
+ * hint bits are set with BufferSetHintBits16().
  *
  * It is only safe to set a transaction-committed hint bit if we know the
  * transaction's commit record is guaranteed to be flushed to disk before the
@@ -110,24 +139,67 @@
  * InvalidTransactionId if no check is needed.
  */
 static inline void
-SetHintBits(HeapTupleHeader tuple, Buffer buffer,
-			uint16 infomask, TransactionId xid)
+SetHintBitsExt(HeapTupleHeader tuple, Buffer buffer,
+			   uint16 infomask, TransactionId xid, SetHintBitsState *state)
 {
+	/*
+	 * In batched mode, if we previously did not get permission to set hint
+	 * bits, don't try again - in all likelihood IO is still going on.
+	 */
+	if (state && *state == SHB_DISABLED)
+		return;
+
 	if (TransactionIdIsValid(xid))
 	{
-		/* NB: xid must be known committed here! */
-		XLogRecPtr	commitLSN = TransactionIdGetCommitLSN(xid);
-
-		if (BufferIsPermanent(buffer) && XLogNeedsFlush(commitLSN) &&
-			BufferGetLSNAtomic(buffer) < commitLSN)
+		if (BufferIsPermanent(buffer))
 		{
-			/* not flushed and no LSN interlock, so don't set hint */
-			return;
+			/* NB: xid must be known committed here! */
+			XLogRecPtr	commitLSN = TransactionIdGetCommitLSN(xid);
+
+			if (XLogNeedsFlush(commitLSN) &&
+				BufferGetLSNAtomic(buffer) < commitLSN)
+			{
+				/* not flushed and no LSN interlock, so don't set hint */
+				return;
+			}
 		}
 	}
 
+	/*
+	 * If we're not operating in batch mode, use BufferSetHintBits16() to mark
+	 * the page dirty, that's cheaper than
+	 * BufferBeginSetHintBits()/BufferFinishSetHintBits(). That's important
+	 * for cases where we set a lot of hint bits on a page individually.
+	 */
+	if (!state)
+	{
+		BufferSetHintBits16(&tuple->t_infomask,
+							tuple->t_infomask | infomask, buffer);
+		return;
+	}
+
+	if (*state == SHB_INITIAL)
+	{
+		if (!BufferBeginSetHintBits(buffer))
+		{
+			*state = SHB_DISABLED;
+			return;
+		}
+
+		*state = SHB_ENABLED;
+	}
 	tuple->t_infomask |= infomask;
-	MarkBufferDirtyHint(buffer, true);
+}
+
+/*
+ * Simple wrapper around SetHintBitExt(), use when operating on a single
+ * tuple.
+ */
+static inline void
+SetHintBits(HeapTupleHeader tuple, Buffer buffer,
+			uint16 infomask, TransactionId xid)
+{
+	SetHintBitsExt(tuple, buffer, infomask, xid, NULL);
 }
 
 /*
@@ -140,9 +212,65 @@ void
 HeapTupleSetHintBits(HeapTupleHeader tuple, Buffer buffer,
 					 uint16 infomask, TransactionId xid)
 {
+	/*
+	 * The uses from heapam.c rely on being able to perform the hint bit
+	 * updates, which can only be guaranteed if we are holding an exclusive
+	 * lock on the buffer - which all callers are doing.
+	 */
+	Assert(BufferIsLockedByMeInMode(buffer, BUFFER_LOCK_EXCLUSIVE));
+
 	SetHintBits(tuple, buffer, infomask, xid);
 }
 
+/*
+ * If HEAP_MOVED_OFF or HEAP_MOVED_IN are set on the tuple, remove them and
+ * adjust hint bits. See the comment for SetHintBits() for more background.
+ *
+ * This helper returns false if the row ought to be invisible, true otherwise.
+ */
+static inline bool
+HeapTupleCleanMoved(HeapTupleHeader tuple, Buffer buffer)
+{
+	TransactionId xvac;
+
+	/* only used by pre-9.0 binary upgrades */
+	if (likely(!(tuple->t_infomask & (HEAP_MOVED_OFF | HEAP_MOVED_IN))))
+		return true;
+
+	xvac = HeapTupleHeaderGetXvac(tuple);
+
+	if (TransactionIdIsCurrentTransactionId(xvac))
+		elog(ERROR, "encountered tuple with HEAP_MOVED considered current");
+
+	if (TransactionIdIsInProgress(xvac))
+		elog(ERROR, "encountered tuple with HEAP_MOVED considered in-progress");
+
+	if (tuple->t_infomask & HEAP_MOVED_OFF)
+	{
+		if (TransactionIdDidCommit(xvac))
+		{
+			SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
+						InvalidTransactionId);
+			return false;
+		}
+		SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
+					InvalidTransactionId);
+	}
+	else if (tuple->t_infomask & HEAP_MOVED_IN)
+	{
+		if (TransactionIdDidCommit(xvac))
+			SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
+						InvalidTransactionId);
+		else
+		{
+			SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
+						InvalidTransactionId);
+			return false;
+		}
+	}
+
+	return true;
+}
 
 /*
  * HeapTupleSatisfiesSelf
@@ -178,45 +306,8 @@ HeapTupleSatisfiesSelf(HeapTuple htup, Snapshot snapshot, Buffer buffer)
 		if (HeapTupleHeaderXminInvalid(tuple))
 			return false;
 
-		/* Used by pre-9.0 binary upgrades */
-		if (tuple->t_infomask & HEAP_MOVED_OFF)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (TransactionIdIsCurrentTransactionId(xvac))
-				return false;
-			if (!TransactionIdIsInProgress(xvac))
-			{
-				if (TransactionIdDidCommit(xvac))
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return false;
-				}
-				SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-							InvalidTransactionId);
-			}
-		}
-		/* Used by pre-9.0 binary upgrades */
-		else if (tuple->t_infomask & HEAP_MOVED_IN)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (!TransactionIdIsCurrentTransactionId(xvac))
-			{
-				if (TransactionIdIsInProgress(xvac))
-					return false;
-				if (TransactionIdDidCommit(xvac))
-					SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-								InvalidTransactionId);
-				else
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return false;
-				}
-			}
-		}
+		if (!HeapTupleCleanMoved(tuple, buffer))
+			return false;
 		else if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetRawXmin(tuple)))
 		{
 			if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid */
@@ -371,45 +462,8 @@ HeapTupleSatisfiesToast(HeapTuple htup, Snapshot snapshot,
 		if (HeapTupleHeaderXminInvalid(tuple))
 			return false;
 
-		/* Used by pre-9.0 binary upgrades */
-		if (tuple->t_infomask & HEAP_MOVED_OFF)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (TransactionIdIsCurrentTransactionId(xvac))
-				return false;
-			if (!TransactionIdIsInProgress(xvac))
-			{
-				if (TransactionIdDidCommit(xvac))
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return false;
-				}
-				SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-							InvalidTransactionId);
-			}
-		}
-		/* Used by pre-9.0 binary upgrades */
-		else if (tuple->t_infomask & HEAP_MOVED_IN)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (!TransactionIdIsCurrentTransactionId(xvac))
-			{
-				if (TransactionIdIsInProgress(xvac))
-					return false;
-				if (TransactionIdDidCommit(xvac))
-					SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-								InvalidTransactionId);
-				else
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return false;
-				}
-			}
-		}
+		if (!HeapTupleCleanMoved(tuple, buffer))
+			return false;
 
 		/*
 		 * An invalid Xmin can be left behind by a speculative insertion that
@@ -467,45 +521,8 @@ HeapTupleSatisfiesUpdate(HeapTuple htup, CommandId curcid,
 		if (HeapTupleHeaderXminInvalid(tuple))
 			return TM_Invisible;
 
-		/* Used by pre-9.0 binary upgrades */
-		if (tuple->t_infomask & HEAP_MOVED_OFF)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (TransactionIdIsCurrentTransactionId(xvac))
-				return TM_Invisible;
-			if (!TransactionIdIsInProgress(xvac))
-			{
-				if (TransactionIdDidCommit(xvac))
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return TM_Invisible;
-				}
-				SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-							InvalidTransactionId);
-			}
-		}
-		/* Used by pre-9.0 binary upgrades */
-		else if (tuple->t_infomask & HEAP_MOVED_IN)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (!TransactionIdIsCurrentTransactionId(xvac))
-			{
-				if (TransactionIdIsInProgress(xvac))
-					return TM_Invisible;
-				if (TransactionIdDidCommit(xvac))
-					SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-								InvalidTransactionId);
-				else
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return TM_Invisible;
-				}
-			}
-		}
+		else if (!HeapTupleCleanMoved(tuple, buffer))
+			return TM_Invisible;
 		else if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetRawXmin(tuple)))
 		{
 			if (HeapTupleHeaderGetCmin(tuple) >= curcid)
@@ -755,45 +772,8 @@ HeapTupleSatisfiesDirty(HeapTuple htup, Snapshot snapshot,
 		if (HeapTupleHeaderXminInvalid(tuple))
 			return false;
 
-		/* Used by pre-9.0 binary upgrades */
-		if (tuple->t_infomask & HEAP_MOVED_OFF)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (TransactionIdIsCurrentTransactionId(xvac))
-				return false;
-			if (!TransactionIdIsInProgress(xvac))
-			{
-				if (TransactionIdDidCommit(xvac))
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return false;
-				}
-				SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-							InvalidTransactionId);
-			}
-		}
-		/* Used by pre-9.0 binary upgrades */
-		else if (tuple->t_infomask & HEAP_MOVED_IN)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (!TransactionIdIsCurrentTransactionId(xvac))
-			{
-				if (TransactionIdIsInProgress(xvac))
-					return false;
-				if (TransactionIdDidCommit(xvac))
-					SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-								InvalidTransactionId);
-				else
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return false;
-				}
-			}
-		}
+		if (!HeapTupleCleanMoved(tuple, buffer))
+			return false;
 		else if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetRawXmin(tuple)))
 		{
 			if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid */
@@ -955,11 +935,20 @@ HeapTupleSatisfiesDirty(HeapTuple htup, Snapshot snapshot,
  * inserting/deleting transaction was still running --- which was more cycles
  * and more contention on ProcArrayLock.
  */
-static bool
+static inline bool
 HeapTupleSatisfiesMVCC(HeapTuple htup, Snapshot snapshot,
-					   Buffer buffer)
+					   Buffer buffer, SetHintBitsState *state)
 {
 	HeapTupleHeader tuple = htup->t_data;
+
+	/*
+	 * Assert that the caller has registered the snapshot.  This function
+	 * doesn't care about the registration as such, but in general you
+	 * shouldn't try to use a snapshot without registration because it might
+	 * get invalidated while it's still in use, and this is a convenient place
+	 * to check for that.
+	 */
+	Assert(snapshot->regd_count > 0 || snapshot->active_count > 0);
 
 	Assert(ItemPointerIsValid(&htup->t_self));
 	Assert(htup->t_tableOid != InvalidOid);
@@ -969,45 +958,8 @@ HeapTupleSatisfiesMVCC(HeapTuple htup, Snapshot snapshot,
 		if (HeapTupleHeaderXminInvalid(tuple))
 			return false;
 
-		/* Used by pre-9.0 binary upgrades */
-		if (tuple->t_infomask & HEAP_MOVED_OFF)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (TransactionIdIsCurrentTransactionId(xvac))
-				return false;
-			if (!XidInMVCCSnapshot(xvac, snapshot))
-			{
-				if (TransactionIdDidCommit(xvac))
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return false;
-				}
-				SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-							InvalidTransactionId);
-			}
-		}
-		/* Used by pre-9.0 binary upgrades */
-		else if (tuple->t_infomask & HEAP_MOVED_IN)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (!TransactionIdIsCurrentTransactionId(xvac))
-			{
-				if (XidInMVCCSnapshot(xvac, snapshot))
-					return false;
-				if (TransactionIdDidCommit(xvac))
-					SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-								InvalidTransactionId);
-				else
-				{
-					SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-								InvalidTransactionId);
-					return false;
-				}
-			}
-		}
+		if (!HeapTupleCleanMoved(tuple, buffer))
+			return false;
 		else if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetRawXmin(tuple)))
 		{
 			if (HeapTupleHeaderGetCmin(tuple) >= snapshot->curcid)
@@ -1040,8 +992,8 @@ HeapTupleSatisfiesMVCC(HeapTuple htup, Snapshot snapshot,
 			if (!TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetRawXmax(tuple)))
 			{
 				/* deleting subtransaction must have aborted */
-				SetHintBits(tuple, buffer, HEAP_XMAX_INVALID,
-							InvalidTransactionId);
+				SetHintBitsExt(tuple, buffer, HEAP_XMAX_INVALID,
+							   InvalidTransactionId, state);
 				return true;
 			}
 
@@ -1053,13 +1005,13 @@ HeapTupleSatisfiesMVCC(HeapTuple htup, Snapshot snapshot,
 		else if (XidInMVCCSnapshot(HeapTupleHeaderGetRawXmin(tuple), snapshot))
 			return false;
 		else if (TransactionIdDidCommit(HeapTupleHeaderGetRawXmin(tuple)))
-			SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-						HeapTupleHeaderGetRawXmin(tuple));
+			SetHintBitsExt(tuple, buffer, HEAP_XMIN_COMMITTED,
+						   HeapTupleHeaderGetRawXmin(tuple), state);
 		else
 		{
 			/* it must have aborted or crashed */
-			SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-						InvalidTransactionId);
+			SetHintBitsExt(tuple, buffer, HEAP_XMIN_INVALID,
+						   InvalidTransactionId, state);
 			return false;
 		}
 	}
@@ -1122,14 +1074,14 @@ HeapTupleSatisfiesMVCC(HeapTuple htup, Snapshot snapshot,
 		if (!TransactionIdDidCommit(HeapTupleHeaderGetRawXmax(tuple)))
 		{
 			/* it must have aborted or crashed */
-			SetHintBits(tuple, buffer, HEAP_XMAX_INVALID,
-						InvalidTransactionId);
+			SetHintBitsExt(tuple, buffer, HEAP_XMAX_INVALID,
+						   InvalidTransactionId, state);
 			return true;
 		}
 
 		/* xmax transaction committed */
-		SetHintBits(tuple, buffer, HEAP_XMAX_COMMITTED,
-					HeapTupleHeaderGetRawXmax(tuple));
+		SetHintBitsExt(tuple, buffer, HEAP_XMAX_COMMITTED,
+					   HeapTupleHeaderGetRawXmax(tuple), state);
 	}
 	else
 	{
@@ -1212,43 +1164,8 @@ HeapTupleSatisfiesVacuumHorizon(HeapTuple htup, Buffer buffer, TransactionId *de
 	{
 		if (HeapTupleHeaderXminInvalid(tuple))
 			return HEAPTUPLE_DEAD;
-		/* Used by pre-9.0 binary upgrades */
-		else if (tuple->t_infomask & HEAP_MOVED_OFF)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (TransactionIdIsCurrentTransactionId(xvac))
-				return HEAPTUPLE_DELETE_IN_PROGRESS;
-			if (TransactionIdIsInProgress(xvac))
-				return HEAPTUPLE_DELETE_IN_PROGRESS;
-			if (TransactionIdDidCommit(xvac))
-			{
-				SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-							InvalidTransactionId);
-				return HEAPTUPLE_DEAD;
-			}
-			SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-						InvalidTransactionId);
-		}
-		/* Used by pre-9.0 binary upgrades */
-		else if (tuple->t_infomask & HEAP_MOVED_IN)
-		{
-			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
-
-			if (TransactionIdIsCurrentTransactionId(xvac))
-				return HEAPTUPLE_INSERT_IN_PROGRESS;
-			if (TransactionIdIsInProgress(xvac))
-				return HEAPTUPLE_INSERT_IN_PROGRESS;
-			if (TransactionIdDidCommit(xvac))
-				SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
-							InvalidTransactionId);
-			else
-			{
-				SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
-							InvalidTransactionId);
-				return HEAPTUPLE_DEAD;
-			}
-		}
+		else if (!HeapTupleCleanMoved(tuple, buffer))
+			return HEAPTUPLE_DEAD;
 		else if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetRawXmin(tuple)))
 		{
 			if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid */
@@ -1437,7 +1354,7 @@ HeapTupleSatisfiesNonVacuumable(HeapTuple htup, Snapshot snapshot,
 	{
 		Assert(TransactionIdIsValid(dead_after));
 
-		if (GlobalVisTestIsRemovableXid(snapshot->vistest, dead_after))
+		if (GlobalVisTestIsRemovableXid(snapshot->vistest, dead_after, true))
 			res = HEAPTUPLE_DEAD;
 	}
 	else
@@ -1503,7 +1420,8 @@ HeapTupleIsSurelyDead(HeapTuple htup, GlobalVisState *vistest)
 
 	/* Deleter committed, so tuple is dead if the XID is old enough. */
 	return GlobalVisTestIsRemovableXid(vistest,
-									   HeapTupleHeaderGetRawXmax(tuple));
+									   HeapTupleHeaderGetRawXmax(tuple),
+									   true);
 }
 
 /*
@@ -1753,6 +1671,54 @@ HeapTupleSatisfiesHistoricMVCC(HeapTuple htup, Snapshot snapshot,
 }
 
 /*
+ * Perform HeaptupleSatisfiesMVCC() on each passed in tuple. This is more
+ * efficient than doing HeapTupleSatisfiesMVCC() one-by-one.
+ *
+ * To be checked tuples are passed via BatchMVCCState->tuples. Each tuple's
+ * visibility is stored in batchmvcc->visible[]. In addition,
+ * ->vistuples_dense is set to contain the offsets of visible tuples.
+ *
+ * The reason this is more efficient than HeapTupleSatisfiesMVCC() is that it
+ * avoids a cross-translation-unit function call for each tuple, allows the
+ * compiler to optimize across calls to HeapTupleSatisfiesMVCC and allows
+ * setting hint bits more efficiently (see the one BufferFinishSetHintBits()
+ * call below).
+ *
+ * Returns the number of visible tuples.
+ */
+int
+HeapTupleSatisfiesMVCCBatch(Snapshot snapshot, Buffer buffer,
+							int ntups,
+							BatchMVCCState *batchmvcc,
+							OffsetNumber *vistuples_dense)
+{
+	int			nvis = 0;
+	SetHintBitsState state = SHB_INITIAL;
+
+	Assert(IsMVCCSnapshot(snapshot));
+
+	for (int i = 0; i < ntups; i++)
+	{
+		bool		valid;
+		HeapTuple	tup = &batchmvcc->tuples[i];
+
+		valid = HeapTupleSatisfiesMVCC(tup, snapshot, buffer, &state);
+		batchmvcc->visible[i] = valid;
+
+		if (likely(valid))
+		{
+			vistuples_dense[nvis] = tup->t_self.ip_posid;
+			nvis++;
+		}
+	}
+
+	if (state == SHB_ENABLED)
+		BufferFinishSetHintBits(buffer, true, true);
+
+	return nvis;
+}
+
+/*
  * HeapTupleSatisfiesVisibility
  *		True iff heap tuple satisfies a time qual.
  *
@@ -1763,31 +1729,24 @@ HeapTupleSatisfiesHistoricMVCC(HeapTuple htup, Snapshot snapshot,
  *	if so, the indicated buffer is marked dirty.
  */
 bool
-HeapTupleSatisfiesVisibility(HeapTuple tup, Snapshot snapshot, Buffer buffer)
+HeapTupleSatisfiesVisibility(HeapTuple htup, Snapshot snapshot, Buffer buffer)
 {
 	switch (snapshot->snapshot_type)
 	{
 		case SNAPSHOT_MVCC:
-			return HeapTupleSatisfiesMVCC(tup, snapshot, buffer);
-			break;
+			return HeapTupleSatisfiesMVCC(htup, snapshot, buffer, NULL);
 		case SNAPSHOT_SELF:
-			return HeapTupleSatisfiesSelf(tup, snapshot, buffer);
-			break;
+			return HeapTupleSatisfiesSelf(htup, snapshot, buffer);
 		case SNAPSHOT_ANY:
-			return HeapTupleSatisfiesAny(tup, snapshot, buffer);
-			break;
+			return HeapTupleSatisfiesAny(htup, snapshot, buffer);
 		case SNAPSHOT_TOAST:
-			return HeapTupleSatisfiesToast(tup, snapshot, buffer);
-			break;
+			return HeapTupleSatisfiesToast(htup, snapshot, buffer);
 		case SNAPSHOT_DIRTY:
-			return HeapTupleSatisfiesDirty(tup, snapshot, buffer);
-			break;
+			return HeapTupleSatisfiesDirty(htup, snapshot, buffer);
 		case SNAPSHOT_HISTORIC_MVCC:
-			return HeapTupleSatisfiesHistoricMVCC(tup, snapshot, buffer);
-			break;
+			return HeapTupleSatisfiesHistoricMVCC(htup, snapshot, buffer);
 		case SNAPSHOT_NON_VACUUMABLE:
-			return HeapTupleSatisfiesNonVacuumable(tup, snapshot, buffer);
-			break;
+			return HeapTupleSatisfiesNonVacuumable(htup, snapshot, buffer);
 	}
 
 	return false;				/* keep compiler quiet */

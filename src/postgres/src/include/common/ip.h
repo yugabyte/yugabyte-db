@@ -5,7 +5,7 @@
  *
  * These definitions are used by both frontend and backend code.
  *
- * Copyright (c) 2003-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2026, PostgreSQL Global Development Group
  *
  * src/include/common/ip.h
  *
@@ -14,8 +14,10 @@
 #ifndef IP_H
 #define IP_H
 
-#include "getaddrinfo.h"		/* pgrminclude ignore */
-#include "libpq/pqcomm.h"		/* pgrminclude ignore */
+#include <netdb.h>
+#include <sys/socket.h>
+
+#include "libpq/pqcomm.h"
 
 
 extern int	pg_getaddrinfo_all(const char *hostname, const char *servname,

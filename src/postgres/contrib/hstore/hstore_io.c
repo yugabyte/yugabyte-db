@@ -12,6 +12,7 @@
 #include "hstore.h"
 #include "lib/stringinfo.h"
 #include "libpq/pqformat.h"
+#include "nodes/miscnodes.h"
 #include "parser/scansup.h"
 #include "utils/builtins.h"
 #include "utils/json.h"
@@ -20,7 +21,10 @@
 #include "utils/memutils.h"
 #include "utils/typcache.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "hstore",
+					.version = PG_VERSION
+);
 
 /* old names for C functions */
 HSTORE_POLLUTE(hstore_from_text, tconvert);
@@ -33,11 +37,16 @@ typedef struct
 	char	   *cur;
 	char	   *word;
 	int			wordlen;
+	Node	   *escontext;
 
 	Pairs	   *pairs;
 	int			pcur;
 	int			plen;
 } HSParser;
+
+static bool hstoreCheckKeyLength(size_t len, HSParser *state);
+static bool hstoreCheckValLength(size_t len, HSParser *state);
+
 
 #define RESIZEPRSBUF \
 do { \
@@ -49,6 +58,32 @@ do { \
 				state->cur = state->word + clen; \
 		} \
 } while (0)
+
+#define PRSSYNTAXERROR return prssyntaxerror(state)
+
+static bool
+prssyntaxerror(HSParser *state)
+{
+	errsave(state->escontext,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("syntax error in hstore, near \"%.*s\" at position %d",
+					pg_mblen_cstr(state->ptr), state->ptr,
+					(int) (state->ptr - state->begin))));
+	/* In soft error situation, return false as convenience for caller */
+	return false;
+}
+
+#define PRSEOF return prseof(state)
+
+static bool
+prseof(HSParser *state)
+{
+	errsave(state->escontext,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("syntax error in hstore: unexpected end of string")));
+	/* In soft error situation, return false as convenience for caller */
+	return false;
+}
 
 
 #define GV_WAITVAL 0
@@ -81,9 +116,7 @@ get_val(HSParser *state, bool ignoreeq, bool *escaped)
 			}
 			else if (*(state->ptr) == '=' && !ignoreeq)
 			{
-				elog(ERROR, "Syntax error near \"%.*s\" at position %d",
-					 pg_mblen(state->ptr), state->ptr,
-					 (int32) (state->ptr - state->begin));
+				PRSSYNTAXERROR;
 			}
 			else if (*(state->ptr) == '\\')
 			{
@@ -140,7 +173,7 @@ get_val(HSParser *state, bool ignoreeq, bool *escaped)
 			}
 			else if (*(state->ptr) == '\0')
 			{
-				elog(ERROR, "Unexpected end of string");
+				PRSEOF;
 			}
 			else
 			{
@@ -152,7 +185,7 @@ get_val(HSParser *state, bool ignoreeq, bool *escaped)
 		else if (st == GV_WAITESCIN)
 		{
 			if (*(state->ptr) == '\0')
-				elog(ERROR, "Unexpected end of string");
+				PRSEOF;
 			RESIZEPRSBUF;
 			*(state->cur) = *(state->ptr);
 			state->cur++;
@@ -161,14 +194,14 @@ get_val(HSParser *state, bool ignoreeq, bool *escaped)
 		else if (st == GV_WAITESCESCIN)
 		{
 			if (*(state->ptr) == '\0')
-				elog(ERROR, "Unexpected end of string");
+				PRSEOF;
 			RESIZEPRSBUF;
 			*(state->cur) = *(state->ptr);
 			state->cur++;
 			st = GV_INESCVAL;
 		}
 		else
-			elog(ERROR, "Unknown state %d at position line %d in file '%s'", st, __LINE__, __FILE__);
+			elog(ERROR, "unrecognized get_val state: %d", st);
 
 		state->ptr++;
 	}
@@ -181,14 +214,14 @@ get_val(HSParser *state, bool ignoreeq, bool *escaped)
 #define WDEL	4
 
 
-static void
+static bool
 parse_hstore(HSParser *state)
 {
 	int			st = WKEY;
 	bool		escaped = false;
 
 	state->plen = 16;
-	state->pairs = (Pairs *) palloc(sizeof(Pairs) * state->plen);
+	state->pairs = palloc_array(Pairs, state->plen);
 	state->pcur = 0;
 	state->ptr = state->begin;
 	state->word = NULL;
@@ -198,14 +231,20 @@ parse_hstore(HSParser *state)
 		if (st == WKEY)
 		{
 			if (!get_val(state, false, &escaped))
-				return;
+			{
+				if (SOFT_ERROR_OCCURRED(state->escontext))
+					return false;
+				return true;	/* EOF, all okay */
+			}
 			if (state->pcur >= state->plen)
 			{
 				state->plen *= 2;
 				state->pairs = (Pairs *) repalloc(state->pairs, sizeof(Pairs) * state->plen);
 			}
+			if (!hstoreCheckKeyLength(state->cur - state->word, state))
+				return false;
 			state->pairs[state->pcur].key = state->word;
-			state->pairs[state->pcur].keylen = hstoreCheckKeyLen(state->cur - state->word);
+			state->pairs[state->pcur].keylen = state->cur - state->word;
 			state->pairs[state->pcur].val = NULL;
 			state->word = NULL;
 			st = WEQ;
@@ -218,13 +257,11 @@ parse_hstore(HSParser *state)
 			}
 			else if (*(state->ptr) == '\0')
 			{
-				elog(ERROR, "Unexpected end of string");
+				PRSEOF;
 			}
 			else if (!scanner_isspace((unsigned char) *(state->ptr)))
 			{
-				elog(ERROR, "Syntax error near \"%.*s\" at position %d",
-					 pg_mblen(state->ptr), state->ptr,
-					 (int32) (state->ptr - state->begin));
+				PRSSYNTAXERROR;
 			}
 		}
 		else if (st == WGT)
@@ -235,27 +272,31 @@ parse_hstore(HSParser *state)
 			}
 			else if (*(state->ptr) == '\0')
 			{
-				elog(ERROR, "Unexpected end of string");
+				PRSEOF;
 			}
 			else
 			{
-				elog(ERROR, "Syntax error near \"%.*s\" at position %d",
-					 pg_mblen(state->ptr), state->ptr,
-					 (int32) (state->ptr - state->begin));
+				PRSSYNTAXERROR;
 			}
 		}
 		else if (st == WVAL)
 		{
 			if (!get_val(state, true, &escaped))
-				elog(ERROR, "Unexpected end of string");
+			{
+				if (SOFT_ERROR_OCCURRED(state->escontext))
+					return false;
+				PRSEOF;
+			}
+			if (!hstoreCheckValLength(state->cur - state->word, state))
+				return false;
 			state->pairs[state->pcur].val = state->word;
-			state->pairs[state->pcur].vallen = hstoreCheckValLen(state->cur - state->word);
+			state->pairs[state->pcur].vallen = state->cur - state->word;
 			state->pairs[state->pcur].isnull = false;
 			state->pairs[state->pcur].needfree = true;
 			if (state->cur - state->word == 4 && !escaped)
 			{
 				state->word[4] = '\0';
-				if (0 == pg_strcasecmp(state->word, "null"))
+				if (pg_strcasecmp(state->word, "null") == 0)
 					state->pairs[state->pcur].isnull = true;
 			}
 			state->word = NULL;
@@ -270,17 +311,15 @@ parse_hstore(HSParser *state)
 			}
 			else if (*(state->ptr) == '\0')
 			{
-				return;
+				return true;
 			}
 			else if (!scanner_isspace((unsigned char) *(state->ptr)))
 			{
-				elog(ERROR, "Syntax error near \"%.*s\" at position %d",
-					 pg_mblen(state->ptr), state->ptr,
-					 (int32) (state->ptr - state->begin));
+				PRSSYNTAXERROR;
 			}
 		}
 		else
-			elog(ERROR, "Unknown state %d at line %d in file '%s'", st, __LINE__, __FILE__);
+			elog(ERROR, "unrecognized parse_hstore state: %d", st);
 
 		state->ptr++;
 	}
@@ -330,7 +369,7 @@ hstoreUniquePairs(Pairs *a, int32 l, int32 *buflen)
 		return l;
 	}
 
-	qsort((void *) a, l, sizeof(Pairs), comparePairs);
+	qsort(a, l, sizeof(Pairs), comparePairs);
 
 	/*
 	 * We can't use qunique here because we have some clean-up code to run on
@@ -346,7 +385,8 @@ hstoreUniquePairs(Pairs *a, int32 l, int32 *buflen)
 			if (ptr->needfree)
 			{
 				pfree(ptr->key);
-				pfree(ptr->val);
+				if (ptr->val != NULL)
+					pfree(ptr->val);
 			}
 		}
 		else
@@ -374,6 +414,16 @@ hstoreCheckKeyLen(size_t len)
 	return len;
 }
 
+static bool
+hstoreCheckKeyLength(size_t len, HSParser *state)
+{
+	if (len > HSTORE_MAX_KEY_LEN)
+		ereturn(state->escontext, false,
+				(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+				 errmsg("string too long for hstore key")));
+	return true;
+}
+
 size_t
 hstoreCheckValLen(size_t len)
 {
@@ -382,6 +432,16 @@ hstoreCheckValLen(size_t len)
 				(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 				 errmsg("string too long for hstore value")));
 	return len;
+}
+
+static bool
+hstoreCheckValLength(size_t len, HSParser *state)
+{
+	if (len > HSTORE_MAX_VALUE_LEN)
+		ereturn(state->escontext, false,
+				(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+				 errmsg("string too long for hstore value")));
+	return true;
 }
 
 
@@ -419,13 +479,17 @@ PG_FUNCTION_INFO_V1(hstore_in);
 Datum
 hstore_in(PG_FUNCTION_ARGS)
 {
+	char	   *str = PG_GETARG_CSTRING(0);
+	Node	   *escontext = fcinfo->context;
 	HSParser	state;
 	int32		buflen;
 	HStore	   *out;
 
-	state.begin = PG_GETARG_CSTRING(0);
+	state.begin = str;
+	state.escontext = escontext;
 
-	parse_hstore(&state);
+	if (!parse_hstore(&state))
+		PG_RETURN_NULL();
 
 	state.pcur = hstoreUniquePairs(state.pairs, state.pcur, &buflen);
 
@@ -568,9 +632,7 @@ hstore_from_arrays(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
 				 errmsg("wrong number of array subscripts")));
 
-	deconstruct_array(key_array,
-					  TEXTOID, -1, false, TYPALIGN_INT,
-					  &key_datums, &key_nulls, &key_count);
+	deconstruct_array_builtin(key_array, TEXTOID, &key_datums, &key_nulls, &key_count);
 
 	/* see discussion in hstoreArrayToPairs() */
 	if (key_count > MaxAllocSize / sizeof(Pairs))
@@ -607,9 +669,7 @@ hstore_from_arrays(PG_FUNCTION_ARGS)
 					(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
 					 errmsg("arrays must have same bounds")));
 
-		deconstruct_array(value_array,
-						  TEXTOID, -1, false, TYPALIGN_INT,
-						  &value_datums, &value_nulls, &value_count);
+		deconstruct_array_builtin(value_array, TEXTOID, &value_datums, &value_nulls, &value_count);
 
 		Assert(key_count == value_count);
 	}
@@ -625,22 +685,22 @@ hstore_from_arrays(PG_FUNCTION_ARGS)
 
 		if (!value_nulls || value_nulls[i])
 		{
-			pairs[i].key = VARDATA(key_datums[i]);
+			pairs[i].key = VARDATA(DatumGetPointer(key_datums[i]));
 			pairs[i].val = NULL;
 			pairs[i].keylen =
-				hstoreCheckKeyLen(VARSIZE(key_datums[i]) - VARHDRSZ);
+				hstoreCheckKeyLen(VARSIZE(DatumGetPointer(key_datums[i])) - VARHDRSZ);
 			pairs[i].vallen = 4;
 			pairs[i].isnull = true;
 			pairs[i].needfree = false;
 		}
 		else
 		{
-			pairs[i].key = VARDATA(key_datums[i]);
-			pairs[i].val = VARDATA(value_datums[i]);
+			pairs[i].key = VARDATA(DatumGetPointer(key_datums[i]));
+			pairs[i].val = VARDATA(DatumGetPointer(value_datums[i]));
 			pairs[i].keylen =
-				hstoreCheckKeyLen(VARSIZE(key_datums[i]) - VARHDRSZ);
+				hstoreCheckKeyLen(VARSIZE(DatumGetPointer(key_datums[i])) - VARHDRSZ);
 			pairs[i].vallen =
-				hstoreCheckValLen(VARSIZE(value_datums[i]) - VARHDRSZ);
+				hstoreCheckValLen(VARSIZE(DatumGetPointer(value_datums[i])) - VARHDRSZ);
 			pairs[i].isnull = false;
 			pairs[i].needfree = false;
 		}
@@ -697,9 +757,7 @@ hstore_from_array(PG_FUNCTION_ARGS)
 					 errmsg("wrong number of array subscripts")));
 	}
 
-	deconstruct_array(in_array,
-					  TEXTOID, -1, false, TYPALIGN_INT,
-					  &in_datums, &in_nulls, &in_count);
+	deconstruct_array_builtin(in_array, TEXTOID, &in_datums, &in_nulls, &in_count);
 
 	count = in_count / 2;
 
@@ -721,22 +779,22 @@ hstore_from_array(PG_FUNCTION_ARGS)
 
 		if (in_nulls[i * 2 + 1])
 		{
-			pairs[i].key = VARDATA(in_datums[i * 2]);
+			pairs[i].key = VARDATA(DatumGetPointer(in_datums[i * 2]));
 			pairs[i].val = NULL;
 			pairs[i].keylen =
-				hstoreCheckKeyLen(VARSIZE(in_datums[i * 2]) - VARHDRSZ);
+				hstoreCheckKeyLen(VARSIZE(DatumGetPointer(in_datums[i * 2])) - VARHDRSZ);
 			pairs[i].vallen = 4;
 			pairs[i].isnull = true;
 			pairs[i].needfree = false;
 		}
 		else
 		{
-			pairs[i].key = VARDATA(in_datums[i * 2]);
-			pairs[i].val = VARDATA(in_datums[i * 2 + 1]);
+			pairs[i].key = VARDATA(DatumGetPointer(in_datums[i * 2]));
+			pairs[i].val = VARDATA(DatumGetPointer(in_datums[i * 2 + 1]));
 			pairs[i].keylen =
-				hstoreCheckKeyLen(VARSIZE(in_datums[i * 2]) - VARHDRSZ);
+				hstoreCheckKeyLen(VARSIZE(DatumGetPointer(in_datums[i * 2])) - VARHDRSZ);
 			pairs[i].vallen =
-				hstoreCheckValLen(VARSIZE(in_datums[i * 2 + 1]) - VARHDRSZ);
+				hstoreCheckValLen(VARSIZE(DatumGetPointer(in_datums[i * 2 + 1])) - VARHDRSZ);
 			pairs[i].isnull = false;
 			pairs[i].needfree = false;
 		}
@@ -1289,23 +1347,20 @@ hstore_to_json_loose(PG_FUNCTION_ARGS)
 	int			count = HS_COUNT(in);
 	char	   *base = STRPTR(in);
 	HEntry	   *entries = ARRPTR(in);
-	StringInfoData tmp,
-				dst;
+	StringInfoData dst;
 
 	if (count == 0)
 		PG_RETURN_TEXT_P(cstring_to_text_with_len("{}", 2));
 
-	initStringInfo(&tmp);
 	initStringInfo(&dst);
 
 	appendStringInfoChar(&dst, '{');
 
 	for (i = 0; i < count; i++)
 	{
-		resetStringInfo(&tmp);
-		appendBinaryStringInfo(&tmp, HSTORE_KEY(entries, base, i),
-							   HSTORE_KEYLEN(entries, i));
-		escape_json(&dst, tmp.data);
+		escape_json_with_len(&dst,
+							 HSTORE_KEY(entries, base, i),
+							 HSTORE_KEYLEN(entries, i));
 		appendStringInfoString(&dst, ": ");
 		if (HSTORE_VALISNULL(entries, i))
 			appendStringInfoString(&dst, "null");
@@ -1318,13 +1373,13 @@ hstore_to_json_loose(PG_FUNCTION_ARGS)
 			appendStringInfoString(&dst, "false");
 		else
 		{
-			resetStringInfo(&tmp);
-			appendBinaryStringInfo(&tmp, HSTORE_VAL(entries, base, i),
-								   HSTORE_VALLEN(entries, i));
-			if (IsValidJsonNumber(tmp.data, tmp.len))
-				appendBinaryStringInfo(&dst, tmp.data, tmp.len);
+			char	   *str = HSTORE_VAL(entries, base, i);
+			int			len = HSTORE_VALLEN(entries, i);
+
+			if (IsValidJsonNumber(str, len))
+				appendBinaryStringInfo(&dst, str, len);
 			else
-				escape_json(&dst, tmp.data);
+				escape_json_with_len(&dst, str, len);
 		}
 
 		if (i + 1 != count)
@@ -1332,7 +1387,7 @@ hstore_to_json_loose(PG_FUNCTION_ARGS)
 	}
 	appendStringInfoChar(&dst, '}');
 
-	PG_RETURN_TEXT_P(cstring_to_text(dst.data));
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(dst.data, dst.len));
 }
 
 PG_FUNCTION_INFO_V1(hstore_to_json);
@@ -1344,32 +1399,28 @@ hstore_to_json(PG_FUNCTION_ARGS)
 	int			count = HS_COUNT(in);
 	char	   *base = STRPTR(in);
 	HEntry	   *entries = ARRPTR(in);
-	StringInfoData tmp,
-				dst;
+	StringInfoData dst;
 
 	if (count == 0)
 		PG_RETURN_TEXT_P(cstring_to_text_with_len("{}", 2));
 
-	initStringInfo(&tmp);
 	initStringInfo(&dst);
 
 	appendStringInfoChar(&dst, '{');
 
 	for (i = 0; i < count; i++)
 	{
-		resetStringInfo(&tmp);
-		appendBinaryStringInfo(&tmp, HSTORE_KEY(entries, base, i),
-							   HSTORE_KEYLEN(entries, i));
-		escape_json(&dst, tmp.data);
+		escape_json_with_len(&dst,
+							 HSTORE_KEY(entries, base, i),
+							 HSTORE_KEYLEN(entries, i));
 		appendStringInfoString(&dst, ": ");
 		if (HSTORE_VALISNULL(entries, i))
 			appendStringInfoString(&dst, "null");
 		else
 		{
-			resetStringInfo(&tmp);
-			appendBinaryStringInfo(&tmp, HSTORE_VAL(entries, base, i),
-								   HSTORE_VALLEN(entries, i));
-			escape_json(&dst, tmp.data);
+			escape_json_with_len(&dst,
+								 HSTORE_VAL(entries, base, i),
+								 HSTORE_VALLEN(entries, i));
 		}
 
 		if (i + 1 != count)
@@ -1377,7 +1428,7 @@ hstore_to_json(PG_FUNCTION_ARGS)
 	}
 	appendStringInfoChar(&dst, '}');
 
-	PG_RETURN_TEXT_P(cstring_to_text(dst.data));
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(dst.data, dst.len));
 }
 
 PG_FUNCTION_INFO_V1(hstore_to_jsonb);
@@ -1389,10 +1440,9 @@ hstore_to_jsonb(PG_FUNCTION_ARGS)
 	int			count = HS_COUNT(in);
 	char	   *base = STRPTR(in);
 	HEntry	   *entries = ARRPTR(in);
-	JsonbParseState *state = NULL;
-	JsonbValue *res;
+	JsonbInState state = {0};
 
-	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 
 	for (i = 0; i < count; i++)
 	{
@@ -1403,7 +1453,7 @@ hstore_to_jsonb(PG_FUNCTION_ARGS)
 		key.val.string.len = HSTORE_KEYLEN(entries, i);
 		key.val.string.val = HSTORE_KEY(entries, base, i);
 
-		(void) pushJsonbValue(&state, WJB_KEY, &key);
+		pushJsonbValue(&state, WJB_KEY, &key);
 
 		if (HSTORE_VALISNULL(entries, i))
 		{
@@ -1415,12 +1465,12 @@ hstore_to_jsonb(PG_FUNCTION_ARGS)
 			val.val.string.len = HSTORE_VALLEN(entries, i);
 			val.val.string.val = HSTORE_VAL(entries, base, i);
 		}
-		(void) pushJsonbValue(&state, WJB_VALUE, &val);
+		pushJsonbValue(&state, WJB_VALUE, &val);
 	}
 
-	res = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 
-	PG_RETURN_POINTER(JsonbValueToJsonb(res));
+	PG_RETURN_POINTER(JsonbValueToJsonb(state.result));
 }
 
 PG_FUNCTION_INFO_V1(hstore_to_jsonb_loose);
@@ -1432,13 +1482,12 @@ hstore_to_jsonb_loose(PG_FUNCTION_ARGS)
 	int			count = HS_COUNT(in);
 	char	   *base = STRPTR(in);
 	HEntry	   *entries = ARRPTR(in);
-	JsonbParseState *state = NULL;
-	JsonbValue *res;
+	JsonbInState state = {0};
 	StringInfoData tmp;
 
 	initStringInfo(&tmp);
 
-	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 
 	for (i = 0; i < count; i++)
 	{
@@ -1449,7 +1498,7 @@ hstore_to_jsonb_loose(PG_FUNCTION_ARGS)
 		key.val.string.len = HSTORE_KEYLEN(entries, i);
 		key.val.string.val = HSTORE_KEY(entries, base, i);
 
-		(void) pushJsonbValue(&state, WJB_KEY, &key);
+		pushJsonbValue(&state, WJB_KEY, &key);
 
 		if (HSTORE_VALISNULL(entries, i))
 		{
@@ -1491,10 +1540,10 @@ hstore_to_jsonb_loose(PG_FUNCTION_ARGS)
 				val.val.string.val = HSTORE_VAL(entries, base, i);
 			}
 		}
-		(void) pushJsonbValue(&state, WJB_VALUE, &val);
+		pushJsonbValue(&state, WJB_VALUE, &val);
 	}
 
-	res = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 
-	PG_RETURN_POINTER(JsonbValueToJsonb(res));
+	PG_RETURN_POINTER(JsonbValueToJsonb(state.result));
 }

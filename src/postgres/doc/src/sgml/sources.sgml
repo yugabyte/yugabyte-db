@@ -105,7 +105,8 @@ less -x4
 
    <para>
     There are two required elements for every message: a severity level
-    (ranging from <literal>DEBUG</literal> to <literal>PANIC</literal>) and a primary
+    (ranging from <literal>DEBUG</literal> to <literal>PANIC</literal>, defined
+    in <filename>src/include/utils/elog.h</filename>) and a primary
     message text.  In addition there are optional elements, the most
     common of which is an error identifier code that follows the SQL spec's
     SQLSTATE conventions.
@@ -152,11 +153,12 @@ ereport(ERROR,
         errmsg("function %s is not unique",
                func_signature_string(funcname, nargs,
                                      NIL, actual_arg_types)),
-        errhint("Unable to choose a best candidate function. "
-                "You might need to add explicit typecasts."));
+        errdetail("Could not choose a best candidate function."),
+        errhint("You might need to add explicit type casts."));
 </programlisting>
     This illustrates the use of format codes to embed run-time values into
-    a message text.  Also, an optional <quote>hint</quote> message is provided.
+    a message text.  Also, optional <quote>detail</quote>
+    and <quote>hint</quote> messages are provided.
     The auxiliary function calls can be written in any order, but
     conventionally <function>errcode</function>
     and <function>errmsg</function> appear first.
@@ -445,7 +447,7 @@ ereport(level, errmsg_internal("format string", ...));
     <productname>PostgreSQL</productname>.
    </para>
 
-  <simplesect>
+  <simplesect id="error-style-guide-what-goes-where">
    <title>What Goes Where</title>
 
    <para>
@@ -470,7 +472,7 @@ IpcMemoryCreate: shmget(key=%d, size=%u, 0%o) failed: %m
 <programlisting>
 Primary:    could not create shared memory segment: %m
 Detail:     Failed syscall was shmget(key=%d, size=%u, 0%o).
-Hint:       the addendum
+Hint:       The addendum, written as a complete sentence.
 </programlisting>
    </para>
 
@@ -486,7 +488,7 @@ Hint:       the addendum
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-formatting">
    <title>Formatting</title>
 
    <para>
@@ -507,7 +509,7 @@ Hint:       the addendum
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-quotation-marks">
    <title>Quotation Marks</title>
 
    <para>
@@ -528,13 +530,14 @@ Hint:       the addendum
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-quotes">
    <title>Use of Quotes</title>
 
    <para>
-    Always use quotes to delimit file names, user-supplied identifiers, and
-    other variables that might contain words.  Do not use them to mark up
-    variables that will not contain words (for example, operator names).
+    Always use quotes to delimit file names, user-supplied identifiers,
+    configuration variable names, and other variables that might contain
+    words.  Do not use them to mark up variables that will not contain words
+    (for example, operator names).
    </para>
 
    <para>
@@ -552,7 +555,7 @@ Hint:       the addendum
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-grammar-punctuation">
    <title>Grammar and Punctuation</title>
 
    <para>
@@ -591,7 +594,7 @@ Hint:       the addendum
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-case">
    <title>Upper Case vs. Lower Case</title>
 
    <para>
@@ -607,7 +610,7 @@ Hint:       the addendum
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-passive-voice">
    <title>Avoid Passive Voice</title>
 
    <para>
@@ -623,7 +626,7 @@ Hint:       the addendum
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-tense">
    <title>Present vs. Past Tense</title>
 
    <para>
@@ -663,7 +666,7 @@ cannot open file "%s"
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-object-type">
    <title>Type of the Object</title>
 
    <para>
@@ -677,7 +680,7 @@ cannot open file "%s"
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-brackets">
    <title>Brackets</title>
 
    <para>
@@ -692,7 +695,7 @@ cannot open file "%s"
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-error-messages">
    <title>Assembling Error Messages</title>
 
    <para>
@@ -713,7 +716,7 @@ could not open file %s: %m
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-error-reasons">
    <title>Reasons for Errors</title>
 
    <para>
@@ -728,7 +731,7 @@ BETTER: could not open file %s (I/O failure)
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-function-names">
    <title>Function Names</title>
 
    <para>
@@ -760,7 +763,7 @@ BETTER: could not open file %s: %m
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-tricky-words">
    <title>Tricky Words to Avoid</title>
 
   <formalpara>
@@ -846,7 +849,7 @@ BETTER: unrecognized node type: 42
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-spelling">
    <title>Proper Spelling</title>
 
    <para>
@@ -886,7 +889,7 @@ BETTER: unrecognized node type: 42
 
   </simplesect>
 
-  <simplesect>
+  <simplesect id="error-style-guide-localization">
    <title>Localization</title>
 
    <para>
@@ -901,16 +904,16 @@ BETTER: unrecognized node type: 42
   <sect1 id="source-conventions">
    <title>Miscellaneous Coding Conventions</title>
 
-   <simplesect>
+   <simplesect id="source-conventions-c-standard">
     <title>C Standard</title>
     <para>
      Code in <productname>PostgreSQL</productname> should only rely on language
-     features available in the C99 standard. That means a conforming
-     C99 compiler has to be able to compile postgres, at least aside
+     features available in the C11 standard. That means a conforming
+     C11 compiler has to be able to compile postgres, at least aside
      from a few platform dependent pieces.
     </para>
     <para>
-     A few features included in the C99 standard are, at this time, not
+     A few features included in the C11 standard are, at this time, not
      permitted to be used in core <productname>PostgreSQL</productname>
      code. This currently includes variable length arrays, intermingled
      declarations and code, <literal>//</literal> comments, universal
@@ -922,17 +925,15 @@ BETTER: unrecognized node type: 42
      features can be used, if a fallback is provided.
     </para>
     <para>
-     For example <literal>_Static_assert()</literal> and
+     For example <literal>typeof()</literal> and
      <literal>__builtin_constant_p</literal> are currently used, even though
      they are from newer revisions of the C standard and a
      <productname>GCC</productname> extension respectively. If not available
-     we respectively fall back to using a C99 compatible replacement that
-     performs the same checks, but emits rather cryptic messages and do not
-     use <literal>__builtin_constant_p</literal>.
+     we do not use them.
     </para>
    </simplesect>
 
-   <simplesect>
+   <simplesect id="source-conventions-macros-inline">
     <title>Function-Like Macros and Inline Functions</title>
     <para>
      Both macros with arguments and <literal>static inline</literal>
@@ -971,7 +972,7 @@ MemoryContextSwitchTo(MemoryContext context)
     </para>
    </simplesect>
 
-   <simplesect>
+   <simplesect id="source-conventions-signal-handlers">
     <title>Writing Signal Handlers</title>
     <para>
      To be suitable to run inside a signal handler code has to be
@@ -998,22 +999,14 @@ MemoryContextSwitchTo(MemoryContext context)
 static void
 handle_sighup(SIGNAL_ARGS)
 {
-    int         save_errno = errno;
-
     got_SIGHUP = true;
     SetLatch(MyLatch);
-
-    errno = save_errno;
 }
 </programlisting>
-     <varname>errno</varname> is saved and restored because
-     <function>SetLatch()</function> might change it. If that were not done
-     interrupted code that's currently inspecting <varname>errno</varname> might see the wrong
-     value.
     </para>
    </simplesect>
 
-   <simplesect>
+   <simplesect id="source-conventions-function-pointers">
     <title>Calling Function Pointers</title>
 
     <para>

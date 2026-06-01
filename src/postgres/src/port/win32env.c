@@ -6,7 +6,7 @@
  * These functions update both the process environment and caches in
  * (potentially multiple) C run-time library (CRT) versions.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -151,6 +151,13 @@ pgwin32_unsetenv(const char *name)
 {
 	int			res;
 	char	   *envbuf;
+
+	/* Error conditions, per POSIX */
+	if (name == NULL || name[0] == '\0' || strchr(name, '=') != NULL)
+	{
+		errno = EINVAL;
+		return -1;
+	}
 
 	envbuf = (char *) malloc(strlen(name) + 2);
 	if (!envbuf)

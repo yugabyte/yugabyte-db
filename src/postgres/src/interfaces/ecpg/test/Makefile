@@ -10,12 +10,10 @@ include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := \
 	'-I$(top_builddir)/src/port' \
 	'-I$(top_srcdir)/src/test/regress' \
+	'-I$(libpq_srcdir)' \
 	'-DHOST_TUPLE="$(host_tuple)"' \
 	'-DSHELLPROG="$(SHELL)"' \
 	$(CPPFLAGS)
-
-# default encoding for regression tests
-ENCODING = SQL_ASCII
 
 ifneq ($(build_os),mingw32)
 abs_builddir := $(shell pwd)
@@ -23,7 +21,7 @@ else
 abs_builddir := $(shell sh -c "pwd -W")
 endif
 
-all install installdirs uninstall distprep:
+all install installdirs uninstall:
 	$(MAKE) -C connect $@
 	$(MAKE) -C sql $@
 	$(MAKE) -C pgtypeslib $@
@@ -32,7 +30,7 @@ all install installdirs uninstall distprep:
 	$(MAKE) -C compat_oracle $@
 	$(MAKE) -C thread $@
 
-clean distclean maintainer-clean:
+clean distclean:
 	$(MAKE) -C connect $@
 	$(MAKE) -C sql $@
 	$(MAKE) -C pgtypeslib $@
@@ -48,7 +46,7 @@ clean distclean maintainer-clean:
 all: pg_regress$(X)
 
 pg_regress$(X): pg_regress_ecpg.o $(WIN32RES) $(top_builddir)/src/test/regress/pg_regress.o
-	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@
+	$(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@
 
 $(top_builddir)/src/test/regress/pg_regress.o:
 	$(MAKE) -C $(dir $@) $(notdir $@)
@@ -59,24 +57,16 @@ pg_regress_ecpg.o: pg_regress_ecpg.c $(top_builddir)/src/port/pg_config_paths.h
 $(top_builddir)/src/port/pg_config_paths.h: $(top_builddir)/src/Makefile.global
 	$(MAKE) -C $(top_builddir)/src/port pg_config_paths.h
 
-# When doing a VPATH build, copy over the .pgc, .stdout and .stderr
-# files so that the driver script can find them.  We have to use an
-# absolute path for the targets, because otherwise make will try to
-# locate the missing files using VPATH, and will find them in
-# $(srcdir), but the point here is that we want to copy them from
-# $(srcdir) to the build directory.
-
-ifdef VPATH
-remaining_files_src := $(wildcard $(srcdir)/*/*.pgc) $(wildcard $(srcdir)/expected/*.c) $(wildcard $(srcdir)/expected/*.stdout) $(wildcard $(srcdir)/expected/*.stderr)
-remaining_files_build := $(patsubst $(srcdir)/%, $(abs_builddir)/%, $(remaining_files_src))
-
-all: $(remaining_files_build)
-$(remaining_files_build): $(abs_builddir)/%: $(srcdir)/%
-	ln -s $< $@
-endif
-
-# Common options for tests. Also pick up anything passed in EXTRA_REGRESS_OPTS
-REGRESS_OPTS = --dbname=ecpg1_regression,ecpg2_regression --create-role=regress_ecpg_user1,regress_ecpg_user2 $(EXTRA_REGRESS_OPTS)
+# Common options for tests
+#
+# Need to specify expecteddir explicitly, as the inputdir is located in the
+# build directory, because the files need to be compiled. Other pg_regress
+# style tests have the expecteddir in the source directory.
+#
+# Also pick up anything passed in EXTRA_REGRESS_OPTS.
+REGRESS_OPTS =  --expecteddir=$(srcdir) \
+  --dbname=ecpg1_regression,ecpg2_regression --create-role=regress_ecpg_user1,regress_ecpg_user2 \
+  $(EXTRA_REGRESS_OPTS)
 
 check: all
 	$(with_temp_install) ./pg_regress $(REGRESS_OPTS) --temp-instance=./tmp_check $(TEMP_CONF) --bindir= $(pg_regress_locale_flags) $(THREAD) --schedule=$(srcdir)/ecpg_schedule sql/twophase

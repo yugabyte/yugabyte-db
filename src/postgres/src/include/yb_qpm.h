@@ -27,6 +27,7 @@
 #include "postgres.h"
 
 #include "commands/explain.h"
+#include "commands/explain_state.h"
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 

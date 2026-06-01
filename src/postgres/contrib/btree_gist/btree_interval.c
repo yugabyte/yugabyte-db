@@ -5,7 +5,9 @@
 
 #include "btree_gist.h"
 #include "btree_utils_num.h"
-#include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
+#include "utils/rel.h"
+#include "utils/sortsupport.h"
 #include "utils/timestamp.h"
 
 typedef struct
@@ -14,10 +16,7 @@ typedef struct
 				upper;
 } intvKEY;
 
-
-/*
-** Interval ops
-*/
+/* GiST support functions */
 PG_FUNCTION_INFO_V1(gbt_intv_compress);
 PG_FUNCTION_INFO_V1(gbt_intv_fetch);
 PG_FUNCTION_INFO_V1(gbt_intv_decompress);
@@ -27,6 +26,7 @@ PG_FUNCTION_INFO_V1(gbt_intv_consistent);
 PG_FUNCTION_INFO_V1(gbt_intv_distance);
 PG_FUNCTION_INFO_V1(gbt_intv_penalty);
 PG_FUNCTION_INFO_V1(gbt_intv_same);
+PG_FUNCTION_INFO_V1(gbt_intv_sortsupport);
 
 
 static bool
@@ -83,7 +83,7 @@ intr2num(const Interval *i)
 static float8
 gbt_intv_dist(const void *a, const void *b, FmgrInfo *flinfo)
 {
-	return (float8) Abs(intr2num((const Interval *) a) - intr2num((const Interval *) b));
+	return fabs(intr2num((const Interval *) a) - intr2num((const Interval *) b));
 }
 
 /*
@@ -113,7 +113,7 @@ static const gbtree_ninfo tinfo =
 Interval *
 abs_interval(Interval *a)
 {
-	static Interval zero = {0, 0, 0};
+	static const Interval zero = {0, 0, 0};
 
 	if (DatumGetBool(DirectFunctionCall2(interval_lt,
 										 IntervalPGetDatum(a),
@@ -137,9 +137,8 @@ interval_dist(PG_FUNCTION_ARGS)
 
 
 /**************************************************
- * interval ops
+ * GiST support functions
  **************************************************/
-
 
 Datum
 gbt_intv_compress(PG_FUNCTION_ARGS)
@@ -151,14 +150,14 @@ gbt_intv_compress(PG_FUNCTION_ARGS)
 	{
 		char	   *r = (char *) palloc(2 * INTERVALSIZE);
 
-		retval = palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 
 		if (entry->leafkey)
 		{
 			Interval   *key = DatumGetIntervalP(entry->key);
 
-			memcpy((void *) r, (void *) key, INTERVALSIZE);
-			memcpy((void *) (r + INTERVALSIZE), (void *) key, INTERVALSIZE);
+			memcpy(r, key, INTERVALSIZE);
+			memcpy(r + INTERVALSIZE, key, INTERVALSIZE);
 		}
 		else
 		{
@@ -191,10 +190,10 @@ gbt_intv_decompress(PG_FUNCTION_ARGS)
 
 	if (INTERVALSIZE != sizeof(Interval))
 	{
-		intvKEY    *r = palloc(sizeof(intvKEY));
+		intvKEY    *r = palloc_object(intvKEY);
 		char	   *key = DatumGetPointer(entry->key);
 
-		retval = palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		memcpy(&r->lower, key, INTERVALSIZE);
 		memcpy(&r->upper, key + INTERVALSIZE, INTERVALSIZE);
 
@@ -212,8 +211,9 @@ gbt_intv_consistent(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	Interval   *query = PG_GETARG_INTERVAL_P(1);
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	bool	   *recheck = (bool *) PG_GETARG_POINTER(4);
 	intvKEY    *kkk = (intvKEY *) DatumGetPointer(entry->key);
 	GBT_NUMKEY_R key;
@@ -224,7 +224,7 @@ gbt_intv_consistent(PG_FUNCTION_ARGS)
 	key.lower = (GBT_NUMKEY *) &kkk->lower;
 	key.upper = (GBT_NUMKEY *) &kkk->upper;
 
-	PG_RETURN_BOOL(gbt_num_consistent(&key, (void *) query, &strategy,
+	PG_RETURN_BOOL(gbt_num_consistent(&key, query, &strategy,
 									  GIST_LEAF(entry), &tinfo, fcinfo->flinfo));
 }
 
@@ -234,15 +234,16 @@ gbt_intv_distance(PG_FUNCTION_ARGS)
 {
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	Interval   *query = PG_GETARG_INTERVAL_P(1);
-
-	/* Oid		subtype = PG_GETARG_OID(3); */
+#ifdef NOT_USED
+	Oid			subtype = PG_GETARG_OID(3);
+#endif
 	intvKEY    *kkk = (intvKEY *) DatumGetPointer(entry->key);
 	GBT_NUMKEY_R key;
 
 	key.lower = (GBT_NUMKEY *) &kkk->lower;
 	key.upper = (GBT_NUMKEY *) &kkk->upper;
 
-	PG_RETURN_FLOAT8(gbt_num_distance(&key, (void *) query, GIST_LEAF(entry),
+	PG_RETURN_FLOAT8(gbt_num_distance(&key, query, GIST_LEAF(entry),
 									  &tinfo, fcinfo->flinfo));
 }
 
@@ -254,7 +255,7 @@ gbt_intv_union(PG_FUNCTION_ARGS)
 	void	   *out = palloc(sizeof(intvKEY));
 
 	*(int *) PG_GETARG_POINTER(1) = sizeof(intvKEY);
-	PG_RETURN_POINTER(gbt_num_union((void *) out, entryvec, &tinfo, fcinfo->flinfo));
+	PG_RETURN_POINTER(gbt_num_union(out, entryvec, &tinfo, fcinfo->flinfo));
 }
 
 
@@ -294,4 +295,27 @@ gbt_intv_same(PG_FUNCTION_ARGS)
 
 	*result = gbt_num_same((void *) b1, (void *) b2, &tinfo, fcinfo->flinfo);
 	PG_RETURN_POINTER(result);
+}
+
+static int
+gbt_intv_ssup_cmp(Datum x, Datum y, SortSupport ssup)
+{
+	intvKEY    *arg1 = (intvKEY *) DatumGetPointer(x);
+	intvKEY    *arg2 = (intvKEY *) DatumGetPointer(y);
+
+	/* for leaf items we expect lower == upper, so only compare lower */
+	return DatumGetInt32(DirectFunctionCall2(interval_cmp,
+											 IntervalPGetDatum(&arg1->lower),
+											 IntervalPGetDatum(&arg2->lower)));
+}
+
+Datum
+gbt_intv_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	ssup->comparator = gbt_intv_ssup_cmp;
+	ssup->ssup_extra = NULL;
+
+	PG_RETURN_VOID();
 }

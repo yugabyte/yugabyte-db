@@ -344,6 +344,32 @@ WHERE proallargtypes IS NOT NULL AND
         FROM generate_series(1, array_length(proallargtypes, 1)) g(i)
         WHERE proargmodes IS NULL OR proargmodes[i] IN ('i', 'b', 'v'));
 
+-- Check for type of the variadic array parameter's elements.
+-- provariadic should be ANYOID if the type of the last element is ANYOID,
+-- ANYELEMENTOID if the type of the last element is ANYARRAYOID,
+-- ANYCOMPATIBLEOID if the type of the last element is ANYCOMPATIBLEARRAYOID,
+-- and otherwise the element type corresponding to the array type.
+
+SELECT oid::regprocedure, provariadic::regtype, proargtypes::regtype[]
+FROM pg_proc
+WHERE provariadic != 0
+AND case proargtypes[array_length(proargtypes, 1)-1]
+	WHEN '"any"'::regtype THEN '"any"'::regtype
+	WHEN 'anyarray'::regtype THEN 'anyelement'::regtype
+	WHEN 'anycompatiblearray'::regtype THEN 'anycompatible'::regtype
+	ELSE (SELECT t.oid
+		  FROM pg_type t
+		  WHERE t.typarray = proargtypes[array_length(proargtypes, 1)-1])
+	END  != provariadic;
+
+-- Check that all and only those functions with a variadic type have
+-- a variadic argument.
+SELECT oid::regprocedure, proargmodes, provariadic
+FROM pg_proc
+WHERE (proargmodes IS NOT NULL AND 'v' = any(proargmodes))
+    IS DISTINCT FROM
+    (provariadic != 0);
+
 -- Check for prosupport functions with the wrong signature
 SELECT p1.oid, p1.proname, p2.oid, p2.proname
 FROM pg_proc AS p1, pg_proc AS p2
@@ -371,6 +397,13 @@ SELECT p1.oid::regprocedure
 FROM pg_proc p1 JOIN pg_namespace pn
      ON pronamespace = pn.oid
 WHERE nspname = 'pg_catalog' AND proleakproof
+ORDER BY 1;
+
+-- Check that functions without argument are not marked as leakproof.
+SELECT p1.oid::regprocedure
+FROM pg_proc p1 JOIN pg_namespace pn
+     ON pronamespace = pn.oid
+WHERE nspname = 'pg_catalog' AND proleakproof AND pronargs = 0
 ORDER BY 1;
 
 -- restore normal output mode
@@ -814,7 +847,7 @@ WHERE aggfnoid = 0 OR aggtransfn = 0 OR
     (aggkind = 'n' AND aggnumdirectargs > 0) OR
     aggfinalmodify NOT IN ('r', 's', 'w') OR
     aggmfinalmodify NOT IN ('r', 's', 'w') OR
-    aggtranstype = 0 OR aggtransspace < 0 OR aggmtransspace < 0;
+    aggtranstype = 0 OR aggmtransspace < 0;
 
 -- Make sure the matching pg_proc entry is sensible, too.
 
@@ -854,8 +887,10 @@ WHERE a.aggfnoid = p.oid AND
          NOT binary_coercible(p.proargtypes[1], ptr.proargtypes[2]))
      OR (p.pronargs > 2 AND
          NOT binary_coercible(p.proargtypes[2], ptr.proargtypes[3]))
-     -- we could carry the check further, but 3 args is enough for now
-     OR (p.pronargs > 3)
+     OR (p.pronargs > 3 AND
+         NOT binary_coercible(p.proargtypes[3], ptr.proargtypes[4]))
+     -- we could carry the check further, but 4 args is enough for now
+     OR (p.pronargs > 4)
     );
 
 -- Cross-check finalfn (if present) against its entry in pg_proc.

@@ -31,9 +31,9 @@
 
 #include "executor/instrument.h"
 #include "jit/jit.h"
+#include "nodes/queryjumble.h"
 #include "storage/s_lock.h"
 #include "utils/guc.h"
-#include "utils/queryjumble.h"
 #include "utils/timestamp.h"
 
 #define YB_QD_MAX_BIND_VARS_LEN 2048

@@ -5,7 +5,7 @@
  *
  * Fallback implementation of HMAC, as specified in RFC 2104.
  *
- * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -43,7 +43,7 @@ typedef enum pg_hmac_errno
 {
 	PG_HMAC_ERROR_NONE = 0,
 	PG_HMAC_ERROR_OOM,
-	PG_HMAC_ERROR_INTERNAL
+	PG_HMAC_ERROR_INTERNAL,
 } pg_hmac_errno;
 
 /* Internal pg_hmac_ctx structure */

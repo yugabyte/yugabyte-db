@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2022, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
  * src/bin/psql/prompt.c
  */
@@ -31,8 +31,11 @@
  *		sockets, "[local:/dir/name]" if not default
  * %m - like %M, but hostname only (before first dot), or always "[local]"
  * %p - backend pid
+ * %P - pipeline status: on, off or abort
  * %> - database server port number
  * %n - database user name
+ * %S - search_path
+ * %s - service
  * %/ - current database
  * %~ - like %/ but "~" when database name equals user name
  * %w - whitespace of the same width as the most recent output of PROMPT1
@@ -41,6 +44,8 @@
  *			or a ! if session is not connected to a database;
  *		in prompt2 -, *, ', or ";
  *		in prompt3 nothing
+ * %i - "standby" or "primary" depending on the server's in_hot_standby
+ *      status, or "?" if unavailable (empty if unknown)
  * %x - transaction status: empty, *, !, ? (unknown or no connection)
  * %l - The line number inside the current statement, starting from 1.
  * %? - the error code of the last query (not yet implemented)
@@ -165,6 +170,25 @@ get_prompt(promptStatus_t status, ConditionalStack cstack)
 					if (pset.db)
 						strlcpy(buf, session_username(), sizeof(buf));
 					break;
+					/* search_path */
+				case 'S':
+					if (pset.db)
+					{
+						const char *sp = PQparameterStatus(pset.db, "search_path");
+
+						/* Use ? for versions that don't report search_path. */
+						strlcpy(buf, sp ? sp : "?", sizeof(buf));
+					}
+					break;
+					/* service name */
+				case 's':
+					{
+						const char *service_name = GetVariable(pset.vars, "SERVICE");
+
+						if (service_name)
+							strlcpy(buf, service_name, sizeof(buf));
+					}
+					break;
 					/* backend pid */
 				case 'p':
 					if (pset.db)
@@ -175,7 +199,20 @@ get_prompt(promptStatus_t status, ConditionalStack cstack)
 							snprintf(buf, sizeof(buf), "%d", pid);
 					}
 					break;
+					/* pipeline status */
+				case 'P':
+					if (pset.db)
+					{
+						PGpipelineStatus status = PQpipelineStatus(pset.db);
 
+						if (status == PQ_PIPELINE_ON)
+							strlcpy(buf, "on", sizeof(buf));
+						else if (status == PQ_PIPELINE_ABORTED)
+							strlcpy(buf, "abort", sizeof(buf));
+						else
+							strlcpy(buf, "off", sizeof(buf));
+					}
+					break;
 				case '0':
 				case '1':
 				case '2':
@@ -223,7 +260,23 @@ get_prompt(promptStatus_t status, ConditionalStack cstack)
 							break;
 					}
 					break;
+				case 'i':
+					if (pset.db)
+					{
+						const char *hs = PQparameterStatus(pset.db, "in_hot_standby");
 
+						if (hs)
+						{
+							if (strcmp(hs, "on") == 0)
+								strlcpy(buf, "standby", sizeof(buf));
+							else
+								strlcpy(buf, "primary", sizeof(buf));
+						}
+						/* Use ? for versions that don't report in_hot_standby */
+						else
+							buf[0] = '?';
+					}
+					break;
 				case 'x':
 					if (!pset.db)
 						buf[0] = '?';
@@ -266,8 +319,10 @@ get_prompt(promptStatus_t status, ConditionalStack cstack)
 					{
 						int			cmdend = strcspn(p + 1, "`");
 						char	   *file = pnstrdup(p + 1, cmdend);
-						FILE	   *fd = popen(file, "r");
+						FILE	   *fd;
 
+						fflush(NULL);
+						fd = popen(file, "r");
 						if (fd)
 						{
 							if (fgets(buf, sizeof(buf), fd) == NULL)

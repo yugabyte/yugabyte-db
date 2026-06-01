@@ -2,7 +2,7 @@
  * libpq_testclient.c
  *		A test program for the libpq public API
  *
- * Copyright (c) 2022, PostgreSQL Global Development Group
+ * Copyright (c) 2022-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/interfaces/libpq/test/libpq_testclient.c
@@ -13,7 +13,7 @@
 #include "libpq-fe.h"
 
 static void
-print_ssl_library()
+print_ssl_library(void)
 {
 	const char *lib = PQsslAttribute(NULL, "library");
 
