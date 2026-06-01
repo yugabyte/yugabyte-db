@@ -118,6 +118,15 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // Gates `CREATE EXTENSION mage` -- required by testMageBackupRestore and
+    // harmless to the other tests in this class (they do not touch mage).
+    flagMap.put("ysql_yb_enable_mage", "true");
+    return flagMap;
+  }
+
+  @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
 
@@ -2183,6 +2192,64 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT EXISTS(SELECT 1 FROM pg_class " +
                   "WHERE relname = 'hints_norm_and_app')", new Row(false));
 
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testMageBasicBackupRestore() throws Exception {
+    // End-to-end coverage for backup/restore of a database with the `mage`
+    // (Apache AGE) extension installed.
+    //
+    // The restore generates a ysql_dump in binary-upgrade mode that emits
+    // `DROP EXTENSION IF EXISTS mage;` before recreating an empty extension
+    // shell. Before the is_age_drop() fix in
+    // src/postgres/third-party-extensions/mage/src/backend/catalog/ag_catalog.c
+    // that DROP errored with `table "ag_graph" does not exist` and aborted
+    // the entire restore -- so any backup of a database using mage was
+    // effectively unrestorable.
+    //
+    // The test deliberately installs the extension *without* creating a graph.
+    // create_graph() materializes per-graph vertex/edge tables whose snapshot
+    // import currently hits an orthogonal issue at the master metadata stage;
+    // covering the extension itself is enough to exercise the failing DROP
+    // EXTENSION IF EXISTS mage path in ysql_dump that this fix targets.
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION mage");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      // mage is installed in the restored DB at the expected version.
+      assertQuery(stmt,
+          "SELECT extname, extversion FROM pg_extension WHERE extname = 'mage'",
+          new Row("mage", "1.6.0"));
+      // Catalog tables are member objects of the extension and were restored.
+      assertQuery(stmt,
+          "SELECT count(*) FROM mag_catalog.ag_graph",
+          new Row(0L));
+      // Dropping the restored extension must also work -- this exercises the
+      // AGE drop path on the restored side.
+      stmt.execute("DROP EXTENSION mage");
+      assertQuery(stmt,
+          "SELECT count(*) FROM pg_extension WHERE extname = 'mage'",
+          new Row(0L));
     }
 
     // Cleanup.
