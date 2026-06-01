@@ -91,18 +91,6 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_colocated_tables_with_tablespaces, false,
     "If true, creating a colocated table  will colocate the table on an implicit "
     "tablegroup that is determined by the tablespace it uses. We turn the feature off by default.");
 
-// We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
-// Otherwise such batch would be rejected by RPC layer.
-DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
-    "The maximum per-tablet RPC batch size when updating peers. The sum of "
-    "consensus_max_batch_size_bytes and 1KB should be less than rpc_max_message_size");
-TAG_FLAG(consensus_max_batch_size_bytes, advanced);
-
-DEFINE_UNKNOWN_int64(rpc_throttle_threshold_bytes, 1_MB,
-    "Throttle inbound RPC calls larger than specified size on hitting mem tracker soft limit. "
-    "Throttling is disabled if negative value is specified. The value must be at least 16 and less "
-    "than the strictly enforced consensus_max_batch_size_bytes.");
-
 DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
     "If true, enable per-database PG new object identifier allocator.");
 TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, advanced);
@@ -295,38 +283,6 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_cdcsdk_allow_dml_without_pk, false,
     "When set to true, allows UPDATE/DELETE on tables under a publication with "
     "REPLICA IDENTITY DEFAULT or CHANGE that do not have a primary key.");
-
-namespace {
-
-constexpr const auto kMinRpcThrottleThresholdBytes = 16;
-
-bool RpcThrottleThresholdBytesValidator(const char* flag_name, int64 value) {
-  if (value <= 0) {
-    return true;
-  }
-
-  if (value < kMinRpcThrottleThresholdBytes) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
-        << "Must be at least " << kMinRpcThrottleThresholdBytes;
-    return false;
-  }
-
-  // This validation depends on the value of other flag(s): consensus_max_batch_size_bytes.
-  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
-
-  if (std::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
-        << "Must be less than consensus_max_batch_size_bytes "
-        << "(value: " << FLAGS_consensus_max_batch_size_bytes << ")";
-    return false;
-  }
-
-  return true;
-}
-
-}  // namespace
-
-DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
 
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_auto_flag_validation, kLocalPersisted, false, true,
     "Enables validation of AutoFlags between the xcluster universes");
