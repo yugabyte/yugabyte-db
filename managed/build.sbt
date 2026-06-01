@@ -253,7 +253,6 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.14.0",
   "io.fabric8" % "kubernetes-client-api" % "6.14.0",
   "io.fabric8" % "kubernetes-model-core" % "6.14.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.14.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -285,6 +284,7 @@ libraryDependencies ++= Seq(
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "1.0.2" % Test,
+  "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
 // Clear default resolvers.
@@ -1036,6 +1036,8 @@ dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 dependencyOverrides += "io.netty" % "netty-all" % "4.1.133.Final"
 dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.133.Final"
 dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.133.Final"
+
+dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client. The
