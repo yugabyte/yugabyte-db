@@ -1075,8 +1075,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             .linuxUser(linuxUser)
             .build();
 
-    // Build node filter
-    NodeScriptRunner.NodeFilter nodeFilter = buildNodeFilter(runScriptRequest.getNodes());
+    // Build node filter (validates that requested node_names exist in the universe)
+    NodeScriptRunner.NodeFilter nodeFilter = buildNodeFilter(universe, runScriptRequest.getNodes());
 
     // Execute via service
     NodeScriptRunner.ExecutionResult result =
@@ -1099,6 +1099,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               .nodeAddress(nr.getNodeAddress())
               .exitCode(nr.getExitCode())
               .stdout(nr.getStdout())
+              .stderr(nr.getStderr())
               .executionTimeMs(nr.getExecutionTimeMs())
               .success(nr.isSuccess())
               .errorMessage(nr.getErrorMessage()));
@@ -1186,8 +1187,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
     NodeFileCollector.CollectionParams collectionParams = paramsBuilder.build();
 
-    // Build node filter (reuses same NodeFilter as runScript)
-    NodeScriptRunner.NodeFilter nodeFilter = buildNodeFilter(collectFilesRequest.getNodes());
+    NodeScriptRunner.NodeFilter nodeFilter =
+        buildNodeFilter(universe, collectFilesRequest.getNodes());
 
     log.info(
         "Collecting files from universe {} with {} file paths, {} directory paths",
@@ -1343,7 +1344,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
    * Helper method to convert NodeSelection API model to NodeScriptRunner.NodeFilter. Reused by both
    * runScript and collectFiles handlers.
    */
-  private NodeScriptRunner.NodeFilter buildNodeFilter(NodeSelection nodeSelection) {
+  private NodeScriptRunner.NodeFilter buildNodeFilter(
+      Universe universe, NodeSelection nodeSelection) {
     if (nodeSelection == null) {
       return null;
     }
@@ -1352,6 +1354,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       throw new PlatformServiceException(
           BAD_REQUEST, "masters_only and tservers_only both cannot be true");
     }
+    validateRequestedNodeNames(universe, nodeSelection.getNodeNames());
     int maxParallelNodes =
         nodeSelection.getMaxParallelNodes() != null
             ? nodeSelection.getMaxParallelNodes()
@@ -1363,6 +1366,28 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         .tserversOnly(nodeSelection.getTserversOnly())
         .maxParallelNodes(maxParallelNodes)
         .build();
+  }
+
+  private void validateRequestedNodeNames(Universe universe, List<String> requestedNodeNames) {
+    if (CollectionUtils.isEmpty(requestedNodeNames)) {
+      return;
+    }
+    Set<String> universeNodeNames =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .map(n -> n.nodeName)
+            .collect(Collectors.toSet());
+    List<String> unmatchedNodeNames =
+        requestedNodeNames.stream()
+            .filter(name -> !universeNodeNames.contains(name))
+            .distinct()
+            .collect(Collectors.toList());
+    if (!unmatchedNodeNames.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The following node_names were not found in universe %s: %s",
+              universe.getUniverseUUID(), unmatchedNodeNames));
+    }
   }
 
   private boolean isNewUI() {
