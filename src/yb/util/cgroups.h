@@ -89,10 +89,12 @@ class Cgroup {
   // All values are cumulative since cgroup creation.
   Result<CgroupCpuStats> ReadCpuStats() const;
 
-  void VisitChildren(const std::function<void(Cgroup&)>& visitor);
+  void VisitChildren(const std::function<void(Cgroup&)>& visitor,
+                     const std::function<void(std::span<Cgroup*>)>& sort = {});
 
   void VisitTree(
       const std::function<void(Cgroup&, size_t)>& visitor,
+      const std::function<void(std::span<Cgroup*>)>& sort = {},
       size_t current_depth = 0,
       size_t max_depth = std::numeric_limits<size_t>::max());
 

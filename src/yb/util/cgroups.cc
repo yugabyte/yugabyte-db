@@ -447,7 +447,9 @@ Status Cgroup::MoveProcessToGroup(int64_t pid) {
   return WriteConfig("cgroup.procs", AsString(pid));
 }
 
-void Cgroup::VisitChildren(const std::function<void(Cgroup&)>& visitor) {
+void Cgroup::VisitChildren(
+    const std::function<void(Cgroup&)>& visitor,
+    const std::function<void(std::span<Cgroup*>)>& sort) {
   std::vector<Cgroup*> children;
   {
     std::lock_guard lock(mutex_);
@@ -456,20 +458,24 @@ void Cgroup::VisitChildren(const std::function<void(Cgroup&)>& visitor) {
       children.push_back(&child);
     }
   }
+  if (sort) {
+    sort(children);
+  }
   for (auto& child : children) {
     visitor(*child);
   }
 }
 
 void Cgroup::VisitTree(
-    const std::function<void(Cgroup&, size_t)>& visitor, size_t current_depth, size_t max_depth) {
+    const std::function<void(Cgroup&, size_t)>& visitor,
+    const std::function<void(std::span<Cgroup*>)>& sort, size_t current_depth, size_t max_depth) {
   visitor(*this, current_depth);
   if (current_depth == max_depth) {
     return;
   }
   VisitChildren([&](Cgroup& child) {
-    child.VisitTree(visitor, current_depth + 1, max_depth);
-  });
+    child.VisitTree(visitor, sort, current_depth + 1, max_depth);
+  }, sort);
 }
 
 Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
