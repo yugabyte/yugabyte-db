@@ -1162,7 +1162,7 @@ stmt:
 			| InsertStmt
 			| ListenStmt
 			| RefreshMatViewStmt
-			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
+			| LoadStmt 
 			| LockStmt
 			| MergeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt
@@ -12047,7 +12047,6 @@ opt_check_option:
 
 LoadStmt:	LOAD file_name
 				{
-					parser_ybc_not_support(@1, "LOAD");
 					LoadStmt   *n = makeNode(LoadStmt);
 
 					n->filename = $2;

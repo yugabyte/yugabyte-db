@@ -19,19 +19,17 @@ import org.yb.YBTestRunner;
 
 import java.io.File;
 
-@RunWith(value = YBTestRunner.class)
-public class TestPgRegressContribPasswordCheck extends BasePgRegressTest {
-    @Override
-    public int getTestMethodTimeoutSec() {
-        return 1800;
-    }
+@RunWith(value=YBTestRunner.class)
+public class TestPgRegressModulesTestRlsHooks extends BasePgRegressTestPorted {
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 1800;
+  }
 
-    // each test in yb_schedule installs passwordcheck with the LOAD command
-
-    @Test
-    public void schedule() throws Exception {
-        runPgRegressTest(new File(TestUtils.getBuildRootDir(),
-                "postgres_build/contrib/passwordcheck"),
-                "yb_schedule");
-    }
+  @Test
+  public void schedule() throws Exception {
+    runPgRegressTest(new File(TestUtils.getBuildRootDir(),
+                              "postgres_build/src/test/modules/test_rls_hooks"),
+                     "yb_schedule");
+  }
 }
