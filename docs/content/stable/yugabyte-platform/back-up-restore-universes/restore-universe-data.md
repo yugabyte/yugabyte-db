@@ -53,7 +53,7 @@ You can restore YugabyteDB universe data from a backup as follows:
 
 1. To rename databases (YSQL) or keyspaces (YCQL), select the **Rename** option.
 
-    If you are restoring a backup to a universe with an existing databases of the same name, you must rename the database.
+    If you are restoring a backup to a universe with an existing database of the same name, you must rename the database.
 
 1. If you are restoring data from a universe that has tablespaces, select the **Restore tablespaces and data to their respective regions** option.
 
@@ -95,7 +95,7 @@ To restore, do the following:
 
 1. In the **Restore Backup** dialog, select the universe (target) to which you want to restore the backup.
 
-    Note that the Creation time shown in the dialog indicates the backup job start time, _not_ the time that the particular database was actually snapshotted and backed up. When multiple databases are included in a backup job, each databases is snapshotted and backed up in serial order; thus, each individual database's actual snapshot and backup time is not the same as the backup job start time. To restore a database to a specific point in time, use [Point-in-time recovery](../pitr/).
+    Note that the Creation time shown in the dialog indicates the backup job start time, _not_ the time that the particular database was actually snapshotted and backed up. When multiple databases are included in a backup job, each database is snapshotted and backed up in serial order; thus, each individual database's actual snapshot and backup time is not the same as the backup job start time. To restore a database to a specific point in time, use [Point-in-time recovery](../pitr/).
 
 1. If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved.
 
@@ -267,12 +267,12 @@ If you are restoring from a backup that was moved to another location, copy the 
 
 The backup location of the database or keyspace backup you want to restore.
 
-The directory structure of the backup location matters. For a restore to succeed, the YugabyteDB Anywhere requires the full path; that includes everything after the storage address. For NFS storage configurations, the path must also include the `yugabyte_backup` directory.
+The directory structure of the backup location matters. For a restore to succeed, YugabyteDB Anywhere requires the full path; that includes everything after the storage address. For NFS backups, YugabyteDB Anywhere automatically adds the `yugabyte_backup` directory; the backup location path you provide must also include the `yugabyte_backup` directory.
 
 For example, for an S3 storage configuration with the storage address `s3://mybucket/yb-backups/`, a valid location is the following:
 
 ```output
-s3://mybucket/yb-backups/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+s3://mybucket/yb-backups/univ-<universe-name>-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
 ```
 
 Everything after the address (`s3://mybucket/yb-backups`) is required.
@@ -280,7 +280,7 @@ Everything after the address (`s3://mybucket/yb-backups`) is required.
 For an NFS storage configuration with the address `/mnt/backup/`, a valid location is the following:
 
 ```output
-/mnt/backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+/mnt/backup/yugabyte_backup/univ-<universe-name>-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
 ```
 
 Everything from the `yugabyte_backup` folder down is required.
@@ -290,20 +290,20 @@ If you moved or copied the backup to a new location, make sure the storage confi
 For example, if you provide a _storage configuration_ with an address of `s3://newbucket/backups` and the following _backup location_:
 
 ```output
-s3://mybucket/yb-backups/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+s3://mybucket/yb-backups/univ-<universe-name>-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
 ```
 
 YugabyteDB Anywhere will look in the following location for the backup:
 
 ```output
-s3://newbucket/backups/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+s3://newbucket/backups/univ-<universe-name>-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
 ```
 
 For more information on the folder structure of YugabyteDB Anywhere backups, refer to [Access backups in storage](../back-up-universe-data/#access-backups-in-storage).
 
 If the backup is still being managed by YugabyteDB Anywhere, you can obtain the address of the backup location, along with the storage configuration and database name, as follows:
 
-1. In the YugabyteDB Anywhere where you are performing the restore, navigate to **Backups** and click the backup (row) to display the **Backup Details**.
+1. On the YugabyteDB Anywhere installation where the backup is registered (which may differ from where you are performing the restore), navigate to **Backups** and click the backup (row) to display the **Backup Details**.
 
 1. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace you want to restore. (If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.)
 
@@ -328,7 +328,7 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
     For example:
 
     ```output
-    s3://user_bucket/some/sub/folders/univ-a85b5b01-6e0b-4a24-b088-478dafff94e4/ybc_backup-92317948b8e444ba150616bf182a061/incremental/20204-01-04T12: 11: 03/multi-table-postgres_40522fc46c69404893392b7d92039b9e
+    s3://user_bucket/some/sub/folders/univ-myuniverse-a85b5b01-6e0b-4a24-b088-478dafff94e4/ybc_backup-92317948b8e444ba150616bf182a061/incremental/2024-01-04T12:11:03/multi-table-postgres_40522fc46c69404893392b7d92039b9e
     ```
 
 1. Select the **Backup config** that corresponds to the [storage configuration](#storage-configuration) that was used for the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
