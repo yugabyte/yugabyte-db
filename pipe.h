@@ -59,10 +59,6 @@ extern alert_lock * locks;
 extern int	sid;
 extern LWLockId shmem_lockid;
 
-#if PG_VERSION_NUM >= 130000
-
 #include "storage/condition_variable.h"
 
 extern ConditionVariable *alert_cv;
-
-#endif
