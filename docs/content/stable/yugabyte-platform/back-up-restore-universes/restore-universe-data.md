@@ -257,10 +257,6 @@ For information regarding components of a backup, refer to [Access backups in st
 
 To perform an advanced restore, you need the following.
 
-#### KMS configuration
-
-If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), you need a matching KMS configuration in the target YugabyteDB Anywhere installation so that the backup can be decrypted.
-
 #### Storage configuration
 
 A matching [storage configuration](../configure-backup-storage/) in the target YugabyteDB Anywhere installation with credentials to access the storage where the backup is located.
@@ -269,36 +265,53 @@ If you are restoring from a backup that was moved to another location, copy the 
 
 #### Backup location
 
-The full backup location of the database or keyspace backup you want to restore.
+The backup location of the database or keyspace backup you want to restore.
 
-You can obtain the address of the backup location as follows:
+The directory structure of the backup location matters. For a restore to succeed, the YugabyteDB Anywhere requires the full path; that includes everything after the storage address. For NFS storage configurations, the path must also include the `yugabyte_backup` directory.
 
-1. Navigate to **Backups** and click the backup (row) to display the **Backup Details**.
-
-1. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace you want to restore. (If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.)
-
-1. Note the **Storage Config** used by the backup, along with the database or keyspace name.
-
-The directory structure of the **Backup location** matters. For a restore to succeed, the YugabyteDB Anywhere requires the full path.
-
-For NFS storage configurations, the configuration path also includes a `yugabyte_backup` directory, which YugabyteDB Anywhere adds automatically when writing backups. The **Backup location** must include this directory. (S3, GCS, and Azure storage configurations do not have this extra directory; the bucket is part of the storage configuration's path itself.)
-
-For example, for an NFS storage configuration with the path `/backup`, a valid location is the following:
+For example, for an S3 storage configuration with the storage address `s3://mybucket/yb-backups/`, a valid location is the following:
 
 ```output
-/backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+s3://mybucket/yb-backups/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
 ```
 
-Similarly, for an NFS storage configuration with the path `/mnt/backup/`, a valid location is the following:
+Everything after the address (`s3://mybucket/yb-backups`) is required.
+
+For an NFS storage configuration with the address `/mnt/backup/`, a valid location is the following:
 
 ```output
 /mnt/backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
 ```
 
-Everything from the `yugabyte_backup` folder down (or, for cloud storage, everything after the configured bucket and path prefix) must be left unchanged; only the leading storage address can differ, and only if it matches the selected storage configuration and the backup data actually resides there. If you moved or copied the backup to a new folder, please ensure the storage config with the correct path prefix is used to match where the backup data now resides.
+Everything from the `yugabyte_backup` folder down is required.
+
+If you moved or copied the backup to a new location, make sure the storage configuration has the correct storage address to match the location where the backup data now resides. YugabyteDB Anywhere automatically replaces the storage address of the backup location you provide with the storage address of the storage configuration you select.
+
+For example, if you provide a storage configuration with an address of `s3://newbucket/backups` and the following backup location:
+
+```output
+s3://mybucket/yb-backups/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+```
+
+YugabyteDB will look in the following location for the backup:
+
+```output
+s3://newbucket/backups/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+```
 
 For more information on the folder structure of YugabyteDB Anywhere backups, refer to [Access backups in storage](../back-up-universe-data/#access-backups-in-storage).
 
+If the backup is still being managed by YugabyteDB Anywhere, you can obtain the address of the backup location, along with the storage configuration and database name, as follows:
+
+1. In the YugabyteDB Anywhere where you are performing the restore, navigate to **Backups** and click the backup (row) to display the **Backup Details**.
+
+1. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace you want to restore. (If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.)
+
+1. Note the **Storage Config** used by the backup, along with the database or keyspace name.
+
+#### KMS configuration
+
+If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), you need a matching KMS configuration in the target YugabyteDB Anywhere installation so that the backup can be decrypted.
 
 ### Perform an advanced restore
 
@@ -310,17 +323,19 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 
 1. Choose the type of API.
 
-1. In the **Backup location** field, paste the location of the backup you are restoring. For example:
+1. In the **Backup location** field, paste the [backup location](#backup-location) of the backup you are restoring.
+
+    For example:
 
     ```output
     s3://user_bucket/some/sub/folders/univ-a85b5b01-6e0b-4a24-b088-478dafff94e4/ybc_backup-92317948b8e444ba150616bf182a061/incremental/20204-01-04T12: 11: 03/multi-table-postgres_40522fc46c69404893392b7d92039b9e
     ```
 
-1. Select the **Backup config** that corresponds to the storage configuration that was used for the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
+1. Select the **Backup config** that corresponds to the [storage configuration](#storage-configuration) that was used for the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
 
-    Note that the storage configuration bucket takes precedence over the bucket specified in the backup location.
+    The storage configuration bucket takes precedence over the bucket specified in the backup location.
 
-    For example, if the storage configuration you select is for the following S3 Bucket:
+    For example, if the storage configuration you select is for the following S3 bucket:
 
     ```output
     s3://test_bucket/test
