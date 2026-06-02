@@ -203,7 +203,7 @@ When moving a backup (for example, for long term storage), be sure to include al
 
 For a successful restore at a later date, none of the sub-components and folder names can be modified (from the sub-directories on down) in the address - only the storage address.
 
-For example, if you have an S3 backup with a storage address of `s3://test_bucket` and the following path:
+For example, if you have an S3 backup with a storage address of `s3://test_bucket/test` and the following path:
 
 ```output
 s3://test_bucket/test/univ-xyz/...
@@ -212,16 +212,10 @@ s3://test_bucket/test/univ-xyz/...
 You can move the backup to a location similar to the following:
 
 ```output
-s3://user_bucket/test/univ-xyz/...
-```
-
-However, you can't move it to a different sub-directory inside the bucket such as the following:
-
-```output
 s3://user_bucket/new-test/univ-xyz/...
 ```
 
-If you have an NFS backup with a storage address of `/mnt/backups/test/` and the following path:
+SImilarly, if you have an NFS backup with a storage address of `/mnt/backups/test/` and the following path:
 
 ```output
 /mnt/backups/test/yugabyte_backup/univ-xyz/...
