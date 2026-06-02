@@ -380,6 +380,12 @@ void TServerCgroupManager::RegisterDbName(PgOid db_oid, std::string name) {
   db_names_[db_oid] = std::move(name);
 }
 
+bool TServerCgroupManager::IsDbNameKnown(PgOid db_oid) const {
+  std::lock_guard lock(mutex_);
+  auto it = db_names_.find(db_oid);
+  return it != db_names_.end() && !it->second.empty();
+}
+
 Status TServerCgroupManager::UpdateDbCpuLimits(double max_cpu, int period) {
   std::lock_guard lock(mutex_);
   for (auto& cgroup : db_cgroups_ | std::views::values) {

@@ -18,6 +18,9 @@
 #include "yb/util/flags.h"
 #include "yb/util/signal_util.h"
 #include "yb/util/thread.h"
+#ifdef __linux__
+#include "yb/util/cgroups.h"
+#endif
 
 DEFINE_NON_RUNTIME_bool(graceful_shutdown, true,
     "Whether to shutdown gracefully when receiving SIGTERM.");
@@ -68,6 +71,15 @@ void TerminationMonitor::WaitForTermination() {
   std::unique_lock lock(mutex_);
   stop_signal_.wait(lock, [this]() REQUIRES(mutex_) { return stopped_; });
 }
+
+#ifdef __linux__
+void TerminationMonitor::SetCgroup(Cgroup* cgroup) {
+  if (thread_) {
+    WARN_NOT_OK(cgroup->MoveThreadToGroup(thread_->tid()),
+                "Failed to move sigterm_loop thread to cgroup");
+  }
+}
+#endif
 
 void TerminationMonitor::InstallSigtermHandler() {
   if (!FLAGS_graceful_shutdown) {

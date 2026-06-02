@@ -24,6 +24,7 @@
 
 #include "yb/tserver/master_leader_poller.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/async_util.h"
@@ -86,6 +87,9 @@ class YsqlLeaseClient::Impl {
 
  private:
   MasterLeaderFinder finder_;
+#ifdef __linux__
+  TabletServer& server_;
+#endif
   YsqlLeasePoller poller_;
   MasterLeaderPollScheduler poll_scheduler_;
 };
@@ -117,10 +121,21 @@ YsqlLeaseClient::~YsqlLeaseClient() {
 YsqlLeaseClient::Impl::Impl(
     TabletServer& server, const YsqlLeaderClientListener& listener)
     : finder_(server.messenger(), server.proxy_cache(), nullptr),
+#ifdef __linux__
+      server_(server),
+#endif
       poller_(server, listener, finder_),
       poll_scheduler_(finder_, poller_) {}
 
-Status YsqlLeaseClient::Impl::Start() { return poll_scheduler_.Start(); }
+Status YsqlLeaseClient::Impl::Start() {
+  Cgroup* cgroup = nullptr;
+#ifdef __linux__
+  if (auto* cm = server_.cgroup_manager()) {
+    cgroup = cm->SystemHighCgroup();
+  }
+#endif
+  return poll_scheduler_.Start(cgroup);
+}
 
 void YsqlLeaseClient::Impl::Shutdown() {
   poll_scheduler_.Shutdown();

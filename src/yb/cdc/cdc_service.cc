@@ -81,6 +81,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -3457,6 +3458,12 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 }
 
 void CDCServiceImpl::UpdatePeersAndMetrics() {
+#ifdef __linux__
+  if (auto* cgroup = context_->SystemHighCgroup()) {
+    WARN_NOT_OK(cgroup->MoveCurrentThreadToGroup(),
+                "Failed to move update_peers_and_metrics thread to cgroup");
+  }
+#endif
   MonoTime time_since_update_peers = MonoTime::kUninitialized;
   MonoTime time_since_update_metrics = MonoTime::kUninitialized;
 

@@ -19,6 +19,10 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
 
+#ifdef __linux__
+namespace yb { class Cgroup; }
+#endif
+
 namespace yb {
 class Thread;
 
@@ -36,6 +40,11 @@ class TerminationMonitor {
 
   // Installs handler for SIGTERM signal and wait for termination to be called.
   void WaitForTermination() EXCLUDES(mutex_);
+
+#ifdef __linux__
+  // Move the sigterm_loop thread into the given cgroup. Must be called after Create().
+  void SetCgroup(Cgroup* cgroup);
+#endif
 
  private:
   TerminationMonitor() = default;
