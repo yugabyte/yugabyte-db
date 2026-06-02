@@ -18,7 +18,7 @@ The Operator establishes `ybuniverse` as a Custom Resource Definition (CRD) in K
 
 You can define and update these custom resources to manage your universe's configuration, including granular resource specifications (CPU and memory for Masters and TServers) and precise regional/zonal placement policies to ensure optimal performance and high availability. Custom resources support seamless upgrades with no downtime, as well as automated, transparent scaling, and cluster-balanced deployments.
 
-{{<tags/feature/ea idea="2004">}}You can additionally convert Kubernetes universes that are managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator, using the `operator-import` API. See [Import universe](#import-universe).
+You can additionally convert Kubernetes universes that are managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator, using the `operator-import` API. See [Import universe](#import-universe).
 
 ![YugabyteDB Kubernetes Operator](/images/yb-platform/yb-kubernetes-operator.png)
 
@@ -907,7 +907,7 @@ spec:
 
 ## Import universe
 
-{{<tags/feature/ea idea="12874">}} Available in YugabyteDB Anywhere v2025.2.2 and later.
+Available in YugabyteDB Anywhere v2025.2.2 and later.
 
 Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator.
 
@@ -919,7 +919,7 @@ Currently, universes with any of the following configurations are not supported 
 
 ### Before you begin
 
-- Install the operator. The operator must be enabled on your instance. See [Installing Kubernetes Operator](#installing-kubernetes-operator).
+- Install the operator. The operator must be enabled on your instance. See [Install Kubernetes Operator](#install-kubernetes-operator).
 - Verify namespace configuration.
   - If the operator is configured to watch a single, specific namespace, the namespace provided in the import payload must match that runtime configuration (for example, `yb.kubernetes.operator.namespace`).
   - If the operator is not watching a specific namespace, the payload should be the namespace you want the resources to be created in.
@@ -985,6 +985,12 @@ Importing a universe to the operator creates or adopts the following in the targ
 - Backup schedules.
 - Storage configurations related to the backups or backup schedules, including secrets to access the storage configuration.
 - Release, including secrets to access the release.
+
+## Operator high availability
+
+{{<tags/feature/ea idea="2460">}}If you deploy YBA across separate Kubernetes clusters with [YBA high availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
+
+For details, see [Operator high availability](../../administer-yugabyte-platform/operator-high-availability/).
 
 ## Limitations
 
