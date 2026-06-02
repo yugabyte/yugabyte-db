@@ -21,6 +21,6 @@ namespace yb::client {
 
 // PgAutoAnalyzeServiceClient(client::YBClient & yb_client);
 DEFINE_STATEFUL_SERVICE_CLIENT(PgAutoAnalyze, PG_AUTO_ANALYZE,
-    IncreaseMutationCounters, ResetTableMutationCountersAfterAnalyze);
+    IncreaseMutationCounters);
 
 }  // namespace yb::client

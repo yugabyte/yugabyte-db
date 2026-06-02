@@ -17,7 +17,6 @@
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
-#include <vector>
 
 #include "yb/common/entity_ids_types.h"
 
@@ -32,7 +31,6 @@ using TableMutationCounts = std::unordered_map<TableId, std::atomic<uint64_t>>;
 class PgMutationCounter {
  public:
   void Increase(const TableId& table_id, uint64_t mutation_count) EXCLUDES(mutex_);
-  void Reset(const std::vector<TableId>& table_ids) EXCLUDES(mutex_);
   TableMutationCounts GetAndClear() EXCLUDES(mutex_);
 
   template <class Batch>

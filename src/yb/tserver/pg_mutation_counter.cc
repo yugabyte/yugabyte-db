@@ -36,7 +36,6 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/tostring.h"
 
 namespace yb {
 namespace tserver {
@@ -59,14 +58,6 @@ void PgMutationCounter::Increase(const TableId& table_id, uint64 mutation_count)
 
   std::lock_guard lock(mutex_);
   table_mutation_counts_[table_id] += mutation_count;
-}
-
-void PgMutationCounter::Reset(const std::vector<TableId>& table_ids) {
-  VLOG_WITH_FUNC(4) << "Resetting table mutation counters: " << AsString(table_ids);
-  std::lock_guard lock(mutex_);
-  for (const auto& table_id : table_ids) {
-    table_mutation_counts_.erase(table_id);
-  }
 }
 
 TableMutationCounts PgMutationCounter::GetAndClear() {

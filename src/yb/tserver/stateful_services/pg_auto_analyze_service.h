@@ -14,7 +14,6 @@
 #pragma once
 
 #include <map>
-#include <mutex>
 #include <optional>
 
 #include <rapidjson/document.h>
@@ -152,28 +151,21 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
       std::unordered_set<NamespaceId>& deleted_databases);
   std::string TableNamesForAnalyzeCmd(const std::vector<TableId>& table_ids);
 
-  STATEFUL_SERVICE_IMPL_METHODS(IncreaseMutationCounters, ResetTableMutationCountersAfterAnalyze);
+  STATEFUL_SERVICE_IMPL_METHODS(IncreaseMutationCounters);
 
   tserver::PgMutationCounter pg_cluster_level_mutation_counter_;
-
-  // Orders in-memory mutation drains and manual ANALYZE resets. This intentionally does not cover
-  // YCQL I/O, so a batch drained before a reset may still flush to the service table after it.
-  std::mutex mutation_flush_mutex_;
 
   const std::shared_future<client::YBClient*>& client_future_;
 
   ConnectToPostgresFunc connect_to_pg_func_;
 
-  std::mutex table_cache_mutex_;
-
   // In-memory mapping from table id to its number of tuples.
   // Used to calculate analyze threshold for each table.
-  std::unordered_map<TableId, float> table_tuple_count_ GUARDED_BY(table_cache_mutex_);
+  std::unordered_map<TableId, float> table_tuple_count_;
 
   // Per-table auto analyze settings from pg_class.reloptions.
   // Refreshed alongside table_tuple_count_ and on name cache rebuilds.
-  std::unordered_map<TableId, TableAutoAnalyzeSettings> table_auto_analyze_settings_
-      GUARDED_BY(table_cache_mutex_);
+  std::unordered_map<TableId, TableAutoAnalyzeSettings> table_auto_analyze_settings_;
 
   // In-memory mapping for PG tables' name lookup.
   std::unordered_map<TableId, client::YBTableName> table_id_to_name_;

@@ -24,8 +24,6 @@ import "yb/common/wire_protocol.proto";
 service PgAutoAnalyzeService {
   rpc IncreaseMutationCounters(IncreaseMutationCountersRequestPB)
       returns (IncreaseMutationCountersResponsePB);
-  rpc ResetTableMutationCountersAfterAnalyze(ResetTableMutationCountersAfterAnalyzeRequestPB)
-      returns (ResetTableMutationCountersAfterAnalyzeResponsePB);
 }
 
 message TablIdMutationCountPairPB {
@@ -38,13 +36,5 @@ message IncreaseMutationCountersRequestPB {
 }
 
 message IncreaseMutationCountersResponsePB {
-  AppStatusPB error = 1;
-}
-
-message ResetTableMutationCountersAfterAnalyzeRequestPB {
-  repeated string table_ids = 1;
-}
-
-message ResetTableMutationCountersAfterAnalyzeResponsePB {
   AppStatusPB error = 1;
 }

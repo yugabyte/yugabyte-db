@@ -716,10 +716,9 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	/*
 	 * YB: yb auto-analyze treats a full manual ANALYZE as making table
 	 * statistics fresh enough that it does not need to immediately re-analyze
-	 * based on mutations collected before this ANALYZE.  This intentionally
-	 * follows PostgreSQL's resetcounter semantics and differs from the
-	 * auto-analyze service's own subtract-snapshot cleanup, which preserves
-	 * mutations that arrive during an internal auto-analyze run.
+	 * based on mutations collected before this ANALYZE. Clear only the persisted
+	 * YCQL mutation stats; do not coordinate with auto-analyze service-local
+	 * buffers or caches.
 	 */
 	if (!inh && IsYBRelation(onerel) && va_cols == NIL &&
 		!yb_use_internal_auto_analyze_service_conn &&
