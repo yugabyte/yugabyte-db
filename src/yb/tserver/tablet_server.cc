@@ -353,6 +353,13 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
     return FLAGS_enable_update_local_peer_min_index;
   }
 
+#ifdef __linux__
+  Cgroup* SystemHighCgroup() const override {
+    auto* cm = tablet_server_.cgroup_manager();
+    return cm ? cm->SystemHighCgroup() : nullptr;
+  }
+#endif
+
  private:
   TabletServer& tablet_server_;
 };
@@ -784,7 +791,7 @@ Status TabletServer::Start() {
     Cgroup* conn_cgroup = nullptr;
 #ifdef __linux__
     if (cgroup_manager_) {
-      conn_cgroup = cgroup_manager_->SystemMedCgroup();
+      conn_cgroup = cgroup_manager_->SystemHighCgroup();
     }
 #endif
     RETURN_NOT_OK(connectivity_poller_->Start(conn_cgroup));

@@ -50,6 +50,8 @@
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
+#include "yb/master/master_ddl.pb.h"
+
 #include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/sidecars.h"
@@ -4325,6 +4327,13 @@ class PgClientSession::Impl {
     if (context_.cgroup_manager && FLAGS_enable_qos) {
       auto& cgroup = VERIFY_RESULT_REF(context_.cgroup_manager->CgroupForDb(database_oid_));
       RETURN_NOT_OK(cgroup.MoveCurrentThreadToGroup());
+      // Register the name of the "postgres" system database for cgroup metrics.
+      // User databases get their names registered by the tablet manager when
+      // tablets open; the postgres database has no tablets, so we hardcode it.
+      if (database_oid_ == kPgPostgresDbOid &&
+          !context_.cgroup_manager->IsDbNameKnown(database_oid_)) {
+        context_.cgroup_manager->RegisterDbName(database_oid_, "postgres");
+      }
     }
 #endif
     return Status::OK();

@@ -57,6 +57,10 @@ class TServerCgroupManager {
   // RENAME) are picked up on the next metrics collection cycle.
   void RegisterDbName(PgOid db_oid, std::string name);
 
+  // Returns true if a name has already been registered for db_oid.
+  // Used to skip expensive master lookups when the name is already known.
+  bool IsDbNameKnown(PgOid db_oid) const;
+
   // System cgroups for shared/communal threads.
   // These are created once at startup and never destroyed.
   Cgroup* SystemHighCgroup() const { return system_high_cgroup_; }
@@ -110,7 +114,7 @@ class TServerCgroupManager {
       const MetricAttributeMap& extra_attrs = {});
   void UpdateCgroupMetrics(CgroupMetrics& m);
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::unordered_map<PgOid, Cgroup&> db_cgroups_ GUARDED_BY(mutex_);
   std::unordered_map<PgOid, std::string> db_names_ GUARDED_BY(mutex_);
 

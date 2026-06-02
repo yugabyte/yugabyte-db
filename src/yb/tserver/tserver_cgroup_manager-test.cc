@@ -22,9 +22,10 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_cgroup_manager.h"
 
-#include "yb/gutil/sysinfo.h"
-
 #include "yb/common/entity_ids.h"
+#include "yb/common/termination_monitor.h"
+
+#include "yb/gutil/sysinfo.h"
 
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
@@ -418,6 +419,97 @@ TEST_F(TServerCgroupManagerTest, TestDatabaseNameRegisteredUnconditionally) {
     ASSERT_EQ(ASSERT_RESULT(entity->TEST_GetAttributeFromMap("database_name")), db_name);
     ASSERT_EQ(ASSERT_RESULT(entity->TEST_GetAttributeFromMap("database_oid")),
               std::to_string(db_oid));
+  });
+}
+
+// Regression test for the nameless "db_5" cgroup entity (#31664 follow-up).
+//
+// System databases like "postgres" (OID 5) have no user tablets, so
+// RegisterDbName is never called via the tablet manager path.
+// EnsureClientSessionCgroup in pg_client_session.cc now calls
+// IsDbNameKnown() before issuing a master RPC: if the name is already
+// registered the RPC is skipped; otherwise it calls GetNamespaceInfo
+// and then RegisterDbName.  This test verifies the key-value contract
+// that IsDbNameKnown and RegisterDbName expose.
+TEST_F(TServerCgroupManagerTest, TestPostgresSystemDbCgroupNameRegistered) {
+  constexpr PgOid kPostgresDbOid = 5;  // PostgresDbOid from pg_database.h
+
+  // Before any registration the name is unknown.
+  ASSERT_FALSE(manager_->IsDbNameKnown(kPostgresDbOid));
+
+  // Creating the cgroup entity does not register a name.
+  ASSERT_OK(manager_->CgroupForDb(kPostgresDbOid));
+  ASSERT_FALSE(manager_->IsDbNameKnown(kPostgresDbOid));
+
+  // After RegisterDbName the entity carries the correct label.
+  manager_->RegisterDbName(kPostgresDbOid, "postgres");
+  ASSERT_TRUE(manager_->IsDbNameKnown(kPostgresDbOid));
+
+  auto entity = FindCgroupEntity(Format("db_$0", kPostgresDbOid));
+  ASSERT_EVENTUALLY([&] {
+    auto name_result = entity->TEST_GetAttributeFromMap("database_name");
+    ASSERT_OK(name_result);
+    ASSERT_EQ(*name_result, "postgres");
+  });
+}
+
+// Regression test for #31710: singleton TServer threads that were incorrectly
+// placed in @capped-pool/@system-med instead of @system-high.
+TEST_F(TServerCgroupManagerTest, TestSystemHighSingletonThreads) {
+  ASSERT_OK(WaitForTabletRunning(kTabletId));
+
+  struct Expectation {
+    std::string prefix;
+    std::string expected_cgroup;
+  };
+  // Thread comms are truncated to 15 chars by the kernel (PR_SET_NAME limit).
+  // "connectivity"        = 12 chars (no truncation)
+  // "update_peers_and_metrics" -> "update_peers_an" (15 chars)
+  std::vector<Expectation> expectations = {
+      {"connectivity",    "/@system-high"},
+      {"update_peers_a",  "/@system-high"},
+  };
+
+  std::vector<std::string> prefixes;
+  for (const auto& e : expectations) {
+    prefixes.push_back(e.prefix);
+  }
+
+  ASSERT_EVENTUALLY([&] {
+    auto threads = ASSERT_RESULT(GetPoolThreadCgroups(prefixes));
+
+    std::set<std::string> found;
+    for (const auto& t : threads) {
+      for (const auto& e : expectations) {
+        if (t.comm.substr(0, e.prefix.size()) == e.prefix) {
+          EXPECT_EQ(t.cgroup, e.expected_cgroup)
+              << "Thread " << t.comm << " (tid " << t.tid << ") expected in "
+              << e.expected_cgroup << " but found in " << t.cgroup;
+          found.insert(e.prefix);
+          break;
+        }
+      }
+    }
+    for (const auto& e : expectations) {
+      ASSERT_TRUE(found.count(e.prefix))
+          << "Thread with prefix '" << e.prefix << "' not yet visible";
+    }
+  });
+}
+
+// Regression test for #31710: TerminationMonitor::SetCgroup moves the
+// sigterm_loop thread into the given cgroup.
+TEST_F(TServerCgroupManagerTest, TestTerminationMonitorSetCgroup) {
+  auto monitor = TerminationMonitor::Create();
+  monitor->SetCgroup(manager_->SystemHighCgroup());
+
+  ASSERT_EVENTUALLY([&] {
+    auto threads = ASSERT_RESULT(GetPoolThreadCgroups({"sigterm_loop"}));
+    ASSERT_GE(threads.size(), 1) << "sigterm_loop thread not yet visible";
+    for (const auto& t : threads) {
+      EXPECT_EQ(t.cgroup, "/@system-high")
+          << "sigterm_loop (tid " << t.tid << ") not in system-high cgroup";
+    }
   });
 }
 

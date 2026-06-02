@@ -220,7 +220,8 @@ class GFlagsCollector : public Collector {
   virtual CollectionLevel collection_level() { return CollectionLevel::LOW; }
 };
 
-CallHome::CallHome(server::RpcAndWebServerBase* server) : server_(server), pool_("call_home", 1) {
+CallHome::CallHome(server::RpcAndWebServerBase* server, Cgroup* cgroup)
+    : server_(server), pool_("call_home", 1, cgroup) {
   scheduler_ = std::make_unique<yb::rpc::Scheduler>(&pool_.io_service());
   curl_.set_follow_redirects(true);
 

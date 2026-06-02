@@ -311,6 +311,11 @@ Status StartServices(Services& services) {
   LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
   RETURN_NOT_OK(services.tablet_server->Start());
   LOG(INFO) << "Tablet server successfully started.";
+#ifdef __linux__
+  if (auto* cm = services.tablet_server->cgroup_manager()) {
+    services.termination_monitor->SetCgroup(cm->SystemHighCgroup());
+  }
+#endif
 
   services.tablet_server->SharedObject()->SetPid(getpid());
 
@@ -339,6 +344,11 @@ Status StartServices(Services& services) {
 
     services.pg_supervisor =
         std::make_unique<PgSupervisor>(pg_process_conf, services.tablet_server.get());
+#ifdef __linux__
+    if (auto* cm = services.tablet_server->cgroup_manager()) {
+      services.pg_supervisor->SetCgroup(cm->SystemHighCgroup());
+    }
+#endif
     ysql_lease_enabled = IsYsqlLeaseEnabled();
     if (ysql_lease_enabled) {
       RETURN_NOT_OK(services.pg_supervisor->InitPaused());
