@@ -14,7 +14,6 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
-#include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
@@ -28,7 +27,7 @@
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
-#include "yb/master/master_defaults.h"
+#include "yb/gutil/stl_util.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -36,7 +35,6 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/flags.h"
-#include "yb/gutil/stl_util.h"
 
 DEPRECATE_FLAG(int32, cdc_transaction_timeout_ms, "05_2021");
 DEPRECATE_FLAG(bool, cdc_enable_replicate_intents, "05_2021");
@@ -57,8 +55,7 @@ DEFINE_RUNTIME_AUTO_bool(xcluster_enable_subtxn_abort_propagation, kExternal, fa
 DEFINE_test_flag(int32, xcluster_producer_modify_sent_apply_safe_time_ms, 0,
     "If set, will modify the apply safe time by this many milliseconds.");
 
-namespace yb {
-namespace cdc {
+namespace yb::cdc {
 
 using namespace std::chrono_literals;
 using consensus::ReplicateMsgPtr;
@@ -435,14 +432,23 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
       }
     }
   } else {
-    auto safe_time =
-        GetSafeTimeForTarget(leader_safe_time, ht_of_last_returned_message,
-                             *context.have_more_messages);
-    context.resp->set_safe_hybrid_time(safe_time.ToUint64());
+    // Non-transactional path: used for non-transactional tables (currently sequences_data), as well
+    // as non-transactional YCQL and non-transactional semi-automatic YSQL xCluster streams.
+    auto safe_time = GetSafeTimeForTarget(
+        leader_safe_time, ht_of_last_returned_message, *context.have_more_messages);
+    // safe_time is invalid when have_more_messages is true but every message in this batch was an
+    // external write that EraseIf filtered out (e.g., during the transient bidirectional window of
+    // an xCluster DR switchover).  Leave safe_hybrid_time unset rather than sending an invalid
+    // value: the consumer guards on has_safe_hybrid_time() and would discard it anyway (logging a
+    // spurious WARNING), and the checkpoint has already advanced past the external writes so the
+    // next poll returns a valid safe time.
+    if (safe_time.is_valid()) {
+      context.resp->set_safe_hybrid_time(safe_time.ToUint64());
+    }
   }
 
   *context.msgs_holder = consensus::ReplicateMsgsHolder(
-      nullptr, std::move(messages), std::move(consumption));
+      /*ops=*/nullptr, std::move(messages), std::move(consumption));
   (checkpoint.index > 0 ? checkpoint : context.from_op_id).ToPB(
       context.resp->mutable_checkpoint()->mutable_op_id());
 
@@ -454,5 +460,4 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   return Status::OK();
 }
 
-}  // namespace cdc
-}  // namespace yb
+} // namespace yb::cdc
