@@ -6792,7 +6792,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureBeforeSettingBarrierOn
   // Fail the CreateTablet after registering the tablet but before the CDC retention barriers could
   // be set.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_fail_before_setting_barrier) = true;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
