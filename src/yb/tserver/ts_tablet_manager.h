@@ -90,8 +90,6 @@ class Schema;
 class BackgroundTask;
 class XClusterSafeTimeTest;
 
-YB_STRONGLY_TYPED_BOOL(UserTabletsOnly);
-
 namespace consensus {
 class RaftConfigPB;
 } // namespace consensus
