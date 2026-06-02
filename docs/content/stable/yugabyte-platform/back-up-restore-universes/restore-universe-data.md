@@ -255,24 +255,50 @@ For information regarding components of a backup, refer to [Access backups in st
 
 ### Prerequisites
 
-To perform an advanced restore, you need the following:
+To perform an advanced restore, you need the following.
 
-- If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), a matching KMS configuration in the target YugabyteDB Anywhere installation so that the backup can be decrypted.
-- A matching [storage configuration](../configure-backup-storage/) in the target YugabyteDB Anywhere installation with credentials to access the storage where the backup is located.
+#### KMS configuration
 
-    If you are restoring from a backup that was moved to another location, copy the backup to a location with a corresponding storage configuration in YugabyteDB Anywhere.
+If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), you need a matching KMS configuration in the target YugabyteDB Anywhere installation so that the backup can be decrypted.
 
-- The storage address of the database or keyspace backup you want to restore.
+#### Storage configuration
 
-    If the backup is on a different YugabyteDB Anywhere installation, you can obtain the location address as follows:
+A matching [storage configuration](../configure-backup-storage/) in the target YugabyteDB Anywhere installation with credentials to access the storage where the backup is located.
 
-    1. In the **Backups** list, click the backup (row) to display the **Backup Details**.
+If you are restoring from a backup that was moved to another location, copy the backup to a location with a corresponding storage configuration in YugabyteDB Anywhere.
 
-    1. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace you want to restore. If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.
+#### Backup location
 
-    1. Note the **Storage Config** used by the backup, along with the database or keyspace name.
+The full backup location of the database or keyspace backup you want to restore.
 
-    To determine the address from the backup folder structure, refer to [Access backups in storage](../back-up-universe-data/#access-backups-in-storage).
+You can obtain the address of the backup location as follows:
+
+1. Navigate to **Backups** and click the backup (row) to display the **Backup Details**.
+
+1. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace you want to restore. (If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.)
+
+1. Note the **Storage Config** used by the backup, along with the database or keyspace name.
+
+The directory structure of the **Backup location** matters. For a restore to succeed, the YugabyteDB Anywhere requires the full path.
+
+For NFS storage configurations, the configuration path also includes a `yugabyte_backup` directory, which YugabyteDB Anywhere adds automatically when writing backups. The **Backup location** must include this directory. (S3, GCS, and Azure storage configurations do not have this extra directory; the bucket is part of the storage configuration's path itself.)
+
+For example, for an NFS storage configuration with the path `/backup`, a valid location is the following:
+
+```output
+/backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+```
+
+Similarly, for an NFS storage configuration with the path `/mnt/backup/`, a valid location is the following:
+
+```output
+/mnt/backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
+```
+
+Everything from the `yugabyte_backup` folder down (or, for cloud storage, everything after the configured bucket and path prefix) must be left unchanged; only the leading storage address can differ, and only if it matches the selected storage configuration and the backup data actually resides there. If you moved or copied the backup to a new folder, please ensure the storage config with the correct path prefix is used to match where the backup data now resides.
+
+For more information on the folder structure of YugabyteDB Anywhere backups, refer to [Access backups in storage](../back-up-universe-data/#access-backups-in-storage).
+
 
 ### Perform an advanced restore
 
@@ -307,22 +333,6 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
     ```
 
     YugabyteDB Anywhere looks for the backup in `test_bucket/test`, not `user_bucket/test`.
-
-    The directory structure of the **Backup location** matters. YugabyteDB Anywhere determines the location of the backup files by removing the storage configuration's path from the start of the **Backup location** you provide, and then appending whatever remains to the storage configuration's path. As a result, the **Backup location** must begin with the path defined in the selected storage configuration. If it doesn't, the path is constructed incorrectly and the restore fails immediately.
-
-    For NFS storage configurations, the configuration path also includes a `yugabyte_backup` directory, which YugabyteDB Anywhere adds automatically when writing backups. The **Backup location** must include this directory. (S3, GCS, and Azure storage configurations do not have this extra directory; the bucket is part of the storage configuration's path itself.) For example, for an NFS storage configuration with the path `/backup`, a valid location is the following:
-
-    ```output
-    /backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
-    ```
-
-    Similarly, for an NFS storage configuration with the path `/mnt/backup/`, a valid location is the following:
-
-    ```output
-    /mnt/backup/yugabyte_backup/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
-    ```
-
-    Everything from the `yugabyte_backup` folder down (or, for cloud storage, everything after the configured bucket and path prefix) must be left unchanged; only the leading storage address can differ, and only if it matches the selected storage configuration and the backup data actually resides there. If you moved or copied the backup to a new folder, please ensure the storage config with the correct path prefix is used to match where the backup data now resides.
 
 1. Specify the name of the database or keyspace from which you are performing a restore.
 

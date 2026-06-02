@@ -149,26 +149,6 @@ To create a GCP backup configuration, do the following:
 
 1. Click **Save**.
 
-## Network File System
-
-You can configure Network File System (NFS) as your backup target, as follows:
-
-1. Navigate to **Integrations > Backup > Network File System**.
-
-1. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
-
-    ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
-
-1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
-
-1. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
-
-1. Click **Save**.
-
-{{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
-To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` on the nodes of universes using the backup configuration. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../back-up-universe-data/) or [restore](../restore-universe-data/).
-{{< /warning >}}
-
 ## Azure Storage
 
 You can configure Azure as your backup target.
@@ -393,6 +373,26 @@ For multi-region backup configurations with IAM enabled, you do not need to prov
    - No SAS tokens are required for any region when IAM is enabled.
 
 1. Click **Save**. -->
+
+## Network File System
+
+You can configure Network File System (NFS) as your backup target, as follows:
+
+1. Navigate to **Integrations > Backup > Network File System**.
+
+1. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
+
+    ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
+
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+
+1. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
+
+1. Click **Save**.
+
+{{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
+To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` on the nodes of universes using the backup configuration. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../back-up-universe-data/) or [restore](../restore-universe-data/).
+{{< /warning >}}
 
 ## Local storage
 

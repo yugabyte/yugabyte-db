@@ -116,23 +116,22 @@ The copied location provides the full path to the backup.
 YugabyteDB Anywhere universe backups are stored using the following folder structure:
 
 ```output
-<storage-address>
-  /sub-directories
+<storage-address>/sub-directories
+  /yugabyte_backup    [NFS backups only]
     /<univ_name>_<universe-uuid>
-     /<database-name>
-      /<backup-series-name>-<backup-series-uuid>
-        /<backup-type>
-          /<creation-time>
-            /<backup-name>_<uuid>
+      /<database-name>
+        /<backup-series-name>-<backup-series-uuid>
+          /<backup-type>
+            /<creation-time>
+              /<backup-name>_<uuid>
 ```
 
-For example:
+For example, an S3 backup address would be similar to the following:
 
 ```output
-s3://user_bucket
-  /some/sub/folders
-    /universe-name_a85b5b01-6e0b-4a24-b088-478dafff94e4
-     /database1_name
+s3://user_bucket/some/sub/folders
+  /universe-name_a85b5b01-6e0b-4a24-b088-478dafff94e4
+    /database1_name
       /ybc_backup-92317948b8e444ba150616bf182a061
         /incremental
           /20204-01-04T12: 11: 03
@@ -141,8 +140,8 @@ s3://user_bucket
 
 | Component | Description |
 | :-------- | :---------- |
-| Storage address | The name of the bucket as specified in the [storage configuration](../configure-backup-storage/) that was used for the backup. |
-| Sub-directories | The path of the sub-folders (if any) in a bucket. |
+| Storage address | The name of the bucket as specified in the [storage configuration](../configure-backup-storage/) that was used for the backup. This can include the path of the sub-folders (if any) in a bucket. For NFS, this will consist only of a path of subfolders. |
+| yugabyte_backup | NFS backups are stored under this directory. The directory is not present for S3, GCS, or Azure storage. |
 | Universe name and UUID | The name of the universe and UUID that was backed up. You can move this folder to a different location, but to successfully restore, do not modify this folder, or any of its contents. |
 | Database or Keyspace name | The name of the Database or Keyspace that was backed up. |
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
