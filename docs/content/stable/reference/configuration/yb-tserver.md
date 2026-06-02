@@ -1149,46 +1149,6 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
-##### ysql_yb_ddl_transaction_block_enabled
-
-{{% tags/wrap %}}
-{{<tags/feature/tp idea="1677">}}
-{{<tags/feature/restart-needed>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-If true, DDL operations in YSQL execute within the active transaction block instead of in separate DDL transactions. This enables [transactional DDL](../../../explore/transactions/transactional-ddl/) rollback behavior and is required to enable [table-level locks](../../../explore/transactions/explicit-locking/#enable-table-level-locks).
-
-Requires `ysql_yb_ddl_rollback_enabled` to be true.
-
-This is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
-
-##### enable_object_locking_for_table_locks
-
-{{% tags/wrap %}}
-{{<tags/feature/ea idea="1114">}}
-{{<tags/feature/restart-needed>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Enables table-level (object) locks for YSQL, allowing YugabyteDB to coordinate concurrent DML and DDL operations across sessions. Requires [ysql_yb_ddl_transaction_block_enabled](#ysql-yb-ddl-transaction-block-enabled) to be true.
-
-For enablement steps, see [Enable table-level locks](../../../explore/transactions/explicit-locking/#enable-table-level-locks).
-
-##### ysql_enable_concurrent_ddl
-
-{{% tags/wrap %}}
-{{<tags/feature/tp>}}
-{{<tags/feature/restart-needed>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Advanced preview flag that enables concurrent DDL operations within the same database. Requires [enable_object_locking_for_table_locks](#enable-object-locking-for-table-locks) to be true. Avoid using this flag unless recommended by Yugabyte support.
-
-This is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
-
-For enablement steps, see [Enable concurrent DDL](../../../explore/transactions/explicit-locking/#enable-concurrent-ddl).
-
 ### Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../additional-features/change-data-capture/).

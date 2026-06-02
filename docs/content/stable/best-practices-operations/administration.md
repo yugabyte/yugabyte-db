@@ -62,9 +62,7 @@ Most DDL statements complete quickly, so this is typically not a significant iss
 
 ## Concurrent DDL during a DDL operation
 
-DDL statements that affect entities in different databases can be run concurrently.
-
-For DDL statements that impact the same database, sequential execution is recommended unless concurrent DDL is explicitly enabled. By default, concurrent DDL on the same database is unsupported and may fail with conflict or read restart errors. To enable concurrent DDL within a database, see [Enable concurrent DDL](../../explore/transactions/explicit-locking/#enable-concurrent-ddl) (available in v2025.2.3 and later).
+DDL statements that affect entities in different databases can be run concurrently. However, for DDL statements that impact the same database, it is recommended to execute them sequentially.
 
 DDL statements that relate to shared objects, such as roles or tablespaces, are considered as affecting all databases in the cluster, so they should also be run sequentially.
 

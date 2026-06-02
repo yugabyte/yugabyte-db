@@ -132,22 +132,10 @@ To prevent dead TServers holding locks from permanently blocking subsequent DMLs
 
 ### Enable table-level locks
 
-Table-level locks are disabled by default. To enable the feature:
+Table-level locks are disabled by default. To enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_object_locking_for_table_locks` to true.
 
-1. Enable [transactional DDL](../transactional-ddl/#enable-transactional-ddl) by setting the [yb-tserver](../../../reference/configuration/yb-tserver/#ysql-yb-ddl-transaction-block-enabled) flag `ysql_yb_ddl_transaction_block_enabled` to true.
-  Because `ysql_yb_ddl_transaction_block_enabled` is a preview flag, add it to [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) (for example, `allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled`).
-1. Set the [yb-tserver](../../../reference/configuration/yb-tserver/#enable-object-locking-for-table-locks) flag `enable_object_locking_for_table_locks` to true on all YB-TServers.
+Because `enable_object_locking_for_table_locks` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=enable_object_locking_for_table_locks`).
+
+As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the flag [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
 
 For more information on the lock scopes and lifecycle, see [Table-level locks](../../../architecture/transactions/concurrency-control/#table-level-locks).
-
-### Enable concurrent DDL
-
-{{<tags/feature/tp>}} By default, concurrent DDL statements that affect the same database are not supported and can fail with conflict or read restart errors. In v2025.2.3 and later, you can enable concurrent DDL within a database when [table-level locks](#enable-table-level-locks) are enabled.
-
-To enable concurrent DDL:
-
-1. Complete the steps to [enable table-level locks](#enable-table-level-locks).
-1. Add the preview flag `ysql_enable_concurrent_ddl` to [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv).
-1. Set the [yb-tserver](../../../reference/configuration/yb-tserver/#ysql-enable-concurrent-ddl) flag `ysql_enable_concurrent_ddl` to true on all YB-TServers. `ysql_enable_concurrent_ddl` is an advanced preview flag. Enable it only when recommended by Yugabyte support.
-
-For behavior and limitations when concurrent DDL is enabled, see [Concurrent DDL during a DDL operation](../../../best-practices-operations/administration/#concurrent-ddl-during-a-ddl-operation) and [Transactional DDL limitations](../transactional-ddl/#limitations).
