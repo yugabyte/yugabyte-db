@@ -17,11 +17,16 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgRegressForeignKeyWhenTypesMismatch extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
+
+    // Force GUC on so the tests pass when backported to releases
+    // where the compile-time default is set to off by default.
+    appendToYsqlPgConf(flagMap, "yb_enable_fkey_batched_docdb_lookup_when_types_mismatch=true");
+
     // We turn the locks on to ensure we get same results for EXPLAIN (ANALYZE)
     // queries. ysql_yb_ddl_transaction_block_enabled=true is a prerequisite for
     // enable_object_locking_for_table_locks to be true.
@@ -33,6 +38,7 @@ public class TestPgRegressForeignKeyWhenTypesMismatch extends BasePgRegressTest 
     // We turn off the fastpath to ensure we get same results for EXPLAIN (ANALYZE)
     // queries on Linux and Mac, otherwise, the Storage Flush Requests are different.
     flagMap.put("enable_object_lock_fastpath", "false");
+
     return flagMap;
   }
 
