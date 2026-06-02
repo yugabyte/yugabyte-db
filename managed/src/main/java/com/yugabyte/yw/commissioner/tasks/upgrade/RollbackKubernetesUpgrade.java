@@ -157,8 +157,6 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(
                 universe, targetVersion, YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE);
 
-            createCleanUpPGUpgradeDataDirTask();
-
             if (requireAdditionalSuperUserForCatalogUpgrade) {
               createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
             }
