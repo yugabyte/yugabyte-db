@@ -102,6 +102,7 @@ struct od_config {
 	_Atomic int yb_max_prepared_statements;
 	_Atomic int yb_tcmalloc_gc_interval;
 	_Atomic int yb_enable_parse_queue_tracking;
+	_Atomic int yb_wait_for_rfq_on_sync;
 };
 
 void od_config_init(od_config_t *);

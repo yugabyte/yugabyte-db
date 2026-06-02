@@ -189,6 +189,12 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
     "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
     "the backend, which may surface as errors such as 'prepared statement does not exist'.");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
+    "When enabled, the YSQL Connection Manager stops reading further client packets after "
+    "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
+    "backend is received, preventing cross-Sync-boundary pipelining. if set to false, there"
+    " can be correctness issues with pipelining.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
     "Sampling is disabled if this is set to 0. This flag will only be in effect if "
