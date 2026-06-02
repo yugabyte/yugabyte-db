@@ -139,29 +139,32 @@ typedef struct RI_ConstraintInfo
 	/*
 	 * The following three fields apply ONLY to foreign key constraints.
 	 *
+	 * yb_is_fk_to_pk_cache_populated is true once yb_cast_paths_valid
+	 * and yb_fk_to_pk_castfinfo are both populated. This avoids repeated
+	 * lookups into pg_cast and pg_proc, if any.
+	 *
 	 * yb_cast_paths_valid is false if the batched DocDB lookup path is not
 	 * possible for this constraint because FK to PK coercion is not possible
-	 * or not supported.
+	 * or not supported or disabled by the GUC
+	 * yb_enable_fkey_batched_docdb_lookup_when_types_mismatch when types
+	 * mismatch.
 	 *
-	 * If the batched DocDB lookup path is possible, yb_fk_to_pk_castfinfo[i]
-	 * caches the cast function information for FK->PK coercion for attribute i
-	 * after looking up the pg_cast and pg_proc tables by calling
-	 * find_coercion_pathway and fmgr_info_cxt respectively.
+	 * If the batched DocDB lookup path is possible, yb_cast_paths_valid is
+	 * set to true and yb_fk_to_pk_castfinfo[i] caches the cast function
+	 * information for FK->PK coercion for attribute i after looking up the
+	 * pg_cast and pg_proc tables by calling find_coercion_pathway and
+	 * fmgr_info_cxt respectively.
 	 *
 	 * If the coercion is COERCION_PATH_RELABELTYPE, then
 	 * yb_fk_to_pk_castfinfo[i].fn_oid is InvalidOid.
 	 *
 	 * If the coercion is COERCION_PATH_FUNC, then
 	 * yb_fk_to_pk_castfinfo[i].fn_oid is the cast function OID.
-	 *
-	 * yb_is_fk_to_pk_cache_populated is true once yb_fk_to_pk_castfinfo
-	 * is populated.
-	 *
-	 * This avoids repeated lookups into pg_cast and pg_proc.
 	 */
-	bool		yb_cast_paths_valid;
 	bool		yb_is_fk_to_pk_cache_populated;
-	FmgrInfo	yb_fk_to_pk_castfinfo[RI_MAX_NUMKEYS];
+	bool		yb_cast_paths_valid;
+	FmgrInfo	yb_fk_to_pk_castfinfo[RI_MAX_NUMKEYS];	/* The pg_cast & pg_proc
+														 * Cache */
 } RI_ConstraintInfo;
 
 /*
@@ -275,6 +278,7 @@ static void ri_ReportViolation(const RI_ConstraintInfo *riinfo,
 static bool YbFkToPkTypePairWhitelisted(Oid pk_typid, Oid fk_typid);
 static bool YbFkColToPkColCoercionPath(Oid pk_typid, Oid fk_typid,
 									   CoercionPathType *pathtype, Oid *castfunc);
+static void YbResetFkToPkCoercionCache(RI_ConstraintInfo *riinfo);
 static void YbPopulateFkToPkCoercionCache(RI_ConstraintInfo *riinfo,
 										  TupleDesc pkdesc, TupleDesc fkdesc);
 static Datum YbGetPkDatumFromFkDatum(Datum fk_datum, bool fk_isnull,
@@ -2490,8 +2494,10 @@ ri_FetchConstraintInfo(Trigger *trigger, Relation trig_rel, bool rel_is_pk)
 
 		if (pk_rel != NULL)
 		{
-			YbPopulateFkToPkCoercionCache(riinfo, RelationGetDescr(pk_rel),
-										  RelationGetDescr(trig_rel));
+			if (IsYBRelation(pk_rel))
+				YbPopulateFkToPkCoercionCache(riinfo, RelationGetDescr(pk_rel),
+											  RelationGetDescr(trig_rel));
+
 			RelationClose(pk_rel);
 		}
 	}
@@ -2577,10 +2583,7 @@ ri_LoadConstraintInfo(Oid constraintOid)
 	 * YB: reset the FK-to-PK coercion cache. ri_FetchConstraintInfo on the
 	 * FK table repopulates it. Until then, do not read yb_fk_to_pk_castfinfo.
 	 */
-	MemSet(riinfo->yb_fk_to_pk_castfinfo, 0,
-		   sizeof(riinfo->yb_fk_to_pk_castfinfo));
-	riinfo->yb_is_fk_to_pk_cache_populated = false;
-	riinfo->yb_cast_paths_valid = true;
+	YbResetFkToPkCoercionCache(riinfo);
 
 	/*
 	 * For efficient processing of invalidation messages below, we keep a
@@ -2691,16 +2694,16 @@ YbInvalidateRIFkPkCastCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
 		RI_ConstraintInfo *riinfo = dlist_container(RI_ConstraintInfo,
 													valid_link, iter.cur);
 
-		if (riinfo->yb_is_fk_to_pk_cache_populated)
-		{
-			riinfo->yb_is_fk_to_pk_cache_populated = false;
-			riinfo->yb_cast_paths_valid = false;
-			MemSet(riinfo->yb_fk_to_pk_castfinfo, 0,
-				   sizeof(riinfo->yb_fk_to_pk_castfinfo));
-		}
+		/*
+		 * YB: invalidate the cache if the cache is populated and the cast
+		 * paths are valid. If the cast paths are not valid, there is no
+		 * need to invalidate the cache because we are not using the pg_cast
+		 * table for this constraint.
+		 */
+		if (riinfo->yb_is_fk_to_pk_cache_populated && riinfo->yb_cast_paths_valid)
+			YbResetFkToPkCoercionCache(riinfo);
 	}
 }
-
 
 /*
  * Prepare execution plan for a query to enforce an RI restriction
@@ -3136,21 +3139,25 @@ ri_InitHashTables(void)
 								  InvalidateConstraintCacheCallBack,
 								  (Datum) 0);
 
-	/* YB: invalidate cached FK->PK cast paths when pg_cast changes */
-	CacheRegisterSyscacheCallback(CASTSOURCETARGET,
-								  YbInvalidateRIFkPkCastCacheCallBack,
-								  (Datum) 0);
 
-	/*
-	 * YB: invalidate cached FK->PK cast paths when pg_proc changes. However,
-	 * we do not need to invalidate the cache when pg_proc changes because for
-	 * the whitelisted pairs for FK -> PK coercion, all the functions are
-	 * builtin functions or the casts are binary-compatible.
-	 * TODO(aman.mangal): uncomment this when we expand the FK->PK whitelist.
-	 * CacheRegisterSyscacheCallback(PROCOID,
-	 * 							     YbInvalidateRIFkPkCastCacheCallBack,
-	 *							     (Datum) 0);
-	 */
+	if (yb_enable_fkey_batched_docdb_lookup_when_types_mismatch)
+	{
+		/* YB: invalidate cached FK->PK cast paths when pg_cast changes */
+		CacheRegisterSyscacheCallback(CASTSOURCETARGET,
+									  YbInvalidateRIFkPkCastCacheCallBack,
+									  (Datum) 0);
+
+		/*
+		 * YB: invalidate cached FK->PK cast paths when pg_proc changes. However,
+		 * we do not need to invalidate the cache when pg_proc changes because for
+		 * the whitelisted pairs for FK -> PK coercion, all the functions are
+		 * builtin functions or the casts are binary-compatible.
+		 * TODO(aman.mangal): uncomment this when we expand the FK->PK whitelist.
+		 * CacheRegisterSyscacheCallback(PROCOID,
+		 * 							     YbInvalidateRIFkPkCastCacheCallBack,
+		 * 							     (Datum) 0);
+		 */
+	}
 
 	ctl.keysize = sizeof(RI_QueryKey);
 	ctl.entrysize = sizeof(RI_QueryHashEntry);
@@ -3508,6 +3515,10 @@ YbFkColToPkColCoercionPath(Oid pk_typid, Oid fk_typid,
 		return true;
 	}
 
+	/*
+	 * YB: okay to check the GUC here because it has context PGC_BACKEND and does
+	 * not change once the backend has been created.
+	 */
 	if (!yb_enable_fkey_batched_docdb_lookup_when_types_mismatch)
 		return false;
 
@@ -3520,6 +3531,14 @@ YbFkColToPkColCoercionPath(Oid pk_typid, Oid fk_typid,
 	return *pathtype == COERCION_PATH_RELABELTYPE || *pathtype == COERCION_PATH_FUNC;
 }
 
+static void
+YbResetFkToPkCoercionCache(RI_ConstraintInfo *riinfo)
+{
+	riinfo->yb_is_fk_to_pk_cache_populated = false;
+	riinfo->yb_cast_paths_valid = false;
+	MemSet(riinfo->yb_fk_to_pk_castfinfo, 0, sizeof(riinfo->yb_fk_to_pk_castfinfo));
+}
+
 /*
  * Populate yb_fk_to_pk_castfinfo for the RI constraint, using
  * YbFkColToPkColCoercionPath. On failure, sets yb_cast_paths_valid to
@@ -3530,9 +3549,6 @@ YbFkColToPkColCoercionPath(Oid pk_typid, Oid fk_typid,
 static void
 YbPopulateFkToPkCoercionCache(RI_ConstraintInfo *riinfo, TupleDesc pkdesc, TupleDesc fkdesc)
 {
-	MemSet(riinfo->yb_fk_to_pk_castfinfo, 0, sizeof(riinfo->yb_fk_to_pk_castfinfo));
-	riinfo->yb_cast_paths_valid = true;
-
 	for (int i = 0; i < riinfo->nkeys; i++)
 	{
 		AttrNumber	pk_attnum = riinfo->pk_attnums[i];
@@ -3547,9 +3563,15 @@ YbPopulateFkToPkCoercionCache(RI_ConstraintInfo *riinfo, TupleDesc pkdesc, Tuple
 
 		if (!YbFkColToPkColCoercionPath(pk_typid, fk_typid, &pathtype, &castfunc))
 		{
+			YbResetFkToPkCoercionCache(riinfo);
+
+			/* YB: FK -> PK Cast is not possible. Hence, set the yb_cast_paths_valid to false.
+			 * Cache is now populated, there is no need to call YbPopulateFkToPkCoercionCache
+			 * again until it gets invalidated when pg_constraint changes.
+			 */
+			riinfo->yb_is_fk_to_pk_cache_populated = true;
 			riinfo->yb_cast_paths_valid = false;
-			MemSet(riinfo->yb_fk_to_pk_castfinfo, 0, sizeof(riinfo->yb_fk_to_pk_castfinfo));
-			break;
+			return;
 		}
 
 		/*
@@ -3565,6 +3587,7 @@ YbPopulateFkToPkCoercionCache(RI_ConstraintInfo *riinfo, TupleDesc pkdesc, Tuple
 			Assert(pathtype == COERCION_PATH_RELABELTYPE);
 	}
 
+	riinfo->yb_cast_paths_valid = true;
 	riinfo->yb_is_fk_to_pk_cache_populated = true;
 }
 

@@ -19,7 +19,12 @@
 -- We then drop the parent and child tables.
 --
 \set VERBOSITY default
-SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
+SHOW yb_enable_fkey_batched_docdb_lookup_when_types_mismatch; -- should be true
+ yb_enable_fkey_batched_docdb_lookup_when_types_mismatch 
+---------------------------------------------------------
+ on
+(1 row)
+
 -- int2_to_int4
 CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
@@ -1585,63 +1590,6 @@ SELECT count(*) FROM child WHERE h = 100001 AND v1 = 1 AND v2 = 'hello';
 
 DROP TABLE child;
 DROP TABLE parent;
--- yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false
-CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false;
-\set initial_v1 456
-\set updated_v1 457
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
--- Helper sequence for single-column parent/child FK type mismatch cases.
--- Required psql variables:
---   initial_v1
---   updated_v1
-INSERT INTO parent VALUES (1, :'initial_v1');
-INSERT INTO child VALUES (1, :'initial_v1'); -- warm up catalog cache
-DELETE FROM child WHERE h = 1; -- undo changes due to warm up
-BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'initial_v1');
-                  QUERY PLAN                   
------------------------------------------------
- Insert on child (actual rows=0 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
-         Storage Table Write Requests: 1
- Trigger for constraint child_v1_fkey: calls=1
- Storage Read Requests: 2
- Storage Read Ops: 2
- Storage Rows Scanned: 2
- Storage Write Requests: 1
- Storage Flush Requests: 1
-(9 rows)
-
-COMMIT;
-SELECT count(*) FROM child;
- count 
--------
-     1
-(1 row)
-
-ALTER TABLE child DROP CONSTRAINT child_v1_fkey;
-ALTER TABLE child ADD CONSTRAINT child_v1_fkey FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE;
-UPDATE parent SET v1 = :'updated_v1' WHERE h = 1;
-SELECT count(*) FROM child WHERE h = 100001 AND v1 = :'updated_v1';
- count 
--------
-     1
-(1 row)
-
-DELETE FROM parent WHERE h = 1;
-SELECT count(*) FROM child;
- count 
--------
-     0
-(1 row)
-
-DROP TABLE child;
-DROP TABLE parent;
-SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
 -- test ensures that the constraint cache is updated correctly when the
 -- pg_constraint table is updated after the foreign key constraint is created.
 CREATE TABLE parent(k int4 PRIMARY KEY);
@@ -1924,3 +1872,72 @@ ERROR:  insert or update on table "parent" violates foreign key constraint "pare
 DETAIL:  Key (ref_id)=(999) is not present in table "parent".
 INSERT INTO parent VALUES (5, 5);
 DROP TABLE parent;
+-- yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false
+SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false; -- should fail
+ERROR:  parameter "yb_enable_fkey_batched_docdb_lookup_when_types_mismatch" cannot be set after connection start
+-- Connect to a new session and verify the GUC is set to false.
+\c "options='-c yb_enable_fkey_batched_docdb_lookup_when_types_mismatch=false'"
+SHOW yb_enable_fkey_batched_docdb_lookup_when_types_mismatch; -- should be false
+ yb_enable_fkey_batched_docdb_lookup_when_types_mismatch 
+---------------------------------------------------------
+ off
+(1 row)
+
+-- int2_to_int4
+CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set initial_v1 456
+\set updated_v1 457
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+-- Helper sequence for single-column parent/child FK type mismatch cases.
+-- Required psql variables:
+--   initial_v1
+--   updated_v1
+INSERT INTO parent VALUES (1, :'initial_v1');
+INSERT INTO child VALUES (1, :'initial_v1'); -- warm up catalog cache
+DELETE FROM child WHERE h = 1; -- undo changes due to warm up
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, :'initial_v1');
+                  QUERY PLAN                   
+-----------------------------------------------
+ Insert on child (actual rows=0 loops=1)
+   ->  Result *RESULT* (actual rows=1 loops=1)
+         Storage Table Write Requests: 1
+ Trigger for constraint child_v1_fkey: calls=1
+ Storage Read Requests: 2
+ Storage Read Ops: 2
+ Storage Rows Scanned: 2
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(9 rows)
+
+COMMIT;
+SELECT count(*) FROM child;
+ count 
+-------
+     1
+(1 row)
+
+ALTER TABLE child DROP CONSTRAINT child_v1_fkey;
+ALTER TABLE child ADD CONSTRAINT child_v1_fkey FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE;
+UPDATE parent SET v1 = :'updated_v1' WHERE h = 1;
+SELECT count(*) FROM child WHERE h = 100001 AND v1 = :'updated_v1';
+ count 
+-------
+     1
+(1 row)
+
+DELETE FROM parent WHERE h = 1;
+SELECT count(*) FROM child;
+ count 
+-------
+     0
+(1 row)
+
+DROP TABLE child;
+DROP TABLE parent;
+-- yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true
+SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true; -- should fail
+ERROR:  parameter "yb_enable_fkey_batched_docdb_lookup_when_types_mismatch" cannot be set after connection start
