@@ -39,10 +39,9 @@ const rocksdb::KeyValueEntry& BoundedRocksDbIterator::SeekToLast() {
   if (key_bounds_->upper.empty()) {
     return FilterEntry(iterator_->SeekToLast());
   }
-  // TODO(tsplit): this code path is only used for post-split tablets, particularly during
-  // reverse scan for range-partitioned tables.
-  // Need to add unit-test for this scenario when adding unit-tests for tablet splitting of
-  // range-partitioned tables.
+  // This code path is only used for post-split tablets, particularly during reverse scan for
+  // range-partitioned tables. The upper bound is exclusive, so seek to it and step back to the
+  // previous entry to find the last in-bounds key. Covered by bounded_rocksdb_iterator-test.cc.
   const auto& entry = iterator_->Seek(key_bounds_->upper);
   if (entry) {
     return FilterEntry(iterator_->Prev());
