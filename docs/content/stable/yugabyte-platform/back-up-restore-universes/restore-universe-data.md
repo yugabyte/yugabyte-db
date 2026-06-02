@@ -287,13 +287,13 @@ Everything from the `yugabyte_backup` folder down is required.
 
 If you moved or copied the backup to a new location, make sure the storage configuration has the correct storage address to match the location where the backup data now resides. YugabyteDB Anywhere automatically replaces the storage address of the backup location you provide with the storage address of the storage configuration you select.
 
-For example, if you provide a storage configuration with an address of `s3://newbucket/backups` and the following backup location:
+For example, if you provide a _storage configuration_ with an address of `s3://newbucket/backups` and the following _backup location_:
 
 ```output
 s3://mybucket/yb-backups/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
 ```
 
-YugabyteDB will look in the following location for the backup:
+YugabyteDB Anywhere will look in the following location for the backup:
 
 ```output
 s3://newbucket/backups/univ-<universe-uuid>/<database>/ybc_backup-<uuid>/full/<timestamp>/multi-table-<keyspace>_<uuid>
@@ -311,7 +311,7 @@ If the backup is still being managed by YugabyteDB Anywhere, you can obtain the 
 
 #### KMS configuration
 
-If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), you need a matching KMS configuration in the target YugabyteDB Anywhere installation so that the backup can be decrypted.
+If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), you need a matching [KMS configuration](../../security/create-kms-config/aws-kms/) in the target YugabyteDB Anywhere installation so that the backup can be decrypted.
 
 ### Perform an advanced restore
 
