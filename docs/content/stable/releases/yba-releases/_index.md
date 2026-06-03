@@ -30,6 +30,8 @@ YugabyteDB Anywhere is a control plane for deploying and managing YugabyteDB uni
 
 Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
 
+You should run the latest version of YugabyteDB Anywhere that is compatible with the versions of YugabyteDB that are being used by your universes.
+
 ### Supported versions
 
 Every version of YugabyteDB Anywhere supports the then concurrently-released YugabyteDB version and all earlier then-supported versions of YugabyteDB.
