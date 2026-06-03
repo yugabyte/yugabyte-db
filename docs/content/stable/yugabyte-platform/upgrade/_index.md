@@ -18,7 +18,7 @@ Upgrade to the latest version of YugabyteDB Anywhere for the latest fixes and im
 
 You should run the latest version of YugabyteDB Anywhere that is compatible with the versions of YugabyteDB that are being used by your universes. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere. For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [Compatibility with YugabyteDB](../../releases/yba-releases/#compatibility-with-yugabytedb).
 
-For information on upgrading universes, see [Upgrade the YugabyteDB software](../manage-deployments/upgrade-software).
+For information on upgrading universes, see [Upgrade the YugabyteDB software](../manage-deployments/upgrade-software/).
 
 {{<index/block>}}
 
