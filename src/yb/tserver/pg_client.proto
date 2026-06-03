@@ -1440,8 +1440,11 @@ message PgAcquireObjectLockResponsePB {
 
 message PgReleaseSessionObjectLockRequestPB {
   uint64 session_id = 1;
-  PgPerformOptionsPB options = 2;
+
+  PgPerformOptionsPB DEPRECATED_options = 2;
+
   ObjectLockOid lock_oid = 3;
+  bool release_all = 4;
 }
 
 message PgReleaseSessionObjectLockResponsePB {
