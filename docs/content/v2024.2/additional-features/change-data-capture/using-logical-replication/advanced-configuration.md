@@ -21,7 +21,7 @@ You can use the following [YB-TServer flags](../../../../reference/configuration
 - [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs)
 - [cdcsdk_max_consistent_records](../../../../reference/configuration/yb-tserver/#cdcsdk-max-consistent-records)
 - [cdcsdk_vwal_getchanges_resp_max_size_bytes](../../../../reference/configuration/yb-tserver/#cdcsdk-vwal-getchanges-resp-max-size-bytes)
-- [cdc_enable_intra_transactional_before_image](../../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image) (v2024.2.9.1+)
+- [cdc_enable_intra_transactional_before_image](../../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image)
 
 ## Retention of resources
 
