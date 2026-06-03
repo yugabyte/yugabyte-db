@@ -6997,6 +6997,22 @@ parse_yb_read_time(const char *value, unsigned long long *result, bool *is_ht_un
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
+	/*
+	 * Disallow setting yb_read_time as a persistent default via
+	 * ALTER DATABASE SET, ALTER ROLE SET, or CREATE FUNCTION SET.
+	 * This GUC is inherently a per-session setting; persisting it at the
+	 * database or role level causes MISMATCHED_SCHEMA errors for all
+	 * subsequent connections.
+	 */
+	if (source == PGC_S_TEST)
+	{
+		GUC_check_errmsg("yb_read_time can only be set at the session "
+						 "level using SET, not as a persistent default "
+						 "via ALTER DATABASE, ALTER ROLE, or "
+						 "CREATE FUNCTION");
+		return false;
+	}
+
 	/* Read time should be convertable to unsigned long long */
 	unsigned long long read_time_ull;
 	unsigned long long value_ull;
