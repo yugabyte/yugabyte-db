@@ -752,7 +752,10 @@ public class LocalNodeManager {
 
   private synchronized void updateSoftwareOnNode(
       UniverseDefinitionTaskParams.UserIntent userIntent, String version) {
+    // This returns the cached bean from the database.
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    // Reload from the DB.
+    provider.refresh();
     String newYBBinDir = versionBinPathMap.get(version);
     LocalCloudInfo localCloudInfo = getCloudInfo(userIntent);
     if (StringUtils.isNotEmpty(newYBBinDir)) {
