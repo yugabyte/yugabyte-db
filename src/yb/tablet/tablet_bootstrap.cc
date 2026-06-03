@@ -1834,14 +1834,14 @@ class TabletBootstrap {
     auto* change_config = replicate_msg->mutable_change_config_record();
     RaftConfigPB config = change_config->new_config().ToGoogleProtobuf();
 
-    int64_t cmeta_opid_index =  cmeta_->committed_config().opid_index();
+    int64_t cmeta_opid_index = cmeta_->committed_config().committed_op_index();
     if (replicate_msg->id().index() > cmeta_opid_index) {
-      SCHECK(!config.has_opid_index(),
+      SCHECK(!config.has_committed_op_index(),
              Corruption,
              "A config change record must have an opid_index");
-      config.set_opid_index(replicate_msg->id().index());
+      config.set_committed_op_index(replicate_msg->id().index());
       VLOG_WITH_PREFIX(1) << "WAL replay found Raft configuration with log index "
-                          << config.opid_index()
+                          << config.committed_op_index()
                           << " that is greater than the committed config's index "
                           << cmeta_opid_index
                           << ". Applying this configuration change.";

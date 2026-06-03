@@ -383,7 +383,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
   // starting up, so this should be fine to do.
   DCHECK(master_->messenger());
   RaftConfigPB resolved_config;
-  resolved_config.set_opid_index(consensus::kInvalidOpIdIndex);
+  resolved_config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
   ScopedDnsTracker dns_tracker(setup_config_dns_stats_);
   for (const auto& list : *options.GetMasterAddresses()) {

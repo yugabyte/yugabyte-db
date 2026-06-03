@@ -254,7 +254,8 @@ void FillTabletConsensusInfoIfRequestOpIdStale(
     auto outgoing_tablet_consensus_info = resp->mutable_tablet_consensus_info();
     if (auto consensus = peer->GetRaftConsensus()) {
       auto cstate = consensus.get()->GetConsensusStateFromCache();
-      if (cstate.has_config() && req->raft_config_opid_index() < cstate.config().opid_index()) {
+      if (cstate.has_config() &&
+        req->raft_config_opid_index() < cstate.config().committed_op_index()) {
         outgoing_tablet_consensus_info->set_tablet_id(peer->tablet_id());
         *(outgoing_tablet_consensus_info->mutable_consensus_state()) = cstate;
         VLOG(1) << "Sending out Consensus state for tablet: " << peer->tablet_id()
