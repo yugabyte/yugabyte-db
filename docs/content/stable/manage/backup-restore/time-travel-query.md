@@ -26,7 +26,7 @@ The history retention period (that is, the period available for historical queri
 
 You should set the `timestamp_syscatalog_history_retention_interval_sec` flag to cover the time interval you want to query. You may also need to increase the history retention period if you are executing a long-running query in a time travel session.
 
-For example, to be able to query the data as of the last 24 hours (86000 seconds), set both flags to 86000.
+For example, to be able to query the data as of the last 24 hours (86400 seconds), set both flags to 86000.
 
 The default retention period is 900 seconds (15 minutes).
 

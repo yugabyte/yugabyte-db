@@ -147,6 +147,24 @@ Use the `list_clones` command to check whether a clone operation completed succe
 
 Note that the cluster doesn't allow you to perform two clone operations concurrently on the same source database. You have to wait for the first clone to finish until you can perform another clone.
 
+### Clone database ownership
+
+The owner of the clone is determined as follows:
+
+- OWNER is explicitly specified in the CREATE DATABASE command: The specified role is the owner. For example:
+
+    ```sql
+    CREATE DATABASE cloned_db TEMPLATE src_db OWNER some_role AS OF ...
+    ```
+
+    The role `some_role` is the owner.
+
+- OWNER is not specified: The current user executing the command becomes the owner of the clone.
+
+When using the yb-admin command `clone_namespace` directly, the cloned database retains the original template database's owner.
+
+Note that to clone a database that's not marked `datistemplate`, you must be a superuser or the owner of the source database.
+
 ### Example
 
 The following example demonstrates how to use a database clone to recover from an accidental table deletion.
@@ -291,24 +309,6 @@ Although creating a clone database is quick and initially doesn't take up much a
 - Increased disk use after compaction of either the clone or the original database. This is because both original and post-compaction data files must be kept on disk for access by whichever database did not do the compaction. For example, if compaction is performed on the original database, new compacted files are generated which serve reads for the original database. The old data files are retained on disk to serve reads for the clone database. Whenever the clone or original database is deleted, the cluster only cleans the unused data files.
 
 If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits) set, and creating the clone would lead to exceeding the limit, the clone operation will fail to respect the tablet limits.
-
-## Clone database ownership
-
-The owner of the clone is determined as follows:
-
-- OWNER is explicitly specified in the CREATE DATABASE command: The specified role is the owner. For example:
-
-    ```sql
-    CREATE DATABASE cloned_db TEMPLATE src_db OWNER some_role AS OF ...
-    ```
-
-    The role `some_role` is the owner.
-
-- OWNER is not specified: The current user executing the command becomes the owner of the clone.
-
-When using the yb-admin command `clone_namespace` directly, the cloned database retains the original template database's owner.
-
-Note that to clone a database that's not marked `datistemplate`, you must be a superuser or the owner of the source database.
 
 ## Limitations
 
