@@ -34,7 +34,7 @@ Backups from a stable track universe can only be restored to a higher version st
 
 - If a universe that spans multiple regions is backed up to NFS using a different volume for each region, all the NFS volumes must be synced to contain the full backup. Each node will require access to the full backup.
 
-    [Tablespaces](../../../explore/going-beyond-sql/tablespaces/) are an exception. A node doesn't require access to backed up tablets if that tablet is pinned to another region using a tablespace.
+    [Tablespaces](../../../explore/going-beyond-sql/tablespaces/) are an exception. A node doesn't require access to backed up tablets if they are pinned to another region using a tablespace.
 
 ## Restore an entire or incremental backup
 

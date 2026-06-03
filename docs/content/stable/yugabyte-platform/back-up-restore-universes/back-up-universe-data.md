@@ -215,7 +215,7 @@ You can move the backup to a location similar to the following:
 s3://user_bucket/new-test/univ-xyz/...
 ```
 
-SImilarly, if you have an NFS backup with a storage address of `/mnt/backups/test/` and the following path:
+Similarly, if you have an NFS backup with a storage address of `/mnt/backups/test/` and the following path:
 
 ```output
 /mnt/backups/test/yugabyte_backup/univ-xyz/...
