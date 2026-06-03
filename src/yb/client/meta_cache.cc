@@ -390,7 +390,7 @@ Status RemoteTablet::RefreshFromRaftConfig(
     new_replicas.emplace_back(std::make_shared<RemoteReplica>((*tserver).get(), role));
   }
   replicas_ = std::move(new_replicas);
-  raft_config_opid_index_ = consensus_state.config().opid_index();
+  raft_config_opid_index_ = consensus_state.config().committed_op_index();
   VLOG(1) << "Raft config refresh succeeded with opid_index: " << raft_config_opid_index_
             << " for tablet: " << tablet_id_
             << ", replicas are now: " << ReplicasAsStringUnlocked();
@@ -1241,7 +1241,7 @@ Status MetaCache::RefreshTabletInfoWithConsensusInfo(
           tablet_consensus_info.tablet_id()));
   auto consensus_state = tablet_consensus_info.consensus_state();
   SCHECK(
-      consensus_state.config().has_opid_index(), IllegalState,
+      consensus_state.config().has_committed_op_index(), IllegalState,
       "TabletConsensusInfo does not have a valid opid_index");
   SCHECK(
       consensus_state.has_leader_uuid() &&
@@ -1261,11 +1261,11 @@ Status MetaCache::RefreshTabletInfoWithConsensusInfo(
     // error, but in the consensus info it returned it is still the leader, so we will end up in a
     // loop.
     SCHECK(
-        consensus_state.config().opid_index() >= tablet_opid, Incomplete,
+        consensus_state.config().committed_op_index() >= tablet_opid, Incomplete,
         "TabletConsensusInfo contains a staler opid than the remote tablet");
 
     SCHECK(
-        !(tablet_opid == consensus_state.config().opid_index() &&
+        !(tablet_opid == consensus_state.config().committed_op_index() &&
           remote->current_leader_uuid() == consensus_state.leader_uuid()),
         Incomplete,
         "Incoming consensus information contains the same leader and participants as the remote "

@@ -93,7 +93,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
 
     HostPort host_port = HostPortFromPB(leader_.last_known_private_addr()[0]);
     ASSERT_OK(client_->Start(leader_.permanent_uuid(), proxy_cache_.get(),
-        host_port, ServerRegistrationPB(), &meta_));
+        host_port, ServerRegistrationPB(), OpId(), &meta_));
   }
 
  protected:

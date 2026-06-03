@@ -299,6 +299,11 @@ class Consensus {
   // Returns a copy of the current committed Raft configuration.
   virtual RaftConfigPB CommittedConfig() const = 0;
 
+  // The pending Raft config change operation id, if a config change is currently pending or last
+  // known pending config change operation id received from StartRemoteBootstrapRequestPB request
+  // unless we know it is no longer pending.
+  virtual OpId GetPendingConfigOpId() const = 0;
+
   virtual void DumpStatusHtml(std::ostream& out) const = 0;
 
   void SetFaultHooks(const std::shared_ptr<ConsensusFaultHooks>& hooks);
@@ -399,7 +404,8 @@ YB_DEFINE_ENUM(StateChangeReason,
     (NEW_LEADER_ELECTED)
     (FOLLOWER_NO_OP_COMPLETE)
     (LEADER_CONFIG_CHANGE_COMPLETE)
-    (FOLLOWER_CONFIG_CHANGE_COMPLETE));
+    (FOLLOWER_CONFIG_CHANGE_COMPLETE)
+    (DELETE_TABLET_CAS_FAILED));
 
 class Consensus::ConsensusFaultHooks {
  public:

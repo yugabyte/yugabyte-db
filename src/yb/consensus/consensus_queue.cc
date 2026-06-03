@@ -237,12 +237,14 @@ void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
 void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
                                      int64_t current_term,
                                      const OpId& last_applied_op_id,
+                                     const OpId& pending_config_op_id,
                                      const RaftConfigPB& active_config) {
   LockGuard lock(queue_lock_);
   queue_state_.current_term = current_term;
   queue_state_.committed_op_id = committed_op_id;
   queue_state_.last_applied_op_id = last_applied_op_id;
   queue_state_.majority_replicated_op_id = committed_op_id;
+  queue_state_.pending_config_op_id = pending_config_op_id;
   queue_state_.active_config.reset(new RaftConfigPB(active_config));
   CHECK(IsRaftConfigVoter(local_peer_uuid_, *queue_state_.active_config))
       << local_peer_pb_.ShortDebugString() << " not a voter in config: "
@@ -263,8 +265,19 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
   }
 }
 
+void PeerMessageQueue::SetPendingConfigOpId(const OpId& pending_config_op_id) {
+  LockGuard lock(queue_lock_);
+  queue_state_.pending_config_op_id = pending_config_op_id;
+}
+
+void PeerMessageQueue::ClearPendingConfigOpId() {
+  LockGuard lock(queue_lock_);
+  queue_state_.pending_config_op_id = OpId();
+}
+
 void PeerMessageQueue::SetNonLeaderMode() {
   LockGuard lock(queue_lock_);
+  queue_state_.pending_config_op_id = OpId();
   queue_state_.active_config.reset();
   queue_state_.mode = Mode::NON_LEADER;
   queue_state_.majority_size_ = -1;
@@ -1071,6 +1084,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   TrackedPeer* peer = nullptr;
   const TrackedPeer* rbs_source = nullptr;
   int64_t current_term;
+  OpId pending_config_op_id;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
@@ -1100,6 +1114,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     rbs_source = rbs_from_leader_only ? local_peer_
                                       : VERIFY_RESULT(FindClosestPeerForBootstrap(peer));
     current_term = queue_state_.current_term;
+    pending_config_op_id = queue_state_.pending_config_op_id;
 
     // Acess/Edit peer's fields within queue_lock_'s scope to avoid race. For instance, this peer's
     // information could be accessed while finding RBS source for another newly added peer.
@@ -1127,6 +1142,9 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
       rbs_source->last_known_broadcast_addr.begin(), rbs_source->last_known_broadcast_addr.end()};
   if (rbs_source->cloud_info.has_value()) {
     *req->mutable_bootstrap_source_cloud_info() = rbs_source->cloud_info.value();
+  }
+  if (pending_config_op_id.is_valid_not_empty()) {
+    pending_config_op_id.ToPB(req->mutable_pending_config_op_id());
   }
 
   if (rbs_source->uuid != local_peer_->uuid) {

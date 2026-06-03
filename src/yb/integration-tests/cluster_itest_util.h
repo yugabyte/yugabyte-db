@@ -103,6 +103,8 @@ using yb::OpId;
 
 namespace itest {
 
+extern const client::YBTableName kYcqlTestTableName;
+
 struct TServerDetails {
   NodeInstancePB instance_id;
   std::unique_ptr<master::TSRegistrationPB> registration;
@@ -577,6 +579,9 @@ Status GetLastOpIdForMasterReplica(
 
 Status WaitForTabletIsDeletedOrHidden(
     master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout);
+
+// Creates YCQL table with single tablet.
+Status CreateTestTablet(client::YBClient& client);
 
 Result<TableId> CreateSimpleTable(
     master::MasterDDLClient& client, const NamespaceName& namespace_name,

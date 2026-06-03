@@ -232,7 +232,11 @@ class PeerMessageQueue {
   virtual void SetLeaderMode(const OpId& committed_op_id,
                              int64_t current_term,
                              const OpId& last_applied_op_id,
+                             const OpId& pending_config_op_id,
                              const RaftConfigPB& active_config);
+
+  void SetPendingConfigOpId(const OpId& pending_config_op_id);
+  void ClearPendingConfigOpId();
 
   // Changes the queue to non-leader mode. Currently tracked peers will still be tracked so that the
   // cache is only evicted when the peers no longer need the operations but the queue will no longer
@@ -500,6 +504,9 @@ class PeerMessageQueue {
 
     // The currently-active raft config. Only set if in LEADER mode.
     std::unique_ptr<RaftConfigPB> active_config;
+
+    // The op ID of the pending Raft config, if any. Only set if in LEADER mode.
+    OpId pending_config_op_id = OpId();
 
     std::string ToString() const;
   };
