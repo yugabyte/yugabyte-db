@@ -150,6 +150,8 @@ DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
 DECLARE_uint32(cdcsdk_vwal_tablets_to_poll_batch_size);
 DECLARE_uint32(TEST_cdcsdk_vwal_getchanges_rpc_delay_ms);
+DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
+DECLARE_string(ysql_yb_default_replica_identity);
 
 namespace yb {
 

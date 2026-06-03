@@ -3721,12 +3721,14 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   ASSERT_OK(test_client()->GetTablets(dynamic_table_2, 0, &dynamic_tablets_2, nullptr));
   ASSERT_EQ(dynamic_tablets_2.size(), 1);
 
-  // A dynamically created table in the second DB should not have invalid OpId. Its safe time will
-  // be invalid as its replica identity is CHANGE.
+  // A dynamically created table in the second DB should have a valid OpId and cdc_sdk_safe_time.
+  // Its safe time will not become invalid even though its replica identity is CHANGE. This is
+  // because, this test does not have pub refresh. Hence UPAM will keep hitting "Before image not
+  // found" error and the cdc_sdk_safe_time will not be moved.
   tablet_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), dynamic_tablets_2.begin()->tablet_id()));
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   ASSERT_NE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 
   set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, dynamic_tablets_1, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
@@ -5337,13 +5339,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseOfRetentionBarriersOnD
 
   auto tablet_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), index_tablet_id));
 
-  // Verify that the retention barriers (WAL and intents) have been set on the index tablet. The
-  // cdc_sdk_safe_time would be invalid since we do not set history barriers.
+  // Verify that the retention barriers have been set on the index tablet.
   ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
   ASSERT_GE(tablet_peer->get_cdc_min_replicated_index(), 0);
   ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
   ASSERT_GE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Min());
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 
   ASSERT_OK(CdcReleaseBarriersOnTablet(index_tablet_id));
 
@@ -5393,13 +5394,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUPAMReleasesBarriersOnIndexTa
 
   auto tablet_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), index_tablet_id));
 
-  // Verify that the retention barriers (WAL and intents) have been set on the index tablet. The
-  // cdc_sdk_safe_time would be invalid since we do not set history barriers.
+  // Verify that the retention barriers have been set on the index tablet.
   ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
   ASSERT_GE(tablet_peer->get_cdc_min_replicated_index(), 0);
   ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
   ASSERT_GE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Min());
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 
   // Reduce the value of cdc_intent_retention_ms to 0, so that we simulate the index tablet getting
   // expired.
@@ -5414,6 +5414,43 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUPAMReleasesBarriersOnIndexTa
   VerifyTransactionParticipant(tablet_peer->tablet_id(), OpId::Max());
   ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureBeforeSettingBarrierOnDynamicTable) {
+  // Make the default replica identity FULL so that the dynamic table is created with FULL replica
+  // identity and history barriers are set on its tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "FULL";
+  ASSERT_OK(SetUpWithParams(3 /* rf */, 1 /* num_masters */, false /* colocated */));
+
+  ASSERT_OK(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Fail the CreateTablet after registering the tablet but before the CDC retention barriers could
+  // be set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_fail_before_setting_barrier) = true;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // When the CreateTablet rpc will be retried, we will find that the tablet has already been
+  // registered. Despite that we will re-attempt to set CDC retention barriers. As a result, at the
+  // end of retries we should have CDC retention barriers set on all the peers of the tablet.
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& tablet_peer : test_cluster()->GetTabletPeers(i)) {
+      if (tablet_peer->tablet_id() == tablets[0].tablet_id()) {
+        ASSERT_OK(WaitFor(
+            [&]() -> Result<bool> {
+              if (tablet_peer->get_cdc_min_replicated_index() == OpId::Max().index) return false;
+              if (tablet_peer->cdc_sdk_min_checkpoint_op_id() == OpId::Max()) return false;
+              if ((tablet_peer->get_cdc_sdk_safe_time()) == HybridTime::kInvalid) return false;
+
+              return true;
+            },
+            MonoDelta::FromSeconds(15 * kTimeMultiplier),
+            "Failed while waiting for retention barriers to be set"));
+      }
+    }
+  }
 }
 
 }  // namespace cdc
