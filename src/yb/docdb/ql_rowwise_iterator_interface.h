@@ -27,8 +27,6 @@ class Slice;
 
 namespace docdb {
 
-YB_STRONGLY_TYPED_BOOL(UpdateFilterKey);
-
 YB_DEFINE_ENUM(ReadKey, (kCurrent)(kNext));
 
 class YQLRowwiseIteratorIf {

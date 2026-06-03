@@ -151,6 +151,7 @@ DECLARE_bool(vector_index_dump_stats);
 
 namespace yb::docdb {
 
+bool TEST_vector_index_clear_result_entries_once = false;
 bool TEST_vector_index_filter_allowed = true;
 size_t TEST_vector_index_max_checked_entries = std::numeric_limits<size_t>::max();
 
@@ -932,8 +933,17 @@ class VectorIndexKeyProvider {
       result_entries_.erase(range.begin(), range.end());
     }
 
-    VLOG_WITH_FUNC(4) << vector_index_.ToString()
+    // Simulates reverse-mapping misses shrinking the result entries below the skip count.
+    // There are several scenarios where this can happen in production, for example: intents
+    // deduplication (a couple of lines above), reverse-mapping misses, etc.
+    if (TEST_vector_index_clear_result_entries_once && num_top_vectors_to_remove_ > 0) {
+      result_entries_.clear();
+      TEST_vector_index_clear_result_entries_once = false;
+    }
+
+    VLOG_WITH_FUNC(1) << vector_index_.ToString()
                       << ", could_have_more_data_: " << could_have_more_data_
+                      << ", found_intents_: " << found_intents_
                       << ", result_entries_.size(): " << result_entries_.size()
                       << ", max_results_: " << max_results_
                       << ", num_top_vectors_to_remove_: " << num_top_vectors_to_remove_;
@@ -942,8 +952,10 @@ class VectorIndexKeyProvider {
       std::ranges::sort(result_entries_, [](const auto& lhs, const auto& rhs) {
         return lhs.encoded_distance < rhs.encoded_distance;
       });
+
+      const auto num_to_skip = std::min(num_top_vectors_to_remove_, result_entries_.size());
       result_entries_.erase(
-          result_entries_.begin(), result_entries_.begin() + num_top_vectors_to_remove_);
+          result_entries_.begin(), result_entries_.begin() + num_to_skip);
       std::ranges::sort(result_entries_, cmp_keys);
     }
 

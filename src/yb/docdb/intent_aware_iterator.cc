@@ -21,7 +21,6 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -49,16 +48,15 @@
 
 using namespace std::literals;
 
+DEFINE_RUNTIME_bool(disable_last_seen_ht_rollback, false,
+    "Disable optimization to ignore non-existent keys for read restart.");
+
 DEFINE_RUNTIME_bool(use_fast_next_for_iteration, true,
-                    "Whether intent aware iterator should use fast next feature.");
+    "Whether intent aware iterator should use fast next feature.");
 
 // Default value was picked intuitively, could try to find more suitable value in future.
 DEFINE_RUNTIME_uint64(max_next_calls_while_skipping_future_records, 3,
-                      "After number of next calls is reached this limit, use seek to find non "
-                      "future record.");
-
-DEFINE_RUNTIME_bool(disable_last_seen_ht_rollback, false,
-                    "Disable optimization to ignore non-existent keys for read restart.");
+    "After number of next calls is reached this limit, use seek to find non future record.");
 
 namespace yb::docdb {
 
@@ -776,8 +774,12 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
   return result;
 }
 
-Result<Slice> IntentAwareIterator::FetchValue(Slice key) {
-  UpdateFilterKey(key);
+Result<Slice> IntentAwareIterator::FetchValue(Slice key, docdb::UpdateFilterKey update_filter_key) {
+  if (update_filter_key) {
+    // No-op if variable bloom filter is not used.
+    UpdateFilterKey(key);
+  }
+
   Seek(key, SeekFilter::kAll, Full::kTrue);
   auto fetch_result = VERIFY_RESULT_REF(Fetch());
 
