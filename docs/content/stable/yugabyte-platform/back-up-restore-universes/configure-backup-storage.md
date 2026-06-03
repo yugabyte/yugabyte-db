@@ -183,7 +183,7 @@ In YugabyteDB Anywhere:
 
 ### Azure Managed Identity authentication
 
-{{<tags/feature/ea idea="986">}}YugabyteDB Anywhere supports Azure Managed Identity (IAM) authentication for backup storage configurations, providing an alternative to SAS tokens.
+{{<tags/feature/ea idea="986">}}YugabyteDB Anywhere supports Azure Managed Identity (IAM) authentication for backup storage configurations, providing an alternative to SAS tokens. (Available in v2025.2.1.0 and later.)
 
 Note that this feature is currently supported only for VM-based universes and via API.
 

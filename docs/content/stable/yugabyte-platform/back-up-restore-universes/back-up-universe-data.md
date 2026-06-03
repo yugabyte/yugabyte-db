@@ -116,7 +116,7 @@ The copied location provides the full path to the backup.
 YugabyteDB Anywhere universe backups are stored using the following folder structure:
 
 ```output
-<storage-address>/sub-directories
+<storage-address>
   /yugabyte_backup    [NFS backups only]
     /univ-<universe-name>-<universe-uuid>
       /<database-name>
