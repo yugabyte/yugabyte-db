@@ -3,8 +3,6 @@ title: OIDC authentication in YCQL
 headerTitle: OIDC authentication in YCQL
 linkTitle: OIDC authentication
 description: Configure YugabyteDB YCQL to authenticate clients using JSON Web Tokens from an OpenID Connect identity provider.
-tags:
-  feature: early-access
 menu:
   stable:
     identifier: oidc-authentication-ycql
@@ -30,8 +28,7 @@ Before OIDC can be used for authentication:
 - The user must already exist in the database (and have appropriate permissions).
 - The external IdP must be configured.
 - The [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag must set to `true`.
-
-In addition, while OIDC authentication for YCQL is {{<tags/feature/ea idea="946">}}, it is disabled by default. To enable the feature, set the YB-TServer flag `ycql_use_jwt_auth` to `true`.
+- To use OIDC authentication, set the YB-TServer flag `ycql_use_jwt_auth` to `true`.
 
 ## Configure OIDC
 

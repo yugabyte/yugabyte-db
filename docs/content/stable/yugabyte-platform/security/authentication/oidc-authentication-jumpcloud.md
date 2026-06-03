@@ -209,7 +209,7 @@ To access a universe via OIDC for YCQL, set OIDC-related YB-TServer flags on the
 - _Without identity mapping_ between the IdP and the YCQL user.
 - _With identity mapping_ between the IdP and the YCQL user (requires `ycql_ident_conf_csv`, described in [ycql_ident_conf_csv](#ycql-ident-conf-csv)).
 
-OIDC authentication for YCQL is {{<tags/feature/ea idea="946">}} and is disabled by default. To enable OIDC, set the flags [`use_cassandra_authentication`](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) and `ycql_use_jwt_auth` to `true`.
+To use OIDC authentication for YCQL, set the [`use_cassandra_authentication`](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) and `ycql_use_jwt_auth` flags to `true`.
 
 For more information, refer to [OIDC authentication in YCQL](../../../../secure/authentication/oidc-authentication-ycql/).
 
