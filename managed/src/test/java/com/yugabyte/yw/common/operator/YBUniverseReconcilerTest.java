@@ -1432,6 +1432,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     seedTserverAZOverride(newUserIntent, az1.getUuid(), 100, "az1-old-sc");
     seedTserverAZOverride(newUserIntent, az2.getUuid(), 100, "az2-old-sc");
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(newUserIntent, az1, az2);
+    taskParams.currentClusterType = ClusterType.PRIMARY;
 
     ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
         taskParams, ybUniverse, defaultCustomer.getUuid(), existingUniverse);
@@ -1541,6 +1542,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     carriedMasterPpd.setDeviceInfo(carriedMasterDi);
     az1Carried.getPerProcess().put(ServerType.MASTER, carriedMasterPpd);
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(newUserIntent, az1, az2);
+    taskParams.currentClusterType = ClusterType.PRIMARY;
 
     ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
         taskParams, ybUniverse, defaultCustomer.getUuid(), existingUniverse);

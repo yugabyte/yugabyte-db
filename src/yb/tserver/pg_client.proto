@@ -56,6 +56,8 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetXClusterRole(PgGetXClusterRoleRequestPB) returns (PgGetXClusterRoleResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
+  rpc IsDatabaseColocated(PgIsDatabaseColocatedRequestPB)
+      returns (PgIsDatabaseColocatedResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB) {
@@ -122,6 +124,8 @@ service PgClientService {
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
   rpc IsObjectPartOfXRepl(PgIsObjectPartOfXReplRequestPB)
       returns (PgIsObjectPartOfXReplResponsePB);
+  rpc IsNamespacePartOfCDCSDK(PgIsNamespacePartOfCDCSDKRequestPB)
+      returns (PgIsNamespacePartOfCDCSDKResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
@@ -254,6 +258,10 @@ message PgBackfillIndexRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
   reserved 3; // ASH metadata is now passed in RequestHeader PB
+  // When transactional DDL is enabled (ysql_yb_ddl_transaction_block_enabled), the CREATE INDEX
+  // backend uses the kPlain session transaction rather than an autonomous kDDL transaction.
+  // This flag must match the DDL mode so GetDdlTransactionMetadata fetches from the right txn.
+  bool use_regular_transaction_block = 4;
 }
 
 message PgBackfillIndexResponsePB {
@@ -587,6 +595,17 @@ message PgGetDatabaseInfoResponsePB {
   AppStatusPB status = 1;
 
   master.GetNamespaceInfoResponsePB info = 2;
+}
+
+message PgIsDatabaseColocatedRequestPB {
+  uint32 database_oid = 1;
+}
+
+message PgIsDatabaseColocatedResponsePB {
+  AppStatusPB status = 1;
+
+  bool colocated = 2;
+  bool legacy_colocated_database = 3;
 }
 
 message PgIsInitDbDoneRequestPB {
@@ -1066,6 +1085,15 @@ message PgIsObjectPartOfXReplResponsePB {
   bool is_object_part_of_xrepl = 2;
 }
 
+message PgIsNamespacePartOfCDCSDKRequestPB {
+  uint32 database_oid = 1;
+}
+
+message PgIsNamespacePartOfCDCSDKResponsePB {
+  AppStatusPB status = 1;
+  bool is_namespace_part_of_cdcsdk = 2;
+}
+
 message PgGetTserverCatalogVersionInfoRequestPB {
   // True if we only want to return the size of the catalog version map from tserver.
   bool size_only = 1;
@@ -1423,8 +1451,11 @@ message PgAcquireObjectLockResponsePB {
 
 message PgReleaseSessionObjectLockRequestPB {
   uint64 session_id = 1;
-  PgPerformOptionsPB options = 2;
+
+  PgPerformOptionsPB DEPRECATED_options = 2;
+
   ObjectLockOid lock_oid = 3;
+  bool release_all = 4;
 }
 
 message PgReleaseSessionObjectLockResponsePB {

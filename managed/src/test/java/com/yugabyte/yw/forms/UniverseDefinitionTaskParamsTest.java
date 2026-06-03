@@ -289,7 +289,6 @@ public class UniverseDefinitionTaskParamsTest {
     currentTserverDeviceInfo.numVolumes = 2;
 
     AZOverrides currentAzOverride = new AZOverrides();
-    currentAzOverride.setDeviceInfo(currentDeviceInfo);
 
     Map<ServerType, PerProcessDetails> currentPerProcess = new HashMap<>();
     PerProcessDetails currentTserverDetails = new PerProcessDetails();
@@ -304,15 +303,6 @@ public class UniverseDefinitionTaskParamsTest {
     // Verify initial state
     assertNotNull(currentIntent.getUserIntentOverrides());
     assertNotNull(currentIntent.getUserIntentOverrides().getAzOverrides().get(az1));
-    assertNotNull(currentIntent.getUserIntentOverrides().getAzOverrides().get(az1).getDeviceInfo());
-    assertEquals(
-        Integer.valueOf(100),
-        currentIntent
-            .getUserIntentOverrides()
-            .getAzOverrides()
-            .get(az1)
-            .getDeviceInfo()
-            .volumeSize);
     assertNotNull(
         currentIntent
             .getUserIntentOverrides()

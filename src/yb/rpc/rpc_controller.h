@@ -177,6 +177,9 @@ class RpcController {
   friend class OutboundCall;
   friend class Proxy;
 
+  // Same as finished(), but must be called while holding lock_.
+  bool FinishedUnlocked() const;
+
   MonoDelta timeout_;
 
   mutable simple_spinlock lock_;

@@ -116,6 +116,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -235,9 +236,15 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDef
 DEFINE_NON_RUNTIME_bool(start_pgsql_proxy, false,
             "Whether to run a PostgreSQL server as a child process of the tablet server");
 
-DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
-    "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
-    "version that is retrieved from a tserver-master heartbeat response.");
+DEPRECATE_FLAG(uint32, ysql_min_new_version_ignored_count, "2026_05");
+
+DEFINE_RUNTIME_uint32(ysql_stale_catalog_version_min_seconds, 30,
+    "Minimum duration in seconds that a tserver may receive only older per-db catalog versions "
+    "(without ever seeing an advance) from the master before crashing itself to resync. A "
+    "random per-episode threshold is picked from [min, min+150]. Replaces the count-based check "
+    "controlled by ysql_min_new_version_ignored_count, which was sensitive to heartbeat "
+    "frequency (a burst of zero-delay heartbeats could trip the count even though the master "
+    "had only been stale for tens of milliseconds).");
 
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
@@ -261,6 +268,7 @@ TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 
 DECLARE_bool(enable_qos);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
+DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint64(ysql_lease_refresher_rpc_timeout_ms);
@@ -354,6 +362,17 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
     RETURN_NOT_OK(tablet_server_.GetRegistration(&reg, server::RpcOnly::kTrue));
     return HostPortFromPB(DesiredHostPort(reg, tablet_server_.options().MakeCloudInfoPB()));
   }
+
+  bool ShouldLocalPeerUpdateOwnBarriers() const override {
+    return FLAGS_enable_update_local_peer_min_index;
+  }
+
+#ifdef __linux__
+  Cgroup* SystemHighCgroup() const override {
+    auto* cm = tablet_server_.cgroup_manager();
+    return cm ? cm->SystemHighCgroup() : nullptr;
+  }
+#endif
 
  private:
   TabletServer& tablet_server_;
@@ -871,7 +890,7 @@ Status TabletServer::Start() {
     Cgroup* conn_cgroup = nullptr;
 #ifdef __linux__
     if (cgroup_manager_) {
-      conn_cgroup = cgroup_manager_->SystemMedCgroup();
+      conn_cgroup = cgroup_manager_->SystemHighCgroup();
     }
 #endif
     RETURN_NOT_OK(connectivity_poller_->Start(conn_cgroup));
@@ -1326,7 +1345,9 @@ Status TabletServer::SetTserverCatalogMessageList(
       existing_entry.last_breaking_version = new_catalog_version;
     }
     UpdateCatalogVersionsFingerprintUnlocked();
-    existing_entry.new_version_ignored_count = 0;
+    // Track the time the entry was updated so we can alert if master is stale.
+    existing_entry.stale_since = MonoTime();
+    existing_entry.stale_fatal_threshold = MonoDelta();
     shm_index = existing_entry.shm_index;
     CHECK(shm_index >= 0 &&
           shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
@@ -1496,11 +1517,13 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
     // refresh which involves a call to YBIsDBConnectionValid, thus terminates that connection.
     // Also in per-db catalog version mode we will reject a connection if we cannot find a slot
     // in db_catalog_versions_ that is allocated for its MyDatabaseId.
-    const auto it = ysql_db_catalog_version_map_.insert(
-      std::make_pair(db_oid, CatalogVersionInfo({.current_version = new_version,
-                                                 .last_breaking_version = new_breaking_version,
-                                                 .shm_index = -1,
-                                                 .new_version_ignored_count = 0})));
+    const auto it = ysql_db_catalog_version_map_.insert(std::make_pair(
+        db_oid, CatalogVersionInfo(
+                    {.current_version = new_version,
+                     .last_breaking_version = new_breaking_version,
+                     .shm_index = -1,
+                     .stale_since = MonoTime(),
+                     .stale_fatal_threshold = MonoDelta()})));
     bool row_inserted = it.second;
     bool row_updated = false;
     int shm_index = -1;
@@ -1509,7 +1532,9 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       if (new_version > existing_entry.current_version) {
         existing_entry.current_version = new_version;
         existing_entry.last_breaking_version = new_breaking_version;
-        existing_entry.new_version_ignored_count = 0;
+        // Advance ends any current stale episode.
+        existing_entry.stale_since = MonoTime();
+        existing_entry.stale_fatal_threshold = MonoDelta();
         row_updated = true;
         db_oids_updated.insert({db_oid, new_version});
         shm_index = existing_entry.shm_index;
@@ -1519,24 +1544,28 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
             << "Invalid shm_index: " << shm_index;
       } else if (new_version < existing_entry.current_version) {
         if (!db_catalog_version_data.ignore_catalog_version_staleness_check()) {
-          ++existing_entry.new_version_ignored_count;
-          // If the new version is continuously older than what we have seen, it implies that
-          // master's current version has somehow gone backwards which isn't expected. Crash this
-          // tserver to sync up with master again. Do so with RandomUniformInt to reduce the chance
-          // that all tservers are crashed at the same time.
-          auto new_version_ignored_count = RandomUniformInt<uint32_t>(
-              FLAGS_ysql_min_new_version_ignored_count,
-              FLAGS_ysql_min_new_version_ignored_count + 180);
+          // First stale update for this episode: stamp the start time and pick a per-episode
+          // random fatal threshold so all tservers don't crash simultaneously. We use a
+          // duration-based check (not a count-based one) because heartbeats can sometimes
+          // be sent at different frequency during full reports.
+          if (!existing_entry.stale_since.Initialized()) {
+            existing_entry.stale_since = MonoTime::Now();
+            existing_entry.stale_fatal_threshold =
+                MonoDelta::FromSeconds(RandomUniformInt<uint32_t>(
+                    FLAGS_ysql_stale_catalog_version_min_seconds,
+                    FLAGS_ysql_stale_catalog_version_min_seconds + 150));
+          }
+          const auto stale_for = MonoTime::Now() - existing_entry.stale_since;
+          const bool fatal = stale_for >= existing_entry.stale_fatal_threshold;
           // Because the session that executes the DDL sets its incremented new version in the
-          // local tserver, for this local tserver it is possible the heartbeat response has
-          // not read the latest version from master yet. It is legitimate to see the following
-          // as a WARNING. However we should not see this continuously for new_version_ignored_count
-          // times.
-          (existing_entry.new_version_ignored_count >= new_version_ignored_count ? LOG(FATAL)
-                                                                                 : LOG(WARNING))
+          // local tserver before the master sees it, brief master-side lag is expected and is
+          // logged as a WARNING. Persistent lag (over the per-episode threshold) is treated as
+          // a real divergence and we crash to resync.
+          (fatal ? LOG(FATAL) : LOG(WARNING))
               << "Ignoring ysql db " << db_oid << " catalog version update: new version too old. "
               << "New: " << new_version << ", Old: " << existing_entry.current_version
-              << ", ignored count: " << existing_entry.new_version_ignored_count
+              << ", stale_for: " << stale_for
+              << ", threshold: " << existing_entry.stale_fatal_threshold
               << ", debug_id: " << debug_id;
         }
       } else {
@@ -1567,7 +1596,9 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
           CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version)
               << "db_oid: " << db_oid << ", new_version: " << new_version;
         }
-        existing_entry.new_version_ignored_count = 0;
+        // Master sent us the version we already have, so end the staleness check window
+        existing_entry.stale_since = MonoTime();
+        existing_entry.stale_fatal_threshold = MonoDelta();
       }
     } else {
       auto& inserted_entry = it.first->second;

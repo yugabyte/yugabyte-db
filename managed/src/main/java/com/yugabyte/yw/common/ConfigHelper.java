@@ -38,6 +38,8 @@ public class ConfigHelper {
     GCPInstanceTypeMetadata(null, "configs/gcp-instance-type-metadata.yml"),
     AZURegionMetadata("Azure Region Metadata", "configs/azu-region-metadata.yml"),
     AZUInstanceTypeMetadata(null),
+    OCIRegionMetadata("OCI Region Metadata", "configs/oci-region-metadata.yml"),
+    OCIInstanceTypeMetadata("OCI Instance Type Metadata", "configs/oci-instance-type-metadata.yml"),
     EKSKubernetesRegionMetadata(
         "EKS Kubernetes Region Metadata", "configs/kubernetes/eks-region-metadata.yml"),
     AKSKubernetesRegionMetadata(

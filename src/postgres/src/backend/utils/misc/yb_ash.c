@@ -35,6 +35,7 @@
 #include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "optimizer/planner.h"
+#include "parser/analyze.h"
 #include "parser/scansup.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -84,6 +85,7 @@ static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 
 YbAshTrackNestedQueries yb_ash_track_nested_queries = NULL;
 
@@ -108,6 +110,28 @@ static YbAshQueryPlanPairStack qp_pair_stack;
 static int	nested_level = 0;
 static bool pop_qp_pair_before_push = false;
 static YbcAshQueryPlanPair qp_pair_to_be_popped_before_push =
+	{YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+
+/*
+ * Coordinate query_id tracking between exec_parse_message and the
+ * post_parse_analyze hook.  Parse cannot push the queryid at entry because
+ * the id is not yet known; the hook pushes it once JumbleQuery runs, and
+ * exec_parse_message pops it on exit using yb_ash_parse_qp_pair.
+ *
+ * Bind and Execute do not need this mechanism: their query_id is available
+ * at message entry, so a straightforward push/pop in the message handler
+ * suffices.
+ *
+ * yb_ash_in_parse_message – true while exec_parse_message is on the call
+ *   stack; guards the hook from pushing a query_id outside a Parse context.
+ * yb_ash_parse_qp_pushed  – true if the hook successfully pushed a qp_pair;
+ *   tells exec_parse_message whether to pop on exit.
+ * yb_ash_parse_qp_pair    – the qp_pair saved by the hook so that
+ *   exec_parse_message can pop it on exit.
+ */
+static bool yb_ash_in_parse_message = false;
+static bool yb_ash_parse_qp_pushed = false;
+static YbcAshQueryPlanPair yb_ash_parse_qp_pair =
 	{YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
 
 /*
@@ -149,6 +173,7 @@ static void YbAshInstallHooks(void);
 static int	yb_ash_cb_max_entries(void);
 static void YbAshSetQueryPlanPair(YbcAshQueryPlanPair qp_pair);
 static void YbAshResetQueryPlanPair(YbcAshQueryPlanPair qp_pair);
+static void YbAshFlushDeferredPop(void);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
 									  int query_location,
 									  bool is_sensitive_stmt);
@@ -168,6 +193,8 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								  ProcessUtilityContext context, ParamListInfo params,
 								  QueryEnvironment *queryEnv, DestReceiver *dest,
 								  QueryCompletion *qc);
+static void yb_ash_post_parse_analyze(ParseState *pstate, Query *query,
+									  JumbleState *jstate);
 
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 									int samples_considered);
@@ -230,6 +257,9 @@ YbAshInit(void)
 void
 YbAshInstallHooks(void)
 {
+	prev_post_parse_analyze_hook = post_parse_analyze_hook;
+	post_parse_analyze_hook = yb_ash_post_parse_analyze;
+
 	prev_ExecutorStart = ExecutorStart_hook;
 	ExecutorStart_hook = yb_ash_ExecutorStart;
 
@@ -377,6 +407,43 @@ ybAshGetQpPair(QueryDesc *queryDesc)
 	if (ShouldResolvePlanId())
 		qp_pair.plan_id = ybGetPlanId(queryDesc->plannedstmt);
 	return qp_pair;
+}
+
+/*
+ * post_parse_analyze hook. When called from exec_parse_message, pushes the
+ * just-computed query_id so post-analysis work (rewriting, plan caching)
+ * attributes correctly. The push is paired with the pop in
+ * YbAshResetQueryPlanPairForMessage at exec_parse_message exit.
+ *
+ * Skips other call sites (exec_simple_query, SPI sub-parse, nested contexts)
+ * because they manage query_id via executor/utility hooks and an unmatched
+ * push here would leak onto the stack.
+ * TODO(#31445): Extend to exec_simple_query and SPI sub-parse by
+ * detecting the call context and issuing a matched push/pop, so Parse-phase
+ * catalog reads are correctly attributed in all code paths.
+ */
+static void
+yb_ash_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query, jstate);
+
+	if (!yb_enable_ash)
+		return;
+
+	if (!yb_ash_in_parse_message || yb_ash_parse_qp_pushed)
+		return;
+
+	if (nested_level > 0)
+		return;
+
+	if (query->queryId == YB_ASH_INVALID_QUERY_ID)
+		return;
+
+	yb_ash_parse_qp_pair =
+		(YbcAshQueryPlanPair){query->queryId, YB_ASH_DEFAULT_PLAN_ID};
+	YbAshSetQueryPlanPair(yb_ash_parse_qp_pair);
+	yb_ash_parse_qp_pushed = true;
 }
 
 static void
@@ -644,6 +711,33 @@ YbAshSetMetadata(void)
 	MyProc->yb_ash_metadata.user_id = GetUserId();
 }
 
+/*
+ * Drain a pending deferred pop. Used by YbAshUnsetMetadata and by the
+ * per-message helpers to evict a previous statement's query_id before a new
+ * extended-protocol message starts.
+ */
+static void
+YbAshFlushDeferredPop(void)
+{
+	if (!pop_qp_pair_before_push)
+		return;
+
+	YbcAshQueryPlanPair prev_qp_pair =
+		YbAshQueryPlanPairStackPop(qp_pair_to_be_popped_before_push);
+
+	pop_qp_pair_before_push = false;
+	qp_pair_to_be_popped_before_push =
+		(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID,
+		YB_ASH_DEFAULT_PLAN_ID};
+
+	if (!YbAshIsInvalidQpPair(prev_qp_pair))
+	{
+		LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+		MyProc->yb_ash_metadata.qp = prev_qp_pair;
+		LWLockRelease(&MyProc->yb_ash_metadata_lock);
+	}
+}
+
 void
 YbAshUnsetMetadata(void)
 {
@@ -652,31 +746,82 @@ YbAshUnsetMetadata(void)
 	 * returns an error. Reset the stack here. We can remove this if we
 	 * make query_id atomic
 	 */
-	if (pop_qp_pair_before_push)
-	{
-		YbcAshQueryPlanPair prev_qp_pair =
-			YbAshQueryPlanPairStackPop(qp_pair_to_be_popped_before_push);
-
-		pop_qp_pair_before_push = false;
-		qp_pair_to_be_popped_before_push =
-			(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID,
-			YB_ASH_DEFAULT_PLAN_ID};
-
-		if (!YbAshIsInvalidQpPair(prev_qp_pair))
-		{
-			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-			MyProc->yb_ash_metadata.qp = prev_qp_pair;
-			LWLockRelease(&MyProc->yb_ash_metadata_lock);
-		}
-	}
+	YbAshFlushDeferredPop();
 
 	qp_pair_stack.top_index = 0;
 	qp_pair_stack.num_entries_not_pushed = 0;
 
+	/* Reset parse-message state in case an error skipped the matching reset. */
+	yb_ash_in_parse_message = false;
+	yb_ash_parse_qp_pushed = false;
+	yb_ash_parse_qp_pair =
+		(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID,
+		YB_ASH_DEFAULT_PLAN_ID};
+
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
 		   sizeof(MyProc->yb_ash_metadata.root_request_id));
+	MyProc->yb_ash_metadata.qp.query_id = YbAshGetConstQueryId();
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+/*
+ * Begin handling an extended-protocol message: drain any deferred pop and
+ * push the message's query_id if known. Parse callers pass the default
+ * sentinel (YbAshGetConstQueryId()); the post_parse_analyze hook pushes
+ * the real id later. Bind/Describe/Execute pass the cached query_id.
+ */
+void
+YbAshSetQueryPlanPairForMessage(uint64 query_id)
+{
+	if (!yb_enable_ash)
+		return;
+
+	YbAshFlushDeferredPop();
+
+	if (query_id != YbAshGetConstQueryId())
+	{
+		YbcAshQueryPlanPair qp_pair = {query_id, YB_ASH_DEFAULT_PLAN_ID};
+		YbAshSetQueryPlanPair(qp_pair);
+	}
+	else
+	{
+		yb_ash_in_parse_message = true;
+		yb_ash_parse_qp_pushed = false;
+		yb_ash_parse_qp_pair =
+			(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+	}
+}
+
+/*
+ * Symmetric counterpart of YbAshSetQueryPlanPairForMessage. For Parse
+ * (query_id == YbAshGetConstQueryId()), pops whatever the
+ * post_parse_analyze hook pushed (if anything); safe to call when the hook
+ * never fired.
+ */
+void
+YbAshResetQueryPlanPairForMessage(uint64 query_id)
+{
+	if (!yb_enable_ash)
+		return;
+
+	if (query_id == YbAshGetConstQueryId())
+	{
+		yb_ash_in_parse_message = false;
+		if (yb_ash_parse_qp_pushed)
+		{
+			YbAshResetQueryPlanPair(yb_ash_parse_qp_pair);
+			yb_ash_parse_qp_pushed = false;
+			yb_ash_parse_qp_pair =
+				(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID,
+				YB_ASH_DEFAULT_PLAN_ID};
+		}
+		return;
+	}
+
+	YbcAshQueryPlanPair qp_pair = {query_id, YB_ASH_DEFAULT_PLAN_ID};
+
+	YbAshResetQueryPlanPair(qp_pair);
 }
 
 /*

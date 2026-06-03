@@ -17,6 +17,23 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.5.2 - May 26, 2026
+
+### Enhancements
+
+- Redesigned output for the [assess-migration](../reference/assess-migration/) command. The output is now organized into three clear phases:
+  1. A **Preflight Checks** block that summarizes guardrail validations.
+  1. An **Assessment Pipeline** that shows live progress for metadata gathering, usage analysis, sizing, and report generation via a spinner and step counter.
+  1. A final **Summary** block.
+
+- Added a new guardrail in the [export data from target](../reference/data-migration/export-data/) flow (live migration with fall-back/fall-forward from YugabyteDB) that verifies every exported YugabyteDB table has its replica identity set to CHANGE. Tables missing the required replica identity are now reported under "Tables missing replica identity CHANGE" so they can be corrected before streaming begins, instead of failing later during CDC.
+
+### Bug fixes
+
+- Fixed an issue where [import data](../reference/data-migration/import-data/) and [import data file](../reference/data-migration/import-data/#import-data-file) run with `--truncate-tables true` (and `--start-clean true`) would fail with "cannot truncate a table referenced in a foreign key constraint" when the target had a non-empty parent table and an empty child table linked by a foreign key. The TRUNCATE statement now includes all tables in the import scope, keeping foreign key-dependent siblings consistent in the same statement.
+
+- Fixed a transient failure during multi-table TRUNCATE on YugabyteDB targets that occasionally surfaced as "Restart read required (SQLSTATE 40001)" under distributed read-snapshot contention. Voyager now retries the TRUNCATE up to four times with linear backoff (2s, 4s, 6s, 8s) before surfacing the error.
+
 ## v2026.5.1 - May 15, 2026
 
 ### New feature

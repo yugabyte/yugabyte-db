@@ -17,12 +17,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 
 // Check that values from Gflags gets reflected in the Ysql Connection Manager config file.
 // TODO (janand) #18837: Use Parameterized test runner with TSERVER_FLAGS and EXPECTED_CONFIG_VALUES
 // as the parameter.
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestGFlags extends TestDefaultConfig {
 
   private final Map<String, String> TSERVER_FLAGS = new HashMap() {

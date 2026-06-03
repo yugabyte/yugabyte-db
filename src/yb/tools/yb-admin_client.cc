@@ -91,7 +91,6 @@
 #include "yb/tools/tools_utils.h"
 #include "yb/tools/yb-admin_util.h"
 
-#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/encryption/encryption_util.h"
@@ -153,9 +152,6 @@ using client::YBTableName;
 using rpc::RpcController;
 using pb_util::ParseFromSlice;
 using tserver::TabletServerServiceProxy;
-using tserver::TabletServerAdminServiceProxy;
-using tserver::UpgradeYsqlRequestPB;
-using tserver::UpgradeYsqlResponsePB;
 
 using consensus::ConsensusServiceProxy;
 using consensus::LeaderStepDownRequestPB;
@@ -2506,33 +2502,11 @@ Status ClusterAdminClient::UpgradeYsql(bool use_single_connection) {
     // Otherwise, we can proceed.
   }
 
-  // Pick some alive TServer.
-  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
-  RETURN_NOT_OK(ListTabletServers(&servers));
-  std::optional<HostPortPB> ts_rpc_addr;
-  for (const ListTabletServersResponsePB::Entry& server : servers) {
-    if (!server.has_alive() || !server.alive()) {
-      continue;
-    }
-
-    if (!server.has_registration() ||
-        server.registration().common().private_rpc_addresses().empty()) {
-      continue;
-    }
-
-    ts_rpc_addr.emplace(server.registration().common().private_rpc_addresses(0));
-    break;
-  }
-  if (!ts_rpc_addr.has_value()) {
-    return STATUS(IllegalState, "Couldn't find alive tablet server to connect to");
-  }
-
-  TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), HostPortFromPB(*ts_rpc_addr));
-
-  UpgradeYsqlRequestPB req;
+  // Ask the master to forward the upgrade to ensure that the closest tserver is used
+  master::ClientUpgradeYsqlRequestPB req;
   req.set_use_single_connection(use_single_connection);
-  const auto resp_result = InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
-                                     ts_admin_proxy, req);
+  const auto resp_result = InvokeRpc(
+      &master::MasterAdminProxy::ClientUpgradeYsql, *master_admin_proxy_, req);
   if (!resp_result.ok()) {
     return resp_result.status();
   }

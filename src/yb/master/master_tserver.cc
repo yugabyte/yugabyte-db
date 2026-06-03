@@ -55,6 +55,10 @@ DEFINE_RUNTIME_int32(update_min_cdc_indices_master_interval_secs, 300 /* 5 minut
   "How often to read cdc_state table on master and move the retention barriers for the sys "
   "catalog tablet.");
 
+DEFINE_RUNTIME_bool(enable_update_local_peer_min_index_master, false,
+    "When false, the master leader updates retention barriers on all master peers (including "
+    "followers) for the sys catalog tablet, instead of each peer updating its own.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
@@ -94,6 +98,10 @@ class MasterCDCServiceContextImpl : public cdc::CDCServiceContext {
 
   Result<HostPort> GetDesiredHostPortForLocal() const override {
     return STATUS(NotSupported, "GetDesiredHostPortForLocal not supported on master");
+  }
+
+  bool ShouldLocalPeerUpdateOwnBarriers() const override {
+    return FLAGS_enable_update_local_peer_min_index_master;
   }
 
  private:
@@ -163,14 +171,14 @@ Status MasterTabletServer::StartRemoteBootstrap(const StartRemoteBootstrapReques
   return STATUS(NotSupported, "Remote bootstrap not supported by master tserver");
 }
 
-void MasterTabletServer::get_ysql_catalog_version(uint64_t* current_version,
-                                                  uint64_t* last_breaking_version) const {
-  get_ysql_db_catalog_version(kPgInvalidOid, current_version, last_breaking_version);
+void MasterTabletServer::get_ysql_catalog_version(
+    uint64_t* current_version, uint64_t* last_breaking_version, bool use_cache) const {
+  get_ysql_db_catalog_version(kPgInvalidOid, current_version, last_breaking_version, use_cache);
 }
 
-void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
-                                                     uint64_t* current_version,
-                                                     uint64_t* last_breaking_version) const {
+void MasterTabletServer::get_ysql_db_catalog_version(
+    uint32_t db_oid, uint64_t* current_version, uint64_t* last_breaking_version,
+    bool use_cache) const {
   auto fill_vers = [current_version, last_breaking_version](){
     /*
      * This should never happen, but if it does then we cannot guarantee that user requests
@@ -195,10 +203,11 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
     }
   }
 
-  Status s = db_oid == kPgInvalidOid ?
-    master_->catalog_manager()->GetYsqlCatalogVersion(current_version, last_breaking_version) :
-    master_->catalog_manager()->GetYsqlDBCatalogVersion(
-        db_oid, current_version, last_breaking_version);
+  Status s = db_oid == kPgInvalidOid
+                 ? master_->catalog_manager()->GetYsqlCatalogVersion(
+                       current_version, last_breaking_version, use_cache)
+                 : master_->catalog_manager()->GetYsqlDBCatalogVersion(
+                       db_oid, current_version, last_breaking_version, use_cache);
   if (!s.ok()) {
     LOG(WARNING) << "Could not get YSQL catalog version for master's tserver API: " << s;
     fill_vers();

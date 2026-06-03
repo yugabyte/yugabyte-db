@@ -69,6 +69,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -533,6 +534,26 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
         universe.getName(),
         taskUUID);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  /**
+   * Returns the currently configured telemetry export configs for the universe from the
+   * ExportTelemetryConfig table (the documented source of truth). Each sub-config is null when that
+   * export is disabled. Returns an empty TelemetryConfig (all null) if no row exists for this
+   * universe.
+   */
+  public api.v2.models.TelemetryConfig getExportTelemetryConfig(UUID cUUID, UUID uniUUID) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe.getOrBadRequest(uniUUID, customer);
+    TelemetryConfig stored =
+        ExportTelemetryConfig.getForUniverse(uniUUID)
+            .map(ExportTelemetryConfig::getTelemetryConfig)
+            .orElse(null);
+    if (stored == null) {
+      return new api.v2.models.TelemetryConfig();
+    }
+    return ExportTelemetryConfigMapper.toGenerated(
+        stored.getAuditLogConfig(), stored.getQueryLogConfig(), stored.getMetricsExportConfig());
   }
 
   private Set<UUID> extractAuditLogExporterUuids(ExportTelemetryConfigParams params) {

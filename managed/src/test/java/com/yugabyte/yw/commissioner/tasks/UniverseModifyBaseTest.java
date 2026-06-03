@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -41,6 +42,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -220,6 +222,11 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
       mockMasterAndPeerRoles(mockClient, () -> dbMasters);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
+      lenient()
+          .when(
+              mockNodeUniverseManager.runCommand(
+                  any(), any(), eq(Arrays.asList("echo", "command-execution-test")), any()))
+          .thenReturn(ShellResponse.create(0, "Command output:\ncommand-execution-test"));
       // setCheckNodesAreSafeToTakeDown(mockClient);
       setMockLiveTabletServers(mockClient, universe);
       setLeaderlessTabletsMock();

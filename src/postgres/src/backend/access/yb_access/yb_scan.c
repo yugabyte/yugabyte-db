@@ -1258,26 +1258,29 @@ int_compar_cb(const void *v1, const void *v2)
 static void
 ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 {
+	bool		qualified_scan_key_cols_has_ybctid = false;
+
 	for (int i = 0; i < ybScan->nkeys; i++)
 	{
 		const AttrNumber attnum = scan_plan->bind_key_attnums[i];
 
-		/*
-		 * The subkey for yb_hash_code inside row compare will have
-		 * InvalidAttrNumber.
-		 * TODO(#30859): this logic doesn't make sense.  The for loop above
-		 * should skip over subkeys, and this if condition can be deleted.
-		 */
 		if (attnum == InvalidAttrNumber)
 			break;
 
 		int			idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
+
+		if (attnum == YBTupleIdAttributeNumber)
+		{
+			qualified_scan_key_cols_has_ybctid = true;
+			scan_plan->qualified_scan_key_cols =
+				bms_add_member(scan_plan->qualified_scan_key_cols, idx);
+		}
+
 		/* SeqScan may give scan keys that are not key columns. */
 		bool		is_key_column = bms_is_member(idx, scan_plan->key_cols);
 
-		if (attnum == YBTupleIdAttributeNumber ||
-			(is_key_column &&
-			 YbShouldPushdownScanKey(scan_plan, attnum, ybScan->keys[i])))
+		if (is_key_column &&
+			YbShouldPushdownScanKey(scan_plan, attnum, ybScan->keys[i]))
 		{
 			scan_plan->qualified_scan_key_cols =
 				bms_add_member(scan_plan->qualified_scan_key_cols, idx);
@@ -1285,14 +1288,19 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	}
 
 	/*
-	 * TODO(#30756): currently, conditions on hash keys are all or nothing:
-	 * either all hash keys have a condition bound or none of them.
+	 * If hash key is not fully set and ybctid is not set either, we must do a
+	 * full-table scan so clear all the scan keys if the hash code was
+	 * explicitly specified as a scan key then we also shouldn't be clearing the
+	 * scan keys.
 	 */
-	if (!bms_is_subset(scan_plan->hash_key_cols,
-					   scan_plan->qualified_scan_key_cols))
-		scan_plan->qualified_scan_key_cols =
-			bms_del_members(scan_plan->qualified_scan_key_cols,
-							scan_plan->hash_key_cols);
+	if (ybScan->hash_code_keys == NIL &&
+		!bms_is_subset(scan_plan->hash_key_cols,
+					   scan_plan->qualified_scan_key_cols) &&
+		!qualified_scan_key_cols_has_ybctid)
+	{
+		bms_free(scan_plan->qualified_scan_key_cols);
+		scan_plan->qualified_scan_key_cols = NULL;
+	}
 }
 
 /* Return true if typid is one of the Object Identifier Types */
@@ -5090,67 +5098,6 @@ YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 	return has_data;
 }
 
-void
-YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
-{
-	if (wait_policy == LockWaitError)
-	{
-		/*
-		 * In case the user has specified NOWAIT, the intention is to error out
-		 * immediately. If we raise ERRCODE_YB_TXN_CONFLICT, the statement might
-		 * be retried by our retry logic in yb_attempt_to_restart_on_error().
-		 */
-
-		if (rel)
-			ereport(ERROR,
-					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
-					 errmsg("could not obtain lock on row in relation \"%s\"",
-							RelationGetRelationName(rel))));
-		else
-		{
-			/*
-			 * It is not expected that relation is null. Raise an error wihout
-			 * relation name in release mode.
-			 */
-			Assert(false);
-			ereport(ERROR,
-					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
-					 errmsg("could not obtain lock on row")));
-		}
-	}
-
-	ereport(ERROR,
-			(errcode(ERRCODE_YB_TXN_CONFLICT),
-			 errmsg("could not serialize access due to concurrent update")));
-}
-
-static bool
-YBCIsExplicitRowLockConflictStatus(YbcStatus status)
-{
-	Assert(status);
-	const uint32_t err_code = YBCStatusPgsqlError(status);
-
-	return err_code == ERRCODE_YB_TXN_CONFLICT || err_code == ERRCODE_YB_TXN_ABORTED;
-}
-
-static void
-HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
-{
-	if (status.error_info.is_initialized &&
-		YBCIsExplicitRowLockConflictStatus(status.ybc_status))
-	{
-		YBCFreeStatus(status.ybc_status);
-		YBCHandleConflictError((OidIsValid(status.error_info.conflicting_table_id) ?
-								RelationIdGetRelation(status.error_info.conflicting_table_id) :
-								NULL),
-							   status.error_info.pg_wait_policy);
-	}
-	else
-	{
-		HandleYBStatus(status.ybc_status);
-	}
-}
-
 /*
  * The return value of this function depends on whether we are batching or not.
  * Currently, batching is enabled if the GUC yb_explicit_row_locking_batch_size > 1
@@ -5161,7 +5108,8 @@ HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
  */
 TM_Result
 YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
-			 LockWaitPolicy pg_wait_policy, EState *estate)
+			 LockWaitPolicy pg_wait_policy, EState *estate,
+			 const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle)
 {
 	const YbcPgExplicitRowLockParams lock_params = {
 		.rowmark = mode,
@@ -5173,13 +5121,13 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 	const Oid	db_oid = YBCGetDatabaseOid(relation);
 
 	if (yb_explicit_row_locking_batch_size > 1 &&
-		lock_params.pg_wait_policy != LockWaitSkip)
+		(lock_params.pg_wait_policy != LockWaitSkip || handle))
 	{
 		HandleExplicitRowLockStatus(YBCAddExplicitRowLockIntent(relfile_oid,
 																ybctid, db_oid,
 																&lock_params,
-																YbBuildTableLocalityInfo(relation)));
-		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctid);
+																YbBuildTableLocalityInfo(relation),
+																handle));
 		return TM_Ok;
 	}
 

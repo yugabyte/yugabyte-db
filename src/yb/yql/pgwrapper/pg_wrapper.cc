@@ -773,6 +773,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
   // Add cron.database_name
   lines.push_back(Format("cron.database_name='$0'", FLAGS_ysql_cron_database_name));
 
+  if (FLAGS_openssl_require_fips) {
+    lines.push_back("pgcrypto.builtin_crypto_enabled=fips");
+  }
+
   if (FLAGS_ysql_enable_documentdb) {
     auto gateway_config_path = VERIFY_RESULT(WriteDocumentDBGatewayConfig(conf));
     lines.push_back(Format("documentdb_gateway.database='$0'",

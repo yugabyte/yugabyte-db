@@ -148,6 +148,7 @@ public class ConfKeysTest extends FakeDBApplication {
     validVals.put(ConfDataType.LdapSearchScopeEnum, "SUBTREE");
     validVals.put(ConfDataType.UserRoleEnum, "ReadOnly");
     validVals.put(ConfDataType.LdapTlsProtocol, "TLSv1_2");
+    validVals.put(ConfDataType.OidcCallbackModeEnum, "query");
 
     // No data validation for these types yet
     Set<ConfDataType<?>> exceptions =

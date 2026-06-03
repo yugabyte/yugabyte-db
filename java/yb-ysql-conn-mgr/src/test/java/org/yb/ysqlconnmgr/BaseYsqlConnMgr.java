@@ -154,8 +154,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
       throws Exception {
     Map<String, String> tsFlagMap = new HashMap<>();
-    tsFlagMap.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
-        + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
     tsFlagMap.put("enable_ysql_conn_mgr", "true");
 
     // Keeping sane value for TTL based on GUC Adoption strategy, old backends to expire in 1 second

@@ -788,3 +788,8 @@ void yb_handle_fatalforlogicalconnection_pkt(od_client_t *client,
 	yb_forward_fatal_msg(client, msg);
 	machine_msg_free(msg);
 }
+
+bool yb_is_control_pool(od_route_t *route)
+{
+	return route->rule->pool->routing == OD_RULE_POOL_INTERVAL;
+}

@@ -593,6 +593,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		return;					/* Nothing to do. */
 	}
 
+	YbMaybeDisableSkipIntentsForCDCSDK(MyDatabaseId);
+
 	YbcPgStatement handle = NULL;
 	ListCell   *listptr;
 	bool		is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
@@ -1984,7 +1986,23 @@ YBCDropIndex(Relation index)
 	 */
 	bool not_found = false;
 
-	if (yb_props->is_colocated)
+	/*
+	 * Copartitioned indexes (currently ybhnsw) store their rows in a
+	 * separate per-tablet LSM, not in the colocated tablet's DocDB. The
+	 * PGSQL_TRUNCATE_COLOCATED RPC is a no-op for them at the DocDB layer
+	 * (PgsqlWriteOperation::Apply early-returns), but issuing it for each
+	 * child of a partitioned vector-index drop still produces sibling
+	 * transactional writes against the same colocated tablet. The first
+	 * such write carries the txn's isolation metadata, and because the
+	 * apply emits no write_pairs, the transaction is never registered with
+	 * the participant. Subsequent sibling writes (which the YBClient
+	 * batcher strips of isolation metadata after the first request) then
+	 * fail conflict resolution with "Transaction not found" — see
+	 * GH#30640. Skipping the truncate altogether for copartitioned indexes
+	 * avoids the empty-batch + isolation race; the actual storage is
+	 * cleaned up by the DROP_INDEX master RPC below.
+	 */
+	if (yb_props->is_colocated && !index->rd_indam->yb_amiscopartitioned)
 	{
 		YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(index, YB_TRANSACTIONAL);
 		if (handle)
@@ -1996,6 +2014,12 @@ YBCDropIndex(Relation index)
 										 &not_found);
 		}
 	}
+
+	/*
+	 * Reset not_found so that a NotFound from the colocated truncate above
+	 * does not cause us to skip the actual drop-index RPC below.
+	 */
+	not_found = false;
 
 	/* Drop the index table */
 	{

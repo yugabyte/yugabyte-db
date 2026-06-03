@@ -212,10 +212,29 @@ void CgroupThreadsToHtml(Cgroup& cgroup, HtmlPrintHelper& helper, std::ostream& 
         {HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Left, HtmlTableCellAlignment::Right,
          HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Right});
 
+    std::ranges::sort(*thread_ids);
     for (int64_t thread_id : *thread_ids) {
       auto& row = printer.AddRow();
       row.AddColumn(AsString(thread_id));
-      row.AddColumn(AsString(Thread::ThreadName(thread_id)));
+      auto name = Thread::ThreadName(thread_id);
+      if (name.ok() && *name == "postgres") {
+        // Postgres processes do not set thread name via /proc/<tid>/comm. Instead, they override
+        // the process cmdline (/proc/<pid>/cmdline) for all subprocesses. The postmaster is
+        // the exception, which uses a normal cmdline (/path/to/postgres arg1 arg2 ...).
+        auto cmdline = GetProcfsProcessCmdline(thread_id, /*max_length=*/1024);
+        if (cmdline.ok()) {
+          if (cmdline->starts_with("postgres: ")) {
+            // Non-postmaster postgres process.
+            // /proc/<tid>/cmdline separates arguments with null bytes, and we read all of that into
+            // a std::string. Here we truncate at first null byte, getting us just "argv[0]".
+            name = std::string(cmdline->c_str());
+          } else {
+            // Postmaster process.
+            name = "postgres: postmaster"s;
+          }
+        }
+      }
+      row.AddColumn(EscapeForHtmlToString(AsString(name)));
 
       ThreadStats stats;
       auto status = GetThreadStats(thread_id, &stats);
@@ -359,6 +378,12 @@ Result<Cgroup&> TServerCgroupManager::CgroupForDb(PgOid db_oid) {
 void TServerCgroupManager::RegisterDbName(PgOid db_oid, std::string name) {
   std::lock_guard lock(mutex_);
   db_names_[db_oid] = std::move(name);
+}
+
+bool TServerCgroupManager::IsDbNameKnown(PgOid db_oid) const {
+  std::lock_guard lock(mutex_);
+  auto it = db_names_.find(db_oid);
+  return it != db_names_.end() && !it->second.empty();
 }
 
 Status TServerCgroupManager::UpdateDbCpuLimits(double max_cpu, int period) {
@@ -664,6 +689,8 @@ void TServerCgroupManager::DumpCgroupsToHtml(std::ostream& out, uint64_t sample_
           </tr>
           )#";
     }
+  }, /*sort=*/[](std::span<Cgroup*> cgroups) {
+    std::ranges::sort(cgroups, /*comp=*/{}, /*proj=*/[](Cgroup* cgroup) { return cgroup->name(); });
   });
 
   out << R"#(

@@ -89,7 +89,10 @@ CREATE TABLE dist_rag.documents (
   document_type TEXT,
 
   -- Current state
-  status dist_rag.document_processing_status_enum NOT NULL DEFAULT 'QUEUED'
+  status dist_rag.document_processing_status_enum NOT NULL DEFAULT 'QUEUED',
+
+  -- Extensible details (e.g. observability trace references)
+  document_details JSONB
 
 );
 
@@ -442,6 +445,7 @@ AS $$
 DECLARE
     v_document RECORD;
     v_count INTEGER := 0;
+    v_skipped INTEGER := 0;
     v_tenant_id UUID;
 BEGIN
     -- Validate required parameter
@@ -463,7 +467,14 @@ BEGIN
         RAISE EXCEPTION 'Source % does not exist', r_source_id;
     END IF;
 
-    -- Insert work queue entries for all documents in this source
+    -- Insert work queue entries for documents that are not already
+    -- in flight or finished. Skipping 'PROCESSING' avoids stomping on a
+    -- worker that's currently embedding; skipping 'COMPLETED' makes the
+    -- function safely re-runnable so the vector store doesn't accumulate
+    -- duplicate embeddings (see dist_rag.knowledge_bases bloat from
+    -- repeated build_index calls). 'FAILED' / 'RETRY' / 'QUEUED' /
+    -- 'NOT_STARTED' all fall through and get re-queued -- this is the
+    -- intended retry path.
     INSERT INTO dist_rag.work_queue (
         task_type,
         task_status,
@@ -485,11 +496,26 @@ BEGIN
         ),
         NOW()
     FROM dist_rag.documents d
-    WHERE d.source_id = r_source_id;
+    WHERE d.source_id = r_source_id
+      AND d.status NOT IN (
+            'PROCESSING'::dist_rag.document_processing_status_enum,
+            'COMPLETED'::dist_rag.document_processing_status_enum
+          );
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
 
-    RAISE NOTICE 'Number of Documents Queued % for Preprocessing', v_count;
+    -- Count how many we filtered out so operators can tell at-a-glance
+    -- whether the call was a no-op vs. a real enqueue.
+    SELECT COUNT(*) INTO v_skipped
+    FROM dist_rag.documents d
+    WHERE d.source_id = r_source_id
+      AND d.status IN (
+            'PROCESSING'::dist_rag.document_processing_status_enum,
+            'COMPLETED'::dist_rag.document_processing_status_enum
+          );
+
+    RAISE NOTICE 'Documents queued for preprocessing: %; skipped (already PROCESSING/COMPLETED): %',
+        v_count, v_skipped;
     RETURN v_count;
 
 EXCEPTION WHEN OTHERS THEN
@@ -507,13 +533,15 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_index_id UUID;
-    v_count INTEGER;
+    v_source_id UUID;
+    v_queued_for_source INTEGER;
+    v_total_queued INTEGER := 0;
 BEGIN
     -- Validate that exactly one parameter is provided
     IF (r_index_id IS NULL AND r_index_name IS NULL) THEN
         RAISE EXCEPTION 'Either index_id or index_name is required and cannot both be NULL';
     END IF;
-    
+
     IF (r_index_id IS NOT NULL AND r_index_name IS NOT NULL) THEN
         RAISE EXCEPTION 'Provide only one of index_id or index_name, not both';
     END IF;
@@ -523,7 +551,7 @@ BEGIN
         SELECT id INTO v_index_id
         FROM dist_rag.vector_indexes
         WHERE index_name = r_index_name;
-        
+
         IF v_index_id IS NULL THEN
             RAISE EXCEPTION 'Vector index with name "%" does not exist', r_index_name;
         END IF;
@@ -531,35 +559,21 @@ BEGIN
         v_index_id := r_index_id;
     END IF;
 
-    -- Queue all documents for all sources associated with this index
-    INSERT INTO dist_rag.work_queue (
-        task_type,
-        task_status,
-        task_details,
-        created_at
-    )
-    SELECT
-        'PREPROCESS'::dist_rag.task_type_enum,
-        'QUEUED'::dist_rag.task_queue_status_enum,
-        jsonb_build_object(
-            'index_id', v_index_id,
-            'source_id', m.source_id,
-            'tenant_id', s.tenant_id,
-            'document_id', d.document_id,
-            'document_name', d.document_name,
-            'document_uri', d.document_uri,
-            'document_status', d.status,
-            'document_type', d.document_type
-        ),
-        NOW()
-    FROM dist_rag.vector_index_source_mappings m
-    JOIN dist_rag.sources s ON s.id = m.source_id
-    JOIN dist_rag.documents d ON d.source_id = m.source_id
-    WHERE m.index_id = v_index_id;
+    -- Delegate per-source enqueueing to _queue_source_documents so the
+    -- "queue documents but skip already-PROCESSING/COMPLETED" rule lives
+    -- in exactly one place. Each call emits its own NOTICE with per-source
+    -- queued/skipped counts; we tally totals here and emit the summary.
+    FOR v_source_id IN
+        SELECT source_id
+        FROM dist_rag.vector_index_source_mappings
+        WHERE index_id = v_index_id
+    LOOP
+        v_queued_for_source := dist_rag._queue_source_documents(v_source_id, v_index_id);
+        v_total_queued := v_total_queued + v_queued_for_source;
+    END LOOP;
 
-    GET DIAGNOSTICS v_count = ROW_COUNT;
-
-    RAISE NOTICE 'Index build kicked off successfully for index_id: %, documents queued: %', v_index_id, v_count;
+    RAISE NOTICE 'Index build kicked off for index_id: %; documents queued: %',
+        v_index_id, v_total_queued;
 
 EXCEPTION WHEN OTHERS THEN
     RAISE EXCEPTION 'Error building index: % - %', SQLSTATE, SQLERRM;
@@ -585,6 +599,8 @@ SELECT
     d.document_uri,
     d.document_checksum,
     d.status as document_status,
+    d.document_type,
+    d.document_details,
     pd.pipeline_id,
     pd.status as pipeline_status,
     pd.chunks_processed,

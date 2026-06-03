@@ -309,6 +309,9 @@ static void assign_yb_dist_tracecontext(const char *newval, void *extra);
 static bool check_yb_silence_advisory_locks_not_supported_error(bool *newval, void **extra,
 																GucSource source);
 static void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra);
+static bool check_yb_enable_new_relation_fastpath_write(bool *newval, void **extra, GucSource source);
+static bool check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
+																	 GucSource source);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -721,6 +724,14 @@ static const struct config_enum_entry yb_qpm_plan_format_options[] =
 	{"xml", EXPLAIN_FORMAT_XML, false},
 	{"json", EXPLAIN_FORMAT_JSON, false},
 	{"yaml", EXPLAIN_FORMAT_YAML, false},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry yb_test_force_parallel_options[] =
+{
+	{"off", YB_FORCE_PARALLEL_OFF, false},
+	{"prefer", YB_FORCE_PARALLEL_PREFER, false},
+	{"force", YB_FORCE_PARALLEL_FORCE, false},
 	{NULL, 0, false}
 };
 
@@ -2497,6 +2508,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_spi_dist_tracing", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enables distributed tracing for SPI (Server Programming Interface) calls."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_spi_dist_tracing,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
 			gettext_noop("Deprecated. This is no-op."),
 			NULL,
@@ -3464,7 +3486,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
 						 "when types mismatch."),
 			NULL,
@@ -4058,6 +4080,30 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_new_relation_fastpath_write", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables fastpath writes for relations created in the current transaction "
+						 "(apply writes directly to the regular RocksDB DB when safe, skipping the "
+						 "intents DB)."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_new_relation_fastpath_write,
+		true,
+		check_yb_enable_new_relation_fastpath_write, NULL, NULL
+	},
+
+	{
+		{"yb_enable_new_relation_fastpath_write_in_txn_blocks", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Allows yb_enable_new_relation_fastpath_write to be applicable inside explicit transaction blocks too."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_new_relation_fastpath_write_in_txn_blocks,
+		false,
+		check_yb_enable_new_relation_fastpath_write_in_txn_blocks, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -4091,14 +4137,26 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_test_sleep_before_executor_start_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sleep before executing a statement. "
+						 "Can be used to simulate race conditions where "
+						 "catalog is updated between planning and execution."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_sleep_before_executor_start_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_test_fail_next_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set to non-zero, the next DDL will fail: "
-						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash."),
+						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash, 5=conflict."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_next_ddl,
-		0, 0, 4,
+		0, 0, 5,
 		NULL, NULL, NULL
 	},
 	{
@@ -4121,6 +4179,18 @@ static struct config_int ConfigureNamesInt[] =
 		&yb_explicit_row_locking_batch_size,
 		1024, 1, INT_MAX,
 		check_yb_explicit_row_locking_batch_size, NULL, NULL
+	},
+	{
+		{"yb_explicit_row_lock_skip_locked_max_read_ahead", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Max number of rows that are read ahead for "
+						 "SKIP LOCKED explicit row locking"),
+			gettext_noop("Set to 1 to preserve original behavior, "
+						 "read ahead is not performed by default"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_explicit_row_lock_skip_locked_max_read_ahead,
+		1, 1, 1024,
+		NULL, NULL, NULL
 	},
 	{
 		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,
@@ -6030,7 +6100,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_max_num_invalidation_messages,
-		4096, 0, INT_MAX,
+		8192, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -7950,6 +8020,18 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&yb_qpm_configuration.cache_replacement_algorithm, YB_QPM_SIMPLE_CLOCK_LRU,
 		yb_cache_replacement_algorithm_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_force_parallel", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Influences planner selection of parallel paths for tests."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_EXPLAIN
+		},
+		&yb_test_force_parallel,
+		YB_FORCE_PARALLEL_OFF,
+		yb_test_force_parallel_options,
 		NULL, NULL, NULL
 	},
 
@@ -17415,6 +17497,42 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
 	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	yb_guc_remote_span_ctx = YBCGetValidSpanContext((const char *) extra);
 	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+ * YB: check_skip_intents_internal
+ * Common logic for skip-intent GUCs to handle transaction block restrictions.
+ */
+static bool
+check_skip_intents_internal(const char *guc_name, bool *newval, GucSource source)
+{
+	if (IsTransactionBlock() || FirstSnapshotSet)
+	{
+		GUC_check_errdetail("%s cannot be changed inside a transaction block or "
+							"after any query has been run in the transaction.", guc_name);
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+check_yb_enable_new_relation_fastpath_write(bool *newval, void **extra, GucSource source)
+{
+	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write", newval, source);
+}
+
+static bool
+check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
+														  GucSource source)
+{
+	if (*newval && !yb_enable_new_relation_fastpath_write)
+	{
+		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
+							"when yb_enable_new_relation_fastpath_write is disabled.");
+		return false;
+	}
+	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write_in_txn_blocks", newval, source);
 }
 
 #include "guc-file.c"

@@ -13,6 +13,8 @@
 
 #include "yb/tablet/kv_formatter.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_debug.h"
 

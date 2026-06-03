@@ -8157,7 +8157,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 			path->path.parallel_workers =
 				yb_compute_parallel_worker(baserel,
-										   YbGetTableDistribution(rel_oid),
+										   YbGetTableDistributionById(rel_oid),
 										   max_parallel_workers_per_gather);
 		}
 		else

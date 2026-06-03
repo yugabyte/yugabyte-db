@@ -13,9 +13,9 @@
 
 #include "yb/rpc/call_data.h"
 
-#include <google/protobuf/repeated_field.h>
-
 #include "yb/rpc/sidecars.h"
+
+#include "yb/util/result.h"
 
 namespace yb::rpc {
 

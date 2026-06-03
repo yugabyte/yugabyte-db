@@ -14,13 +14,15 @@ import { api, QUERY_KEY } from '@app/redesign/utils/api';
 import { FormProvider, useForm } from 'react-hook-form';
 import { SecuritySettingsProps } from '../../create-universe/steps/security-settings/dtos';
 import { AssignPublicIPField } from '../../create-universe/fields';
-import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
 
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import Disabled from '@app/redesign/assets/revoke.svg';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 const { styled, Box, CircularProgress } = mui;
 
@@ -72,6 +74,7 @@ export const SecurityTab = () => {
 
   const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
 
+  const isUniverseReady = useIsUniverseReady();
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -86,15 +89,17 @@ export const SecurityTab = () => {
             sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           >
             {t('encryptionInTransit')}
-            <YBButton
-              dataTestId="edit-security-transit-button"
-              variant="ghost"
-              startIcon={<EditIcon />}
-              onClick={() => setEitModalOpen(true)}
-              disabled={eitModalOpen}
-            >
-              {t('edit', { keyPrefix: 'common' })}
-            </YBButton>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
+              <YBButton
+                dataTestId="edit-security-transit-button"
+                variant="ghost"
+                startIcon={<EditIcon />}
+                onClick={() => setEitModalOpen(true)}
+                disabled={eitModalOpen || !isUniverseReady}
+              >
+                {t('edit', { keyPrefix: 'common' })}
+              </YBButton>
+            </RbacValidator>
           </StyledHeader>
           <StyledContent>
             <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
@@ -120,15 +125,17 @@ export const SecurityTab = () => {
             sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           >
             {t('encryptionAtRest')}
-            <YBButton
-              dataTestId="edit-security-at-rest-button"
-              variant="ghost"
-              startIcon={<EditIcon />}
-              onClick={() => setEarModalOpen(true)}
-              disabled={earModalOpen || isLegacyUniverseLoading || !universeUUID}
-            >
-              {t('edit', { keyPrefix: 'common' })}
-            </YBButton>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
+              <YBButton
+                dataTestId="edit-security-at-rest-button"
+                variant="ghost"
+                startIcon={<EditIcon />}
+                onClick={() => setEarModalOpen(true)}
+                disabled={earModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady}
+              >
+                {t('edit', { keyPrefix: 'common' })}
+              </YBButton>
+            </RbacValidator>
           </StyledHeader>
           <StyledContent>
             <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>

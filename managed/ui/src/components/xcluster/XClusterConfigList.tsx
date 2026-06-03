@@ -12,13 +12,7 @@ import {
   XCLUSTER_METRIC_REFETCH_INTERVAL_MS
 } from './constants';
 import { XClusterConfigCard } from './XClusterConfigCard';
-import {
-  api,
-  runtimeConfigQueryKey,
-  universeQueryKey,
-  xClusterQueryKey
-} from '../../redesign/helpers/api';
-import { RuntimeConfigKey } from '../../redesign/helpers/constants';
+import { api, universeQueryKey, xClusterQueryKey } from '../../redesign/helpers/api';
 import { getXClusterConfigUuids } from './ReplicationUtils';
 
 import { XClusterConfig } from './dtos';
@@ -32,12 +26,6 @@ interface Props {
 export function XClusterConfigList({ currentUniverseUUID }: Props) {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const customerUUID = localStorage.getItem('customerId') ?? '';
-  const customerRuntimeConfigQuery = useQuery(
-    runtimeConfigQueryKey.customerScope(customerUUID),
-    () => api.fetchRuntimeConfigs(customerUUID, true)
-  );
-
   const universeQuery = useQuery(universeQueryKey.detail(currentUniverseUUID), () =>
     api.fetchUniverse(currentUniverseUUID)
   );
@@ -78,41 +66,26 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
       />
     );
   }
-  if (customerRuntimeConfigQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
-      />
-    );
-  }
-  if (
-    universeQuery.isLoading ||
-    universeQuery.isIdle ||
-    customerRuntimeConfigQuery.isLoading ||
-    customerRuntimeConfigQuery.isIdle
-  ) {
+  if (universeQuery.isLoading || universeQuery.isIdle) {
     return <YBLoading />;
   }
 
-  const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
-  const shouldShowDrXClusterConfigs = runtimeConfigEntries.some(
-    (config: any) =>
-      config.key === RuntimeConfigKey.SHOW_DR_XCLUSTER_CONFIG && config.value === 'true'
-  );
-  const shownXClusterConfigQueries = shouldShowDrXClusterConfigs
-    ? xClusterConfigQueries
-    : xClusterConfigQueries.filter((xClusterConfigQuery) => !xClusterConfigQuery.data?.usedForDr);
+  const shownXClusterConfigs = xClusterConfigQueries
+    .map((xClusterConfigQuery, index) => ({
+      xClusterConfigQuery,
+      xClusterConfigUUID: universeXClusterConfigUUIDs[index]
+    }))
+    .filter(({ xClusterConfigQuery }) => !xClusterConfigQuery.data?.usedForDr);
 
   return (
     <>
       <ul className={styles.listContainer}>
-        {shownXClusterConfigQueries.length === 0 ? (
+        {shownXClusterConfigs.length === 0 ? (
           <div className={clsx(styles.configCard, styles.emptyConfigListPlaceholder)}>
             No replications to show.
           </div>
         ) : (
-          shownXClusterConfigQueries.map((xClusterConfigQuery, index) => {
-            const xClusterConfigUUID = universeXClusterConfigUUIDs[index];
+          shownXClusterConfigs.map(({ xClusterConfigQuery, xClusterConfigUUID }) => {
             if (xClusterConfigQuery.isLoading) {
               return (
                 <li className={clsx(styles.listItem)} key={xClusterConfigUUID}>

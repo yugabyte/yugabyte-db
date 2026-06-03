@@ -22,11 +22,14 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestConnectionLimit extends BaseYsqlConnMgr {
   // Idea is to test whether Ysql Connection Manager is able to handle multiple connections at a
   // time, as of now 16 (hard coded) `worker` threads are used by Ysql Connection Manager. Thus

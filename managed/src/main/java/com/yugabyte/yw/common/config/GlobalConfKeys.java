@@ -1475,6 +1475,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables validation for GCP Provider and returns the validation errors json if any",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableOciProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.oci_provider_validation",
+          ScopeType.GLOBAL,
+          "OCI provider validation",
+          "Enable OCI Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapSearchFilter =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_search_filter",

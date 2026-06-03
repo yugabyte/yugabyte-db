@@ -1,0 +1,21 @@
+title: BatchedExporterConfig
+type: object
+description: |
+  BatchedExporterConfig
+  Batch processor tuning shared by exporters that batch before sending.
+properties:
+  send_batch_max_size:
+    description: Send batch max size
+    type: integer
+    format: int32
+    default: 1000
+  send_batch_size:
+    description: Send batch size
+    type: integer
+    format: int32
+    default: 100
+  send_batch_timeout_seconds:
+    description: Send batch timeout in seconds
+    type: integer
+    format: int32
+    default: 10

@@ -57,6 +57,10 @@ public class BaseYBTest {
 
   private static String currentTestClassName;
   private static String currentTestMethodName;
+  // The JUnit Description for the currently running test method. Captured in the TestWatcher's
+  // starting() callback, which runs before any @Before, so subclasses can read method-level
+  // annotations (e.g. @BypassConnMgr) during setUp().
+  private static Description currentTestDescription;
 
   /**
    * A facility for deleting successful per-test-method log files in case no test failures happened.
@@ -170,6 +174,7 @@ public class BaseYBTest {
 
       currentTestClassName = description.getClassName();
       currentTestMethodName = description.getMethodName();
+      currentTestDescription = description;
 
       String descStr = descriptionToStr(description);
 
@@ -335,6 +340,15 @@ public class BaseYBTest {
       throw new RuntimeException("Current test method name not known");
     }
     return currentTestMethodName;
+  }
+
+  /**
+   * Returns the JUnit Description for the currently running test method, or null if not running
+   * within a test method (the TestWatcher hasn't fired yet). Useful for reading method-level
+   * annotations during @Before setup.
+   */
+  public static Description getCurrentTestDescription() {
+    return currentTestDescription;
   }
 
   /**

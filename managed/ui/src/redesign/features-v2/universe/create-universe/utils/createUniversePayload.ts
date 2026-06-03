@@ -1,3 +1,4 @@
+import { omit } from 'lodash';
 import { createUniverseFormProps } from '../CreateUniverseContext';
 import { ResilienceType } from '../steps/resilence-regions/dtos';
 import { OtherAdvancedProps } from '../steps/advanced-settings/dtos';
@@ -178,20 +179,17 @@ export const mapCreateUniversePayload = (
       encryption_in_transit_spec: getCreateEITPayload(securitySettings, providerType!),
       use_time_sync: otherAdvancedSettings.useTimeSync,
       ycql: {
-        ...databaseSettings.ycql
+        ...omit(databaseSettings.ycql, 'confirm_pwd')
       },
       ysql: {
-        ...databaseSettings.ysql,
+        ...omit(databaseSettings.ysql, 'confirm_pwd'),
         enable_connection_pooling: databaseSettings.enableConnectionPooling ?? false
       },
       networking_spec: {
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
-        enable_ipv6: securitySettings.enableIPV6 ?? false,
-        ...(securitySettings?.enableExposingService && {
-          enable_exposing_service: ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
-        })
+        enable_ipv6: securitySettings.enableIPV6 ?? false
       },
       clusters: [
         {

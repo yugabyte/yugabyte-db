@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
@@ -149,7 +150,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     log.info("Running comprehensive prechecks on {} live nodes", liveNodes.size());
-    createCheckNodeCommandExecutionTasks(liveNodes);
 
     long checkServiceLivenessTimeoutMs =
         confGetter
@@ -170,6 +170,8 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
             subTaskGroup.addSubTask(task);
           }
         });
+
+    createCheckNodeCommandExecutionTasks(liveNodes);
   }
 
   protected Set<NodeDetails> getAddedMasters() {
@@ -202,7 +204,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean forceDestroyServers,
+      Function<NodeDetails, Boolean> forceDestroyServers,
       boolean moveMastersFirst) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);

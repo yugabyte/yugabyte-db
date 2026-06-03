@@ -282,7 +282,7 @@ Status ReadQuery::DoPerform() {
 
   LeaderTabletPeer leader_peer;
 
-  if (serializable_isolation || has_row_mark || req_->has_leader_term()) {
+  if (serializable_isolation || has_row_mark || req_->has_pending_async_write_op_id()) {
     // At this point we expect that we don't have pure read serializable transactions, and
     // always write read intents to detect conflicts with other writes.
     leader_peer = VERIFY_RESULT(LookupLeaderTablet(
@@ -295,10 +295,10 @@ Status ReadQuery::DoPerform() {
       RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
     }
 
-    if (req_->has_leader_term()) {
-      SCHECK_EQ(
-          req_->leader_term(), leader_peer.leader_term, InvalidArgument,
-          Format("Tablet $0 leader changed during async write", req_->tablet_id()));
+    if (req_->has_pending_async_write_op_id()) {
+      // The client had in-flight async write(s) on this tablet - verify this leader has it.
+      RETURN_NOT_OK(leader_peer.peer->VerifyAsyncWriteReceived(
+          OpId::FromPB(req_->pending_async_write_op_id())));
     }
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(

@@ -201,24 +201,20 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
                 self.connection_pool.return_connection(connection)
 
     def _mark_task_completed(self, work_queue_id: UUID, source_id: UUID):
-        """
-        Mark a task as completed.
-        """
+
         connection = None
         try:
+            """
+            Mark a CREATE_SOURCE task as completed.
+
+            The work_queue row is removed via :meth:`Poller.mark_completed`
+            (DELETE) so the queue stays compact. The source row is moved to
+            a terminal COMPLETED status -- it is the authoritative record of
+            source ingestion, separate from the dispatch queue.
+            """
+            self.poller.mark_completed(work_queue_id)
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
-
-            # Update work_queue table
-            query_work_queue = """
-            UPDATE dist_rag.work_queue
-            SET task_status = 'COMPLETED',
-                completed_at = CURRENT_TIMESTAMP
-            WHERE id = %s;
-            """
-            cursor.execute(query_work_queue, (work_queue_id,))
-
-            # Update sources table
             query_sources = """
             UPDATE dist_rag.sources
             SET status = 'COMPLETED',
@@ -236,7 +232,7 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
                     connection.rollback()
                 except Exception:
                     pass
-            logging.error(f"Error marking completion for task {work_queue_id}: {str(e)}")
+            logging.error(f"Error marking source completed for task {work_queue_id}: {str(e)}")
             raise
         finally:
             if connection:
@@ -325,5 +321,15 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
             # Clean up the renewal thread on error
             self._lease_renewal_threads.pop(str(work_queue_id), None)
             self._update_create_source_status(work_queue_id=work_queue_id, status="FAILED")
+            # Finalize the work_queue row too -- without this the row stays
+            # IN_PROGRESS and the SQL-side reaper re-queues it on lease
+            # expiry, causing CREATE_SOURCE tasks to be retried forever.
+            try:
+                self.poller.mark_failed(task.id)
+            except Exception as finalize_err:
+                self.logger.error(
+                    f"Failed to mark work_queue row {task.id} FAILED after "
+                    f"create-source error: {str(finalize_err)}"
+                )
             self.logger.error(f"Error processing create source task: {str(e)}")
             raise

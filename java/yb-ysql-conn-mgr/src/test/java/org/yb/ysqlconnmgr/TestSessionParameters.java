@@ -33,6 +33,8 @@ import java.util.Arrays;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -40,7 +42,8 @@ import org.yb.pgsql.ConnectionEndpoint;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.PGConnection;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestSessionParameters extends BaseYsqlConnMgr {
 
   @Override
@@ -913,8 +916,6 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   @Test
   public void testUpdatingRuntimeFlagPGCBackendAuthBackend() throws Exception {
     Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
-            + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
     tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
     tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
     tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");
@@ -927,8 +928,6 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   @Test
   public void testUpdatingRuntimeFlagPGCBackendAuthPassthrough() throws Exception {
     Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
-            + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
     tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
     tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
     tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");

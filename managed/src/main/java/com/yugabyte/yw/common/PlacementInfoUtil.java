@@ -1499,6 +1499,9 @@ public class PlacementInfoUtil {
       }
       if (!newCluster.areTagsSame(oldCluster)
           || !existingIntent.deviceInfo.equals(userIntent.deviceInfo)
+          || !Objects.equals(existingIntent.masterDeviceInfo, userIntent.masterDeviceInfo)
+          || !Objects.equals(existingIntent.instanceType, userIntent.instanceType)
+          || !Objects.equals(existingIntent.masterInstanceType, userIntent.masterInstanceType)
           || UniverseCRUDHandler.isKubernetesNodeSpecUpdate(oldCluster, newCluster)
           || UniverseCRUDHandler.isAwsArnChanged(oldCluster, newCluster)
           || UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)
@@ -2975,6 +2978,8 @@ public class PlacementInfoUtil {
     return addPlacementZone(zone, placementInfo, rf, numNodes, true);
   }
 
+  // addPlacementZone does not add the stsIndex for master/tserver, callsites using this method
+  // should set the stsIndex for master/tserver after calling this method.
   public static PlacementAZ addPlacementZone(
       UUID zone, PlacementInfo placementInfo, int rf, int numNodes, boolean isAffinitized) {
     // Get the zone, region and cloud.

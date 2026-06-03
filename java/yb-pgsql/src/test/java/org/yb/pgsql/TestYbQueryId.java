@@ -26,7 +26,8 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 import static org.yb.AssertionWrappers.*;
 import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainQueryId;
 
@@ -34,7 +35,8 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainQueryId;
  * Runs tests for tests query id stability, including queries
  * with comments, hints, and different spacing.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestYbQueryId extends BasePgSQLTest {
 
   @Override

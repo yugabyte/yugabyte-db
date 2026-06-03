@@ -17,10 +17,12 @@ import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 // Disable in TSAN since it times out on pg_cron exist #22295.
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value = YBTestRunner.class)
 public class TestPgRegressThirdPartyExtensionsPgCron extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {

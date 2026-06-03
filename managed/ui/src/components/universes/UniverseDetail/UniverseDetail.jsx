@@ -100,6 +100,7 @@ import PGIcon from '../../../redesign/assets/pg-compatibility.svg?img';
 import PGDisabled from '../../../redesign/assets/pg-disabled.svg?img';
 import ConnectionPoolIcon from '../../../redesign/assets/connection-pooling.svg?img';
 import ConnectionPoolDisabled from '../../../redesign/assets/connection-pool-disabled.svg?img';
+import PausedIcon from '../../../redesign/assets/approved/paused.svg';
 
 import './UniverseDetail.scss';
 
@@ -972,10 +973,6 @@ class UniverseDetail extends Component {
     const isCACertRotationEnabled =
       !isKubernetesUniverse &&
       (featureFlags.test['enableCACertRotation'] || featureFlags.released['enableCACertRotation']);
-    const nodeNames =
-      currentUniverse.data.universeDetails.nodeDetailsSet
-        .filter((nodeDetails) => !!nodeDetails.nodeName)
-        .map((nodeDetails) => nodeDetails.nodeName) ?? [];
     const actionMenuButtons = isNotHidden(
       currentCustomer.data.features,
       'universes.details.pageActions'
@@ -1804,6 +1801,12 @@ class UniverseDetail extends Component {
               {currentUniverse.data.name}
             </a>
           </h2>
+          {universeStatus?.state === UniverseState.PAUSED && (
+            <div className="status-container paused">
+              <PausedIcon width={24} height={24} />
+              {universeStatus.state.text && <span>{universeStatus.state.text}</span>}
+            </div>
+          )}
         </div>
         <TaskDetailBanner universeUUID={currentUniverse.data.universeUUID} />
         <RollingUpgradeFormContainer
@@ -2046,7 +2049,6 @@ class UniverseDetail extends Component {
             }
           }}
           universeUuid={currentUniverse.data.universeUUID}
-          nodeNames={nodeNames}
           isUniverseAction={true}
           isReinstall={!isNodeAgentMissing}
         />

@@ -210,6 +210,12 @@ class PgClient {
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
+  struct DbColocationInfo {
+    bool colocated;
+    bool legacy_colocated_database;
+  };
+  Result<DbColocationInfo> IsDatabaseColocated(PgOid oid);
+
   Result<bool> PollVectorIndexReady(const PgObjectId& table_id);
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
@@ -301,6 +307,8 @@ class PgClient {
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<bool> IsNamespacePartOfCDCSDK(uint32_t database_oid);
 
   Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,

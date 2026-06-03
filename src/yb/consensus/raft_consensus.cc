@@ -1141,16 +1141,17 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   if (!PREDICT_FALSE(FLAGS_TEST_leader_skip_no_op)) {
     auto round = make_scoped_refptr<ConsensusRound>(this, replicate);
-    round->SetCallback(MakeNonTrackedRoundCallback(round.get(),
-        [this, term = state_->GetCurrentTermUnlocked()](const Status& status) {
-      // Set 'Leader is ready to serve' flag only for committed NoOp operation
-      // and only if the term is up-to-date.
-      // It is guaranteed that successful notification is called only while holding replicate state
-      // mutex.
-      if (status.ok() && term == state_->GetCurrentTermUnlocked()) {
-        state_->SetLeaderNoOpCommittedUnlocked(true);
-      }
-    }));
+    round->SetCallback(MakeNonTrackedRoundCallback(
+        round.get(), [this, term = state_->GetCurrentTermUnlocked(),
+                      replicate](const Status& status) {
+          // Set 'Leader is ready to serve' flag only for committed NoOp operation
+          // and only if the term is up-to-date.
+          // It is guaranteed that successful notification is called only while holding replicate
+          // state mutex.
+          if (status.ok() && term == state_->GetCurrentTermUnlocked()) {
+            state_->SetLeaderNoOpCommittedUnlocked(true, OpId::FromPB(replicate->id()).index);
+          }
+        }));
     RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
   }
 
@@ -1357,7 +1358,15 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
       }
     }
 
-    OpId op_id = state_->NewIdUnlocked();
+    // Reject ops the operation filter won't allow BEFORE NotifyAddedToLeader runs, so that side
+    // effects of being added as pending don't fire for an op that will be immediately rolled back.
+    // In particular, WriteOperation::AddedAsPending synchronously invokes
+    // DoReplicated -> ApplyRowOperations for use_async_write requests, which writes intents into
+    // the intents memtable. Rolling back the op_id afterwards does not undo that memtable write, so
+    // the intents flushed_frontier can advance past split_op_id and propagate into the children via
+    // Tablet::CreateSubtablet's RocksDB checkpoint -- breaking bootstrap with
+    // "WAL files missing, or committed op id is incorrect" (TabletBootstrap::PlaySegments).
+    OpId op_id = VERIFY_RESULT(state_->NewIdUnlocked(round->replicate_msg()->op_type()));
 
     // We use this callback to transform write operations by substituting the hybrid_time into
     // the write batch inside the write operation.
@@ -1409,6 +1418,9 @@ void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data, OpId* committed_op_id,
     OpId* last_applied_op_id) {
+  TEST_SYNC_POINT_CALLBACK(
+      "RaftConsensus::UpdateMajorityReplicated::Start",
+      const_cast<TabletId*>(&tablet_id()));
   TEST_PAUSE_IF_FLAG_WITH_LOG_PREFIX(TEST_pause_update_majority_replicated);
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
@@ -3868,6 +3880,20 @@ void RaftConsensus::TrackOperationMemory(const yb::OpId& op_id) {
 int64_t RaftConsensus::TEST_LeaderTerm() const {
   auto lock = state_->LockForRead();
   return state_->GetCurrentTermUnlocked();
+}
+
+int64_t RaftConsensus::GetFirstIndexOfCurrentTerm() const {
+  auto lock = state_->LockForRead();
+  return state_->GetFirstIndexOfCurrentTermUnlocked();
+}
+
+std::pair<LeaderState, int64_t> RaftConsensus::GetLeaderStateAndFirstIndexOfCurrentTerm() const {
+  auto lock = state_->LockForRead();
+  auto leader_state = state_->GetLeaderStateUnlocked();
+  auto first_index = leader_state.ok()
+      ? state_->GetFirstIndexOfCurrentTermUnlocked()
+      : kInvalidOpIdIndex;
+  return {std::move(leader_state), first_index};
 }
 
 std::string RaftConsensus::DelayedStepDown::ToString() const {

@@ -34,13 +34,13 @@ namespace rocksdb {
 
 std::unique_ptr<WriteControllerToken> WriteController::GetStopToken() {
   CHECK(FLAGS_TEST_allow_stop_writes);
-  ++total_stopped_;
+  total_stopped_.fetch_add(1, std::memory_order_release);
   return std::unique_ptr<WriteControllerToken>(new StopWriteToken(this));
 }
 
 std::unique_ptr<WriteControllerToken> WriteController::GetDelayToken(
     uint64_t write_rate) {
-  total_delayed_++;
+  total_delayed_.fetch_add(1, std::memory_order_release);
   // Reset counters.
   last_refill_time_ = 0;
   bytes_left_ = 0;
@@ -55,17 +55,21 @@ WriteController::GetCompactionPressureToken() {
       new CompactionPressureToken(this));
 }
 
-bool WriteController::IsStopped() const { return total_stopped_ > 0; }
+// This function is called while NOT holding the DB mutex.
+bool WriteController::IsStopped() const {
+  return total_stopped_.load(std::memory_order_acquire) > 0;
+}
+
 // This is inside DB mutex, so we can't sleep and need to minimize
 // frequency to get time.
 // If it turns out to be a performance issue, we can redesign the thread
 // synchronization model here.
 // The function trust caller will sleep micros returned.
 uint64_t WriteController::GetDelay(Env* env, uint64_t num_bytes) {
-  if (total_stopped_ > 0) {
+  if (total_stopped_.load(std::memory_order_acquire) > 0) {
     return 0;
   }
-  if (total_delayed_ == 0) {
+  if (total_delayed_.load(std::memory_order_acquire) == 0) {
     return 0;
   }
 
@@ -126,13 +130,13 @@ uint64_t WriteController::GetDelay(Env* env, uint64_t num_bytes) {
 }
 
 StopWriteToken::~StopWriteToken() {
-  assert(controller_->total_stopped_ >= 1);
-  --controller_->total_stopped_;
+  DCHECK_GE(controller_->total_stopped_.load(std::memory_order_acquire), 1);
+  controller_->total_stopped_.fetch_sub(1, std::memory_order_release);
 }
 
 DelayWriteToken::~DelayWriteToken() {
-  controller_->total_delayed_--;
-  assert(controller_->total_delayed_ >= 0);
+  controller_->total_delayed_.fetch_sub(1, std::memory_order_release);
+  DCHECK_GE(controller_->total_delayed_.load(std::memory_order_acquire), 0);
 }
 
 CompactionPressureToken::~CompactionPressureToken() {

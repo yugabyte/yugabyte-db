@@ -132,7 +132,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    MockitoAnnotations.initMocks(this);
+    MockitoAnnotations.openMocks(this);
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     try {
@@ -1450,6 +1450,67 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
     result = editProvider(providerJson, p.getUuid(), false);
     assertOk(result);
+  }
+
+  @Test
+  public void testProviderEditWithInvalidHomePath() {
+    // On-prem: updating YB home to conflict with instance type mount path is rejected.
+    Provider onPremProvider = ModelFactory.onpremProvider(customer);
+    Region onPremRegion =
+        Region.create(onPremProvider, "onprem-region", "onprem-region", "yb-image");
+    AvailabilityZone onPremAz =
+        AvailabilityZone.createOrThrow(
+            onPremRegion, "onprem-az", "onprem-az", "subnet-foo", "subnet-foo");
+    AccessKey.create(onPremProvider.getUuid(), "onprem-access-key", new AccessKey.KeyInfo());
+    InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeSizeGB = 100;
+    volumeDetails.volumeType = InstanceType.VolumeType.SSD;
+    volumeDetails.mountPath = "/mnt/d0";
+    instanceTypeDetails.volumeDetailsList.add(volumeDetails);
+    InstanceType.upsert(onPremProvider.getUuid(), "onprem-instance", 4, 8.0, instanceTypeDetails);
+
+    Universe onPremUniverse = ModelFactory.createUniverse("onprem-provider-edit", customer.getId());
+    Universe.UniverseUpdater onPremUpdater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+          UserIntent userIntent = new UserIntent();
+          userIntent.numNodes = 3;
+          userIntent.provider = onPremProvider.getUuid().toString();
+          universeDetails.nodeDetailsSet = new HashSet<>();
+          for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeName = "onprem-host-n" + idx;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.cloud = "onprem";
+            node.cloudInfo.az = "onprem-az";
+            node.cloudInfo.region = "onprem-region";
+            node.cloudInfo.private_ip = "onprem-host-n" + idx;
+            node.azUuid = onPremAz.getUuid();
+            node.state = NodeState.Live;
+            node.isTserver = true;
+            if (idx <= 1) {
+              node.isMaster = true;
+            }
+            node.nodeIdx = idx;
+            universeDetails.nodeDetailsSet.add(node);
+          }
+          universeDetails.upsertPrimaryCluster(userIntent, null, null);
+          universe.setUniverseDetails(universeDetails);
+        };
+    onPremUniverse = Universe.saveDetails(onPremUniverse.getUniverseUUID(), onPremUpdater);
+
+    Provider onPremEdit = Provider.getOrBadRequest(onPremProvider.getUuid());
+    Map<String, String> onPremConfig = new HashMap<>();
+    onPremConfig.put("YB_HOME_DIR", "/mnt/d0");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(onPremEdit, onPremConfig);
+    Result result =
+        assertPlatformException(
+            () -> editProvider(Json.toJson(onPremEdit), onPremProvider.getUuid(), false));
+    assertBadRequest(
+        result,
+        "YB home directory /mnt/d0 cannot be the same or descendent of the the mount path"
+            + " /mnt/d0");
   }
 
   private SecurityGroup getTestSecurityGroup(int fromPort, int toPort, String vpcId) {

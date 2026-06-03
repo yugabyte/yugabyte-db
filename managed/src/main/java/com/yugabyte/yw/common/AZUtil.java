@@ -37,8 +37,6 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -69,7 +67,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -740,34 +737,17 @@ public class AZUtil implements CloudUtil {
     return Double.NaN;
   }
 
-  public UniverseInterruptionResult spotInstanceUniverseStatus(Universe universe) {
-    UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    Provider primaryClusterProvider =
-        Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+  public void addSpotInstanceUniverseStatus(
+      UniverseInterruptionResult result,
+      NodeDetails nodeDetails,
+      Universe universe,
+      Provider provider) {
     String startTime = universe.getCreationDate().toInstant().toString();
-    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
-
-    // For nodes in primary cluster
-    for (final NodeDetails nodeDetails : universe.getNodesInCluster(primaryClusterUUID)) {
-      result.addNodeStatus(
-          nodeDetails.nodeName,
-          isSpotInstanceInterrupted(nodeDetails.nodeName, primaryClusterProvider, startTime)
-              ? InterruptionStatus.Interrupted
-              : InterruptionStatus.NotInterrupted);
-    }
-    // For nodes in read replicas
-    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      for (final NodeDetails nodeDetails : universe.getNodesInCluster(cluster.uuid)) {
-        result.addNodeStatus(
-            nodeDetails.nodeName,
-            isSpotInstanceInterrupted(nodeDetails.nodeName, provider, startTime)
-                ? InterruptionStatus.Interrupted
-                : InterruptionStatus.NotInterrupted);
-      }
-    }
-    return result;
+    result.addNodeStatus(
+        nodeDetails.nodeName,
+        isSpotInstanceInterrupted(nodeDetails.nodeName, provider, startTime)
+            ? InterruptionStatus.Interrupted
+            : InterruptionStatus.NotInterrupted);
   }
 
   private boolean isSpotInstanceInterrupted(String nodeName, Provider provider, String startTime) {

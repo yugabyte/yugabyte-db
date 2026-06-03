@@ -271,6 +271,46 @@ public class CloudRegionHelper {
                         AvailabilityZone.getOrCreate(
                             region, zone.getCode(), zone.getName(), null, null)));
         break;
+      case oci:
+        Map<String, String> ociZoneSubnets = metadata.azToSubnetIds;
+        String vcnId = metadata.vpcId;
+        if (vcnId != null && !vcnId.isEmpty()) {
+          region.setVnetName(vcnId);
+          region.update();
+        }
+
+        if (ociZoneSubnets == null || ociZoneSubnets.isEmpty()) {
+          zoneInfo = queryHelper.getZones(region.getUuid(), vcnId);
+          if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
+            region.delete();
+            String errMsg =
+                "Region Bootstrap failed. Unable to fetch availability domains for " + regionCode;
+            throw new RuntimeException(errMsg);
+          }
+          List<String> ociZones = Json.fromJson(zoneInfo.get(regionCode).get("zones"), List.class);
+          String ociSubnetId = metadata.subnetId;
+          if (ociSubnetId == null || ociSubnetId.isEmpty()) {
+            JsonNode subnetworksNode = zoneInfo.get(regionCode).get("subnetworks");
+            if (subnetworksNode != null && subnetworksNode.size() > 0) {
+              ociSubnetId = subnetworksNode.fieldNames().next();
+            }
+          }
+          final String ociSubnet = ociSubnetId;
+          region.setZones(new ArrayList<>());
+          ociZones.forEach(
+              zone ->
+                  region
+                      .getZones()
+                      .add(AvailabilityZone.getOrCreate(region, zone, zone, ociSubnet)));
+        } else {
+          region.setZones(new ArrayList<>());
+          ociZoneSubnets.forEach(
+              (zone, ociSubnet) ->
+                  region
+                      .getZones()
+                      .add(AvailabilityZone.getOrCreate(region, zone, zone, ociSubnet)));
+        }
+        break;
       default:
         throw new RuntimeException(
             "Cannot bootstrap region " + regionCode + " for provider " + provider.getCode() + ".");

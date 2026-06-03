@@ -25,7 +25,6 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -52,11 +51,6 @@ import org.junit.Test;
 
 @Slf4j
 public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(30, 60);
-  }
 
   @Test
   public void testNonRestartAndNonRollingUpgrade() throws InterruptedException {

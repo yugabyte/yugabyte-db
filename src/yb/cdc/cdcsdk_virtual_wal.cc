@@ -14,6 +14,7 @@
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
+#include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
 
 #include "yb/master/sys_catalog_constants.h"
@@ -110,6 +111,7 @@ DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(cdc_enable_local_rpc_in_virtual_wal);
 
 namespace yb::cdc {
 
@@ -242,10 +244,12 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     pg_class_table_id_ = GetPgsqlTableId(pg_database_oid, kPgClassTableOid);
     pg_publication_rel_table_id_ = GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid);
+    pg_replication_origin_table_id_ = GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid);
     table_list.emplace(pg_class_table_id_);
     table_list.emplace(pg_publication_rel_table_id_);
-    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class and pg_publication_rel "
-                           "to the polling list.";
+    table_list.emplace(pg_replication_origin_table_id_);
+    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class, pg_publication_rel and "
+                           "pg_replication_origin to the polling list.";
   }
 
   if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
@@ -312,8 +316,8 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   if (!parent_tablet_id.empty()) {
     req.set_tablet_id(parent_tablet_id);
   }
-  // TODO(20946): Change this RPC call to a local call.
-  auto cdc_proxy = cdc_service_->GetCDCServiceProxy(hostport);
+
+  auto cdc_proxy = GetCDCServiceProxy(hostport);
   rpc::RpcController rpc;
   rpc.set_deadline(deadline);
   auto s = cdc_proxy->GetTabletListToPollForCDC(req, &resp, &rpc);
@@ -898,8 +902,7 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
 
     RETURN_NOT_OK(PopulateGetChangesRequest(tablet_id, &req));
 
-    // TODO(20946): Change this RPC call to a local call.
-    auto cdc_proxy = cdc_service_->GetCDCServiceProxy(hostport);
+    auto cdc_proxy = GetCDCServiceProxy(hostport);
     rpc::RpcController rpc;
     rpc.set_deadline(deadline);
     auto s = cdc_proxy->GetChanges(req, &resp, &rpc);
@@ -1603,8 +1606,7 @@ Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
   }
 
   for (auto table_id : publication_table_list_) {
-    if (!new_tables.contains(table_id) && table_id != pg_class_table_id_ &&
-        table_id != pg_publication_rel_table_id_) {
+    if (!new_tables.contains(table_id) && !IsCatalogTableEligibleForCDC(table_id)) {
       tables_to_be_removed.insert(table_id);
       VLOG_WITH_PREFIX(1) << "Table: " << table_id << " to be removed from polling list";
     }
@@ -1782,6 +1784,11 @@ std::vector<TabletId> CDCSDKVirtualWAL::GetTabletIdsFromVirtualWAL() {
   return tablet_ids;
 }
 
+bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) const {
+  return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
+         table_id == pg_replication_origin_table_id_;
+}
+
 bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info) {
   auto const& record = record_info.second;
   auto table_id = record->row_message().table_id();
@@ -1821,17 +1828,24 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
     }
 
     return true;
+  } else if (table_id == pg_replication_origin_table_id_) {
+    if (record->row_message().op() != RowMessage_Op_INSERT &&
+        record->row_message().op() != RowMessage_Op_DELETE) {
+      return false;
+    }
+    return true;
   }
 
-  // We should only receive records corresponding to pg_class and pg_publication_rel tables. Only
-  // possibility of reaching here is when a DDL record is sent from sys catalog tablet, for ex: when
-  // a new slot is created, the existing slot sees the CHANGE_METADATA_OP used for setting retention
-  // barriers and sends a DDL record.
+  // We should only receive records corresponding to pg_class, pg_publication_rel and
+  // pg_replication_origin tables. Only possibility of reaching here is when a DDL record is sent
+  // from sys catalog tablet, for ex: when a new slot is created, the existing slot sees the
+  // CHANGE_METADATA_OP used for setting retention barriers and sends a DDL record.
   LOG_IF(DFATAL, record->row_message().op() != RowMessage_Op_DDL)
       << "Records from an unexpected table: " << table_id
       << " received from sys catalog tablet in virtual WAL."
       << " pg_class_table_id_ = " << pg_class_table_id_
-      << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_;
+      << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_
+      << " pg_replication_origin_table_id_ = " << pg_replication_origin_table_id_;
   return false;
 }
 
@@ -1863,6 +1877,18 @@ bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRec
   }
 
   return false;
+}
+
+std::shared_ptr<CDCServiceProxy> CDCSDKVirtualWAL::GetCDCServiceProxy(HostPort hostport) {
+  if (FLAGS_cdc_enable_local_rpc_in_virtual_wal) {
+    if (local_cdc_service_proxy_ == nullptr) {
+      local_cdc_service_proxy_ =
+          std::make_shared<CDCServiceProxy>(&cdc_service_->client()->proxy_cache(), HostPort());
+    }
+    return local_cdc_service_proxy_;
+  }
+
+  return cdc_service_->GetCDCServiceProxy(hostport);
 }
 
 } // namespace yb::cdc

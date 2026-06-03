@@ -2215,6 +2215,35 @@
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: internal
+  get:
+    operationId: getExportTelemetryConfig
+    summary: Get configured export telemetry configs for a universe
+    description: |
+      Returns the currently configured telemetry export configs (audit logs, query logs,
+      metrics) for a universe. A null sub-config indicates that export is disabled.
+    tags:
+      - Universe
+    responses:
+      '200':
+        $ref: "../components/responses/ExportTelemetryConfigResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/operator-import':
   parameters:
     - name: cUUID

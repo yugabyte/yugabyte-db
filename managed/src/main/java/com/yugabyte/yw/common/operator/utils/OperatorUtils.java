@@ -1301,6 +1301,9 @@ public class OperatorUtils {
         CustomerConfig.get(backup.getCustomerUUID(), backup.getStorageConfigUUID());
     crSpec.setStorageConfig(storageConfigName);
     crSpec.setTimeBeforeDelete(params.timeBeforeDelete);
+    crSpec.setUseTablespaces(params.useTablespaces);
+    crSpec.setUseRoles(params.getUseRoles());
+    crSpec.setUsePrivileges(params.getUsePrivileges());
     Universe universe =
         Universe.getOrBadRequest(backup.getUniverseUUID(), Customer.get(backup.getCustomerUUID()));
     crSpec.setUniverse(universe.getUniverseDetails().getKubernetesResourceDetails().name);
@@ -2078,6 +2081,9 @@ public class OperatorUtils {
                 params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit));
       }
       spec.setEnablePointInTimeRestore(params.enablePointInTimeRestore);
+      spec.setUseTablespaces(params.useTablespaces);
+      spec.setUseRoles(params.getUseRoles());
+      spec.setUsePrivileges(params.getUsePrivileges());
       backupSchedule.setSpec(spec);
       kubernetesClient
           .resources(BackupSchedule.class)

@@ -672,6 +672,5 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     assertNotNull(defaultUniverse.getUniverseDetails().additionalServicesStateData);
     assertTrue(
         defaultUniverse.getUniverseDetails().additionalServicesStateData.isEarlyoomEnabled());
-    assertTrue(false);
   }
 }

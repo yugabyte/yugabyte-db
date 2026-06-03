@@ -1121,9 +1121,12 @@ OpId ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
   return pending_operations_.empty() ? OpId() : pending_operations_.back()->id();
 }
 
-OpId ReplicaState::NewIdUnlocked() {
+Result<OpId> ReplicaState::NewIdUnlocked(OperationType op_type) {
   DCHECK(IsLocked());
-  return OpId(GetCurrentTermUnlocked(), next_index_++);
+  auto op_id = OpId(GetCurrentTermUnlocked(), next_index_);
+  RETURN_NOT_OK(context_->CheckOperationAllowed(op_id, op_type));
+  ++next_index_;
+  return op_id;
 }
 
 void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
@@ -1551,12 +1554,14 @@ consensus::LeaderState ReplicaState::RefreshLeaderStateCacheUnlocked(CoarseTimeP
   return result;
 }
 
-void ReplicaState::SetLeaderNoOpCommittedUnlocked(bool value) {
-  LOG_WITH_PREFIX(INFO)
-      << __func__ << "(" << value << "), committed: " << GetCommittedOpIdUnlocked()
-      << ", received: " << GetLastReceivedOpIdUnlocked();
+void ReplicaState::SetLeaderNoOpCommittedUnlocked(bool value, int64_t no_op_index) {
+  LOG_WITH_PREFIX(INFO) << __func__ << "(" << value
+                        << "), committed: " << GetCommittedOpIdUnlocked()
+                        << ", received: " << GetLastReceivedOpIdUnlocked()
+                        << ", no_op_index: " << no_op_index;
 
   leader_no_op_committed_ = value;
+  first_index_of_current_term_ = no_op_index;
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(now);
 }

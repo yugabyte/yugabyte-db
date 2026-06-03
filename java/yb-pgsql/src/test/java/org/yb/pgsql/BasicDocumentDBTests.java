@@ -34,7 +34,11 @@ import java.util.List;
 import org.bson.Document;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonSanOrAArch64Mac;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
+import org.yb.util.SkipOnAArch64;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 
 /**
  * End-to-end test for the DocumentDB Gateway using the MongoDB Java driver.
@@ -42,7 +46,11 @@ import org.yb.util.YBTestRunnerNonSanOrAArch64Mac;
  * Covers insert, find, update, delete, nested documents, count, distinct,
  * replace, drop collection, and drop database in a single scenario.
  */
-@RunWith(value = YBTestRunnerNonSanOrAArch64Mac.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RequiresLinux
+@SkipOnAArch64
+@RunWith(value = YBTestRunner.class)
 public class BasicDocumentDBTests extends BaseDocumentDBGatewayTest {
 
   @Test

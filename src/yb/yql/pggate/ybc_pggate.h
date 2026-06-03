@@ -480,7 +480,8 @@ YbcStatus YBCPgWaitForBackendsCatalogVersion(
 
 YbcStatus YBCPgBackfillIndex(
     const YbcPgOid database_oid,
-    const YbcPgOid index_relfilenode_oid);
+    const YbcPgOid index_relfilenode_oid,
+    bool use_regular_transaction_block);
 
 YbcStatus YBCPgWaitVectorIndexReady(
     const YbcPgOid database_oid,
@@ -634,6 +635,7 @@ YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
+                         bool skip_intents_read,
                          int targrows,
                          double rstate_w,
                          uint64_t rand_state_s0,
@@ -655,12 +657,14 @@ YbcStatus YBCPgNewInsertBlock(
     YbcPgOid table_oid,
     YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
+    bool skip_intents_write,
     YbcPgStatement *handle);
 
 YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
+                         bool skip_intents_write,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
@@ -676,6 +680,7 @@ YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
+                         bool skip_intents_write,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
@@ -685,6 +690,7 @@ YbcStatus YBCPgNewDelete(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
+                         bool skip_intents_write,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle);
@@ -705,6 +711,7 @@ YbcStatus YBCPgNewSelect(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          const YbcPgPrepareParameters *prepare_params,
                          YbcPgTableLocalityInfo locality_info,
+                         bool skip_intents_read,
                          YbcPgStatement *handle);
 
 // Set forward/backward scan direction.
@@ -850,8 +857,12 @@ void YBCNotifyDeferredTriggersProcessingStarted();
 // Explicit Row-level Locking.
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
-    const YbcPgExplicitRowLockParams *params, YbcPgTableLocalityInfo locality_info);
+    const YbcPgExplicitRowLockParams *params, YbcPgTableLocalityInfo locality_info,
+    const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle);
 YbcPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
+YbcPgExplicitRowLockStatus YBCIsExplicitlyLockedRowSkipped(
+    YbcIsExplicitlyLockedRowSkippedCheckHandle handle, bool* result);
+YbcIsExplicitlyLockedRowSkippedCheckHandle YBCAcquireExplicitlyLockedRowSkippedCheckHandle();
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
 YbcStatus YBCPgAddInsertOnConflictKey(const YbcPgYBTupleIdDescriptor* tupleid, void* state,
@@ -942,6 +953,9 @@ YbcStatus YBCPgCheckIfPitrActive(bool* is_active);
 
 YbcStatus YBCIsObjectPartOfXRepl(YbcPgOid database_oid, YbcPgOid table_relfilenode_oid,
                                  bool* is_object_part_of_xrepl);
+
+YbcStatus YBCIsNamespacePartOfCDCSDK(YbcPgOid database_oid,
+                                    bool* is_namespace_part_of_cdcsdk);
 
 YbcStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
 

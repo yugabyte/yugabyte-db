@@ -222,7 +222,7 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   private void verifyGlobalScope(UUID scopeUUID, Http.Request request) {
-    if (scopeUUID == GLOBAL_SCOPE_UUID) {
+    if (GLOBAL_SCOPE_UUID.equals(scopeUUID)) {
       boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
       if (!isSuperAdmin) {
         throw new PlatformServiceException(FORBIDDEN, "Only superadmin can modify global scope");

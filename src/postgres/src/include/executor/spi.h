@@ -211,4 +211,6 @@ extern void AtEOXact_SPI(bool isCommit);
 extern void AtEOSubXact_SPI(bool isCommit, SubTransactionId mySubid);
 extern bool SPI_inside_nonatomic_context(void);
 
+extern int YbGetSPIStackDepth(void);
+
 #endif							/* SPI_H */

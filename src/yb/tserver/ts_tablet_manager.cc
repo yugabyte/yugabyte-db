@@ -178,6 +178,11 @@ DEFINE_test_flag(double, fault_crash_after_rb_files_fetched, 0.0,
                  "after fetching the files during a remote bootstrap but before "
                  "marking the superblock as TABLET_DATA_READY.");
 
+DEFINE_test_flag(double, fault_crash_after_rb_finish_before_open, 0.0,
+                 "Fraction of the time when the tablet will crash immediately "
+                 "after RemoteBootstrapClient::Finish() has marked the superblock "
+                 "as TABLET_DATA_READY but before OpenTablet() has been called.");
+
 DEFINE_test_flag(double, fault_crash_in_split_after_log_copied, 0.0,
                  "Fraction of the time when the tablet will crash immediately after initiating a "
                  "Log::CopyTo from parent to child tablet, but before marking the child tablet as "
@@ -267,7 +272,7 @@ DEPRECATE_FLAG(int32, read_pool_max_queue_size, "05_2026");
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_threads, "02_2024");
 DEPRECATE_FLAG(int32, post_split_trigger_compaction_pool_max_queue_size, "02_2024");
 
-DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
+DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 2,
              "The maximum number of threads allowed for full_compaction_pool_. This "
              "pool is used to run full compactions on tablets, either on a scheduled basis "
               "or after they have been split and still contain irrelevant data from the tablet "
@@ -1179,7 +1184,24 @@ void TSTabletManager::CreatePeerAndOpenTablet(
   }
   s = open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter));
   if (!s.ok()) {
-    LOG(DFATAL) << Format("Failed to schedule opening tablet $0: $1", meta->table_id(), s);
+    s = s.CloneAndPrepend(Format("Failed to schedule opening tablet $0", meta->raft_group_id()));
+    if (s.IsShutdownInProgress()) {
+      // open_tablet_pool_ is shut down by StartShutdown() before the manager state transitions
+      // from MANAGER_STARTED_QUIESCING to MANAGER_QUIESCING, so the deferred apply task that
+      // brought us here (submitted by ApplyTabletSplit / DoApplyCloneTablet onto apply_pool_)
+      // can legitimately land in this branch during tserver shutdown.
+      //
+      // This is safe and not a data-loss path: the new tablet's RaftGroupMetadata was already
+      // flushed in TABLET_DATA_READY state, the parent was flushed in TABLET_DATA_SPLIT_COMPLETED
+      // (for SPLIT_OP), and the SPLIT_OP / CLONE_OP itself was committed via Raft before we got
+      // here. On the next tserver start, the bootstrap path will discover the on-disk metadata
+      // and open the new tablet normally.
+      LOG_WITH_PREFIX(WARNING)
+          << s << "; this can happen during tserver shutdown and is not a data-loss path: "
+                  "the new tablet's metadata is persisted and will be opened on restart.";
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << s;
+    }
     return;
   }
 }
@@ -1767,6 +1789,8 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
                    "Remote bootstrap: Failed calling Finish()",
                    this);
 
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_after_rb_finish_before_open);
+
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
   OpenTablet(meta, nullptr);
   // If OpenTablet fails, tablet_peer->error() will be set.
@@ -1778,9 +1802,17 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   // Since the above call to OpenTablet succeeded, the peer's consensus would have been started.
   // On receiving the consensus requests from this PRE_VOTER peer, the leader tries to catch the
-  // peer up by sending required ops and then promotes it to VOTER state.
-  auto status = rb_client->VerifyChangeRoleSucceeded(VERIFY_RESULT(tablet_peer->GetConsensus()));
-  if (!status.ok()) {
+  // peer up by sending required ops and then promotes it to VOTER state. If the tserver is
+  // shutting down we never want to burn the full 30s config-change-role timeout: the peer's
+  // consensus is also shutting down and will not accept the leader's UpdateConsensus promoting
+  // it to VOTER, so the wait is guaranteed to time out, exceeding the 30s budget that
+  // WaitForRemoteSessionsToEnd (called from StartShutdown) allows the RBS to finish in.
+  auto status = rb_client->VerifyChangeRoleSucceeded(
+      VERIFY_RESULT(tablet_peer->GetConsensus()),
+      [this] { return IsShutdownStarted(); });
+  if (status.IsShutdownInProgress()) {
+    LOG_WITH_PREFIX(INFO) << status;
+  } else if (!status.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 60)
         << "Peer not promoted from PRE_[VOTER/OBSERVER] after successful remote bootstrap, "
         << "could be indicative of either a lagging peer which the leader is unable to bring "
@@ -2374,6 +2406,10 @@ Status TSTabletManager::TriggerAdminCompaction(
 }
 
 void TSTabletManager::StartShutdown() {
+  // Signal in-flight remote bootstrap sessions to bail out of any long waits (notably
+  // VerifyChangeRoleSucceeded). Set before taking the lock so an RBS thread spinning in a
+  // lock-free loop sees the signal even if StartShutdown is racing with it.
+  shutdown_started_.store(true, std::memory_order_release);
   {
     std::lock_guard lock(mutex_);
     switch (state_) {

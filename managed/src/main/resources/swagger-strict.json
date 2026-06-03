@@ -4104,6 +4104,18 @@
           "description" : "Time before deleting the backup from storage, in milliseconds",
           "format" : "int64",
           "type" : "integer"
+        },
+        "usePrivileges" : {
+          "description" : "Backup privileges for roles",
+          "type" : "boolean"
+        },
+        "useRoles" : {
+          "description" : "Backup global ysql roles",
+          "type" : "boolean"
+        },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
         }
       },
       "type" : "object"
@@ -6012,6 +6024,9 @@
         },
         "local" : {
           "$ref" : "#/definitions/LocalCloudInfo"
+        },
+        "oci" : {
+          "$ref" : "#/definitions/OCICloudInfo"
         },
         "onprem" : {
           "$ref" : "#/definitions/OnPremCloudInfo"
@@ -10224,6 +10239,7 @@
             "aws",
             "gcp",
             "azu",
+            "oci",
             "docker",
             "onprem",
             "kubernetes",
@@ -13289,6 +13305,7 @@
             "aws",
             "gcp",
             "azu",
+            "oci",
             "docker",
             "onprem",
             "kubernetes",
@@ -14242,6 +14259,49 @@
         "numSelect",
         "numUpdate"
       ],
+      "type" : "object"
+    },
+    "OCICloudInfo" : {
+      "properties" : {
+        "ociCompartmentId" : {
+          "description" : "OCI Compartment OCID",
+          "type" : "string"
+        },
+        "ociFingerprint" : {
+          "description" : "OCI API Key Fingerprint",
+          "type" : "string"
+        },
+        "ociHostedZoneId" : {
+          "description" : "OCI DNS Zone OCID for hosted zone",
+          "type" : "string"
+        },
+        "ociPrivateKeyContent" : {
+          "description" : "OCI API Private Key content (PEM format)",
+          "type" : "string"
+        },
+        "ociRegion" : {
+          "description" : "Default OCI Region",
+          "type" : "string"
+        },
+        "ociTenancyId" : {
+          "description" : "OCI Tenancy OCID",
+          "type" : "string"
+        },
+        "ociUserId" : {
+          "description" : "OCI User OCID",
+          "type" : "string"
+        },
+        "vpcType" : {
+          "description" : "New/Existing VCN for provider creation",
+          "enum" : [
+            "EXISTING",
+            "NEW",
+            "HOSTVPC"
+          ],
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "OTLPConfig" : {
@@ -29869,6 +29929,7 @@
             "aws",
             "gcp",
             "azu",
+            "oci",
             "docker",
             "onprem",
             "kubernetes",
@@ -46841,7 +46902,7 @@
     },
     "/api/v1/customers/{cUUID}/users/{uUUID}" : {
       "delete" : {
-        "description" : "Deletes the specified user. Note that you can't delete a customer's primary user.",
+        "description" : "Deletes the specified user. Note that an Admin user can't delete a SuperAdmin user.",
         "operationId" : "deleteUser",
         "parameters" : [
           {

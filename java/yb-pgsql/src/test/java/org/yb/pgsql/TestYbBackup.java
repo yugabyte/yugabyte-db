@@ -57,10 +57,12 @@ import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.SystemUtil;
 import org.yb.util.TableProperties;
+import org.yb.YBTestRunner;
+import org.yb.util.ProcessUtil;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
-import org.yb.util.YBTestRunnerNonTsanAsan;
-import org.yb.util.ProcessUtil;
 import org.yb.util.SideBySideDiff;
 import org.yb.util.StringUtil;
 import static org.yb.pgsql.TestYsqlDump.assertOutputFile;
@@ -78,7 +80,9 @@ import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(value=YBTestRunnerNonTsanAsan.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RunWith(value=YBTestRunner.class)
 public class TestYbBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
 
@@ -1514,13 +1518,12 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  // The test fails with Connection Manager as it is expected that a new
+  // session would latch onto a new physical connection. Instead, two logical
+  // connections use the same physical connection, leading to unexpected
+  // results as per the expectations of the test.
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testGeoPartitioningRestoringIntoExisting() throws Exception {
-    // The test fails with Connection Manager as it is expected that a new
-    // session would latch onto a new physical connection. Instead, two logical
-    // connections use the same physical connection, leading to unexpected
-    // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
-
     if (disableGeoPartitionedTests()) {
       return;
     }
@@ -1552,13 +1555,12 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  // The test fails with Connection Manager as it is expected that a new
+  // session would latch onto a new physical connection. Instead, two logical
+  // connections use the same physical connection, leading to unexpected
+  // results as per the expectations of the test.
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
-    // The test fails with Connection Manager as it is expected that a new
-    // session would latch onto a new physical connection. Instead, two logical
-    // connections use the same physical connection, leading to unexpected
-    // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
-
     if (disableGeoPartitionedTests()) {
       return;
     }

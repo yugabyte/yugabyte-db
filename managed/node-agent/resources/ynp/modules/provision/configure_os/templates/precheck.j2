@@ -61,7 +61,7 @@ verify_sysctl() {
 
 # Verify ulimit settings
 for key in "${!limits[@]}"; do
-    local key_name="$key"
+    key_name="$key"
     check_ulimit "$key_name" "${limits[$key]}"
 done
 
