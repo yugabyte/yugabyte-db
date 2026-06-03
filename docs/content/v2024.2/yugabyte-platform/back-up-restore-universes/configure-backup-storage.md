@@ -174,18 +174,13 @@ Before configuring Azure IAM authentication, ensure the following:
 
 - **YugabyteDB Anywhere VM**. Ensure the YugabyteDB Anywhere VM has _one_ of the following:
 
-  - Managed Identity enabled:
-    - In the Azure Portal, navigate to your YugabyteDB Anywhere VM.
-    - Go to **Identity** in the left menu.
-    - Under **System assigned**, set **Status** to **On** and save.
+  - Managed Identity enabled. YugabyteDB Anywhere supports system- and user-assigned managed identity.
 
-    For detailed steps, see [Configure managed identities on Azure virtual machines](https://learn.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/qs-configure-portal-windows-vm) in the Azure documentation.
+    For more information, refer to [Configure managed identities on Azure virtual machines](https://learn.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/qs-configure-portal-windows-vm) in the Azure documentation.
 
-  - App registration (Service Principal) configured:
-    - In Azure Portal, navigate to **Azure Active Directory > App registrations**.
-    - Create a new app registration or use an existing one.
-    - Note the **Application (client) ID**, **Directory (tenant) ID**, and create a **Client secret**.
-    - Set the following environment variables on the YugabyteDB Anywhere VM:
+  - App registration (Service Principal) configured.
+
+    Ensure the following environment variables are set on the YugabyteDB Anywhere VM:
 
       ```sh
       AZURE_TENANT_ID=<tenant-id>
@@ -193,13 +188,13 @@ Before configuring Azure IAM authentication, ensure the following:
       AZURE_CLIENT_SECRET=<client-secret>
       ```
 
-    For detailed steps, see [Register a Microsoft Entra app and create a service principal](https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal) in the Azure documentation.
+    For more information, refer to [Register a Microsoft Entra app and create a service principal](https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal) in the Azure documentation.
 
 - **Database nodes**. Ensure your database nodes are hosted on Azure VMs with one of the following:
 
   - Managed Identity enabled.
 
-    For each database node VM, follow the same steps as for the YugabyteDB Anywhere VM to enable system-assigned managed identity.
+    For each database node VM, enable system- or user-assigned managed identity.
 
     This is the recommended approach as it requires no additional credentials.
 
@@ -213,18 +208,9 @@ Before configuring Azure IAM authentication, ensure the following:
       AZURE_CLIENT_SECRET=<client-secret>
       ```
 
-- **Azure IAM role and permissions**. Assign the **Storage Blob Data Contributor** role (or a stricter role) on the target storage account/container to the Managed Identity or Service Principal:
+- **Azure IAM role and permissions**. Assign the **Storage Blob Data Contributor** role (or a stricter role) on the target storage account/container to the Managed Identity or Service Principal.
 
-  - In Azure Portal, navigate to your **Storage account**.
-  - Go to **Access control (IAM)**.
-  - Click **Add > Add role assignment**.
-  - Select **Storage Blob Data Contributor** role.
-  - Assign access to either:
-    - **Managed Identity**: Select the VM(s) or the system-assigned managed identity.
-    - **Service Principal**: Select the app registration (Service Principal) you created.
-  - Click **Save**.
-
-  For detailed steps, see [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal) in the Azure documentation.
+  For more information, refer to [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal) in the Azure documentation.
 
 #### Configure Azure storage with IAM using the API
 
