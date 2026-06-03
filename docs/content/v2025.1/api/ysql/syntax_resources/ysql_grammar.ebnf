@@ -274,7 +274,7 @@ alter_index = 'ALTER' 'INDEX' [ 'IF' 'EXISTS' ] index_name
 
 alter_index_action =
   ( 'RENAME' 'TO' new_name
-    | 'ALTER' [ 'COLUMN' ] int_literal 'SET STATISTICS' int_literal
+    | 'ALTER' [ 'COLUMN' ] column_number 'SET STATISTICS' int_literal
     | 'SET' 'TABLESPACE' tablespace_name ) ;
 
 
@@ -1470,6 +1470,7 @@ arg_type = type_name ;
 
 text_literal = '<Text Literal>' ;
 int_literal = '<Integer Literal>' ;
+column_number = int_literal ;
 positive_int_literal = '<Positive Integer Literal>' ;
 non_neg_int_literal = '<Non-negative Integer Literal>' ;
 
