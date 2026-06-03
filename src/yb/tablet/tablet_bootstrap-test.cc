@@ -264,7 +264,7 @@ class BootstrapTest : public LogTestBase {
     RaftGroupMetadataPtr meta = VERIFY_RESULT_PREPEND(LoadOrCreateTestRaftGroupMetadata(),
                                                       "Unable to load test tablet metadata");
     consensus::RaftConfigPB config;
-    config.set_opid_index(consensus::kInvalidOpIdIndex);
+    config.set_committed_op_index(consensus::kInvalidOpIdIndex);
     consensus::RaftPeerPB* peer = config.add_peers();
     peer->set_permanent_uuid(meta->fs_manager()->uuid());
     peer->set_member_type(consensus::PeerMemberType::VOTER);

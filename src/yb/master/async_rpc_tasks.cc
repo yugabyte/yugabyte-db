@@ -781,7 +781,8 @@ TabletId CommonInfoForRaftTask::tablet_id() const {
 std::string AsyncChangeConfigTask::description() const {
   return Format(
       "$0 RPC for tablet $1 ($2) on peer $3 with cas_config_opid_index $4. Reason: $5", type_name(),
-      tablet_->tablet_id(), table_name(), permanent_uuid(), cstate_.config().opid_index(), reason_);
+      tablet_->tablet_id(), table_name(), permanent_uuid(),
+      cstate_.config().committed_op_index(), reason_);
 }
 
 bool AsyncChangeConfigTask::SendRequest(int attempt) {
@@ -789,7 +790,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
   int64_t latest_index;
   {
     auto tablet_lock = tablet_->LockForRead();
-    latest_index = tablet_lock->pb.committed_consensus_state().config().opid_index();
+    latest_index = tablet_lock->pb.committed_consensus_state().config().committed_op_index();
     // Adding this logic for a race condition that occurs in this scenario:
     // 1. CatalogManager receives a DeleteTable request and sends DeleteTablet requests to the
     // tservers, but doesn't yet update the tablet in memory state to not running.
@@ -805,11 +806,11 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
       return false;
     }
   }
-  if (latest_index > cstate_.config().opid_index()) {
+  if (latest_index > cstate_.config().committed_op_index()) {
     auto status = STATUS_FORMAT(
         Aborted,
         "Latest config for has opid_index of $0 while this task has opid_index of $1",
-        latest_index, cstate_.config().opid_index());
+        latest_index, cstate_.config().committed_op_index());
     LOG_WITH_PREFIX(INFO) << status;
     AbortTask(status);
     return false;
@@ -889,7 +890,7 @@ Status AsyncAddServerTask::PrepareRequest(int attempt) {
   req_.set_dest_uuid(permanent_uuid());
   req_.set_tablet_id(tablet_->tablet_id());
   req_.set_type(consensus::ADD_SERVER);
-  req_.set_cas_config_opid_index(cstate_.config().opid_index());
+  req_.set_cas_config_opid_index(cstate_.config().committed_op_index());
   RaftPeerPB* peer = req_.mutable_server();
   peer->set_permanent_uuid(replacement_replica->permanent_uuid());
   peer->set_member_type(member_type_);
@@ -930,7 +931,7 @@ Status AsyncRemoveServerTask::PrepareRequest(int attempt) {
   req_.set_dest_uuid(permanent_uuid());
   req_.set_tablet_id(tablet_->tablet_id());
   req_.set_type(consensus::REMOVE_SERVER);
-  req_.set_cas_config_opid_index(cstate_.config().opid_index());
+  req_.set_cas_config_opid_index(cstate_.config().committed_op_index());
   RaftPeerPB* peer = req_.mutable_server();
   peer->set_permanent_uuid(change_config_ts_uuid_);
 
