@@ -182,3 +182,25 @@ INSERT INTO t_invalidate VALUES (1, 4), (2, 3);
 SELECT * FROM t_invalidate WHERE a + b = 5 ORDER BY a;
 RESET yb_test_invalidate_relcache_in_planner;
 DROP TABLE t_invalidate;
+
+-- Constant index expressions must not produce trivial derived equalities
+-- like "Index Cond: ((1) = 1)" (GH#31195).
+CREATE TABLE t_const_expr (a int);
+CREATE INDEX NONCONCURRENTLY t_const_expr_idx ON t_const_expr ((1)) INCLUDE (a);
+INSERT INTO t_const_expr VALUES (10), (20);
+ANALYZE t_const_expr;
+:explain /*+ IndexScan(t_const_expr t_const_expr_idx) */ SELECT * FROM t_const_expr;
+SELECT * FROM t_const_expr ORDER BY a;
+
+-- Mixed index where only some expression columns are constant: derived
+-- equalities should still fire for the non-constant expression column.
+CREATE TABLE t_mixed_expr (a int, b int);
+CREATE INDEX NONCONCURRENTLY t_mixed_expr_idx
+    ON t_mixed_expr ((b + 1), (1)) INCLUDE (a);
+INSERT INTO t_mixed_expr VALUES (1, 9), (2, 4);
+ANALYZE t_mixed_expr;
+:explain /*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */
+    SELECT * FROM t_mixed_expr WHERE b = 4;
+
+DROP TABLE t_const_expr;
+DROP TABLE t_mixed_expr;
