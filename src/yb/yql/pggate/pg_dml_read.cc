@@ -364,7 +364,6 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     auto expr = col.bind_pb();
     auto merge_sort_col_type = IsMergeSortColumn(index);
     if (merge_sort_col_type == MergeSortColumnType::kStreamKey) {
-      DCHECK(expr && (expr->has_value() || IsForInOperator(*expr)));
       preceding_key_column_missed = true;
       ++range_column_values_it;
       continue;
@@ -493,10 +492,10 @@ InPermutationGenerator PgDmlRead::MergeStreamPermutations() {
       DCHECK(col_expr_it != read_req_->range_column_values().cend())
           << "Missing condition on a merge stream column at " << c_idx;
       DCHECK_LT(c_idx, sortkey_it->att_idx) << "Merge sort key is out of order";
-      DCHECK_NE(col_expr_it->expr_case(), PgsqlExpressionPB::EXPR_NOT_SET)
-          << "Missing values on a merge stream column at " << c_idx;
-      VLOG_WITH_FUNC(4) << "Merge stream expression on a range column at index " << c_idx;
-      builder.AddExpression(c_idx, &*col_expr_it);
+      if (col_expr_it->expr_case() != PgsqlExpressionPB::EXPR_NOT_SET) {
+        VLOG_WITH_FUNC(4) << "Merge stream expression on a range column at index " << c_idx;
+        builder.AddExpression(c_idx, &*col_expr_it);
+      }
       ++col_expr_it;
     }
   }
