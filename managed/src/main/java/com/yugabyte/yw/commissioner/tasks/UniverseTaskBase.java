@@ -5664,6 +5664,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
+    return isServerAlive(node, server, masterAddrs, 5000);
+  }
+
+  protected boolean isServerAlive(
+      NodeDetails node, ServerType server, String masterAddrs, long timeoutMs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
@@ -5671,21 +5676,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,
               server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
-      return client.waitForServer(hp, 5000);
+      return client.waitForServer(hp, timeoutMs);
     } catch (Exception e) {
       throw Exceptions.propagate(e);
     }
   }
 
   public boolean isMasterAliveOnNode(NodeDetails node, String masterAddrs) {
+    return isMasterAliveOnNode(node, masterAddrs, 5000);
+  }
+
+  public boolean isMasterAliveOnNode(NodeDetails node, String masterAddrs, long timeoutMs) {
     if (!node.isMaster) {
       return false;
     }
-    return isServerAlive(node, ServerType.MASTER, masterAddrs);
+    return isServerAlive(node, ServerType.MASTER, masterAddrs, timeoutMs);
   }
 
   public boolean isTserverAliveOnNode(NodeDetails node, String masterAddrs) {
-    return isServerAlive(node, ServerType.TSERVER, masterAddrs);
+    return isTserverAliveOnNode(node, masterAddrs, 5000);
+  }
+
+  public boolean isTserverAliveOnNode(NodeDetails node, String masterAddrs, long timeoutMs) {
+    return isServerAlive(node, ServerType.TSERVER, masterAddrs, timeoutMs);
   }
 
   public UniverseUpdater nodeStateUpdater(final String nodeName, final NodeStatus nodeStatus) {
