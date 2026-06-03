@@ -203,6 +203,9 @@ DEFINE_RUNTIME_AUTO_bool(
 DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
     "When enabled, users will be able to create a CDC stream having IMPLICIT checkpointing.");
 
+DEFINE_RUNTIME_bool(cdc_enable_local_rpc_in_virtual_wal, true,
+    "When enabled, RPCs will be called locally via empty HostPort in the VirtualWAL.");
+
 DEFINE_RUNTIME_uint32(cdc_max_virtual_wal_per_tserver, 5,
                       "Maximum VirtualWAL instances that can be present on a tserver at any time.");
 
@@ -5201,9 +5204,17 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     }
   }
 
-  HostPort hostport = RPC_VERIFY_RESULT(
-      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
-      CDCErrorPB::INTERNAL_ERROR, context);
+  // If cdc_enable_local_rpc_in_virtual_wal is enabled, pass empty HostPort so that local
+  // short-circuit is used in the RPC framework. See call_local_service_ in Proxy::DoAsyncRequest
+  // for more details.
+  // TODO(#20946): Remove the HostPort parameter once we don't need the fallback to remote call.
+  HostPort hostport;
+  if (!FLAGS_cdc_enable_local_rpc_in_virtual_wal) {
+    hostport = RPC_VERIFY_RESULT(
+        context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+  }
+
   Status s = virtual_wal->InitVirtualWALInternal(
       table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range),
       publications_list, pub_all_tables);
@@ -5260,9 +5271,18 @@ void CDCServiceImpl::GetConsistentChanges(
   }
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
-  HostPort hostport = RPC_VERIFY_RESULT(
-      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
-      CDCErrorPB::INTERNAL_ERROR, context);
+
+  // If cdc_enable_local_rpc_in_virtual_wal is enabled, pass empty HostPort so that local
+  // short-circuit is used in the RPC framework. See call_local_service_ in Proxy::DoAsyncRequest
+  // for more details.
+  // TODO(#20946): Remove the HostPort parameter once we don't need the fallback to remote call.
+  HostPort hostport;
+  if (!FLAGS_cdc_enable_local_rpc_in_virtual_wal) {
+    hostport = RPC_VERIFY_RESULT(
+        context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+  }
+
   Status s =
       virtual_wal->GetConsistentChangesInternal(resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
