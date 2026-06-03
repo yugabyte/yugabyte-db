@@ -293,6 +293,9 @@ DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
+DEFINE_test_flag(bool, cdc_fail_before_setting_barrier, false,
+  "Fail CreateTablet before setting CDC retention barriers");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb::tserver {
@@ -1657,42 +1660,68 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
     hosted_services.insert((StatefulServiceKind)service_kind);
   }
 
+  bool cdc_sdk_setup_retention =
+      req->has_cdc_sdk_set_retention_barriers() && req->cdc_sdk_set_retention_barriers();
+
   auto const tablet_peer_result = server_->tablet_manager()->CreateNewTablet(
       table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
       hosted_services);
   if (PREDICT_FALSE(!tablet_peer_result.ok())) {
     status = tablet_peer_result.status();
-    return status.IsAlreadyPresent()
-        ? status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_ALREADY_EXISTS))
-        : status;
+    auto is_already_present = status.IsAlreadyPresent();
+    if (is_already_present && cdc_sdk_setup_retention) {
+      auto existing_peer_result = server_->tablet_manager()->GetTablet(req->tablet_id());
+      if (!existing_peer_result.ok()) {
+        return existing_peer_result.status().CloneAndAppend(
+            Format("Tablet peer not found for already present tablet $0", req->tablet_id()));
+      }
+
+      if ((*existing_peer_result)->state() != tablet::RaftGroupStatePB::FAILED) {
+        RETURN_NOT_OK(SetupCDCSDKRetentionOnNewTablet(timeout, resp, *existing_peer_result));
+      } else {
+        LOG_WITH_PREFIX(WARNING) << "Skipping CDC retention barrier setup for tablet "
+                                 << req->tablet_id() << " because the peer is in FAILED state";
+      }
+    }
+    return is_already_present ? status.CloneAndAddErrorCode(
+                                    TabletServerError(TabletServerErrorPB::TABLET_ALREADY_EXISTS))
+                              : status;
   }
-  bool cdc_sdk_setup_retention =
-      req->has_cdc_sdk_set_retention_barriers() && req->cdc_sdk_set_retention_barriers();
+
+  if (PREDICT_FALSE(FLAGS_TEST_cdc_fail_before_setting_barrier)) {
+    return STATUS_FORMAT(IllegalState, "TEST failing before attempting to set retention barrier");
+  }
+
   if (!cdc_sdk_setup_retention) {
     return Status::OK();
   }
-  auto tablet_peer = *tablet_peer_result;
-  status = SetupCDCSDKRetentionOnNewTablet(timeout, resp, tablet_peer);
-  if (!status.ok()) {
-     tablet_peer->SetFailed(status);
-     return status;
-  }
-  return Status::OK();
+  return SetupCDCSDKRetentionOnNewTablet(timeout, resp, *tablet_peer_result);
 }
 
 Status TabletServiceAdminImpl::SetupCDCSDKRetentionOnNewTablet(
     const MonoDelta& timeout, CreateTabletResponsePB* resp,
     const tablet::TabletPeerPtr& tablet_peer) {
-  RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(timeout));
+  auto set_failed_on_error = [&tablet_peer](const Status& status) {
+    if (!status.ok()) {
+      tablet_peer->SetFailed(status);
+    }
+    return status;
+  };
+
+  // Proceed only if the tablet is not in failed state.
+  RETURN_NOT_OK(set_failed_on_error(tablet_peer->WaitUntilConsensusRunning(timeout)));
 
   tablet::RemoveIntentsData data;
-  RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+  RETURN_NOT_OK(set_failed_on_error(tablet_peer->GetLastReplicatedData(&data)));
 
   if (FLAGS_TEST_cdc_sdk_fail_setting_retention_barrier) {
-     return STATUS_FORMAT(IllegalState, "TEST failing before attempting to set retention barrier");
+    return set_failed_on_error(
+        STATUS_FORMAT(IllegalState, "TEST failing before attempting to set retention barrier"));
   }
-  RETURN_NOT_OK(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
-      data.op_id, server_->Clock()->Now(), false /* require_history_cutoff */)));
+
+  RETURN_NOT_OK(
+      set_failed_on_error(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+          data.op_id, server_->Clock()->Now(), true /* require_history_cutoff */))));
 
   TEST_SYNC_POINT("SetupCDCSDKRetentionOnNewTablet::End");
 

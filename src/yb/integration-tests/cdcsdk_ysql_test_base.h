@@ -143,6 +143,8 @@ DECLARE_bool(TEST_skip_process_apply);
 DECLARE_int32(TEST_cdc_simulate_error_for_get_changes);
 DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
+DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
+DECLARE_string(ysql_yb_default_replica_identity);
 
 namespace yb {
 
