@@ -43,12 +43,6 @@ yugabyte=# ALTER AGGREGATE sumdouble (float8) OWNER TO CURRENT_USER;
 yugabyte=# ALTER AGGREGATE sumdouble (float8) OWNER TO SESSION_USER;
 ```
 
-Change the schema.
-
-```plpgsql
-yugabyte=# ALTER AGGREGATE sumdouble (float8) SET SCHEMA public;
-```
-
 ## See also
 
 - [CREATE AGGREGATE](../ddl_create_aggregate)
