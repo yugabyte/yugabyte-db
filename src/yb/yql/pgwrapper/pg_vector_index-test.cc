@@ -61,6 +61,7 @@ DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
+DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_string(vector_index_backend);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_auto_analyze);
@@ -84,6 +85,7 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::docdb {
 
+extern bool TEST_vector_index_clear_result_entries_once;
 extern bool TEST_vector_index_filter_allowed;
 extern size_t TEST_vector_index_max_checked_entries;
 
@@ -2260,6 +2262,44 @@ TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
           ybctid_1_vector_1 -> ybctid_1
       )#",
       output);
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/31322.
+TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
+  constexpr size_t kNumRows = 50;
+  constexpr size_t kQueryLimit = 75;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_skip_filter_check) = true;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 1, kNumRows));
+
+  // Skip reverse mapping backfill to make sure there are no reverse mapping entries for the rows.
+  // The search will drop these results with vector_index_skip_filter_check enabled, so the first
+  // page will resolve fewer than kQueryLimit rows while could_have_more_data stays true, forcing
+  // a second fetch with num_top_vectors_to_remove_ > 0.
+  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+  ASSERT_OK(CreateIndex(conn));
+  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+  ASSERT_OK(WaitNoBackgroundInserts());
+
+  // Insert the second half of the rows with the reverse mapping entries.
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, 2 * kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts());
+
+  const std::string kQuery = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kQueryLimit);
+
+  // Will be triggered only on the second page of the query simulating reverse-mapping misses.
+  ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_clear_result_entries_once) = true;
+
+  // Only half of the inserted rows (51..100) have reverse mappings and hence could be fetched.
+  // The test fails at this query with the stack trace from the ticket without the fix.
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(kQuery));
+  ASSERT_EQ(rows.size(), kNumRows);
+
+  // Make sure the test hit the test path that clears result entries.
+  ASSERT_FALSE(ANNOTATE_UNPROTECTED_READ(docdb::TEST_vector_index_clear_result_entries_once));
 }
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {
