@@ -75,6 +75,7 @@ class MonoDelta {
   bool MoreThan(const MonoDelta &rhs) const;
   bool Equals(const MonoDelta &rhs) const;
   bool IsNegative() const;
+  bool IsPositive() const;
   std::string ToPrettyString() const;
   std::string ToString() const;
   double ToSeconds() const;

@@ -152,6 +152,11 @@ bool MonoDelta::IsNegative() const {
   return nano_delta_ < 0;
 }
 
+bool MonoDelta::IsPositive() const {
+  DCHECK(Initialized());
+  return Initialized() && nano_delta_ > 0;
+}
+
 std::string MonoDelta::ToPrettyString() const {
   if (!Initialized()) {
     return "<uninitialized>";

@@ -90,6 +90,7 @@ class CloneStateManagerExternalFunctionsBase {
   // Sys catalog.
   virtual Status Upsert(int64_t leader_term, const CloneStateInfoPtr&) = 0;
   virtual Status Upsert(int64_t leader_term, const CloneStateInfoPtr&, const NamespaceInfoPtr&) = 0;
+  virtual Status UpsertTabletInfo(const LeaderEpoch& epoch, const TabletInfoPtr&) = 0;
   virtual Status Load(
       const std::string& type,
       std::function<Status(const std::string&, const SysCloneStatePB&)> inserter) = 0;

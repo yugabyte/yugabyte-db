@@ -472,7 +472,7 @@ static void AssertReportHasUpdatedTablet(const TabletReportPB& report,
           << reported_tablet.ShortDebugString();
       ASSERT_TRUE(reported_tablet.committed_consensus_state().has_config());
       const RaftConfigPB& committed_config = reported_tablet.committed_consensus_state().config();
-      ASSERT_EQ(kInvalidOpIdIndex, committed_config.opid_index());
+      ASSERT_EQ(kInvalidOpIdIndex, committed_config.committed_op_index());
       ASSERT_EQ(1, committed_config.peers_size());
       ASSERT_TRUE(committed_config.peers(0).has_permanent_uuid())
           << reported_tablet.ShortDebugString();

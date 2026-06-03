@@ -719,11 +719,10 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   // Start up a RemoteBootstrapClient and open a remote bootstrap session.
   RemoteBootstrapClient rb_client(tablet_id, fs_manager.get());
   scoped_refptr<tablet::RaftGroupMetadata> meta;
-  ASSERT_OK(rb_client.Start(cluster_->tablet_server(kTsIndex)->uuid(),
-                            &cluster_->proxy_cache(),
-                            cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(),
-                            ServerRegistrationPB(),
-                            &meta));
+  ASSERT_OK(rb_client.Start(
+      cluster_->tablet_server(kTsIndex)->uuid(), &cluster_->proxy_cache(),
+      cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(), ServerRegistrationPB(),
+      /* pending_config_op_id_from_rbs = */ OpId(), &meta));
 
   // Tombstone the tablet on the remote!
   ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));

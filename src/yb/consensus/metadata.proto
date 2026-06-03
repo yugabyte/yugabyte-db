@@ -37,6 +37,7 @@ package yb.consensus;
 option java_package = "org.yb.consensus";
 
 import "yb/common/common_net.proto";
+import "yb/common/opid.proto";
 
 // ===========================================================================
 //  Consensus Metadata
@@ -81,11 +82,11 @@ enum ConsensusConfigType {
 
   // Committed consensus config. This includes the consensus configuration that
   // has been serialized through consensus and committed, thus having a valid
-  // opid_index field set.
+  // committed_op_index field set.
   CONSENSUS_CONFIG_COMMITTED = 1;
 
   // Active consensus config. This could be a pending consensus config that
-  // has not yet been committed. If the config is not committed, its opid_index
+  // has not yet been committed. If the config is not committed, its committed_op_index
   // field will not be set.
   CONSENSUS_CONFIG_ACTIVE = 2;
 }
@@ -96,7 +97,7 @@ message RaftConfigPB {
   // consensus. It is set when the operation is consensus-committed (replicated
   // to a majority of voters) and before the consensus metadata is updated.
   // It is left undefined if the operation isn't committed.
-  optional int64 opid_index = 1;
+  optional int64 committed_op_index = 1;
 
   // Flag to allow unsafe config change operations.
   optional bool unsafe_config_change = 4 [ default = false ];
@@ -133,9 +134,9 @@ message ConsensusStatePB {
   optional string leader_uuid = 2;
 
   // The peers. In some contexts, this will be the committed configuration, which will always have
-  // configuration.opid_index set. In other contexts, this may a "pending" configuration, which is
-  // active but in the process of being committed.  In any case, initial peership is set on tablet
-  // start, so this field should always be present.
+  // configuration.committed_op_index set. In other contexts, this may a "pending" configuration,
+  // which is active but in the process of being committed.  In any case, initial peership is set
+  // on tablet start, so this field should always be present.
   required RaftConfigPB config = 3;
 }
 
@@ -168,6 +169,9 @@ message ConsensusMetadataPB {
   // Permanent UUID of the candidate voted for in 'current_term', or not present
   // if no vote was made in the current term.
   optional string voted_for = 3;
+
+  // Pending Raft config op ID received from leader inside StartRemoteBootstrapRequestPB.
+  optional OpIdPB pending_config_op_id_from_rbs = 7;
 
   optional bytes split_parent_tablet_id = 4;
 

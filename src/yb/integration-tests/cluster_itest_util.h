@@ -103,6 +103,8 @@ using yb::OpId;
 
 namespace itest {
 
+extern const client::YBTableName kYcqlTestTableName;
+
 struct TServerDetails {
   NodeInstancePB instance_id;
   std::unique_ptr<master::TSRegistrationPB> registration;
@@ -580,6 +582,9 @@ Status WaitForTabletIsDeletedOrHidden(
     master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout);
 
 void SetupQuickSplit(int64_t forced_split_threshold);
+
+// Creates YCQL table with single tablet.
+Status CreateTestTablet(client::YBClient& client);
 
 Result<TableId> CreateSimpleTable(
     master::MasterDDLClient& client, const NamespaceName& namespace_name,

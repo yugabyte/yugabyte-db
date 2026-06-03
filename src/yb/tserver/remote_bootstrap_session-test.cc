@@ -113,7 +113,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   // TODO similar to code in tablet_peer-test, consider refactor.
   RaftConfigPB config;
   config.add_peers()->CopyFrom(config_peer);
-  config.set_opid_index(consensus::kInvalidOpIdIndex);
+  config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
   std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
       tablet()->metadata()->fs_manager(), tablet_id, fs_manager()->uuid(), config,
