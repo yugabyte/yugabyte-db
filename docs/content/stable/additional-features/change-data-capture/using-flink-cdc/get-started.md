@@ -28,7 +28,7 @@ Before you begin, ensure you have the following:
 
     Note the IP address of a YB-TServer node that is reachable from the Flink containers.
 
-- Docker and Docker Compose installed and running.
+- [Docker](https://docs.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed and running.
 
 - A sink PostgreSQL database accessible from the Flink containers.
 

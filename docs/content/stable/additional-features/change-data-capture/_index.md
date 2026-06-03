@@ -60,7 +60,7 @@ Learn about CDC in YugabyteDB using the [gRPC Replication Protocol](./using-yuga
 
 It works as follows:
 
-1. Create a publication and a logical replication slot in YugabyteDB.
+1. Create YugabyteDB source tables, and a publication and logical replication slot in YugabyteDB.
 1. Deploy a Flink cluster with the `postgres-cdc` and sink connector JARs.
 1. Define source and sink tables in the Flink SQL Client and submit a streaming job.
 
