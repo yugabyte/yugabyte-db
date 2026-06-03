@@ -123,6 +123,7 @@
 
 
 /* sort-type codes for sort__start probes */
+#define YB_SORT_UNINITIALIZED -1
 #define HEAP_SORT		0
 #define INDEX_SORT		1
 #define DATUM_SORT		2
@@ -131,6 +132,26 @@
 /* Sort parallel code from state for sort__start probes */
 #define PARALLEL_SORT(state)	((state)->shared == NULL ? 0 : \
 								 (state)->worker >= 0 ? 1 : 2)
+
+static const char *
+yb_sort_type_name(int sort_type)
+{
+	switch (sort_type)
+	{
+		case YB_SORT_UNINITIALIZED:
+			return "uninitialized";
+		case HEAP_SORT:
+			return "heap";
+		case INDEX_SORT:
+			return "index";
+		case DATUM_SORT:
+			return "datum";
+		case CLUSTER_SORT:
+			return "cluster";
+		default:
+			return "unknown";
+	}
+}
 
 /*
  * Initial size of memtuples array.  We're trying to select this size so that
@@ -250,6 +271,7 @@ struct Tuplesortstate
 	TupSortStatus status;		/* enumerated value as shown above */
 	int			nKeys;			/* number of columns in sort key */
 	int			sortopt;		/* Bitmask of flags used to setup sort */
+	int			yb_sort_type;	/* YB: sort-type code for distributed tracing */
 	bool		bounded;		/* did caller specify a maximum number of
 								 * tuples to return? */
 	bool		boundUsed;		/* true if we made use of a bounded heap */
@@ -891,6 +913,7 @@ tuplesort_begin_common(int workMem, SortCoordinate coordinate, int sortopt)
 #endif
 
 	state->sortopt = sortopt;
+	state->yb_sort_type = YB_SORT_UNINITIALIZED;
 	state->tuples = true;
 
 	/*
@@ -1041,6 +1064,8 @@ tuplesort_begin_heap(TupleDesc tupDesc,
 	MemoryContext oldcontext;
 	int			i;
 
+	state->yb_sort_type = HEAP_SORT;
+
 	oldcontext = MemoryContextSwitchTo(state->maincontext);
 
 	AssertArg(nkeys > 0);
@@ -1115,6 +1140,8 @@ tuplesort_begin_cluster(TupleDesc tupDesc,
 	BTScanInsert indexScanKey;
 	MemoryContext oldcontext;
 	int			i;
+
+	state->yb_sort_type = CLUSTER_SORT;
 
 	Assert(indexRel->rd_rel->relam == BTREE_AM_OID ||
 		   indexRel->rd_rel->relam == LSM_AM_OID);
@@ -1224,6 +1251,8 @@ tuplesort_begin_index_btree(Relation heapRel,
 	MemoryContext oldcontext;
 	int			i;
 
+	state->yb_sort_type = INDEX_SORT;
+
 	oldcontext = MemoryContextSwitchTo(state->maincontext);
 
 #ifdef TRACE_SORT
@@ -1304,6 +1333,8 @@ tuplesort_begin_index_hash(Relation heapRel,
 												   sortopt);
 	MemoryContext oldcontext;
 
+	state->yb_sort_type = INDEX_SORT;
+
 	oldcontext = MemoryContextSwitchTo(state->maincontext);
 
 #ifdef TRACE_SORT
@@ -1349,6 +1380,8 @@ tuplesort_begin_index_gist(Relation heapRel,
 												   sortopt);
 	MemoryContext oldcontext;
 	int			i;
+
+	state->yb_sort_type = INDEX_SORT;
 
 	oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
@@ -1406,6 +1439,8 @@ tuplesort_begin_datum(Oid datumType, Oid sortOperator, Oid sortCollation,
 	MemoryContext oldcontext;
 	int16		typlen;
 	bool		typbyval;
+
+	state->yb_sort_type = DATUM_SORT;
 
 	oldcontext = MemoryContextSwitchTo(state->maincontext);
 
@@ -2297,6 +2332,9 @@ tuplesort_performsort(Tuplesortstate *state)
 				 state->worker, pg_rusage_show(&state->ru_start));
 	}
 #endif
+
+	if (YBCIsDistTraceActive())
+		YBCDistTraceSetCurrSpanAttrStr("sort.type", yb_sort_type_name(state->yb_sort_type));
 
 	MemoryContextSwitchTo(oldcontext);
 }
