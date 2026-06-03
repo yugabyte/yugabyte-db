@@ -48,6 +48,7 @@
 namespace yb {
 class Env;
 class ExternalMiniCluster;
+class ExternalTabletServer;
 
 namespace consensus {
 class ConsensusMetadataPB;
@@ -59,9 +60,16 @@ class RaftGroupReplicaSuperBlockPB;
 
 namespace itest {
 
-// Utility class that digs around in a tablet server's data directory and
-// provides methods useful for integration testing. This class must outlive
-// the Env and ExternalMiniCluster objects that are passed into it.
+// Utility helpers and class that digs around in a tablet server's data directory and
+// provides methods useful for integration testing.
+
+std::string GetTabletSuperBlockPathOnTS(ExternalTabletServer& tserver, const TabletId& tablet_id);
+
+Status ReadTabletSuperBlockOnTS(
+    Env& env, ExternalTabletServer& tserver, const TabletId& tablet_id,
+    tablet::RaftGroupReplicaSuperBlockPB* sb);
+
+// This class must outlive the Env and ExternalMiniCluster objects that are passed into it.
 class ExternalMiniClusterFsInspector {
  public:
   // Does not take ownership of the ExternalMiniCluster pointer.
@@ -109,8 +117,6 @@ class ExternalMiniClusterFsInspector {
 
   Status ReadConsensusMetadataOnTS(
       size_t index, const std::string& tablet_id, consensus::ConsensusMetadataPB* cmeta_pb);
-
-  std::string GetTabletSuperBlockPathOnTS(size_t ts_index, const std::string& tablet_id) const;
 
   Status CheckTabletDataStateOnTS(
       size_t index, const std::string& tablet_id, tablet::TabletDataState state);
