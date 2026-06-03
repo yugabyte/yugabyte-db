@@ -179,12 +179,16 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         # If the conf file is missing or we have a filter specified, we need to re-run.
         if [[ ! -f "${test_conf_path}" || -n "${YB_TEST_EXECUTION_FILTER_RE:-}" ]]; then
           current_git_commit=$(git rev-parse HEAD)
+          # Diff the change against its base branch via a merge-base ("three-dot") range:
+          # origin/$YB_BRANCH...<commit> captures every commit of the change and is stable
+          # even if origin/$YB_BRANCH advances.
           ( set -x
             "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
-                --build-root "${BUILD_ROOT}" \
-                --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-                --output-test-config "${test_conf_path}" \
-                affected
+              --build-root "${BUILD_ROOT}" \
+              --git-diff \
+                "origin/${YB_BRANCH}...${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
+              --output-test-config "${test_conf_path}" \
+              affected
           )
         fi
         run_tests_extra_args+=( "--test_conf" "${test_conf_path}" )
