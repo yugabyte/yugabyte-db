@@ -32,7 +32,7 @@ Before you can use Operator HA, ensure the following:
 
 Operator HA is designed for deployments where YBA instances run on _separate Kubernetes clusters_. This is common in [Multi-Cluster Services (MCS)](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) environments.
 
-In a single-cluster deployment, both the active and standby YBA instances typically share access to the same Kubernetes control plane and the same CRs. Operator HA is not required in that scenario.
+In a single-cluster deployment, both the active and standby YBA instances typically share access to the same Kubernetes control plane and the same CRs. Operator HA is not required in that scenario as standard [YBA HA](../high-availability/) covers it.
 
 In a multi-cluster deployment, a failover creates a management blackout: the standby YBA instance receives YBA platform state through HA backups, but the operator CRs and secrets that define and manage universes exist only on the primary cluster's Kubernetes API. Without Operator HA, the standby instance cannot manage those universes after promotion.
 
