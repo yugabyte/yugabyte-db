@@ -151,7 +151,6 @@ but when you check the procedure's metadata you see, once again, that the schema
 
 ## See also
 
-- [`ALTER ROUTINE`](../ddl_alter_routine)
 - [`CREATE PROCEDURE`](../ddl_create_procedure)
 - [`DROP PROCEDURE`](../ddl_drop_procedure)
 - [`CREATE FUNCTION`](../ddl_create_function)

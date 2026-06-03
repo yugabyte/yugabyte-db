@@ -27,7 +27,6 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [ALTER INDEX](ddl_alter_index/) | Change index definition |
 | [ALTER MATERIALIZED VIEW](ddl_alter_matview/) | Change materialized view definition |
 | [ALTER PUBLICATION](ddl_alter_publication/) | Change publication definition |
-| [ALTER ROUTINE](ddl_alter_routine/) | Change a function or procedure definition |
 | [ALTER SEQUENCE](ddl_alter_sequence/) | Change sequence definition |
 | [ALTER SERVER](ddl_alter_server/) | Change foreign server definition |
 | [ALTER SCHEMA](ddl_alter_schema/) | Change schema definition |

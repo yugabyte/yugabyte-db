@@ -149,7 +149,6 @@ Check the result by re-running the _pg_prpc_ query. This is new result:
 
 ## See also
 
-- [`ALTER ROUTINE`](../ddl_alter_routine)
 - [`CREATE FUNCTION`](../ddl_create_function)
 - [`DROP FUNCTION`](../ddl_drop_function)
 - [`CREATE PROCEDURE`](../ddl_create_procedure)
