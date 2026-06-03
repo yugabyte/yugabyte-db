@@ -49,7 +49,7 @@ auto VisitDataType(DataType data_type, const F& f) {
     case DataType::VECTOR:
       return f.Vector();
     case DataType::BSON:
-      return f.Binary();
+      return f.Bson();
     default:
       break;
   }
