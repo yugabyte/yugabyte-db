@@ -77,6 +77,8 @@ DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 // Command-specific flags
 DEFINE_NON_RUNTIME_bool(exclude_dead, false, "Exclude dead tservers from output");
+DEFINE_NON_RUNTIME_bool(dry_run, false,
+    "For supported commands, report what would be changed without making changes");
 
 #define REGISTER_COMMAND(command_name) \
   Register(#command_name, command_name##_args, command_name##_action)
@@ -2117,6 +2119,21 @@ Status validate_and_sync_cdc_state_table_entries_on_change_data_stream_action(
   return Status::OK();
 }
 
+const auto cleanup_stale_cdc_streams_args = "[<ysql_database_name>]";
+Status cleanup_stale_cdc_streams_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string ysql_database_name = args.empty() ? "" : args[0];
+
+  RETURN_NOT_OK_PREPEND(
+      client->CleanupStaleCDCStreams(ysql_database_name, FLAGS_dry_run),
+      "Failed to cleanup stale CDC streams");
+  return Status::OK();
+}
+
 const auto setup_universe_replication_args =
     "<producer_universe_uuid> <producer_master_addresses> "
     "<comma_separated_list_of_table_ids> [<comma_separated_list_of_producer_bootstrap_ids>] "
@@ -3029,6 +3046,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
   REGISTER_COMMAND(remove_user_table_from_change_data_stream);
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
+  REGISTER_COMMAND(cleanup_stale_cdc_streams);
   // xCluster Source commands
   REGISTER_COMMAND(bootstrap_cdc_producer);
   REGISTER_COMMAND(list_cdc_streams);
