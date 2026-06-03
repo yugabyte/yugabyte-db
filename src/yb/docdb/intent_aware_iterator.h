@@ -17,6 +17,7 @@
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/transaction_status_cache.h"
 
@@ -154,9 +155,11 @@ class IntentAwareIterator final {
   // Utility function to execute Next and retrieve result via Fetch in one call.
   Result<const FetchedEntry&> FetchNext();
 
-  // Directly fetch value from underlying iterator for specified key. Returns empty slice
-  // when entry not found.
-  Result<Slice> FetchValue(Slice key);
+  // Directly fetches the value from the underlying iterator for the specified key. Returns an
+  // empty slice when the entry is not found. If `update_filter_key` is true, the key must remain
+  // alive until the next filter-key update is performed. The latter only makes sense if the
+  // iterator was created with a variable bloom filter.
+  Result<Slice> FetchValue(Slice key, UpdateFilterKey update_filter_key = UpdateFilterKey::kFalse);
 
   const ReadHybridTime& read_time() const {
     return read_time_;
