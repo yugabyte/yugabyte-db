@@ -48,11 +48,11 @@ You can expect a streamlined transition of management capabilities when a failov
 
 ### During failover
 
-- Resource Synchronization: The standby node automatically imports and applies all necessary YAML definitions for Operator CRs and their associated secrets (such as Kubeconfigs and certificates) to its local Kubernetes API.
+- Resource synchronization: The standby node automatically imports and applies all necessary YAML definitions for Operator CRs and their associated secrets (such as kubeconfigs and certificates) to its local Kubernetes API.
 
 - State alignment: The system applies "force/replace" logic to ensure the new active instance's state matches the latest source of truth from the backup, avoiding inconsistencies.
 
-- Operator Activation: After operator resources are successfully applied, the standby YBA service activates its operator thread, and resumes management of the infrastructure. You do not need to manually recreate CRs or re-import universes.
+- Operator activation: After operator resources are successfully applied, the standby YBA service activates its operator thread, and resumes management of the infrastructure. You do not need to manually recreate CRs or re-import universes.
 
 For general failover steps, see [Promote a standby instance to active](../high-availability/#promote-a-standby-instance-to-active).
 
@@ -60,7 +60,7 @@ For general failover steps, see [Promote a standby instance to active](../high-a
 
 When you fail back to the original primary, Operator HA keeps operator resource state consistent across both clusters.
 
-- Spec Consistency: When you fail back to the original primary, Operator HA ensures that any edits made while the standby was active are synchronized back to the original primary. This prevents specifications from being rolled back to an outdated state.
+- Spec consistency: When you fail back to the original primary, Operator HA ensures that any edits made while the standby was active are synchronized back to the original primary. This prevents specifications from being rolled back to an outdated state.
 
 - Lifecycle management: If a CR was deleted during the failover period, the system recognizes this state and ensures the resource is not incorrectly recreated upon failback.
 
