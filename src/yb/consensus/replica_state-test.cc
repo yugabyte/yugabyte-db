@@ -64,7 +64,7 @@ class RaftConsensusStateTest : public YBTest {
     fs_manager_.SetTabletPathByDataPath(kTabletId, fs_manager_.GetDataRootDirs()[0]);
 
     // Initialize test configuration.
-    config_.set_opid_index(kInvalidOpIdIndex);
+    config_.set_committed_op_index(kInvalidOpIdIndex);
     RaftPeerPB* peer = config_.add_peers();
     peer->set_permanent_uuid(fs_manager_.uuid());
     peer->set_member_type(PeerMemberType::VOTER);
@@ -95,18 +95,18 @@ TEST_F(RaftConsensusStateTest, TestPendingPersistent) {
   ReplicaState::UniqueLock lock;
   ASSERT_OK(state_->LockForConfigChange(&lock));
 
-  config_.clear_opid_index();
+  config_.clear_committed_op_index();
   ASSERT_OK(state_->SetPendingConfigUnlocked(config_, OpId()));
   ASSERT_TRUE(state_->IsConfigChangePendingUnlocked());
-  ASSERT_FALSE(state_->GetPendingConfigUnlocked().has_opid_index());
-  ASSERT_TRUE(state_->GetCommittedConfigUnlocked().has_opid_index());
+  ASSERT_FALSE(state_->GetPendingConfigUnlocked().has_committed_op_index());
+  ASSERT_TRUE(state_->GetCommittedConfigUnlocked().has_committed_op_index());
 
   ASSERT_FALSE(state_->SetCommittedConfigUnlocked(config_).ok());
-  config_.set_opid_index(1);
+  config_.set_committed_op_index(1);
   ASSERT_TRUE(state_->SetCommittedConfigUnlocked(config_).ok());
 
   ASSERT_FALSE(state_->IsConfigChangePendingUnlocked());
-  ASSERT_EQ(1, state_->GetCommittedConfigUnlocked().opid_index());
+  ASSERT_EQ(1, state_->GetCommittedConfigUnlocked().committed_op_index());
 }
 
 // Ensure that we can set persistent configurations directly.
@@ -115,19 +115,19 @@ TEST_F(RaftConsensusStateTest, TestPersistentWrites) {
   ASSERT_OK(state_->LockForConfigChange(&lock));
 
   ASSERT_FALSE(state_->IsConfigChangePendingUnlocked());
-  ASSERT_EQ(kInvalidOpIdIndex, state_->GetCommittedConfigUnlocked().opid_index());
+  ASSERT_EQ(kInvalidOpIdIndex, state_->GetCommittedConfigUnlocked().committed_op_index());
 
-  config_.clear_opid_index();
+  config_.clear_committed_op_index();
   ASSERT_OK(state_->SetPendingConfigUnlocked(config_, OpId()));
-  config_.set_opid_index(1);
+  config_.set_committed_op_index(1);
   ASSERT_OK(state_->SetCommittedConfigUnlocked(config_));
-  ASSERT_EQ(1, state_->GetCommittedConfigUnlocked().opid_index());
+  ASSERT_EQ(1, state_->GetCommittedConfigUnlocked().committed_op_index());
 
-  config_.clear_opid_index();
+  config_.clear_committed_op_index();
   ASSERT_OK(state_->SetPendingConfigUnlocked(config_, OpId()));
-  config_.set_opid_index(2);
+  config_.set_committed_op_index(2);
   ASSERT_OK(state_->SetCommittedConfigUnlocked(config_));
-  ASSERT_EQ(2, state_->GetCommittedConfigUnlocked().opid_index());
+  ASSERT_EQ(2, state_->GetCommittedConfigUnlocked().committed_op_index());
 }
 
 }  // namespace consensus

@@ -219,6 +219,7 @@ class ReplicaState {
   Status ClearPendingConfigUnlocked();
 
   OpId GetPendingConfigOpIdUnlocked() { return cmeta_->pending_config_op_id(); }
+  OpId GetPendingConfigOpIdFromRbsUnlocked() { return cmeta_->pending_config_op_id_from_rbs(); }
 
   // Return the pending configuration, or crash if one is not set.
   const RaftConfigPB& GetPendingConfigUnlocked() const;
