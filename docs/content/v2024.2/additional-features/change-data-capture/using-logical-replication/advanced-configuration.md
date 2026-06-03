@@ -21,6 +21,7 @@ You can use the following [YB-TServer flags](../../../../reference/configuration
 - [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs)
 - [cdcsdk_max_consistent_records](../../../../reference/configuration/yb-tserver/#cdcsdk-max-consistent-records)
 - [cdcsdk_vwal_getchanges_resp_max_size_bytes](../../../../reference/configuration/yb-tserver/#cdcsdk-vwal-getchanges-resp-max-size-bytes)
+- [cdc_enable_intra_transactional_before_image](../../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image) (v2024.2.9.1+)
 
 ## Retention of resources
 
@@ -38,4 +39,6 @@ Starting from v2024.2.1, the default data retention for CDC is 8 hours, with sup
 When using FULL or DEFAULT replica identities, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of history for streamed rows.
 
 The [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) flag governs the maximum retention period (default 8 hours). Be aware that any interruption in CDC consumption for extended periods using these replica identities may degrade read performance. This happens because compaction activities are halted in the database with these replica identities, leading to inefficient key lookups as reads must traverse multiple SST files.
+
+If intent retention barriers remain stuck on a tablet after dropping a replication slot (for example, on index tablets that are not part of the publication), use the [cdc_release_barriers_on_tablet](../../../../admin/yb-ts-cli/#cdc-release-barriers-on-tablet) `yb-ts-cli` command (v2024.2.9.1+) on the YB-TServer that hosts the tablet.
 {{< /warning >}}

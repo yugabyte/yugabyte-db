@@ -67,7 +67,7 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 * YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 * [Composite types](../../../explore/ysql-language-features/data-types#composite-types) are currently not supported. Issue {{<issue 25221>}}.
 
-* If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the replica identity is not CHANGE, then CDC will throw an error while processing such events.
+* If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event unless the YB-TServer flag [cdc_enable_intra_transactional_before_image](../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image) is enabled (v2024.2.9.1+). If the replica identity is not CHANGE and a before image still cannot be found, CDC throws an error while processing the event.
 
     To handle updates/deletes with a non-CHANGE replica identity, set the YB-TServer flag `cdc_send_null_before_image_if_not_exists` to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
 
