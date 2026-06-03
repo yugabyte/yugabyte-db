@@ -11223,6 +11223,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
       &master_->proxy_cache(),
       bootstrap_peer_addr,
       tablet_leader_peer_conn_info,
+      req.has_pending_config_op_id() ? OpId::FromPB(req.pending_config_op_id()) : OpId(),
       &meta));
   // This SetupTabletPeer is needed by rb_client to perform the remote bootstrap/fetch.
   // And the SetupTablet below to perform "local bootstrap" cannot be done until the remote fetch
@@ -12410,7 +12411,7 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
     tsinfo_pb->set_permanent_uuid(peer.permanent_uuid());
     CopyRegistration(peer, tsinfo_pb);
   }
-  locs_pb->set_raft_config_opid_index(cstate.config().opid_index());
+  locs_pb->set_raft_config_opid_index(cstate.config().committed_op_index());
   return Status::OK();
 }
 
@@ -12591,7 +12592,7 @@ Status CatalogManager::BuildLocationsForTablet(
     locs = tablet->GetReplicaLocations();
     locs_pb->set_stale(locs->empty());
     locs_pb->set_raft_config_opid_index(
-        l_tablet->pb.committed_consensus_state().config().opid_index());
+        l_tablet->pb.committed_consensus_state().config().committed_op_index());
     if (partitions_only) {
       return Status::OK();
     }

@@ -613,7 +613,7 @@ Status ReadQuery::Complete() {
 #endif
   if (tablet_consensus_info_ && req_->has_raft_config_opid_index() &&
       req_->raft_config_opid_index() <
-          tablet_consensus_info_.get()->consensus_state().config().opid_index()) {
+          tablet_consensus_info_.get()->consensus_state().config().committed_op_index()) {
     resp_->mutable_tablet_consensus_info()->CopyFrom(*tablet_consensus_info_.get());
   }
 

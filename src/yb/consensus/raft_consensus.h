@@ -192,6 +192,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   const std::optional<CloneSourceInfo>& clone_source_info() const override;
 
+  OpId GetPendingConfigOpId() const override;
+
   LeaderLeaseStatus GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const;
   LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const;
 
@@ -704,6 +706,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Checked whether we should start step down when protege did not synchronize before timeout.
   void CheckDelayedStepDown(const Status& status);
+
+  void ClearPendingConfigUnlocked();
 
   // Threadpool token for constructing requests to peers, handling RPC callbacks,
   // etc.
