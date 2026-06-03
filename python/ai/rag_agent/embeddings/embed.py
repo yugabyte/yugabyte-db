@@ -9,6 +9,8 @@ import psycopg
 import os
 import mimetypes
 
+from rag_pipeline.markdown_finetuning_chunker import is_markdown_finetuning_enabled
+from rag_pipeline.markdown_finetuning_chunker import chunk_markdown_whole_file
 
 AI_PROVIDER_OPENAI = "OPENAI"
 AI_PROVIDER_AWS_BEDROCK = "AWS_BEDROCK"
@@ -174,6 +176,73 @@ class EmbeddingsGenerator:
                 f"{file_location}"
             )
 
+    def _generate_embeddings_for_markdown_finetuning(
+        self,
+        pipeline_id: int,
+        file_location: str,
+        chunk_args=None,
+    ):
+        yielded_count = 0
+        chunk_count = 0
+        empty_chunk_count = 0
+        batch_texts = []
+        for chunk_text in chunk_markdown_whole_file(file_location, chunk_args):
+            chunk_count += 1
+            if chunk_text.strip():
+                batch_texts.append(chunk_text)
+
+                if len(batch_texts) >= self.batch_size:
+                    try:
+                        vectors = self.embedder.embed_documents(batch_texts)
+                        for text, vec in zip(batch_texts, vectors):
+                            yielded_count += 1
+                            yield text, vec
+                    except Exception as e:
+                        logging.error(
+                            f"Failed to generate embeddings for batch "
+                            f"ending at chunk {chunk_count} in file "
+                            f"{file_location}: {str(e)}"
+                        )
+                    batch_texts = []
+
+                    try:
+                        self.pipeline_tracking.update_chunks_processed(
+                            pipeline_id=pipeline_id,
+                            chunks_count=chunk_count
+                        )
+                    except Exception as e:
+                        logging.error(
+                            f"Failed to update embeddings generated: {str(e)}"
+                        )
+            else:
+                empty_chunk_count += 1
+
+        if batch_texts:
+            try:
+                vectors = self.embedder.embed_documents(batch_texts)
+                for text, vec in zip(batch_texts, vectors):
+                    yielded_count += 1
+                    yield text, vec
+            except Exception as e:
+                logging.error(
+                    f"Failed to generate embeddings for final batch "
+                    f"in file {file_location}: {str(e)}"
+                )
+
+        try:
+            self.pipeline_tracking.update_chunks_processed(
+                pipeline_id=pipeline_id, chunks_count=chunk_count
+            )
+        except Exception as e:
+            logging.error(f"Failed to update embeddings generated: {str(e)}")
+
+        logging.info(
+            f"Finished generating embeddings for markdown fine-tuning "
+            f"{file_location}: {chunk_count} total chunks, "
+            f"{empty_chunk_count} empty/whitespace chunks, "
+            f"{yielded_count} embeddings yielded"
+        )    
+
     @meko_observe(
         name="Generate Embeddings for PDF Files / EmbeddingsGenerator",
         as_type="embedding",
@@ -331,6 +400,12 @@ class EmbeddingsGenerator:
             )
 
         file_type, _ = mimetypes.guess_type(file_location)
+        
+        if is_markdown_finetuning_enabled(file_type):
+            return self._generate_embeddings_for_markdown_finetuning(
+                pipeline_id, file_location, chunk_args
+            )
+
         if file_type in (
             'text/plain',
             'application/json',
