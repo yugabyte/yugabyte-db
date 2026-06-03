@@ -75,6 +75,9 @@ public class LoggingConfigController extends AuthenticatedController {
     }
     Integer newMaxHistory = data.getMaxHistory();
     String applicationLogFileNamePrefix = data.getFileNamePrefix();
+    // restartLogback() resets the logback context, which wipes the properties Play injects via
+    // play.logger.includeConfigProperties. Need to configure this to simulate that effect.
+    LogUtil.configureFixedLogbackSystemProperties(sConfigFactory.staticApplicationConf());
     LogUtil.updateApplicationLoggingContext(
         newLevel, newRolloverPattern, newMaxHistory, applicationLogFileNamePrefix);
     LogUtil.updateApplicationLoggingConfig(
@@ -104,6 +107,8 @@ public class LoggingConfigController extends AuthenticatedController {
     AuditLoggingConfig data =
         formFactory.getFormDataOrBadRequest(request, AuditLoggingConfig.class).get();
     data.validate(validator);
+    // Need to configure this to simulate the effect of play.logger.includeConfigProperties=true.
+    LogUtil.configureFixedLogbackSystemProperties(sConfigFactory.staticApplicationConf());
     LogUtil.updateAuditLoggingContext(data);
     LogUtil.updateAuditLoggingConfig(sConfigFactory, data);
     return PlatformResults.withData(data);
