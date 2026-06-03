@@ -1559,9 +1559,10 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
   req.set_tablet_id(tablet_id());
   req.mutable_server()->set_permanent_uuid(uuid);
   req.set_type(REMOVE_SERVER);
-  req.set_cas_config_opid_index(committed_config.opid_index());
+  req.set_cas_config_opid_index(committed_config.committed_op_index());
   LOG_WITH_PREFIX(INFO) << "Attempting to remove follower " << uuid
-                        << " from the Raft config at commit index " << committed_config.opid_index()
+                        << " from the Raft config at commit index "
+                        << committed_config.committed_op_index()
                         << ". Reason: " << reason;
   std::optional<TabletServerErrorPB::Code> error_code;
   WARN_NOT_OK(
@@ -2552,10 +2553,12 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
         "Leader is not ready for Config Change, can try again. "
         "Type: $0. Has opid: $1. Committed config: $2. "
         "Pending config: $3. Current term: $4. Committed op id: $5. Pending split op id: $6",
-        ChangeConfigType_Name(type), active_config.has_opid_index(),
+        ChangeConfigType_Name(type), active_config.has_committed_op_index(),
         state_->GetCommittedConfigUnlocked().ShortDebugString(),
         state_->IsConfigChangePendingUnlocked()
-            ? state_->GetPendingConfigUnlocked().ShortDebugString()
+            ? Format(
+                  "(op_id: $0) $1", state_->GetPendingConfigOpIdUnlocked(),
+                  state_->GetPendingConfigUnlocked().ShortDebugString())
             : "",
         state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked(),
         state_->GetPendingSplitOpIdUnlocked());
@@ -2599,7 +2602,7 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
                              "Pending config: $3. Current term: $4. Committed op id: $5. "
                              "Num peers in transit: $6",
                              ChangeConfigType_Name(type),
-                             active_config.has_opid_index(),
+                             active_config.has_committed_op_index(),
                              state_->GetCommittedConfigUnlocked().ShortDebugString(),
                              state_->IsConfigChangePendingUnlocked() ?
                                  state_->GetPendingConfigUnlocked().ShortDebugString() : "",
@@ -2677,18 +2680,18 @@ Status RaftConsensus::ChangeConfig(
 
     // Support atomic ChangeConfig requests.
     if (req.has_cas_config_opid_index()) {
-      if (committed_config.opid_index() != req.cas_config_opid_index()) {
+      if (committed_config.committed_op_index() != req.cas_config_opid_index()) {
         *error_code = TabletServerErrorPB::CAS_FAILED;
         return STATUS(IllegalState, Substitute("Request specified cas_config_opid_index "
                                                "of $0 but the committed config has opid_index "
                                                "of $1",
                                                req.cas_config_opid_index(),
-                                               committed_config.opid_index()));
+                                               committed_config.committed_op_index()));
       }
     }
 
     RaftConfigPB new_config = committed_config;
-    new_config.clear_opid_index();
+    new_config.clear_committed_op_index();
     switch (type) {
       case ADD_SERVER:
         // Ensure the server we are adding is not already a member of the configuration.
@@ -2880,7 +2883,7 @@ Status RaftConsensus::UnsafeChangeConfig(
       change_config_request.set_tablet_id(tablet_id());
       change_config_request.mutable_server()->set_permanent_uuid(peer_uuid);
       change_config_request.set_type(REMOVE_SERVER);
-      change_config_request.set_cas_config_opid_index(committed_config.opid_index());
+      change_config_request.set_cas_config_opid_index(committed_config.committed_op_index());
       CHECK(RemoveFromRaftConfig(&new_config, change_config_request));
     }
   }
@@ -2900,7 +2903,7 @@ Status RaftConsensus::UnsafeChangeConfig(
   }
   new_config.set_unsafe_config_change(true);
   int64 replicate_opid_index = preceding_opid.index + 1;
-  new_config.clear_opid_index();
+  new_config.clear_committed_op_index();
 
   // Sanity check the new config.
   Status s = VerifyRaftConfig(new_config, UNCOMMITTED_QUORUM);
@@ -3282,6 +3285,15 @@ void RaftConsensus::SetLeaderUuidUnlocked(const string& uuid) {
   MarkDirty(context);
 }
 
+void RaftConsensus::ClearPendingConfigUnlocked() {
+  auto clear_status = state_->ClearPendingConfigUnlocked();
+  if (!clear_status.ok()) {
+    LOG(WARNING) << "Could not clear pending config: " << clear_status;
+    return;
+  }
+  queue_->ClearPendingConfigOpId();
+}
+
 Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& replicate_ref,
                                                     const RaftConfigPB& new_config,
                                                     ChangeConfigType type,
@@ -3308,14 +3320,12 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
   if (!status.ok()) {
     // We could just cancel pending config, because there could be only one pending config that
     // we've just set above and it corresponds to replicate_ref.
-    auto clear_status = state_->ClearPendingConfigUnlocked();
-    if (!clear_status.ok()) {
-      LOG(WARNING) << "Could not clear pending config: " << clear_status;
-    }
+    ClearPendingConfigUnlocked();
     return status;
   }
 
   RETURN_NOT_OK(state_->SetPendingConfigOpIdUnlocked(round->id()));
+  queue_->SetPendingConfigOpId(round->id());
 
   return Status::OK();
 }
@@ -3333,6 +3343,7 @@ void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
   queue_->SetLeaderMode(state_->GetCommittedOpIdUnlocked(),
                         state_->GetCurrentTermUnlocked(),
                         state_->GetLastAppliedOpIdUnlocked(),
+                        state_->GetPendingConfigOpIdUnlocked(),
                         active_config);
 
   ScopedDnsTracker dns_tracker(update_raft_config_dns_latency_.get());
@@ -3353,6 +3364,15 @@ const TabletId& RaftConsensus::split_parent_tablet_id() const {
 
 const std::optional<CloneSourceInfo>& RaftConsensus::clone_source_info() const {
   return clone_source_info_;
+}
+
+OpId RaftConsensus::GetPendingConfigOpId() const {
+  auto lock = state_->LockForRead();
+  auto result = state_->GetPendingConfigOpIdUnlocked();
+  if (result.is_valid_not_empty()) {
+    return result;
+  }
+  return state_->GetPendingConfigOpIdFromRbsUnlocked();
 }
 
 LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const {
@@ -3690,9 +3710,13 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
 
     // Clear out the pending state (ENG-590).
     if (IsChangeConfigOperation(op_type) && state_->GetPendingConfigOpIdUnlocked() == round->id()) {
-      WARN_NOT_OK(state_->ClearPendingConfigUnlocked(), "Could not clear pending config");
+      ClearPendingConfigUnlocked();
     }
   } else if (IsChangeConfigOperation(op_type)) {
+    // The config change has been committed; ReplicaState::ApplyConfigChangeUnlocked already
+    // cleared cmeta_'s pending config. Mirror the clear into the queue so RBS responses don't
+    // carry a stale pending_config_op_id.
+    queue_->ClearPendingConfigOpId();
     // Notify the TabletPeer owner object.
     state_->context()->ChangeConfigReplicated(state_->GetCommittedConfigUnlocked());
   }
