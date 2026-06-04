@@ -113,6 +113,31 @@ yb-ts-cli [ --server_address=<host>:<port> ] compact_vector_index <tablet-id> [<
 * *tablet-id*: The identifier of the tablet that contains the vector index(es).
 * *vector-index-id1*, *vector-index-id2*, ...: Optional. Table IDs of specific vector indexes to compact. If omitted, all vector indexes on the tablet are compacted.
 
+### cdc_release_barriers_on_tablet
+
+Available in v2024.2.9.1 and later.
+
+Releases [CDC retention barriers](../../additional-features/change-data-capture/using-logical-replication/advanced-configuration/#retention-of-resources) on the specified tablet on the target YB-TServer. Use this command when CDC retention barriers remain on a tablet after a replication slot or CDC stream is dropped.
+
+Run the command against every YB-TServer that hosts a peer for the tablet. Obtain the tablet ID from [yb-admin](../yb-admin/) or the YugabyteDB Anywhere UI.
+
+{{< warning title="Warning" >}}
+
+This is an operational troubleshooting command. Use it only when CDC retention barriers are stuck on a specific tablet and normal barrier advancement (for example, after dropping the slot) does not release them.
+
+{{< /warning >}}
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] cdc_release_barriers_on_tablet <tablet-id>
+```
+
+* *host*:*port*: The *host* and *port* of the YB-TServer that hosts the tablet. Default is `localhost:9100`.
+* *tablet-id*: The identifier of the tablet on which to release CDC retention barriers.
+
+On success, the command prints a confirmation that CDC retention barriers were released on the tablet at the specified peer.
+
 ### count_intents
 
 Print the count of uncommitted intents (or [provisional records](../../architecture/transactions/distributed-txns/#provisional-records)). Helpful for debugging transactional workloads.

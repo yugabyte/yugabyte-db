@@ -120,9 +120,9 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - A replication slot should be consumed by at most one consumer at a time. However, there is currently no locking mechanism to enforce this. As a result, you should ensure that multiple consumers do not consume from a slot simultaneously. Tracked in issue {{<issue 20755>}}.
 
-- If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the replica identity is not CHANGE, then CDC will throw an error while processing such events.
+- If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event unless the YB-TServer flag [cdc_enable_intra_transactional_before_image](../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image) is enabled (v2024.2.9.1+). With that flag enabled, CDC returns the row state immediately before each intra-transactional operation. If the replica identity is not CHANGE and a before image still cannot be found, CDC throws an error while processing the event.
 
-    To handle updates/deletes with a non-CHANGE replica identity, set the YB-TServer flag `cdc_send_null_before_image_if_not_exists` to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
+    To handle updates/deletes with a non-CHANGE replica identity when no before image is available, set the YB-TServer flag [cdc_send_null_before_image_if_not_exists](../../../reference/configuration/yb-tserver/#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC sends a null before-image instead of failing with an error.
 
 - Currently, to use [replication origins](./advanced-topic/#replication-origins), you must create the replication origin before you start streaming changes from a replication slot. Tracked in issue {{<issue 30068>}}.
 
