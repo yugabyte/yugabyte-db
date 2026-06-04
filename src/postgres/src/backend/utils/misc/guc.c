@@ -12199,8 +12199,7 @@ set_config_option_ext(const char *name, const char *value,
 			}
 	}
 
-	if (changeVal && yb_should_report_guc(record) &&
-		!(YbIsClientYsqlConnMgr() && (action & GUC_ACTION_LOCAL)))
+	if (changeVal && yb_should_report_guc(record))
 	{
 		record->status |= GUC_NEEDS_REPORT;
 		report_needed = true;

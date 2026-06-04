@@ -609,6 +609,80 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
   }
 
   @Test
+  public void testSetLocalEmitsParameterStatus() throws Exception {
+    // --- Commit path ---
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .connect()) {
+      conn.setAutoCommit(false);
+      PGConnection pgConn = (PGConnection) conn;
+      String initialAppName = pgConn.getParameterStatus("application_name");
+
+      try (Statement stmt = conn.createStatement()) {
+        stmt.executeUpdate("SET application_name = 'connmgr_set_local_test_txn'");
+        assertEquals(
+            "regular SET should propagate via ParameterStatus to pgjdbc cache",
+            "connmgr_set_local_test_txn",
+            pgConn.getParameterStatus("application_name"));
+
+        stmt.executeUpdate("SET LOCAL application_name = 'connmgr_set_local_test_local'");
+        assertEquals(
+            "SET LOCAL should propagate via ParameterStatus to pgjdbc cache",
+            "connmgr_set_local_test_local",
+            pgConn.getParameterStatus("application_name"));
+      }
+      conn.commit();
+
+      // After COMMIT the SET LOCAL value is unwound; the post-COMMIT
+      // ParameterStatus from AtEOXact_GUC should restore the value set by the
+      // surrounding plain SET.
+      assertEquals(
+          "After COMMIT, SET LOCAL should be unwound and the surrounding SET value should remain",
+          "connmgr_set_local_test_txn",
+          pgConn.getParameterStatus("application_name"));
+
+      // A new logical connection through ConnMgr must not observe either the
+      // SET LOCAL value or any leaked persistent state -- it should see the
+      // connect-time default that the original connection saw.
+      try (Connection freshConn = getConnectionBuilder()
+          .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+          .connect()) {
+        PGConnection freshPg = (PGConnection) freshConn;
+        assertEquals(
+            "A fresh ConnMgr connection must not inherit the prior session's SET LOCAL value",
+            initialAppName,
+            freshPg.getParameterStatus("application_name"));
+      }
+    }
+
+    // --- Rollback path ---
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .connect()) {
+      conn.setAutoCommit(false);
+      PGConnection pgConn = (PGConnection) conn;
+      String initialAppName = pgConn.getParameterStatus("application_name");
+
+      try (Statement stmt = conn.createStatement()) {
+        stmt.executeUpdate("SET application_name = 'connmgr_set_local_test_txn'");
+        stmt.executeUpdate("SET LOCAL application_name = 'connmgr_set_local_test_local'");
+        assertEquals(
+            "SET LOCAL should propagate via ParameterStatus to pgjdbc cache (rollback path)",
+            "connmgr_set_local_test_local",
+            pgConn.getParameterStatus("application_name"));
+      }
+      conn.rollback();
+
+      // ROLLBACK unwinds both the plain SET and the SET LOCAL; the cache
+      // should converge back to the connect-time default.
+      assertEquals(
+          "After ROLLBACK, both SET and SET LOCAL should be unwound to the connect-time default",
+          initialAppName,
+          pgConn.getParameterStatus("application_name"));
+    }
+  }
+
+  @Test
   public void testStartupParameterPrecedence() throws Exception {
     // Test the precedence between guc setting specified through "options" key and one specified
     // directly in the startup packet. pgJDBC driver only allows us to use the former method.
