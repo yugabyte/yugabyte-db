@@ -114,7 +114,7 @@ class DocHybridTime {
   static const DocHybridTime kMax;
 
   constexpr DocHybridTime() {}
-  explicit DocHybridTime(HybridTime hybrid_time)
+  constexpr explicit DocHybridTime(HybridTime hybrid_time)
       : hybrid_time_(hybrid_time) {
   }
 
@@ -127,8 +127,8 @@ class DocHybridTime {
       : hybrid_time_(micros, logical), write_id_(write_id) {
   }
 
-  HybridTime hybrid_time() const { return hybrid_time_; }
-  IntraTxnWriteId write_id() const { return write_id_; }
+  constexpr HybridTime hybrid_time() const { return hybrid_time_; }
+  constexpr IntraTxnWriteId write_id() const { return write_id_; }
 
   void IncrementWriteId() {
     ++write_id_;
@@ -166,17 +166,17 @@ class DocHybridTime {
   // Decodes doc ht from end of slice, and removes corresponding bytes from provided slice.
   static Result<DocHybridTime> DecodeFromEnd(Slice* encoded_key_with_ht);
 
-  bool operator==(const DocHybridTime& other) const {
+  constexpr bool operator==(const DocHybridTime& other) const {
     return hybrid_time_ == other.hybrid_time_ && write_id_ == other.write_id_;
   }
 
-  bool operator<(const DocHybridTime& other) const { return CompareTo(other) < 0; }
-  bool operator>(const DocHybridTime& other) const { return CompareTo(other) > 0; }
-  bool operator<=(const DocHybridTime& other) const { return CompareTo(other) <= 0; }
-  bool operator>=(const DocHybridTime& other) const { return CompareTo(other) >= 0; }
-  bool operator!=(const DocHybridTime& other) const { return !(*this == other); }
+  constexpr bool operator<(const DocHybridTime& other) const { return CompareTo(other) < 0; }
+  constexpr bool operator>(const DocHybridTime& other) const { return CompareTo(other) > 0; }
+  constexpr bool operator<=(const DocHybridTime& other) const { return CompareTo(other) <= 0; }
+  constexpr bool operator>=(const DocHybridTime& other) const { return CompareTo(other) >= 0; }
+  constexpr bool operator!=(const DocHybridTime& other) const { return !(*this == other); }
 
-  int CompareTo(const DocHybridTime& other) const {
+  constexpr int CompareTo(const DocHybridTime& other) const {
     const auto ht_cmp = hybrid_time_.CompareTo(other.hybrid_time_);
     if (ht_cmp != 0) {
       return ht_cmp;
@@ -190,7 +190,7 @@ class DocHybridTime {
   // Returns failure in case of corruption.
   static Result<size_t> GetEncodedSize(const Slice& encoded_key);
 
-  bool is_valid() const { return hybrid_time_.is_valid(); }
+  constexpr bool is_valid() const { return hybrid_time_.is_valid(); }
 
   static std::string DebugSliceToString(Slice input);
 
