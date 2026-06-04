@@ -13,6 +13,7 @@
 
 #include "yb/util/dist_trace.h"
 
+#include <deque>
 #include <memory>
 
 #include "opentelemetry/context/propagation/global_propagator.h"
@@ -28,6 +29,8 @@
 #include "opentelemetry/trace/context.h"
 #include "opentelemetry/trace/propagation/http_trace_context.h"
 #include "opentelemetry/trace/provider.h"
+#include "opentelemetry/trace/span.h"
+#include "opentelemetry/trace/span_metadata.h"
 #include "opentelemetry/trace/tracer.h"
 
 #include "yb/util/flag_validators.h"
@@ -57,15 +60,44 @@ DEFINE_validator(otel_batch_max_queue_size,
 namespace yb::dist_trace {
 
 namespace trace_sdk = opentelemetry::sdk::trace;
-namespace trace = opentelemetry::trace;
 namespace resource_sdk = opentelemetry::sdk::resource;
 namespace otlp_exporter = opentelemetry::exporter::otlp;
 namespace context = opentelemetry::context;
-namespace nostd = opentelemetry::nostd;
 
 namespace {
 
 const nostd::string_view ysql_resource_name = "ysql";
+
+// Owns string attribute data and maintains a parallel vector of string_view/AttributeValue pairs
+// that can be passed directly to the OTel Tracer::StartSpan API. Uses std::deque for pointer
+// stability -- unlike std::vector, deque does not relocate existing elements on insertion, so
+// string_views into earlier entries remain valid.
+class RpcSpanAttrs {
+ public:
+  void AddStringAttr(std::string key, std::string value) {
+    auto& owned_key = owned_keys_.emplace_back(std::move(key));
+    auto& owned_val = owned_values_.emplace_back(std::move(value));
+    attrs_.emplace_back(owned_key, owned_val);
+  }
+
+  const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs()
+      const {
+    return attrs_;
+  }
+
+  void clear() {
+    attrs_.clear();
+    owned_keys_.clear();
+    owned_values_.clear();
+  }
+
+ private:
+  std::deque<std::string> owned_keys_;
+  std::deque<std::string> owned_values_;
+  std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>> attrs_;
+};
+
+thread_local RpcSpanAttrs pending_rpc_attrs;
 
 resource_sdk::Resource CreateResource(int64_t process_pid, nostd::string_view node_uuid) {
   resource_sdk::ResourceAttributes attrs;
@@ -193,6 +225,47 @@ trace::SpanContext GetTraceparentSpanContext(const char* traceparent) {
 
   // Return the SpanContext from the parent context.
   return trace::GetSpan(parent_context)->GetContext();
+}
+
+bool HasActiveContext() {
+  if (!IsDistTraceEnabled()) {
+    return false;
+  }
+  auto current_span = trace::Tracer::GetCurrentSpan();
+  return current_span && current_span->GetContext().IsValid();
+}
+
+nostd::shared_ptr<trace::Span> StartSpan(
+    const std::string& op_name,
+    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs,
+    trace::StartSpanOptions options) {
+  DCHECK(HasActiveContext());
+
+  return GetDistTracer()->StartSpan(op_name, attrs, options);
+}
+
+nostd::shared_ptr<trace::Span> StartSpan(
+    const std::string& op_name,
+    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>&
+        attrs) {
+  return StartSpan(op_name, attrs, {});
+}
+
+nostd::shared_ptr<trace::Span> StartSpan(const std::string& op_name) {
+  return StartSpan(op_name, {});
+}
+
+void AddPendingRpcStringAttr(std::string key, std::string value) {
+  pending_rpc_attrs.AddStringAttr(std::move(key), std::move(value));
+}
+
+const std::vector<std::pair<nostd::string_view,
+                            opentelemetry::common::AttributeValue>>& GetPendingRpcAttrPairs() {
+  return pending_rpc_attrs.attrs();
+}
+
+void ClearPendingRpcAttrs() {
+  pending_rpc_attrs.clear();
 }
 
 }  // namespace yb::dist_trace
