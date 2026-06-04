@@ -760,15 +760,25 @@ public class NodeAgentClient {
       builder.certPath(certPath);
     }
     try {
-      ManagedChannel channel = cachedChannels.get(builder.build());
-      if (channel.getState(true) == ConnectivityState.TRANSIENT_FAILURE) {
-        // Short-circuit the backoff timer and make it reconnect immediately.
-        channel.resetConnectBackoff();
+      ChannelConfig channelConfig = builder.build();
+      ManagedChannel channel = cachedChannels.get(channelConfig);
+      if (isChannelUnhealthy(channel)) {
+        cachedChannels.invalidate(channelConfig);
+        cachedChannels.cleanUp();
+        channel = cachedChannels.get(channelConfig);
       }
       return channel;
     } catch (ExecutionException e) {
       throw new RuntimeException(e.getCause());
     }
+  }
+
+  private boolean isChannelUnhealthy(ManagedChannel channel) {
+    if (channel.isShutdown() || channel.isTerminated()) {
+      return true;
+    }
+    ConnectivityState state = channel.getState(true);
+    return state == ConnectivityState.SHUTDOWN || state == ConnectivityState.TRANSIENT_FAILURE;
   }
 
   public PingResponse ping(NodeAgent nodeAgent) {
