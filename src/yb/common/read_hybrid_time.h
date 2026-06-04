@@ -44,23 +44,23 @@ struct ReadHybridTime {
   // Serial no of request that uses this read hybrid time.
   int64_t serial_no = 0;
 
-  static ReadHybridTime Max() {
+  static constexpr ReadHybridTime Max() {
     return SingleTime(HybridTime::kMax);
   }
 
-  static ReadHybridTime SingleTime(HybridTime value) {
+  static constexpr ReadHybridTime SingleTime(HybridTime value) {
     return {value, value, value, HybridTime::kMax, 0};
   }
 
-  static ReadHybridTime FromMicros(MicrosTime micros) {
+  static constexpr ReadHybridTime FromMicros(MicrosTime micros) {
     return SingleTime(HybridTime::FromMicros(micros));
   }
 
-  static ReadHybridTime FromUint64(uint64_t value) {
+  static constexpr ReadHybridTime FromUint64(uint64_t value) {
     return SingleTime(HybridTime(value));
   }
 
-  static ReadHybridTime FromHybridTimeRange(const HybridTimeRange& range) {
+  static constexpr ReadHybridTime FromHybridTimeRange(const HybridTimeRange& range) {
     return {range.first, range.second, range.second, HybridTime::kMax, 0};
   }
 
@@ -126,11 +126,11 @@ struct ReadHybridTime {
     return result;
   }
 
-  explicit operator bool() const {
+  constexpr explicit operator bool() const {
     return read.is_valid();
   }
 
-  bool operator!() const {
+  constexpr bool operator!() const {
     return !read.is_valid();
   }
 
