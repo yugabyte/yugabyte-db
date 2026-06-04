@@ -156,7 +156,7 @@ class PgWaitEventAuxTest : public PgAshSingleNode {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
-        4 * kTimeMultiplier * kSamplingIntervalMs));
+        2 * kTimeMultiplier * kSamplingIntervalMs));
 
     options->extra_tserver_flags.push_back(Format(
         "--TEST_yb_test_wait_event_aux_to_sleep_at_csv=$0", ConvertToCSV(rpc_list_)));
@@ -1311,9 +1311,9 @@ class PgTransactionWaitEventTest : public PgAshSingleNode {
   }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // Sleep for 4 * kSamplingIntervalMs to ensure ASH captures the wait events
+    // Sleep for 2 * kSamplingIntervalMs to ensure ASH captures the wait events
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
-        4 * kTimeMultiplier * kSamplingIntervalMs));
+        2 * kTimeMultiplier * kSamplingIntervalMs));
     // Set the specific wait code to sleep at
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
         std::to_underlying(WaitEvent)));

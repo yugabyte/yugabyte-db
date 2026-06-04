@@ -678,4 +678,6 @@ WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
 WaitStateTracker& XClusterPollerTracker();
 WaitStateTracker& MinRunningHybridTimeTracker();
 
+bool TEST_ShouldSleepAtWaitCode(WaitStateCode c);
+
 }  // namespace yb::ash
