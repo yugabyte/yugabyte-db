@@ -30,8 +30,6 @@
 
 #include "yb/gutil/stringprintf.h"
 
-#include "yb/tserver/tserver_cgroup_manager.h"
-
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
@@ -909,26 +907,6 @@ bool YBCIsObjectLockingEnabled() {
 
 bool YBCIsAutoAnalyzeEnabled() {
   return FLAGS_ysql_enable_auto_analyze_infra && FLAGS_ysql_enable_auto_analyze;
-}
-
-void YBCSetupCgroups() {
-#ifdef __linux__
-  const char* initial_cgroup = getenv("YB_PG_INITIAL_CGROUP");
-  if (initial_cgroup) {
-    auto status = MoveProcessToCgroupPath(initial_cgroup);
-    if (!status.ok()) {
-      LOG(DFATAL) << "Failed to move to cgroup " << initial_cgroup << ": " << status;
-      return;
-    }
-  }
-  const char* cgroup_management = getenv("YB_PG_CGROUP_MANAGEMENT");
-  if (cgroup_management && atoi(cgroup_management)) {
-    auto status = SetupCgroupManagement(ClearChildCgroups::kFalse);
-    if (!status.ok()) {
-      LOG(FATAL) << "Failed to setup cgroups: " << status;
-    }
-  }
-#endif
 }
 
 } // extern "C"

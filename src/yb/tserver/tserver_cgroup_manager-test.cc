@@ -67,7 +67,7 @@ class TServerCgroupManagerTest : public TabletServerTestBase {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_metrics_interval_sec) = 1;
-    ASSERT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+    ASSERT_OK(TServerCgroupManager::CgroupManagementInit(/*is_tserver=*/true));
 
     TabletServerTestBase::SetUp();
     StartTabletServer();
@@ -175,8 +175,7 @@ TEST_F(TServerCgroupManagerTest, TestBadDbCpuLimits) {
 }
 
 // Verifies that thread pool worker threads land in the correct cgroups after
-// the tablet server starts. This catches the bug where workers that start before
-// SetCgroup() would cache a stale pool cgroup and revert to /@default.
+// the tablet server starts.
 TEST_F(TServerCgroupManagerTest, TestPoolCgroupAssignment) {
   // Wait for the tablet to be fully running (consensus elected) so that pool
   // worker threads have processed at least one task and MoveToPoolCgroup() has run.
@@ -242,7 +241,6 @@ TEST_F(TServerCgroupManagerTest, TestCgroupMetricsForSystemCgroups) {
   auto capped_pool_entity = FindCgroupEntity("@capped-pool");
   auto system_med_entity = FindCgroupEntity("@system-med");
   auto normal_entity = FindCgroupEntity("@normal");
-  auto default_entity = FindCgroupEntity("@default");
 
   auto usage_ns = METRIC_cgroup_cpu_usage_ns.Instantiate(system_high_entity, 0);
   auto user_ns = METRIC_cgroup_cpu_user_ns.Instantiate(system_high_entity, 0);
@@ -254,7 +252,6 @@ TEST_F(TServerCgroupManagerTest, TestCgroupMetricsForSystemCgroups) {
   auto pool_usage = METRIC_cgroup_cpu_usage_ns.Instantiate(capped_pool_entity, 0);
   auto med_usage = METRIC_cgroup_cpu_usage_ns.Instantiate(system_med_entity, 0);
   auto normal_usage = METRIC_cgroup_cpu_usage_ns.Instantiate(normal_entity, 0);
-  auto def_usage = METRIC_cgroup_cpu_usage_ns.Instantiate(default_entity, 0);
 
   // Wait until the background thread has populated values.
   ASSERT_EVENTUALLY([&] {
@@ -268,7 +265,6 @@ TEST_F(TServerCgroupManagerTest, TestCgroupMetricsForSystemCgroups) {
     ASSERT_GE(pool_usage->value(), 0);
     ASSERT_GE(med_usage->value(), 0);
     ASSERT_GE(normal_usage->value(), 0);
-    ASSERT_GE(def_usage->value(), 0);
   });
 }
 
@@ -497,11 +493,10 @@ TEST_F(TServerCgroupManagerTest, TestSystemHighSingletonThreads) {
   });
 }
 
-// Regression test for #31710: TerminationMonitor::SetCgroup moves the
+// Regression test for #31710: TerminationMonitor::Create(cgroup) moves the
 // sigterm_loop thread into the given cgroup.
 TEST_F(TServerCgroupManagerTest, TestTerminationMonitorSetCgroup) {
-  auto monitor = TerminationMonitor::Create();
-  monitor->SetCgroup(manager_->SystemHighCgroup());
+  auto monitor = TerminationMonitor::Create(manager_->SystemHighCgroup());
 
   ASSERT_EVENTUALLY([&] {
     auto threads = ASSERT_RESULT(GetPoolThreadCgroups({"sigterm_loop"}));

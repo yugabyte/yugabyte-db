@@ -48,14 +48,15 @@ TerminationMonitor::~TerminationMonitor() {
   }
 }
 
-std::unique_ptr<TerminationMonitor> TerminationMonitor::Create() {
+std::unique_ptr<TerminationMonitor> TerminationMonitor::Create(Cgroup* cgroup) {
   static std::atomic_bool instantiated = false;
   CHECK(!instantiated.exchange(true)) << "Only one instance of TerminationMonitor is allowed";
 
   auto monitor = std::unique_ptr<TerminationMonitor>(new TerminationMonitor());
+
   // Up to this point SIGTERM would have caused an immediate process termination. We are now ready
   // to gracefully handle SIGTERM so install our handler.
-  monitor->InstallSigtermHandler();
+  monitor->InstallSigtermHandler(cgroup);
   return monitor;
 }
 
@@ -72,16 +73,7 @@ void TerminationMonitor::WaitForTermination() {
   stop_signal_.wait(lock, [this]() REQUIRES(mutex_) { return stopped_; });
 }
 
-#ifdef __linux__
-void TerminationMonitor::SetCgroup(Cgroup* cgroup) {
-  if (thread_) {
-    WARN_NOT_OK(cgroup->MoveThreadToGroup(thread_->tid()),
-                "Failed to move sigterm_loop thread to cgroup");
-  }
-}
-#endif
-
-void TerminationMonitor::InstallSigtermHandler() {
+void TerminationMonitor::InstallSigtermHandler(Cgroup* cgroup) {
   if (!FLAGS_graceful_shutdown) {
     return;
   }
@@ -95,7 +87,17 @@ void TerminationMonitor::InstallSigtermHandler() {
   async_sig_term.set<TerminationMonitor, &TerminationMonitor::SigtermAsyncHandler>(this);
   async_sig_term.start();
   CHECK_OK(yb::Thread::Create(
-      "termination_monitor", "sigterm_loop", [this]() { async_sig_term_loop_.run(); }, &thread_));
+      "termination_monitor", "sigterm_loop",
+      [this, cgroup] {
+        (void) cgroup;
+#ifdef __linux__
+        if (cgroup) {
+          WARN_NOT_OK(cgroup->MoveCurrentThreadToGroup(),
+                      "Failed to move sigterm_loop thread to cgroup");
+        }
+#endif
+        async_sig_term_loop_.run();
+      }, &thread_));
 
   CHECK_OK(InstallSignalHandler(SIGTERM, SigtermHandler));
 }

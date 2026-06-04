@@ -113,7 +113,7 @@ class PgQosCgroupsTest : public PgCgroupsTest {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
-    ASSERT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+    ASSERT_OK(tserver::TServerCgroupManager::CgroupManagementInit(/*is_tserver=*/true));
     PgCgroupsTest::SetUp();
   }
 

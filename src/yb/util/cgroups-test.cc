@@ -99,6 +99,17 @@ TEST_F(CgroupsTest, TestSimple) {
   thread1.join();
 }
 
+TEST_F(CgroupsTest, TestCustomDefaultGroup) {
+  ASSERT_OK(SetupCgroupManagement(
+      ClearChildCgroups::kTrue,
+      /*default_group_init=*/[](Cgroup& root) -> Result<Cgroup&> {
+        return root.CreateOrLoadChild("test");
+      }));
+
+  auto& child_group = ASSERT_RESULT_REF(RootCgroup()->CreateOrLoadChild("test"));
+  ASSERT_EQ(&child_group, DefaultThreadCgroup());
+}
+
 TEST_F(CgroupsTest, TestCleanup) {
   auto root_cgroup_path = ASSERT_RESULT(GetProcessCpuCgroupPath());
   const std::vector<std::string_view> garbage_cgroups = {
