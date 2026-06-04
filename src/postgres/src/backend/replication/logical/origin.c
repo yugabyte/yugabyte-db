@@ -1233,6 +1233,10 @@ replorigin_session_reset(void)
 void
 replorigin_session_advance(XLogRecPtr remote_commit, XLogRecPtr local_commit)
 {
+	/* Shared origin sessions only tag writes and do not track progress. */
+	if (session_replication_state == NULL)
+		return;
+
 	Assert(session_replication_state != NULL);
 	Assert(session_replication_state->roident != InvalidRepOriginId);
 
@@ -1379,7 +1383,7 @@ pg_replication_origin_session_setup(PG_FUNCTION_ARGS)
 /*
  * Setup a replication origin for this session without acquiring an exclusive
  * slot. This allows multiple sessions to tag their writes with the same
- * xrepl_origin_id concurrently. No progress tracking is performed — this is
+ * xrepl_origin_id concurrently. No progress tracking is performed. This is
  * only suitable for write tagging (e.g., CDC origin filtering).
  */
 Datum
@@ -1404,8 +1408,6 @@ pg_replication_origin_session_setup_shared(PG_FUNCTION_ARGS)
 	origin = replorigin_by_name(name, false);
 
 	replorigin_session_origin = origin;
-	replorigin_session_origin_lsn = InvalidXLogRecPtr;
-	replorigin_session_origin_timestamp = 0;
 
 	pfree(name);
 
