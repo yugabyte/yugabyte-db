@@ -595,6 +595,11 @@ message DumpTabletDataRequestPB {
   required bytes tablet_id = 1;
   optional string dest_path = 2;
   optional uint64 read_ht = 3;
+
+  // The table to hash within the tablet. A colocation parent table id (or an unset table_id)
+  // hashes every table in the tablet (for a colocated tablet, all the colocated tables sharing
+  // it); any other table id restricts the scan to that single (colocated or non-colocated) table.
+  optional bytes table_id = 4;
 }
 
 message DumpTabletDataResponsePB {

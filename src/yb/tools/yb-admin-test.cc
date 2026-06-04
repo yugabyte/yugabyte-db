@@ -40,6 +40,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/json_util.h"
 #include "yb/common/transaction.h"
 
@@ -65,6 +66,8 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
 
@@ -664,6 +667,86 @@ TEST_F(AdminCliTest, TestFollowersTableList) {
       ASSERT_STR_EQ(frole, PeerRole_Name(PeerRole::FOLLOWER));
     }
   }
+}
+
+class AdminCliTestWithYSQL : public AdminCliTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->enable_ysql = true;
+  }
+};
+
+// Returns the colocation parent table id for a database created WITH colocation = true. Such a
+// database uses GA (tablegroup) colocation, whose parent id is keyed by the implicit tablegroup --
+// not the legacy "<namespace>.colocated.parent.uuid" that GetColocatedDbParentTableId() builds and
+// which does not exist here. Look it up by name, the way a user finds it via list_tables.
+Result<TableId> GetColocationParentTableId(client::YBClient* client, const std::string& database) {
+  auto parents = VERIFY_RESULT(client->ListTables(
+      kColocationParentTableNameSuffix, /* exclude_ysql = */ false, database));
+  SCHECK_EQ(
+      parents.size(), 1U, IllegalState,
+      Format("Expected exactly one colocation parent table in database $0", database));
+  return parents.front().table_id();
+}
+
+// Test get_table_hash scoping on a colocated tablet: a child colocated table id hashes just that
+// table, the colocation parent table id hashes the whole tablet, and the per-table hashes
+// recombine to the whole-tablet hash.
+TEST_F(AdminCliTestWithYSQL, TestGetTableXorHashColocated) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE codb WITH colocation = true"));
+  auto codb = ASSERT_RESULT(cluster_->ConnectToDB("codb"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_a (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_b (k int PRIMARY KEY, v int)"));
+  // Distinct data and row counts so the two tables' hashes differ.
+  ASSERT_OK(codb.Execute("INSERT INTO colo_a SELECT g, g * 10 FROM generate_series(1, 50) g"));
+  ASSERT_OK(codb.Execute("INSERT INTO colo_b SELECT g, g * 7  FROM generate_series(1, 30) g"));
+
+  auto get_table_id = [this](const std::string& name) -> Result<TableId> {
+    auto tables = VERIFY_RESULT(client_->ListTables(name));
+    SCHECK_EQ(tables.size(), 1U, IllegalState, Format("Expected one table named $0", name));
+    return tables.front().table_id();
+  };
+  const auto table_a = ASSERT_RESULT(get_table_id("colo_a"));
+  const auto table_b = ASSERT_RESULT(get_table_id("colo_b"));
+
+  // The colocation parent table id addresses the whole tablet (looked up by name -- see
+  // GetColocationParentTableId, since WITH colocation uses GA tablegroup colocation).
+  const auto parent_table = ASSERT_RESULT(GetColocationParentTableId(client_.get(), "codb"));
+
+  // Fixed read time so all three calls observe identical data.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto row_prefix = "Total row count: ";
+    const auto hash_prefix = "Total XOR hash: ";
+    auto rp = output.find(row_prefix);
+    auto hp = output.find(hash_prefix);
+    CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+    return {std::stoull(output.substr(rp + strlen(row_prefix))),
+            std::stoull(output.substr(hp + strlen(hash_prefix)))};
+  };
+
+  // A child colocated table id scopes the hash to that single table.
+  auto [rows_a, hash_a] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", table_a, ht.ToUint64())));
+  auto [rows_b, hash_b] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", table_b, ht.ToUint64())));
+
+  ASSERT_EQ(rows_a, 50);
+  ASSERT_EQ(rows_b, 30);
+  ASSERT_NE(hash_a, 0);
+  ASSERT_NE(hash_b, 0);
+  ASSERT_NE(hash_a, hash_b);
+
+  // The colocation parent table id hashes the whole colocated tablet, so its totals must equal the
+  // combination of the two per-table results.
+  auto [rows_all, hash_all] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", parent_table, ht.ToUint64())));
+  ASSERT_EQ(rows_all, rows_a + rows_b);
+  ASSERT_EQ(hash_all, hash_a ^ hash_b);
 }
 
 TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {

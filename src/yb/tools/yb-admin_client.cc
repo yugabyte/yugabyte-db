@@ -4673,6 +4673,7 @@ Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t rea
     rpc.set_timeout(timeout_);
     req.set_tablet_id(location.tablet_id());
     req.set_read_ht(ht.ToUint64());
+    req.set_table_id(table_id);
     RETURN_NOT_OK(tserver_proxy->DumpTabletData(req, &resp, &rpc));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());

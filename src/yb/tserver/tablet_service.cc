@@ -43,6 +43,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
@@ -3658,10 +3659,16 @@ Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
 
   uint64_t row_count = 0;
   uint64_t xor_hash = 0;
+  // Scope the hash by the requested table_id. A colocation parent table id (or an unset table_id)
+  // hashes every table in the tablet; any other table id restricts the scan to that single table.
+  TableId target_table_id;
+  if (req.has_table_id() && !req.table_id().empty() && !IsColocationParentTableId(req.table_id())) {
+    target_table_id = req.table_id();
+  }
   RETURN_NOT_OK(
       tablet::DumpTabletData(
           *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, deadline, xor_hash,
-          row_count));
+          row_count, target_table_id));
   DumpTabletDataResponsePB resp;
   resp.set_row_count(row_count);
   resp.set_xor_hash(xor_hash);
