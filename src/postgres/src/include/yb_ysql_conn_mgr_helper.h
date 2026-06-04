@@ -72,6 +72,19 @@ extern bool yb_ysql_conn_mgr_sticky_guc;
 extern bool yb_ysql_conn_mgr_sticky_locks;
 
 /*
+ * The "local" component of Logical Client Version. It is only incremented
+ * on SIGHUPs to handle changes to PGC_BACKEND GUC variables
+ */
+extern uint64_t yb_conn_mgr_sighup_logical_client_version;
+
+/*
+ * Helper variable which is used so that we increment
+ * `yb_conn_mgr_sighup_logical_client_version` exactly once on a config update
+ * even in the presence of multiple PGC_BACKEND variables that are updated
+ */
+extern bool yb_conn_mgr_sighup_had_backend_guc_change;
+
+/*
  * Check whether the connection is made from Ysql Connection Manager.
  */
 extern bool YbIsClientYsqlConnMgr();
