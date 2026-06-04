@@ -480,7 +480,8 @@ YbcStatus YBCPgWaitForBackendsCatalogVersion(
 
 YbcStatus YBCPgBackfillIndex(
     const YbcPgOid database_oid,
-    const YbcPgOid index_relfilenode_oid);
+    const YbcPgOid index_relfilenode_oid,
+    bool use_regular_transaction_block);
 
 YbcStatus YBCPgWaitVectorIndexReady(
     const YbcPgOid database_oid,

@@ -990,6 +990,7 @@ Status YBClient::Data::BackfillIndex(YBClient* client,
                                      const YBTableName& index_name,
                                      const TableId& index_id,
                                      CoarseTimePoint deadline,
+                                     std::optional<TransactionMetadata> requester_transaction,
                                      bool wait) {
   BackfillIndexRequestPB req;
   BackfillIndexResponsePB resp;
@@ -999,6 +1000,9 @@ Status YBClient::Data::BackfillIndex(YBClient* client,
   }
   if (!index_id.empty()) {
     req.mutable_index_identifier()->set_table_id(index_id);
+  }
+  if (requester_transaction.has_value()) {
+    requester_transaction->ToPB(req.mutable_requester_transaction());
   }
 
   RETURN_NOT_OK((SyncLeaderMasterRpc(
