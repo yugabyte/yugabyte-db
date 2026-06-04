@@ -46,6 +46,7 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
+#include "yb/util/slice.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
@@ -504,7 +505,9 @@ class ClusterAdminClient {
   // List the uuids of all masters/tservers known to the master leader.
   Result<std::unordered_set<std::string>> ListAllKnownMasterUuids();
   Result<std::unordered_set<std::string>> ListAllKnownTabletServersUuids();
-  Status GetTableXorHash(const TableId& table_id, uint64_t read_ht);
+  Status GetTableXorHash(
+      const TableId& table_id, uint64_t read_ht, Slice start_key = Slice(),
+      Slice end_key = Slice());
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

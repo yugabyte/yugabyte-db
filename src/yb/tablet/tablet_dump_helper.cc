@@ -15,7 +15,10 @@
 
 #include "yb/client/client.h"
 #include "yb/common/colocated_util.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_util.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
@@ -118,7 +121,7 @@ Status AppendToFile(WritableFile* file, std::optional<std::ostringstream>& strin
 Status DumpTabletData(
     Tablet& tablet, std::shared_future<client::YBClient*> client_future, WritableFile* file,
     uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash, uint64_t& row_count,
-    const TableId& target_table_id) {
+    const TableId& target_table_id, Slice start_partition_key, Slice end_partition_key) {
   xor_hash = 0;
   row_count = 0;
 
@@ -128,6 +131,12 @@ Status DumpTabletData(
   // When a single table is requested, track whether we actually saw it so we can reject a
   // table_id that does not belong to this tablet rather than silently returning an empty hash.
   bool target_table_found = false;
+
+  const bool has_key_range = !start_partition_key.empty() || !end_partition_key.empty();
+  SCHECK(
+      !has_key_range || !target_table_id.empty() || table_ids.size() == 1, InvalidArgument,
+      "get_table_hash with a key range requires a single target table; pass a concrete table id "
+      "(not a colocation parent id)");
 
   HybridTime read_hybrid_time;
   if (read_ht) {
@@ -169,11 +178,57 @@ Status DumpTabletData(
 
     const auto& schema = table_info->schema();
     dockv::ReaderProjection projection(schema);
+    // When a start bound is given we reposition the iterator with SeekToDocKeyPrefix below, so skip
+    // the initial seek NewRowIterator would otherwise perform: two seeks without an intervening
+    // fetch trip a DCHECK in IntentAwareIterator (need_fetch_ already set). With no start bound we
+    // keep the default initial seek, which positions the iterator at the table's natural start.
+    const bool seek_to_start = !start_partition_key.empty();
     auto iter = VERIFY_RESULT(tablet.NewRowIterator(
-        projection, ReadHybridTime::SingleTime(read_hybrid_time), table_id, deadline));
+        projection, ReadHybridTime::SingleTime(read_hybrid_time), table_id, deadline,
+        docdb::SkipSeek(seek_to_start)));
+
+    // Build the encoded key bounds for this table as [table prefix][encoded partition key]. The
+    // table prefix (cotable_id / colocation_id bytes; empty for a non-colocated table) places the
+    // bound in this table's slice of the tablet, and the encoded partition key narrows within it
+    // (kUInt16Hash + hash for a hash key, the encoded range otherwise). An empty user bound leaves
+    // that side unbounded: the iterator is already scoped to the table, so it naturally starts and
+    // stops at the table boundary. The row key is a prefix-compatible extension of these bounds, so
+    // a row whose key is >= encoded_end is at/beyond the exclusive upper bound and ends the scan.
+    const Slice table_key_prefix = table_info->doc_read_context->table_key_prefix();
+    // Builds the full encoded bound [table prefix][encoded partition key] for this table.
+    auto encode_table_bound = [&](Slice partition_key) -> Result<dockv::KeyBytes> {
+      // For a hash-partitioned table the partition key is a 2-byte hash prefix (kUInt16Hash). The
+      // CLI only validates that the hex is well-formed, not its length, so reject a non-2-byte
+      // bound here rather than encoding a nonsensical key. (Only non-empty bounds reach this
+      // lambda; an empty bound is left at the table's natural boundary.)
+      SCHECK(
+          !table_info->partition_schema.IsHashPartitioning() || partition_key.size() == 2,
+          InvalidArgument,
+          Format("hash-partitioned table $0 requires a 2-byte partition key bound; got $1 bytes",
+                 table_id, partition_key.size()));
+      dockv::KeyBytes encoded;
+      encoded.AppendRawBytes(table_key_prefix);
+      encoded.AppendRawBytes(VERIFY_RESULT(
+          table_info->partition_schema.GetEncodedPartitionKey(partition_key.ToBuffer())));
+      return encoded;
+    };
+    dockv::KeyBytes encoded_end;
+    if (seek_to_start) {
+      auto encoded_start = VERIFY_RESULT(encode_table_bound(start_partition_key));
+      iter->SeekToDocKeyPrefix(encoded_start.AsSlice());
+    }
+    if (!end_partition_key.empty()) {
+      encoded_end = VERIFY_RESULT(encode_table_bound(end_partition_key));
+    }
+    auto past_upper_bound = [&iter, &end_partition_key, &encoded_end]() {
+      return !end_partition_key.empty() && iter->GetRowKey().compare(encoded_end.AsSlice()) >= 0;
+    };
     if (tablet.table_type() == TableType::PGSQL_TABLE_TYPE) {
       dockv::PgTableRow table_row(projection);
       while (VERIFY_RESULT(iter->PgFetchNext(&table_row))) {
+        if (past_upper_bound()) {
+          break;
+        }
         RETURN_NOT_OK(ProcessPgTableRow(
             table_row, schema, enum_oid_label_map, composite_atts_map, string_output, xor_hash));
         RETURN_NOT_OK(AppendToFile(file, string_output));
@@ -183,6 +238,9 @@ Status DumpTabletData(
     } else {
       qlexpr::QLTableRow table_row;
       while (VERIFY_RESULT(iter->FetchNext(&table_row))) {
+        if (past_upper_bound()) {
+          break;
+        }
         ProcessQLTableRow(table_row, schema, string_output, xor_hash);
         RETURN_NOT_OK(AppendToFile(file, string_output));
         RETURN_NOT_OK(AppendToFile(file, "\n"));

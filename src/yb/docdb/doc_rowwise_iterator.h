@@ -78,6 +78,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   void Seek(Slice key) override;
 
+  void SeekToDocKeyPrefix(Slice doc_key_prefix) override;
+
   void Refresh();
 
   HybridTime TEST_MaxSeenHt() override;
