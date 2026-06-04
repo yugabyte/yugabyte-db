@@ -8,6 +8,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
@@ -42,7 +43,9 @@ import com.yugabyte.yw.nodeagent.UpdateRequest;
 import com.yugabyte.yw.nodeagent.UpdateResponse;
 import com.yugabyte.yw.nodeagent.UploadFileRequest;
 import com.yugabyte.yw.nodeagent.UploadFileResponse;
+import io.grpc.ConnectivityState;
 import io.grpc.ManagedChannel;
+import io.grpc.Status;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
@@ -58,6 +61,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import lombok.Getter;
 import lombok.Setter;
@@ -71,6 +75,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 @Slf4j
 @RunWith(MockitoJUnitRunner.class)
 public class NodeAgentClientTest extends FakeDBApplication {
+  private ManagedChannel channel;
   private NodeAgentClient nodeAgentClient;
   private NodeAgentHandler nodeAgentHandler;
   private Customer customer;
@@ -205,7 +210,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
             .start());
 
     // Create a client channel and register for automatic graceful shutdown.
-    ManagedChannel channel =
+    channel =
         grpcCleanup.register(
             InProcessChannelBuilder.forName(serverName)
                 .directExecutor()
@@ -257,6 +262,72 @@ public class NodeAgentClientTest extends FakeDBApplication {
   @Test
   public void testPingSuccess() {
     nodeAgentClient.ping(nodeAgent);
+  }
+
+  @Test
+  public void testPingRetriesOnUnavailableUsesServiceConfig() throws IOException {
+    AtomicInteger pingInvocations = new AtomicInteger(0);
+    NodeAgentImplBase retryTestService =
+        new NodeAgentImplBase() {
+          @Override
+          public void ping(PingRequest request, StreamObserver<PingResponse> responseObserver) {
+            if (pingInvocations.incrementAndGet() < 2) {
+              responseObserver.onError(
+                  Status.UNAVAILABLE.withDescription("test").asRuntimeException());
+              return;
+            }
+            responseObserver.onNext(PingResponse.newBuilder().build());
+            responseObserver.onCompleted();
+          }
+        };
+
+    String serverName = InProcessServerBuilder.generateName();
+    grpcCleanup.register(
+        InProcessServerBuilder.forName(serverName)
+            .directExecutor()
+            .addService(retryTestService)
+            .build()
+            .start());
+
+    ManagedChannel retryChannel =
+        grpcCleanup.register(
+            InProcessChannelBuilder.forName(serverName)
+                .directExecutor()
+                .disableServiceConfigLookUp()
+                .defaultServiceConfig(
+                    ChannelFactory.getServiceConfig(NodeAgentClient.NODE_AGENT_SERVICE_CONFIG_FILE))
+                .enableRetry()
+                .build());
+
+    NodeAgentClient clientWithRetry =
+        new NodeAgentClient(
+            mockConfGetter,
+            com.google.inject.util.Providers.of(mock(NodeAgentEnabler.class)),
+            config -> retryChannel);
+
+    clientWithRetry.ping(nodeAgent);
+
+    assertEquals(2, pingInvocations.get());
+  }
+
+  @Test
+  public void testGetManagedChannelRefreshesOnTransientFailure() throws IOException {
+    ManagedChannel unhealthyChannel = mock(ManagedChannel.class);
+    when(unhealthyChannel.isShutdown()).thenReturn(false);
+    when(unhealthyChannel.isTerminated()).thenReturn(false);
+    when(unhealthyChannel.getState(true)).thenReturn(ConnectivityState.TRANSIENT_FAILURE);
+    ManagedChannel healthyChannel = channel;
+    AtomicInteger channelLoads = new AtomicInteger();
+    // Return unhealthy channel on first load and healthy channel on subsequent loads.
+    NodeAgentClient clientWithStaleChannel =
+        new NodeAgentClient(
+            mockConfGetter,
+            com.google.inject.util.Providers.of(mock(NodeAgentEnabler.class)),
+            config -> channelLoads.getAndIncrement() == 0 ? unhealthyChannel : healthyChannel);
+
+    clientWithStaleChannel.ping(nodeAgent);
+    assertEquals(2, channelLoads.get());
+    verify(unhealthyChannel).shutdown();
   }
 
   @Test
