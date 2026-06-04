@@ -237,17 +237,17 @@ To create unidirectional replication, perform the following:
 
     ```sh
     ./bin/yb-admin --master_addresses <target_master_addresses> \
-    setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
-    <source_master_addresses> <comma_separated_table_ids>
+      setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
+      <source_master_addresses> <comma_separated_table_ids>
     ```
 
     Consider the following example:
 
     ```sh
     ./bin/yb-admin --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    setup_universe_replication 00000000-1111-2222-3333-444444444444_xClusterSetup1 \
-    127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-    000033e1000030008000000000004007,000033e100003000800000000000400d,000033e1000030008000000000004013
+      setup_universe_replication 00000000-1111-2222-3333-444444444444_xClusterSetup1 \
+      127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+      000033e1000030008000000000004007,000033e100003000800000000000400d,000033e1000030008000000000004013
     ```
 
 1. Optionally, if you have access to YugabyteDB Anywhere, you can observe the replication setup (`xClusterSetup1`) by navigating to **Replication** on the source and target universe.
@@ -262,7 +262,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
   - Execute the following commands for the source universe:
 
-      ```sh
+    ```sh
     kubectl exec -it -n <source_universe_namespace> <source_universe_master_leader> -c <source_universe_container> -- bash
       /home/yugabyte/bin/ysqlsh -h <source_universe_yqlserver>
       create table query
@@ -270,15 +270,15 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
     Consider the following example:
 
-      ```sh
+    ```sh
     kubectl exec -it -n xcluster-source yb-master-2 -c yb-master -- bash
       /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-source
       create table employees(id int primary key, name text);
-      ```
+    ```
 
   - Execute the following commands for the target universe:
 
-      ```sh
+    ```sh
     kubectl exec -it -n <target_universe_namespace> <target_universe_master_leader> -c <target_universe_container> -- bash
       /home/yugabyte/bin/ysqlsh -h <target_universe_yqlserver>
       create table query
@@ -286,11 +286,11 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
     Consider the following example:
 
-      ```sh
+    ```sh
     kubectl exec -it -n xcluster-target yb-master-2 -c yb-master -- bash
       /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-target
       create table employees(id int primary key, name text);
-      ```
+    ```
 
 - Collect table UUIDs by navigating to **Tables** in the Admin UI available at 127.0.0.1:7000. These UUIDs are to be used while setting up replication.
 - Set up replication from the source universe by executing the following command on the source universe:
@@ -363,14 +363,14 @@ Proceed as follows:
 
     ```sh
     ./bin/yb-admin --master_addresses <source_universe_master_addresses> \
-    bootstrap_cdc_producer <comma_separated_source_universe_table_ids>
+      bootstrap_cdc_producer <comma_separated_source_universe_table_ids>
     ```
 
     Consider the following example:
 
     ```sh
     ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-    bootstrap_cdc_producer 000033e1000030008000000000004000,000033e1000030008000000000004003,000033e1000030008000000000004006
+      bootstrap_cdc_producer 000033e1000030008000000000004000,000033e1000030008000000000004003,000033e1000030008000000000004006
     ```
 
     The following output is a list of bootstrap IDs, one per table ID:
@@ -446,8 +446,8 @@ When new tables (or partitions) are created, to ensure that all changes from the
 
     ```sh
     yb-admin --master_addresses <source_master_ips> \
-    --certs_dir_name <cert_dir> \
-    list_tables include_table_id|grep 'order_changes_2023_01'
+      --certs_dir_name <cert_dir> \
+      list_tables include_table_id|grep 'order_changes_2023_01'
     ```
 
     You should see output similar to the following:
@@ -458,18 +458,18 @@ When new tables (or partitions) are created, to ensure that all changes from the
 
 1. Add the new table (or partition) to replication.
 
-   ```sh
-   yb-admin --master_addresses <target_master_ips> \
-   --certs_dir_name <cert_dir> \
-   alter_universe_replication <replication_group_name> \
-   add_table  000033e800003000800000000000410b
-   ```
+    ```sh
+    yb-admin --master_addresses <target_master_ips> \
+      --certs_dir_name <cert_dir> \
+      alter_universe_replication <replication_group_name> \
+      add_table  000033e800003000800000000000410b
+    ```
 
-   You should see output similar to the following:
+    You should see output similar to the following:
 
-   ```output
+    ```output
     Replication altered successfully
-   ```
+    ```
 
 #### Add indexes in unidirectional replication
 
@@ -481,33 +481,31 @@ However, to add a new index to a table that already has data, the following addi
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
 1. Determine the table ID for `my_new_index`.
 
-   ```sh
-   yb-admin
-   --master_addresses <source_master_ips> \
-   --certs_dir_name <cert_dir> \
-   list_tables include_table_id|grep 'my_new_index'
-   ```
+    ```sh
+    yb-admin --master_addresses <source_master_ips> \
+      --certs_dir_name <cert_dir> \
+      list_tables include_table_id|grep 'my_new_index'
+    ```
 
-   You should see output similar to the following:
+    You should see output similar to the following:
 
-   ```output
-   000033e8000030008000000000004028
-   ```
+    ```output
+    000033e8000030008000000000004028
+    ```
 
 1. Bootstrap the replication stream on the source using the `bootstrap_cdc_producer` API and provide the table ID of the new index as follows:
 
-   ```sh
-   yb-admin
-   --master_addresses <source_master_ips> \
-   --certs_dir_name <cert_dir> \
-   bootstrap_cdc_producer 000033e8000030008000000000004028
-   ```
+    ```sh
+    yb-admin --master_addresses <source_master_ips> \
+      --certs_dir_name <cert_dir> \
+      bootstrap_cdc_producer 000033e8000030008000000000004028
+    ```
 
-   You should see output similar to the following:
+    You should see output similar to the following:
 
-   ```output
-   table id: 000033e8000030008000000000004028, CDC bootstrap id: c8cba563e39c43feb66689514488591c
-   ```
+    ```output
+    table id: 000033e8000030008000000000004028, CDC bootstrap id: c8cba563e39c43feb66689514488591c
+    ```
 
 1. Wait for replication lag to be 0 on the main table using the replication lag metrics described in [Replication lag](#replication-lag).
 1. Create the same [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on the target.
@@ -515,14 +513,13 @@ However, to add a new index to a table that already has data, the following addi
 1. Add the index to replication with the bootstrap ID from Step 4.
 
     ```sh
-    yb-admin
-    --master_addresses <target_master_ips> \
-    --certs_dir_name <cert_dir> \
-    alter_universe_replication 59e58153-eec6-4cb5-a858-bf685df52316_east-west \
-    add_table  000033e8000030008000000000004028 c8cba563e39c43feb66689514488591c
+    yb-admin --master_addresses <target_master_ips> \
+      --certs_dir_name <cert_dir> \
+      alter_universe_replication 59e58153-eec6-4cb5-a858-bf685df52316_east-west \
+      add_table  000033e8000030008000000000004028 c8cba563e39c43feb66689514488591c
     ```
 
-   You should see output similar to the following:
+    You should see output similar to the following:
 
     ```output
     Replication altered successfully
@@ -553,17 +550,17 @@ Objects (tables, indexes, partitions) need to be removed from replication before
 
     ```sh
     yb-admin --master_addresses <source_master_ips> \
-    --certs_dir_name <cert_dir> \
-    list_tables include_table_id |grep '<partition_name>'
+      --certs_dir_name <cert_dir> \
+      list_tables include_table_id |grep '<partition_name>'
     ```
 
 1. Remove the table from replication on the target.
 
     ```sh
     yb-admin --master_addresses <target_master_ips> \
-    --certs_dir_name <cert_dir> \
-    alter_universe_replication <replication_group_name> \
-    remove_table  000033e800003000800000000000410b
+      --certs_dir_name <cert_dir> \
+      alter_universe_replication <replication_group_name> \
+      remove_table  000033e800003000800000000000410b
     ```
 
 ### Alters
@@ -573,15 +570,14 @@ Alters involving adding/removing columns or modifying data types require replica
 1. Pause replication on both sides.
 
     ```sh
-    yb-admin \
-    --master_addresses <target_master_ips> \
-    --certs_dir_name <cert_dir> \
-    set_universe_replication_enabled <replication_group_name> 0
+    yb-admin --master_addresses <target_master_ips> \
+      --certs_dir_name <cert_dir> \
+      set_universe_replication_enabled <replication_group_name> 0
     ```
 
-   For unidirectional replication, run this on the target (consumer) universe. For bidirectional replication, run it on each universe using that universe's master addresses and the replication group that consumes from the other universe.
+    For unidirectional replication, run this on the target (consumer) universe. For bidirectional replication, run it on each universe using that universe's master addresses and the replication group that consumes from the other universe.
 
-   You should see output similar to the following:
+    You should see output similar to the following:
 
     ```output
     Replication disabled successfully
@@ -591,13 +587,12 @@ Alters involving adding/removing columns or modifying data types require replica
 1. Resume replication as follows:
 
     ```sh
-    yb-admin \
-    --master_addresses <target_master_ips> \
-    --certs_dir_name <cert_dir> \
-    set_universe_replication_enabled <replication_group_name> 1
+    yb-admin --master_addresses <target_master_ips> \
+      --certs_dir_name <cert_dir> \
+      set_universe_replication_enabled <replication_group_name> 1
     ```
 
-   Repeat on each universe for bidirectional replication.
+    Repeat on each universe for bidirectional replication.
 
     ```output
     Replication enabled successfully
@@ -612,9 +607,9 @@ For example, say you have a replicated table `test_table`.
 1. Pause replication on both sides.
 1. Execute add column command on the source:
 
-   ```sql
-   ALTER TABLE test_table ADD COLUMN test_column TIMESTAMP DEFAULT NOW()
-   ```
+    ```sql
+    ALTER TABLE test_table ADD COLUMN test_column TIMESTAMP DEFAULT NOW()
+    ```
 
 1. Run the preceding `ALTER TABLE` command with the computed default value on the target as follows:
 
