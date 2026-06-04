@@ -439,6 +439,7 @@ public class CustomerTaskManager {
     Path restoreCustomerTaskFilePath =
         Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE);
     if (Files.exists(restoreCustomerTaskFilePath) && Files.exists(restoreFilePath)) {
+      finalizeRestoredYbaBackupTask();
       try {
         TaskInfo restoreTaskInfo =
             Json.mapper().readValue(restoreFilePath.toFile(), TaskInfo.class);
@@ -471,6 +472,48 @@ public class CustomerTaskManager {
       }
       fileDataService.fixUpPaths(AppConfigHelper.getStoragePath());
       releaseManager.fixFilePaths();
+    }
+  }
+
+  /**
+   * YBA backup tasks (CreateContinuousBackup/CreateYbaBackup) dump the YBA DB while they are still
+   * running, so a restored backup always contains its own creator task in an incomplete state. This
+   * must run before handleAllPendingTasks as that marks incomplete as "Platform restarted."
+   */
+  @VisibleForTesting
+  void finalizeRestoredYbaBackupTask() {
+    try {
+      TaskInfo taskInfo =
+          TaskInfo.find
+              .query()
+              .where()
+              .in("task_type", TaskType.CreateContinuousBackup, TaskType.CreateYbaBackup)
+              .in("task_state", TaskInfo.INCOMPLETE_STATES)
+              .orderBy()
+              .desc("createTime")
+              .setMaxRows(1)
+              .findOne();
+      if (taskInfo == null) {
+        return;
+      }
+      UUID taskUUID = taskInfo.getUuid();
+      log.info(
+          "Marking YBA backup task {} ({}) that created the restored backup as succeeded",
+          taskUUID,
+          taskInfo.getTaskType());
+      taskInfo.setTaskState(TaskInfo.State.Success);
+      taskInfo.save();
+      ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(taskUUID);
+      if (scheduleTask != null) {
+        // Unblock the scheduler, which skips runs while the last schedule task is incomplete.
+        scheduleTask.markCompleted();
+      }
+      CustomerTask customerTask = CustomerTask.findByTaskUUID(taskUUID);
+      if (customerTask != null) {
+        customerTask.markAsCompleted();
+      }
+    } catch (Exception e) {
+      log.error("Error finalizing the YBA backup task that created the restored backup", e);
     }
   }
 
