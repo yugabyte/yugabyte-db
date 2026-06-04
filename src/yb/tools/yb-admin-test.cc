@@ -31,6 +31,7 @@
 //
 // Tests for the yb-admin command-line tool.
 
+#include <algorithm>
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
@@ -45,6 +46,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
@@ -938,6 +940,187 @@ TEST_F(AdminCliTestWithYSQL, TestGetTableXorHashColocated) {
       parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", parent_table, ht.ToUint64())));
   ASSERT_EQ(rows_all, rows_a + rows_b);
   ASSERT_EQ(hash_all, hash_a ^ hash_b);
+}
+
+// Test get_table_hash with a partition-key sub-range on a colocated (range-partitioned) table.
+//
+// Colocated tables are range-only and share a single tablet, so -- unlike a hash-partitioned table
+// -- there is no trivial midpoint key (e.g. 0x8000) and no tablet boundary to crib bytes from. To
+// obtain real, mid-data range split keys without baking in any client-side key-encoding
+// assumptions, we create a throwaway NON-colocated table with the identical primary key, split it
+// AT VALUES ((4), (8)), and read back the partition_key_starts the server assigned to its tablets.
+// Those byte strings are the server's own encoding of the range keys for id=4 and id=8. Because the
+// range-column encoding is independent of colocation (colocation only prepends a per-table prefix,
+// which the server adds separately from the table id), the same bytes are valid split points inside
+// the colocated table's slice of the shared tablet.
+TEST_F(AdminCliTestWithYSQL, TestGetTableXorHashColocatedKeyRange) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE codb WITH colocation = true"));
+  auto codb = ASSERT_RESULT(cluster_->ConnectToDB("codb"));
+
+  // Colocated table (range-partitioned on id ASC) holding ids 1..10 in the single shared tablet.
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_range (id INT, name TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(codb.Execute(
+      "INSERT INTO colo_range (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i"));
+
+  // Throwaway non-colocated table with the SAME primary key, split at ids 4 and 8, used only to
+  // read the server-encoded range keys for those ids from the resulting tablet boundaries.
+  ASSERT_OK(codb.Execute(
+      "CREATE TABLE split_probe (id INT, name TEXT, PRIMARY KEY (id ASC)) "
+      "WITH (colocation = false) SPLIT AT VALUES ((4), (8))"));
+
+  auto get_table_id = [this](const std::string& name) -> Result<TableId> {
+    auto tables = VERIFY_RESULT(client_->ListTables(name, /* exclude_ysql = */ false, "codb"));
+    SCHECK_EQ(tables.size(), 1U, IllegalState, Format("Expected one table named $0", name));
+    return tables.front().table_id();
+  };
+  const auto colocated_tbl_id = ASSERT_RESULT(get_table_id("colo_range"));
+  const auto probe_tbl_id = ASSERT_RESULT(get_table_id("split_probe"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> probe_tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(probe_tbl_id, /*max_tablets=*/0, &probe_tablets));
+  // SPLIT AT VALUES ((4), (8)) yields three tablets: [-inf, key(4)), [key(4), key(8)),
+  // [key(8), +inf). The two split keys are the non-empty partition_key_starts (a partition key
+  // carries no table-id prefix); sort them ascending since tablet order is not guaranteed.
+  ASSERT_EQ(probe_tablets.size(), 3);
+  std::vector<std::string> split_keys;
+  for (const auto& tablet : probe_tablets) {
+    if (!tablet.partition().partition_key_start().empty()) {
+      split_keys.push_back(tablet.partition().partition_key_start());
+    }
+  }
+  ASSERT_EQ(split_keys.size(), 2) << "expected two tablet boundaries from SPLIT AT VALUES";
+  std::sort(split_keys.begin(), split_keys.end());
+  const auto key4_hex = strings::b2a_hex(split_keys[0]);  // boundary for id=4
+  const auto key8_hex = strings::b2a_hex(split_keys[1]);  // boundary for id=8
+
+  // Fixed read time so every call below observes identical data.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto row_prefix = "Total row count: ";
+    const auto hash_prefix = "Total XOR hash: ";
+    auto rp = output.find(row_prefix);
+    auto hp = output.find(hash_prefix);
+    CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+    return {std::stoull(output.substr(rp + strlen(row_prefix))),
+            std::stoull(output.substr(hp + strlen(hash_prefix)))};
+  };
+
+  auto [full_rows, full_hash] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", colocated_tbl_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, 10);
+  ASSERT_NE(full_hash, 0);
+
+  // Explicit open bounds (start == -inf, end == +inf) must reproduce the full-table result.
+  auto [open_rows, open_hash] = parse_totals(ASSERT_RESULT(CallAdmin(
+      "get_table_hash", colocated_tbl_id, ht.ToUint64(), std::string(), std::string())));
+  ASSERT_EQ(open_rows, full_rows);
+  ASSERT_EQ(open_hash, full_hash);
+
+  // A key range is scoped to a single table by passing that (child) colocated table's id. Split
+  // the table into three disjoint, complementary segments (start inclusive, end exclusive); the
+  // middle segment specifies BOTH bounds:
+  //   lo  = [-inf,  key(4))  -> ids 1..3   (3 rows)
+  //   mid = [key(4), key(8)) -> ids 4..7   (4 rows)   <- both bounds set
+  //   hi  = [key(8), +inf)   -> ids 8..10  (3 rows)
+  auto [lo_rows, lo_hash] = parse_totals(ASSERT_RESULT(CallAdmin(
+      "get_table_hash", colocated_tbl_id, ht.ToUint64(), std::string(), key4_hex)));
+  auto [mid_rows, mid_hash] = parse_totals(ASSERT_RESULT(CallAdmin(
+      "get_table_hash", colocated_tbl_id, ht.ToUint64(), key4_hex, key8_hex)));
+  auto [hi_rows, hi_hash] = parse_totals(ASSERT_RESULT(CallAdmin(
+      "get_table_hash", colocated_tbl_id, ht.ToUint64(), key8_hex, std::string())));
+
+  // Real narrowing, including a both-bounded middle segment.
+  ASSERT_EQ(lo_rows, 3);
+  ASSERT_EQ(mid_rows, 4);
+  ASSERT_EQ(hi_rows, 3);
+  // Recombination: the three disjoint segments partition the rows, so counts sum and hashes XOR
+  // back to the full-table totals (the colocated tablet hosts only this one user table).
+  ASSERT_EQ(lo_rows + mid_rows + hi_rows, full_rows);
+  ASSERT_EQ(lo_hash ^ mid_hash ^ hi_hash, full_hash);
+
+  // A key range against the colocation parent table id (which would hash every colocated table)
+  // is ambiguous and must be rejected rather than silently returning a whole-tablet result.
+  const auto parent_tbl_id = ASSERT_RESULT(GetColocationParentTableId(client_.get(), "codb"));
+  ASSERT_NOK(CallAdmin("get_table_hash", parent_tbl_id, ht.ToUint64(), std::string(), key4_hex));
+}
+
+// Test get_table_hash with a partition-key sub-range on a NON-colocated, multi-tablet, range-
+// sharded table (PRIMARY KEY (k ASC) with SPLIT AT VALUES). The range here crosses real tablet
+// boundaries, so this also exercises the client-side tablet skipping (PartitionRangeOverlaps) on
+// range -- not hash -- keys. Split keys come from the table's own tablet boundaries; the CLI takes
+// them hex-encoded, so arbitrary key bytes round-trip safely.
+TEST_F(AdminCliTestWithYSQL, TestGetTableXorHashKeyRangeRangeSharded) {
+  BuildAndStart();
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  // Range-sharded on a text key, split into three tablets at 'd' and 'h'.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE range_split_tbl (k TEXT, v INT, PRIMARY KEY (k ASC)) "
+      "SPLIT AT VALUES (('d'), ('h'))"));
+  // 10 rows keyed 'a'..'j'; splits at 'd','h' place [a,b,c] [d,e,f,g] [h,i,j] in three tablets.
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO range_split_tbl (k, v) SELECT chr(96 + i), i FROM generate_series(1, 10) i"));
+
+  auto get_table_id = [this](const std::string& name) -> Result<TableId> {
+    auto tables = VERIFY_RESULT(client_->ListTables(name, /* exclude_ysql = */ false, "yugabyte"));
+    SCHECK_EQ(tables.size(), 1U, IllegalState, Format("Expected one table named $0", name));
+    return tables.front().table_id();
+  };
+  const auto table_id = ASSERT_RESULT(get_table_id("range_split_tbl"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
+  // The two non-empty partition_key_starts are the server-encoded boundaries for 'd' and 'h'.
+  std::vector<std::string> split_keys;
+  for (const auto& tablet : tablets) {
+    if (!tablet.partition().partition_key_start().empty()) {
+      split_keys.push_back(tablet.partition().partition_key_start());
+    }
+  }
+  ASSERT_EQ(split_keys.size(), 2);
+  std::sort(split_keys.begin(), split_keys.end());
+  const auto keyd_hex = strings::b2a_hex(split_keys[0]);  // boundary for 'd'
+  const auto keyh_hex = strings::b2a_hex(split_keys[1]);  // boundary for 'h'
+
+  // Fixed read time so every call below observes identical data.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto row_prefix = "Total row count: ";
+    const auto hash_prefix = "Total XOR hash: ";
+    auto rp = output.find(row_prefix);
+    auto hp = output.find(hash_prefix);
+    CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+    return {std::stoull(output.substr(rp + strlen(row_prefix))),
+            std::stoull(output.substr(hp + strlen(hash_prefix)))};
+  };
+
+  auto [full_rows, full_hash] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_EQ(full_rows, 10);
+  ASSERT_NE(full_hash, 0);
+
+  // Three disjoint, complementary segments, each landing in a different tablet:
+  //   lo  = [-inf, key('d'))     -> a,b,c    (3 rows)
+  //   mid = [key('d'), key('h')) -> d,e,f,g  (4 rows)
+  //   hi  = [key('h'), +inf)     -> h,i,j    (3 rows)
+  auto [lo_rows, lo_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), std::string(), keyd_hex)));
+  auto [mid_rows, mid_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), keyd_hex, keyh_hex)));
+  auto [hi_rows, hi_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), keyh_hex, std::string())));
+
+  ASSERT_EQ(lo_rows, 3);
+  ASSERT_EQ(mid_rows, 4);
+  ASSERT_EQ(hi_rows, 3);
+  ASSERT_EQ(lo_rows + mid_rows + hi_rows, full_rows);
+  ASSERT_EQ(lo_hash ^ mid_hash ^ hi_hash, full_hash);
 }
 
 // Test that partition ranges are displayed in correct format for both hash and range partitioning
@@ -2401,6 +2584,72 @@ TEST_F(AdminCliTest, TestGetTableXorHash) {
   ASSERT_GT(row_count2, 100);
   ASSERT_NE(xor_hash2, 0);
   ASSERT_NE(xor_hash, xor_hash2);
+}
+
+// Test get_table_hash with a partition-key sub-range on a (non-colocated) hash-partitioned table.
+// Exercises the infimum/supremum encoding (empty start_key = -inf, empty end_key = +inf) and that
+// a complementary split recombines to the full-table totals.
+TEST_F(AdminCliTest, TestGetTableXorHashKeyRange) {
+  BuildAndStart();
+  const auto table_name =
+      YBTableName(YQLDatabase::YQL_DATABASE_CQL, kTableName.namespace_name(), "range_table");
+
+  client::TableHandle table;
+  const auto num_tablets = 4;
+  ASSERT_OK(table.Create(table_name, num_tablets, client::YBSchema(schema_), client_.get()));
+
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_table_name(table_name);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(300);
+  workload.StopAndJoin();
+
+  auto tables = ASSERT_RESULT(client_->ListTables(table_name.table_name()));
+  ASSERT_EQ(1, tables.size());
+  const auto table_id = tables.front().table_id();
+
+  // Fixed read time so every call below observes identical data.
+  auto ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  // Parse just the totals; ranged calls process a variable number of tablets, so we do not assert
+  // on the per-tablet line count here.
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto total_row_count_prefix = "Total row count: ";
+    const auto total_xor_hash_prefix = "Total XOR hash: ";
+    auto row_count_pos = output.find(total_row_count_prefix);
+    auto xor_hash_pos = output.find(total_xor_hash_prefix);
+    CHECK(row_count_pos != std::string::npos && xor_hash_pos != std::string::npos) << output;
+    auto row_count = std::stoull(output.substr(row_count_pos + strlen(total_row_count_prefix)));
+    auto xor_hash = std::stoull(output.substr(xor_hash_pos + strlen(total_xor_hash_prefix)));
+    return std::make_pair(row_count, xor_hash);
+  };
+
+  auto [full_rows, full_hash] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht.ToUint64())));
+  ASSERT_GT(full_rows, 0);
+
+  // Explicit empty bounds (start == -inf, end == +inf) must reproduce the full-table result.
+  auto [open_rows, open_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), std::string(), std::string())));
+  ASSERT_EQ(open_rows, full_rows);
+  ASSERT_EQ(open_hash, full_hash);
+
+  // Split the 2-byte hash partition-key space at 0x8000 into two complementary, disjoint ranges:
+  //   lower = [-inf, 0x8000)   (empty start_key = infimum)
+  //   upper = [0x8000, +inf)   (empty end_key   = supremum)
+  // Every row falls in exactly one side (start inclusive, end exclusive), so the row counts must
+  // sum and the XOR hashes must recombine to the full-table totals.
+  const std::string kMidKey = "8000";  // hex-encoded raw partition key.
+  auto [lo_rows, lo_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), std::string(), kMidKey)));
+  auto [hi_rows, hi_hash] = parse_totals(ASSERT_RESULT(
+      CallAdmin("get_table_hash", table_id, ht.ToUint64(), kMidKey, std::string())));
+
+  ASSERT_GT(lo_rows, 0);
+  ASSERT_GT(hi_rows, 0);
+  ASSERT_EQ(lo_rows + hi_rows, full_rows);
+  ASSERT_EQ(lo_hash ^ hi_hash, full_hash);
 }
 
 }  // namespace tools
