@@ -1,0 +1,5 @@
+SET duckdb.force_execution = TRUE;
+
+create temp table t2(a int);
+insert into t2 select i from generate_series(1, 200000) as i;
+select count(*), sum(a), count(*) = 100000 from t2 where a%2 = 0;
