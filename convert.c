@@ -8,6 +8,7 @@
 #include "utils/numeric.h"
 #include "utils/pg_locale.h"
 #include "utils/formatting.h"
+#include "utils/memutils.h"
 
 #include "orafce.h"
 #include "builtins.h"
@@ -548,8 +549,8 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 	s = VARDATA_ANY(src);
 	srclen = VARSIZE_ANY_EXHDR(src);
 
-	if (scrlen < 0)
-		scrlen = 0;
+	if (srclen < 0)
+		srclen = 0;
 
 	if ((Size) srclen > (MaxAllocSize - VARHDRSZ) / MAX_CONVERSION_GROWTH)
 		ereport(ERROR,
