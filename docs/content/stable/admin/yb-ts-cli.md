@@ -119,7 +119,7 @@ Available in v2024.2.9.1 and later.
 
 Releases [CDC retention barriers](../../additional-features/change-data-capture/using-logical-replication/advanced-configuration/#retention-of-resources) on the specified tablet on the target YB-TServer. Use this command when CDC retention barriers remain on a tablet after a replication slot or CDC stream is dropped.
 
-Run the command against every YB-TServer that hosts a peer for the tablet. Obtain the tablet ID from [yb-admin](../yb-admin/) or the YugabyteDB Anywhere UI.
+Run the command against every YB-TServer that hosts a peer for the tablet. Obtain the tablet ID using [yb-admin](../yb-admin/) or the YugabyteDB Anywhere UI.
 
 {{< warning title="Warning" >}}
 
