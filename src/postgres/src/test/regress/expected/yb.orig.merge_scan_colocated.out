@@ -3053,6 +3053,67 @@
 ----+----+----+----+---+----
 (0 rows)
 
+-- Only duplicates in IN
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 1) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r2, r3, r4, r5, n, r1
+   ->  Sort (actual rows=5 loops=1)
+         Output: r2, r3, r4, r5, n, r1
+         Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5, r5n.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=492 loops=1)
+               Output: r2, r3, r4, r5, n, r1
+               Index Cond: (r5n.r1 = ANY ('{1,1}'::integer[]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 492
+(12 rows)
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r2, r3, r4, r5, n, r1
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: r2, r3, r4, r5, n, r1
+         Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5, r5n.n
+         Presorted Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+               Output: r2, r3, r4, r5, n, r1
+               Index Cond: (r5n.r1 = ANY ('{1,1}'::integer[]))
+               Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
+               Merge Stream Key: r5n.r1
+               Merge Streams: 2
+               Merge Cond: (r5n.r1 = ANY ('{1,1}'::integer[]))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 492
+(17 rows)
+
+ r2 | r3 | r4 | r5 |   n   | r1 
+----+----+----+----+-------+----
+  0 |  0 |  2 |  5 | 52001 |  1
+  0 |  0 |  2 |  6 | 62001 |  1
+  0 |  0 |  4 |  8 | 84001 |  1
+  0 |  0 |  7 |  9 | 97001 |  1
+  0 |  0 |  8 |  9 | 98001 |  1
+(5 rows)
+
+ r2 | r3 | r4 | r5 |   n   | r1 
+----+----+----+----+-------+----
+  0 |  0 |  2 |  5 | 52001 |  1
+  0 |  0 |  2 |  6 | 62001 |  1
+  0 |  0 |  4 |  8 | 84001 |  1
+  0 |  0 |  7 |  9 | 97001 |  1
+  0 |  0 |  8 |  9 | 98001 |  1
+(5 rows)
+
 -- Non-const in RHS (like var ref)
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, r2, 2) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
@@ -3861,6 +3922,68 @@ CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, r4, r5);
 
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+-- Only duplicates in IN
+\set query ':P :Q SELECT r3, r4, r5, n, r2 FROM r5n WHERE r2 IN (1, 1) ORDER BY r3, r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r3, r4, r5, n, r2
+   ->  Sort (actual rows=5 loops=1)
+         Output: r3, r4, r5, n, r2
+         Sort Key: r5n.r3, r5n.r4, r5n.r5, r5n.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=541 loops=1)
+               Output: r3, r4, r5, n, r2
+               Index Cond: (r5n.r2 = ANY ('{1,1}'::bigint[]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 541
+(12 rows)
+
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r3, r4, r5, n, r2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: r3, r4, r5, n, r2
+         Sort Key: r5n.r3, r5n.r4, r5n.r5, r5n.n
+         Presorted Key: r5n.r3, r5n.r4, r5n.r5
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=6 loops=1)
+               Output: r3, r4, r5, n, r2
+               Index Cond: (r5n.r2 = ANY ('{1,1}'::bigint[]))
+               Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
+               Merge Stream Key: r5n.r2
+               Merge Streams: 2
+               Merge Cond: (r5n.r2 = ANY ('{1,1}'::bigint[]))
+               Storage Table Rows Scanned: 541
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 541
+(18 rows)
+
+ r3 | r4 | r5 |   n   | r2 
+----+----+----+-------+----
+  0 |  0 |  2 | 20013 |  1
+  0 |  0 |  2 | 20015 |  1
+  0 |  0 |  4 | 40014 |  1
+  0 |  0 |  7 | 70011 |  1
+  0 |  0 |  8 | 80019 |  1
+(5 rows)
+
+ r3 | r4 | r5 |   n   | r2 
+----+----+----+-------+----
+  0 |  0 |  2 | 20013 |  1
+  0 |  0 |  2 | 20015 |  1
+  0 |  0 |  4 | 40014 |  1
+  0 |  0 |  7 | 70011 |  1
+  0 |  0 |  8 | 80019 |  1
+(5 rows)
+
 -- Secondary index scan VS merge PK scan
 -- Expected secondary index scan; merge PK scan likely wins due to missing
 -- merge-scan-specific cost model overhead/savings, expected to be fixed by
