@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -653,33 +654,37 @@ public class Provider extends Model {
    * @param instanceTypes Collection of instance types to validate mount points.
    */
   public void validateInstanceTypeMountPoints(Collection<InstanceType> instanceTypes) {
-    List<String> paths = new ArrayList<>();
-    paths.add(getYbHome());
-    instanceTypes.stream()
-        .map(InstanceType::getInstanceTypeDetails)
-        .filter(d -> CollectionUtils.isNotEmpty(d.volumeDetailsList))
-        .flatMap(d -> d.volumeDetailsList.stream())
-        .filter(v -> StringUtils.isNotBlank(v.mountPath))
-        .flatMap(v -> Arrays.stream(v.mountPath.split("[, ]")))
-        .forEach(paths::add);
-    for (int i = 0; i < paths.size(); i++) {
-      for (int j = i + 1; j < paths.size(); j++) {
-        String p1 = paths.get(i);
-        String p2 = paths.get(j);
-        if (Util.isPathSameOrDescendant(p1, p2) || Util.isPathSameOrDescendant(p2, p1)) {
-          String errMsg = null;
-          if (i == 0) {
-            errMsg =
-                String.format(
-                    "YB home directory %s cannot be the same or descendent of the the mount path"
-                        + " %s",
-                    p1, p2);
-          } else {
-            errMsg =
-                String.format(
-                    "Mount path %s cannot be same or descendant of another mount path %s", p1, p2);
+    for (InstanceType instanceType : instanceTypes) {
+      InstanceTypeDetails details = instanceType.getInstanceTypeDetails();
+      if (details == null || CollectionUtils.isEmpty(details.volumeDetailsList)) {
+        continue;
+      }
+      List<String> paths = new ArrayList<>();
+      paths.add(getYbHome());
+      details.volumeDetailsList.stream()
+          .filter(v -> StringUtils.isNotBlank(v.mountPath))
+          .flatMap(v -> Arrays.stream(v.mountPath.split("[, ]")))
+          .forEach(paths::add);
+      for (int i = 0; i < paths.size(); i++) {
+        for (int j = i + 1; j < paths.size(); j++) {
+          String p1 = paths.get(i);
+          String p2 = paths.get(j);
+          if (Util.isPathSameOrDescendant(p1, p2) || Util.isPathSameOrDescendant(p2, p1)) {
+            String errMsg = null;
+            if (i == 0) {
+              errMsg =
+                  String.format(
+                      "YB home directory %s cannot be the same or descendent of the the mount path"
+                          + " %s",
+                      p1, p2);
+            } else {
+              errMsg =
+                  String.format(
+                      "Mount path %s cannot be same or descendant of another mount path %s",
+                      p1, p2);
+            }
+            throw new PlatformServiceException(BAD_REQUEST, errMsg);
           }
-          throw new PlatformServiceException(BAD_REQUEST, errMsg);
         }
       }
     }
