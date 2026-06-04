@@ -33,7 +33,6 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
-DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
 
 namespace yb::pggate {
@@ -179,7 +178,7 @@ bool IsSleepRequired(ash::PggateRPC rpc) {
 
 inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
   return FLAGS_TEST_yb_ash_sleep_at_wait_state_ms > 0 && (
-      FLAGS_TEST_yb_ash_wait_code_to_sleep_at == to_underlying(wait_event) ||
+      ash::TEST_ShouldSleepAtWaitCode(wait_event) ||
       IsSleepRequired(pggate_rpc));
 }
 

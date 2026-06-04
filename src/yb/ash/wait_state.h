@@ -602,4 +602,6 @@ WaitStateTracker& RaftLogWaitStatesTracker();
 WaitStateTracker& SharedMemoryPgPerformTracker();
 WaitStateTracker& MinRunningHybridTimeTracker();
 
+bool TEST_ShouldSleepAtWaitCode(WaitStateCode c);
+
 }  // namespace yb::ash

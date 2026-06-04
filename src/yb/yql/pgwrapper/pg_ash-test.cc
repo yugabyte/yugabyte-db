@@ -92,7 +92,7 @@ class PgWaitEventAuxTest : public PgAshSingleNode {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
-        4 * kTimeMultiplier * kSamplingIntervalMs));
+        2 * kTimeMultiplier * kSamplingIntervalMs));
 
     options->extra_tserver_flags.push_back(Format(
         "--TEST_yb_test_wait_event_aux_to_sleep_at_csv=$0", ConvertToCSV(rpc_list_)));
