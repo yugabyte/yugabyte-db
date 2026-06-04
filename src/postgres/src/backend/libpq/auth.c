@@ -494,8 +494,7 @@ ClientAuthentication(Port *port)
 	 * allowed to run as yb_auto_analyze.
 	 */
 	if (IsYugaByteEnabled() && MyBackendType == YB_AUTO_ANALYZE_BACKEND &&
-		port->hba->auth_method != uaYbTserverKey &&
-		!YBCGetGFlags()->TEST_ysql_bypass_auto_analyze_auth_check)
+		port->hba->auth_method != uaYbTserverKey)
 		ereport(FATAL,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("yb_auto_analyze can only be set if the authentication method "

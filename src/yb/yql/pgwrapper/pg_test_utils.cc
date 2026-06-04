@@ -17,7 +17,10 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/integration-tests/external_mini_cluster.h"
+
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
@@ -155,6 +158,21 @@ void GenerateCSVFileForCopy(
     temp_file << std::endl;
   }
   temp_file.close();
+}
+
+// Reads the given tserver's shared memory and returns its postgres auth key.
+// Useful when an ExternalMiniCluster test wants to authenticate a libpq
+// connection as user=postgres against the hardcoded
+//
+//     local all postgres yb-tserver-key
+//
+// HBA rule -- i.e. real yb-tserver-key auth, the same path production
+// tserver-side code takes via CreateInternalPGConnBuilder.
+Result<uint64_t> GetPostgresAuthKey(ExternalDaemon* ts) {
+  tserver::SharedMemoryManager shared_mem_manager;
+  RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(
+      ts->instance_id().permanent_uuid()));
+  return shared_mem_manager.SharedData()->postgres_auth_key();
 }
 
 } // namespace yb::pgwrapper
