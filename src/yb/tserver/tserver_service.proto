@@ -682,6 +682,17 @@ message DumpTabletDataRequestPB {
   // hashes every table in the tablet (for a colocated tablet, all the colocated tables sharing
   // it); any other table id restricts the scan to that single (colocated or non-colocated) table.
   optional bytes table_id = 4;
+
+  // Optional partition-key sub-range to restrict the scan to, within the scanned table's own key
+  // space. Expressed as raw partition keys (same encoding as PartitionPB.partition_key_start /
+  // partition_key_end), which are independent of physical tablet boundaries and therefore
+  // comparable across clusters (e.g. for xCluster data consistency verification). start_key is
+  // inclusive, end_key is exclusive; an absent/empty bound means the table's start/end. For a
+  // colocated table the server prepends the table's colocation_id/cotable_id prefix, so the range
+  // addresses that table's slice of the shared tablet. A key range scopes a single table, so it
+  // requires a concrete table_id (not the colocation parent id).
+  optional bytes start_key = 5;
+  optional bytes end_key = 6;
 }
 
 message DumpTabletDataResponsePB {

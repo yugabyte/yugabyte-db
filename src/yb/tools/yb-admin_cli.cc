@@ -49,6 +49,7 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_backup.pb.h"
@@ -2893,19 +2894,51 @@ Status unsafe_release_object_locks_global_action(
   return client->ReleaseObjectLocksGlobal(txn_id, subtxn_id);
 }
 
-const auto get_table_hash_args = "<table_id> [read_ht]";
+// Decodes a hex-encoded partition-key argument, rejecting malformed input rather than silently
+// truncating it: strings::a2b_hex drops a trailing odd nibble and turns non-hex bytes into garbage,
+// which would quietly hash the wrong range instead of reporting a bad argument.
+Result<std::string> DecodeHexPartitionKey(const std::string& arg) {
+  SCHECK(
+      arg.size() % 2 == 0, InvalidArgument,
+      Format("hex key '$0' must have an even number of digits", arg));
+  for (const char c : arg) {
+    SCHECK(
+        ascii_isxdigit(static_cast<unsigned char>(c)), InvalidArgument,
+        Format("hex key '$0' contains a non-hex character", arg));
+  }
+  return strings::a2b_hex(arg);
+}
+
+const auto get_table_hash_args = "<table_id> [read_ht] [start_key_hex] [end_key_hex]";
 Status get_table_hash_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1 || args.size() > 2) {
+  if (args.size() < 1 || args.size() > 4) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
   const auto table_id = args[0];
   uint64_t read_ht = 0;
-  if (args.size() == 2) {
+  if (args.size() >= 2 && !args[1].empty()) {
     read_ht = VERIFY_RESULT(CheckedStoll(args[1]));
   }
-  return client->GetTableXorHash(table_id, read_ht);
+  // Optional partition-key sub-range, hex-encoded (same encoding as the partition_key_start /
+  // partition_key_end shown by list_tablets). start_key is inclusive, end_key is exclusive; an
+  // empty argument means unbounded on that side. A key range scopes a single table, so table_id
+  // must be a concrete table (not a colocation parent id) when a range is given.
+  std::string start_key, end_key;
+  if (args.size() >= 3 && !args[2].empty()) {
+    start_key = VERIFY_RESULT(DecodeHexPartitionKey(args[2]));
+  }
+  if (args.size() >= 4 && !args[3].empty()) {
+    end_key = VERIFY_RESULT(DecodeHexPartitionKey(args[3]));
+  }
+  // start_key is inclusive and end_key exclusive, so a bounded range must have start_key < end_key
+  // (raw partition-key byte order, matching the server's comparison). An empty bound is unbounded
+  // on that side and imposes no ordering constraint.
+  SCHECK(
+      start_key.empty() || end_key.empty() || start_key < end_key, InvalidArgument,
+      "start_key must be strictly less than end_key (start_key is inclusive, end_key exclusive)");
+  return client->GetTableXorHash(table_id, read_ht, start_key, end_key);
 }
 
 }  // namespace

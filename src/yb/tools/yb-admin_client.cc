@@ -4922,9 +4922,27 @@ Status ClusterAdminClient::WriteSysCatalogEntryAction(
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t read_ht) {
+namespace {
+// Returns true if a tablet covering partition keys [tablet_start, tablet_end) overlaps the
+// requested range [range_start, range_end). An empty bound is unbounded: -inf for a start, +inf
+// for an end.
+bool PartitionRangeOverlaps(
+    Slice tablet_start, Slice tablet_end, Slice range_start, Slice range_end) {
+  // tablet_start < range_end
+  const bool below_range_end =
+      range_end.empty() || tablet_start.empty() || tablet_start.compare(range_end) < 0;
+  // range_start < tablet_end
+  const bool above_range_start =
+      tablet_end.empty() || range_start.empty() || range_start.compare(tablet_end) < 0;
+  return below_range_end && above_range_start;
+}
+}  // namespace
+
+Status ClusterAdminClient::GetTableXorHash(
+    const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key) {
   uint64_t xor_hash = 0;
   uint64_t row_count = 0;
+  const bool has_key_range = !start_key.empty() || !end_key.empty();
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablet_locations;
   RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablet_locations));
@@ -4940,6 +4958,16 @@ Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t rea
   std::cout << "Read HT: " << ht << std::endl;
 
   for (const auto& location : tablet_locations) {
+    // When a key range is requested, skip tablets that do not overlap it. Each cluster resolves the
+    // (logical) partition-key range to whatever tablets it happens to own, so this filtering is
+    // cluster-independent even when tablet boundaries differ across clusters.
+    if (has_key_range &&
+        !PartitionRangeOverlaps(
+            location.partition().partition_key_start(),
+            location.partition().partition_key_end(), start_key, end_key)) {
+      continue;
+    }
+
     auto leader_replica = std::find_if(
         location.replicas().begin(), location.replicas().end(),
         [](const auto& replica) { return replica.role() == PeerRole::LEADER; });
@@ -4957,6 +4985,14 @@ Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t rea
     req.set_tablet_id(location.tablet_id());
     req.set_read_ht(ht.ToUint64());
     req.set_table_id(table_id);
+    // The same global bounds are passed to every overlapping tablet unchanged: each tablet's scan
+    // only sees rows within its own partition, so the bounds effectively clamp to that tablet.
+    if (!start_key.empty()) {
+      req.set_start_key(start_key.cdata(), start_key.size());
+    }
+    if (!end_key.empty()) {
+      req.set_end_key(end_key.cdata(), end_key.size());
+    }
     RETURN_NOT_OK(tserver_proxy->DumpTabletData(req, &resp, &rpc));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
