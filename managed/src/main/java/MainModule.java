@@ -71,6 +71,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
+import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -221,6 +222,7 @@ public class MainModule extends AbstractModule {
 
     TLSConfig.modifyTLSDisabledAlgorithms(config);
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
+    bind(RuntimeConfigCacheInvalidator.class).asEagerSingleton();
     install(new CustomerConfKeys());
     install(new ProviderConfKeys());
     install(new GlobalConfKeys());
