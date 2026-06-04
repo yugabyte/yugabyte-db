@@ -725,8 +725,8 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		!yb_is_internal_connection)
 	{
 		YbcStatus	reset_status =
-			YBCResetTableMutationCountersAfterAnalyze(YBCGetDatabaseOid(onerel),
-													  YbGetRelfileNodeId(onerel));
+			YBCResetAutoAnalyzeMutationCounters(YBCGetDatabaseOid(onerel),
+												YbGetRelfileNodeId(onerel));
 
 		HandleYBStatusAtErrorLevel(reset_status, WARNING);
 	}

@@ -53,7 +53,7 @@ Status ResetPgAutoAnalyzeMutationCounts(
 // mutation-count persist). The trade-off is accuracy, not safety: under a race the final count may
 // drift slightly (over- or under-counting recently reported mutations), which is acceptable for
 // auto-analyze's heuristic mutation tracking.
-Status SaturatingSubtractPgAutoAnalyzeMutationCounts(
+Status SubtractPgAutoAnalyzeMutationCounts(
     const client::TableHandle& table, client::YBSession& session,
     std::span<const PgAutoAnalyzeMutationSnapshot> snapshots);
 

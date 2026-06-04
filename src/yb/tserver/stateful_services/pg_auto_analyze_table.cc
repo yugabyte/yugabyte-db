@@ -108,7 +108,7 @@ Status ResetPgAutoAnalyzeMutationCounts(
   return Status::OK();
 }
 
-Status SaturatingSubtractPgAutoAnalyzeMutationCounts(
+Status SubtractPgAutoAnalyzeMutationCounts(
     const client::TableHandle& table, client::YBSession& session,
     std::span<const PgAutoAnalyzeMutationSnapshot> snapshots) {
   if (snapshots.empty()) {

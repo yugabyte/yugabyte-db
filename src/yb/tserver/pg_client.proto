@@ -153,8 +153,8 @@ service PgClientService {
 
   rpc QueryAutoAnalyze(PgQueryAutoAnalyzeRequestPB) returns (PgQueryAutoAnalyzeResponsePB);
 
-  rpc ResetTableMutationCountersAfterAnalyze(PgResetTableMutationCountersAfterAnalyzeRequestPB)
-      returns (PgResetTableMutationCountersAfterAnalyzeResponsePB);
+  rpc ResetAutoAnalyzeMutationCounters(PgResetAutoAnalyzeMutationCountersRequestPB)
+      returns (PgResetAutoAnalyzeMutationCountersResponsePB);
 
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
@@ -1363,12 +1363,12 @@ message PgAutoAnalyzeDataPB {
   bytes last_analyze_info = 3;
 }
 
-message PgResetTableMutationCountersAfterAnalyzeRequestPB {
+message PgResetAutoAnalyzeMutationCountersRequestPB {
   uint32 database_oid = 1;
   uint32 table_relfilenode_oid = 2;
 }
 
-message PgResetTableMutationCountersAfterAnalyzeResponsePB {
+message PgResetAutoAnalyzeMutationCountersResponsePB {
   AppStatusPB status = 1;
 }
 

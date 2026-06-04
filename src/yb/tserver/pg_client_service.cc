@@ -2989,9 +2989,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
-  Status ResetTableMutationCountersAfterAnalyze(
-      const PgResetTableMutationCountersAfterAnalyzeRequestPB& req,
-      PgResetTableMutationCountersAfterAnalyzeResponsePB* resp, rpc::RpcContext* context) {
+  Status ResetAutoAnalyzeMutationCounters(
+      const PgResetAutoAnalyzeMutationCountersRequestPB& req,
+      PgResetAutoAnalyzeMutationCountersResponsePB* resp, rpc::RpcContext* context) {
     if (!FLAGS_ysql_enable_auto_analyze_infra || !FLAGS_ysql_enable_auto_analyze) {
       return Status::OK();
     }

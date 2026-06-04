@@ -773,7 +773,7 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
   auto session = VERIFY_RESULT(GetYBSession(
       FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
   auto* table = VERIFY_RESULT(GetServiceTable());
-  RETURN_NOT_OK(SaturatingSubtractPgAutoAnalyzeMutationCounts(*table, *session, snapshots));
+  RETURN_NOT_OK(SubtractPgAutoAnalyzeMutationCounts(*table, *session, snapshots));
 
   return Status::OK();
 }

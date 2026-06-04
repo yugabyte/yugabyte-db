@@ -1244,8 +1244,8 @@ Result<tserver::PgQueryAutoAnalyzeResponsePB> PgApiImpl::QueryAutoAnalyze(PgOid 
     return pg_session_->pg_client().QueryAutoAnalyze(db_oid);
 }
 
-Status PgApiImpl::ResetTableMutationCountersAfterAnalyze(const PgObjectId& table_id) {
-  return pg_session_->pg_client().ResetTableMutationCountersAfterAnalyze(table_id);
+Status PgApiImpl::ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+  return pg_session_->pg_client().ResetAutoAnalyzeMutationCounters(table_id);
 }
 
 Result<YbcPgColumnInfo> PgApiImpl::GetColumnInfo(YbcPgTableDesc table_desc, int16_t attr_number) {

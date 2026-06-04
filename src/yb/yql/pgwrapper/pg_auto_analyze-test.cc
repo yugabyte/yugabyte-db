@@ -581,14 +581,14 @@ TEST_F(PgAutoAnalyzeTest, MutationCountHelperResetAndSaturatingSubtract) {
       .mutations = 10,
   };
   auto session = NewSession();
-  ASSERT_OK(stateful_service::SaturatingSubtractPgAutoAnalyzeMutationCounts(
+  ASSERT_OK(stateful_service::SubtractPgAutoAnalyzeMutationCounts(
       table, *session, std::span(&snapshot, 1)));
   ASSERT_OK(WaitForTableMutationCount(table_id, 5));
 
   ASSERT_OK(SetTableMutationCountInCQLTable(table_id, 5));
   snapshot.mutations = 10;
   session = NewSession();
-  ASSERT_OK(stateful_service::SaturatingSubtractPgAutoAnalyzeMutationCounts(
+  ASSERT_OK(stateful_service::SubtractPgAutoAnalyzeMutationCounts(
       table, *session, std::span(&snapshot, 1)));
   ASSERT_OK(WaitForTableMutationCount(table_id, 0));
 

@@ -77,7 +77,7 @@ class TserverXClusterContextIf;
     (IsNamespacePartOfCDCSDK) \
     (ListClones) \
     (QueryAutoAnalyze) \
-    (ResetTableMutationCountersAfterAnalyze) \
+    (ResetAutoAnalyzeMutationCounters) \
     (ListLiveTabletServers) \
     (ListSlotEntries) \
     (ListReplicationSlots) \

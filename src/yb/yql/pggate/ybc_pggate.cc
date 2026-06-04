@@ -3232,9 +3232,9 @@ YbcStatus YBCQueryAutoAnalyze(
   return YBCStatusOK();
 }
 
-YbcStatus YBCResetTableMutationCountersAfterAnalyze(
+YbcStatus YBCResetAutoAnalyzeMutationCounters(
     YbcPgOid database_oid, YbcPgOid table_relfilenode_oid) {
-  return ToYBCStatus(pgapi->ResetTableMutationCountersAfterAnalyze(
+  return ToYBCStatus(pgapi->ResetAutoAnalyzeMutationCounters(
       PgObjectId(database_oid, table_relfilenode_oid)));
 }
 
