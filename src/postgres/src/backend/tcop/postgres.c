@@ -1246,19 +1246,18 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 
 	/*
 	 * YB: query_string may be NULL for protocol messages that don't carry a
-	 * query (e.g. Close, Describe, Flush, Sync). YbRedactPasswordIfExists
-	 * would dereference it, so skip redaction in that case.
+	 * query (e.g. Close, Describe, Flush, Sync). YBCDistTraceStartRootSpan
+	 * requires a non-NULL query pointer (DCHECK / string_view), so we use an
+	 * empty string in that case.
 	 */
-	const char *redacted_query_string = (is_query_string_redacted || query_string == NULL)
-		? query_string : YbRedactPasswordIfExists(query_string, CMDTAG_UNKNOWN);
+	const char *redacted_query_string =
+		query_string == NULL ? ""
+							 : is_query_string_redacted ? query_string
+														: YbRedactPasswordIfExists(query_string,
+																				   CMDTAG_UNKNOWN);
 
-	/*
-	 * redacted_query_string may be NULL for protocol messages that don't carry
-	 * a query (e.g. Close, Describe, Flush, Sync).
-	 */
-	YbTraceparentResult tp_result = redacted_query_string
-		? YbExtractTraceParentFromComment(redacted_query_string, traceparent)
-		: YB_TRACEPARENT_NO_COMMENT;
+	YbTraceparentResult tp_result =
+		YbExtractTraceParentFromComment(redacted_query_string, traceparent);
 
 	/* YB: GUC comment traceparent is higher priority over SQL comment traceparent. */
 	if (yb_guc_remote_span_ctx)
@@ -8054,6 +8053,9 @@ YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 	while (isspace((unsigned char) *pos))
 		pos++;
 
+	if (strlen(pos) < YB_TRACEPARENT_KEY_PREFIX_LEN)
+		return YB_TRACEPARENT_NO_COMMENT;
+
 	if (pos[0] == '/' && pos[1] == '*')
 	{
 		content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
@@ -8076,8 +8078,7 @@ YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 	 * Require at least 4 chars (the two-char open and two-char close delimiters)
 	 * and verify the query ends with the star-slash close delimiter.
 	 */
-	if (end - query < 2 * YB_TRACEPARENT_COMMENT_DELIMITERS_LEN ||
-		end[-2] != '*' || end[-1] != '/')
+	if (end - query < YB_TRACEPARENT_KEY_PREFIX_LEN || end[-2] != '*' || end[-1] != '/')
 		return YB_TRACEPARENT_NO_COMMENT;
 
 	/* Scan backwards to find the slash-star that opens the trailing comment. */
