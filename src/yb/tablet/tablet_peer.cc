@@ -867,7 +867,7 @@ Status TabletPeer::RunLogGC(bool rollover) {
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Unable to reset cdc min replicated index " << s;
   }
-  int64_t min_log_index;
+  log::MinRetainLogIndexInfo min_log_index;
   if (VLOG_IS_ON(2)) {
     std::string details;
     min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex(&details));
@@ -1010,7 +1010,8 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
   return result;
 }
 
-Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
+Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
+    std::string* details) const {
   if (PREDICT_FALSE(!log_)) {
     auto status = STATUS(Uninitialized, "Log not ready (tablet peer not yet initialized?)");
     LOG(DFATAL) << status;
@@ -1028,7 +1029,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
 
   // If we never have written to the log, no need to proceed.
   if (min_index == 0) {
-    return min_index;
+    return log::MinRetainLogIndexInfo{min_index};
   }
 
   // Next, we interrogate the anchor registry.
@@ -1133,11 +1134,18 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     }
   }
 
+  // Index xrepl (CDCSDK/xCluster) still needs the source to retain. This is the same value Log GC
+  // applies as its soft xrepl floor; bundling it here gives remote bootstrap and GC one source of
+  // truth. Returns int64 max when no xrepl consumer constrains retention.
+  const int64_t log_index_needed_by_cdc = log_->GetXReplMinReplicatedIndex();
+
   if (details) {
     *details += Format("Earliest needed log index: $0\n", min_index);
+    *details += Format(
+        "Log index needed by xrepl (CDCSDK/xCluster): $0\n", log_index_needed_by_cdc);
   }
 
-  return min_index;
+  return log::MinRetainLogIndexInfo{min_index, log_index_needed_by_cdc};
 }
 
 Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
@@ -1166,7 +1174,7 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
+  const auto min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
   RETURN_NOT_OK(log_->GetGCableDataSize(min_op_idx, retention_size));
   return Status::OK();
 }
