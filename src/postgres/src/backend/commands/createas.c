@@ -65,7 +65,7 @@ typedef struct
 	CommandId	output_cid;		/* cmin to insert in output tuples */
 	int			ti_options;		/* table_tuple_insert performance options */
 	BulkInsertState bistate;	/* bulk insert state */
-	MemoryContext yb_per_tuple_context; /* YB: per-tuple context to avoid memory leak */
+	MemoryContext yb_per_tuple_context; /* YB: per-tuple context to avoid unbounded memory growth */
 } DR_intorel;
 
 /* utility functions for CTAS definition creation */
