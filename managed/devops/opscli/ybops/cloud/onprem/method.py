@@ -273,6 +273,10 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                  help='Skip check for time synchronization.')
         self.parser.add_argument("--yb_home_dir", default=YB_HOME_DIR,
                                  help="YB-Home directory path, if not default.")
+        self.parser.add_argument(
+            "--yb_user_home",
+            default=None,
+            help="Home directory for the yugabyte OS user (for testing overrides).")
 
     def test_file_readable(self, remote_shell, path):
         node_file_verify = remote_shell.run_command_raw("test -r {}".format(path))
@@ -327,6 +331,8 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                 cmd += " --install_node_exporter"
             if args.air_gap:
                 cmd += " --airgap"
+            if args.yb_user_home:
+                cmd += " --yb_user_home {}".format(args.yb_user_home)
 
             rc, stdout, stderr = remote_exec_command(self.extra_vars, cmd)
 
@@ -344,7 +350,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             print(output)
         else:
             input = PreflightCheckInput()
-            input.ybHomeDir = YB_HOME_DIR
+            input.ybHomeDir = args.yb_home_dir
             input.airGapInstall = args.air_gap
             input.installNodeExporter = args.install_node_exporter
             input.mountPaths.extend(self.cloud.get_mount_points_csv(args).split(","))
