@@ -612,4 +612,6 @@ WaitStateTracker& SharedMemoryPgPerformTracker();
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
 WaitStateTracker& MinRunningHybridTimeTracker();
 
+bool TEST_ShouldSleepAtWaitCode(WaitStateCode c);
+
 }  // namespace yb::ash
