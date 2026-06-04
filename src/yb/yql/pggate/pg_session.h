@@ -299,7 +299,6 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   const WaitEventWatcher& wait_event_watcher_;
   TablespaceCache tablespace_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
-  bool last_op_skipped_intents_ = false;
 };
 
 template<class PB>

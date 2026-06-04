@@ -61,6 +61,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/pgsql_utils.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
@@ -117,6 +118,23 @@ bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
   // Use async writes for transactional writes in YSQL, or if the test flag is enabled.
   return FLAGS_ysql_enable_write_pipelining && table_type == YBTableType::PGSQL_TABLE_TYPE &&
          !txn_id.IsNil();
+}
+
+bool OpSkipIntents(const YBOperation& op) {
+  switch (op.type()) {
+    case YBOperation::Type::PGSQL_READ:
+      return HasSkipIntents(down_cast<const YBPgsqlReadOp&>(op).request());
+    case YBOperation::Type::PGSQL_WRITE:
+      return HasSkipIntents(down_cast<const YBPgsqlWriteOp&>(op).request());
+    case YBOperation::Type::QL_READ:     [[fallthrough]];
+    case YBOperation::Type::QL_WRITE:    [[fallthrough]];
+    case YBOperation::Type::REDIS_READ:  [[fallthrough]];
+    case YBOperation::Type::REDIS_WRITE: [[fallthrough]];
+    case YBOperation::Type::PGSQL_LOCK:
+      return false;
+  }
+  LOG(FATAL) << "Internal error: unknown operation: " << op.type();
+  return false;
 }
 
 }  // namespace
@@ -311,17 +329,8 @@ void Batcher::Add(YBOperationPtr op) {
     return;
   }
 
-  const bool skip_intents =
-      (op->type() == YBOperation::Type::PGSQL_WRITE &&
-       down_cast<YBPgsqlWriteOp*>(op.get())->skip_intents()) ||
-      (op->type() == YBOperation::Type::PGSQL_READ &&
-       down_cast<YBPgsqlReadOp*>(op.get())->skip_intents());
-  if (ops_.empty()) {
-    skip_intents_ = skip_intents;
-  } else {
-    CHECK_EQ(skip_intents_, skip_intents)
-        << "PG should only send all skip intents ops, or all normal ops.";
-  }
+  LOG_IF(FATAL, PREDICT_FALSE(!ops_.empty() && SkipIntents() != OpSkipIntents(*op)))
+      << "PG should only send all skip intents ops, or all normal ops.";
   ops_.emplace_back(std::move(op));
 }
 
@@ -641,10 +650,7 @@ rpc::ProxyCache& Batcher::proxy_cache() const {
 }
 
 YBTransactionPtr Batcher::transaction() const {
-  if (skip_intents_) {
-    return nullptr;
-  }
-  return transaction_;
+  return SkipIntents() ? nullptr : transaction_;
 }
 
 const std::string& Batcher::proxy_uuid() const {
@@ -700,7 +706,7 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     .tablet = tablet,
     .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
     .need_consistent_read = need_consistent_read,
-    .skip_intents = skip_intents_,
+    .skip_intents = SkipIntents(),
     .arena = arena_,
     .ops = InFlightOps(group.begin, group.end),
     .need_metadata = group.need_metadata
@@ -926,6 +932,10 @@ void Batcher::HandleAsyncWriteResponse(
         shared_from_this(), tablet.tablet_id(), table, op_id);
     wait_for_async_write_rpc->SendRpc();
   }
+}
+
+bool Batcher::SkipIntents() const {
+  return !ops_.empty() && OpSkipIntents(*ops_.front());
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

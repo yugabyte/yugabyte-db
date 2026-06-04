@@ -37,6 +37,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/dist_trace.h"
+#include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -363,6 +364,19 @@ Status Flush(ExplicitRowLockBuffer& row_lock_buffer) {
   return status;
 }
 
+YB_DEFINE_ENUM(BufferedOpsFlushReason, (kTableConflict)(kMixedSkipIntents));
+
+PgFlushDebugContext GetFlushDebugContext(const PgTableDesc& table, BufferedOpsFlushReason reason) {
+  switch(reason) {
+    case BufferedOpsFlushReason::kTableConflict:
+      return PgFlushDebugContext::ConflictingRead(
+          table.pg_table_id().object_oid, table.table_name().table_name());
+    case BufferedOpsFlushReason::kMixedSkipIntents:
+      return PgFlushDebugContext::SwitchSkipIntentsMode();
+  }
+  FATAL_INVALID_ENUM_VALUE(BufferedOpsFlushReason, reason);
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -410,15 +424,7 @@ class PgSession::RunHelper {
             << ", table name: " << table.table_name().table_name()
             << ", table relfilenode id: " << table.relfilenode_id();
 
-    bool skip_intents = op->skip_intents();
     auto& buffer = pg_session_.buffer_;
-    if (!buffer.IsEmpty() && skip_intents != pg_session_.last_op_skipped_intents_) {
-        VLOG(1) << "Flushing buffer due to skip_intents mode switch. "
-                << "new skip_intents mode: " << skip_intents;
-        RETURN_NOT_OK(pg_session_.FlushBufferedEntities(
-            PgFlushDebugContext::SwitchSkipIntentsMode()));
-    }
-    pg_session_.last_op_skipped_intents_ = skip_intents;
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).
@@ -528,9 +534,8 @@ class PgSession::RunHelper {
   }
 
   Status Add(const PgTableDesc& table, PgsqlOpPtr&& op) {
-    if (IsTableAffectedByOperations(
-        table.pg_table_id(), *op,
-        {ops_info_.ops.relations().data(), ops_info_.num_ops_taken_from_buffer})) {
+    const auto reason = ReasonForBufferedOpsFlush(table, *op);
+    if (reason) {
       auto [buffered_ops, ops] =
           Split(std::move(ops_info_.ops), ops_info_.num_ops_taken_from_buffer);
       DCHECK_EQ(ops_info_.num_ops_taken_from_buffer, buffered_ops.Size());
@@ -538,12 +543,31 @@ class PgSession::RunHelper {
       ops_info_.num_ops_taken_from_buffer = 0;
 
       RETURN_NOT_OK(VERIFY_RESULT(pg_session_.FlushOperations(
-        std::move(buffered_ops), IsTransactional(),
-        PgFlushDebugContext::ConflictingRead(
-            table.pg_table_id().object_oid, table.table_name().table_name()))).Get());
+        std::move(buffered_ops), IsTransactional(), GetFlushDebugContext(table, *reason))).Get());
     }
     ops_info_.ops.Add(std::move(op), table);
     return Status::OK();
+  }
+
+  std::optional<BufferedOpsFlushReason> ReasonForBufferedOpsFlush(
+      const PgTableDesc& table, const PgsqlOp& op) {
+    if (!ops_info_.num_ops_taken_from_buffer) {
+      return std::nullopt;
+    }
+    if (IsTableAffectedByOperations(
+        table.pg_table_id(), op,
+        {ops_info_.ops.relations().data(), ops_info_.num_ops_taken_from_buffer})) {
+      return BufferedOpsFlushReason::kTableConflict;
+    }
+
+    if (SkipIntents(*ops_info_.ops.operations().front()) != SkipIntents(op)) {
+      // All new operations in a single batch must have the same skip_intents state.
+      // If this fails, it means a previous op in the same batch was added successfully
+      // but this op mismatched, implying the batch contains mixed skip_intents.
+      DCHECK_EQ(ops_info_.ops.Size(), ops_info_.num_ops_taken_from_buffer);
+      return BufferedOpsFlushReason::kMixedSkipIntents;
+    }
+    return std::nullopt;
   }
 
   struct OperationsInfo {
@@ -730,7 +754,6 @@ Status PgSession::StopOperationsBuffering() {
 void PgSession::ResetOperationsBuffering() {
   buffer_.Clear();
   buffering_enabled_ = false;
-  last_op_skipped_intents_ = false;
 }
 
 Result<SetupPerformOptionsAccessorTag> PgSession::FlushBufferedEntities(
@@ -744,7 +767,6 @@ SetupPerformOptionsAccessorTag PgSession::ClearState() {
   buffer_.Clear();
   explicit_row_lock_buffer_.Clear();
   ClearAllInsertOnConflictBuffers();
-  last_op_skipped_intents_ = false;
   return {};
 }
 
@@ -1196,6 +1218,9 @@ Result<PerformFuture> PgSession::DoRunAsync(
         return runner.Apply(table, op);
     };
   for (auto table_op = first_table_op; !table_op.IsEmpty(); table_op = generator()) {
+    RSTATUS_DCHECK_EQ(
+        SkipIntents(**first_table_op.operation), SkipIntents(**table_op.operation),
+        IllegalState, "All operations in a batch must have the same skip_intents state");
     RETURN_NOT_OK(processor(table_op));
   }
   auto result = runner.Flush(std::move(cache_options));

@@ -174,6 +174,8 @@ void EnsureCapacity(InFlightOps* in_flight_ops, BufferingSettings buffering_sett
 } // namespace
 
 void BufferableOperations::Add(PgsqlOpPtr&& op, const PgTableDesc& table) {
+  DCHECK(operations_.empty() || SkipIntents(*operations_.front()) == SkipIntents(*op))
+      << "All operations within BufferableOperations must have the same skip_intents state.";
   operations_.push_back(std::move(op));
   relations_.push_back(table.pg_table_id());
 }
@@ -377,12 +379,10 @@ class PgOperationBuffer::Impl {
   }
 
   Status DoAdd(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional) {
-    // Check for buffered operation related to same row.
-    // If multiple operations are performed in context of single RPC second operation will not
-    // see the results of first operation on DocDB side.
-    // Multiple operations on same row must be performed in context of different RPC.
-    // Flush is required in this case.
     auto& target = transactional ? txn_ops_ : ops_;
+    if (!target.Empty() && SkipIntents(*op) != SkipIntents(*target.operations().front())) {
+      RETURN_NOT_OK(Flush(PgFlushDebugContext::SwitchSkipIntentsMode()));
+    }
     if (target.Empty()) {
       target.Reserve(buffering_settings_.max_batch_size);
     }
@@ -408,6 +408,11 @@ class PgOperationBuffer::Impl {
       RETURN_NOT_OK(SendBuffer(PgFlushDebugContext::BufferFull(total_bytes_in_buffer_ + payload)));
     }
 
+    // Check for buffered operation related to same row.
+    // If multiple operations are performed in context of single RPC second operation will not
+    // see the results of first operation on DocDB side.
+    // Multiple operations on same row must be performed in context of different RPC.
+    // Flush is required in this case.
     if (!packed_rows.empty()) {
       // Optimistically assume that we don't have conflicts with existing operations.
       bool has_conflict = false;
