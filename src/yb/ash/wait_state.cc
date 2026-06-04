@@ -43,8 +43,8 @@ DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::kIsDebug,
     "Add a trace line whenever the wait state code is updated.");
 DEFINE_test_flag(uint32, yb_ash_sleep_at_wait_state_ms, 0,
     "How long to sleep/delay when entering a particular wait state.");
-DEFINE_test_flag(uint32, yb_ash_wait_code_to_sleep_at, 0,
-    "If enabled, add a sleep/delay when we enter the specified wait state.");
+DEFINE_test_flag(string, yb_ash_wait_code_to_sleep_at, "",
+    "Comma-separated list of wait state codes (as integers) at which to sleep/delay.");
 DEPRECATE_FLAG(bool, TEST_export_ash_uuids_as_hex_strings, "04_2024");
 DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
     " of the method tserver is running");
@@ -57,6 +57,25 @@ DEFINE_test_flag(string, yb_test_wait_event_aux_to_sleep_at_csv, "",
 
 namespace yb::ash {
 
+bool TEST_ShouldSleepAtWaitCode(WaitStateCode c) {
+  const auto& csv = FLAGS_TEST_yb_ash_wait_code_to_sleep_at;
+  if (csv.empty()) {
+    return false;
+  }
+  auto code_str = std::to_string(std::to_underlying(c));
+  for (size_t pos = 0; pos < csv.size();) {
+    auto end = csv.find(',', pos);
+    if (end == std::string::npos) {
+      end = csv.size();
+    }
+    if (csv.compare(pos, end - pos, code_str) == 0) {
+      return true;
+    }
+    pos = end + 1;
+  }
+  return false;
+}
+
 namespace {
 
 // The current wait_state_ for this thread.
@@ -64,7 +83,7 @@ thread_local WaitStateInfoPtr threadlocal_wait_state_;
 std::atomic_bool TEST_entered_wait_state_code_for_sleep{false};
 
 void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
-  if (FLAGS_TEST_yb_ash_wait_code_to_sleep_at != std::to_underlying(c)) {
+  if (!TEST_ShouldSleepAtWaitCode(c)) {
     return;
   }
 
