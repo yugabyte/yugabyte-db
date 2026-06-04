@@ -661,7 +661,7 @@ consider_index_join_outer_rels(PlannerInfo *root, RelOptInfo *rel,
 
 static bool
 yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
-						   IndexOptInfo *index, IndexClauseSet *clauses,
+						   IndexOptInfo *index, IndexClauseSet *clauseset,
 						   List **bitindexpaths)
 {
 	List	   *indexpaths;
@@ -671,24 +671,24 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	Relids		batchedrelids = NULL;
 	Relids		unbatchablerelids = NULL;
+	Relids		total_relids = NULL;
+	Relids		inner_relids = bms_make_singleton(index->rel->relid);
 
 	Bitmapset  *batched_inner_attnos = NULL;
 
 	List	   *batched_rinfos = NIL;
-
-	Relids		inner_relids = bms_make_singleton(index->rel->relid);
+	List	   *unbatchable_clauses = NIL;
+	IndexClauseSet *batched_clauseset = clauseset;
 
 	bool		batched_paths_added = false;
-
-	Relids		total_relids = NULL;
 
 	/* Skip non-YB indexes */
 	if (!IsYBRelationById(index->indexoid))
 		return false;
 
-	for (size_t i = 0; i < INDEX_MAX_KEYS && clauses->nonempty; i++)
+	for (size_t i = 0; i < INDEX_MAX_KEYS && batched_clauseset->nonempty; i++)
 	{
-		List	   *colclauses = clauses->indexclauses[i];
+		List	   *colclauses = batched_clauseset->indexclauses[i];
 
 		foreach(lc, colclauses)
 		{
@@ -726,6 +726,22 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				pull_varattnos(innervar,
 							   index->rel->relid,
 							   &batched_inner_attnos);
+			}
+			else if (yb_enable_base_scans_cost_model &&
+					 rinfo->yb_batched_rinfo == NIL)
+			{
+				/*
+				 * #31760 Defer this clause to the resolution loop below rather
+				 * than disabling batching of its outer rels outright, so it
+				 * can instead be relegated to the join filter.
+				 * Only clauses that have no batched form at all (e.g. an
+				 * inequality) are deferred: a clause that is batchable in some
+				 * other join direction (yb_batched_rinfo populated) but not
+				 * this one is left to disable batching here, so the join order
+				 * that can batch it is preferred over stranding the inner
+				 * relation on a non-batchable scan.
+				 */
+				unbatchable_clauses = lappend(unbatchable_clauses, rinfo);
 			}
 			else
 			{
@@ -786,14 +802,35 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			continue;
 
 		Assert(bms_overlap(rinfo->clause_relids, batchedrelids));
-		/*
-		 * If an unbatchable clause involves a batched relid, stop that relid
-		 * from being batched.
-		 */
 		if (!batched)
 		{
-			unbatchablerelids = bms_union(unbatchablerelids,
-										  rinfo->clause_relids);
+			/*
+			 * This qpqual references a batched relid but has no batched form
+			 * usable at this scan.  There are three cases:
+			 *
+			 * 1. It also references a relation not available here (neither this
+			 *    scan nor a batched outer relation), so it can't be enforced at
+			 *    this scan anyway.  Under CBO, leave it to the join above to
+			 *    enforce or relegate, keeping this scan batched.
+			 *
+			 * 2. It has no batched form at all: defer it for relegation to the
+			 *    join filter.
+			 *
+			 * 3. It has a batched form, just not one usable here: unbatch the
+			 *    relids it involves so a join order that can batch it is
+			 *    preferred.
+			 */
+			if (yb_enable_base_scans_cost_model &&
+				!bms_is_subset(rinfo->clause_relids,
+							   bms_union(inner_relids, batchedrelids)))
+				continue;
+
+			if (yb_enable_base_scans_cost_model &&
+				rinfo->yb_batched_rinfo == NIL)
+				unbatchable_clauses = lappend(unbatchable_clauses, rinfo);
+			else
+				unbatchablerelids = bms_union(unbatchablerelids,
+											  rinfo->clause_relids);
 			continue;
 		}
 
@@ -838,17 +875,110 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 									   index->rel->relid);
 	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
 
+	/*
+	 * An unbatchable clause can be relegated to the join filter only if
+	 * every relation it references is the inner relation or a batched outer
+	 * relation, so that the batched nested loop join just above the inner scan
+	 * can evaluate it.  A clause referencing any other relation cannot, so it
+	 * must stay in the inner scan; to keep batched and unbatched access to a
+	 * relation consistent (#20495), that forces every batched relation the
+	 * clause touches to become unbatched.  Unbatching one relation can make
+	 * another clause non-relegatable, so iterate to a fixed point.  Afterwards
+	 * every clause still overlapping batchedrelids is relegatable, so the
+	 * index-clause filtering below and the ppi_clauses filtering in
+	 * get_baserel_parampathinfo need only test for overlap.
+	 */
+	if (unbatchable_clauses != NIL)
+	{
+		bool		changed;
+
+		do
+		{
+			changed = false;
+			foreach(lc, unbatchable_clauses)
+			{
+				RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+				Relids		batched_touched;
+				Relids		relegatable_rels;
+
+				if (bms_is_empty(batchedrelids))
+					break;
+
+				batched_touched = bms_intersect(rinfo->clause_relids,
+												batchedrelids);
+				if (bms_is_empty(batched_touched))
+				{
+					bms_free(batched_touched);
+					continue;
+				}
+
+				relegatable_rels = bms_union(inner_relids, batchedrelids);
+				if (!bms_is_subset(rinfo->clause_relids, relegatable_rels))
+				{
+					/* not relegatable; force its batched rels unbatched */
+					batchedrelids = bms_difference(batchedrelids,
+												   batched_touched);
+					changed = true;
+				}
+				bms_free(relegatable_rels);
+				bms_free(batched_touched);
+			}
+		} while (changed && !bms_is_empty(batchedrelids));
+	}
+
 	Assert(!root->yb_cur_batched_relids);
 	root->yb_cur_batched_relids = batchedrelids;
 
 	/*
-	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
-	 * clauses only if the index AM supports them natively, and skip any such
-	 * clauses for index columns after the first (so that we produce ordered
-	 * paths if possible).
+	 * An index clause that references a batched outer relation but cannot
+	 * itself be batched must not become a (batched) index condition: a
+	 * non-equality such as "inner.col < outer.col" has no batched
+	 * "= ANY(ARRAY[...])" form, and pushing it down would reference the batched
+	 * outer relation with a scalar parameter, mixing batched and unbatched
+	 * access to it (#20495).  Build the batched index path from a clause set
+	 * that excludes such clauses; they are re-applied as a join filter.  The
+	 * original clause set is left intact for the unbatched paths built by the
+	 * caller.
+	 */
+	IndexClauseSet alt_batched_clauseset;
+	if (!bms_is_empty(batchedrelids))
+	{
+		bool		excluded_any = false;
+
+		MemSet(&alt_batched_clauseset, 0, sizeof(alt_batched_clauseset));
+		for (int i = 0; i < INDEX_MAX_KEYS; i++)
+		{
+			foreach(lc, clauseset->indexclauses[i])
+			{
+				IndexClause *iclause = (IndexClause *) lfirst(lc);
+				RestrictInfo *rinfo = iclause->rinfo;
+
+				if (bms_overlap(rinfo->clause_relids, batchedrelids) &&
+					!yb_get_batched_restrictinfo(rinfo, batchedrelids,
+												 index->rel->relids))
+				{
+					excluded_any = true;
+					continue;
+				}
+
+				alt_batched_clauseset.indexclauses[i] =
+					lappend(alt_batched_clauseset.indexclauses[i], iclause);
+				alt_batched_clauseset.nonempty = true;
+			}
+		}
+
+		if (excluded_any)
+			batched_clauseset = &alt_batched_clauseset;
+	}
+
+	/*
+	 * Build simple index paths using clauses in the clauseset.  Allow
+	 * ScalarArrayOpExpr clauses only if the index AM supports them natively,
+	 * and skip any such clauses for index columns after the first (so that
+	 * we produce ordered paths if possible).
 	 */
 	indexpaths = build_index_paths(root, rel,
-								   index, clauses,
+								   index, batched_clauseset,
 								   NIL /* yb_bitmap_idx_pushdowns */ ,
 								   index->predOK,
 								   ST_ANYSCAN,
@@ -864,7 +994,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	{
 		indexpaths = list_concat(indexpaths,
 								 build_index_paths(root, rel,
-												   index, clauses,
+												   index, batched_clauseset,
 												   NIL /* yb_bitmap_idx_pushdowns */ ,
 												   index->predOK,
 												   ST_ANYSCAN,
