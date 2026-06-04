@@ -13,7 +13,9 @@ menu:
     parent: explore-change-data-capture
     weight: 240
 type: indexpage
-showRightNav: true
+rightNav:
+  hideH3: true
+  hideH4: true
 ---
 
 ## Overview

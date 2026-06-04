@@ -47,18 +47,30 @@ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
-### is_server_ready
+### cdc_release_barriers_on_tablet
 
-Prints the number of tablets that have not yet bootstrapped.
-If all tablets have bootstrapped, returns "Tablet server is ready".
+Available in v2024.2.9.1 and later, v2025.2.4.0 and later, and v2026.1.
+
+Releases [CDC retention barriers](../../additional-features/change-data-capture/using-logical-replication/advanced-configuration/#retention-of-resources) on the specified tablet on the target YB-TServer. Use this command when CDC retention barriers remain on a tablet after a replication slot or CDC stream is dropped.
+
+Run the command against every YB-TServer that hosts a peer for the tablet. Obtain the tablet ID using [list_tablets](../yb-admin/#list-tablets) command.
+
+{{< warning title="Warning" >}}
+
+This is an operational troubleshooting command. Use it only when CDC retention barriers are stuck on a specific tablet and normal barrier advancement (for example, after dropping the slot) does not release them.
+
+{{< /warning >}}
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+yb-ts-cli [ --server_address=<host>:<port> ] cdc_release_barriers_on_tablet <tablet-id>
 ```
 
-* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the YB-TServer that hosts the tablet. Default is `localhost:9100`.
+* *tablet-id*: The identifier of the tablet on which to release CDC retention barriers.
+
+On success, the command prints a confirmation that CDC retention barriers were released on the tablet at the specified peer.
 
 ### clear_server_metacache
 
@@ -112,31 +124,6 @@ yb-ts-cli [ --server_address=<host>:<port> ] compact_vector_index <tablet-id> [<
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 * *tablet-id*: The identifier of the tablet that contains the vector index(es).
 * *vector-index-id1*, *vector-index-id2*, ...: Optional. Table IDs of specific vector indexes to compact. If omitted, all vector indexes on the tablet are compacted.
-
-### cdc_release_barriers_on_tablet
-
-Available in v2024.2.9.1 and later.
-
-Releases [CDC retention barriers](../../additional-features/change-data-capture/using-logical-replication/advanced-configuration/#retention-of-resources) on the specified tablet on the target YB-TServer. Use this command when CDC retention barriers remain on a tablet after a replication slot or CDC stream is dropped.
-
-Run the command against every YB-TServer that hosts a peer for the tablet. Obtain the tablet ID using [yb-admin](../yb-admin/) or the YugabyteDB Anywhere UI.
-
-{{< warning title="Warning" >}}
-
-This is an operational troubleshooting command. Use it only when CDC retention barriers are stuck on a specific tablet and normal barrier advancement (for example, after dropping the slot) does not release them.
-
-{{< /warning >}}
-
-**Syntax**
-
-```sh
-yb-ts-cli [ --server_address=<host>:<port> ] cdc_release_barriers_on_tablet <tablet-id>
-```
-
-* *host*:*port*: The *host* and *port* of the YB-TServer that hosts the tablet. Default is `localhost:9100`.
-* *tablet-id*: The identifier of the tablet on which to release CDC retention barriers.
-
-On success, the command prints a confirmation that CDC retention barriers were released on the tablet at the specified peer.
 
 ### count_intents
 
@@ -228,6 +215,19 @@ yb-ts-cli [ --server_address=<host>:<port> ] flush_vector_index <tablet-id> [<ve
 * *tablet-id*: The identifier of the tablet that contains the vector index(es).
 * *vector-index-id1*, *vector-index-id2*, ...: Optional. Table IDs of specific vector indexes to flush. If omitted, all vector indexes on the tablet are flushed.
 
+### is_server_ready
+
+Prints the number of tablets that have not yet bootstrapped.
+If all tablets have bootstrapped, returns "Tablet server is ready".
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
 ### list_tablets
 
 Lists the tablets on the specified tablet server, displaying the following properties: column name, tablet ID, state, table name, shard, and schema.
@@ -239,6 +239,20 @@ yb-ts-cli [ --server_address=<host>:<port> ] list_tablets
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+### refresh_flags
+
+Refresh flags that are loaded from the configuration file. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
+
+Each process needs to have the following command issued, for example, issuing the command on one YB-TServer won't update the flags on the other YB-TServers.
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
+```
+
+* *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
 
 ### reload_certificates
 
@@ -306,20 +320,6 @@ yb-ts-cli [ --server_address=<host>:<port> ] status
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 For an example, see [Return the status of a tablet server](#return-the-status-of-a-tablet-server)
-
-### refresh_flags
-
-Refresh flags that are loaded from the configuration file. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
-
-Each process needs to have the following command issued, for example, issuing the command on one YB-TServer won't update the flags on the other YB-TServers.
-
-**Syntax**
-
-```sh
-yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
-```
-
-* *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
 
 ## Flags
 
