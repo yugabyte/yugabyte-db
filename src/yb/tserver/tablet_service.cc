@@ -3956,10 +3956,12 @@ Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
   if (req.has_table_id() && !req.table_id().empty() && !IsColocationParentTableId(req.table_id())) {
     target_table_id = req.table_id();
   }
+  Slice start_key = req.has_start_key() ? Slice(req.start_key()) : Slice();
+  Slice end_key = req.has_end_key() ? Slice(req.end_key()) : Slice();
   RETURN_NOT_OK(
       tablet::DumpTabletData(
           *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, deadline, xor_hash,
-          row_count, target_table_id));
+          row_count, target_table_id, start_key, end_key));
   DumpTabletDataResponsePB resp;
   resp.set_row_count(row_count);
   resp.set_xor_hash(xor_hash);
