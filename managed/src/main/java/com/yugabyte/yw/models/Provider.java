@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -31,6 +32,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PostRemove;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
@@ -638,5 +640,10 @@ public class Provider extends Model {
   @JsonIgnore
   public boolean isManualOnprem() {
     return getCloudCode() == CloudType.onprem && getDetails().skipProvisioning;
+  }
+
+  @PostRemove
+  public void cleanupProvider() {
+    RuntimeConfigCacheInvalidator.invalidateScopeForDeletedEntity(getUuid());
   }
 }
