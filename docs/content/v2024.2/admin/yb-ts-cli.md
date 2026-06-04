@@ -101,9 +101,9 @@ yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet-id>
 
 Available in v2024.2.9.1 and later.
 
-Releases [CDC retention barriers](../../additional-features/change-data-capture/using-logical-replication/advanced-configuration/#retention-of-resources) on the specified tablet on the target YB-TServer. Use this command when intent retention barriers remain on a tablet after a logical replication slot or CDC stream is dropped—for example, on index tablets that were added to the CDC state table but are not part of the publication—so that intent SST files can be cleaned up.
+Releases [CDC retention barriers](../../additional-features/change-data-capture/using-logical-replication/advanced-configuration/#retention-of-resources) on the specified tablet on the target YB-TServer. Use this command when CDC retention barriers remain on a tablet after a replication slot or CDC stream is dropped.
 
-Run the command against the YB-TServer that hosts a peer for the tablet. Obtain the tablet ID from [yb-admin](../yb-admin/) or the YugabyteDB Anywhere UI.
+Run the command against every YB-TServer that hosts a peer for the tablet. Obtain the tablet ID from [yb-admin](../yb-admin/) or the YugabyteDB Anywhere UI.
 
 {{< warning title="Warning" >}}
 

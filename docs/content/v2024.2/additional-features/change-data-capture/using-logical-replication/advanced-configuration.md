@@ -40,5 +40,5 @@ When using FULL or DEFAULT replica identities, CDC preserves previous row values
 
 The [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) flag governs the maximum retention period (default 8 hours). Be aware that any interruption in CDC consumption for extended periods using these replica identities may degrade read performance. This happens because compaction activities are halted in the database with these replica identities, leading to inefficient key lookups as reads must traverse multiple SST files.
 
-If intent retention barriers remain stuck on a tablet after dropping a replication slot (for example, on index tablets that are not part of the publication), use the [cdc_release_barriers_on_tablet](../../../../admin/yb-ts-cli/#cdc-release-barriers-on-tablet) `yb-ts-cli` command (v2024.2.9.1+) on the YB-TServer that hosts the tablet.
+If CDC retention barriers remain stuck on a tablet after dropping a replication slot (for example, on index tablets that are not part of the publication), use the [cdc_release_barriers_on_tablet](../../../../admin/yb-ts-cli/#cdc-release-barriers-on-tablet) `yb-ts-cli` command (v2024.2.9.1+) on each YB-TServer that hosts the peer of the tablet.
 {{< /warning >}}
