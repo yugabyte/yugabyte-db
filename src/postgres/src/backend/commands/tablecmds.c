@@ -26199,16 +26199,16 @@ YbATCreateSimilarForeignKey(HeapTuple tuple, const char *fk_name,
 													 Anum_pg_constraint_confdelsetcols,
 													 &is_confdelsetcols_null);
 
-	int16		conkey[numkeys];
-	int16		confkey[numkeys];
-	Oid			pfeqop[numkeys];
-	Oid			ppeqop[numkeys];
-	Oid			ffeqop[numkeys];
+	int16		conkey[INDEX_MAX_KEYS];
+	int16		confkey[INDEX_MAX_KEYS];
+	Oid			pfeqop[INDEX_MAX_KEYS];
+	Oid			ppeqop[INDEX_MAX_KEYS];
+	Oid			ffeqop[INDEX_MAX_KEYS];
 
 	Oid			index_oid;
-	Oid			index_opclasses[numkeys];
+	Oid			index_opclasses[INDEX_MAX_KEYS];
 
-	int16		fkdelsetcols[numkeys];
+	int16		fkdelsetcols[INDEX_MAX_KEYS];
 	int			numFkDeleteSetCols = 0;
 
 	if (!is_confdelsetcols_null)
@@ -26363,7 +26363,7 @@ YbATValidateChangeForeignKeyType(HeapTuple constraint_tuple, Relation base_rel,
 {
 	Datum		conkey_val = YBGetNotNullConstraintAttr(constraint_tuple, conkey);
 	int			numkeys = ARR_DIMS(DatumGetArrayTypeP(conkey_val))[0];
-	int16		conkey[numkeys];
+	int16		conkey[INDEX_MAX_KEYS];
 
 	memcpy(conkey, ARR_DATA_PTR(DatumGetArrayTypeP(conkey_val)),
 		   numkeys * sizeof(int16));
@@ -26371,7 +26371,7 @@ YbATValidateChangeForeignKeyType(HeapTuple constraint_tuple, Relation base_rel,
 	Datum		confkey_val = YBGetNotNullConstraintAttr(constraint_tuple, confkey);
 
 	Assert(numkeys == ARR_DIMS(DatumGetArrayTypeP(confkey_val))[0]);
-	int16		confkey[numkeys];
+	int16		confkey[INDEX_MAX_KEYS];
 
 	memcpy(confkey, ARR_DATA_PTR(DatumGetArrayTypeP(confkey_val)),
 		   numkeys * sizeof(int16));

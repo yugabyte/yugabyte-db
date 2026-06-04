@@ -725,7 +725,8 @@ YbUuidToDatum(const unsigned char *data, int64 bytes, const YbcPgTypeAttrs *type
 	if (bytes != UUID_LEN)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DATA_CORRUPTED),
-						errmsg("unexpected size for UUID (%lld)", bytes)));
+						errmsg("unexpected size for UUID (" INT64_FORMAT ")",
+							   bytes)));
 	}
 
 	uuid = (pg_uuid_t *) palloc(sizeof(pg_uuid_t));
@@ -786,7 +787,8 @@ YbIntervalToDatum(const void *data, int64 bytes, const YbcPgTypeAttrs *type_attr
 	if (bytes != sz)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DATA_CORRUPTED),
-						errmsg("unexpected size for Interval (%lld)", bytes)));
+						errmsg("unexpected size for Interval (" INT64_FORMAT ")",
+							   bytes)));
 	}
 	Interval   *result = palloc(sz);
 

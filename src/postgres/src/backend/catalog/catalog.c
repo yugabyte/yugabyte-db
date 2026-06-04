@@ -763,7 +763,7 @@ YbGetAllRelfilenodes()
 		yb_is_calling_internal_sql_for_ddl = saved_yb_is_calling_internal_sql_for_ddl;
 		if (spirc != SPI_OK_SELECT)
 			elog(ERROR, "failed to get relfilenode tuple");
-		YBC_LOG_INFO("SPI_processed = %llu", (unsigned long long) SPI_processed);
+		YBC_LOG_INFO("SPI_processed = " UINT64_FORMAT, SPI_processed);
 	}
 	PG_CATCH();
 	{
