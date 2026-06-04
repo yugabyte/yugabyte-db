@@ -202,7 +202,7 @@ orafce_concat2(PG_FUNCTION_ARGS)
 	text	   *arg1 = NULL,
 			   *arg2 = NULL,
 			   *result;
-	int32		len1 = 0,
+	int			len1 = 0,
 				len2 = 0,
 				len;
 	char	   *ptr;
@@ -218,6 +218,13 @@ orafce_concat2(PG_FUNCTION_ARGS)
 		len2 = VARSIZE_ANY_EXHDR(arg2);
 	}
 
+	/* paranoia ... probably should throw error instead? */
+	if (len1 < 0)
+		len1 = 0;
+
+	if (len2 < 0)
+		len2 = 0;
+
 	/* default behave should be compatible with Postgres */
 	if (!orafce_varchar2_null_safe_concat)
 	{
@@ -230,7 +237,6 @@ orafce_concat2(PG_FUNCTION_ARGS)
 			PG_RETURN_NULL();
 	}
 
-	/* hard work, we should to concat strings */
 	len = len1 + len2 + VARHDRSZ;
 
 	result = (text *) palloc(len);

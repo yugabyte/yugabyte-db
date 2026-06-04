@@ -547,7 +547,17 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 	src = PG_GETARG_TEXT_PP(0);
 	s = VARDATA_ANY(src);
 	srclen = VARSIZE_ANY_EXHDR(src);
+
+	if (scrlen < 0)
+		scrlen = 0;
+
+	if ((Size) srclen > (MaxAllocSize - VARHDRSZ) / MAX_CONVERSION_GROWTH)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("requested length too large")));
+
 	dst = (text *) palloc(VARHDRSZ + srclen * MAX_CONVERSION_GROWTH);
+
 	d = VARDATA(dst);
 
 	for (i = 0; i < srclen; i++)
