@@ -8,6 +8,7 @@ src/postgres/third-party-extensions/documentdb,,https://github.com/documentdb/do
 src/postgres/third-party-extensions/hypopg,,https://github.com/HypoPG/hypopg,97026c0bff16b905c555acdd82e15979fa6b9781
 src/postgres/third-party-extensions/orafce,,https://github.com/orafce/orafce,6adbd66c429dabb828f10d764d356824efeb8396
 src/postgres/third-party-extensions/pg_cron,,https://github.com/citusdata/pg_cron,TODO
+src/postgres/third-party-extensions/pg_duckdb,,https://github.com/duckdb/pg_duckdb,7b0db3737a1ab2dfb182b742322426e3c4b500af
 src/postgres/third-party-extensions/pg_hint_plan,,https://github.com/ossc-db/pg_hint_plan,7a41e7ba94c8769895fefbb282f6943067adac2e
 src/postgres/third-party-extensions/pg_parquet,,https://github.com/CrunchyData/pg_parquet,9092f65678b9fcfc59e8918c74ad25259034c089
 src/postgres/third-party-extensions/pg_partman,,https://github.com/pgpartman/pg_partman,2330063ad29a65d169b1947ac35705a237774fb6
