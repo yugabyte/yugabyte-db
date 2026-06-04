@@ -1151,6 +1151,7 @@ public class PlacementInfoUtil {
   private static boolean checkReplicasDistributionIsCorrect(
       PlacementInfo placementInfo, int rf, UUID defaultRegionUUID, boolean throwInIncorrect) {
     AtomicInteger zoneCount = new AtomicInteger();
+    AtomicInteger zonesWithExcessiveNodes = new AtomicInteger();
     Set<String> zeroZones = new HashSet<>();
     Set<String> incorrectlyPlacedReplicas = new HashSet<>();
     AtomicInteger totalReplicas = new AtomicInteger();
@@ -1191,6 +1192,9 @@ public class PlacementInfoUtil {
                   && !azInfo.region.uuid.equals(defaultRegionUUID)) {
                 incorrectlyPlacedReplicas.add(az.name);
               }
+              if (az.replicationFactor > 0 && az.numNodesInAZ > az.replicationFactor) {
+                zonesWithExcessiveNodes.incrementAndGet();
+              }
               totalReplicas.addAndGet(az.replicationFactor);
             });
     if (!result.get()) {
@@ -1208,7 +1212,10 @@ public class PlacementInfoUtil {
       }
       return false;
     }
-    if (rf == 3 && zoneCount.get() == 2 && totalReplicas.get() == 2) {
+    if (rf == 3
+        && zoneCount.get() == 2
+        && totalReplicas.get() == 2
+        && zonesWithExcessiveNodes.get() == 2) {
       LOG.debug("Special case when RF=3 and number of zones=2, allowing 1-1 distribution");
       return true;
     }
@@ -1309,7 +1316,9 @@ public class PlacementInfoUtil {
         placedReplicas++;
       }
     }
-    if (rf == 3 && sortedAZs.size() == 2 && placedReplicas == 2) {
+    int zonesWithExcessiveNodes =
+        (int) sortedAZs.stream().filter(az -> az.numNodesInAZ > az.replicationFactor).count();
+    if (rf == 3 && sortedAZs.size() == 2 && placedReplicas == 2 && zonesWithExcessiveNodes == 2) {
       LOG.debug("Special case when RF=3 and number of zones= 2, using 1-1 distribution");
       return;
     }
