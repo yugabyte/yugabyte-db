@@ -20,6 +20,7 @@
 #include "yb/dockv/reader_projection.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/qlexpr/ql_expr.h"
+#include "yb/util/status_format.h"
 
 namespace yb::tablet {
 
@@ -116,13 +117,17 @@ Status AppendToFile(WritableFile* file, std::optional<std::ostringstream>& strin
 
 Status DumpTabletData(
     Tablet& tablet, std::shared_future<client::YBClient*> client_future, WritableFile* file,
-    uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash, uint64_t& row_count) {
+    uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash, uint64_t& row_count,
+    const TableId& target_table_id) {
   xor_hash = 0;
   row_count = 0;
 
   auto tablet_metadata = tablet.metadata();
   // Get all tables of the tablet. For non-colocated tables, this will return a single table.
   auto table_ids = tablet_metadata->GetAllColocatedTables();
+  // When a single table is requested, track whether we actually saw it so we can reject a
+  // table_id that does not belong to this tablet rather than silently returning an empty hash.
+  bool target_table_found = false;
 
   HybridTime read_hybrid_time;
   if (read_ht) {
@@ -149,12 +154,18 @@ Status DumpTabletData(
     if (IsColocationParentTableId(table_id)) {
       continue;
     }
+    // Restrict to the requested table when one was specified (used to hash a single table of a
+    // colocated tablet). An empty target_table_id hashes every table in the tablet.
+    if (!target_table_id.empty() && table_id != target_table_id) {
+      continue;
+    }
     auto table_info = VERIFY_RESULT(tablet_metadata->GetTableInfo(table_id));
     // Vector indexes are colocated with the base table and contain the same data, so are currently
     // skipped.
     if (table_info->IsVectorIndex()) {
       continue;
     }
+    target_table_found = true;
 
     TableInfoPB table_info_pb;
     table_info->ToPB(&table_info_pb);
@@ -184,6 +195,10 @@ Status DumpTabletData(
       }
     }
   }
+
+  SCHECK(
+      target_table_id.empty() || target_table_found, InvalidArgument,
+      Format("Requested table $0 was not found in this tablet", target_table_id));
 
   return Status::OK();
 }
