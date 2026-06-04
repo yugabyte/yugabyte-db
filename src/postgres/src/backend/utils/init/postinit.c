@@ -404,7 +404,7 @@ YbHandleAuthPassthroughFailureAndGetElevel()
 {
 	Assert(YbIsAuthPassthroughInProgress(MyProcPort));
 
-	MyProcPort->yb_has_auth_passthrough_failed = true;
+	MyProcPort->yb_has_auth_passthrough_finished = true;
 	YbSendFatalForLogicalConnectionPacket();
 
 	return YbAuthFailedErrorLevel(true /* auth_passthrough */ );
