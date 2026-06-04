@@ -508,6 +508,8 @@ extern void YbInitPostgres(const char *in_dbname, Oid dboid,
 						   char *out_dbname,
 						   const YbcPgInitPostgresInfo *yb_info);
 extern long YbGetAuthorizedConnections();
+extern void YbLogAuthPassthroughConnReceived(struct Port *port);
+extern void YbLogAuthPassthroughConnAuthenticated(struct Port *port);
 
 extern void BaseInit(void);
 

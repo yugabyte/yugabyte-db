@@ -1,6 +1,9 @@
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.gson.JsonObject;
@@ -8,14 +11,17 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
@@ -438,4 +444,134 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
           "Expected failure when setting PGC_SUSET GUC var in startup packet. Got exception: ", e);
     }
   }
+
+  // Verify that the auth passthrough path emits the expected "connection received"
+  // and "connection authorized" log lines when log_connections is enabled.
+  // Restarts the cluster with log_connections=on as connection logging happens
+  // before GUCs are parsed.
+  @Test
+  public void testAuthPassthroughConnectionLogging() throws Exception {
+
+    // Attach a listener to capture PG log lines from each tserver.
+    PgLogListener listener = new PgLogListener();
+    miniCluster.getTabletServers().entrySet()
+        .forEach(entry -> entry.getValue().getLogPrinter().addErrorListener(listener));
+
+    checkIfAuthLogLineEmitted(listener, 10_000, false);
+
+    // Restart with log_connections enabled (PGC_SU_BACKEND).
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ysql_pg_conf_csv", "log_connections=on");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), flags);
+
+    listener.clear();
+    miniCluster.getTabletServers().entrySet()
+        .forEach(entry -> entry.getValue().getLogPrinter().addErrorListener(listener));
+
+    // Recreate the test role on the fresh cluster.
+    SetupTestUser();
+
+    checkIfAuthLogLineEmitted(listener, 10_000, true);
+
+
+  }
+
+  private void checkIfAuthLogLineEmitted(PgLogListener listener, long timeout_ms,
+    boolean expect_success) throws Exception {
+    // Connect via the connection manager to trigger the auth passthrough path.
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withUser(TEST_USERNAME)
+             .withPassword(TEST_PASSWORD)
+             .connect();
+         Statement statement = connection.createStatement()) {
+      statement.executeQuery("SELECT 1");
+    }
+
+    // Check if the "connection received" log line was emitted.
+    String received = listener.waitForSubstring(
+        "connection received (Auth Passthrough): host=", timeout_ms);
+    if (expect_success) {
+      assertNotNull("Expected 'connection received (Auth Passthrough)' log line", received);
+    } else {
+      assertNull("Expected no 'connection received (Auth Passthrough)' log line", received);
+    }
+
+    // Assert that the "connection authorized" log line was emitted with the
+    // correct user and the "(via Auth Passthrough)" suffix.
+    String authorized = listener.waitForSubstring(
+        "connection authorized: user=" + TEST_USERNAME, timeout_ms);
+    if (expect_success) {
+      assertTrue("Expected '(via Auth Passthrough)' in authorized log line",
+        authorized != null && authorized.contains("(via Auth Passthrough)"));
+    } else {
+      // Ideally, we shouldn't see *any* log line for newly authorized conns
+      assertNull("Expected no 'connection authorized' log line", authorized);
+    }
+  }
+
+  /**
+   * LogErrorListener that captures PostgreSQL log lines containing
+   * "Auth Passthrough" from the tserver's LogPrinter stream.
+   *
+   * Only lines matching the marker are buffered to avoid unbounded memory
+   * growth from the full tserver log output. Callers use
+   * {@link #waitForSubstring} to block until a line containing a given
+   * substring appears or a timeout expires.
+   */
+  private static class PgLogListener implements LogErrorListener {
+    private static final String AUTH_PASSTHROUGH_MARKER = "Auth Passthrough";
+
+    private final List<String> lines = new ArrayList<>();
+    private final Object lock = new Object();
+
+    @Override
+    public void handleLine(String line) {
+      if (!line.contains(AUTH_PASSTHROUGH_MARKER)) {
+        return;
+      }
+      synchronized (lock) {
+        lines.add(line);
+        lock.notifyAll();
+      }
+    }
+
+    @Override
+    public void reportErrorsAtEnd() {}
+
+    /**
+     * Blocks until a buffered line containing {@code substring} is found,
+     * or {@code timeoutMs} elapses. Returns the matching line, or
+     * {@code null} on timeout.
+     */
+    public String waitForSubstring(String substring, long timeoutMs)
+        throws InterruptedException {
+      long deadline = System.nanoTime() + timeoutMs * 1_000_000L;
+      int scanFrom = 0;
+
+      while (true) {
+        synchronized (lock) {
+          for (int i = scanFrom; i < lines.size(); i++) {
+            if (lines.get(i).contains(substring)) {
+              return lines.get(i);
+            }
+          }
+          scanFrom = lines.size();
+
+          long waitMs = (deadline - System.nanoTime()) / 1_000_000L;
+          if (waitMs <= 0) {
+            return null;
+          }
+          lock.wait(waitMs);
+        }
+      }
+    }
+
+    public void clear() {
+      synchronized (lock) {
+        lines.clear();
+      }
+    }
+  }
+
 }
