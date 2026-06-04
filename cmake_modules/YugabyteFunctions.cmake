@@ -965,6 +965,7 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
   add_custom_command(
     OUTPUT "${output_executable_path}"
     COMMAND ${cmd_args}
+    COMMAND "${BUILD_SUPPORT_DIR}/check_lto_dependencies.sh" "${output_executable_path}"
     DEPENDS "${dynamic_exe_name}"
   )
 
