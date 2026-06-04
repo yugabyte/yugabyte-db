@@ -14,6 +14,7 @@ install_node_exporter=false
 skip_ntp_check=false
 mount_points=""
 yb_home_dir="/home/yugabyte"
+yb_user_home="/home/yugabyte"
 # This should be a comma separated key-value list. Associative arrays were add in bash 4.0 so
 # they might not exist in the provided instance depending on how old it is.
 result_kvs=""
@@ -225,7 +226,7 @@ check_yugabyte_user_home_if_exists() {
       update_result_json "Home Directory Exists" true
       # Normalize path.
       actual_home_dir=$(readlink -m "$actual_home_dir" 2>&1)
-      if [[ "$actual_home_dir" != "$yb_home_dir" ]]; then
+      if [[ "$actual_home_dir" != "$yb_user_home" ]]; then
         update_result_json "Home Directory Matches" false
       else
         update_result_json "Home Directory Matches" true
@@ -360,9 +361,9 @@ Options:
   --mount_points MOUNT_POINTS
     Commas separated list of mount paths to check permissions of.
   --yb_home_dir HOME_DIR
-    Home directory of yugabyte user.
-  --sudo_pass_file
-    Bash file containing the sudo password variable.
+    Yugabyte software home directory.
+  --yb_user_home HOME_DIR
+    Home directory of the yugabyte OS user (defaults to --yb_home_dir if unset).
   --ports_to_check PORTS_TO_CHECK
     Comma-separated list of ports to check availability
   --tmp_dir TMP_DIRECTORY
@@ -418,17 +419,12 @@ while [[ $# -gt 0 ]]; do
       yb_home_dir=$(readlink -m "$yb_home_dir" 2>&1)
       shift
     ;;
-    --tmp_dir)
-      tmp_dir="$2"
+    --yb_user_home)
+      yb_user_home="$2"
       shift
     ;;
-    --sudo_pass_file)
-      if [ -f $2 ]; then
-        . $2
-        rm -rf "$2"
-      else
-        err_msg "Failed to find sudo_pass_file: $2"
-      fi
+    --tmp_dir)
+      tmp_dir="$2"
       shift
     ;;
     --cleanup)
@@ -445,6 +441,18 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if id "yugabyte" &>/dev/null; then
+  # Set to the current user's home directory.
+  # This is the behavior in YNP precheck.
+  yb_user_home=$(getent passwd "yugabyte" | cut -d: -f6)
+  echo "Overriding yb_user_home to $yb_user_home from user's home directory"
+else
+  yb_user_home="$yb_home_dir"
+  echo "Using yb_home_dir as yb_user_home: $yb_user_home"
+fi
+
+yb_user_home=$(readlink -m "$yb_user_home" 2>&1)
 
 set_linux_os_name
 preflight_all_checks > /dev/null 2>&1

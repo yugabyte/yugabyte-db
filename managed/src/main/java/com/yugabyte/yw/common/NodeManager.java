@@ -493,6 +493,10 @@ public class NodeManager extends DevopsBase {
         subCommand.add(computedUser);
       }
     } else if (type == NodeCommandType.Precheck) {
+      String ybUserHomeOverride =
+          confGetter
+              .getConfForScope(params.getProvider(), ProviderConfKeys.ybUserHomeOverride)
+              .trim();
       subCommand.add("--precheck_type");
       if (providerDetails.skipProvisioning) {
         subCommand.add("configure");
@@ -505,6 +509,11 @@ public class NodeManager extends DevopsBase {
       }
       subCommand.add("--yb_home_dir");
       subCommand.add(provider.getYbHome());
+      if (StringUtils.isNotEmpty(ybUserHomeOverride)) {
+        log.info("Using yb_user_home override value from provider config: {}", ybUserHomeOverride);
+        subCommand.add("--yb_user_home");
+        subCommand.add(ybUserHomeOverride);
+      }
       if (providerDetails.setUpChrony) {
         subCommand.add("--skip_ntp_check");
       }
