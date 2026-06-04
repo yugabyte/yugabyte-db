@@ -1,4 +1,5 @@
 import { CloudType, Region } from '@app/redesign/helpers/dtos';
+import type { K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { filter, isEmpty, keys, some } from 'lodash';
 import { useContext } from 'react';
 import { TFunction } from 'i18next';
@@ -32,6 +33,7 @@ import { ProxyAdvancedProps } from '../create-universe/steps/advanced-settings/d
 import { getInferredOutageCount, inferResilience } from '../create-universe/CreateUniverseUtils';
 import { NodeAvailabilityProps } from '../create-universe/steps/nodes-availability/dtos';
 import { REPLICATION_FACTOR } from '../create-universe/fields/FieldNames';
+import { AZ_NOT_PREFERRED } from '../create-universe/helpers/constants';
 
 export const getClusterByType = (universeData: Universe, type: ClusterSpecClusterType) => {
   return universeData.spec?.clusters.find((cluster) => cluster.cluster_type === type);
@@ -56,6 +58,35 @@ export const getProviderIcon = (providerCode?: string) => {
   }
 };
 
+export const isKubernetesCluster = (cluster?: ClusterSpec): boolean =>
+  cluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
+
+export const isKubernetesUniverse = (universeData: Universe): boolean => {
+  const primaryCluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
+  return isKubernetesCluster(primaryCluster);
+};
+
+export const getK8sResourceSpecFromNodeSpec = (
+  nodeSpec: ClusterSpec['node_spec'] | undefined,
+  role: 'tserver' | 'master'
+): K8NodeSpec | null => {
+  if (!nodeSpec) return null;
+
+  const raw =
+    role === 'master'
+      ? nodeSpec.k8s_master_resource_spec
+      : nodeSpec.k8s_tserver_resource_spec;
+  if (!raw) return null;
+
+  const cpuCoreCount = Number(raw.cpu_core_count);
+  const memoryGib = Number(raw.memory_gib);
+  if (!Number.isFinite(cpuCoreCount) || !Number.isFinite(memoryGib)) {
+    return null;
+  }
+
+  return { cpuCoreCount, memoryGib };
+};
+
 export function useEditUniverseContext() {
   const context = useContext(EditUniverseContext);
   if (!context) {
@@ -64,10 +95,11 @@ export function useEditUniverseContext() {
   return context;
 }
 
-export const countRegionsAzsAndNodes = (placementSpec: ClusterPlacementSpec) => {
+export const countRegionsAzsAndNodes = (placementSpec: ClusterPlacementSpec| undefined) => {
   let totalRegions = 0;
   let totalAzs = 0;
   let totalNodes = 0;
+  if(!placementSpec) return { totalRegions: 0, totalAzs: 0, totalNodes: 0 };
 
   const regions = placementSpec.cloud_list.map((cloud) => cloud.region_list).flat() ?? [];
   totalRegions += regions.length;
@@ -94,7 +126,7 @@ export const placementSpecToAvailabilityZones = (
         name: az.name ?? '',
         uuid: az.uuid ?? `${regionKey}-${index}`,
         nodeCount: az.num_nodes_in_az ?? 0,
-        preffered: (az.leader_preference ?? 0) - 1
+        preffered: az.leader_preference ?? AZ_NOT_PREFERRED
       }));
     });
     return acc;
@@ -146,7 +178,8 @@ export const getDedicatedCountsForPlacementRegion = (
     universeData,
     placementRegion,
     false,
-    noopT
+    noopT,
+    cluster.uuid!
   ) as Partial<Record<NodeDetailsDedicatedTo, number>>;
   const tFromDetails = fromDetails[NodeDetailsDedicatedTo.TSERVER] ?? 0;
   const mFromDetails = fromDetails[NodeDetailsDedicatedTo.MASTER] ?? 0;
@@ -337,7 +370,8 @@ export const countMasterAndTServerNodesByPlacementRegion = (
   universeData: Universe,
   placementRegion: PlacementRegion,
   render = true,
-  t: TFunction
+  t: TFunction,
+  clusterUuid: string
 ) => {
   const dedicatedNodesCount: Partial<Record<NodeDetailsDedicatedTo, number>> = {
     [NodeDetailsDedicatedTo.MASTER]: 0,
@@ -345,7 +379,7 @@ export const countMasterAndTServerNodesByPlacementRegion = (
   };
 
   placementRegion?.az_list?.forEach((az) => {
-    const nodeDetailsaz = filter(universeData?.info?.node_details_set, { az_uuid: az.uuid });
+    const nodeDetailsaz = filter(universeData?.info?.node_details_set, { az_uuid: az.uuid, placement_uuid: clusterUuid });
     if (!isEmpty(nodeDetailsaz)) {
       nodeDetailsaz.forEach((node) => {
         node.dedicated_to === NodeDetailsDedicatedTo.MASTER
@@ -367,20 +401,36 @@ export const countMasterAndTServerNodesByPlacementRegion = (
   });
 };
 
+const getPlacementSpecFromCluster = (cluster: ClusterSpec | ClusterPartitionSpec): ClusterPlacementSpec | null => {
+  if('placement_spec' in cluster && cluster.placement_spec) {
+    return cluster.placement_spec;
+  }
+  if('placement' in cluster && cluster.placement) {
+    return cluster.placement;
+  }
+  return null;
+};
+
 export const countMasterAndTServerNodes = (
   universeData: Universe,
-  placement: ClusterPlacementSpec
+  cluster?: ClusterSpec | ClusterPartitionSpec
 ) => {
   const dedicatedNodesCount: Partial<Record<NodeDetailsDedicatedTo, number>> = {
     [NodeDetailsDedicatedTo.MASTER]: 0,
     [NodeDetailsDedicatedTo.TSERVER]: 0
   };
-  const azLists = placement?.cloud_list.flatMap((cloud) =>
+
+  if(!cluster) return dedicatedNodesCount;
+
+  const placementSpec = getPlacementSpecFromCluster(cluster);
+  if(!placementSpec) return dedicatedNodesCount;
+
+  const azLists = placementSpec?.cloud_list.flatMap((cloud) =>
     cloud!.region_list!.flatMap((region) => region.az_list)
   );
 
   azLists?.forEach((az) => {
-    const nodeDetailsaz = filter(universeData?.info?.node_details_set, { az_uuid: az?.uuid });
+    const nodeDetailsaz = filter(universeData?.info?.node_details_set, { az_uuid: az?.uuid, placement_uuid: cluster.uuid });
     if (!isEmpty(nodeDetailsaz)) {
       nodeDetailsaz.forEach((node) => {
         node.dedicated_to === NodeDetailsDedicatedTo.MASTER

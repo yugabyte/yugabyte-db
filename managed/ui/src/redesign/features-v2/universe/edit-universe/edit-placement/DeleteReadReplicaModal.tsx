@@ -2,12 +2,12 @@ import { FC } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from 'react-query';
-import { toast } from 'react-toastify';
 import { mui, yba, YBInputField } from '@yugabyte-ui-library/core';
 import { getGetUniverseQueryKey, useDeleteCluster } from '@app/v2/api/universe/universe';
 import { createErrorMessage } from '@app/utils/ObjectUtils';
 import { useDispatch } from 'react-redux';
 import { showTaskInDrawer } from '@app/actions/tasks';
+import { useYBToast } from '../../create-universe/helpers/ToastUtils';
 
 const { Box, Typography } = mui;
 const { YBModal } = yba;
@@ -39,6 +39,7 @@ export const DeleteReadReplicaModal: FC<DeleteReadReplicaModalProps> = ({
   const queryClient = useQueryClient();
   const deleteClusterMutation = useDeleteCluster();
   const dispatch = useDispatch();
+  const toast = useYBToast();
   const {
     control,
     formState: { isValid },

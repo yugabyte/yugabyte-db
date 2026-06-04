@@ -16,10 +16,12 @@ import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.sch
 
 import { ybFormatDate } from '@app/redesign/helpers/DateUtils';
 import {
+  countMasterAndTServerNodes,
   countRegionsAzsAndNodes,
   getClusterByType,
   getProviderIcon,
   getResilientType,
+  hasDedicatedNodes,
   useEditUniverseContext
 } from '../EditUniverseUtils';
 
@@ -88,11 +90,23 @@ export const GeneralTab = () => {
   const encryptionAtRestEnabled = !!universeData?.spec?.encryption_at_rest_spec?.kms_config_uuid;
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
 
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const providerIcon = getProviderIcon(providerCode);
 
-  const primaryRegionStats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
+  let totalNodesCount = 0;
+
+  if(!hasDedicatedNodes(universeData!)) {
+    const primaryRegionStats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
+    const readReplicaRegionStats = countRegionsAzsAndNodes(readReplicaCluster?.placement_spec);
+    totalNodesCount = primaryRegionStats.totalNodes + readReplicaRegionStats.totalNodes;
+  }
+  else{
+    const primaryTServerMasterCount = countMasterAndTServerNodes(universeData!, primaryCluster);
+    const readReplicaTServerMasterCount = countMasterAndTServerNodes(universeData!, readReplicaCluster);
+    totalNodesCount = primaryTServerMasterCount.TSERVER! + primaryTServerMasterCount.MASTER! + readReplicaTServerMasterCount.TSERVER! + readReplicaTServerMasterCount.MASTER!;
+  }
 
   const { data: providers } = useQuery(['providers'], () => fetchProviderList(), {
     select: (data) => data.data
@@ -112,7 +126,7 @@ export const GeneralTab = () => {
         initialBounds={undefined}
         mapContainerProps={MAP_CONTAINER_PROPS}
       >
-        {isGeoPartitionPresent && (
+        {/* {isGeoPartitionPresent && (
           <StyledYBSelect
             dataTestId="yb-select"
             value={mapViewMode}
@@ -122,9 +136,9 @@ export const GeneralTab = () => {
             <Divider />
             <MenuItem value={MapViewMode.GEO_PARTITIONS}>{t('geoPartition')}</MenuItem>
           </StyledYBSelect>
-        )}
+        )} */}
         {mapViewMode === MapViewMode.REGIONS && ((<MapRegionsView regions={r.regions} />) as any)}
-        {mapViewMode === MapViewMode.GEO_PARTITIONS && <MapGeoPartitionView />}
+        {/* {mapViewMode === MapViewMode.GEO_PARTITIONS && <MapGeoPartitionView />} */}
       </YBMaps>
       <StyledArea>
         <Typography variant="subtitle2" sx={{ fontSize: '15px' }}>
@@ -189,7 +203,7 @@ export const GeneralTab = () => {
             <div></div>
             <div>
               <span className="header">{t('totalNodes')}</span>{' '}
-              <span className="value">{primaryRegionStats.totalNodes}</span>
+              <span className="value">{totalNodesCount}</span>
             </div>
             <div>
               <span className="header">{t('dateCreated')}</span>{' '}

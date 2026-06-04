@@ -7,6 +7,7 @@ import {
   ResilienceType
 } from '../../resilence-regions/dtos';
 import { getFaultToleranceNeeded, getNodeCount } from '../../../CreateUniverseUtils';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../../helpers/constants';
 
 type CreateErrorFn = (opts: { path: string; message?: string }) => Yup.ValidationError;
 
@@ -59,10 +60,14 @@ function collectPreferredRankErrors(
     return out;
   }
 
-  const unique = [...uniq(preferredValues)].sort((a, b) => a - b);
-  const min = Math.min(...unique);
+  const unique = [...uniq(preferredValues)]
+    .filter((rank) => rank > AZ_NOT_PREFERRED)
+    .sort((a, b) => a - b);
+  if (unique.length === 0) {
+    return out;
+  }
   const max = Math.max(...unique);
-  for (let i = min; i <= max; i++) {
+  for (let i = AZ_PREFFERED_HIGHEST_RANK; i <= max; i++) {
     if (!unique.includes(i)) {
       out.push(
         createError({

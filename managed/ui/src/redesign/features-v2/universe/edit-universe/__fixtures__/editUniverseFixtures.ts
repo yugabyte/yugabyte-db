@@ -83,6 +83,19 @@ export function makePrimaryPlacementSpec(): ClusterPlacementSpec {
   };
 }
 
+export function makeK8sPlacementSpec(): ClusterPlacementSpec {
+  return {
+    ...makePrimaryPlacementSpec(),
+    cloud_list: [
+      {
+        ...makePrimaryPlacementSpec().cloud_list[0],
+        code: 'kubernetes',
+        region_list: makePrimaryPlacementSpec().cloud_list[0].region_list
+      }
+    ]
+  };
+}
+
 function baseNodeSpec() {
   return {
     instance_type: 'c5.xlarge',
@@ -108,6 +121,41 @@ function primaryCluster(overrides: Record<string, unknown> = {}) {
     node_spec: baseNodeSpec(),
     ...overrides
   };
+}
+
+function k8sNodeSpec(useCustomResources: boolean) {
+  const storageSpec = {
+    volume_size: 100,
+    num_volumes: 1,
+    storage_class: 'standard'
+  };
+  if (!useCustomResources) {
+    return {
+      instance_type: 'yb-k8s-small',
+      dedicated_nodes: false,
+      storage_spec: storageSpec
+    };
+  }
+  return {
+    dedicated_nodes: true,
+    storage_spec: storageSpec,
+    k8s_tserver_resource_spec: {
+      cpu_core_count: 2,
+      memory_gib: 4
+    },
+    k8s_master_resource_spec: {
+      cpu_core_count: 1,
+      memory_gib: 2
+    }
+  };
+}
+
+function k8sPrimaryCluster(useCustomResources: boolean, overrides: Record<string, unknown> = {}) {
+  return primaryCluster({
+    placement_spec: makeK8sPlacementSpec(),
+    node_spec: k8sNodeSpec(useCustomResources),
+    ...overrides
+  });
 }
 
 /** Non–geo-partitioned universe: primary only, no `partitions_spec`. */
@@ -326,6 +374,32 @@ export function makeGeoUniverse(): Universe {
   } as unknown as Universe;
 }
 
+/** Geo-partitioned primary with a single partition; UX should render this like a regular cluster. */
+export function makeSingleGeoPartitionUniverse(): Universe {
+  return {
+    info: {
+      universe_uuid: 'universe-single-geo',
+      arch: 'x86_64',
+      node_details_set: []
+    },
+    spec: {
+      name: 'single-geo-universe',
+      clusters: [
+        primaryCluster({
+          partitions_spec: [
+            {
+              uuid: 'geo-part-1',
+              name: 'partition-us',
+              replication_factor: 1,
+              placement: partitionPlacement(FIXTURE_AZ_1_UUID, 1)
+            }
+          ]
+        })
+      ]
+    }
+  } as unknown as Universe;
+}
+
 export function makeGeoUniverseWithDedicatedNodeDetails(): Universe {
   const u = makeGeoUniverse();
   return {
@@ -359,6 +433,86 @@ export function makeGeoUniverseWithReadReplicaPlacementSpecOnly(): Universe {
     spec: {
       ...u.spec!,
       clusters: [...(u.spec!.clusters as unknown[]), makeReadReplicaClusterPlacementSpecOnly()]
+    }
+  } as unknown as Universe;
+}
+
+export function makeK8sUniverse(useCustomResources: boolean): Universe {
+  return {
+    info: {
+      universe_uuid: useCustomResources ? 'universe-k8s-custom' : 'universe-k8s-instance',
+      arch: 'x86_64',
+      node_details_set: []
+    },
+    spec: {
+      name: 'k8s-universe',
+      clusters: [k8sPrimaryCluster(useCustomResources)]
+    }
+  } as unknown as Universe;
+}
+
+export function makeK8sReadReplicaCluster(useCustomResources: boolean) {
+  return {
+    uuid: FIXTURE_ASYNC_CLUSTER_UUID,
+    cluster_type: ASYNC,
+    replication_factor: 1,
+    num_nodes: 1,
+    provider_spec: { provider: FIXTURE_PROVIDER_UUID },
+    placement_spec: makeK8sPlacementSpec(),
+    node_spec: {
+      ...k8sNodeSpec(useCustomResources),
+      ...(useCustomResources
+        ? {
+            k8s_tserver_resource_spec: {
+              cpu_core_count: 1.5,
+              memory_gib: 3
+            }
+          }
+        : { instance_type: 'yb-k8s-rr-small' })
+    }
+  };
+}
+
+export function makeK8sUniverseWithReadReplica(useCustomResources = true): Universe {
+  return {
+    ...makeK8sUniverse(useCustomResources),
+    spec: {
+      ...makeK8sUniverse(useCustomResources).spec,
+      clusters: [k8sPrimaryCluster(useCustomResources), makeK8sReadReplicaCluster(useCustomResources)]
+    }
+  } as unknown as Universe;
+}
+
+export function makeGeoK8sUniverse(useCustomResources = true): Universe {
+  return {
+    info: {
+      universe_uuid: 'universe-geo-k8s',
+      arch: 'x86_64',
+      node_details_set: []
+    },
+    spec: {
+      name: 'geo-k8s-universe',
+      clusters: [
+        k8sPrimaryCluster(useCustomResources, {
+          partitions_spec: [
+            {
+              uuid: 'geo-k8s-part-1',
+              name: 'partition-us',
+              replication_factor: 1,
+              default_partition: true,
+              placement: {
+                ...partitionPlacement(FIXTURE_AZ_1_UUID, 1),
+                cloud_list: [
+                  {
+                    ...partitionPlacement(FIXTURE_AZ_1_UUID, 1).cloud_list[0],
+                    code: 'kubernetes'
+                  }
+                ]
+              } as ClusterPlacementSpec
+            }
+          ]
+        })
+      ]
     }
   } as unknown as Universe;
 }

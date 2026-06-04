@@ -13,7 +13,6 @@ import {
   PlacementRegion
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
-  countMasterAndTServerNodesByPlacementRegion,
   countRegionsAzsAndNodes,
   countMasterNodesInAz,
   getDedicatedCountsForPlacementRegion,
