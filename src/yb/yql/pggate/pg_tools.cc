@@ -22,11 +22,13 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_utils.h"
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/result.h"
 
 #include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_type.h"
@@ -176,6 +178,12 @@ const YbcPgTableLocalityInfo& TableLocalityMap::Get(PgOid table_id) const {
 
 void TableLocalityMap::Clear() {
   map_.clear();
+}
+
+bool SkipIntents(const PgsqlOp& op) {
+  return op.is_read()
+      ? HasSkipIntents(down_cast<const PgsqlReadOp&>(op).read_request())
+      : HasSkipIntents(down_cast<const PgsqlWriteOp&>(op).write_request());
 }
 
 } // namespace yb::pggate

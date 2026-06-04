@@ -42,6 +42,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
+#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id);
@@ -209,5 +210,7 @@ class TableLocalityMap {
  private:
   std::unordered_map<PgOid, YbcPgTableLocalityInfo> map_;
 };
+
+bool SkipIntents(const PgsqlOp& op);
 
 } // namespace yb::pggate
