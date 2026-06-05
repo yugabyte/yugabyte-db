@@ -6396,6 +6396,17 @@ Status CatalogManager::CDCSDKAllowTableRewrite(
           table_id);
     }
 
+    // Table rewrite is not yet supported for colocated tables on a CDC logical replication
+    // stream. TODO(#31908): Re-enable once colocated rewrite + CDC support is added.
+    auto table = tables_->FindTableOrNull(table_id);
+    if (table && table->colocated()) {
+      return STATUS_FORMAT(
+          NotSupported,
+          "Table rewrite is not supported for colocated table $0 that is part of a CDC logical "
+          "replication stream.",
+          table_id);
+    }
+
     if (!FLAGS_cdc_enable_dynamic_schema_changes) {
       return STATUS_FORMAT(
           NotSupported,

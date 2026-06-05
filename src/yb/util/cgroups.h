@@ -89,10 +89,12 @@ class Cgroup {
   // All values are cumulative since cgroup creation.
   Result<CgroupCpuStats> ReadCpuStats() const;
 
-  void VisitChildren(const std::function<void(Cgroup&)>& visitor);
+  void VisitChildren(const std::function<void(Cgroup&)>& visitor,
+                     const std::function<void(std::span<Cgroup*>)>& sort = {});
 
   void VisitTree(
       const std::function<void(Cgroup&, size_t)>& visitor,
+      const std::function<void(std::span<Cgroup*>)>& sort = {},
       size_t current_depth = 0,
       size_t max_depth = std::numeric_limits<size_t>::max());
 
@@ -175,7 +177,12 @@ class Cgroup {
 //
 // This function must be called before any threads are created so that we can ensure all threads
 // are created in the default thread cgroup.
-Status SetupCgroupManagement(ClearChildCgroups clear);
+//
+// default_cgroup_init should take the root cgroup and return the cgroup to be used as the default
+// thread cgroup. If not provided, /@default is used.
+Status SetupCgroupManagement(
+    ClearChildCgroups clear,
+    const std::function<Result<Cgroup&>(Cgroup&)>& default_cgroup_init = {});
 
 bool CgroupManagementEnabled();
 
@@ -188,16 +195,11 @@ Cgroup* RootCgroup();
 // which means the child cgroups we create get a very small percentage of the total weight when
 // there are a lot of threads, i.e. each child cgroup should ideally have only other cgroups or
 // threads as children, not both.
-// ince our root cgroup contains other cgroups (for each thread pool), we need a sub-cgroup to
+// Since our root cgroup contains other cgroups (for each thread pool), we need a sub-cgroup to
 // place threads in initially, which is the DefaultThreadCgroup.
 // SetupCgroupManagement will initially place threads into this cgroup, until they are moved out
 // explicitly.
 Cgroup* DefaultThreadCgroup();
-
-// Override the default thread cgroup. Called by TServerCgroupManager after it sets up the
-// hierarchy so that thread pools without an explicit cgroup assignment land in @system-med
-// rather than the initial landing zone.
-void SetDefaultThreadCgroup(Cgroup* cgroup);
 
 Result<std::string> GetProcessCpuCgroup(int64_t process_id = -1, bool check_controllers = true);
 

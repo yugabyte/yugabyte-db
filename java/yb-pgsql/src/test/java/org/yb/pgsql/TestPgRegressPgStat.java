@@ -28,14 +28,10 @@ public class TestPgRegressPgStat extends BasePgRegressTest {
   }
 
   @Test
+  // Bypassing conn-mgr builds the cluster with no connection manager, ensuring the
+  // pg_stat_activity table is not affected by conn-mgr worker/backend connections.
+  @BypassConnMgr(reason = BasePgSQLTest.DIFF_BACKEND_TYPE_PG_STAT_ACTIVITY)
   public void testPgStat() throws Exception {
-    // Restart the cluster when test is ran with connection manager to ensure
-    // that the pg_stat_activity table is empty. Before entering into the test
-    // as part of initial setup some queries are executed in initPostgresBefore
-    // on connection manager port. It affects the rows in pg_stat_activity
-    // table with respect to connection manager.
-    skipYsqlConnMgr(BasePgSQLTest.DIFF_BACKEND_TYPE_PG_STAT_ACTIVITY,
-        /* restartCluster */ true);
     runPgRegressTest("yb_pg_stat_schedule");
   }
 }

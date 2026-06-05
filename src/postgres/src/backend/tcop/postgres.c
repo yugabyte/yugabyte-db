@@ -84,6 +84,7 @@
 #include "utils/varlena.h"
 
 /* YB includes */
+#include "catalog/storage.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
 #include "commands/variable.h"
@@ -5267,6 +5268,19 @@ YBIsDmlCommandTag(CommandTag command_tag)
 			command_tag == CMDTAG_DELETE);
 }
 
+static bool
+YBIsTransactionControlCommandTag(CommandTag command_tag)
+{
+	return (command_tag == CMDTAG_COMMIT ||
+			command_tag == CMDTAG_ROLLBACK ||
+			command_tag == CMDTAG_COMMIT_PREPARED ||
+			command_tag == CMDTAG_ROLLBACK_PREPARED ||
+			command_tag == CMDTAG_BEGIN ||
+			command_tag == CMDTAG_START_TRANSACTION ||
+			command_tag == CMDTAG_SAVEPOINT ||
+			command_tag == CMDTAG_RELEASE);
+}
+
 /* Whether we are allowed to restart current query/txn. */
 static bool
 yb_is_retry_possible(ErrorData *edata, int attempt,
@@ -5545,7 +5559,8 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	bool		is_dml = YBIsDmlCommandTag(command_tag);
 
 	if (command_tag == CMDTAG_COPY || command_tag == CMDTAG_COPY_FROM ||
-		command_tag == CMDTAG_ANALYZE)
+		command_tag == CMDTAG_ANALYZE ||
+		YBIsTransactionControlCommandTag(command_tag))
 	{
 		const char *retry_err = psprintf("query layer retries not possible for %s commands",
 										 GetCommandTagName(command_tag));
@@ -5861,6 +5876,14 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 {
 	if (yb_debug_log_internal_restarts)
 		elog(LOG, "Restarting transaction");
+
+	/*
+	 * Clean up pending deletes from the failed attempt. Since we are restarting
+	 * the transaction from the beginning, any physical files scheduled for deletion
+	 * (atCommit=true) should be forgotten, and any physical files created
+	 * (atCommit=false) should be deleted.
+	 */
+	smgrDoPendingDeletes(false);
 
 	/*
 	 * The txn might or might not have performed writes. Reset the state in

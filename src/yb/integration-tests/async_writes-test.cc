@@ -20,6 +20,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver.messages.h"
 #include "yb/tserver/tserver_error.h"
 

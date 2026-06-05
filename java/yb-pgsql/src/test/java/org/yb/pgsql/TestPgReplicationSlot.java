@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -5345,6 +5346,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  // TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+  @Ignore
   @Test
   public void testWithTableRewriteOnColocatedTable() throws Exception {
     setFlagsForDynamicTablesTest(getTServerFlags(), getMasterFlags(),
@@ -5633,6 +5636,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  // TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+  @Ignore
   @Test
   public void testColocatedDropPkThenDropIndex() throws Exception {
     setFlagsForDynamicTablesTest(getTServerFlags(), getMasterFlags(),

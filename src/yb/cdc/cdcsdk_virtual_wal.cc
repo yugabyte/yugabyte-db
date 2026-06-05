@@ -14,6 +14,7 @@
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
+#include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
 
 #include "yb/master/sys_catalog_constants.h"
@@ -110,6 +111,7 @@ DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(cdc_enable_local_rpc_in_virtual_wal);
 
 namespace yb::cdc {
 
@@ -314,8 +316,8 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   if (!parent_tablet_id.empty()) {
     req.set_tablet_id(parent_tablet_id);
   }
-  // TODO(20946): Change this RPC call to a local call.
-  auto cdc_proxy = cdc_service_->GetCDCServiceProxy(hostport);
+
+  auto cdc_proxy = GetCDCServiceProxy(hostport);
   rpc::RpcController rpc;
   rpc.set_deadline(deadline);
   auto s = cdc_proxy->GetTabletListToPollForCDC(req, &resp, &rpc);
@@ -900,8 +902,7 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
 
     RETURN_NOT_OK(PopulateGetChangesRequest(tablet_id, &req));
 
-    // TODO(20946): Change this RPC call to a local call.
-    auto cdc_proxy = cdc_service_->GetCDCServiceProxy(hostport);
+    auto cdc_proxy = GetCDCServiceProxy(hostport);
     rpc::RpcController rpc;
     rpc.set_deadline(deadline);
     auto s = cdc_proxy->GetChanges(req, &resp, &rpc);
@@ -1876,6 +1877,18 @@ bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRec
   }
 
   return false;
+}
+
+std::shared_ptr<CDCServiceProxy> CDCSDKVirtualWAL::GetCDCServiceProxy(HostPort hostport) {
+  if (FLAGS_cdc_enable_local_rpc_in_virtual_wal) {
+    if (local_cdc_service_proxy_ == nullptr) {
+      local_cdc_service_proxy_ =
+          std::make_shared<CDCServiceProxy>(&cdc_service_->client()->proxy_cache(), HostPort());
+    }
+    return local_cdc_service_proxy_;
+  }
+
+  return cdc_service_->GetCDCServiceProxy(hostport);
 }
 
 } // namespace yb::cdc

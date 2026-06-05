@@ -4,6 +4,8 @@ import { useToggle } from 'react-use';
 import {
   countMasterAndTServerNodes,
   getClusterByType,
+  getK8sResourceSpecFromNodeSpec,
+  isKubernetesCluster,
   useEditUniverseContext
 } from '../EditUniverseUtils';
 import {
@@ -21,9 +23,13 @@ export const MasterTserverDedicatedView = () => {
   const { universeData } = useEditUniverseContext();
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
+  const isK8s = isKubernetesCluster(primaryCluster);
+  const tserverK8sResourceSpec = getK8sResourceSpecFromNodeSpec(primaryCluster?.node_spec, 'tserver');
+  const masterK8sResourceSpec =
+    getK8sResourceSpecFromNodeSpec(primaryCluster?.node_spec, 'master') ?? tserverK8sResourceSpec;
   const masterTserverNodesCount = countMasterAndTServerNodes(
     universeData!,
-    primaryCluster!.placement_spec!
+    primaryCluster
   );
   // Each instance card now has its own dedicated edit modal so that the
   // T-Server and Master edits show only their respective sections, per design.
@@ -59,6 +65,8 @@ export const MasterTserverDedicatedView = () => {
         arch={universeData?.info?.arch}
         nodeSpec={primaryCluster?.node_spec}
         storageSpec={primaryCluster?.node_spec?.storage_spec}
+        isK8s={isK8s}
+        k8sResourceSpec={tserverK8sResourceSpec}
         onEditClicked={() => {
           setTServerEditOpen(true);
         }}
@@ -75,6 +83,8 @@ export const MasterTserverDedicatedView = () => {
           primaryCluster?.node_spec?.master?.storage_spec ??
           primaryCluster?.node_spec?.storage_spec
         }
+        isK8s={isK8s}
+        k8sResourceSpec={masterK8sResourceSpec}
         onEditClicked={() => {
           setMasterEditOpen(true);
         }}
@@ -84,6 +94,8 @@ export const MasterTserverDedicatedView = () => {
           title={t('rrInstance', { keyPrefix: 'readReplica.addRR' })}
           nodeSpec={readReplicaCluster.node_spec}
           storageSpec={readReplicaCluster.node_spec?.storage_spec}
+          isK8s={isK8s}
+          k8sResourceSpec={getK8sResourceSpecFromNodeSpec(readReplicaCluster.node_spec, 'tserver')}
           onEditClicked={() => {
             setReadReplicaEditOpen(true);
           }}

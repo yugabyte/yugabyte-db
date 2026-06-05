@@ -647,6 +647,30 @@ TEST_F(PgMiniTestBase, DisallowAdvisoryLocksWithYbReadTime) {
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_unlock(12345)"));
 }
 
+// Test that yb_read_time cannot be set at the database or role level via ALTER DATABASE SET or
+// ALTER ROLE SET. It is inherently a per-session GUC; persisting it as a database or role default
+// causes MISMATCHED_SCHEMA errors for all subsequent connections.
+TEST_F(PgMiniTestBase, DisallowYbReadTimeOnDatabaseAndRoleLevel) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Session-level SET should still work.
+  auto t1 = ASSERT_RESULT(
+      conn.FetchRow<PGUint64>("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+
+  // ALTER DATABASE SET yb_read_time should be blocked.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.ExecuteFormat("ALTER DATABASE yugabyte SET yb_read_time = '$0'", t1),
+      "yb_read_time can only be set at the session level");
+
+  // ALTER ROLE SET yb_read_time should be blocked.
+  ASSERT_OK(conn.Execute("CREATE ROLE test_role_yb_read_time WITH LOGIN SUPERUSER"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.ExecuteFormat("ALTER ROLE test_role_yb_read_time SET yb_read_time = '$0'", t1),
+      "yb_read_time can only be set at the session level");
+}
+
 // Test the read-time flag of ysql_dump to generate the schema of the database as of a timestamp t
 // 1- Create two tables
 // 2- Get the current timestamp t

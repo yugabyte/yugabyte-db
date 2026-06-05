@@ -14,7 +14,9 @@ export type ChangedHardwareStorageKey =
   | 'throughput'
   | 'storageType'
   | 'storageClass'
-  | 'mountPoints';
+  | 'mountPoints'
+  | 'cpuCoreCount'
+  | 'memoryGib';
 
 export interface HardwareReviewSummary {
   instanceType?: string | null;
@@ -26,6 +28,8 @@ export interface HardwareReviewSummary {
   storageClass?: string | null;
   storageType?: string | null;
   mountPoints?: string | null;
+  cpuCoreCount?: number | null;
+  memoryGib?: number | null;
 }
 
 export interface HardwareReviewSection {
@@ -69,6 +73,12 @@ export const getChangedStorageKeys = (
   }
   if (normStr(current.mountPoints) !== normStr(next.mountPoints)) {
     keys.push('mountPoints');
+  }
+  if (normNum(current.cpuCoreCount) !== normNum(next.cpuCoreCount)) {
+    keys.push('cpuCoreCount');
+  }
+  if (normNum(current.memoryGib) !== normNum(next.memoryGib)) {
+    keys.push('memoryGib');
   }
   return keys;
 };
@@ -193,6 +203,20 @@ const renderStorageFieldValue = (
           {summary.mountPoints ?? '-'}
         </Typography>
       );
+    case 'cpuCoreCount':
+      return (
+        <YBTag size="medium" variant="dark" color="primary" customSx={{ background: '#E8E9FE' }}>
+          {summary.cpuCoreCount ?? '-'}
+        </YBTag>
+      );
+    case 'memoryGib':
+      return (
+        <YBTag size="medium" variant="dark" color="primary" customSx={{ background: '#E8E9FE' }}>
+          {summary.memoryGib === undefined || summary.memoryGib === null
+            ? '-'
+            : tHw('memoryValue', { memory: summary.memoryGib })}
+        </YBTag>
+      );
     default:
       return null;
   }
@@ -216,6 +240,10 @@ const storageFieldLabel = (
       return tReview('storageClass');
     case 'mountPoints':
       return tReview('mountPoints');
+    case 'cpuCoreCount':
+      return tHw('cpuCores');
+    case 'memoryGib':
+      return tHw('memory');
     default:
       return '';
   }

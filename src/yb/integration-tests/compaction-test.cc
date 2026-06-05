@@ -542,7 +542,7 @@ void CompactionTest::TestCompactionTaskMetrics(const int num_files, bool manual_
   yb::MetricRegistry registry;
   auto entity = METRIC_ENTITY_test_entity.Instantiate(&registry, "task metrics");
 
-  // Create task metrics for queued, paused, and active tasks.
+  // Create task metrics for active and non-active compaction tasks.
   ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(test_entity);
 
   auto priority_thread_pool_metrics =

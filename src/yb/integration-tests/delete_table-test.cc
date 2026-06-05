@@ -66,6 +66,7 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_ddl_client.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_controller.h"
 

@@ -43,6 +43,13 @@ public class TestPgRegressIsolationWithTxnDdl extends BasePgRegressTest {
   }
 
   @Test
+  // Skip with connection manager because yb.orig.read_committed_test_ddl_txn relies on each
+  // session having its own dedicated backend. With conn mgr, a backend that served an INSERT
+  // for S1 (schema version 0) can be reused for S2's UPDATE after a DDL on S1 has bumped the
+  // schema version to 1, causing a "schema version mismatch" error. Neither random nor
+  // round-robin modes can help as test framework sends uncertain amount of SELECT pg_catalog
+  // queries to database, so test is made to run on Postgres port instead.
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testPgRegress() throws Exception {
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_isolation_txn_ddl_schedule",

@@ -1468,7 +1468,15 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     volumeDetails.volumeType = InstanceType.VolumeType.SSD;
     volumeDetails.mountPath = "/mnt/d0";
     instanceTypeDetails.volumeDetailsList.add(volumeDetails);
-    InstanceType.upsert(onPremProvider.getUuid(), "onprem-instance", 4, 8.0, instanceTypeDetails);
+    InstanceType.upsert(onPremProvider.getUuid(), "onprem-instance-1", 4, 8.0, instanceTypeDetails);
+    InstanceType.InstanceTypeDetails instanceTypeDetails2 = new InstanceType.InstanceTypeDetails();
+    InstanceType.VolumeDetails volumeDetails2 = new InstanceType.VolumeDetails();
+    volumeDetails2.volumeSizeGB = 200;
+    volumeDetails2.volumeType = InstanceType.VolumeType.SSD;
+    volumeDetails2.mountPath = "/mnt/d0";
+    instanceTypeDetails2.volumeDetailsList.add(volumeDetails2);
+    InstanceType.upsert(
+        onPremProvider.getUuid(), "onprem-instance-2", 8, 16.0, instanceTypeDetails2);
 
     Universe onPremUniverse = ModelFactory.createUniverse("onprem-provider-edit", customer.getId());
     Universe.UniverseUpdater onPremUpdater =
@@ -1499,12 +1507,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
           universe.setUniverseDetails(universeDetails);
         };
     onPremUniverse = Universe.saveDetails(onPremUniverse.getUniverseUUID(), onPremUpdater);
-
     Provider onPremEdit = Provider.getOrBadRequest(onPremProvider.getUuid());
     Map<String, String> onPremConfig = new HashMap<>();
+    onPremConfig.put("YB_HOME_DIR", "/home/yugabyte");
+    Result result = editProvider(Json.toJson(onPremEdit), onPremProvider.getUuid(), false);
+    onPremEdit.refresh();
     onPremConfig.put("YB_HOME_DIR", "/mnt/d0");
     CloudInfoInterface.setCloudProviderInfoFromConfig(onPremEdit, onPremConfig);
-    Result result =
+    result =
         assertPlatformException(
             () -> editProvider(Json.toJson(onPremEdit), onPremProvider.getUuid(), false));
     assertBadRequest(

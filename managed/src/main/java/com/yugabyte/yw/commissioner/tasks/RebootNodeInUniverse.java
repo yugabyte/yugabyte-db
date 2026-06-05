@@ -131,7 +131,9 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       createRebootTasks(Collections.singletonList(currentNode), isHardReboot)
           .setSubTaskGroupType(
               isHardReboot ? SubTaskGroupType.HardRebootingNode : SubTaskGroupType.RebootingNode);
-
+      createWaitForNodeAgentTasks(Collections.singletonList(currentNode))
+          .setSubTaskGroupType(
+              isHardReboot ? SubTaskGroupType.HardRebootingNode : SubTaskGroupType.RebootingNode);
       if (currentNode.isMaster) {
         // Start the master.
         createStartMasterProcessTasks(Collections.singleton(currentNode));

@@ -6025,6 +6025,9 @@
         "local" : {
           "$ref" : "#/definitions/LocalCloudInfo"
         },
+        "oci" : {
+          "$ref" : "#/definitions/OCICloudInfo"
+        },
         "onprem" : {
           "$ref" : "#/definitions/OnPremCloudInfo"
         }
@@ -10236,6 +10239,7 @@
             "aws",
             "gcp",
             "azu",
+            "oci",
             "docker",
             "onprem",
             "kubernetes",
@@ -13301,6 +13305,7 @@
             "aws",
             "gcp",
             "azu",
+            "oci",
             "docker",
             "onprem",
             "kubernetes",
@@ -14254,6 +14259,49 @@
         "numSelect",
         "numUpdate"
       ],
+      "type" : "object"
+    },
+    "OCICloudInfo" : {
+      "properties" : {
+        "ociCompartmentId" : {
+          "description" : "OCI Compartment OCID",
+          "type" : "string"
+        },
+        "ociFingerprint" : {
+          "description" : "OCI API Key Fingerprint",
+          "type" : "string"
+        },
+        "ociHostedZoneId" : {
+          "description" : "OCI DNS Zone OCID for hosted zone",
+          "type" : "string"
+        },
+        "ociPrivateKeyContent" : {
+          "description" : "OCI API Private Key content (PEM format)",
+          "type" : "string"
+        },
+        "ociRegion" : {
+          "description" : "Default OCI Region",
+          "type" : "string"
+        },
+        "ociTenancyId" : {
+          "description" : "OCI Tenancy OCID",
+          "type" : "string"
+        },
+        "ociUserId" : {
+          "description" : "OCI User OCID",
+          "type" : "string"
+        },
+        "vpcType" : {
+          "description" : "New/Existing VCN for provider creation",
+          "enum" : [
+            "EXISTING",
+            "NEW",
+            "HOSTVPC"
+          ],
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "OTLPConfig" : {
@@ -29881,6 +29929,7 @@
             "aws",
             "gcp",
             "azu",
+            "oci",
             "docker",
             "onprem",
             "kubernetes",

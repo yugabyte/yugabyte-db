@@ -21,6 +21,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+|
 | {{<ta 31533>}}
 | An xCluster target universe's YB-Master may crash when certain types of schema changes are applied after database upgrade
 | {{<product "ybdb">}}

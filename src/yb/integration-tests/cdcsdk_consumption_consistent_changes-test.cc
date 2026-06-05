@@ -3727,12 +3727,14 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   ASSERT_OK(test_client()->GetTablets(dynamic_table_2, 0, &dynamic_tablets_2, nullptr));
   ASSERT_EQ(dynamic_tablets_2.size(), 1);
 
-  // A dynamically created table in the second DB should not have invalid OpId. Its safe time will
-  // be invalid as its replica identity is CHANGE.
+  // A dynamically created table in the second DB should have a valid OpId and cdc_sdk_safe_time.
+  // Its safe time will not become invalid even though its replica identity is CHANGE. This is
+  // because, this test does not have pub refresh. Hence UPAM will keep hitting "Before image not
+  // found" error and the cdc_sdk_safe_time will not be moved.
   tablet_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), dynamic_tablets_2.begin()->tablet_id()));
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   ASSERT_NE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 
   set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, dynamic_tablets_1, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
@@ -4250,6 +4252,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTabletDeletionWithUnuse
       table, 3, &get_tablets_res, nullptr, RequireTabletsRunning::kFalse,
       master::IncludeInactive::kTrue));
   ASSERT_EQ(get_tablets_res.size(), 3);
+
+  // Setting cdc_intent_retention_ms = 0 (below) also makes tservers classify these streams as
+  // expired and ask the master to wipe all cdc_state rows for this table, including the
+  // children rows the test asserts on after WaitFor. Disable that table-level cleanup so only
+  // the hidden parent tablet's cdc_state entry is removed, leaving the children's inherited
+  // checkpoints intact.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = false;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
 
@@ -6053,9 +6062,43 @@ TEST_F(
   ASSERT_OK(conn.Fetch("select pg_drop_replication_slot('test_slot')"));
 }
 
+// TODO(#31908): Remove the test once the support for colocated rewrite + CDC is added.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteDisallowedOnColocatedTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, true /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto table_1 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+
+  const auto errstr = "Table rewrite is not supported for colocated table " + table_1.table_id() +
+                      " that is part of a CDC logical replication stream.";
+
+  // Each of these DDLs causes a table rewrite. All must be rejected for a colocated table that is
+  // part of a CDC logical replication stream.
+  const std::vector<std::string> rewrite_ddls = {
+      "ALTER TABLE test_table DROP CONSTRAINT test_table_pkey",
+      "ALTER TABLE test_table ADD COLUMN c2 SERIAL",
+      "TRUNCATE TABLE test_table"};
+
+  for (const auto& ddl : rewrite_ddls) {
+    auto res = conn.Execute(ddl);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  }
+}
+
+// TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
 // This test verifies that VWAL is able to correctly switchover to new table upon table rewrite for
 // colocated table.
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteOnColocatedTable) {
+TEST_F(CDCSDKConsumptionConsistentChangesTest, DISABLED_TestTableRewriteOnColocatedTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -6124,7 +6167,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteOnColocatedTable)
 // This test verifies that we retain the colocated table from deletion upon table rewrite. If the
 // older colocated table is not retained properly, then a FATAL is generated in this test on calling
 // GetConsistentChanges.
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoFailureOnPollingOldColocatedTable) {
+// TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, DISABLED_TestNoFailureOnPollingOldColocatedTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -6160,7 +6204,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoFailureOnPollingOldColocate
   ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
 }
 
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfterConsumption) {
+// TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, DISABLED_TestOldColocatedTableDeletedAfterConsumption) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -6253,7 +6299,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfter
       true /* include_catalog_tables */);
 }
 
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfterExpiry) {
+// TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, DISABLED_TestOldColocatedTableDeletedAfterExpiry) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -6406,13 +6453,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseOfRetentionBarriersOnD
 
   auto tablet_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), index_tablet_id));
 
-  // Verify that the retention barriers (WAL and intents) have been set on the index tablet. The
-  // cdc_sdk_safe_time would be invalid since we do not set history barriers.
+  // Verify that the retention barriers have been set on the index tablet.
   ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
   ASSERT_GE(tablet_peer->get_cdc_min_replicated_index(), 0);
   ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
   ASSERT_GE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Min());
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 
   ASSERT_OK(CdcReleaseBarriersOnTablet(index_tablet_id));
 
@@ -6465,13 +6511,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUPAMReleasesBarriersOnIndexTa
 
   auto tablet_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), index_tablet_id));
 
-  // Verify that the retention barriers (WAL and intents) have been set on the index tablet. The
-  // cdc_sdk_safe_time would be invalid since we do not set history barriers.
+  // Verify that the retention barriers have been set on the index tablet.
   ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
   ASSERT_GE(tablet_peer->get_cdc_min_replicated_index(), 0);
   ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
   ASSERT_GE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Min());
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 
   // Reduce the value of cdc_intent_retention_ms to 0, so that we simulate the index tablet getting
   // expired.
@@ -6779,6 +6824,43 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
       MonoDelta::FromSeconds(
           FLAGS_update_min_cdc_indices_master_interval_secs * 5 * kTimeMultiplier));
   check_all_masters_barriers();
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureBeforeSettingBarrierOnDynamicTable) {
+  // Make the default replica identity FULL so that the dynamic table is created with FULL replica
+  // identity and history barriers are set on its tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "FULL";
+  ASSERT_OK(SetUpWithParams(3 /* rf */, 1 /* num_masters */, false /* colocated */));
+
+  ASSERT_OK(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Fail the CreateTablet after registering the tablet but before the CDC retention barriers could
+  // be set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_fail_before_setting_barrier) = true;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // When the CreateTablet rpc will be retried, we will find that the tablet has already been
+  // registered. Despite that we will re-attempt to set CDC retention barriers. As a result, at the
+  // end of retries we should have CDC retention barriers set on all the peers of the tablet.
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& tablet_peer : test_cluster()->GetTabletPeers(i)) {
+      if (tablet_peer->tablet_id() == tablets[0].tablet_id()) {
+        ASSERT_OK(WaitFor(
+            [&]() -> Result<bool> {
+              if (tablet_peer->get_cdc_min_replicated_index() == OpId::Max().index) return false;
+              if (tablet_peer->cdc_sdk_min_checkpoint_op_id() == OpId::Max()) return false;
+              if ((tablet_peer->get_cdc_sdk_safe_time()) == HybridTime::kInvalid) return false;
+
+              return true;
+            },
+            MonoDelta::FromSeconds(15 * kTimeMultiplier),
+            "Failed while waiting for retention barriers to be set"));
+      }
+    }
+  }
 }
 
 }  // namespace cdc

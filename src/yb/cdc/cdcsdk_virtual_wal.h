@@ -226,7 +226,14 @@ class CDCSDKVirtualWAL {
   void UpdateOidToRelfilenodeMap(
       const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode);
 
+  std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(HostPort hostport);
+
   CDCServiceImpl* cdc_service_;
+
+  // The proxy to the CDC service. This is used to call GetChanges locally.
+  // Only applicable when cdc_enable_local_get_changes is enabled.
+  // This is initialized when the first call to GetCDCServiceProxy is made.
+  std::shared_ptr<CDCServiceProxy> local_cdc_service_proxy_{nullptr};
 
   xrepl::StreamId stream_id_;
 

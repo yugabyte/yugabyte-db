@@ -265,6 +265,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   @Override
+  public api.v2.models.TelemetryConfig getExportTelemetryConfig(
+      Request request, UUID cUUID, UUID uniUUID) throws Exception {
+    return universeUpgradeHandler.getExportTelemetryConfig(cUUID, uniUUID);
+  }
+
+  @Override
   public YBATask operatorImportUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
     return universeHandler.operatorImportUniverse(request, cUUID, uniUUID, req);
