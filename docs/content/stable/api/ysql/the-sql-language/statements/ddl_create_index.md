@@ -54,6 +54,7 @@ Creating an index on a partitioned table automatically creates a corresponding i
 - Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
 - [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
 - `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)). As a workaround, you can use the [ONLY](#only) keyword to create indexes on child partitions separately, as described in that section.
+- To rebuild indexes on partitioned tables online, see [Recreate a partitioned index](#recreate-a-partitioned-index).
 
 ### UNIQUE
 
