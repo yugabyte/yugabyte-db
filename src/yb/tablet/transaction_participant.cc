@@ -213,12 +213,13 @@ YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 constexpr size_t kSIModeIdx = 0;
 constexpr size_t kRRRCModeIdx = 1;
 
-ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState() {
+ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState(TabletIdView tablet_id) {
   auto bg_wait_state = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>();
   if (bg_wait_state) {
     bg_wait_state->set_root_request_id(yb::Uuid::Generate());
     bg_wait_state->set_query_id(
         std::to_underlying(yb::ash::FixedQueryId::kQueryIdForMinRunningHybridTime));
+    bg_wait_state->UpdateTabletId(tablet_id);
   }
   return bg_wait_state;
 }
@@ -1264,7 +1265,8 @@ class TransactionParticipant::Impl
         static const std::string kRequestReason = "min running check"s;
         // Get transaction status
         auto now_ht = participant_context_.Now();
-        auto min_running_wait_state = InitMinRunningHybridTimeWaitState();
+        auto min_running_wait_state =
+            InitMinRunningHybridTimeWaitState(participant_context_.tablet_id());
         ash::MinRunningHybridTimeTracker().Track(min_running_wait_state);
         ADOPT_WAIT_STATE(min_running_wait_state);
         SET_WAIT_STATUS(TransactionStatusCache_DoGetCommitData);
