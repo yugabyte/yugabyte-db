@@ -1448,10 +1448,6 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
   // Pause DDL replication to test that we handle the index data correctly.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
 
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms) = 20000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 10000;
-
   // Create index on column a and insert some more rows.
   ASSERT_OK(producer_conn.ExecuteFormat("CREATE INDEX ON $0(a DESC)", kNewTableName));
   ASSERT_OK(producer_conn.ExecuteFormat(

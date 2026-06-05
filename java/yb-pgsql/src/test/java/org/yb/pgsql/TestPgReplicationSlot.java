@@ -798,9 +798,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testReplicationConnectionConsumptionWithCreateIndex() throws Exception {
-    Map<String, String> tserverFlags = super.getTServerFlags();
-    tserverFlags.put("ysql_yb_wait_for_backends_catalog_version_timeout", "10000");
-    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+    Map<String, String> masterFlags = super.getMasterFlags();
+    masterFlags.put("master_ysql_operation_lease_ttl_ms", "10000");
+    restartClusterWithFlags(masterFlags, Collections.emptyMap());
 
     final String slotName = "test_slot";
     final String pluginName = YB_OUTPUT_PLUGIN_NAME;
