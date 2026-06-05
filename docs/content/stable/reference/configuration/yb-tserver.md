@@ -1358,7 +1358,7 @@ When true, the CDC service returns a null before-image if it is not able to find
 Default: `false`
 {{% /tags/wrap %}}
 
-Available in v2024.2.9.1 and later, v2025.2.4.0 and later, and v2026.1.
+Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
 
 When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
 
