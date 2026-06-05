@@ -10,6 +10,8 @@ menu:
     parent: authentication
     weight: 20
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
