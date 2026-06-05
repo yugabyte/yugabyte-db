@@ -222,7 +222,7 @@ export const mapCreateUniversePayload = (
             )
           }),
           networking_spec: {
-            enable_lb: true,
+            enable_lb: false,
             enable_exposing_service: securitySettings?.enableExposingService
               ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
               : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,
