@@ -37,6 +37,8 @@ The following additional CRDs support day 2 operations.
 | [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
 | [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
 | [PitrConfig](#configure-pitr) | Configure point-in-time recovery (PITR) for a universe. |
+| [PitrRestore](#restore-from-pitr) | {{<tags/feature/ea idea="2460">}}Restore a universe to a point in time using a PITR configuration (available in v2026.1 or later). |
+| [DrConfig](#configure-xcluster-dr) | {{<tags/feature/ea idea="2460">}}Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations (available in v2026.1 or later). |
 | [YBCertificate](#configure-tls-certificates) | Configure TLS certificates for encryption in transit (self-signed or cert-manager). |
 
 For details of each CRD, run `kubectl explain` on the CR.
@@ -453,6 +455,51 @@ spec:
           memory: 8Gi
 ```
 
+### Create a universe with Read Replicas
+
+{{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, you can specify a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster in the YBUniverse CR using the `readReplica` field.
+
+```sh
+kubectl apply universe-read-replica.yaml -n yb-platform
+```
+
+```yaml
+# universe-read-replica.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: yugabyte-read-replica
+spec:
+  numNodes: 3
+  replicationFactor: 3
+  tserverResourceSpec:
+    cpu: 3
+    memory: 6
+  masterResourceSpec:
+    cpu: 3
+  providerName: operator-provider
+  readReplica:
+    numNodes: 3
+    replicationFactor: 3
+    deviceInfo:
+      numVolumes: 1
+      volumeSize: 80
+    tserverResourceSpec:
+      cpu: 4
+      memory: 6
+  enableYSQL: true
+  enableNodeToNodeEncrypt: false
+  enableClientToNodeEncrypt: false
+  ybSoftwareVersion: 2026.1.0.0-b0
+  enableYSQLAuth: false
+  enableYCQL: false
+  enableYCQLAuth: false
+  enableIPV6: false
+  deviceInfo:
+    numVolumes: 1
+    volumeSize: 80
+```
+
 ### Add a different software release of YugabyteDB
 
 Use the Release CRD to add a different software release of YugabyteDB:
@@ -829,9 +876,11 @@ No resources found in schedule-cr namespace.
 
 ### Configure PITR
 
-Use the PitrConfig CRD to configure point-in-time recovery (PITR) for a universe.
+Use the PitrConfig CRD to configure point-in-time recovery (PITR) for a universe. Declarative operations include creating a PITR configuration, updating the list of databases, and deleting the configuration.
 
-Currently, only declarative operations are supported, including creating a PITR configuration, updating the list of databases, and deleting the configuration. Imperative operations such as restore from a PITR configuration will be supported in a future release.
+Starting from YugabyteDB Anywhere v2026.1, you can also trigger a PITR restore using the [PitrRestore CR](#restore-from-pitr).
+
+#### Create a PITR configuration
 
 ```sh
 kubectl apply pitr-config.yaml -n test-pitr
@@ -849,6 +898,249 @@ spec:
   universe: test-universe
   database: 'yugabyte'
   tableType: 'YSQL'
+```
+
+#### Restore from PITR
+
+{{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, use the PitrRestore CRD to restore a universe to a state back in time when PITR is enabled for a database.
+
+1. Create a universe:
+
+    ```sh
+    kubectl apply pitr-universe.yaml -n test-pitr
+    ```
+
+    ```yaml
+    # pitr-universe.yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: YBUniverse
+    metadata:
+      name: pitr-universe
+    spec:
+      universeName: "pitr-universe"
+      numNodes: 1
+      replicationFactor: 1
+      enableYSQL: true
+      enableNodeToNodeEncrypt: true
+      enableClientToNodeEncrypt: true
+      enableLoadBalancer: false
+      ybSoftwareVersion: "2026.1.0.0-b0"
+      enableYSQLAuth: false
+      enableYCQL: true
+      enableYCQLAuth: false
+      gFlags:
+        tserverGFlags: {}
+        masterGFlags: {}
+      deviceInfo:
+        volumeSize: 400
+        numVolumes: 1
+        storageClass: "yb-standard"
+      kubernetesOverrides:
+        resource:
+          master:
+            requests:
+              cpu: 2
+              memory: 8Gi
+            limits:
+              cpu: 3
+              memory: 8Gi
+    ```
+
+1. Create a PITR configuration:
+
+    ```sh
+    kubectl apply pitr-config.yaml -n test-pitr
+    ```
+
+    ```yaml
+    # pitr-config.yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: PitrConfig
+    metadata:
+      name: pitr-config
+    spec:
+      name: pitr-config
+      universe: pitr-universe
+      database: 'yugabyte'
+      tableType: 'YSQL'
+    ```
+
+1. Trigger a PITR restore:
+
+    ```sh
+    kubectl apply pitr-restore.yaml -n test-pitr
+    ```
+
+    ```yaml
+    # pitr-restore.yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: PitrRestore
+    metadata:
+      name: my-pitr-restore
+    spec:
+      universe: pitr-universe
+      pitrConfig: pitr-config
+      restoreTime: "2026-02-27T12:50:00Z"
+    ```
+
+### Configure xCluster DR
+
+{{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, use the DrConfig CRD to create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. Both declarative operations (create, update the database list, delete) and imperative operations (switchover, failover, pause/resume, restart, replace replica) are supported.
+
+Before you create a DrConfig CR, ensure that the source and target universes and the storage configuration referenced in the CR exist. The following sections describe the DrConfig CR changes for each supported operation.
+
+#### Create a DR configuration
+
+```sh
+kubectl apply dr-config.yaml -n yb-platform
+```
+
+```yaml
+# dr-config.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-target
+  databases:
+    - "db1"
+  storageConfig: trial-backup-config
+```
+
+#### Edit the database list
+
+Update the `databases` list in the DrConfig CR and apply the change:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-target
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
+```
+
+#### Switchover
+
+Swap `sourceUniverse` and `targetUniverse` in the CR to initiate a switchover:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-target
+  targetUniverse: dr-source
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
+```
+
+#### Failover
+
+1. Set the current target as `sourceUniverse` and use a null string (`""`) for `targetUniverse` to initiate a failover:
+
+    ```yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: DrConfig
+    metadata:
+      name: prod-to-dr-config
+    spec:
+      name: prod-to-dr-config
+      sourceUniverse: dr-source
+      targetUniverse: ""
+      databases:
+        - "db1"
+        - "db2"
+      storageConfig: trial-backup-config
+    ```
+
+1. Restart DR after failover.
+
+    After the universe from which failover was performed (`dr-target`) is in the Ready state, add it back as `targetUniverse`, replacing the empty string. This initiates a restart DR operation and resumes replication:
+
+    ```yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: DrConfig
+    metadata:
+      name: prod-to-dr-config
+    spec:
+      name: prod-to-dr-config
+      sourceUniverse: dr-source
+      targetUniverse: dr-target
+      databases:
+        - "db1"
+        - "db2"
+      storageConfig: trial-backup-config
+    ```
+
+#### Replace the DR replica
+
+To change the DR replica universe, set `targetUniverse` to the new target universe. Replication is re-established to the new target:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-third
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
+```
+
+#### Pause and resume replication
+
+Set `paused: true` to pause replication. When a DR config is created, `paused` defaults to `false`.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-third
+  paused: true
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
+```
+
+Set `paused: false` to resume a paused replication:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: DrConfig
+metadata:
+  name: prod-to-dr-config
+spec:
+  name: prod-to-dr-config
+  sourceUniverse: dr-source
+  targetUniverse: dr-third
+  paused: false
+  databases:
+    - "db1"
+    - "db2"
+  storageConfig: trial-backup-config
 ```
 
 ### Configure TLS certificates
@@ -998,7 +1290,5 @@ For details, see [Operator high availability](../../administer-yugabyte-platform
 - YugabyteDB Kubernetes Operator is single cluster only, and does not support multi-cluster universes.
 - Currently, YugabyteDB Kubernetes Operator does not support the following features:
   - Software upgrade rollback
-  - [xCluster](../../../architecture/docdb-replication/async-replication/)
-  - [Read Replica](../../../architecture/key-concepts/#read-replica-cluster)
   - [Encryption-At-Rest](../../security/enable-encryption-at-rest/)
 - Only self-signed [encryption in transit](../../security/enable-encryption-in-transit/) is supported. Editing this later is not supported.
