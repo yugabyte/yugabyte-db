@@ -13,7 +13,11 @@
 // C wrappers around some YB utilities. Suitable for inclusion into C codebases such as our modified
 // version of PostgreSQL.
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_UTIL_YBC_UTIL_H
+#define YB_YQL_PGGATE_UTIL_YBC_UTIL_H
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -179,3 +183,5 @@ void YBCSetupCgroups();
 #ifdef __cplusplus
 } // extern "C"
 #endif
+
+#endif  // YB_YQL_PGGATE_UTIL_YBC_UTIL_H
