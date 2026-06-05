@@ -93,6 +93,13 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return obj;
   }
 
+ protected:
+  // True once the index has been saved/loaded and can no longer be modified. Subclasses use this
+  // to skip search-vs-insert coordination on immutable indexes (no concurrent writers possible).
+  bool immutable() const {
+    return immutable_.load(std::memory_order_acquire);
+  }
+
  private:
   Impl& impl() {
     return *static_cast<Impl*>(this);
