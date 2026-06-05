@@ -181,7 +181,7 @@ To create an export configuration, do the following:
 1. Choose **Loki**.
 1. Fill in the Loki-specific fields:
    - Enter the **Loki endpoint** URL. For example, `http://<loki-url>:<loki-port>`.
-   - **Organization / Tenant ID** (optional) — Organization ID is required when multi-tenancy is set up in Loki. Optional for Grafana Cloud as the authentication reroutes requests according to scope.
+   - **Organization / Tenant ID** (optional). Organization ID is required when multi-tenancy is set up in Loki. Optional for Grafana Cloud, as the authentication reroutes requests according to scope.
    - **Authentication Type**: **Basic Auth** or **No Auth**. If you choose **Basic Auth**, enter a **Username** and **Password**.
 1. Click **Validate and Create Configuration**.
 
@@ -201,7 +201,7 @@ YugabyteDB Anywhere supports [OTLP](https://opentelemetry.io/docs/) (OpenTelemet
 
 The OTLP sink is vendor-agnostic and works with any backend that speaks OTLP, including (but not limited to) [Cribl](https://cribl.io/), [Grafana Cloud](https://grafana.com/docs/grafana-cloud/), [New Relic](https://docs.newrelic.com/docs/opentelemetry/opentelemetry-introduction/), [Prometheus](https://prometheus.io/docs/guides/opentelemetry/) (3.0+), [VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/), and [Sumo Logic](https://help.sumologic.com/docs/send-data/opentelemetry-for-logs/).
 
-The same OTLP telemetry provider can be reused for [database audit logging](../universe-logging/), [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
+You can reuse the same OTLP telemetry provider for [database audit logging](../universe-logging/), [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
 
 #### Prerequisites
 
