@@ -22,9 +22,9 @@ export const ZoneList = ({ providerCode, zones }: ZoneListProps) => {
         <TableHeaderColumn dataField="code" isKey={true} dataSort={true}>
           Zone
         </TableHeaderColumn>
-        {([ProviderCode.AWS, ProviderCode.AZU, ProviderCode.GCP] as ProviderCode[]).includes(
-          providerCode
-        ) && (
+        {(
+          [ProviderCode.AWS, ProviderCode.AZU, ProviderCode.GCP, ProviderCode.OCI] as ProviderCode[]
+        ).includes(providerCode) && (
           <TableHeaderColumn dataField="subnet" dataSort={true}>
             Subnet
           </TableHeaderColumn>
