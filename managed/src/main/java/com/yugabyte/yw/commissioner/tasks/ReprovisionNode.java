@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
@@ -101,7 +102,12 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
 
       // Need to reinstall node agent.
       createRemoveNodeAgentTasks(universe, nodeCollection, true /*forceRemove*/);
-      if (userIntent.providerType != CloudType.local) {
+      // YNP setup and provisioning require sudo access. For manually provisioned on-prem
+      // universes (skip_provisioning), these steps are performed out-of-band by running
+      // node-agent-provision.sh, so skip them here to avoid failing on the missing sudo
+      // SSH access.
+      boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
+      if (userIntent.providerType != CloudType.local && !isUniverseManuallyProvisioned) {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
         if (!useAnsibleProvisioning) {
