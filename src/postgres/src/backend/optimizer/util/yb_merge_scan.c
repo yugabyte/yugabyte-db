@@ -78,7 +78,11 @@ ybIsClauseEligibleSaop(Node *clause,
 	 * 3. Check LHS.
 	 *
 	 * We don't care about SAOPs bound to expressions besides the given expr.
+	 * Strip any RelabelType node so that index columns whose type differs by
+	 * only a no-op coercion (e.g. varchar to text) can still match.
 	 */
+	if (IsA(lhs, RelabelType))
+		lhs = ((RelabelType *) lhs)->arg;
 	if (!equal(lhs, expr))
 		return false;
 
@@ -297,6 +301,13 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 		  index->rel->is_yb_relation))
 		return false;
 
+	/*
+	 * Strip any RelabelType node so that index columns whose type differs by
+	 * only a no-op coercion (e.g. varchar to text) can still match.
+	 */
+	if (IsA(expr, RelabelType))
+		expr = ((RelabelType *) expr)->arg;
+
 	/* If same expr already used in saop_cols, then redundant */
 	foreach(lc, *merge_scan_saop_cols)
 	{
@@ -304,6 +315,12 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 			lfirst_node(YbMergeScanSaopColInfo, lc);
 		Expr	   *old_lhs = linitial(old_saop_col_info->saop->args);
 
+		/*
+		 * Strip any RelabelType node so that index columns whose type differs
+		 * by only a no-op coercion (e.g. varchar to text) can still match.
+		 */
+		if (IsA(old_lhs, RelabelType))
+			old_lhs = ((RelabelType *) old_lhs)->arg;
 		if (equal(expr, old_lhs))
 			return true;
 	}
