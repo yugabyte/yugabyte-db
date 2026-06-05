@@ -278,7 +278,7 @@ To allow different user names or to support group- or role-based authentication,
 | :-------------- | :------ | :---------- |
 | `ycql_ident_conf_csv` | empty | CSV formatted list of identity mapping rules, evaluated in order. Each rule contains two fields separated by whitespace: the IdP user name pattern and the YCQL user name. |
 
-Identity mapping rules are similar to PostgreSQL [user name maps](https://www.postgresql.org/docs/current/auth-username-maps.html), where each rule has the form `idp-username database-username`. Separate rules using commas in the CSV flag value.
+Identity mapping rules are similar to PostgreSQL [user name maps](https://www.postgresql.org/docs/15/auth-username-maps.html), where each rule has the form `idp-username database-username`. Separate rules using commas in the CSV flag value.
 
 If `idp-username` starts with `/`, the remainder of the field is treated as a regular expression. The expression can contain a single capture group. The portion of the IdP user name that matched the capture can then be referenced in the database-username field as `\1` (backslash-one).
 
