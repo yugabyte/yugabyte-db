@@ -59,9 +59,9 @@ type: docs
   </li>
 </ul>
 
-[YugabyteDB psycopg-yugabytedb](https://pypi.org/project/psycopg-yugabytedb/) is a [smart driver](../../smart-drivers/) fork of [psycopg 3](https://www.psycopg.org/psycopg3/) for YugabyteDB. It extends upstream psycopg 3 with cluster-aware and topology-aware connection load balancing. The import name stays `psycopg`, so existing application code is unchanged (opting in is a single parameter on the connection string).
+The [Yugabyte Psycopg3 smart driver](https://pypi.org/project/psycopg-yugabytedb/) is a Python driver for [YSQL](/stable/api/ysql/) built on the [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](/stable/develop/drivers-orms/smart-drivers/) features. The import name is `psycopg`, so no changes are needed on existing application code; opting in requires a single parameter on the connection string.
 
-This guide uses YSQL with the YugabyteDB psycopg 3 smart driver.
+This guide uses YSQL with the YugabyteDB Psycopg3 smart driver.
 
 ## CRUD operations
 
