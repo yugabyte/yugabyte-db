@@ -278,23 +278,6 @@ RocksDBTaskStateMetrics* GetRocksDBTaskStateMetrics(
   FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
 }
 
-// TODO remove in GI-15048.
-// Returns a pointer to the set of paused or queued task state metrics if the current state
-// is either Paused or Queued. Otherwise, returns a nullptr.
-RocksDBTaskStateMetrics* GetRocksDBPausedOrQueuedMetrics(
-    RocksDBPriorityThreadPoolMetrics* metrics,
-    const yb::PriorityThreadPoolTaskState state) {
-  switch (state) {
-    case yb::PriorityThreadPoolTaskState::kNotStarted:
-      return &metrics->queued;
-    case yb::PriorityThreadPoolTaskState::kPaused:
-      return &metrics->paused;
-    case yb::PriorityThreadPoolTaskState::kRunning:
-      return nullptr;
-  }
-  FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
-}
-
 class DBImpl::CompactionTask : public ThreadPoolTask {
  public:
   CompactionTask(
@@ -359,8 +342,6 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     if (metrics_) {
       const auto state = yb::PriorityThreadPoolTaskState::kRunning;
       auto* state_metrics = GetRocksDBTaskStateMetrics(metrics_.get(), state);
-      // TODO GI-15048 Temporarily maintains total compactions.
-      state_metrics->total.CompactionTaskInputAdded(*compaction_info_);
       auto* task_metrics_old =
           state_metrics->TaskMetricsByCompactionReason(compaction_reason_);
       auto* task_metrics_new =
@@ -370,23 +351,6 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
       } else {
         task_metrics_old->CompactionTaskRemoved();
         task_metrics_new->CompactionTaskAdded(*compaction_info_);
-      }
-
-      // TODO GI-15048 Paused and queued metrics is deprecated.
-      // Temporarily maintained to not break the graph in YB-Anywhere.
-      auto* paused_or_queued_metrics = GetRocksDBPausedOrQueuedMetrics(metrics_.get(), state);
-      if (paused_or_queued_metrics) {
-        paused_or_queued_metrics->total.CompactionTaskInputAdded(*compaction_info_);
-        task_metrics_old = paused_or_queued_metrics->TaskMetricsByCompactionReason(
-            compaction_reason_);
-        task_metrics_new = paused_or_queued_metrics->TaskMetricsByCompactionReason(
-            compaction_->compaction_reason());
-        if (task_metrics_old == task_metrics_new) {
-          task_metrics_new->CompactionTaskInputAdded(*compaction_info_);
-        } else {
-          task_metrics_old->CompactionTaskRemoved();
-          task_metrics_new->CompactionTaskAdded(*compaction_info_);
-        }
       }
     }
     compaction_reason_ = compaction_->compaction_reason();
@@ -546,9 +510,6 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
  private:
-  // TODO GI-15048 This function probably won't be necessary once we remove the deprecated
-  // metrics. For now, it is needed because up to four metrics are updated with each state
-  // change rather than just one.
   void UpdateStats(yb::PriorityThreadPoolTaskState state,
       std::function<void(RocksDBTaskMetrics* metrics)> update_metrics) {
     if (!metrics_) {
@@ -556,20 +517,8 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     }
 
     auto* state_metrics = GetRocksDBTaskStateMetrics(metrics_.get(), state);
-    // TODO GI-15048 Temporarily maintains total compactions.
-    update_metrics(&state_metrics->total);
     auto* task_metrics = state_metrics->TaskMetricsByCompactionReason(compaction_reason_);
     update_metrics(task_metrics);
-
-    // TODO GI-15048 Paused and queued metrics is deprecated.
-    // Temporarily maintained to not break the graph in YB-Anywhere.
-    auto* paused_or_queued_metrics = GetRocksDBPausedOrQueuedMetrics(metrics_.get(), state);
-    if (paused_or_queued_metrics) {
-      // TODO GI-15048 Temporarily maintains total compactions.
-      update_metrics(&paused_or_queued_metrics->total);
-      task_metrics = paused_or_queued_metrics->TaskMetricsByCompactionReason(compaction_reason_);
-      update_metrics(task_metrics);
-    }
   }
 
   int CalcSizePriority() const {

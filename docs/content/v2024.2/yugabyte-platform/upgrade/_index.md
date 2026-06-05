@@ -3,6 +3,7 @@ title: Upgrade YugabyteDB Anywhere
 headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade
 description: Upgrade YugabyteDB Anywhere.
+headcontent: Keep YugabyteDB Anywhere up to date
 menu:
   v2024.2_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -11,15 +12,19 @@ menu:
 type: indexpage
 ---
 
-Keep YugabyteDB Anywhere (YBA) up to date for the latest fixes and improvements, and to be able to [upgrade your universes](../manage-deployments/upgrade-software/) to the latest version of YugabyteDB. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
+Upgrade to the latest version of YugabyteDB Anywhere for the latest fixes and improvements, and to be able to [upgrade your universes](../manage-deployments/upgrade-software/) to the latest version of YugabyteDB.
 
-You can upgrade YBA using the following methods:
+You should run the latest version of YugabyteDB Anywhere that is compatible with the versions of YugabyteDB that are being used by your universes. You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere. For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [Compatibility with YugabyteDB](../../releases/yba-releases/#compatibility-with-yugabytedb).
 
-| Method | Using | Use If |
-| :--- | :--- | :--- |
-| YBA&nbsp;Installer | yba-ctl CLI | Your installation already uses YBA Installer. |
-| Replicated | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.1.3 or later using Replicated.<br> Note that you must migrate from Replicated to YBA Installer if you are upgrading YugabyteDB Anywhere to v2024.1 or later. |
-| Kubernetes | Helm chart | You're deploying in Kubernetes. |
+For information on upgrading universes, see [Upgrade the YugabyteDB software](../manage-deployments/upgrade-software).
+
+{{< note title="Replicated end of life" >}}
+
+YugabyteDB Anywhere has ended support for Replicated installation. You must migrate from Replicated to YBA Installer if you are upgrading to v2024.1 or later. See [Migrate from Replicated](../install-yugabyte-platform/migrate-replicated/).
+
+{{< /note >}}
+
+&nbsp;
 
 {{<index/block>}}
 
