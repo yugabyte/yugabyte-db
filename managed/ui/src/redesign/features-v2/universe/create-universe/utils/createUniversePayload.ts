@@ -196,9 +196,6 @@ export const mapCreateUniversePayload = (
           replication_factor: effectiveRf,
           cluster_type: ClusterType.PRIMARY,
           use_spot_instance: instanceSettings.useSpotInstance,
-          audit_log_config: {
-            universe_logs_exporter_config: []
-          },
           gflags: {
             az_gflags: {},
             master: {
