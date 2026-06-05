@@ -35,8 +35,6 @@ class PgConcurrentDDLsTest : public LibPqTestBase {
         "--enable_object_locking_for_table_locks=true");
     opts->extra_tserver_flags.emplace_back(
         "--ysql_yb_ddl_transaction_block_enabled=true");
-    opts->extra_tserver_flags.emplace_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
     AppendFlagToAllowedPreviewFlagsCsv(
         opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
@@ -595,7 +593,8 @@ TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest, ParallelDdlTransactionBl
 // instead of internal error YB003.
 // See https://github.com/yugabyte/yugabyte-db/issues/31736
 
-TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest, TestReportProperSerializationErrorInRepeatableRead) {
+TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest,
+       TestReportProperSerializationErrorInRepeatableRead) {
   auto conn0 = ASSERT_RESULT(Connect());
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
