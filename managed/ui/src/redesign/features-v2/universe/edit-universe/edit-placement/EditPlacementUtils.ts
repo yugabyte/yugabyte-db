@@ -22,7 +22,9 @@ import {
 import {
   countRegionsAzsAndNodes,
   getClusterByType,
+  getK8sResourceSpecFromNodeSpec,
   getNodeAvailabilityDefaultsFromClusterPlacement,
+  isKubernetesCluster,
   mapUniversePayloadToResilienceAndRegionsProps
 } from '../EditUniverseUtils';
 
@@ -196,6 +198,14 @@ const toClusterStorageSpec = (
   mount_points: deviceInfo?.mountPoints ?? currentStorageSpec?.mount_points
 });
 
+const toK8sResourceSpec = (resourceSpec: InstanceSettingProps['tserverK8SNodeResourceSpec']) =>
+  resourceSpec
+    ? {
+        cpu_core_count: resourceSpec.cpuCoreCount,
+        memory_gib: resourceSpec.memoryGib
+      }
+    : undefined;
+
 /** Edit-universe cluster fragment for master allocation (placement + dedicated_nodes + num_nodes). */
 export const buildMasterAllocationEditPayload = (
   universeData: Universe,
@@ -214,6 +224,7 @@ export const buildMasterAllocationEditPayload = (
     ...(primaryCluster.node_spec ?? {}),
     dedicated_nodes: nodesAndAvailability.useDedicatedNodes
   } as MasterAllocationEditMutationCluster['node_spec'];
+  const isK8s = isKubernetesCluster(primaryCluster);
 
   if (instanceSettings) {
     const tserverInstanceType = instanceSettings.instanceType ?? node_spec.instance_type;
@@ -221,6 +232,27 @@ export const buildMasterAllocationEditPayload = (
 
     node_spec.instance_type = tserverInstanceType;
     node_spec.storage_spec = tserverStorageSpec;
+
+    if (isK8s) {
+      const currentTserverK8s = getK8sResourceSpecFromNodeSpec(primaryCluster.node_spec, 'tserver');
+      const currentMasterK8s =
+        getK8sResourceSpecFromNodeSpec(primaryCluster.node_spec, 'master') ?? currentTserverK8s;
+      const nextTserverK8s = instanceSettings.tserverK8SNodeResourceSpec ?? currentTserverK8s;
+      const nextMasterK8s = instanceSettings.keepMasterTserverSame
+        ? nextTserverK8s
+        : instanceSettings.masterK8SNodeResourceSpec ?? currentMasterK8s ?? nextTserverK8s;
+
+      const tserverK8s = toK8sResourceSpec(nextTserverK8s);
+      const masterK8s = toK8sResourceSpec(
+        nextMasterK8s
+      );
+      if (tserverK8s) {
+        node_spec.k8s_tserver_resource_spec = tserverK8s;
+      }
+      if (masterK8s) {
+        node_spec.k8s_master_resource_spec = masterK8s;
+      }
+    }
 
     if (nodesAndAvailability.useDedicatedNodes) {
       node_spec.tserver = {

@@ -860,7 +860,15 @@ func parseVersion(version string) ([3]int, error) {
 // compareYnpVersion compares the current YNP major version with the stored version.
 // In strict mode (preflight checks), missing file or values are errors.
 // In non-strict mode (prechecks), they are silently ignored.
+// The check is gated on the enable_ynp_version_check flag (driven by the
+// yb.node_agent.enable_ynp_version_check global runtime config in YBA) so that
+// the flag is respected uniformly across the Java and Go code.
 func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
+	if !config.GetBool(pc.iniConfig.DefaultSectionValue(), "enable_ynp_version_check", false) {
+		util.FileLogger().
+			Infof(pc.ctx, "YNP version check is disabled, skipping version comparison")
+		return nil
+	}
 	ynpVersionDirPath := pc.getYNPVersionDirPath()
 	versionStr, _ := pc.iniConfig.DefaultSectionValue()["version"].(string)
 	if ynpVersionDirPath == "" || versionStr == "" {

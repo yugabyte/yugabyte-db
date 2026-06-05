@@ -6,6 +6,7 @@ import { Provider } from 'react-redux';
 import { createStore } from 'redux';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { mainTheme } from '@app/redesign/theme/mainTheme';
+import { YBToastProvider } from '../../create-universe/helpers/ToastUtils';
 import { EditUniverseContext, EditUniverseTabs } from '../EditUniverseContext';
 import { PlacementTab } from './PlacementTab';
 import type { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -14,7 +15,8 @@ import {
   makeNonGeoUniverse,
   makeNonGeoUniverseWithReadReplicaPartitions,
   makeNonGeoUniverseWithReadReplicaPlacementSpec,
-  makeProviderRegions
+  makeProviderRegions,
+  makeSingleGeoPartitionUniverse
 } from '../__fixtures__/editUniverseFixtures';
 
 vi.mock('react-i18next', () => ({
@@ -60,7 +62,53 @@ vi.mock('../hooks/useApplyMasterAllocation', () => ({
 }));
 
 vi.mock('../edit-placement/EditPlacement', () => ({
-  EditPlacement: () => <div data-testid="edit-placement-stub" />
+  EditPlacement: ({ visible, onSubmit }: any) =>
+    visible ? (
+      <button
+        data-testid="edit-placement-submit-stub"
+        onClick={() =>
+          onSubmit({
+            resilience: {
+              resilienceType: 'Regular',
+              resilienceFormMode: 'Expert Mode',
+              faultToleranceType: 'AZ_LEVEL',
+              resilienceFactor: 1,
+              nodeCount: 1,
+              regions: [
+                {
+                  uuid: 'region-uuid-1',
+                  code: 'us-west-2',
+                  name: 'US West',
+                  zones: [
+                    {
+                      uuid: 'az-uuid-1',
+                      code: 'us-west-2a',
+                      name: 'az-a',
+                      subnet: 's1'
+                    }
+                  ]
+                }
+              ]
+            },
+            nodesAndAvailability: {
+              availabilityZones: {
+                'us-west-2': [
+                  {
+                    uuid: 'az-uuid-1',
+                    name: 'az-a',
+                    nodeCount: 2,
+                    preffered: 1
+                  }
+                ]
+              },
+              useDedicatedNodes: false
+            }
+          })
+        }
+      >
+        submit
+      </button>
+    ) : null
 }));
 
 vi.mock('../../create-universe/helpers/RegionToFlagUtils', () => ({
@@ -80,15 +128,17 @@ function renderPlacementTab(universeData: Universe) {
     <ThemeProvider theme={mainTheme}>
       <Provider store={noopStore}>
         <QueryClientProvider client={queryClient}>
-          <EditUniverseContext.Provider
-            value={{
-              activeTab: EditUniverseTabs.PLACEMENT,
-              universeData,
-              providerRegions: makeProviderRegions()
-            }}
-          >
-            <PlacementTab />
-          </EditUniverseContext.Provider>
+          <YBToastProvider>
+            <EditUniverseContext.Provider
+              value={{
+                activeTab: EditUniverseTabs.PLACEMENT,
+                universeData,
+                providerRegions: makeProviderRegions()
+              }}
+            >
+              <PlacementTab />
+            </EditUniverseContext.Provider>
+          </YBToastProvider>
         </QueryClientProvider>
       </Provider>
     </ThemeProvider>
@@ -111,16 +161,49 @@ describe('PlacementTab', () => {
     expect(screen.getByTestId('addGeoPartition')).toBeInTheDocument();
   });
 
+  it('renders single primary geo partition as a regular primary placement card', () => {
+    renderPlacementTab(makeSingleGeoPartitionUniverse());
+    expect(screen.queryByTestId('addGeoPartition')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(1);
+  });
+
+  it('submits single primary geo partition placement edits through partitions_spec', async () => {
+    const user = userEvent.setup();
+    renderPlacementTab(makeSingleGeoPartitionUniverse());
+
+    await user.click(screen.getByTestId('edit-placement-edit-button'));
+    const menu = await screen.findByRole('menu');
+    await user.click(menu.querySelector('[data-test-id="edit-placement-auto-balance"]')!);
+    await user.click(await screen.findByTestId('edit-placement-submit-stub'));
+
+    expect(hoisted.mutateEditUniverse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          clusters: [
+            expect.objectContaining({
+              uuid: 'primary-cluster-uuid',
+              partitions_spec: expect.any(Array)
+            })
+          ]
+        })
+      }),
+      expect.any(Object)
+    );
+    const mutationArg = hoisted.mutateEditUniverse.mock.calls[0][0];
+    expect(mutationArg.data.clusters[0].placement_spec).toBeUndefined();
+    expect(mutationArg.data.clusters[0].partitions_spec[0].uuid).toBe('geo-part-1');
+  });
+
   it('non-geo with read replica (placement_spec only): primary and one RR card', () => {
     renderPlacementTab(makeNonGeoUniverseWithReadReplicaPlacementSpec());
     const editButtons = screen.getAllByTestId('edit-placement-edit-button');
     expect(editButtons).toHaveLength(2);
   });
 
-  it('async cluster with partitions_spec triggers geo placement view (getExistingGeoPartitions); shows two RR partition cards when primary has no partitions', () => {
+  it('async cluster with partitions_spec does not trigger geo placement view when primary has no partitions', () => {
     renderPlacementTab(makeNonGeoUniverseWithReadReplicaPartitions());
-    expect(screen.getByTestId('addGeoPartition')).toBeInTheDocument();
-    expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(2);
+    expect(screen.queryByTestId('addGeoPartition')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(3);
   });
 
   it('non-geo without read replica does not mount delete read replica modal content', () => {

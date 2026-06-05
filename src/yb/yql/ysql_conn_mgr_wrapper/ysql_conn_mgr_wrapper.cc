@@ -381,7 +381,7 @@ Status YsqlConnMgrWrapper::UpdateAndReloadConfig() {
 }
 
 YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(conf), stat_shm_key_(stat_shm_key) {}
+    : ProcessSupervisor(conf.cgroup), conf_(conf), stat_shm_key_(stat_shm_key) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
   return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);

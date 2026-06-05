@@ -57,16 +57,18 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
     >
       {onEditMasterAllocationClick ? (
         <>
-          <MenuItem
-            data-test-id="edit-placement-clear-affinities"
-            onClick={onEditMasterAllocationClick}
-            disabled={!isUniverseReady}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}>
-              <EditIcon />
-            </Box>
-            {t('editMasterServerNodeAllocation')}
-          </MenuItem>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+            <MenuItem
+              data-test-id="edit-placement-clear-affinities"
+              onClick={onEditMasterAllocationClick}
+              disabled={!isUniverseReady}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}>
+                <EditIcon />
+              </Box>
+              {t('editMasterServerNodeAllocation')}
+            </MenuItem>
+          </RbacValidator>
           <Divider />
         </>
       ) : null}
@@ -100,37 +102,39 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
       {showAddGeoPartition && (
         <>
           <Divider />
-          <MenuItem
-            data-test-id="add-geo-partition"
-            sx={{ height: 'auto' }}
-            onClick={() => {
-              window.location.href = getAddGeoPartitionRoute(universeUuid);
-            }}
-            disabled={!isUniverseReady}
-          >
-            <Box
-              sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}
+          <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+            <MenuItem
+              data-test-id="add-geo-partition"
+              sx={{ height: 'auto' }}
+              onClick={() => {
+                window.location.href = getAddGeoPartitionRoute(universeUuid);
+              }}
+              disabled={!isUniverseReady}
             >
-              <div>
-                <AddIcon />
-              </div>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {t('addGeoPartition')}
-                <Typography
-                  variant="subtitle1"
-                  color="textSecondary"
-                  sx={{ whiteSpace: 'initial' }}
-                >
-                  <Trans
-                    t={t}
-                    i18nKey={'geoPartitionHelpText'}
-                    components={{ a: <Link /> }}
-                    style={{ lineHeight: '16px' }}
-                  />
-                </Typography>
+              <Box
+                sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}
+              >
+                <div>
+                  <AddIcon />
+                </div>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {t('addGeoPartition')}
+                  <Typography
+                    variant="subtitle1"
+                    color="textSecondary"
+                    sx={{ whiteSpace: 'initial' }}
+                  >
+                    <Trans
+                      t={t}
+                      i18nKey={'geoPartitionHelpText'}
+                      components={{ a: <Link /> }}
+                      style={{ lineHeight: '16px' }}
+                    />
+                  </Typography>
+                </Box>
               </Box>
-            </Box>
-          </MenuItem>
+            </MenuItem>
+          </RbacValidator>
         </>
       )}
     </YBDropdown>

@@ -12,6 +12,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.Finder;
@@ -23,6 +24,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostRemove;
 import jakarta.persistence.Transient;
 import java.util.Collection;
 import java.util.Date;
@@ -201,5 +203,10 @@ public class Customer extends Model {
   @JsonIgnore
   public String getTag() {
     return String.format("[%s][%s]", getName(), getCode());
+  }
+
+  @PostRemove
+  public void cleanRuntimeConfigCache() {
+    RuntimeConfigCacheInvalidator.invalidateAllScopesForCustomer();
   }
 }

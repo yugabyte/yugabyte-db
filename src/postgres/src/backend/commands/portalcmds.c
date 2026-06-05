@@ -308,6 +308,16 @@ PortalCleanup(Portal portal)
 				if (portal->resowner)
 					CurrentResourceOwner = portal->resowner;
 
+				/*
+				 * YB: portal->queryDesc is set only for PORTAL_ONE_SELECT (see
+				 * PortalStart).  Skip ExecutorFinish's session-stats capture:
+				 * for the SELECT case ExecutorFinish does no work that produces
+				 * new DocDB stats, so the capture at end of ExecutorRun is
+				 * sufficient.
+				 */
+				Assert(portal->strategy == PORTAL_ONE_SELECT);
+				queryDesc->yb_skip_finish_capture = true;
+
 				ExecutorFinish(queryDesc);
 				ExecutorEnd(queryDesc);
 				FreeQueryDesc(queryDesc);

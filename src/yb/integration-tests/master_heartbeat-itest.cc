@@ -101,11 +101,15 @@ master::TabletReportPB MakeTabletReportPBWithNewLeader(
   report.set_sequence_number(report_seqno);
   auto* tablet_report = report.add_updated_tablets();
   tablet_report->set_tablet_id(tablet->id());
-  auto* consensus = tablet_report->mutable_committed_consensus_state();
-  *consensus = tablet->LockForRead()->pb.committed_consensus_state();
-  consensus->set_leader_uuid(ts->permanent_uuid());
-  consensus->set_current_term(consensus->current_term() + 1);
-  auto* new_peer = consensus->mutable_config()->add_peers();
+  auto* committed_state = tablet_report->mutable_committed_consensus_state();
+  *committed_state = tablet->LockForRead()->pb.committed_consensus_state();
+  const auto prev_term = committed_state->current_term();
+  committed_state->set_leader_uuid(ts->permanent_uuid());
+  committed_state->set_current_term(prev_term + 1);
+
+  auto& raft_config = *committed_state->mutable_config();
+  auto* new_peer = raft_config.add_peers();
+  raft_config.set_committed_op_index(raft_config.committed_op_index() + 1);
   new_peer->set_permanent_uuid(ts->permanent_uuid());
   new_peer->set_member_type(consensus::PeerMemberType::VOTER);
   auto ts_info = ts->GetTSInformationPB();
