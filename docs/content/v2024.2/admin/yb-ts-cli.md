@@ -49,7 +49,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 
 ### cdc_release_barriers_on_tablet
 
-Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+Available in v2024.2.9.1 and later.
 
 Releases [CDC retention barriers](../../additional-features/change-data-capture/using-logical-replication/advanced-configuration/#retention-of-resources) on the specified tablet on the target YB-TServer. Use this command when CDC retention barriers remain on a tablet after a replication slot or CDC stream is dropped.
 
