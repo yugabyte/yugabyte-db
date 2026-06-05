@@ -882,6 +882,54 @@ SELECT * FROM t_invalidate WHERE a + b = 5 ORDER BY a;
 
 RESET yb_test_invalidate_relcache_in_planner;
 DROP TABLE t_invalidate;
+-- Constant index expressions must not produce trivial derived equalities
+-- like "Index Cond: ((1) = 1)" (GH#31195).
+CREATE TABLE t_const_expr (a int);
+CREATE INDEX NONCONCURRENTLY t_const_expr_idx ON t_const_expr ((1)) INCLUDE (a);
+INSERT INTO t_const_expr VALUES (10), (20);
+ANALYZE t_const_expr;
+\set hint1 '/*+ IndexScan(t_const_expr t_const_expr_idx) */'
+\set query 'SELECT * FROM t_const_expr ORDER BY a'
+:explain1run1
+           QUERY PLAN           
+--------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on t_const_expr
+(3 rows)
+
+ a  
+----
+ 10
+ 20
+(2 rows)
+
+-- Mixed index where only some expression columns are constant: derived
+-- equalities should still fire for the non-constant expression column.
+CREATE TABLE t_mixed_expr (a int, b int);
+CREATE INDEX NONCONCURRENTLY t_mixed_expr_idx
+    ON t_mixed_expr ((b + 1), (1)) INCLUDE (a);
+INSERT INTO t_mixed_expr VALUES (1, 9), (2, 4);
+ANALYZE t_mixed_expr;
+\set hint1 '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */'
+\set query 'SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a'
+:explain1run1
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Sort
+   Sort Key: a
+   ->  Index Scan using t_mixed_expr_idx on t_mixed_expr
+         Index Cond: ((b + 1) = (4 + 1))
+         Storage Filter: (b = 4)
+(5 rows)
+
+ a | b 
+---+---
+ 2 | 4
+(1 row)
+
+DROP TABLE t_const_expr;
+DROP TABLE t_mixed_expr;
 -- Derived equalities must not push a clause whose substituted RHS
 -- evaluates (or could evaluate) to NULL.  (see GH#31971)
 CREATE TABLE demo_a (id int PRIMARY KEY, x int);

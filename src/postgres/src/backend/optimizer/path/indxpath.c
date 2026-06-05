@@ -5168,11 +5168,17 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 			Node	   *index_expr = copyObject(lfirst(expr_lc));
 
 			ChangeVarNodes(index_expr, 1, rel->relid, 0);
+			expr_lc = lnext(index->indexprs, expr_lc);
+
+			/*
+			 * A constant index expression (no Vars) would yield a trivial
+			 * "const = const" clause after EC substitution; skip it.
+			 */
+			if (!contain_var_clause(index_expr))
+				continue;
 
 			inferrable_expr = (Expr *) index_expr;
 			generation_expr = (Expr *) index_expr;
-
-			expr_lc = lnext(index->indexprs, expr_lc);
 		}
 		else
 		{
