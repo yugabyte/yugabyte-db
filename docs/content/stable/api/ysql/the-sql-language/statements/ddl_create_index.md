@@ -411,12 +411,11 @@ ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
 ```
 
 Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
-Step 4 to lock the parent is optional if there will be no reads or writes against the parent table while the partition is detached.
 
 {{< note title="Note" >}}
-
-Step 4 requires object locking support (available since 2025.2): set YB-TServer flags `enable_object_locking_for_table_locks=true` and `ysql_yb_ddl_transaction_block_enabled=true`.
-
+Step 4 to lock the parent is optional if there are no reads or writes against the parent table while the partition is detached, and it requires enabling object locking (supported from YugabyteDB {{<release "2025.2">}} or later).
+To enable the feature, set the YB-TServer flags `enable_object_locking_for_table_locks=true` and `ysql_yb_ddl_transaction_block_enabled=true`.
+Refer to [Enable table-level locks](../../../../../explore/transactions/explicit-locking/#enable-table-level-locks) for more details.
 {{< /note >}}
 
 ### Common errors and solutions
