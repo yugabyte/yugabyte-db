@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
@@ -80,6 +81,24 @@ public class YNPConfigGenerator {
     this.mapper = new ObjectMapper();
   }
 
+  private String getLogLevel() {
+    int requestLogLevel = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerRequestLogLevel);
+    // This mapping is same as in node-agent server config.
+    switch (requestLogLevel) {
+      case 0:
+        return "DEBUG";
+      case 1:
+        return "INFO";
+      case 2:
+        return "WARN";
+      case 3:
+        return "ERROR";
+      default:
+        // Default log level
+        return "INFO";
+    }
+  }
+
   private static void setCommunicationPorts(
       ObjectNode ynpNode, UniverseTaskParams.CommunicationPorts ports) {
     ynpNode.put("master_http_port", String.valueOf(ports.masterHttpPort));
@@ -122,7 +141,8 @@ public class YNPConfigGenerator {
         String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minTempDirSpaceGb)));
     ynpNode.put(
         "min_prometheus_space_gb",
-        String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minHomeDirSpaceGb)));
+        String.valueOf(
+            confGetter.getConfForScope(provider, ProviderConfKeys.minPrometheusSpaceGb)));
     extraNode.put("is_cloud", !provider.isManualOnprem());
     extraNode.put("cloud_type", provider.getCode());
     ynpNode.put("configure_cgroup", Util.configureCgroup(provider, true, confGetter));
@@ -166,7 +186,6 @@ public class YNPConfigGenerator {
     if (node.cloudInfo.private_ip != null) {
       ynpNode.put("node_ip", node.cloudInfo.private_ip);
     }
-    ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
     ynpNode.put("configure_cgroup", Util.configureCgroup(userIntent, provider, true, confGetter));
     DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
     if (deviceInfo.mountPoints != null) {
@@ -230,6 +249,9 @@ public class YNPConfigGenerator {
     ObjectNode ynpNode = (ObjectNode) rootNode.get("ynp");
     setCommunicationPorts(ynpNode, universe.getUniverseDetails().communicationPorts);
     ynpNode.put("is_ybcontroller_disabled", !universe.getUniverseDetails().isEnableYbc());
+    ynpNode.put(
+        "is_configure_clockbound",
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
     Customer customer = Customer.getOrBadRequest(params.getProvider().getCustomerUUID());
     boolean enableEarlyoomFeature =
         confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
@@ -269,7 +291,12 @@ public class YNPConfigGenerator {
     ynpNode.put("is_install_node_agent", false);
     ynpNode.put("yb_user_id", "1994");
     ynpNode.put("is_yb_prebuilt_image", params.isYbPrebuiltImage());
-    loggingNode.put("level", "INFO");
+    // Propagate the YNP version check flag so the YNP (Go) code respects it uniformly when
+    // comparing versions across all provisioning and precheck paths.
+    extraNode.put(
+        "enable_ynp_version_check", confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck));
+    // Set the logging level based on the global config.
+    loggingNode.put("level", getLogLevel());
     loggingNode.put("directory", params.getNodeAgentHome().resolve("logs").toString());
     String ybUserHomeOverride =
         confGetter

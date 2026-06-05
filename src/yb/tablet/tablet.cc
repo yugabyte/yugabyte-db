@@ -1021,7 +1021,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
       if (state->NeedFlush(idx, memtable_index)) {
         VLOG_WITH_PREFIX_AND_FUNC(2) << "Force flush";
         if (idx == 0) {
-          rocksdb::FlushOptions options;
+          rocksdb::FlushOptions options(rocksdb::FlushReason::kIntentsApply);
           options.wait = false;
           RETURN_NOT_OK(regular_db_->Flush(options));
         } else {
@@ -1509,7 +1509,8 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto flush_status = Flush(
         FlushMode::kSync,
-        FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation);
+        FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
+        rocksdb::FlushReason::kIntentFilesCleanup);
     if (!flush_status.ok()) {
       LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to flush regular db: " << flush_status;
       break;
@@ -2435,7 +2436,9 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
   WriteQuery::Execute(std::move(query));
 }
 
-Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick) {
+Status Tablet::Flush(
+    FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick,
+    rocksdb::FlushReason rocksdb_flush_reason) {
   TRACE_EVENT0("tablet", "Tablet::Flush");
 
   ScopedRWOperation pending_op;
@@ -2452,7 +2455,7 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed
     vector_indexes_list.Flush();
   }
 
-  rocksdb::FlushOptions options;
+  rocksdb::FlushOptions options(rocksdb_flush_reason);
   options.ignore_if_flushed_after_tick = ignore_if_flushed_after_tick;
   bool flush_intents = intents_db_ && HasFlags(flags, FlushFlags::kIntents);
   if (flush_intents) {
@@ -2473,6 +2476,15 @@ Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed
   }
 
   return Status::OK();
+}
+
+Status Tablet::Flush(FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason) {
+  return Flush(mode, flags, rocksdb::FlushOptions::kNeverIgnore, rocksdb_flush_reason);
+}
+
+Status Tablet::Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason) {
+  return Flush(
+      mode, FlushFlags::kAllDbs, rocksdb::FlushOptions::kNeverIgnore, rocksdb_flush_reason);
 }
 
 Status Tablet::WaitForFlush() {
@@ -3911,7 +3923,9 @@ Status Tablet::ModifyFlushedFrontier(
   // We should always flush RocksDBs before modifying their frontiers, otherwise if we crash between
   // frontier is modified and regular DB is flushed we can lose data because of skipping ops replay
   // during local bootstrap.
-  RETURN_NOT_OK(Flush(FlushMode::kSync, flags | FlushFlags::kRegular | FlushFlags::kIntents));
+  RETURN_NOT_OK(Flush(
+      FlushMode::kSync, flags | FlushFlags::kRegular | FlushFlags::kIntents,
+      rocksdb::FlushOptions::kNeverIgnore, rocksdb::FlushReason::kFlushedFrontierModification));
   const Status s = regular_db_->ModifyFlushedFrontier(frontier.Clone(), mode);
   if (PREDICT_FALSE(!s.ok())) {
     auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
@@ -4081,7 +4095,7 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
             << "Force flushing intents DB since it was not flushed for " << index_delta
             << " operations, while only "
             << FLAGS_num_raft_ops_to_force_idle_intents_db_to_flush << " is allowed";
-        rocksdb::FlushOptions options;
+        rocksdb::FlushOptions options(rocksdb::FlushReason::kIdleIntents);
         options.wait = false;
         WARN_NOT_OK(intents_db_->Flush(options), "Flush intents db failed");
       }
@@ -4373,7 +4387,8 @@ Status Tablet::ForceRocksDBCompact(
   if (intents_db_) {
     if (!intents_options.skip_flush) {
       RETURN_NOT_OK_PREPEND(
-          intents_db_->Flush(rocksdb::FlushOptions()), "Pre-compaction flush of intents db failed");
+          intents_db_->Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kCompactionDependency)),
+          "Pre-compaction flush of intents db failed");
     }
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(intents_db_.get(), intents_options));
   }
@@ -4679,7 +4694,7 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
-  RETURN_NOT_OK(Flush(FlushMode::kSync));
+  RETURN_NOT_OK(Flush(FlushMode::kSync, rocksdb::FlushReason::kSubtabletCreation));
 
   auto metadata = VERIFY_RESULT(metadata_->CreateSubtabletMetadata(
       tablet_id, partition, key_bounds.lower.ToStringBuffer(), key_bounds.upper.ToStringBuffer()));

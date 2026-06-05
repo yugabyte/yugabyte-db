@@ -15,12 +15,16 @@
 #include "yb/client/client-test-util.h"
 
 #include "yb/common/ql_type.h"
+#include "yb/common/transaction.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/mini_master.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -30,7 +34,11 @@ DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(report_ysql_ddl_txn_status_to_master);
+DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
+DECLARE_double(TEST_ysql_ddl_verification_failure_probability);
+DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 
 namespace yb::pgwrapper {
 
@@ -88,7 +96,11 @@ class PgDdlTransactionTest : public LibPqTestBase {
     opts->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
     opts->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
+        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled,"
+        "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
+    opts->extra_tserver_flags.push_back(
+        Format("--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=$0",
+               (RandomUniformBool() ? "true" : "false")));
   }
 
   // ysql_yb_disable_ddl_transaction_block_for_read_committed is a non-runtime flag for now, so we
@@ -249,6 +261,7 @@ class PgDdlTransactionMiniClusterTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 5;
     pgwrapper::PgMiniTestBase::SetUp();
   }
 };
@@ -305,6 +318,96 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestWaitForSchemaVersionAfterRollback) {
   }
 
   SyncPoint::GetInstance()->DisableProcessing();
+}
+
+TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedPeriodicRetrigger) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = -1;
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+
+  ASSERT_OK(conn.Execute("CREATE TABLE ddl_pp_failed_retrigger (id INT PRIMARY KEY)"));
+
+  // Fail verification task so that it ends up in kDdlPostProcessingFailed state.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_verification_failure_probability) = 1.0;
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE ddl_pp_failed_retrigger ADD COLUMN c INT"));
+
+  const auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, "ddl_pp_failed_retrigger"));
+  auto table_info = catalog_manager.GetTableInfo(table_id);
+  ASSERT_NE(table_info, nullptr);
+  const auto txn_id_pb = table_info->LockForRead()->pb_transaction_id();
+  ASSERT_FALSE(txn_id_pb.empty());
+  const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_id_pb));
+
+  // Disable YSQL reporting the status to yb-master so that we fully rely on the background task
+  // and mimic the nemesis case when tserver - master communication breaks down.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  LOG(INFO) << "Reporting YSQL DDL transaction status to YB-Master is disabled";
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  LOG(INFO) << "Rolled back";
+
+  ASSERT_OK(WaitFor(
+      [&] {
+        const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+        return Result<bool>(
+            st.has_value() &&
+            *st == master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+      },
+      MonoDelta::FromSeconds(60),
+      "DDL verification should reach kDdlPostProcessingFailed"));
+
+  LOG(INFO) << "Done waiting for kDdlPostProcessingFailed state";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_verification_failure_probability) = 0.0;
+
+  ASSERT_OK(WaitFor(
+    [&] {
+      const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+      return Result<bool>(
+          !st.has_value() ||
+          *st != master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+    },
+    MonoDelta::FromSeconds(60),
+    "DDL verification task should have been re-triggered"));
+}
+
+TEST_F(PgDdlTransactionTest, TestNoSkipIntentsWriteOnSavepoint) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write = true"));
+  ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = true"));
+
+  const int nrows = 100;
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE users (first_name TEXT, last_name TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE users2 (first_name TEXT, last_name TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE users3 (first_name TEXT, last_name TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO users SELECT md5(random()::text), md5(random()::text) FROM "
+      "(SELECT * FROM generate_series(1,$0) AS id) AS id", nrows));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp1; -- currentSubTransactionId = 2"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO users2 SELECT md5(random()::text), md5(random()::text) FROM "
+      "(SELECT * FROM generate_series(1,$0) AS id) AS id", nrows));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp2; -- currentSubTransactionId = 3"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO users3 SELECT md5(random()::text), md5(random()::text) FROM "
+      "(SELECT * FROM generate_series(1,$0) AS id) AS id", nrows));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp2; -- currentSubTransactionId = 2"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>(("SELECT COUNT(*) FROM users")));
+  ASSERT_EQ(count, nrows);
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(("SELECT COUNT(*) FROM users2")));
+  ASSERT_EQ(count, nrows);
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(("SELECT COUNT(*) FROM users3")));
+  ASSERT_EQ(count, 0);
 }
 
 class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
@@ -825,39 +928,49 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
 }
 
-TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointSlowTableDeletion) {
-  // Skip in case of commit as the test case is redundant.
+// Test case for https://github.com/yugabyte/yugabyte-db/issues/30721.
+TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithSlowIndexDeletion) {
   if (GetParam()) {
     return;
   }
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
 
+  ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS existing_table"));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
+  ASSERT_OK(conn.Execute("CREATE TABLE existing_table (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO existing_table VALUES (1)"));
+
+  // Ensure that the deletion of the base table is completed before we call
+  // IsTableDeletionDueToRollbackToSubTxn for the index table.
+  // With the fix to call IsTableDeletionDueToRollbackToSubTxn before initiating any tablet
+  // deletion, this ordering is a no-op but this leads to test failures in the old buggy code where
+  // we were calling it from within SendDeleteTabletRequest.
   SyncPoint::GetInstance()->LoadDependency({
-    {
-      "PgDdlSavepointMiniClusterTest::TestRollbackToSavepointSlowTableDeletion:WaitForDeleteTable",
-      "CatalogManager::CheckTableDeleted:BeforeRemoveDdlTransactionState"
-    }
+      {
+          "CatalogManager::CheckTableDeleted:AfterRemoveDdlTransactionState",
+          "CatalogManager::SendDeleteTabletRequest:IndexTable",
+      },
   });
   SyncPoint::GetInstance()->ClearTrace();
   SyncPoint::GetInstance()->EnableProcessing();
 
   ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName2));
-  ASSERT_OK(conn.Execute("SAVEPOINT a"));
-  ASSERT_OK(conn.Execute("SAVEPOINT b"));
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX idx ON $0 (a)", kTableName));
-  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
-  // The deletion of the table due to the above rollback to savepoint b will be delayed until the
-  // below sync point is hit. So it simulates the case when another rollback to savepoint arrives
-  // while the table deletion has started but not completed.
-  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
-  TEST_SYNC_POINT(
-      "PgDdlSavepointMiniClusterTest::TestRollbackToSavepointSlowTableDeletion:WaitForDeleteTable");
-  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT PRIMARY KEY, b INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX idx_$0 ON $0 (b)", kTableName));
+  // The below insert is important to ensure that we have at least one operation on the index
+  // tablets from this transaction. Otherwise, we will not see the transaction abort while deletion
+  // of the tablet in the old buggy code.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp"));
+  ASSERT_OK(conn.Execute("ALTER TABLE existing_table ADD COLUMN b INT"));
+  ASSERT_OK(conn.Execute("INSERT INTO existing_table VALUES (2, 2)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  SyncPoint::GetInstance()->DisableProcessing();
+
+  ASSERT_OK(conn.Execute("DROP TABLE existing_table"));
 }
 
 } // namespace yb::pgwrapper

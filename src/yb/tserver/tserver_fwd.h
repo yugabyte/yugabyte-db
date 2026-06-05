@@ -27,6 +27,8 @@
 
 namespace yb {
 
+YB_STRONGLY_TYPED_BOOL(UserTabletsOnly);
+
 namespace client {
 
 class TransactionManager;

@@ -130,8 +130,7 @@ struct TabletOnDiskSizeInfo {
   }
 };
 
-YB_DEFINE_ENUM(
-    TabletObjectState,
+YB_DEFINE_ENUM(TabletObjectState,
     (kUninitialized)
     (kAvailable)
     (kDestroyed));
@@ -529,6 +528,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback)
       EXCLUDES(async_write_queries_mutex_) override;
 
+  // Verifies that this peer has the op_id in its local log.
+  Status VerifyAsyncWriteReceived(const OpId& op_id);
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
@@ -638,6 +640,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool FlushBootstrapStateEnabled() const;
 
   void MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht);
+
+  Status VerifyAsyncWriteCompletion(const OpId& op_id);
 
   MetricRegistry* metric_registry_;
 

@@ -86,6 +86,8 @@ public class ReleasesUtils {
           put("2024.2", "LTS");
           put("2025.1", "STS");
           put("2025.2", "LTS");
+          put("2026.1", "STS");
+          put("2026.2", "LTS");
         }
       };
 

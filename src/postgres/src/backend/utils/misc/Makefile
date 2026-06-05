@@ -21,6 +21,7 @@ OBJS = \
 	yb_file_utils.o \
 	yb_index_check.o \
 	yb_jumblefuncs.o \
+	yb_pg_conf_validator.o \
 	yb_qpm.o \
 	yb_query_diagnostics.o \
 	yb_tcmalloc_utils.o \

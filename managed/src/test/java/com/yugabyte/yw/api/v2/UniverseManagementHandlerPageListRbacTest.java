@@ -69,8 +69,7 @@ public class UniverseManagementHandlerPageListRbacTest extends FakeDBApplication
     createUniverse("Hidden", customer.getId());
 
     UniverseManagementHandler handler = app.injector().instanceOf(UniverseManagementHandler.class);
-    UniversePagedQuerySpec spec = new UniversePagedQuerySpec();
-    spec.setLimit(10);
+    UniversePagedQuerySpec spec = new UniversePagedQuerySpec().limit(10);
     UniversePagedResp resp = handler.pageListUniverses(customer.getUuid(), spec);
     assertThat(resp.getTotalCount(), is(0));
     assertThat(resp.getEntities(), empty());

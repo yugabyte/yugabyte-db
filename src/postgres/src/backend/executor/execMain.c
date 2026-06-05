@@ -161,6 +161,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	EState	   *estate;
 	MemoryContext oldcontext;
 
+	if (yb_test_sleep_before_executor_start_ms > 0)
+		pg_usleep(yb_test_sleep_before_executor_start_ms * 1000);
+
 	/* sanity checks: queryDesc must not be started already */
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
@@ -356,6 +359,8 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 	Assert(estate != NULL);
 	Assert(!(estate->es_top_eflags & EXEC_FLAG_EXPLAIN_ONLY));
 
+	YBOnExecutorOperationBegin();
+
 	if (IsYugaByteEnabled())
 		YBBeginOperationsBuffering();
 
@@ -406,6 +411,8 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 		InstrStopNode(queryDesc->totaltime, estate->es_processed);
 
 	MemoryContextSwitchTo(oldcontext);
+
+	YBOnExecutorOperationEnd(queryDesc);
 }
 
 /* ----------------------------------------------------------------
@@ -448,6 +455,8 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	/* This should be run once and only once per Executor instance */
 	Assert(!estate->es_finished);
 
+	YBOnExecutorOperationBegin();
+
 	/* Switch into per-query memory context */
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
@@ -474,6 +483,8 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	MemoryContextSwitchTo(oldcontext);
 
 	estate->es_finished = true;
+
+	YBOnExecutorOperationEnd(queryDesc);
 }
 
 /* ----------------------------------------------------------------

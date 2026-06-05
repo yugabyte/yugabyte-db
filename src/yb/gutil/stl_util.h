@@ -460,7 +460,7 @@ class BaseDeleter {
 template<class STLContainer>
 class TemplatedElementDeleter : public BaseDeleter {
  public:
-  explicit TemplatedElementDeleter<STLContainer>(STLContainer *ptr)
+  explicit TemplatedElementDeleter(STLContainer *ptr)
       : container_ptr_(ptr) {
   }
 
@@ -500,7 +500,7 @@ class ElementDeleter {
 template<class STLContainer>
 class TemplatedValueDeleter : public BaseDeleter {
  public:
-  explicit TemplatedValueDeleter<STLContainer>(STLContainer *ptr)
+  explicit TemplatedValueDeleter(STLContainer *ptr)
       : container_ptr_(ptr) {
   }
 

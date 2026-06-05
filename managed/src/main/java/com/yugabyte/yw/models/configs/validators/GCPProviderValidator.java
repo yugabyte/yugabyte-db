@@ -12,6 +12,7 @@ import com.google.common.collect.SetMultimap;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -41,14 +42,19 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
 
   private final GCPCloudImpl gcpCloudImpl;
   private final RuntimeConfGetter runtimeConfGetter;
+  private final GCPProjectApiClientFactory gcpClientFactory;
   private final String INSTANCE_TEMPLATE_REGEX = "[a-z]([-a-z0-9]*[a-z0-9])?";
 
   @Inject
   public GCPProviderValidator(
-      BeanValidator beanValidator, RuntimeConfGetter runtimeConfGetter, GCPCloudImpl gcpCloudImpl) {
+      BeanValidator beanValidator,
+      RuntimeConfGetter runtimeConfGetter,
+      GCPCloudImpl gcpCloudImpl,
+      GCPProjectApiClientFactory gcpClientFactory) {
     super(beanValidator, runtimeConfGetter);
     this.gcpCloudImpl = gcpCloudImpl;
     this.runtimeConfGetter = runtimeConfGetter;
+    this.gcpClientFactory = gcpClientFactory;
   }
 
   @Override
@@ -57,6 +63,8 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       log.warn("Validation is not enabled");
       return;
     }
+
+    normalizeGcpProviderFields(provider);
 
     // add the jsonpath in the provider object
     JsonNode processedProvider = Util.addJsonPathToLeafNodes(Json.toJson(provider));
@@ -84,7 +92,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
           BAD_REQUEST, "Invalid GCP-SA Credentials [check logs for more info]");
     }
     SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
-    GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
+    GCPProjectApiClient apiClient = gcpClientFactory.getClient(provider);
     ArrayNode regionArrayJson = (ArrayNode) processedProvider.get("regions");
     ArrayNode imageBundleArrayJson = (ArrayNode) processedProvider.get("imageBundles");
     boolean enableVMOSPatching = runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
@@ -460,6 +468,17 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
   private VPCType getVpcType(Provider provider) {
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
     return gcpCloudInfo.getVpcType();
+  }
+
+  /**
+   * Applies defaults for optional GCP provider fields before validation. Omitted fields are treated
+   * the same as in {@link com.yugabyte.yw.cloud.gcp.GCPProjectApiClient#buildComputeClient}.
+   */
+  private void normalizeGcpProviderFields(Provider provider) {
+    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+    if (gcpCloudInfo.getUseHostCredentials() == null) {
+      gcpCloudInfo.setUseHostCredentials(false);
+    }
   }
 
   public boolean checkSshPortFirewallRules(

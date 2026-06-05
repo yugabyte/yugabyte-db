@@ -404,7 +404,7 @@ if(IS_GCC)
   # TODO: Subtitute it with '-as-needed' instead to avoid linking with unused library (issue #1495)
   # for reducing pocess start time
   ADD_LINKER_FLAGS("-Wl,-no-as-needed")
-  if ("${COMPILER_VERSION}" MATCHES "^1[1234][.].*$")
+  if ("${COMPILER_VERSION}" MATCHES "^1[12345][.].*$")
     # To silence these spurious warnings:
     # https://gist.githubusercontent.com/mbautin/60c7fb897a92b998a111ff38429a1158/raw
     # https://gist.githubusercontent.com/mbautin/56b95b7a6816ccdf77eaa60f53a7d3ef/raw
@@ -417,19 +417,21 @@ if(IS_GCC)
       # To avoid https://github.com/yugabyte/yugabyte-db/issues/16076
       ADD_CXX_FLAGS("-Wno-restrict")
     endif()
+  endif()
+  if ("${COMPILER_VERSION}" MATCHES "^1[2345][.].*$")
     if("${YB_BUILD_TYPE}" MATCHES "^(fastdebug|release)$")
       # To avoid https://github.com/yugabyte/yugabyte-db/issues/16767"
       ADD_CXX_FLAGS("-Wno-maybe-uninitialized")
     endif()
   endif()
-  if ("${COMPILER_VERSION}" MATCHES "^1[34][.].*$" AND
+  if ("${COMPILER_VERSION}" MATCHES "^1[345][.].*$" AND
       "${YB_BUILD_TYPE}" STREQUAL "release")
     # GCC 13 wants us to e.g. initalize an array of void* values in the StackTrace class, which is
     # unnecessary. This does not happen in debug.
     # https://gist.githubusercontent.com/mbautin/02d955abbee29f58c0d0d9cf7ab3291d/raw
     ADD_CXX_FLAGS("-Wno-uninitialized")
   endif()
-  if ("${COMPILER_VERSION}" MATCHES "^1[234][.].*$")
+  if ("${COMPILER_VERSION}" MATCHES "^1[2345][.].*$")
     # Also the use-after-free detector complains about Boost multi index container in GCC 12+.
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
@@ -857,6 +859,7 @@ string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 yb_deduplicate_arguments(CMAKE_C_FLAGS)
 # -------------------------------------------------------------------------------------------------
 
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 23)
 
 yb_deduplicate_arguments(CMAKE_CXX_FLAGS)

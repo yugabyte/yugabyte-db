@@ -18,7 +18,10 @@
 #include <algorithm>
 #include <optional>
 #include <ranges>
+#include <set>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "yb/client/table_info.h"
 
@@ -33,6 +36,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -69,9 +73,12 @@ DEFINE_test_flag(bool, ysql_log_perdb_allocated_new_objectid, false,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
                        "The function yb_increment_db_catalog_version_with_inval_messages or "
                        "yb_increment_all_db_catalog_versions_with_inval_messages will delete "
-                       "invalidation messages older than this time");
+                       "invalidation messages older than this time. The effective expiration "
+                       "is automatically raised to at least 10 * --heartbeat_interval_ms so "
+                       "that messages survive long enough for every TServer to receive them "
+                       "via heartbeats.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 8192,
                        "If a DDL statement generates more than this number of invalidation "
                        "messages we do not associate the messages with the new catalog version "
                        "caused by this DDL statement. This effetively turns off incremental "
@@ -79,6 +86,14 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
 
 DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
                       "Maximum number of invalidation messages we keep for a given database.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write, true,
+                       "Enables fastpath writes for relations created in the current transaction "
+                       "(skip intents DB when safe).");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks, false,
+                               "Allows yb_enable_new_relation_fastpath_write to be applicable "
+                               "inside explicit transaction blocks too.");
 
 namespace yb::pggate {
 namespace {
@@ -89,6 +104,31 @@ void Erase(Container* container, const Key& key) {
   auto it = container->find(key);
   if (it != container->end()) {
     container->erase(it);
+  }
+}
+
+void PublishPendingRpcTableInfo(
+    const std::vector<yb::PgObjectId>& relations,
+    const std::unordered_map<yb::PgObjectId, PgTableDescPtr, yb::PgObjectIdHash>& table_cache) {
+  if (!dist_trace::HasActiveContext() || relations.empty()) {
+    return;
+  }
+  dist_trace::ClearPendingRpcAttrs();
+  std::set<PgObjectId> unique_relations(relations.begin(), relations.end());
+  std::string joined_names;
+  for (const auto& relation : unique_relations) {
+    if (!relation.IsValid()) {
+      continue;
+    }
+    if (!joined_names.empty()) {
+      joined_names += ", ";
+    }
+    auto it = table_cache.find(relation);
+    DCHECK(it != table_cache.end());
+    joined_names += it->second->table_name().table_name();
+  }
+  if (!joined_names.empty()) {
+    dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));
   }
 }
 
@@ -371,7 +411,15 @@ class PgSession::RunHelper {
             << ", table name: " << table.table_name().table_name()
             << ", table relfilenode id: " << table.relfilenode_id();
 
+    bool skip_intents = op->skip_intents();
     auto& buffer = pg_session_.buffer_;
+    if (!buffer.IsEmpty() && skip_intents != pg_session_.last_op_skipped_intents_) {
+        VLOG(1) << "Flushing buffer due to skip_intents mode switch. "
+                << "new skip_intents mode: " << skip_intents;
+        RETURN_NOT_OK(pg_session_.FlushBufferedEntities(
+            PgFlushDebugContext::SwitchSkipIntentsMode()));
+    }
+    pg_session_.last_op_skipped_intents_ = skip_intents;
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).
@@ -549,12 +597,9 @@ PgSession::~PgSession() = default;
 
 Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {
-  auto resp = VERIFY_RESULT(pg_client_.GetDatabaseInfo(database_oid));
-  *colocated = resp.colocated();
-  if (resp.has_legacy_colocated_database())
-    *legacy_colocated_database = resp.legacy_colocated_database();
-  else
-    *legacy_colocated_database = true;
+  auto info = VERIFY_RESULT(pg_client_.IsDatabaseColocated(database_oid));
+  *colocated = info.colocated;
+  *legacy_colocated_database = info.legacy_colocated_database;
   return Status::OK();
 }
 
@@ -686,6 +731,7 @@ Status PgSession::StopOperationsBuffering() {
 void PgSession::ResetOperationsBuffering() {
   buffer_.Clear();
   buffering_enabled_ = false;
+  last_op_skipped_intents_ = false;
 }
 
 Result<SetupPerformOptionsAccessorTag> PgSession::FlushBufferedEntities(
@@ -699,6 +745,7 @@ SetupPerformOptionsAccessorTag PgSession::ClearState() {
   buffer_.Clear();
   explicit_row_lock_buffer_.Clear();
   ClearAllInsertOnConflictBuffers();
+  last_op_skipped_intents_ = false;
   return {};
 }
 
@@ -901,6 +948,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   PgsqlOps operations;
   PgObjectIds relations;
   std::move(ops).MoveTo(operations, relations);
+  // Must run before `relations` is moved into PerformFuture below; otherwise the vector is
+  // empty and no table info gets published for the upcoming RPC client span.
+  PublishPendingRpcTableInfo(relations, table_cache_);
   return PerformFuture(
       pg_client_.PerformAsync(&options, std::move(operations), metrics_),
       std::move(relations));
@@ -1236,7 +1286,7 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 
 Status PgSession::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
-  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
+  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
@@ -1258,19 +1308,12 @@ Status PgSession::AcquireObjectLock(
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
-  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
+  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
     return Status::OK();
   }
   tserver::PgReleaseSessionObjectLockRequestPB req;
-  auto& options = *req.mutable_options();
-  RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-      false /* read_only, doesn't matter */,
-      pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
-      IsLocalObjectLockOp(false)));
-  RETURN_NOT_OK(SetupPerformOptions(
-      VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::ReleaseLock(lock_id))), &options));
   if (release_all) {
-    options.clear_active_sub_transaction_id();
+    req.set_release_all(true);
   } else {
     auto& lock_oid = *req.mutable_lock_oid();
     lock_oid.set_database_oid(lock_id.db_oid);

@@ -62,8 +62,13 @@ class PgReadTimeTest : public PgMiniTestBase {
 
     // TODO: Remove yb_lock_pk_single_rpc once it becomes the default.
     // yb_max_query_layer_retries is required for TestConflictRetriesOnDocdb
+    // Turn off yb_enable_new_relation_fastpath_write because this test is not testing
+    // skip intents, it's testing read time picking. When we skip intents we also clear
+    // the read time to avoid restart read error. If read time is cleared then it will
+    // be picked by DocDB, causing num_pick_read_time_on_docdb > 0.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
-        "yb_lock_pk_single_rpc=true," + MaxQueryLayerRetriesConf(0);
+        "yb_lock_pk_single_rpc=true," + MaxQueryLayerRetriesConf(0) +
+        ",yb_enable_new_relation_fastpath_write=false";
 
     PgMiniTestBase::SetUp();
   }
@@ -640,6 +645,30 @@ TEST_F(PgMiniTestBase, DisallowAdvisoryLocksWithYbReadTime) {
 
   LOG(INFO) << "Releasing the advisory lock";
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_unlock(12345)"));
+}
+
+// Test that yb_read_time cannot be set at the database or role level via ALTER DATABASE SET or
+// ALTER ROLE SET. It is inherently a per-session GUC; persisting it as a database or role default
+// causes MISMATCHED_SCHEMA errors for all subsequent connections.
+TEST_F(PgMiniTestBase, DisallowYbReadTimeOnDatabaseAndRoleLevel) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Session-level SET should still work.
+  auto t1 = ASSERT_RESULT(
+      conn.FetchRow<PGUint64>("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+
+  // ALTER DATABASE SET yb_read_time should be blocked.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.ExecuteFormat("ALTER DATABASE yugabyte SET yb_read_time = '$0'", t1),
+      "yb_read_time can only be set at the session level");
+
+  // ALTER ROLE SET yb_read_time should be blocked.
+  ASSERT_OK(conn.Execute("CREATE ROLE test_role_yb_read_time WITH LOGIN SUPERUSER"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.ExecuteFormat("ALTER ROLE test_role_yb_read_time SET yb_read_time = '$0'", t1),
+      "yb_read_time can only be set at the session level");
 }
 
 // Test the read-time flag of ysql_dump to generate the schema of the database as of a timestamp t

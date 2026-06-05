@@ -349,7 +349,7 @@ Status HeartbeatPoller::TryHeartbeat() {
   tablet_report.set_is_incremental(!full_report_seq_no_);
   req.set_num_live_tablets(server_.tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_.tablet_manager()->GetLeaderCount());
-  if (FLAGS_ysql_enable_db_catalog_version_mode) {
+  {
     auto fingerprint = server_.GetCatalogVersionsFingerprint();
     if (fingerprint.has_value()) {
       req.set_ysql_db_catalog_versions_fingerprint(*fingerprint);
@@ -493,12 +493,9 @@ Status HeartbeatPoller::TryHeartbeat() {
   }
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
-  // We only check --enable_ysql when --ysql_enable_db_catalog_version_mode=true
-  // to keep the logic backward compatible.
-  if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql &&
+  if (FLAGS_enable_ysql &&
       PREDICT_TRUE(!FLAGS_TEST_tserver_disable_catalog_refresh_on_heartbeat)) {
-    // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In per-db
-    // mode, we do not use ysql_catalog_version.
+    // In per-db catalog version mode (the only supported mode) we never use ysql_catalog_version.
     DCHECK(!last_hb_response_.has_ysql_catalog_version());
     if (last_hb_response_.has_db_catalog_version_data()) {
       if (FLAGS_log_ysql_catalog_versions) {
@@ -536,54 +533,25 @@ Status HeartbeatPoller::TryHeartbeat() {
       //   ignored by the heartbeat service at the master side.
       VLOG_WITH_FUNC(2) << "got no master catalog version data";
     }
-  } else {
-    if (last_hb_response_.has_ysql_catalog_version()) {
-      DCHECK(!last_hb_response_.has_db_catalog_version_data());
-      if (FLAGS_log_ysql_catalog_versions) {
-        VLOG_WITH_FUNC(1) << "got master catalog version: "
-                          << last_hb_response_.ysql_catalog_version()
-                          << ", breaking version: "
-                          << (last_hb_response_.has_ysql_last_breaking_catalog_version()
-                              ? Format("$0", last_hb_response_.ysql_last_breaking_catalog_version())
-                              : "(none)");
-      }
-      if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {
-        server_.SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
-                                       last_hb_response_.ysql_last_breaking_catalog_version());
-      } else {
-        /* Assuming all changes are breaking if last breaking version not explicitly set. */
-        server_.SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
-                                       last_hb_response_.ysql_catalog_version());
-      }
-    } else if (last_hb_response_.has_db_catalog_version_data() &&
-               PREDICT_TRUE(!FLAGS_TEST_tserver_disable_catalog_refresh_on_heartbeat)) {
-      // --ysql_enable_db_catalog_version_mode is still false on this tserver but master
-      // already has --ysql_enable_db_catalog_version_mode=true. This can happen during
-      // rolling upgrade from an old release where this gflag defaults to false to a new
-      // release where this gflag defaults to true: the change of this gflag from false
-      // to true happens on master first.
-      // This can also happen when such an upgrade is rolled back: where yb-tservers are
-      // first rolled back so the gflag changes to false before yb-masters.
-      // Here we take care of both cases in the same way: extracting the global catalog
-      // versions from last_hb_response_.db_catalog_version_data().
-      if (FLAGS_log_ysql_catalog_versions) {
-        VLOG_WITH_FUNC(1) << "got master db catalog version data: "
-                          << last_hb_response_.db_catalog_version_data().ShortDebugString()
-                          << " db inval messages: "
-                          << tserver::CatalogInvalMessagesDataDebugString(last_hb_response_);
-      }
-      const auto& version_data = last_hb_response_.db_catalog_version_data();
-
-      // The upgrade of the pg_yb_catalog_version table to one row per database happens in
-      // the finalization phase of cluster upgrade, at that time all the tservers should have
-      // completed rolling upgrade and have --ysql_enable_db_catalog_version_mode=true.
-      // Since we still have FLAGS_ysql_enable_db_catalog_version_mode=false, the table
-      // must still only have one row for template1.
-      DCHECK_EQ(version_data.db_catalog_versions_size(), 1);
-      DCHECK_EQ(version_data.db_catalog_versions(0).db_oid(), kTemplate1Oid);
-
-      server_.SetYsqlCatalogVersion(version_data.db_catalog_versions(0).current_version(),
-                                     version_data.db_catalog_versions(0).last_breaking_version());
+  } else if (last_hb_response_.has_ysql_catalog_version()) {
+    // YSQL is disabled on this tserver but the master sent back the legacy single shared
+    // ysql_catalog_version field; record it so the tserver still tracks it.
+    DCHECK(!last_hb_response_.has_db_catalog_version_data());
+    if (FLAGS_log_ysql_catalog_versions) {
+      VLOG_WITH_FUNC(1) << "got master catalog version: "
+                        << last_hb_response_.ysql_catalog_version()
+                        << ", breaking version: "
+                        << (last_hb_response_.has_ysql_last_breaking_catalog_version()
+                            ? Format("$0", last_hb_response_.ysql_last_breaking_catalog_version())
+                            : "(none)");
+    }
+    if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {
+      server_.SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
+                                     last_hb_response_.ysql_last_breaking_catalog_version());
+    } else {
+      /* Assuming all changes are breaking if last breaking version not explicitly set. */
+      server_.SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
+                                     last_hb_response_.ysql_catalog_version());
     }
   }
 

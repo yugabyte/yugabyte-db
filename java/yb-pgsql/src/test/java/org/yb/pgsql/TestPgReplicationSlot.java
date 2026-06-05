@@ -16,6 +16,7 @@ import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
@@ -44,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -3967,8 +3969,26 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       .start();
     Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
     LogSequenceNumber lastLsn = stream.getLastReceiveLSN();
+
+    // Queried this way because when this test is run with Conn Mgr enabled in Auth
+    // Passthrough mode, the process of authentication opens up a replication
+    // backend for internal use, causing an extra row in pg_stat_replication.
+    // Querying with a JOIN this way preserves the intent of the test while
+    // simplifying assertions/checks in the test.
+    // TODO (vikram.damle) (#31418): Once repl slot registering is disabled for
+    // control backends, assert that only 1 entry is present in pg_stat_replication.
+    String statReplicationQuery;
+    if(isTestRunningWithConnectionManager()) {
+      statReplicationQuery = "SELECT sr.pid FROM pg_stat_replication sr " +
+          "JOIN pg_replication_slots rs ON sr.pid = rs.active_pid WHERE rs.slot_name = '"
+          + slotName + "'";
+    } else {
+      statReplicationQuery = "SELECT pid FROM pg_stat_replication";
+    }
+
     try (Statement stmt = connection.createStatement()) {
-      ResultSet res1 = stmt.executeQuery("SELECT pid FROM pg_stat_replication");
+
+      ResultSet res1 = stmt.executeQuery(statReplicationQuery);
       int activePid1 = -2;
       assertTrue(res1.next());
       activePid1 = res1.getInt("pid");
@@ -3989,7 +4009,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     conn = getConnectionBuilder().withTServer(0).replicationConnect();
     replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
     try (Statement stmt = connection.createStatement()) {
-      ResultSet res = stmt.executeQuery("SELECT active_pid FROM pg_replication_slots");
+      ResultSet res = stmt.executeQuery("SELECT rs.active_pid FROM pg_replication_slots rs " +
+          "WHERE rs.slot_name = '" + slotName + "'");
       assertTrue(res.next());
       int activePid = res.getInt("active_pid");
       assertTrue(res.wasNull());
@@ -4007,7 +4028,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       .start();
     Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
     try (Statement stmt1 = connection.createStatement()) {
-      ResultSet res1 = stmt1.executeQuery("SELECT * FROM pg_stat_replication");
+      ResultSet res1 = stmt1.executeQuery(statReplicationQuery);
       int activePid1 = -2;
       if (res1.next()) {
           activePid1 = res1.getInt("pid");
@@ -4068,7 +4089,19 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     int activePid3 = -3;
     int activePid4 = -4;
     try (Statement stmt = conn2_2.createStatement()) {
-      ResultSet res1 = stmt.executeQuery("SELECT * FROM pg_stat_replication");
+      // Refer to comments in `testActivePidAndWalStatusPopulationOnStreamRestart`
+      // reg. why a JOIN is being used here.
+      // TODO (vikram.damle) (#31418): Assert no extra rows in pg_stat_replication
+      // once initWalSender() is skipped for repl control backends.
+      String statReplicationQuery;
+      if(isTestRunningWithConnectionManager()) {
+        statReplicationQuery = "SELECT sr.pid FROM pg_stat_replication sr " +
+            "JOIN pg_replication_slots rs ON sr.pid = rs.active_pid WHERE rs.slot_name = '"
+            + slotName + "'";
+      } else {
+        statReplicationQuery = "SELECT pid FROM pg_stat_replication";
+      }
+      ResultSet res1 = stmt.executeQuery(statReplicationQuery);
       assertTrue(res1.next());
       activePid1 = res1.getInt("pid");
 
@@ -4945,7 +4978,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       stmt.execute("SELECT pg_replication_origin_create('" + originId2 + "')");
 
       // Create replication slot
-      createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+      createSlot(replConnection, slotName, PG_OUTPUT_PLUGIN_NAME);
 
       // Local insert
       stmt.execute("INSERT INTO tbl1 values (2,'b')");
@@ -5022,6 +5055,122 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       );
 
     List<PgOutputMessage> result = receiveMessage(stream, 22);
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testYboutputWithOriginIdCreatedAfterSlot() throws Exception {
+    final String slotName = "test_replication_with_origin_id_post_slot";
+    final String originId1 = "origin1_post";
+    final String originId2 = "origin2_post";
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS tbl1");
+      stmt.execute("DROP TABLE IF EXISTS tbl2");
+      stmt.execute("CREATE TABLE tbl1 (a INT PRIMARY KEY, b TEXT)");
+      stmt.execute("ALTER TABLE tbl1 REPLICA IDENTITY CHANGE");
+      stmt.execute("CREATE TABLE tbl2 (a TEXT primary key) SPLIT INTO 2 TABLETS");
+      stmt.execute("ALTER TABLE tbl2 REPLICA IDENTITY CHANGE");
+      stmt.execute("INSERT INTO tbl1 values (1,'a')");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+
+      // Create only origin1 BEFORE the slot.
+      stmt.execute("SELECT pg_replication_origin_create('" + originId1 + "')");
+
+      // Create replication slot. origin2 does not exist yet.
+      createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+      // Create origin2 AFTER the slot exists.
+      stmt.execute("SELECT pg_replication_origin_create('" + originId2 + "')");
+
+      stmt.execute("INSERT INTO tbl1 values (2,'b')");
+
+      // Single tablet non distributed insert from origin 1
+      stmt.execute("SELECT pg_replication_origin_session_setup('" + originId1 + "')");
+      stmt.execute("INSERT INTO tbl2 values ('row1')");
+
+      // Batch update from origin 2.
+      stmt.execute("SELECT pg_replication_origin_session_reset()");
+      stmt.execute("SELECT pg_replication_origin_session_setup('" + originId2 + "')");
+      stmt.execute("BEGIN");
+      stmt.execute("UPDATE tbl1 SET b = 'c' WHERE a = 1");
+      stmt.execute("UPDATE tbl1 SET b = 'd' WHERE a = 2");
+      stmt.execute("COMMIT");
+
+      // Transactional DML from origin 1
+      stmt.execute("SELECT pg_replication_origin_session_reset()");
+      stmt.execute("SELECT pg_replication_origin_session_setup('" + originId1 + "')");
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO tbl2 values ('row2')");
+      stmt.execute("DELETE FROM tbl1 WHERE a = 2");
+      stmt.execute("COMMIT");
+
+      stmt.execute("SELECT pg_replication_origin_session_reset()");
+      stmt.execute("DELETE FROM tbl2 WHERE a = 'row2'");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> expectedResult = CreateMessages(
+        // Change 1: Local insert
+        PgOutputBeginMessage.Create("0/4", 2),
+        PgOutputRelationMessage.Create("public", "tbl1", 'c',
+            PgOutputRelationMessageColumn.Create("a", 23),
+            PgOutputRelationMessageColumn.Create("b", 25)),
+        PgOutputInsertMessage.Create("2", "b"),
+        PgOutputCommitMessage.Create("0/4", "0/5"),
+
+        // Change 2: Single tablet non distributed insert from origin 1 (pre-slot origin)
+        PgOutputBeginMessage.Create("0/7", 3),
+        PgOutputOriginMessage.Create(originId1),
+        PgOutputRelationMessage.Create(
+            "public", "tbl2", 'c', PgOutputRelationMessageColumn.Create("a", 25)),
+        PgOutputInsertMessage.Create("row1"),
+        PgOutputCommitMessage.Create("0/7", "0/8"),
+
+        // Change 3: Batch update from origin 2.
+        PgOutputBeginMessage.Create("0/B", 4),
+        PgOutputOriginMessage.Create(originId2),
+        PgOutputUpdateMessage.Create(true, "1", "c"),
+        PgOutputUpdateMessage.Create(true, "2", "d"),
+        PgOutputCommitMessage.Create("0/B", "0/C"),
+
+        // Change 4: Transactional DML from origin 1
+        PgOutputBeginMessage.Create("0/F", 5),
+        PgOutputOriginMessage.Create(originId1),
+        PgOutputInsertMessage.Create("row2"),
+        PgOutputDeleteMessage.Create(true, "2", null),
+        PgOutputCommitMessage.Create("0/F", "0/10"),
+
+        // Change 5: Local delete
+        PgOutputBeginMessage.Create("0/12", 6),
+        PgOutputDeleteMessage.Create(true, "row2"),
+        PgOutputCommitMessage.Create("0/12", "0/13")
+      );
+
+    long deadlineMs = System.currentTimeMillis() + 60_000;
+    List<PgOutputMessage> result = new ArrayList<>();
+    while (result.size() < 22 && System.currentTimeMillis() < deadlineMs) {
+      ByteBuffer buf = stream.readPending();
+      if (buf != null) {
+        result.add(PgOutputMessageDecoder.DecodeBytes(buf));
+      } else {
+        Thread.sleep(50);
+      }
+    }
+    LOG.info("Received {} messages (expected 22)", result.size());
     assertEquals(expectedResult, result);
 
     stream.close();
@@ -5197,6 +5346,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  // TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+  @Ignore
   @Test
   public void testWithTableRewriteOnColocatedTable() throws Exception {
     setFlagsForDynamicTablesTest(getTServerFlags(), getMasterFlags(),
@@ -5483,5 +5634,145 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertEquals(expectedResult, result);
 
     stream.close();
+  }
+
+  // TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+  @Ignore
+  @Test
+  public void testColocatedDropPkThenDropIndex() throws Exception {
+    setFlagsForDynamicTablesTest(getTServerFlags(), getMasterFlags(),
+        false /* usePubRefresh */, true /* streamTablesWithoutPrimaryKey */);
+
+    for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tServer, "cdc_max_stream_intent_records", "100");
+    }
+
+    String slotName = "test_drop_pk_then_idx";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("DROP DATABASE IF EXISTS col_db");
+      stmt.executeUpdate("CREATE DATABASE col_db WITH colocation = true");
+    }
+
+    Connection colConn = getConnectionBuilder().withDatabase("col_db").connect();
+    Connection replConn = getConnectionBuilder()
+        .withDatabase("col_db").withTServer(0)
+        .replicationConnect();
+
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute(
+          "CREATE TABLE t1 (a int primary key, b int, c int, d text)"
+          + " WITH (colocation = true)");
+      stmt.execute("CREATE INDEX t1_b_idx ON t1(b)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    PGReplicationConnection replApi =
+        replConn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replApi, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute(
+          "INSERT INTO t1 SELECT i, i*10, i*100, 'text_' || i"
+          + " FROM generate_series(1, 250) AS s(i)");
+      stmt.execute("COMMIT");
+
+      stmt.execute("BEGIN");
+      stmt.execute(
+          "INSERT INTO t1 SELECT i, i*10, i*100, 'text_' || i"
+          + " FROM generate_series(251, 500) AS s(i)");
+      stmt.execute("COMMIT");
+
+      stmt.execute("ALTER TABLE t1 DROP CONSTRAINT t1_pkey");
+      stmt.execute("DROP INDEX t1_b_idx");
+    }
+
+    PGReplicationStream stream = replApi.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    // Two insert txns + one from the ALTER TABLE rewrite's backfill.
+    int expectedTransactions = 3;
+    int beginCount = 0;
+    int commitCount = 0;
+
+    while (commitCount < expectedTransactions) {
+      PgOutputMessage msg = receiveMessage(stream, 1).get(0);
+      if (msg instanceof PgOutputBeginMessage) beginCount++;
+      else if (msg instanceof PgOutputCommitMessage) commitCount++;
+    }
+
+    assertEquals(beginCount, commitCount);
+    assertEquals(expectedTransactions, commitCount);
+
+    stream.close();
+    colConn.close();
+    replConn.close();
+  }
+
+  @Test
+  public void testRestartTimeMovementWithNoWorkload() throws Exception {
+    String slotName = "test_restart_time_movement";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_table");
+      stmt.execute("CREATE TABLE test_table (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tServer, "cdcsdk_update_restart_time_interval_secs", "0");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'hello')");
+    }
+
+    // Ack the txn, so that nothing more is left to stream.
+    receiveMessage(stream, 4);
+    stream.setFlushedLSN(stream.getLastReceiveLSN());
+    stream.forceUpdateStatus();
+    waitForRestartLSN(connection, slotName, 4L);
+
+    long restartCommitHtBefore = getRestartCommitHt(connection, slotName);
+
+    // Sleep with no workload. GetConsistentChanges should move the restart time forward.
+    int sleepDurationSec = 10 * kMultiplier;
+    Thread.sleep(sleepDurationSec * 1000);
+
+    long restartCommitHtAfter = getRestartCommitHt(connection, slotName);
+    assertTrue(restartCommitHtAfter > restartCommitHtBefore);
+    LOG.info("Restart time before movement: {} after movement: {}",
+        restartCommitHtBefore, restartCommitHtAfter);
+
+    stream.close();
+    conn.close();
+  }
+
+  private long getRestartCommitHt(Connection connection, String slotName) throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery(String.format(
+          "select yb_restart_commit_ht from pg_replication_slots where slot_name = '%s'",
+          slotName));
+      assertTrue(res.next());
+      return res.getLong("yb_restart_commit_ht");
+    }
   }
 }

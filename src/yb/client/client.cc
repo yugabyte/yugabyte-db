@@ -188,6 +188,8 @@ using yb::master::IsLoadBalancedRequestPB;
 using yb::master::IsLoadBalancedResponsePB;
 using yb::master::IsLoadBalancerIdleRequestPB;
 using yb::master::IsLoadBalancerIdleResponsePB;
+using yb::master::IsNamespacePartOfCDCSDKRequestPB;
+using yb::master::IsNamespacePartOfCDCSDKResponsePB;
 using yb::master::IsObjectPartOfXReplRequestPB;
 using yb::master::IsObjectPartOfXReplResponsePB;
 using yb::master::ListCDCStreamsRequestPB;
@@ -622,11 +624,14 @@ Status YBClient::TruncateTables(const TableIds& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoint deadline) {
+Status YBClient::BackfillIndex(const TableId& table_id,
+                               std::optional<TransactionMetadata> requester_transaction,
+                               bool wait, CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
     deadline = CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms;
   }
-  return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
+  return data_->BackfillIndex(
+      this, YBTableName(), table_id, deadline, std::move(requester_transaction), wait);
 }
 
 Status YBClient::GetIndexBackfillProgress(
@@ -1006,7 +1011,6 @@ Status YBClient::CloneNamespace(
   }
   req.set_restore_ht(HybridTime::FromMicros(yb_clone_info.clone_time).ToUint64());
   req.set_target_namespace_name(target_namespace_name);
-  req.set_pg_source_owner(yb_clone_info.src_owner);
   req.set_pg_target_owner(yb_clone_info.tgt_owner);
 
   // Set clone_deadline to ysql_clone_pg_schema_rpc_timeout_ms to give time to clone pg schema
@@ -1933,6 +1937,15 @@ Result<bool> YBClient::IsObjectPartOfXRepl(const TableId& table_id) {
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsObjectPartOfXRepl);
   return resp.has_error() ? StatusFromPB(resp.error().status())
                           : Result<bool>(resp.is_object_part_of_xrepl());
+}
+
+Result<bool> YBClient::IsNamespacePartOfCDCSDK(const NamespaceId& namespace_id) {
+  IsNamespacePartOfCDCSDKRequestPB req;
+  IsNamespacePartOfCDCSDKResponsePB resp;
+  req.set_namespace_id(namespace_id);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsNamespacePartOfCDCSDK);
+  return resp.has_error() ? StatusFromPB(resp.error().status())
+                          : Result<bool>(resp.is_namespace_part_of_cdcsdk());
 }
 
 Result<bool> YBClient::IsBootstrapRequired(

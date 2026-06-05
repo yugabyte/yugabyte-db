@@ -987,7 +987,10 @@
             "PA_COLLECTOR_DOWN",
             "PA_UNIVERSE_COLLECTION_FAILURE",
             "PA_UNIVERSE_COLLECTION_STALE",
-            "PA_EMBEDDED_COLLECTOR_ERROR"
+            "PA_EMBEDDED_COLLECTOR_ERROR",
+            "NODE_MAINTENANCE_SERVICE_FAILED",
+            "NODE_MAINTENANCE_SERVICE_NOT_RUN",
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING"
           ],
           "type" : "string"
         },
@@ -1177,7 +1180,10 @@
             "PA_COLLECTOR_DOWN",
             "PA_UNIVERSE_COLLECTION_FAILURE",
             "PA_UNIVERSE_COLLECTION_STALE",
-            "PA_EMBEDDED_COLLECTOR_ERROR"
+            "PA_EMBEDDED_COLLECTOR_ERROR",
+            "NODE_MAINTENANCE_SERVICE_FAILED",
+            "NODE_MAINTENANCE_SERVICE_NOT_RUN",
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING"
           ],
           "type" : "string"
         },
@@ -1463,7 +1469,10 @@
             "PA_COLLECTOR_DOWN",
             "PA_UNIVERSE_COLLECTION_FAILURE",
             "PA_UNIVERSE_COLLECTION_STALE",
-            "PA_EMBEDDED_COLLECTOR_ERROR"
+            "PA_EMBEDDED_COLLECTOR_ERROR",
+            "NODE_MAINTENANCE_SERVICE_FAILED",
+            "NODE_MAINTENANCE_SERVICE_NOT_RUN",
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING"
           ],
           "type" : "string"
         },
@@ -4118,6 +4127,18 @@
           "description" : "Time before deleting the backup from storage, in milliseconds",
           "format" : "int64",
           "type" : "integer"
+        },
+        "usePrivileges" : {
+          "description" : "Backup privileges for roles",
+          "type" : "boolean"
+        },
+        "useRoles" : {
+          "description" : "Backup global ysql roles",
+          "type" : "boolean"
+        },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
         }
       },
       "type" : "object"
@@ -6050,6 +6071,9 @@
         "local" : {
           "$ref" : "#/definitions/LocalCloudInfo"
         },
+        "oci" : {
+          "$ref" : "#/definitions/OCICloudInfo"
+        },
         "onprem" : {
           "$ref" : "#/definitions/OnPremCloudInfo"
         }
@@ -6646,6 +6670,14 @@
         "multiTenancy" : {
           "$ref" : "#/definitions/MultiTenancyConfig",
           "description" : "WARNING: This is a preview API that could change. Multi-tenancy configuration for QoS. Cgroup provisioning must already be completed on the nodes before enabling."
+        },
+        "runOnlyPrechecks" : {
+          "description" : "WARNING: This is a preview API that could change. If true, only run the prechecks for the configure YSQL task without performing the actual upgrade. Cannot be set together with validateParams.",
+          "type" : "boolean"
+        },
+        "validateParams" : {
+          "description" : "WARNING: This is a preview API that could change. If true, only validate the request parameters without submitting any task or running prechecks. Cannot be set together with runOnlyPrechecks.",
+          "type" : "boolean"
         },
         "ysqlPassword" : {
           "description" : "YSQL Auth password",
@@ -7404,10 +7436,6 @@
         "retryable" : {
           "description" : "Customer task retryable",
           "type" : "boolean"
-        },
-        "softwareUpgradeProgress" : {
-          "$ref" : "#/definitions/SoftwareUpgradeProgress",
-          "description" : "Software upgrade progress (canary / per-AZ) when applicable"
         },
         "status" : {
           "description" : "Customer task status",
@@ -9137,6 +9165,10 @@
           "description" : "WARNING: This is a preview API that could change. Name of the gflag",
           "type" : "string"
         },
+        "requiresRestart" : {
+          "description" : "WARNING: This is a preview API that could change. True if a restart or rolling restart is needed for the gflag change to take effect; false for runtime flags.",
+          "type" : "boolean"
+        },
         "tags" : {
           "description" : "WARNING: This is a preview API that could change. Tags of the gflag",
           "type" : "string"
@@ -10265,6 +10297,7 @@
             "aws",
             "gcp",
             "azu",
+            "oci",
             "docker",
             "onprem",
             "kubernetes",
@@ -13354,6 +13387,7 @@
             "aws",
             "gcp",
             "azu",
+            "oci",
             "docker",
             "onprem",
             "kubernetes",
@@ -14311,6 +14345,49 @@
         "numSelect",
         "numUpdate"
       ],
+      "type" : "object"
+    },
+    "OCICloudInfo" : {
+      "properties" : {
+        "ociCompartmentId" : {
+          "description" : "OCI Compartment OCID",
+          "type" : "string"
+        },
+        "ociFingerprint" : {
+          "description" : "OCI API Key Fingerprint",
+          "type" : "string"
+        },
+        "ociHostedZoneId" : {
+          "description" : "OCI DNS Zone OCID for hosted zone",
+          "type" : "string"
+        },
+        "ociPrivateKeyContent" : {
+          "description" : "OCI API Private Key content (PEM format)",
+          "type" : "string"
+        },
+        "ociRegion" : {
+          "description" : "Default OCI Region",
+          "type" : "string"
+        },
+        "ociTenancyId" : {
+          "description" : "OCI Tenancy OCID",
+          "type" : "string"
+        },
+        "ociUserId" : {
+          "description" : "OCI User OCID",
+          "type" : "string"
+        },
+        "vpcType" : {
+          "description" : "New/Existing VCN for provider creation",
+          "enum" : [
+            "EXISTING",
+            "NEW",
+            "HOSTVPC"
+          ],
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "OTLPConfig" : {
@@ -23429,41 +23506,6 @@
       ],
       "type" : "object"
     },
-    "SoftwareUpgradeProgress" : {
-      "description" : "Software upgrade progress by availability zone",
-      "properties" : {
-        "canaryPauseState" : {
-          "description" : "WARNING: This is a preview API that could change. Current canary pause state, if applicable",
-          "enum" : [
-            "NOT_PAUSED",
-            "PAUSED_AFTER_MASTERS",
-            "PAUSED_AFTER_TSERVERS_AZ"
-          ],
-          "type" : "string"
-        },
-        "canaryUpgrade" : {
-          "type" : "boolean"
-        },
-        "masterAZUpgradeStatesList" : {
-          "description" : "WARNING: This is a preview API that could change. Master upgrade state per availability zone",
-          "items" : {
-            "$ref" : "#/definitions/AZUpgradeState"
-          },
-          "type" : "array"
-        },
-        "tserverAZUpgradeStatesList" : {
-          "description" : "WARNING: This is a preview API that could change. Tserver upgrade state per availability zone",
-          "items" : {
-            "$ref" : "#/definitions/AZUpgradeState"
-          },
-          "type" : "array"
-        }
-      },
-      "required" : [
-        "canaryUpgrade"
-      ],
-      "type" : "object"
-    },
     "SpecificGFlags" : {
       "description" : "GFlags for current cluster",
       "properties" : {
@@ -28269,6 +28311,7 @@
           "type" : "string"
         },
         "platformUrl" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -28788,7 +28831,6 @@
       "required" : [
         "clusters",
         "creatingUser",
-        "platformUrl",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -30102,6 +30144,7 @@
             "aws",
             "gcp",
             "azu",
+            "oci",
             "docker",
             "onprem",
             "kubernetes",
@@ -49077,7 +49120,7 @@
     },
     "/api/v1/customers/{cUUID}/users/{uUUID}" : {
       "delete" : {
-        "description" : "Deletes the specified user. Note that you can't delete a customer's primary user.",
+        "description" : "Deletes the specified user. Note that an Admin user can't delete a SuperAdmin user.",
         "operationId" : "deleteUser",
         "parameters" : [
           {

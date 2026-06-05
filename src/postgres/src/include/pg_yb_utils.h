@@ -144,6 +144,8 @@ extern YbGeolocationDistance get_geolocation_distance(Oid tablespaceoid);
 extern bool IsYugaByteEnabled();
 
 extern bool yb_enable_docdb_tracing;
+extern bool yb_enable_spi_dist_tracing;
+
 extern bool yb_read_from_followers;
 extern bool yb_follower_reads_behavior_before_fixing_20482;
 extern int32_t yb_follower_read_staleness_ms;
@@ -263,6 +265,14 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation);
  * Check if a relation has secondary indices.
  */
 extern bool YBRelHasSecondaryIndices(Relation relation);
+
+/*
+ * Check if upsert (blind write) is unsafe on the given relation.
+ * Blind writes skip reading the old row, which means secondary index
+ * entries are updated incorrectly, triggers fire incorrectly, and
+ * foreign key cascades are skipped.
+ */
+extern bool YBIsUpsertUnsafeOnRel(Relation relation);
 
 /*
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
@@ -569,11 +579,14 @@ extern bool yb_enable_base_scans_cost_model;
 extern bool yb_enable_update_reltuples_after_create_index;
 
 /*
- * Enables index backfill column projection optimization.
- * If true, index build/backfill only reads columns needed for the index,
- * rather than all columns from the base table.
+ * Enables the following index backfill scan optimizations:
+ * - column projection (reads only the columns needed for the index)
+ * - predicate pushdown for partial indexes (pushes the predicate to DocDB)
+ * If true, index build/backfill reads only the columns needed for the index
+ * (column projection) and pushes partial index predicates down to the base table
+ * scan (predicate pushdown), reducing read RPCs.
  */
-extern bool yb_enable_index_backfill_column_projection;
+extern bool yb_enable_index_backfill_scan_optimization;
 
 /*
  * Total timeout for waiting for backends to have up-to-date catalog version.
@@ -626,6 +639,12 @@ extern int	yb_insert_on_conflict_read_batch_size;
 extern bool yb_enable_fkey_catcache;
 
 /*
+ * Enable batched DocDB lookup for foreign key constraint check when types
+ * mismatch. The batch size is controlled by ysql_session_max_batch_size.
+ */
+extern bool yb_enable_fkey_batched_docdb_lookup_when_types_mismatch;
+
+/*
  * Enable the nop alter role statement optimization.
  */
 extern bool yb_enable_nop_alter_role_optimization;
@@ -638,6 +657,17 @@ extern bool yb_ignore_freeze_with_copy;
 /* ------------------------------------------------------------------------------ */
 /* GUC variables needed by YB via their YB pointers. */
 extern int	StatementTimeout;
+
+
+/*
+ * Enable the skip intents write optimization.
+ */
+extern bool yb_enable_new_relation_fastpath_write;
+
+/*
+ * Enable the skip intents write optimization in transaction blocks.
+ */
+extern bool yb_enable_new_relation_fastpath_write_in_txn_blocks;
 
 /* ------------------------------------------------------------------------------ */
 /* YB Debug utils. */
@@ -691,6 +721,13 @@ extern bool yb_enable_retry_after_non_atomic_commit;
 extern bool yb_test_system_catalogs_creation;
 
 /*
+ * Sleep before executing a statement.
+ * Can be used to simulate race conditions where catalog is updated between
+ * planning and execution.
+ */
+extern int yb_test_sleep_before_executor_start_ms;
+
+/*
  * If set to non-zero, next DDL operation will fail with the specified error level:
  * 0 = disabled (default), 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
  * Resets to 0 after triggering.
@@ -704,6 +741,15 @@ extern bool yb_force_catalog_update_on_next_ddl;
 
 /* If set to true, all drop commands will fail. */
 extern bool yb_test_fail_all_drops;
+
+/*
+ * If set to true, force invalidation of every base relation's index relcache
+ * entries between add_base_rels_to_query() and make_one_rel() in
+ * query_planner().  Used by tests to deterministically expose lazy-loading
+ * bugs where planner code reads relcache fields (e.g. rd_indexprs) that get
+ * reset by a mid-planning invalidation.
+ */
+extern bool yb_test_invalidate_relcache_in_planner;
 
 /*
  * If set to true, next increment catalog version operation will fail and
@@ -753,9 +799,6 @@ extern bool yb_test_fail_table_rewrite_after_creation;
  * executing the next top level statement.
  */
 extern bool yb_test_preload_catalog_tables;
-
-/* GUC variable yb_test_stay_in_global_catalog_version_mode. */
-extern bool yb_test_stay_in_global_catalog_version_mode;
 
 /*
  * If set to true, any DDLs that rewrite tables/indexes will not drop the
@@ -845,6 +888,18 @@ extern bool	yb_enable_parallel_scan_range_sharded;
 extern bool	yb_enable_parallel_scan_system;
 
 /*
+ * Test-only GUC for exercising parallel plan code paths.
+ */
+typedef enum YbForceParallel
+{
+	YB_FORCE_PARALLEL_OFF = 0,
+	YB_FORCE_PARALLEL_PREFER = 1,
+	YB_FORCE_PARALLEL_FORCE = 2,
+} YbForceParallel;
+
+extern int	yb_test_force_parallel;
+
+/*
  * If set to true, all DDL statements will cause the catalog version to increment.
  */
 extern bool yb_test_make_all_ddl_statements_incrementing;
@@ -882,8 +937,8 @@ extern bool yb_whitelist_extra_stmts_for_pl_speculative_execution;
 extern bool yb_enable_docdb_vector_type;
 
 /*
- * GUC to allow user to silence the error saying that advisory locks are not
- * supported.
+ * Deprecated no-op; kept so existing postgresql.conf / init scripts that set this
+ * parameter still load. Advisory locking ignores this variable (see lockfuncs.c).
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 
@@ -1001,6 +1056,30 @@ extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations(YbcFlushDebugContext debug_context);
 extern void YBAdjustOperationsBuffering(int multiple);
 
+struct QueryDesc;
+/* Called at the start of every ExecutorRun and ExecutorFinish. */
+extern void YBOnExecutorOperationBegin();
+/*
+ * Called at the end of every ExecutorRun and ExecutorFinish. At the top
+ * level, saves DocDB stats onto queryDesc for pg_stat_statements.
+ */
+extern void YBOnExecutorOperationEnd(struct QueryDesc *queryDesc);
+/* True for the outermost ExecutorRun/ExecutorFinish. */
+extern bool YBIsTopLevelExecutorOperation();
+
+/* Called at the start of every tracked ProcessUtility call. */
+extern void YBOnUtilityOperationBegin();
+/*
+ * Called at the end of every tracked ProcessUtility call. At the top
+ * level, saves DocDB stats into the YBGetUtilityOperationStats() slot.
+ */
+extern void YBOnUtilityOperationEnd();
+/* DocDB stats from the last top-level utility (for pg_stat_statements). */
+extern YbInstrumentation *YBGetUtilityOperationStats();
+
+/* Resets executor/utility nesting counters and stats after a failed transaction. */
+extern void YBResetOperationTracking();
+
 bool		YBEnableTracing();
 bool		YBReadFromFollowersEnabled();
 int32_t		YBFollowerReadStalenessMs();
@@ -1042,7 +1121,8 @@ typedef enum YbTableDistribution
 	YB_HASH_SHARDED,
 	YB_RANGE_SHARDED
 } YbTableDistribution;
-YbTableDistribution YbGetTableDistribution(Oid relid);
+extern YbTableDistribution YbGetTableDistribution(Relation rel);
+extern YbTableDistribution YbGetTableDistributionById(Oid relid);
 
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
@@ -1292,7 +1372,6 @@ void		YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 
 uint64_t	YbGetSharedCatalogVersion();
 uint32_t	YbGetNumberOfDatabases();
-bool		YbCatalogVersionTableInPerdbMode();
 
 /*
  * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of
@@ -1344,6 +1423,53 @@ bool		YbIsColumnPartOfKey(Relation rel, const char *column_name);
 
 /* Get a relation's split options. */
 YbOptSplit *YbGetSplitOptions(Relation rel);
+
+/*
+ * Convert split_points List to a string representation.
+ * The format is "((val1, val2), (val3, val4), ...)" where each inner
+ * parenthesized list is a split point.
+ * Returns NULL if split_points is NIL.
+ */
+char	   *YbSplitPointsToString(List *split_points);
+
+/*
+ * Parse a yb_presplit reloption string back to a YbOptSplit structure.
+ * The format can be:
+ *   - A number (e.g., "5") for SPLIT INTO N TABLETS
+ *   - Split points (e.g., "((100),(200))") for SPLIT AT VALUES
+ *   - A full SPLIT clause (e.g., "SPLIT INTO 5 TABLETS")
+ * Returns NULL if the string is NULL or empty.  Syntax errors are
+ * reported via ereport.
+ */
+YbOptSplit *YbParsePresplitString(const char *presplit_str);
+
+/*
+ * validate_cb for the yb_presplit string reloption.  Validates syntax by
+ * running the value through YbParsePresplitString.
+ */
+extern void YbValidatePresplitReloption(const char *value);
+
+/*
+ * Validate that a yb_presplit string is compatible with `rel`'s partitioning
+ * kind (hash vs range).  Caller is expected to have already validated syntax
+ * (e.g. via the reloption validate_cb).  ereport(ERROR) on mismatch.
+ */
+extern void YbValidatePresplitForRelation(Relation rel, const char *presplit_str);
+
+/*
+ * Convert a YbOptSplit structure to a yb_presplit reloption string.
+ * Returns NULL if split_options is NULL.
+ */
+char	   *YbSplitOptionsToPresplitString(YbOptSplit *split_options);
+
+/*
+ * Reconcile a statement's SPLIT clause and yb_presplit reloption so that both
+ * representations agree before the relation is created.  See the function
+ * comment in pg_yb_utils.c for the detailed contract.  Used by both CREATE
+ * TABLE and CREATE INDEX paths.
+ */
+extern void YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options,
+										  List **options);
 
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)
@@ -1590,6 +1716,7 @@ typedef struct YbQpmConfiguration
 	int plan_format;
 	bool verbose_plans;
 	bool compress_text;
+	bool show_max_exec_params;
 } YbQpmConfiguration;
 
 extern YbQpmConfiguration yb_qpm_configuration;
@@ -1629,6 +1756,9 @@ extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 
 extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 														   YbcPgTransactionSetting transaction_setting);
+extern bool YbCanSkipIntentsWrite(Relation rel);
+extern void YbEnableSkipIntentsForNewTransaction();
+extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
 
 extern const unsigned char *YbGetLocalTServerUuid();
 extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);
@@ -1648,5 +1778,27 @@ extern const char *YbGetTraceparentResultErrmsg(YbTraceparentResult result);
 extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_context,
 															size_t trace_context_len,
 															char *traceparent_out);
+extern bool YBHasSkippedIntentsWrite();
+
+/*
+ * Returns true if 'relid' is a foreign table whose foreign server has
+ * server_type = 'federatedYugabyteDB'.
+ */
+extern bool yb_is_federated_yb_foreign_table(Oid relid);
+
+struct PlannerInfo;
+struct RelOptInfo;
+struct RangeTblEntry;
+extern void YbAddFederatedPartitionTserverUuid(struct PlannerInfo *root,
+											  Index rti,
+											  const char *tserver_uuid);
+extern const char *YbGetFederatedPartitionTserverUuid(const struct PlannerInfo *root,
+													  Index rti);
+
+extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
+
+extern void YbHandleConflictError(Relation rel, LockWaitPolicy wait_policy);
+
+extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
 
 #endif							/* PG_YB_UTILS_H */

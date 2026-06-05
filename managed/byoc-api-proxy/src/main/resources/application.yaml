@@ -10,12 +10,12 @@ proxied_app:
   read_timeout: ${PROXIED_APP_READ_TIMEOUT:PT30S}
   poll_batch_size: ${PROXIED_APP_POLL_BATCH_SIZE:10}
   auth:
-#    # a permanent API token is currently used to authenticate to task runners
-#    api_token:
-#    # API server private endpoints are authenticated using a 'service account'
-#    # and admin tokens valid for 12 hours
+    # API server private endpoints are authenticated using a 'service account'
+    # and admin tokens valid for 12 hours
     type: ${PROXIED_APP_AUTH_TYPE:service_account}
     service_account:
       email: ${SERVICE_ACCOUNT_EMAIL}
       password: ${SERVICE_ACCOUNT_PASSWORD}
       refresh_interval: ${SERVICE_ACCOUNT_JWT_REFRESH_INTERVAL:PT10H}
+    # an API token that can be used to authenticate to task runners or public APIs
+    api_key: ${API_KEY}

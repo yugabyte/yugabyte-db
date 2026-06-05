@@ -3081,42 +3081,15 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestMonotonicSequenceNoPacked,
 
 class YbAdminSnapshotScheduleTestPerDbCatalogVersion : public YbAdminSnapshotScheduleTestWithYsql {
  public:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
-    opts->extra_master_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
-  }
-
   Status PrepareDbCatalogVersion(pgwrapper::PGConn* conn) {
     LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
     RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
     // "ON CONFLICT DO NOTHING" is only needed for the case where the cluster already has
-    // those rows (e.g., when initdb is run with --ysql_enable_db_catalog_version_mode=true).
+    // these rows.
     RETURN_NOT_OK(conn->Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
                                 "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1 "
                                 "ON CONFLICT DO NOTHING"));
     return Status::OK();
-  }
-
-  void RestartClusterSetDbCatalogVersionMode(
-      bool enabled, const std::vector<std::string>& extra_tserver_flags) {
-    LOG(INFO) << "Restart the cluster and turn "
-              << (enabled ? "on" : "off") << " --ysql_enable_db_catalog_version_mode";
-    cluster_->Shutdown();
-    const auto db_catalog_version_gflag =
-      Format("--ysql_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
-    for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-      cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
-    }
-    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      cluster_->tablet_server(i)->mutable_flags()->push_back(db_catalog_version_gflag);
-      for (const auto& flag : extra_tserver_flags) {
-        cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
-      }
-    }
-    ASSERT_OK(cluster_->Restart());
   }
 
   using Version = uint64_t;
@@ -3151,11 +3124,9 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestPerDbCatalogVersion,
           YbAdminSnapshotScheduleTestPerDbCatalogVersion) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
-  // Turn on the per db catalog version.
+  // Per-database catalog version mode is now mandatory.
   auto conn_yb = ASSERT_RESULT(PgConnect("yugabyte"));
   ASSERT_OK(PrepareDbCatalogVersion(&conn_yb));
-  RestartClusterSetDbCatalogVersionMode(true, {});
-  LOG(INFO) << "Per db catalog version is turned on";
 
   // Create another db.
   conn_yb = ASSERT_RESULT(PgConnect("yugabyte"));
@@ -6270,6 +6241,280 @@ TEST_F_EX(
       "SELECT COUNT(*) FROM test_table")), 10);
   ASSERT_EQ(ASSERT_RESULT(clone2_conn.FetchRow<std::string>(
       "SELECT value FROM test_table WHERE key = 1")), "row_1");
+}
+
+// PITR restore must not rewind per-DB next-OID below the max OID
+// of HIDDEN tables that master still holds.
+//
+TEST_F(YbAdminSnapshotScheduleTestWithYsql, PgsqlNoOidCollisionAfterPitrWithHiddenTable) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  // Disable the TServer's per-DB OID prefetch cache so master's next_normal_pg_oid
+  // advances by exactly one for every OID consumed by PG.
+  //
+  // With the default prefetch size (256), master jumps next_normal_pg_oid forward by 256 on the
+  // first ReservePgsqlOids call - long before PG actually consumes those OIDs. PITR then rewinds
+  // to that chunk-boundary value, which sits well above the hidden table's OID, so the collision
+  // this test is trying to expose never occurs.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_oid_cache_prefetch_size", "1"));
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  // Helper to look up a table's PG OID.
+  auto get_table_oid = [&conn](const std::string& relname) -> Result<int32_t> {
+    return conn.FetchRow<int32_t>(
+        Format("SELECT oid::int4 FROM pg_class WHERE relname='$0'", relname));
+  };
+
+  ASSERT_OK(conn.Execute("CREATE TABLE pre_snapshot (k INT PRIMARY KEY)"));
+  auto pre_oid = ASSERT_RESULT(get_table_oid("pre_snapshot"));
+
+  LOG(INFO) << "Noting restore time";
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE post_snapshot_victim (k INT PRIMARY KEY)"));
+  auto victim_oid = ASSERT_RESULT(get_table_oid("post_snapshot_victim"));
+  ASSERT_GT(victim_oid, pre_oid) << "Sanity: victim allocated after pre_snapshot";
+
+  ASSERT_OK(conn.Execute("DROP TABLE post_snapshot_victim"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Reconnect after restore - PG backends may take time to come back up.
+  ASSERT_OK(WaitFor([this, &conn]() -> Result<bool> {
+    auto result = PgConnect(client::kTableName.namespace_name());
+    if (!result.ok()) {
+      return false;
+    }
+    conn = std::move(*result);
+    return true;
+  }, 60s * kTimeMultiplier, "Reconnect to PG after PITR restore"));
+
+  auto victim_visible = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM pg_class WHERE relname='post_snapshot_victim'"));
+  ASSERT_EQ(0, victim_visible) << "Hidden table should not be visible to PG after restore";
+
+  // Restart all tablet servers to clear the per-process in-memory OID cache hint.
+  //
+  // PgClientServiceImpl on each TServer keeps an oid_chunk.next_oid high-water mark per database.
+  // Even though Fast PITR correctly rewinds master's SysNamespaceEntryPB.next_normal_pg_oid in
+  // DocDB, the TServer continues to send its pre-restore high-water mark as next_oid in
+  // ReservePgsqlOidsRequestPB. Master then clamps the allocation to
+  // std::max(master_state.next_normal_pg_oid, req->next_oid()), silently undoing the rewind on
+  // the very first OID request after restore.
+  LOG(INFO) << "Restarting tablet servers to clear in-memory OID cache hint";
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->Shutdown();
+    ASSERT_OK(cluster_->tablet_server(i)->Restart());
+  }
+
+  // Reconnect to PG: the postmaster is a child of the TServer and was killed with it.
+  ASSERT_OK(WaitFor([this, &conn]() -> Result<bool> {
+    auto result = PgConnect(client::kTableName.namespace_name());
+    if (!result.ok()) {
+      return false;
+    }
+    conn = std::move(*result);
+    return true;
+  }, 60s * kTimeMultiplier, "Reconnect to PG after TServer restart"));
+
+  // Without the fix, this CREATE receives victim_oid and collides with the hidden
+  // DocDB table (whose table ID is derived from that OID).
+  ASSERT_OK(conn.Execute("CREATE TABLE post_restore_new (k INT PRIMARY KEY)"));
+  auto new_oid = ASSERT_RESULT(get_table_oid("post_restore_new"));
+
+  EXPECT_NE(new_oid, victim_oid)
+      << "Post-restore CREATE reused a hidden table's OID";
+  EXPECT_GT(new_oid, victim_oid)
+      << "Next-OID counter should be above max hidden-table OID, "
+      << "got " << new_oid << " vs hidden " << victim_oid;
+}
+
+TEST_F(YbAdminSnapshotScheduleTestWithYsql,
+       PgsqlNoOidCollisionOnTruncateAfterPitrWithHiddenTable) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  // Disable the TServer's per-DB OID prefetch cache so master's next_normal_pg_oid
+  // advances by exactly one for every OID consumed by PG. See the parallel comment in
+  // PgsqlNoOidCollisionAfterPitrWithHiddenTable for why the default prefetch size masks
+  // the collision this test is trying to expose.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_oid_cache_prefetch_size", "1"));
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1,100) i"));
+
+  LOG(INFO) << "Noting restore time";
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  // Consume OIDs via a create/drop that leaves a hidden table.
+  ASSERT_OK(conn.Execute("CREATE TABLE decoy (k INT PRIMARY KEY)"));
+  auto decoy_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "SELECT oid::int4 FROM pg_class WHERE relname='decoy'"));
+  ASSERT_OK(conn.Execute("DROP TABLE decoy"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(WaitFor([this, &conn]() -> Result<bool> {
+    auto result = PgConnect(client::kTableName.namespace_name());
+    if (!result.ok()) {
+      return false;
+    }
+    conn = std::move(*result);
+    return true;
+  }, 60s * kTimeMultiplier, "Reconnect to PG after PITR restore"));
+
+  // Restart all tablet servers to clear the per-process in-memory OID cache hint. Without this,
+  // PgClientServiceImpl's pre-restore oid_chunk.next_oid is sent as next_oid in
+  // ReservePgsqlOidsRequestPB, and master clamps the allocation to
+  // std::max(master_state.next_normal_pg_oid, req->next_oid()), silently undoing the PITR rewind.
+  LOG(INFO) << "Restarting tablet servers to clear in-memory OID cache hint";
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->Shutdown();
+    ASSERT_OK(cluster_->tablet_server(i)->Restart());
+  }
+
+  // Reconnect to PG: the postmaster is a child of the TServer and was killed with it.
+  ASSERT_OK(WaitFor([this, &conn]() -> Result<bool> {
+    auto result = PgConnect(client::kTableName.namespace_name());
+    if (!result.ok()) {
+      return false;
+    }
+    conn = std::move(*result);
+    return true;
+  }, 60s * kTimeMultiplier, "Reconnect to PG after TServer restart"));
+
+  // TRUNCATE internally creates a new DocDB table. On the buggy build this
+  // collides with decoy's DocDB table ID (derived from its OID).
+  ASSERT_OK(conn.Execute("SET statement_timeout = 60000"));
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE t"));
+
+  auto row_count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(0, row_count);
+
+  // New CREATE should also get an OID above decoy's.
+  ASSERT_OK(conn.Execute("CREATE TABLE post_truncate_probe (k INT PRIMARY KEY)"));
+  auto probe_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "SELECT oid::int4 FROM pg_class WHERE relname='post_truncate_probe'"));
+  EXPECT_GT(probe_oid, decoy_oid)
+      << "Post-TRUNCATE CREATE allocated an OID <= decoy's hidden table OID";
+}
+
+// Fixture for the clone-with-multiple-colocation-parents repro. We need the
+// PG-side gflag `ysql_enable_colocated_tables_with_tablespaces` enabled (it
+// is NON_RUNTIME and defaults to false) on both master and tserver so that
+// `TABLESPACE ts_x` on a colocated table promotes the table into a distinct
+// implicit `colocation_<ts_x_oid>` tablegroup -- and therefore its own
+// colocated parent table -- rather than being lumped into the database's
+// single default colocated parent.
+class YbAdminCloneColocationTablespaceTest : public YbAdminSnapshotScheduleTestWithLBYsql {
+ public:
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    YbAdminSnapshotScheduleTestWithLBYsql::SetUp();
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithLBYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_master_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
+    opts->extra_master_flags.emplace_back("--enable_db_clone=true");
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
+  }
+};
+
+// In a colocated YSQL database with
+// `ysql_enable_colocated_tables_with_tablespaces=true`, every distinct
+// tablespace that backs at least one colocated relation gets its own
+// implicit `colocation_<tablespace_oid>` tablegroup, and therefore its own
+// colocated parent table on the source side. This test ensures the import snapshot workflow can
+// handle multiple parent colocated tables.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, ColocatedCloneWithMultipleTablespaces,
+    YbAdminCloneColocationTablespaceTest) {
+  const std::string kSourceDb = "src_db";
+  const std::string kClonedDb = "cloned_db";
+
+  ASSERT_OK(PrepareCommon());
+
+  // Add tservers in three zones so a tablespace with a 3-replica zone-pinned
+  // placement is satisfiable.
+  ASSERT_OK(AddTServerInZone("z1", 4));
+  ASSERT_OK(AddTServerInZone("z2", 5));
+  ASSERT_OK(AddTServerInZone("z3", 6));
+
+  auto conn = ASSERT_RESULT(PgConnect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = TRUE", kSourceDb));
+
+  auto src_conn = ASSERT_RESULT(PgConnect(kSourceDb));
+
+  // Two tablespaces backed by the same 3-zone placement. We just need the
+  // tablespace OIDs to differ so each gets its own implicit colocation
+  // tablegroup, the placements aren't important.
+  const std::string kPlacementBlocks =
+      "[{\"cloud\":\"c1\", \"region\":\"r1\", \"zone\":\"z1\", \"min_num_replicas\":1}, "
+      "{\"cloud\":\"c1\", \"region\":\"r1\", \"zone\":\"z2\", \"min_num_replicas\":1}, "
+      "{\"cloud\":\"c1\", \"region\":\"r1\", \"zone\":\"z3\", \"min_num_replicas\":1}]";
+  ASSERT_OK(src_conn.ExecuteFormat(
+      "CREATE TABLESPACE ts_a WITH (replica_placement="
+      "'{\"num_replicas\": 3, \"placement_blocks\": $0}')",
+      kPlacementBlocks));
+  ASSERT_OK(src_conn.ExecuteFormat(
+      "CREATE TABLESPACE ts_b WITH (replica_placement="
+      "'{\"num_replicas\": 3, \"placement_blocks\": $0}')",
+      kPlacementBlocks));
+
+  // Partition `customer` and put each partition in a different tablespace. With
+  // ysql_enable_colocated_tables_with_tablespaces on, each `TABLESPACE ts_x` clause on a partition
+  // forces creation of a distinct implicit colocation_<ts_x_oid> tablegroup, so the source DB ends
+  // up with three colocated parent tables (default + ts_a + ts_b).
+  ASSERT_OK(src_conn.Execute(
+      "CREATE TABLE customer (id INT, region INT, value TEXT, "
+      "PRIMARY KEY (id, region)) PARTITION BY LIST (region)"));
+  ASSERT_OK(src_conn.Execute(
+      "CREATE TABLE customer_default PARTITION OF customer DEFAULT"));
+  ASSERT_OK(src_conn.Execute(
+      "CREATE TABLE customer_a PARTITION OF customer "
+      "FOR VALUES IN (1, 2, 3) TABLESPACE ts_a"));
+  ASSERT_OK(src_conn.Execute(
+      "CREATE TABLE customer_b PARTITION OF customer "
+      "FOR VALUES IN (4, 5, 6) TABLESPACE ts_b"));
+  ASSERT_OK(src_conn.Execute(
+      "INSERT INTO customer "
+      "SELECT g, ((g - 1) % 7) + 0, 'v_' || g FROM generate_series(1, 60) g"));
+
+  // Sanity-check that the source really has more than one colocation parent.
+  // Each implicit tablegroup created above corresponds to one
+  // `*.colocation.parent.*` table in the master catalog.
+  ASSERT_GE(
+      ASSERT_RESULT(src_conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      2);
+
+  // Schedule must exist and cover restore_at for `clone_namespace` to work.
+  auto schedule_id = ASSERT_RESULT(CreateSnapshotScheduleAndWaitSnapshot(
+      "ysql." + kSourceDb, kInterval, kRetention));
+
+  Timestamp restore_at = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(CloneAndWait(
+      "ysql." + kSourceDb, kClonedDb, 2min /* timeout */,
+      restore_at.ToFormattedString()));
+
+  auto clone_conn = ASSERT_RESULT(PgConnect(kClonedDb));
+  ASSERT_EQ(ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM customer")), 60);
+  for (const auto& comparison_query :
+       {"SELECT COUNT(*) FROM customer WHERE region IN (1, 2, 3)",
+        "SELECT COUNT(*) FROM customer WHERE region IN (4, 5, 6)"}) {
+    auto actual = ASSERT_RESULT(clone_conn.FetchRow<int64_t>(comparison_query));
+    auto expected = ASSERT_RESULT(src_conn.FetchRow<int64_t>(comparison_query));
+    ASSERT_EQ(actual, expected);
+  }
+  // Sanity check that the target contains more than 1 colocation target.
+  ASSERT_GE(
+      ASSERT_RESULT(clone_conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      2);
 }
 
 }  // namespace yb::tools

@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
@@ -41,6 +42,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
@@ -70,6 +72,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -489,8 +492,10 @@ public class GFlagsUtil {
             : node.cloudInfo.private_ip;
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
-    String providerUUID = userIntent.provider;
+    Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+    Provider provider = Util.getProviderForNode(node, cluster);
+    String ybHomeDir = provider.getYbHome();
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", "1");
     ybcFlags.put("server_address", serverAddresses);
@@ -500,8 +505,8 @@ public class GFlagsUtil {
             taskParam.overrideNodePorts
                 ? taskParam.communicationPorts.ybControllerrRpcPort
                 : node.ybControllerRpcPort));
-    ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
-    ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
+    ybcFlags.put("log_dir", provider.getYbHome() + YBC_LOG_SUBDIR);
+    ybcFlags.put("cores_dir", provider.getYbHome() + CORES_DIR_PATH);
 
     ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
     ybcFlags.put(
@@ -521,13 +526,13 @@ public class GFlagsUtil {
     // since pgsql_bind_address is set to 0.0.0.0 or private_ip.
     // Also, /varz endpoint works, since webserver_interface is set to private_ip.
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
-    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
-    ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
-    ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
-    ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
-    ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
-    ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
-    ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+    ybcFlags.put("redis_cli", ybHomeDir + REDIS_CLI_PATH);
+    ybcFlags.put("yb_admin", ybHomeDir + YB_ADMIN_PATH);
+    ybcFlags.put("yb_ctl", ybHomeDir + YB_CTL_PATH);
+    ybcFlags.put("ysql_dump", ybHomeDir + YSQL_DUMP_PATH);
+    ybcFlags.put("ysql_dumpall", ybHomeDir + YSQL_DUMPALL_PATH);
+    ybcFlags.put("ysqlsh", ybHomeDir + YSQLSH_PATH);
+    ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
     ybcFlags.put("log_utc_time", "true");
     ybcFlags.put(
@@ -554,14 +559,13 @@ public class GFlagsUtil {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
     // Append the custom_tmp gflag to the YBC gflag.
-    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     // PLAT-10007 use ybc-data instead of /tmp
     if (ybcTempDir.equals("/tmp")) {
       ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
     }
     ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-      String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
@@ -571,7 +575,7 @@ public class GFlagsUtil {
     if (userIntent.providerType == CloudType.local) {
       // In case of local provider, we want ybc to use /tmp directory
       // inside the respective node folder.
-      ybcFlags.put(TMP_DIRECTORY, getYbHomeDir(providerUUID) + "/tmp");
+      ybcFlags.put(TMP_DIRECTORY, ybHomeDir + "/tmp");
     }
     return ybcFlags;
   }
@@ -586,9 +590,10 @@ public class GFlagsUtil {
       RuntimeConfGetter confGetter) {
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
-    String providerUUID = userIntent.provider;
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
+    Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+
+    Provider provider = Util.getProviderForNode(node, cluster);
     String ybHomeDir = provider.getYbHome();
     String serverAddress =
         listenOnAllInterfaces
@@ -736,7 +741,8 @@ public class GFlagsUtil {
     } else {
       gflags.put(START_REDIS_PROXY, "false");
     }
-    if (taskParam.cgroupSize > 0) {
+    if (taskParam.cgroupSize > 0
+        && !universe.getUniverseDetails().getPrimaryCluster().userIntent.isQosEnabled()) {
       gflags.put(POSTMASTER_CGROUP, YSQL_CGROUP_PATH);
     }
     // Add timestamp_history_retention_sec gflag if required.
@@ -753,30 +759,19 @@ public class GFlagsUtil {
     return gflags;
   }
 
-  public static String getCustomTmpDirectory(NodeDetails node, Universe universe) {
-    Map<String, String> res = new HashMap<>();
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    if (node.isMaster) {
-      res.putAll(
-          getGFlagsForNode(
-              node,
-              UniverseTaskBase.ServerType.MASTER,
-              cluster,
-              universe.getUniverseDetails().clusters));
-    }
-    if (node.isTserver) {
-      res.putAll(
-          getGFlagsForNode(
-              node,
-              UniverseTaskBase.ServerType.TSERVER,
-              cluster,
-              universe.getUniverseDetails().clusters));
-    }
-
-    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
+  public static String getCustomTmpDirectory(
+      RuntimeConfGetter confGetter, @NotNull NodeDetails node, Universe universe) {
+    return getCustomTmpDirectory(
+        confGetter,
+        universe,
+        universe.getCluster(node.placementUuid),
+        node.azUuid,
+        node.isMaster,
+        node.isTserver);
   }
 
   public static String getCustomTmpDirectory(
+      RuntimeConfGetter confGetter,
       Universe universe,
       Cluster cluster,
       @Nullable UUID azUuid,
@@ -799,7 +794,18 @@ public class GFlagsUtil {
               cluster,
               universe.getUniverseDetails().clusters));
     }
-    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
+    String result = res.get(TMP_DIRECTORY);
+    if (result == null) {
+      Provider provider;
+      if (azUuid == null) {
+        UUID providerUUID = Util.getSingleProviderUUID(cluster);
+        provider = Provider.getOrBadRequest(providerUUID);
+      } else {
+        provider = AvailabilityZone.getOrBadRequest(azUuid).getProvider();
+      }
+      result = confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+    }
+    return result == null ? "/tmp" : result;
   }
 
   private static Map<String, String> getYSQLGFlags(
@@ -1830,8 +1836,21 @@ public class GFlagsUtil {
       }
     }
     UserIntent userIntent = universeDetails.getClusterByUuid(placementUUID).userIntent;
-    String providerUUID = userIntent.provider;
 
+    Set<UUID> allProviderUUIDs = userIntent.getAllProviderUUIDs();
+    UUID providerUUID;
+    if (allProviderUUIDs.size() == 1) {
+      providerUUID = allProviderUUIDs.iterator().next();
+    } else {
+      if (node == null) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Missing node information for multi-provider universe {}. Can't Continue",
+                universeUUID.toString()));
+      }
+      providerUUID = Util.getProviderForNode(node, universe).getUuid();
+    }
     String modifiedHbaConfEntries = "";
     // Split the input string at positions where it starts with "host..." or "local"
     String[] hbaConfEntries = hbaConfValue.split("(?i)(?<=\\s|,|\")\\s*(?=host\\w*|local\\b)");
@@ -1848,7 +1867,7 @@ public class GFlagsUtil {
           modifiedHbaConfEntry.append("\"");
         }
         modifiedHbaConfEntry.append(
-            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID));
+            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID.toString()));
         if (i != 0 && !hbaConfEntries[i - 1].endsWith("\"")) {
           if (i != hbaConfEntries.length - 1) {
             // Remove the trailing comma
@@ -2149,8 +2168,7 @@ public class GFlagsUtil {
         log.error("Failed to fetch in memory gflags", ignored);
       }
     } else {
-      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getProviderForNode(nodeDetails, universe);
       try {
         ShellResponse response =
             nodeUniverseManager.runCommand(

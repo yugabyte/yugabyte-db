@@ -187,3 +187,15 @@ race:k5_once
 race:od_logger_format
 race:od_stat_query_end
 race:od_route_pool_stat
+
+# pg_documentdb_gw_host bundles Rust code (tokio runtime, Rust stdlib, the
+# documentdb_gateway crate, and our bgworker glue) that is not compiled with
+# -Zsanitizer=thread (requires nightly Rust). TSAN cannot track the Rust
+# atomics that tokio uses for cross-thread task handoff and reports false
+# positive data races. Suppress the Rust call paths specifically so races
+# in C++ code that interacts with the gateway are still caught.
+race:tokio::
+race:std::fs::
+race:std::sys::
+race:documentdb_gateway::
+race:pg_documentdb_gw_host::

@@ -152,6 +152,10 @@ public class ConfigureDBApis extends UpgradeTaskBase {
                                   GFlagsUtil.QOS_MAX_DB_CPU_PERCENT,
                                   mtConfig.getQosMaxDbCpuPercent().toString());
                             }
+                            // Set cgroupSize to null if QoS is enabled
+                            if (mtConfig.isEnableQos()) {
+                              params.cgroupSize = 0;
+                            }
                           });
                     }
                   }

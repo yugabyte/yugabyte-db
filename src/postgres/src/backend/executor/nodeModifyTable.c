@@ -829,15 +829,17 @@ YbExecInsertPrologue(ModifyTableContext *context,
 		 * execution also needs to process primary key index.
 		 */
 		if ((YBRelHasSecondaryIndices(resultRelInfo->ri_RelationDesc) ||
-			 onconflict != ONCONFLICT_NONE) &&
+			 YbOnConflictClauseIsExplicitlySpecified(onconflict)) &&
 			resultRelInfo->ri_IndexRelationDescs == NULL)
-			ExecOpenIndices(resultRelInfo, onconflict != ONCONFLICT_NONE);
+			ExecOpenIndices(resultRelInfo,
+							YbOnConflictClauseIsExplicitlySpecified(onconflict));
 	}
 	else
 	{
 		if (resultRelationDesc->rd_rel->relhasindex &&
 			resultRelInfo->ri_IndexRelationDescs == NULL)
-			ExecOpenIndices(resultRelInfo, onconflict != ONCONFLICT_NONE);
+			ExecOpenIndices(resultRelInfo,
+							YbOnConflictClauseIsExplicitlySpecified(onconflict));
 	}
 
 	/*
@@ -944,7 +946,7 @@ ExecInsert(ModifyTableContext *context,
 		resultRelInfo = partRelInfo;
 	}
 
-	if (onconflict != ONCONFLICT_NONE &&
+	if (YbOnConflictClauseIsExplicitlySpecified(onconflict) &&
 		!resultRelInfo->ri_ybIocBatchingPossible &&
 		mtstate->yb_ioc_state != NULL &&
 		mtstate->yb_ioc_state->num_slots > 0)
@@ -968,7 +970,7 @@ ExecInsert(ModifyTableContext *context,
 							  blockInsertStmt))
 		return NULL;
 
-	if (onconflict != ONCONFLICT_NONE &&
+	if (YbOnConflictClauseIsExplicitlySpecified(onconflict) &&
 		resultRelInfo->ri_ybIocBatchingPossible)
 	{
 		TupleTableSlot *returnSlot = NULL;
@@ -1184,7 +1186,8 @@ YbExecInsertAct(ModifyTableContext *context,
 			  resultRelInfo->ri_TrigDesc->trig_insert_before_row)))
 			ExecPartitionCheck(resultRelInfo, slot, estate, true);
 
-		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
+		if (YbOnConflictClauseIsExplicitlySpecified(onconflict) &&
+			resultRelInfo->ri_NumIndices > 0)
 		{
 			/* Perform a speculative insertion. */
 			uint32		specToken;
@@ -1282,7 +1285,8 @@ YbExecInsertAct(ModifyTableContext *context,
 				 * locked and released in this call.
 				 * TODO(Mikhail) Verify the YugaByte transaction support works properly for on-conflict.
 				 */
-				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate);
+				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate,
+							  ONCONFLICT_NONE);
 
 				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(resultRelInfo, slot, estate, true, true,
@@ -1348,7 +1352,8 @@ YbExecInsertAct(ModifyTableContext *context,
 			{
 				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
-				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate);
+				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate,
+							  onconflict);
 
 				/* insert index entries for tuple */
 				if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
@@ -2307,8 +2312,35 @@ lreplace:
 	 * before inserting into the new partition, rather than doing it here.
 	 * This is because a trigger on that partition might again change the row.
 	 * So skip the WCO checks if the partition constraint fails.
+	 *
+	 * YB: Single shard updates cannot modify partitioning key columns and hence
+	 * cannot violate the partition constraint (ie. cause a row to move to a
+	 * different partition). There are two cases to consider:
+	 *  - (Common case) When the partition key is a subset of the primary (clustering) key.
+	 *    This happens when the root and leaf partitions share a common primary
+	 *    key. The planner disallows modifying the primary key columns in single
+	 *    shard updates and hence it is safe to skip the partition check.
+	 *  - (Rare case) When the partition key and primary (clustering) key do not overlap.
+	 *    This occurs if the root partition lacks a primary key, but a leaf
+	 *    partition defines a primary key that differs from the partition key.
+	 *    Here, the planner detects changes to partition keys and routes the
+	 *    update via the distributed transaction path. In such cases, there may
+	 *    not be enough information to check the partition constraint -- the row
+	 *    being updated is uniquely identified by its primary key, and since the
+	 *    partition and primary keys do not overlap, a single-shard update may
+	 *    not have enough information about the partition key, as it skips
+	 *    reading the row from storage.
+	 * The presence of a scan node in the plan is used as a proxy for whether
+	 * the partition constraint check should be performed. The check is skipped
+	 * in two situations:
+	 *  - Single shard updates
+	 *  - Single row updates in distributed transactions where the planner
+	 *    determines that it is unnecessary to read the row from storage as
+	 *    (a) the update does not modify the partition or primary key columns
+	 *    (b) the WHERE clause of the query uniquely identifies the row
 	 */
 	partition_constraint_failed =
+		context->mtstate->yb_fetch_target_tuple && /* YB */
 		resultRelationDesc->rd_rel->relispartition &&
 		!ExecPartitionCheck(resultRelInfo, slot, estate, false);
 
@@ -4778,6 +4810,37 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	mtstate->yb_is_inplace_index_update_enabled = yb_enable_inplace_index_update;
 
+	/*
+	 * YB: If the user requested upsert mode via the yb_enable_upsert_mode
+	 * GUC for a plain INSERT, either promote the plan's onConflictAction to
+	 * ONCONFLICT_YB_REPLACE (so the per-row insert path enables DocDB upsert
+	 * mode like COPY REPLACE) or, if the target relation is unsafe (has
+	 * secondary indexes, triggers, or rewrite rules / foreign key
+	 * constraints), leave onConflictAction alone and emit a WARNING so the
+	 * statement silently falls back to a normal insert. COPY has its own
+	 * equivalent handling before the row loop in copyfrom.c.
+	 */
+	if (operation == CMD_INSERT &&
+		yb_enable_upsert_mode &&
+		node->onConflictAction == ONCONFLICT_NONE)
+	{
+		if (YBIsUpsertUnsafeOnRel(mtstate->resultRelInfo[0].ri_RelationDesc))
+		{
+			const char *relname =
+				RelationGetRelationName(mtstate->resultRelInfo[0].ri_RelationDesc);
+
+			ereport(WARNING,
+					(errmsg("upsert mode disabled for table \"%s\" "
+							"because it has secondary indexes, "
+							"triggers, or foreign key constraints",
+							relname),
+					 errhint("Consider using INSERT ... ON CONFLICT "
+							 "for true upsert semantics instead.")));
+		}
+		else
+			node->onConflictAction = ONCONFLICT_YB_REPLACE;
+	}
+
 	/* set up epqstate with dummy subplan data for the moment */
 	EvalPlanQualInitExt(&mtstate->mt_epqstate, estate, NULL, NIL,
 						node->epqParam, node->resultRelations);
@@ -4894,7 +4957,28 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 						resultRelInfo->ri_YbWholeRowAttNo =
 							ExecFindJunkAttributeInTlist(subplan->targetlist, "wholerow");
 						if (!AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo))
-							elog(ERROR, "could not find junk wholerow column");
+							/*
+							 * YB: If we need a wholerow attribute but it's not present in the plan,
+							 * it means the plan was generated with an older PG catalog version
+							 * (e.g., before an index was added concurrently) but the executor sees
+							 * the newer catalog. Throw a retryable error.
+							 *
+							 * Note on terminology: Strictly speaking, this is a PG catalog version
+							 * mismatch, not a DocDB table schema version mismatch. However, we intentionally
+							 * use the error message "schema version mismatch" alongside
+							 * ERRCODE_T_R_SERIALIZATION_FAILURE. This explicitly escapes the internal
+							 * backend retry loop (which cannot properly re-plan prepared statements for this
+							 * error), forces a transaction abort, and is already recognized as a benign,
+							 * retryable concurrency error by client-side retry logic and our test frameworks.
+							 * Before the client retries, background catalog propagation or object lock release
+							 * (when enabled) will pull the new catalog and invalidate the stale plan cache.
+							 */
+							ereport(ERROR,
+									(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+									 errmsg("schema version mismatch"),
+									 errdetail("Could not find junk wholerow column. "
+											   "This can happen if a concurrent DDL operation "
+											   "added an index after this query was planned.")));
 					}
 				}
 			}
@@ -5056,7 +5140,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	/* Set the list of arbiter indexes if needed for ON CONFLICT */
 	resultRelInfo = mtstate->resultRelInfo;
-	if (node->onConflictAction != ONCONFLICT_NONE)
+	if (YbOnConflictClauseIsExplicitlySpecified(node->onConflictAction))
 	{
 		/* insert may only have one relation, inheritance is not expanded */
 		Assert(nrels == 1);

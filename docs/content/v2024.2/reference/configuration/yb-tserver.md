@@ -600,7 +600,7 @@ Default: `0` for no limit.
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
 
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 
 ## Geo-distribution flags
 
@@ -1380,6 +1380,16 @@ When true, the CDC service returns a null before-image if it is not able to find
 
 Default: `false`
 
+##### --cdc_enable_intra_transactional_before_image
+
+Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+
+When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
+
+This flag requires a YB-TServer restart. Enable it on all YB-TServers in the universe when you need accurate before images for intra-transactional changes with logical replication or gRPC CDC.
+
+Default: `false`
+
 ##### --cdcsdk_tablet_not_of_interest_timeout_secs
 
 Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
@@ -1695,7 +1705,7 @@ Default: 86400000 (1 day)
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
+Default: -1, where the system automatically calculates the margin. For YSQL index backfill the baseline is 3 minutes (180000 ms); for YCQL the baseline is approximately 1 second (1000 ms). The effective margin is the greater of that baseline and a value derived from backfill_index_write_batch_size and backfill_index_rate_rows_per_sec.
 
 ##### backfill_index_write_batch_size
 

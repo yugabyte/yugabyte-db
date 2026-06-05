@@ -54,7 +54,9 @@ class EmptyScanChoices : public ScanChoices {
     return false;
   }
 
-  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter) override {
+  Result<bool> InterestedInRow(
+      dockv::KeyBytes* row_key, IntentAwareIterator& iter,
+      const EncodedDocHybridTime& max_seen_ht_checkpoint) override {
     return true;
   }
 

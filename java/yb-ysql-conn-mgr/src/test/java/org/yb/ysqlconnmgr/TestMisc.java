@@ -24,14 +24,17 @@ import java.util.HashSet;
 import java.util.Properties;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
 import com.google.common.collect.ImmutableMap;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestMisc extends BaseYsqlConnMgr {
 
   private final static String ERROR_YBTSERVERKEY_AUTH_EXPECTED =

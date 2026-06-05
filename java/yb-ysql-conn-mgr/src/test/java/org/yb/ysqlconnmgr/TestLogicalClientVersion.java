@@ -25,12 +25,15 @@ import java.util.Properties;
 import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
 
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestLogicalClientVersion extends BaseYsqlConnMgr {
 
   public String LOGICAL_CLIENT_VERSION_TABLE = "pg_yb_logical_client_version";

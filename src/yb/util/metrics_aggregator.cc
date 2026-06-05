@@ -153,10 +153,6 @@ Status MetricsAggregator::ReplaceAttributesUnlocked(
     const std::string& metric_entity_type,
     const std::string& aggregation_id,
     const MetricEntity::AttributeMap& attributes) {
-  const std::string errmsg = Format(
-      "No attributes stored for metric with entity type $0 and aggregation id $1",
-      metric_entity_type, aggregation_id);
-
   auto attributes_ptr_by_aggregation_id_it =
       attributes_ptr_by_metric_entity_type_and_aggregation_id_.find(metric_entity_type);
   if (attributes_ptr_by_aggregation_id_it ==
@@ -164,20 +160,21 @@ Status MetricsAggregator::ReplaceAttributesUnlocked(
     return STATUS_FORMAT(NotFound, "No attributes stored for metric with entity type $0",
         metric_entity_type);
   }
-  auto& attributes_ptr = attributes_ptr_by_aggregation_id_it->second[aggregation_id];
-  if (attributes_ptr == nullptr) {
+  auto& attributes_ptr_by_aggregation_id = attributes_ptr_by_aggregation_id_it->second;
+  auto attributes_it = attributes_ptr_by_aggregation_id.find(aggregation_id);
+  if (attributes_it == attributes_ptr_by_aggregation_id.end()) {
     return STATUS_FORMAT(NotFound,
         "No attributes stored for metric with entity type $0 and aggregation id $1",
         metric_entity_type, aggregation_id);
   }
 
-  attributes_ptr = std::make_shared<MetricEntity::AttributeMap>(attributes);
+  attributes_it->second = std::make_shared<MetricEntity::AttributeMap>(attributes);
   if (aggregation_id != kServerLevelAggregationId) {
     // Also update server level attributes.
     return ReplaceAttributesUnlocked(metric_entity_type, kServerLevelAggregationId, attributes);
   }
 
-  ConvertToServerLevelAttributes(attributes_ptr.get());
+  ConvertToServerLevelAttributes(attributes_it->second.get());
   return Status::OK();
 }
 

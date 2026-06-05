@@ -1,10 +1,5 @@
 title: JobInstancePagedResp
 description: Paged API query response for job instance.
 type: object
-allOf:
-  - $ref: "./PaginationResp.yaml"
-properties:
-  entities:
-    type: array
-    items:
-      $ref: "./JobInstanceInfo.yaml"
+x-data-container: PaginationResp
+x-data-item: JobInstanceInfo

@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: admin
     parent: reference
-    weight: 1400
+    weight: 300
 type: indexpage
 ---
 

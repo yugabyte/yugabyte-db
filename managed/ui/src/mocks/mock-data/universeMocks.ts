@@ -1,6 +1,13 @@
 import { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
-export const generateUniverseMockResponse = (): Universe => {
+export type GenerateUniverseMockResponseOptions = {
+  universeUuid?: string;
+};
+
+export const generateUniverseMockResponse = (
+  options?: GenerateUniverseMockResponseOptions
+): Universe => {
+  const universeUuid = options?.universeUuid ?? 'mock-universe-uuid';
   const PRIMARY_CLUSTER_UUID = 'mock-cluster-uuid';
   const CUSTOMER_UUID = 'customer-uuid';
   return {
@@ -115,7 +122,7 @@ export const generateUniverseMockResponse = (): Universe => {
       ]
     },
     info: {
-      universe_uuid: 'mock-universe-uuid',
+      universe_uuid: universeUuid,
       version: 2,
       creation_date: '2024-06-15T10:00:00Z',
       creating_user: {

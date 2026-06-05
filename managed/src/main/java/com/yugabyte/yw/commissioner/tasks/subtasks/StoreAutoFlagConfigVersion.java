@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.models.Universe;
+import java.util.Objects;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.WireProtocol;
 import org.yb.client.YBClient;
@@ -46,10 +47,12 @@ public class StoreAutoFlagConfigVersion extends UniverseTaskBase {
 
     PrevYBSoftwareConfig config = universe.getUniverseDetails().prevYBSoftwareConfig;
     if (config != null
-        && config.getSoftwareVersion()
-            == universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion) {
+        && config.getSoftwareVersion() != null
+        && Objects.equals(
+            config.getTargetUpgradeSoftwareVersion(), taskParams().targetUpgradeSoftwareVersion)) {
       log.info(
-          "Auto flag config version already stored for universe {}. Skipping.",
+          "PrevYBSoftwareConfig already captured for target version {} on universe {}. Skipping.",
+          taskParams().targetUpgradeSoftwareVersion,
           universe.getUniverseUUID());
       return;
     }

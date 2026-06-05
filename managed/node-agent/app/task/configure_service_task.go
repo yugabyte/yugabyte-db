@@ -58,7 +58,7 @@ func (handler *ConfigureServiceHandler) Handle(
 		"checkProvisioned",
 		"yugabyte",
 		util.DefaultShell,
-		[]string{fmt.Sprintf("ls %s/bin/configure_earlyoom_service.sh", ybHomeDir)},
+		[]string{"-c", fmt.Sprintf("ls %s/bin/configure_earlyoom_service.sh", ybHomeDir)},
 	)
 	provisionedStatus, err := checkProvisionedTask.Process(ctx)
 	earlyoomProvisioned := false

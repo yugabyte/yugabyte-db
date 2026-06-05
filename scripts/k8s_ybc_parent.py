@@ -7,12 +7,13 @@ import errno
 import glob
 import logging
 import os
-import pipes
 import psutil
 import shutil
 import signal
 import subprocess
 import tarfile
+
+from shlex import quote
 
 CONTROLLER_DIR = "/tmp/yugabyte/controller"
 CONTROLLER_PID_FILE = CONTROLLER_DIR + "/yb-controller.pid"
@@ -46,7 +47,7 @@ class YBC:
     def quote_cmd_line_for_bash(self, cmd_line):
         if not isinstance(cmd_line, list) and not isinstance(cmd_line, tuple):
             raise Exception("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
-        return ' '.join([pipes.quote(str(arg)) for arg in cmd_line])
+        return ' '.join([quote(str(arg)) for arg in cmd_line])
 
     def move_contents(self, root_src_dir, root_dst_dir):
         for src_dir, dirs, files in os.walk(root_src_dir):

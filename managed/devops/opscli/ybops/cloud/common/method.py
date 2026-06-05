@@ -374,174 +374,20 @@ class VerifySSHConnection(AbstractInstancesMethod):
 
     def add_extra_args(self):
         super(VerifySSHConnection, self).add_extra_args()
-        self.parser.add_argument("--new_private_key_file",
-                                 required=True,
-                                 help="Private key file path of newly added \
-                                 key for verifying connection")
 
     def callback(self, args):
-        if args.new_private_key_file == args.private_key_file:
-            print("Given old and new access keys " +
-                  "are the same, skipping.")
-            return
         host_info = self.cloud.get_host_info(args)
         ssh_details = get_ssh_host_port(host_info, args.custom_ssh_port, default_port=False)
         ssh_retries = 3
-        oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
-                                      args.custom_ssh_port,
-                                      args.ssh_user,
-                                      args.private_key_file,
-                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
-        if oldKeyConnects:
-            print("SSH connection verification successful")
+        keyConnects = wait_for_ssh(ssh_details["ssh_host"], ssh_details["ssh_port"], args.ssh_user,
+                                   args.private_key_file, ssh_retries,
+                                   ssh2_enabled=args.ssh2_enabled)
+        if keyConnects:
+            print("SSH connection verified successfully")
             return
-        elif args.new_private_key_file is None:
-            raise YBOpsRuntimeError("SSH connection verification failed! \
-                Could not connect with given SSH key for instance: '{0}' \
-                    and no alternate new key provided".format(
-                args.search_pattern))
-        else:
-            # make SSH key rotation idempotent - it will move ahead if new key connects
-            newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
-                                          args.custom_ssh_port,
-                                          args.ssh_user,
-                                          args.new_private_key_file,
-                                          ssh_retries, ssh2_enabled=args.ssh2_enabled)
-            if newKeyConnects:
-                print("New key already connects " +
-                      "whereas old key does not")
-                return
-            else:
-                raise YBOpsRecoverableError("SSH connection verification failed! " +
-                                            "Could not connect with old or new " +
-                                            "SSH key for instance: '{0}'".format(
-                                                args.search_pattern))
-
-
-class AddAuthorizedKey(AbstractInstancesMethod):
-    def __init__(self, base_command):
-        super(AddAuthorizedKey, self).__init__(base_command, "add_authorized_key", True)
-
-    def add_extra_args(self):
-        super(AddAuthorizedKey, self).add_extra_args()
-        self.parser.add_argument("--public_key_content",
-                                 required=True,
-                                 help="Public key content to be added to authorized_keys of node")
-        self.parser.add_argument("--new_private_key_file",
-                                 required=True,
-                                 help="Private key file path of newly added \
-                                 key for verifying connection")
-
-    def callback(self, args):
-        if args.private_key_file == args.new_private_key_file:
-            print("Given old and new access keys" +
-                  " are the same, skipping.")
-            return
-        host_info = self.cloud.get_host_info(args)
-        ssh_details = get_ssh_host_port(host_info, args.custom_ssh_port, default_port=False)
-        ssh_retries = 3
-        # check connection before adding public key to make task idempotent
-        newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
-                                      args.custom_ssh_port,
-                                      args.ssh_user,
-                                      args.new_private_key_file,
-                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
-        if newKeyConnects:
-            print("Given SSH key already exists " +
-                  "for user {} in instance: {}".format(
-                      args.ssh_user, args.search_pattern))
-            return
-
-        # add public new key
-        public_key_content = args.public_key_content
-        if args.public_key_content == "":
-            # public key is taken by parsing private key file in cases when
-            # a customer uploads only private key file
-            public_key_content = get_public_key_content(args.new_private_key_file)
-        updated_vars = {
-            "command": "add-authorized-key",
-            "public_key_content": public_key_content
-        }
-        self.update_extra_vars_with_args(args)
-        self.update_extra_vars_with_host_info(host_info, args.custom_ssh_port)
-        updated_vars.update(self.extra_vars)
-
-        # confirm connection with new key
-        newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
-                                      args.custom_ssh_port,
-                                      args.ssh_user,
-                                      args.new_private_key_file,
-                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
-        if newKeyConnects:
-            print("Add access key successful")
-        else:
-            raise YBOpsRecoverableError("Add authorized key failed! " +
-                                        "Could not connect with given " +
-                                        "SSH key for instance: '{0}'".format(
-                                            args.search_pattern))
-
-
-class RemoveAuthorizedKey(AbstractInstancesMethod):
-    def __init__(self, base_command):
-        super(RemoveAuthorizedKey, self).__init__(base_command, "remove_authorized_key", True)
-
-    def add_extra_args(self):
-        super(RemoveAuthorizedKey, self).add_extra_args()
-        self.parser.add_argument("--public_key_content",
-                                 required=True,
-                                 help="Public key content to be removed from \
-                                     authorized_keys of node")
-        self.parser.add_argument("--old_private_key_file",
-                                 required=True,
-                                 help="Private key file path of key to be removed \
-                                 for verifying connection")
-
-    def callback(self, args):
-        if args.private_key_file == args.old_private_key_file:
-            print("Given old and new access keys " +
-                  "are the same, skipping.")
-            return
-        host_info = self.cloud.get_host_info(args)
-        ssh_details = get_ssh_host_port(host_info, args.custom_ssh_port, default_port=False)
-        ssh_retries = 3
-        # check connection before removing public key to make task idempotent
-        oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
-                                      args.custom_ssh_port,
-                                      args.ssh_user,
-                                      args.old_private_key_file,
-                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
-
-        if not oldKeyConnects:
-            print("SSH key already removed/does not " +
-                  "exist for instance: {}".format(
-                      args.search_pattern))
-            return
-
-        # remove public key
-        public_key_content = args.public_key_content
-        if args.public_key_content == "":
-            # public key is taken by parsing private key file in cases when
-            # a customer uploads only private key file
-            public_key_content = get_public_key_content(args.old_private_key_file)
-        updated_vars = {
-            "command": "remove-authorized-key",
-            "public_key_content": public_key_content
-        }
-        self.update_extra_vars_with_args(args)
-        self.update_extra_vars_with_host_info(host_info, args.custom_ssh_port)
-        updated_vars.update(self.extra_vars)
-
-        # confirm connection with old key does not work
-        oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
-                                      args.custom_ssh_port,
-                                      args.ssh_user,
-                                      args.old_private_key_file,
-                                      ssh_retries, ssh2_enabled=args.ssh2_enabled)
-        if not oldKeyConnects:
-            print("Remove access key successful")
-        else:
-            raise YBOpsRuntimeError("Could not remove SSH key for instance: '{0}'".format(
-                args.search_pattern))
+        raise YBOpsRecoverableError("SSH connection verification failed! " +
+                                    "Could not connect with given SSH key for instance: '{0}'"
+                                    .format(args.search_pattern))
 
 
 class ReplaceRootVolumeMethod(AbstractInstancesMethod):

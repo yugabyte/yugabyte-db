@@ -21,10 +21,28 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 31533>}}
+| An xCluster target universe's YB-Master may crash when certain types of schema changes are applied after database upgrade
+| {{<product "ybdb">}}
+| {{<release "2025.1.1.0">}}+, {{<release "2025.2.0.0">}} to {{<release "2025.2.3.0">}}
+| {{<nobreak "28 May 2026">}}
+|
+| {{<ta 24007>}}
+| Warning gap for index rewrites during ALTER TABLE .. ALTER COLUMN TYPE
+| {{<product "ysql">}}
+| {{<release "2024.1.0.0">}}+
+| {{<nobreak "13 May 2026">}}
+|
+| {{<ta 30772>}}
+| Potential database inconsistency with very large transactions
+| {{<product "ysql">}}
+| {{<release "All">}}
+| {{<nobreak "13 May 2026">}}
+|
 | {{<ta 30653>}}
 | Index inconsistency with in-place update on INCLUDE column
 | {{<product "ysql">}}
-| {{<release "2024.2.0.0">}} to {{<release "2024.2.8.0">}}, {{<release "2025.1.0.0">}} to {{<release "2025.1.3.0">}}, {{<release "2025.2.0.0">}} to {{<release "2025.2.1.0">}}
+| {{<release "2024.2.0.0">}} to {{<release "2024.2.8.0">}}, {{<release "2025.1.0.0">}} to {{<release "2025.1.3.0">}}, {{<release "2025.2.0.0">}} to {{<release "2025.2.2.1">}}
 | {{<nobreak "8 April 2026">}}
 |
 | {{<ta 26910>}}

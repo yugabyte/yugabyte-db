@@ -439,7 +439,7 @@ TEST_F(SnapshotScheduleTest, MasterHistoryRetentionNoSchedule) {
   // history retention should be t-240 where t is the current time obtained by
   // GetRetentionDirective() call.
   directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-  // current_time-120 should be >= t-120 since current_time >= t.
+  // current_time-240 should be >= t-240 since current_time >= t.
   // We bound this error by 1s * kTimeMultiplier.
   expect = cluster_->mini_master(0)->Now().AddSeconds(
       -FLAGS_timestamp_history_retention_interval_sec);

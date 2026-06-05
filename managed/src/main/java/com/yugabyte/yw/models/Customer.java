@@ -5,12 +5,14 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.helpers.CommonUtils.deepMerge;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.Finder;
@@ -22,6 +24,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostRemove;
 import jakarta.persistence.Transient;
 import java.util.Collection;
 import java.util.Date;
@@ -133,6 +136,17 @@ public class Customer extends Model {
     return customer;
   }
 
+  public static Customer getOrNotFound(UUID customerUUID) {
+    return find.query()
+        .where()
+        .eq("uuid", customerUUID)
+        .findOneOrEmpty()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    NOT_FOUND, String.format("Could not find customer %s", customerUUID)));
+  }
+
   public static Customer get(UUID customerUUID) {
     return find.query().where().eq("uuid", customerUUID).findOne();
   }
@@ -189,5 +203,10 @@ public class Customer extends Model {
   @JsonIgnore
   public String getTag() {
     return String.format("[%s][%s]", getName(), getCode());
+  }
+
+  @PostRemove
+  public void cleanRuntimeConfigCache() {
+    RuntimeConfigCacheInvalidator.invalidateAllScopesForCustomer();
   }
 }

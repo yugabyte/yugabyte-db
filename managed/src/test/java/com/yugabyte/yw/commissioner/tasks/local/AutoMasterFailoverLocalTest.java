@@ -11,7 +11,6 @@ import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -37,11 +36,6 @@ public class AutoMasterFailoverLocalTest extends LocalProviderUniverseTestBase {
   public void setUp() {
     jobScheduler.init();
     autoMasterFailoverScheduler.init();
-  }
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(30, 60);
   }
 
   private void enableMasterFailover(Universe universe) {

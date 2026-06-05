@@ -307,7 +307,7 @@ When [upgrading universes](../../upgrade-software-install/) in xCluster Replicat
 
 If you upgrade and finalize the source universe first, replication may be paused automatically until both universes are finalized to the same software version.
 
-If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
+If you have bidirectional xCluster replication, perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
 
 Refer to [Upgrades with xCluster and xCluster DR](../../upgrade-software-install/#upgrades-with-xcluster-and-xcluster-dr).
 

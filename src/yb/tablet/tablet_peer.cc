@@ -82,6 +82,8 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/fault_injection.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -106,6 +108,11 @@ DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
 DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 1800,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
+
+DEFINE_RUNTIME_int32(cdc_min_replicated_index_considered_stale_secs_master, 14400 /* 4 hours */,
+    "Same as cdc_min_replicated_index_considered_stale_secs but applied to the sys catalog tablet "
+    "on master. A higher default (4 hours) prevents premature reset of retention barriers on "
+    "master followers that receive less frequent barrier updates.");
 
 DEFINE_UNKNOWN_bool(propagate_safe_time, true,
     "Propagate safe time to read from leader to followers");
@@ -436,8 +443,11 @@ Status TabletPeer::MajorityReplicated(const OpId& committed_op_id) {
 }
 
 void TabletPeer::BecomeReplica() {
-  FailAllAsyncWrites(
-      STATUS_FORMAT(Aborted, "Tablet $0 leader changed during async write", tablet_id()));
+  // TODO(#28383): delay this until the new leader is caught up to async writes too.
+  // Return NOT_THE_LEADER so the client can retry on a different leader.
+  FailAllAsyncWrites(STATUS(
+      IllegalState, Format("Tablet $0 leader changed during async write", tablet_id()),
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER)));
 }
 
 void TabletPeer::ChangeConfigReplicated(const RaftConfigPB& config) {
@@ -1182,9 +1192,10 @@ bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_re
   if (seconds_since_last_refresh_ptr) {
     *seconds_since_last_refresh_ptr = seconds_since_last_refresh;
   }
-  return (
-      seconds_since_last_refresh >
-      FLAGS_cdc_min_replicated_index_considered_stale_secs);
+  auto stale_secs = meta_->IsSysCatalog()
+      ? FLAGS_cdc_min_replicated_index_considered_stale_secs_master
+      : FLAGS_cdc_min_replicated_index_considered_stale_secs;
+  return (seconds_since_last_refresh > stale_secs);
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
@@ -1978,36 +1989,56 @@ void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallba
     }
   }
 
-  // Write is not in progress. Check the term to make sure the write was received by the current
-  // peer.
-  // TODO(#28383): Handle graceful leader moves without failing user queries.
-  auto is_same_term = [this, &op_id]() -> Status {
-    auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
-    if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
-      return Status::OK();
-    }
+  callback(VerifyAsyncWriteCompletion(op_id));
+}
 
-    auto consensus = VERIFY_RESULT(GetRaftConsensus());
-    const auto leader_term = consensus->LeaderTerm();
-    SCHECK_FORMAT(
-        leader_term != OpId::kUnknownTerm, Aborted,
-        "Tablet $0 leader changed during async write", tablet_id());
-
-    SCHECK_FORMAT(
-        leader_term == op_id.term, Aborted,
-        "Tablet $0 leader changed during async write. New term: $1, expected term: $2", tablet_id(),
-        leader_term, op_id.term);
-
+Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
+  auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
+  if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
     return Status::OK();
-  }();
-
-  Status status;
-
-  if (!is_same_term.ok()) {
-    status = std::move(is_same_term);
   }
 
-  callback(status);
+  auto consensus = VERIFY_RESULT(GetRaftConsensus());
+  auto [leader_state, first_index] = consensus->GetLeaderStateAndFirstIndexOfCurrentTerm();
+  SCHECK_EC_FORMAT(
+      leader_state.ok(), IllegalState,
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER),
+      "Tablet $0: not a ready leader ($1), cannot verify async write $2 for read", tablet_id(),
+      leader_state.status, op_id);
+
+  if (op_id.term == leader_state.term) {
+    // Same term - this peer appended the entry before acking the client.
+    return Status::OK();
+  }
+
+  if (op_id.term + 1 == leader_state.term) {
+    // One term ago - since the leader is ready, the initial NO_OP has committed
+    // and all entries from the previous term at index < NO_OP index are also committed.
+    if (op_id.index < first_index) {
+      return Status::OK();
+    }
+    // Write was lost/overwritten.
+    return STATUS_FORMAT(
+        NotFound,
+        "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
+        "term $2 is $3). Retry the transaction.",
+        tablet_id(), op_id, leader_state.term, first_index);
+  }
+
+  // Two or more terms ago - we can't verify presence without a log lookup.
+  return STATUS_FORMAT(
+      NotFound,
+      "Tablet $0: tablet leader moved more than once since async write $1 was issued "
+      "(write from term $2, current term is $3). Retry the transaction.",
+      tablet_id(), op_id, op_id.term, leader_state.term);
+}
+
+Status TabletPeer::VerifyAsyncWriteCompletion(const OpId& op_id) {
+  // Either the write completed on this leader and was already removed from the in-flight list, or
+  // we're not the original leader. Either way, verify by checking if we have the requested op_id.
+  // Replace NotFound with Aborted for the WaitForAsyncWriteRpc caller.
+  auto status = VerifyAsyncWriteReceived(op_id);
+  return status.IsNotFound() ? status.CloneAndReplaceCode(Status::kAborted) : status;
 }
 
 Status BackfillNamespaceIdIfNeeded(

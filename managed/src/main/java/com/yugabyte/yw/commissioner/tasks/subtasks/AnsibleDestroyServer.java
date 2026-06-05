@@ -17,7 +17,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -26,7 +27,6 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.nodeagent.DestroyServerInput;
 import java.util.Optional;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -89,9 +89,10 @@ public class AnsibleDestroyServer extends NodeTaskBase {
           universe.getUniverseUUID());
       return;
     }
-    UserIntent userIntent =
-        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
-    if (userIntent.providerType == Common.CloudType.onprem
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid);
+    CloudType cloudType = cluster.getProviderCloudType(nodeDetails);
+    if (cloudType == Common.CloudType.onprem
         && (nodeDetails.cloudInfo == null
             || StringUtils.isEmpty(nodeDetails.cloudInfo.private_ip))) {
       // Node IP was never updated, nothing was changed. For onprem, it can just be cleared.
@@ -106,7 +107,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     }
     boolean cleanupFailed = true;
     try {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      Provider provider = Util.getProviderForNode(nodeDetails, cluster);
       boolean cleanupOnly =
           provider.getCloudCode() == CloudType.onprem
               && NodeAgentClient.isCloudTypeSupported(provider.getCloudCode());
@@ -142,7 +143,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    if (taskParams().deleteRootVolumes && userIntent.providerType != Common.CloudType.onprem) {
+    if (taskParams().deleteRootVolumes && cloudType != Common.CloudType.onprem) {
       try {
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, taskParams())
@@ -159,7 +160,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    if (userIntent.providerType == Common.CloudType.onprem
+    if (cloudType == Common.CloudType.onprem
         && nodeDetails.state != NodeDetails.NodeState.Decommissioned) {
       Optional<NodeInstance> nodeInstanceOpt =
           NodeInstance.maybeGetByName(taskParams().nodeName, taskParams().nodeUuid);

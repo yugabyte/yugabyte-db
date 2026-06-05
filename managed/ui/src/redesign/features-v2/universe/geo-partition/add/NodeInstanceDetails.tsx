@@ -60,7 +60,6 @@ export const NodeInstanceDetails: FC<NodeInstanceDetailsProps> = ({ cluster }) =
     });
 
     const nodeSpec = cluster?.node_spec;
-    console.log(nodeSpec);
     const instanceType = nodeSpec?.instance_type ?? '-';
     const volumeSize = nodeSpec?.storage_spec?.volume_size ?? '-';
     const volumeType = nodeSpec?.storage_spec?.storage_type ?? '-';

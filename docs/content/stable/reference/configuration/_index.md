@@ -10,7 +10,7 @@ menu:
   stable:
     identifier: configuration
     parent: reference
-    weight: 2600
+    weight: 200
 type: indexpage
 ---
 

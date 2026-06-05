@@ -178,8 +178,7 @@ DEFINE_NON_RUNTIME_int64(merge_keys, -1,
              "If negative, there will be FLAGS_num keys.");
 DEFINE_NON_RUNTIME_int32(num_column_families, 1, "Number of Column Families to use.");
 
-DEFINE_NON_RUNTIME_int32(
-    num_hot_column_families, 0,
+DEFINE_NON_RUNTIME_int32(num_hot_column_families, 0,
     "Number of Hot Column Families. If more than 0, only write to this "
     "number of column families. After finishing all the writes to them, "
     "create new set of column families and insert to them. Only used "
@@ -609,8 +608,7 @@ DEFINE_NON_RUNTIME_bool(allow_concurrent_memtable_write, false,
 DEFINE_NON_RUNTIME_bool(enable_write_thread_adaptive_yield, false,
             "Use a yielding spin loop for brief writer thread waits.");
 
-DEFINE_NON_RUNTIME_uint64(
-    write_thread_max_yield_usec, 100,
+DEFINE_NON_RUNTIME_uint64(write_thread_max_yield_usec, 100,
     "Maximum microseconds for enable_write_thread_adaptive_yield operation.");
 
 DEFINE_NON_RUNTIME_uint64(write_thread_slow_yield_usec, 3,
@@ -623,8 +621,7 @@ DEFINE_NON_RUNTIME_int32(rate_limit_delay_max_milliseconds, 1000,
 
 DEFINE_NON_RUNTIME_uint64(rate_limiter_bytes_per_sec, 0, "Set options.rate_limiter value.");
 
-DEFINE_NON_RUNTIME_uint64(
-    benchmark_write_rate_limit, 0,
+DEFINE_NON_RUNTIME_uint64(benchmark_write_rate_limit, 0,
     "If non-zero, db_bench will rate-limit the writes going into RocksDB. This "
     "is the global rate in bytes/second.");
 
@@ -883,8 +880,9 @@ class ReportFileOpEnv : public EnvWrapper {
 
       Status Truncate(uint64_t size) override { return target_->Truncate(size); }
       Status Close() override { return target_->Close(); }
-      Status Flush() override { return target_->Flush(); }
+      Status Flush(FlushMode mode) override { return target_->Flush(mode); }
       Status Sync() override { return target_->Sync(); }
+      uint64_t Size() const override { return target_->Size(); }
       const std::string& filename() const override { return target_->filename(); }
     };
 

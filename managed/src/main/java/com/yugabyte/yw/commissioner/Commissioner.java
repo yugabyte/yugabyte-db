@@ -429,7 +429,10 @@ public class Commissioner {
                   SoftwareUpgradeProgress.fromPrevYBSoftwareConfigIfPresent(
                       u.getUniverseDetails().prevYBSoftwareConfig);
               if (progress != null) {
-                responseJson.set("softwareUpgradeProgress", Json.toJson(progress));
+                JsonNode detailsNode = responseJson.get("details");
+                if (detailsNode instanceof ObjectNode) {
+                  ((ObjectNode) detailsNode).set("softwareUpgradeProgress", Json.toJson(progress));
+                }
               }
             });
   }

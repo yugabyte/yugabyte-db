@@ -21,6 +21,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 
 | Statement | Description |
 | :-------- | :---------- |
+| [ALTER AGGREGATE](ddl_alter_aggregate/) | Change aggregate function definition |
 | [ALTER DATABASE](ddl_alter_db/) | Change database definition |
 | [ALTER DOMAIN](ddl_alter_domain/) | Change domain definition |
 | [ALTER FOREIGN DATA WRAPPER](ddl_alter_foreign_data_wrapper/) | Change foreign data wrapper definition |
@@ -172,3 +173,4 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [ANALYZE](cmd_analyze/) | Collect statistics about a database |
 | [COPY](cmd_copy/) | Copy data between tables and files |
 | [DO](cmd_do/) | Execute an anonymous PL/pgSQL code block |
+| [LISTEN, NOTIFY, and UNLISTEN](cmd_listen_notify/) | Asynchronous inter-process communication |

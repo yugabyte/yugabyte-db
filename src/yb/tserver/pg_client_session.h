@@ -135,10 +135,11 @@ class PgClientSession final {
       IsDDL, TransactionFullLocality, CoarseTimePoint, client::ForceCreateTransaction)>;
 
   PgClientSession(
-      TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
-      client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
+      SharedThisSource shared_this_source, rpc::Scheduler& scheduler,
+      TransactionBuilder&& transaction_builder, client::YBClient& client,
+      std::reference_wrapper<const PgClientSessionContext> context,
       uint64_t id, pid_t pid, uint64_t lease_epoch,
-      tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler);
+      tserver::TSLocalLockManagerPtr ts_local_lock_manager);
   ~PgClientSession();
 
   uint64_t id() const;

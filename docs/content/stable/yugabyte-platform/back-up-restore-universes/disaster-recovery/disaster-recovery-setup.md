@@ -24,7 +24,7 @@ Create two universes, the DR primary universe which will serve reads and writes,
 
 Ensure the universes have the following characteristics:
 
-- Both universes are running the same version of YugabyteDB (v2.18.0.0 or later).
+- Both universes are running the same version of YugabyteDB (v2.18.0.0 or later). The schema change mode used by your new configuration depends on the version you are running, and runtime configuration. Refer to [Schema change modes](../#schema-change-modes).
 - Both universes have the same [encryption in transit](../../../security/enable-encryption-in-transit/) settings. Encryption in transit is recommended, and you should create the DR primary and DR replica universes with TLS enabled.
 - They can be backed up and restored using the same [storage configuration](../../configure-backup-storage/).
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the DR replica universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.

@@ -789,7 +789,17 @@ try_nestloop_path(PlannerInfo *root,
 	initial_cost_nestloop(root, &workspace, jointype,
 						  outer_path, inner_path, extra);
 
-	if (add_path_precheck(joinrel,
+	/*
+	 * YB: Keep nested loops whose inputs contain a forced Gather past the
+	 * precheck so set_cheapest() has a Gather-bearing candidate to promote.
+	 */
+	bool		yb_force_px = (IsYugaByteEnabled() &&
+							   yb_test_force_parallel != YB_FORCE_PARALLEL_OFF &&
+							   required_outer == NULL &&
+							   (yb_path_contains_gather(outer_path) ||
+								yb_path_contains_gather(inner_path)));
+	if (yb_force_px ||
+		add_path_precheck(joinrel,
 						  workspace.startup_cost, workspace.total_cost,
 						  pathkeys, required_outer))
 	{
@@ -1141,7 +1151,17 @@ try_hashjoin_path(PlannerInfo *root,
 	initial_cost_hashjoin(root, &workspace, jointype, hashclauses,
 						  outer_path, inner_path, extra, false);
 
-	if (add_path_precheck(joinrel,
+	/*
+	 * YB: Keep hash joins whose inputs contain a forced Gather past the
+	 * precheck so set_cheapest() has a Gather-bearing candidate to promote.
+	 */
+	bool		yb_force_px = (IsYugaByteEnabled() &&
+							   yb_test_force_parallel != YB_FORCE_PARALLEL_OFF &&
+							   required_outer == NULL &&
+							   (yb_path_contains_gather(outer_path) ||
+								yb_path_contains_gather(inner_path)));
+	if (yb_force_px ||
+		add_path_precheck(joinrel,
 						  workspace.startup_cost, workspace.total_cost,
 						  NIL, required_outer))
 	{
@@ -1207,7 +1227,14 @@ try_partial_hashjoin_path(PlannerInfo *root,
 	 */
 	initial_cost_hashjoin(root, &workspace, jointype, hashclauses,
 						  outer_path, inner_path, extra, parallel_hash);
-	if (!add_partial_path_precheck(joinrel, workspace.total_cost, NIL))
+
+	/* YB: Keep Parallel Hash Join partial paths past the precheck. */
+	bool		yb_force_px = (IsYugaByteEnabled() &&
+							   yb_test_force_parallel != YB_FORCE_PARALLEL_OFF &&
+							   parallel_hash);
+
+	if (!yb_force_px &&
+		!add_partial_path_precheck(joinrel, workspace.total_cost, NIL))
 		return;
 
 	/* Might be good enough to be worth trying, so let's try it. */

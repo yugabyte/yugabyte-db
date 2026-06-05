@@ -9,12 +9,15 @@
 
 import { useMemo, useRef } from 'react';
 import { useMethods } from 'react-use';
+import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { YBMultiLevelStepper, mui, yba } from '@yugabyte-ui-library/core';
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { CreateUniverseBreadCrumb } from './CreateUniverseBreadCrumb';
 import AuthenticatedArea from '@app/pages/AuthenticatedArea';
 import SwitchCreateUniverseSteps from './SwitchCreateUniverseSteps';
 import { getCreateUniverseSteps } from './CreateUniverseUtils';
+import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import {
   CreateUniverseContext,
   createUniverseFormMethods,
@@ -22,6 +25,7 @@ import {
   initialCreateUniverseFormState,
   StepsRef
 } from './CreateUniverseContext';
+import { ResilienceType } from './steps/resilence-regions/dtos';
 //style imports
 import './styles/override.css';
 
@@ -60,11 +64,26 @@ export function CreateUniverse() {
   const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType), [t, resilienceType]);
   const currentStepRef = useRef<StepsRef>(null);
 
+  //To speed up the interaction
+  const { isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList);
+
+  const getButtonLabel = (resType: ResilienceType | undefined, actStep: number) => {
+    if (resType === ResilienceType.SINGLE_NODE) {
+      if (actStep === 8) return t('applyChanges', { keyPrefix: 'common' });
+      else return t(actStep === 7 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
+    } else {
+      if (actStep === 9) return t('applyChanges', { keyPrefix: 'common' });
+      else return t(actStep === 8 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
+    }
+  };
+
+  if (isLoading) return <YBLoadingCircleIcon />;
+
   return (
     <CreateUniverseRoot>
       <AuthenticatedArea simpleMode>
         <CreateUniverseContext.Provider
-          value={([...restoreContextData, {}] as unknown) as createUniverseFormProps}
+          value={[...restoreContextData, {}] as unknown as createUniverseFormProps}
         >
           {/* Header component */}
           <CreateHeader>
@@ -77,10 +96,12 @@ export function CreateUniverse() {
                 {t('title', { keyPrefix: 'createUniverseV2' })}
               </Typography>
             </Box>
-            <Close style={{ cursor: 'pointer' }}
+            <Close
+              style={{ cursor: 'pointer' }}
               onClick={() => {
                 window.location.href = '/';
-              }} />
+              }}
+            />
           </CreateHeader>
           {/* Body */}
           <Grid container spacing={{ xs: 3, md: 3, lg: 3, xl: 6 }} minHeight={'100%'}>
@@ -143,7 +164,7 @@ export function CreateUniverse() {
                         size="large"
                         dataTestId="create-universe-next-button"
                       >
-                        {t(activeStep === 9 ? 'create' : 'next', { keyPrefix: 'common' })}
+                        {getButtonLabel(resilienceType, activeStep)}
                       </YBButton>
                     </Grid>
                   </Grid>

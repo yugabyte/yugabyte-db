@@ -353,7 +353,8 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
 
   // Write a new op to the newly allocated segment.
   PutKeyValue("key_2", "value_2");
-  ASSERT_OK(ASSERT_RESULT(tablet_peer->shared_tablet())->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(ASSERT_RESULT(tablet_peer->shared_tablet())
+                ->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Restart tserver.
   ASSERT_OK(tablet_server->Restart());

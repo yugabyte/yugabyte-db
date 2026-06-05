@@ -8,6 +8,7 @@ import { getFlagFromRegion } from '../../helpers/RegionToFlagUtils';
 import { NodeAvailabilityProps, Zone as ZoneType } from './dtos';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { ResilienceFormMode } from '../resilence-regions/dtos';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../helpers/constants';
 
 //icons
 import AddIcon from '../../../../../assets/add2.svg';
@@ -98,16 +99,30 @@ export const RegionCard: FC<RegionCardProps> = ({
     const nodeCountFromConfig =
       existingZones.find((z) => typeof z.nodeCount === 'number' && z.nodeCount >= 1)?.nodeCount ??
       1;
+    const nextPreferredRank =
+      az.reduce(
+        (maxRank, zone) =>
+          zone.preffered > AZ_NOT_PREFERRED ? Math.max(maxRank, zone.preffered) : maxRank,
+        AZ_NOT_PREFERRED
+      ) + AZ_PREFFERED_HIGHEST_RANK;
 
     const newZone =
       mode === ResilienceFormMode.EXPERT_MODE
-        ? { name: '', uuid: '', nodeCount: nodeCountFromConfig, preffered: az.length }
-        : { ...azToAdd, nodeCount: nodeCountFromConfig, preffered: az.length };
+        ? {
+            name: '',
+            uuid: '',
+            nodeCount: nodeCountFromConfig,
+            preffered: nextPreferredRank
+          }
+        : { ...azToAdd, nodeCount: nodeCountFromConfig, preffered: nextPreferredRank };
 
     setValue(`availabilityZones.${region.code}`, [...az, newZone], { shouldValidate: true });
   };
 
   const updatePreferredRanks = (azs: ZoneType[], removedPreferredRank: number) => {
+    if (removedPreferredRank === AZ_NOT_PREFERRED) {
+      return azs;
+    }
     const updatedAz = azs.map((zone) => {
       if (zone.preffered > removedPreferredRank) {
         return { ...zone, preffered: zone.preffered - 1 };

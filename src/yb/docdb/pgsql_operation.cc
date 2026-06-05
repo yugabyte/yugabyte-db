@@ -119,8 +119,7 @@ DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal,
 DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, true,
                     "Whether to enable packed row for colocated tables.");
 
-DEFINE_UNKNOWN_uint64(
-    ysql_packed_row_size_limit, 0,
+DEFINE_UNKNOWN_uint64(ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
@@ -130,8 +129,8 @@ DEFINE_RUNTIME_bool(ysql_mark_update_packed_row, false,
                     "Whether to mark packed rows created from UPDATE operations with a flag. "
                     "This allows CDC to differentiate between INSERT and UPDATE packed rows."
                     "Default is false.");
-DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
-                            "Whether to use packed row V2 when row packing is enabled.");
+DEFINE_RUNTIME_AUTO_bool(ysql_use_packed_row_v2, kExternal, false, true,
+                         "Whether to use packed row V2 when row packing is enabled.");
 
 DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
@@ -3116,11 +3115,7 @@ Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
 }
 
 Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {
-  if (aggr_result_.empty()) {
-    while (aggr_result_.size() < request_.targets().size()) {
-      aggr_result_.emplace_back(&request_.arena());
-    }
-  }
+  PrepareAggregateResults(request_.targets().size());
 
   int aggr_index = 0;
   for (const auto& expr : request_.targets()) {

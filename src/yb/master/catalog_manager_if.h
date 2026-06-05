@@ -65,6 +65,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual void DeleteTabletReplicas(
       const TabletInfoPtr& tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
+      const TransactionId& exclude_aborting_transaction_id,
       const LeaderEpoch& epoch) = 0;
 
   virtual void NotifyPrepareDeleteTransactionTabletFinished(
@@ -117,14 +118,15 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   }
 
   virtual Status GetYsqlCatalogVersion(
-      uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
+      uint64_t* catalog_version, uint64_t* last_breaking_version, bool use_cache = false) = 0;
   virtual Status GetYsqlAllDBCatalogVersions(
       bool use_cache,
       DbOidToCatalogVersionMap* versions,
       uint64_t* fingerprint) = 0;
   virtual Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) = 0;
   virtual Status GetYsqlDBCatalogVersion(
-      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version,
+      bool use_cache = false) = 0;
 
   virtual Result<SysClusterConfigEntryPB> GetClusterConfig() = 0;
 
@@ -251,6 +253,9 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual Status IsObjectPartOfXRepl(
       const IsObjectPartOfXReplRequestPB* req, IsObjectPartOfXReplResponsePB* resp) = 0;
+
+  virtual Status IsNamespacePartOfCDCSDK(
+      const IsNamespacePartOfCDCSDKRequestPB* req, IsNamespacePartOfCDCSDKResponsePB* resp) = 0;
 
   virtual Status GetCDCDBStreamInfo(
     const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;

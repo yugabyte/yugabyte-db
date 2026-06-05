@@ -8,9 +8,11 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -18,11 +20,11 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AZUpgradeStatus;
 import com.yugabyte.yw.forms.AZUpgradeStep;
+import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -55,11 +57,6 @@ import org.junit.Test;
 import play.libs.Json;
 
 public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair(180, 210);
-  }
 
   public static final String OLD_DB_VERSION = "2.20.0.1-b1";
   public static String OLD_DB_VERSION_URL =
@@ -138,7 +135,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertTrue(doneStatus.isPresent());
     assertFalse(
         "Task status API should omit softwareUpgradeProgress after a successful standard upgrade",
-        doneStatus.get().has("softwareUpgradeProgress"));
+        doneStatus.get().path("details").has("softwareUpgradeProgress"));
   }
 
   @Test
@@ -363,10 +360,16 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     UUID taskUuid =
         upgradeUniverseHandler.upgradeDBVersion(
             params, customer, Universe.getOrBadRequest(universe.getUniverseUUID()));
-    waitForTask(taskUuid, TaskInfo.State.Paused, 500, 3600);
+    TaskInfo taskInfo = waitForTask(taskUuid, 500, 3600);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dAfterMasterPause = universe.getUniverseDetails();
+    assertTrue(dAfterMasterPause.updateSucceeded);
+    assertNull(dAfterMasterPause.updatingTaskUUID);
+    assertNull(dAfterMasterPause.updatingTask);
+    assertEquals(taskUuid, dAfterMasterPause.placementModificationTaskUuid);
     PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue(allMasterAzsCompleted(prev));
@@ -393,10 +396,16 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     UUID resumedUuid =
         upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
             customer.getUuid(), universe.getUniverseUUID(), taskUuid);
-    waitForTask(resumedUuid, TaskInfo.State.Paused, 500, 3600);
+    taskInfo = waitForTask(resumedUuid, 500, 3600);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dAfterAzPause = universe.getUniverseDetails();
+    assertTrue(dAfterAzPause.updateSucceeded);
+    assertNull(dAfterAzPause.updatingTaskUUID);
+    assertNull(dAfterAzPause.updatingTask);
+    assertEquals(resumedUuid, dAfterAzPause.placementModificationTaskUuid);
     prev = universe.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue(
@@ -414,17 +423,252 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(
         SoftwareUpgradeState.PreFinalize, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dPreFinalize = universe.getUniverseDetails();
+    assertNull(dPreFinalize.placementModificationTaskUuid);
+    assertNull(dPreFinalize.updatingTaskUUID);
+    assertNull(dPreFinalize.updatingTask);
 
-    Optional<ObjectNode> finalStatus = getTaskStatus(finalTask.getUuid());
-    assertTrue(finalStatus.isPresent());
+    assertTaskStatusSoftwareUpgradeProgressMatchesUniverse(finalTask.getUuid(), universe);
+
+    FinalizeUpgradeParams finalizeUpgradeParams = new FinalizeUpgradeParams();
+    finalizeUpgradeParams.setUniverseUUID(universe.getUniverseUUID());
+    finalizeUpgradeParams.expectedUniverseVersion = -1;
+    TaskInfo finalizeTaskInfo =
+        waitForTask(
+            upgradeUniverseHandler.finalizeUpgrade(
+                finalizeUpgradeParams,
+                customer,
+                Universe.getOrBadRequest(universe.getUniverseUUID())));
+    assertEquals(Success, finalizeTaskInfo.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Ready, universe.getUniverseDetails().softwareUpgradeState);
+    assertFalse(universe.getUniverseDetails().isSoftwareRollbackAllowed);
+    UniverseDefinitionTaskParams dReady = universe.getUniverseDetails();
+    assertNull(dReady.updatingTaskUUID);
+    assertNull(dReady.placementModificationTaskUuid);
+    assertNull(dReady.updatingTask);
+
+    Optional<ObjectNode> statusAfterFinalize = getTaskStatus(finalTask.getUuid());
+    assertTrue(statusAfterFinalize.isPresent());
     assertFalse(
-        "Task status should omit softwareUpgradeProgress after software upgrade phase completes",
-        finalStatus.get().has("softwareUpgradeProgress"));
+        "Task status should omit softwareUpgradeProgress after finalize completes",
+        statusAfterFinalize.get().path("details").has("softwareUpgradeProgress"));
+  }
+
+  /**
+   * Reproduces PLAT-20769: canary upgrade on a universe with a read replica configured with all
+   * four pause points (after masters, between primary AZs, between primary and RR, between RR AZs).
+   * Walks every pause and verifies that the executor honors the RR-AZ pause as well, not just the
+   * primary-cluster pauses. The RR cluster uses RF=3 across multiple AZs.
+   */
+  @Test
+  public void testCanarySoftwareUpgradeWithReadReplicaAllFourPauses() throws InterruptedException {
+    updateProviderDetailsForCreateUniverse(OLD_VERSION_WITH_ROLLBACK);
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.ybSoftwareVersion = OLD_VERSION_WITH_ROLLBACK;
+    userIntent.numNodes = 4;
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+
+    UniverseDefinitionTaskParams.UserIntent rrIntent = getDefaultUserIntent();
+    rrIntent.ybSoftwareVersion = OLD_VERSION_WITH_ROLLBACK;
+    rrIntent.numNodes = 3;
+    // RF=3 with three nodes matches a typical RR topology and spreads t-servers across multiple
+    // AZs (RF=1 with two nodes can collapse to a single AZ, which would defeat per-AZ pause tests).
+    rrIntent.replicationFactor = 3;
+    doAddReadReplica(universe, rrIntent);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    initAndStartPayload(universe);
+
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
+        "false",
+        true);
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.enableCanaryUpgrade.getKey(),
+        "true",
+        true);
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    UniverseDefinitionTaskParams.Cluster rrCluster =
+        universe.getUniverseDetails().getReadOnlyClusters().get(0);
+    UUID rrClusterUuid = rrCluster.uuid;
+
+    List<UUID> azOrder =
+        PlacementInfoUtil.getAZsSortedByNumNodes(primaryCluster.getOverallPlacement()).stream()
+            .map(az -> az.uuid)
+            .collect(Collectors.toList());
+    assertTrue("Expected primary cluster placement with at least 3 AZs", azOrder.size() >= 3);
+    UUID firstPrimaryAz = azOrder.get(0);
+    UUID lastPrimaryAz = azOrder.get(azOrder.size() - 1);
+
+    List<UUID> rrAzOrder =
+        PlacementInfoUtil.getAZsSortedByNumNodes(rrCluster.getOverallPlacement()).stream()
+            .map(az -> az.uuid)
+            .collect(Collectors.toList());
+    assertTrue("Expected RF=3 read replica placement across at least 3 AZs", rrAzOrder.size() >= 3);
+    UUID firstRrAz = rrAzOrder.get(0);
+
+    List<AZUpgradeStep> primarySteps = new ArrayList<>();
+    for (UUID azUuid : azOrder) {
+      AZUpgradeStep step = new AZUpgradeStep();
+      step.azUUID = azUuid;
+      // Pause after first primary AZ (between AZ1 and AZ2) and after the last primary AZ
+      // (between primary t-servers and RR t-servers).
+      step.pauseAfterTserverUpgrade = azUuid.equals(firstPrimaryAz) || azUuid.equals(lastPrimaryAz);
+      primarySteps.add(step);
+    }
+
+    List<AZUpgradeStep> rrSteps = new ArrayList<>();
+    for (UUID azUuid : rrAzOrder) {
+      AZUpgradeStep step = new AZUpgradeStep();
+      step.azUUID = azUuid;
+      step.pauseAfterTserverUpgrade = azUuid.equals(firstRrAz);
+      rrSteps.add(step);
+    }
+
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.ybSoftwareVersion = PG_11_DB_VERSION;
+    params.sleepAfterMasterRestartMillis = 2000;
+    params.sleepAfterTServerRestartMillis = 2000;
+    params.clusters.add(primaryCluster);
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+    params.canaryUpgradeConfig.primaryClusterAZSteps = primarySteps;
+    params.canaryUpgradeConfig.readReplicaClusterAZSteps = rrSteps;
+
+    UUID taskUuid =
+        upgradeUniverseHandler.upgradeDBVersion(
+            params, customer, Universe.getOrBadRequest(universe.getUniverseUUID()));
+    TaskInfo taskInfo = waitForTask(taskUuid, 500, 3600);
+
+    // Pause #1: after masters.
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
+    assertCanaryPauseSubtaskStates(taskUuid);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dAfterMasters = universe.getUniverseDetails();
+    assertTrue(dAfterMasters.updateSucceeded);
+    assertNull(dAfterMasters.updatingTaskUUID);
+    assertNull(dAfterMasters.updatingTask);
+    assertEquals(taskUuid, dAfterMasters.placementModificationTaskUuid);
+    PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+    assertNotNull(prev);
+    assertEquals(CanaryPauseState.PAUSED_AFTER_MASTERS, prev.getCanaryPauseState());
+    assertTrue("Masters should all be completed at pause #1", allMasterAzsCompleted(prev));
+    assertEquals(
+        "No primary tserver AZs should be completed at pause #1",
+        0,
+        countPrimaryCompletedTserverAzs(prev, universe));
+    assertEquals(
+        "No RR tserver AZs should be completed at pause #1",
+        0,
+        countRrCompletedTserverAzs(prev, rrClusterUuid));
+
+    // Pause #2: after first primary t-server AZ.
+    UUID resumed1 =
+        upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), taskUuid);
+    taskInfo = waitForTask(resumed1, 500, 3600);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
+    assertCanaryPauseSubtaskStates(resumed1);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    assertEquals(resumed1, universe.getUniverseDetails().placementModificationTaskUuid);
+    prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+    assertNotNull(prev);
+    assertEquals(CanaryPauseState.PAUSED_AFTER_TSERVERS_AZ, prev.getCanaryPauseState());
+    assertTrue(
+        "First primary AZ should be completed at pause #2",
+        primaryTserverAzCompleted(prev, universe, firstPrimaryAz));
+    assertEquals(
+        "Exactly one primary AZ should be completed at pause #2",
+        1,
+        countPrimaryCompletedTserverAzs(prev, universe));
+    assertEquals(
+        "No RR AZs should be completed at pause #2",
+        0,
+        countRrCompletedTserverAzs(prev, rrClusterUuid));
+
+    // Pause #3: after last primary t-server AZ (between primary and RR).
+    UUID resumed2 =
+        upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), resumed1);
+    taskInfo = waitForTask(resumed2, 500, 3600);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
+    assertCanaryPauseSubtaskStates(resumed2);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    assertEquals(resumed2, universe.getUniverseDetails().placementModificationTaskUuid);
+    prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+    assertNotNull(prev);
+    assertEquals(CanaryPauseState.PAUSED_AFTER_TSERVERS_AZ, prev.getCanaryPauseState());
+    assertEquals(
+        "All primary AZs should be completed at pause #3",
+        azOrder.size(),
+        countPrimaryCompletedTserverAzs(prev, universe));
+    assertEquals(
+        "No RR AZs should be completed at pause #3",
+        0,
+        countRrCompletedTserverAzs(prev, rrClusterUuid));
+
+    // Pause #4: after first RR t-server AZ. This is the PLAT-20769 bug verification: today the
+    // executor races past this checkpoint and finishes the upgrade.
+    UUID resumed3 =
+        upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), resumed2);
+    taskInfo = waitForTask(resumed3, 500, 3600);
+    assertEquals(
+        "Upgrade must pause between RR t-server AZs (PLAT-20769)",
+        TaskInfo.State.Paused,
+        taskInfo.getTaskState());
+    assertCanaryPauseSubtaskStates(resumed3);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    assertEquals(resumed3, universe.getUniverseDetails().placementModificationTaskUuid);
+    prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+    assertNotNull(prev);
+    assertEquals(CanaryPauseState.PAUSED_AFTER_TSERVERS_AZ, prev.getCanaryPauseState());
+    assertEquals(
+        "All primary AZs should still be completed at pause #4",
+        azOrder.size(),
+        countPrimaryCompletedTserverAzs(prev, universe));
+    assertTrue(
+        "First RR AZ should be completed at pause #4",
+        rrTserverAzCompleted(prev, rrClusterUuid, firstRrAz));
+    assertEquals(
+        "Exactly one RR AZ should be completed at pause #4",
+        1,
+        countRrCompletedTserverAzs(prev, rrClusterUuid));
+
+    // Final resume: completes the upgrade.
+    UUID resumed4 =
+        upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), resumed3);
+    TaskInfo finalTask = waitForTask(resumed4, universe);
+    assertEquals(Success, finalTask.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.PreFinalize, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dPreFinalize = universe.getUniverseDetails();
+    assertNull(dPreFinalize.placementModificationTaskUuid);
+    assertNull(dPreFinalize.updatingTaskUUID);
+    assertNull(dPreFinalize.updatingTask);
   }
 
   /**
    * Canary upgrade with {@link CanaryUpgradeConfig#pauseAfterMasters} and no per-AZ tserver pauses,
-   * left in {@link SoftwareUpgradeState#Paused} after masters complete.
+   * left in {@link SoftwareUpgradeState#Paused} after masters complete (multi-AZ).
+   * Retry-after-failure progress preservation for canary is covered in
+   * SoftwareUpgradeYBTest#testCanaryFailedRetryPreservesCompletedTserverAzProgress.
    */
   private Universe createUniversePausedAfterCanaryMasterPhase() throws InterruptedException {
     updateProviderDetailsForCreateUniverse(OLD_VERSION_WITH_ROLLBACK);
@@ -475,7 +719,8 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     UUID taskUuid =
         upgradeUniverseHandler.upgradeDBVersion(
             params, customer, Universe.getOrBadRequest(universe.getUniverseUUID()));
-    waitForTask(taskUuid, TaskInfo.State.Paused, 500, 3600);
+    TaskInfo taskInfo = waitForTask(taskUuid, 500, 3600);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
@@ -501,6 +746,64 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         OLD_VERSION_WITH_ROLLBACK,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     verifyPayload();
+  }
+
+  @Test
+  public void testScaleUpBlockedDuringCanaryPauseAllowedAfterPreFinalize()
+      throws InterruptedException {
+    Universe universe = createUniversePausedAfterCanaryMasterPhase();
+    int originalNumNodes = universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes;
+    UUID pausedTaskUuid = universe.getUniverseDetails().placementModificationTaskUuid;
+    assertNotNull(pausedTaskUuid);
+
+    changeNumberOfNodesInPrimary(universe, 1);
+    final Universe universeForEdit = universe;
+    PlatformServiceException editWhilePaused =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                universeCRUDHandler.update(
+                    customer,
+                    Universe.getOrBadRequest(universeForEdit.getUniverseUUID()),
+                    universeForEdit.getUniverseDetails()));
+    assertThat(editWhilePaused.getMessage(), containsString("paused canary software upgrade"));
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    assertEquals(pausedTaskUuid, universe.getUniverseDetails().placementModificationTaskUuid);
+    assertFalse(universe.getUniverseDetails().updateInProgress);
+    assertEquals(
+        originalNumNodes, universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes);
+
+    UUID resumedUuid =
+        upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), pausedTaskUuid);
+    TaskInfo resumeTask = waitForTask(resumedUuid, 500, 3600);
+    assertEquals(Success, resumeTask.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.PreFinalize, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dPreFinalize = universe.getUniverseDetails();
+    assertNull(dPreFinalize.placementModificationTaskUuid);
+    assertNull(dPreFinalize.updatingTaskUUID);
+    assertNull(dPreFinalize.updatingTask);
+
+    Universe fresh = Universe.getOrBadRequest(universe.getUniverseUUID());
+    changeNumberOfNodesInPrimary(fresh, 1);
+    UUID editTaskUuid =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(fresh.getUniverseUUID()),
+            fresh.getUniverseDetails());
+    TaskInfo editInfo = waitForTask(editTaskUuid, fresh);
+    assertEquals(Success, editInfo.getTaskState());
+
+    Universe afterEdit = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        originalNumNodes + 1,
+        afterEdit.getUniverseDetails().getPrimaryCluster().userIntent.numNodes);
+    verifyUniverseState(afterEdit);
   }
 
   @Test
@@ -599,6 +902,19 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
   }
 
   /**
+   * At canary pause: root is Paused; at least one child succeeded. Un-run preview tail rows may
+   * remain Created until resume prunes them by position.
+   */
+  private void assertCanaryPauseSubtaskStates(UUID activeRootTaskUuid) {
+    assertTrue(getTaskStatus(activeRootTaskUuid).isPresent());
+    TaskInfo root = TaskInfo.getOrBadRequest(activeRootTaskUuid);
+    assertEquals(TaskInfo.State.Paused, root.getTaskState());
+    assertTrue(
+        "Expected at least one completed subtask at pause",
+        root.getSubTasks().stream().anyMatch(s -> s.getTaskState() == Success));
+  }
+
+  /**
    * Ensures task status (via {@link #getTaskStatus}) exposes the same {@link
    * SoftwareUpgradeProgress} as {@link SoftwareUpgradeProgress#fromPrevYBSoftwareConfigIfPresent}
    * on the universe (task monitoring / UI poll path).
@@ -611,11 +927,12 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertNotNull(expected);
     Optional<ObjectNode> opt = getTaskStatus(taskUuid);
     assertTrue(opt.isPresent());
+    JsonNode details = opt.get().path("details");
     assertTrue(
         "Task status should include softwareUpgradeProgress while upgrade is in progress",
-        opt.get().has("softwareUpgradeProgress"));
+        details.has("softwareUpgradeProgress"));
     SoftwareUpgradeProgress actual =
-        Json.fromJson(opt.get().get("softwareUpgradeProgress"), SoftwareUpgradeProgress.class);
+        Json.fromJson(details.get("softwareUpgradeProgress"), SoftwareUpgradeProgress.class);
     assertEquals(expected, actual);
   }
 
@@ -660,6 +977,33 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         .filter(
             s ->
                 primaryUuid.equals(s.getClusterUUID())
+                    && s.getStatus() == AZUpgradeStatus.COMPLETED)
+        .map(AZUpgradeState::getAzUUID)
+        .distinct()
+        .count();
+  }
+
+  private static boolean rrTserverAzCompleted(
+      PrevYBSoftwareConfig prev, UUID rrClusterUuid, UUID azUuid) {
+    if (prev.getTserverAZUpgradeStatesList() == null) {
+      return false;
+    }
+    return prev.getTserverAZUpgradeStatesList().stream()
+        .anyMatch(
+            s ->
+                rrClusterUuid.equals(s.getClusterUUID())
+                    && azUuid.equals(s.getAzUUID())
+                    && s.getStatus() == AZUpgradeStatus.COMPLETED);
+  }
+
+  private static long countRrCompletedTserverAzs(PrevYBSoftwareConfig prev, UUID rrClusterUuid) {
+    if (prev.getTserverAZUpgradeStatesList() == null) {
+      return 0;
+    }
+    return prev.getTserverAZUpgradeStatesList().stream()
+        .filter(
+            s ->
+                rrClusterUuid.equals(s.getClusterUUID())
                     && s.getStatus() == AZUpgradeStatus.COMPLETED)
         .map(AZUpgradeState::getAzUUID)
         .distinct()

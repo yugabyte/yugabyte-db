@@ -1,9 +1,11 @@
-import { FC, useState } from 'react';
+import { FC, useMemo, useState } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { mui, YBTab, YBTabs } from '@yugabyte-ui-library/core';
 import { api } from '@app/redesign/helpers/api';
 import { useGetUniverse } from '@app/v2/api/universe/universe';
+import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { getClusterByType } from './EditUniverseUtils';
 import {
   EditUniverseContext,
   EditUniverseTabs,
@@ -31,7 +33,10 @@ export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
 
   const { data: universeData, isLoading, isSuccess } = useGetUniverse(universeUUID);
 
-  const providerUUID = universeData?.spec?.clusters[0].provider_spec.provider;
+  const primaryCluster = universeData
+    ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
+    : undefined;
+  const providerUUID = primaryCluster?.provider_spec?.provider;
 
   const { data: providerRegions, isLoading: isProviderLoading } = useQuery(
     [universeUUID, providerUUID],
@@ -39,6 +44,16 @@ export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
     {
       enabled: isSuccess && !!providerUUID
     }
+  );
+
+  const contextValue = useMemo(
+    () => ({
+      ...InitialEditUniverseContextState,
+      activeTab: selectedTab,
+      universeData: universeData ?? null,
+      providerRegions: providerRegions ?? []
+    }),
+    [selectedTab, universeData, providerRegions]
   );
 
   if (isLoading || !universeData || isProviderLoading || !providerRegions) {
@@ -62,14 +77,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
         </YBTabs>
       </Grid>
       <Grid item sx={{ flexGrow: 1, flex: 1 }}>
-        <EditUniverseContext.Provider
-          value={{
-            ...InitialEditUniverseContextState,
-            activeTab: selectedTab,
-            universeData,
-            providerRegions
-          }}
-        >
+        <EditUniverseContext.Provider value={contextValue}>
           <SwitchEditUniverseTabs />
         </EditUniverseContext.Provider>
       </Grid>

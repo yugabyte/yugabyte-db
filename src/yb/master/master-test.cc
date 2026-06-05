@@ -52,6 +52,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master-test_base.h"
 #include "yb/master/master.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_call_home.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
@@ -64,12 +65,17 @@
 #include "yb/master/sys_catalog.h"
 
 #include "yb/master/ts_manager.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/service_pool.h"
+#include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/call_home-test-util.h"
 #include "yb/server/call_home.h"
 #include "yb/server/server_base.proxy.h"
+
+#include "yb/tserver/tserver_admin.service.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
@@ -2764,6 +2770,229 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
     ASSERT_EQ(closest_tserver->permanent_uuid(), tserver5_uuid);
     ASSERT_TRUE(local_ts);
   }
+}
+
+namespace {
+
+// Mock tserver::TabletServerAdminServiceIf client for testing master's ClientUpgradeYsql RPC
+class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf {
+ public:
+  explicit FakeTabletServerAdminService(const scoped_refptr<MetricEntity>& entity)
+      : tserver::TabletServerAdminServiceIf(entity) {}
+
+  void set_upgrade_status(Status s) {
+    std::lock_guard l(mutex_);
+    upgrade_status_ = std::move(s);
+  }
+
+  int upgrade_call_count() const {
+    std::lock_guard l(mutex_);
+    return upgrade_call_count_;
+  }
+
+  bool last_use_single_connection() const {
+    std::lock_guard l(mutex_);
+    return last_use_single_connection_;
+  }
+
+  void UpgradeYsql(
+      const tserver::UpgradeYsqlRequestPB* req,
+      tserver::UpgradeYsqlResponsePB* resp,
+      rpc::RpcContext context) override {
+    Status to_return;
+    {
+      std::lock_guard l(mutex_);
+      ++upgrade_call_count_;
+      last_use_single_connection_ = req->use_single_connection();
+      to_return = upgrade_status_;
+    }
+    if (!to_return.ok()) {
+      auto* error = resp->mutable_error();
+      error->set_code(tserver::TabletServerErrorPB::UNKNOWN_ERROR);
+      StatusToPB(to_return, error->mutable_status());
+    }
+    context.RespondSuccess();
+  }
+
+  // registering unused methods or else FakeTabletServerAdminService is a
+  // virtual interface and cannot be instantiated
+  #define UNUSED_TS_ADMIN_METHOD(Method, ReqType, RespType)                                  \
+  void Method(const ReqType*, RespType*, rpc::RpcContext context) override {               \
+    context.RespondFailure(                                                                \
+        STATUS(NotSupported, #Method " is not implemented in FakeTabletServerAdminService")); \
+  }
+
+  UNUSED_TS_ADMIN_METHOD(CreateTablet, tserver::CreateTabletRequestPB,
+                         tserver::CreateTabletResponsePB)
+  UNUSED_TS_ADMIN_METHOD(PrepareDeleteTransactionTablet,
+                         tserver::PrepareDeleteTransactionTabletRequestPB,
+                         tserver::PrepareDeleteTransactionTabletResponsePB)
+  UNUSED_TS_ADMIN_METHOD(DeleteTablet, tserver::DeleteTabletRequestPB,
+                         tserver::DeleteTabletResponsePB)
+  UNUSED_TS_ADMIN_METHOD(AlterSchema, tablet::ChangeMetadataRequestPB,
+                         tserver::ChangeMetadataResponsePB)
+  UNUSED_TS_ADMIN_METHOD(GetSafeTime, tserver::GetSafeTimeRequestPB,
+                         tserver::GetSafeTimeResponsePB)
+  UNUSED_TS_ADMIN_METHOD(BackfillIndex, tserver::BackfillIndexRequestPB,
+                         tserver::BackfillIndexResponsePB)
+                         UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
+                         tserver::ChangeMetadataResponsePB)
+  UNUSED_TS_ADMIN_METHOD(FlushTablets, tserver::FlushTabletsRequestPB,
+                         tserver::FlushTabletsResponsePB)
+  UNUSED_TS_ADMIN_METHOD(CountIntents, tserver::CountIntentsRequestPB,
+                         tserver::CountIntentsResponsePB)
+  UNUSED_TS_ADMIN_METHOD(AddTableToTablet, tserver::AddTableToTabletRequestPB,
+                         tserver::AddTableToTabletResponsePB)
+  UNUSED_TS_ADMIN_METHOD(RemoveTableFromTablet,
+                         tserver::RemoveTableFromTabletRequestPB,
+                         tserver::RemoveTableFromTabletResponsePB)
+  UNUSED_TS_ADMIN_METHOD(SplitTablet, tablet::SplitTabletRequestPB,
+                         tserver::SplitTabletResponsePB)
+  UNUSED_TS_ADMIN_METHOD(WaitForYsqlBackendsCatalogVersion,
+                         tserver::WaitForYsqlBackendsCatalogVersionRequestPB,
+                         tserver::WaitForYsqlBackendsCatalogVersionResponsePB)
+  UNUSED_TS_ADMIN_METHOD(UpdateTransactionTablesVersion,
+                         tserver::UpdateTransactionTablesVersionRequestPB,
+                         tserver::UpdateTransactionTablesVersionResponsePB)
+  UNUSED_TS_ADMIN_METHOD(CloneTablet, tablet::CloneTabletRequestPB,
+                         tserver::CloneTabletResponsePB)
+  UNUSED_TS_ADMIN_METHOD(ClonePgSchema, tserver::ClonePgSchemaRequestPB,
+                         tserver::ClonePgSchemaResponsePB)
+  UNUSED_TS_ADMIN_METHOD(EnableDbConns, tserver::EnableDbConnsRequestPB,
+                         tserver::EnableDbConnsResponsePB)
+  UNUSED_TS_ADMIN_METHOD(TestRetry, tserver::TestRetryRequestPB,
+                         tserver::TestRetryResponsePB)
+  UNUSED_TS_ADMIN_METHOD(GetPgSocketDir, tserver::GetPgSocketDirRequestPB,
+                         tserver::GetPgSocketDirResponsePB)
+  UNUSED_TS_ADMIN_METHOD(GetActiveRbsInfo, tserver::GetActiveRbsInfoRequestPB,
+                         tserver::GetActiveRbsInfoResponsePB)
+#undef UNUSED_TS_ADMIN_METHOD
+
+ private:
+  mutable std::mutex mutex_;
+  Status upgrade_status_ GUARDED_BY(mutex_) = Status::OK();
+  int upgrade_call_count_ GUARDED_BY(mutex_) = 0;
+  bool last_use_single_connection_ GUARDED_BY(mutex_) = false;
+};
+
+struct FakeTserver {
+  std::unique_ptr<rpc::Messenger> messenger;
+  rpc::ThreadPoolPtr thread_pool;
+  scoped_refptr<rpc::ServicePool> service_pool;
+  FakeTabletServerAdminService* service = nullptr;  // owned by service_pool
+  HostPort host_port;
+
+  ~FakeTserver() {
+    if (messenger) {
+      messenger->UnregisterAllServices();
+    }
+    if (service_pool) {
+      service_pool->Shutdown();
+    }
+    if (messenger) {
+      messenger->Shutdown();
+    }
+  }
+};
+
+Result<std::unique_ptr<FakeTserver>> StartFakeTserver(
+    const scoped_refptr<MetricEntity>& metric_entity) {
+  auto fake = std::make_unique<FakeTserver>();
+  rpc::MessengerBuilder builder("fake_tserver");
+  builder.set_metric_entity(metric_entity);
+  fake->messenger = VERIFY_RESULT(builder.Build());
+
+  Endpoint bound_endpoint;
+  RETURN_NOT_OK(fake->messenger->ListenAddress(
+      rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(),
+      Endpoint(), &bound_endpoint));
+  fake->host_port = HostPort::FromBoundEndpoint(bound_endpoint);
+
+  fake->thread_pool = std::make_shared<rpc::ThreadPool>(rpc::ThreadPoolOptions{
+      .name = "fake_tserver",
+      .max_workers = 2,
+  });
+
+  auto service = std::make_unique<FakeTabletServerAdminService>(metric_entity);
+  fake->service = service.get();
+  const std::string service_name = service->service_name();
+  fake->service_pool = make_scoped_refptr<rpc::ServicePool>(
+      /* max_tasks= */ 50, [pool = fake->thread_pool](auto) { return pool; },
+      &fake->messenger->scheduler(), std::move(service), fake->messenger->metric_entity());
+  RETURN_NOT_OK(fake->messenger->RegisterService(service_name, fake->service_pool));
+  RETURN_NOT_OK(fake->messenger->StartAcceptor());
+  return fake;
+}
+
+}  // namespace
+
+class MasterTestClientUpgradeYsql : public MasterTest {
+ protected:
+  // Heartbeats a tserver record into the master so GetClosestLiveTserver will
+  // return a descriptor pointing at `host_port`.
+  Status RegisterFakeTserverViaHeartbeat(const std::string& uuid, const HostPort& host_port) {
+    TSToMasterCommonPB common;
+    common.mutable_ts_instance()->set_permanent_uuid(uuid);
+    common.mutable_ts_instance()->set_instance_seqno(0);
+
+    auto address = MakeHostPortPB(std::string(host_port.host()), host_port.port());
+    TSRegistrationPB registration;
+    *registration.mutable_common()->add_broadcast_addresses() = address;
+    *registration.mutable_common()->add_private_rpc_addresses() = address;
+    *registration.mutable_common()->mutable_cloud_info() =
+        MakeCloudInfoPB("cloud1", "region1", "zone");
+
+    return ResultToStatus(SendHeartbeat(std::move(common), std::move(registration)));
+  }
+
+  ClientUpgradeYsqlResponsePB CallClientUpgradeYsql(bool use_single_connection) {
+    rpc::ProxyCache proxy_cache(client_messenger_.get());
+    MasterAdminProxy admin_proxy(&proxy_cache, mini_master_->bound_rpc_addr());
+
+    ClientUpgradeYsqlRequestPB req;
+    req.set_use_single_connection(use_single_connection);
+    ClientUpgradeYsqlResponsePB resp;
+    EXPECT_OK(admin_proxy.ClientUpgradeYsql(req, &resp, ResetAndGetController()));
+    return resp;
+  }
+};
+
+TEST_F(MasterTestClientUpgradeYsql, NoLiveTservers) {
+  // With no tservers registered, GetClosestLiveTserver returns NotFound; the
+  // master should surface that back to the client rather than crashing.
+  auto resp = CallClientUpgradeYsql(/* use_single_connection= */ false);
+  ASSERT_TRUE(resp.has_error());
+  auto status = StatusFromPB(resp.error().status());
+  ASSERT_TRUE(status.IsNotFound()) << status;
+}
+
+TEST_F(MasterTestClientUpgradeYsql, ForwardsToClosestTserver) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
+
+  auto fake = ASSERT_RESULT(StartFakeTserver(mini_master_->master()->metric_entity()));
+  ASSERT_OK(RegisterFakeTserverViaHeartbeat("fake-ts-uuid", fake->host_port));
+
+  auto resp = CallClientUpgradeYsql(/* use_single_connection= */ true);
+
+  ASSERT_FALSE(resp.has_error()) << StatusFromPB(resp.error().status());
+  ASSERT_EQ(fake->service->upgrade_call_count(), 1);
+  ASSERT_TRUE(fake->service->last_use_single_connection());
+}
+
+TEST_F(MasterTestClientUpgradeYsql, PropagatesTserverError) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
+
+  auto fake = ASSERT_RESULT(StartFakeTserver(mini_master_->master()->metric_entity()));
+  fake->service->set_upgrade_status(STATUS(InvalidArgument, "ysql upgrade failed in test"));
+  ASSERT_OK(RegisterFakeTserverViaHeartbeat("fake-ts-uuid", fake->host_port));
+
+  auto resp = CallClientUpgradeYsql(/* use_single_connection= */ false);
+
+  ASSERT_TRUE(resp.has_error());
+  auto status = StatusFromPB(resp.error().status());
+  ASSERT_TRUE(status.IsInvalidArgument()) << status;
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "ysql upgrade failed in test");
+  ASSERT_EQ(fake->service->upgrade_call_count(), 1);
 }
 
 TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {

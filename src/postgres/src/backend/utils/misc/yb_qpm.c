@@ -79,7 +79,9 @@ typedef struct YbQpmHashKey
 
 typedef struct YbQpmTiming
 {
-	double		totalTime;
+	double		meanExecTime;	/* running mean execution time in ms, updated via
+								 * Welford's online algorithm and matches
+								 * pg_stat_statements mean_exec_time */
 	double		estTotalCost;
 	double		worstTotalTime;
 	uint32		cnt;
@@ -160,18 +162,22 @@ static bool qpmUnderUtility = false;
 #define CHECK_GLOBALS if (unlikely(qpm == NULL || qpmHashTable == NULL || qpmLock == NULL || \
 								   qpmLruClock == NULL)) Assert(false)
 
+static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
+static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 
 static void YbQpmInstallHooks(void);
 
+static void yb_qpm_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void yb_qpm_ExecutorRun(QueryDesc *queryDesc,
 							   ScanDirection direction,
 							   uint64 count, bool execute_once);
 
 static void yb_qpm_ExecutorFinish(QueryDesc *queryDesc);
+static void yb_qpm_ExecutorEnd(QueryDesc *queryDesc);
 static void yb_qpm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								  bool readOnlyTree,
 								  ProcessUtilityContext context, ParamListInfo params,
@@ -213,6 +219,8 @@ static void qpmConstructEntryInfo(YbQpmInfoEntry *infoEntry, YbQpmHashEntry *ent
 static long qpmGetAllEntries(YbQpmInfoEntry entries[]);
 static void removeHintDelimiters(char *hintStr);
 static void walkPlanState(PlanState *ps, bool save, List **pspList, int *pos);
+static void qpmRedactWorstParamText(char *str, StringInfoData *buf);
+static int qpmCountParams(char *str);
 
 /*
  * Calculate the size of the LRU clock.
@@ -665,17 +673,52 @@ qpmMatch(const void *key1, const void *key2, Size keysize)
 static void
 YbQpmInstallHooks(void)
 {
+	prev_ExecutorStart = ExecutorStart_hook;
+	ExecutorStart_hook = yb_qpm_ExecutorStart;
+
 	prev_ExecutorRun = ExecutorRun_hook;
 	ExecutorRun_hook = yb_qpm_ExecutorRun;
 
 	prev_ExecutorFinish = ExecutorFinish_hook;
 	ExecutorFinish_hook = yb_qpm_ExecutorFinish;
 
+	prev_ExecutorEnd = ExecutorEnd_hook;
+	ExecutorEnd_hook = yb_qpm_ExecutorEnd;
+
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = yb_qpm_ProcessUtility;
 
 	prev_shmem_startup_hook = shmem_startup_hook;
 	shmem_startup_hook = YbQpmShmemInit;
+}
+
+static void
+yb_qpm_ExecutorStart(QueryDesc *queryDesc, int eflags)
+{
+	if (prev_ExecutorStart)
+		prev_ExecutorStart(queryDesc, eflags);
+	else
+		standard_ExecutorStart(queryDesc, eflags);
+
+	/*
+	 * Skip queries with queryId zero as these are utility statements that will
+	 * not be tracked by QPM.
+	 */
+	if (YbQpmIsEnabled() && queryDesc->plannedstmt->queryId != UINT64CONST(0))
+	{
+		/*
+		 * pg_stat_statements or another execution may have already allocated
+		 * the instrumentation object. Skip in such cases.
+		 */
+		if (queryDesc->totaltime == NULL)
+		{
+			MemoryContext oldcxt;
+
+			oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
+			queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_ALL, false);
+			MemoryContextSwitchTo(oldcxt);
+		}
+	}
 }
 
 static void
@@ -776,7 +819,7 @@ qpmProcess(QueryDesc *queryDesc)
 {
 	if (YbQpmIsEnabled() &&
 		!qpmUnderUtility &&
-		(qpmNestedLevel == 1 || yb_qpm_configuration.track == YB_QPM_TRACK_ALL) &&
+		(qpmNestedLevel == 0 || yb_qpm_configuration.track == YB_QPM_TRACK_ALL) &&
 		(queryDesc->plannedstmt->commandType == CMD_SELECT ||
 		 queryDesc->plannedstmt->commandType == CMD_DELETE ||
 		 queryDesc->plannedstmt->commandType == CMD_UPDATE ||
@@ -813,8 +856,6 @@ yb_qpm_ExecutorFinish(QueryDesc *queryDesc)
 			prev_ExecutorFinish(queryDesc);
 		else
 			standard_ExecutorFinish(queryDesc);
-
-		qpmProcess(queryDesc);
 	}
 	PG_FINALLY();
 	{
@@ -822,6 +863,17 @@ yb_qpm_ExecutorFinish(QueryDesc *queryDesc)
 		--qpmNestedLevel;
 	}
 	PG_END_TRY();
+}
+
+static void
+yb_qpm_ExecutorEnd(QueryDesc *queryDesc)
+{
+	qpmProcess(queryDesc);
+
+	if (prev_ExecutorEnd)
+		prev_ExecutorEnd(queryDesc);
+	else
+		standard_ExecutorEnd(queryDesc);
 }
 
 static void
@@ -909,6 +961,7 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 	if (*hintText != NULL)
 	{
 		*freeHintText = true;
+		Assert(strlen(*hintText) > 0);
 
 		if (queryDesc->params != NULL)
 		{
@@ -925,7 +978,7 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 		Assert(*planText == NULL);
 		*planText = YbQpmExplainPlan(queryDesc, yb_qpm_configuration.plan_format);
 
-		Assert(*planText != NULL);
+		Assert(*planText != NULL && strlen(*planText) > 0);
 		*freePlanText = true;
 
 		if (queryDesc->totaltime != NULL)
@@ -933,9 +986,9 @@ qpmPrepareParamsForInsert(QueryDesc *queryDesc, char **paramText,
 			Assert(queryDesc->totaltime->total > 0.0);
 
 			/*
-			 * Get the total elapsed time from the query descriptor.
+			 * Get the total elapsed time (in milliseconds) from the query descriptor.
 			 */
-			*totalTime = queryDesc->totaltime->total;
+			*totalTime = queryDesc->totaltime->total * 1000.0;
 			*estTotalCost = queryDesc->plannedstmt->planTree->total_cost;
 		}
 	}
@@ -1038,16 +1091,26 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 
 		if (totalTime == 0.0 && queryDesc != NULL && queryDesc->totaltime != NULL)
 			/*
-			 * Get the total elapsed time from the query descriptor.
+			 * Get the total elapsed time (in milliseconds) from the query descriptor.
 			 */
-			totalTime = queryDesc->totaltime->total;
+			totalTime = queryDesc->totaltime->total * 1000.0;
 
 		if (totalTime > 0.0)
 		{
-			hashEntry->timing.totalTime += totalTime;
+			double		oldMean;
+
 			hashEntry->timing.estTotalCost += estTotalCost;
 
 			++(hashEntry->timing.cnt);
+
+			/*
+			 * Welford's online algorithm for a numerically stable running
+			 * mean. Matches pg_stat_statements mean_exec_time exactly.
+			 * See: http://www.johndcook.com/blog/standard_deviation/
+			 */
+			oldMean = hashEntry->timing.meanExecTime;
+			hashEntry->timing.meanExecTime +=
+				(totalTime - oldMean) / (double) hashEntry->timing.cnt;
 
 			if (totalTime > hashEntry->timing.worstTotalTime)
 			{
@@ -1103,7 +1166,7 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 			 *
 			 * This would insert a row with dbid = 1, userid = 1, queryid = 1, planid = 1,
 			 * hint_text = 'hint text', plan_text = 'plan text', first_used = now(),
-			 * last_used = new() + 1 sec., total_time = 0.5 secs, and
+			 * last_used = new() + 1 sec., total_time = 0.5 ms, and
 			 * est_total_cost = 1.2 secs.
 			 *
 			 * Since we do not have an explicit insert, generate plan and param text.
@@ -1173,6 +1236,7 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 
 			/* Remember the original size of the hint text. */
 			hashEntry->originalHintTextSize = strlen(hintText);
+			Assert(hashEntry->originalHintTextSize > 0);
 			hashEntry->compressedHintTextSize =
 				qpmCopyOrCompress(hintText,
 								  hashEntry->hintText,
@@ -1185,6 +1249,7 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 			 * Insert plan text, compressing (or truncating) if necessary,
 			 */
 			hashEntry->originalPlanTextSize = strlen(planText);
+			Assert(hashEntry->originalPlanTextSize > 0);
 			hashEntry->compressedPlanTextSize =
 				qpmCopyOrCompress(planText,
 								  hashEntry->planText,
@@ -1208,12 +1273,17 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 
 			if (totalTime > 0.0)
 			{
-				hashEntry->timing.totalTime += totalTime;
+				double		oldMean;
+
 				hashEntry->timing.estTotalCost += estTotalCost;
 				if (totalTime > hashEntry->timing.worstTotalTime)
 					hashEntry->timing.worstTotalTime = totalTime;
 
 				++(hashEntry->timing.cnt);
+				/* For cnt == 1, Welford's reduces to direct assignment. */
+				oldMean = hashEntry->timing.meanExecTime;
+				hashEntry->timing.meanExecTime +=
+					(totalTime - oldMean) / (double) hashEntry->timing.cnt;
 			}
 
 			inserted = true;
@@ -1234,7 +1304,7 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 	INSTR_TIME_SET_CURRENT(duration);
 	INSTR_TIME_SUBTRACT(duration, start);
 
-	double		elapsed = INSTR_TIME_GET_DOUBLE(duration);
+	double		elapsed = INSTR_TIME_GET_MILLISEC(duration);
 
 	/*
 	 * Increment the total elapsed time and the number
@@ -1380,25 +1450,22 @@ qpmConstructEntryInfo(YbQpmInfoEntry *infoEntry, YbQpmHashEntry *entry)
 	infoEntry->firstUsedTime = entry->firstUsedTime;
 	infoEntry->lastUsedTime = entry->lastUsedTime;
 
-	if (entry->originalHintTextSize > 0)
-	{
-		if (entry->compressedHintTextSize == 0)
-			infoEntry->hintText = pstrdup(entry->hintText);
-		else
-			infoEntry->hintText = qpmDecompress(entry->originalHintTextSize,
-												(Bytef *) entry->hintText,
-												entry->compressedHintTextSize);
-	}
+	Assert(entry->originalHintTextSize > 0);
+	if (entry->compressedHintTextSize == 0)
+		infoEntry->hintText = pstrdup(entry->hintText);
+	else
+		infoEntry->hintText = qpmDecompress(entry->originalHintTextSize,
+											(Bytef *) entry->hintText,
+											entry->compressedHintTextSize);
 
-	if (entry->originalPlanTextSize > 0)
-	{
-		if (entry->compressedPlanTextSize == 0)
-			infoEntry->planText = pstrdup(entry->planText);
-		else
-			infoEntry->planText = qpmDecompress(entry->originalPlanTextSize,
-												(Bytef *) entry->planText,
-												entry->compressedPlanTextSize);
-	}
+	Assert(entry->originalPlanTextSize > 0);
+	if (entry->compressedPlanTextSize == 0)
+		infoEntry->planText = pstrdup(entry->planText);
+	else
+		infoEntry->planText = qpmDecompress(entry->originalPlanTextSize,
+											(Bytef *) entry->planText,
+											entry->compressedPlanTextSize);
+
 
 	if (entry->originalWorstParamTextSize > 0)
 	{
@@ -1674,6 +1741,14 @@ YbQpmExplainPlan(QueryDesc *queryDesc, ExplainFormat format)
 	es->yb_commit = false;
 
 	/*
+	 * Indicate that constants should be masked. This means that constants
+	 * will not appear in the plan text, and the constants values are
+	 * not stored. (The exception in QPM is max. exec. time param. values,
+	 * which are stored.).
+	 */
+	es->ybMaskConstants = true;
+
+	/*
 	 * Save and set the instrumentation pointers to NULL
 	 * so we do not inadvertently update any values while
 	 * generating the plan text.
@@ -1724,6 +1799,9 @@ yb_pg_stat_plans_insert(PG_FUNCTION_ARGS)
 	int			hintTextLen = VARSIZE_ANY_EXHDR(hintText);
 	int			planTextLen = VARSIZE_ANY_EXHDR(planText);
 
+	if (planTextLen == 0)
+		elog(ERROR, "plan text must not be empty");
+
 	/* Create a null-terminated copies to use C string functions. */
 	char	   *hintBuffer = palloc0(hintTextLen + 1);
 
@@ -1734,6 +1812,9 @@ yb_pg_stat_plans_insert(PG_FUNCTION_ARGS)
 	memcpy(planBuffer, VARDATA(planText), planTextLen);
 
 	removeHintDelimiters(hintBuffer);
+
+	if (strlen(hintBuffer) == 0)
+		elog(ERROR, "hint text must not be empty");
 
 	/* Insert or update the entry. */
 	bool		inserted = qpmInsert(databaseid, userid, (uint64) queryId, (uint64) planId,
@@ -1747,6 +1828,51 @@ yb_pg_stat_plans_insert(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(inserted);	/* true if new entry */
 }
 
+static int
+qpmCountParams(char *str)
+{
+	int paramCnt = 0;
+	bool in_quote = false;
+
+	for (int i = 0; str[i] != '\0'; i++)
+	{
+		if (in_quote)
+		{
+			if (str[i] == '\'')
+			{
+				/* SQL escape: two consecutive single quotes inside a literal */
+				if (str[i + 1] == '\'')
+				i++;    /* skip the second quote, stay in_quote */
+				else
+				in_quote = false;
+			}
+
+			/* everything else inside quotes: skip */
+		}
+		else if (str[i] == '\'')
+		{
+			in_quote = true;
+		}
+		else if (str[i] == '$' && isdigit((unsigned char)str[i + 1]))
+		{
+			/* $N outside a quoted value: real parameter reference */
+			paramCnt++;
+			while (isdigit((unsigned char)str[i + 1]))
+				i++;
+		}
+	}
+
+	return paramCnt;
+}
+
+static void
+qpmRedactWorstParamText(char *str, StringInfoData *buf)
+{
+	int paramCnt = qpmCountParams(str);
+	for (int i = 1; i <= paramCnt; i++)
+		appendStringInfo(buf, "%s$%d = '?'", i > 1 ? ", " : "", i);
+}
+
 /*
  * Retrieve all of the QPM entries.
  */
@@ -1756,7 +1882,6 @@ yb_pg_stat_plans_get_all_entries(PG_FUNCTION_ARGS)
 	YbQpmInfoEntry *entries;
 	FuncCallContext *funcctx;
 	TupleDesc	tupdesc;
-	AttInMetadata *attinmeta;
 
 	/* First call setup. */
 	if (SRF_IS_FIRSTCALL())
@@ -1792,8 +1917,7 @@ yb_pg_stat_plans_get_all_entries(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "avg_est_cost", FLOAT8OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 13, "plan", TEXTOID, -1, 0);
 
-		attinmeta = TupleDescGetAttInMetadata(tupdesc);
-		funcctx->attinmeta = attinmeta;
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
 		/* Store max calls, and the entry array as function context. */
 		funcctx->max_calls = numEntries;
@@ -1809,52 +1933,67 @@ yb_pg_stat_plans_get_all_entries(PG_FUNCTION_ARGS)
 	{
 		Datum		result;
 		HeapTuple	tuple;
-		char	  **values;
+		Datum		values[13];
+		bool		nulls[13];
 
 		/* Get the next entry. */
 		YbQpmInfoEntry *currentEntry = &(entries[funcctx->call_cntr]);
 
-		values = (char **) palloc(13 * sizeof(char *));
-		values[0] = psprintf("%u", currentEntry->key.databaseId);
-		values[1] = psprintf("%u", currentEntry->key.userId);
-		values[2] = psprintf(INT64_FORMAT, currentEntry->key.queryId);
-		values[3] = psprintf(INT64_FORMAT, currentEntry->key.planId);
-		values[4] = DatumGetCString(DirectFunctionCall1(timestamptz_out, currentEntry->firstUsedTime));
-		values[5] = DatumGetCString(DirectFunctionCall1(timestamptz_out, currentEntry->lastUsedTime));
-		values[6] = currentEntry->hintText;
-		values[7] = psprintf("%ld", currentEntry->useCount);
+		memset(nulls, false, sizeof(nulls));
+
+		values[0] = ObjectIdGetDatum(currentEntry->key.databaseId);
+		values[1] = ObjectIdGetDatum(currentEntry->key.userId);
+		values[2] = Int64GetDatum(currentEntry->key.queryId);
+		values[3] = Int64GetDatum(currentEntry->key.planId);
+		values[4] = TimestampTzGetDatum(currentEntry->firstUsedTime);
+		values[5] = TimestampTzGetDatum(currentEntry->lastUsedTime);
+		Assert(currentEntry->hintText != NULL);
+		values[6] = PointerGetDatum(cstring_to_text(currentEntry->hintText));
+		values[7] = Int64GetDatum(currentEntry->useCount);
 
 		if (currentEntry->timing.cnt > 0)
 		{
-			values[8] = psprintf("%.4lf",
-								 currentEntry->timing.totalTime / (double) (currentEntry->timing.cnt));
-			values[9] = psprintf("%.4lf", currentEntry->timing.worstTotalTime);
-			values[11] = psprintf("%.4lf",
-								  currentEntry->timing.estTotalCost / (double) (currentEntry->timing.cnt));
+			values[8] = Float8GetDatum(currentEntry->timing.meanExecTime);
+			values[9] = Float8GetDatum(currentEntry->timing.worstTotalTime);
+			values[11] = Float8GetDatum(currentEntry->timing.estTotalCost /
+										(double) currentEntry->timing.cnt);
 		}
 		else
 		{
-			values[8] = psprintf("%.0lf", -1.0);
-			values[9] = psprintf("%.0lf", -1.0);
-			values[11] = psprintf("%.0lf", -1.0);
+			values[8] = Float8GetDatum(-1.0);
+			values[9] = Float8GetDatum(-1.0);
+			values[11] = Float8GetDatum(-1.0);
 		}
 
-		values[10] = currentEntry->worstParamText;
-		values[12] = currentEntry->planText;
+		if (!yb_qpm_configuration.show_max_exec_params &&
+			currentEntry->worstParamText != NULL)
+		{
+			Assert(strlen(currentEntry->worstParamText) > 0);
+			StringInfoData buf;
+			initStringInfo(&buf);
+			qpmRedactWorstParamText(currentEntry->worstParamText, &buf);
+			pfree(currentEntry->worstParamText);
+			currentEntry->worstParamText = buf.data;
+		}
+
+		if (currentEntry->worstParamText != NULL)
+		{
+			values[10] = PointerGetDatum(cstring_to_text(currentEntry->worstParamText));
+			pfree(currentEntry->worstParamText);
+		}
+		else
+			nulls[10] = true;
+
+		Assert(currentEntry->planText != NULL);
+		values[12] = PointerGetDatum(cstring_to_text(currentEntry->planText));
 
 		/* Form the tuple and return as a Datum. */
-		tuple = BuildTupleFromCStrings(funcctx->attinmeta, values);
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
 
 		/* Clean up. */
-		if (currentEntry->hintText != NULL)
-			pfree(currentEntry->hintText);
-
-		if (currentEntry->planText != NULL)
-			pfree(currentEntry->planText);
-
-		if (currentEntry->worstParamText != NULL)
-			pfree(currentEntry->worstParamText);
+		pfree(currentEntry->hintText);
+		pfree(currentEntry->planText);
 
 		SRF_RETURN_NEXT(funcctx, result);
 	}

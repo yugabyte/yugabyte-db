@@ -77,7 +77,7 @@ class GcpCloud(AbstractCloud):
             auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,
             cloud_subnet_secondary=args.cloud_subnet_secondary,
             gcp_instance_template=args.instance_template, disk_iops=args.disk_iops,
-            disk_throughput=args.disk_throughput)
+            disk_throughput=args.disk_throughput, capacity_reservation=args.capacity_reservation)
 
     def create_disk(self, args, body):
         self.get_admin().create_disk(args.zone, args.instance_tags, body)
@@ -137,9 +137,10 @@ class GcpCloud(AbstractCloud):
             raise YBOpsRuntimeError("Host {} cannot be stopped while in '{}' state".format(
                 instance['name'], instance_state))
 
-    def start_instance(self, host_info, server_ports):
+    def start_instance(self, host_info, server_ports, capacity_reservation=None):
         instance = self.get_admin().get_instances(host_info['zone'], host_info['search_pattern'],
                                                   node_uuid=host_info.get('node_uuid', None))
+        logging.info("The instance is {}".format(instance))
         if not instance:
             logging.error("Host {} does not exist".format(host_info['search_pattern']))
             return
@@ -147,7 +148,7 @@ class GcpCloud(AbstractCloud):
         if instance_state == 'RUNNING':
             pass
         elif instance_state == 'TERMINATED':
-            self.admin.start_instance(instance['zone'], instance['name'])
+            self.admin.start_instance(instance['zone'], instance['name'], capacity_reservation)
         elif instance_state in ('PROVISIONING', 'STAGING'):
             self.admin.wait_for_operation(zone=instance['zone'],
                                           instance=instance['name'],
@@ -366,8 +367,8 @@ class GcpCloud(AbstractCloud):
         instance = self.get_host_info(args)
         self.get_admin().update_disk(args, instance['id'])
 
-    def change_instance_type(self, args, instance_type):
-        self.get_admin().change_instance_type(args['zone'], args['search_pattern'], instance_type)
+    def change_instance_type(self, args, instance_type, capacity_reservation):
+        self.get_admin().change_instance_type(args['zone'], args['search_pattern'], instance_type, capacity_reservation)
 
     def get_per_region_meta(self, args):
         if hasattr(args, "custom_payload") and args.custom_payload:

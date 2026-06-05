@@ -12,6 +12,8 @@
 
 #include "yb/cdc/cdc_producer.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client.h"
@@ -61,39 +63,31 @@ DEPRECATE_FLAG(int32, cdc_snapshot_batch_size, "02_2026");
 
 DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
 
-DEFINE_RUNTIME_bool(
-    enable_single_record_update, true,
+DEFINE_RUNTIME_bool(enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");
 
-DEFINE_RUNTIME_bool(
-    cdc_populate_safepoint_record, true,
+DEFINE_RUNTIME_bool(cdc_populate_safepoint_record, true,
     "If 'true' we will also send a 'SAFEPOINT' record at the end of each GetChanges call.");
 
-DEFINE_NON_RUNTIME_bool(
-    cdc_enable_consistent_records, true,
+DEFINE_NON_RUNTIME_bool(cdc_enable_consistent_records, true,
     "If 'true' we will ensure that the records are order by the commit_time.");
 
-DEFINE_RUNTIME_uint64(
-    cdc_stream_records_threshold_size_bytes, 4_MB,
+DEFINE_RUNTIME_uint64(cdc_stream_records_threshold_size_bytes, 4_MB,
     "The threshold for the size of the response of a GetChanges call. The actual size may be a "
     "little higher than this value.");
 
-DEFINE_RUNTIME_uint64(
-    cdc_snapshot_records_threshold_size_bytes, 4_MB,
+DEFINE_RUNTIME_uint64(cdc_snapshot_records_threshold_size_bytes, 4_MB,
     "The threshold for the size of the CDC snapshot GetChanges response. The actual size may be "
     "slightly higher than this value.");
 
-DEFINE_test_flag(
-    bool, cdc_snapshot_failure, false,
+DEFINE_test_flag(bool, cdc_snapshot_failure, false,
     "For testing only, When it is set to true, the CDC snapshot operation will fail.");
 
-DEFINE_RUNTIME_bool(
-    cdc_populate_end_markers_transactions, true,
+DEFINE_RUNTIME_bool(cdc_populate_end_markers_transactions, true,
     "If 'true', we will also send 'BEGIN' and 'COMMIT' records for both single shard and multi "
     "shard transactions");
 
-DEFINE_NON_RUNTIME_int64(
-    cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
+DEFINE_NON_RUNTIME_int64(cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
     "The lag threshold in milli seconds between the hybrid time returned by "
     "GetMinStartHTRunningTxnsForCDCProducer and LeaderSafeTime, when we decide the "
     "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");
@@ -1053,6 +1047,7 @@ Status PopulateCDCSDKIntentRecord(
     if (FLAGS_enable_single_record_update) {
       new_cdc_record_needed =
           (prev_key != primary_key) ||
+          (IsPackedRow(value_type) && row_message->op() == RowMessage_Op_DELETE) ||
           (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) ||
           prev_intent_phy_time != intent.intent_ht.hybrid_time().GetPhysicalValueMicros();
     } else {
@@ -1102,15 +1097,12 @@ Status PopulateCDCSDKIntentRecord(
                          : VERIFY_RESULT(GetTableInfoForColocatedTable(decoded_key, tablet));
         // If the table_info is null, then it means that the decoded_key belongs to a dropped
         // object on the colocated tablet.
-        if (!table_info) {
-          continue;
-        }
-        table_id = table_info->table_id;
-        if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
+        if (!table_info || !IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
           *write_id = intent.write_id;
           *reverse_index_key = intent.reverse_index_key;
           continue;
         }
+        table_id = table_info->table_id;
 
         schema_packing_storage = &schema_packing_storages->at(table_id);
         std::tie(schema_version, schema) = VERIFY_RESULT(GetSchemaAndVersion(

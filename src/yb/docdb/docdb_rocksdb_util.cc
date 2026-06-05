@@ -54,6 +54,7 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
 #include "yb/util/cgroups.h"
+#include "yb/util/enum_parse.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/priority_thread_pool.h"
@@ -122,8 +123,7 @@ DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
 DEFINE_NON_RUNTIME_uint64(rocksdb_max_manifest_file_size, 10_MB,
     "Maximum size of manifest file before which it is consolidated");
 
-DEFINE_RUNTIME_bool(
-    rocksdb_advise_random_on_open, true,
+DEFINE_RUNTIME_bool(rocksdb_advise_random_on_open, true,
     "If set to true, will hint the underlying file system that the file access pattern is random, "
     "when a sst file is opened.");
 
@@ -154,16 +154,16 @@ DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
 
 DEFINE_UNKNOWN_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
-DEFINE_RUNTIME_AUTO_bool(
-    allow_three_shared_parts_data_block_key_value_encoding, kExternal, false, true,
+DEFINE_RUNTIME_AUTO_bool(allow_three_shared_parts_data_block_key_value_encoding,
+    kExternal, false, true,
     "Allow to use three_shared_parts for writing RocksDB data blocks.");
 
 // DEPRECATED: replaced by ycql_regular_tablets_data_block_key_value_encoding and
 // ysql_regular_tablets_data_block_key_value_encoding.
 // Using class kExternal as this change affects the format of data in the SST files which are sent
 // to xClusters during bootstrap.
-DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(
-    regular_tablets_data_block_key_value_encoding, kExternal, "shared_prefix", "three_shared_parts",
+DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(regular_tablets_data_block_key_value_encoding,
+    kExternal, "shared_prefix", "three_shared_parts",
     "Key-value encoding to use for regular data blocks in RocksDB. Possible options: "
     "shared_prefix, three_shared_parts");
 

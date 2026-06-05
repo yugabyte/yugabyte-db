@@ -15,6 +15,7 @@ import {
 } from '../fields/FieldNames';
 import { getFaultToleranceNeeded, getEffectiveReplicationFactorForResilience } from './resilienceReplication';
 import { PlacementRegion } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../helpers/constants';
 
 export const getNodeCount = (availabilityZones: NodeAvailabilityProps['availabilityZones']) => {
   if (keys(availabilityZones).length === 0) {
@@ -56,7 +57,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
           {
             ...singleZone,
             nodeCount: 1,
-            preffered: 0
+            preffered: AZ_NOT_PREFERRED
           }
         ]
       };
@@ -83,7 +84,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
         {
           ...singleZone,
           nodeCount,
-          preffered: 0
+          preffered: AZ_NOT_PREFERRED
         }
       ]
     };
@@ -111,7 +112,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
         selectedZonesByRegion[region.code].push({
           ...region.zones[i],
           nodeCount: 1, // placeholder; distributed below.
-          preffered: i
+          preffered: i + AZ_PREFFERED_HIGHEST_RANK
         });
       }
     });
@@ -131,7 +132,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
         selectedZonesByRegion[region.code].push({
           ...region.zones[zoneIndex],
           nodeCount: 1,
-          preffered: zoneIndex
+          preffered: zoneIndex + AZ_PREFFERED_HIGHEST_RANK
         });
         selectedAzCount += 1;
         progressed = true;
@@ -186,7 +187,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
       updatedRegions[region.code].push({
         ...zone,
         nodeCount: nodeCountForAz,
-        preffered: index
+        preffered: index + AZ_PREFFERED_HIGHEST_RANK
       });
     });
   });
@@ -221,7 +222,7 @@ function pickZonesRoundRobin(
     usedSlots.set(r.code, 0);
   });
 
-  let preferred = 0;
+  let preferred = AZ_PREFFERED_HIGHEST_RANK;
   let added = 0;
   let rIdx = 0;
   const maxIter = Math.max(azCount * regions.length * 20, 100);
@@ -305,7 +306,8 @@ export function reduceExpertNodeCountsToAtMostRf(
         if (typeof nc !== 'number' || nc <= 1) {
           continue;
         }
-        const preferred = typeof zone.preffered === 'number' ? zone.preffered : -1;
+        const preferred =
+          typeof zone.preffered === 'number' ? zone.preffered : AZ_NOT_PREFERRED;
 
         if (!best) {
           best = { regionCode, zi, preferred, nodeCount: nc };
@@ -385,7 +387,7 @@ export function getExpertNodesStepDefaultPlacement(
           name: '',
           uuid: '',
           nodeCount: 1,
-          preffered: index
+          preffered: index + AZ_PREFFERED_HIGHEST_RANK
         }))
       };
       distributeNodesUntilTotalAtLeastRf(availabilityZones, EXPERT_SINGLE_REGION_DEFAULT_RF);
@@ -400,7 +402,7 @@ export function getExpertNodesStepDefaultPlacement(
             name: '',
             uuid: '',
             nodeCount: EXPERT_SINGLE_REGION_DEFAULT_RF,
-            preffered: 0
+            preffered: AZ_PREFFERED_HIGHEST_RANK
           }
         ]
       }
@@ -512,7 +514,7 @@ export const getPlacementRegions = (
           subnet: azFromRegion!.subnet,
           leader_affinity: true,
           replication_factor: azReplicationFactor,
-          ...(az.preffered !== undefined ? { leader_preference: az.preffered + 1 } : {})
+          ...(az.preffered !== undefined ? { leader_preference: az.preffered } : {})
         };
       })
     };

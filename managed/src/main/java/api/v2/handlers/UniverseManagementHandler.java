@@ -2,6 +2,7 @@
 
 package api.v2.handlers;
 
+import static api.v2.handlers.HandlerPagingSupport.normalize;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
@@ -37,6 +38,7 @@ import api.v2.models.UniversePagedResp;
 import api.v2.models.UniverseSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
@@ -146,9 +148,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
   private static final int DEFAULT_MAX_PARALLEL_NODES = 50;
 
-  private static final int DEFAULT_UNIVERSE_PAGE_LIMIT = 10;
-  private static final int MAX_UNIVERSE_PAGE_LIMIT = 500;
-
   public api.v2.models.Universe getUniverse(UUID cUUID, UUID uniUUID)
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
@@ -174,33 +173,21 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   public UniversePagedResp pageListUniverses(UUID cUUID, UniversePagedQuerySpec spec)
       throws Exception {
     Users user = CommonUtils.getUserFromContext();
-    int offset = spec.getOffset() != null ? spec.getOffset() : 0;
-    int limit = spec.getLimit() != null ? spec.getLimit() : DEFAULT_UNIVERSE_PAGE_LIMIT;
-
-    if (offset < 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "offset must be >= 0");
-    }
-
-    if (limit < 1 || limit > MAX_UNIVERSE_PAGE_LIMIT) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "limit must be between 1 and " + MAX_UNIVERSE_PAGE_LIMIT);
-    }
+    NormalizedPaginationSpec normalized = normalize(spec);
 
     Set<UUID> resourceUUIDs =
         roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
 
     if (resourceUUIDs.isEmpty()) {
-      return new UniversePagedResp()
-          .totalCount(0)
-          .hasNext(false)
-          .hasPrev(false)
-          .entities(new ArrayList<>());
+      UniversePagedResp resp = new UniversePagedResp().setEntities(new ArrayList<>());
+      resp.setTotalCount(0).setHasNext(false).setHasPrev(false);
+      return resp;
     }
 
     String nameFilter =
         spec.getFilter() != null ? StringUtils.trimToNull(spec.getFilter().getName()) : null;
 
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     var expr =
         CommonUtils.appendInClause(
             Universe.find.query().where().eq("customer_id", customer.getId()),
@@ -210,20 +197,13 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       expr = expr.eq("name", nameFilter);
     }
 
-    UniversePagedQuerySpec.DirectionEnum sortDirection = spec.getDirection();
-    String order = sortDirection == UniversePagedQuerySpec.DirectionEnum.DESC ? "desc" : "asc";
+    String order = normalized.order();
     // sort: case-insensitive name, then UUID; null names sort like empty.
     String orderBy = String.format("coalesce(lower(name), '') %s, universe_uuid %s", order, order);
-    expr = expr.orderBy(orderBy);
 
-    PagedList<Universe> pagedList = expr.setFirstRow(offset).setMaxRows(limit).findPagedList();
+    PagedList<Universe> pagedList = HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
     Universe.loadUniverseDetails(pagedList.getList());
     List<UniverseResp> page = UniverseResp.create(customer, pagedList.getList(), confGetter);
-    UniversePagedResp resp =
-        new UniversePagedResp()
-            .totalCount(pagedList.getTotalCount())
-            .hasPrev(pagedList.hasPrev())
-            .hasNext(pagedList.hasNext());
 
     List<api.v2.models.Universe> v2Universes = new ArrayList<>(page.size());
     for (int i = 0; i < page.size(); i++) {
@@ -232,8 +212,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       v2Universes.add(UniverseRespMapper.INSTANCE.toV2Universe(r, u));
     }
 
-    resp.setEntities(v2Universes);
-    return resp;
+    return new UniversePagedResp(pagedList).setEntities(v2Universes);
   }
 
   public YBATask createUniverse(Request request, UUID cUUID, UniverseCreateSpec universeSpec) {
@@ -1367,6 +1346,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   private NodeScriptRunner.NodeFilter buildNodeFilter(NodeSelection nodeSelection) {
     if (nodeSelection == null) {
       return null;
+    }
+    if (Boolean.TRUE.equals(nodeSelection.getMastersOnly())
+        && Boolean.TRUE.equals(nodeSelection.getTserversOnly())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "masters_only and tservers_only both cannot be true");
     }
     int maxParallelNodes =
         nodeSelection.getMaxParallelNodes() != null

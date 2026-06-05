@@ -96,6 +96,7 @@ YbFdwPlanState
 YbFetchKeysParam
 YbFetchStatus
 YbFlushTupleFn_t
+YbForceParallel
 YbFreeBatchFn_t
 YbFuncCallContext
 YbGateTestCase
@@ -254,6 +255,7 @@ YbcDeleteMemoryContextFn
 YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
+YbcIsExplicitlyLockedRowSkippedCheckHandle
 YbcLsnType
 YbcMetricsInfo
 YbcObjectLockId

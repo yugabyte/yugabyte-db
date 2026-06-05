@@ -158,6 +158,29 @@ static void StrictNamesCheck(RestoreOptions *ropt);
 static bool IsYugabyteEnabled = true;
 
 /*
+ * YB: when --rename-owner=NEW was supplied to ysql_dump, every "OWNER TO X"
+ * clause whose owner equals the source database owner is rewritten to NEW.
+ * This helper returns the substituted owner name (or the original one when no
+ * substitution applies) and is the single chokepoint used by every owner-
+ * emitting site in this file. Comparison is on the raw role name string
+ * captured in dumpDatabase(); identifier escaping is still done at emission
+ * time via fmtId() / appendStringLiteralAHX().
+ */
+static const char *
+yb_effective_owner(ArchiveHandle *AH, const char *owner)
+{
+	DumpOptions *dopt = AH->public.dopt;
+
+	if (dopt &&
+		dopt->yb_rename_owner &&
+		dopt->yb_source_db_owner &&
+		owner &&
+		strcmp(owner, dopt->yb_source_db_owner) == 0)
+		return dopt->yb_rename_owner;
+	return owner;
+}
+
+/*
  * Add the set GUC command to the archive handler in a backward compatible manner.
  * Checks for the presence of the GUC before setting it.Example of usage:
  * YbBackwardCompatibleSetGuc(AH, "yb_ignore_relfilenode_ids", "off", false);
@@ -3509,7 +3532,7 @@ _becomeOwner(ArchiveHandle *AH, TocEntry *te)
 	if (ropt && (ropt->noOwner || !ropt->use_setsessauth))
 		return;
 
-	_becomeUser(AH, te->owner);
+	_becomeUser(AH, yb_effective_owner(AH, te->owner));
 }
 
 
@@ -3995,10 +4018,11 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 			strcmp(te->desc, "SUBSCRIPTION") == 0)
 		{
 			PQExpBuffer temp = createPQExpBuffer();
+			const char *eff_owner = yb_effective_owner(AH, te->owner);
 
 			appendPQExpBufferStr(temp, "ALTER ");
 			_getObjectDescription(temp, te);
-			appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(te->owner));
+			appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(eff_owner));
 
 			if (AH->public.dopt->include_yb_metadata)
 			{
@@ -4007,14 +4031,14 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 				{
 					PQExpBuffer role_buf = createPQExpBuffer();
 
-					appendStringLiteralAHX(role_buf, te->owner, AH);
+					appendStringLiteralAHX(role_buf, eff_owner, AH);
 					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
 							 ") AS role_exists \\gset\n"
 							 "\\if :role_exists\n"
 							 "    %s\n"
 							 "\\else\n"
 							 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
-							 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
+							 "\\endif\n", role_buf->data, temp->data, fmtId(eff_owner));
 					destroyPQExpBuffer(role_buf);
 				}
 				else

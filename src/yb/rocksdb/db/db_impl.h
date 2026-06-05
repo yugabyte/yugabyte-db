@@ -217,9 +217,9 @@ class DBImpl : public DB {
   virtual Status EnableFileDeletions(bool force) override;
   virtual int IsFileDeletionsEnabled() const;
   // All the returned filenames start with "/"
-  virtual Status GetLiveFiles(std::vector<std::string>&,
-                              uint64_t* manifest_file_size,
-                              bool flush_memtable = true) override;
+  virtual Status GetLiveFiles(
+      std::vector<std::string>&, uint64_t* manifest_file_size, bool flush_memtable,
+      FlushReason flush_reason) override;
   virtual Status GetSortedWalFiles(VectorLogPtr* files) override;
 
   virtual Status GetUpdatesSince(
@@ -563,9 +563,9 @@ class DBImpl : public DB {
   Status RenameTempFileToOptionsFile(const std::string& file_name);
   Status DeleteObsoleteOptionsFiles();
 
-  void NotifyOnFlushCompleted(ColumnFamilyData* cfd, FileMetaData* file_meta,
-                              const MutableCFOptions& mutable_cf_options,
-                              int job_id, TableProperties prop);
+  void NotifyOnFlushCompleted(
+      ColumnFamilyData* cfd, FileMetaData* file_meta, const MutableCFOptions& mutable_cf_options,
+      int job_id, TableProperties prop, FlushReason flush_reason);
 
   void NotifyOnCompactionCompleted(ColumnFamilyData* cfd,
                                    Compaction *c, const Status &st,
@@ -623,7 +623,8 @@ class DBImpl : public DB {
   // log-file/memtable and writes a new descriptor iff successful.
   Result<FileNumbersHolder> FlushMemTableToOutputFile(
       ColumnFamilyData* cfd, const MutableCFOptions& mutable_cf_options,
-      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer);
+      FlushReason flush_reason_for_job, bool* made_progress, JobContext* job_context,
+      LogBuffer* log_buffer);
 
   // REQUIRES: log_numbers are sorted in ascending order
   Status RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
@@ -643,7 +644,7 @@ class DBImpl : public DB {
 
   Status ScheduleFlushes(WriteContext* context);
 
-  Status SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context);
+  Status SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context, FlushReason flush_reason);
 
   // Force current memtable contents to be flushed.
   Status FlushMemTable(ColumnFamilyData* cfd, const FlushOptions& options);
@@ -660,7 +661,7 @@ class DBImpl : public DB {
   ColumnFamilyData* GetColumnFamilyDataByName(const std::string& cf_name);
 
   void MaybeScheduleFlushOrCompaction();
-  void SchedulePendingFlush(ColumnFamilyData* cfd);
+  void SchedulePendingFlush(ColumnFamilyData* cfd, FlushReason reason);
   void SchedulePendingCompaction(ColumnFamilyData* cfd);
   static void BGWorkCompaction(void* arg);
   static void BGWorkFlush(void* db);
@@ -706,8 +707,8 @@ class DBImpl : public DB {
   std::unique_ptr<Compaction> PopFirstFromSmallCompactionQueue();
   std::unique_ptr<Compaction> PopFirstFromLargeCompactionQueue();
   bool IsEmptyCompactionQueue();
-  void AddToFlushQueue(ColumnFamilyData* cfd);
-  ColumnFamilyData* PopFirstFromFlushQueue();
+  void AddToFlushQueue(ColumnFamilyData* cfd, FlushReason reason);
+  ColumnFamilyData* PopFirstFromFlushQueue(FlushReason* flush_reason_out = nullptr);
 
   // Compaction is marked as large based on options, so cannot be static or free function.
   CompactionSizeKind GetCompactionSizeKind(const Compaction& compaction);
@@ -921,7 +922,7 @@ class DBImpl : public DB {
   // compaction and flush threads we need to schedule. This scheduling is done
   // in MaybeScheduleFlushOrCompaction()
   // invariant(column family present in flush_queue_ <==>
-  // ColumnFamilyData::pending_flush_ == true)
+  // ColumnFamilyData::pending_flush())
   std::deque<ColumnFamilyData*> flush_queue_;
   // invariant(number of column families in compaction_queue_ ==
   // ColumnFamilyData::num_pending_compactions_)
@@ -1053,15 +1054,15 @@ class DBImpl : public DB {
   // job_context which can have new_superversion already
   // allocated.
   void InstallSuperVersionAndScheduleWorkWrapper(
-      ColumnFamilyData* cfd, JobContext* job_context,
-      const MutableCFOptions& mutable_cf_options);
+      ColumnFamilyData* cfd, JobContext* job_context, const MutableCFOptions& mutable_cf_options,
+      FlushReason flush_reason);
 
   // All ColumnFamily state changes go through this function. Here we analyze
   // the new state and we schedule background work if we detect that the new
   // state needs flush or compaction.
   std::unique_ptr<SuperVersion> InstallSuperVersionAndScheduleWork(
-      ColumnFamilyData* cfd, SuperVersion* new_sv,
-      const MutableCFOptions& mutable_cf_options);
+      ColumnFamilyData* cfd, SuperVersion* new_sv, const MutableCFOptions& mutable_cf_options,
+      FlushReason flush_reason);
 
   using DB::GetPropertiesOfAllTables;
   virtual Status GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,

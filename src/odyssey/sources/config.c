@@ -69,6 +69,10 @@ void od_config_init(od_config_t *config)
 	config->yb_enable_prep_stmt_close = true;
 	config->TEST_yb_auth_delay_ms = 0;
 	config->yb_max_prepared_statements = 0;
+	config->yb_tcmalloc_gc_interval = 300;
+	config->yb_enable_parse_queue_tracking = true;
+	config->yb_wait_for_rfq_on_sync = true;
+	config->yb_backend_drain_timeout_ms = 100;
 
 	od_list_init(&config->listen);
 }
@@ -91,6 +95,14 @@ void od_config_reload(od_config_t *current_config, od_config_t *new_config)
 	/* YB: Other flags update */
 	current_config->yb_max_prepared_statements =
 		new_config->yb_max_prepared_statements;
+	current_config->yb_tcmalloc_gc_interval =
+		new_config->yb_tcmalloc_gc_interval;
+	current_config->yb_enable_parse_queue_tracking =
+		new_config->yb_enable_parse_queue_tracking;
+	current_config->yb_wait_for_rfq_on_sync =
+		new_config->yb_wait_for_rfq_on_sync;
+	current_config->yb_backend_drain_timeout_ms =
+		new_config->yb_backend_drain_timeout_ms;
 }
 
 static void od_config_listen_free(od_config_listen_t *);
@@ -371,6 +383,12 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	od_log(logger, "config", NULL, NULL, "yb_enable_prep_stmt_close %s",
 	       od_config_yes_no(config->yb_enable_prep_stmt_close));
 
+	od_log(logger, "config", NULL, NULL, "yb_tcmalloc_gc_interval     %d",
+	       config->yb_tcmalloc_gc_interval);
+
+	od_log(logger, "config", NULL, NULL, "yb_backend_drain_timeout_ms %d",
+	       config->yb_backend_drain_timeout_ms);
+
 	od_log(logger, "config", NULL, NULL, "TEST_yb_auth_delay_ms     %d",
 	       config->TEST_yb_auth_delay_ms);
 
@@ -387,6 +405,14 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	od_log(logger, "config", NULL, NULL,
 	       "yb_max_prepared_statements     %d",
 	       config->yb_max_prepared_statements);
+
+	od_log(logger, "config", NULL, NULL,
+	       "yb_enable_parse_queue_tracking %s",
+	       od_config_yes_no(config->yb_enable_parse_queue_tracking));
+
+	od_log(logger, "config", NULL, NULL,
+	       "yb_wait_for_rfq_on_sync        %s",
+	       od_config_yes_no(config->yb_wait_for_rfq_on_sync));
 
 #ifdef USE_SCRAM
 	od_log(logger, "config", NULL, NULL, "SCRAM auth metod:       OK");

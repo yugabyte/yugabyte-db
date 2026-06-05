@@ -1,0 +1,17 @@
+public class {{classname}} extends {{{vendorExtensions.x-data-container}}}<{{{vendorExtensions.x-data-item}}}> {
+
+  public {{classname}}() {}
+
+  public {{classname}}(PagedList<?> pagedList) {
+    super(pagedList);
+  }
+
+  /**
+   * Fluent setter for the page {@code entities} list (stored on the generic superclass).
+   */
+  @Override
+  public {{classname}} setEntities(java.util.List<{{{vendorExtensions.x-data-item}}}> entities) {
+    super.setEntities(entities);
+    return this;
+  }
+}

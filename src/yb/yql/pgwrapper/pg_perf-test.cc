@@ -13,6 +13,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/range.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"

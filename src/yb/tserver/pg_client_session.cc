@@ -50,6 +50,8 @@
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
+#include "yb/master/master_ddl.pb.h"
+
 #include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/sidecars.h"
@@ -72,6 +74,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/cgroups.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
@@ -117,8 +120,7 @@ DEFINE_RUNTIME_bool(xcluster_target_manual_override, false,
     "YugabyteDB support before using.");
 TAG_FLAG(xcluster_target_manual_override, hidden);
 
-DEFINE_test_flag(
-    bool, request_unknown_tables_during_perform, false,
+DEFINE_test_flag(bool, request_unknown_tables_during_perform, false,
     "Add several unknown tables while processing perfrom request. "
     "It is expected that opening of such tables will fail");
 
@@ -133,13 +135,15 @@ DEFINE_test_flag(bool, force_initial_region_local, false,
 DEFINE_test_flag(bool, fail_create_table_rpc, false,
     "Fail all create table requests received at PgClientSession layer.");
 
+DEFINE_test_flag(bool, pause_session_lock_release, false,
+    "Pause before releasing session object lock.");
+
 #ifdef __linux__
 DECLARE_bool(enable_qos);
 #endif
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
@@ -1804,7 +1808,6 @@ class PgClientSession::Impl {
       yb_clone_info = YbcCloneInfo {
         .clone_time = req.clone_time(),
         .src_db_name = req.source_database_name().c_str(),
-        .src_owner = req.source_owner().c_str(),
         .tgt_owner = req.target_owner().c_str(),
       };
     }
@@ -2054,9 +2057,22 @@ class PgClientSession::Impl {
   Status BackfillIndex(
       const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
       rpc::RpcContext* context) {
+    // The PG backend holds a DDL transaction open for the entire backfill duration
+    // (StartTransactionCommand at indexcmds.c:2334). Pass it to the master so it can detect when
+    // this backend is killed (-> txn aborted) and stop launching new backfill chunks.
+    auto meta = GetDdlTransactionMetadata(
+        true /* use_transaction */, req.use_regular_transaction_block(),
+        context->GetClientDeadline(), IsTxnUsingTableLocks(false));
+    std::optional<TransactionMetadata> txn_metadata;
+    if (!meta.ok()) {
+      LOG(WARNING) << "BackfillIndex: failed to get DDL transaction metadata: " << meta.status();
+    } else if (*meta) {
+      txn_metadata = **meta;
+    }
     return client_.BackfillIndex(
-        PgObjectId::GetYbTableIdFromPB(req.table_id()), /* wait= */ true,
-        context->GetClientDeadline());
+        PgObjectId::GetYbTableIdFromPB(req.table_id()),
+        std::move(txn_metadata),
+        /* wait= */ true, context->GetClientDeadline());
   }
 
   Status CreateTablegroup(
@@ -2813,6 +2829,9 @@ class PgClientSession::Impl {
         req.has_options() && req.options().ddl_use_regular_transaction_block()));
     auto* background_session_data = &GetSessionData(PgClientSessionKind::kPgSession);
     if (req.session()) {
+      SCHECK(
+          !subtxn_with_session_object_locks_, IllegalState,
+          "Unexpected session advisory lock call while session has active session object locks");
       // Update subtxn of host transaction as it is required for retries with statement rollbacks.
       if (const auto& txn = primary_session_data->transaction; txn) {
         txn->SetActiveSubTransaction(req.options().active_sub_transaction_id());
@@ -2894,15 +2913,26 @@ class PgClientSession::Impl {
         options.ddl_mode(), options.ddl_use_regular_transaction_block());
     auto* primary_session_data = &GetSessionData(primary_session_kind);
     auto* background_session_data = &GetSessionData(PgClientSessionKind::kPgSession);
-    if (PREDICT_FALSE(data->req.is_session_lock())) {
+    SubTransactionId active_subtxn_id;
+    if (data->req.is_session_lock()) {
       std::swap(primary_session_data, background_session_data);
       primary_session_kind = PgClientSessionKind::kPgSession;
       const auto& pg_session_data = VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(
           deadline, data->arena));
       DCHECK(&pg_session_data == primary_session_data) << "Expected session of kind kPgSession.";
+      if (!subtxn_with_session_object_locks_) {
+        // If there are no active session object locks, bump the active subtxn id and use it
+        // for the new session object lock. This is necessary as releasing all session object
+        // locks rollsback the subtxn, and we could have active session advisory locks tagged
+        // to the previous subtxns which would still need to be honored.
+        subtxn_with_session_object_locks_ =
+            primary_session_data->transaction->IncrementAndGetSubTransactionId();
+      }
+      active_subtxn_id = *subtxn_with_session_object_locks_;
     } else {
       RETURN_NOT_OK(SetupSession(
           options, deadline, /* arena= */ nullptr, GetInTxnLimit(options, clock().get())));
+      active_subtxn_id = options.active_sub_transaction_id();
     }
 
     std::optional<TransactionMetadata> opt_bg_txn_meta = std::nullopt;
@@ -2922,7 +2952,7 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
-                                 << options.active_sub_transaction_id()
+                                 << active_subtxn_id
                                  << " lock_type: " << AsString(lock_type)
                                  << " req: " << data->req.ShortDebugString()
                                  << " background txn meta: " << AsString(opt_bg_txn_meta);
@@ -2939,9 +2969,9 @@ class PgClientSession::Impl {
         plain_session_has_exclusive_object_locks_.store(true);
       }
       ts_lock_manager()->TrackDeadlineForGlobalAcquire(
-          txn_meta_res->transaction_id, options.active_sub_transaction_id(), deadline);
+          txn_meta_res->transaction_id, active_subtxn_id, deadline);
       auto lock_req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
-          instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
+          instance_uuid(), txn_meta_res->transaction_id, active_subtxn_id,
           data->req.lock_oid().ToGoogleProtobuf(), lock_type, lease_epoch_, context_.clock.get(),
           deadline, txn_meta_res->status_tablet, opt_bg_txn_meta);
       client_.AcquireObjectLocksGlobalAsync(
@@ -2953,7 +2983,7 @@ class PgClientSession::Impl {
       return Status::OK();
     }
     auto lock_req = AcquireRequestFor<tserver::AcquireObjectLockRequestPB>(
-        instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
+        instance_uuid(), txn_meta_res->transaction_id, active_subtxn_id,
         data->req.lock_oid().ToGoogleProtobuf(), lock_type, lease_epoch_, context_.clock.get(),
         deadline, txn_meta_res->status_tablet, opt_bg_txn_meta);
     AcquireObjectLockLocallyWithRetries(
@@ -2987,21 +3017,35 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     // If we fail to release the lock for any reason, return InvalidArgument as status so as to
     // force the backend to FATAL, thus freeing all object locks associated with it.
+    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_release);
     VLOG_WITH_FUNC(1) << req.ShortDebugString();
-    std::optional<SubTransactionId> opt_subtxn_id = std::nullopt;
-    if (req.options().active_sub_transaction_id()) {
-        opt_subtxn_id = req.options().active_sub_transaction_id();
-        RSTATUS_DCHECK(
-            req.has_lock_oid(), InvalidArgument,
-            "Expected to see object id in session lock release request");
-    }
-    auto* session_data = &GetSessionData(PgClientSessionKind::kPgSession);
+    const auto kind = PgClientSessionKind::kPgSession;
+    auto* session_data = &GetSessionData(kind);
     RSTATUS_DCHECK(
         session_data->transaction != nullptr, InvalidArgument, "Expected non-null kPgSession txn");
     auto txn_meta_res = session_data->transaction->GetMetadata(context->GetClientDeadline()).get();
     if (!txn_meta_res.ok()) {
       LOG_AND_RETURN(WARNING, STATUS(InvalidArgument, txn_meta_res.status().message()));
     }
+
+    std::optional<SubTransactionId> opt_subtxn_id;
+    if (!req.release_all()) {
+      opt_subtxn_id = session_data->transaction->GetActiveSubTransactionId();
+    } else {
+      // All session object locks as part of a phased DDLs are tagged to the same subtxn id.
+      // When releasing all of them, abort the subtxn and bump up the active subtxn id.
+      const auto rollback_to_subtxn = *subtxn_with_session_object_locks_;
+      subtxn_with_session_object_locks_.reset();
+      RETURN_NOT_OK(session_data->transaction->RollbackToSubTransaction(
+          rollback_to_subtxn, context->GetClientDeadline()));
+      const auto new_subtxn_id = session_data->transaction->IncrementAndGetSubTransactionId();
+      RSTATUS_DCHECK(
+          rollback_to_subtxn == new_subtxn_id - 1, IllegalState,
+          "Expected all session object locks to be associated with the same subtxn");
+    }
+    RSTATUS_DCHECK(
+        req.release_all() || req.has_lock_oid(), InvalidArgument,
+        "Expected to see valid lock id in session lock release request or release_all option set");
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
             instance_uuid(), txn_meta_res->transaction_id, opt_subtxn_id, lease_epoch_,
@@ -3439,6 +3483,7 @@ class PgClientSession::Impl {
     }
 
     // If read_point is set to a time ahead of the xcluster safe time then we wait.
+    SCOPED_WAIT_STATUS(XCluster_WaitForSafeTime);
     return WaitFor(
         [&requested_read_time, &namespace_id, this]() -> Result<bool> {
           auto safe_time = VERIFY_RESULT(xcluster_context()->GetSafeTime(namespace_id));
@@ -3821,6 +3866,10 @@ class PgClientSession::Impl {
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
       ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
       EnsureSession(kSessionKind, deadline, arena)->SetTransaction(txn);
+      auto& read_point = txn->read_point();
+      read_point.SetCurrentReadTime(ClampUncertaintyWindow::kFalse);
+      VLOG(1) << "For autonomous DDL txn, setting current ht as read point "
+          << read_point.GetReadTime();
     }
 
     return &ddl_txn_metadata_;
@@ -4001,7 +4050,6 @@ class PgClientSession::Impl {
            InvalidArgument, "Wrong catalog versions: $0 and $1",
            in_req.ysql_catalog_version(), in_req.ysql_db_catalog_version());
     if (in_req.ysql_db_catalog_version()) {
-      CHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       out_req->set_ysql_db_catalog_version(in_req.ysql_db_catalog_version());
       out_req->set_ysql_db_oid(narrow_cast<uint32_t>(in_req.db_oid()));
     } else if (in_req.ysql_catalog_version()) {
@@ -4279,6 +4327,13 @@ class PgClientSession::Impl {
     if (context_.cgroup_manager && FLAGS_enable_qos) {
       auto& cgroup = VERIFY_RESULT_REF(context_.cgroup_manager->CgroupForDb(database_oid_));
       RETURN_NOT_OK(cgroup.MoveCurrentThreadToGroup());
+      // Register the name of the "postgres" system database for cgroup metrics.
+      // User databases get their names registered by the tablet manager when
+      // tablets open; the postgres database has no tablets, so we hardcode it.
+      if (database_oid_ == kPgPostgresDbOid &&
+          !context_.cgroup_manager->IsDbNameKnown(database_oid_)) {
+        context_.cgroup_manager->RegisterDbName(database_oid_, "postgres");
+      }
     }
 #endif
     return Status::OK();
@@ -4313,13 +4368,15 @@ class PgClientSession::Impl {
   VectorIndexQueryPtr vector_index_query_data_;
 
   PgOid database_oid_ = kInvalidOid;
+  std::optional<SubTransactionId> subtxn_with_session_object_locks_;
 };
 
 PgClientSession::PgClientSession(
-    TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
-    client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
+    SharedThisSource shared_this_source, rpc::Scheduler& scheduler,
+    TransactionBuilder&& transaction_builder, client::YBClient& client,
+    std::reference_wrapper<const PgClientSessionContext> context,
     uint64_t id, pid_t pid, uint64_t lease_epoch,
-    tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler)
+    tserver::TSLocalLockManagerPtr ts_local_lock_manager)
     : impl_(new Impl(
           std::move(transaction_builder), {std::move(shared_this_source), this}, client, context,
           id, pid, lease_epoch, std::move(ts_local_lock_manager), scheduler)) {}

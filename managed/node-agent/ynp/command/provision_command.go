@@ -860,7 +860,15 @@ func parseVersion(version string) ([3]int, error) {
 // compareYnpVersion compares the current YNP major version with the stored version.
 // In strict mode (preflight checks), missing file or values are errors.
 // In non-strict mode (prechecks), they are silently ignored.
+// The check is gated on the enable_ynp_version_check flag (driven by the
+// yb.node_agent.enable_ynp_version_check global runtime config in YBA) so that
+// the flag is respected uniformly across the Java and Go code.
 func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
+	if !config.GetBool(pc.iniConfig.DefaultSectionValue(), "enable_ynp_version_check", false) {
+		util.FileLogger().
+			Infof(pc.ctx, "YNP version check is disabled, skipping version comparison")
+		return nil
+	}
 	ynpVersionDirPath := pc.getYNPVersionDirPath()
 	versionStr, _ := pc.iniConfig.DefaultSectionValue()["version"].(string)
 	if ynpVersionDirPath == "" || versionStr == "" {
@@ -905,6 +913,29 @@ func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
 		return fmt.Errorf(
 			"Major version mismatch detected. Current: %d, Stored: %d",
 			currentVersion[0], storedVersion[0])
+	}
+
+	expectedVersionStr, _ :=
+		pc.iniConfig.DefaultSectionValue()["expected_ynp_version"].(string)
+	if expectedVersionStr != "" {
+		expectedVersion, err := parseVersion(expectedVersionStr)
+		if err != nil {
+			util.FileLogger().
+				Errorf(pc.ctx, "Unable to parse expected YNP version '%s': %v",
+					expectedVersionStr, err)
+			return err
+		}
+		if expectedVersion[0] != storedVersion[0] {
+			return fmt.Errorf(
+				"YNP version mismatch. Expected major version: %d (from %s),"+
+					" found: %d (from %s). Please re-provision the node with"+
+					" the current YNP version",
+				expectedVersion[0], expectedVersionStr,
+				storedVersion[0], strings.TrimSpace(string(data)))
+		}
+		util.FileLogger().
+			Infof(pc.ctx, "YNP expected version check passed. Expected: %s, Stored: %s",
+				expectedVersionStr, strings.TrimSpace(string(data)))
 	}
 	return nil
 }

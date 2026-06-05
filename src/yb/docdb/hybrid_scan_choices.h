@@ -255,7 +255,8 @@ class HybridScanChoices : public ScanChoices {
     return finished_;
   }
 
-  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter) override;
+  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter,
+                               const EncodedDocHybridTime& max_seen_ht_checkpoint) override;
   Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
                                 IntentAwareIterator& iter,
                                 bool current_fetched_row_skipped) override;
@@ -278,8 +279,8 @@ class HybridScanChoices : public ScanChoices {
   Result<bool> DoneWithCurrentTarget(bool current_row_skipped, bool not_found);
   void SeekToCurrentTarget(IntentAwareIterator& db_iter);
 
-  // Also updates the checkpoint to latest seen ht from iter.
-  bool CurrentTargetMatchesKey(Slice curr, IntentAwareIterator* iter);
+  // Returns true iff curr matches the current scan target.
+  bool CurrentTargetMatchesKey(Slice curr);
 
   // Utility function for (multi)key scans. Updates the target scan key by
   // incrementing the option index for an OptionList. Will handle overflow by setting current
@@ -311,9 +312,10 @@ class HybridScanChoices : public ScanChoices {
   // Sets an entire group to a particular logical option index.
   void SetGroup(size_t opt_list_idx, size_t opt_index);
 
-  // Updates the bloom filter key and the upper bound to the current scan target when using
-  // variable bloom filter.
-  Status UpdateUpperBound(IntentAwareIterator* iterator);
+  // Publishes the current scan_target_ to the iterator by updating its bloom filter key and
+  // upper bound. No-op outside of variable bloom filter mode. Should be called after any
+  // mutation of scan_target_ that leaves it in a valid state.
+  Status SyncIteratorToScanTarget(IntentAwareIterator* iterator);
 
   const bool is_forward_scan_;
   ScanTarget scan_target_;
@@ -362,11 +364,10 @@ class HybridScanChoices : public ScanChoices {
 
   size_t schema_num_keys_;
 
-  MaxSeenHtData max_seen_ht_checkpoint_ = {};
-
   docdb::BloomFilterOptions bloom_filter_options_;
 
   KeyBytes upper_bound_;
+  const char* bloom_filter_start_ = nullptr;
   std::optional<IntentAwareIteratorUpperboundScope> iterator_bound_scope_;
 
   ArenaPtr arena_;

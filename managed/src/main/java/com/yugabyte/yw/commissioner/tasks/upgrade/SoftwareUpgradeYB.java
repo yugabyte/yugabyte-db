@@ -159,16 +159,18 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     boolean mastersDone = false;
     List<UUID> primaryAZsCompleted = Collections.emptyList();
     Map<UUID, List<UUID>> readReplicaAZsCompleted = Collections.emptyMap();
-    if (isResume) {
-      PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+    PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+    if (taskParams().canaryUpgradeConfig != null && prev != null && prev.isCanaryUpgrade()) {
       mastersDone = deriveMastersDoneFromPrev(prev);
       primaryAZsCompleted = derivePrimaryCompletedTserverAZs(prev, universe);
       readReplicaAZsCompleted = deriveRrCompletedTserverAZs(prev, universe);
     }
 
-    if (isResume) {
+    if (taskParams().canaryUpgradeConfig != null && prev != null && prev.isCanaryUpgrade()) {
       log.info(
-          "Canary resume context: mastersDone={}, primaryAZsCompleted={}, rrAZsCompleted={}",
+          "Canary upgrade context (resume={}): mastersDone={}, primaryAZsCompleted={},"
+              + " rrAZsCompleted={}",
+          isResume,
           mastersDone,
           primaryAZsCompleted,
           readReplicaAZsCompleted);
@@ -190,8 +192,9 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
   /**
    * Creates upgrade subtasks in phase order. Used by both full run and canary resume; ctx.isResume
-   * and ctx.mastersDone / completed AZs determine which phases to run. Returns when a canary pause
-   * is injected (tserver phase only); otherwise runs through POST_TSERVER.
+   * and ctx.mastersDone / completed AZs determine which phases to run. Enqueues the full pipeline
+   * (including POST_TSERVER); canary pause checkpoints are handled by {@code setPausedAfter} in
+   * {@link com.yugabyte.yw.commissioner.TaskExecutor}.
    */
   private void createUpgradeSubtasks(Universe universe, UpgradeTaskCreationContext ctx) {
     MastersAndTservers nodesToApply = ctx.nodesToApply;
@@ -205,18 +208,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     createCatalogBeforeTserversPhase(universe, ctx, nodesToApply);
 
     if (nodesToApply.tserversList.size() > 0) {
-      boolean paused =
-          createTserverUpgradeTasksByAz(
-              universe,
-              nodesToApply.tserversList,
-              ctx.newVersion,
-              ctx.requireYsqlMajorVersionUpgrade,
-              ctx.primaryAZsCompleted,
-              ctx.readReplicaAZsCompleted,
-              true);
-      if (paused) {
-        return;
-      }
+      createTserverUpgradeTasksByAz(
+          universe,
+          nodesToApply.tserversList,
+          ctx.newVersion,
+          ctx.requireYsqlMajorVersionUpgrade,
+          ctx.primaryAZsCompleted,
+          ctx.readReplicaAZsCompleted,
+          true);
     }
 
     createPostTserverPhase(universe, ctx, nodesToApply);
@@ -242,13 +241,24 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     }
 
     createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), ctx.newVersion);
+    UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    Map<UUID, Set<UUID>> masterCompletedForProgress;
+    if (ctx.mastersDone) {
+      masterCompletedForProgress = azsByClusterFromNodes(universe.getMasters());
+    } else {
+      masterCompletedForProgress =
+          deriveCompletedMasterAzsFromPrev(universe.getUniverseDetails().prevYBSoftwareConfig);
+    }
+    Map<UUID, Set<UUID>> tserverCompletedForProgress =
+        tserverProgressMapFromCompletedLists(
+            primaryClusterUuid, ctx.primaryAZsCompleted, ctx.readReplicaAZsCompleted);
     createSaveSoftwareUpgradeProgressTask(
         true /* isCanaryUpgrade */,
         CanaryPauseState.NOT_PAUSED,
         buildAZUpgradeStatesList(
-            universe, ServerType.MASTER, universe.getMasters(), Collections.emptyMap()),
+            universe, ServerType.MASTER, universe.getMasters(), masterCompletedForProgress),
         buildAZUpgradeStatesList(
-            universe, ServerType.TSERVER, universe.getTServers(), Collections.emptyMap()),
+            universe, ServerType.TSERVER, universe.getTServers(), tserverCompletedForProgress),
         false /* pauseAfter */);
 
     boolean rollbackMaster = false;
@@ -277,7 +287,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           ctx.currentVersion,
           YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS,
           true,
-          false);
+          false,
+          null);
       nodesToApply = new MastersAndTservers(universe.getMasters(), universe.getTServers());
     }
 
@@ -319,20 +330,29 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         }
       }
     }
+    Map<UUID, Set<UUID>> priorMasterCompleted =
+        taskParams().canaryUpgradeConfig != null
+            ? deriveCompletedMasterAzsFromPrev(universe.getUniverseDetails().prevYBSoftwareConfig)
+            : null;
+    if (priorMasterCompleted != null && priorMasterCompleted.isEmpty()) {
+      priorMasterCompleted = null;
+    }
     upgradeMaster(
         universe,
         getNonMasterNodes(nodesToApply.mastersList, nodesToApply.tserversList),
         ctx.newVersion,
         ctx.requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null,
         false,
-        true);
+        true,
+        priorMasterCompleted);
     upgradeMaster(
         universe,
         nodesToApply.mastersList,
         ctx.newVersion,
         ctx.requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null,
         true,
-        true);
+        true,
+        priorMasterCompleted);
     if (ctx.requireYsqlMajorVersionUpgrade) {
       createUpdateSoftwareUpdatePrevConfigTask(true, false);
     }
@@ -388,9 +408,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         universe.getUniverseUUID(),
         true /* ignoreErrors */,
         AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-    createClearSoftwareUpgradeProgressTask();
-    createUpdateSoftwareVersionTask(ctx.newVersion, false /* isSoftwareUpdateViaVm */)
-        .setSubTaskGroupType(getTaskSubGroupType());
     if (!taskParams().rollbackSupport) {
       createFinalizeUpgradeTasks(
           taskParams().upgradeSystemCatalog,
@@ -402,11 +419,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
             true /* isSoftwareRollbackAllowed */);
       } else {
+        createClearSoftwareUpgradeProgressTask();
         createUpdateUniverseSoftwareUpgradeStateTask(
             UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
             true /* isSoftwareRollbackAllowed */);
       }
     }
+    createUpdateSoftwareVersionTask(ctx.newVersion, false /* isSoftwareUpdateViaVm */)
+        .setSubTaskGroupType(getTaskSubGroupType());
   }
 
   @Override
@@ -584,10 +604,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               true /* ignoreErrors */,
               AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
-          createClearSoftwareUpgradeProgressTask();
-          createUpdateSoftwareVersionTask(newVersion, false /* isSoftwareUpdateViaVm */)
-              .setSubTaskGroupType(getTaskSubGroupType());
-
           if (!taskParams().rollbackSupport) {
             // When rollback is not supported, finalize within this task
             // instead of entering PreFinalize.
@@ -601,11 +617,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
                   true /* isSoftwareRollbackAllowed */);
             } else {
+              createClearSoftwareUpgradeProgressTask();
               createUpdateUniverseSoftwareUpgradeStateTask(
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
                   true /* isSoftwareRollbackAllowed */);
             }
           }
+          createUpdateSoftwareVersionTask(newVersion, false /* isSoftwareUpdateViaVm */)
+              .setSubTaskGroupType(getTaskSubGroupType());
         },
         null /* firstRunTxnCallback */,
         () -> {
@@ -639,6 +658,24 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       boolean activeRole,
       boolean trackSoftwareUpgradeProgress) {
+    upgradeMaster(
+        universe,
+        masterNodes,
+        version,
+        ysqlMajorVersionUpgradeState,
+        activeRole,
+        trackSoftwareUpgradeProgress,
+        null);
+  }
+
+  private void upgradeMaster(
+      Universe universe,
+      List<NodeDetails> masterNodes,
+      String version,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      boolean activeRole,
+      boolean trackSoftwareUpgradeProgress,
+      @Nullable Map<UUID, Set<UUID>> priorMasterCompletedByCluster) {
     long sleepTime =
         confGetter.getConfForScope(universe, UniverseConfKeys.upgradeMasterStagePauseDurationMs);
     boolean hasCanaryConfig = taskParams().canaryUpgradeConfig != null;
@@ -648,6 +685,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
         || (sleepTime <= 0 && !hasCanaryConfig)
         || !activeRole) {
+      Map<UUID, Set<UUID>> priorCompletedMasters =
+          copyClusterAzMapNullable(priorMasterCompletedByCluster);
       if (targetUpgrade && !masterNodes.isEmpty()) {
         Map<UUID, Set<UUID>> pendingMasterAzs = azsByClusterFromNodes(masterNodes);
         createSaveSoftwareUpgradeProgressTask(
@@ -657,7 +696,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 universe,
                 ServerType.MASTER,
                 universe.getMasters(),
-                Collections.emptyMap(),
+                priorCompletedMasters,
                 pendingMasterAzs,
                 null),
             buildAZUpgradeStatesList(
@@ -673,6 +712,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           activeRole);
       if (targetUpgrade && !masterNodes.isEmpty()) {
         Map<UUID, Set<UUID>> masterDone = azsByClusterFromNodes(masterNodes);
+        mergeClusterAzSetsInto(masterDone, priorMasterCompletedByCluster);
         createSaveSoftwareUpgradeProgressTask(
             isCanary,
             isCanary ? CanaryPauseState.NOT_PAUSED : null,
@@ -685,6 +725,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     } else {
       List<String> upgradedZones = new ArrayList<>();
       Map<UUID, Set<UUID>> masterCompletedByCluster = new HashMap<>();
+      mergeClusterAzSetsInto(masterCompletedByCluster, priorMasterCompletedByCluster);
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         List<UUID> azs =
             taskParams().canaryUpgradeConfig != null
@@ -807,8 +848,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       Map<UUID, Set<UUID>> tserverCompletedByCluster = new HashMap<>();
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         List<UUID> azs = sortAZs(cluster, universe);
+        List<NodeDetails> tserverNodesForCluster =
+            tserverNodes.stream()
+                .filter(n -> cluster.uuid.equals(n.placementUuid))
+                .collect(Collectors.toList());
         for (UUID azUUID : azs) {
-          List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodes, azUUID);
+          List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodesForCluster, azUUID);
           if (nodesInAZ.isEmpty()) {
             continue;
           }
@@ -874,15 +919,16 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
   /**
    * Creates tserver upgrade tasks by cluster/AZ. Skips AZs in completedPrimaryAZs and
    * completedRrAZs (used on resume). When {@code injectCanaryPause} is true, may add
-   * SaveSoftwareUpgradeProgress and return true so the caller does not add POST_TSERVER steps.
+   * SaveSoftwareUpgradeProgress with {@code setPausedAfter} for configured AZs; the caller still
+   * enqueues remaining AZs and POST_TSERVER. Preview tail child rows (after the last successful
+   * subtask) are removed when resuming in {@link
+   * com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler#resumeCanarySoftwareUpgrade}.
    *
    * <p>Persisted software-upgrade progress for the target release is written when {@code version}
    * equals {@code taskParams().ybSoftwareVersion} (not when using intermediate versions). {@code
    * injectCanaryPause} only affects canary pause-after-AZ configuration, not that version gate.
-   *
-   * @return true if a canary pause was injected (caller should not add further tasks this run)
    */
-  private boolean createTserverUpgradeTasksByAz(
+  private void createTserverUpgradeTasksByAz(
       Universe universe,
       List<NodeDetails> tserverNodes,
       String version,
@@ -939,7 +985,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             buildAZUpgradeStatesList(universe, ServerType.TSERVER, universe.getTServers(), tDone),
             false);
       }
-      return false;
+      return;
     }
     List<UUID> primaryAZsCompleted =
         new ArrayList<>(
@@ -964,11 +1010,15 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           azs,
           pauseAfterAZs,
           completedForCluster);
+      List<NodeDetails> tserverNodesForCluster =
+          tserverNodes.stream()
+              .filter(n -> cluster.uuid.equals(n.placementUuid))
+              .collect(Collectors.toList());
       for (UUID azUUID : azs) {
         if (completedForCluster.contains(azUUID)) {
           continue;
         }
-        List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodes, azUUID);
+        List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodesForCluster, azUUID);
         if (nodesInAZ.isEmpty()) {
           continue;
         }
@@ -1025,7 +1075,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               buildAZUpgradeStatesList(
                   universe, ServerType.TSERVER, universe.getTServers(), tserverDoneSoFar),
               true);
-          return true;
+          continue;
         }
         createSaveSoftwareUpgradeProgressTask(
             true,
@@ -1048,7 +1098,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         }
       }
     }
-    return false;
   }
 
   private List<NodeDetails> getNodesInAZ(List<NodeDetails> nodes, UUID az) {
@@ -1163,6 +1212,47 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       }
     }
     return map;
+  }
+
+  /** AZs with completed master upgrade from persisted canary progress. */
+  private static Map<UUID, Set<UUID>> deriveCompletedMasterAzsFromPrev(PrevYBSoftwareConfig prev) {
+    Map<UUID, Set<UUID>> map = new HashMap<>();
+    if (prev == null || prev.getMasterAZUpgradeStatesList() == null) {
+      return map;
+    }
+    for (AZUpgradeState s : prev.getMasterAZUpgradeStatesList()) {
+      if (s.getStatus() == AZUpgradeStatus.COMPLETED) {
+        map.computeIfAbsent(s.getClusterUUID(), k -> new LinkedHashSet<>()).add(s.getAzUUID());
+      }
+    }
+    return map;
+  }
+
+  private static boolean hasCanaryProgressInPrev(PrevYBSoftwareConfig prev) {
+    if (prev == null) {
+      return false;
+    }
+    return CollectionUtils.isNotEmpty(prev.getMasterAZUpgradeStatesList())
+        || CollectionUtils.isNotEmpty(prev.getTserverAZUpgradeStatesList());
+  }
+
+  private static Map<UUID, Set<UUID>> copyClusterAzMapNullable(@Nullable Map<UUID, Set<UUID>> src) {
+    if (src == null || src.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    Map<UUID, Set<UUID>> copy = new HashMap<>();
+    src.forEach((clusterUuid, azs) -> copy.put(clusterUuid, new LinkedHashSet<>(azs)));
+    return copy;
+  }
+
+  private static void mergeClusterAzSetsInto(
+      Map<UUID, Set<UUID>> dest, @Nullable Map<UUID, Set<UUID>> src) {
+    if (src == null || src.isEmpty()) {
+      return;
+    }
+    src.forEach(
+        (clusterUuid, azs) ->
+            dest.computeIfAbsent(clusterUuid, k -> new LinkedHashSet<>()).addAll(azs));
   }
 
   /**
@@ -1283,15 +1373,31 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
   private boolean isResumeTask() {
     Universe universe = getUniverse();
-    if (universe.getUniverseDetails().softwareUpgradeState
-        != UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused) {
+    UniverseDefinitionTaskParams d = universe.getUniverseDetails();
+    UUID markerUuid = d.placementModificationTaskUuid;
+    if (markerUuid == null) {
       return false;
     }
-    if (!getUserTaskUUID().equals(universe.getUniverseDetails().updatingTaskUUID)) {
+    boolean linkedToThisRun =
+        markerUuid.equals(getUserTaskUUID())
+            || (taskParams().getPreviousTaskUUID() != null
+                && markerUuid.equals(taskParams().getPreviousTaskUUID()));
+    if (!linkedToThisRun) {
       return false;
     }
-    List<TaskInfo> subtasks = TaskInfo.getOrBadRequest(getUserTaskUUID()).getSubTasks();
-    return CollectionUtils.isNotEmpty(subtasks);
+    List<TaskInfo> subtasks = TaskInfo.getOrBadRequest(markerUuid).getSubTasks();
+    if (CollectionUtils.isEmpty(subtasks)) {
+      return false;
+    }
+    UniverseDefinitionTaskParams.SoftwareUpgradeState state = d.softwareUpgradeState;
+    if (state == UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused) {
+      return true;
+    }
+    return taskParams().canaryUpgradeConfig != null
+        && state == UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed
+        && d.prevYBSoftwareConfig != null
+        && d.prevYBSoftwareConfig.isCanaryUpgrade()
+        && hasCanaryProgressInPrev(d.prevYBSoftwareConfig);
   }
 
   /** Creates only the remaining subtask groups for a canary resume. */
@@ -1300,7 +1406,23 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     final boolean requireAdditionalSuperUserForCatalogUpgrade =
         ctx.requireAdditionalSuperUserForCatalogUpgrade;
     runUpgrade(
-        () -> createUpgradeSubtasks(universe, ctx),
+        () -> {
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
+              true /* isSoftwareRollbackAllowed */);
+          PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+          if (prev != null
+              && prev.getCanaryPauseState() != null
+              && prev.getCanaryPauseState() != CanaryPauseState.NOT_PAUSED) {
+            createSaveSoftwareUpgradeProgressTask(
+                true /* isCanaryUpgrade */,
+                CanaryPauseState.NOT_PAUSED,
+                prev.getMasterAZUpgradeStatesList(),
+                prev.getTserverAZUpgradeStatesList(),
+                false /* pauseAfter */);
+          }
+          createUpgradeSubtasks(universe, ctx);
+        },
         null,
         () -> {
           markInProgressSoftwareUpgradeAzsAsFailedOnTaskFailure();

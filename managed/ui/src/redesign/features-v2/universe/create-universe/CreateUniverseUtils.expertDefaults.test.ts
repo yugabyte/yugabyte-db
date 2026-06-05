@@ -209,10 +209,10 @@ describe('getInferredOutageCount', () => {
   it('returns 0 when total nodes are below RF', () => {
     const availabilityZones = {
       r0: [
-        { name: '', uuid: '', nodeCount: 1, preffered: 0 },
-        { name: '', uuid: '', nodeCount: 1, preffered: 1 }
+        { name: '', uuid: '', nodeCount: 1, preffered: 1 },
+        { name: '', uuid: '', nodeCount: 1, preffered: 2 }
       ],
-      r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 2 }]
+      r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
     };
 
     expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(0);
@@ -221,10 +221,10 @@ describe('getInferredOutageCount', () => {
   it('uses RF cap for valid NODE_LEVEL placement at RF node count', () => {
     const availabilityZones = {
       r0: [
-        { name: '', uuid: '', nodeCount: 2, preffered: 0 },
-        { name: '', uuid: '', nodeCount: 2, preffered: 1 }
+        { name: '', uuid: '', nodeCount: 2, preffered: 1 },
+        { name: '', uuid: '', nodeCount: 2, preffered: 2 }
       ],
-      r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 2 }]
+      r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
     };
 
     expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(2);
@@ -233,10 +233,10 @@ describe('getInferredOutageCount', () => {
   it('uses RF cap for valid NODE_LEVEL placement above RF', () => {
     const availabilityZones = {
       r0: [
-        { name: '', uuid: '', nodeCount: 3, preffered: 0 },
-        { name: '', uuid: '', nodeCount: 2, preffered: 1 }
+        { name: '', uuid: '', nodeCount: 3, preffered: 1 },
+        { name: '', uuid: '', nodeCount: 2, preffered: 2 }
       ],
-      r1: [{ name: '', uuid: '', nodeCount: 2, preffered: 2 }]
+      r1: [{ name: '', uuid: '', nodeCount: 2, preffered: 3 }]
     };
 
     expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(2);
@@ -245,8 +245,8 @@ describe('getInferredOutageCount', () => {
   it('keeps RF-based outage count for non-node-level resilience', () => {
     const availabilityZones = {
       r0: [
-        { name: '', uuid: '', nodeCount: 3, preffered: 0 },
-        { name: '', uuid: '', nodeCount: 2, preffered: 1 }
+        { name: '', uuid: '', nodeCount: 3, preffered: 1 },
+        { name: '', uuid: '', nodeCount: 2, preffered: 2 }
       ]
     };
 
@@ -257,7 +257,7 @@ describe('getInferredOutageCount', () => {
 
   it('returns 0 for RF=1 sanity case', () => {
     const availabilityZones = {
-      r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 0 }]
+      r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }]
     };
     expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 1, availabilityZones as any)).toBe(0);
   });
@@ -278,9 +278,9 @@ describe('inferResilience', () => {
     const resilience = expertBase([makeRegion('r0', 1), makeRegion('r1', 1), makeRegion('r2', 1)], 2);
     const out = inferResilience(resilience as any, {
       availabilityZones: {
-        r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 0 }],
-        r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }],
-        r2: [{ name: '', uuid: '', nodeCount: 1, preffered: 2 }]
+        r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }],
+        r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 2 }],
+        r2: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
       },
       replicationFactor: 2,
       useDedicatedNodes: false
@@ -292,9 +292,9 @@ describe('inferResilience', () => {
     const resilience = expertBase([makeRegion('r0', 2), makeRegion('r1', 2), makeRegion('r2', 2)], 3);
     const out = inferResilience(resilience as any, {
       availabilityZones: {
-        r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 0 }],
-        r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }],
-        r2: [{ name: '', uuid: '', nodeCount: 1, preffered: 2 }]
+        r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }],
+        r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 2 }],
+        r2: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
       },
       replicationFactor: 3,
       useDedicatedNodes: false
@@ -307,10 +307,10 @@ describe('inferResilience', () => {
     const out = inferResilience(resilience as any, {
       availabilityZones: {
         r0: [
-          { name: '', uuid: '', nodeCount: 1, preffered: 0 },
-          { name: '', uuid: '', nodeCount: 1, preffered: 1 }
+          { name: '', uuid: '', nodeCount: 1, preffered: 1 },
+          { name: '', uuid: '', nodeCount: 1, preffered: 2 }
         ],
-        r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 2 }]
+        r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
       },
       replicationFactor: 3,
       useDedicatedNodes: false
@@ -323,10 +323,10 @@ describe('inferResilience', () => {
     const out = inferResilience(resilience as any, {
       availabilityZones: {
         r0: [
-          { name: '', uuid: '', nodeCount: 1, preffered: 0 },
-          { name: '', uuid: '', nodeCount: 1, preffered: 1 }
+          { name: '', uuid: '', nodeCount: 1, preffered: 1 },
+          { name: '', uuid: '', nodeCount: 1, preffered: 2 }
         ],
-        r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 2 }]
+        r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
       },
       replicationFactor: 5,
       useDedicatedNodes: false
@@ -339,12 +339,12 @@ describe('inferResilience', () => {
     const out = inferResilience(resilience as any, {
       availabilityZones: {
         r0: [
-          { name: '', uuid: '', nodeCount: 1, preffered: 0 },
-          { name: '', uuid: '', nodeCount: 1, preffered: 1 }
+          { name: '', uuid: '', nodeCount: 1, preffered: 1 },
+          { name: '', uuid: '', nodeCount: 1, preffered: 2 }
         ],
         r1: [
-          { name: '', uuid: '', nodeCount: 1, preffered: 2 },
-          { name: '', uuid: '', nodeCount: 1, preffered: 3 }
+          { name: '', uuid: '', nodeCount: 1, preffered: 3 },
+          { name: '', uuid: '', nodeCount: 1, preffered: 4 }
         ]
       },
       replicationFactor: 3,
@@ -418,9 +418,9 @@ describe('reduceExpertNodeCountsToAtMostRf', () => {
   it('reduces totals to rf, decrementing highest-preferred AZs with spare nodes first', () => {
     const zones = {
       r0: [
-        { name: 'a', uuid: '1', nodeCount: 3, preffered: 0 },
-        { name: 'b', uuid: '2', nodeCount: 2, preffered: 1 },
-        { name: 'c', uuid: '3', nodeCount: 2, preffered: 2 }
+        { name: 'a', uuid: '1', nodeCount: 3, preffered: 1 },
+        { name: 'b', uuid: '2', nodeCount: 2, preffered: 2 },
+        { name: 'c', uuid: '3', nodeCount: 2, preffered: 3 }
       ]
     };
     reduceExpertNodeCountsToAtMostRf(zones, 5);
@@ -431,8 +431,8 @@ describe('reduceExpertNodeCountsToAtMostRf', () => {
   it('no-ops when total already at or below rf', () => {
     const zones = {
       r0: [
-        { name: 'a', uuid: '1', nodeCount: 1, preffered: 0 },
-        { name: 'b', uuid: '2', nodeCount: 1, preffered: 1 }
+        { name: 'a', uuid: '1', nodeCount: 1, preffered: 1 },
+        { name: 'b', uuid: '2', nodeCount: 1, preffered: 2 }
       ]
     };
     reduceExpertNodeCountsToAtMostRf(zones, 5);
@@ -442,9 +442,9 @@ describe('reduceExpertNodeCountsToAtMostRf', () => {
   it('stops when every AZ is at minimum node count but total still exceeds rf', () => {
     const zones = {
       r0: [
-        { name: 'a', uuid: '1', nodeCount: 1, preffered: 0 },
-        { name: 'b', uuid: '2', nodeCount: 1, preffered: 1 },
-        { name: 'c', uuid: '3', nodeCount: 1, preffered: 2 }
+        { name: 'a', uuid: '1', nodeCount: 1, preffered: 1 },
+        { name: 'b', uuid: '2', nodeCount: 1, preffered: 2 },
+        { name: 'c', uuid: '3', nodeCount: 1, preffered: 3 }
       ]
     };
     reduceExpertNodeCountsToAtMostRf(zones, 2);

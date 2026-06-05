@@ -34,6 +34,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 
 /**
@@ -44,7 +46,8 @@ import org.yb.minicluster.MiniYBClusterBuilder;
  * at the end of a batch), so these tests speak the PostgreSQL v3 wire protocol
  * directly over a raw TCP socket using the helpers in {@link PgWireProtocol}.
  */
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestPipelineDetach extends BaseYsqlConnMgr {
   private static final Logger LOG = LoggerFactory.getLogger(TestPipelineDetach.class);
 

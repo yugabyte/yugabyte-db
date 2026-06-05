@@ -15,6 +15,20 @@ from db.yugabytedb_vector_store import YugabyteDBVectorStore
 PIPELINE_ID = 1
 
 
+def _sql_text(sql_obj):
+    """Render a psycopg.sql.Composed (or plain str) as a comparable string.
+
+    insert_embeddings / create_index now build their statements with
+    psycopg.sql.Identifier so user-controlled (schema, table) are safely
+    quoted. The downside is that test assertions that used to do
+    `"INSERT INTO" in call_args[0][0]` against an f-string now see a
+    Composed object instead.
+    """
+    if hasattr(sql_obj, 'as_string'):
+        return sql_obj.as_string(None)
+    return sql_obj
+
+
 def _create_store(mock_pool_cls, mock_pt_cls):
     """Helper to create a YugabyteDBVectorStore with mocked dependencies."""
     mock_pool = Mock()
@@ -77,9 +91,10 @@ class TestYugabyteDBVectorStore:
         )
         mock_cur.fetchone.return_value = (True,)
 
-        result = store._ensure_table_exists("test_table")
+        result = store._ensure_table_exists("test_table", "public")
 
         assert result is True
+        assert mock_cur.execute.call_args[0][1] == ("public", "test_table")
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')
@@ -90,7 +105,7 @@ class TestYugabyteDBVectorStore:
         )
         mock_cur.fetchone.return_value = (False,)
 
-        result = store._ensure_table_exists("nonexistent_table")
+        result = store._ensure_table_exists("nonexistent_table", "public")
 
         assert result is False
 
@@ -120,8 +135,12 @@ class TestYugabyteDBVectorStore:
 
         mock_cur.executemany.assert_called_once()
         call_args = mock_cur.executemany.call_args
-        assert "INSERT INTO" in call_args[0][0]
-        assert "test_table" in call_args[0][0]
+        rendered_sql = _sql_text(call_args[0][0])
+        assert "INSERT INTO" in rendered_sql
+        # Identifier quoting wraps the name in double quotes.
+        assert '"test_table"' in rendered_sql
+        # Default schema (constructor fallback) is "public".
+        assert '"public"' in rendered_sql
         mock_conn.commit.assert_called()
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
@@ -251,7 +270,10 @@ class TestYugabyteDBVectorStore:
         call_args = mock_cur.executemany.call_args
         data = call_args[0][1]
         # metadata is serialized as JSON '{}' when None
-        assert data == [("chunk 1", [0.1, 0.2, 0.3], 1, '{}')]
+        assert data == [(
+            "chunk 1", [0.1, 0.2, 0.3], 1,
+            None, '{}',
+        )]
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')
@@ -337,7 +359,8 @@ class TestYugabyteDBVectorStore:
         assert data[0][0] == "chunk 1"
         assert data[0][1] == [0.1, 0.2, 0.3]
         assert data[0][2] == 1
-        assert json.loads(data[0][3]) == complex_metadata
+        assert data[0][3] is None
+        assert json.loads(data[0][4]) == complex_metadata
 
     @patch('db.yugabytedb_vector_store.PipelineTracking')
     @patch('db.yugabytedb_vector_store.ConnectionPool')
@@ -372,10 +395,50 @@ class TestYugabyteDBVectorStore:
 
         assert result is True
         mock_cur.execute.assert_called_once()
-        call_sql = mock_cur.execute.call_args[0][0]
+        call_sql = _sql_text(mock_cur.execute.call_args[0][0])
         assert "CREATE INDEX IF NOT EXISTS" in call_sql
-        assert "test_table" in call_sql
+        # Identifier quoting wraps both the index name and the table.
+        assert '"idx_test_table_embeddings"' in call_sql
+        assert '"public"."test_table"' in call_sql
         mock_conn.commit.assert_called()
+
+    @patch('db.yugabytedb_vector_store.PipelineTracking')
+    @patch('db.yugabytedb_vector_store.ConnectionPool')
+    def test_create_index_custom_schema(self, mock_pool_cls, mock_pt_cls):
+        """create_index honors a per-call schema override."""
+        store, mock_pool, mock_pt, mock_conn, mock_cur = _create_store(
+            mock_pool_cls, mock_pt_cls
+        )
+
+        store.create_index(table_name="test_table", table_schema="tenant_a")
+
+        call_sql = _sql_text(mock_cur.execute.call_args[0][0])
+        assert '"tenant_a"."test_table"' in call_sql
+
+    @patch('db.yugabytedb_vector_store.PipelineTracking')
+    @patch('db.yugabytedb_vector_store.ConnectionPool')
+    def test_insert_embeddings_custom_schema(self, mock_pool_cls, mock_pt_cls):
+        """insert_embeddings honors a per-call schema override."""
+        store, mock_pool, mock_pt, mock_conn, mock_cur = _create_store(
+            mock_pool_cls, mock_pt_cls
+        )
+        # _ensure_table_exists must see the per-call schema, not the constructor default.
+        mock_cur.fetchone.return_value = (True,)
+
+        store.insert_embeddings(
+            document_id=1,
+            table_name="test_table",
+            embedding_iterator=[("chunk 1", [0.1, 0.2, 0.3])],
+            pipeline_id=PIPELINE_ID,
+            schema="tenant_a",
+            metadata={"source": "test"},
+            batch_size=16
+        )
+
+        # Existence query should have been parameterized with the override schema.
+        assert mock_cur.execute.call_args[0][1] == ("tenant_a", "test_table")
+        rendered_sql = _sql_text(mock_cur.executemany.call_args[0][0])
+        assert '"tenant_a"."test_table"' in rendered_sql
 
 
 if __name__ == "__main__":

@@ -1,0 +1,22 @@
+title: KmsConfigurationMetadata
+description: Metadata for a customer KMS configuration.
+type: object
+properties:
+  config_uuid:
+    description: KMS configuration unique identifier.
+    type: string
+    format: uuid
+  provider:
+    description: 'KMS provider implementation key (AWS, GCP, etc.).'
+    type: string
+  in_use:
+    description: Whether this KMS config is attached to any universe.
+    type: boolean
+  universe_details:
+    description: Universes using this KMS configuration (subset fields only).
+    type: array
+    items:
+      $ref: "./UniverseDetailSubset.yaml"
+  name:
+    description: User-defined name for the KMS configuration.
+    type: string

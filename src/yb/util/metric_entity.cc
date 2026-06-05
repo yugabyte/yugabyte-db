@@ -205,6 +205,12 @@ AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
     prometheus_attributes_["table_type"] = attributes_["table_type"];
     prometheus_attributes_["namespace_name"] =
         EscapePrometheusLabelValue(attributes_["namespace_name"]);
+    {
+      auto it = attributes_.find("database_oid");
+      if (it != attributes_.end() && !it->second.empty()) {
+        prometheus_attributes_["database_oid"] = it->second;
+      }
+    }
     default_aggregation_level = kTableLevel | kServerLevel;
   } else if (prototype_type == "server" || prototype_type == "cluster") {
     prometheus_attributes_ = attributes_;
@@ -231,6 +237,15 @@ AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
     default_aggregation_level = kStreamLevel;
   } else if (prototype_type == "drive") {
     prometheus_attributes_["drive_path"] = attributes_["drive_path"];
+    default_aggregation_level = kServerLevel;
+  } else if (prototype_type == "cgroup") {
+    prometheus_attributes_["cgroup_name"] = attributes_["cgroup_name"];
+    for (const auto& key : {"database_name", "database_oid"}) {
+      auto it = attributes_.find(key);
+      if (it != attributes_.end() && !it->second.empty()) {
+        prometheus_attributes_[key] = it->second;
+      }
+    }
     default_aggregation_level = kServerLevel;
   }
 

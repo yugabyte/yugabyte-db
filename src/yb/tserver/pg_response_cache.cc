@@ -33,6 +33,7 @@
 #include "yb/tserver/pg_client.messages.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -75,21 +76,19 @@ METRIC_DEFINE_gauge_uint32(server, pg_response_cache_entries,
                       yb::MetricUnit::kEntries,
                       "Number of entries in PgClientService response cache");
 
-DEFINE_NON_RUNTIME_uint64(
-    pg_response_cache_capacity, 1024, "PgClientService response cache capacity.");
+DEFINE_NON_RUNTIME_uint64(pg_response_cache_capacity, 1024,
+    "PgClientService response cache capacity.");
 
 DEFINE_NON_RUNTIME_uint64(pg_response_cache_size_bytes, 0,
                           "Size in bytes of the PgClientService response cache. "
                           "0 value (default) means that cache size is not limited by this flag.");
 
-DEFINE_NON_RUNTIME_uint32(
-    pg_response_cache_size_percentage, 5,
+DEFINE_NON_RUNTIME_uint32(pg_response_cache_size_percentage, 5,
     "Percentage of process' hard memory limit to use by the PgClientService response cache. "
     "Default value is 5, max is 100, min is 0 means that cache size is not limited by this flag.");
 
 
-DEFINE_NON_RUNTIME_uint32(
-    pg_response_cache_num_key_group_bucket, 512,
+DEFINE_NON_RUNTIME_uint32(pg_response_cache_num_key_group_bucket, 512,
     "Number of buckets for key group values which are used as part of response cache key. "
     "Response cache can be disabled for particular key group, but actually it will be disabled for "
     "all key groups in same bucket");
@@ -175,6 +174,8 @@ class MetricUpdater {
   DISALLOW_COPY_AND_ASSIGN(MetricUpdater);
 };
 
+YB_DEFINE_ENUM(DataState, (kNotReady)(kReadyOK)(kReadyFailure));
+
 class Data {
  public:
   Data(uint64_t version,
@@ -194,23 +195,24 @@ class Data {
           ReadHybridTime::SingleTime(HybridTime::FromMicros(
               FLAGS_TEST_pg_response_cache_catalog_read_time_usec)));
     }
-    auto failed = !IsOk(value);
+    auto new_state = DataState::kReadyFailure;
     size_t sz = 0;
-    if (!failed) {
+    if (IsOk(value)) {
       for (const auto& data : value.rows_data) {
         sz += data.size();
       }
+      new_state = DataState::kReadyOK;
     }
     decltype(waiters_) waiters;
     // Since response_ is not changed after assignment, we could store pointer to it to make
     // thread safety analysis happy, and then use it.
-    const PgResponseCache::Response* response;
+    const PgResponseCache::Response* response = nullptr;
     {
       std::lock_guard lock(mutex_);
       response_ = std::move(value);
       waiters.swap(waiters_);
       response = &*response_;
-      failed_ = failed;
+      state_.store(new_state, std::memory_order_release);
     }
     for (auto waiter : waiters) {
       waiter->Apply(*response);
@@ -223,8 +225,20 @@ class Data {
     }
   }
 
-  [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) {
-    return version == version_ && now < readiness_deadline_ && !failed_;
+  [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) const {
+    if (PREDICT_FALSE(version != version_)) {
+      return false;
+    }
+    const auto state = state_.load(std::memory_order_acquire);
+    switch (state) {
+      case DataState::kNotReady:
+        return now < readiness_deadline_;
+      case DataState::kReadyOK:
+        return true;
+      case DataState::kReadyFailure:
+        return false;
+    }
+    FATAL_INVALID_ENUM_VALUE(DataState, state);
   }
 
   [[nodiscard]] std::optional<const PgResponseCache::Response*> RegisterWaiter(
@@ -251,7 +265,7 @@ class Data {
   const CoarseTimePoint creation_time_;
   const CoarseTimePoint readiness_deadline_;
   std::mutex mutex_;
-  std::atomic<bool> failed_{false};
+  std::atomic<DataState> state_{DataState::kNotReady};
   bool running_ GUARDED_BY(mutex_) = false;
   std::optional<PgResponseCache::Response> response_ GUARDED_BY(mutex_);
   std::vector<PgResponseCacheWaiterPtr> waiters_ GUARDED_BY(mutex_);

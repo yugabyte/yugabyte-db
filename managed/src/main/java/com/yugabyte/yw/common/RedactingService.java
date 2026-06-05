@@ -74,6 +74,11 @@ public class RedactingService {
           .add("$..AZURE_CLIENT_SECRET")
           .add("$..CLIENT_SECRET")
           .add("$..azuClientSecret")
+          // OCI private key and fingerprint
+          .add("$..ociPrivateKeyContent")
+          .add("$..OCI_PRIVATE_KEY_CONTENT")
+          .add("$..ociFingerprint")
+          .add("$..OCI_FINGERPRINT")
           // Kubernetes secrets
           .add("$..KUBECONFIG_PULL_SECRET_CONTENT")
           .add("$..KUBECONFIG_CONTENT")

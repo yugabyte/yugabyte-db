@@ -9,9 +9,15 @@ import {
 import GeoPartitionBreadCrumb from '../../geo-partition/add/GeoPartitionBreadCrumbs';
 import { ResilienceAndRegions } from '../../create-universe/steps';
 import { UniverseActionButtons } from '../../create-universe/components/UniverseActionButtons';
-import { useEditUniverseContext } from '../EditUniverseUtils';
+import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { getExistingGeoPartitions } from '../../geo-partition/add/AddGeoPartitionUtils';
+import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
-import { getResilienceAndRegionsProps, useGetEditPlacementContext } from './EditPlacementUtils';
+import {
+  getNodesAvailabilityDefaultsForEditPlacement,
+  getResilienceAndRegionsProps,
+  useGetEditPlacementContext
+} from './EditPlacementUtils';
 import { EditPlacementSteps } from './EditPlacementContext';
 import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 
@@ -19,6 +25,8 @@ const { Box } = mui;
 
 export const EditPlacementResilience = () => {
   const { universeData, providerRegions } = useEditUniverseContext();
+  const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const isGeoPartitionUniverse = getExistingGeoPartitions(universeData!).length > 0;
   const [, , { selectedPartitionUUID }] = useGetEditPlacementContext();
   const resilienceProps = getResilienceAndRegionsProps(
     universeData!,
@@ -38,22 +46,26 @@ export const EditPlacementResilience = () => {
             resilienceAndRegionsSettings: resilience ?? resilienceProps,
             generalSettings: {
               providerConfiguration: {
-                uuid: universeData?.spec?.clusters[0].provider_spec?.provider ?? ''
+                uuid: primaryCluster?.provider_spec?.provider ?? ''
               }
             }
           },
           {
             setResilienceType: () => {},
             saveResilienceAndRegionsSettings: (data: ResilienceAndRegionsProps) => {
-              addEditPlacementMethods.setResilience(data);
-              addEditPlacementMethods.setActiveStep(
-                EditPlacementSteps.NODES_AND_AVAILABILITY_ZONES
+              const nodesAndAvailability = getNodesAvailabilityDefaultsForEditPlacement(
+                universeData!,
+                selectedPartitionUUID
               );
+              addEditPlacementMethods.setResilience(data);
+              addEditPlacementMethods.setNodesAndAvailability(nodesAndAvailability);
             },
             saveNodesAvailabilitySettings: (data: NodeAvailabilityProps) => {
               addEditPlacementMethods.setNodesAndAvailability(data);
             },
-            moveToNextPage: () => {},
+            moveToNextPage: () => {
+              addEditPlacementMethods.setActiveStep(EditPlacementSteps.NODES_AND_AVAILABILITY_ZONES);
+            },
             moveToPreviousPage: () => {}
           }
         ] as unknown) as createUniverseFormProps
@@ -64,7 +76,11 @@ export const EditPlacementResilience = () => {
           groupTitle={<>{t('placement')}</>}
           subTitle={<>{t('resilienceAndRegions')}</>}
         />
-        <ResilienceAndRegions isGeoPartition hideHelpText ref={resilienceRef} />
+        <ResilienceAndRegions
+          isGeoPartition={isGeoPartitionUniverse}
+          hideHelpText
+          ref={resilienceRef}
+        />
         <UniverseActionButtons
           cancelButton={{
             text: t('cancel', { keyPrefix: 'common' }),

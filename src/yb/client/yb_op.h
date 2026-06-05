@@ -508,6 +508,10 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
 
   bool read_only() const override { return false; };
 
+  bool skip_intents() const {
+    return request_->skip_intents_write();
+  }
+
   void SetHashCode(uint16_t hash_code) override;
 
   void set_is_single_row_txn(bool is_single_row_txn) {
@@ -563,6 +567,10 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
   std::string ToString() const override;
 
   bool read_only() const override { return true; };
+
+  bool skip_intents() const {
+    return request_->skip_intents_read();
+  }
 
   void SetHashCode(uint16_t hash_code) override;
 

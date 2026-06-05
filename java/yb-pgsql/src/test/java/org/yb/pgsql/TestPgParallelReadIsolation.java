@@ -43,6 +43,8 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("enable_object_locking_for_table_locks", "true");
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    flagMap.put("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
+    flagMap.put("ysql_enable_concurrent_ddl", "true");
     return flagMap;
   }
 
@@ -262,7 +264,6 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
          Connection otherconn = getConnectionBuilder().withDatabase(COLOCATED_DB).connect();
          Statement otherstmt = otherconn.createStatement();) {
       forceParallel(stmt);
-      stmt.execute("SET yb_enable_concurrent_ddl = true");
 
       // Warm up the catalog cache in non-legacy (concurrent DDL) mode so the
       // subsequent BEGIN + SELECT has minimal catalog snapshot churn.
@@ -275,7 +276,7 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
 
       // Expect concurrent changes to be visible.
       //
-      // Currently, parallel workers in yb_enable_concurrent_ddl mode use the legacy mode for
+      // Currently, parallel workers in ysql_enable_concurrent_ddl mode use the legacy mode for
       // catalog operations. This is true for both the setup phase and the non-setup phase (i.e.,
       // IsInParallelMode() becomes true).
       //
@@ -308,8 +309,22 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
 
   @Test
   public void testParallelReadWithConcurrentAlters() throws Exception {
-    final int NUM_ITERATIONS =
-        (BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN()) ? 20 : 100;
+    final int NUM_ITERATIONS;
+    if (isTestRunningWithConnectionManager()) {
+      // Under YSQL Connection Manager, every DDL commit incurs an extra
+      // ~2 * heartbeat_interval_ms sleep (see pg_yb_utils.c:
+      // "connection manager: adding sleep of ... after DDL commit"). With
+      // the default 1s heartbeat that's ~2s per DDL, and this test runs
+      // 2 DDLs per iteration. Keep the iteration count small so wall time
+      // stays bounded while still exercising concurrent DDL.
+      // TODO(#31773): Remove sleep with Connection Manager while committing
+      // DDLs.
+      NUM_ITERATIONS = 10;
+    } else if (BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN()) {
+      NUM_ITERATIONS = 20;
+    } else {
+      NUM_ITERATIONS = 100;
+    }
     final AtomicBoolean stop = new AtomicBoolean(false);
     final AtomicReference<Exception> readerError = new AtomicReference<>();
     final AtomicReference<Exception> ddlError = new AtomicReference<>();
@@ -322,7 +337,6 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
                .withIsolationLevel(READ_COMMITTED)
                .connect();
            Statement stmt = conn.createStatement()) {
-        stmt.execute("SET yb_enable_concurrent_ddl = true");
         forceParallel(stmt);
         readerStarted.countDown();
 
@@ -342,8 +356,7 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
                  .withAutoCommit(ENABLED)
                  .connect();
              Statement stmt = conn.createStatement()) {
-          stmt.execute("SET yb_enable_concurrent_ddl = true");
-          for (int i = 0; i < NUM_ITERATIONS && readerError.get() == null; i++) {
+          for (int i = 0; i < NUM_ITERATIONS && readerError.get() == null && !stop.get(); i++) {
             String colName = "ddl_col_" + i;
             stmt.execute(String.format(
                 "ALTER TABLE %s ADD COLUMN %s INT DEFAULT %d",
@@ -366,6 +379,8 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
     ddlThread.start();
 
     ddlThread.join(120_000);
+    // Signal stop to the reader thread so it can exit if ddlThread is stuck.
+    stop.set(true);
     readerThread.join(10_000);
 
     if (ddlError.get() != null) {
@@ -375,6 +390,13 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
       throw new AssertionError(
           "Parallel reader failed during concurrent DDL",
           readerError.get());
+    }
+
+    if (ddlThread.isAlive() || readerThread.isAlive()) {
+      throw new AssertionError(String.format(
+          "Worker threads did not exit before timeout "
+              + "(ddlAlive=%s, readerAlive=%s); @After cleanup may fail",
+          ddlThread.isAlive(), readerThread.isAlive()));
     }
   }
 }

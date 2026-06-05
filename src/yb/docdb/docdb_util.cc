@@ -555,8 +555,8 @@ void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
       regular_db_.get(), std::cerr, this /*schema_packing_provider*/, StorageDbType::kRegular);
 }
 
-Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
-  rocksdb::FlushOptions flush_options;
+Status DocDBRocksDBUtil::FlushRocksDbAndWait(rocksdb::FlushReason flush_reason) {
+  rocksdb::FlushOptions flush_options(flush_reason);
   flush_options.wait = true;
   return rocksdb()->Flush(flush_options);
 }

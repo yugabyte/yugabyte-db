@@ -1257,6 +1257,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "rolling upgrades (e.g. node connectivity and service/command checks). Disable to "
               + "skip these checks.",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> comprehensivePrecheckCheckServiceLivenessTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.comprehensive_prechecks.check_service_liveness_timeout",
+          ScopeType.UNIVERSE,
+          "CheckServiceLiveness timeout for comprehensive prechecks",
+          "Timeout for CheckServiceLiveness subtasks during comprehensive prechecks "
+              + "(universe create/edit and rolling upgrades).",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Integer> nodesAreSafeToTakeDownParallelism =
@@ -1740,6 +1750,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip auto flags and YSQL migration files validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> ysqlMajorUpgradeMinStableDbVersion =
+      new ConfKeyInfo<>(
+          "yb.upgrade.ysql_major_upgrade_min_stable_db_version",
+          ScopeType.UNIVERSE,
+          "YSQL major upgrade minimum stable DB version",
+          "Minimum DB software version required on stable release tracks before a YSQL major"
+              + " version upgrade can proceed. Preview release tracks use a fixed platform"
+              + " minimum. Use a valid YBA DB version string (for example 2024.2.3.0-b1).",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> ybcPerDiskIoRequestSize =
       new ConfKeyInfo<>(
           "ybc.disk_io_request_size_bytes",
@@ -1824,7 +1844,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable All Nodes Script APIs",
           "Enables the all node script APIs for this universe",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableCanaryUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.enable_canary_upgrade",
@@ -1853,4 +1873,38 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " payload.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowMultiTenancy =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_multi_tenancy",
+          ScopeType.UNIVERSE,
+          "Allow users to enable multi-tenancy",
+          "If this flag is enabled, user will be able to enable the multi-tenancy QoS feature on"
+              + " universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> flushTabletsTimeoutOnStopTserver =
+      new ConfKeyInfo<>(
+          "yb.task.flush_tablets_timeout_on_stop_tserver",
+          ScopeType.UNIVERSE,
+          "Flush Tablets Timeout on Stop TServer",
+          "Timeout for flushing tablets when stopping tserver",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> multitenancySkipYcqlPrecheck =
+      new ConfKeyInfo<>(
+          "yb.universe.multitenancy_skip_ycql_precheck",
+          ScopeType.UNIVERSE,
+          "Skip YCQL precheck when enabling multi-tenancy",
+          "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowMultiTenancyTestUi =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_multi_tenancy_test_ui",
+          ScopeType.UNIVERSE,
+          "Show multi-tenancy controls in the UI for testing",
+          "When true, YugabyteDB Anywhere shows a test UI for multi-tenancy (QoS). API enablement"
+              + " still requires yb.universe.allow_multi_tenancy.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

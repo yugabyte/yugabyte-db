@@ -57,6 +57,7 @@
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tools/yb-admin_util.h"
 
+#include "yb/util/enum_parse.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -1133,7 +1134,7 @@ Status change_leader_blacklist_action(
   return ChangeBlacklist(client, args, true, "Unable to change leader blacklist");
 }
 
-const auto master_leader_stepdown_args = "[<dest_uuid>]";
+const auto master_leader_stepdown_args = "[<new_leader_id>]";
 Status master_leader_stepdown_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   return MasterLeaderStepDown(client, args);

@@ -337,6 +337,17 @@ typedef enum StdRdOptIndexCleanup
 	STDRD_OPTION_VACUUM_INDEX_CLEANUP_ON
 } StdRdOptIndexCleanup;
 
+/* Per-table overrides for the YB auto analyze service. */
+typedef struct YbAutoAnalyzeOpts
+{
+	bool		enabled;
+	int			threshold;
+	float8		scale_factor;
+	float8		cooldown_scale_factor;
+	int			min_cooldown_ms;
+	int			max_cooldown_ms;
+} YbAutoAnalyzeOpts;
+
 typedef struct StdRdOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
@@ -354,6 +365,8 @@ typedef struct StdRdOptions
 	Oid			colocation_id;
 	Oid			table_oid;
 	Oid			row_type_oid;
+	int			yb_presplit_offset;	/* Offset to presplit config string */
+	YbAutoAnalyzeOpts yb_auto_analyze;	/* YB auto analyze options */
 } StdRdOptions;
 
 #define HEAP_MIN_FILLFACTOR			10
@@ -434,7 +447,6 @@ typedef enum ViewOptCheckOption
 #define RelationGetTableOid(relation) \
 	((relation)->rd_options ? \
 	 ((StdRdOptions *) (relation)->rd_options)->table_oid : 0)
-
 
 /*
  * ViewOptions
@@ -755,6 +767,36 @@ typedef struct YbParitionedTableOptions
 	/* YB additions. */
 	Oid			colocation_id;
 	bool		colocation;
+	int			yb_presplit_offset;	/* Offset to presplit config string */
 } YbParitionedTableOptions;
+
+/*
+ * YbRelationGetPresplit
+ *		Returns the relation's yb_presplit reloption setting, or NULL if
+ *		unset.  The string is either a number (for SPLIT INTO N TABLETS)
+ *		or a split-point list (for SPLIT AT VALUES ((...),...)).
+ *
+ *		For RELKIND_PARTITIONED_TABLE, rd_options is a YbParitionedTableOptions;
+ *		for everything else (heap, matview, index, partitioned index) it is a
+ *		StdRdOptions.  Both structs put yb_presplit_offset at a different
+ *		location, so we must dispatch on relkind here.
+ */
+static inline const char *
+YbRelationGetPresplit(Relation relation)
+{
+	int			offset;
+
+	if (relation->rd_options == NULL)
+		return NULL;
+
+	if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		offset = ((YbParitionedTableOptions *) relation->rd_options)->yb_presplit_offset;
+	else
+		offset = ((StdRdOptions *) relation->rd_options)->yb_presplit_offset;
+
+	if (offset == 0)
+		return NULL;
+	return (const char *) relation->rd_options + offset;
+}
 
 #endif							/* REL_H */

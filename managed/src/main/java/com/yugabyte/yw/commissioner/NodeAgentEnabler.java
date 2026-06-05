@@ -238,6 +238,10 @@ public class NodeAgentEnabler {
     Universe.doIfUnlocked(
         universeUuid,
         universe -> {
+          Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+          if (!NodeAgentClient.isCloudTypeSupported(primaryCluster.userIntent.providerType)) {
+            return;
+          }
           Set<String> nodeIps =
               universe.getNodes().stream()
                   .filter(n -> n.state == NodeState.Live)

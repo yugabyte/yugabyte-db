@@ -451,6 +451,17 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	rotateSshKeyInput := req.GetRotateSshKeyInput()
+	if rotateSshKeyInput != nil {
+		rotateSshKeyHandler := task.NewRotateSSHKeyHandler(rotateSshKeyInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, rotateSshKeyHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running rotate SSH key - %s", err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	return res, toGrpcErrorIfNeeded(codes.Unimplemented, errors.New("Unknown task"))
 }
 
@@ -624,18 +635,21 @@ func (server *RPCServer) DownloadFile(
 	reader := bufio.NewReader(file)
 	for {
 		n, err := reader.Read(res.ChunkData)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
+		if err != nil && err != io.EOF {
 			util.FileLogger().Errorf(ctx, "Error in reading file %s - %s", filename, err.Error())
 			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
-		res.ChunkData = res.ChunkData[:n]
-		err = stream.Send(res)
-		if err != nil {
-			util.FileLogger().Errorf(ctx, "Error in sending file %s - %s", filename, err.Error())
-			return toGrpcErrorIfNeeded(codes.Internal, err)
+		if n > 0 {
+			res.ChunkData = res.ChunkData[:n]
+			sendErr := stream.Send(res)
+			if sendErr != nil {
+				util.FileLogger().
+					Errorf(ctx, "Error in sending file %s - %s", filename, sendErr.Error())
+				return toGrpcErrorIfNeeded(codes.Internal, sendErr)
+			}
+		}
+		if err == io.EOF {
+			break
 		}
 	}
 	return nil

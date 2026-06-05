@@ -25,7 +25,7 @@
 
 #define BSONOID				8095
 #define VECTOROID			8078
-#define GRAPHIDOID			8113
+#define GRAPHIDOID			8116
 
 /* ----------------
  *		pg_type definition.  cpp turns this into

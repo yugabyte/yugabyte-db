@@ -136,31 +136,27 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
       }
     } else if (FLAGS_log_ysql_catalog_versions && pg_req.table_id() == kPgYbCatalogVersionTableId) {
       log_versions = true;
-      if (FLAGS_ysql_enable_db_catalog_version_mode) {
-        // The contents of req->pgsql_write_batch() are freed after the next call to
-        // tserver::TabletServiceImpl::Write, save db_oid to use for later debugging log.
+      // The contents of req->pgsql_write_batch() are freed after the next call to
+      // tserver::TabletServiceImpl::Write, save db_oid to use for later debugging log.
 
-        // The write op to increment the catalog version number is special and may not have
-        // set any of ysql_catalog_version, ysql_db_catalog_version, and ysql_db_oid. Therefore
-        // we need to get db oid by decoding from ybctid.
-        dockv::DocKey doc_key;
-        if (!pg_req.has_ybctid_column_value() ||
-            !doc_key.FullyDecodeFrom(pg_req.ybctid_column_value().value().binary_value()).ok() ||
-            doc_key.range_group().size() != 1) {
-          context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
-              STATUS(InternalError, "Failed to get db oid"));
-        }
-        const uint32_t db_oid = doc_key.range_group()[0].GetUInt32();
-        // In per-db catalog version mode, one can run a SQL script to prepare the
-        // pg_yb_catalog_version table to have one row per-database, there can be
-        // multiple write ops that write to the table pg_yb_catalog_version for
-        // different rows.
-        // We do not expect multiple write ops that write to the same db_oid because
-        // db_oid is the primary key and duplicate key error should be reported.
-        if (!db_oids.insert(db_oid).second) {
-          LOG(DFATAL) << "Unexpected multiple writes to db_oid "
-                      << db_oid << ", req: " << req->ShortDebugString();
-        }
+      // The write op to increment the catalog version number is special and may not have
+      // set any of ysql_catalog_version, ysql_db_catalog_version, and ysql_db_oid. Therefore
+      // we need to get db oid by decoding from ybctid.
+      dockv::DocKey doc_key;
+      if (!pg_req.has_ybctid_column_value() ||
+          !doc_key.FullyDecodeFrom(pg_req.ybctid_column_value().value().binary_value()).ok() ||
+          doc_key.range_group().size() != 1) {
+        context.RespondRpcFailure(rpc::ErrorStatusPB::ERROR_APPLICATION,
+            STATUS(InternalError, "Failed to get db oid"));
+      }
+      const uint32_t db_oid = doc_key.range_group()[0].GetUInt32();
+      // In per-db catalog version mode, there can be multiple write ops to the
+      // pg_yb_catalog_version table for different rows. We do not expect multiple write ops
+      // that write to the same db_oid because db_oid is the primary key and a duplicate-key
+      // error should be reported.
+      if (!db_oids.insert(db_oid).second) {
+        LOG(DFATAL) << "Unexpected multiple writes to db_oid "
+                    << db_oid << ", req: " << req->ShortDebugString();
       }
     }
   }

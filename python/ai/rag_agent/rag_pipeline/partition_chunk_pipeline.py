@@ -4,7 +4,7 @@ import boto3
 import logging
 import requests
 from rag_pipeline.chunk import chunk, get_splitter_for_filetype
-
+from observability import meko_observe
 
 def read_file_stream(
     file_location: str, chunk_size: int = 1024 * 1024
@@ -82,7 +82,7 @@ def read_file_stream(
                     break
                 yield chunk
 
-
+@meko_observe(name="Chunking & Partitioning", as_type="span")
 def stream_partition_and_chunk(
     pipeline_id: int,  # pipeline id of the document being processed
     file_location: str,

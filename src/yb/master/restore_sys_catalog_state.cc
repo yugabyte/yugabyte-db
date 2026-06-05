@@ -46,7 +46,6 @@
 
 using namespace std::placeholders;
 
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_bool(enable_fast_pitr);
 
 namespace yb {
@@ -251,7 +250,7 @@ class PgCatalogRestorePatch : public RestorePatch {
   }
 
   Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override {
-    if (!table_.IsPgYbCatalogMeta() || !FLAGS_ysql_enable_db_catalog_version_mode) {
+    if (!table_.IsPgYbCatalogMeta()) {
       return false;
     }
     dockv::SubDocKey sub_doc_key;

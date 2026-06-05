@@ -330,6 +330,141 @@
           sourceType: endpoint
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/customer-configs/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListCustomerConfigs
+    summary: List customer configurations (paged)
+    description: |
+      Returns customer configurations for the specified customer with pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Customer Configuration
+    requestBody:
+      $ref: "../components/requestBodies/CustomerConfigPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/CustomerConfigPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/kms-configs/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListKmsConfigs
+    summary: List KMS configurations (paged)
+    description: |
+      Returns KMS configurations for the specified customer with pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Encryption at rest
+    requestBody:
+      $ref: "../components/requestBodies/KmsConfigPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/KmsConfigPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/providers/{providerUUID}/image-bundles/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: providerUUID
+      in: path
+      description: Provider UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListImageBundles
+    summary: List image bundles (paged)
+    description: |
+      Returns image bundles for the specified provider with pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Image Bundle
+    requestBody:
+      $ref: "../components/requestBodies/ImageBundlePagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/ImageBundlePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/yba-backups':
   parameters:
     - name: cUUID
@@ -2079,6 +2214,35 @@
           sourceType: endpoint
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: internal
+  get:
+    operationId: getExportTelemetryConfig
+    summary: Get configured export telemetry configs for a universe
+    description: |
+      Returns the currently configured telemetry export configs (audit logs, query logs,
+      metrics) for a universe. A null sub-config indicates that export is disabled.
+    tags:
+      - Universe
+    responses:
+      '200':
+        $ref: "../components/responses/ExportTelemetryConfigResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.2.0
     x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/operator-import':
   parameters:

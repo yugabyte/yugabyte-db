@@ -992,8 +992,8 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
           return false;
         }
 
-        RETURN_NOT_OK(
-            VERIFY_RESULT(leaders.front()->shared_tablet())->Flush(tablet::FlushMode::kSync));
+        RETURN_NOT_OK(VERIFY_RESULT(leaders.front()->shared_tablet())
+                          ->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
         RETURN_NOT_OK(leaders.front()->RunLogGC());
 
         // Check that first log was garbage collected, so remote bootstrap will be required.

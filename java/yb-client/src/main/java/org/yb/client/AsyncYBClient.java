@@ -81,7 +81,6 @@ import java.nio.charset.Charset;
 import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.PrivateKey;
-import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -738,6 +737,20 @@ public class AsyncYBClient implements AutoCloseable {
     Deferred<FlushTableResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
+    return d;
+  }
+
+  public Deferred<FlushTabletsResponse> flushTablets(HostAndPort hp, String permanentUuid,
+      List<String> tabletIds) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    FlushTabletsRequest rpc = new FlushTabletsRequest(this.masterTable, permanentUuid, tabletIds);
+    Deferred<FlushTabletsResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    client.sendRpc(rpc);
     return d;
   }
 

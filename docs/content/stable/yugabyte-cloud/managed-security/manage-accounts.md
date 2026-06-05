@@ -24,7 +24,7 @@ Each account can have its own users, and can create and manage its own clusters.
 
 To manage accounts, click the Profile icon in the top right corner and choose **Manage Accounts** to display the **Manage Account** page.
 
-Note that only accounts designated by Yugabyte Support when you enabled the feature can add and manage accounts.
+Note that only users designated by Yugabyte Support when you enabled the feature can add and manage accounts.
 
 ![Accounts page](/images/yb-cloud/managed-accounts.png)
 

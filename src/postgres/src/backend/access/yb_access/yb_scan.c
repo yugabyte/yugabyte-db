@@ -4532,7 +4532,8 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 TableScanDesc
 ybc_heap_beginscan_for_index_build(Relation relation,
 								   Snapshot snapshot,
-								   IndexInfo *indexInfo)
+								   IndexInfo *indexInfo,
+								   YbPushdownExprs *yb_pushdown)
 {
 	TableScanDesc tsdesc = palloc(sizeof(TableScanDescData));
 	Scan	   *pg_scan_plan;
@@ -4551,7 +4552,7 @@ ybc_heap_beginscan_for_index_build(Relation relation,
 								 tsdesc->rs_nkeys,
 								 tsdesc->rs_key,
 								 pg_scan_plan,
-								 NULL,	/* rel_pushdown */
+								 yb_pushdown,
 								 NULL,	/* idx_pushdown */
 								 NIL,	/* aggrefs */
 								 0,		/* distinct_prefixlen */
@@ -5097,67 +5098,6 @@ YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 	return has_data;
 }
 
-void
-YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
-{
-	if (wait_policy == LockWaitError)
-	{
-		/*
-		 * In case the user has specified NOWAIT, the intention is to error out
-		 * immediately. If we raise ERRCODE_YB_TXN_CONFLICT, the statement might
-		 * be retried by our retry logic in yb_attempt_to_restart_on_error().
-		 */
-
-		if (rel)
-			ereport(ERROR,
-					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
-					 errmsg("could not obtain lock on row in relation \"%s\"",
-							RelationGetRelationName(rel))));
-		else
-		{
-			/*
-			 * It is not expected that relation is null. Raise an error wihout
-			 * relation name in release mode.
-			 */
-			Assert(false);
-			ereport(ERROR,
-					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
-					 errmsg("could not obtain lock on row")));
-		}
-	}
-
-	ereport(ERROR,
-			(errcode(ERRCODE_YB_TXN_CONFLICT),
-			 errmsg("could not serialize access due to concurrent update")));
-}
-
-static bool
-YBCIsExplicitRowLockConflictStatus(YbcStatus status)
-{
-	Assert(status);
-	const uint32_t err_code = YBCStatusPgsqlError(status);
-
-	return err_code == ERRCODE_YB_TXN_CONFLICT || err_code == ERRCODE_YB_TXN_ABORTED;
-}
-
-static void
-HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
-{
-	if (status.error_info.is_initialized &&
-		YBCIsExplicitRowLockConflictStatus(status.ybc_status))
-	{
-		YBCFreeStatus(status.ybc_status);
-		YBCHandleConflictError((OidIsValid(status.error_info.conflicting_table_id) ?
-								RelationIdGetRelation(status.error_info.conflicting_table_id) :
-								NULL),
-							   status.error_info.pg_wait_policy);
-	}
-	else
-	{
-		HandleYBStatus(status.ybc_status);
-	}
-}
-
 /*
  * The return value of this function depends on whether we are batching or not.
  * Currently, batching is enabled if the GUC yb_explicit_row_locking_batch_size > 1
@@ -5168,7 +5108,8 @@ HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
  */
 TM_Result
 YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
-			 LockWaitPolicy pg_wait_policy, EState *estate)
+			 LockWaitPolicy pg_wait_policy, EState *estate,
+			 const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle)
 {
 	const YbcPgExplicitRowLockParams lock_params = {
 		.rowmark = mode,
@@ -5180,13 +5121,13 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 	const Oid	db_oid = YBCGetDatabaseOid(relation);
 
 	if (yb_explicit_row_locking_batch_size > 1 &&
-		lock_params.pg_wait_policy != LockWaitSkip)
+		(lock_params.pg_wait_policy != LockWaitSkip || handle))
 	{
 		HandleExplicitRowLockStatus(YBCAddExplicitRowLockIntent(relfile_oid,
 																ybctid, db_oid,
 																&lock_params,
-																YbBuildTableLocalityInfo(relation)));
-		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctid);
+																YbBuildTableLocalityInfo(relation),
+																handle));
 		return TM_Ok;
 	}
 
@@ -5746,10 +5687,7 @@ ppk_buffer_fetch_callback(void *param, const char *key, size_t key_size)
 		if (added)
 			ConditionVariableSignal(&ppk->cv_empty);
 		else
-		{
-			ppk->fetch_status = FETCH_STATUS_IDLE;
 			++fkp->discarded;
-		}
 	}
 	else
 	{
@@ -5836,7 +5774,7 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	if (ppk->fetch_status == FETCH_STATUS_WORKING)
 		ppk->fetch_status = FETCH_STATUS_IDLE;
 	else
-		Assert(ppk->fetch_status == FETCH_STATUS_DONE || fkp.discarded);
+		Assert(ppk->fetch_status == FETCH_STATUS_DONE);
 	SpinLockRelease(&ppk->mutex);
 	/* Log results for debugging and fine tuning */
 	if (fkp.discarded)
@@ -5993,7 +5931,7 @@ ybParallelNextRange(YBParallelPartitionKeys ppk,
 					const char **high_bound,
 					size_t *high_bound_size)
 {
-	YbNextRangeResult result = NEXT_RANGE_WAIT;
+	YbNextRangeResult result;
 
 	while (true)
 	{
@@ -6056,7 +5994,11 @@ ybParallelNextRange(YBParallelPartitionKeys ppk,
 				/* The buffer should be empty now. */
 				Assert(ppk->key_count == 0);
 			}
-			/* Wait otherwise. */
+			else
+			{
+				/* Wait otherwise. */
+				result = NEXT_RANGE_WAIT;
+			}
 		}
 		SpinLockRelease(&ppk->mutex);
 		if (result == NEXT_RANGE_SUCCESS || result == NEXT_RANGE_DONE)

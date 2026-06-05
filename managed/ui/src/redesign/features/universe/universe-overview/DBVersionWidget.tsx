@@ -1,183 +1,167 @@
 import { FC, useState } from 'react';
-import _ from 'lodash';
-import { useSelector } from 'react-redux';
-import { useTranslation } from 'react-i18next';
-import { Box, Typography, Link } from '@material-ui/core';
-import { YBTooltip } from '../../../components';
-import { YBWidget } from '../../../../components/panels';
+import { Box, Link, Typography } from '@material-ui/core';
 import clsx from 'clsx';
-import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
-import { DBUpgradeModal as LegacyDBUpgradeModal } from '../universe-actions/rollback-upgrade/DBUpgradeModal';
-import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
-import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
+import { useTranslation } from 'react-i18next';
+import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
+
+import { YBWidget } from '@app/components/panels';
 import {
   getUniverseStatus,
-  SoftwareUpgradeState,
-  getUniversePendingTask,
-  UniverseState,
-  SoftwareUpgradeTaskType
-} from '../../../../components/universes/helpers/universeHelpers';
+  UniverseState
+} from '@app/components/universes/helpers/universeHelpers';
+import { getLatestSoftwareUpgradeLockingTaskForUniverse } from '@app/redesign/features/tasks/TaskUtils';
+import { DBUpgradeModal as LegacyDBUpgradeModal } from '@app/redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
+import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
+import { Universe } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { universeQueryKey } from '@app/redesign/helpers/api';
+import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
+import { getUniverse } from '@app/v2/api/universe/universe';
+import { UniverseInfoSoftwareUpgradeState } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+
+import { DbVersionWidgetTag } from './DbVersionWidgetTag';
 import { dbVersionWidgetStyles } from './DBVersionWidgetStyles';
-import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
-import { TaskObject } from '../universe-actions/rollback-upgrade/utils/types';
-//icons
-import UpgradeArrow from '../../../assets/upgrade-arrow.svg?img';
-import WarningExclamation from '../../../assets/warning-triangle.svg?img';
+
+import UpgradeArrow from '@app/redesign/assets/upgrade-arrow.svg?img';
+import { TaskState } from '../../tasks/dtos';
 
 interface DBVersionWidgetProps {
+  universeUuid: string;
+  /** Legacy universe payload for the non-canary upgrade modal only. */
+  universeDataForLegacyDbUpgrade: Universe;
   higherVersionCount: number;
   isRollBackFeatureEnabled: boolean;
   isCanaryUpgradeEnabled: boolean;
-  failedTaskDetails: TaskObject;
 }
 
 export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
+  universeUuid,
+  universeDataForLegacyDbUpgrade,
   higherVersionCount,
   isRollBackFeatureEnabled,
-  isCanaryUpgradeEnabled,
-  failedTaskDetails
+  isCanaryUpgradeEnabled
 }) => {
-  const { t } = useTranslation();
+  const [isDbUpgradeModalOpen, setIsDbUpgradeModalOpen] = useState(false);
   const classes = dbVersionWidgetStyles();
-  const currentUniverse = useSelector((state: any) => state.universe.currentUniverse.data);
   const tasks = useSelector((state: any) => state.tasks);
-  const [openUpgradeModal, setUpgradeModal] = useState(false);
-  const primaryCluster = getPrimaryCluster(currentUniverse?.universeDetails?.clusters);
-  const dbVersionValue = primaryCluster?.userIntent?.ybSoftwareVersion;
-  const minifiedCurrentVersion = dbVersionValue?.split('-')[0];
-  const upgradeState = currentUniverse?.universeDetails?.softwareUpgradeState;
-  const previousDBVersion = currentUniverse?.universeDetails?.prevYBSoftwareConfig?.softwareVersion;
-  const isUniversePaused = currentUniverse?.universeDetails?.universePaused;
-  const universeStatus = getUniverseStatus(currentUniverse);
-  const universePendingTask = getUniversePendingTask(
-    currentUniverse?.universeUUID,
-    tasks?.customerTaskList
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'universeActions.dbUpgrade.clusterWidget'
+  });
+  const universeQuery = useQuery(
+    universeQueryKey.detailsV2(universeUuid),
+    () => getUniverse(universeUuid),
+    {
+      enabled: !!universeUuid
+    }
   );
-  const failedTaskTargetVersion = failedTaskDetails?.details?.versionNumbers?.ybSoftwareVersion;
 
-  const upgradingVersion = universePendingTask?.details?.versionNumbers?.ybSoftwareVersion;
+  const v2UniverseInfo = universeQuery.data?.info;
+  const v2UniverseSpec = universeQuery.data?.spec;
+  const rawYbSoftwareVersion = v2UniverseSpec?.yb_software_version ?? '';
+  const dbVersionLabel = rawYbSoftwareVersion
+    ? formatYbSoftwareVersionString(rawYbSoftwareVersion)
+    : '';
 
-  let statusDisplay = (
-    <Box display="flex" flexDirection={'row'} alignItems={'center'}>
-      <Typography className={classes.versionText}>v{minifiedCurrentVersion}</Typography>
-      &nbsp;
-      {isRollBackFeatureEnabled &&
-        higherVersionCount > 0 &&
-        universeStatus.state === UniverseState.GOOD &&
-        !isUniversePaused &&
-        _.isEmpty(universePendingTask) && (
-          <>
-            <img src={UpgradeArrow} height="14px" width="14px" alt="--" /> &nbsp;
-            <Link
-              component={'button'}
-              underline="always"
-              onClick={() => setUpgradeModal(true)}
-              className={classes.upgradeLink}
-            >
-              {t('universeActions.dbRollbackUpgrade.widget.upgradeAvailable')}
-            </Link>
-          </>
-        )}
-      {upgradeState === SoftwareUpgradeState.PRE_FINALIZE && (
-        <YBTooltip title="Pending upgrade Finalization">
-          <img src={WarningExclamation} height={'14px'} width="14px" alt="--" />
-        </YBTooltip>
-      )}
-      {[SoftwareUpgradeState.FINALIZE_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
-        upgradeState && universeStatus.state !== UniverseState.GOOD
-      ) && (
-        <YBTooltip
-          title={
-            upgradeState === SoftwareUpgradeState.FINALIZE_FAILED
-              ? `Failed to finalize upgrade to v${failedTaskTargetVersion}`
-              : `Failed to upgrade database version to v${failedTaskTargetVersion}`
+  const softwareUpgradeState = v2UniverseInfo?.software_upgrade_state;
+
+  const universeStatus = getUniverseStatus(
+    v2UniverseInfo
+      ? {
+          universeDetails: {
+            updateInProgress: v2UniverseInfo.update_in_progress,
+            updateSucceeded: v2UniverseInfo.update_succeeded,
+            universePaused: v2UniverseInfo.universe_paused,
+            placementModificationTaskUuid: v2UniverseInfo.placement_modification_task_uuid,
+            errorString: ''
           }
-        >
-          <span>
-            <i className={`fa fa-warning ${classes.errorIcon}`} />
-          </span>
-        </YBTooltip>
+        }
+      : undefined
+  );
+  const latestSoftwareUpgradeLockingTask = getLatestSoftwareUpgradeLockingTaskForUniverse(
+    tasks?.customerTaskList,
+    universeUuid
+  );
+  const shouldShowDbVersionLabel =
+    (universeStatus.state === UniverseState.GOOD ||
+      universeStatus.state === UniverseState.PAUSED ||
+      universeStatus.state === UniverseState.PENDING) &&
+    latestSoftwareUpgradeLockingTask?.status !== TaskState.RUNNING;
+  const shouldShowUpgradeAvailableLink =
+    universeStatus.state === UniverseState.GOOD &&
+    latestSoftwareUpgradeLockingTask?.status !== TaskState.RUNNING &&
+    isRollBackFeatureEnabled &&
+    higherVersionCount > 0 &&
+    softwareUpgradeState === UniverseInfoSoftwareUpgradeState.Ready;
+
+  const statusDisplay = (
+    <Box display="flex" gridGap={8} alignItems="center">
+      {shouldShowDbVersionLabel && (
+        <Typography variant="h4" className={classes.text}>
+          {dbVersionLabel}
+        </Typography>
       )}
-      {upgradeState === SoftwareUpgradeState.ROLLBACK_FAILED && (
-        <YBTooltip title={`Failed to rollback to v${failedTaskTargetVersion}`}>
-          <span>
-            <i className={`fa fa-warning ${classes.errorIcon}`} />
-          </span>
-        </YBTooltip>
+      {shouldShowUpgradeAvailableLink && (
+        <div className={classes.upgradeAvailableLinkContainer}>
+          <img src={UpgradeArrow} height="14px" width="14px" alt="--" /> &nbsp;
+          <Link
+            component="button"
+            underline="always"
+            onClick={() => setIsDbUpgradeModalOpen(true)}
+            className={classes.upgradeLink}
+          >
+            {t('upgradeAvailable')}
+          </Link>
+        </div>
+      )}
+      {universeStatus.state !== UniverseState.PAUSED && (
+        <DbVersionWidgetTag
+          latestSoftwareUpgradeLockingTask={latestSoftwareUpgradeLockingTask}
+          softwareUpgradeState={softwareUpgradeState}
+        />
       )}
     </Box>
   );
 
-  if (
-    universeStatus.state === UniverseState.PENDING &&
-    isNonEmptyObject(universePendingTask) &&
-    upgradeState !== SoftwareUpgradeState.READY
-  ) {
-    statusDisplay = (
-      <Box display={'flex'} flexDirection={'row'} alignItems="baseline">
-        <YBLoadingCircleIcon size="inline" variant="primary" />
-        <Typography variant="body2" className={classes.blueText}>
-          {universePendingTask.type === SoftwareUpgradeTaskType.ROLLBACK_UPGRADE &&
-            (t('universeActions.dbRollbackUpgrade.widget.rollingBackTooltip', {
-              version: previousDBVersion
-            }) as string)}
-          {universePendingTask.type === SoftwareUpgradeTaskType.FINALIZE_UPGRADE &&
-            (t('universeActions.dbRollbackUpgrade.widget.finalizingTooltip', {
-              version: minifiedCurrentVersion
-            }) as string)}
-          {universePendingTask.type === SoftwareUpgradeTaskType.SOFTWARE_UPGRADE &&
-            (t('universeActions.dbRollbackUpgrade.widget.upgradingTooltip', {
-              version: upgradingVersion
-            }) as string)}
-        </Typography>
-      </Box>
-    );
-  }
-
   return (
     <div key="dbVersion">
-      {
-        <YBWidget
-          noHeader
-          noMargin
-          size={1}
-          className={clsx('overview-widget-database', classes.versionContainer)}
-          body={
-            <Box
-              display={'flex'}
-              flexDirection={'row'}
-              pt={3}
-              pl={2}
-              pr={2}
-              width="100%"
-              height={'100%'}
-              justifyContent={'space-between'}
-              alignItems={'center'}
-            >
-              <Typography variant="body1">
-                {t('universeActions.dbRollbackUpgrade.widget.versionLabel')}
-              </Typography>
-              {statusDisplay}
-            </Box>
-          }
-        />
-      }
-      {openUpgradeModal &&
+      <YBWidget
+        noHeader
+        noMargin
+        size={1}
+        className={clsx('overview-widget-database', classes.versionContainer)}
+        body={
+          <Box
+            display={'flex'}
+            flexDirection={'row'}
+            pt={3}
+            pl={2}
+            pr={2}
+            width="100%"
+            height={'100%'}
+            justifyContent={'space-between'}
+            alignItems={'center'}
+          >
+            <Typography variant="body1">{t('version')}</Typography>
+            {statusDisplay}
+          </Box>
+        }
+      />
+      {isDbUpgradeModalOpen &&
         (isCanaryUpgradeEnabled ? (
           <DbUpgradeModal
-            universeUuid={currentUniverse?.universeUUID ?? ''}
+            universeUuid={universeUuid}
             modalProps={{
-              open: openUpgradeModal,
-              onClose: () => setUpgradeModal(false)
+              open: isDbUpgradeModalOpen,
+              onClose: () => setIsDbUpgradeModalOpen(false)
             }}
           />
         ) : (
           <LegacyDBUpgradeModal
-            open={openUpgradeModal}
+            open={isDbUpgradeModalOpen}
             onClose={() => {
-              setUpgradeModal(false);
+              setIsDbUpgradeModalOpen(false);
             }}
-            universeData={currentUniverse}
+            universeData={universeDataForLegacyDbUpgrade}
           />
         ))}
     </div>

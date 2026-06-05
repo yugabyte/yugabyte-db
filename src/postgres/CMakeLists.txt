@@ -132,6 +132,15 @@ concat_thirdparty_prefix_dirs_with_suffix(PG_LIB_DIRS " " "/lib")
 # explicitly.
 add_pg_ld_flags("${YB_THIRDPARTY_MAYBE_INSTRUMENTED_RPATH_ARG}")
 
+if(IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0")
+  # GCC 15+ defaults to C23 which does not build. Postgres generally builds with gnu99, but there
+  # are some places where it isn't set, and the compiler default gets used.
+  string(APPEND CMAKE_C_FLAGS " -std=gnu99")
+  # False positive -Wclobbered warnings appear in debug, e.g.:
+  #    error: variable '({anonymous})' might be clobbered by 'longjmp' or 'vfork'
+  add_pg_c_cxx_flags(-Wno-clobbered)
+endif()
+
 if(APPLE AND NOT IS_APPLE_CLANG)
   add_pg_ld_flags("-L${CMAKE_OSX_SYSROOT}/usr/lib")
   add_pg_c_cxx_flags("-isysroot ${CMAKE_OSX_SYSROOT}")

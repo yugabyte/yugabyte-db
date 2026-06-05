@@ -25,10 +25,13 @@ import java.util.Properties;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestPreparedStatements extends BaseYsqlConnMgr {
   // It is required to test prepared statements in case of many to one mapping of logical and
   // physical connections by Ysql Connection Manager.
@@ -184,6 +187,40 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
         if (connection[i] != null && !connection[i].isClosed())
           connection[i].close();
       }
+    }
+  }
+
+  @Test
+  public void testPreparedStatementNameIs64BitHash() throws Exception {
+    disableWarmupModeAndRestartCluster();
+
+    Properties props = new Properties();
+    props.setProperty("prepareThreshold", "1");
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(props)) {
+      Statement stmt = conn.createStatement();
+      stmt.execute("CREATE TABLE IF NOT EXISTS t_hash_name_test (id int)");
+
+      PreparedStatement pstmt = conn.prepareStatement(
+          "SELECT * FROM t_hash_name_test WHERE id = ?");
+      pstmt.setInt(1, 1);
+      pstmt.execute();
+
+      ResultSet rs = stmt.executeQuery(
+          "SELECT name FROM pg_prepared_statements " +
+          "WHERE statement = 'SELECT * FROM t_hash_name_test WHERE id = $1'");
+      assertTrue("Expected a prepared statement in pg_prepared_statements",
+          rs.next());
+
+      String name = rs.getString("name");
+      assertEquals(
+          "Prepared statement name should be 16 hex digits (64-bit hash)",
+          16, name.length());
+      assertTrue(
+          "Prepared statement name should contain only hex characters, got: " + name,
+          name.matches("[0-9a-f]{16}"));
     }
   }
 

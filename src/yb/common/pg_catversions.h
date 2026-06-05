@@ -13,10 +13,13 @@
 
 #pragma once
 
-#include "yb/util/logging.h"
+
 
 #include "yb/gutil/macros.h"
+
 #include "yb/util/hash_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 
 namespace yb::master {
 
@@ -38,11 +41,13 @@ struct CatalogVersionInfo {
 
   // Shared memory array db_catalog_versions_ index of the slot allocated for the database.
   int32_t  shm_index;
-  // If the new version received in the tserver-master heartbeat response is older than
-  // current_version then increments this count. Otherwise, reset it. So a positive count indicates
-  // how many consecutive heartbeat responses have returned an older catalog version than what this
-  // tserver has already seen.
-  uint32_t new_version_ignored_count;
+
+  // When the current stale episode started, i.e. the first time we received a version older than
+  // current_version since the last advance. Uninitialized when not in a stale episode.
+  MonoTime stale_since;
+  // Per-episode random fatal threshold (chosen once when the episode starts, so all tservers do
+  // not crash at the same time). Compared against (now - stale_since).
+  MonoDelta stale_fatal_threshold;
 };
 
 } // namespace yb::tserver

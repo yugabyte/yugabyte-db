@@ -1321,6 +1321,154 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_EQ(1000 * cooldown_value, history_event["cooldown"].GetInt64());
 }
 
+// Verify that setting yb_auto_analyze_enabled=false on a table prevents auto analyze from running
+// on that table, while other tables are still analyzed. Also verify that re-enabling
+// yb_auto_analyze_enabled allows the table to be analyzed again.
+TEST_F(PgAutoAnalyzeTest, PerTableAutoAnalyzeEnabledFalse) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string enabled_table = "enabled_tbl";
+  const std::string disabled_table = "disabled_tbl";
+  const std::string table_creation_stmt =
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, enabled_table));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, disabled_table));
+
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER TABLE $0 SET (yb_auto_analyze_enabled = false)", disabled_table));
+
+  // Insert one row per table to populate name cache and reltuples, reloptions caches.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", enabled_table));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", disabled_table));
+  auto wait_for_cache_ms =
+      FLAGS_ysql_node_level_mutation_reporting_interval_ms +
+      FLAGS_ysql_cluster_level_mutation_persist_interval_ms * 2 + 5000 * kTimeMultiplier;
+  std::this_thread::sleep_for(wait_for_cache_ms * 1ms);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(2, 100) AS s", enabled_table));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(2, 100) AS s", disabled_table));
+
+  ASSERT_OK(WaitForTableReltuples(conn, enabled_table, 100));
+  ASSERT_OK(
+      WaitForTableReltuples(conn, disabled_table, -1, true /* ensure_analyze_not_triggered */));
+
+  // Re-enable auto analyze. The accumulated mutations should now trigger analyze.
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER TABLE $0 SET (yb_auto_analyze_enabled = true)", disabled_table));
+  ASSERT_OK(WaitForTableReltuples(conn, disabled_table, 100));
+}
+
+// Verify that per-table yb_auto_analyze_threshold and yb_auto_analyze_scale_factor
+// override the global ysql_auto_analyze_threshold and ysql_auto_analyze_scale_factor flags.
+TEST_F(PgAutoAnalyzeTest, PerTableAnalyzeThreshold) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string low_threshold_table = "low_threshold_tbl";
+  const std::string high_threshold_table = "high_threshold_tbl";
+  const std::string table_creation_stmt =
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))";
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, low_threshold_table));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, high_threshold_table));
+
+  // Per-table low threshold of 5 (below global 50) should trigger analyze sooner.
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 SET (yb_auto_analyze_threshold = 5, "
+      "yb_auto_analyze_scale_factor = 0)",
+      low_threshold_table));
+  // Per-table threshold of 1000 (above global 50) should prevent premature analyze.
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 SET (yb_auto_analyze_threshold = 1000)", high_threshold_table));
+
+  ASSERT_OK(WaitForTableReltuples(conn, low_threshold_table, -1));
+  ASSERT_OK(WaitForTableReltuples(conn, high_threshold_table, -1));
+
+  // Insert 20 rows: above per-table low threshold (5) but below both global (50) and
+  // per-table high (1000).
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(1, 20) AS s", low_threshold_table));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(1, 20) AS s", high_threshold_table));
+
+  ASSERT_OK(WaitForTableReltuples(conn, low_threshold_table, 20));
+  ASSERT_OK(WaitForTableReltuples(
+      conn, high_threshold_table, -1, true /* ensure_analyze_not_triggered */));
+}
+
+// Verify that per-table cooldown settings (yb_auto_analyze_cooldown_scale_factor,
+// yb_auto_analyze_min_cooldown, yb_auto_analyze_max_cooldown) override the global flags.
+// A table with a very short cooldown should be analyzed again quickly.
+TEST_F(PgAutoAnalyzeTest, PerTableCooldownSettings) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  // Global cooldown: 10 minutes so that without per-table override, re-analyze won't happen
+  // quickly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_min_cooldown_per_table) = 600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_max_cooldown_per_table) = 600000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string fast_table = "fast_cooldown_tbl";
+  // Per-table: min 100ms, max 200ms, scale 1
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1)) "
+      "WITH (yb_auto_analyze_min_cooldown = 100, "
+      "yb_auto_analyze_max_cooldown = 200, "
+      "yb_auto_analyze_cooldown_scale_factor = 1)",
+      fast_table));
+
+  // First batch: trigger initial analyze.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(1, 10) AS s", fast_table));
+  ASSERT_OK(WaitForTableReltuples(conn, fast_table, 10));
+
+  // Second batch: despite the 600s global cooldown, per-table 100ms cooldown allows re-analyze.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(11, 30) AS s", fast_table));
+  ASSERT_OK(WaitForTableReltuples(conn, fast_table, 30));
+}
+
+// Verify that ALTER TABLE SET can change per-table cooldown settings.
+TEST_F(PgAutoAnalyzeTest, AlterTableCooldownSettings) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_min_cooldown_per_table) = 600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_max_cooldown_per_table) = 600000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string table_name = "alter_cooldown_tbl";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, v1 INT, PRIMARY KEY(h1))", table_name));
+
+  // Trigger initial analyze under the 600s global cooldown.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(1, 10) AS s", table_name));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 10));
+
+  // With the global cooldown, this should NOT trigger re-analyze within 10 mins.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT s, s FROM generate_series(11, 30) AS s", table_name));
+  std::this_thread::sleep_for(3s);
+  ASSERT_OK(WaitForTableReltuples(
+      conn, table_name, 10, true /* ensure_analyze_not_triggered */));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 SET ("
+      "yb_auto_analyze_min_cooldown = 100, "
+      "yb_auto_analyze_max_cooldown = 200, "
+      "yb_auto_analyze_cooldown_scale_factor = 1)", table_name));
+
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 30));
+}
+
 class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {

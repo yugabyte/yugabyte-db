@@ -1,0 +1,16 @@
+title: KmsConfiguration
+description: |
+  Customer KMS configuration exposed to the API (masked credentials + metadata).
+type: object
+required:
+  - credentials
+  - metadata
+properties:
+  credentials:
+    description: |
+      Masked provider auth configuration (opaque structure). Empty when the row has no
+      auth configuration loaded (e.g. missing or unavailable credentials).
+    type: object
+    additionalProperties: true
+  metadata:
+    $ref: "./KmsConfigurationMetadata.yaml"

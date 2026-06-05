@@ -22,7 +22,7 @@ Your Sandbox cluster includes the following:
 
 - Single node.
 - Up to 2 vCPUs, 4 GB memory, and 10 GB of storage, depending on the cloud provider.
-- Access to [Preview, Innovation, and Early Access release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on).
+- Access to [Extended and Rapid release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on).
 - Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 - Built-in [connection pooling](../../../../additional-features/connection-manager-ysql/).
 
@@ -64,7 +64,7 @@ Save your database credentials. If you lose them, you won't be able to use the d
 
 After you complete the wizard, YugabyteDB Aeon bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes.
 
-When the cluster is ready, the cluster [Overview](../../../cloud-monitor/overview/) tab is displayed.
+When the cluster is ready, the cluster **Overview** tab is displayed.
 
 You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon with the database admin credentials you specified.
 

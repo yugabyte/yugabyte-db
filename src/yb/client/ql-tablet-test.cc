@@ -819,8 +819,10 @@ TEST_F(QLTabletTest, WaitFlush) {
   bool leader_found = false;
   while (!leader_found) {
     for (size_t i = 0; i != peers.size(); ++i) {
-      if (peers[i]->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-        peers[(i + 1) % peers.size()]->log()->TEST_SetSleepDuration(500ms);
+      auto& next_peer = peers[(i + 1) % peers.size()];
+      if (peers[i]->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY &&
+          next_peer->log_available()) {
+        next_peer->log()->TEST_SetSleepDuration(500ms);
         leader_found = true;
         break;
       }
@@ -1157,7 +1159,7 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
       ++key;
       SetValue(session, key, ValueForKey(key), table1_);
       if (meta.size() <= original_rocksdb_level0_stop_writes_trigger) {
-        ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+        ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
         stop_key = key + 10;
       } else if (key >= stop_key) {
         break;
@@ -1802,7 +1804,7 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
     ASSERT_OK(cluster_->FlushTablets());
 
     auto get_tablet_size = [](tablet::Tablet* tablet) -> Result<size_t> {
-      RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
+      RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
       RETURN_NOT_OK(tablet->ForceManualRocksDBCompact());
       return tablet->GetCurrentVersionSstFilesSize();
     };

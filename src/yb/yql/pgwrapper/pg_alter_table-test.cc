@@ -42,8 +42,6 @@ class PgAlterTableTest : public LibPqTestBase, public testing::WithParamInterfac
         // Add flags to enable packed row feature.
         options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
         options->extra_tserver_flags.push_back("--ysql_enable_packed_row=true");
-        options->extra_tserver_flags.push_back(
-            "--allowed_preview_flags_csv=ysql_use_packed_row_v2");
         options->extra_tserver_flags.push_back(Format(
             "--ysql_use_packed_row_v2=$0",
             GetParam() == StorageFormat::PackedRowsV2 ? "true" : "false"));

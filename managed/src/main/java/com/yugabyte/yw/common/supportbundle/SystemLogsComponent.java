@@ -4,7 +4,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
@@ -78,7 +77,7 @@ public class SystemLogsComponent implements SupportBundleComponent {
         Files.delete(nodeTargetFile);
         FileUtils.unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
         unZippedFile.delete();
-        String tmpDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+        String tmpDir = nodeUniverseManager.getRemoteTmpDir(node, universe);
         Path rootFileTar = Paths.get(bundlePath.toString(), tmpDir, "root_files.tar.gz");
         if (Files.exists(rootFileTar)) {
           unZippedFile =

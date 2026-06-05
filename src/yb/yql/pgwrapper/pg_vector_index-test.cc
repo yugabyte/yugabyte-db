@@ -81,20 +81,26 @@ namespace yb::docdb {
 extern bool TEST_vector_index_filter_allowed;
 extern size_t TEST_vector_index_max_checked_entries;
 
-}
+} // namespace yb::docdb
+
+namespace yb::internal {
+
+extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
+
+} // namespace yb::internal
 
 namespace yb::tablet {
 
 extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
-}
+} // namespace yb::tablet
 
 namespace yb::vector_index {
 
 extern MonoDelta TEST_sleep_during_flush;
 
-}
+} // namespace yb::vector_index
 
 namespace yb::pgwrapper {
 
@@ -730,6 +736,44 @@ TEST_P(PgVectorIndexTest, DropWithFlush) {
   ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
 }
 
+// Regression test for GH#30640: DROP INDEX on a colocated, partitioned table
+// fails with "current transaction is expired or aborted".
+TEST_P(PgVectorIndexTest, DropPartitioned) {
+  tablet::TEST_fail_on_seq_scan_with_vector_indexes = false;
+
+  auto colocated = IsColocated();
+  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  if (colocated) {
+    ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db COLOCATION = true"));
+    conn = ASSERT_RESULT(Connect());
+  }
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (id int, v1 varchar(100), vec_col vector(2), "
+      "PRIMARY KEY (id, v1)) PARTITION BY LIST(v1)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_part_a PARTITION OF test FOR VALUES IN ('cat a')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_part_b PARTITION OF test FOR VALUES IN ('cat b')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_part_default PARTITION OF test DEFAULT"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test (id, v1, vec_col) "
+      "SELECT i, "
+      "  CASE WHEN i % 3 = 0 THEN 'cat a' "
+      "       WHEN i % 3 = 1 THEN 'cat b' "
+      "       ELSE 'cat c' END, "
+      "  ('[' || (i % 10)::text || ',' || ((i + 1) % 10)::text || ']')::vector "
+      "FROM generate_series(1, 100) AS s(i)"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX vi_part ON test USING ybhnsw (vec_col vector_l2_ops)"));
+
+  ASSERT_OK(conn.Execute("DROP INDEX vi_part"));
+}
+
 void PgVectorIndexTest::TestManyRows(AddFilter add_filter, Backfill backfill) {
   constexpr size_t kNumRows = RegularBuildVsSanitizers(2000, 64);
 
@@ -1108,7 +1152,7 @@ TEST_P(PgVectorIndexTest, EfSearch) {
 
   for (int i = 0; i != kIterations; ++i) {
     for (int ef : {kSmallEf, kBigEf}) {
-      ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
+      ASSERT_OK(conn.ExecuteFormat("SET hnsw.ef_search = $0", ef));
       ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_max_checked_entries) = ef * 100;
       auto valid = RowsMatch(conn, "", ExpectedRows(1));
       ASSERT_TRUE(valid || ef == kSmallEf);
@@ -1818,7 +1862,8 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   auto flush_tablet_and_wait = [&tablet, db_impl, cluster = cluster_.get()](
       const std::string& description) -> Status {
     RETURN_NOT_OK(WaitForAllIntentsApplied(cluster, 10s));
-    RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+    RETURN_NOT_OK(tablet->Flush(
+        tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs, rocksdb::FlushReason::kTestOnly));
 
     // Wait for the files are really being flushed.
     SleepFor(MonoDelta::FromMilliseconds(200));
@@ -2031,7 +2076,61 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
   PackingMode GetPackingMode() const override {
     return PackingMode::kV1;
   }
+
+  // Flushes the single tablet and returns the vector index reverse mapping entries currently
+  // persisted in the Regular DB.
+  Result<std::string> DumpSingleTabletReverseMapping() {
+    RETURN_NOT_OK(WaitNoBackgroundInserts());
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    auto table_peers = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+    SCHECK_EQ(table_peers.size(), 1, IllegalState, "Expected exactly one tablet leader");
+    auto tablet = VERIFY_RESULT(table_peers.front()->shared_tablet());
+    auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
+    SCHECK(!rocksdb_dir.empty(), IllegalState, "Empty RocksDB dir");
+    LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
+
+    TestKVFormatter formatter;
+    RETURN_NOT_OK(RunSstDump(formatter, rocksdb_dir));
+    auto output = formatter.FormatVectorsMeta();
+    LOG(INFO) << "Parsed SST dump output:\n" << output;
+    return output;
+  }
 };
+
+TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
+  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+
+  constexpr size_t kNumRows = 5;
+  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+
+  // No reverse mapping entries are expected: backfill skipped them and the rows predate the index.
+  ASSERT_TRUE(output.empty()) << "Unexpected reverse mapping entries:\n" << output;
+}
+
+TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
+  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+
+  constexpr size_t kNumRows = 5;
+  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+
+  // The order is deterministic and stable, but follows [HT, str(hash, id)] ordering, where
+  // HT is the backfill time and is the same for all entries for this particular backfill case.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_1_vector_1 -> ybctid_1
+      )#",
+      output);
+}
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {
   constexpr size_t kNumRows = 5;
@@ -2041,21 +2140,8 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
 
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 4"));
-  ASSERT_OK(cluster_->FlushTablets());
 
-  auto table_peers = ASSERT_RESULT(
-      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
-  ASSERT_EQ(table_peers.size(), 1);
-  auto tablet = ASSERT_RESULT(table_peers.front()->shared_tablet());
-  auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
-  ASSERT_FALSE(rocksdb_dir.empty());
-  LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
-
-  TestKVFormatter formatter;
-  ASSERT_OK(RunSstDump(formatter, rocksdb_dir));
-
-  auto output = formatter.FormatVectorsMeta();
-  LOG(INFO) << "Parsed SST dump output:\n" << output;
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
 
   // The entires order is different from what sst_dump really prints, it's required to re-sort
   // to be able to compare the expected results.

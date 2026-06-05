@@ -46,8 +46,7 @@ DEPRECATE_FLAG(int32, cdc_max_apply_batch_num_records, "4_2023");
 
 DEPRECATE_FLAG(uint32, cdc_max_apply_batch_size_bytes, "4_2023");
 
-DEFINE_test_flag(
-    bool, xcluster_write_hybrid_time, false,
+DEFINE_test_flag(bool, xcluster_write_hybrid_time, false,
     "Override external_hybrid_time with initialHybridTimeValue for testing.");
 
 DECLARE_uint64(consensus_max_batch_size_bytes);

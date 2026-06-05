@@ -11,7 +11,6 @@
 | "Enable downloading metrics as a PDF" | "yb.ui.metrics.enable_download_pdf" | "CUSTOMER" | "When enabled, the download metrics option is shown on the universe metrics page." | "Boolean" |
 | "Use Redesigned Provider UI" | "yb.ui.feature_flags.provider_redesign" | "CUSTOMER" | "The redesigned provider UI adds a provider list view, a provider details view and improves the provider creation form for AWS, AZU, GCP, and K8s" | "Boolean" |
 | "Enable partial editing of in use providers" | "yb.ui.feature_flags.edit_in_use_provider" | "CUSTOMER" | "A subset of fields from in use providers can be edited. Users can edit in use providers directly through the YBA API. This config is used to enable this functionality through YBA UI as well." | "Boolean" |
-| "Show underlying xCluster configs from DR setup" | "yb.ui.xcluster.dr.show_xcluster_config" | "CUSTOMER" | "YBA creates an underlying transactional xCluster config when setting up an active-active single-master disaster recovery (DR) config. During regular operation you should manage the DR config through the DR UI instead of the xCluster UI. This feature flag serves as a way to expose the underlying xCluster config for troubleshooting." | "Boolean" |
 | "Enable the option to skip creating a full copy for xCluster operations" | "yb.ui.xcluster.enable_skip_bootstrapping" | "CUSTOMER" | "Enabling this runtime config will expose an option in the create xCluster modal and select tables modal to skip creating a full copy for xCluster replication configs." | "Boolean" |
 | "Enforce User Tags" | "yb.universe.user_tags.is_enforced" | "CUSTOMER" | "Prevents universe creation when the enforced tags are not provided." | "Boolean" |
 | "Enforced User Tags List" | "yb.universe.user_tags.enforced_tags" | "CUSTOMER" | "A list of enforced user tag and accepted value pairs during universe creation. Pass '*' to accept all values for a tag. Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\",\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]" | "Key Value SetMultimap" |
@@ -64,6 +63,7 @@
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
+| "OIDC Callback Mode" | "yb.security.oidc_callback_mode" | "GLOBAL" | "Controls whether OIDC callback URLs use the default query parameter style or path parameter style. Possible values are: query, path." | "OidcCallbackMode" |
 | "Enable SSH2" | "yb.security.ssh2_enabled" | "GLOBAL" | "Flag for enabling ssh2 on YBA" | "Boolean" |
 | "Enable Custom Hooks" | "yb.security.custom_hooks.enable_custom_hooks" | "GLOBAL" | "Flag for enabling custom hooks on YBA" | "Boolean" |
 | "Enable SUDO" | "yb.security.custom_hooks.enable_sudo" | "GLOBAL" | "Flag for enabling sudo access while running custom hooks" | "Boolean" |
@@ -135,6 +135,7 @@
 | "OIDC feature enhancements" | "yb.security.oidc_feature_enhancements" | "GLOBAL" | "Enables the OIDC enhancements such as auth_token retrieval, user registration in YBA on login, etc." | "Boolean" |
 | "Devops command timeout" | "yb.devops.command_timeout" | "GLOBAL" | "Devops command timeout" | "Duration" |
 | "Node destroy command timeout" | "yb.node_ops.destroy_server_timeout" | "GLOBAL" | "Timeout for node destroy command before failing." | "Duration" |
+| "Node reachability check timeout" | "yb.node_script.reachability_check_timeout_sec" | "GLOBAL" | "Timeout in seconds for the pre-check that determines whether a node is reachable for per-node platform APIs such as run-script and file-collections. Unreachable nodes are reported as failed nodes rather than producing per-file/per-command errors." | "Integer" |
 | "YBC Compatible DB Version" | "ybc.compatible_db_version" | "GLOBAL" | "Minimum YBDB version which supports YBC" | "String" |
 | "Force YBC Shutdown during upgrade" | "ybc.upgrade.force_shutdown" | "GLOBAL" | "For YBC Shutdown during upgrade" | "Boolean" |
 | "Enable strict mode to ignore deprecated YBA APIs" | "yb.api.mode.strict" | "GLOBAL" | "Will ignore deprecated APIs" | "Boolean" |
@@ -168,6 +169,7 @@
 | "Wait( in milliseconds ) between each retries on UNAVAILABLE status" | "ybc.client_settings.wait_each_unavailable_retry_ms" | "GLOBAL" | "Wait( in milliseconds ) between client side retries when server returns UNAVAILABLE status" | "Integer" |
 | "Wait( in milliseconds ) for YB-Controller RPC response" | "ybc.client_settings.deadline_ms" | "GLOBAL" | "Wait( in milliseconds ) for YB-Controller RPC response before throwing client-side DEADLINE_EXCEEDED" | "Integer" |
 | "Enable RBAC for Groups" | "yb.security.group_mapping_rbac_support" | "GLOBAL" | "Map LDAP/OIDC groups to custom roles defined by RBAC." | "Boolean" |
+| "Allow SuperAdmin in LDAP/OIDC group and user role mappings" | "yb.security.allow_superadmin_user_group_mapping" | "GLOBAL" | "When true, a SuperAdmin may assign the SuperAdmin system role via role bindings (including to LDAP/OIDC users) and may include SuperAdmin in LDAP/OIDC group mappings. When false, those operations are rejected." | "Boolean" |
 | "Enable Per Process Metrics" | "yb.ui.feature_flags.enable_per_process_metrics" | "GLOBAL" | "Enable Per Process Metrics" | "Boolean" |
 | "Node Agent Enabler Run Installer" | "yb.node_agent.enabler.run_installer" | "GLOBAL" | "Enable or disable the background installer in node agent enabler" | "Boolean" |
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
@@ -200,8 +202,10 @@
 | "Node Agent Server Log Level Per Request" | "yb.node_agent.server.request_log_level" | "GLOBAL" | "Log level for Node Agent server per request (0 for debug, -1 for default)" | "Integer" |
 | "Disable Platform HA Restore Transaction" | "yb.ha.disable_platform_ha_restore_transaction" | "GLOBAL" | "Disable running platform HA restore operations in a transaction" | "Boolean" |
 | "Enable Connectivity Metric Collection" | "yb.metrics.enable_connectivity_metric_collection" | "GLOBAL" | "Enable connectivity metric collection for all universes" | "Boolean" |
+| "Enable Non-Restart GFlag Upgrade Option" | "yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option" | "GLOBAL" | "Enable the option to upgrade GFlags without restarting the nodes" | "Boolean" |
 | "Allow Duplicates in Existing AZs" | "yb.provider.allow_existing_duplicate_az" | "GLOBAL" | "Allow duplicates in already existing availability zones" | "Boolean" |
 | "Disable YNP Node Preflight Check" | "yb.node_agent.disable_ynp_node_preflight_check" | "GLOBAL" | "Disable preflight check in YNP node agent provision" | "Boolean" |
+| "Enable YNP Version Check" | "yb.node_agent.enable_ynp_version_check" | "GLOBAL" | "Enable YNP version check when adding nodes to a universe. When enabled, the node's YNP major version must match the expected version." | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -324,6 +328,7 @@
 | "Leaderless tablets check timeout" | "yb.checks.leaderless_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the CheckLeaderlessTablets subtask" | "Duration" |
 | "Enable Clock Sync check" | "yb.wait_for_clock_sync.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Enable YBC" | "ybc.universe.enabled" | "UNIVERSE" | "Enable YBC for universes during software upgrade" | "Boolean" |
+| "Enable comprehensive prechecks" | "yb.checks.comprehensive_prechecks.enabled" | "UNIVERSE" | "When enabled (default), extra runtime prechecks run during universe create/edit and rolling upgrades (e.g. node connectivity and service/command checks). Disable to skip these checks." | "Boolean" |
 | "Target Node Disk Usage Percentage" | "yb.checks.node_disk_size.target_usage_percentage" | "UNIVERSE" | "Percentage of current disk usage that may consume on the target nodes" | "Integer" |
 | "Enable Automated Master Failover" | "yb.auto_master_failover.enabled" | "UNIVERSE" | "Enable Automated Master Failover for universes in background process" | "Boolean" |
 | "Master Follower Lag Soft Threshold" | "yb.auto_master_failover.master_follower_lag_soft_threshold" | "UNIVERSE" | "Master follower lag soft threshold for potential master failure" | "Duration" |
@@ -368,6 +373,7 @@
 | "Whether to check if correct THP settings are applied" | "yb.health_checks.check_thp" | "UNIVERSE" | "Whether to check if correct Transparent Huge Pages settings are applied" | "Boolean" |
 | "Timeout for catalog upgrade admin operations" | "yb.upgrade.catalog_upgrade_admin_ops_timeout_ms" | "UNIVERSE" | "Timeout for catalog upgrade admin operations in milliseconds" | "Long" |
 | "Skip auto flags and YSQL migration files validation" | "yb.upgrade.skip_autoflags_and_ysql_migration_files_validation" | "UNIVERSE" | "Skip auto flags and YSQL migration files validation" | "Boolean" |
+| "YSQL major upgrade minimum stable DB version" | "yb.upgrade.ysql_major_upgrade_min_stable_db_version" | "UNIVERSE" | "Minimum DB software version required on stable release tracks before a YSQL major version upgrade can proceed. Preview release tracks use a fixed platform minimum. Use a valid YBA DB version string (for example 2024.2.3.0-b1)." | "String" |
 | "Per disk IO request size" | "ybc.disk_io_request_size_bytes" | "UNIVERSE" | "Per disk IO request size during backup/restore in Yb-Controller" | "Long" |
 | "Default disk IO read bytes per second" | "ybc.default_disk_io_read_bytes_per_sec" | "UNIVERSE" | "Default disk IO read bytes per second during backup in Yb-Controller" | "Long" |
 | "Default disk IO write bytes per second" | "ybc.default_disk_io_write_bytes_per_sec" | "UNIVERSE" | "Default disk IO write bytes per second during restore in Yb-Controller" | "Long" |
@@ -377,6 +383,10 @@
 | "Delay between master restarts in rolling operations" | "yb.upgrade.sleep_after_master_restart_ms" | "UNIVERSE" | "Default delay (ms) between master restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
 | "Delay between tserver restarts in rolling operations" | "yb.upgrade.sleep_after_tserver_restart_ms" | "UNIVERSE" | "Default delay (ms) between tserver restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
 | "Enables new Performance Monitoring UI via Performance Tab if universe is registered with Perf Advisor Service" | "yb.ui.feature_flags.enable_new_perf_advisor_ui" | "UNIVERSE" | "Enables new Performance Monitoring UI via Performance Tab" | "Boolean" |
+| "Enable All Nodes Script APIs" | "yb.node_script.enabled" | "UNIVERSE" | "Enables the all node script APIs for this universe" | "Boolean" |
 | "Enable Canary Upgrade" | "yb.upgrade.enable_canary_upgrade" | "UNIVERSE" | "Enable canary upgrade for the universe" | "Boolean" |
 | "Number of nodes to move in a given batch during full move" | "yb.task.full_move.roll_batch_size" | "UNIVERSE" | "Set numer of nodes to move in a given batch during full move. Default is 0 which means no batching, i.e. move all pods in a single go" | "Long" |
 | "Run Immediate Backup On Schedule Resume" | "yb.backup.run_immediate_backup_on_resume" | "UNIVERSE" | "When true, resumes a stopped backup schedule by running a full or incremental backup immediately instead of waiting for the next scheduled time. This will only change the default functionality, and which can still be overwritten with an api payload." | "Boolean" |
+| "Allow users to enable multi-tenancy" | "yb.universe.allow_multi_tenancy" | "UNIVERSE" | "If this flag is enabled, user will be able to enable the multi-tenancy QoS feature on universes." | "Boolean" |
+| "Flush Tablets Timeout on Stop TServer" | "yb.task.flush_tablets_timeout_on_stop_tserver" | "UNIVERSE" | "Timeout for flushing tablets when stopping tserver" | "Duration" |
+| "Skip YCQL precheck when enabling multi-tenancy" | "yb.universe.multitenancy_skip_ycql_precheck" | "UNIVERSE" | "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped" | "Boolean" |

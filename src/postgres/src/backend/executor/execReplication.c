@@ -641,8 +641,15 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 	if (rel->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
 		return;
 
-	/* YB: YB_REPLICA_IDENTITY_CHANGE is also good. */
-	if (IsYugaByteEnabled() && rel->rd_rel->relreplident == YB_REPLICA_IDENTITY_CHANGE)
+	/*
+	 * YB: When yb_cdcsdk_allow_dml_without_pk is true, allow UPDATE/DELETE
+	 * for DEFAULT and CHANGE replica identity even without a PK.
+	 * When false (default), both fall through to the error below (PG parity).
+	 */
+	if (IsYugaByteEnabled() &&
+		(rel->rd_rel->relreplident == YB_REPLICA_IDENTITY_CHANGE ||
+		 rel->rd_rel->relreplident == REPLICA_IDENTITY_DEFAULT) &&
+		yb_cdcsdk_allow_dml_without_pk)
 		return;
 
 	/*

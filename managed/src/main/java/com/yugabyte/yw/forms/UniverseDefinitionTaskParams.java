@@ -374,6 +374,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @Data
+  public static class GcpZoneReservation {
+    private UUID providerUUID;
+    private String zone;
+    private String region;
+    private String reservationName;
+    private Map<String, PerInstanceTypeReservation> reservationsByType = new HashMap<>();
+  }
+
+  @Data
   public static class AzureRegionReservation {
     private UUID providerUUID;
     private String groupName;
@@ -395,15 +404,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @Data
+  public static class GcpReservationInfo implements ReservationInfo {
+    private Map<String, GcpZoneReservation> reservationsByZoneMap = new HashMap<>();
+  }
+
+  @Data
   public static class CapacityReservationState {
     private Map<UUID, AzureReservationInfo> azureReservationInfos = new HashMap<>();
     private Map<UUID, AwsReservationInfo> awsReservationInfos = new HashMap<>();
+    private Map<UUID, GcpReservationInfo> gcpReservationInfos = new HashMap<>();
 
     // other reservation types
 
     @JsonIgnore
     public boolean isEmpty() {
-      return azureReservationInfos.isEmpty() && awsReservationInfos.isEmpty();
+      return azureReservationInfos.isEmpty()
+          && awsReservationInfos.isEmpty()
+          && gcpReservationInfos.isEmpty();
     }
   }
 
@@ -700,6 +717,38 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           : partitions.stream().filter(g -> g.defaultPartition).findFirst().get();
     }
 
+    public Optional<UUID> searchProviderUUIDByAz(UUID azUUID) {
+      if (!CollectionUtils.isEmpty(partitions)) {
+        for (PartitionInfo partition : partitions) {
+          Optional<UUID> ret = searchProviderUUIDByAz(azUUID, partition.getPlacement());
+          if (ret.isPresent()) {
+            return ret;
+          }
+        }
+        return Optional.empty();
+      }
+      return searchProviderUUIDByAz(azUUID, getOverallPlacement());
+    }
+
+    public static Optional<UUID> searchProviderUUIDByAz(UUID azUUID, PlacementInfo placementInfo) {
+      if (placementInfo == null) {
+        return Optional.empty();
+      }
+      return placementInfo
+          .azInfoStream()
+          .filter(az -> az.placementAZ.uuid.equals(azUUID))
+          .findFirst()
+          .map(az -> az.cloud.uuid);
+    }
+
+    public UUID getProviderUUIDForNode(NodeDetails node) {
+      return UUID.fromString(userIntent.provider);
+    }
+
+    public CloudType getProviderCloudType(NodeDetails nodeDetails) {
+      return userIntent.providerType;
+    }
+
     @JsonIgnore
     public PlacementInfo getOverallPlacement() {
       if (!CollectionUtils.isEmpty(partitions)) {
@@ -880,7 +929,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             }
             return v;
           });
-      if (perProcess.containsKey(serverType) && perProcess.get(serverType) == null) {
+      if (perProcess.containsKey(serverType)
+          && (perProcess.get(serverType) == null || perProcess.get(serverType).allNull())) {
         perProcess.remove(serverType);
       }
       if (MapUtils.isEmpty(perProcess)) {
@@ -942,11 +992,21 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             }
             return v;
           });
-      if (azOverrides.containsKey(azUUID) && azOverrides.get(azUUID) == null) {
+      if (azOverrides.containsKey(azUUID)
+          && (azOverrides.get(azUUID) == null || azOverrides.get(azUUID).allNull())) {
         azOverrides.remove(azUUID);
       }
       if (MapUtils.isEmpty(azOverrides)) {
         azOverrides = null;
+      }
+    }
+
+    @JsonIgnore
+    public void unsetCgroupSize() {
+      Consumer<AZOverrides> azOverridesConsumer = azO -> azO.setCgroupSize(null);
+      if (MapUtils.isNotEmpty(azOverrides)) {
+        Set<UUID> azUUIDs = new HashSet<UUID>(azOverrides.keySet());
+        azUUIDs.stream().forEach(azUUID -> updateAZOverride(azUUID, azOverridesConsumer));
       }
     }
 
@@ -1441,17 +1501,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
-    public Collection<UUID> getAllProviderUUIDs() {
+    public Set<UUID> getAllProviderUUIDs() {
       // For tests to work.
       if (provider == null) {
         return Collections.emptySet();
       }
-      return Collections.singletonList(UUID.fromString(provider));
+      return Collections.singleton(UUID.fromString(provider));
     }
 
     @JsonIgnore
-    public Collection<CloudType> getAllCloudTypes() {
-      return Collections.singletonList(providerType);
+    public Set<CloudType> getAllCloudTypes() {
+      return Collections.singleton(providerType);
     }
 
     @JsonIgnore
@@ -1572,7 +1632,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                         azO.updatePerProcess(serverType, perProcessConsumer);
                         azO.setDeviceInfo(deviceInfo);
                       } else {
-                        azO.reset();
+                        azO.updatePerProcess(serverType, perProc -> perProc.reset());
                       }
                     };
                 originalOverridesClone.updateAZOverride(azUUID, applyChangesConsumer);
@@ -1586,6 +1646,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         return overridenDetails.getProxyConfig();
       }
       return proxyConfig;
+    }
+
+    @JsonIgnore
+    public boolean isMulticloudSupport() {
+      return false;
     }
 
     @Override
@@ -1902,6 +1967,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     return Iterables.getOnlyElement(foundClusters, null);
+  }
+
+  public UUID searchProviderUUIDByAz(UUID azUUID) {
+    return clusters.stream()
+        .map(c -> c.searchProviderUUIDByAz(azUUID))
+        .filter(p -> p.isPresent())
+        .findFirst()
+        .map(o -> o.get())
+        .orElseGet(() -> AvailabilityZone.getOrBadRequest(azUUID).getProvider().getUuid());
   }
 
   // the getter has some logic built around, as there are no other layer to

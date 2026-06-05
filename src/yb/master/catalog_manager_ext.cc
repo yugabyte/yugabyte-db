@@ -78,10 +78,12 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
+#include "yb/util/condition_variable.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -110,8 +112,7 @@ DEPRECATE_FLAG(bool, enable_transaction_snapshots, "08_2024");
 
 DEPRECATE_FLAG(bool, allow_consecutive_restore, "10_2022");
 
-DEFINE_RUNTIME_bool(
-    enable_namespace_snapshot_workflow, true,
+DEFINE_RUNTIME_bool(enable_namespace_snapshot_workflow, true,
     "Enable namespace-based snapshot creation based on namespace_id. Can be disabled to fallback "
     "to the old snapshot creation workflow where client provides the set of tables to collect as "
     "part of snapshot");
@@ -136,20 +137,19 @@ DEFINE_RUNTIME_uint32(default_snapshot_retention_hours, 24,
     "Number of hours for which to keep the snapshot around. Only used if no value was provided "
     "by the client when creating the snapshot.");
 
-DEFINE_RUNTIME_bool(
-    import_snapshot_using_table_name, false,
+DEFINE_RUNTIME_bool(import_snapshot_using_table_name, false,
     "Use the old workflow of import snapshot where table names in backup/restore sides are used to "
     "build the mappings between tables in backup and restore side. This flag can be enabled as a "
     "safety button in case restore using relfilenode fails.");
 
-DEFINE_RUNTIME_AUTO_bool(
-    enable_export_snapshot_using_relfilenode, kExternal, false, true,
+DEFINE_RUNTIME_AUTO_bool(enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
 
 DECLARE_bool(enable_ysql);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 
 namespace yb {
 
@@ -459,6 +459,8 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
   // TODO (mhaddad): GH-28290 Tracks the namespace anchoring issue.
   auto namespace_info = VERIFY_RESULT(FindNamespaceById(namespace_id));
   const bool ns_colocated = namespace_info->colocated();
+  // todo(zdrudi): there's potentially a bug here. colocation + tablespaces, w/ backup/restore might
+  // expose this.
   std::optional<TableId> colocation_parent_table_id;
 
   auto process_table = [&](const Slice& table_id_slice, const Slice& metadata_slice) -> Status {
@@ -602,8 +604,14 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   return Status::OK();
 }
 
-Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
-                                     ListSnapshotsResponsePB* resp) {
+Status CatalogManager::ListSnapshots(
+    const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp) {
+  return ListSnapshotsInternal(req, resp);
+}
+
+Status CatalogManager::ListSnapshotsInternal(
+    const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp,
+    bool skip_missing_tables) {
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (req->prepare_for_backup() && !txn_snapshot_id) {
     return STATUS(
@@ -615,14 +623,15 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
   bool include_ddl_in_progress_tables =
       req->has_include_ddl_in_progress_tables() ? req->include_ddl_in_progress_tables() : false;
   if (req->prepare_for_backup()) {
-    RETURN_NOT_OK(RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables));
+    RETURN_NOT_OK(
+        RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables, skip_missing_tables));
   }
 
   return Status::OK();
 }
 
 Status CatalogManager::RepackSnapshotsForBackup(
-    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables) {
+    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables, bool skip_missing_tables) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
   // Repack & extend the backup row entries.
@@ -655,6 +664,13 @@ Status CatalogManager::RepackSnapshotsForBackup(
         TRACE("Looking up table");
         scoped_refptr<TableInfo> table_info = tables_->FindTableOrNull(entry.id());
         if (table_info == nullptr) {
+          if (skip_missing_tables) {
+            LOG(INFO) << Format(
+                "While repacking a snapshot couldn't find snapshotted table $0 in memory, skipping",
+                entry.id());
+            tables_to_skip.insert(entry.id());
+            continue;
+          }
           return STATUS(
               InvalidArgument, "Table not found by ID", entry.id(),
               MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
@@ -827,6 +843,88 @@ Status CatalogManager::DeleteSnapshot(
       txn_snapshot_id, epoch.leader_term, rpc->GetClientDeadline());
 }
 
+// Aggregates the AsyncAddTableToTablet RPCs scheduled during ImportSnapshot's secondary-table
+// rewiring path and lets DoImportSnapshotMeta block on their completion before returning.
+//
+// Lifecycle:
+//   1. Constructed once per ImportSnapshot with a baseline outstanding count of 1, so the wait
+//      can never wake with outstanding_ == 0 before MarkAllScheduled() runs (even if every task
+//      happens to complete in between scheduling individual tasks).
+//   2. AddTask() is called once per task to obtain a callback. Callback is called exactly once per
+//      task when it reaches a terminal state. The first non-OK status is captured as the aggregate
+//      failure.
+//   3. After every ImportTableEntry call has had a chance to schedule its RPCs,
+//      DoImportSnapshotMeta calls MarkAllScheduled() to drop the baseline; the condition variable
+//      is notified once every scheduled task has reported completion.
+//   4. WaitFor(deadline) blocks the caller until outstanding_ reaches 0 or the deadline elapses;
+//      on deadline expiry it returns a TimedOut status, otherwise it returns the captured first
+//      failure (or OK if every task succeeded).
+class ImportSnapshotAddTableToTabletWaiter {
+ public:
+  ImportSnapshotAddTableToTabletWaiter() = default;
+
+  void MarkAllScheduled() {
+    MutexLock lock(mutex_);
+    if (--outstanding_ == 0) {
+      cv_.Broadcast();
+    }
+  }
+
+  Status WaitFor(CoarseTimePoint deadline) {
+    MutexLock lock(mutex_);
+    while (outstanding_ != 0) {
+      if (!cv_.WaitUntil(MonoTime::FromDuration(deadline.time_since_epoch()))) {
+        return STATUS(
+            TimedOut,
+            "Timed out waiting for AddTableToTablet RPCs scheduled by ImportSnapshot to complete");
+      }
+    }
+    return first_failure_;
+  }
+
+  // Registers an outstanding task with `waiter` and returns the completion callback to bind to
+  // that task. The returned callable is idempotent: invoking it more than once is safe and only
+  // the first call is observed by OnTaskCompleted. This lets the same callback be both wired into
+  // the task's terminal-state hook (e.g. AsyncAddTableToTablet's UnregisterAsyncTaskCallback) and
+  // invoked manually if the task is dropped before it ever reaches a terminal state (e.g. a
+  // ScheduleTask submit failure in a future task-base change).
+  static std::function<void(const Status&)> AddTask(
+      const std::shared_ptr<ImportSnapshotAddTableToTabletWaiter>& waiter) {
+    auto index = waiter->RegisterTask();
+    return [waiter, index](const Status& s) { waiter->OnTaskCompleted(s, index); };
+  }
+
+ private:
+  size_t RegisterTask() {
+    MutexLock lock(mutex_);
+    ++outstanding_;
+    auto index = task_completed_.size();
+    task_completed_.push_back(false);
+    return index;
+  }
+
+  void OnTaskCompleted(const Status& s, size_t index) {
+    MutexLock lock(mutex_);
+    if (task_completed_[index]) {
+      return;
+    }
+    task_completed_[index] = true;
+    if (!s.ok() && first_failure_.ok()) {
+      first_failure_ = s;
+    }
+    if (--outstanding_ == 0) {
+      cv_.Broadcast();
+    }
+  }
+
+  mutable Mutex mutex_;
+  ConditionVariable cv_{&mutex_};
+  // Baseline of 1 keeps cv_ from waking with outstanding_ == 0 until MarkAllScheduled() is called.
+  size_t outstanding_ GUARDED_BY(mutex_) = 1;
+  Status first_failure_ GUARDED_BY(mutex_);
+  std::vector<bool> task_completed_ GUARDED_BY(mutex_);
+};
+
 Status CatalogManager::DoImportSnapshotMeta(
       const SnapshotInfoPB& snapshot_pb,
       const LeaderEpoch& epoch,
@@ -858,6 +956,9 @@ Status CatalogManager::DoImportSnapshotMeta(
   bool is_clone = clone_target_namespace_name.has_value();
   bool use_relfilenode =
       UseRelfilenodeForTableMatch(snapshot_pb) && !FLAGS_import_snapshot_using_table_name;
+  // Tracks AsyncAddTableToTablet RPCs scheduled during PHASES 3/4 so we can block here on their
+  // completion before returning to the caller.
+  auto add_table_waiter = std::make_shared<ImportSnapshotAddTableToTabletWaiter>();
   // PHASE 1: Recreate namespaces, create type's & table's meta data.
   RETURN_NOT_OK(ImportSnapshotPreprocess(
       snapshot_pb, epoch, clone_target_namespace_name, namespace_map, type_map, tables_data));
@@ -868,14 +969,23 @@ Status CatalogManager::DoImportSnapshotMeta(
   // PHASE 3: Recreate ONLY tables.
   RETURN_NOT_OK(ImportSnapshotCreateAndWaitForTables(
       snapshot_pb, *namespace_map, *type_map, epoch, is_clone, use_relfilenode, tables_data,
-      deadline));
+      add_table_waiter, deadline));
 
   // PHASE 4: Recreate ONLY indexes.
   RETURN_NOT_OK(ImportSnapshotCreateIndexes(
-      snapshot_pb, *namespace_map, *type_map, epoch, is_clone, use_relfilenode, tables_data));
+      snapshot_pb, *namespace_map, *type_map, epoch, is_clone, use_relfilenode, tables_data,
+      add_table_waiter));
 
   // PHASE 5: Restore tablets.
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, use_relfilenode, tables_data));
+
+  // All AsyncAddTableToTablet calls (if any) have been dispatched by now. Drop the baseline and
+  // block until they finish (or the import deadline elapses). Failures are surfaced as an error
+  // status from ImportSnapshot so YBC can fail rather than report success-with-broken-table.
+  add_table_waiter->MarkAllScheduled();
+  RETURN_NOT_OK_PREPEND(
+      add_table_waiter->WaitFor(deadline),
+      "AddTableToTablet RPC scheduled by ImportSnapshot did not complete");
 
   ImportSnapshotRemoveInvalidTables(use_relfilenode, tables_data);
 
@@ -1058,13 +1168,15 @@ Status CatalogManager::ImportSnapshotProcessUDTypes(const SnapshotInfoPB& snapsh
   return Status::OK();
 }
 
-Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapshot_pb,
-                                                   const NamespaceMap& namespace_map,
-                                                   const UDTypeMap& type_map,
-                                                   const LeaderEpoch& epoch,
-                                                   bool is_clone,
-                                                   bool use_relfilenode,
-                                                   ExternalTableSnapshotDataMap* tables_data) {
+Status CatalogManager::ImportSnapshotCreateIndexes(
+    const SnapshotInfoPB& snapshot_pb,
+    const NamespaceMap& namespace_map,
+    const UDTypeMap& type_map,
+    const LeaderEpoch& epoch,
+    bool is_clone,
+    bool use_relfilenode,
+    ExternalTableSnapshotDataMap* tables_data,
+    const std::shared_ptr<ImportSnapshotAddTableToTabletWaiter>& add_table_waiter) {
   // Create ONLY INDEXES.
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
@@ -1076,7 +1188,8 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
         // Assume this is an invalid index that wasn't part of the ysql_dump instead of failing the
         // import here.
         auto s = ImportTableEntry(
-            namespace_map, type_map, epoch, is_clone, use_relfilenode, tables_data, &data);
+            namespace_map, type_map, epoch, is_clone, use_relfilenode, tables_data, &data,
+            add_table_waiter);
         if (s.IsInvalidArgument() && MasterError(s) == MasterErrorPB::OBJECT_NOT_FOUND) {
             // Defer the removal from the tables_data map until we go through all tablets, so we can
             // verify that the only tablets missing tables belong to invalid indexes.
@@ -1098,7 +1211,9 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
 Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
     const SnapshotInfoPB& snapshot_pb, const NamespaceMap& namespace_map, const UDTypeMap& type_map,
     const LeaderEpoch& epoch, bool is_clone, bool use_relfilenode,
-    ExternalTableSnapshotDataMap* tables_data, CoarseTimePoint deadline) {
+    ExternalTableSnapshotDataMap* tables_data,
+    const std::shared_ptr<ImportSnapshotAddTableToTabletWaiter>& add_table_waiter,
+    CoarseTimePoint deadline) {
   std::queue<TableId> pending_creates;
   for (const auto& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
@@ -1120,7 +1235,7 @@ Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
       // being created on the tservers.
       RETURN_NOT_OK(ImportTableEntry(
           namespace_map, type_map, epoch, true /* is_clone */, use_relfilenode, tables_data,
-          &data));
+          &data, add_table_waiter));
     } else {
       // If we are at the limit, wait for the oldest table to be created
       // so that we can send create request for the current table.
@@ -1134,7 +1249,7 @@ Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
       // Ready to send request for this table now.
       RETURN_NOT_OK(ImportTableEntry(
           namespace_map, type_map, epoch, false /* is_clone */, use_relfilenode, tables_data,
-          &data));
+          &data, add_table_waiter));
       pending_creates.push(data.new_table_id);
     }
   }
@@ -1316,13 +1431,14 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   return Status::OK();
 }
 
-Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapshotId& snapshot_id) {
+Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForClone(const TxnSnapshotId& snapshot_id) {
   ListSnapshotsRequestPB req;
   ListSnapshotsResponsePB resp;
   req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   req.set_prepare_for_backup(true);
   RETURN_NOT_OK_PREPEND(
-      ListSnapshots(&req, &resp), Format("Failed to list snapshot: $0", snapshot_id));
+      ListSnapshotsInternal(&req, &resp, /* skip_missing_tables */ true),
+      Format("Failed to list snapshot: $0", snapshot_id));
   if (resp.snapshots().size() < 1) {
     return STATUS_FORMAT(InvalidArgument, "Unknown snapshot: $0", snapshot_id);
   }
@@ -1364,7 +1480,7 @@ CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
   // Get the SnapshotInfoPB, save the set of tablets it contained, and clear backup_entries.
   // backup_entries will be repopulated with the set of tablets that were running at read_time
   // later when reading from DocDB as of read_time.
-  auto snapshot_info = VERIFY_RESULT(GetSnapshotInfoForBackup(snapshot_id));
+  auto snapshot_info = VERIFY_RESULT(GetSnapshotInfoForClone(snapshot_id));
   std::unordered_set<TabletId> snapshotted_tablets;
   for (auto& backup_entry : snapshot_info.backup_entries()) {
     if (backup_entry.entry().type() == SysRowEntryType::TABLET) {
@@ -1447,14 +1563,13 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
   // Stores SysTablesEntry and its SysTabletsEntries to order the tablets of each table by
   // partitions' start keys.
   std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
-  std::optional<std::string> colocation_parent_table_id;
-  bool found_colocated_user_table = false;
+  std::unordered_map<std::string, bool> colocated_parent_tables;
   docdb::DocRowwiseIterator tables_iter = docdb::DocRowwiseIterator(
       projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
   RETURN_NOT_OK(EnumerateSysCatalog(
       &tables_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLE,
-      [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id, &found_colocated_user_table](
+      [&source_ns_id, &tables_to_tablets, &colocated_parent_tables](
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
         // Skip including tables in PREPARING state, even though they are normally considered
@@ -1474,9 +1589,9 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
           const auto id_str = id.ToBuffer();
           if (pb.colocated()) {
             if (IsColocationParentTableId(id_str)) {
-              colocation_parent_table_id = id_str;
+              colocated_parent_tables.try_emplace(id_str, false);
             } else {
-              found_colocated_user_table = true;
+              colocated_parent_tables[pb.parent_table_id()] = true;
             }
           }
           // Tables and tablets will be added to backup entries at the end.
@@ -1529,14 +1644,14 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
         table_with_tablets.tablets_entries.size()});
   }
   // Populate the backup_entries with SysTablesEntry and SysTabletsEntry.
-  // Start with the colocation_parent_table_id if the database is colocated.
-  if (colocation_parent_table_id) {
-    // Only create the colocated parent table if there are colocated user tables.
-    if (found_colocated_user_table) {
-      tables_to_tablets[colocation_parent_table_id.value()].AddToBackupEntries(
-          colocation_parent_table_id.value(), backup_entries);
+  // Start with all colocated parent tables that have children.
+  // The import snapshot flow is broken if colocated children preceed their parents.
+  for (const auto& [parent_table_id, has_child] : colocated_parent_tables) {
+    if (has_child) {
+      tables_to_tablets[parent_table_id].AddToBackupEntries(
+          parent_table_id, backup_entries);
     }
-    tables_to_tablets.erase(colocation_parent_table_id.value());
+    tables_to_tablets.erase(parent_table_id);
   }
   for (auto& sys_table_entry : tables_to_tablets) {
     sys_table_entry.second.AddToBackupEntries(sys_table_entry.first, backup_entries);
@@ -2086,7 +2201,9 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
-    DeleteTabletReplicas(old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse, epoch);
+    DeleteTabletReplicas(
+        old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse,
+        TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);
   }
   VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
                     << " of table " << table->id();
@@ -2105,6 +2222,44 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
     SCHECK_NOTNULL(tablegroup);
     tablegroup->ReplaceTablet(new_tablets[0]);
   }
+
+  // If this table is indexed by any vector indexes, update the vector indexes to the PREPARING
+  // state. They will have their tablet pointers fixed in UpdateColocatedUserTableInfo.
+  auto vector_index_ids = table->GetVectorIndexIds();
+  std::vector<TableInfoPtr> vector_indexes_to_prepare;
+  vector_indexes_to_prepare.reserve(vector_index_ids.size());
+  for (const auto& vector_index_id : vector_index_ids) {
+    vector_indexes_to_prepare.push_back(VERIFY_RESULT(FindTableById(vector_index_id)));
+  }
+  // Sort by table id to acquire write locks in the canonical order for multi-table locking.
+  std::sort(
+      vector_indexes_to_prepare.begin(), vector_indexes_to_prepare.end(),
+      [](const TableInfoPtr& lhs, const TableInfoPtr& rhs) { return lhs->id() < rhs->id(); });
+  std::vector<TableInfo::WriteLock> vector_index_locks;
+  vector_index_locks.reserve(vector_indexes_to_prepare.size());
+  std::vector<TableInfoPtr> vector_indexes_to_upsert;
+  vector_indexes_to_upsert.reserve(vector_indexes_to_prepare.size());
+  for (auto& vector_index : vector_indexes_to_prepare) {
+    auto vi_lock = vector_index->LockForWrite();
+    if (vi_lock->pb.state() != SysTablesEntryPB::RUNNING) {
+      LOG_WITH_FUNC(WARNING)
+          << "Skipping PREPARING transition for vector index " << vector_index->ToString()
+          << "; current state is " << SysTablesEntryPB_State_Name(vi_lock->pb.state());
+      continue;
+    }
+    vi_lock.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
+    vector_index_locks.push_back(std::move(vi_lock));
+    vector_indexes_to_upsert.push_back(vector_index);
+  }
+  if (!vector_indexes_to_upsert.empty()) {
+    RETURN_NOT_OK(sys_catalog_->Upsert(epoch, vector_indexes_to_upsert));
+    for (auto& lock : vector_index_locks) {
+      lock.Commit();
+    }
+    LOG_WITH_FUNC(INFO) << "Transitioned " << vector_indexes_to_upsert.size()
+                        << " vector indexes of table " << table->id() << " to PREPARING";
+  }
+
   return Status::OK();
 }
 
@@ -2165,7 +2320,8 @@ Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>&
 Status CatalogManager::ImportTableEntry(
     const NamespaceMap& namespace_map, const UDTypeMap& type_map, const LeaderEpoch& epoch,
     bool is_clone, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map,
-    ExternalTableSnapshotData* table_data) {
+    ExternalTableSnapshotData* table_data,
+    const std::shared_ptr<ImportSnapshotAddTableToTabletWaiter>& add_table_waiter) {
   const SysTablesEntryPB& meta = DCHECK_NOTNULL(table_data)->table_entry_pb;
   bool is_parent_colocated_table = false;
 
@@ -2316,12 +2472,16 @@ Status CatalogManager::ImportTableEntry(
       }
     }
 
-    if (is_clone && table->IsSecondaryTable()) {
-      // For colocated tables that are not the parent table, update their info to point to the newly
-      // recreated parent tablet.
-      // TODO(mhaddad): Check necessary steps for vector indexes.
-      RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(
-          table, parent_table_id, table_data, epoch));
+    if (table->IsSecondaryTable()) {
+      // For colocated tables that are not the parent table, update their info to point to the
+      // parent table's current tablets. This is needed both for clone (where the parent table is
+      // freshly recreated) and for backup/restore (where RepartitionTable may have replaced the
+      // parent's tablets with new ones whose ids the secondary table's TableInfo still does not
+      // know about). Without this rewiring on backup/restore, the secondary table's stale tablet
+      // pointers propagate into the post-import snapshot, causing RestoreSnapshot's
+      // RESTORE_ON_TABLET RPCs to fail with "Tablet not found" against the deleted tablet ids.
+      RETURN_NOT_OK(UpdateColocatedUserTableInfo(
+          table, parent_table_id, table_data, epoch, is_clone, add_table_waiter));
     }
 
     // Table schema update depending on different conditions.
@@ -2625,26 +2785,71 @@ Result<bool> CatalogManager::ImportTableEntryByName(
   return is_parent_colocated_table;
 }
 
-Status CatalogManager::UpdateColocatedUserTableInfoForClone(
+Status CatalogManager::UpdateColocatedUserTableInfo(
     const TableInfoPtr& table, const TableId& new_parent_table_id,
-    ExternalTableSnapshotData* table_data, const LeaderEpoch& epoch) {
+    ExternalTableSnapshotData* table_data, const LeaderEpoch& epoch, bool is_clone,
+    const std::shared_ptr<ImportSnapshotAddTableToTabletWaiter>& add_table_waiter) {
   RSTATUS_DCHECK(
       table->IsSecondaryTable(), InvalidArgument,
       Format("table: $0 is not a colocated user table", table->id()));
+  TableInfoPtr parent_table = VERIFY_RESULT(FindTableById(new_parent_table_id));
+  auto new_tablets = VERIFY_RESULT(parent_table->GetTablets());
+
+  // Skip the rewiring + AsyncAddTableToTablet dispatch when the parent's current tablets are
+  // identical to the secondary table's existing tablets. This is the common case for backup/restore
+  // of a colocated DB: the parent colocated table is filtered out of the repartition path (see
+  // `if (is_clone || !is_parent_colocated_table)` in ImportTableEntry), so the parent's tablets
+  // never change and the secondary table already points at them. Without this guard we would
+  // pointlessly clear and re-add the same tablets, append duplicate entries to the parent tablet's
+  // in-memory `table_ids_` (TabletInfo::AddTableId does no dedup), and pay a Raft round-trip per
+  // secondary table for an AddTableToTablet that the tserver would treat as a no-op.
+  // Both GetTablets() calls iterate partitions_ in partition-key order, so a positional ID
+  // comparison is sufficient (no need to build an intermediate set).
+  auto old_tablets = VERIFY_RESULT(table->GetTablets());
+  auto tablet_id_proj = [](const TabletInfoPtr& t) { return t->id(); };
+  if (std::ranges::equal(old_tablets, new_tablets, {}, tablet_id_proj, tablet_id_proj)) {
+    VLOG_WITH_FUNC(1) << "Skipping rewiring for " << table->ToString()
+                      << ": already on parent " << parent_table->ToString()
+                      << "'s current tablets";
+    return Status::OK();
+  }
+
   // Remove old colocated tablet from TableInfo.
   table->ClearTabletMaps();
   // Add new colocated tablet to TableInfo.
-  TableInfoPtr parent_table = VERIFY_RESULT(FindTableById(new_parent_table_id));
-
-  for (auto tablet : VERIFY_RESULT(parent_table->GetTablets())) {
+  for (auto tablet : new_tablets) {
     auto new_tablet_lock = tablet->LockForWrite();
     RETURN_NOT_OK(table->AddTablet(tablet));
     VLOG(1) << Format(
-        "Modifying the parent tablet of the colocated table: $0. The new Tablet is: $1",
+        "Modifying tablet of a colocated table: $0. The new tablet is: $1",
         table_data->new_table_id, VERIFY_RESULT(table->GetTablets())[0]->tablet_id());
     tablet->AddTableId(table_data->new_table_id);
 
     new_tablet_lock.Commit();
+  }
+
+  // Send AsyncAddTableToTablet so each tserver registers this colocated secondary table on the new
+  // tablets; otherwise queries against the secondary table would fail to locate it on the new
+  // tablets even though their RocksDB contains the restored colocated data. Clone uses a separate
+  // source-side tablet replication path that already carries the full hosted-tables list, so this
+  // dispatch is unnecessary (and the tablets may not yet exist on tservers at this point).
+  // Each task is registered with `add_table_waiter` and reports its terminal status back via the
+  // on_done callback, so DoImportSnapshotMeta can block on the entire batch before returning.
+  if (!is_clone && !new_tablets.empty()) {
+    auto counter = std::make_shared<std::atomic<size_t>>(new_tablets.size());
+    for (auto& tablet : new_tablets) {
+      auto on_done = ImportSnapshotAddTableToTabletWaiter::AddTask(add_table_waiter);
+      auto call = std::make_shared<AsyncAddTableToTablet>(
+          master_, AsyncTaskPool(), tablet, table, epoch, counter, on_done);
+      table->AddTask(call);
+      auto schedule_status = ScheduleTask(call);
+      if (!schedule_status.ok()) {
+        LOG(WARNING) << Format(
+            "Failed to send AddTableToTablet request for $0 on $1: $2",
+            table->ToString(), tablet->ToString(), schedule_status);
+        on_done(schedule_status);
+      }
+    }
   }
 
   return Status::OK();
@@ -3609,7 +3814,22 @@ Status CatalogManager::GetYsqlYbSystemTableInfo(
 
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
-  return master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
+  auto cutoff = master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
+
+  DCHECK_EQ(metadata->table_id(), kSysCatalogTableId);
+
+  auto syscatalog_history_retention_interval_sec =
+      ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_syscatalog_history_retention_interval_sec);
+  if (syscatalog_history_retention_interval_sec) {
+    HybridTime allowed_from_syscatalog_flag =
+        Clock()->Now().AddSeconds(-syscatalog_history_retention_interval_sec);
+    cutoff.MakeAtMost({allowed_from_syscatalog_flag, allowed_from_syscatalog_flag});
+  }
+  cutoff.MakeAtMost({metadata->cdc_sdk_safe_time(), metadata->cdc_sdk_safe_time()});
+  VLOG(2) << "CDC SDK history cutoff: " << cutoff.ToString()
+          << " for tablet: " << metadata->raft_group_id();
+
+  return cutoff;
 }
 
 }  // namespace master

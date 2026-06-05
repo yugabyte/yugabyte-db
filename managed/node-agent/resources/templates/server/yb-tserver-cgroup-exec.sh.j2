@@ -7,7 +7,22 @@
 
 set -euo pipefail
 
-YB_USER_HOME="{{ yb_user_home }}"
+find_yb_user_home() {
+  if id -u "yugabyte" >/dev/null 2>&1; then
+    yb_user_home=$(getent passwd yugabyte | cut -d: -f6 2>&1)
+    if [[ -z "$yb_user_home" ]]; then
+      echo "FATAL: Could not find home directory for user yugabyte"
+      exit 1
+    else
+      echo "$yb_user_home"
+    fi
+  else
+    echo "FATAL: User yugabyte does not exist"
+    exit 1
+  fi
+}
+
+YB_USER_HOME=$(find_yb_user_home)
 STATE_DIR="${YB_USER_HOME}/.yugabyte"
 CG_NAME="yugabyte-db"
 

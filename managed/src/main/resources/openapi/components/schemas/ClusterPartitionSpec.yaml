@@ -2,11 +2,9 @@ title: ClusterPartitionSpec
 description: 'Cluster Partition specification. Part of ClusterSpec, ClusterAddSpec and ClusterEditSpec. Future substitute for placement_spec. Cluster should contain one or more geo partitions (one of them should be default partition). Readonly replicas now can have only single partition.'
 type: object
 required:
-  - name
   - placement
   - default_partition
   - replication_factor
-  - tablespace_name
 properties:
   uuid:
     description: System generated partition uuid used to lookup corresponding GeoPartitionSpec. This is not a user input.

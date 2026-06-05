@@ -71,52 +71,34 @@ var createOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		// SSH user is required only when skip-provisioning is false
-		if !skipProvisioning && util.IsEmptyString(sshUser) {
-			logrus.Fatalf(
-				formatter.Colorize(
-					"SSH user is required when skip-provisioning is false\n",
-					formatter.RedColor,
-				),
-			)
+		keyPairName, err := cmd.Flags().GetString("ssh-keypair-name")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		// SSH user and keypair are required only when skip-provisioning is false
+		if !skipProvisioning {
+			if util.IsEmptyString(sshUser) {
+				logrus.Fatalf(
+					formatter.Colorize(
+						"SSH user is required when skip-provisioning is false\n",
+						formatter.RedColor,
+					),
+				)
+			}
+			if util.IsEmptyString(keyPairName) {
+				logrus.Fatalf(
+					formatter.Colorize(
+						"SSH keypair name is required when skip-provisioning is false\n",
+						formatter.RedColor,
+					),
+				)
+			}
 		}
 
 		sshPort, err := cmd.Flags().GetInt("ssh-port")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		keyPairName, err := cmd.Flags().GetString("ssh-keypair-name")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		var sshFileContent string
-		if !util.IsEmptyString(keyPairName) {
-
-			filePath, err := cmd.Flags().GetString("ssh-keypair-file-path")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			if len(filePath) > 0 {
-				sshFileContentByte, err := os.ReadFile(filePath)
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
-				sshFileContent = string(sshFileContentByte)
-			} else {
-				sshFileContent, err = cmd.Flags().GetString("ssh-keypair-file-contents")
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
-			}
-			if len(sshFileContent) == 0 {
-				logrus.Fatalf(
-					formatter.Colorize(
-						"No ssh keypair file content found while using --ssh-keypair-name\n",
-						formatter.RedColor,
-					),
-				)
-			}
 		}
 
 		passwordlessSudoAccess, err := cmd.Flags().GetBool("passwordless-sudo-access")
@@ -166,20 +148,10 @@ var createOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		allAccessKeys := make([]ybaclient.AccessKey, 0)
-		accessKey := ybaclient.AccessKey{
-			KeyInfo: ybaclient.KeyInfo{
-				KeyPairName:          util.GetStringPointer(keyPairName),
-				SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
-			},
-		}
-		allAccessKeys = append(allAccessKeys, accessKey)
-
 		requestBody := ybaclient.Provider{
-			Code:          util.GetStringPointer(providerCode),
-			Name:          util.GetStringPointer(providerName),
-			AllAccessKeys: allAccessKeys,
-			Regions:       buildOnpremRegions(regions, zones),
+			Code:    util.GetStringPointer(providerCode),
+			Name:    util.GetStringPointer(providerName),
+			Regions: buildOnpremRegions(regions, zones),
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
 				CloudInfo: &ybaclient.CloudInfo{
@@ -198,6 +170,44 @@ var createOnpremProviderCmd = &cobra.Command{
 				SshUser:                util.GetStringPointer(sshUser),
 			},
 		}
+		requestBody.AllAccessKeys = make([]ybaclient.AccessKey, 0)
+
+		if !util.IsEmptyString(keyPairName) {
+			var sshFileContent string
+			filePath, err := cmd.Flags().GetString("ssh-keypair-file-path")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			if len(filePath) > 0 {
+				sshFileContentByte, err := os.ReadFile(filePath)
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+				sshFileContent = string(sshFileContentByte)
+			} else {
+				sshFileContent, err = cmd.Flags().GetString("ssh-keypair-file-contents")
+				if err != nil {
+					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+				}
+			}
+			if len(sshFileContent) == 0 {
+				logrus.Fatalf(
+					formatter.Colorize(
+						"No ssh keypair file content found while using --ssh-keypair-name\n",
+						formatter.RedColor,
+					),
+				)
+			}
+			accessKey := ybaclient.AccessKey{
+				KeyInfo: ybaclient.KeyInfo{
+					KeyPairName:          util.GetStringPointer(keyPairName),
+					SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
+				},
+			}
+			requestBody.AllAccessKeys = append(requestBody.AllAccessKeys, accessKey)
+
+		}
+
 		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {

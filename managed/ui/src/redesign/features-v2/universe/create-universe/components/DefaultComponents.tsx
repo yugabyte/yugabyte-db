@@ -78,3 +78,15 @@ export const StyledInfoRow = styled(Box)(({ theme }) => ({
     }
   }
 }));
+
+export const StyledInputWrapper = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  width: '734px',
+  height: 'auto',
+  padding: '16px',
+  backgroundColor: '#FBFCFD',
+  border: '1px solid #D7DEE4',
+  borderRadius: '8px',
+  gap: '16px'
+}));

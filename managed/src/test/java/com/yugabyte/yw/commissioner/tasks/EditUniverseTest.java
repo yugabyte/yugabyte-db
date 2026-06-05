@@ -17,6 +17,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
@@ -24,6 +25,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -70,6 +72,7 @@ import org.apache.pekko.japi.function.Predicate;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
@@ -209,13 +212,14 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-    // Disable comprehensive prechecks (CheckSshConnection, CheckServiceLiveness) so task sequence
+    // Disable comprehensive prechecks (CheckNodeCommandExecution, CheckServiceLiveness) so task
+    // sequence
     // assertions remain valid. Tests verify core EditUniverse behavior.
     factory
         .forUniverse(defaultUniverse)
         .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     factory
-        .forUniverse(defaultUniverse)
+        .forUniverse(onPremUniverse)
         .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
 
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
@@ -275,6 +279,63 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       assertNull(e.getMessage());
     }
     return null;
+  }
+
+  @Test
+  public void testComprehensivePrechecksSkippedOnRetryForEditUniverse() {
+    Universe universe = defaultUniverse;
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
+                  ImmutableMap.of("q", "v", "q1", "v1", "q3", "v3");
+            });
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "true");
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenAnswer(
+            inv -> {
+              List<String> cmd = inv.getArgument(2);
+              if (cmd != null && cmd.toString().contains("command-execution-test")) {
+                return ShellResponse.create(
+                    0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + " command-execution-test");
+              }
+              return ShellResponse.create(0, "Command output:\nLinux x86_64");
+            });
+    UniverseDefinitionTaskParams taskParams1 = universe.getUniverseDetails();
+    taskParams1.setUniverseUUID(universe.getUniverseUUID());
+    taskParams1.getPrimaryCluster().userIntent.instanceTags =
+        ImmutableMap.of("q", "vq", "q2", "v2");
+    taskParams1.setRunOnlyPrechecks(true);
+
+    TaskInfo taskInfo1 = submitTask(taskParams1);
+    assertEquals(Success, taskInfo1.getTaskState());
+    assertTrue(
+        taskInfo1.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
+    assertTrue(
+        taskInfo1.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams taskParams2 = universe.getUniverseDetails();
+    taskParams2.setUniverseUUID(universe.getUniverseUUID());
+    taskParams2.getPrimaryCluster().userIntent.instanceTags =
+        ImmutableMap.of("q", "vq2", "q2", "v2b");
+    taskParams2.setRunOnlyPrechecks(true);
+    taskParams2.setPreviousTaskUUID(taskInfo1.getUuid());
+
+    TaskInfo taskInfo2 = submitTask(taskParams2);
+    assertEquals(Success, taskInfo2.getTaskState());
+    assertFalse(
+        taskInfo2.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
+    assertFalse(
+        taskInfo2.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));
   }
 
   @Test
@@ -437,6 +498,53 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 "1",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n4", "host-n5")));
+  }
+
+  @Test
+  public void testExpandWithCapacityReservationGcpSuccess() throws Exception {
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationGcp.getKey(), "true");
+    Region.create(gcpProvider, "region-2", "region-2", "yb-image");
+    Universe universe = createUniverseForProvider("universe-test", gcpProvider);
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+
+    verifyCapacityReservationGcp(
+        universe.getUniverseUUID(),
+        Map.of(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
+
+    // GCP reservation names are random "r-<uuid>"; capture them to map by zone.
+    ArgumentCaptor<String> nameCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> zoneCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> typeCaptor = ArgumentCaptor.forClass(String.class);
+    verify(gcpProjectApiClient, org.mockito.Mockito.atLeast(0))
+        .createCapacityReservation(
+            nameCaptor.capture(),
+            zoneCaptor.capture(),
+            typeCaptor.capture(),
+            org.mockito.Mockito.anyInt(),
+            org.mockito.Mockito.anyMap());
+
+    Map<String, String> zoneToName = new HashMap<>();
+    for (int idx = 0; idx < nameCaptor.getAllValues().size(); idx++) {
+      zoneToName.put(zoneCaptor.getAllValues().get(idx), nameCaptor.getAllValues().get(idx));
+    }
+
+    verifyNodeInteractionsCapacityReservation(
+        14,
+        NodeManager.NodeCommandType.Create,
+        params -> ((AnsibleCreateServer.Params) params).capacityReservation,
+        Map.of(zoneToName.get("az-1"), Arrays.asList("host-n4", "host-n5")));
   }
 
   @Test

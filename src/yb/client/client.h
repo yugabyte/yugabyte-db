@@ -349,7 +349,10 @@ class YBClient {
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
   Status BackfillIndex(
-      const TableId& table_id, bool wait = true, CoarseTimePoint deadline = CoarseTimePoint());
+      const TableId& table_id,
+      std::optional<TransactionMetadata> requester_transaction,
+      bool wait = true,
+      CoarseTimePoint deadline = CoarseTimePoint());
 
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
@@ -745,6 +748,8 @@ class YBClient {
       const xrepl::StreamId stream_id);
 
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
+
+  Result<bool> IsNamespacePartOfCDCSDK(const NamespaceId& namespace_id);
 
   Result<bool> IsBootstrapRequired(
       const TableIds& table_ids,

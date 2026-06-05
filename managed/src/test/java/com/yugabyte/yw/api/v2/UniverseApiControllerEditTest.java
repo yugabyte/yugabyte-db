@@ -35,7 +35,6 @@ import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -148,7 +147,6 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
 
   @Test
   public void testEditUniverseV2_passesWhenInstanceTypeConsistent() throws ApiException {
-    ModelFactory.addNodesToUniverse(universeUuid, 3);
     Universe.saveDetails(
         universeUuid,
         univ -> {
@@ -186,7 +184,6 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
 
   @Test
   public void testEditUniverseV2_failsOnInstanceTypeDrift() throws ApiException {
-    ModelFactory.addNodesToUniverse(universeUuid, 3);
     Universe.saveDetails(
         universeUuid,
         univ -> {

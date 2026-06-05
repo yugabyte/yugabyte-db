@@ -12,9 +12,9 @@ jobs:
     release_artifact: false
 
   - os: alma8
-    compiler: gcc12
+    compiler: gcc15
     build_type: fastdebug
-    test_opts: YB_TEST_YB_CONTROLLER=0
+    test_opts: YB_TEST_YB_CONTROLLER=0 YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS=true
     release_artifact: false
 
   - os: alma8

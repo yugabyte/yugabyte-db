@@ -26,11 +26,11 @@ chown_if_root "$yb_releases_dir"
 chmod 0755 "$yb_releases_dir"
 
 # Retrieve the mount_paths.
-mount_points={{ mount_paths }}
-IFS=',' read -ra mount_paths <<< "$mount_points"
+mount_points="{{ mount_paths | default('') | trim }}"
+IFS=' ' read -ra mount_points_array <<< "$mount_points"
 
 # Create Mount Core directory
-mount_cores_dir="${mount_paths[0]}/cores"
+mount_cores_dir="${mount_points_array[0]}/cores"
 mkdir -p "$mount_cores_dir"
 chown_if_root "$mount_cores_dir"
 chmod 0755 "$mount_cores_dir"
@@ -82,7 +82,7 @@ if [ ! -d "$yb_conf_dir" ]; then
   chmod 0755 "$yb_conf_dir"
 fi
 
-mount_logs_dir="${mount_paths[0]}/yb-data/{{ yb_process_type }}/logs"
+mount_logs_dir="${mount_points_array[0]}/yb-data/{{ yb_process_type }}/logs"
 mkdir -p "$mount_logs_dir"
 chown_if_root "$mount_logs_dir"
 chmod 0755 "$mount_logs_dir"
@@ -197,11 +197,11 @@ for folder in "${symlink_folders[@]}"; do
   done
 done
 
-# Ensure the {{ yb_home_dir }}/.ssh/authorized_keys file is removed from prebuilt
+# Ensure the {{ yb_user_home }}/.ssh/authorized_keys file is removed from prebuilt
 # AMIs to avoid retaining default or cloud-injected SSH keys
 # (e.g., Google-injected keys).
 
-AUTHORIZED_KEYS_PATH="{{ yb_home_dir }}/.ssh/authorized_keys"
+AUTHORIZED_KEYS_PATH="{{ yb_user_home }}/.ssh/authorized_keys"
 
 if [ -f "$AUTHORIZED_KEYS_PATH" ]; then
   rm -f "$AUTHORIZED_KEYS_PATH"

@@ -36,6 +36,9 @@ Review the following information before starting an upgrade.
 {{< warning title="YSQL major version upgrades" >}}
 To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2025.1 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 {{< /warning >}}
+{{< warning title="TA-31533: Universes with xCluster" >}}
+For some xCluster setups, before upgrading, you should run a verification script to check if the universe is affected by TA-31533. For more information, refer to {{<ta 31533>}}.
+{{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
 
@@ -337,7 +340,7 @@ To upgrade clusters in transactional xCluster, the sequence is as follows:
 
 ### Bidirectional xCluster
 
-If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
+If you have bidirectional xCluster replication, perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
 
 The sequence is as follows:
 

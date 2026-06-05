@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'react-toastify';
 import { toUpper } from 'lodash';
 import { useQuery } from 'react-query';
 import { fetchProviderList } from '@app/api/admin';
 
-import { mui, YBMaps, YBSelect, YBTag } from '@yugabyte-ui-library/core';
+import { mui, YBMaps, YBSelect, YBTag, YBAlert, AlertVariant } from '@yugabyte-ui-library/core';
 import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import {
   extractGeoPartitionsFromUniverse,
@@ -17,10 +16,12 @@ import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.sch
 
 import { ybFormatDate } from '@app/redesign/helpers/DateUtils';
 import {
+  countMasterAndTServerNodes,
   countRegionsAzsAndNodes,
   getClusterByType,
   getProviderIcon,
   getResilientType,
+  hasDedicatedNodes,
   useEditUniverseContext
 } from '../EditUniverseUtils';
 
@@ -30,6 +31,7 @@ import { MapRegionsView } from '../components/MapRegionView';
 import { MapGeoPartitionView } from '../components/MapGeoPartitionView';
 import { Star } from '@material-ui/icons';
 import CopyIcon from '../../../../assets/copy_blue.svg';
+import { useYBToast } from '../../create-universe/helpers/ToastUtils';
 
 const { Box, styled, Typography, Grid2, Divider, MenuItem } = mui;
 
@@ -62,10 +64,21 @@ enum MapViewMode {
   GEO_PARTITIONS = 'geo-partitions'
 }
 
+const MAP_COORDINATES: [number, number][] = [
+  [0, 0],
+  [0, 0]
+];
+
+const MAP_CONTAINER_PROPS = {
+  scrollWheelZoom: false,
+  zoom: 2,
+  center: [0, 0] as [number, number]
+};
+
 export const GeneralTab = () => {
   const { universeData, providerRegions } = useEditUniverseContext();
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.general' });
-
+  const toast = useYBToast();
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>(MapViewMode.REGIONS);
   const r = extractRegionsAndNodeDataFromUniverse(universeData!, providerRegions!);
   const geoParitionsData = extractGeoPartitionsFromUniverse(universeData!, providerRegions!);
@@ -77,11 +90,23 @@ export const GeneralTab = () => {
   const encryptionAtRestEnabled = !!universeData?.spec?.encryption_at_rest_spec?.kms_config_uuid;
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
 
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const providerIcon = getProviderIcon(providerCode);
 
-  const primaryRegionStats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
+  let totalNodesCount = 0;
+
+  if(!hasDedicatedNodes(universeData!)) {
+    const primaryRegionStats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
+    const readReplicaRegionStats = countRegionsAzsAndNodes(readReplicaCluster?.placement_spec);
+    totalNodesCount = primaryRegionStats.totalNodes + readReplicaRegionStats.totalNodes;
+  }
+  else{
+    const primaryTServerMasterCount = countMasterAndTServerNodes(universeData!, primaryCluster);
+    const readReplicaTServerMasterCount = countMasterAndTServerNodes(universeData!, readReplicaCluster);
+    totalNodesCount = primaryTServerMasterCount.TSERVER! + primaryTServerMasterCount.MASTER! + readReplicaTServerMasterCount.TSERVER! + readReplicaTServerMasterCount.MASTER!;
+  }
 
   const { data: providers } = useQuery(['providers'], () => fetchProviderList(), {
     select: (data) => data.data
@@ -93,21 +118,15 @@ export const GeneralTab = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
+
       <YBMaps
         dataTestId="yb-edit-universe-regions"
         mapHeight={345}
-        coordinates={[
-          [0, 0],
-          [0, 0]
-        ]}
+        coordinates={MAP_COORDINATES}
         initialBounds={undefined}
-        mapContainerProps={{
-          scrollWheelZoom: false,
-          zoom: 2,
-          center: [0, 0]
-        }}
+        mapContainerProps={MAP_CONTAINER_PROPS}
       >
-        {isGeoPartitionPresent && (
+        {/* {isGeoPartitionPresent && (
           <StyledYBSelect
             dataTestId="yb-select"
             value={mapViewMode}
@@ -117,9 +136,9 @@ export const GeneralTab = () => {
             <Divider />
             <MenuItem value={MapViewMode.GEO_PARTITIONS}>{t('geoPartition')}</MenuItem>
           </StyledYBSelect>
-        )}
+        )} */}
         {mapViewMode === MapViewMode.REGIONS && ((<MapRegionsView regions={r.regions} />) as any)}
-        {mapViewMode === MapViewMode.GEO_PARTITIONS && <MapGeoPartitionView />}
+        {/* {mapViewMode === MapViewMode.GEO_PARTITIONS && <MapGeoPartitionView />} */}
       </YBMaps>
       <StyledArea>
         <Typography variant="subtitle2" sx={{ fontSize: '15px' }}>
@@ -142,7 +161,13 @@ export const GeneralTab = () => {
             </div>
             <div>
               <span className="header">{t('faultTolerance')}</span>{' '}
-              <span className="value">{getResilientType(primaryRegionStats, t)}</span>
+              <span className="value">
+                {getResilientType(
+                  primaryCluster!.placement_spec!,
+                  primaryCluster?.replication_factor,
+                  t
+                )}
+              </span>
             </div>
           </StyledInfoRow>
           <StyledInfoRow>
@@ -178,7 +203,7 @@ export const GeneralTab = () => {
             <div></div>
             <div>
               <span className="header">{t('totalNodes')}</span>{' '}
-              <span className="value">{primaryRegionStats.totalNodes}</span>
+              <span className="value">{totalNodesCount}</span>
             </div>
             <div>
               <span className="header">{t('dateCreated')}</span>{' '}
@@ -236,6 +261,6 @@ export const GeneralTab = () => {
           </StyledInfoRow>
         </Box>
       </StyledArea>
-    </Box>
+    </Box >
   );
 };

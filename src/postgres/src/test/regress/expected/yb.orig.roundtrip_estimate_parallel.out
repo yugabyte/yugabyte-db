@@ -1,0 +1,404 @@
+-- Test planner's roundtrip estimates for Parallel Index/IndexOnly scans.
+-- DEPENDENCY: yb.orig.roundtrip_estimate_parallel_setup
+\c roundtrip_parallel_test
+delete from queries;
+-- QID categories:
+--   1xxxx: contiguous key ranges
+--   2xxxx: Seq Scan + wide key range + storage/local filters
+--   3xxxx: sparse IN-list key probes
+--   4xxxx: clustered IN-list key probes
+--   5xxxx: seeknext-style contiguous index ranges
+-- range queries.
+insert into queries (qid, query)
+with relations(rel, qidrel) as (
+    values ('ce.r',  0),
+           ('ce.rC', 1000)
+),
+ranges(qidbase, predicate) as (
+    values (100, '##COL## between 1 and 10000'),
+           (200, '##COL## between 1 and 11000')
+),
+scans(qidoff, target, predicol) as (
+    values (1, '*',  'pk'),  -- Parallel Index Scan using PK index
+           (2, 'v',  'b'),   -- Parallel Index Scan using non-PK index
+           (3, 'b, v', 'b'), -- Parallel Index Only Scan on non-PK index
+           -- request ybctid.  returning ybctid from IOS unsupported.
+           (4, 'ybctid, *',  'pk'),  -- Index Scan using PK index
+           (5, 'ybctid, v',  'b')    -- Index Scan using non-PK index
+)
+select
+    10000 + r.qidrel + rng.qidbase + s.qidoff as qid,
+    'select ' || s.target || ' from ' || r.rel || ' where ' ||
+    replace(rng.predicate, '##COL##', s.predicol) as query
+from relations r, ranges rng, scans s;
+-- filter combination queries.
+insert into queries (qid, query)
+with relations(rel, qidrel) as (
+    values ('ce.r',  0),
+           ('ce.rC', 1000)
+),
+filter_combos(qidbase, qidoff, target, predicol, extra) as (
+    -- Parallel Seq Scan
+    values (000, 1, '*', null, null),
+           (000, 2, 'ybctid, *', null, null),
+    -- PK Index Scan: + storage filter, + local filter
+           (100, 1, '*', 'pk', 'pk % 100 <= 33'),
+           (100, 2, '*', 'pk', 'pk % 100 <= 33 and non_pushable(pk) <= 12345'),
+    -- non-PK Index Scan: + storage index filter, + storage table filter,
+    --                    + local filter
+           (200, 1, 'v', 'b',  'b % 100 <= 33'),
+           (200, 2, 'v', 'b',  'b % 100 <= 33 and e % 100 <= 33'),
+           (200, 3, 'v', 'b',  'b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 12345'),
+    -- Index Only Scan: + storage filter, + local filter
+           (300, 1, 'b, v', 'b',  'b % 100 <= 33'),
+           (300, 2, 'b, v', 'b',  'b % 100 <= 33 and non_pushable(b) <= 12345')
+)
+select
+    20000 + r.qidrel + fc.qidbase + fc.qidoff as qid,
+    'select ' || fc.target || ' from ' || r.rel
+    || case when fc.predicol is null then '' else
+        ' where ' || fc.predicol || ' between 1 and 10000'
+        || ' and ' || fc.extra end as query
+from relations r, filter_combos fc;
+-- IN-list queries with sparse, non-contiguous first-key matches.
+insert into queries (qid, query)
+with relations(rel, qidrel) as (
+    values ('ce.r',  0),
+           ('ce.rC', 1000)
+),
+in_list(qidoff, target, predicol, items) as (
+    values (1, '*', 'pk',
+            '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
+           (2, 'v', 'b',
+            '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
+           (3, 'b, v', 'b',
+            '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345')
+)
+select
+    30000 + r.qidrel + il.qidoff as qid,
+    'select ' || il.target || ' from ' || r.rel
+    || ' where ' || il.predicol || ' in (' || il.items || ')' as query
+from relations r, in_list il;
+-- IN-list queries with tightly clustered first-key matches (single scan page).
+insert into queries (qid, query)
+with relations(rel, qidrel) as (
+    values ('ce.r',  0),
+           ('ce.rC', 1000)
+),
+in_list(qidoff, target, predicol, items) as (
+    values (1, '*', 'pk', '1, 2, 3, 4, 5, 6, 7, 8'),
+           (2, 'v', 'b',  '1, 2, 3, 4, 5, 6, 7, 8'),
+           (3, 'b, v', 'b', '1, 2, 3, 4, 5, 6, 7, 8')
+)
+select
+    40000 + r.qidrel + il.qidoff as qid,
+    'select ' || il.target || ' from ' || r.rel
+    || ' where ' || il.predicol || ' in (' || il.items || ')' as query
+from relations r, in_list il;
+-- seeknext-style queries.
+insert into queries (qid, query)
+with colocations(colo, qidcolo) as (
+    values ('',  0),
+           ('C', 5000)
+),
+columns(col_id, col, forward_pred, backward_pred) as (
+    values (1, 'dv1',   '<= 1',    '<= 1 order by dv1 desc'),
+           (2, 'f1000', '<= 10',   '<= 10 order by f1000 desc'),
+           (3, 'f100',  '<= 100',  '<= 100 order by f100 desc')
+),
+scans(qidbase, is_only_scan, is_backward) as (
+    values (1000, false, false),
+           (2000, true,  false),
+           (3000, false, true),
+           (4000, true,  true)
+)
+select
+    50000 + s.qidbase + c_colo.qidcolo
+        + row_number() over (partition by c_colo.colo, s.qidbase order by c.col_id) as qid,
+    'select ' ||
+    case when s.is_only_scan then c.col || ', vv' else 'vv, ' || c.col end ||
+    ' from sn.r' || c_colo.colo ||
+    ' where ' || c.col || ' ' ||
+    case when s.is_backward then c.backward_pred else c.forward_pred end as query
+from colocations c_colo,
+     scans s,
+     columns c;
+-- Block 1 (baseline): force parallel paths to surface estimation errors.
+-- Range-size-vs-loops policy: if a block's range count creates per-executor
+-- unevenness (e.g. only 2 ranges across 4+1 loops) so the integer-rounded
+-- per-loop estimate flips on rounding alone, adjust range_size for that
+-- block.  Do NOT use this rule to hide legitimate model mismatches such as
+-- "way too many empty ranges": empty ranges per se shouldn't accumulate
+-- error if model and reality both scale linearly with range count.
+set yb_test_force_parallel = force;
+set max_parallel_workers_per_gather = 4;
+select * from queries order by qid;
+  qid  |                                                            query                                                             
+-------+------------------------------------------------------------------------------------------------------------------------------
+ 10101 | select * from ce.r where pk between 1 and 10000
+ 10102 | select v from ce.r where b between 1 and 10000
+ 10103 | select b, v from ce.r where b between 1 and 10000
+ 10104 | select ybctid, * from ce.r where pk between 1 and 10000
+ 10105 | select ybctid, v from ce.r where b between 1 and 10000
+ 10201 | select * from ce.r where pk between 1 and 11000
+ 10202 | select v from ce.r where b between 1 and 11000
+ 10203 | select b, v from ce.r where b between 1 and 11000
+ 10204 | select ybctid, * from ce.r where pk between 1 and 11000
+ 10205 | select ybctid, v from ce.r where b between 1 and 11000
+ 11101 | select * from ce.rC where pk between 1 and 10000
+ 11102 | select v from ce.rC where b between 1 and 10000
+ 11103 | select b, v from ce.rC where b between 1 and 10000
+ 11104 | select ybctid, * from ce.rC where pk between 1 and 10000
+ 11105 | select ybctid, v from ce.rC where b between 1 and 10000
+ 11201 | select * from ce.rC where pk between 1 and 11000
+ 11202 | select v from ce.rC where b between 1 and 11000
+ 11203 | select b, v from ce.rC where b between 1 and 11000
+ 11204 | select ybctid, * from ce.rC where pk between 1 and 11000
+ 11205 | select ybctid, v from ce.rC where b between 1 and 11000
+ 20001 | select * from ce.r
+ 20002 | select ybctid, * from ce.r
+ 20101 | select * from ce.r where pk between 1 and 10000 and pk % 100 <= 33
+ 20102 | select * from ce.r where pk between 1 and 10000 and pk % 100 <= 33 and non_pushable(pk) <= 12345
+ 20201 | select v from ce.r where b between 1 and 10000 and b % 100 <= 33
+ 20202 | select v from ce.r where b between 1 and 10000 and b % 100 <= 33 and e % 100 <= 33
+ 20203 | select v from ce.r where b between 1 and 10000 and b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 12345
+ 20301 | select b, v from ce.r where b between 1 and 10000 and b % 100 <= 33
+ 20302 | select b, v from ce.r where b between 1 and 10000 and b % 100 <= 33 and non_pushable(b) <= 12345
+ 21001 | select * from ce.rC
+ 21002 | select ybctid, * from ce.rC
+ 21101 | select * from ce.rC where pk between 1 and 10000 and pk % 100 <= 33
+ 21102 | select * from ce.rC where pk between 1 and 10000 and pk % 100 <= 33 and non_pushable(pk) <= 12345
+ 21201 | select v from ce.rC where b between 1 and 10000 and b % 100 <= 33
+ 21202 | select v from ce.rC where b between 1 and 10000 and b % 100 <= 33 and e % 100 <= 33
+ 21203 | select v from ce.rC where b between 1 and 10000 and b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 12345
+ 21301 | select b, v from ce.rC where b between 1 and 10000 and b % 100 <= 33
+ 21302 | select b, v from ce.rC where b between 1 and 10000 and b % 100 <= 33 and non_pushable(b) <= 12345
+ 30001 | select * from ce.r where pk in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 30002 | select v from ce.r where b in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 30003 | select b, v from ce.r where b in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 31001 | select * from ce.rC where pk in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 31002 | select v from ce.rC where b in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 31003 | select b, v from ce.rC where b in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 40001 | select * from ce.r where pk in (1, 2, 3, 4, 5, 6, 7, 8)
+ 40002 | select v from ce.r where b in (1, 2, 3, 4, 5, 6, 7, 8)
+ 40003 | select b, v from ce.r where b in (1, 2, 3, 4, 5, 6, 7, 8)
+ 41001 | select * from ce.rC where pk in (1, 2, 3, 4, 5, 6, 7, 8)
+ 41002 | select v from ce.rC where b in (1, 2, 3, 4, 5, 6, 7, 8)
+ 41003 | select b, v from ce.rC where b in (1, 2, 3, 4, 5, 6, 7, 8)
+ 51001 | select vv, dv1 from sn.r where dv1 <= 1
+ 51002 | select vv, f1000 from sn.r where f1000 <= 10
+ 51003 | select vv, f100 from sn.r where f100 <= 100
+ 52001 | select dv1, vv from sn.r where dv1 <= 1
+ 52002 | select f1000, vv from sn.r where f1000 <= 10
+ 52003 | select f100, vv from sn.r where f100 <= 100
+ 53001 | select vv, dv1 from sn.r where dv1 <= 1 order by dv1 desc
+ 53002 | select vv, f1000 from sn.r where f1000 <= 10 order by f1000 desc
+ 53003 | select vv, f100 from sn.r where f100 <= 100 order by f100 desc
+ 54001 | select dv1, vv from sn.r where dv1 <= 1 order by dv1 desc
+ 54002 | select f1000, vv from sn.r where f1000 <= 10 order by f1000 desc
+ 54003 | select f100, vv from sn.r where f100 <= 100 order by f100 desc
+ 56001 | select vv, dv1 from sn.rC where dv1 <= 1
+ 56002 | select vv, f1000 from sn.rC where f1000 <= 10
+ 56003 | select vv, f100 from sn.rC where f100 <= 100
+ 57001 | select dv1, vv from sn.rC where dv1 <= 1
+ 57002 | select f1000, vv from sn.rC where f1000 <= 10
+ 57003 | select f100, vv from sn.rC where f100 <= 100
+ 58001 | select vv, dv1 from sn.rC where dv1 <= 1 order by dv1 desc
+ 58002 | select vv, f1000 from sn.rC where f1000 <= 10 order by f1000 desc
+ 58003 | select vv, f100 from sn.rC where f100 <= 100 order by f100 desc
+ 59001 | select dv1, vv from sn.rC where dv1 <= 1 order by dv1 desc
+ 59002 | select f1000, vv from sn.rC where f1000 <= 10 order by f1000 desc
+ 59003 | select f100, vv from sn.rC where f100 <= 100 order by f100 desc
+(74 rows)
+
+update explain_query_options set with_analyze = false;
+-- verify scan node types: first variant saves baseline; later variants assert symmetric diff is empty.
+create temp table baseline_scan_nodes as
+select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+       "Index Name", "Index Cond", "Storage Index Filter",
+       "Storage Filter", "Filter"
+from queries q full join check_roundtrip_estimates x on x.qid = q.qid;
+select * from baseline_scan_nodes order by qid, nid;
+  qid  | nid |             Node Type             |   Index Name    |                                               Index Cond                                               | Storage Index Filter |       Storage Filter        |                Filter                 
+-------+-----+-----------------------------------+-----------------+--------------------------------------------------------------------------------------------------------+----------------------+-----------------------------+---------------------------------------
+ 10101 |   1 | Parallel Index Scan               | r_pkey          | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                             | 
+ 10102 |   1 | Parallel Index Only Scan          | r_b_v_idx       | ((b >= 1) AND (b <= 10000))                                                                            |                      |                             | 
+ 10103 |   1 | Parallel Index Only Scan          | r_b_v_idx       | ((b >= 1) AND (b <= 10000))                                                                            |                      |                             | 
+ 10104 |   1 | Parallel Index Scan               | r_pkey          | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                             | 
+ 10105 |   1 | Parallel Seq Scan                 |                 |                                                                                                        |                      | ((b >= 1) AND (b <= 10000)) | 
+ 10201 |   1 | Parallel Index Scan               | r_pkey          | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                             | 
+ 10202 |   1 | Parallel Index Only Scan          | r_b_v_idx       | ((b >= 1) AND (b <= 11000))                                                                            |                      |                             | 
+ 10203 |   1 | Parallel Index Only Scan          | r_b_v_idx       | ((b >= 1) AND (b <= 11000))                                                                            |                      |                             | 
+ 10204 |   1 | Parallel Index Scan               | r_pkey          | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                             | 
+ 10205 |   1 | Parallel Seq Scan                 |                 |                                                                                                        |                      | ((b >= 1) AND (b <= 11000)) | 
+ 11101 |   1 | Parallel Index Scan               | rc_pkey         | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                             | 
+ 11102 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      |                             | 
+ 11103 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      |                             | 
+ 11104 |   1 | Parallel Index Scan               | rc_pkey         | ((pk >= 1) AND (pk <= 10000))                                                                          |                      |                             | 
+ 11105 |   1 | Parallel Seq Scan                 |                 |                                                                                                        |                      | ((b >= 1) AND (b <= 10000)) | 
+ 11201 |   1 | Parallel Index Scan               | rc_pkey         | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                             | 
+ 11202 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | ((b >= 1) AND (b <= 11000))                                                                            |                      |                             | 
+ 11203 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | ((b >= 1) AND (b <= 11000))                                                                            |                      |                             | 
+ 11204 |   1 | Parallel Index Scan               | rc_pkey         | ((pk >= 1) AND (pk <= 11000))                                                                          |                      |                             | 
+ 11205 |   1 | Parallel Seq Scan                 |                 |                                                                                                        |                      | ((b >= 1) AND (b <= 11000)) | 
+ 20001 |   1 | Parallel Seq Scan                 |                 |                                                                                                        |                      |                             | 
+ 20002 |   1 | Parallel Seq Scan                 |                 |                                                                                                        |                      |                             | 
+ 20101 |   1 | Parallel Index Scan               | r_pkey          | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)          | 
+ 20102 |   1 | Parallel Index Scan               | r_pkey          | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)          | (non_pushable((pk)::bigint) <= 12345)
+ 20201 |   1 | Parallel Index Only Scan          | r_b_v_idx       | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | 
+ 20202 |   1 | Parallel Index Scan               | r_b_v_idx       | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)           | 
+ 20203 |   1 | Parallel Index Scan               | r_b_v_idx       | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)           | (non_pushable((e)::bigint) <= 12345)
+ 20301 |   1 | Parallel Index Only Scan          | r_b_v_idx       | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | 
+ 20302 |   1 | Parallel Index Only Scan          | r_b_v_idx       | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | (non_pushable((b)::bigint) <= 12345)
+ 21001 |   1 | Parallel Seq Scan                 |                 |                                                                                                        |                      |                             | 
+ 21002 |   1 | Parallel Seq Scan                 |                 |                                                                                                        |                      |                             | 
+ 21101 |   1 | Parallel Index Scan               | rc_pkey         | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)          | 
+ 21102 |   1 | Parallel Index Scan               | rc_pkey         | ((pk >= 1) AND (pk <= 10000))                                                                          |                      | ((pk % 100) <= 33)          | (non_pushable((pk)::bigint) <= 12345)
+ 21201 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | 
+ 21202 |   1 | Parallel Index Scan               | rc_b_v_idx      | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)           | 
+ 21203 |   1 | Parallel Index Scan               | rc_b_v_idx      | ((b >= 1) AND (b <= 10000))                                                                            | ((b % 100) <= 33)    | ((e % 100) <= 33)           | (non_pushable((e)::bigint) <= 12345)
+ 21301 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | 
+ 21302 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | ((b >= 1) AND (b <= 10000))                                                                            |                      | ((b % 100) <= 33)           | (non_pushable((b)::bigint) <= 12345)
+ 30001 |   1 | Parallel Index Scan               | r_pkey          | (pk = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                             | 
+ 30002 |   1 | Parallel Index Only Scan          | r_b_v_idx       | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                             | 
+ 30003 |   1 | Parallel Index Only Scan          | r_b_v_idx       | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                             | 
+ 31001 |   1 | Parallel Index Scan               | rc_pkey         | (pk = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                             | 
+ 31002 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                             | 
+ 31003 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                             | 
+ 40001 |   1 | Parallel Index Scan               | r_pkey          | (pk = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                            |                      |                             | 
+ 40002 |   1 | Parallel Index Only Scan          | r_b_v_idx       | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                             | 
+ 40003 |   1 | Parallel Index Only Scan          | r_b_v_idx       | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                             | 
+ 41001 |   1 | Parallel Index Scan               | rc_pkey         | (pk = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                            |                      |                             | 
+ 41002 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                             | 
+ 41003 |   1 | Parallel Index Only Scan          | rc_b_v_idx      | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                             | 
+ 51001 |   1 | Parallel Index Only Scan          | r_dv1_idx       | (dv1 <= 1)                                                                                             |                      |                             | 
+ 51002 |   1 | Parallel Index Only Scan          | r_f1000_idx     | (f1000 <= 10)                                                                                          |                      |                             | 
+ 51003 |   1 | Parallel Index Only Scan          | r_f100_idx      | (f100 <= 100)                                                                                          |                      |                             | 
+ 52001 |   1 | Parallel Index Only Scan          | r_dv1_idx       | (dv1 <= 1)                                                                                             |                      |                             | 
+ 52002 |   1 | Parallel Index Only Scan          | r_f1000_idx     | (f1000 <= 10)                                                                                          |                      |                             | 
+ 52003 |   1 | Parallel Index Only Scan          | r_f100_idx      | (f100 <= 100)                                                                                          |                      |                             | 
+ 53001 |   1 | Parallel Index Only Scan Backward | r_dv1_idx       | (dv1 <= 1)                                                                                             |                      |                             | 
+ 53002 |   1 | Parallel Index Only Scan Backward | r_f1000_idx     | (f1000 <= 10)                                                                                          |                      |                             | 
+ 53003 |   1 | Parallel Index Only Scan Backward | r_f100_idx      | (f100 <= 100)                                                                                          |                      |                             | 
+ 54001 |   1 | Parallel Index Only Scan Backward | r_dv1_idx       | (dv1 <= 1)                                                                                             |                      |                             | 
+ 54002 |   1 | Parallel Index Only Scan Backward | r_f1000_idx     | (f1000 <= 10)                                                                                          |                      |                             | 
+ 54003 |   1 | Parallel Index Only Scan Backward | r_f100_idx      | (f100 <= 100)                                                                                          |                      |                             | 
+ 56001 |   1 | Parallel Index Only Scan          | rc_dv1_vv_idx   | (dv1 <= 1)                                                                                             |                      |                             | 
+ 56002 |   1 | Parallel Index Only Scan          | rc_f1000_vv_idx | (f1000 <= 10)                                                                                          |                      |                             | 
+ 56003 |   1 | Parallel Index Only Scan          | rc_f100_vv_idx  | (f100 <= 100)                                                                                          |                      |                             | 
+ 57001 |   1 | Parallel Index Only Scan          | rc_dv1_vv_idx   | (dv1 <= 1)                                                                                             |                      |                             | 
+ 57002 |   1 | Parallel Index Only Scan          | rc_f1000_vv_idx | (f1000 <= 10)                                                                                          |                      |                             | 
+ 57003 |   1 | Parallel Index Only Scan          | rc_f100_vv_idx  | (f100 <= 100)                                                                                          |                      |                             | 
+ 58001 |   1 | Parallel Index Only Scan Backward | rc_dv1_vv_idx   | (dv1 <= 1)                                                                                             |                      |                             | 
+ 58002 |   1 | Parallel Index Only Scan Backward | rc_f1000_vv_idx | (f1000 <= 10)                                                                                          |                      |                             | 
+ 58003 |   1 | Parallel Index Only Scan Backward | rc_f100_vv_idx  | (f100 <= 100)                                                                                          |                      |                             | 
+ 59001 |   1 | Parallel Index Only Scan Backward | rc_dv1_vv_idx   | (dv1 <= 1)                                                                                             |                      |                             | 
+ 59002 |   1 | Parallel Index Only Scan Backward | rc_f1000_vv_idx | (f1000 <= 10)                                                                                          |                      |                             | 
+ 59003 |   1 | Parallel Index Only Scan Backward | rc_f100_vv_idx  | (f100 <= 100)                                                                                          |                      |                             | 
+(74 rows)
+
+update explain_query_options set with_analyze = true;
+-- should not return any row; columns surface per-field counts on failure.
+select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimated Roundtrips" est, "Actual Roundtrips" act,
+       "Planned Loops" plan_loops, "Actual Loops" act_loops,
+       "Estimated Total Roundtrips" est_total, "Actual Total Roundtrips" act_total,
+       "Total Estimates", "Field Layout"
+from check_roundtrip_estimates
+where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
+order by qid, nid;
+ qid | nid | Node Type | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-----+-----+-----------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
+(0 rows)
+
+-- Block 2: halve yb_parallel_range_size to roughly double planned partitions
+-- (~5 -> ~10).  Keeps partition count comfortably >= planned loops while
+-- avoiding the under-population that 1/8x produced for sparse IN-list probes.
+set yb_parallel_range_size = 524288;
+update explain_query_options set with_analyze = false;
+(table baseline_scan_nodes
+ except all
+ select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
+union all
+(select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid
+ except all
+ table baseline_scan_nodes);
+ qid | nid | Node Type | Index Name | Index Cond | Storage Index Filter | Storage Filter | Filter 
+-----+-----+-----------+------------+------------+----------------------+----------------+--------
+(0 rows)
+
+update explain_query_options set with_analyze = true;
+-- should not return any row; columns surface per-field counts on failure.
+select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimated Roundtrips" est, "Actual Roundtrips" act,
+       "Planned Loops" plan_loops, "Actual Loops" act_loops,
+       "Estimated Total Roundtrips" est_total, "Actual Total Roundtrips" act_total,
+       "Total Estimates", "Field Layout"
+from check_roundtrip_estimates
+where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
+order by qid, nid;
+  qid  | nid |        Node Type         | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-------+-----+--------------------------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
+ 20202 |   1 | Parallel Index Scan      | r_b_v_idx  | idx       | f            |     1 |     1 |     3 |     3 |   2 |   6 |          5 |         5 |        10 |        30 | failed          | passed
+ 20203 |   1 | Parallel Index Scan      | r_b_v_idx  | idx       | f            |     1 |     1 |     3 |     3 |   2 |   6 |          5 |         5 |        10 |        30 | failed          | passed
+ 21202 |   1 | Parallel Index Scan      | rc_b_v_idx | idx       | t            |     1 |     0 |     4 |     0 |   1 |   4 |          5 |         5 |         5 |        20 | failed          | passed
+ 21203 |   1 | Parallel Index Scan      | rc_b_v_idx | idx       | t            |     1 |     0 |     4 |     0 |   1 |   4 |          5 |         5 |         5 |        20 | failed          | passed
+ 30001 |   1 | Parallel Index Scan      | r_pkey     | pk        | f            |     0 |     1 |     3 |     0 |   1 |   3 |          5 |         5 |         5 |        15 | failed          | passed
+ 30002 |   1 | Parallel Index Only Scan | r_b_v_idx  | ios       | f            |     0 |     1 |     0 |     4 |   1 |   4 |          5 |         5 |         5 |        20 | failed          | passed
+ 30003 |   1 | Parallel Index Only Scan | r_b_v_idx  | ios       | f            |     0 |     1 |     0 |     4 |   1 |   4 |          5 |         5 |         5 |        20 | failed          | passed
+ 31002 |   1 | Parallel Index Only Scan | rc_b_v_idx | ios       | t            |     0 |     1 |     0 |     4 |   1 |   4 |          5 |         5 |         5 |        20 | failed          | passed
+ 31003 |   1 | Parallel Index Only Scan | rc_b_v_idx | ios       | t            |     0 |     1 |     0 |     4 |   1 |   4 |          5 |         5 |         5 |        20 | failed          | passed
+(9 rows)
+
+-- Block 3: leader-off isolates parallel_leader_participation from range-size.
+-- Reset range_size to baseline so any new diffs come from leader-off alone.
+reset yb_parallel_range_size;
+set parallel_leader_participation = off;
+update explain_query_options set with_analyze = false;
+(table baseline_scan_nodes
+ except all
+ select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
+union all
+(select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid
+ except all
+ table baseline_scan_nodes);
+ qid | nid | Node Type | Index Name | Index Cond | Storage Index Filter | Storage Filter | Filter 
+-----+-----+-----------+------------+------------+----------------------+----------------+--------
+(0 rows)
+
+update explain_query_options set with_analyze = true;
+-- should not return any row; columns surface per-field counts on failure.
+select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimated Roundtrips" est, "Actual Roundtrips" act,
+       "Planned Loops" plan_loops, "Actual Loops" act_loops,
+       "Estimated Total Roundtrips" est_total, "Actual Total Roundtrips" act_total,
+       "Total Estimates", "Field Layout"
+from check_roundtrip_estimates
+where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
+order by qid, nid;
+  qid  | nid |      Node Type      | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-------+-----+---------------------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
+ 20202 |   1 | Parallel Index Scan | r_b_v_idx  | idx       | f            |     1 |     1 |     2 |     2 |   2 |   4 |          4 |         4 |         8 |        16 | failed          | passed
+ 20203 |   1 | Parallel Index Scan | r_b_v_idx  | idx       | f            |     1 |     1 |     2 |     2 |   2 |   4 |          4 |         4 |         8 |        16 | failed          | passed
+(2 rows)
+
+reset parallel_leader_participation;
+drop table baseline_scan_nodes;

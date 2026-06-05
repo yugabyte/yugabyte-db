@@ -4906,7 +4906,6 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 					 IndexClauseSet *clauseset)
 {
 	Relids		outer_relids = NULL;
-	Relation	index_rel;
 	Relation	base_rel;
 	RangeTblEntry *rte;
 	ListCell   *expr_lc;
@@ -4926,17 +4925,16 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 		}
 	}
 
-	index_rel = index_open(index->indexoid, NoLock);
 	rte = root->simple_rte_array[rel->relid];
 	base_rel = table_open(rte->relid, NoLock);
-	expr_lc = list_head(index_rel->rd_indexprs);
+	expr_lc = list_head(index->indexprs);
 
 	/* process each index key */
-	for (int i = 0; i < index_rel->rd_index->indnatts; i++)
+	for (int i = 0; i < index->nkeycolumns; i++)
 	{
 		Expr	   *inferrable_expr = NULL;
 		Expr	   *generation_expr = NULL;
-		AttrNumber	attnum = index_rel->rd_index->indkey.values[i];
+		AttrNumber	attnum = index->indexkeys[i];
 		List	   *rinfos = NIL;
 
 		if (attnum == InvalidAttrNumber)
@@ -4950,7 +4948,7 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 			inferrable_expr = (Expr *) index_expr;
 			generation_expr = (Expr *) index_expr;
 
-			expr_lc = lnext(index_rel->rd_indexprs, expr_lc);
+			expr_lc = lnext(index->indexprs, expr_lc);
 		}
 		else
 		{
@@ -5017,7 +5015,6 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	table_close(base_rel, NoLock);
-	index_close(index_rel, NoLock);
 	if (outer_relids)
 		bms_free(outer_relids);
 }

@@ -3367,7 +3367,9 @@ TEST_F(DBTest, SnapshotFiles) {
     uint64_t manifest_size = 0;
     std::vector<std::string> files;
     ASSERT_OK(dbfull()->DisableFileDeletions());
-    ASSERT_OK(dbfull()->GetLiveFiles(files, &manifest_size));
+    ASSERT_OK(
+        dbfull()->GetLiveFiles(
+            files, &manifest_size, /* flush_memtable */ true, FlushReason::kTestOnly));
 
     // CURRENT, MANIFEST, *.sst, *.sst.sblock files (one for each CF)
     ASSERT_EQ(files.size(), 6U);
@@ -3443,7 +3445,9 @@ TEST_F(DBTest, SnapshotFiles) {
     uint64_t new_manifest_size = 0;
     std::vector<std::string> newfiles;
     ASSERT_OK(dbfull()->DisableFileDeletions());
-    ASSERT_OK(dbfull()->GetLiveFiles(newfiles, &new_manifest_size));
+    ASSERT_OK(
+        dbfull()->GetLiveFiles(
+            newfiles, &new_manifest_size, /* flush_memtable */ true, FlushReason::kTestOnly));
 
     // find the new manifest file. assert that this manifest file is
     // the same one as in the previous snapshot. But its size should be
@@ -4713,8 +4717,9 @@ class ModelDB: public DB {
   Status EnableFileDeletions(bool force) override {
     return Status::OK();
   }
-  virtual Status GetLiveFiles(std::vector<std::string>&, uint64_t* size,
-                              bool flush_memtable = true) override {
+  virtual Status GetLiveFiles(
+      std::vector<std::string>&, uint64_t* size, bool flush_memtable,
+      FlushReason flush_reason) override {
     return Status::OK();
   }
 

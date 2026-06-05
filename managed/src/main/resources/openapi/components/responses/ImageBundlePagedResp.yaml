@@ -1,0 +1,5 @@
+description: Image bundles for this page
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/ImageBundlePagedResp.yaml"

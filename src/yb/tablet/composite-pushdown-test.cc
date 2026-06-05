@@ -103,7 +103,7 @@ class CompositePushdownTest : public YBTabletTest {
             ASSERT_OK_FAST(writer.Write(&req));
 
             if (i == nrows * 9 / 10) {
-              ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
+              ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
             }
             ++i;
           }

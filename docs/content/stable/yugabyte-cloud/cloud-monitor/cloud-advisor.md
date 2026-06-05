@@ -7,7 +7,7 @@ headcontent: Scan your cluster to discover performance optimizations
 menu:
   stable_yugabyte-cloud:
     identifier: cloud-advisor
-    parent: cloud-monitor
+    parent: monitor-performance
     weight: 400
 type: docs
 ---
@@ -20,7 +20,7 @@ To gather insights, click the cluster **Performance** tab, choose **Insights**, 
 
 For meaningful results, run your workload for at least an hour before running the scan.
 
-To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
+To monitor clusters in real time, use the performance metrics on the cluster [Performance Metrics](../monitor-metrics/) tab.
 
 ![Insights](/images/yb-cloud/managed-monitor-advisor.png)
 

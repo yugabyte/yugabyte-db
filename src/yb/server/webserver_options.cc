@@ -55,8 +55,7 @@ static std::string GetDefaultDocumentRoot();
 // not use these directly, but rather access them via WebserverOptions.
 // This makes it easier to instantiate web servers with different options
 // within a single unit test.
-DEFINE_UNKNOWN_string(
-    webserver_interface, "",
+DEFINE_NON_RUNTIME_string(webserver_interface, "",
     "Interface to start debug webserver on. If blank, webserver binds to first host IP"
     "present in the list of comma separated rpc_bind_addresses");
 TAG_FLAG(webserver_interface, advanced);
@@ -73,20 +72,20 @@ DEFINE_NON_RUNTIME_bool(webserver_enable_doc_root, true,
     "If true, webserver may serve static files from the webserver_doc_root");
 TAG_FLAG(webserver_enable_doc_root, advanced);
 
-DEFINE_UNKNOWN_string(webserver_ca_certificate_file, "",
+DEFINE_NON_RUNTIME_string(webserver_ca_certificate_file, "",
     "The location of the certificate of the certificate authority of the debug webserver's SSL "
     "certificate file, in .pem format. If empty, system-wide CA certificates are used.");
-DEFINE_UNKNOWN_string(webserver_certificate_file, "",
+DEFINE_NON_RUNTIME_string(webserver_certificate_file, "",
     "The location of the debug webserver's SSL certificate file, in .pem format. If "
     "empty, webserver SSL support is not enabled");
-DEFINE_UNKNOWN_string(webserver_private_key_file, "",
+DEFINE_NON_RUNTIME_string(webserver_private_key_file, "",
     "The location of the debug webserver's SSL private key file, in .pem format. If "
     "empty, the private key is assumed to be located in the same file as the certificate.");
-DEFINE_UNKNOWN_string(webserver_private_key_password, "",
+DEFINE_NON_RUNTIME_string(webserver_private_key_password, "",
     "The password for the debug webserver's SSL private key. If empty, no password is used.");
-DEFINE_UNKNOWN_string(webserver_authentication_domain, "",
+DEFINE_NON_RUNTIME_string(webserver_authentication_domain, "",
     "Domain used for debug webserver authentication");
-DEFINE_UNKNOWN_string(webserver_password_file, "",
+DEFINE_NON_RUNTIME_string(webserver_password_file, "",
     "(Optional) Location of .htpasswd file containing user names and hashed passwords for"
     " debug webserver authentication");
 DEFINE_NON_RUNTIME_string(webserver_ssl_ciphers, "",
@@ -101,11 +100,11 @@ DEFINE_NON_RUNTIME_string(webserver_ssl_min_version, "tlsv1.2",
     "The only accepted value is 'tlsv1.2'.");
 DEFINE_validator(webserver_ssl_min_version, FLAG_IN_SET_VALIDATOR("tlsv1.2"));
 
-DEFINE_UNKNOWN_int32(webserver_num_worker_threads, 50,
+DEFINE_NON_RUNTIME_int32(webserver_num_worker_threads, 50,
              "Maximum number of threads to start for handling web server requests");
 TAG_FLAG(webserver_num_worker_threads, advanced);
 
-DEFINE_UNKNOWN_int32(webserver_port, 0,
+DEFINE_NON_RUNTIME_int32(webserver_port, 0,
              "Port to bind to for the web server");
 TAG_FLAG(webserver_port, stable);
 

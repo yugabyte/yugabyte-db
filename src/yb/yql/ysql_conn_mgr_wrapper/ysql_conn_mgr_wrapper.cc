@@ -182,12 +182,43 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "If set to greater than 0, tcmalloc current heap snapshot will be dumped to the conn mgr "
     "logs after every ysql_conn_mgr_dump_heap_snapshot_interval number of seconds.");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
+    "Enables tracking of in-flight Parse operations in the YSQL Connection Manager. "
+    "This is used so that prepared-statement state tracked on the Connection Manager can be "
+    "reconciled with the backend when errors disrupt the expected packet sequence. When "
+    "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
+    "the backend, which may surface as errors such as 'prepared statement does not exist'.");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
+    "When enabled, the YSQL Connection Manager stops reading further client packets after "
+    "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
+    "backend is received, preventing cross-Sync-boundary pipelining. if set to false, there"
+    " can be correctness issues with pipelining.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
     "Sampling is disabled if this is set to 0. This flag will only be in effect if "
     "ysql_conn_mgr_dump_heap_snapshot_interval is set to greater than 0 i.e if dumping heap "
     "snapshots is enabled. Otherwise we keep the sample period same as what google tcmalloc "
     "has set for connection manager process");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcmalloc_gc_interval, 300,
+    "Interval in seconds between tcmalloc page-heap GC checks in Ysql Connection Manager. "
+    "Each tick invokes yb::MemTracker::GcTcmallocIfNeeded(); if the pageheap free-list "
+    "overhead exceeds tcmalloc_max_free_bytes_percentage of currently-allocated bytes, the "
+    "excess is returned to the OS. Set to 0 to disable periodic GC.");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 100,
+    "Upper bound in milliseconds for which Connection Manager will synchronously wait for a "
+    "backend's socket to be closed when closing the backend connection. Setting this to 0 "
+    "skips the wait entirely, which may cause subsequent connection attempts to fail with "
+    "'sorry, too many clients already'. Setting it too high can cause Connection Manager "
+    "worker threads to block on closing sockets, reducing throughput.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
+    "Maximum number of pending TCP connections queued by the kernel on "
+    "Connection Manager's listening socket (the backlog argument to listen(2)). "
+    "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
 
 namespace {
 
@@ -350,7 +381,7 @@ Status YsqlConnMgrWrapper::UpdateAndReloadConfig() {
 }
 
 YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(conf), stat_shm_key_(stat_shm_key) {}
+    : ProcessSupervisor(conf.cgroup), conf_(conf), stat_shm_key_(stat_shm_key) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
   return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);

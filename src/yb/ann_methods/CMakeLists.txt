@@ -27,6 +27,7 @@ ADD_YB_LIBRARY(ann_methods_test_proto
 
 set(ANN_METHODS_SRCS
     hnswlib_wrapper.cc
+    index_memory_consumption.cc
     usearch_wrapper.cc
     yb_hnsw_wrapper.cc
 )

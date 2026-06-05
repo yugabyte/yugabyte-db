@@ -528,7 +528,7 @@ ALTER TABLE nopk DROP CONSTRAINT nopk_pkey;
 INSERT INTO nopk VALUES (1, 1);
 INSERT INTO nopk VALUES (1, 2);
 ALTER TABLE nopk ADD PRIMARY KEY (id); -- should fail.
-ERROR:  duplicate key value violates unique constraint "nopk"
+ERROR:  duplicate key value violates unique constraint "nopk_pkey"
 DELETE FROM nopk WHERE v = 2;
 ALTER TABLE nopk ADD PRIMARY KEY (id);
 ALTER TABLE nopk DROP CONSTRAINT nopk_pkey;
@@ -912,7 +912,7 @@ SELECT * from pk_table ORDER BY c1 ASC;
 INSERT INTO pk_table VALUES (1); -- should fail.
 ERROR:  duplicate key value violates unique constraint "pk_table_pkey"
 ALTER TABLE pk_table ALTER c1 TYPE int USING length(c1);  -- should fail.
-ERROR:  duplicate key value violates unique constraint "pk_table"
+ERROR:  duplicate key value violates unique constraint "pk_table_pkey"
 -- test ALTER TYPE on a column that is a part of a view/rule:
 -- 1. column part of view --fail
 -- 2. column not part of view

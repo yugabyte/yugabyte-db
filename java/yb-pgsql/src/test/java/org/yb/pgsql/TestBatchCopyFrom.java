@@ -567,7 +567,6 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     String absFilePath = getAbsFilePath("batch-copyfrom-upsertmode-index-sessionvar.txt");
     String tableName = "upsertModeSessionVarTableIndex";
     int totalValidLines = 5;
-    int expectedCopiedLines = totalValidLines;
 
     createCopyFileInTmpDir(absFilePath, totalValidLines);
 
@@ -580,30 +579,19 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       // set enable-upsert session variable
       statement.execute("SET " + YB_ENABLE_UPSERT_MODE_VARIABLE_NAME + "=true");
 
-      // create and populate table with COPY command
-      // COPY command should not throw error even with the duplicate primary key
-      // since upsert mode is ON
       statement.execute(String.format(
         "CREATE TABLE %s (a INT PRIMARY KEY, b INT, c TEXT, d TEXT)", tableName));
       statement.execute(String.format("CREATE INDEX ON %s (b)", tableName));
-      statement.execute(String.format(
-        "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", tableName, absFilePath));
 
-      // check every row was properly inserted into the table
-      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, expectedCopiedLines);
+      // COPY should fail with duplicate key error because upsert mode is
+      // silently disabled on tables with secondary indexes.
+      runInvalidQuery(statement,
+          String.format(
+              "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", tableName, absFilePath),
+          "duplicate key value violates unique constraint");
 
-      // check that row with shared primary key was overwritten
-      assertOneRow(statement, String.format("SELECT COUNT(*) FROM %s WHERE b=1", tableName), 1);
-
-      // verify index exists, is being used, and is properly updated
-      String explainOutput = getExplainAnalyzeOutput(statement, String.format(
-        "SELECT * from %s WHERE b=5;", tableName));
-      assertTrue("SELECT query should be an index scan", explainOutput.contains(
-        "Index Scan using upsertmodesessionvartableindex_b_idx on upsertmodesessionvartableindex"));
-      explainOutput = getExplainAnalyzeOutput(statement, String.format(
-        "SELECT * from %s WHERE b=5;", tableName));
-      assertTrue("Expect to fetch 2 rows from index scan",
-                 explainOutput.contains("rows=2 loops=1)"));
+      // No rows should have been copied (COPY is transactional).
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, 0);
     }
   }
 
@@ -638,30 +626,33 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       assertOneRow(statement, "SELECT COUNT(*) FROM " + primaryKeyTableName,
         expectedPrimaryKeyLines);
 
-      // create and bulk load the foreign key table
+      // create the foreign key table
       statement.execute(String.format(
         "CREATE TABLE %s (a INT PRIMARY KEY, b INT REFERENCES %s, c TEXT, d TEXT)",
           foreignKeyTableName, primaryKeyTableName));
-      statement.execute(String.format(
-        "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", foreignKeyTableName, foreignKeyFilePath));
-      // check every row was properly inserted into the table
-      assertOneRow(statement, "SELECT COUNT(*) FROM " + foreignKeyTableName,
-        expectedForeignKeyLines);
 
-      // verify foreign key was updated
-      assertOneRow(statement, String.format(
-        "SELECT COUNT(*) FROM %s WHERE b=2", foreignKeyTableName), 1);
+      // COPY should fail with duplicate key error because upsert mode is
+      // silently disabled on tables with triggers (FK creates internal triggers).
+      runInvalidQuery(statement,
+          String.format(
+              "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)",
+              foreignKeyTableName, foreignKeyFilePath),
+          "duplicate key value violates unique constraint");
 
-      // clear table to test scenario where FK constraint is violated
-      statement.execute(String.format("TRUNCATE TABLE %s", foreignKeyTableName));
+      // No rows should have been copied (COPY is transactional).
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + foreignKeyTableName, 0);
 
-      // add CSV row with foreign key that points to a non-existent ID
-      writeToFileInTmpDir(foreignKeyFilePath, "0,-1,3,4\n");
+      // Turn off upsert mode and test FK violation with a fresh CSV.
+      statement.execute("SET " + YB_ENABLE_UPSERT_MODE_VARIABLE_NAME + "=false");
+      String fkViolationFilePath = getAbsFilePath("batch-copyfrom-fk-violation.txt");
+      createCopyFileInTmpDir(fkViolationFilePath, 1);
+      writeToFileInTmpDir(fkViolationFilePath, "99,-1,3,4\n");
 
       // validate invalid FK is caught
       runInvalidQuery(statement,
         String.format(
-          "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", foreignKeyTableName, foreignKeyFilePath),
+          "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)",
+          foreignKeyTableName, fkViolationFilePath),
           INVALID_FOREIGN_KEY_ERROR_MSG);
 
       // no rows should have been copied

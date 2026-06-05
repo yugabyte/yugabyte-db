@@ -408,6 +408,12 @@ public class PlacementInfoUtil {
     verifyPlacement(cluster, taskParams.clusters, taskParams.nodeDetailsSet);
     cluster.placementInfo = cluster.getOverallPlacement();
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
+    if (cluster.getPartitions() != null) {
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        checkAndSetPerAZRF(partition.getPlacement(), partition.getReplicationFactor(), null, false);
+      }
+      cluster.userIntent.replicationFactor = cluster.getDefaultPartition().getReplicationFactor();
+    }
 
     // STEP 5: Sync nodes with placement info
     configureNodesUsingPlacementInfo(
@@ -415,12 +421,6 @@ public class PlacementInfoUtil {
     applyDedicatedModeChanges(universe, cluster, taskParams);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
-    if (cluster.getPartitions() != null) {
-      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
-        checkAndSetPerAZRF(partition.getPlacement(), partition.getReplicationFactor(), null, false);
-      }
-    }
-    cluster.userIntent.replicationFactor = cluster.getDefaultPartition().getReplicationFactor();
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
 
@@ -1449,7 +1449,9 @@ public class PlacementInfoUtil {
             return false;
           }
           AZInfo azInfo = oldAZMap.get(newAZ.uuid);
-          if (!Objects.equals(azInfo, newAZ)) {
+          if (!Objects.equals(
+              azInfo,
+              new AZInfo(newAZ.isAffinitized, newAZ.numNodesInAZ, newAZ.leaderPreference))) {
             return false;
           }
         }
@@ -1497,6 +1499,9 @@ public class PlacementInfoUtil {
       }
       if (!newCluster.areTagsSame(oldCluster)
           || !existingIntent.deviceInfo.equals(userIntent.deviceInfo)
+          || !Objects.equals(existingIntent.masterDeviceInfo, userIntent.masterDeviceInfo)
+          || !Objects.equals(existingIntent.instanceType, userIntent.instanceType)
+          || !Objects.equals(existingIntent.masterInstanceType, userIntent.masterInstanceType)
           || UniverseCRUDHandler.isKubernetesNodeSpecUpdate(oldCluster, newCluster)
           || UniverseCRUDHandler.isAwsArnChanged(oldCluster, newCluster)
           || UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)
@@ -2973,6 +2978,8 @@ public class PlacementInfoUtil {
     return addPlacementZone(zone, placementInfo, rf, numNodes, true);
   }
 
+  // addPlacementZone does not add the stsIndex for master/tserver, callsites using this method
+  // should set the stsIndex for master/tserver after calling this method.
   public static PlacementAZ addPlacementZone(
       UUID zone, PlacementInfo placementInfo, int rf, int numNodes, boolean isAffinitized) {
     // Get the zone, region and cloud.

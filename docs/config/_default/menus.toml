@@ -748,6 +748,14 @@
   identifier = "gitdev"
   url = "/stable/develop/gitdev/"
   [stable_develop.params]
+    showSection = true
+
+[[stable_develop]]
+  name = "Sample data"
+  weight = 14
+  identifier = "sample-data"
+  url = "/stable/develop/sample-data/"
+  [stable_develop.params]
     classes = "separator"
     showSection = true
 

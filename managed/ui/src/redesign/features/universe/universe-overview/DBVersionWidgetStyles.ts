@@ -5,25 +5,21 @@ export const dbVersionWidgetStyles = makeStyles((theme) => ({
     height: '48px',
     width: '100%'
   },
-  versionText: {
-    color: '#44518B',
-    fontSize: 18,
-    fontWeight: 700
-  },
   upgradeLink: {
     color: '#EF5824',
     fontSize: '12px',
     fontWeight: 500
   },
-  errorIcon: {
-    width: '14px',
-    height: '14px',
-    color: '#E73E36'
+  text: {
+    color: theme.palette.ybacolors.primary4
   },
-  orangeText: {
-    color: '#EF5824'
+  upgradeAvailableLinkContainer: {
+    display: 'flex',
+    alignItems: 'center'
   },
-  blueText: {
-    color: '#44518B'
+  upgradeStateContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1)
   }
 }));

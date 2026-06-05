@@ -14,6 +14,7 @@ import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.GcpCapacityReservationGC;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
@@ -112,6 +113,7 @@ public class AppInit {
       RedactSecretsFromAudit redactSecretsFromAudit,
       RefreshKmsService refreshKmsService,
       BackupGarbageCollector backupGC,
+      GcpCapacityReservationGC gcpCapacityReservationGC,
       PerfAdvisorScheduler perfAdvisorScheduler,
       PlatformReplicationManager replicationManager,
       AlertsGarbageCollector alertsGC,
@@ -322,6 +324,9 @@ public class AppInit {
 
         // Cleanup orphan snapshots
         snapshotCleanup.start();
+
+        // Cleanup used GCP capacity reservations
+        gcpCapacityReservationGC.start();
 
         perfAdvisorScheduler.start();
 

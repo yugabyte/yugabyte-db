@@ -13,7 +13,6 @@
 
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 
-#include <algorithm>
 #include <chrono>
 #include <ranges>
 
@@ -255,7 +254,7 @@ Status PgAutoAnalyzeService::TriggerAnalyze() {
   RETURN_NOT_OK(GetTablePGSchemaAndName(table_id_to_info_maps));
 
   std::unordered_set<NamespaceId> deleted_databases;
-  RETURN_NOT_OK(FetchUnknownReltuples(table_id_to_info_maps, deleted_databases));
+  RETURN_NOT_OK(FetchUnknownReltuplesOrReloptions(table_id_to_info_maps, deleted_databases));
 
   auto params = VERIFY_RESULT(GetAutoAnalyzeParams(table_id_to_info_maps, deleted_databases));
 
@@ -407,6 +406,9 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
   table_id_to_name_.clear();
   namespace_id_to_name_.clear();
   pg_class_id_mutations_.clear();
+  // Per-table auto analyze settings live in pg_class.reloptions, so they may have changed
+  // whenever pg_class is modified. Re-fetch them in FetchUnknownReltuplesOrReloptions.
+  table_auto_analyze_settings_.clear();
   auto all_table_names
       = VERIFY_RESULT(client_future_.get()->ListTables("" /* filter */, false /* exclude_ysql */,
                                                        "" /* ysql_db_filter */,
@@ -434,30 +436,35 @@ Status PgAutoAnalyzeService::GetTablePGSchemaAndName(
 // TODO(auto-analyze, #22938): fetch reltuples without using PG connections.
 // For each table we don't know its number of tuples, we need to fetch its reltuples from
 // pg_class catalog within the same database as this table.
-Status PgAutoAnalyzeService::FetchUnknownReltuples(
+Status PgAutoAnalyzeService::FetchUnknownReltuplesOrReloptions(
     const AutoAnalyzeInfoMap& table_id_to_info_maps,
     std::unordered_set<NamespaceId>& deleted_databases) {
   VLOG_WITH_FUNC(3);
   std::unordered_map<NamespaceId, std::vector<std::pair<TableId, PgOid>>>
-      namespace_id_to_tables_with_unknown_reltuples;
-  // Clean up dead entries from table_tuple_count_.
+      namespace_id_to_tables_needing_reltuples_or_reloptions;
+  // Clean up dead entries from table_tuple_count_ and table_auto_analyze_settings_.
   std::erase_if(table_tuple_count_, [&table_id_to_info_maps](const auto& kv) {
     return !table_id_to_info_maps.contains(kv.first);
   });
-  // Gather tables with unknown reltuples.
+  std::erase_if(table_auto_analyze_settings_, [&table_id_to_info_maps](const auto& kv) {
+    return !table_id_to_info_maps.contains(kv.first);
+  });
+  // Gather tables missing reltuples or per-table auto analyze settings.
   for (const auto& [table_id, mutations] : table_id_to_info_maps) {
     if (!table_id_to_name_.contains(table_id))
       continue;
     auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
     auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
-    if (!table_tuple_count_.contains(table_id)) {
-      namespace_id_to_tables_with_unknown_reltuples[namespace_id].push_back(
+    if (!table_tuple_count_.contains(table_id) ||
+        !table_auto_analyze_settings_.contains(table_id)) {
+      namespace_id_to_tables_needing_reltuples_or_reloptions[namespace_id].push_back(
           std::make_pair(table_id, table_oid));
     }
   }
-  VLOG(1) << "namespace_id_to_tables_with_unknown_reltuples: "
-          << ToString(namespace_id_to_tables_with_unknown_reltuples);
-  for (const auto& [namespace_id, tables] : namespace_id_to_tables_with_unknown_reltuples) {
+  VLOG(1) << "namespace_id_to_tables_needing_reltuples_or_reloptions: "
+          << ToString(namespace_id_to_tables_needing_reltuples_or_reloptions);
+  for (const auto& [namespace_id, tables] :
+       namespace_id_to_tables_needing_reltuples_or_reloptions) {
     // If the database is deleted. We need to clean up table entries belonging to
     // this database from the YCQL service table.
     // If the database is renamed, we need to refresh name cache.
@@ -479,9 +486,11 @@ Status PgAutoAnalyzeService::FetchUnknownReltuples(
       // reltuples using relfilenode first.
       // In case querying reltuples using relfilnode doesn't return any result, we need to query
       // using oid instead. Mapped catalogs have zero in their pg_class.relfilenode entries.
-      auto is_fetched = VERIFY_RESULT(DoFetchReltuples(conn, table_id, table_oid, true));
+      auto is_fetched = VERIFY_RESULT(
+        DoFetchReltuplesAndReloptions(conn, table_id, table_oid, true));
       if (!is_fetched) {
-        VERIFY_RESULT(DoFetchReltuples(conn, table_id, table_oid, false));
+        VERIFY_RESULT(
+            DoFetchReltuplesAndReloptions(conn, table_id, table_oid, false));
       }
     }
   }
@@ -510,8 +519,27 @@ Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::Determine
       VLOG(1) << "Table not in table_id_to_name_, so skipping: " << table_id;
       continue;
     }
-    double analyze_threshold = FLAGS_ysql_auto_analyze_threshold +
-        FLAGS_ysql_auto_analyze_scale_factor * it->second;
+
+    // Per-table storage parameters from pg_class.reloptions override the global flags.
+    auto settings_it = table_auto_analyze_settings_.find(table_id);
+    if (settings_it != table_auto_analyze_settings_.end() &&
+        settings_it->second.auto_analyze_enabled.has_value() &&
+        !*settings_it->second.auto_analyze_enabled) {
+      VLOG(1) << "Table " << table_id << " has yb_auto_analyze_enabled=false, skipping";
+      continue;
+    }
+
+    uint32_t threshold =
+        (settings_it != table_auto_analyze_settings_.end() &&
+         settings_it->second.analyze_threshold.has_value())
+            ? *settings_it->second.analyze_threshold
+            : FLAGS_ysql_auto_analyze_threshold;
+    double scale_factor =
+        (settings_it != table_auto_analyze_settings_.end() &&
+         settings_it->second.analyze_scale_factor.has_value())
+            ? *settings_it->second.analyze_scale_factor
+            : FLAGS_ysql_auto_analyze_scale_factor;
+    double analyze_threshold = threshold + scale_factor * it->second;
     VLOG(2) << "table_id: " << table_id << ", analyze_threshold: " << analyze_threshold;
 
     std::chrono::microseconds cooldown{0};
@@ -521,6 +549,17 @@ Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::Determine
       const auto& last = table_info.analyze_history.back();
       cooldown = last.cooldown;
       last_analyze_timestamp = last.timestamp;
+    }
+
+    // Clamp the stored cooldown to the current per-table max_cooldown if set.
+    // This handles the case where the user ALTERs a table to reduce its cooldown
+    // after a previous analyze recorded a larger cooldown value.
+    if (settings_it != table_auto_analyze_settings_.end() &&
+        settings_it->second.max_cooldown_ms.has_value()) {
+      auto max_cd = std::chrono::milliseconds(*settings_it->second.max_cooldown_ms);
+      if (cooldown > max_cd) {
+        cooldown = max_cd;
+      }
     }
 
     const auto since_last_analyze = now - last_analyze_timestamp;
@@ -847,21 +886,82 @@ Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
   return conn_result;
 }
 
-// Return true if reltuples is fetched.
-Result<bool> PgAutoAnalyzeService::DoFetchReltuples(pgwrapper::PGConn& conn, TableId table_id,
-                                                    PgOid oid, bool use_relfilenode) {
-  auto res =
-    VERIFY_RESULT(conn.Fetch(Format("SELECT reltuples FROM pg_class WHERE $0 = $1",
-                                    use_relfilenode ? "relfilenode" : "oid", oid)));
-  if (PQntuples(res.get()) > 0) {
-    float reltuples = VERIFY_RESULT(pgwrapper::GetValue<float>(res.get(), 0, 0));
-    table_tuple_count_[table_id] = reltuples == -1 ? 0 : reltuples;
-    VLOG(1) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
-            << " reltuples";
-    return true;
+// Fetches reltuples and per-table auto analyze settings
+// (yb_auto_analyze_enabled, yb_auto_analyze_threshold, yb_auto_analyze_scale_factor,
+// yb_auto_analyze_cooldown_scale_factor, yb_auto_analyze_min_cooldown,
+// yb_auto_analyze_max_cooldown) from pg_class. Returns true if a matching row was found.
+// pg_options_to_table expands the text[] reloptions column into individual
+// (option_name, option_value) rows. LEFT JOIN ensures we still get a row from pg_class
+// (with NULL option columns) when a table has no reloptions.
+Result<bool> PgAutoAnalyzeService::DoFetchReltuplesAndReloptions(
+    pgwrapper::PGConn& conn, TableId table_id, PgOid oid, bool use_relfilenode) {
+  auto rows = VERIFY_RESULT((conn.FetchRows<float,
+                                            std::optional<std::string>,
+                                            std::optional<std::string>>(Format(
+      "SELECT c.reltuples, o.option_name, "
+      "       CASE WHEN o.option_name = 'yb_auto_analyze_enabled' "
+      "            THEN o.option_value::bool::text "
+      "            ELSE o.option_value "
+      "       END "
+      "FROM pg_class c "
+      "LEFT JOIN LATERAL pg_options_to_table(c.reloptions) o ON true "
+      "WHERE c.$0 = $1",
+      use_relfilenode ? "relfilenode" : "oid", oid))));
+  if (rows.empty()) {
+    return false;
   }
 
-  return false;
+  float reltuples = std::get<0>(rows[0]);
+  table_tuple_count_[table_id] = reltuples == -1 ? 0 : reltuples;
+  VLOG(1) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
+          << " reltuples";
+
+  TableAutoAnalyzeSettings settings;
+  for (const auto& [_, option_name, option_value] : rows) {
+    if (!option_name.has_value()) {
+      continue;
+    }
+    ParseReloption(*option_name, *option_value, &settings);
+  }
+  table_auto_analyze_settings_[table_id] = settings;
+  auto opt_str = [](const auto& opt) -> std::string {
+    if (!opt.has_value()) return "unset";
+    if constexpr (std::is_same_v<std::decay_t<decltype(*opt)>, bool>) {
+      return *opt ? "true" : "false";
+    } else {
+      return std::to_string(*opt);
+    }
+  };
+  VLOG(2) << "Table " << table_id << " per-table auto analyze settings:"
+          << " auto_analyze_enabled=" << opt_str(settings.auto_analyze_enabled)
+          << ", analyze_threshold=" << opt_str(settings.analyze_threshold)
+          << ", analyze_scale_factor=" << opt_str(settings.analyze_scale_factor)
+          << ", cooldown_scale_factor=" << opt_str(settings.cooldown_scale_factor)
+          << ", min_cooldown_ms=" << opt_str(settings.min_cooldown_ms)
+          << ", max_cooldown_ms=" << opt_str(settings.max_cooldown_ms);
+
+  return true;
+}
+
+void PgAutoAnalyzeService::ParseReloption(
+    std::string_view key, std::string_view value, TableAutoAnalyzeSettings* settings) {
+  try {
+    if (key == "yb_auto_analyze_enabled") {
+      settings->auto_analyze_enabled = (value == "true");
+    } else if (key == "yb_auto_analyze_threshold") {
+      settings->analyze_threshold = static_cast<uint32_t>(std::stoul(std::string(value)));
+    } else if (key == "yb_auto_analyze_scale_factor") {
+      settings->analyze_scale_factor = std::stod(std::string(value));
+    } else if (key == "yb_auto_analyze_cooldown_scale_factor") {
+      settings->cooldown_scale_factor = std::stod(std::string(value));
+    } else if (key == "yb_auto_analyze_min_cooldown") {
+      settings->min_cooldown_ms = static_cast<uint32_t>(std::stoul(std::string(value)));
+    } else if (key == "yb_auto_analyze_max_cooldown") {
+      settings->max_cooldown_ms = static_cast<uint32_t>(std::stoul(std::string(value)));
+    }
+  } catch (const std::exception& e) {
+    LOG(WARNING) << "Failed to parse reloption " << key << "=" << value << ": " << e.what();
+  }
 }
 
 // Construct tables' names list.
@@ -926,21 +1026,39 @@ Result<AutoAnalyzeInfoMap> PgAutoAnalyzeService::UpdateAnalyzeHistory(
       continue;
     }
     auto& table_info = it->second;
+
+    // Per-table cooldown settings override global flags.
+    auto settings_it = table_auto_analyze_settings_.find(table_id);
+    auto min_cooldown_ms = std::chrono::milliseconds(
+        (settings_it != table_auto_analyze_settings_.end() &&
+         settings_it->second.min_cooldown_ms.has_value())
+            ? *settings_it->second.min_cooldown_ms
+            : params.GetMinCooldownPerTable(namespace_id).count());
+    double cooldown_scale =
+        (settings_it != table_auto_analyze_settings_.end() &&
+         settings_it->second.cooldown_scale_factor.has_value())
+            ? *settings_it->second.cooldown_scale_factor
+            : params.GetCooldownScaleFactor(namespace_id);
+    auto max_cooldown_ms = std::chrono::milliseconds(
+        (settings_it != table_auto_analyze_settings_.end() &&
+         settings_it->second.max_cooldown_ms.has_value())
+            ? *settings_it->second.max_cooldown_ms
+            : params.GetMaxCooldownPerTable(namespace_id).count());
+
     std::chrono::microseconds cooldown;
     if (table_info.analyze_history.empty()) {
-      std::chrono::milliseconds default_cooldown{params.GetMinCooldownPerTable(namespace_id)};
-      cooldown = std::chrono::duration_cast<std::chrono::microseconds>(default_cooldown);
-      VLOG(5) << "No analyze history found for table " << table_id << ", setting cooldown to "
-              << ToString(cooldown);
+      cooldown =
+          std::chrono::duration_cast<std::chrono::microseconds>(min_cooldown_ms);
+      VLOG(5) << "No analyze history found for table " << table_id
+              << ", setting cooldown to " << ToString(cooldown);
     } else {
       auto prev_cooldown = table_info.analyze_history.back().cooldown;
       cooldown = std::chrono::duration_cast<std::chrono::microseconds>(
-          prev_cooldown * params.GetCooldownScaleFactor(namespace_id));
+          prev_cooldown * cooldown_scale);
     }
 
-    auto max_cooldown = params.GetMaxCooldownPerTable(namespace_id);
-    if (cooldown > max_cooldown) {
-      cooldown = max_cooldown;
+    if (cooldown > max_cooldown_ms) {
+      cooldown = max_cooldown_ms;
     }
 
     VLOG(5) << "Adding analyze event at " << ToString(now) << " for table " << table_id

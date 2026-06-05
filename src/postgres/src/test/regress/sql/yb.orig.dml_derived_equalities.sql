@@ -25,9 +25,8 @@ CREATE TABLE orders (
 -- Secondary index with expression (not generated column)
 CREATE INDEX orders_created_idx ON orders((yb_hash_code(created_at) % 3) ASC, created_at ASC);
 
-INSERT INTO orders VALUES
-    (1, 100, '2024-01-01'::timestamptz),
-    (2, 100, '2024-01-02'::timestamptz);
+INSERT INTO orders SELECT i, 100, '2024-01-01'::timestamptz + ((i-1)::text||' days')::interval
+    FROM generate_series(1, 100) i;
 
 ANALYZE orders;
 
@@ -172,3 +171,14 @@ DROP TABLE orders_no_bucket;
 DROP TABLE orders_gen;
 DROP TABLE orders_expr;
 DROP TABLE t1, t2, t3;
+
+-- Ensure yb_derive_equal_cond does not crash when an index relcache entry
+-- is invalidated mid-planning (after get_relation_info but before path
+-- generation reads it).  (see GH#31313)
+SET yb_test_invalidate_relcache_in_planner = true;
+CREATE TABLE t_invalidate (a int, b int);
+CREATE INDEX ON t_invalidate ((a + b));
+INSERT INTO t_invalidate VALUES (1, 4), (2, 3);
+SELECT * FROM t_invalidate WHERE a + b = 5 ORDER BY a;
+RESET yb_test_invalidate_relcache_in_planner;
+DROP TABLE t_invalidate;

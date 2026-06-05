@@ -94,7 +94,7 @@ set(CDC_UTIL_SRCS
 ADD_YB_LIBRARY(
     cdc_util
     SRCS ${CDC_UTIL_SRCS}
-    DEPS yb_client ql_util)
+    DEPS yb_client ql_util cdc_consumer_proto)
 
 #########################################
 # cdc_service

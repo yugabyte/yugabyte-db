@@ -1,0 +1,95 @@
+# YugabyteDB Documentation
+
+> Official documentation for YugabyteDB: The open source distributed PostgreSQL database. PostgreSQL-compatible (v15 wire protocol), horizontally scalable, built-in resilience and automatic failover. Apache 2.0 licensed. Covers the database, YugabyteDB Anywhere (self-managed), YugabyteDB Aeon (managed cloud), YugabyteDB Voyager (database migration service), deployment, development, and operations.
+
+This site is the authoritative source for YugabyteDB product documentation. Content is versioned; the stable path reflects the current release. Use absolute URLs below to reach specific sections.
+
+## Getting Started
+
+- [Quick Start](https://docs.yugabyte.com/stable/quick-start/macos/): Deploy a local cluster in 5 minutes
+- [Download](https://download.yugabyte.com/): All platforms and versions
+- [Build Your First App](https://docs.yugabyte.com/stable/develop/tutorials/build-apps/): Tutorials in Java, Python, Go, Node.js, C#, Ruby, Rust, PHP, C/C++
+
+## Key Information
+
+- [Docs Home](https://docs.yugabyte.com/): Main documentation site
+- [Quick start (YugabyteDB Aeon)](https://docs.yugabyte.com/stable/quick-start-yugabytedb-managed/): Get started with YugabyteDB Aeon
+- [Architecture](https://docs.yugabyte.com/stable/architecture/): Query layer, DocDB, sharding, replication, transactions
+- [Configuration Reference](https://docs.yugabyte.com/stable/reference/configuration/): yb-tserver, yb-master, yugabyted flags
+- [Deploy YugabyteDB](https://docs.yugabyte.com/stable/deploy/): Manual, multi-DC, public clouds, Kubernetes
+- [Explore YugabyteDB](https://docs.yugabyte.com/stable/explore/): YSQL, YCQL, transactions, observability, multi-region
+- [Develop applications](https://docs.yugabyte.com/stable/develop/): Drivers, ORMs, data modeling, tutorials, best practices
+- [YugabyteDB Anywhere](https://docs.yugabyte.com/stable/yugabyte-platform/): Install, configure, create and manage universes, backup, upgrade
+- [YugabyteDB Aeon](https://docs.yugabyte.com/stable/yugabyte-cloud/): Managed service basics, clusters, security, monitoring
+- [YugabyteDB Voyager](https://docs.yugabyte.com/stable/yugabyte-voyager/): Database migration tool — migrate from Oracle, MySQL, PostgreSQL
+- [Releases](https://docs.yugabyte.com/stable/releases/): Release policy, YugabyteDB and YugabyteDB Anywhere release notes
+- [Technical advisories](https://docs.yugabyte.com/stable/releases/techadvisories/): Security and stability advisories affecting production deployments
+- [API reference (YSQL)](https://docs.yugabyte.com/stable/api/ysql/): SQL language, data types, expressions, statements
+- [API reference (YCQL)](https://docs.yugabyte.com/stable/api/ycql/): Cassandra-compatible API
+- [Troubleshoot](https://docs.yugabyte.com/stable/troubleshoot/): Cluster and node troubleshooting
+- [FAQ](https://docs.yugabyte.com/stable/faq/): Frequently asked questions and comparisons
+- [Benchmark](https://docs.yugabyte.com/stable/benchmark/): TPC-C, scalability, and resilience benchmarks
+- [Best practices (operations)](https://docs.yugabyte.com/stable/best-practices-operations/): Operational best practices
+- [Legal](https://docs.yugabyte.com/stable/legal/): Legal information
+- [v2025.1 docs](https://docs.yugabyte.com/v2025.1): Documentation for v2025.1 of YugabyteDB and YugabyteDB Anywhere
+- [v2024.2 docs](https://docs.yugabyte.com/v2024.2): Documentation for v2024.2 of YugabyteDB and YugabyteDB Anywhere
+- [v2.20 docs](https://docs.yugabyte.com/v2.20): Documentation for v2.20 of YugabyteDB and YugabyteDB Anywhere
+
+## Drivers & ORMs
+
+YugabyteDB provides "Smart Drivers" with built-in cluster awareness, load balancing, and topology-aware routing. Standard PostgreSQL drivers also work.
+
+- [Java (YugabyteDB JDBC)](https://docs.yugabyte.com/stable/develop/drivers-orms/java/): Smart driver + Hibernate, Spring Data
+- [Python (psycopg2, asyncpg)](https://docs.yugabyte.com/stable/develop/drivers-orms/python/): Smart driver + Django, SQLAlchemy
+- [Go (pgx, YugabyteDB Go)](https://docs.yugabyte.com/stable/develop/drivers-orms/go/): Smart driver + GORM
+- [Node.js (node-postgres)](https://docs.yugabyte.com/stable/develop/drivers-orms/nodejs/): Smart driver + Sequelize, Prisma
+- [C# (.NET)](https://docs.yugabyte.com/stable/develop/drivers-orms/csharp/): Npgsql smart driver + Entity Framework
+- [Ruby (pg gem)](https://docs.yugabyte.com/stable/develop/drivers-orms/ruby/): ActiveRecord
+- [Rust (rust-postgres)](https://docs.yugabyte.com/stable/develop/drivers-orms/rust/): Diesel
+- [C / C++](https://docs.yugabyte.com/stable/develop/drivers-orms/c/): libpq compatible
+- [PHP](https://docs.yugabyte.com/stable/develop/drivers-orms/php/): Laravel
+
+Full list: https://docs.yugabyte.com/stable/develop/drivers-orms/
+
+## Services
+
+- [Integrations](https://docs.yugabyte.com/stable/integrations/): CDC, Apache Spark, Hasura, Spring, and other integrations
+- [Additional features](https://docs.yugabyte.com/stable/additional-features/): Connection Manager (YSQL), PG extensions, change data capture
+- [Backup and restore](https://docs.yugabyte.com/stable/manage/backup-restore/): Backup and restore operations
+- [Security](https://docs.yugabyte.com/stable/secure/): Authentication, authorization, TLS, audit logging
+- [Sample data](https://docs.yugabyte.com/stable/sample-data/): Sample datasets for learning and testing
+
+## AI & Vector Search
+
+- [pgvector Support](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgvector/): Distributed vector indexes across cluster nodes. HNSW indexing. Benchmarked to 1 billion vectors.
+- [YugabyteDB MCP Server](https://docs.yugabyte.com/stable/develop/tutorials/ai/mcp-server/): Connect AI agents (Claude, Cursor, VS Code) to your YugabyteDB database via natural language.
+- [Docs MCP Server](https://docs.yugabyte.com/stable/reference/docs-mcp-server/): Query YugabyteDB documentation from your IDE via MCP.
+- [RAG Tutorial (LangChain + OpenAI)](https://docs.yugabyte.com/stable/develop/ai/ai-langchain-openai/): Build a retrieval-augmented generation pipeline.
+- [RAG Tutorial (LlamaIndex)](https://docs.yugabyte.com/stable/develop/ai/ai-llamaindex-openai/): Alternative RAG implementation with LlamaIndex.
+- [All AI Tutorials](https://docs.yugabyte.com/stable/develop/ai/): LocalAI, AWS Bedrock, Google Vertex AI, n8n workflows.
+- [AI & RAG Architecture](https://www.yugabyte.com/ai/): How YugabyteDB powers GenAI and RAG applications at scale.
+
+## Comparisons
+
+- [vs PostgreSQL](https://docs.yugabyte.com/stable/faq/comparisons/postgresql/): Same SQL, distributed storage and replication
+- [vs CockroachDB](https://docs.yugabyte.com/stable/faq/comparisons/cockroachdb/): Both Spanner-inspired; YugabyteDB has broader PG extension support
+- [vs Amazon Aurora](https://docs.yugabyte.com/stable/faq/comparisons/amazon-aurora/): Aurora is single-region primary; YugabyteDB is multi-region distributed
+- [vs Google Spanner](https://docs.yugabyte.com/stable/faq/comparisons/google-spanner/): Spanner is proprietary; YugabyteDB is open source with PG compatibility
+- [vs MongoDB](https://docs.yugabyte.com/stable/faq/comparisons/mongodb/): Document vs relational; YugabyteDB offers stronger consistency
+- [vs TiDB](https://docs.yugabyte.com/stable/faq/comparisons/tidb/): TiDB is MySQL-compatible; YugabyteDB is PostgreSQL-compatible
+- [All Comparisons](https://docs.yugabyte.com/stable/faq/comparisons/): Full list
+
+## Contribute
+
+- [Contribute to the docs](https://docs.yugabyte.com/stable/contribute/docs/): How to submit documentation changes
+- [Contribute to YugabyteDB](https://docs.yugabyte.com/stable/contribute/core-database/): How to build YugabyteDB from source and contribute to the open-source YugabyteDB project
+
+## Community
+
+- [Slack](https://inviter.co/yugabytedb): 10,000+ members
+- [Discord](https://discord.gg/GWcSST7GqZ): AI and agent development community
+- [GitHub](https://github.com/yugabyte/yugabyte-db): Source code, issues, contributions. See [AGENTS.md](https://github.com/yugabyte/yugabyte-db/blob/master/src/AGENTS.md) for AI coding agent guidance.
+- [Forum](https://forum.yugabyte.com/): Technical discussions
+- [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db): Q&A
+- [YouTube](https://www.youtube.com/@YugabyteDB): Tutorials, demos, tech talks
+- [Yugabyte University](https://university.yugabyte.com/): Free courses and certifications

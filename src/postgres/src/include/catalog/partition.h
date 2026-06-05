@@ -26,6 +26,9 @@ extern List *map_partition_varattnos(List *expr, int fromrel_varno,
 									 Relation to_rel, Relation from_rel);
 extern bool has_partition_attrs(Relation rel, Bitmapset *attnums,
 								bool *used_in_expr);
+extern bool yb_has_ancestor_partition_attrs(Relation partition_rel,
+											Relation ancestor_rel,
+											Bitmapset *partition_attnums);
 
 extern Oid	get_default_partition_oid(Oid parentId);
 extern void update_default_partition_oid(Oid parentId, Oid defaultPartId);

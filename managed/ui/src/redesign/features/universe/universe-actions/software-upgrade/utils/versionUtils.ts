@@ -44,9 +44,7 @@ export const buildVersionOptions = (
 
   const archFilteredReleases = currentReleaseArchitecture
     ? releases.filter((release) =>
-        release.artifacts?.some(
-          (artifact) => artifact.architecture === currentReleaseArchitecture
-        )
+        release.artifacts?.some((artifact) => artifact.architecture === currentReleaseArchitecture)
       )
     : releases;
 
@@ -69,7 +67,7 @@ export const buildVersionOptions = (
         version: latestStableRelease.version,
         releaseInfo: latestStableRelease,
         label: latestStableRelease.version,
-        series: 'Latest Stable release'
+        series: 'Latest stable release'
       });
     }
   }

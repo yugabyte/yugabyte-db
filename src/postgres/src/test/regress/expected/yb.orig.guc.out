@@ -344,11 +344,39 @@ SHOW session_replication_role;
  origin
 (1 row)
 
+SHOW backtrace_functions;
+ backtrace_functions 
+---------------------
+ 
+(1 row)
+
+SET backtrace_functions TO 'SearchCatCacheMiss';
+SHOW backtrace_functions;
+ backtrace_functions 
+---------------------
+ SearchCatCacheMiss
+(1 row)
+
+RESET backtrace_functions;
+SHOW backtrace_functions;
+ backtrace_functions 
+---------------------
+ 
+(1 row)
+
 -- test `yb_db_admin` role cannot set and reset other PGC_SUSET variables
 SET track_functions TO TRACK_FUNC_PL;
 ERROR:  permission denied to set parameter "track_functions"
 RESET track_functions;
 ERROR:  permission denied to set parameter "track_functions"
+-- test a non-privileged role cannot set backtrace_functions
+RESET SESSION AUTHORIZATION;
+CREATE ROLE yb_backtrace_test_regular_user;
+SET SESSION AUTHORIZATION yb_backtrace_test_regular_user;
+SET backtrace_functions TO 'SearchCatCacheMiss';
+ERROR:  permission denied to set parameter "backtrace_functions"
+RESET SESSION AUTHORIZATION;
+DROP ROLE yb_backtrace_test_regular_user;
 -- cleanup
 RESET foo;
 ERROR:  unrecognized configuration parameter "foo"

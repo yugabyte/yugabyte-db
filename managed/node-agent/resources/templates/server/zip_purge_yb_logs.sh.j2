@@ -199,6 +199,16 @@ for daemon_type in $daemon_types; do
   plain_pg_logs_disk_usage_kb=0
   if [ $preserve_audit_logs == true ]; then
     plain_pg_logs_disk_usage_kb=$postgres_max_plain_log_size_kb
+    # When audit log export is enabled the budget-based logic below defers gzipping
+    # plain postgres logs as long as the cumulative size stays under the budget, which
+    # can keep individual log files plain indefinitely. Always gzip postgres logs
+    # that have not been modified in the last 24 hours so exporters get a full day
+    # to consume each log but plain logs don't accumulate forever.
+    while IFS= read -r -d '' old_pg_log; do
+      echo "Compressing postgres log not modified in the last day: $old_pg_log"
+      gzip "$old_pg_log"
+    done < <(find "$YB_LOG_DIR" -maxdepth 1 -type f -name 'postgresql-*.log' \
+                  ! -name '*.gz' -mmin +1440 -print0 2>/dev/null)
   fi
   process_plain_files "$YB_LOG_DIR" "$plain_postgres_log" $plain_pg_logs_disk_usage_kb
 

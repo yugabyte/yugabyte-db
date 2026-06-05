@@ -245,6 +245,40 @@ fi
 script_dir=$( cd "$( dirname "$0" )" && pwd )
 cd "$script_dir"/..
 
+# run_yb_ctl_python_unit_tests
+#   Exercises yb-ctl --data_dir validation (python.yugabyte.test_yb_ctl_data_dir; D52474 / #3058).
+#   Needs the repo checkout that contains python/yugabyte/. When yb-ctl-test.sh runs from a full
+#   tree, repo root is two directories above scripts/installation. When only that subtree is
+#   copied (e.g. CI), set YB_CTL_REPO_ROOT to the workspace root; see yb-ctl-test.yml.
+run_yb_ctl_python_unit_tests() {
+  local unit_python_test_relpath=python/yugabyte/test_yb_ctl_data_dir.py
+  if ! "$python_interpreter" -c 'import sys; sys.exit(0 if sys.version_info[0] >= 3 else 1)' \
+      2>/dev/null; then
+    log "Skipping python yb-ctl unit tests (need Python 3; interpreter is $python_interpreter)"
+    return 0
+  fi
+  local repo_root=
+  if [[ -n ${YB_CTL_REPO_ROOT:-} ]]; then
+    repo_root=$( cd "$YB_CTL_REPO_ROOT" && pwd )
+    if [[ ! -f $repo_root/$unit_python_test_relpath ]]; then
+      log "Skipping python yb-ctl unit tests (not in tree at $repo_root/$unit_python_test_relpath)"
+      return 0
+    fi
+  else
+    repo_root=$( cd ../.. && pwd )
+    if [[ ! -f $repo_root/$unit_python_test_relpath ]]; then
+      log "Skipping python yb-ctl unit tests (no checkout at $repo_root; set YB_CTL_REPO_ROOT " \
+          "to run from a partial install)."
+      return 0
+    fi
+  fi
+  log_heading "Running python yb-ctl unit tests ($repo_root/$unit_python_test_relpath)"
+  (
+    set -x
+    cd "$repo_root"
+    "$python_interpreter" -m unittest python.yugabyte.test_yb_ctl_data_dir -v
+  )
+}
 
 
 
@@ -252,6 +286,8 @@ CI_RUN=${TRAVIS:-${GITHUB_ACTIONS:-undefined}}
 log "OSTYPE: $OSTYPE"
 log "USER: $USER"
 log "CI_RUN: $CI_RUN"
+
+run_yb_ctl_python_unit_tests
 
 # Mac needs loopback aliases explicitly created:
 #   https://docs.yugabyte.com/latest/quick-start/install/

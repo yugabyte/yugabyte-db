@@ -10,7 +10,7 @@ SET yb_enable_primary_key_decode_from_index = on;
 
 -- Test: hash sharded single-column primary key
 CREATE TABLE t_hash(id bigserial PRIMARY KEY, v text);
-INSERT INTO t_hash(v) SELECT 'val_' || i FROM generate_series(1, 5) i;
+INSERT INTO t_hash(v) SELECT 'val_' || i FROM generate_series(1, 80) i;
 CREATE INDEX t_hash_v ON t_hash(v);
 ANALYZE t_hash;
 
@@ -32,7 +32,7 @@ ALTER TABLE t_hash ADD COLUMN extra int DEFAULT 0;
 
 -- Test: range-sharded PK, range scan, primary key scan unchanged
 CREATE TABLE t_range(id int, v text, PRIMARY KEY(id ASC));
-INSERT INTO t_range SELECT i, 'val_' || i FROM generate_series(1, 20) i;
+INSERT INTO t_range SELECT i, 'val_' || i FROM generate_series(1, 100) i;
 CREATE INDEX t_range_v ON t_range(v ASC);
 ANALYZE t_range;
 
@@ -53,7 +53,7 @@ $$ AS query \gset
 
 -- Test: composite primary key (multi-column)
 CREATE TABLE t_composite(a int, b int, c text, v text, PRIMARY KEY(a, b ASC));
-INSERT INTO t_composite SELECT i / 10, i % 10, 'c_' || i, 'v_' || i FROM generate_series(1, 20) i;
+INSERT INTO t_composite SELECT i / 10, i % 10, 'c_' || i, 'v_' || i FROM generate_series(1, 80) i;
 CREATE INDEX t_composite_v ON t_composite(v);
 ANALYZE t_composite;
 
@@ -71,7 +71,7 @@ $$ AS query \gset
 
 -- Test: primary key column already included in secondary index
 CREATE TABLE t_pk_in_idx(id int PRIMARY KEY, v1 int, v2 int);
-INSERT INTO t_pk_in_idx SELECT i, i * 10, i * 100 FROM generate_series(1, 10) i;
+INSERT INTO t_pk_in_idx SELECT i, i * 10, i * 100 FROM generate_series(1, 80) i;
 CREATE INDEX t_pk_in_idx_v1_id ON t_pk_in_idx(v1, id);
 ANALYZE t_pk_in_idx;
 
@@ -84,7 +84,7 @@ $$ AS query \gset
 
 -- Test: unique secondary index
 CREATE TABLE t_uniq(id int PRIMARY KEY, email text UNIQUE, name text);
-INSERT INTO t_uniq SELECT i, 'user' || i || '@test.com', 'name_' || i FROM generate_series(1, 10) i;
+INSERT INTO t_uniq SELECT i, 'user' || i || '@test.com', 'name_' || i FROM generate_series(1, 80) i;
 ANALYZE t_uniq;
 
 SELECT $$
@@ -96,7 +96,8 @@ $$ AS query \gset
 
 -- Test: partial index
 CREATE TABLE t_partial(id int PRIMARY KEY, status text, val int);
-INSERT INTO t_partial SELECT i, CASE WHEN i % 2 = 0 THEN 'active' ELSE 'inactive' END, i FROM generate_series(1, 20) i;
+INSERT INTO t_partial SELECT i, CASE WHEN i % 2 = 0 AND i <= 20 THEN 'active' ELSE 'inactive' END, i
+    FROM generate_series(1, 100) i;
 CREATE INDEX t_partial_val ON t_partial(val) WHERE status = 'active';
 ANALYZE t_partial;
 
@@ -107,7 +108,7 @@ SELECT id FROM t_partial WHERE val > 15 AND status = 'active' ORDER BY id;
 
 -- Test: multi-column secondary index, multiple rows returned
 CREATE TABLE t_multi_col(id int PRIMARY KEY, a int, b int, c int);
-INSERT INTO t_multi_col SELECT i, i % 5, i % 10, i FROM generate_series(1, 20) i;
+INSERT INTO t_multi_col SELECT i, i % 5, (i - 60) % 10, i FROM generate_series(1, 80) i;
 CREATE INDEX t_multi_col_ab ON t_multi_col(a, b ASC);
 ANALYZE t_multi_col;
 
@@ -124,7 +125,7 @@ SELECT id FROM t_multi_col WHERE a = 3 ORDER BY id;
 
 -- Test: hash-sharded composite primary key
 CREATE TABLE t_hash_comp(h1 int, h2 int, v int, PRIMARY KEY((h1, h2) HASH));
-INSERT INTO t_hash_comp SELECT i, i + 100, i * 10 FROM generate_series(1, 10) i;
+INSERT INTO t_hash_comp SELECT i, i + 100, i * 10 FROM generate_series(1, 80) i;
 CREATE INDEX t_hash_comp_v ON t_hash_comp(v);
 ANALYZE t_hash_comp;
 
@@ -140,7 +141,7 @@ $$ AS query \gset
 
 -- Test: mixed hash + range composite primary key
 CREATE TABLE t_mixed_pk(h int, r int, v text, PRIMARY KEY(h HASH, r ASC));
-INSERT INTO t_mixed_pk SELECT i / 5, i, 'v_' || i FROM generate_series(1, 10) i;
+INSERT INTO t_mixed_pk SELECT i / 5, i, 'v_' || i FROM generate_series(1, 80) i;
 CREATE INDEX t_mixed_pk_v ON t_mixed_pk(v ASC);
 ANALYZE t_mixed_pk;
 
@@ -185,7 +186,8 @@ $$ AS query \gset
 
 -- Test: NULL index column with primary key decoded
 CREATE TABLE t_null_idx(id int PRIMARY KEY, v int);
-INSERT INTO t_null_idx VALUES (1, NULL), (2, 10), (3, NULL), (4, 20);
+INSERT INTO t_null_idx SELECT i, CASE WHEN i % 2 = 1 and i <= 4 THEN NULL ELSE i * 5 END
+    FROM generate_series(1, 80) i;
 CREATE INDEX t_null_idx_v ON t_null_idx(v ASC);
 ANALYZE t_null_idx;
 
@@ -199,7 +201,7 @@ $$ AS query \gset
 
 -- Test: different primary key data types
 CREATE TABLE t_text_pk(id text PRIMARY KEY, v int);
-INSERT INTO t_text_pk SELECT 'key_' || i, i FROM generate_series(1, 5) i;
+INSERT INTO t_text_pk SELECT 'key_' || i, i FROM generate_series(1, 80) i;
 CREATE INDEX t_text_pk_v ON t_text_pk(v);
 ANALYZE t_text_pk;
 
@@ -209,14 +211,14 @@ $$ AS query \gset
 \i :iter_P2
 
 CREATE TABLE t_uuid_pk(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), v int);
-INSERT INTO t_uuid_pk(v) SELECT i FROM generate_series(1, 5) i;
+INSERT INTO t_uuid_pk(v) SELECT i FROM generate_series(1, 80) i;
 CREATE INDEX t_uuid_pk_v ON t_uuid_pk(v);
 ANALYZE t_uuid_pk;
 
 :explain SELECT id FROM t_uuid_pk WHERE v = 3;
 
 CREATE TABLE t_float_pk(id float4 PRIMARY KEY, v int);
-INSERT INTO t_float_pk SELECT i * 1.5, i FROM generate_series(1, 5) i;
+INSERT INTO t_float_pk SELECT i * 1.5, i FROM generate_series(1, 80) i;
 CREATE INDEX t_float_pk_v ON t_float_pk(v);
 ANALYZE t_float_pk;
 
@@ -226,7 +228,7 @@ $$ AS query \gset
 \i :iter_P2
 
 CREATE TABLE t_double_pk(id float8 PRIMARY KEY, v int);
-INSERT INTO t_double_pk SELECT i * 1.1, i FROM generate_series(1, 5) i;
+INSERT INTO t_double_pk SELECT i * 1.1, i FROM generate_series(1, 80) i;
 CREATE INDEX t_double_pk_v ON t_double_pk(v);
 ANALYZE t_double_pk;
 
@@ -237,7 +239,7 @@ $$ AS query \gset
 
 CREATE TABLE t_ts_pk(id timestamp PRIMARY KEY, v int);
 INSERT INTO t_ts_pk SELECT '2024-01-01'::timestamp + (i || ' hours')::interval, i
-    FROM generate_series(1, 5) i;
+    FROM generate_series(1, 80) i;
 CREATE INDEX t_ts_pk_v ON t_ts_pk(v);
 ANALYZE t_ts_pk;
 
@@ -247,7 +249,7 @@ $$ AS query \gset
 \i :iter_P2
 
 CREATE TABLE t_bool_pk(id boolean, v int, extra int, PRIMARY KEY(id, extra));
-INSERT INTO t_bool_pk VALUES (true, 1, 1), (false, 2, 2), (true, 3, 3), (false, 4, 4);
+INSERT INTO t_bool_pk SELECT i % 2 = 1, i, i FROM generate_series(1, 80) i;
 CREATE INDEX t_bool_pk_v ON t_bool_pk(v);
 ANALYZE t_bool_pk;
 
@@ -325,7 +327,7 @@ $$ AS query \gset
 
 -- Test: expression index
 CREATE TABLE t_expr(id int PRIMARY KEY, name text);
-INSERT INTO t_expr SELECT i, 'Name_' || i FROM generate_series(1, 10) i;
+INSERT INTO t_expr SELECT i, 'Name_' || i FROM generate_series(1, 80) i;
 CREATE INDEX t_expr_lower ON t_expr(lower(name));
 ANALYZE t_expr;
 
@@ -352,7 +354,7 @@ $$ AS query \gset
 
 -- Test: LIKE queries with decoded PK
 SELECT $$
-:P SELECT id FROM t_range WHERE v LIKE 'val_1%' ORDER BY v;
+:P SELECT id FROM t_range WHERE v LIKE 'val\_1%' ESCAPE '\' ORDER BY v;
 $$ AS query \gset
 \i :iter_P2
 
@@ -361,7 +363,7 @@ CREATE TABLE t_partial_comp(id int PRIMARY KEY, cat text, sub int, val int);
 INSERT INTO t_partial_comp
     SELECT i, CASE WHEN i % 3 = 0 THEN 'A' WHEN i % 3 = 1 THEN 'B' ELSE 'C' END,
            i % 5, i
-    FROM generate_series(1, 30) i;
+    FROM generate_series(1, 80) i;
 CREATE INDEX t_partial_comp_idx ON t_partial_comp(sub, val ASC) WHERE cat = 'A';
 ANALYZE t_partial_comp;
 
@@ -386,7 +388,7 @@ $$ AS query \gset
 
 -- Test: temporary table should not use decoded PK
 CREATE TEMP TABLE t_temp(id int PRIMARY KEY, v int);
-INSERT INTO t_temp SELECT i, i * 10 FROM generate_series(1, 10) i;
+INSERT INTO t_temp SELECT i, i * 10 FROM generate_series(1, 80) i;
 CREATE INDEX t_temp_v ON t_temp(v);
 ANALYZE t_temp;
 
@@ -399,7 +401,7 @@ DROP TABLE t_temp;
 
 -- Test: GIN index should not use decoded PK
 CREATE TABLE t_gin(id int PRIMARY KEY, tags jsonb);
-INSERT INTO t_gin SELECT i, ('["tag_' || i || '"]')::jsonb FROM generate_series(1, 10) i;
+INSERT INTO t_gin SELECT i, ('["tag_' || i || '"]')::jsonb FROM generate_series(1, 80) i;
 CREATE INDEX t_gin_tags ON t_gin USING gin(tags);
 ANALYZE t_gin;
 
@@ -408,7 +410,7 @@ ANALYZE t_gin;
 -- Test: vector index should not use decoded PK
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE t_vector(id int PRIMARY KEY, emb vector(3));
-INSERT INTO t_vector SELECT i, ('[' || i || ',0,0]')::vector FROM generate_series(1, 10) i;
+INSERT INTO t_vector SELECT i, ('[' || i || ',0,0]')::vector FROM generate_series(1, 80) i;
 CREATE INDEX t_vector_emb ON t_vector USING ybhnsw (emb vector_l2_ops);
 
 :explain SELECT id FROM t_vector ORDER BY emb <-> '[5,0,0]' LIMIT 3;

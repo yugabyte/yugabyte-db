@@ -29,6 +29,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import org.junit.Test;
@@ -429,5 +432,71 @@ public class TestYbAsh extends BasePgSQLTest {
 
     assertEquals(
         getSingleRow(stmt, storageFlushQueryId).getLong(0).intValue(), 0);
+  }
+
+  @Test
+  public void testExtendedProtocolDoesNotLeakQueryId() throws Exception {
+    setAshConfigAndRestartCluster(50, ASH_SAMPLE_SIZE);
+
+    try (Statement stmt = connection.createStatement()) {
+      final int numTables = 8;
+      for (int i = 0; i < numTables; ++i) {
+        stmt.execute(String.format(
+            "CREATE TABLE t%d(id INT PRIMARY KEY, val TEXT, num NUMERIC(12,2), ref_id INT)", i));
+        stmt.execute(String.format(
+            "INSERT INTO t%d(id, val, num, ref_id) " +
+            "SELECT g, 'row-' || g, (random()*1000)::numeric(12,2), g " +
+            "FROM generate_series(1, 200) g", i));
+      }
+    }
+
+    final String complexQuery =
+        "SELECT t0.id, t1.id, t2.id, t3.id, t4.id, t5.id, t6.id, t7.id " +
+        "FROM t0 " +
+        "JOIN t1 ON t1.ref_id = t0.id " +
+        "JOIN t2 ON t2.ref_id = t1.id " +
+        "JOIN t3 ON t3.ref_id = t2.id " +
+        "JOIN t4 ON t4.ref_id = t3.id " +
+        "JOIN t5 ON t5.ref_id = t4.id " +
+        "JOIN t6 ON t6.ref_id = t5.id " +
+        "JOIN t7 ON t7.ref_id = t6.id " +
+        "WHERE t0.num > ? LIMIT 10";
+
+    final int NUM_ITERATIONS = 10;
+    int executedTxns = 0;
+
+    // Do 10 iterations so that ASH has enough samples
+    // Create a new connection everytime to do catalog calls
+    for (int it = 0; it < NUM_ITERATIONS; ++it) {
+        try (Connection conn = getConnectionBuilder()
+                .withPreferQueryMode("extended").connect()) {
+                conn.setAutoCommit(false);
+                conn.setReadOnly(true);
+            try (PreparedStatement sel = conn.prepareStatement(complexQuery)) {
+                final int PARAM_CYCLE = 500;
+                sel.setInt(1, (int) ((++executedTxns) % PARAM_CYCLE));
+                // drain the result set
+                try (ResultSet rs = sel.executeQuery()) {
+                    while (rs.next()) ;
+                }
+                conn.commit();
+            } catch (Exception e) {
+                conn.rollback();
+            }
+        } catch (Exception e) {
+            fail("Workload connection failed: " + e.getMessage());
+        }
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      long leakedSamples = getSingleRow(stmt, String.format(
+          "SELECT COUNT(*) FROM %s AS ash " +
+          "JOIN pg_stat_statements AS pgss ON ash.query_id = pgss.queryid " +
+          "WHERE pgss.query ILIKE '%%BEGIN%%READ%%ONLY%%' " +
+          "AND ash.wait_event = 'CatalogRead'", ASH_VIEW)).getLong(0);
+      assertEquals(
+          "BEGIN READ ONLY's query_id should not be attached to CatalogRead samples",
+          0L, leakedSamples);
+    }
   }
 }

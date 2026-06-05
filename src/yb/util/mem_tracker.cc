@@ -111,8 +111,7 @@ DEFINE_NON_RUNTIME_int64(mem_tracker_update_consumption_interval_us, 2 * 1000 * 
     "Interval that is used to update memory consumption from external source. "
     "For instance from tcmalloc statistics.");
 
-DEFINE_RUNTIME_double(
-    mem_tracker_external_consumption_accuracy_percentage, 1.0,
+DEFINE_RUNTIME_double(mem_tracker_external_consumption_accuracy_percentage, 1.0,
     "If mem tracker consumption changed by more than specified percentage of the soft memory limit "
     "since the last update from external source, update it explicitly from that external source to "
     "avoid too much bias.");
@@ -991,6 +990,33 @@ bool CheckMemoryPressureWithLogging(
   }
 
   return false;
+}
+
+void MonotonicThreadSafeScopedTrackedConsumption::Init(MemTrackerPtr tracker, int64_t to_consume) {
+  DCHECK(!tracker_);
+  DCHECK(tracker);
+  tracker_ = std::move(tracker);
+  consumption_.store(to_consume, std::memory_order_release);
+  tracker_->Consume(to_consume);
+}
+
+void MonotonicThreadSafeScopedTrackedConsumption::UpdateMonotonic(size_t new_bytes) {
+  if (!tracker_) {
+    return;
+  }
+  const auto value = new_bytes;
+  // Optimistic check: avoid taking the lock if there's nothing to do. A racing thread that
+  // sees a smaller current value will retry under the lock.
+  if (value <= consumption()) {
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  const auto current = consumption();
+  if (value <= current) {
+    return;
+  }
+  tracker_->Consume(value - current);
+  consumption_.store(value, std::memory_order_release);
 }
 
 namespace internal {

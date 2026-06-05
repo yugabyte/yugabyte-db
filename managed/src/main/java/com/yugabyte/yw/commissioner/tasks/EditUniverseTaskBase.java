@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
@@ -133,15 +134,15 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
   }
 
   protected void createComprehensivePrecheckTasks(Universe universe) {
+    if (!isFirstTry()) {
+      log.debug("Comprehensive prechecks are skipped on retry.");
+      return;
+    }
     if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
       log.debug("Comprehensive prechecks are disabled, skipping.");
       return;
     }
-    // On the first try, we only want to check the nodes that are being added.
-    // On retry, some nodes might have transitioned into some other state.
-    Collection<NodeDetails> nodesToCheck =
-        isFirstTry() ? taskParams().nodeDetailsSet : universe.getNodes();
-    createCheckDuplicateInstances(universe, nodesToCheck);
+    createCheckDuplicateInstances(universe, taskParams().nodeDetailsSet);
     Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(taskParams().nodeDetailsSet);
     if (liveNodes.isEmpty()) {
       log.debug("No live nodes found, skipping comprehensive prechecks.");
@@ -149,7 +150,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     log.info("Running comprehensive prechecks on {} live nodes", liveNodes.size());
-    createCheckSshConnectionTasks(liveNodes);
+
+    long checkServiceLivenessTimeoutMs =
+        confGetter
+            .getConfForScope(
+                universe, UniverseConfKeys.comprehensivePrecheckCheckServiceLivenessTimeout)
+            .toMillis();
 
     doInPrecheckSubTaskGroup(
         "CheckServiceLiveness",
@@ -158,12 +164,14 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
             CheckServiceLiveness.Params params = new CheckServiceLiveness.Params();
             params.setUniverseUUID(taskParams().getUniverseUUID());
             params.nodeName = node.nodeName;
-            params.timeoutMs = 10000;
+            params.timeoutMs = checkServiceLivenessTimeoutMs;
             CheckServiceLiveness task = createTask(CheckServiceLiveness.class);
             task.initialize(params);
             subTaskGroup.addSubTask(task);
           }
         });
+
+    createCheckNodeCommandExecutionTasks(liveNodes);
   }
 
   protected Set<NodeDetails> getAddedMasters() {
@@ -196,7 +204,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean forceDestroyServers,
+      Function<NodeDetails, Boolean> forceDestroyServers,
       boolean moveMastersFirst) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
@@ -511,6 +519,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           EnumSet.of(ServerType.TSERVER),
           false /* remove master from quorum */,
           false /* deconfigure */,
+          false /* flushTablets */,
           SubTaskGroupType.UpdatingGFlags);
 
       AnsibleConfigureServers.Params params =

@@ -20,6 +20,8 @@ extracted_from_archive.sha256
 # VIM/emacs stuff
 *.sw?
 *~
+\#*\#
+.\#*
 # These files could be used to auto-save vim sessions.
 .session.vim
 .session.vim.lock
@@ -68,8 +70,6 @@ core.*
 .tags_sorted_by_file
 cscope.out
 
-build/python_virtual_env
-build/venv
 *.versionsBackup
 
 # We can use this for marking the thirdparty directory inside a working directory as "unusable" so
@@ -128,5 +128,5 @@ managed/src/main/java/com/yugabyte/yw/common/operator/io/*
 **/.java-version
 
 # AI assistant configuration (local only)
-CLAUDE.md
+CLAUDE.local.md
 .claude/scheduled_tasks.lock

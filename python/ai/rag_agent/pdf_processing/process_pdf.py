@@ -9,6 +9,7 @@ from unstructured.partition.auto import partition
 from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_core.documents import Document
 from rag_pipeline.chunk import chunk_langchain_docs, DEFAULT_SPLITTER, DEFAULT_ARGS
+from observability import meko_observe
 
 
 class PDFProcessor:
@@ -17,6 +18,7 @@ class PDFProcessor:
         # self.model = model
         pass
 
+    @meko_observe(name="Load PDF from Local / PDFProcessor", as_type="span")
     def _load_pdf_from_local(self, file_path):
         logging.info(f"Loading PDF data from {file_path}")
         try:
@@ -118,6 +120,7 @@ class PDFProcessor:
     #         logging.error(f"Failed to read file from S3: {e}")
     #         raise RuntimeError(f"Failed to read file from S3: {e}")
 
+    @meko_observe(name="Load PDF from S3 / PDFProcessor", as_type="retriever")
     def _load_pdf_from_s3(self, file_path: str):
 
         logging.debug(f"Reading file from S3: {file_path}")
@@ -179,6 +182,7 @@ class PDFProcessor:
             logging.error(f"Failed to read file from S3: {e}")
             raise RuntimeError(f"Failed to read file from S3: {e}")
 
+    @meko_observe(name="Process PDF Data / PDFProcessor", as_type="chain")
     def process_pdf_data(
         self, file_path: str, chunk_args: Dict[str, Any] = {}
     ) -> Generator[str, None, None]:

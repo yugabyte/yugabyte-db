@@ -1,12 +1,10 @@
 # Makefile for pg_dist_rag extension
 
 EXTENSION = pg_dist_rag
-EXTVERSION = 0.0.2
+EXTVERSION = 0.0.1
 
 MODULE_big = $(EXTENSION)
-DATA = $(EXTENSION)--0.0.1.sql \
-       $(EXTENSION)--0.0.1--0.0.2.sql \
-       $(EXTENSION)--$(EXTVERSION).sql
+DATA = $(EXTENSION)--$(EXTVERSION).sql
 
 TESTS = $(wildcard sql/*.sql)
 REGRESS = $(patsubst sql/%.sql,%,$(TESTS))

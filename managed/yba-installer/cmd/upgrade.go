@@ -15,6 +15,28 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
+// paBackupFlagsSupported reports whether the yb_platform_backup.sh script that
+// ships with the given YBA version understands the --exclude_pa_database and
+// --exclude_pa_files flags. The flags were introduced in 2.31.0.0-b77 on the
+// preview branch and 2026.1.0.0-b70 on the stable branch.
+//
+// Older installs predate any Performance Advisor data on disk, so suppressing
+// these flags is functionally a no-op there beyond keeping the older script
+// from rejecting unknown arguments.
+func paBackupFlagsSupported(version string) bool {
+	v, err := common.NewYBVersion(version)
+	if err != nil {
+		log.Warn(fmt.Sprintf(
+			"Failed to parse YBA version %q while checking PA backup flag support, "+
+				"assuming unsupported: %s", version, err.Error()))
+		return false
+	}
+	if v.IsStable {
+		return !common.LessVersions(version, "2026.1.0.0-b70")
+	}
+	return !common.LessVersions(version, "2.31.0.0-b77")
+}
+
 // rollback function is best effort and will not throw any errors
 func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 	log.Warn("Error encountered during upgrade, rolling back to previously installed YBA version.")
@@ -36,12 +58,21 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 
 		backup := common.FindRecentBackup(backupDir)
 		log.Info(fmt.Sprintf("Rolling YBA data back from %s", backup))
+		// The rollback uses the old (installed) yb_platform_backup.sh; only
+		// pass --exclude_pa_* flags if that script supports them.
+		excludePADatabase := !common.IsPerfAdvisorEnabled()
+		excludePAFiles := true
+		if !paBackupFlagsSupported(state.Version) {
+			excludePADatabase = false
+			excludePAFiles = false
+		}
 		err := RestoreBackupScriptHelper(backup, common.GetBaseInstall(), true, true, false, false, true,
 			fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
 				common.GetActiveSymlink(), state.Version),
 			common.GetBaseInstall()+"/data/yb-platform",
 			common.GetActiveSymlink()+"/ybdb/bin/ysqlsh",
-			common.GetActiveSymlink()+"/pgsql/bin/pg_restore")
+			common.GetActiveSymlink()+"/pgsql/bin/pg_restore",
+			excludePADatabase, excludePAFiles)
 		if err != nil {
 			log.Warn(fmt.Sprintf("failed to restore backup: %s", err.Error()))
 		}
@@ -157,11 +188,21 @@ func upgradeCmd() *cobra.Command {
 				} else if common.LessVersions("2.23.1.0-b220", state.Version) {
 					usePromProtocol = false
 				}
+				// The pre-upgrade backup runs the old (installed)
+				// yb_platform_backup.sh; only pass --exclude_pa_* flags if
+				// that script supports them.
+				excludePADatabase := !common.IsPerfAdvisorEnabled()
+				excludePAFiles := true
+				if !paBackupFlagsSupported(state.Version) {
+					excludePADatabase = false
+					excludePAFiles = false
+				}
 				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(),
 					fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
 					common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
 					common.GetActiveSymlink()+"/pgsql/bin/pg_dump",
-					true, true, false, true, false, usePromProtocol); errB != nil {
+					true, true, false, true, false, usePromProtocol,
+					excludePADatabase, excludePAFiles); errB != nil {
 					log.Fatal("Failed taking backup of YBA, aborting upgrade: " + errB.Error())
 				}
 			}

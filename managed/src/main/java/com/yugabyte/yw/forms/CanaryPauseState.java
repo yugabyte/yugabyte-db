@@ -18,11 +18,14 @@ import io.swagger.annotations.ApiModelProperty;
  * PAUSED_AFTER_MASTERS -> NOT_PAUSED resume
  * NOT_PAUSED -> PAUSED_AFTER_TSERVERS_AZ  step.pauseAfterTserverUpgrade=true, AZ done
  * PAUSED_AFTER_TSERVERS_AZ -> NOT_PAUSED  resume (repeats per AZ with pause)
- * NOT_PAUSED -> null                 upgrade phase completes (progress cleared)
+ * NOT_PAUSED -> null                 upgrade phase completes; progress fields cleared on
+ *                                    finalize (or when upgrade goes to Ready without a separate
+ *                                    finalize step)
  * </pre>
  *
  * <p>Non-canary upgrades never set this field. The field is persisted via {@code
- * SaveSoftwareUpgradeProgress} and cleared by {@code createClearSoftwareUpgradeProgressTask}.
+ * SaveSoftwareUpgradeProgress} and cleared by {@code createClearSoftwareUpgradeProgressTask}
+ * (including at the start of {@code createFinalizeUpgradeTasks} when finalize runs).
  */
 @ApiModel(description = "Canary software upgrade pause state")
 public enum CanaryPauseState {

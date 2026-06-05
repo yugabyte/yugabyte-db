@@ -871,7 +871,7 @@ YbgLoadIdent(const char *ident_file_path, YbgMemoryContext ident_context)
 {
 	PG_SETUP_ERROR_REPORTING();
 	IdentFileName = pstrdup(ident_file_path);
-	if (!load_ident(ident_context))
+	if (!load_ident(ident_context, NULL /* yb_validate_conf_file */ ))
 		return YbgStatusCreateError("Failed to load ident file",
 									__FILE__, __LINE__);
 	PG_STATUS_OK();

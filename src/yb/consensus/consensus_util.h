@@ -33,8 +33,7 @@ namespace consensus {
 
 // Specifies whether to send empty consensus requests from the leader to followers in case the queue
 // is empty.
-YB_DEFINE_ENUM(
-    RequestTriggerMode,
+YB_DEFINE_ENUM(RequestTriggerMode,
 
     // Only send a request if it is not empty.
     (kNonEmptyOnly)

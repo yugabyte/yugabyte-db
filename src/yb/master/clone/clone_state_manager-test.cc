@@ -42,8 +42,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(enable_db_clone);
-
 // This is needed for the mock of GetBlacklist - must be in std namespace for ADL.
 namespace std {
 std::ostream& operator<<(
@@ -135,8 +133,8 @@ class CloneStateManagerTest : public YBTest {
     MOCK_METHOD(
         Status, ScheduleClonePgSchemaTask,
         (const std::string& permanent_uuid, const std::string& source_db_name,
-         const std::string& target_db_name, const std::string& source_owner,
-         const std::string& target_owner, HybridTime restore_ht,
+         const std::string& target_db_name, const std::string& target_owner,
+         HybridTime restore_ht,
          AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline), (override));
     MOCK_METHOD(
         Status, ScheduleClearMetaCacheTasks,
@@ -154,6 +152,9 @@ class CloneStateManagerTest : public YBTest {
         Status, Upsert,
         (int64_t leader_term, const CloneStateInfoPtr& clone_state,
          const NamespaceInfoPtr& source_namespace), (override));
+    MOCK_METHOD(
+        Status, UpsertTabletInfo,
+        (const LeaderEpoch& epoch, const TabletInfoPtr& tablet), (override));
     MOCK_METHOD(
         Status, Load,
         (const std::string& type,
@@ -197,7 +198,6 @@ class CloneStateManagerTest : public YBTest {
  protected:
   void SetUp() override {
     YBTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     clone_state_manager_ = std::unique_ptr<CloneStateManager>(
         new CloneStateManager(std::make_unique<MockExternalFunctions>()));
 
@@ -242,6 +242,20 @@ class CloneStateManagerTest : public YBTest {
           std::make_shared<TabletInfo>(source_table_, GetTestTabletId(true /* source */, i));
       auto target_tablet =
           std::make_shared<TabletInfo>(target_table_, GetTestTabletId(false /* source */, i));
+
+      // Populate the source tablet's committed_consensus_state with at least one peer so the
+      // defensive check in ScheduleCloneOps (which refuses to schedule against a source whose
+      // committed_consensus_state hasn't been populated on the master yet) is satisfied. The
+      // exact peer identity is not material to these tests; ScheduleCloneOps only copies the
+      // peers list into the target tablet to make ProcessTabletReportBatch's membership check
+      // succeed.
+      {
+        auto lock = source_tablet->LockForWrite();
+        auto* peer = lock.mutable_data()->pb.mutable_committed_consensus_state()
+                         ->mutable_config()->add_peers();
+        peer->set_permanent_uuid(Format("ts-$0", i));
+        lock.Commit();
+      }
 
       source_tablets_.push_back(source_tablet);
       target_tablets_.push_back(target_tablet);
@@ -308,6 +322,9 @@ class CloneStateManagerTest : public YBTest {
           .WillOnce(Return(source_tablets_[i]));
       EXPECT_CALL(MockFuncs(), GetTabletInfo(target_tablets_[i]->id()))
           .WillOnce(Return(target_tablets_[i]));
+      // ScheduleCloneOps seeds the target tablet's committed_consensus_state peers from the
+      // source's and upserts the modified TabletInfo before scheduling the clone RPC.
+      EXPECT_CALL(MockFuncs(), UpsertTabletInfo(kEpoch, target_tablets_[i]));
       EXPECT_CALL(MockFuncs(), ScheduleCloneTabletCall(source_tablets_[i], kEpoch, _));
     }
     EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
@@ -346,8 +363,9 @@ class CloneStateManagerTest : public YBTest {
       CoarseTimePoint deadline,
       const LeaderEpoch& epoch) {
     return clone_state_manager_->CloneNamespace(
-        source_namespace_identifier, restore_time, target_namespace_name, "" /* pg_source_owner */,
-        "" /* pg_target_owner */, deadline, epoch);
+        source_namespace_identifier, restore_time, target_namespace_name,
+        "" /* pg_target_owner */, deadline,
+        epoch);
   }
 
   AsyncClonePgSchema::ClonePgSchemaCallbackType MakeDoneClonePgSchemaCallback(
@@ -470,6 +488,9 @@ TEST_F(CloneStateManagerTest, ScheduleCloneOps) {
         .WillOnce(Return(source_tablets_[i]));
     EXPECT_CALL(MockFuncs(), GetTabletInfo(target_tablets_[i]->id()))
         .WillOnce(Return(target_tablets_[i]));
+    // ScheduleCloneOps seeds the target tablet's committed_consensus_state peers from the
+    // source's and upserts the modified TabletInfo before scheduling the clone RPC.
+    EXPECT_CALL(MockFuncs(), UpsertTabletInfo(kEpoch, target_tablets_[i]));
     EXPECT_CALL(MockFuncs(), ScheduleCloneTabletCall(
         source_tablets_[i], kEpoch, CloneTabletRequestPBMatcher(expected_req)));
   }
@@ -620,7 +641,7 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(),
       ScheduleClonePgSchemaTask(
-        dummy_ts_desc->permanent_uuid(), source_ns_->name(), target_ns_->name(), _, _, _, _, _))
+        dummy_ts_desc->permanent_uuid(), source_ns_->name(), target_ns_->name(), _, _, _, _))
       .WillOnce(Return(STATUS_FORMAT(IllegalState, "Fail ScheduleClonePgSchemaTask for test")));
 
   auto [source_namespace_id, seq_no] = ASSERT_RESULT(CloneNamespace(

@@ -352,7 +352,7 @@ HybridTime DocDBLoadGenerator::last_operation_ht() const {
 
 void DocDBLoadGenerator::FlushRocksDB() {
   LOG(INFO) << "Forcing a RocksDB flush after hybrid_time " << last_operation_ht().value();
-  ASSERT_OK(fixture_->FlushRocksDbAndWait());
+  ASSERT_OK(fixture_->FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
 }
 
 void DocDBLoadGenerator::CaptureDocDbSnapshot() {
@@ -506,7 +506,7 @@ void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
     SetHistoryCutoffHybridTime(HybridTime::kMin);
   });
 
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   ASSERT_OK(FullyCompactDB(regular_db_.get()));
 }
 
@@ -518,7 +518,7 @@ void DocDBRocksDBFixture::FullyCompactHistoryBefore(
     SetHistoryCutoffHybridTime(HybridTime::kMin);
   });
 
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   ASSERT_OK(FullyCompactDB(regular_db_.get()));
 }
 
@@ -527,7 +527,7 @@ void DocDBRocksDBFixture::MinorCompaction(
     size_t num_files_to_compact,
     ssize_t start_index) {
 
-  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
   SetHistoryCutoffHybridTime(history_cutoff);
   auto se = ScopeExit([this] {
     SetHistoryCutoffHybridTime(HybridTime::kMin);

@@ -271,6 +271,8 @@ class ThreadMgr {
 
   static void SetThreadName(const std::string& name, int64 tid);
 
+  std::optional<std::string> GetThreadName(int64_t thread_id);
+
   Status StartInstrumentation(const scoped_refptr<MetricEntity>& metrics, WebCallbackRegistry* web);
 
   // Registers a thread to the supplied category. The key is a pthread_t,
@@ -308,6 +310,9 @@ class ThreadMgr {
   // All thread categorys that ever contained a thread, even if empty
   ThreadCategoryMap thread_categories_ GUARDED_BY(mutex_);
 
+  // Threads ordered by thread_id.
+  std::unordered_map<int64_t, ThreadDescriptor*> descriptors_by_id_ GUARDED_BY(mutex_);
+
   MPSCQueue<QueueLink> pending_threads_;
   std::atomic<bool> processing_pending_threads_{false};
 
@@ -341,6 +346,17 @@ void ThreadMgr::SetThreadName(const string& name, int64 tid) {
   }
 
   yb::SetThreadName(name);
+}
+
+std::optional<std::string> ThreadMgr::GetThreadName(int64_t thread_id) {
+  {
+    std::lock_guard lock(mutex_);
+    auto itr = descriptors_by_id_.find(thread_id);
+    if (itr != descriptors_by_id_.end()) {
+      return itr->second->name;
+    }
+  }
+  return std::nullopt;
 }
 
 Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metrics,
@@ -431,12 +447,14 @@ void ThreadMgr::ProcessPendingThreads() {
           running_category_tracker_->DecrementCategory(category_name);
         }
         category.erase(category.iterator_to(*descriptor));
+        descriptors_by_id_.erase(descriptor->thread_id);
         delete descriptor;
       } else {
         auto* descriptor = MEMBER_PTR_TO_CONTAINER(ThreadDescriptor, add_link, link);
         const auto& category_name = descriptor->category;
         auto& category = thread_categories_[category_name];
         category.push_back(*descriptor);
+        descriptors_by_id_.try_emplace(descriptor->thread_id, descriptor);
         if (metrics_enabled_) {
           started_category_tracker_->IncrementCategory(category_name);
           running_category_tracker_->IncrementCategory(category_name);
@@ -904,8 +922,8 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
   // See comment in SetThreadName. We're padding names to the 15 char limit in order to get
   // aggregations when using the linux perf tool, as that groups up stacks based on the 15 char
   // prefix of all the thread names.
-  if (name.length() < kMaxThreadNameInPerf) {
-    padded_name += string(kMaxThreadNameInPerf - name.length(), kPaddingChar);
+  if (name.length() < kMaxProcfsThreadNameSize) {
+    padded_name += string(kMaxProcfsThreadNameSize - name.length(), kPaddingChar);
   }
   const string log_prefix = Substitute("$0 ($1) ", padded_name, category);
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "starting thread");
@@ -1059,6 +1077,13 @@ Status Thread::SendSignal(ThreadIdForStack tid, int signal) {
     return status;
   }
   return Status::OK();
+}
+
+Result<std::string> Thread::ThreadName(int64_t thread_id) {
+  if (auto name = thread_manager->GetThreadName(thread_id)) {
+    return *name;
+  }
+  return GetProcfsThreadName(thread_id);
 }
 
 void RenderAllThreadStacks(std::ostream& output) {

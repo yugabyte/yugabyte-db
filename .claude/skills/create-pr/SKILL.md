@@ -3,6 +3,8 @@ name: create-pr
 description: >-
   Create a Pull Request for the current branch's changes.
   Use when the user wants to publish a branch for review as a GitHub PR.
+allowed-tools: Bash(.agents/scripts/create-pr.sh *)
+model: sonnet
 ---
 
 # Create PR
@@ -10,6 +12,26 @@ description: >-
 Push the current branch to the user's **fork** of `yugabyte/yugabyte-db` and create a cross-repo GitHub pull request against the upstream using the `gh` CLI.
 
 **Contributors do not have push access to `yugabyte/yugabyte-db`.** The branch must be pushed to a personal fork, and the PR is opened cross-repo from that fork into the upstream repo.
+
+## Confidentiality — read before you write anything public
+
+**The upstream repo, every GitHub issue, every PR title/description/comment, and every commit message are PUBLIC on the internet.** Anything you (the agent) write into them is permanent and indexed by search engines. A leak cannot be unsent.
+
+**Never put any of the following into the GitHub issue (title/body/labels), the PR title, PR description, PR comments, commit messages, code comments, test code, test fixtures, golden output, branch names, or filenames:**
+
+- **Customer-identifying data** — company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names, region/zone names tied to a customer deployment. Substitute with `customer-1`, `acme-corp`, or a generic description. This includes the **branch name** — when you push to your fork and open the PR, the branch becomes the PR's public head ref (shown in the URL and on the PR page), so name it after the change (`fix-replication-lag`), never the customer (`fix-acme-replication-lag`); rename an existing customer-named branch with `git branch -m` first.
+- **PII** — real names, real email addresses, real phone numbers, real postal addresses, real IP addresses (public or private). In tests use only the documentation ranges: IPv4 `192.0.2.0/24` / `198.51.100.0/24` / `203.0.113.0/24` (RFC 5737), IPv6 `2001:db8::/32` (RFC 3849), hostnames `example.com` / `example.org` / `example.net` (RFC 2606), names `Alice`/`Bob`/`Carol`, phone numbers `555-0100`–`555-0199`.
+- **Unanonymized customer schema or queries** — table names, column names, SQL text, query plans, or sample rows pulled from a real customer report. Reconstruct a synthetic minimal reproducer using generic identifiers (`t1`, `users`, `id`, `value`) that demonstrates the same defect.
+- **Secrets / credentials** — API keys, tokens, passwords, TLS certificates, private keys, license keys, kubeconfigs, production S3 buckets, internal Slack/JIRA/Linear URLs, internal hostnames, vault paths. Use placeholders like `AKIAIOSFODNN7EXAMPLE` in mocks.
+- **YugabyteDB-internal information not yet public** — unreleased roadmap, internal SLAs, embargoed security findings, internal infra hostnames.
+
+**This applies to the test code and test data you write too** — `.cc`, `.py`, `.java`, `.sql`, golden `.out` files, YAML fixtures, mock responses, anything. If a customer's reproducer uses `acme_orders` with a `customer_email` column populated with real addresses, you must rewrite it as `t1`/`email` with `user@example.com` before the test goes anywhere near a PR.
+
+**When the source is a customer report:** read the original from the internal source (JIRA / support ticket / Slack) — never paste or link it from a public artifact. Reproduce locally with synthetic inputs. Land only the synthetic reproducer. Reference the issue by internal ticket ID (`PLAT-20518`) only; don't quote customer-facing text.
+
+**If you're unsure whether a string is sensitive, don't write it down — ask the user.** A clarifying question costs nothing; a leaked customer name in a public PR cannot be retracted.
+
+This rule applies at every step below — when you draft the commit message in Step 1, when you draft the issue body in Step 3, when you write the title in Step 4, and when you compose the description / test plan / upgrade notes in Step 5. See `src/AGENTS.md` § Confidentiality for the canonical list.
 
 ## Prerequisites
 
@@ -23,87 +45,30 @@ This skill requires the `gh` CLI installed and authenticated:
 
 ### Step 1: Commit pending changes
 
-`git rebase` in Step 2 refuses to run against a dirty working copy, and `gh pr create` in Step 9 only pushes committed changes — so commit first.
+`create-pr.sh` (Step 5) refuses to run against a dirty working copy and only pushes committed changes — so commit first.
 
 Run `git status`. If there are uncommitted changes:
 
 1. Stage the relevant files (avoid `git add -A`/`.` — pick files explicitly so secrets or stray artifacts don't get included).
 2. Draft a commit message based on the changes and confirm it with the user before committing.
-3. Create the commit.
+3. Create the commit. **Use `git commit -F <message-file>` rather than `-m "..."` or a quoted heredoc** — apostrophes, backticks, or `$` in the message will silently break a `<<'EOF' ... EOF` heredoc with a confusing `unexpected EOF` shell error. Write the message to a temp file (e.g., `/tmp/claude/commit-msg-<issue>.txt`) and pass it via `-F`.
 
 If the branch already has at least one commit ahead of the base and the working copy is clean, skip to Step 2.
 
-### Step 2: Pull latest from `yugabyte/yugabyte-db` and resolve conflicts
+### Step 2: Base branch
 
-With the working copy clean (from Step 1), bring the branch up to date with upstream `yugabyte/yugabyte-db:master` so conflicts surface now rather than during PR review.
+The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` always rebases and pushes against `master`. Backports are not opened with this skill — use `/backport-commit` instead.
 
-1. **Identify the upstream remote.** Run `git remote -v` and find the remote pointing at `yugabyte/yugabyte-db` (commonly named `upstream`; sometimes `origin` in non-fork-based checkouts). If none exists, add one:
-   ```
-   git remote add upstream https://github.com/yugabyte/yugabyte-db.git
-   ```
+### Step 3: Gather PR metadata
 
-2. **Fetch upstream master:**
-   ```
-   git fetch <upstream-remote> master
-   ```
+Infer as much as you can from context first, then **batch-confirm with the user in a single prompt** if all three fields below are inferable with high confidence. Only fall back to per-field prompts when something is missing or ambiguous.
 
-3. **Rebase the branch onto upstream master:**
-   ```
-   git rebase <upstream-remote>/master
-   ```
+1. **Issue tracker reference** — before prompting, look for candidates in this order:
+   1. The current branch name (`git branch --show-current`). Branches frequently embed the issue number directly: e.g. `Fix31329`, `fix-31151`, `pr/31151`, or `PLAT-20518-thing` → `#31329`, `#31151`, `PLAT-20518`. Match `#?\d{4,}` for GitHub issues and `[A-Z]+-\d+` for JIRA keys.
+   2. The conversation history for any issue reference the user has mentioned (GitHub issue numbers like `#31151`, JIRA keys like `PLAT-20518`, or URLs pointing at either).
+   3. Recent commit messages on the branch (`git log <upstream>/master..HEAD`).
 
-4. **Resolve any conflicts** with the user. For each conflict: show the conflicted files, help the user resolve them, `git add` the resolved files, and run `git rebase --continue`. If the user wants to bail out, `git rebase --abort` returns the branch to its pre-rebase state.
-
-### Step 3: Run linter and confirm no lint errors
-
-Run `./build-support/lint.sh` from the repo root. Report the output to the user.
-
-- If there are **errors**, stop and fix the issues before continuing. Do not proceed to push or `gh pr create`.
-- If there are only **warnings or advice**, show them to the user and ask whether to proceed.
-- If the output is clean, continue to the next step.
-
-### Step 4: Base branch
-
-The PR always targets `master`. Do **not** prompt the user for a base branch and do not offer alternatives. Use `master` as `--base` in Step 9 (the `gh pr create` step).
-
-### Step 5: Identify (or create) the fork and its remote
-
-Contributors do **not** have push access to `yugabyte/yugabyte-db`, so the branch must be pushed to a personal fork.
-
-1. **Inspect existing remotes** with `git remote -v`. Identify which remote (if any) points at a fork (any GitHub repo that is not `yugabyte/yugabyte-db`). Common setups:
-   - `origin` = `yugabyte/yugabyte-db`, `fork` or `<username>` = the personal fork
-   - `origin` = the personal fork, `upstream` = `yugabyte/yugabyte-db`
-2. **If a fork remote is already configured**, record its name and use it as the push target in Step 6.
-3. **If no fork remote exists**, check whether the user has a fork on GitHub:
-   ```
-   gh repo view <username>/yugabyte-db --json parent -q .parent.nameWithOwner
-   ```
-   If it returns `yugabyte/yugabyte-db`, the fork exists — add it as a remote named `fork`:
-   ```
-   git remote add fork git@github.com:<username>/yugabyte-db.git
-   ```
-4. **If no fork exists at all**, create one (ask the user to confirm first):
-   ```
-   gh repo fork --remote=false yugabyte/yugabyte-db
-   ```
-   Then add the resulting fork as a `fork` remote as above.
-5. **Never push to a remote that points at `yugabyte/yugabyte-db`.** Verify the chosen push target is a fork before continuing.
-
-### Step 6: Push the branch to the fork
-
-Push the current branch to the fork remote identified in Step 5:
-
-```
-git push -u <fork-remote> HEAD
-```
-
-If the push is rejected because the branch already exists on the fork with different history, ask the user how to proceed — do **not** force-push without explicit permission. If the user authorizes a force push, use `git push --force-with-lease` rather than `--force`.
-
-### Step 7: Gather PR metadata
-
-Prompt the user for the following, one at a time:
-
-1. **Issue tracker reference** — before prompting, scan the current conversation history for any issue reference the user has already mentioned (GitHub issue numbers like `#31151`, JIRA keys like `PLAT-20518`, or URLs pointing at either). If you find a candidate, surface it to the user and ask them to confirm it's the one to use *before* asking them to supply a fresh one. Only prompt for a new reference if no candidate is found or the user rejects the candidate. Acceptable forms are:
+   If you find a candidate, surface it to the user and ask them to confirm it's the one to use *before* asking them to supply a fresh one. Only prompt for a new reference if no candidate is found or the user rejects the candidate. Acceptable forms are:
    - A GitHub issue number (e.g., `#31151`)
    - A JIRA ticket (e.g., `PLAT-20518`)
    - Offer to **auto-create** a GitHub issue or JIRA ticket if the user doesn't have one yet. If they accept:
@@ -111,11 +76,22 @@ Prompt the user for the following, one at a time:
      - For JIRA: ask the user which project (e.g., `PLAT`) and use the Atlassian MCP tool `createJiraIssue` to create it. Confirm the summary/description with the user before creating.
    - Capture the resulting issue number or JIRA key.
 
-2. **Component** — the component tag that will appear in the title (e.g., `DocDB`, `YSQL`, `YBA`, `CDC`, `xCluster`). If the user is unsure, suggest a component based on the files changed (e.g., `src/yb/` → `DocDB`, `src/postgres/` → `YSQL`, `managed/` → `YBA`).
+   - Don't reuse an issue across multiple in-flight master PRs — auto-create a fresh issue (per the flow above) when starting unrelated work, even if a related closed/merged PR used a similar issue.
 
-3. **Title** — a short description of the change. If the user doesn't provide one, propose a title based on the commit messages on the branch and confirm it with the user.
+2. **Component** — the component tag that will appear in the title (e.g., `DocDB`, `YSQL`, `YBA`, `CDC`, `xCluster`). Infer from the files changed (`git diff --name-only <upstream>/master..HEAD`):
+   - `src/yb/` → `DocDB`
+   - `src/postgres/` → `YSQL`
+   - `src/yb/yql/cql/` → `YCQL`
+   - `managed/` → `YBA`
+   - `yugabyted-ui/` → `yugabyted`
+   - `docs/` → `Docs`
+   - `.claude/`, `AGENTS.md`, `CLAUDE.md` → `ClaudeCode`
+   - `build-support/`, `cmake_modules/`, `.github/` → `Build`
+   - mixed/cross-cutting → ask the user
 
-### Step 8: Build the title
+3. **Title** — a short description of the change. If the branch has a single commit, use its subject (minus the `[<issue>] <Component>:` prefix if present). Confirm with the user.
+
+### Step 4: Build the title
 
 Construct the title in the format:
 
@@ -127,26 +103,59 @@ Examples:
 - `[#31151] DocDB: Fix SamplingProfilerTest.EstimatedBytesAndCount in release`
 - `[PLAT-20518] YBA: Fix full move edit universe to populate userIntentOverrides during configure call`
 
-### Step 9: Create the PR with `gh pr create`
+**Pass only the `<Component>: <Title>` part to `create-pr.sh -t`** — the script prepends `[<issue>] ` from `-i` automatically. The script validates both inputs and rejects invalid ones with `exit 1`:
 
-Run `gh pr create` against `yugabyte/yugabyte-db`, passing the constructed title and a body derived from the branch commits. A typical invocation:
+- `-i`: must be a GH issue (`#NNNN` or bare `NNNN`) or a JIRA key (`PROJECT-NNN`, where `PROJECT` is uppercase letters). A **comma-separated list** is also accepted (e.g. `31151, #31152, PLAT-333`) — the script joins valid tokens with `, ` and renders them as `[#a, #b, PLAT-c] <Component>: <Title>`. Anything else is rejected.
+- `-t`: must match `^[A-Za-z][A-Za-z0-9]+:[[:space:]].+` — i.e. a Component prefix (letter-led, alphanumeric, ≥2 chars), then `: `, then a non-empty description. Known components: `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `ClaudeCode`, `Build`.
+
+If the user supplies a title that already includes `[<issue>] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
+
+### Step 5: Run `create-pr.sh` to rebase, lint, push, and open the PR
+
+> **Confidentiality — final scrub before publishing.** The repo and every PR are public. Before invoking the script, re-read the description, test plan, upgrade-rollback notes, the commit messages on the branch, **the branch name itself** (it becomes the public PR head ref), **and the test code being added**, and confirm none of the following appear: customer names or identifiers (universe UUIDs, account IDs, support cases, environment names, region/zone names); PII (real names / emails / phone numbers / postal addresses / IP addresses — use RFC 5737/3849 documentation ranges in tests); unanonymized customer schemas (table / column / query text / query plans / sample rows from a real customer — reconstruct a synthetic reproducer); credentials, tokens, certificates, private keys, or license keys; internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths; unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames). See the top of this skill and `src/AGENTS.md` § Confidentiality for the full rule. If unsure whether a string is sensitive, don't write it down — ask the user.
+
+Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script:
 
 ```
-gh pr create \
-  --repo yugabyte/yugabyte-db \
-  --base <base-branch> \
-  --title "<constructed-title>" \
-  --body-file <path>
+.agents/scripts/create-pr.sh \
+  -i <issue> \
+  -t "<Component>: <Title>" \
+  -d /tmp/claude/pr-desc-<issue>.md \
+  -T /tmp/claude/pr-testplan-<issue>.md \
+  [-U /tmp/claude/pr-upgrade-<issue>.md] \
+  [-D] \
+  -r <reviewers>
 ```
 
-Pre-fill the body file with:
+The script rebases on `<upstream>/master`, runs `lint.sh --rev <upstream>/master` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), runs `gh pr create`, and adds reviewers via the REST `requested_reviewers` endpoint (which correctly routes user logins to `reviewers[]` and team slugs to `team_reviewers[]`). It auto-detects the upstream and fork remotes.
 
-- **Summary**: a short description of the change derived from branch commits.
-- **Test plan**: ask the user for one if not obvious from the branch.
+Inputs:
+- **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152, PLAT-333`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `, ` so the title renders as `[#31151, #31152, PLAT-333] <Component>: <Title>`.
+- **`-t`**: title body **without** the `[<issue>] ` prefix but **with** the `Component: ` prefix (e.g. `DocDB: Fix flake`).
+- **`-d` (required)**: path to a markdown file with the PR description (the "what / why" prose derived from branch commits). The script makes this the `## Summary` section.
+- **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward and backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.
+- **`-T` (required)**: path to a markdown file with the test plan (typically a checkbox list). **Always supply this** — the script errors out if `-T` is missing or the file is empty. If the change is trivial enough that you think no test plan applies, write an explicit one-line checkbox saying so (e.g., `No runtime behavior change; visually inspected diff`) and confirm with the user before proceeding.
+- **`-r`**: comma-separated handles and/or team slugs (`alice,bob,yugabyte/db-approvers`). Optional.
+- **`-D` (optional)**: open the PR as a GitHub draft (`gh pr create --draft`). Use when the user wants to read the rendered PR before notifications fire and before reviewers are auto-pinged. After the user reviews, convert with `gh pr ready <num>`. **Use whenever the user asks for "draft PR(s)" or says they want to inspect the PR on GitHub before sending it out.** When `-D` is set, the script still requests reviewers via the REST endpoint as usual — GitHub silences review-requested notifications until the PR is marked ready, so the two settings combine cleanly.
 
-Confirm the title and body with the user before running `gh pr create`.
+Exit codes:
+- `0` — PR created. Last stdout line is the PR URL.
+- `2` — rebase conflict; resolve, `git rebase --continue`, then re-run.
+- `3` — lint failed; fix as a NEW commit (do not amend a pushed commit, per `src/AGENTS.md`), then re-run.
+- `1` — pre-flight failure (dirty tree, missing remote, etc.).
 
-### Step 10: Report back to the user
+Confirm the title and body with the user before invoking the script.
+
+### Step 5b (optional): Auto-recover from trivial rebase conflicts and lint errors
+
+If Step 5 exits `2` (rebase conflict) or `3` (lint), inspect the failure and try once to fix automatically before going back to the user:
+
+- **Rebase conflicts** — only auto-resolve **trivial** conflicts (whitespace-only differences, adjacent-but-non-overlapping hunks, conflicts where both sides are byte-identical after whitespace normalization). For each such file, accept the resolution that preserves the branch's intent, `git add` it, and `git rebase --continue`. Anything involving renamed identifiers, signature changes, or refactors must be escalated to the user — do not guess.
+- **Lint errors** — if the linter reports auto-fixable issues (e.g. trailing whitespace, missing newlines), apply the fix as a **new commit** (`Fix lint`), not an amend. If the errors require judgment (logic changes, unused-variable removal that might be load-bearing), escalate.
+
+After the auto-fix, re-run Step 5 once. If it fails again, stop and surface the conflict/lint output to the user.
+
+### Step 6: Report back to the user
 
 Output:
 
@@ -154,10 +163,15 @@ Output:
 - The constructed title
 - The base branch the PR targets
 
+Then clean up any temp files created during this run (e.g., `/tmp/claude/commit-msg-<issue>.txt`, `/tmp/claude/pr-body-<issue>.md`).
+
 ## Notes
 
-- **Never push to `yugabyte/yugabyte-db`.** Contributors do not have write access — always push to a personal fork and open the PR cross-repo.
+- **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script.
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
 - Never force-push without explicit user permission; when authorized, prefer `--force-with-lease`.
 - CI runs automatically on GitHub PRs, so there is no `trigger jenkins` step (unlike the Phorge `create-review` skill).
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.
+- **`gh pr edit` is broken on this repo** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)`. This affects `--body-file`, `--add-reviewer`, `--add-label`, and other post-creation edit flags. For any post-creation update to PR body / reviewers / labels, use the REST API directly:
+  - **Body update:** `jq -Rs '{body: .}' < new-body.md | gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/<num> --input -`
+  - **Add reviewers:** `gh api -X POST /repos/yugabyte/yugabyte-db/pulls/<num>/requested_reviewers -f 'reviewers[]=user1' -f 'reviewers[]=user2'` (and `-f 'team_reviewers[]=team-slug'` for org/team reviewers — strip the `org/` prefix; team_reviewers takes the slug only).

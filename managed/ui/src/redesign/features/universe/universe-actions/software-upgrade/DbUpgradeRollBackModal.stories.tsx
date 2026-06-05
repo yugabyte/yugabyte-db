@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { http, HttpResponse } from 'msw';
 
 import { generateUniverseMockResponse } from '@app/mocks/mock-data/universeMocks';
+import { withStorybookTasksReduxProvider } from '@app/mocks/storybook/storybookTasksRedux';
 import type { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 import { DbUpgradeRollBackModal } from './DbUpgradeRollBackModal';
@@ -21,7 +22,7 @@ const meta = {
   parameters: {
     layout: 'centered'
   },
-  decorators: [withCustomerId],
+  decorators: [withCustomerId, withStorybookTasksReduxProvider],
   args: {
     modalProps: {
       open: true,

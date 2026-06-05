@@ -10,10 +10,9 @@
 
 from ybops.cloud.common.command import InstanceCommand, QueryCommand, AccessCommand, \
     NetworkCommand
-from ybops.cloud.common.method import AddAuthorizedKey, ConfigureInstancesMethod, \
-    ListInstancesMethod, InitYSQLMethod, CronCheckMethod, AccessDeleteKeyMethod, \
-    TransferXClusterCerts, VerifySSHConnection, RemoveAuthorizedKey, RebootInstancesMethod, \
-    RunHooks, WaitForConnection, ManageOtelCollector
+from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMethod, \
+    InitYSQLMethod, CronCheckMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
+    VerifySSHConnection, RebootInstancesMethod, RunHooks, WaitForConnection, ManageOtelCollector
 from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstancesMethod, \
     GcpQueryRegionsMethod, GcpQueryZonesMethod, GcpQueryInstanceTypesMethod, \
     GcpQueryCurrentHostMethod, GcpQueryPreemptibleInstanceMethod, GcpDestroyInstancesMethod, \
@@ -49,8 +48,6 @@ class GcpInstanceCommand(InstanceCommand):
         self.add_method(GcpUpdateMountedDisksMethod(self))
         self.add_method(TransferXClusterCerts(self))
         self.add_method(VerifySSHConnection(self))
-        self.add_method(AddAuthorizedKey(self))
-        self.add_method(RemoveAuthorizedKey(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForConnection(self))

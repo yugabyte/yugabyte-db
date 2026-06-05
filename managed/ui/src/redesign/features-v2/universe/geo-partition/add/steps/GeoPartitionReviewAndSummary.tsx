@@ -24,6 +24,7 @@ import {
 } from '../AddGeoPartitionUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import PinIcon from '@app/redesign/assets/pin.svg';
+import { getReadReplicaExitRoute } from '../../../read-replica/readReplicaUtils';
 
 const { Box } = mui;
 
@@ -99,22 +100,32 @@ export const GeoPartitionReviewAndSummary = () => {
     const primaryCluster = universeData.spec.clusters.find(
       (c) => c.cluster_type === ClusterType.PRIMARY
     );
-    if (!primaryCluster) return;
+    if (!primaryCluster?.uuid) return;
+
+    // When converting a non-geo-partitioned universe to a geo-partitioned one, payload[0] is the
+    // modified default partition that replaces the existing default. Otherwise we are appending
+    // brand new partitions to an already geo-partitioned cluster and must keep the existing ones.
+    const { isNewGeoPartition } = addGeoPartitionContext;
+    const partitionsSpec = isNewGeoPartition
+      ? payload
+      : [...(primaryCluster.partitions_spec ?? []), ...payload];
 
     editUniverse.mutate(
       {
         uniUUID: universeData!.info!.universe_uuid!,
         data: {
-          clusters: universeData!.spec!.clusters.map((cluster) => ({
-            uuid: cluster!.uuid!,
-            partitions_spec: [...(primaryCluster.partitions_spec ?? []), ...payload]
-          })),
-          expected_universe_version: -1
+          expected_universe_version: -1,
+          clusters: [
+            {
+              uuid: primaryCluster.uuid,
+              partitions_spec: partitionsSpec
+            }
+          ]
         }
       },
       {
         onSuccess: () => {
-          window.location.href = `/universes/${universeData!.info!.universe_uuid}`;
+          window.location.href = getReadReplicaExitRoute(universeData!.info!.universe_uuid);
         },
         onError: (error) => {
           toast.error((error.response?.data as any).error || error.message);

@@ -8,11 +8,19 @@
 #include <arpa/inet.h>
 #include <assert.h>
 
+#include <errno.h>
+
 #include <kiwi.h>
 #include <machinarium.h>
 #include <odyssey.h>
 
 #define YB_SHMEM_KEY_FORMAT "shmkey="
+
+/*
+ * YB: Polling interval between non-blocking read attempts while waiting for
+ * the PG backend to close its socket
+ */
+#define YB_BACKEND_DRAIN_SLEEP_US 1000u
 
 void od_backend_close(od_server_t *server)
 {
@@ -34,7 +42,106 @@ static inline int od_backend_terminate(od_server_t *server)
 	msg = kiwi_fe_write_terminate(NULL);
 	if (msg == NULL)
 		return -1;
+
+#ifndef YB_SUPPORT_FOUND
 	return od_write(&server->io, &msg);
+#else // YB_SUPPORT_FOUND
+
+	/*
+	 * YB: Use a direct write() on the raw fd instead of machine_write()
+	 * since this function is called with locks held and we can't
+	 * yield the coroutine here.
+	 */
+	int fd = machine_fd(server->io.io);
+	void *data = machine_msg_data(msg);
+	int size = machine_msg_size(msg);
+	ssize_t rc = write(fd, data, size);
+	machine_msg_free(msg);
+	return (rc == size) ? 0 : -1;
+#endif // YB_SUPPORT_FOUND
+}
+
+/*
+ * YB: Gives current time of monotonic clock. This is to be preferred over
+ * machine_time_us() for implementing timeouts within a single function, as
+ * the machinarium function only updates time after coroutine has yielded
+ */
+static inline uint64_t yb_monotonic_time_us(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint64_t)ts.tv_sec * 1000000ull + ts.tv_nsec / 1000ull;
+}
+
+/*
+ * YB: Drain the backend socket until the PG backend closes it (EOF). This is
+ * required to avoid the race condition in which PG hasn't freed up the PGPROC
+ * slot and we try to create a new connection. Since PG closes the socket after
+ * freeing up the slot, we rely on that.
+ *
+ * The caller always proceeds with od_io_close() when we return -- the drain is
+ * a best-effort wait.
+ */
+static inline void yb_od_backend_drain_until_eof(od_server_t *server)
+{
+	od_instance_t *instance = server->global->instance;
+	od_io_t *io = &server->io;
+	char buf[256];
+	int rc;
+	uint64_t timeout_ms = instance->config.yb_backend_drain_timeout_ms;
+
+	/* 0 disables the drain entirely. */
+	if (timeout_ms == 0)
+		return;
+
+	uint64_t start_us = yb_monotonic_time_us();
+
+	/*
+	 * Will be called with locks held, make sure to not call any function that
+	 * can yield the coroutine
+	 */
+	for (;;) {
+		uint64_t elapsed_us = yb_monotonic_time_us() - start_us;
+		if (elapsed_us >= timeout_ms * 1000llu) {
+			od_debug(&instance->logger, "backend-drain", NULL,
+				 server, "drain timed out after %llu us",
+				 elapsed_us);
+			rc = -1;
+			break;
+		}
+
+		rc = machine_read_raw(io->io, buf, sizeof(buf));
+		if (rc == 0) {
+			od_debug(&instance->logger, "backend-drain", NULL,
+				 server, "drain complete (EOF) after %llu us",
+				 yb_monotonic_time_us() - start_us);
+			break;
+		}
+		if (rc > 0)
+			continue;
+
+		/* rc == -1 */
+		int errno_ = machine_errno();
+		if (errno_ != EAGAIN && errno_ != EWOULDBLOCK &&
+		    errno_ != EINTR) {
+			/*
+			 * Real socket error -- the connection is already
+			 * broken. Treat as drained.
+			 */
+			od_debug(&instance->logger, "backend-drain", NULL,
+				 server,
+				 "drain ended with errno=%d after %llu us",
+				 errno_, yb_monotonic_time_us() - start_us);
+			break;
+		}
+
+		/* Sleep briefly between reads to avoid spinning on CPU. */
+		usleep(YB_BACKEND_DRAIN_SLEEP_US);
+	}
+
+	od_debug(&instance->logger, "backend-drain", NULL, server,
+		 "finished draining, rc=%d, elapsed=%d us", (int)rc,
+		 (int)(yb_monotonic_time_us() - start_us));
 }
 
 void od_backend_close_connection(od_server_t *server)
@@ -50,8 +157,16 @@ void od_backend_close_connection(od_server_t *server)
 		/* YB NOTE: Cleanup error_connect and tls even if we cannot connect */
 		goto cleanup;
 	}
-	if (machine_connected(server->io.io))
-		od_backend_terminate(server);
+	if (machine_connected(server->io.io)) {
+		int rc = od_backend_terminate(server);
+		if (rc == -1) {
+			od_debug(&instance->logger, "backend", NULL, server,
+				 "failed to send Terminate, skipping drain");
+		} else {
+			/* YB: Wait for backend to close socket */
+			yb_od_backend_drain_until_eof(server);
+		}
+	}
 
 	od_io_close(&server->io);
 
@@ -64,6 +179,74 @@ cleanup:
 	if (server->tls) {
 		machine_tls_free(server->tls);
 		server->tls = NULL;
+	}
+
+	/*
+	 * YB: Release the backend slot after the connection is closed, but only
+	 * if this server actually claimed one. Servers created for cancel
+	 * requests, logical replication, etc. never claim slots.
+	 */
+	if (server->yb_slot_claimed) {
+		yb_release_backend_slot((od_router_t *)server->global->router);
+		server->yb_slot_claimed = false;
+	}
+}
+
+/* YB: Max bytes of key data to hex-dump per log line (300 * 3 chars = 900, fits in OD_LOGLINE_MAXLEN). */
+#define YB_OD_HEX_BYTES_PER_LINE 300
+
+/* YB: Log a binary key as both text (up to first NUL) and full hex dump (split across lines). */
+static void yb_od_log_key_hexdump(od_logger_t *logger, char *context,
+				   od_server_t *server, int index,
+				   const char *key, size_t key_len)
+{
+	od_error(logger, context, NULL, server,
+		 "  [%d] text: %s", index, key);
+
+	size_t offset = 0;
+	while (offset < key_len) {
+		char hexbuf[OD_LOGLINE_MAXLEN];
+		size_t pos = 0;
+		size_t line_end = offset + YB_OD_HEX_BYTES_PER_LINE;
+		if (line_end > key_len)
+			line_end = key_len;
+		for (size_t j = offset; j < line_end; j++) {
+			pos += snprintf(hexbuf + pos, sizeof(hexbuf) - pos,
+					"%02x ", (unsigned char)key[j]);
+		}
+		od_error(logger, context, NULL, server,
+			 "  [%d] hex (%zu bytes, offset %zu): %s",
+			 index, key_len, offset, hexbuf);
+		offset = line_end;
+	}
+}
+
+void yb_evict_prep_stmt_by_keyhash(od_server_t *server, char *context, yb_od_hash_64_t keyhash)
+{
+	od_instance_t *instance = server->global->instance;
+	od_hashmap_elt_t *matched_keys = NULL;
+	int matched_count = 0;
+	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
+						&matched_keys, &matched_count)) {
+		server->yb_prep_stmt_count -= matched_count;
+		if (matched_count > 1) {
+			od_error(&instance->logger, context, NULL, server,
+				 "Got a hashmap collision for %016" PRIx64
+				 ". Evicted %d entries:",
+				 keyhash, matched_count);
+			for (int i = 0; i < matched_count; i++) {
+				yb_od_log_key_hexdump(&instance->logger,
+						      context, server, i,
+						      (const char *)matched_keys[i].data,
+						      matched_keys[i].len);
+				free(matched_keys[i].data);
+			}
+			free(matched_keys);
+		} else {
+			od_debug(&instance->logger, context, NULL, server,
+				 "Evicted %016" PRIx64 " hashmap entry from server",
+				 keyhash);
+		}
 	}
 }
 
@@ -81,27 +264,8 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 			"failed to parse error message from server");
 		return;
 	}
-	od_hash_t keyhash = strtoul(keyhash_str, NULL, 16);
-	char **matched_keys = NULL;
-	int matched_count = 0;
-	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
-					      &matched_keys, &matched_count)) {
-		server->yb_prep_stmt_count -= matched_count;
-		if (matched_count > 1) {
-			od_error(&instance->logger, context, NULL, server,
-				 "Got a hashmap collision for %08x. Evicted %d entries:",
-				 keyhash, matched_count);
-			for (int i = 0; i < matched_count; i++) {
-				od_error(&instance->logger, context, NULL, server,
-					 "  [%d] %s", i, matched_keys[i]);
-				free(matched_keys[i]);
-			}
-			free(matched_keys);
-		} else {
-			od_debug(&instance->logger, context, NULL, server,
-				 "Evicted %08x hashmap entry from server", keyhash);
-		}
-	}
+	yb_od_hash_64_t keyhash = strtoull(keyhash_str, NULL, 16);
+	yb_evict_prep_stmt_by_keyhash(server, context, keyhash);
 }
 
 void od_backend_error(od_server_t *server, char *context, char *data,
@@ -202,11 +366,13 @@ int od_backend_ready(od_server_t *server, char *data, uint32_t size)
 	// transaction block.
 	if (status == 'I' || status == 'i') {
 		if (status == 'i') {
-			/* increment only if becoming sticky for the first time */
-			if (!server->yb_sticky_connection)
-				((od_route_t *)(server->route))->server_pool.yb_count_sticky++;
-
-			server->yb_sticky_connection = true;
+			if(!yb_is_control_pool(server->route)) {
+				/* increment only if becoming sticky for the first time */
+				if (!server->yb_sticky_connection)
+					((od_route_t *)(server->route))->server_pool.yb_count_sticky++;
+	
+				server->yb_sticky_connection = true;
+			}
 			*kiwi_header_data((kiwi_header_t *)data) = 'I';
 		} else {
 			/* decrement only if transitioning from sticky to unsticky */
@@ -616,7 +782,7 @@ static inline int od_backend_startup(od_server_t *server,
 			machine_msg_free(msg);
 			break;
 		}
-		case KIWI_BE_NOTICE_RESPONSE:
+		case KIWI_BE_NOTICE_RESPONSE: {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 			/*
 			 * Store the client_id from the notice packet during authentication
@@ -632,8 +798,36 @@ static inline int od_backend_startup(od_server_t *server,
 				}
 			}
 #endif
-			machine_msg_free(msg);
+			od_client_t *client_to_forward = NULL;
+			if (is_authenticating)
+				client_to_forward = client->yb_external_client;
+			else if (client != NULL)
+				client_to_forward = client;
+
+			if (client_to_forward != NULL) {
+				rc = od_write(&client_to_forward->io, &msg);
+				if (rc < 0) {
+					od_error(
+						&instance->logger,
+						"startup notice-response",
+						client_to_forward, server,
+						"write error while forwarding notice-response packet: %s",
+						od_io_error(
+							&client_to_forward->io));
+				/*
+				 * YB: Don't return -1 here. The client may have
+				 * disconnected, but the backend connection is still
+				 * valid. Failing to forward an informational
+				 * NoticeResponse should not abort startup and tear
+				 * down the backend.
+				 */
+					break;
+				}
+			} else {
+				machine_msg_free(msg);
+			}
 			break;
+		}
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
 				yb_handle_fatalforlogicalconnection_pkt(
 					is_authenticating ? client->yb_external_client : client,
@@ -1200,6 +1394,16 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				machine_msg_data(msg), machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
+		} else if (type == YB_BE_PARSE_NO_PARSE_COMPLETE ||
+				   type == KIWI_BE_PARSE_COMPLETE) {
+			int res = yb_od_parse_queue_dequeue(&server->parse_queue);
+			machine_msg_free(msg);
+			if (res != 0) {
+				od_error(&instance->logger, context, server->client, server,
+					 "failed to dequeue parse queue");
+				return -1;
+			}
+			continue;
 		} else if (type == KIWI_BE_READY_FOR_QUERY) {
 			od_backend_ready(server, machine_msg_data(msg),
 					 machine_msg_size(msg));
@@ -1209,10 +1413,20 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				return 0;
 			}
 		}
+		else if (type == YB_BE_SYNC_ACK) {
+			/*
+			 * If SYNC present at head of parse queue means all parses in this
+			 * SYNC boundary were acknowledged (success path). Otherwise, some
+			 * parses were silently dropped after an error -- evict stale entries.
+			 */
+			yb_drain_parse_queue_till_sync(server, server->client);
+			machine_msg_free(msg);
+			continue;
+		}
 		/*
-		 * YB: No handling required for YB_BE_NO_PARSE_PARSE_COMPLETE and
-		 * YB_BE_PARSE_NO_PARSE_COMPLETE here as od_backend_ready_wait's job is
-		 * to just consume all the packets from the backend.
+		 * YB: No handling required for YB_BE_NO_PARSE_PARSE_COMPLETE here as
+		 * od_backend_ready_wait's job is to just consume all the packets from the backend. And
+		 * it's parse packets are never enqueued in parse_queue.
 		 */
 		machine_msg_free(msg);
 	}

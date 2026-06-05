@@ -33,6 +33,7 @@ import { NodeAvailabilityProps } from './dtos';
 import { Region } from '../../../../../helpers/dtos';
 import { ResilienceFormMode, type ResilienceAndRegionsProps } from '../resilence-regions/dtos';
 import { REPLICATION_FACTOR, RESILIENCE_FACTOR } from '../../fields/FieldNames';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../helpers/constants';
 
 /** Fields that drive guided-mode AZ/node layout from the Regions step. */
 function getGuidedPlacementSyncSignature(r: ResilienceAndRegionsProps): string {
@@ -122,8 +123,14 @@ const getPreferredRemovalIndex = (zones: NodeAvailabilityProps['availabilityZone
   let removalIndex = -1;
   let highestPreferredRank = Number.NEGATIVE_INFINITY;
   zones.forEach((zone, index) => {
-    const preferredRank = typeof zone.preffered === 'number' ? zone.preffered : -1;
-    if (preferredRank > highestPreferredRank || (preferredRank === highestPreferredRank && index > removalIndex)) {
+    const preferredRank =
+      typeof zone.preffered === 'number' && zone.preffered > AZ_NOT_PREFERRED
+        ? zone.preffered
+        : Number.NEGATIVE_INFINITY;
+    if (
+      preferredRank > highestPreferredRank ||
+      (preferredRank === highestPreferredRank && index > removalIndex)
+    ) {
       highestPreferredRank = preferredRank;
       removalIndex = index;
     }
@@ -133,10 +140,17 @@ const getPreferredRemovalIndex = (zones: NodeAvailabilityProps['availabilityZone
 
 const normalizePreferredRanks = (zones: NodeAvailabilityProps['availabilityZones'][string]) => {
   const sortedByPreferred = zones
-    .map((zone, index) => ({ index, preferred: typeof zone.preffered === 'number' ? zone.preffered : index }))
+    .map((zone, index) => ({
+      index,
+      preferred:
+        typeof zone.preffered === 'number' && zone.preffered > AZ_NOT_PREFERRED
+          ? zone.preffered
+          : AZ_NOT_PREFERRED
+    }))
+    .filter(({ preferred }) => preferred > AZ_NOT_PREFERRED)
     .sort((a, b) => a.preferred - b.preferred || a.index - b.index);
   sortedByPreferred.forEach(({ index }, rank) => {
-    zones[index] = { ...zones[index], preffered: rank };
+    zones[index] = { ...zones[index], preffered: rank + AZ_PREFFERED_HIGHEST_RANK };
   });
 };
 
@@ -258,6 +272,9 @@ export function useNodesAvailabilityStep(
       return;
     }
     if (watchedReplicationFactor === resilienceAndRegionsSettings.resilienceFactor) {
+      return;
+    }
+    if (typeof saveResilienceAndRegionsSettings !== 'function') {
       return;
     }
     saveResilienceAndRegionsSettings({
@@ -400,7 +417,7 @@ export function useNodesAvailabilityStep(
 
   // Geo-partition wizard only: Regions step drives layout. Stale nodesAndAvailability from context
   // (or prior visit) left availabilityZones non-empty, so applyNodesStepPlacementFromResilience
-  // skipped updating. Do not run for create-universe tests that seed custom availabilityZones.
+  // skipped updating. Only resync when zones are empty or region selection changed.
   useEffect(() => {
     if (guidedPlacementSyncSignature === null) {
       lastGuidedPlacementSignatureRef.current = null;
@@ -410,6 +427,18 @@ export function useNodesAvailabilityStep(
       return;
     }
     lastGuidedPlacementSignatureRef.current = guidedPlacementSyncSignature;
+
+    const currentAvailabilityZones = methods.getValues('availabilityZones');
+    const hasExistingZones = !isEmpty(currentAvailabilityZones);
+    const selectedRegions = resilienceAndRegionsSettings?.regions ?? [];
+    const selectedRegionsMatchAvailabilityZones = regionCodesMatchAvailabilityZones(
+      selectedRegions,
+      currentAvailabilityZones
+    );
+    if (hasExistingZones && selectedRegionsMatchAvailabilityZones) {
+      return;
+    }
+
     methods.setValue('availabilityZones', {});
     applyNodesStepPlacementFromResilience(
       methods,

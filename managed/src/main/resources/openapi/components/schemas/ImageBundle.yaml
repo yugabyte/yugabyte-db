@@ -1,0 +1,23 @@
+title: ImageBundle
+description: Image bundle for a provider.
+type: object
+properties:
+  uuid:
+    description: Image bundle unique identifier.
+    type: string
+    format: uuid
+  name:
+    description: Image bundle display name.
+    type: string
+  details:
+    description: 'Architecture, regions, SSH defaults, and per-region image overrides.'
+    $ref: "./ImageBundleDetails.yaml"
+  use_as_default:
+    description: Whether this bundle is the default for new clusters on the provider.
+    type: boolean
+  metadata:
+    description: Bundle classification and version metadata.
+    $ref: "./ImageBundleMetadata.yaml"
+  active:
+    description: Whether the bundle is active for use.
+    type: boolean

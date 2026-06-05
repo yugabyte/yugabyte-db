@@ -1,3 +1,4 @@
+import { omit } from 'lodash';
 import { createUniverseFormProps } from '../CreateUniverseContext';
 import { ResilienceType } from '../steps/resilence-regions/dtos';
 import { OtherAdvancedProps } from '../steps/advanced-settings/dtos';
@@ -19,12 +20,8 @@ export const getCreateEITPayload = (
   securitySettings: SecuritySettingsProps,
   cloudType: CloudType
 ): EncryptionInTransitSpec => {
-  const {
-    enableNodeToNodeEncryption,
-    enableClientToNodeEncryption,
-    rootCertificate,
-    certType
-  } = securitySettings;
+  const { enableNodeToNodeEncryption, enableClientToNodeEncryption, rootCertificate, certType } =
+    securitySettings;
   if (cloudType === CloudType.kubernetes) {
     return {
       enable_node_to_node_encrypt: securitySettings?.enableNodeToNodeEncryption ? true : false,
@@ -53,24 +50,28 @@ export const getCreateEITPayload = (
     return {
       enable_node_to_node_encrypt: useSameCertificate
         ? enableBothEncryption
+          ? true
+          : false
         : enableNodeToNodeEncryption,
       enable_client_to_node_encrypt: useSameCertificate
         ? enableBothEncryption
+          ? true
+          : false
         : enableClientToNodeEncryption,
       root_ca: useSameCertificate
         ? certType === CertType.CUSTOM
           ? rootCertificate
           : ''
         : certTypeNtoN === CertType.CUSTOM
-        ? rootNToNCertificate
-        : '',
+          ? rootNToNCertificate
+          : '',
       client_root_ca: useSameCertificate
         ? certType === CertType.CUSTOM
           ? rootCertificate
           : ''
         : certTypeCToN === CertType.CUSTOM
-        ? rootCToNCertificate
-        : ''
+          ? rootCToNCertificate
+          : ''
     };
   }
 };
@@ -92,7 +93,7 @@ const mapCommunicationPorts = (otherSettings: OtherAdvancedProps): Communication
   };
 };
 
-const mapGFlags = (
+export const mapGFlags = (
   gflags: {
     Name: string;
     MASTER?: string | boolean | number;
@@ -178,29 +179,23 @@ export const mapCreateUniversePayload = (
       encryption_in_transit_spec: getCreateEITPayload(securitySettings, providerType!),
       use_time_sync: otherAdvancedSettings.useTimeSync,
       ycql: {
-        ...databaseSettings.ycql
+        ...omit(databaseSettings.ycql, 'confirm_pwd')
       },
       ysql: {
-        ...databaseSettings.ysql,
+        ...omit(databaseSettings.ysql, 'confirm_pwd'),
         enable_connection_pooling: databaseSettings.enableConnectionPooling ?? false
       },
       networking_spec: {
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
-        enable_ipv6: securitySettings.enableIPV6 ?? false,
-        ...(otherAdvancedSettings?.enableExposingService && {
-          enable_exposing_service: ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
-        })
+        enable_ipv6: securitySettings.enableIPV6 ?? false
       },
       clusters: [
         {
           replication_factor: effectiveRf,
           cluster_type: ClusterType.PRIMARY,
           use_spot_instance: instanceSettings.useSpotInstance,
-          audit_log_config: {
-            universe_logs_exporter_config: []
-          },
           gflags: {
             az_gflags: {},
             master: {
@@ -215,14 +210,19 @@ export const mapCreateUniversePayload = (
             })
           },
           ...(providerType !== CloudType.kubernetes && {
-            instance_tags: otherAdvancedSettings?.instanceTags.reduce((acc, tag) => {
-              acc[tag.name] = tag.value;
-              return acc;
-            }, {} as Record<string, string>)
+            instance_tags: otherAdvancedSettings?.instanceTags.reduce(
+              (acc, tag) => {
+                acc[tag.name] = tag.value;
+                return acc;
+              },
+              {} as Record<string, string>
+            )
           }),
           networking_spec: {
-            enable_lb: true,
-            enable_exposing_service: otherAdvancedSettings?.enableExposingService ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,
+            enable_lb: false,
+            enable_exposing_service: securitySettings?.enableExposingService
+              ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
+              : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,
             ...(proxySettings.enableProxyServer
               ? {
                   proxy_config: {

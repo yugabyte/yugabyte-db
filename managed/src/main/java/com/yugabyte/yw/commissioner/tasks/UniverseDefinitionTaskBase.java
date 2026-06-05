@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailableForNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
@@ -93,6 +94,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.AZUpgradeState;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
@@ -2488,8 +2490,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    // Must use ansible provisioning for non-systemd universes
-    Customer customer = Customer.get(universe.getCustomerId());
     boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -2754,6 +2754,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe, Collection<NodeDetails> sourceNodes) {
     if (CollectionUtils.isEmpty(sourceNodes)) {
       log.debug("Skipping DB node port connectivity check: no source nodes");
+      return;
+    }
+    if (!isFirstTry()) {
+      log.debug("Skipping DB node port connectivity check on retry");
       return;
     }
     if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
@@ -3901,8 +3905,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (universeDetails.installNodeAgent || universeDetails.nodeAgentMissing) {
       createInstallNodeAgentTasks(universe, nodes, true /* force install */)
           .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
-      createWaitForNodeAgentTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
     }
+    createWaitForNodeAgentTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
     // Optimistically rotate node-to-node server certificates before starting DB processes
     // Also see CertsRotate
     if (universeDetails.rootCA != null) {
@@ -3984,11 +3988,27 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
   }
 
+  /**
+   * Resolves the target software version for finalize/YSQL upgrade tasks. Prefers {@code
+   * prevYBSoftwareConfig.targetUpgradeSoftwareVersion} when set (in-flight upgrade before {@code
+   * userIntent.ybSoftwareVersion} is updated); otherwise falls back to {@code userIntent}.
+   */
+  protected static String resolveTargetSoftwareVersion(Universe universe) {
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig prev =
+        universe.getUniverseDetails().prevYBSoftwareConfig;
+    if (prev != null && !StringUtils.isEmpty(prev.getTargetUpgradeSoftwareVersion())) {
+      return prev.getTargetUpgradeSoftwareVersion();
+    }
+    return universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+  }
+
   protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade) {
     Universe universe = getUniverse();
+
+    createClearSoftwareUpgradeProgressTask();
 
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
@@ -4007,9 +4027,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       if (upgradeSystemCatalog) {
         // Run YSQL upgrade on the universe.
-        String version =
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-        createRunYsqlUpgradeTask(version);
+        createRunYsqlUpgradeTask(resolveTargetSoftwareVersion(universe));
       }
 
       if (requireAdditionalSuperUserForCatalogUpgrade) {
@@ -4284,9 +4302,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createDeleteCapacityReservationTask() {
+    createDeleteCapacityReservationTask(true /* deleteOnlyIfFullyUtilized */);
+  }
+
+  protected void createDeleteCapacityReservationTask(boolean deleteOnlyIfFullyUtilized) {
     TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ReleaseCapacityReservation");
     DeleteCapacityReservation.Params params = new DeleteCapacityReservation.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.deleteOnlyIfFullyUtilized = deleteOnlyIfFullyUtilized;
     // Create the task.
     DeleteCapacityReservation task = createTask(DeleteCapacityReservation.class);
     task.initialize(params);
@@ -4372,7 +4395,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (universe.getUniverseDetails().getCapacityReservationState() != null
         && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
       try {
-        setTaskQueueAndRun(() -> createDeleteCapacityReservationTask());
+        setTaskQueueAndRun(
+            () -> createDeleteCapacityReservationTask(false /* deleteOnlyIfFullyUtilized */));
       } catch (Exception ignored) {
         // Not throwing exception that will overwrite the current one.
         log.error("Failed to delete capacity reservations", ignored);
@@ -4489,5 +4513,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected void createClearSoftwareUpgradeProgressTask() {
     createSaveSoftwareUpgradeProgressTask(
         false, null, Collections.emptyList(), Collections.emptyList(), false);
+  }
+
+  protected TaskExecutor.SubTaskGroup createConfigureOOMServiceSubtasks(
+      AdditionalServicesStateData additionalServicesStateData, Collection<NodeDetails> nodes) {
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureOOMServiceOnNodes");
+    for (NodeDetails node : nodes) {
+      ConfigureOOMServiceOnNode.Params params = new ConfigureOOMServiceOnNode.Params();
+      params.earlyoomConfig = additionalServicesStateData.getEarlyoomConfig();
+      params.earlyoomEnabled = additionalServicesStateData.isEarlyoomEnabled();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      ConfigureOOMServiceOnNode task = createTask(ConfigureOOMServiceOnNode.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 }

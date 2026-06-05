@@ -1,4 +1,4 @@
-import { type FC } from 'react';
+import { forwardRef } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -65,7 +65,6 @@ const useStyles = makeStyles((theme) => ({
   accordionSummaryContent: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(2),
 
     margin: 0,
 
@@ -107,8 +106,10 @@ const useStyles = makeStyles((theme) => ({
       backgroundColor: theme.palette.grey[400]
     }
   },
-  headerAccessoriesContainer: {
-    marginLeft: 'auto'
+  headerPrimarySection: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(2)
   },
   iconContainer: {
     display: 'flex',
@@ -163,7 +164,7 @@ const useStyles = makeStyles((theme) => ({
   icon: {}
 }));
 
-export const AccordionCard = ({
+export const AccordionCard = forwardRef<HTMLElement, AccordionCardProps>(({
   state,
   title,
   accordionProps,
@@ -172,7 +173,7 @@ export const AccordionCard = ({
   isExpandDisabled = false,
   stepNumber,
   children
-}: AccordionCardProps) => {
+}, ref) => {
   const classes = useStyles();
   const stepStateToIcon = {
     [AccordionCardState.NEUTRAL]: {
@@ -199,6 +200,7 @@ export const AccordionCard = ({
   return (
     <Accordion
       {...accordionProps}
+      ref={ref}
       expanded={isExpandDisabled ? false : accordionProps?.expanded}
       className={clsx(classes.accordionCard, classes.step, className)}
       classes={{ root: classes.accordionRoot }}
@@ -216,16 +218,18 @@ export const AccordionCard = ({
           expandIcon: classes.accordionSummaryExpandIcon
         }}
       >
-        <div
-          className={clsx(
-            classes.iconContainer,
-            accordionProps?.disabled ? classes.disabledState : stepStateToIcon[state].className
-          )}
-        >
-          {stepStateToIcon[state].iconContent}
+        <div className={classes.headerPrimarySection}>
+          <div
+            className={clsx(
+              classes.iconContainer,
+              accordionProps?.disabled ? classes.disabledState : stepStateToIcon[state].className
+            )}
+          >
+            {stepStateToIcon[state].iconContent}
+          </div>
+          <Typography variant="body1">{title}</Typography>
         </div>
-        <Typography variant="body1">{title}</Typography>
-        <div className={classes.headerAccessoriesContainer}>{headerAccessories}</div>
+        {headerAccessories}
       </AccordionSummary>
       <AccordionDetails
         classes={{ root: classes.accordionDetailRoot }}
@@ -235,4 +239,5 @@ export const AccordionCard = ({
       </AccordionDetails>
     </Accordion>
   );
-};
+});
+AccordionCard.displayName = 'AccordionCard';

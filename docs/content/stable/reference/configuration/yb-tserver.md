@@ -680,9 +680,9 @@ Enables derivation of additional equalities for columns that are generated or co
 Default: `false`
 {{% /tags/wrap %}}
 
-Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_saop_merge_streams` is 0.
+Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_merge_scan_streams` is 0.
 
-##### yb_max_saop_merge_streams
+##### yb_max_merge_scan_streams
 
 {{% tags/wrap %}}
 {{<tags/feature/ea idea="2275">}}
@@ -690,6 +690,16 @@ Default: `0`
 {{% /tags/wrap %}}
 
 Maximum number of buckets to process in parallel. A value greater than 0 enables bucket-based merge (used for [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/)). Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64.
+
+##### yb_max_saop_merge_streams
+
+{{% tags/wrap %}}
+{{<tags/feature/deprecated>}}
+{{<tags/feature/ea idea="2275">}}
+Default: `0`
+{{% /tags/wrap %}}
+
+Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
 
 ## Networking
 
@@ -1087,8 +1097,7 @@ The number of tablet replicas that each core on a YB-TServer can support.
 
 {{% tags/wrap %}}
 
-
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 {{% /tags/wrap %}}
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
@@ -1342,6 +1351,20 @@ Default: `false`
 
 When true, the CDC service returns a null before-image if it is not able to find one.
 
+##### --cdc_enable_intra_transactional_before_image
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+
+When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
+
+This flag requires a YB-TServer restart. Enable it on all YB-TServers in the universe when you need accurate before images for intra-transactional changes with logical replication or gRPC CDC.
+
+
 ##### --cdcsdk_tablet_not_of_interest_timeout_secs
 
 {{% tags/wrap %}}
@@ -1360,6 +1383,37 @@ Default: `4 * 3600` (4 hours)
 {{% /tags/wrap %}}
 
 The time interval, in seconds, to retain history/older versions of the system catalog.
+
+### LISTEN/NOTIFY flags
+
+{{<tags/feature/ea idea="1901">}}Available in v2025.2.3 and later. To learn about LISTEN/NOTIFY, see [LISTEN, NOTIFY, and UNLISTEN](../../../api/ysql/the-sql-language/statements/cmd_listen_notify/).
+
+##### --ysql_yb_enable_listen_notify
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables YSQL LISTEN/NOTIFY.
+
+##### --ysql_yb_notifications_poll_sleep_duration_nonempty_ms
+
+{{% tags/wrap %}}
+
+Default: `1`
+{{% /tags/wrap %}}
+
+Wait time in milliseconds before the notifications poller polls again when the previous poll returned data.
+
+##### --ysql_yb_notifications_poll_sleep_duration_empty_ms
+
+{{% tags/wrap %}}
+
+Default: `100`
+{{% /tags/wrap %}}
+
+Wait time in milliseconds before the notifications poller polls again when the previous poll returned no data.
 
 ### File expiration based on TTL flags
 
@@ -1901,15 +1955,6 @@ Default: `1`
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
 
-##### --full_compaction_pool_max_queue_size
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-Default: `500`
-{{% /tags/wrap %}}
-
-The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
-
 ##### --auto_compact_check_interval_sec
 
 {{% tags/wrap %}}
@@ -2030,51 +2075,14 @@ If `enable_wait_queues=true`, this controls the rate at which each tablet's wait
 ##### --ysql_enable_db_catalog_version_mode
 
 {{% tags/wrap %}}
-
-Default: `true`
+{{<tags/feature/deprecated>}}
 {{% /tags/wrap %}}
 
-Enable the per database catalog version mode. A DDL statement that
-affects the current database can only increment catalog version for
-that database.
+{{< warning title="Deprecated" >}}
+Per-database catalog version mode is now mandatory. This flag is deprecated and has no effect; if set explicitly, a deprecation warning is logged at startup and the value is ignored.
+{{< /warning >}}
 
-{{< note title="Important" >}}
-
-In earlier releases, after a DDL statement is executed, if the DDL statement increments the catalog version, then all the existing connections need to refresh catalog caches before
-they execute the next statement. However, when per database catalog version mode is
-enabled, multiple DDL statements can be concurrently executed if each DDL only
-affects its current database and is executed in a separate database. Existing
-connections only need to refresh their catalog caches if they are connected to
-the same database as that of a DDL statement. It is recommended to keep the default value of this flag because per database catalog version mode helps to avoid unnecessary cross-database catalog cache refresh which is considered as an expensive operation.
-
-{{< /note >}}
-
-If you encounter any issues caused by per-database catalog version mode, you can disable per database catalog version mode using the following steps:
-
-1. Shut down the cluster.
-
-1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
-
-1. Execute the following YSQL statements:
-
-    ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(false);
-    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
-    ```
-
-To re-enable the per database catalog version mode using the following steps:
-
-1. Execute the following YSQL statements:
-
-    ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(true);
-    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
-    ```
-
-1. Shut down the cluster.
-1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
+In per-database catalog version mode, a DDL statement that affects the current database can only increment the catalog version for that database. As a result, multiple DDL statements can be concurrently executed if each DDL only affects its current database and is executed in a separate database. Existing connections only need to refresh their catalog caches if they are connected to the same database as that of a DDL statement.
 
 ##### --enable_heartbeat_pg_catalog_versions_cache
 
@@ -2087,8 +2095,6 @@ Whether to enable the use of heartbeat catalog versions cache for the
 `pg_yb_catalog_version` table which can help to reduce the number of reads
 from the table. This is beneficial when there are many databases and/or
 many yb-tservers in the cluster.
-
-Note that `enable_heartbeat_pg_catalog_versions_cache` is only used when [ysql_enable_db_catalog_version_mode](#ysql-enable-db-catalog-version-mode) is true.
 
 {{< note title="Important" >}}
 
@@ -2329,7 +2335,7 @@ Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
 {{% tags/wrap %}}
 
-Default: `-1`, where the system automatically calculates the value to be approximately 1 second.
+Default: `-1`, where the system automatically calculates the margin. For YSQL index backfill the baseline is 3 minutes (180000 ms); for YCQL the baseline is approximately 1 second (1000 ms). The effective margin is the greater of that baseline and a value derived from `backfill_index_write_batch_size` and `backfill_index_rate_rows_per_sec`.
 {{% /tags/wrap %}}
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.

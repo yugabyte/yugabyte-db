@@ -310,6 +310,7 @@ extern PGDLLIMPORT int yb_explicit_row_locking_batch_size;
 extern PGDLLIMPORT bool yb_lock_pk_single_rpc;
 extern PGDLLIMPORT int yb_toast_catcache_threshold;
 extern PGDLLIMPORT bool yb_enable_fkey_catcache;
+extern PGDLLIMPORT bool yb_enable_fkey_batched_docdb_lookup_when_types_mismatch;
 extern PGDLLIMPORT bool yb_index_checker;
 extern PGDLLIMPORT bool yb_test_slowdown_index_check;
 extern PGDLLIMPORT int yb_test_index_check_num_batches_per_snapshot;
@@ -324,6 +325,7 @@ extern PGDLLIMPORT bool yb_conn_mgr_selective_deallocate;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
 extern PGDLLIMPORT bool yb_skip_ensure_read_time_in_parallel_execution;
+extern PGDLLIMPORT bool yb_enable_mage;
 
 /*
  * Functions exported by guc.c

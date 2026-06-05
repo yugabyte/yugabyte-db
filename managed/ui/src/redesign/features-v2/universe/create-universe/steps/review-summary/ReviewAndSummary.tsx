@@ -1,6 +1,6 @@
 import { forwardRef, useContext, useImperativeHandle } from 'react';
 import { useQuery } from 'react-query';
-import { toast } from 'react-toastify';
+import { useYBToast } from '../../helpers/ToastUtils';
 import { useTranslation } from 'react-i18next';
 import {
   MapLegend,
@@ -23,6 +23,7 @@ import {
 } from '../../CreateUniverseContext';
 import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
+import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 
 //icons
 import UniverseIcon from '../../../../../assets/clusters.svg';
@@ -97,7 +98,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
   const { resilienceAndRegionsSettings } = context;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.reviewAndSummary' });
-
+  const toast = useYBToast();
   const payload = mapCreateUniversePayload({ ...context });
   const createUniverse = useCreateUniverse();
   const { data: pricingData, isLoading: isLoadingPricing } = useQuery(
@@ -121,7 +122,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
             },
             {
               onError(error) {
-                toast.error((error.response?.data as any)?.error || 'Failed to create universe');
+                toast.error(createErrorMessage(error));
               }
             }
           )
@@ -133,7 +134,6 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
           })
           .catch((error) => {
             console.error('Error creating universe:', error);
-            toast.error(error);
             // Handle error appropriately, e.g., show a notification
           });
       },

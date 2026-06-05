@@ -179,6 +179,22 @@ SAVEPOINT test12_sp;
 CREATE TABLE test13 (a int primary key, b int);
 ROLLBACK;
 
+-- DDL after anonymous internal savepoint (EXCEPTION block) disallowed.
+-- We MUST error out here to prevent a split-brain between Postgres and the YB Master.
+-- If we allowed this CREATE TABLE to proceed, and the subtransaction later aborted
+-- (e.g., via a raised exception), Postgres would roll back its local pg_class entry,
+-- but the YB Master (lacking savepoint support) would commit the DocDB table.
+-- This would result in a permanently orphaned table consuming resources.
+DO $$
+BEGIN
+  CREATE TABLE test_anonymous_subtxn_ddl (id INT PRIMARY KEY);
+  -- The CREATE TABLE above will throw "interleaving SAVEPOINT & DDL..."
+  -- before we can even reach the next line.
+  RAISE EXCEPTION 'force abort';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'caught error: %', sqlerrm;
+END $$;
+
 BEGIN;
 CREATE TEMPORARY TABLE temp_table (
     a INT PRIMARY KEY
@@ -355,43 +371,7 @@ CREATE TABLE int4_table(id SERIAL, c1 int4, PRIMARY KEY (id ASC));
 ALTER TABLE int4_table ALTER c1 TYPE int8;
 INSERT INTO int4_table(c1) VALUES (2 ^ 40);
 ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.
-
--- #30109: duplicate key value violates unique constraint
-\c
--- The bug only exists when yb_enable_concurrent_ddl = true
--- We also test yb_enable_concurrent_ddl = false to ensure
--- correctness in both cases.
-SET yb_enable_concurrent_ddl = true;
-
-CREATE TABLE test_table1();
-CREATE OR REPLACE PROCEDURE test_alter1()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-END;
-$$;
-CALL test_alter1();
-\c
-SET yb_enable_concurrent_ddl = false;
-
-CREATE TABLE test_table2();
-CREATE OR REPLACE PROCEDURE test_alter2()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-END;
-$$;
-CALL test_alter2();
-\c
--- end of test of #30109
+ROLLBACK;
 
 -- Test rollback of in-place index pg_attribute update during ALTER TYPE.
 CREATE TABLE test_idx_rollback (val varchar(10));

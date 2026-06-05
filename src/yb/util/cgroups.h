@@ -16,6 +16,8 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <tuple>
@@ -28,6 +30,15 @@
 namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(ClearChildCgroups);
+
+struct CgroupCpuStats {
+  int64_t nr_periods = 0;
+  int64_t nr_throttled = 0;
+  int64_t throttled_time_ns = 0;
+  int64_t usage_ns = 0;
+  int64_t usage_user_ns = 0;
+  int64_t usage_sys_ns = 0;
+};
 
 class Cgroup {
  public:
@@ -73,6 +84,20 @@ class Cgroup {
 
   // Move a child process (by PID) into this cgroup. Writes to cgroup.procs.
   Status MoveProcessToGroup(int64_t pid) EXCLUDES(mutex_);
+
+  // Read CPU throttling stats (cpu.stat) and usage counters (cpuacct.usage*).
+  // All values are cumulative since cgroup creation.
+  Result<CgroupCpuStats> ReadCpuStats() const;
+
+  void VisitChildren(const std::function<void(Cgroup&)>& visitor,
+                     const std::function<void(std::span<Cgroup*>)>& sort = {});
+
+  void VisitTree(
+      const std::function<void(Cgroup&, size_t)>& visitor,
+      const std::function<void(std::span<Cgroup*>)>& sort = {},
+      size_t current_depth = 0,
+      size_t max_depth = std::numeric_limits<size_t>::max());
+
   // These functions have an inherent race condition: the threads they read may change
   // cgroups or exit immediately after reading, and the thread id may even be reused by
   // another thread before returning. They should only be used for testing and for
@@ -80,7 +105,8 @@ class Cgroup {
   Result<std::vector<int64_t>> ReadThreadIds();
   Result<std::vector<std::string>> ReadThreadNames();
 
-  // The last part of the cgroup name, e.g. name() of /sys/fs/cgroup/a/b/c is "c".
+  // The part of the cgroup name under the root cgroup, e.g. name() of /sys/fs/cgroup/a/b/c with
+  // root cgroup of /sys/fs/cgroup/a is "b/c".
   std::string_view name() const { return name_; }
 
   // The full cgroup name, matching entries in /proc/$PID/cgroup, e.g. name() of
@@ -93,6 +119,8 @@ class Cgroup {
   Cgroup* parent() const { return parent_; }
 
   Cgroup* child(std::string_view name) EXCLUDES(mutex_);
+
+  bool is_leaf() const EXCLUDES(mutex_);
 
   double cpu_max_fraction() const EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
@@ -121,6 +149,8 @@ class Cgroup {
 
   Status WriteConfig(std::string_view config, std::string_view value) const;
 
+  Result<bool> CheckReady() const;
+
   mutable std::mutex mutex_;
 
   Cgroup* const parent_;
@@ -147,7 +177,12 @@ class Cgroup {
 //
 // This function must be called before any threads are created so that we can ensure all threads
 // are created in the default thread cgroup.
-Status SetupCgroupManagement(ClearChildCgroups clear);
+//
+// default_cgroup_init should take the root cgroup and return the cgroup to be used as the default
+// thread cgroup. If not provided, /@default is used.
+Status SetupCgroupManagement(
+    ClearChildCgroups clear,
+    const std::function<Result<Cgroup&>(Cgroup&)>& default_cgroup_init = {});
 
 bool CgroupManagementEnabled();
 
@@ -160,7 +195,7 @@ Cgroup* RootCgroup();
 // which means the child cgroups we create get a very small percentage of the total weight when
 // there are a lot of threads, i.e. each child cgroup should ideally have only other cgroups or
 // threads as children, not both.
-// ince our root cgroup contains other cgroups (for each thread pool), we need a sub-cgroup to
+// Since our root cgroup contains other cgroups (for each thread pool), we need a sub-cgroup to
 // place threads in initially, which is the DefaultThreadCgroup.
 // SetupCgroupManagement will initially place threads into this cgroup, until they are moved out
 // explicitly.

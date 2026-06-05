@@ -43548,6 +43548,8 @@ unsafe extern "C-unwind" {
         dpcontext: *mut List,
         forceprefix: bool,
         showimplicit: bool,
+        verbose: bool,
+        maskconstants: bool,
     ) -> *mut ::core::ffi::c_char;
     pub fn deparse_context_for(aliasname: *const ::core::ffi::c_char, relid: Oid) -> *mut List;
     pub fn deparse_context_for_plan_tree(

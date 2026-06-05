@@ -7,11 +7,11 @@ step s2b: LOCK TABLE a1 IN SHARE UPDATE EXCLUSIVE MODE; <waiting ...>
 step s3a: LOCK TABLE a2 IN ACCESS EXCLUSIVE MODE; <waiting ...>
 step s4a: LOCK TABLE a2 IN ACCESS EXCLUSIVE MODE; <waiting ...>
 step s1b: LOCK TABLE a2 IN SHARE UPDATE EXCLUSIVE MODE; <waiting ...>
-step s3a: <... completed>
-ERROR:  Failed to acquire object locks within deadline: Heartbeat: Transaction aborted due to a deadlock: kDeadlock
+step s1b: <... completed>
 step s4a: <... completed>
 ERROR:  Failed to acquire object locks within deadline: Heartbeat: Transaction aborted due to a deadlock: kDeadlock
-step s1b: <... completed>
+step s3a: <... completed>
+ERROR:  Failed to acquire object locks within deadline: Heartbeat: Transaction aborted due to a deadlock: kDeadlock
 step s1c: COMMIT;
 step s2b: <... completed>
 step s2c: COMMIT;

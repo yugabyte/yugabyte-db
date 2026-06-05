@@ -59,7 +59,11 @@ public class PeerInfo {
   }
 
   public boolean hasHost(String host) {
-    return lastKnownPrivateIps.stream().filter(hp -> Objects.equals(hp.getHost(), host))
-        .findFirst().isPresent();
+    // YBA may track a node by either its RPC address (lastKnownPrivateIps) or its
+    // server_broadcast_address (lastKnownBroadcastIps) -- e.g. on K8s MCS the broadcast
+    // address is what YBA stores as private_ip. Match against both so callers don't
+    // need to know which one applies.
+    return lastKnownPrivateIps.stream().anyMatch(hp -> Objects.equals(hp.getHost(), host))
+        || lastKnownBroadcastIps.stream().anyMatch(hp -> Objects.equals(hp.getHost(), host));
   }
 }

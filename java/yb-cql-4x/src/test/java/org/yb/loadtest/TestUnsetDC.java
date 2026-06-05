@@ -38,9 +38,11 @@ import org.slf4j.LoggerFactory;
 import org.yb.*;
 import org.yb.client.*;
 import org.yb.minicluster.*;
-import org.yb.util.YBTestRunnerNonMac;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 
-@RunWith(value = YBTestRunnerNonMac.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestUnsetDC extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(TestUnsetDC.class);
   private YBTable ybTable = null;

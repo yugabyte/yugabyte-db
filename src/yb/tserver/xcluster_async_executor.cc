@@ -78,6 +78,14 @@ void XClusterAsyncExecutor::ScheduleFunc(
   RETURN_WHEN_OFFLINE;
 
   VLOG_WITH_PREFIX(5) << "Scheduling '" << func_name << "' on thread pool";
+
+  // Setting the wait event to idle before submitting the function, because
+  // if we set it after submitting the function, it's possible another thread
+  // starts execution of the function, and this thread gets context switched
+  // before setting the wait event to idle, and later sets the wait event
+  // incorrectly to idle.
+  SET_WAIT_STATUS(Idle);
+
   auto s = thread_pool_->SubmitFunc(std::bind(
       &XClusterAsyncExecutor::WeakPtrCallback, weak_from_this(), std::move(func_name),
       std::move(func)));
@@ -86,8 +94,6 @@ void XClusterAsyncExecutor::ScheduleFunc(
     return;
   }
   last_task_schedule_time_ = MonoTime::Now();
-
-  SET_WAIT_STATUS(Idle);
 }
 
 void XClusterAsyncExecutor::WeakPtrCallback(
@@ -149,6 +155,10 @@ void XClusterAsyncExecutor::ScheduleFuncWithDelay(
   VLOG_WITH_PREFIX(5) << "Scheduling '" << func_name << "' on reactor with delay " << delay_ms
                       << "ms";
 
+  // See XClusterAsyncExecutor::ScheduleFunc on why the wait event is set
+  // to idle before scheduling the function.
+  SET_WAIT_STATUS(Idle);
+
   auto task_id_result = messenger_->ScheduleOnReactor(
       [weak_ptr = weak_from_this(), func = std::move(func)](const Status& s) {
         ReactorCallback(weak_ptr, s, std::move(func));
@@ -165,8 +175,6 @@ void XClusterAsyncExecutor::ScheduleFuncWithDelay(
   reactor_task_name_ = std::move(func_name);
   VLOG_WITH_PREFIX(5) << "Scheduled task '" << reactor_task_name_ << "' (" << reactor_task_id_
                       << ") on reactor with delay " << delay_ms << "ms";
-
-  SET_WAIT_STATUS(Idle);
 }
 
 void XClusterAsyncExecutor::ReactorCallback(

@@ -83,21 +83,15 @@ DEFINE_UNKNOWN_bool(rocksdb_release_mutex_during_wait_for_memtables_to_flush, tr
 
 namespace rocksdb {
 
-FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
-                   const DBOptions& db_options,
-                   const MutableCFOptions& mutable_cf_options,
-                   const EnvOptions& env_options, VersionSet* versions,
-                   InstrumentedMutex* db_mutex,
-                   std::atomic<bool>* shutting_down,
-                   std::atomic<bool>* disable_flush_on_shutdown,
-                   std::vector<SequenceNumber> existing_snapshots,
-                   SequenceNumber earliest_write_conflict_snapshot,
-                   MemTableFilter mem_table_flush_filter,
-                   FileNumbersProvider* file_numbers_provider,
-                   JobContext* job_context, LogBuffer* log_buffer,
-                   Directory* db_directory, Directory* output_file_directory,
-                   CompressionType output_compression, Statistics* stats,
-                   EventLogger* event_logger)
+FlushJob::FlushJob(
+    const std::string& dbname, ColumnFamilyData* cfd, const DBOptions& db_options,
+    const MutableCFOptions& mutable_cf_options, const EnvOptions& env_options, VersionSet* versions,
+    InstrumentedMutex* db_mutex, std::atomic<bool>* shutting_down,
+    std::atomic<bool>* disable_flush_on_shutdown, std::vector<SequenceNumber> existing_snapshots,
+    SequenceNumber earliest_write_conflict_snapshot, MemTableFilter mem_table_flush_filter,
+    FileNumbersProvider* file_numbers_provider, JobContext* job_context, LogBuffer* log_buffer,
+    Directory* db_directory, Directory* output_file_directory, CompressionType output_compression,
+    Statistics* stats, FlushReason flush_reason, EventLogger* event_logger)
     : dbname_(dbname),
       cfd_(cfd),
       db_options_(db_options),
@@ -117,6 +111,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       output_file_directory_(output_file_directory),
       output_compression_(output_compression),
       stats_(stats),
+      flush_reason_(flush_reason),
       event_logger_(event_logger),
       wait_state_(yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>()) {
   if (wait_state_) {
@@ -227,9 +222,11 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   // This includes both SST and MANIFEST files IO.
   RecordFlushIOStats();
 
-  auto stream = event_logger_->LogToBuffer(log_buffer_, InfoLogLevel::DETAIL_LEVEL);
+  // Same EVENT_LOG_v1 style as flush_started (INFO); includes flush_reason for observability.
+  auto stream = event_logger_->Log();
   stream << "job" << job_context_->job_id << "event"
-         << "flush_finished";
+         << "flush_finished"
+         << "flush_reason" << ToString(flush_reason_);
   stream << "lsm_state";
   stream.StartArray();
   auto vstorage = cfd_->current()->storage_info();
@@ -283,6 +280,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
 
     event_logger_->Log() << "job" << job_context_->job_id << "event"
                          << "flush_started"
+                         << "flush_reason" << ToString(flush_reason_)
                          << "num_memtables" << mems.size() << "num_entries"
                          << total_num_entries << "num_deletes"
                          << total_num_deletes << "memory_usage"

@@ -108,6 +108,9 @@ yba universe file-collection create --name <universe-name> \
 
 		options := *ybav2client.NewFileCollectionOptions()
 
+		if len(filePaths) > 0 {
+			options.SetFilePaths(filePaths)
+		}
 		if len(dirPaths) > 0 {
 			options.SetDirectoryPaths(dirPaths)
 		}
@@ -256,17 +259,17 @@ func init() {
 	createFileCollectionCmd.Flags().SortFlags = false
 
 	createFileCollectionCmd.Flags().String("file-paths", "",
-		fmt.Sprintf("[Optional*] Comma-separated list of file paths to collect from each node. "+
+		fmt.Sprintf("[Optional] Comma-separated list of file paths to collect from each node. "+
 			"Paths can be absolute or relative to the yugabyte home directory. %s",
 			formatter.Colorize(
 				"At least one of file-paths or directory-paths is required.",
-				formatter.YellowColor,
+				formatter.GreenColor,
 			)))
 	createFileCollectionCmd.Flags().String("directory-paths", "",
-		fmt.Sprintf("[Optional*] Comma-separated list of directory paths to collect files from. %s",
+		fmt.Sprintf("[Optional] Comma-separated list of directory paths to collect files from. %s",
 			formatter.Colorize(
 				"At least one of file-paths or directory-paths is required.",
-				formatter.YellowColor,
+				formatter.GreenColor,
 			)))
 
 	createFileCollectionCmd.Flags().Int32("max-depth", 1,

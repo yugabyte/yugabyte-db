@@ -4,18 +4,16 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import clsx from 'clsx';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
 
 import { Cluster, Universe } from '../../../../../redesign/helpers/dtos';
 import { getPrimaryCluster, getReadOnlyClusters } from '../../../../../utils/universeUtilsTyped';
 import {
-  getUniverseStatus,
-  getUniverseStatusIcon
-} from '../../../../universes/helpers/universeHelpers';
-import { UniverseAlertBadge } from '../../../../universes/YBUniverseItem/UniverseAlertBadge';
-import { ImageBundleDefaultTag, ImageBundleYBActiveTag, getImageBundleUsedByUniverse } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+  ImageBundleDefaultTag,
+  ImageBundleYBActiveTag,
+  getImageBundleUsedByUniverse
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ClusterPill } from '../../components/ClusterPill';
 import { YBProvider } from '../../types';
 import { ImageBundleType } from '../../../../../redesign/features/universe/universe-form/utils/dto';
@@ -43,14 +41,13 @@ export const UniverseTable = ({ linkedUniverses, providerConfig }: UniverseTable
         >
           Universe
         </TableHeaderColumn>
-        <TableHeaderColumn dataFormat={formatUniverseStatus}>Universe Status</TableHeaderColumn>
-        <TableHeaderColumn dataFormat={(_, row) => {
-          return formatLinuxVersion(row, providerConfig);
-        }}>Linux Version</TableHeaderColumn>
-        <TableHeaderColumn dataFormat={(_, row) => {
-          return <div className={styles.alertBadge}><UniverseAlertBadge universeUUID={row.universeUUID} listView /></div>;
-        }}
-          dataAlign='center' />
+        <TableHeaderColumn
+          dataFormat={(_, row) => {
+            return formatLinuxVersion(row, providerConfig);
+          }}
+        >
+          Linux Version
+        </TableHeaderColumn>
         <TableHeaderColumn dataFormat={formatUniverseActions} />
       </BootstrapTable>
     </div>
@@ -69,18 +66,6 @@ const formatUniverseName = (universeName: string, row: UniverseItem) => {
   );
 };
 
-const formatUniverseStatus = (_: unknown, row: UniverseItem) => {
-  const { state } = getUniverseStatus(row);
-  return (
-    <div className={clsx(styles.universeStatusCell, styles[state.className])}>
-      <div>
-        {getUniverseStatusIcon(state)}
-        <span>{state.text}</span>
-      </div>
-    </div>
-  );
-};
-
 const formatUniverseActions = (_: unknown, row: UniverseItem) => (
   <Link to={`/universes/${row.universeUUID}`}>Open Universe</Link>
 );
@@ -88,9 +73,11 @@ const formatUniverseActions = (_: unknown, row: UniverseItem) => (
 const formatLinuxVersion = (row: UniverseItem, providerConfig: YBProvider) => {
   const imageBundle = getImageBundleUsedByUniverse(row.universeDetails, [providerConfig]);
   if (!imageBundle) return '';
-  return <div className={styles.universeLinuxVersion}>
-    {imageBundle.name.length > 20 ? `${imageBundle.name.substring(0, 20)}...` : imageBundle.name}
-    {imageBundle.metadata?.type === ImageBundleType.YBA_ACTIVE && (<ImageBundleYBActiveTag />)}
-    {imageBundle.useAsDefault && <ImageBundleDefaultTag />}
-  </div>;
+  return (
+    <div className={styles.universeLinuxVersion}>
+      {imageBundle.name.length > 20 ? `${imageBundle.name.substring(0, 20)}...` : imageBundle.name}
+      {imageBundle.metadata?.type === ImageBundleType.YBA_ACTIVE && <ImageBundleYBActiveTag />}
+      {imageBundle.useAsDefault && <ImageBundleDefaultTag />}
+    </div>
+  );
 };

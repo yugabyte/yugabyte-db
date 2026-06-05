@@ -1,4 +1,10 @@
     {
+        "schemaMappings": {
+          "PaginationResp": "api.v2.models.PaginationResp"
+        },
+        "importMappings": {
+          "PaginationResp": "api.v2.models.PaginationResp"
+        },
         "hideGenerationTimestamp": "true",
         "groupId": "com.yugabyte",
         "artifactId": "yugaware",
@@ -14,5 +20,6 @@
         "developerEmail": "oss-maintainers@yugabyte.com",
         "licenseName": "POLYFORM-FREE-TRIAL-LICENSE-1.0.0",
         "enumPropertyNaming": "legacy",
-        "removeEnumValuePrefix": true
+        "removeEnumValuePrefix": true,
+        "useBeanValidation": true
     }

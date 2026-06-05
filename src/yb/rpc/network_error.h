@@ -25,8 +25,7 @@ using namespace std::literals;
 namespace yb {
 namespace rpc {
 
-YB_DEFINE_ENUM(
-    NetworkErrorCode,
+YB_DEFINE_ENUM(NetworkErrorCode,
     // Special value used to indicate no error of this type.
     (kNone)
     (kConnectFailed)

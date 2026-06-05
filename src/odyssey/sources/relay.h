@@ -34,6 +34,15 @@ struct od_relay {
 	void *on_packet_arg;
 	od_relay_on_read_t on_read;
 	void *on_read_arg;
+
+	/*
+	 * YB: When true, this relay's pipeline is suspended. Pending iov data
+	 * is still flushed to the destination, but no further packets are read
+	 * from src->readahead. Used by the wait-RFQ-after-Sync feature to
+	 * keep the client->server relay parked just past a Sync until the
+	 * backend's ReadyForQuery has been forwarded back to the client.
+	 */
+	bool yb_paused;
 };
 
 static inline od_frontend_status_t od_relay_read(od_relay_t *relay);
@@ -54,6 +63,7 @@ static inline void od_relay_init(od_relay_t *relay, od_io_t *io)
 	relay->on_packet_arg = NULL;
 	relay->on_read = NULL;
 	relay->on_read_arg = NULL;
+	relay->yb_paused = false;
 }
 
 static inline void od_relay_free(od_relay_t *relay)
@@ -219,6 +229,8 @@ static inline od_frontend_status_t od_relay_on_packet_msg(od_relay_t *relay,
 	case OD_OK:
 	/* fallthrough */
 	case OD_DETACH:
+	/* fallthrough */
+	case OD_WAIT_SYNC:
 		rc = machine_iov_add(relay->iov, msg);
 		if (rc == -1)
 			return OD_EOOM;
@@ -251,6 +263,8 @@ static inline od_frontend_status_t od_relay_on_packet(od_relay_t *relay,
 	case OD_OK:
 		/* fallthrough */
 	case OD_DETACH:
+		/* fallthrough */
+	case OD_WAIT_SYNC:
 		rc = machine_iov_add_pointer(relay->iov, data, size);
 		if (rc == -1)
 			return OD_EOOM;
@@ -342,6 +356,13 @@ od_relay_process(od_relay_t *relay, int *progress, char *data, int size)
 
 static inline od_frontend_status_t od_relay_pipeline(od_relay_t *relay)
 {
+	/*
+	 * YB: Early exit if this relay is already paused to handle spurious wakeups.
+	 * These can happen since epoll is running on a separate thread.
+	 */
+	if (relay->yb_paused)
+		return OD_OK;
+
 	char *current = od_readahead_pos_read(&relay->src->readahead);
 	char *end = od_readahead_pos(&relay->src->readahead);
 	while (current < end) {
@@ -353,6 +374,16 @@ static inline od_frontend_status_t od_relay_pipeline(od_relay_t *relay)
 		if (rc != OD_OK) {
 			if (rc == OD_UNDEF)
 				rc = OD_OK;
+			/*
+			 * YB: on_packet just processed a Sync and asked us to
+			 * park. Mark the relay as paused so subsequent calls
+			 * short-circuit, and bubble OD_WAIT_SYNC up to
+			 * od_relay_step so it can stop the src read on epoll.
+			 * Bytes after the Sync stay in src->readahead and will
+			 * be processed once yb_resume_client_relay() resumes us.
+			 */
+			if (rc == OD_WAIT_SYNC)
+				relay->yb_paused = true;
 			return rc;
 		}
 	}
@@ -426,6 +457,20 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 			return rc;
 
 		rc = od_relay_pipeline(relay);
+
+		/*
+		 * YB: Signal dst->on_write here so the Sync queued in iov
+		 * gets flushed to the server (otherwise we'd never get the
+		 * matching ReadyForQuery and we'd deadlock). Then bubble
+		 * OD_WAIT_SYNC up to the frontend loop, which calls
+		 * od_io_read_stop on this relay's src to remove the client
+		 * FD from epoll until yb_resume_client_relay() resumes us.
+		 */
+		if (rc == OD_WAIT_SYNC) {
+			if (machine_iov_pending(relay->iov))
+				machine_cond_signal(relay->dst->on_write);
+			return rc;
+		}
 
 		if (rc != OD_OK)
 			return rc;

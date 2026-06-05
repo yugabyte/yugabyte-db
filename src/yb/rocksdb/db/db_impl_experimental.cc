@@ -148,7 +148,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
                                     &edit, &mutex_, directories_.GetDbDir());
     if (status.ok()) {
       InstallSuperVersionAndScheduleWorkWrapper(
-          cfd, &job_context, *cfd->GetLatestMutableCFOptions());
+          cfd, &job_context, *cfd->GetLatestMutableCFOptions(), FlushReason::kUnknown);
     }
   }  // lock released here
   LogFlush(db_options_.info_log);

@@ -63,6 +63,8 @@ bool yb_enable_consistent_replication_from_hash_range = false;
 
 bool yb_cdcsdk_stream_tables_without_primary_key = false;
 
+bool yb_cdcsdk_allow_dml_without_pk = false;
+
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
 int ysql_session_max_batch_size = 0;
@@ -88,6 +90,8 @@ int yb_walsender_poll_sleep_duration_empty_ms = 10;
 int yb_reorderbuffer_max_changes_in_memory = 4096;
 
 int yb_explicit_row_locking_batch_size = 1;
+
+int yb_explicit_row_lock_skip_locked_max_read_ahead = 1;
 
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
@@ -151,8 +155,6 @@ bool yb_ignore_read_time_in_walsender = false;
 bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 
 bool enable_object_locking_infra = true;
-
-bool yb_enable_concurrent_ddl = false;
 
 bool yb_enable_ddl_savepoint_infra = true;
 

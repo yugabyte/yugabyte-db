@@ -19,18 +19,12 @@
 
 #include "yb/util/backoff_waiter.h"
 
-DECLARE_bool(enable_db_clone);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
 namespace yb {
 namespace client {
 
 class CloneNamespaceTest : public SnapshotScheduleTest {
-  void SetUp() override {
-    SnapshotScheduleTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
-  }
-
  protected:
   Status CloneAndWait(
       const std::string& source_namespace_name, YQLDatabase source_namespace_type, HybridTime ht,

@@ -8,7 +8,7 @@ menu:
   v2024.2:
     identifier: architecture
     parent: reference
-    weight: 1050
+    weight: 100
 type: indexpage
 ---
 

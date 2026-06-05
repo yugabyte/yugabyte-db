@@ -28,6 +28,12 @@ tags:
     description: Operations related to universe backup and restore
   - name: Continuous Backup
     description: CRUD operations for Continuous YBA Backups
+  - name: Customer Configuration
+    description: Customer configuration management
+  - name: Encryption at rest
+    description: Encryption at rest management
+  - name: Image Bundle
+    description: Image bundle management
   - name: Isolated Backup
     description: Isolated backup/restore of YBA to local filesystem
   - name: Job Scheduler

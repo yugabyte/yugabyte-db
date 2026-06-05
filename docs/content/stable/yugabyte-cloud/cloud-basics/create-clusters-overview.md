@@ -20,7 +20,7 @@ The following best practices are recommended for production clusters.
 | [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Aeon supports AWS, Azure, and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Region or Availability zone (AZ) level - minimum of three nodes across multiple regions or AZs. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 15 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 15 x 3 x 4 = 180 connections. |
-| [YugabyteDB version](#yugabytedb-version) | Use the **Production** release track. |
+| [YugabyteDB version](#yugabytedb-version) | Use the **Extended** release track. |
 | [Staging cluster](#staging-cluster) | Use a staging cluster to test application compatibility with database updates before upgrading your production cluster. |
 | [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
 | [Security and authorization](#security) | YugabyteDB Aeon clusters are secure by default. Deploy clusters in a VPC and configure either peering or a private link. Refer to [VPC network](../cloud-vpcs/). After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [Connect to clusters](../../cloud-connect/). |
@@ -165,21 +165,20 @@ Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
 ### YugabyteDB version
 
-By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
+Clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
 
-- Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
-- Innovation - Updated more frequently, providing quicker access to new features.
-- Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
+- Extended - Has less frequent updates, using mature [LTS releases](../../../releases/versioning/#stable-release-support-policy) that have been tested longer in YugabyteDB Aeon.
+- Rapid - Updated more frequently, providing quicker access to new features. Rapid can include [STS and LTS releases](../../../releases/versioning/#stable-release-support-policy), depending on which is more recent.
 
-If you need a feature from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview is also available for Sandbox clusters.)
+{{< note title="Production, Innovation, and Early Access tracks" >}}
+
+Clusters previously on the Innovation and Production tracks are now on the Extended track.
+
+Clusters previously on the Preview and Early Access tracks are now on the Rapid track.
+
+{{< /note >}}
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
-
-{{< warning title="Important" >}}
-
-There is currently no migration path from a preview release to a stable release.
-
-{{< /warning >}}
 
 ### Staging cluster
 

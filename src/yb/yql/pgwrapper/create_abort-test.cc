@@ -16,6 +16,7 @@
 #include "yb/client/client.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_types.pb.h"
+#include "yb/master/mini_master.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/server/server_base.pb.h"

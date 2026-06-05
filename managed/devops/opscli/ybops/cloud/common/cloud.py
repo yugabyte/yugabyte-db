@@ -13,7 +13,6 @@ import os
 import re
 import stat
 import socket
-import ssl
 import tempfile
 import time
 
@@ -28,6 +27,74 @@ from ybops.common.exceptions import YBOpsRecoverableError
 from ybops.utils import remote_exec_command
 from cryptography import x509
 from cryptography.x509.oid import (NameOID, ExtensionOID)
+
+
+def _dnsname_match(dn, hostname):
+    """RFC 6125 section 6.4.3 compliant DNS name matching.
+
+    Only a single wildcard in the left-most label is supported (e.g. *.example.com).
+    Partial wildcards (www*), multiple wildcards, sole wildcards (*), and wildcards
+    in any label other than the left-most are all rejected.
+    """
+    if not dn:
+        return False
+    if dn.count('*') == 0:
+        return dn.lower() == hostname.lower()
+    if dn.count('*') > 1:
+        return False
+    dn_leftmost, sep, dn_remainder = dn.partition('.')
+    if not sep or dn_leftmost != '*' or '*' in dn_remainder:
+        return False
+    hostname_leftmost, sep, hostname_remainder = hostname.partition('.')
+    if not hostname_leftmost or not sep:
+        return False
+    return dn_remainder.lower() == hostname_remainder.lower()
+
+
+def _match_hostname(cert, hostname):
+    """Replacement for ssl.match_hostname, removed in Python 3.12.
+
+    Accepts a cert dict in the same format ssl.match_hostname expected:
+      {'subjectAltName': (('DNS', '*.example.com'), ('IP Address', '1.2.3.4'), ...)}
+      {'subject': ((('commonName', 'example.com'),),)}
+    DNS wildcard matching follows RFC 6125 section 6.4.3 via _dnsname_match.
+    IP address matching uses socket.inet_pton for exact binary comparison.
+    Returns True if matched, False otherwise.
+    """
+    try:
+        host_ip = socket.inet_pton(socket.AF_INET, hostname)
+    except OSError:
+        try:
+            host_ip = socket.inet_pton(socket.AF_INET6, hostname)
+        except (OSError, AttributeError):
+            host_ip = None
+
+    dnsnames = []
+    for key, value in cert.get('subjectAltName', ()):
+        if key == 'DNS':
+            if host_ip is None and _dnsname_match(value, hostname):
+                return True
+            dnsnames.append(value)
+        elif key == 'IP Address':
+            if host_ip is not None:
+                try:
+                    if socket.inet_pton(socket.AF_INET, value.rstrip()) == host_ip:
+                        return True
+                except OSError:
+                    try:
+                        if socket.inet_pton(socket.AF_INET6, value.rstrip()) == host_ip:
+                            return True
+                    except (OSError, AttributeError):
+                        pass
+            dnsnames.append(value)
+    if not dnsnames:
+        for rdn in cert.get('subject', ()):
+            for key, value in rdn:
+                if key == 'commonName':
+                    if _dnsname_match(value, hostname):
+                        return True
+                    dnsnames.append(value)
+    return False
 
 
 class InstanceState(str, Enum):
@@ -355,18 +422,8 @@ class AbstractCloud(AbstractCommandParser):
         cert_san = {'subjectAltName': tuple(san_entry)}
 
         # Check if the provided hostname matches with either CN or SAN
-        cn_matched = False
-        san_matched = False
-        try:
-            ssl.match_hostname(cert_cn, host)
-            cn_matched = True
-        except ssl.CertificateError:
-            pass
-        try:
-            ssl.match_hostname(cert_san, host)
-            san_matched = True
-        except ssl.CertificateError:
-            pass
+        cn_matched = _match_hostname(cert_cn, host)
+        san_matched = _match_hostname(cert_san, host)
 
         if not cn_matched and not san_matched:
             raise YBOpsRuntimeError(

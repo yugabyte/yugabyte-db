@@ -299,10 +299,10 @@ class StackableDB : public DB {
     db_->GetColumnFamiliesOptions(column_family_names, column_family_options);
   }
 
-
-  virtual Status GetLiveFiles(std::vector<std::string>& vec, uint64_t* mfs,
-                              bool flush_memtable = true) override {
-      return db_->GetLiveFiles(vec, mfs, flush_memtable);
+  virtual Status GetLiveFiles(
+      std::vector<std::string>& vec, uint64_t* mfs, bool flush_memtable,
+      FlushReason flush_reason) override {
+    return db_->GetLiveFiles(vec, mfs, flush_memtable, flush_reason);
   }
 
   virtual SequenceNumber GetLatestSequenceNumber() const override {

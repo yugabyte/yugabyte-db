@@ -164,9 +164,21 @@ SET session_replication_role TO replica;
 SHOW session_replication_role;
 RESET session_replication_role;
 SHOW session_replication_role;
+SHOW backtrace_functions;
+SET backtrace_functions TO 'SearchCatCacheMiss';
+SHOW backtrace_functions;
+RESET backtrace_functions;
+SHOW backtrace_functions;
 -- test `yb_db_admin` role cannot set and reset other PGC_SUSET variables
 SET track_functions TO TRACK_FUNC_PL;
 RESET track_functions;
+-- test a non-privileged role cannot set backtrace_functions
+RESET SESSION AUTHORIZATION;
+CREATE ROLE yb_backtrace_test_regular_user;
+SET SESSION AUTHORIZATION yb_backtrace_test_regular_user;
+SET backtrace_functions TO 'SearchCatCacheMiss';
+RESET SESSION AUTHORIZATION;
+DROP ROLE yb_backtrace_test_regular_user;
 
 -- cleanup
 RESET foo;

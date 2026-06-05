@@ -308,6 +308,22 @@ CREATE TABLE test13 (a int primary key, b int);
 ERROR:  interleaving SAVEPOINT & DDL in transaction disallowed without DDL savepoint support
 HINT:  Consider enabling ysql_yb_enable_ddl_savepoint_support.
 ROLLBACK;
+-- DDL after anonymous internal savepoint (EXCEPTION block) disallowed.
+-- We MUST error out here to prevent a split-brain between Postgres and the YB Master.
+-- If we allowed this CREATE TABLE to proceed, and the subtransaction later aborted
+-- (e.g., via a raised exception), Postgres would roll back its local pg_class entry,
+-- but the YB Master (lacking savepoint support) would commit the DocDB table.
+-- This would result in a permanently orphaned table consuming resources.
+DO $$
+BEGIN
+  CREATE TABLE test_anonymous_subtxn_ddl (id INT PRIMARY KEY);
+  -- The CREATE TABLE above will throw "interleaving SAVEPOINT & DDL..."
+  -- before we can even reach the next line.
+  RAISE EXCEPTION 'force abort';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'caught error: %', sqlerrm;
+END $$;
+NOTICE:  caught error: interleaving SAVEPOINT & DDL in transaction disallowed without DDL savepoint support
 BEGIN;
 CREATE TEMPORARY TABLE temp_table (
     a INT PRIMARY KEY
@@ -526,52 +542,7 @@ NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ERROR:  integer out of range
--- #30109: duplicate key value violates unique constraint
-\c
--- The bug only exists when yb_enable_concurrent_ddl = true
--- We also test yb_enable_concurrent_ddl = false to ensure
--- correctness in both cases.
-SET yb_enable_concurrent_ddl = true;
-CREATE TABLE test_table1();
-CREATE OR REPLACE PROCEDURE test_alter1()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-END;
-$$;
-CALL test_alter1();
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
-\c
-SET yb_enable_concurrent_ddl = false;
-CREATE TABLE test_table2();
-CREATE OR REPLACE PROCEDURE test_alter2()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-END;
-$$;
-CALL test_alter2();
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
-\c
--- end of test of #30109
+ROLLBACK;
 -- Test rollback of in-place index pg_attribute update during ALTER TYPE.
 CREATE TABLE test_idx_rollback (val varchar(10));
 CREATE INDEX idx_rollback ON test_idx_rollback(val);

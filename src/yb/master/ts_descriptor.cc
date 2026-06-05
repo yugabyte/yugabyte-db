@@ -51,6 +51,7 @@
 #include "yb/util/status_format.h"
 
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 namespace yb {
@@ -155,6 +156,9 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
+  // Once a tserver is marked as faulty it remains that way until it reregisters here.
+  // If it is still faulty, then it will be marked again as part of UpdateFromHeartbeat afterwards.
+  has_faulty_drive_ = false;
   return std::move(l);
 }
 
@@ -484,6 +488,11 @@ bool TSDescriptor::IsLive() const { return LockForRead()->IsLive(); }
 
 bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();
+}
+
+bool TSDescriptor::HasYsqlCatalogLease() const {
+  return TimeSinceHeartbeat().ToMilliseconds() <
+         FLAGS_master_ts_ysql_catalog_lease_ms && !IsReplaced();
 }
 
 std::string TSDescriptor::ToString() const {

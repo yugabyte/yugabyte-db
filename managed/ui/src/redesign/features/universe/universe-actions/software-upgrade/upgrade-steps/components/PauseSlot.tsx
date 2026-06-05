@@ -1,41 +1,41 @@
-import { makeStyles, Typography } from '@material-ui/core';
-import { YBButton } from '@yugabyte-ui-library/core';
+import { makeStyles, Typography, useTheme } from '@material-ui/core';
+import { YBButton, YBTag } from '@yugabyte-ui-library/core';
 import clsx from 'clsx';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 
-import GrayDotIcon from '@app/redesign/assets/gray-dot.svg';
+import { YBTooltip } from '@app/redesign/components';
 import AddIcon from '@app/redesign/assets/add.svg';
-import PauseSquareIcon from '@app/redesign/assets/pause-square.svg';
-import DeleteIcon from '@app/redesign/assets/delete2.svg';
 import CheckIcon from '@app/redesign/assets/check.svg';
+import DeleteIcon from '@app/redesign/assets/delete2.svg';
+import PauseSquareIcon from '@app/redesign/assets/pause-square.svg';
 
 const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal.upgradePlanStep';
 const TEST_ID_PREFIX = 'UpgradePlanStep';
+
+const PAUSE_SLOT_SPINE_WIDTH_PX = 8;
 
 const useStyles = makeStyles((theme) => ({
   pauseSlot: {
     display: 'flex',
     alignItems: 'center',
 
-    padding: theme.spacing(0, 0, 0, 2),
+    paddingLeft: theme.spacing(2.25),
 
     '&$betweenUpgradeStages': {
-      padding: theme.spacing(0, 0, 0, 3.5)
+      paddingLeft: theme.spacing(3.5)
     }
   },
   betweenUpgradeStages: {},
   verticalConnector: {
     display: 'flex',
-    flexDirection: 'column',
+    flexShrink: 0,
     alignItems: 'center',
 
-    '&::before, &::after': {
-      content: '""',
-      width: 1,
-      height: theme.spacing(4),
-
-      backgroundColor: theme.palette.grey[300]
-    }
+    width: theme.spacing(1)
+  },
+  verticalSpineSvg: {
+    display: 'block',
+    flexShrink: 0
   },
   horizontalConnector: {
     width: theme.spacing(2),
@@ -72,19 +72,8 @@ const useStyles = makeStyles((theme) => ({
     fontWeight: 500,
     color: theme.palette.grey[900]
   },
-  recommendedChip: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-
-    padding: theme.spacing(0.25, 1),
-    marginLeft: theme.spacing(1),
-
-    borderRadius: '4px',
-    backgroundColor: theme.palette.grey[200],
-    color: theme.palette.grey[700],
-    fontSize: '11.5px',
-    fontWeight: 400
+  recommendedTag: {
+    marginLeft: theme.spacing(1)
   }
 }));
 
@@ -104,12 +93,51 @@ export const PauseSlot = ({
   testIdSuffix
 }: PauseSlotProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const theme = useTheme();
   const classes = useStyles();
+
+  const segmentHeightPx = parseFloat(String(theme.spacing(4)));
+  const spineHeightPx = segmentHeightPx * 2 + PAUSE_SLOT_SPINE_WIDTH_PX;
+  const spineCenterX = PAUSE_SLOT_SPINE_WIDTH_PX / 2;
+  const dotCenterY = segmentHeightPx + PAUSE_SLOT_SPINE_WIDTH_PX / 2;
+  const lineStroke = theme.palette.grey[300];
 
   return (
     <div className={clsx(classes.pauseSlot, isBetweenStages && classes.betweenUpgradeStages)}>
       <div className={classes.verticalConnector}>
-        <GrayDotIcon />
+        <svg
+          className={classes.verticalSpineSvg}
+          width={PAUSE_SLOT_SPINE_WIDTH_PX}
+          height={spineHeightPx}
+          viewBox={`0 0 ${PAUSE_SLOT_SPINE_WIDTH_PX} ${spineHeightPx}`}
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden
+        >
+          <line
+            x1={spineCenterX}
+            y1={0}
+            x2={spineCenterX}
+            y2={segmentHeightPx}
+            stroke={lineStroke}
+            strokeWidth={1}
+          />
+          <circle
+            cx={spineCenterX}
+            cy={dotCenterY}
+            r={3.5}
+            fill={theme.palette.grey[200]}
+            stroke={theme.palette.grey[300]}
+          />
+          <line
+            x1={spineCenterX}
+            y1={segmentHeightPx + PAUSE_SLOT_SPINE_WIDTH_PX}
+            x2={spineCenterX}
+            y2={spineHeightPx}
+            stroke={lineStroke}
+            strokeWidth={1}
+          />
+        </svg>
       </div>
       <div className={classes.horizontalConnector} />
       {isPaused ? (
@@ -129,10 +157,19 @@ export const PauseSlot = ({
         </YBButton>
       )}
       {isRecommended && (
-        <div className={classes.recommendedChip}>
-          {t('recommended', { keyPrefix: 'common' })}
-          <CheckIcon />
-        </div>
+        <YBTooltip
+          title={
+            <Typography variant="body2" component="span">
+              <Trans t={t} i18nKey="pauseAfterFirstAzTooltip" components={{ bold: <b /> }} />
+            </Typography>
+          }
+        >
+          <div className={classes.recommendedTag}>
+            <YBTag variant="dark" size="small" endIcon={<CheckIcon />}>
+              {t('recommended', { keyPrefix: 'common' })}
+            </YBTag>
+          </div>
+        </YBTooltip>
       )}
     </div>
   );

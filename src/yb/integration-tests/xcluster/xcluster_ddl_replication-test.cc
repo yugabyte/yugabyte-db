@@ -40,6 +40,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
@@ -48,7 +49,6 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
-DECLARE_bool(enable_db_clone);
 DECLARE_bool(enable_pg_cron);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -65,6 +65,9 @@ DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_string(ysql_cron_database_name);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
@@ -205,22 +208,28 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
   }));
 }
 
-class XClusterDDLReplicationConcurrentDDLTest : public XClusterDDLReplicationTest,
-                                                public ::testing::WithParamInterface<bool> {
+class XClusterDDLReplicationConcurrentDDLTest
+    : public XClusterDDLReplicationTest,
+      public ::testing::WithParamInterface<std::pair<bool, bool>> {
  public:
   void SetUp() override {
-    auto original_value = FLAGS_ysql_pg_conf_csv;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
-        "$0$1yb_enable_concurrent_ddl=$2", original_value,
-        original_value.empty() ? "" : ",", GetParam());
+    auto [object_locking, concurrent_ddl] = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = object_locking;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = object_locking;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = concurrent_ddl;
     XClusterDDLReplicationTest::SetUp();
   }
 };
 
 INSTANTIATE_TEST_CASE_P(
-    ConcurrentDDLDisabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
+    ObjLockOff_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest,
+    ::testing::Values(std::make_pair(false, false)));
 INSTANTIATE_TEST_CASE_P(
-    ConcurrentDDLEnabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
+    ObjLockOn_ConcDDLOff, XClusterDDLReplicationConcurrentDDLTest,
+    ::testing::Values(std::make_pair(true, false)));
+INSTANTIATE_TEST_CASE_P(
+    ObjLockOn_ConcDDLOn, XClusterDDLReplicationConcurrentDDLTest,
+    ::testing::Values(std::make_pair(true, true)));
 
 TEST_P(XClusterDDLReplicationConcurrentDDLTest, BasicSetupAlterTeardown) {
   ASSERT_OK(SetUpClustersAndReplication());
@@ -3117,6 +3126,82 @@ TEST_F(XClusterDDLReplicationTest, PackedSchemaLag) {
       final_stream_entry.schema_versions().old_producer_schema_versions().end());
 }
 
+// Regression test for #31533. Old SchemaVersionsPB records where old_consumer_schema_version was 0
+// (proto3 default so not serialized) and post-upgrade the lockstep iteration over
+// old_producer/consumer arrays read past the empty consumer side. The fix repairs the in-memory
+// cluster_config during XClusterTargetManager::SysCatalogLoaded; the next CMOP persists it.
+TEST_F(XClusterDDLReplicationTest, RepairOldSchemaVersionsOnLoad) {
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(key int primary key)"));
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE tbl1 ADD COLUMN a int"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT i,i FROM generate_series(1, 10) as i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_table =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "tbl1"));
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table.table_id()));
+
+  auto get_schema_versions = [&]() -> Result<cdc::SchemaVersionsPB> {
+    auto producer_map =
+        VERIFY_RESULT(GetClusterConfig(consumer_cluster_)).consumer_registry().producer_map();
+    auto stream_map = producer_map.at(kReplicationGroupId.ToString()).stream_map();
+    return stream_map.at(stream_id.ToString()).schema_versions();
+  };
+
+  // Initial state: the ALTER produced one old schema-version pair.
+  auto initial = ASSERT_RESULT(get_schema_versions());
+  ASSERT_GT(initial.old_producer_schema_versions_size(), 0);
+  ASSERT_EQ(
+      initial.old_producer_schema_versions_size(), initial.old_consumer_schema_versions_size());
+
+  // Pause replication while we modify the syscatalog.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+
+  // Clear old_consumer_schema_versions and persist. This simulates the upgrade behaviour that
+  // results in old_producer_schema_versions_size != old_consumer_schema_versions_size.
+  {
+    auto* leader_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+    auto& catalog_mgr = leader_master->catalog_manager_impl();
+    const auto epoch = catalog_mgr.GetLeaderEpochInternal();
+    auto cluster_config = catalog_mgr.ClusterConfig();
+    auto l = cluster_config->LockForWrite();
+    auto& stream_entry = (*(*l.mutable_data()
+                                 ->pb.mutable_consumer_registry()
+                                 ->mutable_producer_map())[kReplicationGroupId.ToString()]
+                               .mutable_stream_map())[stream_id.ToString()];
+    stream_entry.mutable_schema_versions()->clear_old_consumer_schema_versions();
+    ASSERT_EQ(stream_entry.schema_versions().old_producer_schema_versions_size(), 1);
+    ASSERT_EQ(stream_entry.schema_versions().old_consumer_schema_versions_size(), 0);
+    ASSERT_OK(catalog_mgr.sys_catalog()->Upsert(epoch, cluster_config.get()));
+    l.Commit();
+  }
+
+  // Restart the consumer master; SysCatalogLoaded should repair in-memory.
+  ASSERT_OK(ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->Restart());
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
+
+  auto repaired = ASSERT_RESULT(get_schema_versions());
+  ASSERT_EQ(
+      repaired.old_producer_schema_versions_size(), repaired.old_consumer_schema_versions_size());
+  ASSERT_GT(repaired.old_producer_schema_versions_size(), 0);
+
+  // Trigger another DDL; the natural CMOP path will Upsert the repaired cluster_config to
+  // syscatalog. After this, sizes still match and we keep making progress on replication.
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE tbl1 ADD COLUMN b int"));
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO tbl1 SELECT i,i,i FROM generate_series(11, 20) as i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"tbl1"}));
+
+  auto final = ASSERT_RESULT(get_schema_versions());
+  ASSERT_EQ(final.old_producer_schema_versions_size(), final.old_consumer_schema_versions_size());
+  ASSERT_GT(final.old_producer_schema_versions_size(), 0);
+}
+
 TEST_F(XClusterDDLReplicationTest, DocdbNextColumnAboveLastUsedColumn) {
   // This test checks the hard case of whether or not backup and
   // restore preserves the next DocDB column ID correctly: when the
@@ -4729,6 +4814,10 @@ TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
 }
 
 TEST_F(XClusterDDLReplicationTest, VectorIndexCreatedBeforeDrSetup) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   auto params = XClusterDDLReplicationTestBase::kDefaultParams;
   params.is_colocated = true;
@@ -4952,8 +5041,6 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
 }
 
 TEST_F(XClusterDDLReplicationTest, CloneSourceDatabaseIncludesDDLReplicationTables) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
-
   ASSERT_OK(SetUpClustersAndReplication());
   ASSERT_OK(EnablePITROnClusters());
 
@@ -5258,6 +5345,30 @@ TEST_F(XClusterTransactionalDDLReplicationTest, ColocatedBatchRetryPreservesMeta
   auto t2_row = ASSERT_RESULT((consumer_conn_->FetchRow<int32_t, int32_t, int32_t>(
       "SELECT key, val, extra FROM coloc_t2 WHERE key = 2")));
   ASSERT_EQ(t2_row, (std::make_tuple(2, 20, 200)));
+}
+
+// The ddl_queue handler caches its PG connection. If the target's Postgres restarts (eg. nemesis
+// in a stress test), that cached connection becomes invalid. Verify that the handler reconnects
+// on its next retry instead of looping forever on the dead connection.
+TEST_F(XClusterDDLReplicationTest, ReconnectAfterTargetPostgresRestart) {
+  // Disable the handler advisory lock for this test. After a PG restart the old session's
+  // advisory lock lingers until its lease expires, which is a separate concern from the connection
+  // reconnect behaviour under test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_advisory_lock_key) = 0;
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table (key int primary key)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Restart Postgres on the target, invalidating the handler's cached connection.
+  ASSERT_OK(consumer_cluster_.mini_cluster_->mini_tablet_server(consumer_cluster_.pg_ts_idx_)
+                ->server()
+                ->RestartPG());
+
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE test_table ADD COLUMN a int"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, 10)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table"}));
 }
 
 }  // namespace yb

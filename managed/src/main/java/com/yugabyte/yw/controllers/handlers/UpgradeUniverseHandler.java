@@ -1133,8 +1133,10 @@ public class UpgradeUniverseHandler {
   }
 
   /**
-   * Resumes a paused canary software upgrade task. Re-submits the same task UUID without deleting
-   * existing subtasks so the task continues from the remaining work.
+   * Resumes a paused canary software upgrade task. Deletes child {@link TaskInfo} rows with {@code
+   * position} strictly greater than the last successful subtask (preview tail from the paused
+   * segment), then re-submits the same parent task UUID so execution continues with fresh subtasks
+   * for the remaining work.
    */
   public UUID resumeCanarySoftwareUpgrade(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
@@ -1165,10 +1167,17 @@ public class UpgradeUniverseHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe is not in Paused software upgrade state.");
     }
-    if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    if (!taskUUID.equals(details.placementModificationTaskUuid)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Task does not match the universe's updating task.");
+          BAD_REQUEST,
+          "Task does not match the universe's paused canary upgrade"
+              + " (placementModificationTaskUuid).");
     }
+    TaskInfo.deleteChildrenAfterMaxSuccessPosition(taskUUID);
+    log.info(
+        "Cleared preview subtask rows past max-success position before resuming canary upgrade {}",
+        taskUUID);
     params.setPreviousTaskUUID(taskUUID);
     params.expectedUniverseVersion = -1;
     UUID newTaskUUID = commissioner.submit(taskType, params, taskUUID);

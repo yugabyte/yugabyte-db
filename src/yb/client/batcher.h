@@ -125,8 +125,7 @@ class TxnBatcherIf {
 
 // Batcher state changes sequentially in the order listed below, with the exception that kAborted
 // could be reached from any state.
-YB_DEFINE_ENUM(
-    BatcherState,
+YB_DEFINE_ENUM(BatcherState,
     (kGatheringOps)       // Initial state, while we adding operations to the batcher.
     (kResolvingTablets)   // Flush was invoked on batcher, waiting until tablets for all operations
                           // are resolved and move to the next state.
@@ -332,7 +331,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void FlushFinished();
   void AllLookupsDone();
-  std::shared_ptr<AsyncRpc> CreateRpc(
+  Result<std::shared_ptr<AsyncRpc>> CreateRpc(
       const BatcherPtr& self, RemoteTablet* tablet, const InFlightOpsGroup& group,
       bool allow_local_calls_in_curr_thread, bool need_consistent_read);
 
@@ -368,7 +367,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void HandleAsyncWriteResponse(
       const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
-      std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy);
+      const std::shared_ptr<const YBTable>& table);
 
   BatcherState state_ = BatcherState::kGatheringOps;
 
@@ -441,6 +440,9 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   std::optional<TransactionMetadata> background_transaction_meta_ = std::nullopt;
 
   std::optional<TransactionMetadata> object_locking_txn_meta_;
+
+  // True if all the ops are PG read/write that skips intents db.
+  bool skip_intents_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

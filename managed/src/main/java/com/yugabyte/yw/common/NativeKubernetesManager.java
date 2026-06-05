@@ -328,6 +328,16 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public void deleteStatefulSet(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    throw new UnsupportedOperationException("Unimplemented method 'deleteStatefulSet'");
+  }
+
+  @Override
   public boolean expandPVC(
       UUID universeUUID,
       Map<String, String> config,
