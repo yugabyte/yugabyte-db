@@ -85,6 +85,8 @@ YbIsClientYsqlConnMgr()
 	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
 }
 
+bool		yb_conn_mgr_is_auth_passthrough_backend = false;
+
 bool
 YbIsAuthPassthroughInProgress(struct Port *port)
 {

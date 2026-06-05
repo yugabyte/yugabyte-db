@@ -11096,6 +11096,22 @@ set_config_option_ext(const char *name, const char *value,
 			if (context == PGC_SIGHUP)
 			{
 				/*
+				 * YB: We need to increment local LCV for ConnMgr here since
+				 * this change will only take effect in new backends.
+				 * This will fire even if the variable value in config is not
+				 * changed, which is acceptable since config reloads are rare.
+				 *
+				 * Record PGC_BACKEND change for LCV increment.
+				 * Fires for the postmaster (!IsUnderPostmaster) and for
+				 * CM control backends. Must precede the early return below so
+				 * control backends set the flag before skipping the GUC apply.
+				 */
+				if (YbIsYsqlConnMgrEnabled() &&
+					(!IsUnderPostmaster || yb_conn_mgr_is_auth_passthrough_backend) &&
+					changeVal && !is_reload)
+					yb_conn_mgr_sighup_had_backend_guc_change = true;
+
+				/*
 				 * If a PGC_BACKEND or PGC_SU_BACKEND parameter is changed in
 				 * the config file, we want to accept the new value in the
 				 * postmaster (whence it will propagate to
@@ -11119,16 +11135,6 @@ set_config_option_ext(const char *name, const char *value,
 				 */
 				if (IsUnderPostmaster && changeVal && !is_reload)
 					return -1;
-
-				/*
-				 * YB: We need to increment local LCV for ConnMgr here since
-				 * this change will only take effect in new backends
-				 * This will fire even if the variable value in config is not
-				 * changed, which is acceptable since config reloads are rare
-				 */
-				if (YbIsYsqlConnMgrEnabled() && !IsUnderPostmaster && changeVal &&
-					!is_reload)
-					yb_conn_mgr_sighup_had_backend_guc_change = true;
 			}
 			else if (context != PGC_POSTMASTER &&
 					 context != PGC_BACKEND &&

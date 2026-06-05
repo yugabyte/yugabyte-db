@@ -6860,35 +6860,30 @@ PostgresMain(const char *dbname, const char *username)
 		if (ConfigReloadPending)
 		{
 			ConfigReloadPending = false;
+
 			/*
-			 * YB: Reloading postgres config file on a control connection can
-			 * have some repercussion, therefore adopting most safest option;
-			 * destroy the control connection which leads to failure of client
-			 * authentication and let client keep trying agin untill a new
-			 * control connection is formed for authentication with updated
-			 * config file.
-			 * Control connection is identified if a connection receives a
-			 * Auth Passthrough Request ('A') packet.
-			*/
+			 * YB: Check whether this is a Conn Mgr "Control Backend", in case a
+			 * config reload happens before the first Auth request packet is
+			 * handled by this backend. See the 'A' packet handler below for
+			 * more details.
+			 * Control backends need to update their SIGHUP LCVs in tandem with
+			 * the postmaster process (for this, they need to be identified as
+			 * control backends before calling `ProcessConfigFile`).
+			 * We don't care about the actual GUC setting changed or its value
+			 * as these will be correctly set on transactional backends with
+			 * matching Logical Client Version
+			 * (Final LCV = catalog_table_LCV + SIGHUP_LCV).
+			 */
+			if (firstchar == 'A' && YbIsClientYsqlConnMgr())
+				yb_conn_mgr_is_auth_passthrough_backend = true;
 
-			if (firstchar == 'A')	/* Auth Passthrough Request */
-			{
-				/*
-				 * Make sure auth pass through packet is sent by connection
-				 * manager only
-				 */
-				if (!YbIsClientYsqlConnMgr())
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("invalid frontend message type %d", firstchar)));
+			ProcessConfigFile(PGC_SIGHUP);
 
-				ereport(FATAL,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("reloading config on control connection is not supported")));
-			}
-			else
+			if (yb_conn_mgr_is_auth_passthrough_backend &&
+				yb_conn_mgr_sighup_had_backend_guc_change)
 			{
-				ProcessConfigFile(PGC_SIGHUP);
+				yb_conn_mgr_sighup_logical_client_version++;
+				yb_conn_mgr_sighup_had_backend_guc_change = false;
 			}
 		}
 
@@ -7553,9 +7548,19 @@ PostgresMain(const char *dbname, const char *username)
 				 */
 				if (YbIsClientYsqlConnMgr())
 				{
+					/*
+					 * YB: Only "Control Backends" are supposed to receive 'A'
+					 * authentication request packets (in the Auth Passthrough mode
+					 * of Conn Mgr). Conversely, 'A' packets are supposed to be
+					 * handled by control backends only. So, the receipt of this
+					 * packet with Conn Mgr enabled can be taken as confirmation
+					 * that this is a control backend. This information is required
+					 * to correctly process SIGHUPs involving PGC_BACKEND GUC
+					 * updates.
+					 */
+					yb_conn_mgr_is_auth_passthrough_backend = true;
 					MyProcPort->yb_is_auth_passthrough_req = true;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
-
 
 					if (!YBCIsSysTablePrefetchingStarted() &&
 						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
