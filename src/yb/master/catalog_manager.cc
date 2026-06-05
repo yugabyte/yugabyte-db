@@ -14105,7 +14105,6 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
   }
   DbOidToCatalogVersionMap versions;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
-  bool changed = false;
   if (!s.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 20) << "Catalog versions refresh failed: " << s.ToString();
     // Keep the existing cache intact; stale data is preferable to forcing every
@@ -14115,6 +14114,34 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
   VLOG_WITH_FUNC(2) << "Refreshed " << versions.size() << " catalog versions in memory";
   const auto fingerprint = yb::FingerprintCatalogVersions<DbOidToCatalogVersionMap>(versions);
   VLOG_WITH_FUNC(2) << "fingerprint: " << fingerprint;
+
+  bool changed = false;
+  {
+    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+    changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
+    if (FLAGS_ysql_yb_enable_invalidation_messages && !changed) {
+      // nullopt means the previous refresh has failed.
+      changed = !heartbeat_pg_inval_messages_cache_.has_value();
+    }
+  }
+
+  bool messages_refresh_failed = false;
+  std::optional<DbOidVersionToMessageListMap> messages;
+  if (FLAGS_ysql_yb_enable_invalidation_messages && changed) {
+    // Cache invalidation messages are considered as an optimization extension of
+    // the catalog versions. If we cannot read the messages successfully, it means
+    // we will skip the optimization this time but it will not affect correctness
+    // because PG backends will fall back to do catalog cache refreshes.
+    auto msg_res = GetYsqlCatalogInvalationMessagesImpl();
+    if (!msg_res.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 20)
+          << "Catalog invalidation messages refresh failed: " << msg_res.status();
+      messages_refresh_failed = true;
+    } else {
+      messages = std::move(*msg_res);
+    }
+  }
+
   {
     LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
     if (heartbeat_pg_catalog_versions_cache_) {
@@ -14122,38 +14149,17 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
     } else {
       heartbeat_pg_catalog_versions_cache_ = std::move(versions);
     }
-    changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
     heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
     LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
         << "RefreshPgCatalogVersionCache: cache refreshed, databases: "
         << heartbeat_pg_catalog_versions_cache_->size();
-  }
 
-  if (FLAGS_ysql_yb_enable_invalidation_messages) {
-    // Maybe last time invalidation messages refresh failed, read it again.
-    if (!changed) {
-      SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-      // nullopt means the previous refresh has failed.
-      changed = !heartbeat_pg_inval_messages_cache_.has_value();
-    }
-    if (changed) {
-      // Cache invalidation messages are considered as an optimization extension of
-      // the catalog versions. If we cannot read the messages successfully, it means
-      // we will skip the optimization this time but it will not affect correctness
-      // because PG backends will fall back to do catalog cache refreshes.
-      auto messages = GetYsqlCatalogInvalationMessagesImpl();
-      if (!messages.ok()) {
-        YB_LOG_EVERY_N_SECS(WARNING, 20)
-            << "Catalog invalidation messages refresh failed: " << messages.status();
-        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-        // Reset to std::nullopt to indicate next time we want to read again.
+    if (FLAGS_ysql_yb_enable_invalidation_messages && changed) {
+      if (messages_refresh_failed) {
         heartbeat_pg_inval_messages_cache_ = std::nullopt;
-        return false;
-      }
-      VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
-                        << " catalog inval messages in memory";
-      {
-        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+      } else {
+        VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
+                          << " catalog inval messages in memory";
         if (heartbeat_pg_inval_messages_cache_) {
           heartbeat_pg_inval_messages_cache_->swap(*messages);
         } else {
@@ -14162,7 +14168,8 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
       }
     }
   }
-  return true;
+
+  return !messages_refresh_failed;
 }
 
 Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTabletDrop(
