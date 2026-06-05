@@ -181,7 +181,7 @@ To create an export configuration, do the following:
 1. Choose **Loki**.
 1. Fill in the Loki-specific fields:
    - Enter the **Loki endpoint** URL. For example, `http://<loki-url>:<loki-port>`.
-   - **Organization / Tenant ID** (optional) — Organization ID is required when multi-tenancy is set up in Loki. Optional for Grafana Cloud as the authentication reroutes requests according to scope.
+   - **Organization / Tenant ID** (optional). Organization ID is required when multi-tenancy is set up in Loki. Optional for Grafana Cloud, as the authentication reroutes requests according to scope.
    - **Authentication Type**: **Basic Auth** or **No Auth**. If you choose **Basic Auth**, enter a **Username** and **Password**.
 1. Click **Validate and Create Configuration**.
 
@@ -201,21 +201,18 @@ YugabyteDB Anywhere supports [OTLP](https://opentelemetry.io/docs/) (OpenTelemet
 
 The OTLP sink is vendor-agnostic and works with any backend that speaks OTLP, including (but not limited to) [Cribl](https://cribl.io/), [Grafana Cloud](https://grafana.com/docs/grafana-cloud/), [New Relic](https://docs.newrelic.com/docs/opentelemetry/opentelemetry-introduction/), [Prometheus](https://prometheus.io/docs/guides/opentelemetry/) (3.0+), [VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/), and [Sumo Logic](https://help.sumologic.com/docs/send-data/opentelemetry-for-logs/).
 
-The same OTLP telemetry provider can be reused for [database audit logging](../universe-logging/), [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
-
-{{< note title="Enable OTLP before configuring" >}}
-
-Set the **OTLP Exporter for Telemetry Provider** Global Configuration option (config key `yb.telemetry.allow_otlp`), which defaults to `false`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-
-- Note that till the flag is set to true, any REST API create and delete requests for OTLP telemetry providers return HTTP 400 with: `OTLP Exporter for Telemetry Provider is not enabled. Please set the runtime flag 'yb.telemetry.allow_otlp' to true.`
-
-The flag is enforced when you create or delete an OTLP telemetry provider.
-
-{{< /note >}}
+You can reuse the same OTLP telemetry provider for [database audit logging](../universe-logging/), [database metrics export](../anywhere-metrics-export/), or both. OTLP uses the same OpenTelemetry Collector and universe export workflows as other telemetry providers.
 
 #### Prerequisites
 
-- Enable the OTLP feature as described in the preceding note.
+- Enable the OTLP integration by setting the **OTLP Exporter for Telemetry Provider** Global Configuration option (config key `yb.telemetry.allow_otlp`) to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+    If the flag is false, any REST API create and delete requests for OTLP telemetry providers return HTTP 400 with:
+    
+    `OTLP Exporter for Telemetry Provider is not enabled. Please set the runtime flag 'yb.telemetry.allow_otlp' to true.`
+
+    The flag is enforced when you create or delete an OTLP telemetry provider.
+
 - A reachable OTLP-compatible receiver and credentials if required (Basic Auth username and password, or a bearer token).
 
 #### Create an OTLP export configuration
