@@ -1383,9 +1383,11 @@ Status PgDocReadOp::DoPopulateMergeStreamRequests(
   }
   DCHECK(!merge_streams.HasPermutation());
   MoveInactiveOpsOutside();
-  // We need a specialized result stream to merge results from multiple active operations.
-  // If there is only one, default result stream is good; no active ops means no execution.
-  if (active_op_count > 1) {
+  // We need a specialized result stream to handle responses from merge stream operations: in
+  // addition to merging, it consumes the merge sort key columns that the responses carry.  That is
+  // needed even if only one operation remains active: the default result stream cannot parse such
+  // responses.  No active ops means no execution.
+  if (active_op_count > 0) {
     DCHECK(!result_stream_);
     // It is not known here what columns are read, but need to reserve space in Datum/isnull arrays
     // for them. So reserve space for all regular attributes.
