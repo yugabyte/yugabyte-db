@@ -191,10 +191,6 @@ After you create a configuration, you cannot edit it. To change settings, create
 
 {{< /note >}}
 
-After the configuration is created, attach it to a universe using the [database log export](../universe-logging/) workflow.
-
-For log export on Kubernetes universes, ensure the [OpenTelemetry Operator](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) is installed on the cluster.
-
 ### OTLP
 
 YugabyteDB Anywhere supports [OTLP](https://opentelemetry.io/docs/) (OpenTelemetry Protocol) as a generic telemetry provider sink. An OTLP telemetry provider lets a universe stream database audit logs, and database metrics to any OTLP-compatible receiver using the standard OpenTelemetry wire format.
@@ -208,10 +204,8 @@ You can reuse the same OTLP telemetry provider for [database audit logging](../u
 - Enable the OTLP integration by setting the **OTLP Exporter for Telemetry Provider** Global Configuration option (config key `yb.telemetry.allow_otlp`) to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
     If the flag is false, any REST API create and delete requests for OTLP telemetry providers return HTTP 400 with:
-    
-    `OTLP Exporter for Telemetry Provider is not enabled. Please set the runtime flag 'yb.telemetry.allow_otlp' to true.`
 
-    The flag is enforced when you create or delete an OTLP telemetry provider.
+    `OTLP Exporter for Telemetry Provider is not enabled. Please set the runtime flag 'yb.telemetry.allow_otlp' to true.`
 
 - A reachable OTLP-compatible receiver and credentials if required (Basic Auth username and password, or a bearer token).
 
@@ -239,8 +233,6 @@ To create an export configuration, do the following:
 After you create a configuration, you cannot edit it. To change settings, create a new configuration, reassign universes, and delete the old configuration.
 
 {{< /note >}}
-
-After the configuration is created, attach it to a universe using the universe [database log export](../universe-logging/) workflow (for audit and PostgreSQL query logs) or [database metrics export](../anywhere-metrics-export/) workflow (for metrics).
 
 Concrete endpoint URLs and auth schemes vary by OTLP backend; consult your receiver vendor's documentation or [Integrations in YugabyteDB Aeon](../../../yugabyte-cloud/cloud-monitor/managed-integrations/) for the correct OTLP address.
 
