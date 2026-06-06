@@ -505,7 +505,6 @@ extern void write_stderr_signal_safe(const char *fmt);
 extern bool yb_errstart(int elevel);
 extern pg_attribute_cold bool yb_errstart_cold(int elevel);
 extern void yb_errfinish(const char *filename, int lineno, const char *funcname);
-extern int	yb_external_errcode(int sqlerrcode);
 extern int	yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args);
 extern int	yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args);
 extern int	yb_errdetail_log_from_status(const char *fmt, const size_t nargs, const char **args);

@@ -235,6 +235,7 @@ typedef struct YbgErrorData *YbgError;
 static void yb_errmsg_va(const char *fmt, va_list args);
 static void yb_format_and_append(StringInfo buf, const char *fmt,
 								 const size_t nargs, const char **args);
+static int	yb_external_errcode(int sqlerrcode);
 
 /*
  * yb_errstart - YbGate equivalent of errstart
@@ -1022,7 +1023,7 @@ errcode(int sqlerrcode)
 	return 0;					/* return value does not matter */
 }
 
-int
+static int
 yb_external_errcode(int sqlerrcode)
 {
 	if (yb_enable_extended_sql_codes)
@@ -3910,6 +3911,7 @@ send_message_to_frontend(ErrorData *edata)
 		err_sendstring(&msgbuf, sev);
 
 		pq_sendbyte(&msgbuf, PG_DIAG_SQLSTATE);
+		edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
 		err_sendstring(&msgbuf, unpack_sql_state(edata->sqlerrcode));
 
 		/* M field is required per protocol, so always send something */
