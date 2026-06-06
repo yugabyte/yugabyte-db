@@ -776,7 +776,7 @@ TEST_F(CDCServiceTest, TestWALPrematureGCErrorCode) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 0;
 
   int num_gced;
-  ASSERT_OK(tablet_peer->log()->GC(std::numeric_limits<int64_t>::max(), &num_gced));
+  ASSERT_OK(tablet_peer->log()->TEST_GC(std::numeric_limits<int64_t>::max(), &num_gced));
   ASSERT_EQ(1,  num_gced);
 
   bool has_error;
@@ -819,7 +819,7 @@ TEST_F(CDCServiceTest, TestGetChangesFromGCedCheckpointWithNewerWal) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) =
       static_cast<int32_t>(segs.size() - 1);
   int n_gced = 0;
-  ASSERT_OK(peer->log()->GC(std::numeric_limits<int64_t>::max(), &n_gced));
+  ASSERT_OK(peer->log()->TEST_GC(std::numeric_limits<int64_t>::max(), &n_gced));
   ASSERT_EQ(1, n_gced);
   ASSERT_FALSE(Env::Default()->FileExists(oldest->path()));
   ASSERT_RESULT(peer->GetRaftConsensus())->EvictLogCache(
@@ -2026,16 +2026,16 @@ TEST_F(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
   // Since we haven't updated the minimum cdc index, and the elapsed time is less than
   // kMaxSecondsToRetain, no log files should be returned.
   log::SegmentSequence segment_sequence;
-  ASSERT_OK(
-      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
+  ASSERT_OK(tablet_peer->log()->TEST_GetSegmentsToGC(
+      std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
   LOG(INFO) << "No segments to be GCed because less than " << kMaxSecondsToRetain
             << " seconds have elapsed";
 
   SleepFor(time_to_sleep);
 
-  ASSERT_OK(
-      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
+  ASSERT_OK(tablet_peer->log()->TEST_GetSegmentsToGC(
+      std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_GT(segment_sequence.size(), 0);
   const auto& segments_violate =
       *(tablet_peer->log()->reader_->TEST_segments_violate_max_time_policy_);
@@ -2332,14 +2332,14 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   }
 
   log::SegmentSequence segment_sequence;
-  ASSERT_OK(
-      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
+  ASSERT_OK(tablet_peer->log()->TEST_GetSegmentsToGC(
+      std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 128;
 
-  ASSERT_OK(
-      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
+  ASSERT_OK(tablet_peer->log()->TEST_GetSegmentsToGC(
+      std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_GT(segment_sequence.size(), 0);
   const auto& segments_violate =
       *(tablet_peer->log()->reader_->TEST_segments_violate_min_space_policy_);
@@ -2352,7 +2352,7 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   }
 
   int32_t num_gced(0);
-  ASSERT_OK(tablet_peer->log()->GC(std::numeric_limits<int64_t>::max(), &num_gced));
+  ASSERT_OK(tablet_peer->log()->TEST_GC(std::numeric_limits<int64_t>::max(), &num_gced));
   ASSERT_EQ(num_gced, segment_sequence.size());
 
   // Reset before teardown so the master tablet's WAL pre-allocation doesn't hit simulated ENOSPC.

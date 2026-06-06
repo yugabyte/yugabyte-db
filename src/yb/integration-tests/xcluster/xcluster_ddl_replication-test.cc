@@ -5347,4 +5347,28 @@ TEST_F(XClusterTransactionalDDLReplicationTest, ColocatedBatchRetryPreservesMeta
   ASSERT_EQ(t2_row, (std::make_tuple(2, 20, 200)));
 }
 
+// The ddl_queue handler caches its PG connection. If the target's Postgres restarts (eg. nemesis
+// in a stress test), that cached connection becomes invalid. Verify that the handler reconnects
+// on its next retry instead of looping forever on the dead connection.
+TEST_F(XClusterDDLReplicationTest, ReconnectAfterTargetPostgresRestart) {
+  // Disable the handler advisory lock for this test. After a PG restart the old session's
+  // advisory lock lingers until its lease expires, which is a separate concern from the connection
+  // reconnect behaviour under test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_advisory_lock_key) = 0;
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table (key int primary key)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Restart Postgres on the target, invalidating the handler's cached connection.
+  ASSERT_OK(consumer_cluster_.mini_cluster_->mini_tablet_server(consumer_cluster_.pg_ts_idx_)
+                ->server()
+                ->RestartPG());
+
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE test_table ADD COLUMN a int"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, 10)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table"}));
+}
+
 }  // namespace yb

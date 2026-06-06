@@ -1423,23 +1423,23 @@ Status Log::UpdateSegmentReadableOffset() {
   return Status::OK();
 }
 
-Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const {
+Status Log::GetSegmentsToGCUnlocked(const MinRetainLogIndexInfo& min_retain_log_index_info,
+                                    SegmentSequence* segments_to_gc) const {
   // For the lifetime of a Log::CopyTo call, log_copy_min_index_ may be set to something
   // other than std::numeric_limits<int64_t>::max(). This value will correspond to the
   // minimum op_idx which is currently being copied and must be retained. In order to
   // avoid concurrently deleting those ops, we bump min_op_idx here to be at-least as
   // low as log_copy_min_index_.
-  min_op_idx = std::min(log_copy_min_index_, min_op_idx);
+  int64_t min_op_idx =
+      std::min(log_copy_min_index_, min_retain_log_index_info.earliest_needed_log_index);
 
-  auto xrepl_min_replicated_index = cdc_min_replicated_index_.load(std::memory_order_acquire);
-
-  {
-    std::lock_guard l(get_xcluster_index_lock_);
-    if (get_xcluster_min_index_to_retain_) {
-      xrepl_min_replicated_index =
-          std::min(xrepl_min_replicated_index, get_xcluster_min_index_to_retain_(tablet_id_));
-    }
-  }
+  // Apply the xrepl (CDCSDK/xCluster) soft floor. We trust the caller-supplied value but never
+  // let it be weaker than the Log's own current view, so a caller that passes
+  // log_index_needed_by_cdc = int64 max (e.g. a caller with no xrepl constraint, or tests) still
+  // cannot drop WAL that xrepl needs. The freshest value also wins over a slightly stale one the
+  // caller may have computed earlier.
+  auto xrepl_min_replicated_index =
+      std::min(min_retain_log_index_info.log_index_needed_by_cdc, GetXReplMinReplicatedIndex());
 
   // Find the prefix of segments in the segment sequence that is guaranteed not to include
   // 'min_op_idx'.
@@ -1472,9 +1472,20 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   return Status::OK();
 }
 
-Status Log::GetSegmentsToGC(int64_t min_op_idx, SegmentSequence* segments_to_gc) const {
+Status Log::GetSegmentsToGC(const MinRetainLogIndexInfo& min_retain_log_index_info,
+                            SegmentSequence* segments_to_gc) const {
   PerCpuRwSharedLock read_lock(state_lock_);
-  return GetSegmentsToGCUnlocked(min_op_idx, segments_to_gc);
+  return GetSegmentsToGCUnlocked(min_retain_log_index_info, segments_to_gc);
+}
+
+int64_t Log::GetXReplMinReplicatedIndex() const {
+  auto xrepl_min_replicated_index = cdc_min_replicated_index_.load(std::memory_order_acquire);
+  std::lock_guard l(get_xcluster_index_lock_);
+  if (get_xcluster_min_index_to_retain_) {
+    xrepl_min_replicated_index =
+        std::min(xrepl_min_replicated_index, get_xcluster_min_index_to_retain_(tablet_id_));
+  }
+  return xrepl_min_replicated_index;
 }
 
 void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const {
@@ -1615,10 +1626,11 @@ OpId Log::WaitForSafeOpIdToApply(const OpId& min_allowed, MonoDelta duration) {
   return result;
 }
 
-Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
-  CHECK_GE(min_op_idx, 0);
+Status Log::GC(const MinRetainLogIndexInfo& min_retain_log_index_info, int32_t* num_gced) {
+  CHECK_GE(min_retain_log_index_info.earliest_needed_log_index, 0);
 
-  LOG_WITH_PREFIX(DETAIL) << "Running Log GC on " << wal_dir_ << ": retaining ops >= " << min_op_idx
+  LOG_WITH_PREFIX(DETAIL) << "Running Log GC on " << wal_dir_ << ": retaining "
+                          << AsString(min_retain_log_index_info)
                           << ", log segment size = " << options_.segment_size_bytes;
   VLOG_TIMING(1, "Log GC") {
     SegmentSequence segments_to_delete;
@@ -1627,7 +1639,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
       std::lock_guard l(state_lock_);
       CHECK_EQ(kLogWriting, log_state_);
 
-      RETURN_NOT_OK(GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete));
+      RETURN_NOT_OK(GetSegmentsToGCUnlocked(min_retain_log_index_info, &segments_to_delete));
 
       if (segments_to_delete.empty()) {
         VLOG_WITH_PREFIX(1) << "No segments to delete.";
@@ -1669,9 +1681,12 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   return Status::OK();
 }
 
-Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
-  if (min_op_idx < 0) {
-    return STATUS_FORMAT(InvalidArgument, "Invalid min op index $0", min_op_idx);
+Status Log::GetGCableDataSize(
+    const MinRetainLogIndexInfo& min_retain_log_index_info, int64_t* total_size) const {
+  if (min_retain_log_index_info.earliest_needed_log_index < 0) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Invalid min op index $0",
+        min_retain_log_index_info.earliest_needed_log_index);
   }
 
   SegmentSequence segments_to_delete;
@@ -1682,7 +1697,7 @@ Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
       return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
           log_state_, kLogWriting);
     }
-    Status s = GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete);
+    Status s = GetSegmentsToGCUnlocked(min_retain_log_index_info, &segments_to_delete);
 
     if (!s.ok() || segments_to_delete.empty()) {
       return Status::OK();

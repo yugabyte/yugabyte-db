@@ -1,0 +1,517 @@
+-- PostgreSQL instance has data directory set to tmp_check/data so for all read functions argument
+-- is relative to that data directory patch
+-- read_parquet
+SELECT count(r['sepal.length']) FROM read_parquet('../../data/iris.parquet') r;
+ count 
+-------
+   150
+(1 row)
+
+SELECT r['sepal.length'] FROM read_parquet('../../data/iris.parquet') r ORDER BY r['sepal.length']  LIMIT 5;
+ sepal.length 
+--------------
+          4.3
+          4.4
+          4.4
+          4.4
+          4.5
+(5 rows)
+
+SELECT r['sepal.length'], r['file_row_number'], r['filename']
+    FROM read_parquet('../../data/iris.parquet', file_row_number => true, filename => true) r
+    ORDER BY r['sepal.length'], r['file_row_number']  LIMIT 5;
+ sepal.length | file_row_number |        filename         
+--------------+-----------------+-------------------------
+          4.3 |              13 | ../../data/iris.parquet
+          4.4 |               8 | ../../data/iris.parquet
+          4.4 |              38 | ../../data/iris.parquet
+          4.4 |              42 | ../../data/iris.parquet
+          4.5 |              41 | ../../data/iris.parquet
+(5 rows)
+
+-- Further subscripting is supported on duckdb.row
+SELECT r['jsoncol'][1], r['arraycol'][2] FROM read_parquet('../../data/indexable.parquet') r;
+ r.jsoncol[1] | r.arraycol[2] 
+--------------+---------------
+ "d"          |            22
+(1 row)
+
+-- And not just on duckdb.row, but also on duckdb.unresolved_type (the parenth
+SELECT jsoncol[1], arraycol[2] FROM (
+    SELECT r['jsoncol'] jsoncol, r['arraycol'] arraycol
+    FROM read_parquet('../../data/indexable.parquet') r
+) q;
+ jsoncol[1] | arraycol[2] 
+------------+-------------
+ "d"        |          22
+(1 row)
+
+-- And the same for slice subscripts
+SELECT r['arraycol'][1:2] FROM read_parquet('../../data/indexable.parquet') r;
+ r.arraycol[1:2] 
+-----------------
+ {11,22}
+(1 row)
+
+SELECT arraycol[1:2] FROM (
+    SELECT r['arraycol'] arraycol
+    FROM read_parquet('../../data/indexable.parquet') r
+) q;
+ arraycol[1:2] 
+---------------
+ {11,22}
+(1 row)
+
+SELECT r['arraycol'][:] FROM read_parquet('../../data/indexable.parquet') r;
+ r.arraycol[:] 
+---------------
+ {11,22,33}
+(1 row)
+
+SELECT arraycol[:] FROM (
+    SELECT r['arraycol'] arraycol
+    FROM read_parquet('../../data/indexable.parquet') r
+) q;
+ arraycol[:] 
+-------------
+ {11,22,33}
+(1 row)
+
+-- Subqueries correctly expand *, in case of multiple columns.
+SELECT * FROM (
+    SELECT 'something' as prefix, *, 'something else' as postfix
+    FROM read_parquet('../../data/iris.parquet') r
+    LIMIT 1
+) q;
+  prefix   | sepal.length | sepal.width | petal.length | petal.width | variety |    postfix     
+-----------+--------------+-------------+--------------+-------------+---------+----------------
+ something |          5.1 |         3.5 |          1.4 |         0.2 | Setosa  | something else
+(1 row)
+
+-- NOTE: A single "r" is equivalent to a *. The prefix and postfix columns are
+-- not explicitly selected, but still show up in the result. This is
+-- considered a bug, but it's one that we cannot easily solve because the "r"
+-- reference does not exist in the DuckDB query at all, so there's no way to
+-- reference only the columns coming from that part of the subquery. Very few
+-- people should be impacted by this though.
+SELECT r FROM (
+    SELECT 'something' as prefix, *, 'something else' as postfix
+    FROM read_parquet('../../data/iris.parquet') r
+    LIMIT 1
+) q;
+  prefix   | sepal.length | sepal.width | petal.length | petal.width | variety |    postfix     
+-----------+--------------+-------------+--------------+-------------+---------+----------------
+ something |          5.1 |         3.5 |          1.4 |         0.2 | Setosa  | something else
+(1 row)
+
+-- ... but if you manually add the expected columns then they are merged into
+-- the new star expansion.
+SELECT prefix, r FROM (
+    SELECT 'something' as prefix, *, 'something else' as postfix
+    FROM read_parquet('../../data/iris.parquet') r
+    LIMIT 1
+) q;
+  prefix   | sepal.length | sepal.width | petal.length | petal.width | variety |    postfix     
+-----------+--------------+-------------+--------------+-------------+---------+----------------
+ something |          5.1 |         3.5 |          1.4 |         0.2 | Setosa  | something else
+(1 row)
+
+SELECT prefix, r, postfix FROM (
+    SELECT 'something' as prefix, *, 'something else' as postfix
+    FROM read_parquet('../../data/iris.parquet') r
+    LIMIT 1
+) q;
+  prefix   | sepal.length | sepal.width | petal.length | petal.width | variety |    postfix     
+-----------+--------------+-------------+--------------+-------------+---------+----------------
+ something |          5.1 |         3.5 |          1.4 |         0.2 | Setosa  | something else
+(1 row)
+
+-- This requires the prefix columns to be there though. If the prefix columns
+-- are not there the postfix columns don't get merged into the new star
+-- expansion automatically.
+-- NOTE: Would be nice to fix this, but it's not a high priority.
+SELECT r, postfix FROM (
+    SELECT 'something' as prefix, *, 'something else' as postfix
+    FROM read_parquet('../../data/iris.parquet') r
+    LIMIT 1
+) q;
+  prefix   | sepal.length | sepal.width | petal.length | petal.width | variety |    postfix     |    postfix     
+-----------+--------------+-------------+--------------+-------------+---------+----------------+----------------
+ something |          5.1 |         3.5 |          1.4 |         0.2 | Setosa  | something else | something else
+(1 row)
+
+-- If you swap them around, they will get duplicated though. For the
+SELECT postfix, r, prefix FROM (
+    SELECT 'something' as prefix, *, 'something else' as postfix
+    FROM read_parquet('../../data/iris.parquet') r
+    LIMIT 1
+) q;
+    postfix     |  prefix   | sepal.length | sepal.width | petal.length | petal.width | variety |    postfix     |  prefix   
+----------------+-----------+--------------+-------------+--------------+-------------+---------+----------------+-----------
+ something else | something |          5.1 |         3.5 |          1.4 |         0.2 | Setosa  | something else | something
+(1 row)
+
+-- Joining two subqueries a single * works as expected.
+SELECT *
+FROM (
+    SELECT 'something' as prefix, *, 'something else' as postfix
+    FROM read_parquet('../../data/iris.parquet') r
+    LIMIT 1
+) q1, (
+    SELECT * FROM read_parquet('../../data/unsigned_types.parquet') r
+) q2;
+  prefix   | sepal.length | sepal.width | petal.length | petal.width | variety |    postfix     | utinyint | usmallint |  uinteger  
+-----------+--------------+-------------+--------------+-------------+---------+----------------+----------+-----------+------------
+ something |          5.1 |         3.5 |          1.4 |         0.2 | Setosa  | something else |      255 |     65535 | 4294967295
+(1 row)
+
+-- Combining multiple read_parquet calls in a single query also works as
+-- expected. They are not expanded to multiple *'s.
+-- BUG: This currently doesn't work correctly!
+SELECT 'something' as prefix, *, 'something else' as postfix
+FROM read_parquet('../../data/iris.parquet') r,
+        read_parquet('../../data/unsigned_types.parquet') r2
+LIMIT 1;
+  prefix   | sepal.length | sepal.width | petal.length | petal.width | variety | utinyint | usmallint |  uinteger  |    postfix     
+-----------+--------------+-------------+--------------+-------------+---------+----------+-----------+------------+----------------
+ something |          5.1 |         3.5 |          1.4 |         0.2 | Setosa  |      255 |     65535 | 4294967295 | something else
+(1 row)
+
+-- And also when done in a subquery
+-- BUG: Broken in the same way as the above query.
+SELECT * FROM (
+    SELECT 'something' as prefix, *, 'something else' as postfix
+    FROM read_parquet('../../data/iris.parquet') r,
+         read_parquet('../../data/unsigned_types.parquet') r2
+    LIMIT 1
+) q;
+  prefix   | sepal.length | sepal.width | petal.length | petal.width | variety | utinyint | usmallint |  uinteger  |    postfix     
+-----------+--------------+-------------+--------------+-------------+---------+----------+-----------+------------+----------------
+ something |          5.1 |         3.5 |          1.4 |         0.2 | Setosa  |      255 |     65535 | 4294967295 | something else
+(1 row)
+
+-- CTEs work fine, both materialized and not materialized ones.
+with experiences as (
+  select
+    r['starts_at'],
+    r['company']
+  from duckdb.query($$ SELECT '2024-01-01'::date starts_at, 'DuckDB Labs' company $$) r
+  limit 100
+)
+select * from experiences;
+     r      |      r      
+------------+-------------
+ 01-01-2024 | DuckDB Labs
+(1 row)
+
+with experiences as materialized (
+  select
+    r['starts_at'],
+    r['company']
+  from duckdb.query($$ SELECT '2024-01-01'::date starts_at, 'DuckDB Labs' company $$) r
+  limit 100
+)
+select * from experiences;
+     r      |      r      
+------------+-------------
+ 01-01-2024 | DuckDB Labs
+(1 row)
+
+with experiences as not materialized (
+  select
+    r['starts_at'],
+    r['company']
+  from duckdb.query($$ SELECT '2024-01-01'::date starts_at, 'DuckDB Labs' company $$) r
+  limit 100
+)
+select * from experiences;
+     r      |      r      
+------------+-------------
+ 01-01-2024 | DuckDB Labs
+(1 row)
+
+-- ... also when using a single column
+with experiences as (
+  select
+    r['company']
+  from duckdb.query($$ SELECT 'DuckDB Labs' company $$) r
+  limit 100
+)
+select * from experiences;
+      r      
+-------------
+ DuckDB Labs
+(1 row)
+
+with experiences as materialized (
+  select
+    r['company']
+  from duckdb.query($$ SELECT 'DuckDB Labs' company $$) r
+  limit 100
+)
+select * from experiences;
+      r      
+-------------
+ DuckDB Labs
+(1 row)
+
+with experiences as not materialized (
+  select
+    r['company']
+  from duckdb.query($$ SELECT 'DuckDB Labs' company $$) r
+  limit 100
+)
+select * from experiences;
+      r      
+-------------
+ DuckDB Labs
+(1 row)
+
+-- ... and also when adding aliasses
+with experiences as (
+  select
+    r['company'] company
+  from duckdb.query($$ SELECT 'DuckDB Labs' company $$) r
+  limit 100
+)
+select * from experiences;
+   company   
+-------------
+ DuckDB Labs
+(1 row)
+
+with experiences as materialized (
+  select
+    r['company'] company
+  from duckdb.query($$ SELECT 'DuckDB Labs' company $$) r
+  limit 100
+)
+select * from experiences;
+   company   
+-------------
+ DuckDB Labs
+(1 row)
+
+with experiences as not materialized (
+  select
+    r['company'] company
+  from duckdb.query($$ SELECT 'DuckDB Labs' company $$) r
+  limit 100
+)
+select * from experiences;
+   company   
+-------------
+ DuckDB Labs
+(1 row)
+
+-- We show a hint for the new syntax when someone uses the old syntax.
+SELECT count("sepal.length") FROM read_parquet('../../data/iris.parquet') AS ("sepal.length" FLOAT);
+ERROR:  a column definition list is only allowed for functions returning "record"
+LINE 1: ... FROM read_parquet('../../data/iris.parquet') AS ("sepal.len...
+                                                             ^
+HINT:  If you use DuckDB functions like read_parquet, you need to use the r['colname'] syntax introduced in pg_duckdb 0.3.0. It seems like you might be using the outdated "AS (colname coltype, ...)" syntax
+-- But we don't show that hint for queries that don't use these functions.
+SELECT count("sepal.length") FROM generate_series(1, 100) AS ("sepal.length" FLOAT);
+ERROR:  a column definition list is only allowed for functions returning "record"
+LINE 1: ...("sepal.length") FROM generate_series(1, 100) AS ("sepal.len...
+                                                             ^
+-- Show a hint for users trying to use columns as normal instead of using r['column_name']
+SELECT count("sepal.length") FROM read_parquet('../../data/iris.parquet');
+ERROR:  column "sepal.length" does not exist
+LINE 1: SELECT count("sepal.length") FROM read_parquet('../../data/i...
+                     ^
+HINT:  If you use DuckDB functions like read_parquet, you need to use the r['colname'] syntax to use columns. If you're already doing that, maybe you forgot to give the function the r alias.
+-- But again only show it when we use functions that return duckdb.rows
+SELECT count("sepal.length") FROM generate_series(1, 100) a(x);
+ERROR:  column "sepal.length" does not exist
+LINE 1: SELECT count("sepal.length") FROM generate_series(1, 100) a(...
+                     ^
+-- read_csv
+SELECT count(r['sepal.length']) FROM read_csv('../../data/iris.csv') r;
+ count 
+-------
+   150
+(1 row)
+
+SELECT r['sepal.length'] FROM read_csv('../../data/iris.csv') r ORDER BY r['sepal.length'] LIMIT 5;
+ sepal.length 
+--------------
+          4.3
+          4.4
+          4.4
+          4.4
+          4.5
+(5 rows)
+
+SELECT r['sepal.length'], r['filename']
+    FROM read_csv('../../data/iris.csv', filename => true, header => true) r
+    ORDER BY r['sepal.length']  LIMIT 5;
+ sepal.length |      filename       
+--------------+---------------------
+          4.3 | ../../data/iris.csv
+          4.4 | ../../data/iris.csv
+          4.4 | ../../data/iris.csv
+          4.4 | ../../data/iris.csv
+          4.5 | ../../data/iris.csv
+(5 rows)
+
+SELECT * FROM read_csv('../../non-existing-file.csv');
+ERROR:  (PGDuckDB/CreatePlan) Prepared query returned an error: IO Error: No files found that match the pattern "../../non-existing-file.csv"
+
+LINE 1: SELECT read_csv.* FROM system.main.read_csv('../../non-existing-file.csv'::text...
+                               ^
+-- We override Postgres its default column name for subscript expressions. In
+-- the following example the column would normally be named "r", which is
+-- pretty non-descriptive especially when selecting multiple columns from the
+-- same row.
+--
+-- NOTE: Jelte tried to change this behaviour in upstream Postgres, but met
+-- with some resistance:
+-- https://www.postgresql.org/message-id/flat/CAGECzQRYAFHLnjjymsSPhL-9OExVyNfMQkZMc1hcoUQ6dDHo=Q@mail.gmail.com
+SELECT r['column00'] FROM read_csv('../../data/web_page.csv') r limit 1;
+ column00 
+----------
+        1
+(1 row)
+
+-- If an explicit column name is given we
+SELECT r['column00'] AS col1 FROM read_csv('../../data/web_page.csv') r limit 1;
+ col1 
+------
+    1
+(1 row)
+
+-- ...except if that explicit column name is the same as the default column
+-- name. In which case we fail to recognize that fact.
+-- XXX: It would be nice to fix this, but it's not a high priority.
+SELECT r['column00'] AS r FROM read_csv('../../data/web_page.csv') r limit 1;
+ column00 
+----------
+        1
+(1 row)
+
+-- If we use the same trick inside subqueries, then references to columns from
+-- that subquery would not use that better name, and thus the query could not
+-- be executed. To avoid that we simply don't rename a subscript expression
+-- inside a subquery, and only do so in the outermost SELECT list (aka
+-- targetlist).
+SELECT * FROM (SELECT r['column00'] FROM read_csv('../../data/web_page.csv') r limit 1) q;
+ r 
+---
+ 1
+(1 row)
+
+-- If you give it a different alias then that alias is propegated though.
+SELECT * FROM (SELECT r['column00'] AS col1 FROM read_csv('../../data/web_page.csv') r limit 1) q;
+ col1 
+------
+    1
+(1 row)
+
+-- Only simple string literals are supported as column names
+SELECT r[NULL] FROM read_csv('../../data/web_page.csv') r limit 1;
+ERROR:  duckdb.row subscript cannot be NULL
+LINE 1: SELECT r[NULL] FROM read_csv('../../data/web_page.csv') r li...
+                 ^
+SELECT r[123] FROM read_csv('../../data/web_page.csv') r limit 1;
+ERROR:  duckdb.row subscript must have text type
+LINE 1: SELECT r[123] FROM read_csv('../../data/web_page.csv') r lim...
+                 ^
+SELECT r[3.14] FROM read_csv('../../data/web_page.csv') r limit 1;
+ERROR:  duckdb.row subscript must have text type
+LINE 1: SELECT r[3.14] FROM read_csv('../../data/web_page.csv') r li...
+                 ^
+SELECT r['abc':'abc'] FROM read_csv('../../data/web_page.csv') r limit 1;
+ERROR:  Creating a slice out of duckdb.row is not supported
+SELECT r[:] FROM read_csv('../../data/web_page.csv') r limit 1;
+ERROR:  Creating a slice out of duckdb.row is not supported
+SELECT r[q.col]
+FROM
+    read_csv('../../data/web_page.csv') r,
+    (SELECT 'abc'::text as col) q
+LIMIT 1;
+ERROR:  duckdb.row subscript must be a constant
+LINE 1: SELECT r[q.col]
+                 ^
+-- delta_scan
+SELECT duckdb.install_extension('delta');
+ install_extension 
+-------------------
+ 
+(1 row)
+
+SELECT count(r['a']) FROM delta_scan('../../data/delta_table') r;
+ count 
+-------
+   100
+(1 row)
+
+SELECT * FROM delta_scan('../../data/delta_table') r WHERE (r['a'] = 1 OR r['b'] = 'delta_table_3');
+ a |       b       
+---+---------------
+ 1 | delta_table_1
+ 3 | delta_table_3
+(2 rows)
+
+-- iceberg_*
+SELECT duckdb.install_extension('iceberg');
+ install_extension 
+-------------------
+ 
+(1 row)
+
+SELECT COUNT(r['l_orderkey']) FROM iceberg_scan('../../data/lineitem_iceberg', allow_moved_paths => true) r;
+ count 
+-------
+ 51793
+(1 row)
+
+-- TPCH query #6
+SELECT
+	sum(r['l_extendedprice'] * r['l_discount']) as revenue
+FROM
+	iceberg_scan('../../data/lineitem_iceberg', allow_moved_paths => true) r
+WHERE
+	r['l_shipdate'] >= date '1997-01-01'
+	AND r['l_shipdate'] < date '1997-01-01' + interval '1' year
+	AND r['l_discount'] between 0.08 - 0.01 and 0.08 + 0.01
+	AND r['l_quantity'] < 25
+LIMIT 1;
+   revenue    
+--------------
+ 1520873.7806
+(1 row)
+
+SELECT * FROM iceberg_snapshots('../../data/lineitem_iceberg') ORDER BY sequence_number;
+ sequence_number |     snapshot_id     |         timestamp_ms         |                                         manifest_list                                          
+-----------------+---------------------+------------------------------+------------------------------------------------------------------------------------------------
+               1 | 3776207205136740581 | Wed Feb 15 15:07:54.504 2023 | lineitem_iceberg/metadata/snap-3776207205136740581-1-cf3d0be5-cf70-453d-ad8f-48fdc412e608.avro
+               2 | 7635660646343998149 | Wed Feb 15 15:08:14.73 2023  | lineitem_iceberg/metadata/snap-7635660646343998149-1-10eaca8a-1e1c-421e-ad6d-b232e5ee23d3.avro
+(2 rows)
+
+SELECT * FROM iceberg_metadata('../../data/lineitem_iceberg',  allow_moved_paths => true);
+                             manifest_path                              | manifest_sequence_number | manifest_content | status  | content  |                                     file_path                                      
+------------------------------------------------------------------------+--------------------------+------------------+---------+----------+------------------------------------------------------------------------------------
+ lineitem_iceberg/metadata/10eaca8a-1e1c-421e-ad6d-b232e5ee23d3-m1.avro |                        2 | DATA             | ADDED   | EXISTING | lineitem_iceberg/data/00041-414-f3c73457-bbd6-4b92-9c15-17b241171b16-00001.parquet
+ lineitem_iceberg/metadata/10eaca8a-1e1c-421e-ad6d-b232e5ee23d3-m0.avro |                        2 | DATA             | DELETED | EXISTING | lineitem_iceberg/data/00000-411-0792dcfe-4e25-4ca3-8ada-175286069a47-00001.parquet
+(2 rows)
+
+-- read_json
+SELECT COUNT(r['a']) FROM read_json('../../data/table.json') r;
+ count 
+-------
+   100
+(1 row)
+
+SELECT COUNT(r['a']) FROM read_json('../../data/table.json') r WHERE r['c'] > 50.4;
+ count 
+-------
+    51
+(1 row)
+
+SELECT r['a'], r['b'], r['c'] FROM read_json('../../data/table.json') r WHERE r['c'] > 50.4 AND r['c'] < 51.2;
+ a  |    b    |  c   
+----+---------+------
+ 50 | json_50 | 50.5
+(1 row)
+

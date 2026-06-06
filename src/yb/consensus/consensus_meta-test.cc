@@ -69,7 +69,7 @@ class ConsensusMetadataTest : public YBTest {
     fs_manager_.SetTabletPathByDataPath(kTabletId, fs_manager_.GetDataRootDirs()[0]);
 
     // Initialize test configuration.
-    config_.set_opid_index(kInvalidOpIdIndex);
+    config_.set_committed_op_index(kInvalidOpIdIndex);
     RaftPeerPB* peer = config_.add_peers();
     peer->set_permanent_uuid(fs_manager_.uuid());
     peer->set_member_type(PeerMemberType::VOTER);
@@ -93,7 +93,7 @@ void ConsensusMetadataTest::AssertValuesEqual(const ConsensusMetadata& cmeta,
   ASSERT_EQ(1, cmeta.committed_config().peers_size());
 
   // Value checks.
-  ASSERT_EQ(opid_index, cmeta.committed_config().opid_index());
+  ASSERT_EQ(opid_index, cmeta.committed_config().committed_op_index());
   ASSERT_EQ(permanent_uuid, cmeta.committed_config().peers().begin()->permanent_uuid());
   ASSERT_EQ(term, cmeta.current_term());
 }
@@ -164,7 +164,7 @@ TEST_F(ConsensusMetadataTest, TestActiveRole) {
   string peer_uuid = "e";
   RaftConfigPB config1 = BuildConfig(uuids); // We aren't a member of this config...
   const auto op_id = OpId(1, 1);
-  config1.set_opid_index(op_id.index);
+  config1.set_committed_op_index(op_id.index);
 
   std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(
       ConsensusMetadata::Create(&fs_manager_, kTabletId, peer_uuid, config1, kInitialTerm));
@@ -175,7 +175,7 @@ TEST_F(ConsensusMetadataTest, TestActiveRole) {
   // Follower.
   uuids.push_back(peer_uuid);
   RaftConfigPB config2 = BuildConfig(uuids); // But we are a member of this one.
-  config2.set_opid_index(op_id.index);
+  config2.set_committed_op_index(op_id.index);
   cmeta->set_committed_config(config2);
   ASSERT_EQ(PeerRole::FOLLOWER, cmeta->active_role());
 
@@ -209,7 +209,7 @@ TEST_F(ConsensusMetadataTest, TestToConsensusStatePB) {
   string peer_uuid = "e";
 
   RaftConfigPB committed_config = BuildConfig(uuids); // We aren't a member of this config...
-  committed_config.set_opid_index(1);
+  committed_config.set_committed_op_index(1);
   std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
       &fs_manager_, kTabletId, peer_uuid, committed_config, kInitialTerm));
 
@@ -268,7 +268,7 @@ TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
   vector<string> uuids = { "a", "b", "c", "d" };
 
   RaftConfigPB committed_config = BuildConfig(uuids); // We aren't a member of this config...
-  committed_config.set_opid_index(1);
+  committed_config.set_committed_op_index(1);
   std::unique_ptr<ConsensusMetadata> cmeta =
       ASSERT_RESULT(ConsensusMetadata::Create(&fs_manager_, kTabletId, "e", committed_config, 1));
 

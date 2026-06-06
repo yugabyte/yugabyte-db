@@ -686,6 +686,12 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
     pg_conn_.reset();
   }
+  if (pg_conn_ && pg_conn_->ConnStatus() != CONNECTION_OK) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Dropping unhealthy PostgreSQL connection (status " << pg_conn_->ConnStatus()
+        << "), will reconnect";
+    pg_conn_.reset();
+  }
   if (pg_conn_) {
     return Status::OK();
   }
