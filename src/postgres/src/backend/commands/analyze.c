@@ -722,7 +722,8 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	 */
 	if (!inh && IsYBRelation(onerel) && va_cols == NIL &&
 		!yb_use_internal_auto_analyze_service_conn &&
-		!yb_is_internal_connection)
+		!yb_is_internal_connection &&
+		!yb_test_analyze_dont_reset_mutations)
 	{
 		YbcStatus	reset_status =
 			YBCResetAutoAnalyzeMutationCounters(YBCGetDatabaseOid(onerel),

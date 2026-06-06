@@ -675,6 +675,34 @@ TEST_F(PgAutoAnalyzeTest, InternalAnalyzeDoesNotResetMutationCount) {
   ASSERT_OK(WaitForTableMutationCount(table_id, 0));
 }
 
+TEST_F(PgAutoAnalyzeTest, ManualAnalyzeDoesNotResetMutationCountWhenTestGucSet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kTableName = "manual_analyze_test_guc";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT PRIMARY KEY, v1 INT)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableId(kTableName));
+
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.Execute(
+            "INSERT INTO manual_analyze_test_guc "
+            "SELECT s, s FROM generate_series(1, 10) AS s"));
+      },
+      {{table_id, 10}}));
+
+  // With the test GUC set, a manual ANALYZE must not reset the mutation count.
+  ASSERT_OK(conn.Execute("SET yb_test_analyze_dont_reset_mutations=true"));
+  ASSERT_OK(conn.Execute("ANALYZE manual_analyze_test_guc"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 10));
+
+  // Once the GUC is cleared, a manual ANALYZE resets the mutation count again.
+  ASSERT_OK(conn.Execute("SET yb_test_analyze_dont_reset_mutations=false"));
+  ASSERT_OK(conn.Execute("ANALYZE manual_analyze_test_guc"));
+  ASSERT_OK(WaitForTableMutationCount(table_id, 0));
+}
+
 TEST_F(PgAutoAnalyzeTest, ManualAnalyzePartitionedTableResetsPartitionMutationCounts) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
