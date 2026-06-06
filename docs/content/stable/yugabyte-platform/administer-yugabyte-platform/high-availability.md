@@ -53,7 +53,7 @@ If you are using the API to configure HA, obtain your API key for the standby in
 
 {{< /tip >}}
 
-## Configure active and standby instances
+## Set up High Availability
 
 To set up HA, you first configure the active instance by creating an active HA replication configuration and generating a shared authentication key.
 
@@ -200,6 +200,18 @@ Upload the combined certificate to the trust store and try enabling certificate 
 
 To set up a single URL for signing in to YBA that points to the current active YBA, even after a switchover or failover, it is recommended to use an application (L7) load balancer. On the load balancer, set the health check URL for each HA instance to `https://<instance IP or DNS>/api/v1/ha_leader`. (Specify any custom port configuration if you changed the default 443 configuration.) Note that you may need to set the support origin URL for your YBA instance to the load balancer URL; this can be set during installation, refer to [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/installer/). Configure the load balancer to forward ports 443 for the YBA UI and 9090 for Prometheus.
 
+### Remove a standby instance
+
+To remove a standby instance from a HA cluster, you need to remove it from the active instance's list, and then delete the configuration from the instance to be removed, as follows:
+
+1. On the active instance's list, click **Delete Instance** for the standby instance to be removed.
+
+1. On the standby instance you wish to remove from the HA cluster, on the **Admin > High Availability** tab, click **Delete Configuration**.
+
+The standby instance is now a standalone instance again.
+
+After you have returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. It is not recommended to continue to use this standby instance for any management operations. Uninstall YBA from this instance and reinstall it to return it to a clean state before using it as a standalone instance.
+
 ## Monitoring and alerts
 
 The easiest way to determine the health of your HA configuration is to monitor the overall HA state of your active YBA instance, which is displayed on the **Replication Configuration** tab as per the following illustration:
@@ -247,18 +259,6 @@ After upgrading all instances, verify that the standbys are still receiving new 
 Certificates in the trust store should not require setup again.
 
 If you are promoting a YBA standby that is running version 2024.1.0 or later, while the old active instance is running a version earlier than 2024.1.0, see the [Limitations](#limitations).
-
-## Remove a standby instance
-
-To remove a standby instance from a HA cluster, you need to remove it from the active instance's list, and then delete the configuration from the instance to be removed, as follows:
-
-1. On the active instance's list, click **Delete Instance** for the standby instance to be removed.
-
-1. On the standby instance you wish to remove from the HA cluster, on the **Admin > High Availability** tab, click **Delete Configuration**.
-
-The standby instance is now a standalone instance again.
-
-After you have returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. It is not recommended to continue to use this standby instance for any management operations. Uninstall YBA from this instance and reinstall it to return it to a clean state before using it as a standalone instance.
 
 ## Limitations
 

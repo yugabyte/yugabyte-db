@@ -63,7 +63,7 @@ YugabyteDB release archives are not synchronized between the active and standby 
 After a switchover, do the following:
 
 - [Verify that HA is functioning properly](../high-availability/#verify-ha).
-- If the old active instance is not in standby mode, there could be a communication issue from the new active to the old active instance. Follow the [setup instructions](../high-availability/#configure-active-and-standby-instances) to verify that certificates and ports are set up correctly.
+- If the old active instance is not in standby mode, there could be a communication issue from the new active to the old active instance. Follow the [setup instructions](../high-availability/#set-up-high-availability) to verify that certificates and ports are set up correctly.
 
 ### Failover
 
