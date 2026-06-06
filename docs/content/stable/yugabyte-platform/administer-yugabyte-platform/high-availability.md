@@ -44,7 +44,7 @@ Before configuring a HA cluster for your YBA instances, ensure that you have the
 - The YBA instances were installed using the same installation method (YBA Installer or Helm (Kubernetes)).
 - The YBA instances are configured to use the same path for the installation root.
 - If you are using custom ports for Prometheus, all YBA instances are using the same custom port. (The default Prometheus port for YugabyteDB Anywhere is 9090.)
-- All YBA instances are running the same version of YBA software. (The YBA instances in a HA cluster should always be upgraded at approximately the same time.)
+- All YBA instances are running the same version of YBA software. (The YBA instances in a HA cluster should always be [upgraded](#upgrade-instances) at approximately the same time.)
 - The YBA instances have the same login credentials.
 
 {{< tip title="Getting the API key for the standby" >}}
@@ -200,6 +200,32 @@ Upload the combined certificate to the trust store and try enabling certificate 
 
 To set up a single URL for signing in to YBA that points to the current active YBA, even after a switchover or failover, it is recommended to use an application (L7) load balancer. On the load balancer, set the health check URL for each HA instance to `https://<instance IP or DNS>/api/v1/ha_leader`. (Specify any custom port configuration if you changed the default 443 configuration.) Note that you may need to set the support origin URL for your YBA instance to the load balancer URL; this can be set during installation, refer to [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/installer/). Configure the load balancer to forward ports 443 for the YBA UI and 9090 for Prometheus.
 
+## Monitoring and alerts
+
+The easiest way to determine the health of your HA configuration is to monitor the overall HA state of your active YBA instance, which is displayed on the **Replication Configuration** tab as per the following illustration:
+
+![Monitoring HA](/images/yp/high-availability/ha-monitor.png)
+
+The overall HA state is computed from the individual instance states, which can be viewed on the **Instance Configuration** tab.
+
+If some standbys are connected and some are disconnected, the global state will show _Warning_.
+
+If all of your standby instances are disconnected, the state will show _Error_.
+
+The following HA-related [alerts](../../alerts-monitoring/alert/) are automatically configured to alert you of issues with your HA configuration:
+
+- HA Standby Sync
+
+    This alert fires when backup to a particular standby has failed for a specified amount of time. The default is 15 minutes, and can be changed by editing the HA Standby Sync alert policy.
+
+- HA Version Mismatch
+
+    This alert fires when there is a version mismatch between the active and standby instances, and clears automatically when both instances are upgraded to the same version.
+
+- Universe Release Files Missing
+
+    This alert fires if any of your universes are using a local YugabyteDB release that is not available in YBA. This can happen after a switchover or failover to a YBA instance that doesn't have the same releases. The alert clears after you add the missing releases.
+
 ## Upgrade instances
 
 All instances involved in HA should use the same version of YugabyteDB Anywhere. This ensures that, in steady state operation, all instances run the same version of YugabyteDB Anywhere. You will receive alerts if a mismatch is detected between active and standby instances.
@@ -233,32 +259,6 @@ To remove a standby instance from a HA cluster, you need to remove it from the a
 The standby instance is now a standalone instance again.
 
 After you have returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. It is not recommended to continue to use this standby instance for any management operations. Uninstall YBA from this instance and reinstall it to return it to a clean state before using it as a standalone instance.
-
-## Monitoring
-
-The easiest way to determine the health of your HA configuration is to monitor the overall HA state of your active YBA instance, which is displayed on the **Replication Configuration** tab as per the following illustration:
-
-![Monitoring HA](/images/yp/high-availability/ha-monitor.png)
-
-The overall HA state is computed from the individual instance states, which can be viewed on the **Instance Configuration** tab.
-
-If some standbys are connected and some are disconnected, the global state will show _Warning_.
-
-If all of your standby instances are disconnected, the state will show _Error_.
-
-The following HA-related [alerts](../../alerts-monitoring/alert/) are automatically configured to alert you of issues with your HA configuration:
-
-- HA Standby Sync
-
-    This alert fires when backup to a particular standby has failed for a specified amount of time. The default is 15 minutes, and can be changed by editing the HA Standby Sync alert policy.
-
-- HA Version Mismatch
-
-    This alert fires when there is a version mismatch between the active and standby instances, and clears automatically when both instances are upgraded to the same version.
-
-- Universe Release Files Missing
-
-    This alert fires if any of your universes are using a local YugabyteDB release that is not available in YBA. This can happen after a switchover or failover to a YBA instance that doesn't have the same releases. The alert clears after you add the missing releases.
 
 ## Limitations
 

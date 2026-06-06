@@ -12,7 +12,17 @@ menu:
 type: docs
 ---
 
-In the case of a failure of your active YugabyteDB Anywhere HA instance, you must manually promote a standby.
+Both switchover and failover to promote a High Availability (HA) standby must be done manually.
+
+In the case of a failure of your active HA instance, where the previous active instance is unavailable or unreachable during promotion, _failover is not automatic_. In the case of failover, you promote the standby using the **Force promotion** option.
+
+## Promotion and old backups
+
+Immediately after [upgrading the active instance](../high-availability/#upgrade-instances) to a new version of YBA, older state backups of the active instance (that is, before it was upgraded) will still be available on the standby. These are not deleted until the standby is promoted at some point, or until they expire.
+
+Because these old backups are present, you need to be cautious promoting the standby in the time immediately following an upgrade.
+
+When possible, only promote a standby when both standby and active are on the same version, and use the most recent backup that you are confident was received after the active instance was upgraded.
 
 ## Promote a standby instance to active
 
@@ -22,12 +32,10 @@ You can make a standby instance active as follows:
 
 1. Select the backup from which you want to restore (in most cases, you should choose the most recent backup) and enable **Confirm promotion**.
 
-    {{< warning title="Don't promote an old active backup" >}}
-Immediately after upgrading the active instance to a new version of YBA, older state backups of the active instance (that is, before it was upgraded) will still be available on the standby. These are not deleted until the standby is promoted at some point, or until they expire.
+    {{< warning title="Do not promote an old backup" >}}
 
-Because these old backups are present, you need to be cautious promoting the standby in the time immediately following an upgrade.
+If you recently upgraded the active instance, ensure the backup you select is up to date. See [Promotion and old backups](#promotion-and-old-backups).
 
-When possible, only promote a standby when both standby and active are on the same version, and use the most recent backup that you are confident was received after the active instance was upgraded.
     {{< /warning >}}
 
 1. If you are performing a failover, where the previous active instance is unavailable or unreachable during promotion, select the **Force promotion** option.
