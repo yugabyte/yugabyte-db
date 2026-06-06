@@ -1,9 +1,9 @@
 ---
 title: High availability of YugabyteDB Anywhere
-headerTitle: Enable high availability
+headerTitle: Enable High Availability
 description: Make YugabyteDB Anywhere highly available
 headcontent: Configure standby instances of YugabyteDB Anywhere
-linkTitle: Enable high availability
+linkTitle: High Availability
 aliases:
   - /stable/yugabyte-platform/manage-deployments/platform-high-availability/
 menu:
@@ -11,14 +11,16 @@ menu:
     identifier: platform-high-availability
     parent: administer-yugabyte-platform
     weight: 40
+rightNav:
+  hideH4: true
 type: docs
 ---
 
-YugabyteDB Anywhere (YBA) high availability (HA) is an active-standby model for multiple YBA instances. YBA HA uses YugabyteDB's distributed architecture to replicate your YBA data across multiple virtual machines (VM), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
+YugabyteDB Anywhere (YBA) High Availability (HA) is an active-standby model for multiple YBA instances. YBA HA uses YugabyteDB's distributed architecture to replicate your YBA data across multiple virtual machines (VM), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
 Each HA cluster includes a single active YBA instance and at least one standby YBA instance, configured as follows:
 
-- The active instance runs normally, but also pushes out backups of its state to all of the standby instances in the HA cluster at a configurable frequency (no more than once per minute).
+- The active instance runs normally, but also pushes backups of its state to all of the standby instances in the HA cluster at a configurable frequency (no more than once per minute).
 
     The active instance also creates and sends one-off backups to standby instances whenever a task completes (such as creating a new universe).
 
@@ -28,9 +30,9 @@ Each HA cluster includes a single active YBA instance and at least one standby Y
 
     The standby instance's Prometheus instance is federated to the active instance's Prometheus to constantly receive up to date metrics asynchronously.
 
-When you promote a standby instance to active, YBA restores your selected backup, and then attempts to demote the previous active instance to standby mode. If the previous active instance is unavailable, it has to be manually decommissioned.
+When you [promote a standby instance](../high-availability-promote/) to active, YBA restores your selected backup, and then attempts to demote the previous active instance to standby mode. If the previous active instance is unavailable, it has to be manually decommissioned.
 
-If you use the [YugabyteDB Kubernetes Operator](../anywhere-automation/yb-kubernetes-operator/) and deploy YBA across separate Kubernetes clusters, {{<tags/feature/ea idea="2460">}}[Operator HA](operator-high-availability/) synchronizes operator custom resources and secrets to the standby cluster during promotion.
+If you use the [YugabyteDB Kubernetes Operator](../anywhere-automation/yb-kubernetes-operator/) and deploy YBA across separate Kubernetes clusters, {{<tags/feature/ea idea="2460">}}[Operator HA](../operator-high-availability/) synchronizes operator custom resources and secrets to the standby cluster during promotion.
 
 ## Prerequisites
 
@@ -198,58 +200,6 @@ Upload the combined certificate to the trust store and try enabling certificate 
 
 To set up a single URL for signing in to YBA that points to the current active YBA, even after a switchover or failover, it is recommended to use an application (L7) load balancer. On the load balancer, set the health check URL for each HA instance to `https://<instance IP or DNS>/api/v1/ha_leader`. (Specify any custom port configuration if you changed the default 443 configuration.) Note that you may need to set the support origin URL for your YBA instance to the load balancer URL; this can be set during installation, refer to [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/installer/). Configure the load balancer to forward ports 443 for the YBA UI and 9090 for Prometheus.
 
-## Promote a standby instance to active
-
-You can make a standby instance active as follows:
-
-1. On the standby instance you want to promote, navigate to **Admin > High Availability > Replication Configuration** and click **Make Active**.
-
-1. Select the backup from which you want to restore (in most cases, you should choose the most recent backup) and enable **Confirm promotion**.
-
-    {{< warning title="Don't promote an old active backup" >}}
-Immediately after upgrading the active instance to a new version of YBA, older state backups of the active instance (that is, before it was upgraded) will still be available on the standby. These are not deleted until the standby is promoted at some point, or until they expire.
-
-Because these old backups are present, you need to be cautious promoting the standby in the time immediately following an upgrade.
-
-When possible, only promote a standby when both standby and active are on the same version, and use the most recent backup that you are confident was received after the active instance was upgraded.
-    {{< /warning >}}
-
-1. Click **Continue**. The restore takes a few seconds, after which expect to be signed out.
-
-1. Sign in using the credentials that you had configured on the previously active instance. If you are performing failover, you must sign in using your Super Admin account.
-
-In cases of failover, the previous active instance may be unavailable or unreachable during promotion. In this case, you must perform a force promotion that will promote the standby without demoting the active as per the following illustration:
-
-![Force promotion](/images/yp/high-availability/ha-force-promotion.png)
-
-Afterwards, follow the steps in [Failover](#failover) to ensure that the old active does not come back up or that it goes into standby mode when it does come up.
-
-You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, provider configurations, and so on.
-
-### Verify promotion
-
-After switching or failing over to the standby, verify that the old active YBA instance is in standby mode (switchover), or is no longer available (failover).
-
-If both YBA instances were to attempt to perform actions on a universe, it could have unpredictable side effects. It is critical to ensure that the old active instance is taken out of service or re-imaged as soon as possible if it is unavailable.
-
-YugabyteDB release archives are not synchronized between the active and standby instances. If any custom releases were added to the old active instance, you will need to add them to the new active instance again. The _Universe Release Files Missing_ alert will fire on any universes that are missing their corresponding release archives. If this alert fires, follow the steps in [How to Configure YugabyteDB Anywhere to provide Older, Hotfix, or Debug Builds](https://support.yugabyte.com/hc/en-us/articles/360054421952-How-to-configure-YugabyteDB-Anywhere-to-provide-Older-Hotfix-or-Debug-Builds).
-
-#### Switchover
-
-After a switchover, do the following:
-
-- [Verify that HA is functioning properly](#verify-ha).
-- If the old active instance is not in standby mode, there could be a communication issue from the new active to the old active instance. Follow the [setup instructions](#configure-active-and-standby-instances) to verify that certificates and ports are set up correctly.
-
-#### Failover
-
-After a failover, do the following:
-
-- If the old active instance is hard down, verify that there is no chance that it can come back and run YBA at a later point. It is recommended to re-image the server hosting the active instance.
-- If the old active instance does come back up, it should automatically go into standby mode. If it does not go into standby mode, you should manually demote it using the YBA API. Refer to [High Availability Workflows](https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/high-availability.ipynb) for an example.
-
-- If the old active instance has successfully switched to standby, [verify that HA is functioning properly](#verify-ha).
-
 ## Upgrade instances
 
 All instances involved in HA should use the same version of YugabyteDB Anywhere. This ensures that, in steady state operation, all instances run the same version of YugabyteDB Anywhere. You will receive alerts if a mismatch is detected between active and standby instances.
@@ -312,7 +262,7 @@ The following HA-related [alerts](../../alerts-monitoring/alert/) are automatica
 
 ## Limitations
 
-- No automatic failover. If the active instance fails, follow the steps in [Promote a standby instance to active](#promote-a-standby-instance-to-active).
+- No automatic failover. If the active instance fails, follow the steps in [Promote a standby instance to active](../high-availability-promote/#promote-a-standby-instance-to-active).
 - When performing failover, the first time you sign in after failover, you must use your Super Admin account.
 - Promotion will fail when HA is configured with an active instance at YBA version earlier than 2024.1, and a standby instance at version 2024.1 or later. It is not recommended to run in this configuration for an extended period. Reach out to {{% support-platform %}} if this is required.
 - If you are making API calls to YBA through custom automation, note that the [API token](../../anywhere-automation/#authentication) is different on the YBA active and standby until the standby has been promoted at least once to be an active instance. If you are using YBA with an API token, either generate a new token before every request, or perform a switchover after generating the API token (this process will have to be repeated when the API token is regenerated).

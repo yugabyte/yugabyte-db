@@ -7,7 +7,7 @@ linkTitle: Operator high availability
 menu:
   stable_yugabyte-platform:
     identifier: platform-operator-high-availability
-    parent: high-availability
+    parent: platform-high-availability
     weight: 45
 type: docs
 ---
@@ -16,7 +16,7 @@ type: docs
 
 Operator HA uses the same asynchronous backup and restore mechanism as YBA HA. Operator resources are included in the backups and restored automatically when a standby instance is promoted. In addition, improvements to YBA HA are automatically inherited by the operator, providing a unified experience for both platform state and operator-managed Kubernetes resources.
 
-Assuming you fulfill the prerequisites, operator HA is _automatically enabled_.
+Assuming you fulfill the prerequisites, Operator HA is _automatically enabled_.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ Before you can use Operator HA, ensure the following:
 - The [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) is enabled on each YBA instance in the HA cluster.
 - Each YBA instance in the HA cluster can reach the Kubernetes API server for its local cluster.
 
-## Multi-cluster environment
+## Overview
 
 Operator HA is designed for deployments where YBA instances run on _separate Kubernetes clusters_. This is common in [Multi-Cluster Services (MCS)](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) environments.
 
