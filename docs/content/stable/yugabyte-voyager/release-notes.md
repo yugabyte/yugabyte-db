@@ -17,6 +17,24 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.6.1 - June 9, 2026
+
+### Enhancement
+
+- Updated the bundled [YugabyteDB logical replication connector](../../additional-features/change-data-capture/using-logical-replication/) to version `dz.2.5.2.yb.2025.2.3`.
+
+### Bug fixes
+
+- Fixed an issue where [import data](../reference/data-migration/import-data/) could intermittently fail against multi-node YugabyteDB targets with a _syntax error at or near…_ error referencing a prepared-statement name.
+
+- Fixed an issue where migration assessment for PostgreSQL sources with read replicas could fail when [pg_stat_statements](../../additional-features/pg-extensions/extension-pgstatstatements/) was not enabled on all replicas. Voyager now checks its availability on each replica independently, instead of assuming replicas match the primary.
+
+- Fixed an issue where the [assess-migration](../reference/assess-migration/) progress display showed an inconsistent step count.
+
+- Fixed an issue where interrupting live migration could cause incorrect sequence restoration on the target after cutover.
+
+- Fixed an issue where [import data](../reference/data-migration/import-data/) could hang silently when `--adaptive-parallelism-max` was set below the default `parallel-jobs` value.
+
 ## v2026.5.2 - May 26, 2026
 
 ### Enhancements
