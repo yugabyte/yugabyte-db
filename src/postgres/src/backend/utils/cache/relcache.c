@@ -1791,6 +1791,8 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 
 	memcpy(TupleDescAttr(relation->rd_att, attp->attnum - 1), attp, ATTRIBUTE_FIXED_PART_SIZE);
 
+	populate_compact_attribute(relation->rd_att, attp->attnum - 1);
+
 	/* Update constraint/default info */
 	if (attp->attnotnull)
 		processing->constr->has_not_null = true;
@@ -1955,6 +1957,8 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 		pfree(constr);
 		relation->rd_att->constr = NULL;
 	}
+
+	TupleDescFinalize(relation->rd_att);
 
 	/* Fetch rules and triggers that affect this relation */
 	if (relation->rd_rel->relhasrules)

@@ -23,6 +23,9 @@
 #include "utils/fmgrprotos.h"
 #include "utils/rel.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 static TupleTableSlot *SampleNext(SampleScanState *node);
 static void tablesample_init(SampleScanState *scanstate);
 static TupleTableSlot *tablesample_getnext(SampleScanState *scanstate);
@@ -129,6 +132,7 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  RelationGetDescr(scanstate->ss.ss_currentRelation),
 						  table_slot_callbacks(scanstate->ss.ss_currentRelation),
+						  IsYBRelation(scanstate->ss.ss_currentRelation) ? 0 :
 						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*

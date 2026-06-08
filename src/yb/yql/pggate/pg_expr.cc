@@ -425,8 +425,10 @@ class PgTextColumnRef : public Base {
     // Find strlen() of STRING by right-trimming all '\0' characters.
     Slice text = data->Prefix(data_size - 1);
 
-    DCHECK(*text.cend() == '\0' && (text.empty() || !text.ends_with('\0')))
+    DCHECK_EQ(*text.cend(), '\0')
         << "Data received from DocDB does not have expected format";
+    DCHECK(kCollate || text.empty() || !text.ends_with('\0'))
+        << "Uncollated TEXT payload unexpectedly ends with '\\0'";
 
     if (kCollate) {
       text = DecodeCollationEncodedString(text);

@@ -2258,7 +2258,12 @@ YbWholeRowAttrRequired(Relation relation, CmdType operation)
 
 bool		yb_enable_create_with_table_oid = false;
 int			yb_index_state_flags_update_delay = 1000;
-bool		yb_enable_expression_pushdown = true;
+/*
+ * YB_TODO_PG19MERGE: forced false until YbGate's expression evaluator is brought
+ * up to date with PG19. The corresponding GUC entry is in the #if 0'd
+ * ConfigureNamesBool block so the AutoFlag doesn't override this initializer.
+ */
+bool		yb_enable_expression_pushdown = false;
 bool		yb_enable_distinct_pushdown = true;
 bool		yb_enable_index_aggregate_pushdown = true;
 bool		yb_enable_primary_key_decode_from_index = false;
@@ -6305,104 +6310,29 @@ YBComputeNonCSortKey(Oid collation_id, const char *value, int64_t bytes)
 	/*
 	 * We expect collation_id is a valid non-C collation.
 	 */
-	pg_locale_t locale = 0;
+	pg_locale_t locale = pg_newlocale_from_collation(collation_id);
 
-	if (collation_id != DEFAULT_COLLATION_OID)
-	{
-		locale = pg_newlocale_from_collation(collation_id);
-		Assert(locale);
-	}
-	static const int kTextBufLen = 1024;
+	Assert(locale);
+	Assert(!locale->collate_is_c);
+
 	Size		bsize = -1;
-	bool		is_icu_provider = false;
-	const int	buflen1 = bytes;
-	char	   *buf1 = palloc(buflen1 + 1);
-	char	   *buf2 = palloc(kTextBufLen);
-	int			buflen2 = kTextBufLen;
-
-	memcpy(buf1, value, bytes);
-	buf1[buflen1] = '\0';
-
-	/* YB_TODO_PG19MERGE: code below needs to be reworked. */
-	(void) locale;
-	(void) bsize;
-	(void) buflen2;
-#if 0
-#ifdef USE_ICU
-	int32_t		ulen = -1;
-	UChar	   *uchar = NULL;
-#endif
-
-#ifdef USE_ICU
-	/* When using ICU, convert string to UChar. */
-	if (locale && locale->provider == COLLPROVIDER_ICU)
-	{
-		is_icu_provider = true;
-		ulen = icu_to_uchar(&uchar, buf1, buflen1);
-	}
-#endif
+	Size		rsize = -1;
+	char	   *buf = NULL;
 
 	/*
-	 * Loop: Call strxfrm() or ucol_getSortKey(), possibly enlarge buffer,
-	 * and try again. Both of these functions have the result buffer
-	 * content undefined if the result did not fit, so we need to retry
-	 * until everything fits.
+	 * Call pg_strnxfrm to get the required buffer size.
 	 */
-	for (;;)
-	{
-#ifdef USE_ICU
-		if (locale && locale->provider == COLLPROVIDER_ICU)
-		{
-			bsize = ucol_getSortKey(locale->info.icu.ucol,
-									uchar, ulen,
-									(uint8_t *) buf2, buflen2);
-		}
-		else
-#endif
-#ifdef HAVE_LOCALE_T
-		if (locale && locale->provider == COLLPROVIDER_LIBC)
-			bsize = strxfrm_l(buf2, buf1, buflen2, locale->info.lt);
-		else
-#endif
-			bsize = strxfrm(buf2, buf1, buflen2);
+	bsize = pg_strnxfrm(NULL, 0, value, bytes, locale);
+	buf = palloc(bsize + 1);
 
-		if (bsize < buflen2)
-			break;
+	rsize = pg_strnxfrm(buf, bsize + 1, value, bytes, locale);
 
-		/*
-		 * Grow buffer and retry.
-		 */
-		pfree(buf2);
-		buflen2 = Max(bsize + 1, Min(buflen2 * 2, MaxAllocSize));
-		buf2 = palloc(buflen2);
-	}
+	if (rsize > bsize)
+		elog(ERROR, "pg_strnxfrm() returned unexpected result");
 
-#ifdef USE_ICU
-	if (uchar)
-		pfree(uchar);
-#endif
-#endif
-
-	pfree(buf1);
-	if (is_icu_provider)
-	{
-		Assert(bsize > 0);
-		/*
-		 * Each sort key ends with one \0 byte and does not contain any
-		 * other \0 byte. The terminating \0 byte is included in bsize.
-		 */
-		Assert(buf2[bsize - 1] == '\0');
-	}
-	else
-	{
-		Assert((ptrdiff_t) bsize >= 0);
-		/*
-		 * Both strxfrm and strxfrm_l return the length of the transformed
-		 * string not including the terminating \0 byte.
-		 */
-		Assert(buf2[bsize] == '\0');
-	}
-	return buf2;
+	Assert((ptrdiff_t) bsize >= 0);
+	Assert(buf[rsize] == '\0');
+	return buf;
 }
 
 void
@@ -6520,11 +6450,8 @@ YBIsCollationValidNonC(Oid collation_id)
 		   collation_id == C_COLLATION_OID);
 
 	bool		is_valid_non_c = (YBIsCollationEnabled() &&
-								  OidIsValid(collation_id));
-	/* YB_TODO_PG19MERGE: function doesn't exist*/
-#if 0
-								   && !lc_collate_is_c(collation_id));
-#endif
+								  OidIsValid(collation_id) &&
+								  !pg_newlocale_from_collation(collation_id)->collate_is_c);
 	return is_valid_non_c;
 }
 
@@ -6532,15 +6459,11 @@ bool
 YBRequiresCacheToCheckLocale(Oid collation)
 {
 	/*
-	 * lc_collate_is_c and lc_ctype_is_c have some basic checks for C locale.
-	 * If those checks fail to give an answer, then these functions check the
-	 * catalog cache. In DocDB, we cannot use the catalog cache - so we should
-	 * not push down collations where DocDB would need to access the cache to
-	 * get information about the locale.
-	 */
-	/*
-	 * YB_TODO_PG19MERGE: PG commit 51edc4ca54f826cfac012c7306eee479f07a5dc7
-	 * removed POSIX_COLLATION_OID
+	 * pg_newlocale_from_collation has fast-paths for C_COLLATION_OID and
+	 * DEFAULT_COLLATION_OID, but for any other valid collation OID, it checks
+	 * the catalog cache. In DocDB, we cannot use the catalog cache - so we
+	 * should not push down collations where DocDB would need to access the
+	 * cache to get information about the locale.
 	 */
 	return OidIsValid(collation) && collation != DEFAULT_COLLATION_OID
 		&& collation != C_COLLATION_OID;
@@ -7721,8 +7644,8 @@ YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
 					 */
 					AttrMap    *att_map = build_attrmap_by_name(RelationGetDescr(rel),
 																RelationGetDescr(rel),
-																false /* missing_ok */,
-																false /* yb_ignore_type_mismatch */);
+																false,
+																false /* yb_ignore_type_mismatch */ );
 
 					Relation	idx_rel =
 						index_open(con_form->conindid, AccessShareLock);

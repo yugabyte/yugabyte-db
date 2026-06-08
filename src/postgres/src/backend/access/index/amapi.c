@@ -45,7 +45,7 @@ GetIndexAmRoutine(Oid amhandler)
 	/* Assert that all required callbacks are present. */
 	Assert(routine->ambuild != NULL);
 	Assert(routine->ambuildempty != NULL);
-	Assert(routine->aminsert != NULL);
+	Assert(routine->aminsert != NULL || routine->yb_aminsert != NULL);
 	Assert(routine->ambulkdelete != NULL);
 	Assert(routine->amvacuumcleanup != NULL);
 	Assert(routine->amcostestimate != NULL);

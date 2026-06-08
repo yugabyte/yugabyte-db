@@ -5594,40 +5594,40 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 				}
 			}
 		}
+
+		/* For explicit-sort case, always use the more rigorous clause */
+		if (list_length(root->distinct_pathkeys) <
+			list_length(root->sort_pathkeys))
+		{
+			needed_pathkeys = root->sort_pathkeys;
+			/* Assert checks that parser didn't mess up... */
+			Assert(pathkeys_contained_in(root->distinct_pathkeys,
+										 needed_pathkeys));
+		}
+		else
+			needed_pathkeys = root->distinct_pathkeys;
+
+		path = cheapest_input_path;
+		if (!pathkeys_contained_in(needed_pathkeys, path->pathkeys))
+			path = (Path *) create_sort_path(root, distinct_rel,
+											 path,
+											 needed_pathkeys,
+											 -1.0);
+
+		/* YB: Ignore sort+uniq if cheapest_input_path is already distinct. */
+		if (!IsYugaByteEnabled() ||
+			!list_member_ptr(yb_distinct_paths, cheapest_input_path))
+		{
+			/* YB: Avoid adding UpperUniquePath twice. */
+			if (IsYugaByteEnabled() && IsA(path, UpperUniquePath))
+				path = ((UpperUniquePath *) path)->subpath;
+
+			add_path(distinct_rel, (Path *)
+					 create_upper_unique_path(root, distinct_rel, path,
+											  list_length(root->distinct_pathkeys),
+											  numDistinctRows));
+		}
 #endif
-
-		// /* For explicit-sort case, always use the more rigorous clause */
-		// if (list_length(root->distinct_pathkeys) <
-		// 	list_length(root->sort_pathkeys))
-		// {
-		// 	needed_pathkeys = root->sort_pathkeys;
-		// 	/* Assert checks that parser didn't mess up... */
-		// 	Assert(pathkeys_contained_in(root->distinct_pathkeys,
-		// 								 needed_pathkeys));
-		// }
-		// else
-		// 	needed_pathkeys = root->distinct_pathkeys;
-
-		// path = cheapest_input_path;
-		// if (!pathkeys_contained_in(needed_pathkeys, path->pathkeys))
-		// 	path = (Path *) create_sort_path(root, distinct_rel,
-		// 									 path,
-		// 									 needed_pathkeys,
-		// 									 -1.0);
-
-		// /* YB: Ignore sort+uniq if cheapest_input_path is already distinct. */
-		// if (!IsYugaByteEnabled() ||
-		// 	!list_member_ptr(yb_distinct_paths, cheapest_input_path))
-		// {
-		// 	/* YB: Avoid adding UpperUniquePath twice. */
-		// 	if (IsYugaByteEnabled() && IsA(path, UpperUniquePath))
-		// 		path = ((UpperUniquePath *) path)->subpath;
-
-		// 	add_path(distinct_rel, (Path *)
-		// 			 create_upper_unique_path(root, distinct_rel, path,
-		// 									  list_length(root->distinct_pathkeys),
-		// 									  numDistinctRows));
-		// }
 	}
 
 	/*
@@ -10743,7 +10743,7 @@ ybInitHintedUids(PlannerGlobal *glob)
 
 	List	   *nameList = NIL;
 
-	if (SplitIdentifierString(yb_hinted_uids, ',', &nameList))
+	if (yb_hinted_uids && SplitIdentifierString(yb_hinted_uids, ',', &nameList))
 	{
 		ListCell   *lc;
 

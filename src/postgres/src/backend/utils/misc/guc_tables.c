@@ -643,7 +643,7 @@ double		log_statement_sample_rate = 1.0;
 double		log_xact_sample_rate = 0;
 char	   *backtrace_functions;
 
-int			temp_file_limit = -1;
+int			temp_file_limit = 1024 * 1024; /* YB: changed default */
 
 int			num_temp_buffers = 1024;
 
@@ -888,5 +888,6 @@ const char *const config_type_names[] =
 StaticAssertDecl(lengthof(config_type_names) == (PGC_ENUM + 1),
 				 "array length mismatch");
 
+extern bool yb_non_ddl_txn_for_sys_tables_allowed;
 
 #include "utils/guc_tables.inc.c"

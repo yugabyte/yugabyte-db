@@ -1610,8 +1610,6 @@ setup_config(void)
 	if (chmod(path, pg_file_create_mode) != 0)
 		pg_fatal("could not change permissions of \"%s\": %m", path);
 
-	free(conflines);
-
 	/* Do not create pg_hba.conf in yugabyte */
 	if (!IsYugaByteGlobalClusterInitdb() && !IsYugaByteLocalNodeInitdb())
 	{
@@ -2285,14 +2283,15 @@ make_yugabyte(FILE *cmdfd)
 {
 	char	   *const *line;
 	char	  **lines;
-	static char *yugabyte_setup[] = {
-		"CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD $YB_PASSWORD;\n\n",
-		"CREATE DATABASE yugabyte $YB_OID;\n\n",
-		"COMMENT ON DATABASE yugabyte IS 'default administrative connection database';\n\n",
-		NULL,
-	};
 
-	lines = yugabyte_setup;
+	lines = (char **) pg_malloc(4 * sizeof(char *));
+	lines[0] = pg_strdup("CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE "
+						 "CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD "
+						 "$YB_PASSWORD ;\n\n");
+	lines[1] = pg_strdup("CREATE DATABASE yugabyte $YB_OID ;\n\n");
+	lines[2] = pg_strdup("COMMENT ON DATABASE yugabyte IS "
+						 "'default administrative connection database';\n\n");
+	lines[3] = NULL;
 
 	char		oidtok[MAXPGPATH] = "";
 
@@ -3468,7 +3467,12 @@ initialize_data_directory(void)
 
 	load_plpgsql(cmdfd);
 
-	enable_pg_stat_statements(cmdfd);
+	/*
+	 * YB_TODO_PG19MERGE: pg_stat_statements is not currently built in the
+	 * YB PG19 tree.
+	 */
+	/* enable_pg_stat_statements(cmdfd); */
+	(void) enable_pg_stat_statements; /* suppress unused warning */
 
 	/*
 	 * YB: we used to skip the call of vacuum_db() because we don't need

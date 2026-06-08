@@ -3655,6 +3655,13 @@
   options => 'xmloption_options',
 },
 
+{ name => 'yb_non_ddl_txn_for_sys_tables_allowed', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Enables the use of regular transactions for operating on system catalog tables in case a DDL transaction has not been started.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_non_ddl_txn_for_sys_tables_allowed',
+  boot_val => 'false',
+},
+
 { name => 'zero_damaged_pages', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Continues processing past damaged page headers.',
   long_desc => 'Detection of a damaged page header normally causes PostgreSQL to report an error, aborting the current transaction. Setting "zero_damaged_pages" to true causes the system to instead report a warning, zero out the damaged page, and continue processing. This behavior will destroy data, namely all the rows on the damaged page.',

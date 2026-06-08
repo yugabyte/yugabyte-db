@@ -1484,8 +1484,14 @@ create_index_path(PlannerInfo *root,
 	pathnode->yb_bitmap_idx_pushdowns = yb_bitmap_idx_pushdowns;
 	pathnode->indexorderbys = indexorderbys;
 	pathnode->indexorderbycols = indexorderbycols;
-	pathnode->indexscandir = rel->is_yb_relation && pathkeys == NIL ?
-		NoMovementScanDirection : indexscandir;
+	/*
+	 * YB_TODO_PG19MERGE: YB previously set NoMovementScanDirection here
+	 * pathnode->indexscandir = rel->is_yb_relation && pathkeys == NIL ?
+	 * NoMovementScanDirection : indexscandir;
+	 * PG19 added an assert in createplan.c
+	 * (Assert(indexscandir == Forward || Backward)) that rejects that.
+	 */
+	pathnode->indexscandir = indexscandir;
 
 	pathnode->yb_index_path_info.merge_scan_saop_cols =
 		yb_merge_scan_saop_cols;

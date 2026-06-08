@@ -25,6 +25,9 @@
 #include "nodes/nodeFuncs.h"
 #include "utils/rel.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 
 /*
  * It's sufficient to check varattno to identify the CTID variable, as any
@@ -420,6 +423,7 @@ ExecInitTidRangeScan(TidRangeScan *node, EState *estate, int eflags)
 	ExecInitScanTupleSlot(estate, &tidrangestate->ss,
 						  RelationGetDescr(currentRelation),
 						  table_slot_callbacks(currentRelation),
+						  IsYBRelation(currentRelation) ? 0 :
 						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*

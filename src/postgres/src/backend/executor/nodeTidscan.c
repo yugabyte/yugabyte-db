@@ -558,7 +558,7 @@ YbTidNext(TidScanState *node)
 		{
 			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_tss_aggrefs));
 
-			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual, 0 /* flags */);
+			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual, 0 /* flags */ );
 			slot = node->ss.ss_ScanTupleSlot;
 		}
 
@@ -765,6 +765,7 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 						  IsYBRelation(currentRelation) ?
 						  &TTSOpsVirtual :
 						  table_slot_callbacks(currentRelation),
+						  IsYBRelation(currentRelation) ? 0 :
 						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*

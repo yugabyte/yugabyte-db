@@ -142,7 +142,8 @@ Status DocPgPrepareExpr(
   char* expr_cstring = const_cast<char*>(expr_str.c_str());
   VLOG(1) << "Deserialize expr with version " << yb_expression_version << ": " << expr_cstring;
 
-  if (yb_expression_version != 11 && yb_expression_version != 15) {
+  if (yb_expression_version != 11 && yb_expression_version != 15 &&
+      yb_expression_version != 19) {
     return STATUS_FORMAT(InternalError, "Unsupported expression version: $0", version);
   }
 

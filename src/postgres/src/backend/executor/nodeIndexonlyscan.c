@@ -1126,7 +1126,7 @@ yb_agg_pushdown_init_scan_slot(IndexOnlyScanState *node)
 	 */
 	TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_ioss_aggrefs));
 
-	ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual, 0 /* flags */);
+	ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual, 0 /* flags */ );
 }
 
 /*

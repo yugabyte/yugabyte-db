@@ -126,11 +126,19 @@ CalculateFastPathLockShmemSize(void)
 
 	size = add_size(size, mul_size(TotalProcs, (fpLockBitsSize + fpRelIdSize)));
 
+	/*
+	 * YB_TODO_PG19MERGE: yb_too_many_conn used to piggyback on the
+	 * old catch-all PGProcShmemSize() budget that PG commit
+	 * c6d55714ba4c282dcf5fb5fe5ef2a5cad0b06e81 split up.
+	 * Give yb_too_many_conn its own ShmemRequestStruct in
+	 * ProcGlobalShmemRequest (or move it to an existing struct)
+	 * and drop the ShmemAlloc. Original YB line that lived here:
+	 *
+	 * size = add_size(size, sizeof(int));
+	 */
+
 	Assert(TotalProcs > 0);
 	Assert(size > 0);
-
-	/* yb_too_many_conn metric */
-	size = add_size(size, sizeof(int));
 
 	return size;
 }

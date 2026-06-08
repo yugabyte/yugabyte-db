@@ -50,6 +50,9 @@
 #include "utils/spccache.h"
 #include "utils/wait_event.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 static void BitmapTableScanSetup(BitmapHeapScanState *node);
 static TupleTableSlot *BitmapHeapNext(BitmapHeapScanState *node);
 static inline void BitmapDoneInitializingSharedState(ParallelBitmapHeapState *pstate);
@@ -440,6 +443,7 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  RelationGetDescr(currentRelation),
 						  table_slot_callbacks(currentRelation),
+						  IsYBRelation(currentRelation) ? 0 :
 						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*

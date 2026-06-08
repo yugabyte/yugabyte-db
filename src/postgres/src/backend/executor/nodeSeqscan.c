@@ -258,6 +258,7 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  RelationGetDescr(scanstate->ss.ss_currentRelation),
 						  table_slot_callbacks(scanstate->ss.ss_currentRelation),
+						  IsYBRelation(scanstate->ss.ss_currentRelation) ? 0 :
 						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*

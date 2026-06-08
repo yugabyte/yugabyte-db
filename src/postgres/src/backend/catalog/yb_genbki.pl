@@ -144,11 +144,9 @@ foreach my $header (@ARGV)
 
 		if ($index->{is_unique})
 		{
-			$index->{index_decl} =~ /on (\w+) using/;
-			my $tblname = $1;
 			push @system_constraints,
 			  sprintf "ALTER TABLE %s ADD %s USING INDEX %s;",
-			  $tblname,
+			  $index->{table_name},
 			  $index->{is_pkey} ? "PRIMARY KEY" : "UNIQUE",
 			  $index->{index_name};
 		}

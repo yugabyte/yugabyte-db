@@ -161,8 +161,8 @@ double		random_page_cost = DEFAULT_RANDOM_PAGE_COST;
 double		cpu_tuple_cost = DEFAULT_CPU_TUPLE_COST;
 double		cpu_index_tuple_cost = DEFAULT_CPU_INDEX_TUPLE_COST;
 double		cpu_operator_cost = DEFAULT_CPU_OPERATOR_COST;
-double		parallel_tuple_cost = DEFAULT_PARALLEL_TUPLE_COST;
-double		parallel_setup_cost = DEFAULT_PARALLEL_SETUP_COST;
+double		parallel_tuple_cost = YB_DEFAULT_PARALLEL_TUPLE_COST; /* YB: changed PG default */
+double		parallel_setup_cost = YB_DEFAULT_PARALLEL_SETUP_COST; /* YB: changed PG default */
 
 /* Following parameters are used by the older heuristics-based cost model */
 double		yb_network_fetch_cost = YB_DEFAULT_FETCH_COST;
@@ -215,7 +215,7 @@ bool		enable_mergejoin = true;
 bool		enable_hashjoin = true;
 bool		enable_gathermerge = true;
 bool		enable_partitionwise_join = false;
-bool		enable_partitionwise_aggregate = false;
+bool		enable_partitionwise_aggregate = true; /* YB: changed to true */
 bool		enable_parallel_append = true;
 bool		enable_parallel_hash = true;
 bool		enable_partition_pruning = true;
@@ -3840,8 +3840,10 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			clamp_row_est(path->jpath.path.rows / parallel_divisor);
 	}
 
-	// YB_TODO_PG19MERGE: upstream PG commit e22253467942fdb100087787c3e1e3a8620c54b2
-	// removed the disable node cost penalty below. Check for any YB changes required.
+	/*
+	 * YB_TODO_PG19MERGE: upstream PG commit e22253467942fdb100087787c3e1e3a8620c54b2
+	 * removed the disable node cost penalty below. Check for any YB changes required.
+	 */
 #if 0
 	/*
 	 * We could include disable_cost in the preliminary estimate, but that

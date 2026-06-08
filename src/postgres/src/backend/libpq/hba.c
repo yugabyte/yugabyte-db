@@ -1009,7 +1009,7 @@ yb_tokenize_line(const char *filename,
 		List	   *current_field;
 
 		current_field = next_field_expand(filename, &lineptr,
-										  elevel, 0 /* depth */, &err_msg);
+										  elevel, 0 /* depth */ , &err_msg);
 		/* add field to line, unless we are at EOL or comment start */
 		if (current_field != NIL)
 			current_line = lappend(current_line, current_field);
@@ -1020,8 +1020,9 @@ yb_tokenize_line(const char *filename,
 	{
 		TokenizedAuthLine *tok_line;
 
-		tok_line = (TokenizedAuthLine *) palloc(sizeof(TokenizedAuthLine));
+		tok_line = (TokenizedAuthLine *) palloc0(sizeof(TokenizedAuthLine));
 		tok_line->fields = current_line;
+		tok_line->file_name = pstrdup(filename);
 		tok_line->line_num = line_number;
 		tok_line->raw_line = pstrdup(rawline);
 		tok_line->err_msg = err_msg;

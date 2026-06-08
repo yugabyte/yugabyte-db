@@ -778,6 +778,13 @@ qpmReferencesCatalogRelation(QueryDesc *queryDesc)
 static void
 qpmProcess(QueryDesc *queryDesc)
 {
+	/*
+	 * YB_TODO_PG19MERGE: can be removed once the TODO in ipci.c is addressed
+	 * and YbQpmShmemInit is called.
+	 */
+	if (qpm == NULL || qpmHashTable == NULL || qpmLock == NULL || qpmLruClock == NULL)
+		return;
+
 	if (YbQpmIsEnabled() &&
 		!qpmUnderUtility &&
 		(qpmNestedLevel == 1 || yb_qpm_configuration.track == YB_QPM_TRACK_ALL) &&

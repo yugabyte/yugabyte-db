@@ -655,7 +655,7 @@ do_analyze_rel(Relation onerel, const VacuumParams *params,
 		BlockNumber relallvisible = 0;
 		BlockNumber relallfrozen = 0;
 
-		if (RELKIND_HAS_STORAGE(onerel->rd_rel->relkind))
+		if (RELKIND_HAS_STORAGE(onerel->rd_rel->relkind) && !IsYBRelation(onerel))
 			visibilitymap_count(onerel, &relallvisible, &relallfrozen);
 
 		/*
