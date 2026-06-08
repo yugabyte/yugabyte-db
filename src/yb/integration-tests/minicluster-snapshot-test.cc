@@ -108,6 +108,8 @@ DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb {
 namespace tserver {
@@ -860,6 +862,59 @@ TEST_F(PgCloneTest, CloneVectorIndex) {
   }
   LOG(INFO) << "Drop second clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
+}
+
+// Test fixture that enables object locking for table locks. This is required to reproduce GH-27309
+// because DROP TABLE only routes through the master's global object lock manager when object
+// locking is enabled.
+class PgCloneObjectLocksTest : public PgCloneInitiallyEmptyDBTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgCloneInitiallyEmptyDBTest::SetUp();
+  }
+};
+
+TEST_F(PgCloneObjectLocksTest, DropTableInCloneWithVectorIndex) {
+  ASSERT_OK(source_conn_->Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(source_conn_->Execute(
+      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(2))"));
+  ASSERT_OK(source_conn_->Execute(
+      "CREATE INDEX test_vi ON test USING ybhnsw (embedding vector_l2_ops)"));
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0, $0]')", i));
+  }
+
+  LOG(INFO) << "Creating clone of source database";
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+
+  LOG(INFO) << "Verifying the clone can read via the vector index";
+  {
+    auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto row = ASSERT_RESULT(target_conn.FetchAllAsString(
+        "SELECT id FROM test ORDER BY embedding <-> '[3.9, 3.9]' LIMIT 3"));
+    ASSERT_EQ(row, "4; 3; 5");
+  }
+
+  // The actual reproduction: dropping the table in the clone. Without the fix this hangs until the
+  // shared-memory exchange deadline (multiple minutes). Bound the wait via statement_timeout so a
+  // regression fails fast instead of stalling the test runner.
+  LOG(INFO) << "Dropping the table from the clone";
+  {
+    auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    ASSERT_OK(target_conn.Execute("SET statement_timeout = '60s'"));
+    ASSERT_OK(target_conn.Execute("DROP TABLE test"));
+  }
+
+  // Confirm the namespace itself can be cleaned up afterwards.
+  LOG(INFO) << "Dropping the clone database";
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+
+  // Source data should remain intact.
+  auto rows = ASSERT_RESULT(source_conn_->FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(rows, 10);
 }
 
 TEST_F(PgCloneTest, CloneWithAlterDatabaseSet) {

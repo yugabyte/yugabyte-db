@@ -1420,6 +1420,7 @@ Status TSTabletManager::DoApplyCloneTablet(
       source_table->table_type,
       /* Fixed by restore, but we need it to get partition_schema so might as well set it. */
       target_schema,
+      // TODO(GH31935): this may not be fixed in the case of vector indexes.
       *source_table->index_map, /* fixed by restore */
       std::move(target_table_index_info),
       source_table->schema_version, /* fixed by restore */
