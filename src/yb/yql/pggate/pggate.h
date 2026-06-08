@@ -370,6 +370,8 @@ class PgApiImpl {
 
   Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
 
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id);
+
   Result<YbcPgColumnInfo> GetColumnInfo(YbcPgTableDesc table_desc,
                                         int16_t attr_number);
 
