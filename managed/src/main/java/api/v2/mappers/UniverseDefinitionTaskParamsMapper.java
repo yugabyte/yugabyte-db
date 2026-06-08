@@ -11,6 +11,7 @@ import api.v2.models.NodeDetails.MasterStateEnum;
 import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseInfo;
+import api.v2.models.UniverseSettings;
 import api.v2.models.UniverseSpec;
 import api.v2.models.YCQLSpec;
 import api.v2.models.YSQLSpec;
@@ -157,6 +158,7 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "encryptionAtRestSpec", source = "encryptionAtRestConfig")
   @Mapping(target = "encryptionInTransitSpec", source = ".")
   @Mapping(target = "networkingSpec.communicationPorts", source = "communicationPorts")
+  @Mapping(target = "universeSettings", source = "universeSettings")
   @Mapping(target = "ysql", source = ".")
   @Mapping(target = "ycql", source = ".")
   UniverseSpec toV2UniverseSpec(UniverseDefinitionTaskParams v1UniverseTaskParams);
@@ -170,6 +172,7 @@ public interface UniverseDefinitionTaskParamsMapper {
   UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
       UniverseCreateSpec universeCreateSpec);
 
+  @Mapping(target = "universeSettings", source = "universeSettings")
   UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromEditSpec(
       UniverseEditSpec universeEditSpec,
       @MappingTarget UniverseDefinitionTaskParams v1UniverseDefinitionTaskParams);
@@ -183,6 +186,12 @@ public interface UniverseDefinitionTaskParamsMapper {
   UniverseInfo toV2UniverseInfo(UniverseDefinitionTaskParams v1UniverseTaskParams);
 
   // below methods are used implicitly to generate other mapping
+
+  UniverseSettings toV2UniverseSettings(
+      UniverseDefinitionTaskParams.UniverseSettings universeSettings);
+
+  UniverseDefinitionTaskParams.UniverseSettings toV1UniverseSettings(
+      UniverseSettings universeSettings);
 
   @ValueMappings({
     @ValueMapping(target = "X86_64", source = "x86_64"),

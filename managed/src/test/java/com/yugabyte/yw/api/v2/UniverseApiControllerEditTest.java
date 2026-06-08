@@ -37,6 +37,7 @@ import com.yugabyte.yba.v2.client.models.PlacementRegion;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
 import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
+import com.yugabyte.yba.v2.client.models.UniverseSettings;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.Common;
@@ -155,7 +156,10 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .numNodes(primaryClusterSpec.getNumNodes() + incNumNodesBy)
             .placementSpec(new ClusterPlacementSpec().cloudList(List.of(newPlacementCloud)));
     UniverseEditSpec universeEditSpec =
-        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
     // run the edit universe
     runEditUniverseV2(universeEditSpec);
   }

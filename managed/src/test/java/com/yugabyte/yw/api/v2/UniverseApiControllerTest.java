@@ -33,6 +33,7 @@ import com.yugabyte.yba.v2.client.models.UniverseDeleteSpec;
 import com.yugabyte.yba.v2.client.models.UniverseListApiFilter;
 import com.yugabyte.yba.v2.client.models.UniversePagedQuerySpec;
 import com.yugabyte.yba.v2.client.models.UniversePagedResp;
+import com.yugabyte.yba.v2.client.models.UniverseSettings;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
@@ -368,6 +369,34 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     assertEquals(Integer.valueOf(300), userIntent.getDeviceInfoForNode(azTserverNode).volumeSize);
 
     validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
+  }
+
+  @Test
+  public void testCreateUniverseV2WithUniverseSettings() throws ApiException, IOException {
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+    universeCreateSpec.getSpec().universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    assertThat(createTask.getTaskUuid(), is(fakeTaskUUID));
+    ArgumentCaptor<UniverseDefinitionTaskParams> v1CreateParamsCapture =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), v1CreateParamsCapture.capture());
+
+    Universe dbUniverse = Universe.getOrBadRequest(createTask.getResourceUuid());
+    assertThat(getExpertMode(dbUniverse), is(true));
+    assertThat(
+        api.getUniverse(customer.getUuid(), createTask.getResourceUuid())
+            .getSpec()
+            .getUniverseSettings()
+            .getExpertMode(),
+        is(true));
   }
 
   @Test

@@ -2575,6 +2575,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -5474,6 +5477,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -8616,6 +8622,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -9447,6 +9456,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -10987,6 +10999,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -11739,6 +11754,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -16573,6 +16591,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -17267,6 +17288,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -18335,6 +18359,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -19185,6 +19212,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -20742,6 +20772,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -23205,6 +23238,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -24371,6 +24407,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -25714,6 +25753,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -26407,6 +26449,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -27243,6 +27288,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -27902,6 +27950,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -28560,6 +28611,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -29323,6 +29377,14 @@
       },
       "type" : "object"
     },
+    "UniverseSettings" : {
+      "properties" : {
+        "expertMode" : {
+          "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
     "UnusedIndexFinderResponse" : {
       "properties" : {
         "current_database" : {
@@ -29727,6 +29789,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -30958,6 +31023,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
