@@ -770,11 +770,17 @@ Tablet::Tablet(const TabletInitData& data)
         data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_),
         data.parent_mem_tracker);
     if (data.waiting_txn_registry) {
+      auto wq_token =
+          DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL);
+#ifdef __linux__
+      if (data.wait_queue_cgroup) {
+        wq_token->SetTaskCgroup(data.wait_queue_cgroup);
+      }
+#endif
       transaction_participant_->SetWaitQueue(std::make_unique<docdb::WaitQueue>(
-        transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
-        client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_),
-        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL),
-        data.messenger));
+          transaction_participant_.get(), metadata_->fs_manager()->uuid(),
+          data.waiting_txn_registry, client_future_, clock(),
+          DCHECK_NOTNULL(tablet_metrics_entity_), std::move(wq_token), data.messenger));
     }
   }
 

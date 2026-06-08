@@ -253,6 +253,11 @@ DEFINE_RUNTIME_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndex
     "Timeout for BackfillIndex RPCs from client to master.");
 TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 
+DEFINE_NON_RUNTIME_int32(TEST_yb_client_num_callback_threads, 0,
+    "When > 0, overrides the YBClient callback threadpool size. "
+    "Used in tests that need server_clientcb threads to actually process callbacks.");
+TAG_FLAG(TEST_yb_client_num_callback_threads, unsafe);
+
 DEFINE_RUNTIME_int32(ycql_num_tablets, -1,
     "The number of tablets per YCQL table. Default value is -1. "
     "Colocated tables are not affected. "
@@ -491,6 +496,9 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
   c->data_->wait_for_leader_election_on_init_ = data_->wait_for_leader_election_on_init_;
 
   auto callback_threadpool_size = data_->threadpool_size_;
+  if (callback_threadpool_size == 0 && FLAGS_TEST_yb_client_num_callback_threads > 0) {
+    callback_threadpool_size = FLAGS_TEST_yb_client_num_callback_threads;
+  }
   if (callback_threadpool_size == YBClientBuilder::Data::kUseNumReactorsAsNumThreads) {
     callback_threadpool_size = c->data_->messenger_->num_reactors();
   }
@@ -2530,6 +2538,27 @@ rpc::ProxyCache& YBClient::proxy_cache() const {
 
 ThreadPool *YBClient::callback_threadpool() {
   return data_->use_threadpool_for_callbacks_ ? data_->threadpool_.get() : nullptr;
+}
+
+void YBClient::SetCallbackCgroupProvider(std::function<Cgroup*(uint64_t)> provider) {
+  data_->callback_cgroup_provider_ = std::move(provider);
+}
+
+ThreadPoolToken* YBClient::GetOrCreateCallbackToken(uint64_t tag) {
+  if (!tag || !data_->callback_cgroup_provider_) {
+    return nullptr;
+  }
+  auto* cgroup = data_->callback_cgroup_provider_(tag);
+  if (!cgroup) {
+    return nullptr;
+  }
+  std::lock_guard lock(data_->per_tag_tokens_mutex_);
+  auto [it, inserted] = data_->per_tag_tokens_.try_emplace(tag);
+  if (inserted) {
+    it->second = data_->threadpool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+    it->second->SetTaskCgroup(cgroup);
+  }
+  return it->second.get();
 }
 
 const std::string& YBClient::proxy_uuid() const {

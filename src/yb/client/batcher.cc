@@ -74,6 +74,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
@@ -82,6 +83,10 @@
 // When this flag is set to false and we have separate errors for operation, then batcher would
 // report IO Error status. Otherwise we will try to combine errors from separate operation to
 // status of batch. Useful in tests, when we don't need complex error analysis.
+DEFINE_test_flag(int32, slowdown_batcher_callback_ms, 0,
+    "Slow down Batcher::Run() by this many milliseconds. Used to observe the "
+    "server_clientcb thread in its per-DB cgroup during integration tests.");
+
 DEFINE_test_flag(bool, combine_batcher_errors, false,
                  "Whether combine errors into batcher status.");
 DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_probability, 0.0,
@@ -217,6 +222,9 @@ void Batcher::FlushFinished() {
 }
 
 void Batcher::Run() {
+  if (FLAGS_TEST_slowdown_batcher_callback_ms > 0) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_batcher_callback_ms));
+  }
   flush_callback_(combined_error_);
   flush_callback_ = StatusFunctor();
 }
@@ -224,8 +232,19 @@ void Batcher::Run() {
 void Batcher::RunCallback() {
   VLOG_WITH_PREFIX_AND_FUNC(4) << combined_error_;
 
-  if (!client_->callback_threadpool() ||
-      !client_->callback_threadpool()->Submit(shared_from_this()).ok()) {
+  auto* pool = client_->callback_threadpool();
+  if (!pool) {
+    Run();
+    return;
+  }
+  auto* token = client_->GetOrCreateCallbackToken(pool_tag_);
+  Status submit_status;
+  if (token) {
+    submit_status = token->Submit(shared_from_this());
+  } else {
+    submit_status = pool->Submit(shared_from_this());
+  }
+  if (!submit_status.ok()) {
     Run();
   }
 }
