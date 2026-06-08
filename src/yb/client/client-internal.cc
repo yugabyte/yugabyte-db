@@ -3274,6 +3274,10 @@ void YBClient::Data::Shutdown() {
     messenger_holder_->Shutdown();
   }
   if (threadpool_) {
+    {
+      std::lock_guard lock(per_tag_tokens_mutex_);
+      per_tag_tokens_.clear();
+    }
     threadpool_->Shutdown();
     // Abort all in-progress rpcs using handle leader_master_rpc_.
     rpc::RpcCommandPtr rpc_to_abort = nullptr;
