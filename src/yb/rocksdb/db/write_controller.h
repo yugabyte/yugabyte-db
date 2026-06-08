@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 
 namespace rocksdb {
@@ -29,8 +30,9 @@ class WriteControllerToken;
 
 // WriteController is controlling write stalls in our write code-path. Write
 // stalls happen when compaction can't keep up with write rate.
-// All of the methods here (including WriteControllerToken's destructors) need
-// to be called while holding DB mutex
+// Most methods (GetDelay, token creation/destruction) must be called while
+// holding DB mutex. IsStopped() and NeedsDelay() are safe to call without
+// the mutex since the counters they read are atomic.
 class WriteController {
  public:
   explicit WriteController(uint64_t _delayed_write_rate = 1024u * 1024u * 32u)
@@ -58,7 +60,8 @@ class WriteController {
 
   // these three metods are querying the state of the WriteController
   bool IsStopped() const;
-  bool NeedsDelay() const { return total_delayed_ > 0; }
+  // This function may be called while NOT holding the DB mutex.
+  bool NeedsDelay() const { return total_delayed_.load(std::memory_order_acquire) > 0; }
   bool NeedSpeedupCompaction() const {
     return IsStopped() || NeedsDelay() || total_compaction_pressure_ > 0;
   }
@@ -81,8 +84,8 @@ class WriteController {
   friend class DelayWriteToken;
   friend class CompactionPressureToken;
 
-  int total_stopped_;
-  int total_delayed_;
+  std::atomic<int> total_stopped_;
+  std::atomic<int> total_delayed_;
   int total_compaction_pressure_;
   uint64_t bytes_left_;
   uint64_t last_refill_time_;
