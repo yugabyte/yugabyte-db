@@ -118,7 +118,7 @@ In versions earlier than v2026.1, YugabyteDB logical replication differed from P
 
 Starting in v2026.1, with implicit publication changes enabled by default, any change to a publication is reflected in the logical replication polling tables list at the correct commit time. No events from newly added tables are missed, and YugabyteDB behavior matches PostgreSQL with regard to reflecting publication changes.
 
-This feature applies only to the logical replication model of CDC. Its purpose is to bring YugabyteDB logical replication to parity with PostgreSQL when reflecting changes made to publication objects. In versions earlier than v2026.1, changes to a publication were reflected only after a refresh interval. Any events written to a newly added table before that interval would not be streamed. Starting in v2026.1, regardless of lag, a logical replication stream detects publication changes at the correct point in time and streams all events from the altered publication from that point forward.
+This feature applies only to the logical replication model of CDC. With this, regardless of lag, a logical replication stream detects publication changes at the correct point in time and streams all events from the altered publication from that point forward.
 
 For architectural details, see [Publication change detection](../../../../architecture/docdb-replication/cdc-logical-replication/#publication-change-detection) in the logical replication architecture documentation.
 
