@@ -267,7 +267,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Combine the existing nodes with new non-primary (read-only / add-on) cluster nodes.
       universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
     }
-
+    if (taskParams.universeSettings != null) {
+      universeDetails.universeSettings = taskParams.universeSettings;
+    }
     universe.setUniverseDetails(universeDetails);
   }
 

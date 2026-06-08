@@ -221,6 +221,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     boolean isNewUI = isNewUI();
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
+    JsonNode dbUniverseJson = Json.toJson(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // inherit RR cluster properties from primary cluster in given edit spec
     UniverseSpec v2Universe =
@@ -249,6 +250,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+    for (Cluster cluster : v1Params.clusters) {
+      if (!cluster.userIntent.dedicatedNodes) {
+        // Since in V2 API is based on partial updates,
+        // we cannot detect the case when these fields are removed (during dedicated mode switch)
+        // Keeping these fields will lead to error in validation.
+        cluster.userIntent.masterInstanceType = null;
+        cluster.userIntent.masterDeviceInfo = null;
+      }
+    }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec
@@ -293,6 +303,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         CustomerTask.TaskType.Update,
         dbUniverse.getName(),
         CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, v1Params, null));
+    // Additional audit call so that old UI can show changes for edit operation.
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            dbUniverse.getUniverseUUID().toString(),
+            Audit.ActionType.Update,
+            Json.toJson(v1Params),
+            taskUUID,
+            dbUniverseJson);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 
@@ -309,10 +329,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     v1Params.currentClusterType = ClusterType.ASYNC;
     // to construct the new v1 cluster, start with a copy of primary cluster
     Cluster primaryCluster = dbUniverse.getUniverseDetails().getPrimaryCluster();
-    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent);
+    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent.clone());
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
+    if (!newReadReplica.userIntent.dedicatedNodes) {
+      // Copied from a dedicated primary; clear master fields for non-dedicated RR.
+      newReadReplica.userIntent.masterInstanceType = null;
+      newReadReplica.userIntent.masterDeviceInfo = null;
+    }
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);

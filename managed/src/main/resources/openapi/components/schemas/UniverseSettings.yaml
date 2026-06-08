@@ -1,0 +1,9 @@
+title: UniverseSettings
+description: Universe-level settings stored on UniverseDefinitionTaskParams. Part of UniverseSpec.
+type: object
+properties:
+  expert_mode:
+    description: Whether expert mode was used when configuring this Universe.
+    type: boolean
+    example: false
+    default: false

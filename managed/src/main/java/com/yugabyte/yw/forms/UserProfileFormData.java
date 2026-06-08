@@ -29,6 +29,11 @@ public class UserProfileFormData {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
   private Boolean newUniverseUiEnabled = true;
 
+  @ApiModelProperty(
+      value = "YbaApi Internal. Whether the new UI tour was completed by particular user")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  private Boolean newUniverseUiTourCompleted;
+
   public String getPassword() {
     return password;
   }
@@ -67,5 +72,13 @@ public class UserProfileFormData {
 
   public void setNewUniverseUiEnabled(Boolean newUniverseUiEnabled) {
     this.newUniverseUiEnabled = newUniverseUiEnabled;
+  }
+
+  public Boolean getNewUniverseUiTourCompleted() {
+    return newUniverseUiTourCompleted;
+  }
+
+  public void setNewUniverseUiTourCompleted(Boolean newUniverseUiTourCompleted) {
+    this.newUniverseUiTourCompleted = newUniverseUiTourCompleted;
   }
 }

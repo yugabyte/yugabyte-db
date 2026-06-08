@@ -65,7 +65,7 @@
     x-yba-api-audit:
       auditTargetType: Universe
       auditTargetId: uniUUID.toString()
-      auditActionType: Update
+      auditActionType: UpdateClusters
       taskUuid: obj.getTaskUuid()
     x-yba-api-authz:
       - requiredPermission:
