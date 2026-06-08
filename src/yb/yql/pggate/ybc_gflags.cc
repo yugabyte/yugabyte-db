@@ -87,8 +87,7 @@ DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching, "2026_02");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching_connect_higher_version, "2026_02");
 
-DEFINE_NON_RUNTIME_PREVIEW_string(
-    ysql_conn_mgr_alter_guc_adoption_strategy, "fluctuating",
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(string, alter_guc_adoption_strategy, "gradual",
     "Defines strategy used by connection manager to adopt settings of ALTER statements modifying "
     "GUCs. The possible values are 'fluctuating', 'gradual' and 'connection_static'. 'fluctuating'"
     "means no handling is done, 'gradual' means existing sessions are gradually shifted to newer "
@@ -96,8 +95,7 @@ DEFINE_NON_RUNTIME_PREVIEW_string(
     "existing sessions will never see new GUC settings. In 'gradual' and 'connection_static' "
     "modes, new sessions will always see effects of ALTERs executed before they were created");
 
-DEFINE_NON_RUNTIME_PREVIEW_int32(
-    ysql_conn_mgr_alter_guc_stale_backend_ttl_ms, -1,
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(int32, alter_guc_stale_backend_ttl_ms, 60000,
     "TTL of backends which don't have latest settings of ALTER GUC commands. When set to a "
     "positive value, stale backends will be terminated uniformly till the TTL period after "
     "execution of ALTER. -1 means that no action is taken on stale backends. 0 means that stale "

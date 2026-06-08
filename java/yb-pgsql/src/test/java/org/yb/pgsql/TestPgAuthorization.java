@@ -22,6 +22,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.MiniYBClusterBuilder;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -57,14 +58,21 @@ public class TestPgAuthorization extends BasePgSQLTest {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_hba_conf", CUSTOM_PG_HBA_CONFIG);
     if(isTestRunningWithConnectionManager()) {
-       flags.put("allowed_preview_flags_csv",
-                "ysql_conn_mgr_alter_guc_adoption_strategy,"
-                + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
       flags.put("enable_ysql_conn_mgr", "true");
       flags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
       flags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", "-1");
     }
     return flags;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    // Since BasePgSQLTest is setting the warmup mode to random, we need to
+    // overwrite the flag to none here
+    if (isTestRunningWithConnectionManager()) {
+      builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+    }
   }
 
   @Test
