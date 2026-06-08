@@ -130,7 +130,7 @@ public class PlatformInstanceController extends AuthenticatedController {
               // promotion.
               replicationManager.saveLocalHighAvailabilityConfig(config);
               // Sync instances immediately after being added
-              replicationManager.oneOffSync();
+              replicationManager.syncNewInstance(i);
               return i;
             });
     auditService()
