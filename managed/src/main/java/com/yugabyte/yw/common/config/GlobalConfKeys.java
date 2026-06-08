@@ -1826,15 +1826,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Duration to start notifying about expiry before node agent server cert actually expires",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> nodeAgentDisableConfigureServer =
-      new ConfKeyInfo<>(
-          "yb.node_agent.disable_configure_server",
-          ScopeType.GLOBAL,
-          "Disable Node Agent Configure Server",
-          "Disable server configuration RPCs in node agent. Defaults to ansible if it is"
-              + " enabled.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> nodeAgentEnableMessageCompression =
       new ConfKeyInfo<>(
           "yb.node_agent.enable_message_compression",
@@ -1931,22 +1922,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enable YBC Background Upgrade",
           "Enable background upgrade for YBC.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> enableSystemdDebugLogging =
-      new ConfKeyInfo<>(
-          "yb.ansible.systemd_debug",
-          ScopeType.GLOBAL,
-          "Enable Systemd Debug Logging",
-          "Enable systemd debug logging for systemctl service management commands.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> ansibleKeepRemoteFiles =
-      new ConfKeyInfo<>(
-          "yb.ansible.keep_remote_files",
-          ScopeType.GLOBAL,
-          "Keep Remote Files from an ansible run",
-          "Keep remote files after ansible run for debugging.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> skipRuntimeGflagValidation =

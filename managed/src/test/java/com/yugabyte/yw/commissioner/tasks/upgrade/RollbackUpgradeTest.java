@@ -388,7 +388,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         "2.21.0.0-b1",
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(37)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(15)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -435,7 +435,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         "2.21.0.0-b1",
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(33)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(15)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -478,9 +478,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     mockDBServerVersion(
         "2.21.0.0-b2", masterTserverNodesCount - 1, "2.21.0.0-b1", masterTserverNodesCount + 1);
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    // 4 download + 4x3 (stop/config/start tserver) + 3x3 (stop/config/start master)
-    // + 1x2 (stop inactive master + config)
-    verify(mockNodeManager, times(29)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =

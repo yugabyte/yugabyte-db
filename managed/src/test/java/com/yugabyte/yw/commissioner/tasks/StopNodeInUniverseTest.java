@@ -70,9 +70,11 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private YBClient mockClient = mock(YBClient.class);
 
+  private Region region;
+
   @Before
   public void setUp() {
-    Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
+    region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -83,6 +85,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
     defaultUniverse = createUniverse(defaultCustomer.getId());
     defaultUniverse =
         Universe.saveDetails(
@@ -556,7 +560,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
-    verify(mockNodeManager, times(13)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(2)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -582,6 +586,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "2.16.7.0-b1";
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             ClusterType.PRIMARY,
@@ -610,7 +617,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
-    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(1)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -627,6 +634,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "2.16.7.0-b1";
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
     universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),
@@ -644,7 +654,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
-    verify(mockNodeManager, times(2)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(1)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -663,6 +673,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "2.16.7.0-b1";
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             ClusterType.PRIMARY,
@@ -693,7 +706,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(1)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -744,7 +757,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
-    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(1)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -772,6 +785,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "2.16.7.0-b1";
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             ClusterType.PRIMARY,

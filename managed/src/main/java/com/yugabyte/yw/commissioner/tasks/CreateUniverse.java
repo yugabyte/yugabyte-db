@@ -66,18 +66,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     if (isFirstTry) {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
-      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      Customer customer = Customer.get(universe.getCustomerId());
-      if (!confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)) {
-        for (Cluster cluster : taskParams().clusters) {
-          // Local provider can still use cron.
-          if (!cluster.userIntent.useSystemd
-              && cluster.userIntent.providerType != CloudType.local) {
-            log.warn(
-                "cron based universe cannot be created with YNP, will fallback to ansible "
-                    + "provisioning");
-            break;
-          }
+      for (Cluster cluster : taskParams().clusters) {
+        // Local provider can still use cron.
+        if (!cluster.userIntent.useSystemd && cluster.userIntent.providerType != CloudType.local) {
+          log.warn(
+              "cron based universe cannot be created with YNP, will fallback to ansible "
+                  + "provisioning");
+          break;
         }
       }
     }
@@ -284,8 +279,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Start ybc process on all the nodes
       if (taskParams().isEnableYbc()) {
-        createStartYbcProcessTasks(
-            taskParams().nodeDetailsSet, taskParams().getPrimaryCluster().userIntent.useSystemd);
+        createStartYbcProcessTasks(taskParams().nodeDetailsSet);
         createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }

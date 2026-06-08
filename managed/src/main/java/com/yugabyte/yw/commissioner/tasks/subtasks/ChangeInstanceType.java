@@ -6,15 +6,14 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -52,11 +51,6 @@ public class ChangeInstanceType extends NodeTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
-    Optional<NodeAgent> optional =
-        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
-            ? Optional.empty()
-            : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-                getUniverse(), nodeDetails, true /*check feature flag*/);
     log.info(
         "Running ChangeInstanceType against node {} to change its type from {} to {}",
         taskParams().nodeName,
@@ -71,16 +65,16 @@ public class ChangeInstanceType extends NodeTaskBase {
     taskParams().capacityReservation =
         CapacityReservationUtil.getReservationIfPresent(
             getTaskCache(), provider, taskParams().nodeName);
-
+    taskParams().skipAnsiblePlaybookForCGroup =
+        NodeAgentClient.isCloudTypeSupported(provider.getCloudCode());
     getNodeManager()
         .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams())
         .processErrors();
-
     if (taskParams().cgroupSize > 0 && taskParams().skipAnsiblePlaybookForCGroup) {
+      NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(nodeDetails.cloudInfo.private_ip);
       nodeAgentClient.runSetupCGroupInput(
-          optional.get(),
-          nodeAgentRpcPayload.setupSetupCGroupBits(
-              universe, nodeDetails, taskParams(), optional.get()),
+          nodeAgent,
+          nodeAgentRpcPayload.setupSetupCGroupBits(universe, nodeDetails, taskParams(), nodeAgent),
           NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
     }
   }

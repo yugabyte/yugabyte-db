@@ -14,15 +14,15 @@ import static org.mockito.Mockito.when;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
@@ -35,22 +35,24 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.ListMasterRaftPeersResponse;
+import org.yb.client.YBClient;
 import org.yb.util.PeerInfo;
 
 @RunWith(JUnitParamsRunner.class)
-public class AnsibleConfigureServerTest extends FakeDBApplication {
-  private Customer defaultCustomer;
+public class AnsibleConfigureServerTest extends CommissionerBaseTest {
   private AvailabilityZone az;
   private Provider provider;
   private Universe universe;
   private ListMasterRaftPeersResponse mockMastersResponse;
+  private YBClient mockClient;
 
   @Before
   public void setup() {
     defaultCustomer = ModelFactory.testCustomer();
     setupUniverse(Common.CloudType.onprem);
     mockMastersResponse = mock(ListMasterRaftPeersResponse.class);
-    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
+    mockClient = mock(YBClient.class);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     List<PeerInfo> servers = new ArrayList<>();
     // IP for host-n1.
     PeerInfo peerInfo = new PeerInfo();
@@ -60,11 +62,13 @@ public class AnsibleConfigureServerTest extends FakeDBApplication {
     servers.add(peerInfo);
     try {
       when(mockNodeManager.nodeCommand(any(), any())).thenReturn(ShellResponse.create(0, ""));
-      when(mockYBClient.listMasterRaftPeers()).thenReturn(mockMastersResponse);
+      when(mockClient.listMasterRaftPeers()).thenReturn(mockMastersResponse);
     } catch (Exception e) {
       fail();
     }
     when(mockMastersResponse.getPeersList()).thenReturn(servers);
+    NodeAgent nodeAgent = mock(NodeAgent.class);
+    when(mockNodeAgentClient.getAndUpgradeOrThrow(any())).thenReturn(nodeAgent);
   }
 
   private void setupUniverse(Common.CloudType cloudType) {
@@ -91,6 +95,7 @@ public class AnsibleConfigureServerTest extends FakeDBApplication {
     params.nodeName = "host-n1";
     params.resetMasterState = true;
     params.isMasterInShellMode = true;
+    params.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     params.setProperty("processType", ServerType.MASTER.name().toLowerCase());
     AnsibleConfigureServers ansibleConfigServer =
         AbstractTaskBase.createTask(AnsibleConfigureServers.class);
@@ -108,6 +113,7 @@ public class AnsibleConfigureServerTest extends FakeDBApplication {
     params.nodeName = "host-n2";
     params.resetMasterState = true;
     params.isMasterInShellMode = true;
+    params.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     params.setProperty("processType", ServerType.MASTER.name().toLowerCase());
     AnsibleConfigureServers ansibleConfigServer =
         AbstractTaskBase.createTask(AnsibleConfigureServers.class);
@@ -125,6 +131,7 @@ public class AnsibleConfigureServerTest extends FakeDBApplication {
     params.nodeName = "host-n2";
     params.resetMasterState = true;
     params.isMasterInShellMode = false;
+    params.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     params.setProperty("processType", ServerType.MASTER.name().toLowerCase());
     AnsibleConfigureServers ansibleConfigServer =
         AbstractTaskBase.createTask(AnsibleConfigureServers.class);

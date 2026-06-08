@@ -427,8 +427,7 @@ buildVenv := {
   if (buildVenv.inputFileChanges.hasChanges ||
     !(baseDirectory.value / "devops" / venvDir).exists) {
     ybLog("Building virtual env...")
-    Process("./bin/install_python_requirements.sh", baseDirectory.value / "devops") #&&
-      Process("./bin/install_ansible_requirements.sh --force", baseDirectory.value / "devops") !
+    Process("./bin/install_python_requirements.sh", baseDirectory.value / "devops") !
   } else {
     ybLog("buildVenv already done. Call 'cleanVenv' to force build again.")
     0

@@ -18,6 +18,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AccessKeyId;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -67,6 +68,7 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     defaultProvider.getDetails().sshUser = "ssh_user";
     defaultProvider.getDetails().sshPort = 22;
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
+    AvailabilityZone.createOrThrow(defaultRegion, "az_1", "AZ 1", "subnet-1");
     defaultAccessKey = AccessKey.create(defaultProvider.getUuid(), "default-key", new KeyInfo());
   }
 
@@ -143,8 +145,8 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
   @Test
   public void testRemoveDeletedUniverses() {
     List<UUID> universeUUIDs = new ArrayList<UUID>();
-    Universe uni1 = ModelFactory.createUniverse("uni1");
-    Universe uni2 = ModelFactory.createUniverse("uni2");
+    Universe uni1 = ModelFactory.createUniverse("uni1", defaultCustomer.getId());
+    Universe uni2 = ModelFactory.createUniverse("uni2", defaultCustomer.getId());
     universeUUIDs.add(uni1.getUniverseUUID());
     universeUUIDs.add(uni2.getUniverseUUID());
     Universe.delete(uni2.getUniverseUUID());

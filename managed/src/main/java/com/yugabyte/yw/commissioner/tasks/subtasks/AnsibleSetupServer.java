@@ -66,8 +66,6 @@ public class AnsibleSetupServer extends NodeTaskBase {
      3. VM Image Upgrade.
     */
     public boolean rebootNodeAllowed = false;
-    // Skip Ansible Playbook for the node
-    public boolean skipAnsiblePlaybook = false;
   }
 
   @Override
@@ -89,7 +87,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
     }
 
     if (skipProvision) {
-      log.info("Skipping ansible provision.");
+      log.info("Skipping node provisioning");
     } else {
       // Execute the ansible command.
       getNodeManager()

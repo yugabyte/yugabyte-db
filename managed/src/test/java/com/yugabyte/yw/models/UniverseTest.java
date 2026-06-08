@@ -406,7 +406,7 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
-  public void testToJSONWithNullRegionList() {
+  public void testToJSONWithRegionList() {
     Universe u = createUniverse(defaultCustomer.getId());
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
     UserIntent ui = u.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -420,7 +420,7 @@ public class UniverseTest extends FakeDBApplication {
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
     JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
-    assertTrue(!clusterJson.get("userIntent").has("regionList"));
+    assertTrue(clusterJson.get("userIntent").has("regionList"));
     assertNull(clusterJson.get("regions"));
     assertNull(clusterJson.get("provider"));
   }

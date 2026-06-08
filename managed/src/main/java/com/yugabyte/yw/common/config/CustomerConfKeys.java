@@ -234,14 +234,6 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Knob that can be used to make lesser number of calls to DB",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> useAnsibleProvisioning =
-      new ConfKeyInfo<>(
-          "yb.node_agent.use_ansible_provisioning",
-          ScopeType.CUSTOMER,
-          "Use Ansible for provisioning",
-          "If enabled use Ansible for provisioning",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> notifyUserOnPasswordReset =
       new ConfKeyInfo<>(
           "yb.user.send_password_reset_notification",

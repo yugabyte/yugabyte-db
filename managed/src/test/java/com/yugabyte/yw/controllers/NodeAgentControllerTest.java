@@ -113,8 +113,6 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
-    keyInfo.vaultFile = "/path/to/vault_file";
-    keyInfo.vaultPasswordFile = "/path/to/vault_password";
     keyInfo.sshPort = 22;
     AccessKey.create(provider.getUuid(), "access-code1", keyInfo);
     InstanceType.upsert(

@@ -17,7 +17,6 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -34,10 +33,8 @@ import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -57,6 +54,9 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.nodeagent.ServerControlInput;
+import com.yugabyte.yw.nodeagent.ServerControlOutput;
+import com.yugabyte.yw.nodeagent.ServerControlType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -207,7 +207,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .addTasks(TaskType.UpdateAndPersistGFlags)
         .verifyTasks(taskInfo.getSubTasks());
 
-    verify(mockNodeManager, times(18)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
   }
 
   @Test
@@ -218,7 +218,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
 
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(false))
@@ -237,7 +237,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
 
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(false))
@@ -254,7 +254,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
 
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
@@ -272,9 +272,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
-    verify(mockNodeManager, times(9)).nodeCommand(any(), commandParams.capture());
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-
+    verify(mockNodeManager, times(0)).nodeCommand(any(), commandParams.capture());
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
@@ -291,7 +289,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(18)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
@@ -332,7 +330,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     TaskInfo taskInfo = submitTask(taskParams, 3);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
 
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
@@ -364,7 +362,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     TaskInfo taskInfo = submitTask(taskParams, 3);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
@@ -403,9 +401,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       int expectedVersion = serverType == MASTER ? 3 : 5;
       TaskInfo taskInfo = submitTask(taskParams, expectedVersion);
       assertEquals(Success, taskInfo.getTaskState());
-
-      int numInvocations = serverType == MASTER ? 9 : 18;
-      verify(mockNodeManager, times(numInvocations)).nodeCommand(any(), any());
+      verify(mockNodeManager, times(0)).nodeCommand(any(), any());
 
       MockUpgrade.UpgradeRound upgradeRound =
           initMockUpgrade()
@@ -436,7 +432,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.masterGFlags = gflags;
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(18)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
@@ -948,7 +944,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     // Only masters
-    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL, false);
 
@@ -975,7 +971,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(18)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
 
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
@@ -1144,28 +1140,27 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testGFlagsUpgradeRerun() {
-    ShellResponse dummyShellResponse = new ShellResponse();
     // Make the task fail the first time.
     doAnswer(
             inv -> {
-              AnsibleClusterServerCtl.Params params =
-                  (AnsibleClusterServerCtl.Params) inv.getArgument(1);
-              if (params.process.equalsIgnoreCase("tserver")
-                  && params.command.equalsIgnoreCase("start")) {
+              ServerControlInput input = (ServerControlInput) inv.getArgument(1);
+              if (input.getControlType() == ServerControlType.STOP
+                  && input.getServerName().contains("tserver")) {
                 throw new RuntimeException("Startup failed");
               }
-              return dummyShellResponse;
+              return ServerControlOutput.newBuilder().build();
             })
-        .when(mockNodeManager)
-        .nodeCommand(eq(NodeCommandType.Control), any());
+        .when(mockNodeAgentClient)
+        .runServerControl(any(), any(), any());
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     TaskInfo taskInfo = submitTask(taskParams, -1);
     assertEquals(Failure, taskInfo.getTaskState());
-    // Do not fail the task due to node command.
-    when(mockNodeManager.nodeCommand(eq(NodeCommandType.Control), any()))
-        .thenReturn(dummyShellResponse);
+    // Do not fail the task due to server control RPC.
+    doAnswer(inv -> ServerControlOutput.newBuilder().build())
+        .when(mockNodeAgentClient)
+        .runServerControl(any(), any(), any());
     taskParams.masterGFlags = null;
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
     // Validation must fail.

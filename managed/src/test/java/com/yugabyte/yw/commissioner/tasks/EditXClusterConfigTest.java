@@ -947,10 +947,6 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             xClusterConfig, editFormData, requestedTableToAddInfoList, Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
-
-    System.out.println("taskInfo.getSubTasks()");
-    taskInfo.getSubTasks().forEach(task -> System.out.println(task.getTaskType()));
-
     assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.size(), taskInfo.getSubTasks().size());
     for (int i = 0; i < ADD_TABLE_IS_ALTER_DONE_FAILURE.size(); i++) {
       TaskInfo subtaskGroup = taskInfo.getSubTasks().get(i);

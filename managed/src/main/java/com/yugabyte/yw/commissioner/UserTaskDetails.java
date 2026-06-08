@@ -427,7 +427,7 @@ public class UserTaskDetails {
         break;
       case CreateAccessKey:
         title = "Creating AccessKey";
-        description = "Set up AccessKey in the given Provider Vault";
+        description = "Set up AccessKey for the given Provider";
         break;
       case DeleteXClusterReplication:
         title = "Deleting XCluster Replication";

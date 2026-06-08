@@ -352,8 +352,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createStartTserverProcessTasks(newTservers, userIntent.enableYSQL);
 
       if (universe.isYbcEnabled()) {
-        createStartYbcProcessTasks(
-            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+        createStartYbcProcessTasks(newTservers);
       }
 
       // Update swamper target files to fetch metrics from new tservers.

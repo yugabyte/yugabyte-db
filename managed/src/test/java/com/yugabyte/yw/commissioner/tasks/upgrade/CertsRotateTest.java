@@ -563,7 +563,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     position = assertCommonTasks(subTasksByPosition, position, false, true);
 
     assertEquals(expectedPosition, position);
-    verify(mockNodeManager, times(21)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     assertUniverseDetails(
         taskParams,
@@ -647,7 +647,6 @@ public class CertsRotateTest extends UpgradeTaskTest {
 
     int position = 0;
     int expectedPosition = 83;
-    int expectedNumberOfInvocations = 21;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckServiceLiveness);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodeCommandExecution);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
@@ -655,7 +654,6 @@ public class CertsRotateTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     if (rotateRootCA) {
       expectedPosition += 150;
-      expectedNumberOfInvocations += 30;
       // RootCA update task
       position = assertCommonTasks(subTasksByPosition, position, true, false);
       // Cert update tasks
@@ -688,7 +686,6 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseConfig);
     assertEquals(expectedPosition, position);
-    verify(mockNodeManager, times(expectedNumberOfInvocations)).nodeCommand(any(), any());
 
     assertUniverseDetails(
         taskParams,
@@ -782,7 +779,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseConfig);
 
     assertEquals(expectedPosition, position);
-    verify(mockNodeManager, times(21)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     assertUniverseDetails(
         taskParams,

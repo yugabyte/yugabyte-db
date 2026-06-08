@@ -337,15 +337,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
-  public static final ConfKeyInfo<Boolean> enableNodeAgentClient =
-      new ConfKeyInfo<>(
-          "yb.node_agent.client.enabled",
-          ScopeType.PROVIDER,
-          "Enable Node Agent Client",
-          "Enable node agent client for communication to DB nodes.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-
   /**
    * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
    */
@@ -359,14 +350,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
-  public static final ConfKeyInfo<Boolean> enableAnsibleOffloading =
-      new ConfKeyInfo<>(
-          "yb.node_agent.ansible_offloading.enabled",
-          ScopeType.PROVIDER,
-          "Enable Ansible Offloading",
-          "Offload ansible tasks to the DB nodes.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useSpotInstances =
       new ConfKeyInfo<>(
           "yb.use_spot_instances",

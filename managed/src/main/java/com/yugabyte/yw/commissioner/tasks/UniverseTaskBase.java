@@ -2225,7 +2225,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
       Universe universe, Collection<NodeDetails> nodes, boolean includeOnPremManual) {
-    NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
     Map<UUID, Boolean> clusterSkip = new HashMap<>();
     return nodes.stream()
         .filter(n -> n.cloudInfo != null)
@@ -2237,9 +2236,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       Cluster cluster = universe.getCluster(n.placementUuid);
                       Provider provider =
                           Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-                      if (!nodeAgentEnabler.isNodeAgentServerEnabled(provider, universe)) {
-                        return false;
-                      }
                       if (provider.getCloudCode() == CloudType.onprem) {
                         return !provider.getDetails().skipProvisioning || includeOnPremManual;
                       }
@@ -3939,17 +3935,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         .setShouldRunPredicate(predicate);
 
     if (!ybcBackup) {
-      if (cloudType != CloudType.kubernetes) {
-        // Ansible Configure Task for copying xxhsum binaries from
-        // third_party directory to the DB nodes.
-        installThirdPartyPackagesTask(universe)
-            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
-            .setShouldRunPredicate(predicate);
-      } else {
+      if (cloudType == CloudType.kubernetes) {
         installThirdPartyPackagesTaskK8s(
                 universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
             .setShouldRunPredicate(predicate);
+      } else {
+        // Skip the backup tools installation as it depends on the removed ansible dependency
+        log.warn(
+            "YB Controller backup is not enabled. Assuming legacy backups tools are already"
+                + " installed");
       }
     }
 
@@ -4098,17 +4093,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .setShouldRunPredicate(predicate);
     }
     if (!isYbc) {
-      if (cloudType != CloudType.kubernetes) {
-        // Ansible Configure Task for copying xxhsum binaries from
-        // third_party directory to the DB nodes.
-        installThirdPartyPackagesTask(universe)
-            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
-            .setShouldRunPredicate(predicate);
-      } else {
+      if (cloudType == CloudType.kubernetes) {
         installThirdPartyPackagesTaskK8s(
                 universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
             .setShouldRunPredicate(predicate);
+      } else {
+        // Skip the backup tools installation as it depends on the removed ansible dependency
+        log.warn(
+            "YB Controller backup is not enabled. Assuming legacy backups tools are already"
+                + " installed");
       }
     }
 
@@ -4843,39 +4837,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       createWaitForYbcServerTask(reinstallNodes, true /* ignoreErrors */, 10 /* numRetries */)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
     }
-  }
-
-  /**
-   * Creates a task to install xxhash on the DB nodes from third-party packages.
-   *
-   * @param universe universe on which xxhash needs to be installed
-   */
-  public SubTaskGroup installThirdPartyPackagesTask(Universe universe) {
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for nodes",
-            SubTaskGroupType.InstallingThirdPartySoftware);
-    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
-    List<NodeDetails> nodes = universe.getServers(ServerType.TSERVER);
-    for (NodeDetails node : nodes) {
-      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
-      UserIntent userIntent =
-          universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
-      AnsibleConfigureServers.Params params =
-          getBaseAnsibleServerTaskParams(
-              userIntent,
-              node,
-              ServerType.TSERVER,
-              UpgradeTaskParams.UpgradeTaskType.ThirdPartyPackages,
-              UpgradeTaskParams.UpgradeTaskSubType.InstallThirdPartyPackages);
-      params.setUniverseUUID(universe.getUniverseUUID());
-      params.installThirdPartyPackages = true;
-      task.initialize(params);
-      task.setUserTaskUUID(getUserTaskUUID());
-      subTaskGroup.addSubTask(task);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
   }
 
   public SubTaskGroup createDnsManipulationTask(

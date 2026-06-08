@@ -417,55 +417,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If enabled, slow queries data will be stored for universe, once per hour.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<String> ansibleStrategy =
-      new ConfKeyInfo<>(
-          "yb.ansible.strategy",
-          ScopeType.UNIVERSE,
-          "Ansible Strategy",
-          "strategy can be linear, mitogen_linear or debug",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Integer> ansibleConnectionTimeoutSecs =
-      new ConfKeyInfo<>(
-          "yb.ansible.conn_timeout_secs",
-          ScopeType.UNIVERSE,
-          "Ansible Connection Timeout Duration",
-          "This is the default timeout for connection plugins to use.",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Integer> ansibleVerbosity =
-      new ConfKeyInfo<>(
-          "yb.ansible.verbosity",
-          ScopeType.UNIVERSE,
-          "Ansible Verbosity Level",
-          "verbosity of ansible logs, 0 to 4 (more verbose)",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> ansibleDebug =
-      new ConfKeyInfo<>(
-          "yb.ansible.debug",
-          ScopeType.UNIVERSE,
-          "Ansible Debug Output",
-          "Debug output (can include secrets in output)",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> ansibleDiffAlways =
-      new ConfKeyInfo<>(
-          "yb.ansible.diff_always",
-          ScopeType.UNIVERSE,
-          "Ansible Diff Always",
-          "Configuration toggle to tell modules to show differences "
-              + "when in 'changed' status, equivalent to --diff.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<String> ansibleLocalTemp =
-      new ConfKeyInfo<>(
-          "yb.ansible.local_temp",
-          ScopeType.UNIVERSE,
-          "Ansible Local Temp Directory",
-          "Temporary directory for Ansible to use on the controller.",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
           "yb.perf_advisor.enabled",
@@ -1424,14 +1375,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> nodeAgentNodeActionUseJavaClient =
-      new ConfKeyInfo<>(
-          "yb.node_agent.node_action.use_java_client",
-          ScopeType.UNIVERSE,
-          "Use Node Agent Java Client for Node Actions",
-          "Use node agent java client to run node actions on the remote nodes",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> xClusterSyncOnUniverse =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_on_universe",

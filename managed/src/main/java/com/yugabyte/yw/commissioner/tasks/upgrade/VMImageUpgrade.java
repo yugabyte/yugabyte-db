@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -25,7 +24,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
@@ -306,26 +304,19 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       node.ybPrebuiltAmi =
           taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
-      // Must use ansible provisioning for non-systemd universes
-      Customer customer = Customer.get(universe.getCustomerId());
-      boolean useAnsibleProvisioning =
-          confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
-              || !userIntent.useSystemd;
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
       if (userIntent.providerType != CloudType.local) {
         createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        if (!useAnsibleProvisioning) {
-          boolean isYbPrebuiltImage =
-              !shouldInstallDbSoftware(
-                  universe, false /*ignoreUseCustomImageConfig*/, taskParams().vmUpgradeTaskType);
-          createYNPProvisioningTask(universe, nodeList, isYbPrebuiltImage)
-              .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        }
+        boolean isYbPrebuiltImage =
+            !shouldInstallDbSoftware(
+                universe, false /*ignoreUseCustomImageConfig*/, taskParams().vmUpgradeTaskType);
+        createYNPProvisioningTask(universe, nodeList, isYbPrebuiltImage)
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
       createInstallNodeAgentTasks(universe, nodeList)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
+      if (userIntent.providerType == CloudType.local) {
         createSetupServerTasks(
                 nodeList,
                 p -> {

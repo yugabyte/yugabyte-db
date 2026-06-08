@@ -13,8 +13,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -105,13 +105,13 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
             taskParams().command);
         return;
       }
-      Optional<NodeAgent> optional =
-          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
-              ? Optional.empty()
-              : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-                  universeOpt.get(), nodeDetails, true /*check feature flag*/);
-      if (optional.isPresent()) {
-        runWithNodeAgent(optional.get(), universeOpt.get(), nodeDetails);
+      boolean isNodeAgentSupported =
+          NodeAgentClient.isCloudTypeSupported(
+              universeOpt.get().getUniverseDetails().getPrimaryCluster().userIntent.providerType);
+      if (isNodeAgentSupported) {
+        NodeAgent nodeAgent =
+            nodeAgentClient.getAndUpgradeOrThrow(nodeDetails.cloudInfo.private_ip);
+        runWithNodeAgent(nodeAgent, universeOpt.get(), nodeDetails);
       } else {
         runLegacy(universeOpt.get(), nodeDetails);
       }
