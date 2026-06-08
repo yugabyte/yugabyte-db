@@ -196,6 +196,9 @@ class VectorLSM {
   class  CompactionTask;
   using  CompactionTaskPtr = std::unique_ptr<CompactionTask>;
 
+  class MergingIterator;
+  class Merger;
+
   friend struct MutableChunk;
 
   // Saves the current mutable chunk to disk and creates a new one.
@@ -227,9 +230,15 @@ class VectorLSM {
   Result<VectorIndexPtr> CreateVectorIndex(size_t min_vectors) const;
 
   // Returns an index instance suitable for queries that don't depend on chunk contents
-  // (e.g. EstimateNumVectorsForBytes, Distance). Reuses an existing chunk's index when available,
-  // and falls back to a freshly created factory probe otherwise.
+  // (e.g. Distance). Reuses an existing chunk's index when available (including immutable on-disk
+  // chunks), and falls back to a freshly created factory probe otherwise.
   VectorIndexPtr GetProbeIndex() const EXCLUDES(mutex_);
+
+  // Returns an in-memory (kCreate-mode) index, suitable for EstimateNumVectorsForBytes and other
+  // requests that require the in-memory format. Never returns an on-disk read-only index
+  // (e.g. yb_hnsw) which may not support the request.
+  // TODO(#32369): Replace GetProbeIndex/GetInMemoryProbeIndex with index traits.
+  VectorIndexPtr GetInMemoryProbeIndex() const EXCLUDES(mutex_);
 
   Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
 
@@ -270,10 +279,10 @@ class VectorLSM {
   // based either on size amplification or size ratio approaches.
   CompactionScope PickChunksForCompaction(CompactionType type) const EXCLUDES(mutex_);
 
-  // Returns new chunk - a product of input chunks compaction; the new chunk is saved to a disk.
+  // Returns new chunk(s) produced by compacting input chunks; every chunk is saved to a disk.
   // The suspender (may be null) lets the long-running merge yield its priority thread pool worker
   // to higher priority tasks (e.g. flushes) instead of holding it for the whole compaction.
-  Result<ImmutableChunkPtr> DoCompactChunks(
+  Result<ImmutableChunkPtrs> DoCompactChunks(
       const ImmutableChunkPtrs& input_chunks, PriorityThreadPoolSuspender* suspender);
 
   Status DoCompact(
@@ -315,7 +324,8 @@ class VectorLSM {
   std::shared_ptr<MutableChunk> mutable_chunk_ GUARDED_BY(mutex_);
 
   // Immutable chunks are sorted by order_no and this order must be kept in case of collection
-  // modifications (e.g. due to merging of chunks).
+  // modifications (e.g. due to merging of chunks). order_no is used to manifest flushed and
+  // compacted chunks in the correct order; it is not required to be unique.
   ImmutableChunkPtrs immutable_chunks_ GUARDED_BY(mutex_);
 
   std::shared_ptr<InsertRegistry> insert_registry_;
