@@ -204,7 +204,11 @@ export const Zone: FC<ZoneProps> = ({
             onChange={(e) => {
               const selectedZone = region.zones.find((z) => z.name === e.target.value);
               if (selectedZone) {
-                field.onChange({ ...field.value, ...selectedZone });
+                field.onChange({
+                  ...selectedZone,
+                  nodeCount: zone.nodeCount ?? field.value?.nodeCount,
+                  preffered: zone.preffered ?? field.value?.preffered
+                });
               }
             }}
             menuProps={menuProps}

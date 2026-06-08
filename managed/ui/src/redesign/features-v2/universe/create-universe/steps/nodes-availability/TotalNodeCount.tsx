@@ -3,7 +3,6 @@ import { useFormContext } from 'react-hook-form';
 import { NodeAvailabilityProps } from './dtos';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { useTranslation } from 'react-i18next';
-import { REPLICATION_FACTOR } from '../../fields/FieldNames';
 
 const { styled } = mui;
 
