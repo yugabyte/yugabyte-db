@@ -963,8 +963,7 @@ alter_aggregate = 'ALTER' 'AGGREGATE' aggregate_name '(' aggregate_signature ')'
 
 alter_aggregate_action =
   'RENAME' 'TO' new_name |
-  'OWNER' 'TO' ( new_owner | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) |
-  'SET' 'SCHEMA' schema_name ;
+  'OWNER' 'TO' ( new_owner | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) ;
 
 (* 'DROP' 'AGGREGATE' *)
 drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] ( aggregate_name '(' aggregate_signature ')' )
