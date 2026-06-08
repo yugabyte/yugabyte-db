@@ -1081,6 +1081,9 @@ YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname);
 
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
+YbcStatus YBCResetAutoAnalyzeMutationCounters(
+    YbcPgOid database_oid, YbcPgOid table_relfilenode_oid);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

@@ -35,6 +35,7 @@
 
 #include "yb/server/server_common_flags.h"
 #include "yb/tserver/pg_mutation_counter.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_table.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/atomic.h"
@@ -165,7 +166,7 @@ void PgAutoAnalyzeService::Activate() { LOG(INFO) << ServiceName() << " activate
 void PgAutoAnalyzeService::Deactivate() { LOG(INFO) << ServiceName() << " de-activated"; }
 
 Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
-  const auto& table_id_to_mutations_maps = pg_cluster_level_mutation_counter_.GetAndClear();
+  const auto table_id_to_mutations_maps = pg_cluster_level_mutation_counter_.GetAndClear();
   if (table_id_to_mutations_maps.empty()) {
     VLOG(5) << "No more mutations";
     return Status::OK();
@@ -449,8 +450,9 @@ Status PgAutoAnalyzeService::FetchUnknownReltuplesOrReloptions(
   });
   // Gather tables missing reltuples or per-table auto analyze settings.
   for (const auto& [table_id, mutations] : table_id_to_info_maps) {
-    if (!table_id_to_name_.contains(table_id))
+    if (!table_id_to_name_.contains(table_id)) {
       continue;
+    }
     auto namespace_id = VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
     auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     if (!table_tuple_count_.contains(table_id) ||
@@ -739,50 +741,37 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
   return std::make_pair(analyzed_tables, deleted_tables);
 }
 
-// Update the table mutations by subtracting the mutations count we fetched
-// if ANALYZE succeeded or failed with "does not exist error".
-// Do substraction instead of directly updating the mutation counts to zero because
-// updating mutation counts to zero might cause us to lose some mutations collected
-// during triggering ANALYZE.
+// Update the table mutations by subtracting the mutations count we fetched if ANALYZE succeeded
+// or failed with "does not exist error". Do subtraction instead of directly updating the mutation
+// counts to zero because updating mutation counts to zero might cause us to lose some mutations
+// collected during triggering ANALYZE. If another cleanup already reduced the current count below
+// the analyzed snapshot, clamp it to zero instead of subtracting below zero.
 // TODO(auto-analyze, #22883): Clean up entries from auto analyze YCQL table if
 // mutations is 0 for a table for a long time to free up memory.
 Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     const std::vector<TableId>& tables,
     const AutoAnalyzeInfoMap& table_id_to_info_maps) {
   VLOG_WITH_FUNC(2) << "tables: " << AsString(tables);
+
+  std::vector<PgAutoAnalyzeMutationSnapshot> snapshots;
+  snapshots.reserve(tables.size());
+  for (const auto& table_id : tables) {
+    // Erase the table we analyzed from table row count cache.
+    table_tuple_count_.erase(table_id);
+
+    auto analyzed_it = table_id_to_info_maps.find(table_id);
+    snapshots.push_back({
+        .table_id = table_id,
+        .mutations = analyzed_it == table_id_to_info_maps.end()
+                         ? 0
+                         : analyzed_it->second.mutations,
+    });
+  }
+
   auto session = VERIFY_RESULT(GetYBSession(
       FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
   auto* table = VERIFY_RESULT(GetServiceTable());
-  const auto& schema = table->schema();
-  auto mutations_col_id = schema.ColumnId(schema.FindColumn(master::kPgAutoAnalyzeMutations));
-
-  std::vector<client::YBOperationPtr> ops;
-  for (auto& table_id : tables) {
-    const auto update_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
-    auto* const update_req = update_op->mutable_request();
-    QLAddStringHashValue(update_req, table_id);
-    update_req->mutable_column_refs()->add_ids(mutations_col_id);
-    QLColumnValuePB *col_pb = update_req->add_column_values();
-    col_pb->set_column_id(mutations_col_id);
-    QLBCallPB* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
-    bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_SubI64I64_85));
-    QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
-    QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
-    operand1->set_column_id(mutations_col_id);
-    auto it = table_id_to_info_maps.find(table_id);
-    operand2->mutable_value()->set_int64_value(
-        it == table_id_to_info_maps.end() ? 0 : it->second.mutations);
-    ops.push_back(std::move(update_op));
-    auto* const condition = update_req->mutable_if_expr()->mutable_condition();
-    condition->set_op(QL_OP_EXISTS);
-
-    // Erase the table we analyzed from table row count cache.
-    table_tuple_count_.erase(table_id);
-  }
-
-  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  RETURN_NOT_OK_PREPEND(
-      session->TEST_ApplyAndFlush(ops), "Failed to clean up mutations from auto analyze table");
+  RETURN_NOT_OK(SubtractPgAutoAnalyzeMutationCounts(*table, *session, snapshots));
 
   return Status::OK();
 }
@@ -909,9 +898,7 @@ Result<bool> PgAutoAnalyzeService::DoFetchReltuplesAndReloptions(
   }
 
   float reltuples = std::get<0>(rows[0]);
-  table_tuple_count_[table_id] = reltuples == -1 ? 0 : reltuples;
-  VLOG(1) << "Table with id " << table_id << " has " << table_tuple_count_[table_id]
-          << " reltuples";
+  const auto tuple_count = reltuples == -1 ? 0 : reltuples;
 
   TableAutoAnalyzeSettings settings;
   for (const auto& [_, option_name, option_value] : rows) {
@@ -920,7 +907,9 @@ Result<bool> PgAutoAnalyzeService::DoFetchReltuplesAndReloptions(
     }
     ParseReloption(*option_name, *option_value, &settings);
   }
+  table_tuple_count_[table_id] = tuple_count;
   table_auto_analyze_settings_[table_id] = settings;
+  VLOG(1) << "Table with id " << table_id << " has " << tuple_count << " reltuples";
   auto opt_str = [](const auto& opt) -> std::string {
     if (!opt.has_value()) return "unset";
     if constexpr (std::is_same_v<std::decay_t<decltype(*opt)>, bool>) {

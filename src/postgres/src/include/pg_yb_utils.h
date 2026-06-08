@@ -754,6 +754,12 @@ extern bool yb_force_catalog_update_on_next_ddl;
 extern bool yb_test_fail_all_drops;
 
 /*
+ * If set to true, a manual ANALYZE does not reset the auto-analyze mutation
+ * counters, reverting to the pre-reset behavior. Test only.
+ */
+extern bool yb_test_analyze_dont_reset_mutations;
+
+/*
  * If set to true, force invalidation of every base relation's index relcache
  * entries between add_base_rels_to_query() and make_one_rel() in
  * query_planner().  Used by tests to deterministically expose lazy-loading

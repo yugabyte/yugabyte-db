@@ -204,6 +204,8 @@ class PgClient {
 
   Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
 
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id);
+
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
   struct DbColocationInfo {

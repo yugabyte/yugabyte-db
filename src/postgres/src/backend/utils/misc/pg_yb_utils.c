@@ -2475,6 +2475,8 @@ bool		yb_force_catalog_update_on_next_ddl = false;
 
 bool		yb_test_fail_all_drops = false;
 
+bool		yb_test_analyze_dont_reset_mutations = false;
+
 bool		yb_test_invalidate_relcache_in_planner = false;
 
 bool		yb_test_fail_next_inc_catalog_version = false;

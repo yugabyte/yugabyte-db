@@ -20,6 +20,7 @@
 #include <optional>
 #include <queue>
 #include <ranges>
+#include <span>
 #include <unordered_set>
 #include <vector>
 
@@ -73,6 +74,7 @@
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_table.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -165,6 +167,8 @@ DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
@@ -2850,6 +2854,27 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             pg_auto_analyze_entry->set_last_analyze_info(last_analyze_qlvalue.jsonb_value());
         }
     }
+
+    return Status::OK();
+  }
+
+  Status ResetAutoAnalyzeMutationCounters(
+      const PgResetAutoAnalyzeMutationCountersRequestPB& req,
+      PgResetAutoAnalyzeMutationCountersResponsePB* resp, rpc::RpcContext* context) {
+    if (!FLAGS_ysql_enable_auto_analyze_infra || !FLAGS_ysql_enable_auto_analyze) {
+      return Status::OK();
+    }
+
+    const auto table_id =
+        PgObjectId(req.database_oid(), req.table_relfilenode_oid()).GetYbTableId();
+
+    client::TableHandle table;
+    RETURN_NOT_OK(table.Open(
+        stateful_service::GetStatefulServiceTableName(StatefulServiceKind::PG_AUTO_ANALYZE),
+        &client()));
+    auto session = client().NewSession(context->GetClientDeadline());
+    RETURN_NOT_OK(stateful_service::ResetPgAutoAnalyzeMutationCounts(
+        table, *session, std::span(&table_id, 1)));
 
     return Status::OK();
   }
