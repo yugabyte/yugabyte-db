@@ -3655,6 +3655,20 @@
   options => 'xmloption_options',
 },
 
+{ name => 'yb_enable_create_with_table_oid', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Enables the ability to set table oids when creating tables or indexes.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_enable_create_with_table_oid',
+  boot_val => 'false',
+},
+
+{ name => 'yb_explain_hide_non_deterministic_fields', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
+  short_desc => 'If set, all fields that vary from run to run are hidden from the output of EXPLAIN.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_explain_hide_non_deterministic_fields',
+  boot_val => 'false',
+},
+
 { name => 'yb_non_ddl_txn_for_sys_tables_allowed', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'Enables the use of regular transactions for operating on system catalog tables in case a DDL transaction has not been started.',
   flags => 'GUC_NOT_IN_SAMPLE',

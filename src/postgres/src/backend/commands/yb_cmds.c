@@ -23,6 +23,7 @@
 
 #include "postgres.h"
 
+#include "access/attmap.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/nbtree.h"
@@ -76,9 +77,6 @@
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
-/* YB includes */
-#include "access/attmap.h"
 
 /* Utility function to calculate column sorting options */
 static void
@@ -2118,6 +2116,7 @@ YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt)
 					   TEXTOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "ROWS INSERTED",
 					   FLOAT8OID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	return tupdesc;
 }
 

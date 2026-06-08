@@ -410,6 +410,7 @@ static Oid
 YbGetSQLIncrementCatalogVersionFunctionOidHelper(char *fname)
 {
 	List	   *names = list_make2(makeString("pg_catalog"), makeString(fname));
+	int			fgc_flags;
 	FuncCandidateList clist = FuncnameGetCandidates(names,
 													-1 /* nargs */ ,
 													NIL /* argnames */ ,
@@ -417,7 +418,7 @@ YbGetSQLIncrementCatalogVersionFunctionOidHelper(char *fname)
 													false /* expand_defaults */ ,
 													false /* include_out_arguments */ ,
 													false /* missing_ok */ ,
-													NULL /* fgc_flags */ );
+													&fgc_flags);
 
 	/* We expect exactly one candidate. */
 	if (clist && clist->next == NULL)

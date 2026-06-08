@@ -122,9 +122,12 @@ extern IndexTuple index_truncate_tuple(TupleDesc sourceDescriptor,
 /*
  * Takes an infomask as argument (primarily because this needs to be usable
  * at index_form_tuple time so enough space is allocated).
+ *
+ * YB: t_info is uint32 here (not PG's unsigned short) to match the
+ * widened IndexTupleData.t_info.  Widened because YB does not use TOAST.
  */
 static inline Size
-IndexInfoFindDataOffset(unsigned short t_info)
+IndexInfoFindDataOffset(uint32 t_info) /* YB */
 {
 	if (!(t_info & INDEX_NULL_MASK))
 		return MAXALIGN(sizeof(IndexTupleData));

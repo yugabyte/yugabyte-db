@@ -115,6 +115,8 @@ typedef struct CachedFunction
 
 	/* this field changes when the function is used: */
 	uint64		use_count;
+
+	uint64		yb_catalog_version; /* YB: catalog version at function load time */
 } CachedFunction;
 
 extern CachedFunction *cached_function_compile(FunctionCallInfo fcinfo,
