@@ -24,7 +24,7 @@ type: docs
   <li >
     <a href="../yugabyte-psycopg3-reference/" class="nav-link active">
       <img src="/icons/yugabyte.svg" /i>
-      Yugabyte Psycopg3
+      Yugabyte Psycopg 3
     </a>
   </li>
   <li >
@@ -41,7 +41,7 @@ type: docs
   </li>
 </ul>
 
-Yugabyte Psycopg3 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg 3 driver](https://github.com/psycopg/psycopg), with additional connection load balancing features.
+Yugabyte Psycopg 3 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg 3 driver](https://github.com/psycopg/psycopg), with additional connection load balancing features.
 
 For more information on the YugabyteDB psycopg 3 smart driver, see the following:
 
@@ -52,7 +52,7 @@ For more information on the YugabyteDB psycopg 3 smart driver, see the following
 
 ## Download the driver dependency
 
-The YugabyteDB psycopg 3 smart driver requires Python 3.10 or later and system [libpq](https://www.postgresql.org/docs/current/libpq.html) installed (the same runtime requirement as upstream psycopg 3's pure-Python distribution). For installation details, see the [upstream psycopg 3 documentation](https://www.psycopg.org/psycopg3/docs/basic/install.html).
+The YugabyteDB Psycopg 3 smart driver requires Python 3.10 or later and system [libpq](https://www.postgresql.org/docs/current/libpq.html) installed (the same runtime requirement as upstream psycopg 3's pure-Python distribution). For installation details, see the [upstream psycopg 3 documentation](https://www.psycopg.org/psycopg3/docs/basic/install.html).
 
 The fork is published as a pre-release on [PyPI](https://pypi.org/project/psycopg-yugabytedb/). Install it like any other Python package using pip:
 
@@ -106,16 +106,10 @@ To enable cluster-aware load balancing across all servers, you set the `load_bal
     )
     ```
 
-- Keyword argument
+- Keyword arguments
 
     ```python
-    conn = psycopg.connect(
-    host="h1,h2,h3",
-    port=5433,
-    user="yugabyte",
-    dbname="yugabyte",
-    load_balance_hosts="true",
-    )
+    conn = psycopg.connect(host="h1,h2,h3", port=5433, user="yugabyte", dbname="yugabyte", load_balance_hosts="true")
     ```
 
 You can specify [multiple hosts](../yugabyte-psycopg3/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
@@ -128,10 +122,10 @@ To specify topology keys, you set the `topology_keys` property to comma-separate
     conn = psycopg.connect("dbname=database_name host=hostname port=5433 user=username password=password load_balance_hosts=true topology_keys=cloud.region.zone1")
     ```
 
-- Connection Dictionary
+- Keyword arguments
 
     ```python
-    conn = psycopg.connect(user='username', password='password', host='hostname', port=5433, dbname='database_name', load_balance_hosts='true', topology_keys='cloud.region.zone1')
+    conn = psycopg.connect(user="username", password="password", host="hostname", port=5433, dbname="database_name", load_balance_hosts="true", topology_keys="cloud.region.zone1")
     ```
 
 To allow load balancing across more than one placement, list several keys separated by commas. The driver treats the list as **OR** (union), which means a TServer is eligible if its placement matches _any_ key (and not every key). For example, `topology_keys=cloud1.datacenter1.zoneA,cloud2.datacenter2.zoneB` includes nodes in zoneA _or_ zoneB and excludes nodes in other zones.
@@ -173,7 +167,7 @@ An equivalent async path exists via `AsyncConnection` and `AsyncConnectionPool`;
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte Psycopg3 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3.
+This tutorial shows how to use the Yugabyte Psycopg 3 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3.
 
 Next, you use a Python shell terminal to demonstrate the driver's load balancing features by running a few Python scripts.
 

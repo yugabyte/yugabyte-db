@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Psycopg3 Smart Driver for YSQL
+title: YugabyteDB Psycopg 3 Smart Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
-description: Connect a Python application using YugabyteDB Psycopg3 Smart Driver for YSQL
+description: Connect a Python application using YugabyteDB Psycopg 3 Smart Driver for YSQL
 menu:
   stable_develop:
     identifier: yugabyte-psycopg3-driver
@@ -36,7 +36,7 @@ type: docs
   <li >
     <a href="../yugabyte-psycopg3" class="nav-link active">
       <img src="/icons/yugabyte.svg" /i>
-      Yugabyte Psycopg3
+      Yugabyte Psycopg 3
     </a>
   </li>
   <li >
@@ -59,13 +59,13 @@ type: docs
   </li>
 </ul>
 
-The [Yugabyte Psycopg3 smart driver](https://pypi.org/project/psycopg-yugabytedb/) is a Python driver for [YSQL](/stable/api/ysql/) built on the [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](/stable/develop/drivers-orms/smart-drivers/) features. The import name is `psycopg`, so no changes are needed on existing application code; opting in requires a single parameter on the connection string.
+The [Yugabyte Psycopg 3 smart driver](https://pypi.org/project/psycopg-yugabytedb/) is a Python driver for [YSQL](/stable/api/ysql/) built on the [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](/stable/develop/drivers-orms/smart-drivers/) features. The import name is `psycopg`, so no changes are needed on existing application code; opting in requires a single parameter on the connection string.
 
-This guide uses YSQL with the YugabyteDB Psycopg3 smart driver.
+This guide uses YSQL with the YugabyteDB Psycopg 3 smart driver.
 
 ## CRUD operations
 
-The following sections demonstrate how to perform common tasks required for Python application development using the YugabyteDB psycopg 3 smart driver.
+The following sections demonstrate how to perform common tasks required for Python application development using the YugabyteDB Psycopg 3 smart driver.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
@@ -95,7 +95,7 @@ pip install --pre "psycopg-yugabytedb[pool]"
 
 {{< note title="Coexistence with upstream psycopg" >}}
 
-When you install `psycopg-yugabytedb` from PyPI, your code still uses `import psycopg` — the same module name as [upstream psycopg 3](https://www.psycopg.org/psycopg3/). Both packages install into the same directory (`site-packages/psycopg/`), so pip cannot install them side by side. If either package is already present, uninstall it first, or use a dedicated virtual environment:
+When you install `psycopg-yugabytedb` from PyPI, your code still uses `import psycopg` — the same module name as [upstream Psycopg 3](https://www.psycopg.org/psycopg3/). Both packages install into the same directory (`site-packages/psycopg/`), so pip cannot install them side by side. If either package is already present, uninstall it first, or use a dedicated virtual environment:
 
 | PyPI package (install with pip) | Import in application code |
 | :------------------------------ | :------------------------- |
@@ -121,7 +121,7 @@ python -c "from psycopg.yb.registry import ClusterRegistry; print('smart driver 
 
 ### Step 2: Set up the database connection
 
-To enable smart-driver load balancing, add `load_balance_hosts=true` to your connection string (or pass `load_balance_hosts="true"` to `psycopg.connect()`). If you omit it, the driver behaves like upstream psycopg 3.
+To enable smart-driver load balancing, add `load_balance_hosts=true` to your connection string (or pass `load_balance_hosts="true"` to `psycopg.connect()`). If you omit it, the driver behaves like upstream Psycopg 3.
 
 The smart driver extends the libpq conninfo string with four parameters. All take the standard libpq `key=value` form, and both dashed (`load-balance-hosts`) and underscore forms are accepted.
 
@@ -130,7 +130,7 @@ The following table describes the connection parameters required to connect, inc
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
 | host | Comma-separated hostnames or IPs. One contact host is enough to bootstrap. The rest of the cluster is discovered via `yb_servers()`. Multiple hosts add robustness if the first contact is down. | localhost |
-| port | Listen port for YSQL. YugabyteDB default is 5433. | 5432 |
+| port | Listen port for YSQL. | 5433 |
 | dbname | Database name | yugabyte |
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
@@ -142,19 +142,18 @@ The following table describes the connection parameters required to connect, inc
 The following is an example connection string:
 
 ```python
-"host=127.0.0.1 port=5433 user=yugabyte dbname=yugabyte load_balance_hosts=true"
+import psycopg
+
+conn = psycopg.connect(
+"host=h1,h2,h3 port=5433 user=yugabyte dbname=yugabyte "
+"load_balance_hosts=true"
+)
 ```
 
 You can also pass the parameters as keyword arguments to `psycopg.connect`:
 
 ```python
-conn = psycopg.connect(
-    host="127.0.0.1",
-    port=5433,
-    user="yugabyte",
-    dbname="yugabyte",
-    load_balance_hosts="true",
-)
+conn = psycopg.connect(host="h1,h2,h3", port=5433, user="yugabyte", dbname="yugabyte", load_balance_hosts="true")
 ```
 
 After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
@@ -164,7 +163,7 @@ After the driver establishes the initial connection, it fetches the list of avai
 You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails.
 
 {{< tip title="Tip">}}
-To obtain a list of available hosts, you can connect to any cluster node and use the `yb_servers()` YSQL function.
+To obtain a list of available hosts, you can connect to any cluster node and use the YSQL `yb_servers()` function.
 {{< /tip >}}
 
 Delimit the addresses using commas, as follows:
