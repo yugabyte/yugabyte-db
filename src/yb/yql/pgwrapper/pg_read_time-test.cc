@@ -1050,4 +1050,45 @@ TEST_F(PgReadTimeTest, ReadTimeAfterParallelExecution) {
   }
 }
 
+// Test for #29283
+TEST_F(PgReadTimeTest, InFlightDMLWritesWithTxnalDDL) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto kTable = "test";
+  auto kTable2 = "test2";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable2));
+  ASSERT_OK(SetMaxBatchSize(&conn, 10));
+  ASSERT_OK(conn.Execute("SET yb_debug_log_snapshot_mgmt=true;"));
+
+  // Test case that would earlier fail because the writes from PG to local tserver proxy
+  // would be batched and each batch is sent without waiting for the previous batch's response.
+  // Each batch would earlier pick a different read time on docdb of the remote tserver hosting
+  // the tablet. But the expectation is for all batches to use the same read time.
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v2 INT", kTable2));
+
+  // Run an INSERT first to ensure that catalog cache misses don't occur for the next INSERT
+  // that writes to a single tablet in a pipelined manner. If this is not done, the catalog reads
+  // would set the read time and hence not surface the issue. This happens because in a
+  // transaction (either autonomous DDL or a regular transaction block which has executed a DDL
+  // earlier), catalog reads use the kDDL/ kPlain session and perform reads based on the transaction
+  // snapshot.
+  //
+  // NOTE: If yb_enable_concurrent_ddl was true, i.e., if we use the new mode for
+  // catalog reads, then doing this INSERT first wouldn't be required because catalog reads would
+  // use a catalog snapshot and not interfere with the transaction snapshot used for writes via
+  // INSERT.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(0,1), 0", kTable));
+
+  // Ensure that the read time is picked on the local tserver proxy on the first batch so that
+  // all batches use the same read time.
+  CheckReadTimeProvidedToDocdb(
+    [&conn, kTable]() {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(2,100), 0", kTable));
+    });
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+}
 } // namespace yb::pgwrapper
