@@ -606,6 +606,17 @@ YBGetTableFullPrimaryKeyBms(Relation rel)
 	return rel->full_primary_key_bms;
 }
 
+/*
+ * Returns true if the relation has triggers whose firing depends on the
+ * pre-modification (old) tuple of each affected row.
+ *
+ * Despite the name, this also reports true for AFTER-ROW / NEW-table triggers
+ * on UPDATE.  Reason: an UPDATE may not touch every column, and the executor
+ * reconstructs the unmodified columns from the old tuple before passing the
+ * "new" row to the trigger.  For partitioned-table UPDATEs we also consider
+ * DELETE triggers, since cross-partition UPDATEs are executed as
+ * DELETE+INSERT on the underlying leaves.
+ */
 extern bool
 YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 {
@@ -618,7 +629,8 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 	if (operation == CMD_DELETE)
 	{
 		return trigdesc->trig_delete_after_row ||
-			trigdesc->trig_delete_before_row;
+			trigdesc->trig_delete_before_row ||
+			trigdesc->trig_delete_old_table;
 	}
 	if (operation != CMD_UPDATE)
 	{
@@ -628,7 +640,9 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 		!rel->rd_rel->relispartition)
 	{
 		return (trigdesc->trig_update_after_row ||
-				trigdesc->trig_update_before_row);
+				trigdesc->trig_update_before_row ||
+				trigdesc->trig_update_old_table ||
+				trigdesc->trig_update_new_table);
 	}
 	/*
 	 * This is an update operation. We look for both update and delete triggers
@@ -637,7 +651,10 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 	return (trigdesc->trig_update_after_row ||
 			trigdesc->trig_update_before_row ||
 			trigdesc->trig_delete_after_row ||
-			trigdesc->trig_delete_before_row);
+			trigdesc->trig_delete_before_row ||
+			trigdesc->trig_update_old_table ||
+			trigdesc->trig_update_new_table ||
+			trigdesc->trig_delete_old_table);
 }
 
 bool
@@ -2184,7 +2201,8 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 }
 
 bool
-YbWholeRowAttrRequired(Relation relation, CmdType operation)
+YbWholeRowAttrRequired(Relation relation, Relation root_relation,
+					   CmdType operation)
 {
 	Assert(IsYBRelation(relation));
 
@@ -2195,14 +2213,43 @@ YbWholeRowAttrRequired(Relation relation, CmdType operation)
 	if (operation == CMD_UPDATE)
 		return true;
 
+	if (operation != CMD_DELETE)
+		return false;
+
 	/*
 	 * For DELETE, wholerow is required for tables with:
-	 * 1. secondary indexes to removing index entries
+	 * 1. secondary indexes to remove index entries.
 	 * 2. row triggers to pass the old row for trigger execution.
 	 */
-	return (operation == CMD_DELETE &&
-			(YBRelHasSecondaryIndices(relation) ||
-			 YBRelHasOldRowTriggers(relation, operation)));
+	if (YBRelHasSecondaryIndices(relation) ||
+		YBRelHasOldRowTriggers(relation, operation))
+		return true;
+
+	/*
+	 * For a leaf in an inheritance/partition hierarchy, the wholerow attribute
+	 * is also needed when the relation explicitly named in the query (PG's
+	 * "root" result relation, mtstate->rootResultRelInfo) has an AFTER DELETE
+	 * transition table.  "Root" here is the query's named target, not the
+	 * topmost ancestor in the hierarchy -- statement-level triggers fire only
+	 * on the relation named in the SQL, so no intermediate parent matters.
+	 * Unlike heap tables (where GetTupleForTrigger can re-fetch the old tuple
+	 * via ctid), YB needs the wholerow junk attribute to supply old tuples
+	 * for that transition-table capture.
+	 *
+	 * The caller passes root_relation only when it is already open; this
+	 * function does not open any relation itself, so callers without it in
+	 * hand should pass NULL (and open the query's target themselves only if
+	 * this function returns false on the basic check).
+	 */
+	if (root_relation != NULL && root_relation != relation)
+	{
+		TriggerDesc *root_trigdesc = root_relation->trigdesc;
+
+		if (root_trigdesc && root_trigdesc->trig_delete_old_table)
+			return true;
+	}
+
+	return false;
 }
 
 /*------------------------------------------------------------------------------

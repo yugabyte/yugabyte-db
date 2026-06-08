@@ -473,8 +473,15 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
 
 /*
  * Return whether to use wholerow junk attribute for YB relations.
+ *
+ * For a leaf in an inheritance/partition hierarchy, the answer also depends
+ * on transition-table triggers on the root.  Callers that already have the
+ * root open should pass it as root_relation; otherwise pass NULL (and open
+ * the root themselves if the no-root answer is insufficient).  This function
+ * never opens or closes a relation.
  */
-extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
+extern bool YbWholeRowAttrRequired(Relation relation, Relation root_relation,
+								   CmdType operation);
 
 extern Oid YbSystemDbOid();
 
