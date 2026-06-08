@@ -699,8 +699,11 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 													  inner_relids);
 			RestrictInfo *tmp_batched = NULL;
 
-			/* TODO: We don't support expression indexes yet. */
-			if (index->indexkeys[i] != 0)
+			/*
+			 * Skip expression key columns (indexkeys[i] == 0) in the legacy mode
+			 * for plan stability.
+			 */
+			if (index->indexkeys[i] != 0 || yb_enable_base_scans_cost_model)
 			{
 				tmp_batched =
 					yb_get_batched_restrictinfo(rinfo, outer_relids, inner_relids);

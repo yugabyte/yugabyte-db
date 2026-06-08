@@ -133,7 +133,6 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 \set Q2 '/*+ YbBatchedNL(u o) IndexScan(o) */'
 \set Qnext :iter_R3
 \set query ':explain :Q SELECT * FROM users u JOIN :R o ON o.user_id = u.id;'
--- TODO: BNL is not supported when the index clause is on an expression column
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
@@ -180,13 +179,14 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
          Index Cond: (ROW(bucket_id, user_id) = ANY (ARRAY[ROW((yb_hash_code(u.id) % 5), u.id), ROW((yb_hash_code($1) % 5), $1), ROW((yb_hash_code($2) % 5), $2), ..., ROW((yb_hash_code($1023) % 5), $1023)]))
 (5 rows)
 
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
- Nested Loop
+                                                                                                            QUERY PLAN                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (u.id = o.user_id)
    ->  Seq Scan on users u
    ->  Index Scan using orders_expr_idx on orders_expr o
-         Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(u.id) % 3)) AND (user_id = u.id))
-(4 rows)
+         Index Cond: (ROW((yb_hash_code(user_id) % 3), user_id) = ANY (ARRAY[ROW((yb_hash_code(u.id) % 3), u.id), ROW((yb_hash_code($1) % 3), $1), ROW((yb_hash_code($2) % 3), $2), ..., ROW((yb_hash_code($1023) % 3), $1023)]))
+(5 rows)
 
 \set hint '/*+ NestLoop(u o) IndexScan(o) */'
 \set R1 'u.id = 50'

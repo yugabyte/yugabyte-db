@@ -98,7 +98,6 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 \set Qnext :iter_R3
 \set query ':explain :Q SELECT * FROM users u JOIN :R o ON o.user_id = u.id;'
 
--- TODO: BNL is not supported when the index clause is on an expression column
 \i :iter_Q2
 
 \set hint '/*+ NestLoop(u o) IndexScan(o) */'
