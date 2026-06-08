@@ -162,6 +162,12 @@ using client::internal::RemoteTabletPtr;
 
 namespace master {
 
+namespace {
+Status PrepareVectorIndexesIfNecessary(
+    CatalogManager& catalog_manager, const TableInfoPtr& table, bool is_clone,
+    const LeaderEpoch& epoch);
+}  // namespace
+
 Result<TableDescription> TableWithTabletsEntries::DescribeTable(
     const TableId& table_id, const NamespaceInfoPtr& namespace_info) const {
   TableDescription result;
@@ -2223,44 +2229,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
     tablegroup->ReplaceTablet(new_tablets[0]);
   }
 
-  // If this table is indexed by any vector indexes, update the vector indexes to the PREPARING
-  // state. They will have their tablet pointers fixed in UpdateColocatedUserTableInfo.
-  auto vector_index_ids = table->GetVectorIndexIds();
-  std::vector<TableInfoPtr> vector_indexes_to_prepare;
-  vector_indexes_to_prepare.reserve(vector_index_ids.size());
-  for (const auto& vector_index_id : vector_index_ids) {
-    vector_indexes_to_prepare.push_back(VERIFY_RESULT(FindTableById(vector_index_id)));
-  }
-  // Sort by table id to acquire write locks in the canonical order for multi-table locking.
-  std::sort(
-      vector_indexes_to_prepare.begin(), vector_indexes_to_prepare.end(),
-      [](const TableInfoPtr& lhs, const TableInfoPtr& rhs) { return lhs->id() < rhs->id(); });
-  std::vector<TableInfo::WriteLock> vector_index_locks;
-  vector_index_locks.reserve(vector_indexes_to_prepare.size());
-  std::vector<TableInfoPtr> vector_indexes_to_upsert;
-  vector_indexes_to_upsert.reserve(vector_indexes_to_prepare.size());
-  for (auto& vector_index : vector_indexes_to_prepare) {
-    auto vi_lock = vector_index->LockForWrite();
-    if (vi_lock->pb.state() != SysTablesEntryPB::RUNNING) {
-      LOG_WITH_FUNC(WARNING)
-          << "Skipping PREPARING transition for vector index " << vector_index->ToString()
-          << "; current state is " << SysTablesEntryPB_State_Name(vi_lock->pb.state());
-      continue;
-    }
-    vi_lock.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
-    vector_index_locks.push_back(std::move(vi_lock));
-    vector_indexes_to_upsert.push_back(vector_index);
-  }
-  if (!vector_indexes_to_upsert.empty()) {
-    RETURN_NOT_OK(sys_catalog_->Upsert(epoch, vector_indexes_to_upsert));
-    for (auto& lock : vector_index_locks) {
-      lock.Commit();
-    }
-    LOG_WITH_FUNC(INFO) << "Transitioned " << vector_indexes_to_upsert.size()
-                        << " vector indexes of table " << table->id() << " to PREPARING";
-  }
-
-  return Status::OK();
+  return PrepareVectorIndexesIfNecessary(*this, table, is_clone, epoch);
 }
 
 // Helper function for ImportTableEntry.
@@ -3831,6 +3800,67 @@ docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
 
   return cutoff;
 }
+
+namespace {
+
+// For restores RepartitionTable creates a fresh set of tablets for the repartitioned table. If the
+// repartitioned table has vector indexes, these new tablets will not have the needed metadata. In
+// this case we must call AddTableToTablet on each vector index. Before we do so, we set each vector
+// index back to PREPARING here, to correspond to setting the indexed table to PREPARING inside
+// RepartitionTable.
+//
+// There is an early return for clones because the clone operation creates the tablets for the new
+// clone target DB by copying the source tablets at each tserver. Therefore the indexed table's
+// tablets already have all appropriate metadata for the vector index, and we do not need to call
+// AddTableToTablet for any vector indexes.
+Status PrepareVectorIndexesIfNecessary(
+    CatalogManager& catalog_manager, const TableInfoPtr& table, bool is_clone,
+    const LeaderEpoch& epoch) {
+  if (is_clone) {
+    return Status::OK();
+  }
+  // If this table is indexed by any vector indexes, update the vector indexes to the PREPARING
+  // state. Inside UpdateColocatedUserTableInfo they will have their tablet pointers fixed and we
+  // will call AddTableToTablet on them, transitioning them to the RUNNING state.
+  auto vector_index_ids = table->GetVectorIndexIds();
+  std::vector<TableInfoPtr> vector_indexes_to_prepare;
+  vector_indexes_to_prepare.reserve(vector_index_ids.size());
+  for (const auto& vector_index_id : vector_index_ids) {
+    vector_indexes_to_prepare.push_back(
+        VERIFY_RESULT(catalog_manager.FindTableById(vector_index_id)));
+  }
+  // Sort by table id to acquire write locks in the canonical order for multi-table locking.
+  std::sort(
+      vector_indexes_to_prepare.begin(), vector_indexes_to_prepare.end(),
+      [](const TableInfoPtr& lhs, const TableInfoPtr& rhs) { return lhs->id() < rhs->id(); });
+  std::vector<TableInfo::WriteLock> vector_index_locks;
+  vector_index_locks.reserve(vector_indexes_to_prepare.size());
+  std::vector<TableInfoPtr> vector_indexes_to_upsert;
+  vector_indexes_to_upsert.reserve(vector_indexes_to_prepare.size());
+  for (auto& vector_index : vector_indexes_to_prepare) {
+    auto vi_lock = vector_index->LockForWrite();
+    if (vi_lock->pb.state() != SysTablesEntryPB::RUNNING) {
+      LOG_WITH_FUNC(WARNING) << "Skipping PREPARING transition for vector index "
+                             << vector_index->ToString() << "; current state is "
+                             << SysTablesEntryPB_State_Name(vi_lock->pb.state());
+      continue;
+    }
+    vi_lock.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
+    vector_index_locks.push_back(std::move(vi_lock));
+    vector_indexes_to_upsert.push_back(vector_index);
+  }
+  if (vector_indexes_to_upsert.empty()) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(catalog_manager.sys_catalog()->Upsert(epoch, vector_indexes_to_upsert));
+  for (auto& lock : vector_index_locks | std::views::reverse) {
+    lock.Commit();
+  }
+  LOG_WITH_FUNC(INFO) << "Transitioned " << vector_indexes_to_upsert.size()
+                      << " vector indexes of table " << table->id() << " to PREPARING";
+  return Status::OK();
+}
+}  // namespace
 
 }  // namespace master
 }  // namespace yb

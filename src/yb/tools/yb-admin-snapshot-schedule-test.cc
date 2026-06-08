@@ -6517,4 +6517,99 @@ TEST_F_EX(
       2);
 }
 
+// Fixture for the clone-with-vector-indexes + master rolling restart repro.
+// `--enable_db_clone` is a kLocalPersisted AutoFlag with initial value false; explicitly enable
+// it on the masters so the clone path is exercised.
+class YbAdminCloneVectorIndexRestartTest : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_master_flags.emplace_back("--enable_db_clone=true");
+  }
+
+ protected:
+  static constexpr std::string_view kSourceDb = "source_db";
+  static constexpr std::string_view kCloneDb = "clone_db";
+  static constexpr int kNumRowsPerTable = 16;
+
+  Status PopulateSourceDbWithVectorIndexes(pgwrapper::PGConn&& conn) {
+    return PopulateSourceDbWithVectorIndexes(conn);
+  }
+
+  Status PopulateSourceDbWithVectorIndexes(pgwrapper::PGConn& conn) {
+    constexpr int kDim = 3;
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE t (id bigserial PRIMARY KEY, embedding vector($0))", kDim));
+    // Rows are filled with a length-`kDim` literal "[i,i,...,i]" so we do not need to plumb a
+    // multi-dimensional value through ExecuteFormat (which only takes scalar args).
+    for (int i = 0; i < kNumRowsPerTable; ++i) {
+      std::string vec = "[";
+      for (int k = 0; k < kDim; ++k) {
+        if (k) vec += ',';
+        vec += std::to_string(i);
+      }
+      vec += "]";
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO t (embedding) VALUES ('$0')", vec));
+    }
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE INDEX idx_dim100_cosine ON t USING ybhnsw (embedding vector_cosine_ops)"));
+    return Status::OK();
+  }
+
+  Status RollingRestartMasters() {
+    for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+      auto* m = cluster_->master(i);
+      LOG(INFO) << "Rolling restart: shutting down master " << i << " (" << m->id() << ")";
+      m->Shutdown();
+      RETURN_NOT_OK(m->Restart());
+      // Wait for a master leader to be re-elected (and committed) before moving on to the next
+      // master in the rolling sequence; otherwise the next Shutdown could land on the only
+      // remaining quorum member and stall the cluster.
+      RETURN_NOT_OK(WaitFor(
+          [this]() -> Result<bool> {
+            auto idx = cluster_->GetLeaderMasterIndex();
+            return idx.ok();
+          },
+          60s * kTimeMultiplier,
+          Format("Waiting for master leader after restart of master $0", i)));
+    }
+    return Status::OK();
+  }
+};
+
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, CloneVectorIndexThenRollingRestartMasters,
+    YbAdminCloneVectorIndexRestartTest) {
+  ASSERT_OK(PrepareCommon());
+
+  // 1. Create a plain (non-colocated) source database and populate it with vector indexes.
+  ASSERT_OK(ASSERT_RESULT(PgConnect()).ExecuteFormat("CREATE DATABASE $0", kSourceDb));
+  ASSERT_OK(PopulateSourceDbWithVectorIndexes(ASSERT_RESULT(PgConnect(std::string{kSourceDb}))));
+
+  // 2. Create a snapshot schedule on the source database and wait for the first snapshot.
+  //    `CREATE DATABASE ... TEMPLATE` clones from the schedule's latest complete snapshot.
+  ASSERT_OK(
+      CreateSnapshotScheduleAndWaitSnapshot(Format("ysql.$0", kSourceDb), kInterval, kRetention));
+
+  // 3. Clone via `CREATE DATABASE ... TEMPLATE`.
+  ASSERT_OK(ASSERT_RESULT(PgConnect())
+                .ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb));
+
+  // 4. Rolling restart of all masters.
+  ASSERT_OK(RollingRestartMasters());
+
+  // 5. Confirm that both the source and the clone are still queryable.
+  {
+    auto src_conn = ASSERT_RESULT(PgConnect(std::string{kSourceDb}));
+    auto src_count = ASSERT_RESULT(src_conn.FetchRow<int64_t>("SELECT count(*) FROM t"));
+    ASSERT_EQ(src_count, kNumRowsPerTable);
+
+    auto clone_conn = ASSERT_RESULT(PgConnect(std::string{kCloneDb}));
+    auto clone_count = ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT count(*) FROM t"));
+    ASSERT_EQ(clone_count, kNumRowsPerTable);
+  }
+}
+
 }  // namespace yb::tools
