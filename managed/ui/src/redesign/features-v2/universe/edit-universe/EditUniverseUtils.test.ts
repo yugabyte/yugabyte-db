@@ -49,7 +49,7 @@ describe('hasDedicatedNodes', () => {
 });
 
 describe('placementSpecToAvailabilityZones', () => {
-  it('maps region code to AZ rows with node counts and leader preference offset', () => {
+  it('maps region code to AZ rows with node counts and leader preference', () => {
     const spec = makePrimaryPlacementSpec();
     const firstRegion = spec.cloud_list[0].region_list![0];
     firstRegion.az_list![0].leader_preference = 2;
@@ -60,12 +60,12 @@ describe('placementSpecToAvailabilityZones', () => {
     expect(zones[FIXTURE_REGION_CODE][0]).toMatchObject({
       uuid: FIXTURE_AZ_1_UUID,
       nodeCount: 1,
-      preffered: 1
+      preffered: 2
     });
     expect(zones[FIXTURE_REGION_CODE][1]).toMatchObject({
       uuid: FIXTURE_AZ_2_UUID,
       nodeCount: 1,
-      preffered: -1
+      preffered: 0
     });
   });
 });

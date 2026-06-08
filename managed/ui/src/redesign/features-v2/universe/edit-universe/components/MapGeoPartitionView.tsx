@@ -13,6 +13,7 @@ import { useEditUniverseContext } from '../EditUniverseUtils';
 import { useTranslation } from 'react-i18next';
 import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import { MapRegionTooltip } from './MapTooltip';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
 
 const { styled, Box } = mui;
 
@@ -62,14 +63,16 @@ export const MapGeoPartitionView = () => {
   const regionsByName = groupBy(regions, 'code');
   const hasPrefferedRegions = regions.some((region) =>
     region.zones.some(
-      (zone: any) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! >= 0
+      (zone: any) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED
     )
   );
   return (
     <>
       {regions?.map((region, index) => {
         const hasHighestPreferedRank = region.zones.some(
-          (zone: any) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference === 0
+          (zone: any) =>
+            isDefinedNotNull(zone.leader_preference) &&
+            zone.leader_preference === AZ_PREFFERED_HIGHEST_RANK
         );
         return (
           <YBMapMarker

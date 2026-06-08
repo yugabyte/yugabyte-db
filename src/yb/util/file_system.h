@@ -17,8 +17,8 @@
 
 #include "yb/util/coding_consts.h"
 #include "yb/util/io.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 

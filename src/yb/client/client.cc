@@ -624,11 +624,14 @@ Status YBClient::TruncateTables(const TableIds& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoint deadline) {
+Status YBClient::BackfillIndex(const TableId& table_id,
+                               std::optional<TransactionMetadata> requester_transaction,
+                               bool wait, CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
     deadline = CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms;
   }
-  return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
+  return data_->BackfillIndex(
+      this, YBTableName(), table_id, deadline, std::move(requester_transaction), wait);
 }
 
 Status YBClient::GetIndexBackfillProgress(

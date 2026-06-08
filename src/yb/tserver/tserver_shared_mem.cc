@@ -16,6 +16,7 @@
 #include <atomic>
 #include <mutex>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
 
 #include "yb/docdb/object_lock_shared_state.h"

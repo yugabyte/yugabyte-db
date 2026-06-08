@@ -269,12 +269,16 @@ public class MoveTablesTask extends BaseTablespacesTask {
     tableSpaceInfo.name = targetTablespaceName;
     TableSpaceStructures.TableSpaceInfo currentTablesSpaceInfo =
         currentTablespaces.get(targetTablespaceName);
-    if (currentTablesSpaceInfo != null && !currentTablesSpaceInfo.equals(tableSpaceInfo)) {
-      throw new IllegalStateException(
-          "Expected to create tablespace "
-              + tableSpaceInfo
-              + " but found "
-              + currentTablesSpaceInfo);
+    if (currentTablesSpaceInfo != null) {
+      if (!currentTablesSpaceInfo.equals(tableSpaceInfo)) {
+        throw new IllegalStateException(
+            "Expected to create tablespace "
+                + tableSpaceInfo
+                + " but found "
+                + currentTablesSpaceInfo);
+      }
+      log.debug("Tablespace {} exists, skipping creation", targetTablespaceName);
+      return;
     }
     String createTablespaceQuery = CreateTableSpaces.getTablespaceCreationQuery(tableSpaceInfo);
     ShellResponse response =

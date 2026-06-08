@@ -253,7 +253,6 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.14.0",
   "io.fabric8" % "kubernetes-client-api" % "6.14.0",
   "io.fabric8" % "kubernetes-model-core" % "6.14.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.14.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -285,6 +284,7 @@ libraryDependencies ++= Seq(
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "1.0.2" % Test,
+  "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
 // Clear default resolvers.
@@ -1037,6 +1037,8 @@ dependencyOverrides += "io.netty" % "netty-all" % "4.1.133.Final"
 dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.133.Final"
 dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.133.Final"
 
+dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
+
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client. The
 // datadog-api-client library also needs them, but the newer versions
@@ -1115,6 +1117,18 @@ val testShardSize = SettingKey[Int]("testShardSize",
   "Number of test classes, executed by each forked JVM")
 testShardSize := 30
 
+val testLocalShardSize = SettingKey[Int]("testLocalShardSize",
+  "Number of local test classes, executed by each forked JVM")
+testLocalShardSize := 4
+
+val testLocalIpRangeStart = SettingKey[Int]("testLocalIpRangeStart",
+  "First loopback IP index for local provider tests (127.0.x.y encoding)")
+testLocalIpRangeStart := 2
+
+val testLocalIpRangeSize = SettingKey[Int]("testLocalIpRangeSize",
+  "Number of loopback IP indices allocated per forked local test JVM group")
+testLocalIpRangeSize := 35
+
 Global / concurrentRestrictions += Tags.limit(Tags.ForkedTestGroup, testParallelForks.value)
 
 def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
@@ -1127,9 +1141,41 @@ def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
       Group("testGroup" + index, tests, SubProcess(options))
   } toSeq
 
+def partitionLocalTests(
+    tests: Seq[TestDefinition],
+    shardSize: Int,
+    ipRangeStart: Int,
+    ipRangeSize: Int) =
+  tests.sortWith(_.name.hashCode() < _.name.hashCode()).grouped(shardSize).zipWithIndex map {
+    case (tests, index) =>
+      val rangeStart = ipRangeStart + index * ipRangeSize
+      val rangeEnd = rangeStart + ipRangeSize
+      val options = ForkOptions().withRunJVMOptions(Vector(
+        "-Xmx3g", "-XX:MaxMetaspaceSize=600m", "-XX:MetaspaceSize=200m",
+        "-Dconfig.resource=application.test.conf",
+        s"-Dyb.local.test.ipRangeStart=$rangeStart",
+        s"-Dyb.local.test.ipRangeEnd=$rangeEnd"
+      ))
+      Group("testGroup" + index, tests, SubProcess(options))
+  } toSeq
+
 Test / parallelExecution := true
 Test / fork := true
-Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSize.value )
+Test / testGrouping := partitionTests(
+  (Test / definedTests).value
+    .filter(t => !localTestSuiteFilter(t.name)),
+  testShardSize.value
+)
+
+// Add local tests only grouping to avoid multiple local tests falling into one bucket.
+TestLocalProviderSuite / parallelExecution := true
+TestLocalProviderSuite / testGrouping := partitionLocalTests(
+  (TestLocalProviderSuite / definedTests).value
+    .filter(t => localTestSuiteFilter(t.name)),
+  testLocalShardSize.value,
+  testLocalIpRangeStart.value,
+  testLocalIpRangeSize.value
+)
 
 Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")

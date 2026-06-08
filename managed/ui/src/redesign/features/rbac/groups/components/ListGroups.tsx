@@ -30,7 +30,8 @@ import { getAllRoles } from '../../api';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
 import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
-import { RoleTypeComp } from '../../common/RbacUtils';
+import { RoleTypeComp, isRbacEnabled, isSuperAdminUser } from '../../common/RbacUtils';
+import { UserPermission } from '../../common/rbac_constants';
 import { Role, RoleType } from '../../roles';
 import {
   AuthGroupToRolesMapping,
@@ -140,9 +141,14 @@ const ListGroups = () => {
 
   const [showDeleteModal, toggleDeleteModal] = useToggle(false);
   const [searchText, setSearchText] = useState('');
-  
+
   const currentUserInfo = useSelector((state: any) => state.customer.currentUser.data);
-  
+  const rbacPermissions = (window as unknown as { rbac_permissions?: UserPermission[] })
+    .rbac_permissions;
+  const isSuperAdmin = isRbacEnabled()
+    ? isSuperAdminUser(rbacPermissions ?? [])
+    : currentUserInfo?.role === 'SuperAdmin';
+
   if (isLoading || isRolesLoading || isRuntimeConfigLoading || !runtimeConfig)
     return <YBLoadingCircleIcon />;
 
@@ -169,9 +175,6 @@ const ListGroups = () => {
   }
 
   const getActions = (_: undefined, group: AuthGroupToRolesMapping) => {
-
-    const isSuperAdmin = currentUserInfo?.role === 'SuperAdmin';
-
     const menuOptions = [];
 
     menuOptions.push({

@@ -109,15 +109,21 @@ class EmbeddingsGenerator:
                 if len(batch_texts) >= self.batch_size:
                     try:
                         vectors = self.embedder.embed_documents(batch_texts)
-                        for text, vec in zip(batch_texts, vectors):
-                            yielded_count += 1
-                            yield text, vec
                     except Exception as e:
+                        # Log with batch context for forensics, then re-raise so
+                        # the surrounding pipeline marks the task as FAILED.
+                        # Previously this exception was swallowed, which caused
+                        # the document to be reported as completed with zero
+                        # embeddings persisted.
                         logging.error(
                             f"Failed to generate embeddings for batch "
                             f"ending at chunk {chunk_count} in file "
                             f"{file_location}: {str(e)}"
                         )
+                        raise
+                    for text, vec in zip(batch_texts, vectors):
+                        yielded_count += 1
+                        yield text, vec
                     batch_texts = []
 
                     try:
@@ -135,14 +141,15 @@ class EmbeddingsGenerator:
         if batch_texts:
             try:
                 vectors = self.embedder.embed_documents(batch_texts)
-                for text, vec in zip(batch_texts, vectors):
-                    yielded_count += 1
-                    yield text, vec
             except Exception as e:
                 logging.error(
                     f"Failed to generate embeddings for final batch "
                     f"in file {file_location}: {str(e)}"
                 )
+                raise
+            for text, vec in zip(batch_texts, vectors):
+                yielded_count += 1
+                yield text, vec
 
         try:
             self.pipeline_tracking.update_chunks_processed(
@@ -156,6 +163,16 @@ class EmbeddingsGenerator:
             f"{chunk_count} total chunks, {empty_chunk_count} "
             f"empty/whitespace chunks, {yielded_count} embeddings yielded"
         )
+
+        # Defensive post-condition: if we partitioned non-empty chunks but
+        # produced zero embeddings, something silently dropped output. Fail
+        # the pipeline so the task isn't marked COMPLETED on bad state.
+        if chunk_count > empty_chunk_count and yielded_count == 0:
+            raise RuntimeError(
+                f"Embedding generation produced 0 vectors from "
+                f"{chunk_count - empty_chunk_count} non-empty chunks for "
+                f"{file_location}"
+            )
 
     @meko_observe(
         name="Generate Embeddings for PDF Files / EmbeddingsGenerator",
@@ -209,6 +226,12 @@ class EmbeddingsGenerator:
             f"Finished generating embeddings for {file_location}: "
             f"{chunk_count} total chunks, {yielded_count} embeddings yielded"
         )
+
+        if chunk_count > 0 and yielded_count == 0:
+            raise RuntimeError(
+                f"Embedding generation produced 0 vectors from "
+                f"{chunk_count} chunks for {file_location}"
+            )
 
     @meko_observe(
         name="Generate Embeddings for HTML Files / EmbeddingsGenerator",
@@ -264,6 +287,12 @@ class EmbeddingsGenerator:
             f"Finished generating embeddings for {file_location}: "
             f"{chunk_count} total chunks, {yielded_count} embeddings yielded"
         )
+
+        if chunk_count > 0 and yielded_count == 0:
+            raise RuntimeError(
+                f"Embedding generation produced 0 vectors from "
+                f"{chunk_count} chunks for {file_location}"
+            )
 
     @meko_observe(
         name="Generate Embeddings for Video Files / EmbeddingsGenerator",

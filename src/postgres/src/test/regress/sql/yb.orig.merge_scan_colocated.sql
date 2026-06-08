@@ -254,6 +254,11 @@
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY(''{}'') ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :iter_P2
 
+-- Only duplicates in IN
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 1) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+
 -- Non-const in RHS (like var ref)
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, r2, 2) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
@@ -347,6 +352,11 @@ CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, r4, r5);
 
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
+-- Only duplicates in IN
+\set query ':P :Q SELECT r3, r4, r5, n, r2 FROM r5n WHERE r2 IN (1, 1) ORDER BY r3, r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
 
 -- Secondary index scan VS merge PK scan
 -- Expected secondary index scan; merge PK scan likely wins due to missing
@@ -590,7 +600,7 @@ DROP INDEX r5n_r2_r3_expr_idx;
 --
 -- Duplicate columns secondary index
 --
-CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2);
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2, r5);
 
 -- No order
 -- Merge scan should not be used.
@@ -602,9 +612,7 @@ CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2);
 \set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- Forward scan
--- Order by an expression in the embedded index
--- Merge scan should not be used.
-\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), n LIMIT 5;'
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) AND (r3 + r4) IN (4, 5) ORDER BY r5, n LIMIT 5;'
 \i :iter_P2
 
 -- Forward scan (v2)
@@ -613,9 +621,7 @@ CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2);
 \i :iter_Q2
 
 -- Backward scan
--- Order by an expression in the embedded index
--- Merge scan should not be used.
-\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5;'
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) AND (r3 + r4) IN (4, 5) ORDER BY r5 DESC, n LIMIT 5;'
 \i :iter_P2
 
 -- Backward scan (v2)
@@ -626,7 +632,7 @@ CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2);
 -- Targets
 -- Order by an expression in the embedded index
 -- Merge scan should not be used.
-\set query ':P :Q SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5;'
+\set query ':P :Q SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r5 DESC, n LIMIT 5;'
 \i :iter_P2
 
 -- Targets (v2)
@@ -638,7 +644,7 @@ CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2);
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- (Drop this index)
-DROP INDEX r5n_r2_expr_r21_expr1_r22_idx;
+DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
 
 -- test yb_enable_advanced_index_cond_fold flag off
 SET yb_enable_advanced_index_cond_fold = off;

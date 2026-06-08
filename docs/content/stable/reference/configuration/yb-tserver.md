@@ -1351,6 +1351,20 @@ Default: `false`
 
 When true, the CDC service returns a null before-image if it is not able to find one.
 
+##### --cdc_enable_intra_transactional_before_image
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+
+When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
+
+This flag requires a YB-TServer restart. Enable it on all YB-TServers in the universe when you need accurate before images for intra-transactional changes with logical replication or gRPC CDC.
+
+
 ##### --cdcsdk_tablet_not_of_interest_timeout_secs
 
 {{% tags/wrap %}}

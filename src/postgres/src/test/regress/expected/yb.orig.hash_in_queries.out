@@ -230,9 +230,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 -----------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) < 4624))
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 1
-(4 rows)
+(2 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) <= 4624;
                                      QUERY PLAN                                     
@@ -249,9 +247,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 ------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=0 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(h1) > 64672))
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 1
-(4 rows)
+(2 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) >= 64672;
                                      QUERY PLAN                                      

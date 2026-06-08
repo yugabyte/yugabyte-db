@@ -163,6 +163,10 @@ Result<std::string> GetProcfsThreadName(int64_t tid) {
   return ReadUnixConfigFromPath(GetProcfsThreadPath(tid, "comm"), kMaxProcfsThreadNameSize + 1);
 }
 
+Result<std::string> GetProcfsProcessCmdline(int64_t tid, size_t max_length) {
+  return ReadUnixConfigFromPath(Format("/proc/$0/cmdline", tid), max_length + 1);
+}
+
 Result<std::string> RunShellProcess(const string& cmd) {
   FILE* fp = popen(cmd.c_str(), "r");
   if (fp == nullptr) {

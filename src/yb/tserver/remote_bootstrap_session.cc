@@ -96,7 +96,6 @@ RemoteBootstrapSession::RemoteBootstrapSession(
     : tablet_peer_(tablet_peer),
       session_id_(std::move(session_id)),
       requestor_uuid_(std::move(requestor_uuid)),
-      succeeded_(false),
       nsessions_(nsessions),
       rbs_anchor_client_(rbs_anchor_client) {
   AddSource<RemoteBootstrapSnapshotsSource>();
@@ -206,13 +205,25 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(UnregisterAnchorIfNeededUnlocked());
 
-  // Determine the earliest WAL op index that the source still needs to retain. This is the same
-  // predicate Log::GC() consults: any segment that GC would consider for deletion is already
-  // covered by RocksDB SSTs (or other persistent state) and therefore redundant once the
-  // destination installs the checkpoint. We must compute this BEFORE registering our own log
-  // anchor, because the registry-based GetEarliestRegisteredLogIndex() floor inside
-  // GetEarliestNeededLogIndex() would otherwise pin the result to whatever value we register at.
-  const int64_t rbs_min_op_idx = VERIFY_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
+  // Earliest WAL op index the source must retain -- the floor below which Log::GC() will not
+  // delete. Compute it BEFORE registering our own log anchor, since GetEarliestRegisteredLogIndex()
+  // inside GetEarliestNeededLogIndex() would otherwise pin the result to whatever we register at.
+  //
+  // GetEarliestNeededLogIndex() returns two floors: earliest_needed_log_index (what the tablet
+  // itself needs) and log_index_needed_by_cdc (what the CDCSDK/xCluster (xrepl) retention barrier
+  // needs). Log::GC() keeps segments at/above the xrepl barrier even when they sit below the
+  // earliest-needed index. RBS must honor it too: once the destination is promoted to leader it
+  // becomes the xrepl source and serves GetChanges by reading the WAL (not the RocksDB SSTs).
+  // Shipping only segments at/above the earliest-needed index would drop ones below it that are
+  // still at/above the xrepl barrier -- the WAL the new leader needs -- and GetChanges would then
+  // fail with "logs ... have been garbage collected". So lower the floor to the same boundary GC
+  // uses.
+  // When no xrepl consumer constrains retention, log_index_needed_by_cdc is int64 max, so the min
+  // is a no-op and RBS behaves exactly as before for non-xrepl tablets.
+  const auto min_retain_log_index_info = VERIFY_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
+  const int64_t rbs_min_op_idx = std::min(
+      min_retain_log_index_info.earliest_needed_log_index,
+      min_retain_log_index_info.log_index_needed_by_cdc);
 
   // Prevent log GC from going below rbs_min_op_idx while we grab log segments and tablet
   // metadata. Pre-fix this code path did Register(MinimumOpId().index() = 0) here and later
@@ -297,10 +308,12 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   //
   // The predicate below mirrors the index-based portion of LogReader::GetSegmentPrefixNotIncluding
   // (stop at the active footer-less segment; stop at the first segment that still contains entries
-  // we need). The xCluster/CDC/time/min-segments retention bumps that Log::GetSegmentsToGC layers
-  // on top are source-side retention concerns; segments strictly below rbs_min_op_idx are by
-  // definition unneeded by the destination regardless of those source-side policies, so we omit
-  // them here.
+  // at/above rbs_min_op_idx). rbs_min_op_idx already folds in the xrepl (CDCSDK/xCluster) retained
+  // index (computed above), so segments the destination will still need for change capture once it
+  // becomes leader are kept here. We do not replicate the other, purely source-side bumps that
+  // Log::GetSegmentsToGC layers on (time-based and min-segments retention, in-flight log-copy
+  // floor): each only ever makes GC retain *more* segments and covers ops no RBS destination needs,
+  // so omitting them at worst ships a few extra segments -- never too few.
   size_t num_to_skip = 0;
   for (const auto& segment : log_segments_) {
     if (!segment->HasFooter()) {
@@ -333,7 +346,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   LOG_WITH_PREFIX(INFO)
       << "Computed WAL segments to ship: keeping=" << log_segments_.size() - num_to_skip
       << " (skipping " << num_to_skip << " of " << log_segments_.size()
-      << " on-disk segments below earliest-needed op index " << rbs_min_op_idx
+      << " on-disk segments below retained op index " << rbs_min_op_idx
       << ", lazy_sb_flush="
       << tablet_peer_->tablet_metadata()->IsLazySuperblockFlushEnabled()
       << ", last_logged_opid=" << last_logged_opid << ")";
@@ -691,16 +704,11 @@ Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
 
 void RemoteBootstrapSession::SetSuccess() {
   std::lock_guard lock(mutex_);
-  succeeded_ = true;
+  succeeded_.store(true);
   // Can early clear the checkpoints dir since the session already succeeded (data sent to client),
   // and we don't need the snapshot anymore. In case of failure, the session is removed right away
   // which would anyways clear the checkpoints dir.
   RemoveCheckpointDir();
-}
-
-bool RemoteBootstrapSession::Succeeded() {
-  std::lock_guard lock(mutex_);
-  return succeeded_;
 }
 
 void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {
@@ -746,7 +754,7 @@ Status RemoteBootstrapSession::RegisterRemoteLogAnchorUnlocked() {
   if (rbs_anchor_client_) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
     RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(
-        tablet_peer_->tablet_id(), remote_log_anchor_index_, succeeded_));
+        tablet_peer_->tablet_id(), remote_log_anchor_index_, Succeeded()));
     rbs_anchor_session_created_ = true;
   }
   return Status::OK();
@@ -755,7 +763,7 @@ Status RemoteBootstrapSession::RegisterRemoteLogAnchorUnlocked() {
 Status RemoteBootstrapSession::UpdateRemoteLogAnchorUnlocked() {
   if (rbs_anchor_client_) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
-    RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(remote_log_anchor_index_, succeeded_));
+    RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(remote_log_anchor_index_, Succeeded()));
   }
   return Status::OK();
 }

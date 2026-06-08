@@ -377,7 +377,8 @@ extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
  * This API is needed for reading data via index.
  */
 extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
-							  LockWaitPolicy wait_policy, EState *estate);
+							  LockWaitPolicy wait_policy, EState *estate,
+							  const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle);
 
 /*
  * Fetch a single row for given ybctid into a heap-tuple.
@@ -385,7 +386,6 @@ extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
  */
 extern bool YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple);
 extern void YBCFlushTupleLocks();
-extern void YBCHandleConflictError(Relation rel, LockWaitPolicy wait_policy);
 
 /*
  * ANALYZE support: sampling of table data

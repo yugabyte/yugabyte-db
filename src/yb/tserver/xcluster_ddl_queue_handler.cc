@@ -348,7 +348,8 @@ void XClusterDDLQueueHandler::Shutdown() {
   if (pg_conn_ && FLAGS_ysql_yb_enable_advisory_locks &&
       FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
     // Optimistically unlock the advisory lock so we don't have to wait for the connection to close.
-    auto s = pg_conn_->Execute(Format("SELECT pg_advisory_unlock_all()"));
+    // Use Fetch since pg_advisory_unlock_all() returns a (void) row.
+    auto s = ResultToStatus(pg_conn_->Fetch("SELECT pg_advisory_unlock_all()"));
     // Alright if we fail here, log an error and wait for the connection to close normally.
     WARN_NOT_OK(s, "Encountered error unlocking advisory lock for xCluster DDL queue handler");
     pg_conn_.reset();
@@ -683,6 +684,12 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
 
 Status XClusterDDLQueueHandler::InitPGConnection() {
   if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
+    pg_conn_.reset();
+  }
+  if (pg_conn_ && pg_conn_->ConnStatus() != CONNECTION_OK) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
+        << "Dropping unhealthy PostgreSQL connection (status " << pg_conn_->ConnStatus()
+        << "), will reconnect";
     pg_conn_.reset();
   }
   if (pg_conn_) {

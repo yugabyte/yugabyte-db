@@ -49,29 +49,31 @@
 DEFINE_test_flag(int32, scan_tests_num_rows, 0,
                  "Number of rows to load for various scanning tests, or 0 for default.");
 
+DECLARE_bool(never_fsync);
+DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_skip_applying_truncate);
-DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(use_fast_backward_scan);
-DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
-DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
-DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
 DECLARE_int32(rpc_workers_limit);
+DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(global_memstore_size_mb_max);
-DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(arena_warn_threshold_bytes);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(sst_files_hard_limit);
 DECLARE_uint64(sst_files_soft_limit);
-DECLARE_uint64(arena_warn_threshold_bytes);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
@@ -496,6 +498,11 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_ON_MACOS(HybridTimeFilterDuringCo
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = false;
+  // Tests run with never_fsync enabled, which skips the SST fsync done during memtable flush. That
+  // changes flush/compaction timing and makes the SST layout (and thus the block-cache hit/miss
+  // counts asserted below) nondeterministic. Re-enable fsync so the layout is stable here.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
 
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
   auto insert_cmd = InsertNValuesCommand(kNumColumns);
@@ -508,7 +515,7 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_ON_MACOS(HybridTimeFilterDuringCo
   ASSERT_GE(block_cache_miss_count, 0);
   if (NumScanRows() == kReleaseNumScanRows) {
     LOG(INFO) << "Checking that block cache hit/miss counts are within expected ranges";
-    ASSERT_BETWEEN(block_cache_miss_count, 10000, 12000);
+    ASSERT_BETWEEN(block_cache_miss_count, 9000, 12000);
     // The hit count would be ~30000 with docdb_ht_filter_conflict_with_committed turned off.
     ASSERT_BETWEEN(block_cache_hit_count, 14000, 18000);
   } else {

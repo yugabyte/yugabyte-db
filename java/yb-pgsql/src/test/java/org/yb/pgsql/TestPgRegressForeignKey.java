@@ -35,6 +35,12 @@ public class TestPgRegressForeignKey extends BasePgRegressTest {
 
   @Test
   public void testPgRegress() throws Exception {
+    // The test creates single connection which all the queries are executed.
+    // After reading a table, it doesn't expected extra catalog read requests
+    // but in random warmup mode of conn mgr, the read request can go to any
+    // backend in pool, where catalog read requests weren't made in past.
+    // Therefore run the test in NONE mode, so all queries run on same backend.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest("yb_foreign_key_schedule");
   }
 }

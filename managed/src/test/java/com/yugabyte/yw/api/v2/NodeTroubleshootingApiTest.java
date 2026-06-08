@@ -393,7 +393,7 @@ public class NodeTroubleshootingApiTest extends FakeDBApplication {
 
     assertEquals(400, exception.getHttpStatus());
     assertTrue(
-        exception.getMessage().contains("masters_only and tservers_only cannot both be true"));
+        exception.getMessage().contains("masters_only and tservers_only both cannot be true"));
     verify(mockNodeScriptRunner, never()).runScript(any(), any(), any());
   }
 
@@ -646,7 +646,7 @@ public class NodeTroubleshootingApiTest extends FakeDBApplication {
 
     assertEquals(400, exception.getHttpStatus());
     assertTrue(
-        exception.getMessage().contains("masters_only and tservers_only cannot both be true"));
+        exception.getMessage().contains("masters_only and tservers_only both cannot be true"));
     verify(mockNodeFileCollector, never()).collectFiles(any(), any(), any(), any());
   }
 

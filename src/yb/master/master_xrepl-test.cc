@@ -79,7 +79,8 @@ class MasterTestXRepl  : public MasterTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_backfilling_cdc_stream_with_replication_slot) = true;
     // Disable implicit dynamic table addition in CDC feature in this test because this
-    // master-only test doesn't have pg_class and pg_publication_rel system catalog tables.
+    // master-only test doesn't have pg_class, pg_publication_rel and pg_replication_origin system
+    // catalog tables.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
         false;
   }

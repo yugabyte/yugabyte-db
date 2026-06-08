@@ -34,6 +34,13 @@ spec:
                   The new volume fields are mutually exclusive with the old deviceInfo fields.
                 rule: >
                   !has(self.masterVolume) || (!has(self.deviceInfo) && !has(self.masterDeviceInfo))
+              - message: rootCA cannot be removed once set.
+                rule: >
+                  !self.enableNodeToNodeEncrypt && !self.enableClientToNodeEncrypt
+                  || has(self.rootCA) || !has(oldSelf.rootCA)
+              - message: rootCA cannot be set when both node-to-node and client-to-node TLS are disabled.
+                rule: >
+                  self.enableNodeToNodeEncrypt || self.enableClientToNodeEncrypt || !has(self.rootCA)
             properties:
               universeName:
                 type: string
@@ -161,9 +168,6 @@ spec:
                   Specify the name of the rootCA certificate to be used for cert-manager
                   or cert-manager certificates. If empty, YBA will create its own certificate.
                 type: string
-                x-kubernetes-validations:
-                - message: rootCA cannot be changed once set
-                  rule: self == oldSelf
               ybSoftwareVersion:
                 description: Version of DB software to use in the universe.
                 type: string

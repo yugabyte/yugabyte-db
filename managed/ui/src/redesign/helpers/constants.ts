@@ -50,7 +50,6 @@ export const RuntimeConfigKey = {
   USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG: 'yb.use_k8s_custom_resources',
   IS_TAGS_ENFORCED: 'yb.universe.user_tags.is_enforced',
   DEFAULT_DEV_TAGS: 'yb.universe.user_tags.dev_tags',
-  SHOW_DR_XCLUSTER_CONFIG: 'yb.ui.xcluster.dr.show_xcluster_config',
   IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf',
   ENABLE_NODE_AGENT: 'yb.node_agent.client.enabled',
   GFLAGS_ALLOW_DURING_PREFINALIZE: 'yb.gflags.allow_during_prefinalize',

@@ -721,6 +721,13 @@ extern bool yb_enable_retry_after_non_atomic_commit;
 extern bool yb_test_system_catalogs_creation;
 
 /*
+ * Sleep before executing a statement.
+ * Can be used to simulate race conditions where catalog is updated between
+ * planning and execution.
+ */
+extern int yb_test_sleep_before_executor_start_ms;
+
+/*
  * If set to non-zero, next DDL operation will fail with the specified error level:
  * 0 = disabled (default), 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
  * Resets to 0 after triggering.
@@ -734,6 +741,12 @@ extern bool yb_force_catalog_update_on_next_ddl;
 
 /* If set to true, all drop commands will fail. */
 extern bool yb_test_fail_all_drops;
+
+/*
+ * If set to true, a manual ANALYZE does not reset the auto-analyze mutation
+ * counters, reverting to the pre-reset behavior. Test only.
+ */
+extern bool yb_test_analyze_dont_reset_mutations;
 
 /*
  * If set to true, force invalidation of every base relation's index relcache
@@ -879,6 +892,18 @@ extern bool	yb_enable_parallel_scan_colocated;
 extern bool	yb_enable_parallel_scan_hash_sharded;
 extern bool	yb_enable_parallel_scan_range_sharded;
 extern bool	yb_enable_parallel_scan_system;
+
+/*
+ * Test-only GUC for exercising parallel plan code paths.
+ */
+typedef enum YbForceParallel
+{
+	YB_FORCE_PARALLEL_OFF = 0,
+	YB_FORCE_PARALLEL_PREFER = 1,
+	YB_FORCE_PARALLEL_FORCE = 2,
+} YbForceParallel;
+
+extern int	yb_test_force_parallel;
 
 /*
  * If set to true, all DDL statements will cause the catalog version to increment.
@@ -1036,6 +1061,30 @@ extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations(YbcFlushDebugContext debug_context);
 extern void YBAdjustOperationsBuffering(int multiple);
+
+struct QueryDesc;
+/* Called at the start of every ExecutorRun and ExecutorFinish. */
+extern void YBOnExecutorOperationBegin();
+/*
+ * Called at the end of every ExecutorRun and ExecutorFinish. At the top
+ * level, saves DocDB stats onto queryDesc for pg_stat_statements.
+ */
+extern void YBOnExecutorOperationEnd(struct QueryDesc *queryDesc);
+/* True for the outermost ExecutorRun/ExecutorFinish. */
+extern bool YBIsTopLevelExecutorOperation();
+
+/* Called at the start of every tracked ProcessUtility call. */
+extern void YBOnUtilityOperationBegin();
+/*
+ * Called at the end of every tracked ProcessUtility call. At the top
+ * level, saves DocDB stats into the YBGetUtilityOperationStats() slot.
+ */
+extern void YBOnUtilityOperationEnd();
+/* DocDB stats from the last top-level utility (for pg_stat_statements). */
+extern YbInstrumentation *YBGetUtilityOperationStats();
+
+/* Resets executor/utility nesting counters and stats after a failed transaction. */
+extern void YBResetOperationTracking();
 
 bool		YBEnableTracing();
 bool		YBReadFromFollowersEnabled();
@@ -1744,6 +1793,8 @@ extern bool YBHasSkippedIntentsWrite();
 extern bool yb_is_federated_yb_foreign_table(Oid relid);
 
 struct PlannerInfo;
+struct RelOptInfo;
+struct RangeTblEntry;
 extern void YbAddFederatedPartitionTserverUuid(struct PlannerInfo *root,
 											  Index rti,
 											  const char *tserver_uuid);
@@ -1751,4 +1802,9 @@ extern const char *YbGetFederatedPartitionTserverUuid(const struct PlannerInfo *
 													  Index rti);
 
 extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
+
+extern void YbHandleConflictError(Relation rel, LockWaitPolicy wait_policy);
+
+extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
+
 #endif							/* PG_YB_UTILS_H */

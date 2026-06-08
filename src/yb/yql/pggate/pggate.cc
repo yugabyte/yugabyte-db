@@ -523,7 +523,6 @@ PgClient::ProxyInitInfo MakeProxyInitInfo(
                           tserver_shared_data.endpoint().port());
     result.resolve_cache_timeout = MonoDelta::kMax;
   }
-  LOG(INFO) << "Using TServer host_port: " << result.host_port;
   return result;
 }
 
@@ -1244,6 +1243,10 @@ Result<tserver::PgQueryAutoAnalyzeResponsePB> PgApiImpl::QueryAutoAnalyze(PgOid 
     return pg_session_->pg_client().QueryAutoAnalyze(db_oid);
 }
 
+Status PgApiImpl::ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+  return pg_session_->pg_client().ResetAutoAnalyzeMutationCounters(table_id);
+}
+
 Result<YbcPgColumnInfo> PgApiImpl::GetColumnInfo(YbcPgTableDesc table_desc, int16_t attr_number) {
   return table_desc->GetColumnInfo(attr_number);
 }
@@ -1420,9 +1423,10 @@ Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t versi
         + FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms));
 }
 
-Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
+Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block) {
   tserver::PgBackfillIndexRequestPB req;
   table_id.ToPB(req.mutable_table_id());
+  req.set_use_regular_transaction_block(use_regular_transaction_block);
   return pg_client_.BackfillIndex(
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
 }
@@ -2172,8 +2176,8 @@ bool PgApiImpl::IsRestartReadPointRequested() {
 
 Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
   RSTATUS_DCHECK(
-      explicit_row_lock_buffer().IsEmpty(),
-      IllegalState, "Expected row lock buffer to be empty");
+      !explicit_row_lock_buffer().HasPendingLocks(),
+      IllegalState, "Pending locks is not expected");
   RSTATUS_DCHECK(
       pg_session_->IsInsertOnConflictBufferEmpty(),
       IllegalState, "Expected INSERT ... ON CONFLICT buffer to be empty");
@@ -2359,14 +2363,21 @@ void PgApiImpl::NotifyDeferredTriggersProcessingStarted() {
 
 Status PgApiImpl::AddExplicitRowLockIntent(
     const PgObjectId& table_id, const Slice& ybctid, const YbcPgExplicitRowLockParams& params,
-    const YbcPgTableLocalityInfo& locality_info, YbcPgExplicitRowLockErrorInfo& error_info) {
+    const YbcPgTableLocalityInfo& locality_info,
+    std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle,
+    YbcPgExplicitRowLockErrorInfo& error_info) {
   ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  return explicit_row_lock_buffer().Add(
+  RETURN_NOT_OK(explicit_row_lock_buffer().Add(
       {.rowmark = params.rowmark,
        .pg_wait_policy = params.pg_wait_policy,
        .docdb_wait_policy = params.docdb_wait_policy,
        .database_id = table_id.database_oid},
-      LightweightTableYbctid(table_id.object_oid, ybctid), locality_info, adapter);
+      LightweightTableYbctid(table_id.object_oid, ybctid), locality_info, handle, adapter));
+  // TODO(#30984): Add FK reference into the cache in case of optimized SKIP LOCKED
+  if (!handle) {
+    AddForeignKeyReference(table_id.object_oid, ybctid);
+  }
+  return Status::OK();
 }
 
 Status PgApiImpl::FlushExplicitRowLockIntents(YbcPgExplicitRowLockErrorInfo& error_info) {
@@ -2797,6 +2808,17 @@ Result<SetupPerformOptionsAccessorTag> PgApiImpl::FlushBufferedEntities(
     const PgFlushDebugContext& dbg_ctx) {
   // TODO: Consider flushing FK reference intents also.
   return pg_session_->FlushBufferedEntities(dbg_ctx);
+}
+
+YbcIsExplicitlyLockedRowSkippedCheckHandle
+PgApiImpl::AcquireExplicitlyLockedRowSkippedCheckHandle() {
+  return explicit_row_lock_buffer().AcquireCheckHandle();
+}
+
+Result<bool> PgApiImpl::IsRowSkipped(
+    YbcIsExplicitlyLockedRowSkippedCheckHandle handle, YbcPgExplicitRowLockErrorInfo& error_info) {
+  ExplicitRowLockErrorInfoAdapter adapter(error_info);
+  return explicit_row_lock_buffer().IsSkipped(handle, adapter);
 }
 
 } // namespace yb::pggate

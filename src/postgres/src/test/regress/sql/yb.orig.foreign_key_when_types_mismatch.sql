@@ -21,6 +21,8 @@
 
 \set VERBOSITY default
 
+SHOW yb_enable_fkey_batched_docdb_lookup_when_types_mismatch; -- should be true
+
 -- int2_to_int4
 CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
@@ -555,16 +557,6 @@ SELECT count(*) FROM child WHERE h = 100001 AND v1 = 1 AND v2 = 'hello';
 DROP TABLE child;
 DROP TABLE parent;
 
--- yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false
-CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false;
-\set initial_v1 456
-\set updated_v1 457
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
-
 -- test ensures that the constraint cache is updated correctly when the
 -- pg_constraint table is updated after the foreign key constraint is created.
 CREATE TABLE parent(k int4 PRIMARY KEY);
@@ -716,3 +708,22 @@ SELECT * FROM parent;
 INSERT INTO parent VALUES (4, 999); -- should fail: no id=999
 INSERT INTO parent VALUES (5, 5);
 DROP TABLE parent;
+
+-- yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false
+SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false; -- should fail
+
+-- Connect to a new session and verify the GUC is set to false.
+\c "options='-c yb_enable_fkey_batched_docdb_lookup_when_types_mismatch=false'"
+
+SHOW yb_enable_fkey_batched_docdb_lookup_when_types_mismatch; -- should be false
+
+-- int2_to_int4
+CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set initial_v1 456
+\set updated_v1 457
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+
+-- yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true
+SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true; -- should fail

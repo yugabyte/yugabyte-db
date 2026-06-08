@@ -1177,3 +1177,119 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)
 SELECT * FROM t_bnl_outer o JOIN t_bnl_inner i ON o.v = i.k WHERE i.k >= 3;
 RESET yb_enable_advanced_index_cond_fold;
 DROP TABLE t_bnl_outer, t_bnl_inner;
+
+
+-------------------------------------------------------------------------
+-- #31724: canonical BNL + correlated SubPlan on Join Filter
+-------------------------------------------------------------------------
+SET yb_bnl_batch_size = 10;
+
+CREATE TABLE repro31724 (
+    pk        INT PRIMARY KEY,
+    c_int     INT,
+    c_int_key INT,
+    c_vc      VARCHAR(64),
+    c_vc_key  VARCHAR(64)
+);
+
+INSERT INTO repro31724 (pk, c_int, c_int_key, c_vc, c_vc_key) VALUES
+    ( 1, NULL,         -33, '',                     'dfk'                 ),
+    ( 2,   56,           4, '3',                    'k'                   ),
+    ( 3, -124,         -68, 'u',                    'osycoknpaxpunhsenncn'),
+    ( 4,    4, NULL,        '10',                   ''                    ),
+    ( 5,  -94,           4, ' ',                    'dot'                 ),
+    ( 6,   34,          92, '3',                    ''                    ),
+    ( 7, 436011008,      3, NULL,                   '-116'                ),
+    ( 8,   62,           5, '0',                    'kn'                  ),
+    ( 9,    1,   270401536, ' ',                    'w'                   ),
+    (10, NULL,           0, '-123',                 NULL                  ),
+    (11,    8,  -876609536, 'xp',                   'paxpunhsenncnbhbmkcb'),
+    (12, NULL,           1, 'p',                    '8'                   ),
+    (13,  -89, NULL,        'museum',               ' '                   ),
+    (14, NULL, NULL,        'p',                    '-99'                 ),
+    (15,   59, NULL,        '8',                    'l'                   ),
+    (16,    2, NULL,        '',                     'nhse'                ),
+    (17,    6,  2092236800, NULL,                   's'                   ),
+    (18,  -26,           1, ' ',                    NULL                  ),
+    (19,    1,          53, '3',                    'perhaps'             ),
+    (20, 1088552960,   -63, 'm',                    'balanced'            ),
+    (21, NULL,          84, NULL,                   '4'                   ),
+    (22,   34,           6, 'nncnbhbmkcbezrzxzgng', ' '                   ),
+    (23,    1, NULL,        NULL,                   'h'                   ),
+    (24,   20,         -18, 'artificial',           'o'                   ),
+    (25,    2,           4, '1',                    ''                    ),
+    (26,    7,          -6, 'e',                    'j'                   ),
+    (27,    5,  1993211904, 'r',                    NULL                  ),
+    (28, 651231232,      3, '125',                  '0'                   ),
+    (29,    3,           3, NULL,                   'transport'           ),
+    (30,   52, NULL,        'u',                    'booth'               ),
+    (31,    6,         -15, 'v',                    ''                    ),
+    (32,    44,  1104740352, NULL,                   ''                    );
+
+CREATE INDEX repro31724_c_int_key_idx ON repro31724 (c_int_key);
+CREATE INDEX repro31724_c_vc_key_idx ON repro31724 (c_vc_key);
+ANALYZE repro31724;
+
+-- No SubPlan.
+EXPLAIN (COSTS OFF)
+/*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
+SELECT COUNT(*)
+FROM repro31724 AS t1, repro31724 AS t2, repro31724 AS t3
+WHERE t3.c_vc_key  = t2.c_vc
+  AND t3.c_int_key = t2.c_int + t1.pk;
+
+/*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
+SELECT COUNT(*)
+FROM repro31724 AS t1, repro31724 AS t2, repro31724 AS t3
+WHERE t3.c_vc_key  = t2.c_vc
+  AND t3.c_int_key = t2.c_int + t1.pk;
+
+-- Baseline with batching disabled.
+/*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) NoYbBatchedNL(t1 t3) */
+SELECT COUNT(*)
+FROM repro31724 AS t1, repro31724 AS t2, repro31724 AS t3
+WHERE t3.c_vc_key  = t2.c_vc
+  AND t3.c_int_key = t2.c_int + t1.pk;
+
+-- Force the issue plan shape: SubPlan on BNL Join Filter with batched
+-- c_int_key lookup. Correct COUNT is 1; unfixed builds may return 4.
+EXPLAIN (COSTS OFF)
+/*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
+SELECT COUNT(*)
+FROM repro31724 AS t1, repro31724 AS t2, repro31724 AS t3
+WHERE t3.c_vc_key  = t2.c_vc
+  AND t3.c_int_key = t2.c_int + t1.pk
+  AND t2.c_int IN (
+      SELECT s.c_int FROM repro31724 AS s WHERE s.c_vc = t1.c_vc
+  );
+
+/*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
+SELECT COUNT(*)
+FROM repro31724 AS t1, repro31724 AS t2, repro31724 AS t3
+WHERE t3.c_vc_key  = t2.c_vc
+  AND t3.c_int_key = t2.c_int + t1.pk
+  AND t2.c_int IN (
+      SELECT s.c_int FROM repro31724 AS s WHERE s.c_vc = t1.c_vc
+  );
+
+-- BNL hashing off still needs scalar rechecks.
+SET yb_bnl_enable_hashing = off;
+
+/*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
+SELECT COUNT(*)
+FROM repro31724 AS t1, repro31724 AS t2, repro31724 AS t3
+WHERE t3.c_vc_key  = t2.c_vc
+  AND t3.c_int_key = t2.c_int + t1.pk;
+
+/*+ Leading((t2 (t1 t3))) IndexScan(t3 repro31724_c_int_key_idx) YbBatchedNL(t1 t3) */
+SELECT COUNT(*)
+FROM repro31724 AS t1, repro31724 AS t2, repro31724 AS t3
+WHERE t3.c_vc_key  = t2.c_vc
+  AND t3.c_int_key = t2.c_int + t1.pk
+  AND t2.c_int IN (
+      SELECT s.c_int FROM repro31724 AS s WHERE s.c_vc = t1.c_vc
+  );
+
+RESET yb_bnl_enable_hashing;
+
+DROP TABLE repro31724;

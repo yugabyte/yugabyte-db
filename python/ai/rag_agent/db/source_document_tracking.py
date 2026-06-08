@@ -129,6 +129,43 @@ class SourceDocumentTracking:
             if connection:
                 self.connection_pool.return_connection(connection)
 
+    def get_document_status(self, document_id: UUID) -> Optional[str]:
+        """
+        Look up the current status of a document in ``dist_rag.documents``.
+
+        Returns ``None`` when the row doesn't exist. Callers use this for
+        idempotency checks (e.g. skip processing a document whose status
+        is already ``COMPLETED``); failures to look up are treated as
+        "unknown -- proceed" by the caller.
+        """
+        connection = None
+        cursor = None
+        try:
+            connection = self.connection_pool.get_connection()
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT status FROM dist_rag.documents WHERE document_id = %s",
+                (str(document_id),),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+        except Exception as e:
+            if connection:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+            self.logger.warning(
+                f"Failed to look up status for document_id {document_id}: "
+                f"{str(e)}"
+            )
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                self.connection_pool.return_connection(connection)
+
     def update_document_status(
         self,
         document_id: UUID,

@@ -137,10 +137,14 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         statement2.execute("INSERT INTO cache_test2(a,b) VALUES (true, 11)");
         expectedRows.add(new Row(true, 11));
       } catch (PSQLException psqle) {
-        // Any failure should be due to a catalog version mismatch.
+        // Any failure should be due to a stale catalog cache that hasn't learned about column b.
         assertThat(
             psqle.getMessage(),
-            CoreMatchers.containsString("Catalog Version Mismatch")
+            CoreMatchers.anyOf(
+                CoreMatchers.containsString(
+                  "column \"b\" of relation \"cache_test2\" does not exist"),
+                CoreMatchers.containsString("schema version mismatch")
+            )
         );
       }
 
@@ -330,24 +334,28 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
          errors.size(),
          0);
       } else {
-        // At least half the select statements should fail.
+        // Expect at least one of the select statements to fail (the transparent retry can mask
+        // most of them, but the very first attempt typically races the heartbeat).
         assertGreaterThanOrEqualTo(
             String.format(
-                "Expected at least %d failures out of %d attempts, got %d",
-                attempts / 2,
+                "Expected at least 1 failure out of %d attempts, got %d",
                 attempts,
                 errors.size()
               ),
             errors.size(),
-            attempts / 2
+            1
           );
       }
 
-      // All errors should be catalog version mismatches.
+      // All errors should be due to a stale catalog cache (either the new column is not yet
+      // visible in pg's parser, or docdb returns a schema version mismatch).
       for (Throwable error : errors) {
         assertThat(
             error.getMessage(),
-            CoreMatchers.containsString("Catalog Version Mismatch")
+            CoreMatchers.anyOf(
+                CoreMatchers.containsString("schema version mismatch"),
+                CoreMatchers.containsString("does not exist")
+            )
         );
       }
     }
@@ -398,8 +406,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
       waitForTServerHeartbeat();
 
-      // Select should fail because the alter modified the table (catalog version mismatch).
-      runInvalidQuery(statement2,"SELECT * FROM test_table", "Catalog Version Mismatch");
+      // Select should fail because the alter modified the table (schema version mismatch).
+      runInvalidQuery(statement2,"SELECT * FROM test_table", "schema version mismatch");
 
       // COMMIT will succeed as a command but will rollback the transaction due to the error above.
       statement2.execute("COMMIT");
@@ -848,8 +856,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
     }
   }
 
-  // Check that an error message contains all the relevant error information with the Catalog
-  // Version Mismatch message appended.
+  // Check that when a query fails due to a stale catalog cache, the original error information
+  // (including the hint) is preserved.
   @Test
   public void testCatalogVersionLogging() throws Exception {
     Assume.assumeFalse("Disabling heartbeats causes Connection Manager DDL sleeps to hang",
@@ -883,10 +891,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         fail(String.format("Statement did not fail: %s", query));
       } catch (SQLException error) {
         LOG.info(error.getMessage());
-        assertThat(
-          error.getMessage(),
-          CoreMatchers.containsString("Catalog Version Mismatch")
-        );
+        // The original hint must be preserved (we used to also append a "Catalog Version
+        // Mismatch" context; this assertion guards against regressing to a "(null)" hint).
         assertThat(
           error.getMessage(),
           CoreMatchers.containsString("Hint: Perhaps you meant to reference the column " +

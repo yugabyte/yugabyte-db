@@ -1108,6 +1108,8 @@ typedef struct YbcReplicationInfo {
   const YbcCloudInfo *affinitized_leaders;
 } YbcReplicationInfo;
 
+typedef uint64_t YbcIsExplicitlyLockedRowSkippedCheckHandle;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

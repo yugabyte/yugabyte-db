@@ -161,6 +161,8 @@ DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(cdc_enable_dynamic_schema_changes);
 DECLARE_bool(TEST_cdc_skip_master_bg_task);
+DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
+DECLARE_string(ysql_yb_default_replica_identity);
 
 namespace yb {
 
@@ -272,10 +274,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status TruncateTable(PostgresMiniCluster* cluster, const std::vector<string>& table_ids);
 
   // The range is exclusive of end i.e. [start, end)
-  static Status WriteRows(
+  Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
-      const vector<string>& optional_cols_name = {},
-      pgwrapper::PGConn* conn = nullptr);
+      const vector<string>& optional_cols_name = {}, pgwrapper::PGConn* conn = nullptr);
 
   static Status WriteRowsWithConn(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
@@ -316,8 +317,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status WriteEnumsRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, const string& enum_suffix = "",
-      string database_name = kNamespaceName, string table_name = kTableName,
-      string schema_name = "public");
+      string table_name = kTableName, string schema_name = "public");
 
   Result<YBTableName> CreateCompositeTable(
       PostgresMiniCluster* cluster, const uint32_t num_tablets,

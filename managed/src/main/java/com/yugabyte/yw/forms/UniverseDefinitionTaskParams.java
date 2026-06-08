@@ -741,6 +741,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           .map(az -> az.cloud.uuid);
     }
 
+    public UUID getProviderUUIDForNode(NodeDetails node) {
+      return UUID.fromString(userIntent.provider);
+    }
+
     public CloudType getProviderCloudType(NodeDetails nodeDetails) {
       return userIntent.providerType;
     }
@@ -1642,6 +1646,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         return overridenDetails.getProxyConfig();
       }
       return proxyConfig;
+    }
+
+    @JsonIgnore
+    public boolean isMulticloudSupport() {
+      return false;
     }
 
     @Override

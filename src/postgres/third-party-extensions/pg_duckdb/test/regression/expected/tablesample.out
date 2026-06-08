@@ -1,0 +1,43 @@
+SET duckdb.force_execution = true;
+CREATE TABLE t (a INT);
+INSERT INTO t SELECT i FROM generate_series(1, 10) AS i;
+SELECT * FROM t TABLESAMPLE SYSTEM (100);
+ a  
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+(10 rows)
+
+SELECT * FROM t TABLESAMPLE BERNOULLI (100);
+ a  
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+(10 rows)
+
+SELECT * FROM t TABLESAMPLE BERNOULLI (50) REPEATABLE(42);
+ a  
+----
+  2
+  5
+  7
+ 10
+(4 rows)
+
+DROP TABLE t;

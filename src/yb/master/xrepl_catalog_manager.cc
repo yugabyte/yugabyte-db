@@ -125,7 +125,7 @@ DEPRECATE_FLAG(bool, cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream, "
 DEFINE_test_flag(bool, cdcsdk_disable_drop_table_cleanup, false,
                  "When enabled, cleanup of dropped tables from CDC streams will be skipped.");
 
-DEFINE_RUNTIME_PREVIEW_bool(cdcsdk_use_dropped_table_list_for_cleanup, false,
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_use_dropped_table_list_for_cleanup, kLocalPersisted, false, true,
     "When enabled, dropped tables are tracked via the dropped_table_id list in stream metadata "
     "instead of using the DELETING_METADATA stream state.");
 
@@ -619,6 +619,11 @@ std::string CDCStreamInfosAsString(const std::vector<CDCStreamInfoPointer>& cdc_
   return AsString(cdc_stream_ids);
 }
 
+bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
+  return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
+         table_oid == kPgReplicationOriginOid;
+}
+
 }  // namespace
 
 Status CatalogManager::DropXClusterStreamsOfTables(const std::unordered_set<TableId>& table_ids) {
@@ -1059,15 +1064,17 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     table_ids.push_back(table->id());
   }
 
-  // We add the pg_class and pg_publication_rel catalog tables to the stream metadata as we will
-  // poll them to figure out changes to the publications. This will not be done for gRPC streams.
+  // We add the pg_class, pg_publication_rel and pg_replication_origin catalog tables to the stream
+  // metadata as we will poll them to figure out changes to the publications and replication
+  // origins. This will not be done for gRPC streams.
   if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
       FLAGS_cdc_enable_dynamic_schema_changes && req.has_cdcsdk_ysql_replication_slot_name()) {
     auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
-    VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class and pg_publication_rel to the stream "
-                         "metadata tables list.";
+    table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+    VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class, pg_publication_rel and "
+                      << "pg_replication_origin to the stream metadata tables list.";
   }
 
   VLOG_WITH_FUNC(1) << Format("Creating CDCSDK stream for $0 tables", table_ids.size());
@@ -2537,11 +2544,8 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
 
   if (allow_cdc_used_syscatalog_tables && !table_info->IsUserTable(lock)) {
     auto table_oid_result = lock->GetPgTableOid(table_info->id());
-    if (table_oid_result.ok()) {
-      auto table_oid = *table_oid_result;
-      if (table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid) {
-        return true;
-      }
+    if (table_oid_result.ok() && IsCatalogTableEligibleForCDC(*table_oid_result)) {
+      return true;
     }
   }
 
@@ -6389,6 +6393,17 @@ Status CatalogManager::CDCSDKAllowTableRewrite(
           NotSupported,
           "Table rewrite is not allowed for table $0 with CDC logical replication streams, when "
           "the flag enable_table_rewrite_for_cdcsdk_table is disabled.",
+          table_id);
+    }
+
+    // Table rewrite is not yet supported for colocated tables on a CDC logical replication
+    // stream. TODO(#31908): Re-enable once colocated rewrite + CDC support is added.
+    auto table = tables_->FindTableOrNull(table_id);
+    if (table && table->colocated()) {
+      return STATUS_FORMAT(
+          NotSupported,
+          "Table rewrite is not supported for colocated table $0 that is part of a CDC logical "
+          "replication stream.",
           table_id);
     }
 

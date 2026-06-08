@@ -20,6 +20,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/tcmalloc_impl_util.h"
 
 namespace yb {

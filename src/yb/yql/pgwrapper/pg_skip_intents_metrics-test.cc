@@ -1034,5 +1034,37 @@ TEST_F(SkipIntentsMetricTest, TestGucCannotBeChangedInImplicitTxn) {
       "cannot be changed inside a transaction block or after any query has been run");
 }
 
+TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE USER normal_user"));
+  ASSERT_OK(conn.Execute("SET ROLE normal_user"));
+
+  // yb_enable_new_relation_fastpath_write must be on to enable
+  // yb_enable_new_relation_fastpath_write_in_txn_blocks
+  ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write = on"));
+  ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on"));
+
+  auto val1 = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SHOW yb_enable_new_relation_fastpath_write"));
+  ASSERT_EQ(val1, "on");
+
+  auto val2 = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks"));
+  ASSERT_EQ(val2, "on");
+
+  // Now test turning them off
+  ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = off"));
+  ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write = off"));
+
+  auto val3 = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SHOW yb_enable_new_relation_fastpath_write"));
+  ASSERT_EQ(val3, "off");
+
+  auto val4 = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks"));
+  ASSERT_EQ(val4, "off");
+}
+
 } // namespace pgwrapper
 } // namespace yb

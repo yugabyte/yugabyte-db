@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import java.util.Map;
+
 public class CustomerConfigConsts {
   public static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
 
@@ -28,4 +30,7 @@ public class CustomerConfigConsts {
   public static final String NAME_NFS = "NFS";
 
   public static final String NAME_AZURE = "AZ";
+
+  public static final Map<String, String> STORAGE_CONFIG_ARRAY_MERGE_FIELDS =
+      Map.of(REGION_LOCATIONS_FIELDNAME, REGION_FIELDNAME);
 }

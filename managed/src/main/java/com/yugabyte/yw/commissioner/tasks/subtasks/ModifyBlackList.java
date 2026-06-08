@@ -14,15 +14,16 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -78,12 +79,13 @@ public class ModifyBlackList extends UniverseTaskBase {
       List<HostPortPB> addHosts = getHostPortPBs(universe, taskParams().addNodes);
       // Skip removing nodes from blacklist if they failed to be cleaned up properly.
       // i.e. if node instance is in decommissioned state.
-      UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      if (userIntent.providerType == Common.CloudType.onprem
-          && !taskParams().isLeaderBlacklist
-          && !CollectionUtils.isEmpty(taskParams().removeNodes)) {
+      if (!taskParams().isLeaderBlacklist && !CollectionUtils.isEmpty(taskParams().removeNodes)) {
+        Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
         List<NodeDetails> modifiedRemoveNodes = new ArrayList<>(taskParams().removeNodes);
         for (NodeDetails node : taskParams().removeNodes) {
+          if (providerGetter.apply(node).getCloudCode() != Common.CloudType.onprem) {
+            continue;
+          }
           Optional<NodeInstance> nodeInstanceOp = NodeInstance.maybeGet(node.getNodeUuid());
           if (nodeInstanceOp.isPresent()) {
             NodeInstance nodeInstance = nodeInstanceOp.get();

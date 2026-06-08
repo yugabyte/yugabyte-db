@@ -3905,8 +3905,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (universeDetails.installNodeAgent || universeDetails.nodeAgentMissing) {
       createInstallNodeAgentTasks(universe, nodes, true /* force install */)
           .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
-      createWaitForNodeAgentTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
     }
+    createWaitForNodeAgentTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
     // Optimistically rotate node-to-node server certificates before starting DB processes
     // Also see CertsRotate
     if (universeDetails.rootCA != null) {
@@ -3988,6 +3988,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
   }
 
+  /**
+   * Resolves the target software version for finalize/YSQL upgrade tasks. Prefers {@code
+   * prevYBSoftwareConfig.targetUpgradeSoftwareVersion} when set (in-flight upgrade before {@code
+   * userIntent.ybSoftwareVersion} is updated); otherwise falls back to {@code userIntent}.
+   */
+  protected static String resolveTargetSoftwareVersion(Universe universe) {
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig prev =
+        universe.getUniverseDetails().prevYBSoftwareConfig;
+    if (prev != null && !StringUtils.isEmpty(prev.getTargetUpgradeSoftwareVersion())) {
+      return prev.getTargetUpgradeSoftwareVersion();
+    }
+    return universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+  }
+
   protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
@@ -4013,9 +4027,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       if (upgradeSystemCatalog) {
         // Run YSQL upgrade on the universe.
-        String version =
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-        createRunYsqlUpgradeTask(version);
+        createRunYsqlUpgradeTask(resolveTargetSoftwareVersion(universe));
       }
 
       if (requireAdditionalSuperUserForCatalogUpgrade) {

@@ -129,8 +129,8 @@ DEFINE_RUNTIME_bool(ysql_mark_update_packed_row, false,
                     "Whether to mark packed rows created from UPDATE operations with a flag. "
                     "This allows CDC to differentiate between INSERT and UPDATE packed rows."
                     "Default is false.");
-DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
-                            "Whether to use packed row V2 when row packing is enabled.");
+DEFINE_RUNTIME_AUTO_bool(ysql_use_packed_row_v2, kExternal, false, true,
+                         "Whether to use packed row V2 when row packing is enabled.");
 
 DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "

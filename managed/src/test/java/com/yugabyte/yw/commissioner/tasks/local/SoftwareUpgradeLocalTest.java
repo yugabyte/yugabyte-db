@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AZUpgradeStatus;
@@ -58,11 +57,6 @@ import org.junit.Test;
 import play.libs.Json;
 
 public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(180, 210);
-  }
 
   public static final String OLD_DB_VERSION = "2.20.0.1-b1";
   public static String OLD_DB_VERSION_URL =

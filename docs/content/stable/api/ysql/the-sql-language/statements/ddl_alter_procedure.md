@@ -128,6 +128,7 @@ When an extension is dropped, all dependent objects are dropped or updated accor
 
 ## See also
 
+- [`ALTER ROUTINE`](../ddl_alter_routine)
 - [`CREATE PROCEDURE`](../ddl_create_procedure)
 - [`DROP PROCEDURE`](../ddl_drop_procedure)
 - [`CREATE FUNCTION`](../ddl_create_function)

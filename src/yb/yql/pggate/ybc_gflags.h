@@ -75,6 +75,7 @@ typedef struct {
   const bool*     TEST_ysql_bypass_auto_analyze_auth_check;
   const int64_t*  TEST_delay_after_table_analyze_ms;
   const bool*     TEST_enable_obj_tuple_locks;
+  const bool*     TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization;
 } YbcPgGFlagsAccessor;
 
 const YbcPgGFlagsAccessor* YBCGetGFlags();

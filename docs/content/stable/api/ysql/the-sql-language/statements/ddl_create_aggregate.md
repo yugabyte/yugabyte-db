@@ -7,8 +7,6 @@ menu:
   stable_api:
     identifier: ddl_create_aggregate
     parent: statements
-aliases:
-  - /stable/api/ysql/commands/ddl_create_aggregate/
 type: docs
 ---
 
@@ -99,6 +97,7 @@ yugabyte=# SELECT newcnt(*) FROM pg_aggregate;
 
 ## See also
 
+- [ALTER AGGREGATE](../ddl_alter_aggregate)
 - [DROP AGGREGATE](../ddl_drop_aggregate)
 
 [postgresql-docs-create-aggregate]: https://www.postgresql.org/docs/15/sql-createaggregate.html

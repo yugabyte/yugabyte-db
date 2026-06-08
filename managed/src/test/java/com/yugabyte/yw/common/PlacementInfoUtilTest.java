@@ -4819,7 +4819,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     // Increasing total num nodes.
     PlacementInfoUtil.updateUniverseDefinition(
-        params, existing, customer.getId(), params.getPrimaryCluster().uuid);
+        params,
+        PlacementInfoUtil.getUniverseForParams(params),
+        customer.getId(),
+        params.getPrimaryCluster().uuid,
+        EDIT,
+        false,
+        false);
 
     assertEquals(4, params.nodeDetailsSet.size());
     assertEquals(
@@ -4838,9 +4844,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     params.userAZSelected = true;
     PlacementInfoUtil.updateUniverseDefinition(
         params,
-        Universe.getOrBadRequest(existing.getUniverseUUID()),
+        PlacementInfoUtil.getUniverseForParams(params),
         customer.getId(),
-        params.getPrimaryCluster().uuid);
+        params.getPrimaryCluster().uuid,
+        EDIT,
+        false,
+        false);
 
     assertEquals(5, params.nodeDetailsSet.size());
     assertEquals(
@@ -4853,6 +4862,22 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         PlacementInfoUtil.isSamePlacement(
             params.getPrimaryCluster().placementInfo,
             params.getPrimaryCluster().getOverallPlacement()));
+
+    // This will lead to a full move
+    params.getPrimaryCluster().userIntent.deviceInfo.numVolumes += 1;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params,
+        PlacementInfoUtil.getUniverseForParams(params),
+        customer.getId(),
+        params.getPrimaryCluster().uuid,
+        EDIT,
+        false,
+        false);
+
+    Map<NodeState, Integer> counts = new HashMap<>();
+    params.nodeDetailsSet.forEach(n -> counts.merge(n.state, 1, Integer::sum));
+    assertEquals(Map.of(ToBeRemoved, 3, ToBeAdded, 5), counts);
   }
 
   @Test

@@ -30,11 +30,12 @@ const { Box } = mui;
 
 export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { securitySettings, generalSettings },
+    { securitySettings, generalSettings, instanceSettings },
     { moveToNextPage, moveToPreviousPage, saveSecuritySettings }
   ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const provider = generalSettings?.providerConfiguration;
+  const ebsKMSConfig = instanceSettings?.ebsKmsConfigUUID;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.securitySettings'
@@ -108,7 +109,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
         <StyledPanel>
           <StyledHeader>{t('earTitle')}</StyledHeader>
           <StyledContent>
-            <EARField disabled={false} />
+            <EARField disabled={false} ebsKMSConfig={ebsKMSConfig} />
           </StyledContent>
         </StyledPanel>
       </Box>

@@ -6151,6 +6151,8 @@ adjust_paths_for_srfs(PlannerInfo *root, RelOptInfo *rel,
 			rel->cheapest_startup_path = newpath;
 		if (subpath == rel->cheapest_total_path)
 			rel->cheapest_total_path = newpath;
+		if (subpath == rel->yb_forced_gather_path)
+			rel->yb_forced_gather_path = newpath;
 	}
 
 	/* Likewise for partial paths, if any */
@@ -7520,6 +7522,8 @@ apply_scanjoin_target_to_paths(PlannerInfo *root,
 			newpath = (Path *) create_projection_path(root, rel, subpath,
 													  scanjoin_target);
 			lfirst(lc) = newpath;
+			if (rel->yb_forced_gather_path == subpath)
+				rel->yb_forced_gather_path = newpath;
 		}
 	}
 

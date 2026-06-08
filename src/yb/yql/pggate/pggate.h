@@ -370,6 +370,8 @@ class PgApiImpl {
 
   Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
 
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id);
+
   Result<YbcPgColumnInfo> GetColumnInfo(YbcPgTableDesc table_desc,
                                         int16_t attr_number);
 
@@ -432,7 +434,7 @@ class PgApiImpl {
 
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
-  Status BackfillIndex(const PgObjectId& table_id);
+  Status BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block);
   Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,
@@ -760,6 +762,7 @@ class PgApiImpl {
   Status AddExplicitRowLockIntent(
       const PgObjectId& table_id, const Slice& ybctid,
       const YbcPgExplicitRowLockParams& params, const YbcPgTableLocalityInfo& locality_info,
+      std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle,
       YbcPgExplicitRowLockErrorInfo& error_info);
   Status FlushExplicitRowLockIntents(YbcPgExplicitRowLockErrorInfo& error_info);
 
@@ -931,6 +934,10 @@ class PgApiImpl {
   auto TemporaryDisableReadTimeHistoryCutoff() {
     return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();
   }
+
+  YbcIsExplicitlyLockedRowSkippedCheckHandle AcquireExplicitlyLockedRowSkippedCheckHandle();
+  Result<bool> IsRowSkipped(
+      YbcIsExplicitlyLockedRowSkippedCheckHandle handle, YbcPgExplicitRowLockErrorInfo& error_info);
 
   struct PgSharedData;
   struct SignedPgSharedData;

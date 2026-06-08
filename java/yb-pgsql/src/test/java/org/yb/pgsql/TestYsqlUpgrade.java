@@ -82,7 +82,6 @@ import org.yb.util.SkipOnTSAN;
  * <p>
  * NOTE: Each test in this suite leaves garbage tables in system catalogs!
  */
-@SkipOnTSAN
 @RunWith(value=YBTestRunner.class)
 public class TestYsqlUpgrade extends BasePgSQLTest {
   @FunctionalInterface
@@ -546,6 +545,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     }
   }
 
+  @SkipOnTSAN
   @Test
   public void creatingSystemRelsAfterFailure() throws Exception {
     try (Connection conn = customDbCb.connect();
@@ -986,6 +986,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * Clear applied migrations table, re-run migrations and expect nothing to change from reapplying
    * migrations.
    */
+  @SkipOnTSAN
   @Test
   public void upgradeIsIdempotent() throws Exception {
     recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
@@ -1001,6 +1002,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * Single-connection variant of {@code upgradeIsIdempotent} test, also ensures there's never too
    * many connections opened.
    */
+  @SkipOnTSAN
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
     MiniYBDaemon tserver = (MiniYBDaemon) miniCluster.getTabletServers().values().toArray()[0];
@@ -1059,6 +1061,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * If you see this test failing, please make sure you've added a new YSQL migration as described
    * in {@code src/yb/yql/pgwrapper/ysql_migrations/README.md}.
    */
+  @SkipOnTSAN
   @Test
   public void migratingIsEquivalentToReinitdb() throws Exception {
     final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;
@@ -1128,6 +1131,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   }
 
   /** Test that migrations run without error in a geo-partitioned setup. */
+  @SkipOnTSAN
   @Test
   public void migrationInGeoPartitionedSetup() throws Exception {
     setupGeoPartitioning();
@@ -1139,6 +1143,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   //
 
   /** Ensure migration filename comment makes sense. */
+  @SkipOnTSAN
   @Test
   public void migrationFilenameComment() throws Exception {
     Pattern commentRe = Pattern.compile("^# .*(V(\\d+)\\.?(\\d+)?__\\S+__\\S+.sql)$");

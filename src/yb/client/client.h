@@ -349,7 +349,10 @@ class YBClient {
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
   Status BackfillIndex(
-      const TableId& table_id, bool wait = true, CoarseTimePoint deadline = CoarseTimePoint());
+      const TableId& table_id,
+      std::optional<TransactionMetadata> requester_transaction,
+      bool wait = true,
+      CoarseTimePoint deadline = CoarseTimePoint());
 
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,

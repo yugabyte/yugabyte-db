@@ -97,6 +97,7 @@
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "common/pg_yb_param_status_flags.h"
+#include "executor/execdesc.h"
 #include "executor/spi.h"
 #include "executor/ybExpr.h"
 #include "fmgr.h"
@@ -129,6 +130,7 @@
 #include "storage/procarray.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
@@ -142,6 +144,7 @@
 #include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/typcache.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
@@ -2295,11 +2298,15 @@ bool		yb_enable_retry_after_non_atomic_commit = false;
 
 bool		yb_test_system_catalogs_creation = false;
 
+int			yb_test_sleep_before_executor_start_ms = 0;
+
 int			yb_test_fail_next_ddl = 0;
 
 bool		yb_force_catalog_update_on_next_ddl = false;
 
 bool		yb_test_fail_all_drops = false;
+
+bool		yb_test_analyze_dont_reset_mutations = false;
 
 bool		yb_test_invalidate_relcache_in_planner = false;
 
@@ -2327,6 +2334,7 @@ int			yb_test_delay_after_applying_inval_message_ms = 0;
 int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
 double		yb_test_delay_next_ddl = 0;
 int			yb_test_reset_retry_counts = -1;
+int			yb_test_force_parallel = YB_FORCE_PARALLEL_OFF;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -4477,13 +4485,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 									context, params, queryEnv,
 									dest, qc);
 
-		/*
-		 * YB: Account for stats collected during the execution of utility command
-		 * Only refresh stats at the last level of nesting
-		 */
-		if (YBGetDdlNestingLevel() == 1)
-			YbRefreshSessionStatsDuringExecution();
-
 		if (is_ddl)
 		{
 			CheckAlterDatabaseDdl(pstmt);
@@ -4610,6 +4611,84 @@ void
 YBFlushBufferedOperations(YbcFlushDebugContext debug_context)
 {
 	HandleYBStatus(YBCPgFlushBufferedOperations(&debug_context));
+}
+
+typedef struct YbQueryState
+{
+	unsigned int executor_operation_nesting_level;
+	unsigned int utility_operation_nesting_level;
+} YbQueryState;
+
+static YbQueryState query_state = {0};
+static YbInstrumentation last_utility_yb_instr = {0};
+
+static void
+YBClearLastUtilityStats(void)
+{
+	memset(&last_utility_yb_instr, 0, sizeof(last_utility_yb_instr));
+}
+
+void
+YBOnExecutorOperationBegin()
+{
+	if (query_state.executor_operation_nesting_level == 0 &&
+		query_state.utility_operation_nesting_level == 0)
+		YBClearLastUtilityStats();
+	query_state.executor_operation_nesting_level++;
+}
+
+void
+YBOnExecutorOperationEnd(struct QueryDesc *queryDesc)
+{
+	Assert(query_state.executor_operation_nesting_level > 0);
+	if (IsYugaByteEnabled() &&
+		YBIsTopLevelExecutorOperation() &&
+		!queryDesc->yb_skip_finish_capture)
+		YbUpdateSessionStats(&queryDesc->yb_query_stats->yb_instr);
+
+	query_state.executor_operation_nesting_level--;
+}
+
+bool
+YBIsTopLevelExecutorOperation()
+{
+	return query_state.executor_operation_nesting_level == 1 &&
+		query_state.utility_operation_nesting_level == 0;
+}
+
+void
+YBOnUtilityOperationBegin()
+{
+	if (query_state.utility_operation_nesting_level == 0)
+		YBClearLastUtilityStats();
+	query_state.utility_operation_nesting_level++;
+}
+
+void
+YBOnUtilityOperationEnd()
+{
+	Assert(query_state.utility_operation_nesting_level > 0);
+
+	if (query_state.utility_operation_nesting_level == 1 &&
+		query_state.executor_operation_nesting_level == 0)
+		YbUpdateSessionStats(&last_utility_yb_instr);
+
+	query_state.utility_operation_nesting_level--;
+}
+
+void
+YBResetOperationTracking()
+{
+	memset(&query_state, 0, sizeof(query_state));
+	YBClearLastUtilityStats();
+}
+
+YbInstrumentation *
+YBGetUtilityOperationStats()
+{
+	if (!IsYugaByteEnabled())
+		return NULL;
+	return &last_utility_yb_instr;
 }
 
 bool
@@ -6936,6 +7015,22 @@ parse_yb_read_time(const char *value, unsigned long long *result, bool *is_ht_un
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
+	/*
+	 * Disallow setting yb_read_time as a persistent default via
+	 * ALTER DATABASE SET, ALTER ROLE SET, or CREATE FUNCTION SET.
+	 * This GUC is inherently a per-session setting; persisting it at the
+	 * database or role level causes MISMATCHED_SCHEMA errors for all
+	 * subsequent connections.
+	 */
+	if (source == PGC_S_TEST)
+	{
+		GUC_check_errmsg("yb_read_time can only be set at the session "
+						 "level using SET, not as a persistent default "
+						 "via ALTER DATABASE, ALTER ROLE, or "
+						 "CREATE FUNCTION");
+		return false;
+	}
+
 	/* Read time should be convertable to unsigned long long */
 	unsigned long long read_time_ull;
 	unsigned long long value_ull;
@@ -9354,6 +9449,11 @@ yb_maybe_test_fail_ddl(void)
 				*null_ptr = 0;
 				break;
 			}
+		case 5:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_TXN_CONFLICT),
+					 errmsg("failed DDL operation with conflict as requested")));
+			break;
 		default:
 			break;
 	}
@@ -9797,4 +9897,62 @@ YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid)
 			 "CDCSDK stream", database_oid);
 		skip_intents_txn_state.disabled = true;
 	}
+}
+
+void
+YbHandleConflictError(Relation rel, LockWaitPolicy wait_policy)
+{
+	if (wait_policy == LockWaitError)
+	{
+		/*
+		 * In case the user has specified NOWAIT, the intention is to error out
+		 * immediately. If we raise ERRCODE_YB_TXN_CONFLICT, the statement might
+		 * be retried by our retry logic in yb_attempt_to_restart_on_error().
+		 */
+
+		if (rel)
+			ereport(ERROR,
+					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+					 errmsg("could not obtain lock on row in relation \"%s\"",
+							RelationGetRelationName(rel))));
+		else
+		{
+			/*
+			 * It is not expected that relation is null. Raise an error wihout
+			 * relation name in release mode.
+			 */
+			Assert(false);
+			ereport(ERROR,
+					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+					 errmsg("could not obtain lock on row")));
+		}
+	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_YB_TXN_CONFLICT),
+			 errmsg("could not serialize access due to concurrent update")));
+}
+
+static bool
+YbIsExplicitRowLockConflict(YbcStatus status)
+{
+	Assert(status);
+	const uint32_t err_code = YBCStatusPgsqlError(status);
+
+	return err_code == ERRCODE_YB_TXN_CONFLICT || err_code == ERRCODE_YB_TXN_ABORTED;
+}
+
+void
+HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
+{
+	if (!(status.error_info.is_initialized && YbIsExplicitRowLockConflict(status.ybc_status)))
+	{
+		HandleYBStatus(status.ybc_status);
+		return;
+	}
+	YBCFreeStatus(status.ybc_status);
+	YbHandleConflictError((OidIsValid(status.error_info.conflicting_table_id) ?
+						   RelationIdGetRelation(status.error_info.conflicting_table_id) :
+						   NULL),
+						   status.error_info.pg_wait_policy);
 }

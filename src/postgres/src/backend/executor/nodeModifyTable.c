@@ -4957,7 +4957,28 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 						resultRelInfo->ri_YbWholeRowAttNo =
 							ExecFindJunkAttributeInTlist(subplan->targetlist, "wholerow");
 						if (!AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo))
-							elog(ERROR, "could not find junk wholerow column");
+							/*
+							 * YB: If we need a wholerow attribute but it's not present in the plan,
+							 * it means the plan was generated with an older PG catalog version
+							 * (e.g., before an index was added concurrently) but the executor sees
+							 * the newer catalog. Throw a retryable error.
+							 *
+							 * Note on terminology: Strictly speaking, this is a PG catalog version
+							 * mismatch, not a DocDB table schema version mismatch. However, we intentionally
+							 * use the error message "schema version mismatch" alongside
+							 * ERRCODE_T_R_SERIALIZATION_FAILURE. This explicitly escapes the internal
+							 * backend retry loop (which cannot properly re-plan prepared statements for this
+							 * error), forces a transaction abort, and is already recognized as a benign,
+							 * retryable concurrency error by client-side retry logic and our test frameworks.
+							 * Before the client retries, background catalog propagation or object lock release
+							 * (when enabled) will pull the new catalog and invalidate the stale plan cache.
+							 */
+							ereport(ERROR,
+									(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+									 errmsg("schema version mismatch"),
+									 errdetail("Could not find junk wholerow column. "
+											   "This can happen if a concurrent DDL operation "
+											   "added an index after this query was planned.")));
 					}
 				}
 			}

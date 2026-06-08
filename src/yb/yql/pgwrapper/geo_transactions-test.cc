@@ -895,7 +895,8 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPromotionAfterTablespace
 }
 
 // This test is for testing the behavior when table-level locks are disabled (checks that
-// catalog version mismatch error happens), so doesn't make sense to run with them enabled.
+// a concurrent ALTER TABLE causes the in-flight transaction to fail), so doesn't make sense to
+// run with them enabled.
 TEST_F_EX(
     GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceMidTxn),
     GeoTransactionsTestTableLocksDisabled) {
@@ -917,13 +918,13 @@ TEST_F_EX(
   ASSERT_OK(conn2.ExecuteFormat("ALTER TABLE $0$1_1 SET TABLESPACE tablespace$2",
                                 kTablePrefix, kLocalRegion, kOtherRegion));
 
-  // The transaction should fail cleanly with a "Catalog Version Mismatch" error.
+  // The transaction should fail cleanly because the concurrent ALTER aborts it.
   Status commitStatus = conn1.CommitTransaction();
   // Verify that the transaction did not commit successfully.
   ASSERT_FALSE(commitStatus.ok());
-  // Check that the error message contains the expected text.
+  // The DETAIL line distinguishes a conflict abort from a plain transaction expiration.
   std::string msg = commitStatus.ToString();
-  ASSERT_NE(msg.find("Catalog Version Mismatch"), std::string::npos);
+  ASSERT_NE(msg.find("expired or aborted by a conflict"), std::string::npos) << msg;
 }
 
 class GeoTransactionsTablespaceBasedSelectionCandidatesTest : public GeoTransactionsTest {

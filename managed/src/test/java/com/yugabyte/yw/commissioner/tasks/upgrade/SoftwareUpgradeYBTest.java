@@ -207,8 +207,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             false)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.PromoteAutoFlags)
-        .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -323,13 +323,13 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             false)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.PromoteAutoFlags)
-        .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.SaveSoftwareUpgradeProgress)
         .addTasks(TaskType.UpdateUniverseState)
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.RunYsqlUpgrade)
         .addTasks(TaskType.EnablePitrConfig)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -384,9 +384,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             false)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.PromoteAutoFlags)
-        .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.SaveSoftwareUpgradeProgress)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -465,9 +465,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             false)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.PromoteAutoFlags)
-        .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.SaveSoftwareUpgradeProgress)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -521,9 +521,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             false)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.PromoteAutoFlags)
-        .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.SaveSoftwareUpgradeProgress)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -628,8 +628,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.PromoteAutoFlags)
-        .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -745,8 +745,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.PromoteAutoFlags)
-        .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -887,8 +887,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.PromoteAutoFlags)
-        .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -1080,9 +1080,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             tserverNames)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.PromoteAutoFlags)
-        .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.SaveSoftwareUpgradeProgress)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.UpdateSoftwareVersion)
         .verifyTasks(taskInfo.getSubTasks());
     assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(

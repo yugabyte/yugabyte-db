@@ -48,7 +48,10 @@
 #include "yb/server/skewed_clock.h"
 
 #include "yb/tablet/tablet.pb.h"
+
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
@@ -1376,9 +1379,10 @@ YbcStatus YBCPgWaitForBackendsCatalogVersion(YbcPgOid dboid, uint64_t version, p
 
 YbcStatus YBCPgBackfillIndex(
     const YbcPgOid database_oid,
-    const YbcPgOid index_oid) {
+    const YbcPgOid index_oid,
+    bool use_regular_transaction_block) {
   const PgObjectId index_id(database_oid, index_oid);
-  return ToYBCStatus(pgapi->BackfillIndex(index_id));
+  return ToYBCStatus(pgapi->BackfillIndex(index_id, use_regular_transaction_block));
 }
 
 YbcStatus YBCPgWaitVectorIndexReady(
@@ -2128,11 +2132,12 @@ void YBCNotifyDeferredTriggersProcessingStarted() {
 
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
-    const YbcPgExplicitRowLockParams* params, YbcPgTableLocalityInfo locality_info) {
+    const YbcPgExplicitRowLockParams* params, YbcPgTableLocalityInfo locality_info,
+    const YbcIsExplicitlyLockedRowSkippedCheckHandle* handle) {
   auto result = MakePgExplicitRowLockStatus();
   result.ybc_status = ToYBCStatus(pgapi->AddExplicitRowLockIntent(
       PgObjectId(database_oid, table_relfilenode_oid), YbctidAsSlice(ybctid), *params,
-      locality_info, result.error_info));
+      locality_info, handle ? std::optional(*handle) : std::nullopt, result.error_info));
   return result;
 }
 
@@ -2140,6 +2145,18 @@ YbcPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents() {
   auto result = MakePgExplicitRowLockStatus();
   result.ybc_status = ToYBCStatus(pgapi->FlushExplicitRowLockIntents(result.error_info));
   return result;
+}
+
+YbcPgExplicitRowLockStatus YBCIsExplicitlyLockedRowSkipped(
+    YbcIsExplicitlyLockedRowSkippedCheckHandle handle, bool* is_skipped) {
+  auto result = MakePgExplicitRowLockStatus();
+  result.ybc_status = ExtractValueFromResult(
+      pgapi->IsRowSkipped(handle, result.error_info), is_skipped);
+  return result;
+}
+
+YbcIsExplicitlyLockedRowSkippedCheckHandle YBCAcquireExplicitlyLockedRowSkippedCheckHandle() {
+  return pgapi->AcquireExplicitlyLockedRowSkippedCheckHandle();
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
@@ -2384,6 +2401,26 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
   return ToYBCStatus(pgapi->GetIndexBackfillProgress(index_ids,
                                                      num_rows_read_from_table,
                                                      num_rows_backfilled));
+}
+
+void YBCSetupCgroups() {
+#ifdef __linux__
+  const char* initial_cgroup = getenv("YB_PG_INITIAL_CGROUP");
+  if (initial_cgroup) {
+    auto status = MoveProcessToCgroupPath(initial_cgroup);
+    if (!status.ok()) {
+      LOG(DFATAL) << "Failed to move to cgroup " << initial_cgroup << ": " << status;
+      return;
+    }
+  }
+  const char* cgroup_management = getenv("YB_PG_CGROUP_MANAGEMENT");
+  if (cgroup_management && atoi(cgroup_management)) {
+    auto status = tserver::TServerCgroupManager::CgroupManagementInit(/*is_tserver=*/false);
+    if (!status.ok()) {
+      LOG(FATAL) << "Failed to setup cgroups: " << status;
+    }
+  }
+#endif
 }
 
 //------------------------------------------------------------------------------------------------
@@ -3230,6 +3267,12 @@ YbcStatus YBCQueryAutoAnalyze(
   }
 
   return YBCStatusOK();
+}
+
+YbcStatus YBCResetAutoAnalyzeMutationCounters(
+    YbcPgOid database_oid, YbcPgOid table_relfilenode_oid) {
+  return ToYBCStatus(pgapi->ResetAutoAnalyzeMutationCounters(
+      PgObjectId(database_oid, table_relfilenode_oid)));
 }
 
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }

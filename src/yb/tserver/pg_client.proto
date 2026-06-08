@@ -153,6 +153,9 @@ service PgClientService {
 
   rpc QueryAutoAnalyze(PgQueryAutoAnalyzeRequestPB) returns (PgQueryAutoAnalyzeResponsePB);
 
+  rpc ResetAutoAnalyzeMutationCounters(PgResetAutoAnalyzeMutationCountersRequestPB)
+      returns (PgResetAutoAnalyzeMutationCountersResponsePB);
+
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
     option (yb.rpc.exclude_metadata) = true; // TODO: remove after #27903
@@ -258,6 +261,10 @@ message PgBackfillIndexRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
   reserved 3; // ASH metadata is now passed in RequestHeader PB
+  // When transactional DDL is enabled (ysql_yb_ddl_transaction_block_enabled), the CREATE INDEX
+  // backend uses the kPlain session transaction rather than an autonomous kDDL transaction.
+  // This flag must match the DDL mode so GetDdlTransactionMetadata fetches from the right txn.
+  bool use_regular_transaction_block = 4;
 }
 
 message PgBackfillIndexResponsePB {
@@ -1360,6 +1367,15 @@ message PgAutoAnalyzeDataPB {
   bytes last_analyze_info = 3;
 }
 
+message PgResetAutoAnalyzeMutationCountersRequestPB {
+  uint32 database_oid = 1;
+  uint32 table_relfilenode_oid = 2;
+}
+
+message PgResetAutoAnalyzeMutationCountersResponsePB {
+  AppStatusPB status = 1;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Advisory lock - Acquire / Release locks.
 //--------------------------------------------------------------------------------------------------
@@ -1447,8 +1463,11 @@ message PgAcquireObjectLockResponsePB {
 
 message PgReleaseSessionObjectLockRequestPB {
   uint64 session_id = 1;
-  PgPerformOptionsPB options = 2;
+
+  PgPerformOptionsPB DEPRECATED_options = 2;
+
   ObjectLockOid lock_oid = 3;
+  bool release_all = 4;
 }
 
 message PgReleaseSessionObjectLockResponsePB {

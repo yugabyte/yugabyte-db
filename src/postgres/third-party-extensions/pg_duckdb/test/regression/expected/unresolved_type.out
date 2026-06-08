@@ -1,0 +1,219 @@
+-- All functions should automatically use duckdb
+set duckdb.execution = false;
+select r['a'] ~ 'a.*' from duckdb.query($$ SELECT 'abc' a $$) r;
+ ?column? 
+----------
+ t
+(1 row)
+
+select r['a'] !~ 'x.*' from duckdb.query($$ SELECT 'abc' a $$) r;
+ ?column? 
+----------
+ t
+(1 row)
+
+select r['a'] LIKE '%b%' from duckdb.query($$ SELECT 'abc' a $$) r;
+ ?column? 
+----------
+ t
+(1 row)
+
+select r['a'] NOT LIKE '%x%' from duckdb.query($$ SELECT 'abc' a $$) r;
+ ?column? 
+----------
+ t
+(1 row)
+
+select r['a'] ILIKE '%B%' from duckdb.query($$ SELECT 'abc' a $$) r;
+ ?column? 
+----------
+ t
+(1 row)
+
+select r['a'] NOT ILIKE '%X%' from duckdb.query($$ SELECT 'abc' a $$) r;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Currently not working, we need to add the similar_to_escape function to
+-- DuckDB to make this work.
+select r['a'] SIMILAR TO '%b%' from duckdb.query($$ SELECT 'abc' a $$) r;
+ERROR:  (PGDuckDB/CreatePlan) Prepared query returned an error: Catalog Error: Scalar Function with name similar_to_escape does not exist!
+Did you mean "list_sem"?
+
+LINE 1: SELECT (r.a ~ similar_to_escape('%b%'::text)) AS "?column?" FROM system...
+                      ^
+select r['a'] NOT SIMILAR TO '%b%' from duckdb.query($$ SELECT 'abc' a $$) r;
+ERROR:  (PGDuckDB/CreatePlan) Prepared query returned an error: Catalog Error: Scalar Function with name similar_to_escape does not exist!
+Did you mean "list_sem"?
+
+LINE 1: SELECT (r.a !~ similar_to_escape('%b%'::text)) AS "?column?" FROM system...
+                       ^
+select length(r['a']) from duckdb.query($$ SELECT 'abc' a $$) r;
+ length 
+--------
+      3
+(1 row)
+
+select regexp_replace(r['a'], 'a', 'x') from duckdb.query($$ SELECT 'abc' a $$) r;
+ regexp_replace 
+----------------
+ xbc
+(1 row)
+
+select regexp_replace(r['a'], 'A', 'x', 'i') from duckdb.query($$ SELECT 'abc' a $$) r;
+ regexp_replace 
+----------------
+ xbc
+(1 row)
+
+select date_trunc('year', r['ts']) from duckdb.query($$ SELECT '2024-08-04 12:34:56'::timestamp ts $$) r;
+ date_trunc 
+------------
+ 01-01-2024
+(1 row)
+
+select strptime('Wed, 1 January 1992 - 08:38:40 PM', '%a, %-d %B %Y - %I:%M:%S %p');
+         strptime         
+--------------------------
+ Wed Jan 01 20:38:40 1992
+(1 row)
+
+select strptime('4/15/2023 10:56:00', ARRAY['%d/%m/%Y %H:%M:%S', '%m/%d/%Y %H:%M:%S']);
+         strptime         
+--------------------------
+ Sat Apr 15 10:56:00 2023
+(1 row)
+
+select strftime(date '1992-01-01', '%a, %-d %B %Y - %I:%M:%S %p');
+             strftime              
+-----------------------------------
+ Wed, 1 January 1992 - 12:00:00 AM
+(1 row)
+
+select strftime(timestamp '1992-01-01 20:38:40', '%a, %-d %B %Y - %I:%M:%S %p');
+             strftime              
+-----------------------------------
+ Wed, 1 January 1992 - 08:38:40 PM
+(1 row)
+
+select strftime(timestamptz '1992-01-01 20:38:40', '%a, %-d %B %Y - %I:%M:%S %p');
+             strftime              
+-----------------------------------
+ Wed, 1 January 1992 - 08:38:40 PM
+(1 row)
+
+select strftime(r['ts'], '%a, %-d %B %Y - %I:%M:%S %p') from duckdb.query($$ SELECT timestamp '1992-01-01 20:38:40' ts $$) r;
+             strftime              
+-----------------------------------
+ Wed, 1 January 1992 - 08:38:40 PM
+(1 row)
+
+select epoch_ms(701222400000);
+         epoch_ms         
+--------------------------
+ Sun Mar 22 00:00:00 1992
+(1 row)
+
+select epoch_ms(TIMESTAMP '2021-08-03 11:59:44.123456');
+   epoch_ms    
+---------------
+ 1627991984123
+(1 row)
+
+select epoch_ns(TIMESTAMP '2021-08-03 11:59:44.123456');
+      epoch_ns       
+---------------------
+ 1627991984123456000
+(1 row)
+
+select epoch_us(TIMESTAMP '2021-08-03 11:59:44.123456');
+     epoch_us     
+------------------
+ 1627991984123456
+(1 row)
+
+select epoch('2022-11-07 08:43:04'::TIMESTAMP);
+   epoch    
+------------
+ 1667810584
+(1 row)
+
+select epoch_ms(r['a']) from duckdb.query($$ SELECT 701222400000 a $$) r;
+         epoch_ms         
+--------------------------
+ Sun Mar 22 00:00:00 1992
+(1 row)
+
+select epoch_ms(r['ts']) from duckdb.query($$ SELECT TIMESTAMP '2021-08-03 11:59:44.123456' ts $$) r;
+   epoch_ms    
+---------------
+ 1627991984123
+(1 row)
+
+select epoch_ns(r['ts']) from duckdb.query($$ SELECT TIMESTAMP '2021-08-03 11:59:44.123456' ts $$) r;
+      epoch_ns       
+---------------------
+ 1627991984123456000
+(1 row)
+
+select epoch_us(r['ts']) from duckdb.query($$ SELECT TIMESTAMP '2021-08-03 11:59:44.123456' ts $$) r;
+     epoch_us     
+------------------
+ 1627991984123456
+(1 row)
+
+select epoch(r['ts']) from duckdb.query($$ SELECT '2022-11-07 08:43:04'::TIMESTAMP ts $$) r;
+   epoch    
+------------
+ 1667810584
+(1 row)
+
+-- Tests for make_timestamp[tz]. The ones with many arguments also exist in
+-- postgres, so we force duckdb execution by using duckdb.query.
+select make_timestamp(2023, 6, 12, 10, 30, 12.42) FROM duckdb.query($$ SELECT 1
+$$);
+       make_timestamp        
+-----------------------------
+ Mon Jun 12 10:30:12.42 2023
+(1 row)
+
+select make_timestamptz(2023, 6, 12, 10, 30, 12.42) FROM duckdb.query($$ SELECT 1
+$$);
+        make_timestamptz         
+---------------------------------
+ Mon Jun 12 10:30:12.42 2023 PDT
+(1 row)
+
+select make_timestamptz(2023, 6, 12, 10, 30, 12.42, 'CET') FROM duckdb.query($$ SELECT 1
+$$);
+        make_timestamptz         
+---------------------------------
+ Mon Jun 12 01:30:12.42 2023 PDT
+(1 row)
+
+select make_timestamp(1686570000000000);
+      make_timestamp      
+--------------------------
+ Mon Jun 12 11:40:00 2023
+(1 row)
+
+select make_timestamp(r['microseconds']) from duckdb.query($$ SELECT 1686570000000000 AS microseconds $$) r;
+      make_timestamp      
+--------------------------
+ Mon Jun 12 11:40:00 2023
+(1 row)
+
+select make_timestamptz(1686570000000000);
+       make_timestamptz       
+------------------------------
+ Mon Jun 12 04:40:00 2023 PDT
+(1 row)
+
+select make_timestamptz(r['microseconds']) from duckdb.query($$ SELECT 1686570000000000 AS microseconds $$) r;
+       make_timestamptz       
+------------------------------
+ Mon Jun 12 04:40:00 2023 PDT
+(1 row)
+

@@ -1584,9 +1584,17 @@ class TabletBootstrap {
     auto replay_from_offset = first_op_to_replay_offset_;
     for (; iter != segments.end(); ++iter, replay_from_offset = std::nullopt) {
       const scoped_refptr<ReadableLogSegment>& segment = *iter;
+      const int64_t read_start_offset =
+          replay_from_offset.value_or(segment->first_entry_offset());
+
+      const MonoTime read_start_ts = MonoTime::Now();
       auto read_result = segment->ReadEntries(
           /* max_entries_to_read = */ std::numeric_limits<int64_t>::max(),
           log::EntriesToRead::kAll, replay_from_offset);
+      stats_.wal_read_time_ms += (MonoTime::Now() - read_start_ts).ToMilliseconds();
+      if (read_result.end_offset > read_start_offset) {
+        stats_.wal_bytes_read_for_replay += read_result.end_offset - read_start_offset;
+      }
 
       last_committed_op_id = std::max(
           std::max(last_committed_op_id, read_result.committed_op_id),
@@ -1604,17 +1612,21 @@ class TabletBootstrap {
           test_hooks_->FirstOpIdReadFromReplayedSegment(segment->path(), OpId::Invalid());
         }
       }
-      for (size_t entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
-        const Status s = HandleEntry(
-            read_result.entry_metadata[entry_idx], &read_result.entries[entry_idx]);
-        if (!s.ok()) {
-          LOG_WITH_PREFIX(INFO) << "Dumping replay state to log: " << s;
-          DumpReplayStateToLog();
-          RETURN_NOT_OK_PREPEND(s, DebugInfo(tablet_->tablet_id(),
-                                             segment->header().sequence_number(),
-                                             entry_idx, segment->path(),
-                                             read_result.entries[entry_idx].get()));
+      {
+        const MonoTime apply_start_ts = MonoTime::Now();
+        for (size_t entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
+          const Status s = HandleEntry(
+              read_result.entry_metadata[entry_idx], &read_result.entries[entry_idx]);
+          if (!s.ok()) {
+            LOG_WITH_PREFIX(INFO) << "Dumping replay state to log: " << s;
+            DumpReplayStateToLog();
+            RETURN_NOT_OK_PREPEND(s, DebugInfo(tablet_->tablet_id(),
+                                               segment->header().sequence_number(),
+                                               entry_idx, segment->path(),
+                                               read_result.entries[entry_idx].get()));
+          }
         }
+        stats_.apply_time_ms += (MonoTime::Now() - apply_start_ts).ToMilliseconds();
       }
       if (!read_result.entry_metadata.empty()) {
         last_entry_time = read_result.entry_metadata.back().entry_time;
@@ -1691,6 +1703,8 @@ class TabletBootstrap {
         << "Number of orphaned replicates: " << consensus_info->orphaned_replicates.size()
         << ", last id: " << replay_state_->prev_op_id
         << ", committed id: " << replay_state_->committed_op_id;
+
+    LOG_WITH_PREFIX(INFO) << "WAL replay finished: " << stats_.ToString();
 
     SCHECK_FORMAT(
         replay_state_->prev_op_id.term >= replay_state_->committed_op_id.term &&
@@ -1835,14 +1849,14 @@ class TabletBootstrap {
     auto* change_config = replicate_msg->mutable_change_config_record();
     RaftConfigPB config = change_config->new_config().ToGoogleProtobuf();
 
-    int64_t cmeta_opid_index =  cmeta_->committed_config().opid_index();
+    int64_t cmeta_opid_index = cmeta_->committed_config().committed_op_index();
     if (replicate_msg->id().index() > cmeta_opid_index) {
-      SCHECK(!config.has_opid_index(),
+      SCHECK(!config.has_committed_op_index(),
              Corruption,
              "A config change record must have an opid_index");
-      config.set_opid_index(replicate_msg->id().index());
+      config.set_committed_op_index(replicate_msg->id().index());
       VLOG_WITH_PREFIX(1) << "WAL replay found Raft configuration with log index "
-                          << config.opid_index()
+                          << config.committed_op_index()
                           << " that is greater than the committed config's index "
                           << cmeta_opid_index
                           << ". Applying this configuration change.";
@@ -2020,9 +2034,11 @@ class TabletBootstrap {
 
     // Number of REPLICATE messages read from the log
     int ops_read = 0;
-
     // Number of REPLICATE messages which were overwritten by later entries.
     int ops_overwritten = 0;
+    int64_t wal_bytes_read_for_replay = 0;
+    int64_t wal_read_time_ms = 0;
+    int64_t apply_time_ms = 0;
   } stats_;
 
   HybridTime rocksdb_last_entry_hybrid_time_ = HybridTime::kMin;
@@ -2049,8 +2065,8 @@ class TabletBootstrap {
 // ============================================================================
 
 string TabletBootstrap::Stats::ToString() const {
-  return Format("Read operations: $0, overwritten operations: $1",
-                ops_read, ops_overwritten);
+  return YB_STRUCT_TO_STRING(
+      wal_bytes_read_for_replay, ops_read, ops_overwritten, wal_read_time_ms, apply_time_ms);
 }
 
 Status BootstrapTabletImpl(

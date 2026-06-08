@@ -25,6 +25,8 @@
 
 #include <vector>
 
+#include <boost/range/iterator_range.hpp>
+
 #include "yb/gutil/stl_util.h"
 
 #include "yb/rocksdb/comparator.h"

@@ -196,9 +196,12 @@ export const extractRegionsAndNodeDataFromUniverse = (
   providerRegions: Region[]
 ): RegionsAndNodesFormType => {
   const regions: RegionsAndNodesFormType['regions'] = [];
+  const isGeoPartioned = getExistingGeoPartitions(universeData).length > 0;
 
   universeData.spec?.clusters.forEach((cluster) => {
-    cluster.placement_spec?.cloud_list[0].region_list?.forEach((region) => {
+
+    const cloudList = isGeoPartioned ? cluster.partitions_spec?.[0].placement?.cloud_list : cluster.placement_spec?.cloud_list;
+    cloudList?.[0].region_list?.forEach((region) => {
       const regionData = providerRegions.find((r) => r.uuid === region.uuid);
       if (!regionData) return;
       const azs = region?.az_list;

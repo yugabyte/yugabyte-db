@@ -81,6 +81,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -203,6 +204,9 @@ DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_cleanup_of_expired_table_entries,
 
 DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
     "When enabled, users will be able to create a CDC stream having IMPLICIT checkpointing.");
+
+DEFINE_RUNTIME_bool(cdc_enable_local_rpc_in_virtual_wal, true,
+    "When enabled, RPCs will be called locally via empty HostPort in the VirtualWAL.");
 
 DEFINE_RUNTIME_uint32(cdc_max_virtual_wal_per_tserver, 5,
                       "Maximum VirtualWAL instances that can be present on a tserver at any time.");
@@ -2845,8 +2849,8 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     // - If the tablet is colocated, we check the replica identities of this tablet's tables which
     // are present in the stream metadata's replica identity map.
     // - If the tablet is sys catalog, we check the replica identities of only tables
-    // 'pg_publication_rel' & 'pg_class' residing in it (This is because currently only these sys
-    // catalog tables are part of publication's table list).
+    // 'pg_publication_rel', 'pg_class' & 'pg_replication_origin' residing in it (This is because
+    // currently only these sys catalog tables are part of publication's table list).
     // If before image is active for any such tables then we should return true.
     if (is_colocated_tablet || is_sys_catalog_tablet) {
       auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
@@ -3457,6 +3461,12 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 }
 
 void CDCServiceImpl::UpdatePeersAndMetrics() {
+#ifdef __linux__
+  if (auto* cgroup = context_->SystemHighCgroup()) {
+    WARN_NOT_OK(cgroup->MoveCurrentThreadToGroup(),
+                "Failed to move update_peers_and_metrics thread to cgroup");
+  }
+#endif
   MonoTime time_since_update_peers = MonoTime::kUninitialized;
   MonoTime time_since_update_metrics = MonoTime::kUninitialized;
 
@@ -4853,6 +4863,7 @@ Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
   auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+  table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
   return table_ids;
 }
 
@@ -5543,9 +5554,16 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     }
   }
 
-  HostPort hostport = RPC_VERIFY_RESULT(
-      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
-      CDCErrorPB::INTERNAL_ERROR, context);
+  // If cdc_enable_local_rpc_in_virtual_wal is enabled, pass empty HostPort so that local
+  // short-circuit is used in the RPC framework. See call_local_service_ in Proxy::DoAsyncRequest
+  // for more details.
+  // TODO(#20946): Remove the HostPort parameter once we don't need the fallback to remote call.
+  HostPort hostport;
+  if (!FLAGS_cdc_enable_local_rpc_in_virtual_wal) {
+    hostport = RPC_VERIFY_RESULT(
+        context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+  }
 
   Status s = virtual_wal->InitVirtualWALInternal(
       table_list, oid_to_relfilenode, hostport, GetDeadline(context, client()),
@@ -5603,9 +5621,18 @@ void CDCServiceImpl::GetConsistentChanges(
   }
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
-  HostPort hostport = RPC_VERIFY_RESULT(
-      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
-      CDCErrorPB::INTERNAL_ERROR, context);
+
+  // If cdc_enable_local_rpc_in_virtual_wal is enabled, pass empty HostPort so that local
+  // short-circuit is used in the RPC framework. See call_local_service_ in Proxy::DoAsyncRequest
+  // for more details.
+  // TODO(#20946): Remove the HostPort parameter once we don't need the fallback to remote call.
+  HostPort hostport;
+  if (!FLAGS_cdc_enable_local_rpc_in_virtual_wal) {
+    hostport = RPC_VERIFY_RESULT(
+        context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+  }
+
   Status s =
       virtual_wal->GetConsistentChangesInternal(resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {

@@ -22,11 +22,13 @@
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_status.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/curl_util.h"
 #include "yb/util/logging_test_util.h"
 
 DECLARE_bool(TEST_simulate_EnsureSequenceUpdatesAreInWal_failure);

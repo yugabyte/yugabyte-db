@@ -371,12 +371,11 @@ public class TestPgAuthorization extends BasePgSQLTest {
   }
 
   @Test
+  // (DB-10760) Role OID-based pool design is needed in addition to waiting
+  // for connection count-related statistics for this test to pass when
+  // Connection Manager is enabled. Running on the Postgres port instead.
+  @BypassConnMgr(reason = BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED)
   public void testAttributes() throws Exception {
-    // (DB-10760) Role OID-based pool design is needed in addition to waiting
-    // for connection count-related statistics for this test to pass when
-    // Connection Manager is enabled. Skipping this test temporarily.
-    skipYsqlConnMgr(BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED);
-
     // NOTE: The INHERIT attribute is tested separately in testMembershipInheritance.
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
@@ -2860,10 +2859,9 @@ public class TestPgAuthorization extends BasePgSQLTest {
   }
 
   @Test
+  // (DB-12741) Bypass connection manager for this test.
+  @BypassConnMgr(reason = BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR)
   public void testConnectionLimitDecreasedMidSession() throws Exception {
-    // (DB-12741) Skip this test if running with connection manager.
-    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR);
-
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 
@@ -2931,15 +2929,13 @@ public class TestPgAuthorization extends BasePgSQLTest {
   }
 
   @Test
+  // The test fails with Connection Manager enabled as the role GUC variable
+  // is replayed at the beginning of every transaction boundary. This test
+  // requires that the role GUC variable is not changed even after revoking
+  // membership from a role group in order to succeed, which would not be the
+  // case when Connection Manager is enabled.
+  @BypassConnMgr(reason = BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE)
   public void testMembershipRevokedInsideGroup() throws Exception {
-
-    // The test fails with Connection Manager enabled as the role GUC variable
-    // is replayed at the beginning of every transaction boundary. This test
-    // requires that the role GUC variable is not changed even after revoking
-    // membership from a role group in order to succeed, which would not be the
-    // case when Connection Manager is enabled.
-    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE);
-
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
       statement1.execute("CREATE ROLE test_role LOGIN");
@@ -3235,15 +3231,14 @@ public class TestPgAuthorization extends BasePgSQLTest {
   }
 
   @Test
+  // (DB-10387) (DB-10760) Using long passwords with Connection Manager
+  // causes I/O errors during test execution. Running on the Postgres port
+  // instead until support for the same can be provided with Connection Manager.
+  // This test will further need the support of role OID-based pooling
+  // to help support recreate role operations (DROP ROLE followed by
+  // CREATE ROLE).
+  @BypassConnMgr(reason = BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED)
   public void testLongPasswords() throws Exception {
-    // (DB-10387) (DB-10760) Using long passwords with Connection Manager
-    // causes I/O errors during test execution. Skip this test temporarily
-    // until support for the same can be provided with Connection Manager.
-    // This test will further need the support of role OID-based pooling
-    // to help support recreate role operations (DROP ROLE followed by
-    // CREATE ROLE).
-    skipYsqlConnMgr(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED);
-
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
 

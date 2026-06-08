@@ -11,6 +11,7 @@ import { ClusterType } from '@app/redesign/features/universe/universe-form/utils
 import { useGetEditPlacementContext } from './EditPlacementUtils';
 import { getFaultToleranceNeeded, getNodeCount } from '../../create-universe/CreateUniverseUtils';
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
+import { AZ_NOT_PREFERRED } from '../../create-universe/helpers/constants';
 
 import pluralize from 'pluralize';
 import { keys } from 'lodash';
@@ -170,7 +171,7 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                     <YBTag size="medium" variant="dark" color="primary">
                       {az?.num_nodes_in_az}&nbsp;{pluralize(t('node'), az?.num_nodes_in_az)}
                     </YBTag>
-                    {az?.leader_preference ? (
+                    {(az?.leader_preference ?? AZ_NOT_PREFERRED) > AZ_NOT_PREFERRED ? (
                       <YBTag size="medium" variant="dark" color="primary">
                         {t('rank', { rank: az.leader_preference })}
                       </YBTag>
@@ -224,9 +225,9 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                           {az?.nodeCount}&nbsp;{pluralize(t('node'), az?.nodeCount)}
                         </YBTag>
                       </div>
-                      {az?.preffered > -1 ? (
+                      {az?.preffered > AZ_NOT_PREFERRED ? (
                         <YBTag size="medium" variant="dark" color="primary">
-                          {t('rank', { rank: az.preffered + 1 })}
+                          {t('rank', { rank: az.preffered })}
                         </YBTag>
                       ) : (
                         <YBTag size="medium" variant="dark">

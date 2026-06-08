@@ -54,6 +54,7 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
 #include "yb/util/cgroups.h"
+#include "yb/util/enum_parse.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/priority_thread_pool.h"
