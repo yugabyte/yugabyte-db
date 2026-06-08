@@ -33,7 +33,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 - Fixed an issue where interrupting live migration could cause incorrect sequence restoration on the target after cutover.
 
-- Fixed an issue where [import data](../reference/data-migration/import-data/) could hang silently when `--adaptive-parallelism-max` was set below the default `parallel-jobs` value.
+- Fixed an issue where [import data](../reference/data-migration/import-data/) could hang silently when `--adaptive-parallelism-max` was set less than the default `parallel-jobs` value.
 
 ## v2026.5.2 - May 26, 2026
 
