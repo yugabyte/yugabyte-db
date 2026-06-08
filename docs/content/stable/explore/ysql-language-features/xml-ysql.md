@@ -55,7 +55,7 @@ INSERT INTO employees VALUES
 
 ## Constructing XML
 
-The `xmlelement()` function builds XML elements programmatically:
+Use the  `xmlelement()` function to build XML elements programmatically:
 
 ```sql
 SELECT xmlelement(name employee,
@@ -96,7 +96,7 @@ This creates an element with attributes:
 
 ### Creating XML comments
 
-The `xmlcomment()` function adds comments:
+Use the `xmlcomment()` function to adds comments:
 
 ```sql
 SELECT xmlconcat(
@@ -109,7 +109,7 @@ SELECT xmlconcat(
 
 ## Querying XML with XPath
 
-The `xpath()` function queries XML documents using XPath expressions:
+Use the `xpath()` function to query XML documents using XPath expressions:
 
 ```sql
 SELECT id, xpath('/employee/name/text()', data) as name
@@ -144,7 +144,7 @@ This returns employees with the title "Senior Engineer":
 
 ## Converting XML to tables with XMLTABLE
 
-The `XMLTABLE` construct extracts tabular data from XML. For example, given XML containing multiple employee records:
+Use the `XMLTABLE` construct to extract tabular data from XML. For example, the given XML contains multiple employee records:
 
 ```sql
 SELECT * FROM xmltable(
@@ -175,7 +175,7 @@ This extracts the data as relational tuples:
 
 ## Converting tables to XML
 
-The `table_to_xml()` function converts an entire table to XML:
+Use the `table_to_xml()` function to convert an entire table to XML:
 
 ```sql
 SELECT table_to_xml('employees', false, false, '');
@@ -194,7 +194,7 @@ SELECT query_to_xml(
 
 ## Aggregating XML
 
-The `xmlagg()` function combines multiple XML values:
+Use the `xmlagg()` function to combine multiple XML values:
 
 ```sql
 SELECT xmlagg(data ORDER BY id)
@@ -253,10 +253,10 @@ SELECT xpath(
 
 ## Performance considerations
 
-- XML parsing and XPath evaluation can be CPU-intensive for large documents
-- For frequent XPath queries on the same column, consider using functional indexes
-- Use `XMLTABLE` to convert XML to relational form for more efficient querying
-- Store frequently queried subvalues as separate columns alongside the XML document
+- XML parsing and XPath evaluation can be CPU-intensive for large documents.
+- For frequent XPath queries on the same column, consider using functional indexes.
+- Use `XMLTABLE` to convert XML to relational form for more efficient querying.
+- Store frequently queried subvalues as separate columns alongside the XML document.
 
 ## Read more
 

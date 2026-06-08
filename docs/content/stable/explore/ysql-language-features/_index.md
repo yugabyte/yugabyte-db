@@ -32,11 +32,21 @@ To learn more, see [Schemas and Tables](databases-schemas-tables/)
 
 ## Data types
 
-YugabyteDB offers extensive support for SQL data types, closely aligning with PostgreSQL's type system. It includes common data types like INTEGER, VARCHAR, BOOLEAN, TIMESTAMP, and more, along with advanced types such as arrays and JSONB, similar to PostgreSQL. Understanding the supported data types is crucial for effective schema design and query optimization in YugabyteDB.
+YugabyteDB offers extensive support for SQL data types, closely aligning with PostgreSQL's type system. It includes common data types like INTEGER, VARCHAR, BOOLEAN, TIMESTAMP, and more, along with advanced types such as arrays, JSONB, and XML, similar to PostgreSQL. Understanding the supported data types is crucial for effective schema design and query optimization in YugabyteDB.
 
 {{<lead link="data-types/">}}
 To learn more, see [Data types](data-types/)
 {{</lead>}}
+
+## XML support
+
+YSQL supports the PostgreSQL `xml` data type and XML functions for storing well-formed documents, constructing XML in SQL, querying with XPath, extracting tabular data with `XMLTABLE`, and converting between tables and XML.
+
+{{<lead link="xml-ysql/">}}
+To learn more, see [XML support in YSQL](xml-ysql/)
+{{</lead>}}
+
+For the API reference, see [XML data type and functions](../../api/ysql/datatypes/type_xml/).
 
 ## Read data
 

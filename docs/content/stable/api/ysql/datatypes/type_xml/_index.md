@@ -38,44 +38,45 @@ The following key XML functions are supported:
 
 ### XML construction
 
-- `xmlcomment(text)` — Constructs an XML comment
-- `xmlconcat(xml, ...)` — Concatenates XML fragments
-- `xmlelement(name, ...)` — Constructs an XML element
-- `xmlattributes(...)` — Specifies attributes for an XML element
-- `xmlforest(...)` — Constructs a forest of XML elements
-- `xmlpi(name, text)` — Constructs an XML processing instruction
-- `xmlroot(xml, ...)` — Modifies the root node of an XML document
+- `xmlcomment(text)` : Constructs an XML comment
+- `xmlconcat(xml, ...)` : Concatenates XML fragments
+- `xmlelement(name, ...)` : Constructs an XML element
+- `xmlattributes(...)` : Specifies attributes for an XML element
+- `xmlforest(...)` : Constructs a forest of XML elements
+- `xmlpi(name, text)` : Constructs an XML processing instruction
+- `xmlroot(xml, ...)` : Modifies the root node of an XML document
 
 ### XML parsing and serialization
 
-- `xmlparse(content | document text)` — Parses a text string into XML
-- `xmlserialize(content | document xml as type)` — Converts XML to text
+- `xmlparse(content | document text)` : Parses a text string into XML
+- `xmlserialize(content | document xml as type)` : Converts XML to text
 
 ### XPath and XML queries
 
-- `xpath(xpath_expr, xml_doc, [namespaces])` — Evaluates XPath expressions
-- `xpath_exists(xpath_expr, xml_doc)` — Tests if XPath expression matches
-- `xmlexists(xpath_expr PASSING [BY REF] xml_doc)` — Alternative XPath test syntax
-- `XMLTABLE(...)` — Converts XML to tabular form
+- `xpath(xpath_expr, xml_doc, [namespaces])` : Evaluates XPath expressions
+- `xpath_exists(xpath_expr, xml_doc)` : Tests if XPath expression matches
+- `xmlexists(xpath_expr PASSING [BY REF] xml_doc)` : Alternative XPath test syntax
+- `XMLTABLE(...)` : Converts XML to tabular form
 
 ### Aggregation
 
-- `xmlagg(xml [ORDER BY ...])` — Aggregates multiple XML values
+- `xmlagg(xml [ORDER BY ...])` : Aggregates multiple XML values
 
 ### Validation
 
-- `xml_is_well_formed(text)` — Tests if text is well-formed XML
-- `xml_is_well_formed_document(text)` — Tests if text is a well-formed XML document
-- `xml_is_well_formed_content(text)` — Tests if text is well-formed XML content
+- `xml_is_well_formed(text)` : Tests if text is well-formed XML
+- `xml_is_well_formed_document(text)` : Tests if text is a well-formed XML document
+- `xml_is_well_formed_content(text)` : Tests if text is well-formed XML content
 
 ### XML predicates
 
-- `IS DOCUMENT` — Tests if XML value is a well-formed document
-- `IS NOT DOCUMENT` — Tests if XML value is not a document
+- `IS DOCUMENT` : Tests if XML value is a well-formed document
+- `IS NOT DOCUMENT` : Tests if XML value is not a document
 
 ### XML schema mapping
 
-Functions to convert between tables and XML:
+Functions to convert between tables and XML are as follows:
+
 - `table_to_xml(table, nulls, tableforest, targetns)`
 - `table_to_xmlschema(table, nulls, tableforest, targetns)`
 - `table_to_xml_and_xmlschema(table, nulls, tableforest, targetns)`
@@ -93,9 +94,10 @@ For the full reference and detailed descriptions of all XML functions, see the [
 ## See also
 
 For comprehensive examples and guided tutorials on using XML in YSQL, including:
+
 - Constructing XML documents
 - Querying XML with XPath
 - Converting between tables and XML
 - Handling namespaces
 
-See [XML support in YSQL](../../explore/ysql-language-features/xml-ysql/).
+See [XML support in YSQL](../../../../explore/ysql-language-features/xml-ysql/).
