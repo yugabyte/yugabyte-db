@@ -15,7 +15,7 @@ import {
 } from '../fields/FieldNames';
 import { getFaultToleranceNeeded, getEffectiveReplicationFactorForResilience } from './resilienceReplication';
 import { PlacementRegion } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../helpers/constants';
+import { AZ_NOT_PREFERRED } from '../helpers/constants';
 
 export const getNodeCount = (availabilityZones: NodeAvailabilityProps['availabilityZones']) => {
   if (keys(availabilityZones).length === 0) {
@@ -112,7 +112,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
         selectedZonesByRegion[region.code].push({
           ...region.zones[i],
           nodeCount: 1, // placeholder; distributed below.
-          preffered: i + AZ_PREFFERED_HIGHEST_RANK
+          preffered: AZ_NOT_PREFERRED
         });
       }
     });
@@ -132,7 +132,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
         selectedZonesByRegion[region.code].push({
           ...region.zones[zoneIndex],
           nodeCount: 1,
-          preffered: zoneIndex + AZ_PREFFERED_HIGHEST_RANK
+          preffered: AZ_NOT_PREFERRED
         });
         selectedAzCount += 1;
         progressed = true;
@@ -187,7 +187,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
       updatedRegions[region.code].push({
         ...zone,
         nodeCount: nodeCountForAz,
-        preffered: index + AZ_PREFFERED_HIGHEST_RANK
+        preffered: AZ_NOT_PREFERRED
       });
     });
   });
@@ -222,7 +222,6 @@ function pickZonesRoundRobin(
     usedSlots.set(r.code, 0);
   });
 
-  let preferred = AZ_PREFFERED_HIGHEST_RANK;
   let added = 0;
   let rIdx = 0;
   const maxIter = Math.max(azCount * regions.length * 20, 100);
@@ -241,7 +240,7 @@ function pickZonesRoundRobin(
       name: '',
       uuid: '',
       nodeCount: 1,
-      preffered: preferred++
+      preffered: AZ_NOT_PREFERRED
     });
     added += 1;
   }
@@ -387,7 +386,7 @@ export function getExpertNodesStepDefaultPlacement(
           name: '',
           uuid: '',
           nodeCount: 1,
-          preffered: index + AZ_PREFFERED_HIGHEST_RANK
+          preffered: AZ_NOT_PREFERRED
         }))
       };
       distributeNodesUntilTotalAtLeastRf(availabilityZones, EXPERT_SINGLE_REGION_DEFAULT_RF);
@@ -402,7 +401,7 @@ export function getExpertNodesStepDefaultPlacement(
             name: '',
             uuid: '',
             nodeCount: EXPERT_SINGLE_REGION_DEFAULT_RF,
-            preffered: AZ_PREFFERED_HIGHEST_RANK
+            preffered: AZ_NOT_PREFERRED
           }
         ]
       }
