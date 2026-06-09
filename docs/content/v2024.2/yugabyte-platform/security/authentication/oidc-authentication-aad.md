@@ -40,9 +40,9 @@ Note that the yugabyte privileged user will continue to exist as a local databas
 
 ## OIDC callback URI
 
-The callback (redirect) URI for YugabyteDB Anywhere can be in one of the following formats:
+YugabyteDB Anywhere supports callback (redirect) URIs in one of the following formats:
 
-- Query:
+- Query (default):
 
     `https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient`
 
@@ -54,7 +54,7 @@ The callback (redirect) URI for YugabyteDB Anywhere can be in one of the followi
 
 This is where the IdP redirects after authentication.
 
-To configure the URI format, set the **OIDC Callback Mode** Global Runtime Configuration option (config key `yb.security.oidc_callback_mode`). Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+Only one format is supported at a time. To change the URI format, set the **OIDC Callback Mode** Global Runtime Configuration option (config key `yb.security.oidc_callback_mode`). Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 ## Group claims and roles in Azure AD
 
