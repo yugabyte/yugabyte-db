@@ -16,7 +16,7 @@ type: indexpage
 showRightNav: true
 ---
 
-[Flink CDC](https://nightlies.apache.org/flink/flink-cdc-docs-stable/) is a data integration framework built on [Apache Flink](https://flink.apache.org/) that captures row-level changes from operational databases and continuously applies them to downstream systems. Using Flink CDC with YugabyteDB as a source database enables you to stream change events for the following use cases:
+[Flink CDC](https://nightlies.apache.org/flink/flink-cdc-docs-stable/) is a data integration framework that combines [Apache Flink](https://flink.apache.org/) stream processing with [Debezium](https://debezium.io/) change capture to read row-level changes from operational databases and continuously apply them to downstream systems. Using Flink CDC with YugabyteDB as a source database enables you to stream change events for the following use cases:
 
 - Real-time data propagation: Stream YugabyteDB changes to Kafka, Elasticsearch, Iceberg, or data lakes.
 - Operational analytics: Feed a warehouse or lakehouse continuously.
