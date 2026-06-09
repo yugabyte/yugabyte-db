@@ -3934,7 +3934,9 @@
           "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
           "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps.",
           "expertResilienceUninferable": "<b>Invalid configuration!</b> RF {{rf}} requires either {{rf}} AZs or a minimum of {{rf}} total nodes. The current placement falls below this requirement.",
-          "expertAzBlank": "<b>Invalid configuration!</b> Availability zone cannot be left blank."
+          "expertAzBlank": "<b>Invalid configuration!</b> Availability zone cannot be left blank.",
+          "onPremFreeNodesExceeded": "<b>Invalid configuration:</b> Availability zone <b>{{az_name}}</b> requires <b>{{requested_count}}</b> nodes but only <b>{{free_count}}</b> free nodes are available.",
+          "onPremNodesLoading": "<b>Please wait:</b> Loading available on-prem nodes before validating placement."
         }
       },
       "instanceSettings": {
