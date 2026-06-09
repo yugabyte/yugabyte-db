@@ -95,6 +95,8 @@
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "common/pg_yb_param_status_flags.h"
+#include "executor/execdesc.h"
+#include "executor/spi.h"
 #include "executor/ybExpr.h"
 #include "fmgr.h"
 #include "foreign/foreign.h"
@@ -4471,13 +4473,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 									context, params, queryEnv,
 									dest, qc);
 
-		/*
-		 * YB: Account for stats collected during the execution of utility command
-		 * Only refresh stats at the last level of nesting
-		 */
-		if (YBGetDdlNestingLevel() == 1)
-			YbRefreshSessionStatsDuringExecution();
-
 		if (is_ddl)
 		{
 			CheckAlterDatabaseDdl(pstmt);
@@ -4604,6 +4599,84 @@ void
 YBFlushBufferedOperations(YbcFlushDebugContext debug_context)
 {
 	HandleYBStatus(YBCPgFlushBufferedOperations(&debug_context));
+}
+
+typedef struct YbQueryState
+{
+	unsigned int executor_operation_nesting_level;
+	unsigned int utility_operation_nesting_level;
+} YbQueryState;
+
+static YbQueryState query_state = {0};
+static YbInstrumentation last_utility_yb_instr = {0};
+
+static void
+YBClearLastUtilityStats(void)
+{
+	memset(&last_utility_yb_instr, 0, sizeof(last_utility_yb_instr));
+}
+
+void
+YBOnExecutorOperationBegin()
+{
+	if (query_state.executor_operation_nesting_level == 0 &&
+		query_state.utility_operation_nesting_level == 0)
+		YBClearLastUtilityStats();
+	query_state.executor_operation_nesting_level++;
+}
+
+void
+YBOnExecutorOperationEnd(struct QueryDesc *queryDesc)
+{
+	Assert(query_state.executor_operation_nesting_level > 0);
+	if (IsYugaByteEnabled() &&
+		YBIsTopLevelExecutorOperation() &&
+		!queryDesc->yb_skip_finish_capture)
+		YbUpdateSessionStats(&queryDesc->yb_query_stats->yb_instr);
+
+	query_state.executor_operation_nesting_level--;
+}
+
+bool
+YBIsTopLevelExecutorOperation()
+{
+	return query_state.executor_operation_nesting_level == 1 &&
+		query_state.utility_operation_nesting_level == 0;
+}
+
+void
+YBOnUtilityOperationBegin()
+{
+	if (query_state.utility_operation_nesting_level == 0)
+		YBClearLastUtilityStats();
+	query_state.utility_operation_nesting_level++;
+}
+
+void
+YBOnUtilityOperationEnd()
+{
+	Assert(query_state.utility_operation_nesting_level > 0);
+
+	if (query_state.utility_operation_nesting_level == 1 &&
+		query_state.executor_operation_nesting_level == 0)
+		YbUpdateSessionStats(&last_utility_yb_instr);
+
+	query_state.utility_operation_nesting_level--;
+}
+
+void
+YBResetOperationTracking()
+{
+	memset(&query_state, 0, sizeof(query_state));
+	YBClearLastUtilityStats();
+}
+
+YbInstrumentation *
+YBGetUtilityOperationStats()
+{
+	if (!IsYugaByteEnabled())
+		return NULL;
+	return &last_utility_yb_instr;
 }
 
 bool

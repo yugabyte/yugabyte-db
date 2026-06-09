@@ -1065,6 +1065,30 @@ extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations(YbcFlushDebugContext debug_context);
 extern void YBAdjustOperationsBuffering(int multiple);
 
+struct QueryDesc;
+/* Called at the start of every ExecutorRun and ExecutorFinish. */
+extern void YBOnExecutorOperationBegin();
+/*
+ * Called at the end of every ExecutorRun and ExecutorFinish. At the top
+ * level, saves DocDB stats onto queryDesc for pg_stat_statements.
+ */
+extern void YBOnExecutorOperationEnd(struct QueryDesc *queryDesc);
+/* True for the outermost ExecutorRun/ExecutorFinish. */
+extern bool YBIsTopLevelExecutorOperation();
+
+/* Called at the start of every tracked ProcessUtility call. */
+extern void YBOnUtilityOperationBegin();
+/*
+ * Called at the end of every tracked ProcessUtility call. At the top
+ * level, saves DocDB stats into the YBGetUtilityOperationStats() slot.
+ */
+extern void YBOnUtilityOperationEnd();
+/* DocDB stats from the last top-level utility (for pg_stat_statements). */
+extern YbInstrumentation *YBGetUtilityOperationStats();
+
+/* Resets executor/utility nesting counters and stats after a failed transaction. */
+extern void YBResetOperationTracking();
+
 bool		YBEnableTracing();
 bool		YBReadFromFollowersEnabled();
 int32_t		YBFollowerReadStalenessMs();
