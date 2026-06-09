@@ -180,6 +180,28 @@ SET backtrace_functions TO 'SearchCatCacheMiss';
 RESET SESSION AUTHORIZATION;
 DROP ROLE yb_backtrace_test_regular_user;
 
+-- Test the parsers for yb_extra_commands_to_retry and
+-- yb_extra_commands_to_retry_in_proc: case-insensitivity, whitespace
+-- tolerance, multi-word tags, the unknown-tag error path, and the
+-- COPY / COPY FROM / ANALYZE rejection.
+SET yb_extra_commands_to_retry = 'alter table';
+SHOW yb_extra_commands_to_retry;
+SET yb_extra_commands_to_retry = '  alter table  ,  truncate table  ';
+SHOW yb_extra_commands_to_retry;
+SET yb_extra_commands_to_retry = '';
+SHOW yb_extra_commands_to_retry;
+SET yb_extra_commands_to_retry_in_proc = 'LOCK TABLE, CREATE INDEX';
+SHOW yb_extra_commands_to_retry_in_proc;
+SET yb_extra_commands_to_retry_in_proc = '';
+SHOW yb_extra_commands_to_retry_in_proc;
+SET yb_extra_commands_to_retry = 'NONSENSE TAG';                -- ERROR
+SET yb_extra_commands_to_retry_in_proc = 'select, NOPE';        -- ERROR
+SET yb_extra_commands_to_retry = 'COPY';                        -- ERROR
+SET yb_extra_commands_to_retry_in_proc = 'ANALYZE';             -- ERROR
+SET yb_extra_commands_to_retry = 'COPY FROM, ALTER TABLE';      -- ERROR
+RESET yb_extra_commands_to_retry;
+RESET yb_extra_commands_to_retry_in_proc;
+
 -- cleanup
 RESET foo;
 RESET yb_enable_bitmapscan;

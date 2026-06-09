@@ -602,6 +602,209 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     ).runTest();
   }
 
+  private static final String COUNT_PROC_DDL =
+      "CREATE PROCEDURE test_rr_count_proc() LANGUAGE plpgsql AS $$" +
+      "  DECLARE cnt bigint;" +
+      "  BEGIN SELECT count(*) INTO cnt FROM test_rr; END;" +
+      "$$";
+
+  private static final String COUNT_DO_BLOCK =
+      "DO $$ DECLARE cnt bigint; BEGIN SELECT count(*) INTO cnt FROM test_rr; END $$";
+
+  // A procedure whose body runs a non-DML statement (LOCK TABLE, which is not in the retriable
+  // set) before reading test_rr. The query layer must not retry the CALL unless LOCK TABLE is
+  // added to yb_extra_commands_to_retry_in_proc. ACCESS SHARE does not conflict with the
+  // concurrent inserts.
+  private static final String NONRETRIABLE_PROC_DDL =
+      "CREATE PROCEDURE test_rr_count_proc_non_retriable() LANGUAGE plpgsql AS $$" +
+      "  DECLARE cnt bigint;" +
+      "  BEGIN" +
+      "    LOCK TABLE test_rr IN ACCESS SHARE MODE;" +
+      "    SELECT count(*) INTO cnt FROM test_rr;" +
+      "  END;" +
+      "$$";
+
+  /**
+   * Read restarts hit inside a procedure invoked via CALL are retried transparently under
+   * READ COMMITTED. The procedure body only reads, so it is safe to re-execute.
+   */
+  @Test
+  public void callProcReadRestartReadCommitted() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(COUNT_PROC_DDL);
+    }
+    new ConcurrentProcRetryTester(getConnectionBuilder(), "CALL test_rr_count_proc()",
+        IsolationLevel.READ_COMMITTED).runTest();
+  }
+
+  /**
+   * Same as callProcReadRestartReadCommitted but for an anonymous DO block.
+   */
+  @Test
+  public void doBlockReadRestartReadCommitted() throws Exception {
+    new ConcurrentProcRetryTester(getConnectionBuilder(), COUNT_DO_BLOCK,
+        IsolationLevel.READ_COMMITTED).runTest();
+  }
+
+  /**
+   * A procedure whose body ran a statement that is not safe to re-execute (here a DDL) is not
+   * re-executed, so the read restart is not retried and surfaces to the client.
+   */
+  @Test
+  public void nonRetriableProcReadRestartNotRetried() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(NONRETRIABLE_PROC_DDL);
+    }
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "CALL test_rr_count_proc_non_retriable()",
+        IsolationLevel.READ_COMMITTED, false /* expectRetried */, null /* sessionSetupSql */)
+        .runTest();
+  }
+
+  /**
+   * The proc-retriability gate tracks runtime-accumulated state, not the static body. When the
+   * DML faces the read restart before the non-retriable statement has been executed, the flag is
+   * still clean and the retry is allowed. (Same NONRETRIABLE proc reordered to put the SELECT
+   * first.)
+   */
+  @Test
+  public void dmlThenLockReadRestartRetried() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(
+          "CREATE PROCEDURE test_rr_count_proc_dml_then_lock() LANGUAGE plpgsql AS $$" +
+          "  DECLARE cnt bigint;" +
+          "  BEGIN" +
+          "    SELECT count(*) INTO cnt FROM test_rr;" +
+          "    LOCK TABLE test_rr IN ACCESS SHARE MODE;" +
+          "  END;" +
+          "$$");
+    }
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "CALL test_rr_count_proc_dml_then_lock()",
+        IsolationLevel.READ_COMMITTED).runTest();
+  }
+
+  /**
+   * Listing the offending command tag in yb_extra_commands_to_retry_in_proc moves it into the
+   * retriable set for proc bodies, so read restarts are once again handled transparently.
+   */
+  @Test
+  public void forceProcRetryRetriesNonRetriableProc() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(NONRETRIABLE_PROC_DDL);
+    }
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "CALL test_rr_count_proc_non_retriable()",
+        IsolationLevel.READ_COMMITTED, true /* expectRetried */,
+        "SET yb_extra_commands_to_retry_in_proc = 'LOCK TABLE'").runTest();
+  }
+
+  /**
+   * The non-retriable statement is isolated in a nested proc, and the outer proc's read-restart-
+   * prone DML runs after it. Confirms the proc-retriability flag set inside the nested SPI
+   * connection survives back into the outer body, so the outer's SELECT is not retried.
+   */
+  @Test
+  public void dmlAfterNestedLockReadRestartNotRetried() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(
+          "CREATE PROCEDURE test_rr_inner_lock_only() LANGUAGE plpgsql AS $$" +
+          "  BEGIN LOCK TABLE test_rr IN ACCESS SHARE MODE; END;" +
+          "$$");
+      stmt.execute(
+          "CREATE PROCEDURE test_rr_outer_lock_then_dml() LANGUAGE plpgsql AS $$" +
+          "  DECLARE cnt bigint;" +
+          "  BEGIN" +
+          "    CALL test_rr_inner_lock_only();" +
+          "    SELECT count(*) INTO cnt FROM test_rr;" +
+          "  END;" +
+          "$$");
+    }
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "CALL test_rr_outer_lock_then_dml()",
+        IsolationLevel.READ_COMMITTED, false /* expectRetried */, null /* sessionSetupSql */)
+        .runTest();
+  }
+
+  /**
+   * An outer proc that calls a non-retriable inner proc inherits its non-retriability: the
+   * proc-retriability flag accumulates across nested SPI connections, so the outer CALL is not
+   * retried.
+   */
+  @Test
+  public void nestedNonRetriableProcReadRestartNotRetried() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(NONRETRIABLE_PROC_DDL);
+      stmt.execute(
+          "CREATE PROCEDURE test_rr_outer_non_retriable() LANGUAGE plpgsql AS $$" +
+          "  BEGIN CALL test_rr_count_proc_non_retriable(); END;" +
+          "$$");
+    }
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "CALL test_rr_outer_non_retriable()",
+        IsolationLevel.READ_COMMITTED, false /* expectRetried */, null /* sessionSetupSql */)
+        .runTest();
+  }
+
+  /**
+   * A procedure whose body issues SQL EXECUTE of a prepared SELECT statement is retriable: the
+   * EXECUTE command tag is resolved to the prepared statement's own tag (SELECT) before checking
+   * retriability.
+   */
+  @Test
+  public void executePreparedStatementInProcReadRestartReadCommitted() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(
+          "CREATE PROCEDURE test_rr_count_proc_execute() LANGUAGE plpgsql AS $$" +
+          "  DECLARE cnt bigint;" +
+          "  BEGIN EXECUTE 'EXECUTE test_rr_count_q' INTO cnt; END;" +
+          "$$");
+    }
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        "CALL test_rr_count_proc_execute()",
+        IsolationLevel.READ_COMMITTED, true /* expectRetried */,
+        "PREPARE test_rr_count_q AS SELECT count(*) FROM test_rr").runTest();
+  }
+
+  /**
+   * The proc-retriability flag is per top-level CALL: it is reset on the outermost SPI connect.
+   * So a retriable proc invoked right after a non-retriable one (whose body blocked retries)
+   * still retries transparently. Covers both autocommit and an explicit transaction block.
+   */
+  @Test
+  public void retryTrackerResetAcrossProcsNoTxnBlock() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(COUNT_PROC_DDL);
+      stmt.execute(NONRETRIABLE_PROC_DDL);
+    }
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        Arrays.asList("CALL test_rr_count_proc_non_retriable()",
+                      "CALL test_rr_count_proc()"),
+        IsolationLevel.READ_COMMITTED,
+        Arrays.asList(false /* expectRetried for non-retriable */,
+                      true  /* expectRetried for retriable */),
+        Collections.emptyList()).runTest();
+  }
+
+  @Test
+  public void retryTrackerResetAcrossProcsInTxnBlock() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(COUNT_PROC_DDL);
+      stmt.execute(NONRETRIABLE_PROC_DDL);
+    }
+    new ConcurrentProcRetryTester(getConnectionBuilder(),
+        Arrays.asList("BEGIN",
+                      "CALL test_rr_count_proc_non_retriable()",
+                      "CALL test_rr_count_proc()",
+                      "COMMIT"),
+        IsolationLevel.READ_COMMITTED,
+        Arrays.asList(true  /* BEGIN never raises rr */,
+                      false /* expectRetried for non-retriable */,
+                      true  /* expectRetried for retriable */,
+                      true  /* COMMIT never raises rr */),
+        Collections.emptyList()).runTest();
+  }
+
   //
   // Helpers methods
   //
@@ -1324,6 +1527,123 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     @Override
     public ResultSet executeQuery(PreparedStatement stmt) throws Exception {
       return stmt.executeQuery();
+    }
+  }
+
+  /**
+   * Runs a CALL/DO statement in a loop at the given isolation level while test_rr is populated
+   * concurrently, so the body repeatedly hits read restarts.
+   *
+   * When expectRetried is true, the query layer should retry the body transparently and no
+   * read restart should surface. When it is false, the proc-retriability gate is expected to block
+   * the retry, so read restarts surface to the client. sessionSetupSql, if non-null, is run on
+   * the worker connection before the loop (e.g. to set yb_extra_commands_to_retry_in_proc).
+   */
+  private class ConcurrentProcRetryTester extends ConcurrentInsertQueryTester<Statement> {
+    private final List<String> execSqls;
+    private final IsolationLevel isolation;
+    private final List<Boolean> expectRetriedPerStmt;
+    private final List<String> sessionSetupSqls;
+
+    public ConcurrentProcRetryTester(ConnectionBuilder cb, String execSql,
+                                     IsolationLevel isolation) {
+      this(cb, Collections.singletonList(execSql), isolation,
+           Collections.singletonList(true) /* expectRetriedPerStmt */,
+           Collections.emptyList() /* sessionSetupSqls */);
+    }
+
+    public ConcurrentProcRetryTester(ConnectionBuilder cb, String execSql, IsolationLevel isolation,
+                                     boolean expectRetried, String sessionSetupSql) {
+      this(cb, Collections.singletonList(execSql), isolation,
+           Collections.singletonList(expectRetried),
+           sessionSetupSql == null ? Collections.emptyList()
+                                   : Collections.singletonList(sessionSetupSql));
+    }
+
+    public ConcurrentProcRetryTester(ConnectionBuilder cb, List<String> execSqls,
+                                     IsolationLevel isolation,
+                                     List<Boolean> expectRetriedPerStmt,
+                                     List<String> sessionSetupSqls) {
+      super(cb, getShortString(), 50 /* numInserts */);
+      assertEquals("execSqls and expectRetriedPerStmt must have the same length",
+          execSqls.size(), expectRetriedPerStmt.size());
+      this.execSqls = execSqls;
+      this.isolation = isolation;
+      this.expectRetriedPerStmt = expectRetriedPerStmt;
+      this.sessionSetupSqls = sessionSetupSqls;
+    }
+
+    @Override
+    public List<ThrowingRunnable> getRunnableThreads(
+        ConnectionBuilder cb, BooleanSupplier isExecutionDone) {
+      List<ThrowingRunnable> runnables = new ArrayList<>();
+      runnables.add(() -> {
+        int n = execSqls.size();
+        int[] succeeded = new int[n];
+        int[] restartRequired = new int[n];
+        int[] retriesExhausted = new int[n];
+        int[] abortError = new int[n];
+        int[] conflictError = new int[n];
+
+        try (Connection conn = cb.withIsolationLevel(isolation).connect();
+             Statement stmt = conn.createStatement()) {
+          stmt.execute(LOG_RESTARTS_SQL);
+          for (String setupSql : sessionSetupSqls) {
+            stmt.execute(setupSql);
+          }
+          while (!isExecutionDone.getAsBoolean()) {
+            for (int i = 0; i < n; ++i) {
+              String execSql = execSqls.get(i);
+              try {
+                stmt.execute(execSql);
+                ++succeeded[i];
+              } catch (Exception ex) {
+                if (!isTxnError(ex)) {
+                  fail(execSql + " thread failed: " + ex.getMessage());
+                } else if (isRetriesExhaustedError(ex)) {
+                  ++retriesExhausted[i];
+                } else if (isRestartReadError(ex)) {
+                  ++restartRequired[i];
+                } else if (isAbortError(ex)) {
+                  ++abortError[i];
+                } else if (isConflictError(ex)) {
+                  ++conflictError[i];
+                } else {
+                  fail(execSql + " thread failed: " + ex.getMessage());
+                }
+              }
+            }
+          }
+        } catch (Exception ex) {
+          LOG.error("Connection-wide exception! This shouldn't happen", ex);
+          fail("Connection-wide exception! This shouldn't happen: " + ex.getMessage());
+        }
+
+        for (int i = 0; i < n; ++i) {
+          String execSql = execSqls.get(i);
+          boolean expectRetried = expectRetriedPerStmt.get(i);
+          LOG.info(execSql + " (" + isolation + ", expectRetried=" + expectRetried + "):\n" +
+              " succeeded=" + succeeded[i] + "\n" +
+              " restartRequired=" + restartRequired[i] + "\n" +
+              " retriesExhausted=" + retriesExhausted[i] + "\n" +
+              " abortError=" + abortError[i] + "\n" +
+              " conflictError=" + conflictError[i]);
+
+          assertEquals(execSql + " (" + isolation + "): unexpected conflict errors",
+              0, conflictError[i]);
+          assertGreaterThan(execSql + " (" + isolation + "): expected at least one successful " +
+              "execution", succeeded[i], 0);
+          if (expectRetried) {
+            assertEquals(execSql + " (" + isolation + "): read restarts should be retried " +
+                "transparently, but some surfaced to the client", 0, restartRequired[i]);
+          } else {
+            assertGreaterThan(execSql + " (" + isolation + "): the proc-retriability gate should " +
+                "have blocked retries, so read restarts should have surfaced", restartRequired[i],
+                0);
+          }
+        }
+      });
+      return runnables;
     }
   }
 
