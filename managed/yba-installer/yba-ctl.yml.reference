@@ -249,6 +249,18 @@ prometheus:
       yugabyte:
          scheme: http
 
+# Config parameters for Node Exporter
+# Co-located node_exporter to monitor the YBA host itself.
+# ================================
+
+nodeExporter:
+   enabled: true
+   port: 9300           # port for node-exporter to listen on
+   scheme: https         # http or https
+   enableAuth: false     # enable basic auth for node-exporter
+   authUsername: ""       # basic auth username
+   authPassword: ""       # basic auth password
+
 perfAdvisor:
    enabled: false
    port: 8443

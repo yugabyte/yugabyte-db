@@ -4065,3 +4065,176 @@ ysql_catalog_cache_misses:
     yaxis:
       alias:
         rpc_latency_count: "Catalog Cache Miss Count"
+
+# ---------------------------------------------------------------------------
+# YBA-platform host metrics (VM install).
+# Filtered by job="yba-node-exporter" so they only reflect the YBA host itself.
+# ---------------------------------------------------------------------------
+yba_node_cpu_usage:
+  metric: "node_cpu_usage_avg"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "* 100"
+  filters:
+    job: "yba-node-exporter"
+    mode: "user|system|total"
+  group_by: "mode"
+  panel_group: "YBA Node Metrics"
+  layout:
+    title: "YBA Node CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "user": "User"
+        "system": "System"
+        "total": "Total"
+      ticksuffix: "&nbsp;%"
+
+yba_node_memory_usage:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1073741824"
+  filters:
+    job: "yba-node-exporter"
+    saved_name: "node_memory_Cached_bytes|node_memory_Buffers_bytes|node_memory_MemFree_bytes|\
+      node_memory_MemTotal_bytes"
+  group_by: "saved_name"
+  panel_group: "YBA Node Metrics"
+  layout:
+    title: "YBA Node Memory Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_memory_Cached_bytes": "Cached"
+        "node_memory_Buffers_bytes": "Buffered"
+        "node_memory_MemFree_bytes": "Free"
+        "node_memory_MemTotal_bytes": "Total"
+      ticksuffix: "&nbsp;GB"
+
+# Per-mountpoint free/size pair used by yba_node_disk_usage_percent below.
+yba_node_disk_free:
+  metric: "node_filesystem_free_bytes"
+  function: "sum"
+  filters:
+    job: "yba-node-exporter"
+  exclude_filters:
+    fstype: "rootfs"
+    mountpoint: "/boot.*"
+  group_by: "mountpoint"
+  layout:
+    title: "YBA Node Disk Free"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;bytes"
+
+yba_node_disk_size:
+  metric: "node_filesystem_size_bytes"
+  function: "sum"
+  filters:
+    job: "yba-node-exporter"
+  exclude_filters:
+    fstype: "rootfs"
+    mountpoint: "/boot.*"
+  group_by: "mountpoint"
+  layout:
+    title: "YBA Node Disk Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;bytes"
+
+yba_node_disk_usage_percent:
+  metric: "yba_node_disk_free/yba_node_disk_size"
+  panel_group: "YBA Node Metrics"
+  layout:
+    title: "YBA Node Disk Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+# ---------------------------------------------------------------------------
+# YBA-platform container metrics (K8s install).
+# Filtered by pod_name=$POD_NAME, namespace=$POD_NAMESPACE so we only see the
+# containers in the YBA pod. CPU and disk graphs are grouped by container so
+# the user can tell yugaware / prometheus / postgres apart.
+# ---------------------------------------------------------------------------
+yba_container_cpu_usage:
+  metric: "container_cpu_usage_seconds_total"
+  function: "rate|avg"
+  range: true
+  filters:
+    saved_name: "container_cpu_usage_seconds_total"
+    container_name: "yugaware|prometheus|postgres"
+    pod_name: "__ybaPodName__"
+    namespace: "__ybaNamespace__"
+  group_by: "container_name"
+  panel_group: "YBA Container Metrics"
+  layout:
+    title: "YBA Container CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;cores"
+
+yba_container_memory_usage:
+  metric: "container_memory_working_set_bytes"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    saved_name: "container_memory_working_set_bytes"
+    container_name: "yugaware|prometheus|postgres"
+    pod_name: "__ybaPodName__"
+    namespace: "__ybaNamespace__"
+  group_by: "container_name"
+  panel_group: "YBA Container Metrics"
+  layout:
+    title: "YBA Container Memory Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;MB"
+
+# Per-PVC used/capacity pair used by yba_container_disk_usage_percent below.
+yba_container_disk_used:
+  metric: "kubelet_volume_stats_used_bytes"
+  function: "sum"
+  filters:
+    persistentvolumeclaim: "__ybaPvcName__"
+    namespace: "__ybaNamespace__"
+  group_by: "persistentvolumeclaim"
+  layout:
+    title: "YBA Container Disk Used"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;bytes"
+
+yba_container_disk_capacity:
+  metric: "kubelet_volume_stats_capacity_bytes"
+  function: "sum"
+  filters:
+    persistentvolumeclaim: "__ybaPvcName__"
+    namespace: "__ybaNamespace__"
+  group_by: "persistentvolumeclaim"
+  layout:
+    title: "YBA Container Disk Capacity"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;bytes"
+
+yba_container_disk_usage_percent:
+  metric: "yba_container_disk_used/yba_container_disk_capacity"
+  panel_group: "YBA Container Metrics"
+  layout:
+    title: "YBA Container Disk Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
