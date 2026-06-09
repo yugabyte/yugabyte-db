@@ -48,7 +48,7 @@ The callback (redirect) URI for YugabyteDB Anywhere can be in one of the followi
 
 - Path:
 
-    `https://<YBA_IP_Address>>/api/v1/callback/OidcClient`
+    `https://<YBA_IP_Address>/api/v1/callback/OidcClient`
 
     Note that Path is only available in v2024.2.9.1 and later.
 
