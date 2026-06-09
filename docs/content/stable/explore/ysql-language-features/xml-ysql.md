@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-The XML data type is for storing Extensible Markup Language (XML) documents. YSQL supports the full range of XML functionality from PostgreSQL, including XML construction functions, XPath queries, and conversion between tables and XML. XML functionality in YSQL is nearly identical to the [XML functionality in PostgreSQL](https://www.postgresql.org/docs/current/datatype-xml.html).
+The XML data type is for storing Extensible Markup Language (XML) documents. YSQL supports the full range of XML functionality from PostgreSQL, including XML construction functions, XPath queries, and conversion between tables and XML. XML functionality in YSQL is nearly identical to the [XML functionality in PostgreSQL](https://www.postgresql.org/docs/15/datatype-xml.html).
 
 ## Overview
 
@@ -53,7 +53,7 @@ INSERT INTO employees VALUES
   </employee>');
 ```
 
-## Constructing XML
+## Construct XML
 
 Use the  `xmlelement()` function to build XML elements programmatically:
 
@@ -73,7 +73,7 @@ This produces an XML element:
  <employee><name>Charlie Brown</name><title>Designer</title><department>Design</department></employee>
 ```
 
-### Building XML with attributes
+### Build XML with attributes
 
 Use `xmlattributes()` to add attributes to elements:
 
@@ -94,7 +94,7 @@ This creates an element with attributes:
  </employee>
 ```
 
-### Creating XML comments
+### Create XML comments
 
 Use the `xmlcomment()` function to adds comments:
 
@@ -107,7 +107,7 @@ SELECT xmlconcat(
 );
 ```
 
-## Querying XML with XPath
+## Query XML with XPath
 
 Use the `xpath()` function to query XML documents using XPath expressions:
 
@@ -125,7 +125,7 @@ This extracts the name from each employee XML document:
   2 | {Bob Smith}
 ```
 
-### Testing XPath matches
+### Test XPath matches
 
 Use `xpath_exists()` to test if an XPath expression matches:
 
@@ -142,7 +142,7 @@ This returns employees with the title "Senior Engineer":
   1
 ```
 
-## Converting XML to tables with XMLTABLE
+## Convert XML to tables with XMLTABLE
 
 Use the `XMLTABLE` construct to extract tabular data from XML. For example, the given XML contains multiple employee records:
 
@@ -173,7 +173,7 @@ This extracts the data as relational tuples:
   2 | Prod | Bob
 ```
 
-## Converting tables to XML
+## Convert tables to XML
 
 Use the `table_to_xml()` function to convert an entire table to XML:
 
@@ -192,7 +192,7 @@ SELECT query_to_xml(
 );
 ```
 
-## Aggregating XML
+## Aggregate XML
 
 Use the `xmlagg()` function to combine multiple XML values:
 
@@ -219,17 +219,13 @@ SELECT '<root>content</root>'::xml IS DOCUMENT;  -- true
 SELECT 'text only' IS NOT DOCUMENT;              -- true
 ```
 
-## Parsing and serializing XML
-
-### Parse text to XML
+## Parse and serialize XML
 
 Use `xmlparse()` to convert text to XML:
 
 ```sql
 SELECT xmlparse(content '<root><child>value</child></root>');
 ```
-
-### Serialize XML to text
 
 Use `xmlserialize()` to convert XML to text:
 
@@ -261,5 +257,5 @@ SELECT xpath(
 ## Read more
 
 - [XML data type reference](../../../api/ysql/datatypes/type_xml/)
-- [PostgreSQL XML documentation](https://www.postgresql.org/docs/current/datatype-xml.html)
-- [PostgreSQL XML functions reference](https://www.postgresql.org/docs/current/functions-xml.html)
+- [PostgreSQL XML documentation](https://www.postgresql.org/docs/15/datatype-xml.html)
+- [PostgreSQL XML functions reference](https://www.postgresql.org/docs/15/functions-xml.html)

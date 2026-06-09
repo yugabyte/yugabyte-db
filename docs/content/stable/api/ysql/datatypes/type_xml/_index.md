@@ -4,7 +4,6 @@ headerTitle: XML data type and functions
 linkTitle: XML
 summary: XML data type and functions
 description: Learn about YSQL support for the XML data type and XML functions.
-image: /images/section_icons/api/subsection.png
 menu:
   stable_api:
     identifier: api-ysql-datatypes-xml
@@ -24,7 +23,7 @@ The XML data type stores Extensible Markup Language (XML) documents. YSQL fully 
 - XMLTABLE construct for extracting tabular data from XML
 - XML schema mapping functions for converting between tables and XML
 
-For a comprehensive reference of all XML functions, see the [PostgreSQL XML documentation](https://www.postgresql.org/docs/current/functions-xml.html).
+For a comprehensive reference of all XML functions, see the [PostgreSQL XML documentation](https://www.postgresql.org/docs/15/functions-xml.html).
 
 ## Data type specification
 
@@ -89,7 +88,7 @@ Functions to convert between tables and XML are as follows:
 - `schema_to_xmlschema(schema, nulls, tableforest, targetns)`
 - `schema_to_xml_and_xmlschema(schema, nulls, tableforest, targetns)`
 
-For the full reference and detailed descriptions of all XML functions, see the [PostgreSQL XML Functions documentation](https://www.postgresql.org/docs/current/functions-xml.html).
+For the full reference and detailed descriptions of all XML functions, see the [PostgreSQL XML Functions documentation](https://www.postgresql.org/docs/15/functions-xml.html).
 
 ## See also
 

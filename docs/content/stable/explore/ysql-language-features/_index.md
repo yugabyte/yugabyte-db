@@ -46,7 +46,9 @@ YSQL supports the PostgreSQL `xml` data type and XML functions for storing well-
 To learn more, see [XML support in YSQL](xml-ysql/)
 {{</lead>}}
 
-For the API reference, see [XML data type and functions](../../api/ysql/datatypes/type_xml/).
+{{<lead link="../../api/ysql/datatypes/type_xml/">}}
+For the API reference, see [XML data type and functions](../../api/ysql/datatypes/type_xml/)
+{{</lead>}}
 
 ## Read data
 

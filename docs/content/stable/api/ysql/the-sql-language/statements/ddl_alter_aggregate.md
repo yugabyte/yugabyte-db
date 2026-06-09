@@ -71,22 +71,22 @@ For more details, see the semantics in the [PostgreSQL documentation](https://ww
 - Rename an aggregate.
 
     ```plpgsql
-    yugabyte=# ALTER AGGREGATE sumdouble (float8) RENAME TO other_sumdouble;
+    ALTER AGGREGATE sumdouble (float8) RENAME TO other_sumdouble;
     ```
 
 - Change the owner.
 
     ```plpgsql
-    yugabyte=# ALTER AGGREGATE sumdouble (float8) OWNER TO yugabyte;
-    yugabyte=# ALTER AGGREGATE sumdouble (float8) OWNER TO CURRENT_ROLE;
-    yugabyte=# ALTER AGGREGATE sumdouble (float8) OWNER TO CURRENT_USER;
-    yugabyte=# ALTER AGGREGATE sumdouble (float8) OWNER TO SESSION_USER;
+    ALTER AGGREGATE sumdouble (float8) OWNER TO yugabyte;
+    ALTER AGGREGATE sumdouble (float8) OWNER TO CURRENT_ROLE;
+    ALTER AGGREGATE sumdouble (float8) OWNER TO CURRENT_USER;
+    ALTER AGGREGATE sumdouble (float8) OWNER TO SESSION_USER;
     ```
 
 - Change the schema.
 
     ```plpgsql
-    yugabyte=# ALTER AGGREGATE sumdouble (float8) SET SCHEMA public;
+    ALTER AGGREGATE sumdouble (float8) SET SCHEMA public;
     ```
 
 ## See also

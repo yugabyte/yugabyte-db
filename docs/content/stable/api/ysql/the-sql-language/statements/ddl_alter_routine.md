@@ -46,16 +46,16 @@ You must identify the routine by:
 
 ### Supported actions
 
-The same operations available in [`ALTER FUNCTION`](../ddl_alter_function) and [`ALTER PROCEDURE`](../ddl_alter_procedure) are supported as follows: The following forms are accepted (subject to the same restrictions as on `ALTER FUNCTION` / `ALTER PROCEDURE` for the kind of routine):
+The same operations available in [ALTER FUNCTION](../ddl_alter_function) and [ALTER PROCEDURE](../ddl_alter_procedure) are supported. The following forms are accepted (subject to the same restrictions as on `ALTER FUNCTION` / `ALTER PROCEDURE` for the kind of routine):
 
-- `ALTER ROUTINE` ... `RENAME TO` _new_name_ : Rename the routine
-- `ALTER ROUTINE` ... `SET SCHEMA` _new_schema_ : Move the routine to a different schema
+- `ALTER ROUTINE` ... `RENAME TO` _new_name_ : Rename the routine.
+- `ALTER ROUTINE` ... `SET SCHEMA` _new_schema_ : Move the routine to a different schema.
 - `ALTER ROUTINE` ... `SET` _configuration_parameter_ `=` { _new_value_ | `DEFAULT` } [ `RESTRICT` ] : Set a configuration parameter on the routine to a specific value. The caller's value is saved on entry and restored when the routine returns.
 - `ALTER ROUTINE` ... `SET` _configuration_parameter_ `FROM CURRENT` [ `RESTRICT` ] : Set a configuration parameter on the routine to the session's current value at the time of the `ALTER` statement.
 - `ALTER ROUTINE` ... `RESET` _configuration_parameter_ [ `RESTRICT` ] : Remove a configuration-parameter setting from the routine.
 - `ALTER ROUTINE` ... `RESET ALL` [ `RESTRICT` ] : Remove all configuration-parameter settings from the routine.
-- `ALTER ROUTINE` ... [ `EXTERNAL` ] `SECURITY` { `INVOKER` | `DEFINER` } [ `RESTRICT` ] : Change the security context
-- `ALTER ROUTINE` ... [ `NO` ] `DEPENDS ON EXTENSION` _extension_name_ : Mark dependency on an extension
+- `ALTER ROUTINE` ... [ `EXTERNAL` ] `SECURITY` { `INVOKER` | `DEFINER` } [ `RESTRICT` ] : Change the security context.
+- `ALTER ROUTINE` ... [ `NO` ] `DEPENDS ON EXTENSION` _extension_name_ : Mark dependency on an extension.
 - `ALTER ROUTINE` ... `OWNER TO` { _new_owner_ | `CURRENT_ROLE` | `CURRENT_USER` | `SESSION_USER` }: Change the routine's owner.
 
 ## Example
@@ -78,7 +78,7 @@ ALTER ROUTINE utils.double_it(int) SECURITY DEFINER;
 
 ## See also
 
-- [`ALTER FUNCTION`](../ddl_alter_function)
-- [`ALTER PROCEDURE`](../ddl_alter_procedure)
-- [`CREATE FUNCTION`](../ddl_create_function)
-- [`CREATE PROCEDURE`](../ddl_create_procedure)
+- [ALTER FUNCTION](../ddl_alter_function)
+- [ALTER PROCEDURE](../ddl_alter_procedure)
+- [CREATE FUNCTION](../ddl_create_function)
+- [CREATE PROCEDURE](../ddl_create_procedure)
