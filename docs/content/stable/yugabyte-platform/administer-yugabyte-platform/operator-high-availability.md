@@ -1,34 +1,32 @@
 ---
 title: YugabyteDB Anywhere Operator high availability
-headerTitle: Operator high availability
-description: Extend YBA high availability to synchronize Kubernetes Operator custom resources across clusters
-headcontent: Synchronize operator-managed resources during YBA failover and failback
-linkTitle: Operator high availability
+headerTitle: Operator High Availability
+description: Extend YBA High Availability to synchronize Kubernetes Operator custom resources across clusters
+headcontent: Synchronize operator-managed resources for high availability
+linkTitle: Operator HA
 menu:
   stable_yugabyte-platform:
     identifier: platform-operator-high-availability
-    parent: administer-yugabyte-platform
+    parent: platform-high-availability
     weight: 45
 type: docs
 ---
 
-{{<tags/feature/ea idea="2460">}}YugabyteDB Anywhere (YBA) Operator high availability extends the [YBA high availability (HA)](../high-availability/) framework to synchronize Kubernetes Operator custom resources (CRs) and their associated secrets between active and standby YBA instances. This ensures that a standby YBA instance can resume management of operator-controlled universes after a failover, without requiring you to manually recreate CRs or secrets.
+{{<tags/feature/ea idea="2460">}}YugabyteDB Anywhere (YBA) Operator high availability (HA) extends [YBA HA](../high-availability/) to synchronize Kubernetes Operator custom resources (CRs) and their associated secrets between active and standby YBA instances. This ensures that a standby YBA instance can resume management of operator-controlled universes after a failover, without requiring you to manually recreate CRs or secrets.
 
-## Integration with YBA HA
+Operator HA uses the same asynchronous backup and restore mechanism as YBA HA. Operator resources are included in the backups and restored automatically when a standby instance is promoted. In addition, improvements to YBA HA are automatically inherited by the operator, providing a unified experience for both platform state and operator-managed Kubernetes resources.
 
-Operator HA is a direct extension of the existing YBA HA framework. It uses the same asynchronous backup and restore mechanisms that replicate YBA management data between active and standby instances. Operator resources are included in those backups and restored automatically when a standby instance is promoted.
-
-Because Operator HA builds on the standard YBA HA path, improvements to YBA HA are automatically inherited by the operator, providing a unified experience for both platform state and operator-managed Kubernetes resources.
+Assuming you fulfill the prerequisites, Operator HA is _automatically enabled_.
 
 ## Prerequisites
 
 Before you can use Operator HA, ensure the following:
 
-- [YBA HA is configured](../high-availability/) between your active and standby instances.
+- [YBA HA is configured](../high-availability/) between your active and standby instances, both of which are deployed on Kubernetes.
 - The [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) is enabled on each YBA instance in the HA cluster.
 - Each YBA instance in the HA cluster can reach the Kubernetes API server for its local cluster.
 
-## Multi-cluster environments
+## Overview
 
 Operator HA is designed for deployments where YBA instances run on _separate Kubernetes clusters_. This is common in [Multi-Cluster Services (MCS)](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) environments.
 
@@ -44,7 +42,7 @@ Operator HA addresses this when:
 
 ## What to expect on failover and failback
 
-You can expect a streamlined transition of management capabilities when a failover or failback is triggered.
+Operator HA provides streamlined transition of management capabilities when a failover or failback is triggered.
 
 ### During failover
 
@@ -66,7 +64,7 @@ When you fail back to the original primary, Operator HA keeps operator resource 
 
 ## Supported resources
 
-The HA mechanism tracks and transfers all critical YBA Operator resources, including the following:
+Operator HA tracks and transfers all critical operator resources, including the following:
 
 - Universes and providers.
 - Backup, scheduled backup, and PITR configurations.

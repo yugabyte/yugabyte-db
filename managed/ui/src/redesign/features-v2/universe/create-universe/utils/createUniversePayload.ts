@@ -196,9 +196,6 @@ export const mapCreateUniversePayload = (
           replication_factor: effectiveRf,
           cluster_type: ClusterType.PRIMARY,
           use_spot_instance: instanceSettings.useSpotInstance,
-          audit_log_config: {
-            universe_logs_exporter_config: []
-          },
           gflags: {
             az_gflags: {},
             master: {
@@ -222,7 +219,7 @@ export const mapCreateUniversePayload = (
             )
           }),
           networking_spec: {
-            enable_lb: true,
+            enable_lb: false,
             enable_exposing_service: securitySettings?.enableExposingService
               ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
               : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,

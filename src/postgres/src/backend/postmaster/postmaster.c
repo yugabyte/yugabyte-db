@@ -150,6 +150,7 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
+#include "utils/elog.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
@@ -5036,12 +5037,21 @@ BackendInitialize(Port *port)
 		else
 			snprintf(remote_ps_data, sizeof(remote_ps_data), "%s(%s)", remote_host, remote_port);
 
-		YBC_LOG_INFO("Started %s backend with pid: %d, user_name: %s, "
+		const char *database_name = port->database_name ? port->database_name : "[unknown]";
+		const char *application_name = port->application_name ? port->application_name : "[unknown]";
+		const char *started_backend_str = get_backend_type_for_log();
+
+		if (yb_is_auth_backend)
+		{
+			started_backend_str = "auth backend";
+		}
+
+		YBC_LOG_INFO("Started %s with pid: %d, "
+					 "database_name: %s, application_name: %s, "
 					 "remote_ps_data: %s",
-					 (am_walsender ?
-					  "walsender" :
-					  (yb_is_auth_backend ? "auth" : "regular")),
-					 getpid(), port->user_name, remote_ps_data);
+					 started_backend_str,
+					 getpid(), database_name, application_name,
+					 remote_ps_data);
 	}
 }
 

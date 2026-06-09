@@ -36,6 +36,7 @@ using std::vector;
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_force_lazy_superblock_flush);
+DECLARE_bool(enable_log_retention_by_op_idx);
 
 namespace yb {
 namespace tserver {
@@ -201,7 +202,7 @@ TEST_F(RemoteBootstrapRocksDBTest, InitDoesNotShipAlreadyFlushedSegmentsWhenGcLa
 
   std::string details;
   const int64_t earliest_needed =
-      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details));
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details)).earliest_needed_log_index;
   log::SegmentSequence reclaimable;
   ASSERT_OK(log->TEST_GetSegmentsToGC(earliest_needed, &reclaimable));
   ASSERT_GT(reclaimable.size(), 0u)
@@ -257,6 +258,125 @@ TEST_F(RemoteBootstrapRocksDBTest, InitDoesNotShipAlreadyFlushedSegmentsWhenGcLa
       << "and forms a vicious cycle on slow / retried sessions.";
 }
 
+// Companion to InitDoesNotShipAlreadyFlushedSegmentsWhenGcLags above. That test proves RBS trims
+// the GC-redundant WAL prefix; this one proves the trim still honors the CDCSDK/xCluster retention
+// barrier, which GetEarliestNeededLogIndex() alone does not account for.
+//
+// Scenario: every write is already flushed to RocksDB SSTs (so GetEarliestNeededLogIndex sits well
+// above the oldest segments and they look reclaimable), but a CDC stream is lagging -- the Log's
+// cdc_min_replicated_index sits BELOW the earliest-needed op index. Real log GC honors that barrier
+// separately (the cdc_max_replicated_index arg of LogReader::GetSegmentPrefixNotIncluding, gated by
+// FLAGS_enable_log_retention_by_op_idx), so it does NOT reclaim a segment CDC still needs. The
+// fixed InitBootstrapSession() must mirror that: it lowers rbs_min_op_idx to
+// min(GetEarliestNeededLogIndex(), Log::GetXReplMinReplicatedIndex()) and keeps every segment whose
+// max_replicate_index is at/above that floor.
+//
+// We pin the barrier at the oldest on-disk segment's max_replicate_index, which is strictly below
+// earliest_needed (the segment is otherwise reclaimable). Post-fix rbs_min_op_idx == the barrier,
+// so the oldest segment is kept and nothing is skipped -- exactly what GC would now reclaim
+// (nothing). Pre-fix RBS ignored the barrier, used earliest_needed as the floor, and dropped the
+// oldest segment(s) -- so the bootstrapped peer, once leader, could not serve CDC GetChanges for
+// those ops. Hence pre-fix this test fails (oldest segment skipped); post-fix it passes.
+TEST_F(RemoteBootstrapRocksDBTest, InitShipsSegmentsStillNeededByCdc) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
+  // The op-idx retention path this test exercises is gated on this flag (default true); set it
+  // explicitly so the test is self-contained and order-independent.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
+
+  // Drop the fixture's auto-session so its anchor doesn't perturb GetEarliestNeededLogIndex.
+  session_.reset();
+
+  auto* log = tablet_peer_->log();
+
+  // Same GC-lag setup as the sibling test: several closed, fully-flushed segments, no RunLogGC.
+  constexpr int kAdditionalRolls = 5;
+  ASSERT_NO_FATALS(RollSegmentsCoveredBySsts(kAdditionalRolls, /*rows_per_roll=*/50,
+                                             /*starting_key=*/1000));
+
+  log::SegmentSequence on_disk_segments;
+  ASSERT_OK(log->GetSegmentsSnapshot(&on_disk_segments));
+  ASSERT_GE(on_disk_segments.size(), kAdditionalRolls + 1)
+      << "Expected at least " << (kAdditionalRolls + 1)
+      << " on-disk segments (closed rolls + active); got " << on_disk_segments.size();
+
+  // The oldest on-disk segment is closed (has a footer); a lagging CDC stream is most likely to
+  // still need it. Pin the CDC barrier at its max_replicate_index.
+  const auto& oldest_segment = ASSERT_RESULT_REF(on_disk_segments.front());
+  ASSERT_TRUE(oldest_segment->HasFooter())
+      << "Oldest on-disk segment (seqno " << oldest_segment->header().sequence_number()
+      << ") unexpectedly has no footer.";
+  const int64_t oldest_seqno = oldest_segment->header().sequence_number();
+  const int64_t cdc_barrier = oldest_segment->footer().max_replicate_index();
+
+  std::string details;
+  const int64_t earliest_needed =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details)).earliest_needed_log_index;
+
+  // Precondition: with no CDC barrier the oldest segment IS reclaimable, i.e. the barrier sits
+  // strictly below the earliest-needed floor (otherwise it would not lower the RBS floor and the
+  // test would not exercise the CDC-vs-earliest-needed divergence). Confirm GC's own predicate
+  // (CDC-ignorant here) would reclaim a prefix starting at the oldest segment -- exactly the skip
+  // set pre-fix RBS used.
+  ASSERT_LT(cdc_barrier, earliest_needed)
+      << "Test setup invalid: oldest segment max_replicate_index " << cdc_barrier
+      << " is not below GetEarliestNeededLogIndex " << earliest_needed
+      << ".\nGetEarliestNeededLogIndex details:\n" << details;
+  log::SegmentSequence reclaimable_without_barrier;
+  ASSERT_OK(log->TEST_GetSegmentsToGC(earliest_needed, &reclaimable_without_barrier));
+  ASSERT_GT(reclaimable_without_barrier.size(), 0u)
+      << "Test setup did not produce a GC-redundant prefix; on_disk=" << on_disk_segments.size()
+      << ", earliest_needed=" << earliest_needed;
+  const auto& first_reclaimable = ASSERT_RESULT_REF(reclaimable_without_barrier.front());
+  ASSERT_EQ(first_reclaimable->header().sequence_number(), oldest_seqno)
+      << "Expected the oldest on-disk segment to be the first one pre-fix RBS would skip.";
+
+  // Simulate the lagging CDC stream pinning retention at the oldest segment's max_replicate_index.
+  // This is the field Log::GetXReplMinReplicatedIndex() (and GC's GetSegmentsToGC) consult.
+  log->set_cdc_min_replicated_index(cdc_barrier);
+
+  // With the barrier in place GC itself reclaims NOTHING (the oldest segment, and hence every later
+  // one, is at/above the CDC floor). The fixed RBS trim must produce the same outcome.
+  log::SegmentSequence reclaimable_with_barrier;
+  ASSERT_OK(log->TEST_GetSegmentsToGC(earliest_needed, &reclaimable_with_barrier));
+  ASSERT_EQ(reclaimable_with_barrier.size(), 0u)
+      << "With the CDC barrier at " << cdc_barrier << ", GC should reclaim no segments, but "
+      << "TEST_GetSegmentsToGC reported " << reclaimable_with_barrier.size() << ".";
+
+  // Fresh RBS session over the same tablet peer; no log anchors outstanding.
+  auto fresh_session = make_scoped_refptr<RemoteBootstrapSession>(
+      tablet_peer_, "TestCdcLagSession", "FakeUUID", /*nsessions=*/nullptr);
+  ASSERT_OK(fresh_session->InitBootstrapSession());
+
+  const auto kept_count = fresh_session->log_segments().size();
+  const auto skipped_count = on_disk_segments.size() - kept_count;
+
+  // Post-fix invariants:
+  //   1. The CDC-required prefix is NOT skipped. The barrier lowers rbs_min_op_idx to cdc_barrier,
+  //      every on-disk segment is at/above it, so RBS skips nothing (pre-fix skipped >= 1).
+  ASSERT_EQ(skipped_count, 0u)
+      << "RBS skipped " << skipped_count << " WAL segment(s) the lagging CDC stream still needs "
+      << "(barrier=" << cdc_barrier << ", earliest_needed=" << earliest_needed << ").";
+  ASSERT_EQ(kept_count, on_disk_segments.size())
+      << "RBS kept " << kept_count << " of " << on_disk_segments.size()
+      << " on-disk segments; the CDC barrier should keep all of them.";
+
+  //   2. Concretely, the first segment the destination is told to fetch is the oldest on-disk
+  //      segment -- the one pre-fix RBS dropped.
+  ASSERT_FALSE(fresh_session->log_segments().empty());
+  const auto& first_kept = ASSERT_RESULT_REF(fresh_session->log_segments().front());
+  ASSERT_EQ(first_kept->header().sequence_number(), oldest_seqno)
+      << "First shipped segment seqno " << first_kept->header().sequence_number()
+      << " should equal the oldest on-disk seqno " << oldest_seqno
+      << " (pre-fix RBS skipped it because " << cdc_barrier << " < " << earliest_needed << ").";
+
+  //   3. The active (footer-less) segment is still in the kept set.
+  const auto& last_kept = ASSERT_RESULT_REF(fresh_session->log_segments().back());
+  ASSERT_FALSE(last_kept->HasFooter())
+      << "Active segment (no footer) must remain in the WAL plan; "
+      << "back of log_segments_ has seqno " << last_kept->header().sequence_number();
+}
+
 // Verifies the defensive lazy-superblock-flush clamp added to RBS WAL planning. When lazy SB
 // flush is enabled on a tablet, local bootstrap on the destination walks back at least
 // kMinSegmentsToReplayWithLazySuperblockFlush trailing WAL segments to pick up any
@@ -307,7 +427,8 @@ TEST_F(RemoteBootstrapRocksDBTest, InitKeepsMinSegmentsWhenLazySuperblockFlushEn
   // What the unclamped path would do, for comparison. We expect the unclamped plan to keep
   // exactly 1 segment (the active one), so the clamp must bump that to
   // kMinSegmentsToReplayWithLazySuperblockFlush.
-  const int64_t earliest_needed = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
+  const int64_t earliest_needed =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
   log::SegmentSequence reclaimable;
   ASSERT_OK(log->TEST_GetSegmentsToGC(earliest_needed, &reclaimable));
   const size_t unclamped_kept = on_disk_segments.size() - reclaimable.size();

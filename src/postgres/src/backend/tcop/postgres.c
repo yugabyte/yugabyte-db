@@ -6104,6 +6104,7 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 		YBResetOperationsBuffering();
 		if (IsInParallelMode())
 			YbClearParallelContexts();
+		YBResetOperationTracking();
 		yb_attempt_to_retry_on_error(attempt, retry_data, exec_context);
 	}
 	PG_END_TRY();

@@ -1,0 +1,686 @@
+--
+-- See yb_merge_scan_schedule for details about the test.  Tests merge scan
+-- with RelabelType nodes (binary-compatible casts like varchar <-> text).
+--
+-- Where RelabelType nodes come from for the relabel_tbl columns:
+-- - v is varchar: equality uses the text operators, so a comparison wraps the
+--   LHS in a RelabelType (varchar -> text).  An explicit v::text is the same.
+-- - t is text: comparisons need no coercion, so the LHS is bare.  t::varchar
+--   as an index expression is a RelabelType (text -> varchar); as a query
+--   predicate it is const-folded back to bare t.
+--
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :filename
+\set _echo_pq :ECHO
+\set ECHO none
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set off '/*+Set(yb_max_merge_scan_streams 0)*/'
+\set on '/*+Set(yb_max_merge_scan_streams 64)*/'
+\set P1 ':explain'
+\set P2
+\set Q1 ':off'
+\set Q2 ':on'
+\set Pnext :iter_Q2
+-- Compare behavior between
+-- - regular index scan using columns considered redundant for being constant
+-- - merge index scan using SAOP stream columns
+SELECT $$= '1'$$ AS "R1" \gset
+SELECT $$IN ('1', '1')$$ AS "R2" \gset
+\set Qnext :iter_R2
+--
+-- Index 1: v and t merge streams on bare leading columns.
+--
+CREATE INDEX NONCONCURRENTLY idx ON relabel_tbl (v ASC, t, i2, (v::text), v, (t::varchar), t, i4)
+SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+-- RelabelType strip points exercised:
+-- - SAOP clause LHS: v's LHS is wrapped, but the leading index expression is
+--   bare, so the LHS must be stripped to match.  (t streams bare on both
+--   sides: the no-relabel baseline.)
+-- - Index expression: the redundant (v::text) and (t::varchar) must be
+--   stripped on entry to match their stored SAOPs.
+-- - Redundancy check's stored LHS: v's stored SAOP LHS keeps its RelabelType
+--   and must be stripped to match the redundant v columns.  t's stored LHS is
+--   bare.
+\set query ':P :Q SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v :R AND t :R ORDER BY i2, i4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v, ((t)::character varying)
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v, ((t)::character varying)
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=6 loops=1)
+               Output: i2, i4, n, v, (t)::character varying
+               Index Cond: (((relabel_tbl.v)::text = '1'::text) AND (relabel_tbl.t = '1'::text))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 13
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 50
+(16 rows)
+
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v, ((t)::character varying)
+   ->  Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v, ((t)::character varying)
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=50 loops=1)
+               Output: i2, i4, n, v, (t)::character varying
+               Index Cond: (((relabel_tbl.v)::text = ANY ('{1,1}'::text[])) AND (relabel_tbl.t = ANY ('{1,1}'::text[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 9
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 1
+               Storage Index Rows Scanned: 50
+(15 rows)
+
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v, ((t)::character varying)
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v, ((t)::character varying)
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=6 loops=1)
+               Output: i2, i4, n, v, (t)::character varying
+               Index Cond: (((relabel_tbl.v)::text = '1'::text) AND (relabel_tbl.t = '1'::text))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 13
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 50
+(16 rows)
+
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v, ((t)::character varying)
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v, ((t)::character varying)
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=6 loops=1)
+               Output: i2, i4, n, v, (t)::character varying
+               Index Cond: (((relabel_tbl.v)::text = ANY ('{1,1}'::text[])) AND (relabel_tbl.t = ANY ('{1,1}'::text[])))
+               Merge Sort Key: relabel_tbl.i2, relabel_tbl.i4
+               Merge Stream Key: relabel_tbl.v, relabel_tbl.t
+               Merge Streams: 4
+               Merge Cond: (((relabel_tbl.v)::text = ANY ('{1,1}'::text[])) AND (relabel_tbl.t = ANY ('{1,1}'::text[])))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 13
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 50
+(20 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+-- Explicit-cast predicates behave identically: v::text parses to the same
+-- wrapped LHS as bare v, and t::varchar is const-folded back to bare t.
+\set query ':P :Q SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text :R AND t::varchar :R ORDER BY i2, i4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, ((v)::text), ((t)::character varying)
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, ((v)::text), ((t)::character varying)
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=6 loops=1)
+               Output: i2, i4, n, (v)::text, (t)::character varying
+               Index Cond: (((relabel_tbl.v)::text = '1'::text) AND (relabel_tbl.t = '1'::text))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 13
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 50
+(16 rows)
+
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, ((v)::text), ((t)::character varying)
+   ->  Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, ((v)::text), ((t)::character varying)
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=50 loops=1)
+               Output: i2, i4, n, (v)::text, (t)::character varying
+               Index Cond: (((relabel_tbl.v)::text = ANY ('{1,1}'::text[])) AND (relabel_tbl.t = ANY ('{1,1}'::text[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 9
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 1
+               Storage Index Rows Scanned: 50
+(15 rows)
+
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, ((v)::text), ((t)::character varying)
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, ((v)::text), ((t)::character varying)
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=6 loops=1)
+               Output: i2, i4, n, (v)::text, (t)::character varying
+               Index Cond: (((relabel_tbl.v)::text = '1'::text) AND (relabel_tbl.t = '1'::text))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 13
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 50
+(16 rows)
+
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, ((v)::text), ((t)::character varying)
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, ((v)::text), ((t)::character varying)
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=6 loops=1)
+               Output: i2, i4, n, (v)::text, (t)::character varying
+               Index Cond: (((relabel_tbl.v)::text = ANY ('{1,1}'::text[])) AND (relabel_tbl.t = ANY ('{1,1}'::text[])))
+               Merge Sort Key: relabel_tbl.i2, relabel_tbl.i4
+               Merge Stream Key: relabel_tbl.v, relabel_tbl.t
+               Merge Streams: 4
+               Merge Cond: (((relabel_tbl.v)::text = ANY ('{1,1}'::text[])) AND (relabel_tbl.t = ANY ('{1,1}'::text[])))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 13
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 50
+(20 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+DROP INDEX idx;
+--
+-- Index 2: v and t merge streams on cast leading columns.
+--
+CREATE INDEX NONCONCURRENTLY idx ON relabel_tbl ((v::text) ASC, (t::varchar), i2, (v::text), v, (t::varchar), t, i4)
+SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+-- Beyond index 1:
+-- - The leading (v::text) is wrapped on both sides: the index expression and
+--   the SAOP LHS must each be stripped.
+-- - The (t::varchar) stream column is wrapped on the index expression side
+--   only.
+\set query ':P :Q SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v :R AND t :R ORDER BY i2, i4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v, t
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v, t
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=6 loops=1)
+               Output: i2, i4, n, v, t
+               Index Cond: (((relabel_tbl.v)::text = '1'::text) AND (relabel_tbl.t = '1'::text))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 13
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 50
+(16 rows)
+
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v, t
+   ->  Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v, t
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=50 loops=1)
+               Output: i2, i4, n, v, t
+               Index Cond: (((relabel_tbl.v)::text = ANY ('{1,1}'::text[])) AND (relabel_tbl.t = ANY ('{1,1}'::text[])))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 9
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 1
+               Storage Index Rows Scanned: 50
+(15 rows)
+
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v, t
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v, t
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=6 loops=1)
+               Output: i2, i4, n, v, t
+               Index Cond: (((relabel_tbl.v)::text = '1'::text) AND (relabel_tbl.t = '1'::text))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 13
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 50
+(16 rows)
+
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v, t
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v, t
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=6 loops=1)
+               Output: i2, i4, n, v, t
+               Index Cond: (((relabel_tbl.v)::text = ANY ('{1,1}'::text[])) AND (relabel_tbl.t = ANY ('{1,1}'::text[])))
+               Merge Sort Key: relabel_tbl.i2, relabel_tbl.i4
+               Merge Stream Key: (relabel_tbl.v)::text, (relabel_tbl.t)::character varying
+               Merge Streams: 4
+               Merge Cond: (((relabel_tbl.v)::text = ANY ('{1,1}'::text[])) AND (relabel_tbl.t = ANY ('{1,1}'::text[])))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 13
+               Storage Table Rows Scanned: 50
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 50
+(20 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v | t 
+----+----+-------+---+---
+  0 |  1 | 11810 | 1 | 1
+  0 |  6 | 11060 | 1 | 1
+  1 |  4 | 11141 | 1 | 1
+  1 |  4 | 11241 | 1 | 1
+  1 |  5 | 11151 | 1 | 1
+(5 rows)
+
+DROP INDEX idx;
+--
+-- Index 3: minimal repro -- one bare varchar stream column, no redundant
+-- columns; only the SAOP clause LHS strip is needed.
+--
+-- R also varies the RHS type ({=, IN} x {untyped, ::varchar}): varchar
+-- constants are relabeled and const-folded back to plain text Consts, which
+-- SAOP eligibility requires, so engagement does not change.
+--
+CREATE INDEX NONCONCURRENTLY idx ON relabel_tbl (v ASC, i2, i4)
+SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
+SELECT $$= '1'::varchar$$ AS "R3" \gset
+SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
+\set Qnext :iter_R4
+\set query ':P :Q SELECT i2, i4, n, v FROM relabel_tbl WHERE v :R ORDER BY i2, i4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=9 loops=1)
+               Output: i2, i4, n, v
+               Index Cond: ((relabel_tbl.v)::text = '1'::text)
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 491
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 491
+(16 rows)
+
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v
+   ->  Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=491 loops=1)
+               Output: i2, i4, n, v
+               Index Cond: ((relabel_tbl.v)::text = ANY ('{1,1}'::text[]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 9
+               Storage Table Rows Scanned: 491
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 1
+               Storage Index Rows Scanned: 491
+(15 rows)
+
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=9 loops=1)
+               Output: i2, i4, n, v
+               Index Cond: ((relabel_tbl.v)::text = '1'::text)
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 491
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 491
+(16 rows)
+
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v
+   ->  Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Sort Method: top-N heapsort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=491 loops=1)
+               Output: i2, i4, n, v
+               Index Cond: ((relabel_tbl.v)::text = ANY ('{1,1}'::text[]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 9
+               Storage Table Rows Scanned: 491
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 1
+               Storage Index Rows Scanned: 491
+(15 rows)
+
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=9 loops=1)
+               Output: i2, i4, n, v
+               Index Cond: ((relabel_tbl.v)::text = '1'::text)
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 491
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 491
+(16 rows)
+
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=9 loops=1)
+               Output: i2, i4, n, v
+               Index Cond: ((relabel_tbl.v)::text = ANY ('{1,1}'::text[]))
+               Merge Sort Key: relabel_tbl.i2, relabel_tbl.i4
+               Merge Stream Key: relabel_tbl.v
+               Merge Streams: 2
+               Merge Cond: ((relabel_tbl.v)::text = ANY ('{1,1}'::text[]))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 491
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 491
+(20 rows)
+
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=9 loops=1)
+               Output: i2, i4, n, v
+               Index Cond: ((relabel_tbl.v)::text = '1'::text)
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 491
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 491
+(16 rows)
+
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: i2, i4, n, v
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: i2, i4, n, v
+         Sort Key: relabel_tbl.i2, relabel_tbl.i4, relabel_tbl.n
+         Presorted Key: relabel_tbl.i2, relabel_tbl.i4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using idx on public.relabel_tbl (actual rows=9 loops=1)
+               Output: i2, i4, n, v
+               Index Cond: ((relabel_tbl.v)::text = ANY ('{1,1}'::text[]))
+               Merge Sort Key: relabel_tbl.i2, relabel_tbl.i4
+               Merge Stream Key: relabel_tbl.v
+               Merge Streams: 2
+               Merge Cond: ((relabel_tbl.v)::text = ANY ('{1,1}'::text[]))
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 12
+               Storage Table Rows Scanned: 491
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 491
+(20 rows)
+
+ i2 | i4 |   n   | v 
+----+----+-------+---
+  0 |  0 | 13300 | 1
+  0 |  0 | 15100 | 1
+  0 |  1 | 11810 | 1
+  0 |  1 | 12510 | 1
+  0 |  1 | 13010 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v 
+----+----+-------+---
+  0 |  0 | 13300 | 1
+  0 |  0 | 15100 | 1
+  0 |  1 | 11810 | 1
+  0 |  1 | 12510 | 1
+  0 |  1 | 13010 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v 
+----+----+-------+---
+  0 |  0 | 13300 | 1
+  0 |  0 | 15100 | 1
+  0 |  1 | 11810 | 1
+  0 |  1 | 12510 | 1
+  0 |  1 | 13010 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v 
+----+----+-------+---
+  0 |  0 | 13300 | 1
+  0 |  0 | 15100 | 1
+  0 |  1 | 11810 | 1
+  0 |  1 | 12510 | 1
+  0 |  1 | 13010 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v 
+----+----+-------+---
+  0 |  0 | 13300 | 1
+  0 |  0 | 15100 | 1
+  0 |  1 | 11810 | 1
+  0 |  1 | 12510 | 1
+  0 |  1 | 13010 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v 
+----+----+-------+---
+  0 |  0 | 13300 | 1
+  0 |  0 | 15100 | 1
+  0 |  1 | 11810 | 1
+  0 |  1 | 12510 | 1
+  0 |  1 | 13010 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v 
+----+----+-------+---
+  0 |  0 | 13300 | 1
+  0 |  0 | 15100 | 1
+  0 |  1 | 11810 | 1
+  0 |  1 | 12510 | 1
+  0 |  1 | 13010 | 1
+(5 rows)
+
+ i2 | i4 |   n   | v 
+----+----+-------+---
+  0 |  0 | 13300 | 1
+  0 |  0 | 15100 | 1
+  0 |  1 | 11810 | 1
+  0 |  1 | 12510 | 1
+  0 |  1 | 13010 | 1
+(5 rows)
+
+DROP INDEX idx;

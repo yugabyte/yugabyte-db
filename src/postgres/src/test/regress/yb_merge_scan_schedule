@@ -28,6 +28,7 @@ test: yb.orig.merge_scan_range
 test: yb.orig.merge_scan_hash
 test: yb.orig.merge_scan_partition
 test: yb.orig.merge_scan_colocated
+test: yb.orig.merge_scan_relabel
 
 # These tests touch multiple tables.
 test: yb.orig.merge_scan_join
