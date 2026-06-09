@@ -235,8 +235,19 @@ public class PACollectorController extends AuthenticatedController {
       Boolean advancedObservability,
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    perfAdvisorService.getOrBadRequest(customerUUID, collectorUUID);
+    PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, collectorUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    PerfAdvisorService.PaMemoryMode currentMode = currentPaMemoryMode(universe, collector);
+    PerfAdvisorService.PaMemoryMode targetMode =
+        Boolean.TRUE.equals(advancedObservability)
+            ? PerfAdvisorService.PaMemoryMode.ADVANCED
+            : PerfAdvisorService.PaMemoryMode.COLLECTOR_ONLY;
+    perfAdvisorService.validatePerfAdvisorMemory(
+        universe,
+        currentMode,
+        targetMode,
+        "Cannot register universe with Performance Advisor Collector");
 
     RegisterUniverseWithPACollector.Params params = new RegisterUniverseWithPACollector.Params();
     params.setUniverseUUID(universeUUID);
@@ -345,5 +356,21 @@ public class PACollectorController extends AuthenticatedController {
     collectorExt.setPaCollector(CommonUtils.maskObject(collector));
     collectorExt.setInUseStatus(perfAdvisorService.getInUseStatus(collector));
     return collectorExt;
+  }
+
+  private PerfAdvisorService.PaMemoryMode currentPaMemoryMode(
+      Universe universe, PACollector collector) {
+    if (universe.getUniverseDetails().getPaCollectorUuid() == null) {
+      return PerfAdvisorService.PaMemoryMode.NONE;
+    }
+    var metadata = perfAdvisorService.getUniverseMetadata(collector, universe);
+    if (metadata == null) {
+      // Universe is marked as registered locally but the collector has no record.
+      // Be conservative and treat as not currently consuming any PA memory.
+      return PerfAdvisorService.PaMemoryMode.NONE;
+    }
+    return metadata.isMetricsExportToPrometheusEnabled()
+        ? PerfAdvisorService.PaMemoryMode.ADVANCED
+        : PerfAdvisorService.PaMemoryMode.COLLECTOR_ONLY;
   }
 }

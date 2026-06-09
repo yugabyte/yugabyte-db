@@ -2411,3 +2411,183 @@ templates:
       summary: >-
         Embedded Performance Advisor collector initialization failed -
         check YBA logs for details or contact YB support team
+
+  YBA_NODE_CPU_USAGE:
+    name: YBA node CPU usage
+    description: Average YBA node CPU usage percentage for 30 minutes is above threshold
+    queryTemplate: avg(sum by (cpu) (rate(node_cpu_seconds_total{job="yba-node-exporter",mode!="idle"}[30m])))
+      * 100 {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    applicableEnvironment: VM
+    defaultThresholdMap:
+      WARNING:
+        paramName: yb.alert.max_yba_node_cpu_usage_pct_warn
+      SEVERE:
+        paramName: yb.alert.max_yba_node_cpu_usage_pct_severe
+    targetType: PLATFORM
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    annotations:
+      summary: >-
+        Average YBA node CPU usage is above {{ $labels.threshold }}%.
+        Current value is {{ $value | printf "%.0f" }}%.
+
+  YBA_NODE_MEMORY_USAGE:
+    name: YBA node memory usage
+    description: Average YBA node memory usage percentage for 10 minutes is above threshold
+    queryTemplate: ((avg_over_time(node_memory_MemTotal_bytes{job="yba-node-exporter"}[10m])
+      - ignoring (saved_name) avg_over_time(node_memory_Buffers_bytes{job="yba-node-exporter"}[10m])
+      - ignoring (saved_name) avg_over_time(node_memory_Cached_bytes{job="yba-node-exporter"}[10m])
+      - ignoring (saved_name) avg_over_time(node_memory_MemFree_bytes{job="yba-node-exporter"}[10m])
+      - ignoring (saved_name) avg_over_time(node_memory_Slab_bytes{job="yba-node-exporter"}[10m]))
+      / ignoring (saved_name) avg_over_time(node_memory_MemTotal_bytes{job="yba-node-exporter"}[10m])) * 100
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    applicableEnvironment: VM
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.max_yba_node_memory_usage_pct_severe
+    targetType: PLATFORM
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    annotations:
+      summary: >-
+        Average YBA node memory usage is above {{ $labels.threshold }}%.
+        Current value is {{ $value | printf "%.0f" }}%.
+
+  YBA_NODE_DISK_USAGE:
+    name: YBA node disk usage
+    description: YBA node disk usage percentage is above threshold
+    queryTemplate: max(100 - (sum without (saved_name) (node_filesystem_free_bytes{job="yba-node-exporter",fstype!="rootfs",mountpoint!~"/boot.*"})
+      / sum without (saved_name) (node_filesystem_size_bytes{job="yba-node-exporter",fstype!="rootfs",mountpoint!~"/boot.*"}) * 100))
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    applicableEnvironment: VM
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.max_yba_node_disk_usage_pct_severe
+    targetType: PLATFORM
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    annotations:
+      summary: >-
+        YBA node disk usage is above {{ $labels.threshold }}%.
+        Current value is {{ $value | printf "%.0f" }}%.
+
+  YBA_K8S_CPU_USAGE:
+    name: YBA container CPU usage
+    description: Average YBA container CPU usage percentage for 30 minutes is above threshold
+    queryTemplate: count(avg by (container_name)
+      (rate(container_cpu_usage_seconds_total{saved_name="container_cpu_usage_seconds_total",
+      container_name=~"yugaware|prometheus|postgres",
+      pod_name="__ybaPodName__",namespace="__ybaNamespace__"}[30m]))
+      / on(container_name)
+      ((max by (container_name) (kube_pod_container_resource_limits_cpu_cores{container_name=~"yugaware|prometheus|postgres",
+      pod_name="__ybaPodName__",namespace="__ybaNamespace__"}) > 0)
+      or max by (container_name) (kube_pod_container_resource_requests_cpu_cores{container_name=~"yugaware|prometheus|postgres",
+      pod_name="__ybaPodName__",namespace="__ybaNamespace__"})) * 100
+      {{ query_condition }} {{ query_threshold }})
+    createForNewCustomer: true
+    applicableEnvironment: K8S
+    defaultThresholdMap:
+      WARNING:
+        paramName: yb.alert.max_yba_node_cpu_usage_pct_warn
+      SEVERE:
+        paramName: yb.alert.max_yba_node_cpu_usage_pct_severe
+    targetType: PLATFORM
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    labels:
+      affected_container_names: >-
+        {{ range $index, $element := query "avg by (container_name)
+        (rate(container_cpu_usage_seconds_total{saved_name='container_cpu_usage_seconds_total',
+        container_name=~'yugaware|prometheus|postgres',
+        pod_name='__ybaPodName__',namespace='__ybaNamespace__'}[30m]))
+        / on(container_name)
+        ((max by (container_name) (kube_pod_container_resource_limits_cpu_cores{container_name=~'yugaware|prometheus|postgres',
+        pod_name='__ybaPodName__',namespace='__ybaNamespace__'}) > 0)
+        or max by (container_name) (kube_pod_container_resource_requests_cpu_cores{container_name=~'yugaware|prometheus|postgres',
+        pod_name='__ybaPodName__',namespace='__ybaNamespace__'})) * 100
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.container_name }}{{ end }}
+    annotations:
+      summary: >-
+        YBA container CPU usage is above {{ $labels.threshold }}% on {{ $value | printf "%.0f" }} container(s).
+
+        Affected containers: {{ $labels.affected_container_names }}
+
+  YBA_K8S_MEMORY_USAGE:
+    name: YBA container memory usage
+    description: Average YBA container memory usage percentage for 10 minutes is above threshold
+    queryTemplate: count(avg by (container_name)
+      (avg_over_time(container_memory_working_set_bytes{saved_name="container_memory_working_set_bytes",
+      container_name=~"yugaware|prometheus|postgres",
+      pod_name="__ybaPodName__",namespace="__ybaNamespace__"}[10m]))
+      / on(container_name)
+      ((max by (container_name) (kube_pod_container_resource_limits_memory_bytes{container_name=~"yugaware|prometheus|postgres",
+      pod_name="__ybaPodName__",namespace="__ybaNamespace__"}) > 0)
+      or max by (container_name) (kube_pod_container_resource_requests_memory_bytes{container_name=~"yugaware|prometheus|postgres",
+      pod_name="__ybaPodName__",namespace="__ybaNamespace__"})) * 100
+      {{ query_condition }} {{ query_threshold }})
+    createForNewCustomer: true
+    applicableEnvironment: K8S
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.max_yba_node_memory_usage_pct_severe
+    targetType: PLATFORM
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    labels:
+      affected_container_names: >-
+        {{ range $index, $element := query "avg by (container_name)
+        (avg_over_time(container_memory_working_set_bytes{saved_name='container_memory_working_set_bytes',
+        container_name=~'yugaware|prometheus|postgres',
+        pod_name='__ybaPodName__',namespace='__ybaNamespace__'}[10m]))
+        / on(container_name)
+        ((max by (container_name) (kube_pod_container_resource_limits_memory_bytes{container_name=~'yugaware|prometheus|postgres',
+        pod_name='__ybaPodName__',namespace='__ybaNamespace__'}) > 0)
+        or max by (container_name) (kube_pod_container_resource_requests_memory_bytes{container_name=~'yugaware|prometheus|postgres',
+        pod_name='__ybaPodName__',namespace='__ybaNamespace__'})) * 100
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.container_name }}{{ end }}
+    annotations:
+      summary: >-
+        YBA container memory usage is above {{ $labels.threshold }}% on {{ $value | printf "%.0f" }} container(s).
+
+        Affected containers: {{ $labels.affected_container_names }}
+
+  YBA_K8S_DISK_USAGE:
+    name: YBA container disk usage
+    description: YBA container persistent volume usage percentage is above threshold
+    queryTemplate: count(kubelet_volume_stats_used_bytes{persistentvolumeclaim="__ybaPvcName__",namespace="__ybaNamespace__"}
+      / on(persistentvolumeclaim) kubelet_volume_stats_capacity_bytes{persistentvolumeclaim="__ybaPvcName__",namespace="__ybaNamespace__"} * 100
+      {{ query_condition }} {{ query_threshold }})
+    createForNewCustomer: true
+    applicableEnvironment: K8S
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.max_yba_node_disk_usage_pct_severe
+    targetType: PLATFORM
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    labels:
+      affected_volumes: >-
+        {{ range $index, $element := query "kubelet_volume_stats_used_bytes{persistentvolumeclaim='__ybaPvcName__',namespace='__ybaNamespace__'}
+        / on(persistentvolumeclaim) kubelet_volume_stats_capacity_bytes{persistentvolumeclaim='__ybaPvcName__',namespace='__ybaNamespace__'} * 100
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.persistentvolumeclaim }}{{ end }}
+    annotations:
+      summary: >-
+        YBA persistent volume usage is above {{ $labels.threshold }}% on {{ $value | printf "%.0f" }} volume(s).
+
+        Affected volumes: {{ $labels.affected_volumes }}
+
