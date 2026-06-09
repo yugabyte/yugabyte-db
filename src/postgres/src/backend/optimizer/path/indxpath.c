@@ -223,6 +223,9 @@ static List *yb_truncate_embedded_index_pathkeys(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 IndexOptInfo *index,
 												 List *useful_pathkeys);
+static IndexClause *yb_match_clause_to_index(PlannerInfo *root,
+											 RestrictInfo *rinfo,
+											 IndexOptInfo *index);
 
 bool yb_enable_derived_equalities;
 
@@ -2900,6 +2903,27 @@ match_clause_to_index(PlannerInfo *root,
 	if (!restriction_is_securely_promotable(rinfo, index->rel))
 		return;
 
+	/*
+	 * In Yugabyte there are clauses that may match the whole index, not just
+	 * a single column. For example, the yb_hash_code function may match the
+	 * hash code of a hash index. Handle such expressions here.
+	 * TODO: currently it is only the yb_hash_code, but consider also ybctid.
+	 */
+	IndexClause *yb_iclause = yb_match_clause_to_index(root, rinfo, index);
+	if (yb_iclause)
+	{
+		/*
+		 * TODO it seems correct to associate the hash code clause with the
+		 * first index column, since the hash code is a function of one or more
+		 * first columns of the index. Later on we may consider to introduce a
+		 * field in the IndexClauseSet structure for that.
+		 */
+		clauseset->indexclauses[0] =
+			lappend(clauseset->indexclauses[0], yb_iclause);
+		clauseset->nonempty = true;
+		return;
+	}
+
 	/* OK, check each index key column for a match */
 	for (indexcol = 0; indexcol < index->nkeycolumns; indexcol++)
 	{
@@ -2967,63 +2991,6 @@ yb_can_pushdown_as_filter(PlannerInfo *root,
 		return false;
 
 	return true;
-}
-
-static bool
-is_yb_hash_code_call(Node *clause)
-{
-	return (clause &&
-			IsA(clause, FuncExpr) &&
-			(((FuncExpr *) clause)->funcid == F_YB_HASH_CODE));
-}
-
-
-/*
- * yb_hash_code_call_matches_indexcol
- * 	  Returns true if the index is on yb_hash_code(a, b, ...) and this index column is
- *	  a matching yb_hash_code(a, b, ...) clause.
- */
-static bool
-yb_hash_code_call_matches_indexcol(Node *yb_hash_code_clause,
-								   IndexOptInfo *index,
-								   int indexcol)
-{
-	if (!index->indexprs)
-		return false;
-	int			pos;
-	ListCell   *indexpr_item;
-
-	/* Iterate over each column of the index until the column of interest. */
-	indexpr_item = list_head(index->indexprs);
-	for (pos = 0; pos <= indexcol; pos++)
-	{
-		if (index->indexkeys[pos] == 0)
-		{
-			/* The index column refers to the next expression of indexprs. */
-			Node	   *indexkey;
-
-			if (indexpr_item == NULL)
-			{
-				elog(WARNING, "too few entries in indexprs list");
-				return false;
-			}
-
-			if (pos == indexcol)
-			{
-				indexkey = (Node *) lfirst(indexpr_item);
-				if (indexkey && IsA(indexkey, RelabelType))
-					indexkey = (Node *) ((RelabelType *) indexkey)->arg;
-				if (equal(yb_hash_code_clause, indexkey))
-				{
-					return true;
-				}
-			}
-
-			indexpr_item = lnext(index->indexprs, indexpr_item);
-		}
-	}
-
-	return false;
 }
 
 /*
@@ -3315,28 +3282,6 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		!contain_volatile_functions(rightop))
 	{
 		/*
-		 * Do not use the yb_hash_code special case if we have an applicable
-		 * functional index on yb_hash_code. For example, if the call is an
-		 * index on yb_hash_code(x, y) and the clause is yb_hash_code(x, y),
-		 * we will take the typical index path.
-		 */
-
-		if (is_yb_hash_code_call(leftop) &&
-			!yb_hash_code_call_matches_indexcol(leftop, index, indexcol))
-		{
-			if (!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
-				return NULL;
-
-			iclause = makeNode(IndexClause);
-			iclause->rinfo = rinfo;
-			iclause->indexquals = list_make1(rinfo);
-			iclause->lossy = false;
-			iclause->indexcol = indexcol;
-			iclause->indexcols = NIL;
-			return iclause;
-		}
-
-		/*
 		 * YB: If the column in the filter clause is part of the hash key for
 		 * this index and the clause uses an inequality operator, then index
 		 * scan cannot be used. This is because a hash index is sorted by the
@@ -3379,32 +3324,6 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, rinfo->left_relids) &&
 		!contain_volatile_functions(leftop))
 	{
-		/*
-		 * Do not use the yb_hash_code special case if we have an applicable
-		 * functional index on yb_hash_code. For example, if the call is an
-		 * index on yb_hash_code(x, y) and the clause is yb_hash_code(x, y),
-		 * we will take the typical index path.
-		 */
-		if (is_yb_hash_code_call(rightop) &&
-			!yb_hash_code_call_matches_indexcol(rightop, index, indexcol))
-		{
-			if (!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
-				return NULL;
-
-			Oid			comm_op = get_commutator(expr_op);
-			RestrictInfo *commrinfo;
-
-			/* Build a commuted OpExpr and RestrictInfo */
-			commrinfo = commute_restrictinfo(rinfo, comm_op);
-			iclause = makeNode(IndexClause);
-			iclause->rinfo = rinfo;
-			iclause->indexquals = list_make1(commrinfo);
-			iclause->lossy = false;
-			iclause->indexcol = indexcol;
-			iclause->indexcols = NIL;
-			return iclause;
-		}
-
 		/*
 		 * YB: If the column in the filter clause is part of the hash key for
 		 * this index and the clause uses an inequality operator, then index
@@ -4614,7 +4533,6 @@ indexcol_is_bool_constant_for_query(PlannerInfo *root,
 	return false;
 }
 
-
 /****************************************************************************
  *				----  ROUTINES TO CHECK OPERANDS  ----
  ****************************************************************************/
@@ -4652,102 +4570,6 @@ match_index_to_operand(Node *operand,
 	indkey = index->indexkeys[indexcol];
 	if (indkey != 0)
 	{
-		/* YB: yb_hash_code */
-		if (operand && IsA(operand, FuncExpr))
-		{
-			/*
-			 * YB: Forming an estimate to see if this call can be pushed down
-			 * by assessing whether or not its parameters are all column
-			 * variables and whether or not the number of arguments to the call
-			 * is the same as the number of hash columns in the primary key
-			 * of the index in question
-			 */
-			FuncExpr   *fn = (FuncExpr *) operand;
-
-			if (fn->funcid == F_YB_HASH_CODE
-				&& fn->args->length > 0
-				&& index->nhashcolumns == fn->args->length)
-			{
-				Relation	indrel = RelationIdGetRelation(index->indexoid);
-				Bitmapset  *hash_keys = NULL;
-
-				for (int natt = 1;
-					 natt <= indrel->rd_index->indnkeyatts; natt++)
-				{
-					if (indrel->rd_indoption[natt - 1] & INDOPTION_HASH)
-					{
-						int			table_att = index->indexkeys[natt - 1];
-
-						hash_keys = bms_add_member(hash_keys,
-												   YBAttnumToBmsIndex(indrel, table_att));
-					}
-				}
-				ListCell   *ls;
-				bool		can_pushdown_hash_call = true;
-				Bitmapset  *args_bms = NULL;
-				int			last_index_att = -1;
-
-				foreach(ls, fn->args)
-				{
-					Expr	   *arg = (Expr *) lfirst(ls);
-
-					if (!IsA(arg, Var))
-					{
-						can_pushdown_hash_call = false;
-						break;
-					}
-
-					Var		   *var = (Var *) arg;
-
-					if (index->rel->relid != var->varno)
-					{
-						can_pushdown_hash_call = false;
-						break;
-					}
-
-					/*
-					 * YB: Need to make sure that the arguments to
-					 * yb_hash_code are in the correct order we can make this
-					 * for loop to map from index att to table att slightly
-					 * more efficient by starting the loop from last_index_att
-					 */
-					int			index_att = -1;
-
-					for (int natt = 1;
-						 natt <= indrel->rd_index->indnkeyatts; natt++)
-					{
-						int			cand_table_att = index->indexkeys[natt - 1];
-
-						if (cand_table_att == var->varattno)
-						{
-							index_att = natt;
-							break;
-						}
-					}
-
-					if (index_att <= last_index_att)
-					{
-						can_pushdown_hash_call = false;
-						break;
-					}
-					else
-					{
-						last_index_att = index_att;
-					}
-
-					int			arg_bms_index = YBAttnumToBmsIndex(indrel,
-																   var->varattno);
-
-					args_bms = bms_add_member(args_bms, arg_bms_index);
-				}
-				can_pushdown_hash_call &= bms_equal(args_bms, hash_keys);
-
-				RelationClose(indrel);
-				bms_free(args_bms);
-				bms_free(hash_keys);
-				return can_pushdown_hash_call;
-			}
-		}
 		/*
 		 * Simple index column; operand must be a matching Var.
 		 */
@@ -5088,4 +4910,108 @@ yb_truncate_embedded_index_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 		++useful;
 	}
 	return useful_pathkeys;
+}
+
+/*
+ * yb_hash_code_match_index
+ *
+ * Check if the given expression matches the index's hash code.
+ * That is the index is a hash index, and the expression is a yb_hash_code call
+ * with arguments that match the hash key columns of the index.
+ */
+bool
+yb_hash_code_match_index(Node *expr, IndexOptInfo *index)
+{
+	/* The expression must be a function call, maybe under a RelabelType */
+	if (!expr)
+		return false;
+	if (IsA(expr, RelabelType))
+		expr = (Node *) ((RelabelType *) expr)->arg;
+	if (!IsA(expr, FuncExpr))
+		return false;
+
+	/* The index must be a hash index */
+	if (index->nhashcolumns == 0)
+		return false;
+
+	/* The function is yb_hash_code with the matching number of arguments */
+	FuncExpr   *fn = (FuncExpr *) expr;
+	if (fn->funcid != F_YB_HASH_CODE ||
+		list_length(fn->args) != index->nhashcolumns)
+		return false;
+
+	/* The function arguments must match the index columns */
+	ListCell   *lc;
+	int			indexcol = 0;
+	foreach(lc, fn->args)
+	{
+		Expr	   *arg = (Expr *) lfirst(lc);
+		if (IsA(arg, RelabelType))
+			arg = ((RelabelType *) arg)->arg;
+
+		if (!IsA(arg, Var))
+			return false;
+
+		if (index->rel->relid != ((Var *) arg)->varno ||
+			index->indexkeys[indexcol++] != ((Var *) arg)->varattno)
+			return false;
+	}
+	return true;
+}
+
+/*
+ * yb_match_clause_to_index
+ *
+ * Like match_clause_to_indexcol, but without the index column.
+ * Currently matches yb_hash_code expressions to hash indexes, but may also
+ * be used to handle ybctid expressions and other YB-specific things.
+ */
+static IndexClause *
+yb_match_clause_to_index(PlannerInfo *root,
+						 RestrictInfo *rinfo,
+						 IndexOptInfo *index)
+{
+	if (IsA(rinfo->clause, OpExpr))
+	{
+		OpExpr	   *clause = (OpExpr *) rinfo->clause;
+		if (!op_in_opfamily(clause->opno, INTEGER_LSM_FAM_OID))
+			return NULL;
+		if (list_length(clause->args) != 2)
+			return NULL;
+		Node	   *leftop = (Node *) linitial(clause->args);
+		Node	   *rightop = (Node *) lsecond(clause->args);
+		if (yb_hash_code_match_index(leftop, index))
+		{
+			IndexClause *iclause = makeNode(IndexClause);
+			iclause->rinfo = rinfo;
+			iclause->indexquals = list_make1(rinfo);
+			iclause->lossy = false;
+			iclause->indexcol = 0;
+			iclause->indexcols = NIL;
+			return iclause;
+		}
+		else if (yb_hash_code_match_index(rightop, index))
+		{
+			Oid			comm_op = get_commutator(clause->opno);
+
+			if (OidIsValid(comm_op) &&
+				op_in_opfamily(comm_op, INTEGER_LSM_FAM_OID))
+			{
+				RestrictInfo *commrinfo;
+
+				/* Build a commuted OpExpr and RestrictInfo */
+				commrinfo = commute_restrictinfo(rinfo, comm_op);
+
+				/* Make an IndexClause showing that as a derived qual */
+				IndexClause *iclause = makeNode(IndexClause);
+				iclause->rinfo = rinfo;
+				iclause->indexquals = list_make1(commrinfo);
+				iclause->lossy = false;
+				iclause->indexcol = 0;
+				iclause->indexcols = NIL;
+				return iclause;
+			}
+		}
+	}
+	return NULL;
 }

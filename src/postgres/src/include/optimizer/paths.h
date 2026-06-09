@@ -87,6 +87,7 @@ extern bool indexcol_is_bool_constant_for_query(PlannerInfo *root,
 extern bool match_index_to_operand(Node *operand, int indexcol,
 								   IndexOptInfo *index);
 extern void check_index_predicates(PlannerInfo *root, RelOptInfo *rel);
+extern bool yb_hash_code_match_index(Node *expr, IndexOptInfo *index);
 
 /*
  * tidpath.h
@@ -193,6 +194,7 @@ extern bool is_redundant_derived_clause(RestrictInfo *rinfo, List *clauselist);
 extern bool is_redundant_with_indexclauses(RestrictInfo *rinfo,
 										   List *indexclauses);
 extern EquivalenceMember *yb_find_ec_member_for_var(PlannerInfo *root, Var *var, Index relid, Index target_relid);
+extern EquivalenceClass *yb_get_eclass_for_hash_code(PlannerInfo *root, IndexOptInfo *index);
 
 /*
  * pathkeys.c
