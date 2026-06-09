@@ -447,6 +447,8 @@ releaseModulesLocally := {
   status
 }
 
+releaseModulesLocally := (releaseModulesLocally dependsOn buildVenv).value
+
 buildDependentArtifacts / fileInputs += baseDirectory.value.toGlob /
   "node-agent/**"
 buildDependentArtifacts / fileInputExcludeFilter :=
