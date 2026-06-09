@@ -78,5 +78,9 @@ extern void validatePlacementConfigurations(const char *live_placement,
 											const char *read_replica_placement);
 extern void yb_get_tablespace_options(Datum **options, int *num_options,
 									  Oid spc_oid);
+extern void yb_validate_tablespace_placement_options(Datum reloptions,
+												 bool check_satisfiable);
+extern void yb_validate_tablespace_placement_by_oid(Oid spc_oid,
+											 bool check_satisfiable);
 
 #endif							/* TABLESPACE_H */

@@ -71,6 +71,7 @@ public abstract class BaseTablespaceTest extends BasePgSQLTest {
                           Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS));
     builder.addMasterFlag("auto_create_local_transaction_tables", "true");
     builder.addMasterFlag("TEST_name_transaction_tables_with_tablespace_id", "true");
+    builder.addMasterFlag("catalog_manager_check_ts_count_for_create_table", "false");
 
     // We wait for the load balancer whenever it gets triggered anyways, so there's
     // no concerns about the load balancer taking too many resources.
