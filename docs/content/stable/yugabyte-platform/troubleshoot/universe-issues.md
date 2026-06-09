@@ -394,8 +394,8 @@ Pre-checks run on the live subset of nodes in the planned change (nodes that are
 
 Pre-checks do not apply in the following cases:
 
-- Kubernetes universes.
-- Non-rolling upgrades.
+- Comprehensive pre-checks (service liveness, command execution, DB port connectivity) do not apply to Kubernetes universes.
+- Rolling-operation pre-checks (under-replicated tablets, nodes safe to take down, comprehensive pre-checks) do not apply to non-rolling upgrades.
 - Nodes not in **Live** state. For rolling upgrades, if any node in the restart set is not Live, comprehensive pre-checks are skipped.
 - Task retries. Comprehensive pre-checks run only on the first attempt of a task; retries skip them to avoid duplicate work.
 
@@ -682,3 +682,35 @@ For upgrade tasks, set `skipNodeChecks: true` on the upgrade API request.
 
 </details>
 
+#### Duplicate instance check
+
+<details>
+  <br>
+
+Queries the cloud provider for each node and fails if more than one VM or instance matches the node's name (and `node-uuid` tag, when present). This guards against orphaned cloud resources left behind by interrupted tasks or manual changes.
+
+**Symptom (approximate sample error message)**
+
+```text
+Duplicate instances found for node myuniverse-n1 in universe <uuid>: [{id=i-abc123, private_ip=10.0.0.5, ...}, {id=i-def456, private_ip=10.0.0.9, ...}]
+```
+
+**Scope:** Public cloud providers (AWS, GCP, Azure) only; on-prem nodes are skipped. Runs for every node during edit-universe operations when comprehensive pre-checks are enabled.
+
+**Typical failure conditions**
+
+- A prior create, replace-node, or edit task provisioned a VM but did not terminate the old one.
+- A stopped or orphaned VM shares the same `Name` tag (AWS) or instance name as the live node.
+- Older universes without `node-uuid` tags, where multiple VMs match on name alone.
+
+**Possible action/workaround**
+
+1. In the cloud console, find instances matching the node name from the error (on AWS, search by the `Name` tag).
+1. Compare `private_ip` values against the universe **Nodes** tab to identify the orphan.
+1. Terminate or delete the extra instance, then retry the operation.
+
+**Disable**
+
+Set `yb.checks.comprehensive_prechecks.enabled` to `false` on the universe.
+
+</details>
