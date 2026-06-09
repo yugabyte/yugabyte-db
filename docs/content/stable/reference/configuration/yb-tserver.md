@@ -1309,7 +1309,9 @@ Default: `true`
 
 Available in v2026.1 and later.
 
-When set to `true`, modifications to a publication are reflected implicitly in logical replication streams. This replaces the periodic publication refresh mechanism used in versions earlier than v2026.1 with PostgreSQL-like semantics for dynamic tables.
+When set to `true`, modifications to a publication are reflected implicitly in logical replication streams, providing PostgreSQL-like semantics for dynamic tables.
+
+When set to `false`, CDC uses a periodic publication refresh mechanism. (This is the bahavior in versions earlier than v2026.1.)
 
 For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
 
@@ -1320,7 +1322,9 @@ For more information, refer to [Adding tables to publication](../../../additiona
 Default: `true`
 {{% /tags/wrap %}}
 
-When set, CDC does not block DDLs that cause table rewrites on tables with active logical replication streams. CDC streams records from the re-written tablets after finishing data from the older tablets.
+When set to `true`, CDC does not block DDLs that cause table rewrites on tables with active logical replication streams. CDC streams records from the re-written tablets after finishing data from the older tablets.
+
+When set to `false`, any DDL that causes a table rewrite is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1).
 
 For more information, refer to [Streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite).
 

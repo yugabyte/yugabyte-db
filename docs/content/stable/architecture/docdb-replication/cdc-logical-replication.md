@@ -32,13 +32,13 @@ See [Change data capture](../../../additional-features/change-data-capture/) for
 
 The following are the main components of the Yugabyte CDC solution:
 
-1. CDC Service - Retrieves changes from the WAL of a specified shard starting from a given checkpoint. Starting in v2026.1, when [implicit publication changes](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#implicit-publication-changes) is enabled (the default), the CDC service runs on both YB-TServer and YB-Master.
+1. CDC Service. Retrieves changes from the WAL of a specified shard starting from a given checkpoint. When [implicit publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#implicit-publication) is enabled (the default), the CDC service runs on both YB-TServer and YB-Master.
 
-2. Virtual WAL (VWAL) - Assembles changes from all the shards of user tables (under the publication) to maintain transactional consistency.
+2. Virtual WAL (VWAL). Assembles changes from all the shards of user tables (under the publication) to maintain transactional consistency.
 
-3. walsender - A special purpose PostgreSQL backend responsible for streaming changes to the client and handling acknowledgments.
+3. walsender. A special purpose PostgreSQL backend responsible for streaming changes to the client and handling acknowledgments.
 
-### Publication change detection
+### Detecting publication changes
 
 Starting in v2026.1, the virtual WAL polls the sys catalog tablet in addition to the tablets of user tables. As a result, any DDL that changes the content of catalog tables (such as `ALTER PUBLICATION`) can be detected by the virtual WAL in the correct consistent order of commit time. This allows publication changes to be reflected in the replication stream at the same point in time as in PostgreSQL, without relying on periodic publication list refresh.
 
@@ -46,7 +46,7 @@ In versions earlier than v2026.1, the CDC service runs only on YB-TServer, and p
 
 ### Table rewrite and DROP TABLE handling
 
-Starting in v2026.1, when [streaming DDLs that cause table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite) is enabled, a DDL that causes a table rewrite or a `DROP TABLE` on a database with active CDC does not immediately delete the table's tablets. Instead, those tablets are hidden and retained until CDC has streamed all data committed before the DDL.
+When [streaming DDLs that cause table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite) is enabled (the default), a DDL that causes a table rewrite or a `DROP TABLE` on a database with active CDC does not immediately delete the table's tablets. Instead, those tablets are hidden and retained until CDC has streamed all data committed before the DDL.
 
 CDC continues to serve changes from the hidden tablets to the client until that data is fully streamed. When the virtual WAL receives records indicating a DDL that causes a table rewrite, it switches polling to the new (re-written) tablets. For `DROP TABLE`, it removes the tablets from its polling list.
 
