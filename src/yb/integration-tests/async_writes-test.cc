@@ -33,17 +33,20 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(quick_leader_election_on_create);
 DECLARE_bool(ysql_enable_packed_row);
-DECLARE_bool(TEST_do_not_replicate_async_writes);
 DECLARE_bool(use_create_table_leader_hint);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
-DECLARE_int32(raft_heartbeat_interval_ms);
-DECLARE_uint64(max_clock_skew_usec);
+DECLARE_int32(ht_lease_duration_ms);
+DECLARE_int32(leader_lease_duration_ms);
+DECLARE_int32(min_leader_stepdown_retry_interval_ms);
+DECLARE_int64(protege_synchronization_timeout_ms);
 
 namespace yb {
 
@@ -69,9 +72,16 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
   size_t NumTabletServers() override { return 3; }
 
   Result<TabletId> GetTabletId(const std::string& table_name = kTableName) {
-    auto tablets = VERIFY_RESULT(
-        ListTabletsForTableName(cluster_.get(), table_name, ListPeersFilter::kLeaders));
-    SCHECK_EQ(tablets.size(), 1, IllegalState, "Expected 1 tablet");
+    // Right after CREATE TABLE the tablet's leader may not be elected yet, so the leader-peer list
+    // can briefly be empty. Wait for the single leader to settle.
+    std::vector<tablet::TabletPeerPtr> tablets;
+    RETURN_NOT_OK(LoggedWaitFor(
+        [this, &table_name, &tablets]() -> Result<bool> {
+          tablets = VERIFY_RESULT(
+              ListTabletPeersForTableName(cluster_.get(), table_name, ListPeersFilter::kLeaders));
+          return tablets.size() == 1;
+        },
+        30s, Format("Wait for a single leader for table $0", table_name)));
     return tablets.front()->tablet_id();
   }
 
@@ -202,6 +212,24 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
       VERIFY_RESULT(peer->GetRaftConsensus())->TEST_DelayUpdate(delay);
     }
     return peers;
+  }
+
+  Status SetFollowersPaused(const std::string& table_name, bool paused) {
+    auto peers = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), table_name, ListPeersFilter::kNonLeaders));
+    SCHECK_EQ(peers.size(), 2, IllegalState, "Expected 2 follower peers");
+    for (auto& peer : peers) {
+      VERIFY_RESULT(peer->GetRaftConsensus())->TEST_PauseUpdateConsensus(paused);
+    }
+    return Status::OK();
+  }
+
+  Status PauseFollowers(const std::string& table_name) {
+    return SetFollowersPaused(table_name, /* paused */ true);
+  }
+
+  Status ResumeFollowers(const std::string& table_name) {
+    return SetFollowersPaused(table_name, /* paused */ false);
   }
 
   void ResumeFollowersAndWait(const std::vector<tablet::TabletPeerPtr>& peers, MonoDelta delay) {
@@ -1064,6 +1092,151 @@ TEST_F(YSqlAsyncWriteTest, VerifyAsyncWriteCompletion) {
     ASSERT_TRUE(status.IsAborted()) << "Expected Aborted, got: " << status;
     ASSERT_STR_CONTAINS(status.message().ToBuffer(), "leader moved more than once");
   }
+}
+
+TEST_F(YSqlAsyncWriteTest, RepeatedStepDownsWithAsyncWrites) {
+  // Verify that a transaction with async writes can survive multiple leader stepdowns, with each
+  // write left pending across a stepdown and verified on the new leader.
+  constexpr int kNumIterations = 5;
+
+  // This test does rapid stepdowns, so make sure that we don't block due to lost pre-elections.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_leader_stepdown_retry_interval_ms) = 0;
+  // Increase the drain timeout for better test stability.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_protege_synchronization_timeout_ms) = 5000;
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+
+  auto tablet_id = ASSERT_RESULT(GetTabletId());
+
+  std::mutex verified_mutex;
+  std::set<OpId> verified_ops;
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("TabletServiceImpl::WaitForAsyncWrite::Verified", [&](void* arg) {
+    std::lock_guard l(verified_mutex);
+    verified_ops.insert(*static_cast<OpId*>(arg));
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+
+  for (int i = 0; i < kNumIterations; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, i));
+
+    // Step down to the rotating protege.
+    size_t leader_idx = GetLeaderIdx(tablet_id);
+    const size_t protege_idx = (leader_idx + 1) % NumTabletServers();
+    auto leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(leader_idx, tablet_id));
+    const auto& protege_uuid =
+        cluster_->mini_tablet_server(protege_idx)->server()->permanent_uuid();
+
+    // Capture the op id of the async write we just issued on the current leader/term.
+    auto leader_consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
+    const auto write_op_id = ASSERT_RESULT(leader_consensus->GetLastOpId(consensus::RECEIVED_OPID));
+
+    ASSERT_OK(yb::StepDown(leader_peer, protege_uuid, ForceStepDown::kFalse));
+
+    ASSERT_OK(WaitUntilTabletHasLeader(
+        cluster_.get(), tablet_id, CoarseMonoClock::Now() + 30s, RequireLeaderIsReady::kTrue));
+
+    // Wait for this write's completion RPC to verify before the next stepdown, so it never spans
+    // more than two terms.
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          std::lock_guard l(verified_mutex);
+          return verified_ops.contains(write_op_id);
+        },
+        30s, Format("Wait for async write $0 to be verified", write_op_id)));
+  }
+
+  // Validate the transaction committed successfully, and all rows are present.
+  ASSERT_OK(conn_->CommitTransaction());
+  const auto count = ASSERT_RESULT(
+      conn_->FetchRow<pgwrapper::PGUint64>(Format("SELECT COUNT(*) FROM $0", kTableName)));
+  ASSERT_EQ(count, kNumIterations);
+}
+
+class YSqlAsyncWriteLongLeaseTest : public YSqlAsyncWriteTest {
+ public:
+  void SetUp() override {
+    // Bump up leader leases so we can pause followers for an extended period of time.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 30000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 30000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 100;
+    // Speed up test start up.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_quick_leader_election_on_create) = true;
+    YSqlAsyncWriteTest::SetUp();
+  }
+};
+
+// Ensure that the protege synchronization timeout handles draining of async writes for graceful
+// stepdowns. Increment the protege timeout to a large value while we pause all followers and
+// trigger async writes. Async writes should be blocked on the original leader and get routed to
+// the new leader after the stepdown completes.
+TEST_F(YSqlAsyncWriteLongLeaseTest, GracefulStepDownWithExtendedProtegeSyncWait) {
+  // Increase the timeout for the protege to catch up while we pause the followers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_protege_synchronization_timeout_ms) = 30000;
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+
+  auto tablet_id = ASSERT_RESULT(GetTabletId());
+  const size_t leader_idx = GetLeaderIdx(tablet_id);
+  auto leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(leader_idx, tablet_id));
+  const size_t protege_idx = (leader_idx + 1) % NumTabletServers();
+  const auto& protege_uuid = cluster_->mini_tablet_server(protege_idx)->server()->permanent_uuid();
+
+  ASSERT_OK(PauseFollowers(kTableName));
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'A')", kTableName));
+
+  // Trigger graceful stepdown to a lagging protege.
+  auto delay_step_down_log = StringWaiterLogSink("Delay step down:");
+  ASSERT_OK(yb::StepDown(leader_peer, protege_uuid, ForceStepDown::kFalse));
+
+  // We will be blocked in this drain until the followers are resumed.
+  ASSERT_OK(LoggedWaitFor(
+      [&delay_step_down_log]() -> Result<bool> { return delay_step_down_log.GetEventCount() > 0; },
+      10s, "Wait for delayed_step_down_ log"));
+
+  // Trigger another write, this should get rejected by the leader since it is waiting for the
+  // protege to catch up. Once that happens, the write should get routed properly to the new leader.
+  auto reject_log = StringWaiterLogSink("Rejecting because of planned step down");
+  Status extra_write_status;
+  std::thread extra_write([this, &extra_write_status] {
+    extra_write_status = conn_->ExecuteFormat("INSERT INTO $0 VALUES (2, 'B')", kTableName);
+  });
+
+  // While the followers stay paused the leader can't drain, so the retried write keeps hitting it
+  // and getting rejected.
+  constexpr int kMinRejections = 3;
+  ASSERT_OK(LoggedWaitFor(
+      [&reject_log]() -> Result<bool> { return reject_log.GetEventCount() >= kMinRejections; }, 30s,
+      "Wait for write to be rejected repeatedly while stepdown is stuck"));
+
+  // Unpause the followers. The protege catches up, which completes the stepdown.
+  ASSERT_OK(ResumeFollowers(kTableName));
+
+  ASSERT_OK(LoggedWaitFor(
+      [this, &tablet_id, leader_idx]() -> Result<bool> {
+        return GetLeaderIdx(tablet_id) != leader_idx;
+      },
+      10s, "Wait for stepdown to complete"));
+
+  // Validate that the second write completed.
+  extra_write.join();
+  ASSERT_OK(extra_write_status);
+
+  ASSERT_OK(conn_->CommitTransaction());
+
+  const auto rows =
+      ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
+  ASSERT_EQ(rows, "1, A; 2, B");
 }
 
 }  // namespace yb
