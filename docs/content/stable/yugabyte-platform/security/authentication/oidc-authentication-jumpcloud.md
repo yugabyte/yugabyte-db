@@ -211,24 +211,13 @@ To access a universe via OIDC for YCQL, set OIDC-related YB-TServer flags on the
 - _Without identity mapping_ between the IdP and the YCQL user.
 - _With identity mapping_ between the IdP and the YCQL user (requires `ycql_ident_conf_csv`, described in [ycql_ident_conf_csv](#ycql-ident-conf-csv)).
 
-Configuring OIDC for YCQL requires two steps: enable YCQL authentication in the YBA UI, then set the OIDC-related YB-TServer flags together in **Edit Flags**.
+### Prerequisites
 
-#### Step 1: Enable YCQL authentication
+OIDC for YCQL requires YCQL authentication to be enabled on the universe. When you turn on YCQL authorization in YugabyteDB Anywhere, YBA sets the [`use_cassandra_authentication`](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag automatically; do not set this flag manually via **Edit Flags**.
 
-YugabyteDB Anywhere sets the [`use_cassandra_authentication`](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag automatically when you enable YCQL authorization in the UI. Do not set this flag manually via **Edit Flags**.
+To enable YCQL authorization when creating or modifying a universe, refer to [Enable database endpoints and authorization](../../authorization-platform/#enable-database-endpoints-and-authorization) and [Modify endpoint configuration](../../authorization-platform/#modify-endpoint-configuration).
 
-To enable YCQL authorization on an existing universe:
-
-1. Navigate to your universe and click **Actions > More > Edit YCQL Configuration**.
-1. Turn on **Enable YCQL for this Universe**, then turn on **Enable YCQL Auth**.
-1. Optionally, for non-Kubernetes universes, turn on **Override YCQL Ports** and set **YCQL HTTP Port** and **YCQL Port** if you need custom endpoint ports (defaults are 12000 and 9042, respectively). These settings are not required for OIDC.
-1. Click **Apply Changes**.
-
-The **Edit YCQL Configuration** dialog also lets you rotate the `cassandra` superuser password when YCQL Auth is enabled. For more information on these settings, refer to [Modify endpoint configuration](../../authorization-platform/#modify-endpoint-configuration).
-
-You can also enable YCQL authorization when [creating a universe](../../../create-deployments/create-universe-multi-zone/) under **Security Configurations > Authentication Settings**. For more information, refer to [Enable database endpoints and authorization](../../authorization-platform/#enable-database-endpoints-and-authorization).
-
-#### Step 2: Set OIDC YB-TServer flags
+### Set OIDC YB-TServer flags
 
 Add all OIDC-related flags to YB-TServer in a single **Actions > Edit Flags** session. For more information, refer to [Edit configuration flags](../../../manage-deployments/edit-config-flags/).
 
@@ -255,7 +244,7 @@ Valid keys for `ycql_jwt_conf` are described in the following table:
 
 After these options are configured, the JWT from the IdP is supplied as the password when connecting to YCQL.
 
-The following shows an example OIDC flag configuration for JumpCloud (without identity mapping). Set these flags in **Edit Flags**; `use_cassandra_authentication` is included for reference only and is set automatically by [Step 1](#step-1-enable-ycql-authentication).
+The following shows an example OIDC flag configuration for JumpCloud (without identity mapping). Set these flags in **Edit Flags**; `use_cassandra_authentication` is included for reference only and is set automatically when [YCQL authentication is enabled](../../authorization-platform/#modify-endpoint-configuration).
 
 ```sh
 use_cassandra_authentication=true
