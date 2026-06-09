@@ -75,5 +75,5 @@ For details on each CR type, see [YugabyteDB Kubernetes Operator CRDs](../../any
 
 ## Learn more
 
-- [Enable high availability](../high-availability/)
+- [Enable High Availability](../high-availability/)
 - [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/)

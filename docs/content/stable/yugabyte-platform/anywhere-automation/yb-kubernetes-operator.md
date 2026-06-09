@@ -10,6 +10,7 @@ menu:
     identifier: yb-kubernetes-operator
     weight: 100
 type: docs
+hideH4: true
 ---
 
 The YugabyteDB Kubernetes Operator streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
@@ -37,8 +38,8 @@ The following additional CRDs support day 2 operations.
 | [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
 | [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
 | [PitrConfig](#configure-pitr) | Configure point-in-time recovery (PITR) for a universe. |
-| [PitrRestore](#restore-from-pitr) | {{<tags/feature/ea idea="2460">}}Restore a universe to a point in time using a PITR configuration (available in v2026.1 or later). |
-| [DrConfig](#configure-xcluster-dr) | {{<tags/feature/ea idea="2460">}}Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations (available in v2026.1 or later). |
+| [PitrRestore](#restore-from-pitr) | {{<tags/feature/ea idea="2460">}}Restore a universe to a point in time using a PITR configuration. |
+| [DrConfig](#configure-xcluster-dr) | {{<tags/feature/ea idea="2460">}}Create and manage [xCluster DR](../../back-up-restore-universes/disaster-recovery/) configurations. |
 | [YBCertificate](#configure-tls-certificates) | Configure TLS certificates for encryption in transit (self-signed or cert-manager). |
 
 For details of each CRD, run `kubectl explain` on the CR.
@@ -264,6 +265,12 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 
 {{< /tabpane >}}
 
+### Operator High Availability
+
+{{<tags/feature/ea idea="2460">}}If you deploy YBA across separate Kubernetes clusters with [YBA High Availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
+
+For details, see [Operator High Availability](../../administer-yugabyte-platform/operator-high-availability/).
+
 ## Example workflows
 
 ### Create a provider
@@ -401,7 +408,7 @@ operator-universe-demo   Ready   {{< yb-version version="stable" format="build">
 
 To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
 
-### Create a universe with placement information
+#### Create a universe with placement information
 
 Starting from YugabyteDB Anywhere v2025.2, you can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
 
@@ -455,7 +462,7 @@ spec:
           memory: 8Gi
 ```
 
-### Create a universe with read replicas
+#### Create a universe with read replicas
 
 {{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, you can specify a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster in the YBUniverse CR using the `readReplica` field.
 
@@ -1279,12 +1286,6 @@ Importing a universe to the operator creates or adopts the following in the targ
 - Backup schedules.
 - Storage configurations related to the backups or backup schedules, including secrets to access the storage configuration.
 - Release, including secrets to access the release.
-
-## Operator High Availability
-
-{{<tags/feature/ea idea="2460">}}If you deploy YBA across separate Kubernetes clusters with [YBA High Availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
-
-For details, see [Operator High Availability](../../administer-yugabyte-platform/operator-high-availability/).
 
 ## Limitations
 
