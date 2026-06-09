@@ -271,9 +271,6 @@ void Batcher::FlushAsync(
             yb_op->type() != YBOperation::Type::PGSQL_LOCK && !yb_op->tablet()) {
           status = STATUS_FORMAT(IllegalState, "Hash partition key is empty for $0", yb_op);
         }
-      } else {
-        yb_op->SetHashCode(
-            dockv::PartitionSchema::DecodeMultiColumnHashValue(in_flight_op.partition_key));
       }
     }
 
