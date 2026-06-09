@@ -30,6 +30,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 
 #include "yb/vector_index/vector_lsm_metadata.h"
@@ -381,8 +382,8 @@ class VectorLSMInsertRegistryBase
   using VectorIndexPtr = typename InsertTask::VectorIndexPtr;
   using InsertCallback = typename InsertTask::InsertCallback;
 
-  VectorLSMInsertRegistryBase(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
-      : log_prefix_(log_prefix), thread_pool_(thread_pool) {}
+  VectorLSMInsertRegistryBase(std::string log_prefix, rpc::ThreadPool& thread_pool)
+      : log_prefix_(std::move(log_prefix)), thread_pool_(thread_pool) {}
 
   const std::string& LogPrefix() const {
     return log_prefix_;
@@ -435,7 +436,7 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
   using SearchResults  = typename VectorLSM<Vector, DistanceResult>::SearchResults;
 
   VectorLSMInsertRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
-      : Base(log_prefix, thread_pool) {}
+      : Base(Format("$0[I] ", log_prefix), thread_pool) {}
 
   template <typename... Args>
   Result<InsertTaskList> AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
@@ -492,7 +493,7 @@ class VectorLSMMergeRegistry : public VectorLSMInsertRegistryBase<Vector, Distan
   using InsertTaskList = typename Base::InsertTaskList;
 
   VectorLSMMergeRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
-      : Base(log_prefix, thread_pool) {}
+      : Base(Format("$0[M] ", log_prefix), thread_pool) {}
 
   template <typename... Args>
   Result<InsertTaskList> AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
@@ -978,7 +979,7 @@ VectorLSM<Vector, DistanceResult>::~VectorLSM() {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoCheckRunning(
     const char* file_name, int line_number) const {
-  if (shutdown_controller_.IsRunning()) {
+  if (!IsShuttingDown()) {
     return Status::OK();
   }
 
@@ -991,9 +992,7 @@ Status VectorLSM<Vector, DistanceResult>::DoCheckRunning(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 bool VectorLSM<Vector, DistanceResult>::IsShuttingDown() const {
-  auto status = RUNNING_STATUS();
-  DCHECK(status.ok() || status.IsShutdownInProgress());
-  return status.IsShutdownInProgress();
+  return !shutdown_controller_.IsRunning();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1921,7 +1920,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::TriggerObsoleteChunksCleanup(bool async) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "async = " << async;
 
-  if (!RUNNING_STATUS().ok()) {
+  if (IsShuttingDown()) {
     return;
   }
 
@@ -1957,7 +1956,7 @@ void VectorLSM<Vector, DistanceResult>::DeleteObsoleteChunks() {
     DoDeleteObsoleteChunks();
     obsolete_files_cleanup_in_progress_ = false;
 
-    if (!RUNNING_STATUS().ok()) {
+    if (IsShuttingDown()) {
       return;
     }
 
@@ -2021,7 +2020,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::ObsoleteFile(
     std::unique_ptr<VectorLSMFileMetaData>&& file) {
   // Let's not queue a file for deletion if vector index is being shutdown.
-  if (!RUNNING_STATUS().ok()) {
+  if (IsShuttingDown()) {
     return;
   }
 
@@ -2412,7 +2411,11 @@ class Merger {
     std::atomic<size_t> num_completed_tasks = 0;
 
     while (source_iterator.Valid()) {
-      RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+      // On shutdown stop scheduling, but fall through to the wait loop below so all already
+      // scheduled tasks are drained before this frame (and `num_completed_tasks`) goes away.
+      if (lsm_.IsShuttingDown()) {
+        break;
+      }
 
       auto tasks = VERIFY_RESULT(merge_registry_.AllocateTasks(
           num_total_tasks, target_index,
@@ -2430,7 +2433,12 @@ class Merger {
 
       PopulateMergeTasks(tasks, num_vectors_per_task, source_iterator);
 
-      RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+      // `tasks` is now counted in the merge registry. Once allocated they must always be executed:
+      // the registry only tracks executed tasks via active_tasks_, so dropping an allocated batch
+      // before executing it would leak its reserved capacity and hang the registry's Shutdown(). A
+      // shutdown check here would be racy (shutdown could start right after it), so we do not bail
+      // mid-batch -- the loop checks IsShuttingDown() at the top before allocating the next batch.
+      TEST_SYNC_POINT("VectorLSM::DoMergeWithThreadPool:AfterAllocate");
 
       num_scheduled_tasks += tasks.size();
       merge_registry_.ExecuteTasks(tasks);
@@ -2440,6 +2448,10 @@ class Merger {
     while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::relaxed)) {
       std::this_thread::sleep_for(200ms);
     }
+
+    // All scheduled tasks have completed, so it is now safe to propagate a shutdown that may have
+    // broken the loop above.
+    RETURN_NOT_OK(lsm_.RUNNING_STATUS());
 
     LOG_WITH_PREFIX(INFO) << "Chunks merge done via " << num_scheduled_tasks << " tasks";
     return Status::OK();
@@ -2656,7 +2668,7 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
     return;
   }
 
-  if (!RUNNING_STATUS().ok()) {
+  if (IsShuttingDown()) {
     return;
   }
 
