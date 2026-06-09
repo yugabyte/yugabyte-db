@@ -30,7 +30,7 @@ Before you begin, ensure you have the following:
 
 - [Docker](https://docs.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed and running.
 
-- A sink PostgreSQL database accessible from the Flink containers.
+- A PostgreSQL sink database accessible from the Flink containers.
 
 ## Configure the source
 
@@ -54,8 +54,8 @@ CREATE PUBLICATION dbz_publication FOR ALL TABLES;
 SELECT * FROM pg_create_logical_replication_slot('flink', 'pgoutput');
 ```
 
-{{< note title="Slot name uniqueness" >}}
-Assign a unique `slot.name` to each Flink pipeline. Using the same slot name in multiple pipelines causes errors about active PIDs on the same slot.
+{{< note title="Use unique slot names" >}}
+Assign a unique `slot.name` to each Flink pipeline. Using duplicate slot names in multiple pipelines will result in errors about active PIDs on the same slot.
 {{< /note >}}
 
 ## Initialize the target database
@@ -137,7 +137,7 @@ docker compose up -d
 
 Verify that both containers are running and the Flink Web UI is accessible at `http://localhost:8081`.
 
-## Initiate the streaming job
+## Start the streaming job
 
 Start the Flink SQL Client inside the jobmanager container:
 
