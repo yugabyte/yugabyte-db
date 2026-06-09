@@ -4,6 +4,8 @@ headerTitle: Operator High Availability
 description: Extend YBA High Availability to synchronize Kubernetes Operator custom resources across clusters
 headcontent: Synchronize operator-managed resources for high availability
 linkTitle: Operator HA
+tags:
+    feature: early-access
 menu:
   stable_yugabyte-platform:
     identifier: platform-operator-high-availability
