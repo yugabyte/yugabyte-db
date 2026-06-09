@@ -120,7 +120,7 @@ class PgsqlWriteOperation :
   Status UpdateColumn(
       const DocOperationApplyData& data, const dockv::PgTableRow& table_row,
       const PgsqlColumnValueMsg& column_value, dockv::PgTableRow* returning_table_row,
-      qlexpr::QLExprResult* result, RowPackContext* pack_context);
+      qlexpr::LWExprResult* result, RowPackContext* pack_context);
 
   // Handle removal of a single vector caused by any reason.
   Status FillRemovedVectorId(
@@ -177,9 +177,10 @@ class PgsqlReadOperation : public DocExprExecutor {
  public:
   // Construct and access methods.
   PgsqlReadOperation(std::reference_wrapper<const PgsqlReadOperationData> data,
+                     LWPgsqlResponsePB& response,
                      WriteBuffer* result_buffer,
                      ReadRestartData* read_restart_data)
-      : data_(data), request_(data_.request), result_buffer_(result_buffer),
+      : data_(data), request_(data_.request), response_(response), result_buffer_(result_buffer),
         read_restart_data_(read_restart_data) {
   }
 
@@ -241,11 +242,11 @@ class PgsqlReadOperation : public DocExprExecutor {
   //------------------------------------------------------------------------------------------------
   const PgsqlReadOperationData& data_;
   const PgsqlReadRequestMsg& request_;
+  PgsqlResponseMsg& response_;
   WriteBuffer* const result_buffer_;
   ReadRestartData* const read_restart_data_;
 
   boost::container::small_vector<dockv::PgWireEncoderEntry, 0x10> target_encoders_;
-  PgsqlResponseMsg response_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;
   uint64_t scanned_table_rows_ = 0;
@@ -268,10 +269,10 @@ class PgsqlLockOperation :
   }
 
   const PgsqlLockRequestMsg& request() const { return request_; }
-  PgsqlResponsePB* response() const { return response_; }
+  PgsqlResponseMsg* response() const { return response_; }
 
   // Init doc_key_ and encoded_doc_key_.
-  Status Init(PgsqlResponsePB* response, const DocReadContextPtr& doc_read_context);
+  Status Init(PgsqlResponseMsg* response, const DocReadContextPtr& doc_read_context);
 
   Status Apply(const DocOperationApplyData& data) override;
 

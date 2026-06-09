@@ -491,7 +491,7 @@ public class BackupHelper {
     int numRetries = 0;
     while (numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
-      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+      if (TaskInfo.TERMINAL_STATES.contains(taskInfo.getTaskState())) {
         return;
       }
       Thread.sleep(1000);
@@ -1359,7 +1359,7 @@ public class BackupHelper {
               .getStorageUtil(config.getName())
               .createYbcProxyConfig(universe, config.getDataObject());
       CloudStoreConfig csConfig =
-          YbcBackupUtil.getCloudStoreConfig(successMarkerCSSpec, null, proxyConfig);
+          YbcBackupUtil.getCloudStoreConfig(successMarkerCSSpec, null, proxyConfig, true, true);
       for (NodeDetails node : nodeDetailsList) {
         ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
             node.cloudInfo.private_ip, universe, csConfig);

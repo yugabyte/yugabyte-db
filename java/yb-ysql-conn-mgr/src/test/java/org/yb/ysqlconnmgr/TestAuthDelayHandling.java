@@ -22,11 +22,14 @@ import java.util.Map;
 import java.util.Properties;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestAuthDelayHandling extends BaseYsqlConnMgr {
   // The idea here is to test that connection manager preemptively aborts
   // authentication attempts where the client has already timed out, instead

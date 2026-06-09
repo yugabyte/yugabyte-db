@@ -24,11 +24,13 @@ Use time travel queries to read data as it was at a specific point in time, with
 
 The history retention period (that is, the period available for historical queries) is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This is a cluster-wide global flag that affects every YSQL database and YCQL keyspace.
 
-In addition, you must also set the `timestamp_syscatalog_history_retention_interval_sec` flag to cover the time interval you want to query.
+You should set the `timestamp_syscatalog_history_retention_interval_sec` flag to cover the time interval you want to query. You may also need to increase the history retention period if you are executing a long-running query in a time travel session.
 
-For example, to be able to query the data as of the last 24 hours (86000 seconds), set both flags to 86000.
+For example, to be able to query the data as of the last 24 hours (86400 seconds), set both flags to 86400.
 
 The default retention period is 900 seconds (15 minutes).
+
+If a long-running query fails (for example, with a Snapshot too old error because its execution time exceeded the retention window), increase the history retention period (by setting both flags) and re-run the query. Note that increasing the retention period cannot recover history that has already been compacted.
 
 ### Set the read time
 
@@ -188,3 +190,8 @@ The following example shows how you can use time travel queries to recover accid
     ```
 
 In cases where the deletion affected many tables in the database, you can use time travel queries to read the deleted rows for every table. Alternatively, you can use [instant database cloning](../instant-db-cloning/) to create a zero-copy, independent writable clone of your database as of a timestamp in the past.
+
+## Limitations
+
+- Time travel queries are not supported for temporary tables.
+- Time travel queries currently do not support [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). {{<issue 20829>}}

@@ -153,6 +153,23 @@ public class CapacityReservationUtil {
               }
             }
           }
+        } else if (reservationInfo instanceof UniverseDefinitionTaskParams.GcpReservationInfo) {
+          for (UniverseDefinitionTaskParams.GcpZoneReservation zoneReservation :
+              ((UniverseDefinitionTaskParams.GcpReservationInfo) reservationInfo)
+                  .getReservationsByZoneMap()
+                  .values()) {
+            for (UniverseDefinitionTaskParams.PerInstanceTypeReservation perInstanceType :
+                zoneReservation.getReservationsByType().values()) {
+              for (UniverseDefinitionTaskParams.ZonedReservation zonedReservation :
+                  perInstanceType.getZonedReservation().values()) {
+                if (zonedReservation.getVmNames().contains(nodeName)) {
+                  log.debug(
+                      "Using gcp capacity reservation {}", zonedReservation.getReservationName());
+                  return zonedReservation.getReservationName();
+                }
+              }
+            }
+          }
         }
       } catch (Exception e) {
         log.error("Failed to deserialize reservation", e);
@@ -176,6 +193,8 @@ public class CapacityReservationUtil {
         return (T) state.getAzureReservationInfos().get(provider.getUuid());
       case aws:
         return (T) state.getAwsReservationInfos().get(provider.getUuid());
+      case gcp:
+        return (T) state.getGcpReservationInfos().get(provider.getUuid());
     }
     return null;
   }
@@ -194,6 +213,11 @@ public class CapacityReservationUtil {
             .getAwsReservationInfos()
             .putIfAbsent(provider.getUuid(), new UniverseDefinitionTaskParams.AwsReservationInfo());
         break;
+      case gcp:
+        state
+            .getGcpReservationInfos()
+            .putIfAbsent(provider.getUuid(), new UniverseDefinitionTaskParams.GcpReservationInfo());
+        break;
     }
   }
 
@@ -209,6 +233,9 @@ public class CapacityReservationUtil {
         break;
       case aws:
         operationsList = GlobalConfKeys.capacityReservationOperationsAws;
+        break;
+      case gcp:
+        operationsList = GlobalConfKeys.capacityReservationOperationsGcp;
         break;
     }
 
@@ -228,6 +255,8 @@ public class CapacityReservationUtil {
       case aws:
         enabledFlag = ProviderConfKeys.enableCapacityReservationAws;
         break;
+      case gcp:
+        enabledFlag = ProviderConfKeys.enableCapacityReservationGcp;
     }
     if (enabledFlag == null) {
       return false;

@@ -1,0 +1,7 @@
+title: ImageBundleInfo
+description: Per-region bundle info for image bundle details
+type: object
+properties:
+  yb_image:
+    description: YugabyteDB image identifier for this region.
+    type: string

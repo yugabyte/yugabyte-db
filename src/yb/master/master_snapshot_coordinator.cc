@@ -93,8 +93,7 @@ DEFINE_RUNTIME_bool(skip_crash_on_duplicate_snapshot, false,
     "Should we not crash when we get a create snapshot request with the same "
     "id as one of the previous snapshots.");
 
-DEFINE_RUNTIME_AUTO_bool(
-    enable_object_retention_due_to_snapshots, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(enable_object_retention_due_to_snapshots, kLocalPersisted, false, true,
     "When true, tables and tablets are hidden instead of getting deleted on a drop if there are "
     "snapshots covering the object. Snapshots also get created with a TTL when "
     "this flag value is true.");
@@ -684,18 +683,18 @@ class MasterSnapshotCoordinator::Impl {
     // Get the validated table from the request.
     const auto& table = VERIFY_RESULT(ParseCreateSnapshotScheduleRequest(req));
 
-    // Fail the request if at least one keyspace in the requested snapshot schedules already exists.
-    const std::string& namespace_name = table.get().namespace_().name();
-    const YQLDatabase namespace_type = table.get().namespace_().database_type();
+    // Fail the request if there is already a snapshot schedule on the namespace.
+    std::string_view ns_id{table.get().namespace_().id()};
     {
       std::lock_guard lock(mutex_);
-      const auto& existing_schedule = FindSnapshotSchedule(namespace_name, namespace_type);
-      if (existing_schedule.ok()) {
-        return STATUS(AlreadyPresent,
-                      Format("Snapshot schedule $0 already exists for the given keyspace $1.$2",
-                             existing_schedule->id(), DatabaseTypeName(namespace_type),
-                             namespace_name),
-                      MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+      const auto& existing_schedule = FindSnapshotScheduleByNamespaceId(ns_id);
+      if (existing_schedule.has_value()) {
+        return STATUS(
+            AlreadyPresent,
+            Format(
+                "Snapshot schedule $0 already exists for the namespace $1",
+                existing_schedule->get().id(), ns_id),
+            MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
       }
     }
 
@@ -709,30 +708,27 @@ class MasterSnapshotCoordinator::Impl {
   Result<const TableIdentifierPB&> ParseCreateSnapshotScheduleRequest(
       const CreateSnapshotScheduleRequestPB& req) {
     if (req.options().filter().tables().tables_size() == 0) {
-      return STATUS(InvalidArgument, "Request must contain a keyspace",
+      return STATUS(InvalidArgument, "Request must contain a namespace",
                     MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
     if (req.options().filter().tables().tables_size() > 1) {
-      return STATUS(InvalidArgument, "Request cannot contain more than one keyspace",
+      return STATUS(InvalidArgument, "Request cannot contain more than one namespace",
                     MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
-    const auto& table = req.options().filter().tables().tables()[0];
+    const auto& table = req.options().filter().tables().tables(0);
 
     if (!table.has_namespace_()) {
-      return STATUS(InvalidArgument, "Request does not contain a keyspace. Snapshot schedules must "
-                    "be created at the db level", MasterError(MasterErrorPB::INVALID_REQUEST));
+      return STATUS(
+          InvalidArgument,
+          "Request does not contain a namespace. Snapshot schedules must be created at the db "
+          "level",
+          MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
-    if (table.namespace_().database_type() != YQLDatabase::YQL_DATABASE_CQL &&
-        table.namespace_().database_type() != YQLDatabase::YQL_DATABASE_PGSQL) {
-      return STATUS(InvalidArgument, "The keyspace must be of type YSQL or YCQL",
-                    MasterError(MasterErrorPB::INVALID_REQUEST));
-    }
-
-    if (table.namespace_().name().empty()) {
-      return STATUS(InvalidArgument, "The keyspace name must be non-empty",
+    if (!table.namespace_().has_id()) {
+      return STATUS(InvalidArgument, "The namespace must have an id",
                     MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
@@ -909,6 +905,7 @@ class MasterSnapshotCoordinator::Impl {
       if (time) {
         out_schedule->set_last_snapshot_hybrid_time(time.ToUint64());
       }
+      out_schedule->set_retention_duration_sec(schedule->options().retention_duration_sec());
     }
     out->set_last_restorations_update_ht(last_restorations_update_ht_.ToUint64());
     for (const auto& restoration : restorations_) {
@@ -1429,10 +1426,8 @@ class MasterSnapshotCoordinator::Impl {
     return **it;
   }
 
-  Result<SnapshotScheduleState&> FindSnapshotSchedule(
-      const std::string& namespace_name,
-      const YQLDatabase namespace_type,
-      const bool ignore_deleted = true) REQUIRES(mutex_) {
+  std::optional<std::reference_wrapper<SnapshotScheduleState>> FindSnapshotScheduleByNamespaceId(
+      std::string_view ns_id, const bool ignore_deleted = true) REQUIRES(mutex_) {
     for (const auto& schedule : schedules_) {
       if (ignore_deleted && schedule->deleted()) {
         continue;
@@ -1445,15 +1440,12 @@ class MasterSnapshotCoordinator::Impl {
       }
 
       for (const auto& table : schedule->options().filter().tables().tables()) {
-        if (table.namespace_().name() == namespace_name &&
-            table.namespace_().database_type() == namespace_type) {
+        if (table.namespace_().id() == ns_id) {
           return *schedule;
         }
       }
     }
-
-    return STATUS(NotFound, "Could not find snapshot schedule", namespace_name,
-                    MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
+    return std::nullopt;
   }
 
   template <class Operations>
@@ -2039,6 +2031,46 @@ class MasterSnapshotCoordinator::Impl {
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
       tablet_split_manager_.ReenableSplittingFor(kPitrFeatureName);
+    }
+
+    // After PITR restore, advance per-DB OID counters past any hidden tables'
+    // OIDs to prevent collisions. Hidden tables are retained by master (e.g. for PITR
+    // retention or tablet splitting) and their OIDs can be above the restored next-OID
+    // counter. Only applies to YSQL namespaces; YCQL does not use PG OIDs.
+    //
+    // Schedule the work outside the coordinator mutex: AdvanceOidCounters issues
+    // synchronous ReservePgsqlOids RPCs that must not run while mutex_ is held, or
+    // concurrent restoration progress stalls. PITR does NOT invalidate tserver OID
+    // caches - see SnapshotCoordinatorContext::AdvanceOidCounters doc for rationale.
+    if (restoration->schedule_id()) {
+      auto schedule = FindSnapshotSchedule(restoration->schedule_id());
+      if (!schedule.ok()) {
+        LOG(WARNING) << "PITR: Skipping OID counter advance for restoration "
+                     << restoration->restoration_id()
+                     << " because snapshot schedule " << restoration->schedule_id()
+                     << " could not be found: " << schedule.status()
+                     << ". Post-restore OID collisions may occur.";
+      } else {
+        std::vector<NamespaceId> namespaces_to_advance;
+        for (const auto& table : schedule->options().filter().tables().tables()) {
+          if (table.has_namespace_() && table.namespace_().has_id() &&
+              table.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+            namespaces_to_advance.push_back(table.namespace_().id());
+          }
+        }
+        if (!namespaces_to_advance.empty()) {
+          context_.Scheduler().io_service().post(
+              [this, namespaces = std::move(namespaces_to_advance)]() mutable {
+                for (const auto& ns_id : namespaces) {
+                  WARN_NOT_OK(
+                      context_.AdvanceOidCounters(ns_id),
+                      Format("Failed to advance OID counters for namespace $0 after "
+                             "restore. Post-restore OID collisions may occur.",
+                             ns_id));
+                }
+              });
+        }
+      }
     }
   }
 

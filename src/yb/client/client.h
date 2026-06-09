@@ -349,7 +349,10 @@ class YBClient {
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
   Status BackfillIndex(
-      const TableId& table_id, bool wait = true, CoarseTimePoint deadline = CoarseTimePoint());
+      const TableId& table_id,
+      std::optional<TransactionMetadata> requester_transaction,
+      bool wait = true,
+      CoarseTimePoint deadline = CoarseTimePoint());
 
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
@@ -746,6 +749,8 @@ class YBClient {
 
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
 
+  Result<bool> IsNamespacePartOfCDCSDK(const NamespaceId& namespace_id);
+
   Result<bool> IsBootstrapRequired(
       const TableIds& table_ids,
       const std::optional<xrepl::StreamId>& stream_id = std::nullopt);
@@ -853,16 +858,14 @@ class YBClient {
       RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
       master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
-  Status GetTabletsAndUpdateCache(
-      const YBTableName& table_name,
-      int32_t max_tablets,
-      std::vector<TabletId>* tablet_uuids,
-      std::vector<std::string>* ranges = nullptr,
-      std::vector<master::TabletLocationsPB>* locations = nullptr);
+  Status GetLocationsByTableIdAndUpdateCache(
+      const TableId& table_id,
+      std::vector<master::TabletLocationsPB>& locations);
 
   Status GetTabletsFromTableId(
       const TableId& table_id, int32_t max_tablets,
-      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
+      PartitionListVersion* partition_list_version = nullptr);
 
   Status GetTabletsFromTableId(
       const TableId& table_id,
@@ -1039,6 +1042,10 @@ class YBClient {
 
   Result<bool> CheckIfPitrActive();
 
+  // Returns table id from the table name or lookups the table id from the master and returns it,
+  // putting the result into the scratch.
+  Result<const TableId&> LookupTableId(const YBTableName& table_name, TableId& scratch);
+
   void LookupTabletByKey(
       const YBTablePtr& table,
       const PartitionKey& partition_key,
@@ -1131,6 +1138,9 @@ class YBClient {
   bool RefreshTabletInfoWithConsensusInfo(
       const tserver::TabletConsensusInfoPB& newly_received_info);
 
+  bool RefreshTabletInfoWithConsensusInfo(
+      const tserver::LWTabletConsensusInfoPB& newly_received_info);
+
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
 
   void RequestAbortAllRpcs();
@@ -1163,6 +1173,9 @@ class YBClient {
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
+  FRIEND_TEST(ClientTest, MetaCacheIgnoreNonTargetTable);
+  FRIEND_TEST(ClientTest, MetaCacheAllowsMissingTargetTableForDeletedLocation);
+  FRIEND_TEST(ClientTest, MetaCacheVectorLookupKeepsMainTableLookupUsable);
   FRIEND_TEST(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
   FRIEND_TEST(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
@@ -1200,6 +1213,9 @@ class YBClient {
   YBClient();
 
   ThreadPool* callback_threadpool();
+
+  template <class PB>
+  bool DoRefreshTabletInfoWithConsensusInfo(const PB& newly_received_info);
 
   std::unique_ptr<Data> data_;
 

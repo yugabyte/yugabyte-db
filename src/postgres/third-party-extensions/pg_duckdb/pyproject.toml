@@ -1,0 +1,24 @@
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+addopts = ["--import-mode=prepend", "--showlocals", "--tb=short"]
+pythonpath = ['tests/pyduck']
+timeout = 30
+
+# Make test discovery quicker
+norecursedirs = [
+    '*.egg',
+    '.*',
+    '__pycache__',
+    'venv',
+    'env',
+    'src',
+    'third_party',
+    'include',
+    'sql',
+]
+
+[tool.ruff]
+extend-exclude = ["third_party"]
+
+[tool.ruff.lint]
+extend-select = ["I"]

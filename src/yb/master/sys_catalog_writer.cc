@@ -45,7 +45,7 @@ namespace master {
 namespace {
 
 void SetBinaryValue(Slice binary_value, QLExpressionMsg* expr_pb) {
-  expr_pb->mutable_value()->set_binary_value(binary_value.cdata(), binary_value.size());
+  expr_pb->mutable_value()->dup_binary_value(binary_value);
 }
 
 void SetInt8Value(const int8_t int8_value, QLExpressionMsg* expr_pb) {
@@ -89,7 +89,9 @@ bool IsWrite(QLWriteRequestPB::QLStmtType op_type) {
 }
 
 SysCatalogWriter::SysCatalogWriter(const Schema& schema_with_ids, int64_t leader_term)
-    : schema_with_ids_(schema_with_ids), req_(std::make_unique<tserver::WriteRequestMsg>()),
+    : schema_with_ids_(schema_with_ids),
+      arena_(SharedThreadSafeArena()),
+      req_(arena_->NewArenaObject<tserver::WriteRequestMsg>()),
       leader_term_(leader_term) {
 }
 
@@ -140,7 +142,7 @@ Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
   } else {
     pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_INSERT);
   }
-  pgsql_write->set_table_id(target_table_id);
+  pgsql_write->dup_table_id(target_table_id);
   pgsql_write->set_schema_version(target_schema_version);
 
   RSTATUS_DCHECK_EQ(source_schema.num_hash_key_columns(), 0, InternalError, "Postgres sys catalog "
@@ -173,7 +175,7 @@ Status SysCatalogWriter::DeleteYsqlTableRow(const Schema& schema,
   auto* pgsql_write = req_->add_pgsql_write_batch();
   pgsql_write->set_client(YQL_CLIENT_PGSQL);
   pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_DELETE);
-  pgsql_write->set_table_id(table_id);
+  pgsql_write->dup_table_id(table_id);
   pgsql_write->set_schema_version(schema_version);
 
   RSTATUS_DCHECK_EQ(schema.num_hash_key_columns(), 0, InternalError, "Postgres sys catalog "
@@ -281,7 +283,7 @@ Status EnumerateAllSysCatalogEntries(
   const auto metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(
       kSysCatalogTableColMetadata));
 
-  docdb::DocQLScanSpec spec(schema, nullptr);
+  docdb::DocQLScanSpec spec(schema, /* cond= */ nullptr);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   qlexpr::QLTableRow value_map;

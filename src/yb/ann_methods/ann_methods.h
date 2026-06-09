@@ -25,8 +25,7 @@
 
 namespace yb::ann_methods {
 
-YB_DEFINE_ENUM(
-    ANNMethodKind,
+YB_DEFINE_ENUM(ANNMethodKind,
     (kUsearch)
     (kHnswlib));
 

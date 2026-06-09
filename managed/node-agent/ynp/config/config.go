@@ -307,11 +307,12 @@ func processNestedConfigs(
 }
 
 // GenerateConfigINI generates the INI configuration file based on the provided arguments.
+// Override function can be used to override the INI config after it is loaded.
 // Note: Booleans are printed as True or False string.
 func GenerateConfigINI(
 	ctx context.Context,
 	args *Args,
-) (*INIConfig, error) {
+	overrideFunc func(context.Context, *INIConfig) error) (*INIConfig, error) {
 	var configTemplate string
 	if filepath.IsAbs(args.ConfigIniFile) {
 		configTemplate = args.ConfigIniFile
@@ -358,6 +359,12 @@ func GenerateConfigINI(
 	}
 	// Note: Parser returns map[interface{}]interface{} for values.
 	configOutput.values = FixParsedConfigMap(configOutput.values)
+	// Override the config after it is parsed, but before nested configs are processed.
+	if overrideFunc != nil {
+		if err = overrideFunc(ctx, configOutput); err != nil {
+			return nil, err
+		}
+	}
 	return processNestedConfigs(configOutput)
 }
 

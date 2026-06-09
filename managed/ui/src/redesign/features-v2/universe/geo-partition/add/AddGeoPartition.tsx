@@ -15,8 +15,12 @@ import {
 } from './AddGeoPartitionContext';
 import { SwitchGeoPartitionSteps } from './SwitchGeoPartitionSteps';
 import {
+  computeIsNewGeoPartitionFromUniverse,
   extractRegionsAndNodeDataFromUniverse,
+  extractRegionsFromPartitionPlacement,
+  getDefaultPrimaryPartitionSpec,
   getExistingGeoPartitions,
+  navigateToUniverseSettingsFromWizard,
   useGetSteps
 } from './AddGeoPartitionUtils';
 import { GeoPartitionInfoModal } from './GeoPartitionInfoModal';
@@ -36,7 +40,6 @@ const GeoPartitionRoot = styled('div')(() => ({
 }));
 
 interface AddGeoPartitionProps {
-  isNewGeoPartition?: boolean;
   params: {
     uuid?: string;
   };
@@ -62,11 +65,16 @@ export const AddGeoPartition: FC<AddGeoPartitionProps> = (props) => {
       onSuccess(data) {
         addGeoPartitionMethods.setUniverseData(data);
         const existingGeoParitionsCount = getExistingGeoPartitions(data).length;
+        const defaultPartition = getDefaultPrimaryPartitionSpec(data);
         addGeoPartitionMethods.updateGeoPartition({
           geoPartition: {
             ...geoPartitions[0],
-            name: `Geo Partition ${existingGeoParitionsCount + 1}`,
-            tablespaceName: `Tablespace ${existingGeoParitionsCount + 1}`
+            name:
+              defaultPartition?.name ??
+              `Geo Partition ${existingGeoParitionsCount + 1}`,
+            tablespaceName:
+              defaultPartition?.tablespace_name ??
+              `Tablespace_${existingGeoParitionsCount + 1}`
           } as GeoPartition,
           activeGeoPartitionIndex: 0
         });
@@ -79,14 +87,17 @@ export const AddGeoPartition: FC<AddGeoPartitionProps> = (props) => {
     enabled: isSuccess && !!provider,
     onSuccess(providerRegionList) {
       addGeoPartitionMethods.setUniverseData(universeData!);
-      const data = extractRegionsAndNodeDataFromUniverse(universeData!, providerRegionList);
+      const defaultPartition = getDefaultPrimaryPartitionSpec(universeData!);
+      const regions = defaultPartition
+        ? extractRegionsFromPartitionPlacement(defaultPartition, providerRegionList)
+        : extractRegionsAndNodeDataFromUniverse(universeData!, providerRegionList).regions;
 
       addGeoPartitionMethods.updateGeoPartition({
         geoPartition: {
           ...geoPartitions[0],
           resilience: {
             ...geoPartitions[0].resilience,
-            regions: data.regions
+            regions
           } as any
         },
         activeGeoPartitionIndex: 0
@@ -101,10 +112,7 @@ export const AddGeoPartition: FC<AddGeoPartitionProps> = (props) => {
   }, 0);
 
   useEffect(() => {
-    const isGeoPartitionPresent = universeData?.spec?.clusters?.some((cluster) => {
-      return cluster.partitions_spec?.length ?? false;
-    });
-    addGeoPartitionMethods.setIsNewGeoPartition(!isGeoPartitionPresent);
+    addGeoPartitionMethods.setIsNewGeoPartition(computeIsNewGeoPartitionFromUniverse(universeData));
   }, [universeData]);
 
   if (isUniverseDataLoading) return <YBLoadingCircleIcon />;
@@ -136,9 +144,7 @@ export const AddGeoPartition: FC<AddGeoPartitionProps> = (props) => {
           </div>
           <Close
             style={{ cursor: 'pointer' }}
-            onClick={() => {
-              window.location.href = `/universes/${universeUUID}/settings`;
-            }}
+            onClick={() => navigateToUniverseSettingsFromWizard(universeData)}
           />
         </Grid>
         <Grid container spacing={2}>

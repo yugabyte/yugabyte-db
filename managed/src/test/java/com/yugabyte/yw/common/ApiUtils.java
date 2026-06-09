@@ -506,6 +506,16 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet = new HashSet<>();
         userIntent.numNodes = userIntent.replicationFactor;
         UUID primaryClusterUUID = universeDetails.getPrimaryCluster().uuid;
+        List<UUID> azUuids =
+            userIntent.regionList == null
+                ? Collections.emptyList()
+                : userIntent.regionList.stream()
+                    .flatMap(
+                        uuid ->
+                            Region.getOrBadRequest(uuid).getAllZones().stream()
+                                .filter(AvailabilityZone::isActive))
+                    .map(az -> az.getUuid())
+                    .toList();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node =
               getDummyNodeDetails(
@@ -516,10 +526,10 @@ public class ApiUtils {
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.upsertPrimaryCluster(userIntent, null, null);
-
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
         node.placementUuid = primaryClusterUUID;
+
         universeDetails.nodeDetailsSet.add(node);
         universeDetails.nodePrefix = "host";
 
@@ -528,11 +538,18 @@ public class ApiUtils {
             getDummyNodeDetailSet(readonlyClusterUUID, 0, readOnlyNodes);
         for (NodeDetails roNode : readReplicaNodesSet) {
           roNode.state = NodeState.Live;
+          roNode.cloudInfo.cloud = userIntent.providerType.name();
         }
 
         universeDetails.nodeDetailsSet.addAll(readReplicaNodesSet);
         universeDetails.upsertCluster(userIntent, null, null, readonlyClusterUUID);
-
+        int azIdx = 0;
+        for (NodeDetails nodeDetails : universeDetails.nodeDetailsSet) {
+          if (azUuids.size() > azIdx) {
+            nodeDetails.azUuid = azUuids.get(azIdx);
+            azIdx = (azIdx + 1) % azUuids.size();
+          }
+        }
         universe.setUniverseDetails(universeDetails);
       }
     };

@@ -1,0 +1,16 @@
+
+-- Prepare source table
+SET duckdb.force_execution = off;
+CREATE TABLE tbl (id int, d float, c text);
+INSERT INTO tbl SELECT i, 0.1, 'hello world' FROM generate_series(1, 1000000) i;
+
+-- do CTAS using duckdb
+SET duckdb.force_execution = on;
+SET duckdb.max_workers_per_postgres_scan = 0;
+SET duckdb.threads = 4;
+CREATE TABLE tbl2 AS SELECT * FROM tbl;
+SELECT count(*) FROM tbl2;
+
+-- TODO: add case for INSERT INTO <dest> SELECT * FROM <src>
+
+DROP TABLE tbl, tbl2;

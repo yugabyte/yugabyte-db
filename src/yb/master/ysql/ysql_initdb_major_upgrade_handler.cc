@@ -48,11 +48,19 @@ DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(ysql_enable_auth);
 DECLARE_int32(master_ts_rpc_timeout_ms);
 
+DEFINE_test_flag(int32, master_min_live_tservers_before_initdb, 0,
+    "If positive, the master waits for at least this many tablet servers to "
+    "register before launching initdb in RunNewClusterGlobalInitDB. Used by "
+    "MiniYBCluster to avoid a startup race in which the postgres bootstrap "
+    "inside initdb calls CreateTable on the master before any tablet servers "
+    "are registered, which causes the bootstrap to fail with "
+    "\"Not enough live tablet servers ...\" and the master to LOG(FATAL) in "
+    "SetInitDbDone. Production code path is unchanged at the default value 0.");
+
 DEFINE_RUNTIME_uint32(ysql_upgrade_postgres_port, 5434,
   "Port used to start the postgres process for ysql upgrade");
 
-DEFINE_test_flag(
-    string, fail_ysql_catalog_upgrade_state_transition_from, "",
+DEFINE_test_flag(string, fail_ysql_catalog_upgrade_state_transition_from, "",
     "When set fail the transition to the provided state");
 
 DEFINE_RUNTIME_string(ysql_major_upgrade_user, "yugabyte_upgrade",
@@ -329,7 +337,46 @@ Status YsqlInitDBAndMajorUpgradeHandler::RunOperationAsync(std::function<void()>
   return status;
 }
 
+void YsqlInitDBAndMajorUpgradeHandler::WaitForTServersBeforeInitDb() {
+  if (FLAGS_TEST_master_min_live_tservers_before_initdb <= 0) {
+    return;
+  }
+
+  // Generous upper bound on how long to spin waiting for tservers. MiniYBCluster tservers
+  // normally register within a few seconds (~10-20s under ASAN). 60s leaves plenty of headroom
+  // for slow builds while still letting test teardown make progress if a tserver crashes or
+  // otherwise fails to come up -- on timeout we fall through to the regular initdb-failure
+  // path rather than hanging the master thread pool indefinitely.
+  const auto kTserverRegisterWaitTimeout = MonoDelta::FromSeconds(60);
+  // Polling interval for the wait loop below. 100ms is fine-grained enough that the master
+  // proceeds promptly once tservers register, while keeping CPU cost negligible.
+  const auto kTserverRegisterPollInterval = MonoDelta::FromMilliseconds(100);
+
+  const size_t required =
+      static_cast<size_t>(FLAGS_TEST_master_min_live_tservers_before_initdb);
+  const auto deadline = MonoTime::Now() + kTserverRegisterWaitTimeout;
+  LOG(INFO) << "TEST_master_min_live_tservers_before_initdb=" << required
+            << ": waiting for tablet servers to register before running initdb";
+  while (master_.ts_manager()->NumLiveDescriptors() < required) {
+    if (MonoTime::Now() > deadline) {
+      LOG(WARNING) << "Timed out after " << kTserverRegisterWaitTimeout << " waiting for "
+                   << required << " tablet servers to register (only "
+                   << master_.ts_manager()->NumLiveDescriptors()
+                   << " registered); proceeding with initdb anyway. "
+                   << "It will likely fail with \"Not enough live tablet servers ...\". "
+                   << "Falling through avoids hanging the master thread pool during test "
+                   << "teardown if a tserver fails to come up.";
+      break;
+    }
+    SleepFor(kTserverRegisterPollInterval);
+  }
+  LOG(INFO) << master_.ts_manager()->NumLiveDescriptors()
+            << " live tablet servers registered, proceeding with initdb";
+}
+
 void YsqlInitDBAndMajorUpgradeHandler::RunNewClusterGlobalInitDB(const LeaderEpoch& epoch) {
+  WaitForTServersBeforeInitDb();
+
   auto status =
       InitDBAndSnapshotSysCatalog(/*db_name_to_oid_list=*/{}, /*is_major_upgrade=*/false, epoch);
   ERROR_NOT_OK(
@@ -395,6 +442,17 @@ Status YsqlInitDBAndMajorUpgradeHandler::UpdateCatalogVersions(const LeaderEpoch
       sys_catalog_.DeleteAllYsqlCatalogTableRows({kPgYbCatalogVersionTableId}, epoch.leader_term));
   RETURN_NOT_OK(sys_catalog_.CopyPgsqlTables(
       {kPgYbCatalogVersionTableIdPriorVersion}, {kPgYbCatalogVersionTableId}, epoch.leader_term));
+
+  // pg_upgrade may have created invalidation messages in the current version's
+  // pg_yb_invalidation_messages table that correspond to catalog version bumps during the upgrade.
+  // Since we just reset the catalog versions to their pre-upgrade values, these invalidation
+  // messages are stale and would cause message_list mismatches when the master switches from
+  // reading the prior version table to the current version table at finalization.
+  const auto pg_yb_inval_messages_table_id =
+      GetPgsqlTableId(kTemplate1Oid, kPgYbInvalidationMessagesTableOid);
+  RETURN_NOT_OK(sys_catalog_.DeleteAllYsqlCatalogTableRows(
+      {pg_yb_inval_messages_table_id}, epoch.leader_term));
+
   return Status::OK();
 }
 

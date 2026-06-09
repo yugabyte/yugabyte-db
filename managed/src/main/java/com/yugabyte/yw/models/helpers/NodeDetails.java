@@ -13,6 +13,7 @@ import static com.yugabyte.yw.common.NodeActionType.REMOVE;
 import static com.yugabyte.yw.common.NodeActionType.REPLACE;
 import static com.yugabyte.yw.common.NodeActionType.REPROVISION;
 import static com.yugabyte.yw.common.NodeActionType.START;
+import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
 import static com.yugabyte.yw.common.NodeActionType.STOP;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -128,7 +129,7 @@ public class NodeDetails {
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
     // Setting state to Live must be towards the end as ADD cannot be an option here.
-    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT, REPLACE, DECOMMISSION),
+    Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT, REPLACE, DECOMMISSION, START_MASTER),
     // Set when node is about to enter the stopped state.
     // The actions in Live state should apply because of the transition from Live to Stopping.
     Stopping(STOP, REMOVE),
@@ -136,7 +137,7 @@ public class NodeDetails {
     // The actions in Stopped state should apply because of the transition from Stopped to Starting.
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped(START, REMOVE, QUERY, REPROVISION),
+    Stopped(START, REMOVE, QUERY, REPROVISION, DECOMMISSION, REPLACE),
     // Nodes are never set to Unreachable, this is just one of the possible return values in a
     // status query.
     Unreachable(),

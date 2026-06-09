@@ -149,6 +149,14 @@ YsqlMajorCatalogUpgradeInfoPB::State YsqlCatalogConfig::GetMajorCatalogUpgradeSt
   return pb.ysql_major_catalog_upgrade_info().state();
 }
 
+std::optional<YsqlMajorCatalogUpgradeInfoPB> YsqlCatalogConfig::GetMajorCatalogUpgradePB() const {
+  auto [l, pb] = LockForRead();
+  if (!pb.has_ysql_major_catalog_upgrade_info()) {
+    return std::nullopt;
+  }
+  return pb.ysql_major_catalog_upgrade_info();
+}
+
 Status YsqlCatalogConfig::GetMajorCatalogUpgradePreviousError() const {
   auto [l, pb] = LockForRead();
   Status status;

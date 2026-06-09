@@ -1,0 +1,28 @@
+title: ImageBundleDetails
+description: Image bundle details (same fields as V1 ImageBundleDetails JSON).
+type: object
+properties:
+  global_yb_image:
+    description: Default YugabyteDB machine image identifier for this bundle.
+    type: string
+  arch:
+    description: CPU architecture this bundle applies to.
+    type: string
+    enum:
+      - x86_64
+      - aarch64
+  regions:
+    description: Per-region YugabyteDB image identifiers keyed by region code.
+    type: object
+    additionalProperties:
+      $ref: "./ImageBundleInfo.yaml"
+  ssh_user:
+    description: SSH username for nodes provisioned from this bundle.
+    type: string
+  ssh_port:
+    description: SSH port for nodes provisioned from this bundle.
+    type: integer
+    format: int32
+  use_imdsv2:
+    description: Whether to require AWS IMDSv2 on supported clouds.
+    type: boolean

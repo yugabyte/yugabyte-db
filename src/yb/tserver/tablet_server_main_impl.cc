@@ -151,6 +151,9 @@ Result<std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>> CreateYsql
 
   RETURN_NOT_OK(
       ysql_conn_mgr_conf.SetSslConf(tablet_server.options(), *tablet_server.fs_manager()));
+#ifdef __linux__
+  ysql_conn_mgr_conf.cgroup = TServerCgroupManager::SystemHighCgroup();
+#endif
 
   if (FLAGS_use_client_to_server_encryption && !FLAGS_ysql_conn_mgr_use_unix_conn)
     LOG(FATAL) << "Client to server encryption can not be enabled "
@@ -287,7 +290,12 @@ struct Services {
 // locally inside StartServices. This way partially initialized services do not have their
 // destructors called if StartServices returns early due to an error.
 Status StartServices(Services& services) {
-  services.termination_monitor = TerminationMonitor::Create();
+  Cgroup* system_high_cgroup = nullptr;
+#ifdef __linux__
+  system_high_cgroup = TServerCgroupManager::SystemHighCgroup();
+#endif
+
+  services.termination_monitor = TerminationMonitor::Create(system_high_cgroup);
 
   SetProxyAddresses();
 
@@ -324,11 +332,13 @@ Status StartServices(Services& services) {
         FLAGS_pgsql_proxy_bind_address,
         tablet_server_options.fs_opts.data_paths.front() + "/pg_data");
     RETURN_NOT_OK(pg_process_conf_result);
-    RETURN_NOT_OK(docdb::DocPgInit());
+    RETURN_NOT_OK(docdb::DocPgInit(pgwrapper::PgWrapper::GetPostgresExecutablePath()));
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options.master_addresses_flag;
     RETURN_NOT_OK(pg_process_conf.SetSslConf(
         services.tablet_server->options(), *services.tablet_server->fs_manager()));
+    pg_process_conf.cgroup = system_high_cgroup;
+
     LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
               << ", port " << pg_process_conf.pg_port;
 
@@ -496,7 +506,8 @@ int TabletServerMain(int argc, char** argv) {
 
 #ifdef __linux__
   if (TServerCgroupManagementEnabled()) {
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(TServerCgroupManager::CgroupManagementInit(
+        /*is_tserver=*/true));
   }
 #endif
 

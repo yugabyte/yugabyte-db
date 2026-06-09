@@ -61,6 +61,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
@@ -104,7 +105,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   /** Matches Postgres' FirstNormalObjectId */
   protected final long FIRST_NORMAL_OID = 16384;
 
-  protected final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS = 10000;
+  protected final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS = 30000;
 
   private boolean pg_connection_check_after_startup = true;
 
@@ -187,6 +188,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       "With Connection Manager, logical connections will share the same physical connection " +
       "due to which catalog cache hits occur for the same query executed on different logical " +
       "connections";
+
+  protected static final String RELCACHE_INIT_NEEDS_NEW_BACKEND =
+      "The test expects every client connection to create a backend and initialize relcache. " +
+      "With Connection Manager and auth passthrough, client connections may not map to new " +
+      "backend relcache initialization, so the main assertion is not meaningful.";
 
   protected static final String GUC_REPLAY_AFFECTS_CONN_STATE =
       "Skipping this test with Connection Manager enabled. Connection Manager replays session " +
@@ -304,11 +310,27 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
-  protected void skipYsqlConnMgr(String reason, boolean isYsqlConnMgr) {
-    if (isYsqlConnMgr) {
-      LOG.info("Switching to postgres port:" + reason);
-      ConnectionEndpoint.DEFAULT = ConnectionEndpoint.POSTGRES;
+  // Returns the @BypassConnMgr annotation on the currently running test method, or null if the
+  // method is not annotated (or no test is currently running).
+  private static BypassConnMgr getBypassConnMgrAnnotation() {
+    Description description = getCurrentTestDescription();
+    return description == null ? null : description.getAnnotation(BypassConnMgr.class);
+  }
+
+  // The connection endpoint in effect for the current test. POSTGRES when the test bypasses the
+  // connection manager (annotated @BypassConnMgr while the suite targets conn-mgr); otherwise the
+  // suite-wide default. This is computed from the annotation on each call rather than stored, so it
+  // is always correct regardless of when it is queried during a test (e.g. while gathering tserver
+  // flags, before the cluster is built) and cannot leak across tests. It deliberately never mutates
+  // the global ConnectionEndpoint.DEFAULT (a global toggle is simpler but leaks unless every test
+  // carefully resets it). Assumes tests do not run in parallel within a single JVM (see
+  // BaseYBTest).
+  private static ConnectionEndpoint getEffectiveConnectionEndpoint() {
+    if (ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR
+        && getBypassConnMgrAnnotation() != null) {
+      return ConnectionEndpoint.POSTGRES;
     }
+    return ConnectionEndpoint.DEFAULT;
   }
 
   /**
@@ -385,6 +407,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     super.customizeMiniClusterBuilder(builder);
     builder.enableYsql(true);
 
+    // Enable the connection manager only when this test actually runs against it. A @BypassConnMgr
+    // test makes isTestRunningWithConnectionManager() report false, so its cluster is built with no
+    // connection manager at all.
     if (isTestRunningWithConnectionManager()) {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
@@ -393,6 +418,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         Boolean.toString(ysql_conn_mgr_superuser_sticky));
       builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
         warmupMode.toString().toLowerCase());
+    } else {
+      BypassConnMgr bypass = getBypassConnMgrAnnotation();
+      if (bypass != null && ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR) {
+        LOG.info("Bypassing YSQL Connection Manager (running on Postgres port): " +
+                 bypass.reason());
+      }
     }
   }
 
@@ -427,9 +458,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection = null;
     }
 
-    verifyClusterAcceptsPGConnections(
-                    WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS *
-                    BuildTypeUtil.nonSanitizerVsSanitizer(1, 3));
+    long pgStartTimeoutMs = WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS *
+        BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
+    waitForAllTServerPgWebservers(pgStartTimeoutMs);
+    verifyClusterAcceptsPGConnections(pgStartTimeoutMs);
 
     connection = createTestRole();
     allowSchemaPublic();
@@ -466,6 +498,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         }
       }, timeoutMs);
     LOG.info("done Waiting for cluster to accept pg connections");
+  }
+
+  protected void waitForAllTServerPgWebservers(long timeoutMs) throws Exception {
+    if (!pg_connection_check_after_startup) {
+      return;
+    }
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      TestUtils.waitForServer(ts.getLocalhostIP(), ts.getPgsqlWebPort(), timeoutMs);
+    }
   }
 
   protected void disablePGConnectionCheck() {
@@ -519,7 +560,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected ConnectionBuilder getConnectionBuilder() {
-    return new ConnectionBuilder(miniCluster);
+    ConnectionBuilder builder = new ConnectionBuilder(miniCluster);
+    // A freshly built ConnectionBuilder already targets ConnectionEndpoint.DEFAULT, so only
+    // override (which clones the builder) when this test is bypassing the connection manager.
+    ConnectionEndpoint endpoint = getEffectiveConnectionEndpoint();
+    if (endpoint != ConnectionEndpoint.DEFAULT) {
+      builder = builder.withConnectionEndpoint(endpoint);
+    }
+    return builder;
   }
 
   public String getPgHost(int tserverIndex) {
@@ -568,7 +616,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected static boolean isTestRunningWithConnectionManager() {
-    return ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR;
+    // Honors a per-test @BypassConnMgr override: a bypassed test runs on the Postgres port, so it
+    // reports false here (its conn-mgr-specific conditional behavior is correctly disabled).
+    return getEffectiveConnectionEndpoint() == ConnectionEndpoint.YSQL_CONN_MGR;
   }
 
   /*

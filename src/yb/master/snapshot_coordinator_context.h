@@ -89,6 +89,16 @@ class SnapshotCoordinatorContext {
 
   virtual void AddPendingBackFill(const TableId& id) = 0;
 
+  // Advance per-DB OID counters past any in-use OIDs (including hidden tables).
+  // Used after PITR restore to prevent OID collisions with hidden tables.
+  //
+  // Note: PITR does NOT need to invalidate tserver OID caches. The caches are
+  // only inconsistent with master's allocator after ysql_dump paths (backup/
+  // restore, clone) that pin OIDs via binary_upgrade_set_next_heap_relfilenode.
+  // PITR restores sys catalog state via Raft; all OIDs in tserver caches were
+  // issued by the master allocator and remain consistent.
+  virtual Status AdvanceOidCounters(const NamespaceId& namespace_id) = 0;
+
   virtual ~SnapshotCoordinatorContext() = default;
 
   virtual PitrCount pitr_count() const = 0;

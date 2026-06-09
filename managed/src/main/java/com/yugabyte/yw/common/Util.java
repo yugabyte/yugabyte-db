@@ -21,6 +21,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.logging.LogUtil;
@@ -115,7 +116,6 @@ import play.libs.Json;
 
 @Slf4j
 public class Util {
-  private static final int INITIAL_DELAY_MS = 500;
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
 
   public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
@@ -153,6 +153,14 @@ public class Util {
 
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";
 
+  /**
+   * Conservative safe-set for string values that are interpolated directly into shell or sed
+   * command fragments. Matches only ASCII letters, digits, dot, underscore, and hyphen. This is a
+   * security check (preventing shell-quote escape, command injection, and sed metacharacters), not
+   * a schema rule -- it must not be relaxed without auditing every interpolation site.
+   */
+  public static final Pattern SHELL_SAFE_IDENTIFIER = Pattern.compile("[A-Za-z0-9._-]+");
+
   public static final double EPSILON = 0.000001d;
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
@@ -170,6 +178,9 @@ public class Util {
   // "allowed_preview_flags_csv".
   public static final String CONNECTION_POOLING_DB_PREVIEW_FLAG_PREVIEW_VERSION = "2.25.1.0-b184";
   public static final String CONNECTION_POOLING_DB_PREVIEW_FLAG_STABLE_VERSION = "2024.2.1.0-b185";
+
+  public static final String MULTITENANCY_SUPPORTED_DB_VERSION_PREVIEW = "2.29.0.0-b650";
+  public static final String MULTITENANCY_SUPPORTED_DB_VERSION_STABLE = "2026.1.0.0-b0";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
@@ -444,6 +455,15 @@ public class Util {
   // Validate the universe name pattern.
   public static boolean isValidUniverseNameFormat(String univName) {
     return univName.matches(UNIVERSE_NAME_REGEX);
+  }
+
+  /**
+   * Whether the given value is safe to interpolate verbatim into a shell or sed command fragment
+   * (e.g., a single-quoted s-command separator). Returns false for null. Tighter than any product
+   * schema rule by design -- see {@link #SHELL_SAFE_IDENTIFIER}.
+   */
+  public static boolean isShellSafeIdentifier(String value) {
+    return value != null && SHELL_SAFE_IDENTIFIER.matcher(value).matches();
   }
 
   // Helper API to create a CSV of any keys present in existing map but not in new
@@ -996,6 +1016,32 @@ public class Util {
     }
   }
 
+  public static boolean configureCgroup(
+      Provider provider, boolean isForProvision, RuntimeConfGetter confGetter) {
+    return configureCgroup(null, provider, isForProvision, confGetter);
+  }
+
+  public static boolean configureCgroup(
+      @Nullable UserIntent userIntent,
+      Provider provider,
+      boolean isForProvision,
+      RuntimeConfGetter confGetter) {
+    if (userIntent != null && userIntent.isCpuCgroupConfigured()) {
+      return true;
+    }
+    if (provider.getCloudCode().equals(CloudType.onprem)
+        && provider.getDetails().getCloudInfo().onprem.enableMultiTenancy) {
+      return true;
+    }
+    if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+      return false;
+    }
+    if (isForProvision && !(provider.getCloudCode().equals(CloudType.onprem))) {
+      return confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration);
+    }
+    return false;
+  }
+
   /**
    * @param ybServerPackage
    * @return pair of string containing osType and archType of ybc-server-package
@@ -1159,13 +1205,92 @@ public class Util {
   }
 
   public static boolean isKubernetesBasedUniverse(UniverseDefinitionTaskParams params) {
-    boolean isKubernetesUniverse =
-        params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    boolean isKubernetesUniverse = false;
+    if (params.getPrimaryCluster() != null) {
+      isKubernetesUniverse =
+          params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    }
     for (Cluster cluster : params.getReadOnlyClusters()) {
       isKubernetesUniverse =
           isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
     }
     return isKubernetesUniverse;
+  }
+
+  public static UUID getSingleProviderUUID(Cluster cluster) {
+    return getSingleProviderUUID(cluster.userIntent);
+  }
+
+  public static UUID getSingleProviderUUID(UserIntent userIntent) {
+    return UUID.fromString(userIntent.provider);
+  }
+
+  public static Provider getSingleProvider(Cluster cluster) {
+    return getSingleProvider(cluster.userIntent);
+  }
+
+  public static Provider getSingleProvider(UserIntent userIntent) {
+    return Provider.getOrBadRequest(getSingleProviderUUID(userIntent));
+  }
+
+  public static Set<NodeDetails> filterByProviderType(
+      Collection<NodeDetails> nodes, Collection<Cluster> clusters, CloudType expectedType) {
+    Map<UUID, Cluster> clusterMap =
+        clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
+    return nodes.stream()
+        .filter(
+            n -> {
+              Cluster cluster = clusterMap.get(n.placementUuid);
+              return cluster.getProviderCloudType(n) == expectedType;
+            })
+        .collect(Collectors.toSet());
+  }
+
+  public static Function<NodeDetails, Provider> getProviderGetter(Universe universe) {
+    return getProviderGetter(universe.getUniverseDetails());
+  }
+
+  public static Function<NodeDetails, Provider> getProviderGetter(
+      UniverseDefinitionTaskParams params) {
+    // Caching by AZ.
+    Map<UUID, Provider> providerMap = new HashMap<>();
+    return (n) ->
+        providerMap.computeIfAbsent(
+            n.azUuid, uuid -> getProviderForNode(n, params.getClusterByUuid(n.placementUuid)));
+  }
+
+  public static Function<NodeDetails, Provider> getProviderGetter(
+      UniverseDefinitionTaskParams.Cluster cluster) {
+    // Caching by AZ.
+    Map<UUID, Provider> providerMap = new HashMap<>();
+    return (n) -> providerMap.computeIfAbsent(n.azUuid, uuid -> getProviderForNode(n, cluster));
+  }
+
+  public static Set<UUID> getAllProviderUUIDs(Universe universe) {
+    return universe.getUniverseDetails().clusters.stream()
+        .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+        .collect(Collectors.toSet());
+  }
+
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Universe universe) {
+    return getProviderForNode(nodeDetails, universe.getCluster(nodeDetails.placementUuid));
+  }
+
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Cluster cluster) {
+    return getSingleProvider(cluster);
+  }
+
+  public static boolean checkAnyProviderType(
+      UserIntent userIntent, Predicate<CloudType> predicate) {
+    return userIntent.getAllCloudTypes().stream().filter(predicate).findFirst().isPresent();
+  }
+
+  public static CloudType getSingleProviderType(Cluster cluster) {
+    return getSingleProviderType(cluster.userIntent);
+  }
+
+  public static CloudType getSingleProviderType(UserIntent userIntent) {
+    return userIntent.providerType;
   }
 
   public static String getYbcNodeIp(Universe universe) {
@@ -1732,5 +1857,19 @@ public class Util {
                     .filter(e -> FILTERED_INSTANCE_KEYS_FOR_LOGGING.contains(e.getKey()))
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Check if childPath is the same as parentPath or a descendant of parentPath.
+   *
+   * @param parentPath the parent path
+   * @param childPath the child path
+   * @return
+   */
+  public static boolean isPathSameOrDescendant(String parentPath, String childPath) {
+    // Normalize to remove redundant elements like "." and ".."
+    Path normalizedParent = Paths.get(parentPath).toAbsolutePath().normalize();
+    Path normalizedChild = Paths.get(childPath).toAbsolutePath().normalize();
+    return normalizedChild.startsWith(normalizedParent) || normalizedChild.equals(normalizedParent);
   }
 }

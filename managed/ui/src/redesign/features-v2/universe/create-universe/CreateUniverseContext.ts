@@ -88,7 +88,7 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
   instanceSettings: {
     arch: ArchitectureType.X86_64,
     imageBundleUUID: '',
-    useSpotInstance: true,
+    useSpotInstance: false,
     instanceType: null,
     masterInstanceType: null,
     deviceInfo: null,
@@ -102,7 +102,8 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
   securitySettings: {
     enableClientToNodeEncryption: false,
     enableNodeToNodeEncryption: false,
-    enableIPV6: false
+    enableIPV6: false,
+    enableExposingService: false
   },
   resilienceType: ResilienceType.REGULAR,
   proxySettings: {
@@ -178,9 +179,9 @@ export type CreateUniverseContextMethods = [
   ReturnType<typeof createUniverseFormMethods>
 ];
 
-// Navigate between pages
+// Navigate between pages. Nodes step resolves `true` when validation passed and submit ran; `false` when invalid.
 export type StepsRef = {
-  onNext: () => Promise<void>;
+  onNext: () => void | Promise<boolean | void>;
   onPrev: () => void;
   setValue?: (name: string, value: unknown) => void;
 };

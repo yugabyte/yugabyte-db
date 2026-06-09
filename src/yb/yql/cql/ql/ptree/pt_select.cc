@@ -22,7 +22,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common.messages.h"
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
@@ -138,8 +138,8 @@ class Selectivity {
     MCIdToIndexMap id_to_idx(memctx);
     for (size_t i = 0; i < index_info.key_column_count(); i++) {
       // Map the column id if the index expression is just a column-ref.
-      if (index_info.column(i).colexpr.expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET ||
-          index_info.column(i).colexpr.expr_case() == QLExpressionPB::ExprCase::kColumnId) {
+      if (index_info.column(i).colexpr->expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET ||
+          index_info.column(i).colexpr->expr_case() == QLExpressionPB::ExprCase::kColumnId) {
         id_to_idx.emplace(index_info.column(i).indexed_column_id, i);
       }
     }

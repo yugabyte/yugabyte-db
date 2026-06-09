@@ -21,13 +21,13 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
@@ -93,7 +93,10 @@ public class RBACControllerTest extends FakeDBApplication {
     mapper = new ObjectMapper();
 
     // Set the new RBAC runtime flag to true to allow controller method calls.
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.allowSuperadminUserGroupMapping.getKey(), "false");
   }
 
   @After
@@ -174,8 +177,7 @@ public class RBACControllerTest extends FakeDBApplication {
     String uri =
         String.format(
             "/api/customers/%s/rbac/role_binding/%s", customerUUID.toString(), userUUID.toString());
-    return doRequestWithAuthTokenAndBody(
-        "POST", String.format(uri, customerUUID.toString()), user.createAuthToken(), bodyJson);
+    return doRequestWithAuthTokenAndBody("POST", uri, user.createAuthToken(), bodyJson);
   }
 
   /* ==== API Tests ==== */
@@ -601,6 +603,27 @@ public class RBACControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testSuperAdminMayAssignSuperAdminRoleBindings() throws IOException {
+    Users targetUser = ModelFactory.testUser(customer, "target_sa@test.com", Users.Role.ReadOnly);
+
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.allowSuperadminUserGroupMapping.getKey(), "true");
+
+    Role superAdminRole = Role.get(customer.getUuid(), Users.Role.SuperAdmin.name());
+    JsonNode body =
+        Json.newObject()
+            .set(
+                "roleResourceDefinitions",
+                Json.newArray()
+                    .add(
+                        Json.newObject().put("roleUUID", superAdminRole.getRoleUUID().toString())));
+
+    Result result = setRoleBindings(customer.getUuid(), targetUser.getUuid(), body);
+    assertEquals(OK, result.status());
+  }
+
+  @Test
   public void testSetRoleBindingsForLdapUser() {
     // Set the user to LDAP user.
     user.setUserType(UserType.ldap);
@@ -611,6 +634,29 @@ public class RBACControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> setRoleBindings(customer.getUuid(), user.getUuid(), null));
     assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testSetRoleBindingsForLdapUserWhenSuperAdminOverrideEnabled() throws IOException {
+    user.setUserType(UserType.ldap);
+    user.setLdapSpecifiedRole(true);
+    user.save();
+
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.allowSuperadminUserGroupMapping.getKey(), "true");
+
+    Role superAdminRole = Role.get(customer.getUuid(), "SuperAdmin");
+    JsonNode body =
+        Json.newObject()
+            .set(
+                "roleResourceDefinitions",
+                Json.newArray()
+                    .add(
+                        Json.newObject().put("roleUUID", superAdminRole.getRoleUUID().toString())));
+
+    Result result = setRoleBindings(customer.getUuid(), user.getUuid(), body);
+    assertEquals(OK, result.status());
   }
 
   @Test

@@ -13,13 +13,11 @@ import os
 import re
 import stat
 import socket
-import ssl
 import tempfile
 import time
 
 import yaml
 from enum import Enum
-from ybops.cloud.common.ansible import AnsibleProcess
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path)
@@ -29,6 +27,74 @@ from ybops.common.exceptions import YBOpsRecoverableError
 from ybops.utils import remote_exec_command
 from cryptography import x509
 from cryptography.x509.oid import (NameOID, ExtensionOID)
+
+
+def _dnsname_match(dn, hostname):
+    """RFC 6125 section 6.4.3 compliant DNS name matching.
+
+    Only a single wildcard in the left-most label is supported (e.g. *.example.com).
+    Partial wildcards (www*), multiple wildcards, sole wildcards (*), and wildcards
+    in any label other than the left-most are all rejected.
+    """
+    if not dn:
+        return False
+    if dn.count('*') == 0:
+        return dn.lower() == hostname.lower()
+    if dn.count('*') > 1:
+        return False
+    dn_leftmost, sep, dn_remainder = dn.partition('.')
+    if not sep or dn_leftmost != '*' or '*' in dn_remainder:
+        return False
+    hostname_leftmost, sep, hostname_remainder = hostname.partition('.')
+    if not hostname_leftmost or not sep:
+        return False
+    return dn_remainder.lower() == hostname_remainder.lower()
+
+
+def _match_hostname(cert, hostname):
+    """Replacement for ssl.match_hostname, removed in Python 3.12.
+
+    Accepts a cert dict in the same format ssl.match_hostname expected:
+      {'subjectAltName': (('DNS', '*.example.com'), ('IP Address', '1.2.3.4'), ...)}
+      {'subject': ((('commonName', 'example.com'),),)}
+    DNS wildcard matching follows RFC 6125 section 6.4.3 via _dnsname_match.
+    IP address matching uses socket.inet_pton for exact binary comparison.
+    Returns True if matched, False otherwise.
+    """
+    try:
+        host_ip = socket.inet_pton(socket.AF_INET, hostname)
+    except OSError:
+        try:
+            host_ip = socket.inet_pton(socket.AF_INET6, hostname)
+        except (OSError, AttributeError):
+            host_ip = None
+
+    dnsnames = []
+    for key, value in cert.get('subjectAltName', ()):
+        if key == 'DNS':
+            if host_ip is None and _dnsname_match(value, hostname):
+                return True
+            dnsnames.append(value)
+        elif key == 'IP Address':
+            if host_ip is not None:
+                try:
+                    if socket.inet_pton(socket.AF_INET, value.rstrip()) == host_ip:
+                        return True
+                except OSError:
+                    try:
+                        if socket.inet_pton(socket.AF_INET6, value.rstrip()) == host_ip:
+                            return True
+                    except (OSError, AttributeError):
+                        pass
+            dnsnames.append(value)
+    if not dnsnames:
+        for rdn in cert.get('subject', ()):
+            for key, value in rdn:
+                if key == 'commonName':
+                    if _dnsname_match(value, hostname):
+                        return True
+                    dnsnames.append(value)
+    return False
 
 
 class InstanceState(str, Enum):
@@ -45,10 +111,8 @@ class AbstractCloud(AbstractCommandParser):
     """Class that encapsulates the first layer of abstraction of commands, at the cloud level.
 
     This should be responsible for keeping high level data and options, as well as holding
-    instances to cloud-specific structures or APIs. This class is also responsible for providing
-    ways of calling out to Ansible.
+    instances to cloud-specific structures or APIs.
     """
-    VARS_DIR_SUFFIX = "vars/cloud"
     BASE_IMAGE_VERSION_KEY = "base_image_version"
     KEY_SIZE = 2048
     PUBLIC_EXPONENT = 65537
@@ -70,14 +134,6 @@ class AbstractCloud(AbstractCommandParser):
         super(AbstractCloud, self).__init__(name)
 
     def init(self, args=None):
-        devops_home = os.environ.get("yb_devops_home")
-        vars_file = os.path.join(devops_home,
-                                 AbstractCloud.VARS_DIR_SUFFIX,
-                                 "{}.yml".format(self.name))
-        self.ansible_vars = yaml.load(open(vars_file), yaml.SafeLoader)
-        with open(vars_file, 'r') as f:
-            self.ansible_vars = yaml.load(f, yaml.SafeLoader) or {}
-
         # The metadata file name is the same internally and externally.
         metadata_filename = "{}-metadata.yml".format(self.name)
         self.metadata = {}
@@ -138,31 +194,10 @@ class AbstractCloud(AbstractCommandParser):
         """
         pass
 
-    def get_default_base_image_version(self):
-        return self.ansible_vars.get(self.BASE_IMAGE_VERSION_KEY)
-
     def get_image_by_version(self, region, version=None):
         """Override to get image using cloud-specific APIs and clients.
         """
         pass
-
-    def setup_ansible(self, args):
-        """Prepare and return a base AnsibleProcess class as well as setup some initial arguments,
-        such as the cloud_type, for the respective playbooks.
-        Args:
-            args: the parsed command-line arguments, as setup by the relevant ArgParse instance.
-        """
-        ansible = AnsibleProcess()
-        ansible.playbook_args["cloud_type"] = self.name
-        if args.region:
-            ansible.playbook_args["cloud_region"] = args.region
-        if args.zone:
-            ansible.playbook_args["cloud_zone"] = args.zone
-        if hasattr(args, "custom_ssh_port") and args.custom_ssh_port:
-            ansible.playbook_args["custom_ssh_port"] = args.custom_ssh_port
-        if args.ansible_keep_remote_files:
-            ansible.keep_remote_files = True
-        return ansible
 
     def add_extra_args(self):
         """Override to setup cloud-specific command line flags.
@@ -170,10 +205,6 @@ class AbstractCloud(AbstractCommandParser):
         self.parser.add_argument("--region", required=False)
         self.parser.add_argument("--zone", required=False)
         self.parser.add_argument("--network", required=False)
-        self.parser.add_argument("--systemd_debug", action="store_true", default=False,
-                                 required=False)
-        self.parser.add_argument("--ansible_keep_remote_files", action="store_true", default=False,
-                                 required=False)
 
     def add_subcommand(self, command):
         """Subclass override to set a reference to the cloud into the subcommands we add.
@@ -186,7 +217,6 @@ class AbstractCloud(AbstractCommandParser):
             "process": process,
             "command": command,
             "ssh2_enabled": args.ssh2_enabled,
-            "systemd_debug": args.systemd_debug,
         }
         if args.systemd_services:
             updated_vars.update({"systemd_services": args.systemd_services})
@@ -206,7 +236,6 @@ class AbstractCloud(AbstractCommandParser):
                 )
 
         if process == "thirdparty" or process == "platform-services":
-            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
             return
 
         if os.environ.get("YB_USE_FABRIC", False):
@@ -214,8 +243,6 @@ class AbstractCloud(AbstractCommandParser):
             RemoteShell(updated_vars).check_exec_command(
                 "{} {} {}".format(file_path, process, command)
             )
-        else:
-            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
 
     def initYSQL(self, master_addresses, connect_options, args):
         # TODO Looks like this is not used.
@@ -395,18 +422,8 @@ class AbstractCloud(AbstractCommandParser):
         cert_san = {'subjectAltName': tuple(san_entry)}
 
         # Check if the provided hostname matches with either CN or SAN
-        cn_matched = False
-        san_matched = False
-        try:
-            ssl.match_hostname(cert_cn, host)
-            cn_matched = True
-        except ssl.CertificateError:
-            pass
-        try:
-            ssl.match_hostname(cert_san, host)
-            san_matched = True
-        except ssl.CertificateError:
-            pass
+        cn_matched = _match_hostname(cert_cn, host)
+        san_matched = _match_hostname(cert_san, host)
 
         if not cn_matched and not san_matched:
             raise YBOpsRuntimeError(

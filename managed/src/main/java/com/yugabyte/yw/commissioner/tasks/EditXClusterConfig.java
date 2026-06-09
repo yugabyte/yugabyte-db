@@ -5,6 +5,7 @@ import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
@@ -102,6 +103,30 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         } else if (editFormData.status != null) {
           createSetReplicationPausedTask(xClusterConfig, editFormData.status)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+          if (xClusterConfig.isUsedForDr()) {
+            TaskExecutor.SubTaskGroup stateUpdate;
+
+            if ("Paused".equals(editFormData.status)) {
+              stateUpdate =
+                  createSetDrStatesTask(
+                      xClusterConfig,
+                      State.Paused,
+                      SourceUniverseState.ReplicationPaused,
+                      TargetUniverseState.ReplicationPaused,
+                      null /* keyspacePending */);
+            } else {
+              stateUpdate =
+                  createSetDrStatesTask(
+                      xClusterConfig,
+                      State.Replicating,
+                      SourceUniverseState.ReplicatingData,
+                      TargetUniverseState.ReceivingData,
+                      null /* keyspacePending */);
+            }
+
+            stateUpdate.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          }
         } else if (editFormData.sourceRole != null || editFormData.targetRole != null) {
           createChangeXClusterRoleTask(
                   taskParams().getXClusterConfig(),

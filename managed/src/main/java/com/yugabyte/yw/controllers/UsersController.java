@@ -285,7 +285,7 @@ public class UsersController extends AuthenticatedController {
   @ApiOperation(
       value = "Delete a user",
       nickname = "deleteUser",
-      notes = "Deletes the specified user. Note that you can't delete a customer's primary user.",
+      notes = "Deletes the specified user. Note that an Admin user can't delete a SuperAdmin user.",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -295,11 +295,13 @@ public class UsersController extends AuthenticatedController {
   })
   public Result delete(UUID customerUUID, UUID userUUID, Http.Request request) {
     Users user = Users.getOrBadRequest(customerUUID, userUUID);
-    if (user.isPrimary()) {
+    if (userHasSuperAdminRole(user, customerUUID)
+        && !tokenAuthenticator.superAdminAuthentication(request)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot delete primary user %s for customer %s", userUUID.toString(), customerUUID));
+              "Cannot delete a SuperAdmin user %s for customer %s",
+              userUUID.toString(), customerUUID));
     }
     if (user.delete()) {
       auditService()
@@ -571,6 +573,10 @@ public class UsersController extends AuthenticatedController {
               customerUUID));
     }
 
+    if (formData.getNewUniverseUiEnabled() != null) {
+      user.setNewUniverseUiEnabled(formData.getNewUniverseUiEnabled());
+    }
+
     if (useNewAuthz) {
       // Timezone validation for new RBAC.
       // No explicit validation required as the API is already authorized with the required
@@ -638,6 +644,12 @@ public class UsersController extends AuthenticatedController {
             Json.toJson(formData));
     user.save();
     return ok(Json.toJson(user));
+  }
+
+  private boolean userHasSuperAdminRole(Users user, UUID customerUUID) {
+    Role superAdminRole = Role.get(customerUUID, Users.Role.SuperAdmin.name());
+    return superAdminRole != null
+        && RoleBinding.checkUserHasRole(user.getUuid(), superAdminRole.getRoleUUID());
   }
 
   private void sendPasswordResetNotification(UUID customerUUID, Users user) {

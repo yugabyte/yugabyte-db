@@ -16,6 +16,7 @@
 #include "yb/storage/storage_fwd.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/slice.h"
 
 namespace google::protobuf {
 class Any;

@@ -494,7 +494,7 @@ TEST_F(DeleteFileTest, DeleteWithBackgroundCompaction) {
   });
 
   for (int num_sst_files = 1; num_sst_files <= compaction_race::kMaxNumSstFiles; ++num_sst_files) {
-    auto listener = std::make_shared<CompactionStartedListener>();
+    auto listener = std::make_shared<TestCompactionListener>();
     options_.level0_file_num_compaction_trigger = 2;
     options_.disable_auto_compactions = true;
     options_.listeners.push_back(listener);

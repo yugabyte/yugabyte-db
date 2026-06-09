@@ -163,7 +163,7 @@ class TabletPeerTest : public YBTabletTest {
 
     consensus::RaftConfigPB config;
     config.add_peers()->CopyFrom(config_peer);
-    config.set_opid_index(consensus::kInvalidOpIdIndex);
+    config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
     std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
         tablet()->metadata()->fs_manager(), tablet()->tablet_id(),
@@ -226,6 +226,7 @@ class TabletPeerTest : public YBTabletTest {
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            nullptr /* server_mem_tracker */,
                                            messenger_.get(),
+                                           messenger_->ThreadPoolPtr(),
                                            proxy_cache_.get(),
                                            log,
                                            table_metric_entity_,
@@ -288,11 +289,13 @@ class TabletPeerTest : public YBTabletTest {
   }
 
   void ExecuteWrite(TabletPeer* tablet_peer, const WriteRequestPB& req) {
-    WriteResponsePB resp;
+    auto arena = SharedThreadSafeArena();
+    auto& resp = *arena->NewArenaObject<tserver::LWWriteResponsePB>();
+    auto& lw_req = *arena->NewArenaObject<tserver::LWWriteRequestPB>(req);
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
-        ASSERT_RESULT(tablet_peer->shared_tablet()), nullptr, &resp);
-    query->set_client_request(req);
+        ASSERT_RESULT(tablet_peer->shared_tablet()), /* rpc_context= */ nullptr, &resp);
+    query->set_client_request(lw_req);
 
     CountDownLatch rpc_latch(1);
     query->set_callback(MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
@@ -310,7 +313,7 @@ class TabletPeerTest : public YBTabletTest {
                                           const Callback& cb) {
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
-        CHECK_RESULT(tablet_peer->shared_tablet()), nullptr, resp);
+        CHECK_RESULT(tablet_peer->shared_tablet()), /* rpc_context= */ nullptr, resp);
     query->set_client_request(req);
     query->set_callback(cb);
     return query;
@@ -353,7 +356,8 @@ class TabletPeerTest : public YBTabletTest {
 
   // Assert that the Log GC() anchor is earlier than the latest OpId in the Log.
   void AssertLogAnchorEarlierThanLogLatest() {
-    int64_t earliest_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
+    int64_t earliest_index =
+        ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
     auto last_log_opid = tablet_peer_->log_->GetLatestEntryOpId();
     ASSERT_LE(earliest_index, last_log_opid.index)
       << "Expected valid log anchor, got earliest opid: " << earliest_index
@@ -401,21 +405,23 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
 
   // Ensure nothing gets deleted.
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
-  int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  int64_t min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   ASSERT_EQ(2, num_gced) << "Earliest needed: " << min_log_index;
 
   // Flush RocksDB to ensure that we don't have OpId in anchors.
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // The first two segments should be deleted.
   // The last is anchored due to the commit in the last segment being the last
   // OpId in the log.
   int32_t earliest_needed = 0;
   auto total_segments = log_reader->num_segments();
-  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced) << "earliest needed: " << min_log_index;
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
@@ -441,12 +447,13 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Flush RocksDB so the next mutation goes into a DMS.
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   int32_t earliest_needed = 1;
   auto total_segments = log_reader->num_segments();
-  int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  int64_t min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   // We will only GC 1, and have 1 left because the earliest needed OpId falls
   // back to the latest OpId written to the Log if no anchors are set.
   ASSERT_EQ(earliest_needed, num_gced);
@@ -480,12 +487,13 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Ensure the delta and last insert remain in the logs, anchored by the delta.
   // Note that this will allow GC of the 2nd insert done above.
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   earliest_needed = 4;
   std::string details;
-  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details));
+  min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details)).earliest_needed_log_index;
   LOG(INFO) << details;
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
@@ -496,8 +504,9 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   // The last log OpId is the commit in the last segment, so it only anchors
   // that segment, not the previous, because it's not the first OpId in the
   // segment.
-  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
@@ -643,8 +652,8 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
 
   std::string value(kValueSize, 'X');
 
-  std::vector<WriteRequestPB> requests(kNumOps);
-  std::vector<WriteResponsePB> responses(kNumOps);
+  auto arena = SharedThreadSafeArena();
+  std::vector<tserver::LWWriteResponsePB*> responses(kNumOps);
   std::vector<std::unique_ptr<WriteQuery>> queries;
   queries.reserve(kNumOps);
   CountDownLatch latch(kNumOps);
@@ -652,10 +661,10 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
   auto* const tablet_peer = tablet_peer_.get();
 
   for (int i = 0; i < kNumOps; ++i) {
-    auto* req = &requests[i];
-    auto* resp = &responses[i];
+    auto* req = arena->NewArenaObject<tserver::LWWriteRequestPB>();
+    auto* resp = responses[i] = arena->NewArenaObject<tserver::LWWriteResponsePB>();
 
-    req->set_tablet_id(tablet()->tablet_id());
+    req->dup_tablet_id(tablet()->tablet_id());
     AddTestRowInsert(i, i, value, req);
     auto query = CreateQuery(
         tablet_peer, *req, resp, MakeLatchOperationCompletionCallback(&latch, resp));
@@ -668,8 +677,8 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
   latch.Wait();
 
   for (size_t i = 0; i < responses.size(); ++i) {
-    const auto& resp = responses[i];
-    ASSERT_FALSE(responses[i].has_error()) << "\n Response[" << i << "]:\n" << resp.DebugString();
+    const auto& resp = *responses[i];
+    ASSERT_FALSE(resp.has_error()) << "\n Response[" << i << "]:\n" << resp.ShortDebugString();
   }
 
   ASSERT_OK(RollLog(tablet_peer_.get()));
@@ -707,13 +716,14 @@ TEST_F_EX(TabletPeerTest, SingleOpExceedsRpcMsgLimit, TabletPeerProtofBufSizeLim
 
   std::string value(kValueSize, 'X');
 
-  WriteRequestPB req;
-  WriteResponsePB resp;
+  auto arena = SharedThreadSafeArena();
+  auto& req = *arena->NewArenaObject<tserver::LWWriteRequestPB>();
+  auto& resp = *arena->NewArenaObject<tserver::LWWriteResponsePB>();
   CountDownLatch latch(1);
 
   auto* const tablet_peer = tablet_peer_.get();
 
-  req.set_tablet_id(tablet()->tablet_id());
+  req.dup_tablet_id(tablet()->tablet_id());
   AddTestRowInsert(1, 1, value, &req);
   auto query = CreateQuery(
       tablet_peer, req, &resp, MakeLatchOperationCompletionCallback(&latch, &resp));
@@ -908,8 +918,7 @@ TEST_F_EX(TabletBootstrapStateFlusherTest,
   const int kNumOps = 100;
   std::string value(ANNOTATE_UNPROTECTED_READ(FLAGS_log_segment_size_bytes) + 1, 'X');
 
-  std::vector<WriteRequestPB> requests(kNumOps);
-  std::vector<WriteResponsePB> responses(kNumOps);
+  auto arena = SharedThreadSafeArena();
   std::vector<std::unique_ptr<WriteQuery>> queries;
   queries.reserve(kNumOps);
   CountDownLatch latch(kNumOps);
@@ -917,10 +926,10 @@ TEST_F_EX(TabletBootstrapStateFlusherTest,
   auto* const tablet_peer = tablet_peer_.get();
 
   for (int i = 0; i < kNumOps; ++i) {
-    auto* req = &requests[i];
-    auto* resp = &responses[i];
+    auto* req = arena->NewArenaObject<tserver::LWWriteRequestPB>();
+    auto* resp = arena->NewArenaObject<tserver::LWWriteResponsePB>();
 
-    req->set_tablet_id(tablet()->tablet_id());
+    req->dup_tablet_id(tablet()->tablet_id());
     AddTestRowInsert(i, i, value, req);
     auto query = CreateQuery(
         tablet_peer, *req, resp, MakeLatchOperationCompletionCallback(&latch, resp));

@@ -42,9 +42,9 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -70,7 +70,7 @@ using std::deque;
 ThreadPoolBuilder::ThreadPoolBuilder(std::string name)
     : options_(ThreadPoolOptions {
         .name = std::move(name),
-        .max_workers = make_unsigned(base::NumCPUs()),
+        .max_workers = make_unsigned(NumEffectiveCPUs()),
         .idle_timeout = MonoDelta::FromMilliseconds(500),
       }) {}
 
@@ -99,8 +99,17 @@ Status ThreadPool::DoSubmit(const F& f) {
     enqueued = underlying_->EnqueueFunctor(f);
   }
 
-  return PREDICT_TRUE(enqueued)
-      ? Status::OK() : STATUS(ServiceUnavailable, "The pool has been shut down.");
+  if (PREDICT_TRUE(enqueued)) {
+    return Status::OK();
+  }
+  if (underlying_->IsClosing()) {
+    return STATUS(ShutdownInProgress, "The pool has been shut down.");
+  }
+  // The only non-closing reason YBThreadPool::Enqueue returns false is a worker-thread
+  // creation failure under max_workers == kUnlimitedWorkersWithoutQueue, which
+  // ThreadPoolBuilder never selects today. Surface a distinct status here so callers can
+  // tell the two cases apart if that ever changes.
+  return STATUS(ServiceUnavailable, "Failed to enqueue task to the thread pool.");
 }
 
 template <class Impl>
@@ -113,10 +122,32 @@ class ThreadPoolTokenImpl : public ThreadPoolToken {
   }
 
   Status SubmitFunc(std::function<void()> f) override {
+#ifdef __linux__
+    if (task_cgroup_) {
+      Cgroup* cg = task_cgroup_;
+      f = [orig = std::move(f), cg]() {
+        WARN_NOT_OK(cg->MoveCurrentThreadToGroup(),
+                    "Failed to move thread to per-db cgroup");
+        orig();
+      };
+    }
+#endif
     if (impl_.EnqueueFunctor(std::move(f))) {
       return Status::OK();
     }
-    return STATUS(ServiceUnavailable, "Thread pool token was shut down.", "", Errno(ESHUTDOWN));
+    if (impl_.IsClosing()) {
+      return STATUS(ShutdownInProgress, "Thread pool token was shut down.", "", Errno(ESHUTDOWN));
+    }
+    // Mirrors DoSubmit: the only non-closing reason the underlying pool can reject this
+    // enqueue is a worker-thread creation failure under kUnlimitedWorkersWithoutQueue,
+    // unreachable today via ThreadPoolBuilder.
+    return STATUS(ServiceUnavailable, "Failed to enqueue task to the thread pool token.");
+  }
+
+  void SetTaskCgroup([[maybe_unused]] Cgroup* cgroup) override {
+#ifdef __linux__
+    task_cgroup_ = cgroup;
+#endif
   }
 
   void Shutdown() override {
@@ -125,6 +156,9 @@ class ThreadPoolTokenImpl : public ThreadPoolToken {
 
  private:
   Impl impl_;
+#ifdef __linux__
+  Cgroup* task_cgroup_ = nullptr;
+#endif
 };
 
 std::unique_ptr<ThreadPoolToken> ThreadPool::NewToken(ExecutionMode mode) {

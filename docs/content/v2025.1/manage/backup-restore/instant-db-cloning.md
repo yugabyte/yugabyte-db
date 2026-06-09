@@ -130,6 +130,24 @@ Use the `list_clones` command to check whether a clone operation completed succe
 
 Note that the cluster doesn't allow you to perform two clone operations concurrently on the same source database. You have to wait for the first clone to finish until you can perform another clone.
 
+### Clone database ownership
+
+The owner of the clone is determined as follows:
+
+- OWNER is explicitly specified in the CREATE DATABASE command: The specified role is the owner. For example:
+
+    ```sql
+    CREATE DATABASE cloned_db TEMPLATE src_db OWNER some_role AS OF ...
+    ```
+
+    The role `some_role` is the owner.
+
+- OWNER is not specified: The current user executing the command becomes the owner of the clone.
+
+When using the yb-admin command `clone_namespace` directly, the cloned database retains the original template database's owner.
+
+Note that to clone a database that's not marked `datistemplate`, you must be a superuser or the owner of the source database.
+
 ### Example
 
 The following example demonstrates how to use a database clone to recover from an accidental table deletion.
@@ -277,4 +295,6 @@ If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splittin
 
 ## Limitations
 
-- Cloning to a time before dropping Materialized views is not currently supported. See issue {{<issue 23740>}}.
+- Cloning as of a time close to the limit of the history retention period may fail. For example, if you have a history retention period of 10 minutes and you create a clone as of 9 minutes ago, the clone operation may fail. Use a slightly larger history retention period than you think you need.
+- Cloning to a point in time during which a DDL was running may fail. See issue {{<issue 28814>}}.
+- Databases with many objects in multi-region deployments may take longer to clone. If the operation takes longer than 10 minutes, increase the `ysql_clone_pg_schema_rpc_timeout_ms` YB-TServer runtime flag.

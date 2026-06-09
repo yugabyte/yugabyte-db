@@ -793,9 +793,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   }
 
   @Test
+  @BypassConnMgr(reason = BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE)
   public void testDmlTransactionAfterAlterOnCurrentResourceWithCachedMetadata() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE,
-                isTestRunningWithConnectionManager());
     // Scenario 2. Execute any DML type after DDL.
     // a) For PG metadata cached table:
     //    Transaction should conflict since we are using
@@ -827,6 +826,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   }
 
   @Test
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testDmlTransactionAfterAlterOnCurrentResourceWithoutCachedMetadata()
       throws Exception {
     // Scenario 2. Execute any DML type after DDL.
@@ -838,8 +838,6 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
-        isTestRunningWithConnectionManager());
 
     for (AlterCommand alterType : AlterCommand.values()) {
       String expectedErrorOnInsert;
@@ -860,14 +858,13 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   }
 
   @Test
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testMultipleDmlTransactionWithAlterOnCurrentResource() throws Exception {
 
     // The test fails with Connection Manager as it is expected that each new
     // session would latch onto a new physical connection. Instead, any two
     // logical connections share the same physical connection, leading to
     // unexpected results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
-        isTestRunningWithConnectionManager());
 
     LOG.info("Run multiple transactions before altering the resource");
     runMultipleTxnsBeforeAlterTable();
@@ -895,11 +892,10 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   }
 
   @Test
+  @BypassConnMgr(reason = BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR)
   public void testTransactionConflictErrorCode() throws Exception {
     // (DB-12741) Disabling the test due to a flaky failure point when run with
     // connection manager, needs further investigation.
-    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR,
-        isTestRunningWithConnectionManager());
 
     try (Connection conn1 = getConnectionBuilder().connect();
          Statement stmt1 = conn1.createStatement();

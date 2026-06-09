@@ -21,6 +21,7 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/ysql_call_home_stats.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -139,6 +140,9 @@ class YsqlClusterStatsCollector : public MasterCollector {
   using MasterCollector::MasterCollector;
 
   void Collect(CollectionLevel collection_level) override {
+    if (!throttle_.ShouldCollect()) {
+      return;
+    }
     auto result = CollectViaRpc();
     if (!result.ok()) {
       LOG(WARNING) << "YSQL Call Home Stats: Failed to collect cluster stats: "
@@ -153,6 +157,7 @@ class YsqlClusterStatsCollector : public MasterCollector {
   CollectionLevel collection_level() override { return CollectionLevel::ALL; }
 
  private:
+  tserver::YsqlCollectionThrottle throttle_;
   Result<string> CollectViaRpc() {
     auto closest_ts = VERIFY_RESULT(master()->catalog_manager()->GetClosestLiveTserver());
 

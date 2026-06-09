@@ -437,10 +437,7 @@ AddCatcacheInvalidationMessage(InvalidationMsgsGroup *group,
 	SharedInvalidationMessage msg;
 
 	if (yb_test_inval_message_portability)
-		msg = (SharedInvalidationMessage)
-	{
-		0
-	};
+		memset(&msg, 0, sizeof(SharedInvalidationMessage));
 
 	if (IsYugaByteEnabled())
 		msg.cc.yb_version = (int8) YbSharedInvalCatcacheMsgVersion;
@@ -474,10 +471,7 @@ AddCatalogInvalidationMessage(InvalidationMsgsGroup *group,
 	SharedInvalidationMessage msg;
 
 	if (yb_test_inval_message_portability)
-		msg = (SharedInvalidationMessage)
-	{
-		0
-	};
+		memset(&msg, 0, sizeof(SharedInvalidationMessage));
 
 	if (IsYugaByteEnabled())
 		msg.cat.yb_version = (int8) YbSharedInvalCatalogMsgVersion;
@@ -501,10 +495,7 @@ AddRelcacheInvalidationMessage(InvalidationMsgsGroup *group,
 	SharedInvalidationMessage msg;
 
 	if (yb_test_inval_message_portability)
-		msg = (SharedInvalidationMessage)
-	{
-		0
-	};
+		memset(&msg, 0, sizeof(SharedInvalidationMessage));
 
 	if (IsYugaByteEnabled())
 		msg.rc.yb_version = (int8) YbSharedInvalRelcacheMsgVersion;
@@ -542,10 +533,7 @@ AddSnapshotInvalidationMessage(InvalidationMsgsGroup *group,
 	SharedInvalidationMessage msg;
 
 	if (yb_test_inval_message_portability)
-		msg = (SharedInvalidationMessage)
-	{
-		0
-	};
+		memset(&msg, 0, sizeof(SharedInvalidationMessage));
 
 	if (IsYugaByteEnabled())
 		msg.sn.yb_version = (int8) YbSharedInvalSnapshotMsgVersion;
@@ -1884,10 +1872,7 @@ CacheInvalidateSmgr(RelFileNodeBackend rnode)
 	SharedInvalidationMessage msg;
 
 	if (yb_test_inval_message_portability)
-		msg = (SharedInvalidationMessage)
-	{
-		0
-	};
+		memset(&msg, 0, sizeof(SharedInvalidationMessage));
 
 	if (IsYugaByteEnabled())
 		msg.sm.yb_version = (int8) YbSharedInvalSmgrMsgVersion;
@@ -1923,10 +1908,7 @@ CacheInvalidateRelmap(Oid databaseId)
 	SharedInvalidationMessage msg;
 
 	if (yb_test_inval_message_portability)
-		msg = (SharedInvalidationMessage)
-	{
-		0
-	};
+		memset(&msg, 0, sizeof(SharedInvalidationMessage));
 
 	if (IsYugaByteEnabled())
 		msg.rm.yb_version = (int8) YbSharedInvalRelmapMsgVersion;

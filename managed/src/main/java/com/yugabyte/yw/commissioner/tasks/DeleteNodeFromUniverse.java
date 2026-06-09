@@ -16,7 +16,8 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
@@ -76,9 +77,8 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
 
       preTaskActions();
 
-      UserIntent userIntent =
-          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
-      boolean isOnprem = CloudType.onprem.equals(userIntent.providerType);
+      Provider provider = Util.getProviderForNode(currentNode, universe);
+      boolean isOnprem = CloudType.onprem == provider.getCloudCode();
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
@@ -95,7 +95,7 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
         createDestroyServerTasks(
                 universe,
                 currentNodeDetails,
-                true /* isForceDelete */,
+                node -> true /* isForceDelete */,
                 false /* deleteNode */,
                 true /* deleteRootVolumes */,
                 false /* skipDestroyPrecheck */)

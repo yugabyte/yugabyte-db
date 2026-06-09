@@ -3,8 +3,8 @@ import os
 import boto3
 import logging
 import requests
-from rag_pipeline.chunk import chunk
-
+from rag_pipeline.chunk import chunk, get_splitter_for_filetype
+from observability import meko_observe
 
 def read_file_stream(
     file_location: str, chunk_size: int = 1024 * 1024
@@ -82,7 +82,7 @@ def read_file_stream(
                     break
                 yield chunk
 
-
+@meko_observe(name="Chunking & Partitioning", as_type="span")
 def stream_partition_and_chunk(
     pipeline_id: int,  # pipeline id of the document being processed
     file_location: str,
@@ -114,14 +114,18 @@ def stream_partition_and_chunk(
         if buffer:
             yield buffer
 
+    # nikhil-todo: chunk args should be configured from the request chunk_embedding_kwargs.
+    auto_splitter, auto_args = get_splitter_for_filetype(file_location)
+    splitter = chunk_args.get('splitter', auto_splitter)
+    args = chunk_args.get('args', auto_args)
+    logging.info(
+        f"Using splitter '{splitter}' for file: {file_location} "
+        f"(auto-detected: '{auto_splitter}')"
+    )
+
     text_chunks = read_file_stream(file_location)
     lines_iter = line_iterator_from_chunks(text_chunks)
     logging.debug(f"generated lines_iter for file: {file_location}")
     for paragraph in paragraph_stream(lines_iter):
-        # nikhil-todo: chunk args should be configured from the request chunk_embedding_kwargs.
-        # Use default splitter and args if not provided
-        splitter = chunk_args.get('splitter', 'recursive_character')
-        args = chunk_args.get('args', '{"chunk_size": 1000, "chunk_overlap": 100}')
-        logging.debug(f"chunking paragraph: with splitter: {splitter} and args: {args}")
         for chunked_text in chunk(splitter, paragraph, args):
             yield chunked_text

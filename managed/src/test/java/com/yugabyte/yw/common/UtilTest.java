@@ -20,7 +20,9 @@ import static org.mockito.Mockito.when;
 import com.cronutils.utils.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -29,10 +31,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -923,5 +928,146 @@ public class UtilTest extends FakeDBApplication {
     // validation should be skipped entirely when feature is disabled
     Util.validateUniverseOwnershipAndNotDetached(
         universe, configHelper, ysqlQueryExecutor, confGetter);
+  }
+
+  private static Provider buildProvider(CloudType cloudType, boolean enableMultiTenancy) {
+    Provider provider = mock(Provider.class);
+    ProviderDetails details = new ProviderDetails();
+    ProviderDetails.CloudInfo cloudInfo = new ProviderDetails.CloudInfo();
+    if (cloudType == CloudType.onprem) {
+      OnPremCloudInfo onpremInfo = new OnPremCloudInfo();
+      onpremInfo.enableMultiTenancy = enableMultiTenancy;
+      cloudInfo.onprem = onpremInfo;
+    }
+    details.setCloudInfo(cloudInfo);
+    when(provider.getDetails()).thenReturn(details);
+    when(provider.getCloudCode()).thenReturn(cloudType);
+    return provider;
+  }
+
+  private static UserIntent buildUserIntent(CloudType cloudType, boolean cpuCgroupConfigured) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = cloudType;
+    userIntent.setCpuCgroupConfigured(cpuCgroupConfigured);
+    return userIntent;
+  }
+
+  @Test
+  public void testConfigureCgroup_alreadyConfigured_returnsTrue() {
+    // If the cluster is already marked as cgroup-configured, the method should
+    // short-circuit to true regardless of provider type or runtime config.
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.aws, true);
+    Provider provider = buildProvider(CloudType.aws, false);
+
+    assertTrue(Util.configureCgroup(userIntent, provider, true, confGetter));
+    assertTrue(Util.configureCgroup(userIntent, provider, false, confGetter));
+  }
+
+  @Test
+  public void testConfigureCgroup_onpremWithMultiTenancyEnabled_returnsTrue() {
+    // On-prem providers with multi-tenancy enabled at the provider level should
+    // always get cgroup configured, regardless of the runtime flag.
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.onprem, false);
+    Provider provider = buildProvider(CloudType.onprem, true);
+
+    assertTrue(Util.configureCgroup(userIntent, provider, true, confGetter));
+    assertTrue(Util.configureCgroup(userIntent, provider, false, confGetter));
+  }
+
+  @Test
+  public void testConfigureCgroup_onpremWithoutMultiTenancy_provisionFlagTrue_returnsFalse() {
+    // On-prem without multi-tenancy falls through to the runtime flag check when
+    // provisioning; if the provider scope flag is enabled, cgroup is configured.
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.onprem, false);
+    Provider provider = buildProvider(CloudType.onprem, false);
+    when(confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration))
+        .thenReturn(true);
+
+    assertFalse(Util.configureCgroup(userIntent, provider, true, confGetter));
+  }
+
+  @Test
+  public void testConfigureCgroup_onpremWithoutMultiTenancy_provisionFlagFalse_returnsFalse() {
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.onprem, false);
+    Provider provider = buildProvider(CloudType.onprem, false);
+    when(confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration))
+        .thenReturn(false);
+
+    assertFalse(Util.configureCgroup(userIntent, provider, true, confGetter));
+  }
+
+  @Test
+  public void testConfigureCgroup_onpremNotForProvision_returnsFalse() {
+    // Outside the provisioning path the runtime flag is not consulted; the result
+    // defaults to false unless the universe is already cgroup-configured or the
+    // on-prem provider has multi-tenancy enabled.
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.onprem, false);
+    Provider provider = buildProvider(CloudType.onprem, false);
+
+    assertFalse(Util.configureCgroup(userIntent, provider, false, confGetter));
+  }
+
+  @Test
+  public void testConfigureCgroup_kubernetes_alwaysFalse() {
+    // Kubernetes providers never use the cgroup configuration path.
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.kubernetes, false);
+    Provider provider = buildProvider(CloudType.kubernetes, false);
+    when(confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration))
+        .thenReturn(true);
+
+    assertFalse(Util.configureCgroup(userIntent, provider, true, confGetter));
+    assertFalse(Util.configureCgroup(userIntent, provider, false, confGetter));
+  }
+
+  @Test
+  public void testConfigureCgroup_aws_provisionFlagTrue_returnsTrue() {
+    // For public cloud providers during provisioning, the runtime flag controls
+    // whether cgroup is configured.
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.aws, false);
+    Provider provider = buildProvider(CloudType.aws, false);
+    when(confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration))
+        .thenReturn(true);
+
+    assertTrue(Util.configureCgroup(userIntent, provider, true, confGetter));
+  }
+
+  @Test
+  public void testConfigureCgroup_aws_provisionFlagFalse_returnsFalse() {
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.aws, false);
+    Provider provider = buildProvider(CloudType.aws, false);
+    when(confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration))
+        .thenReturn(false);
+
+    assertFalse(Util.configureCgroup(userIntent, provider, true, confGetter));
+  }
+
+  @Test
+  public void testConfigureCgroup_aws_notForProvision_returnsFalse() {
+    // Outside provisioning (e.g. ConfigureServer subtask path without override)
+    // the runtime flag is not consulted for public clouds either.
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.aws, false);
+    Provider provider = buildProvider(CloudType.aws, false);
+
+    assertFalse(Util.configureCgroup(userIntent, provider, false, confGetter));
+  }
+
+  @Test
+  public void testConfigureCgroup_gcp_provisionFlagTrue_returnsTrue() {
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+    UserIntent userIntent = buildUserIntent(CloudType.gcp, false);
+    Provider provider = buildProvider(CloudType.gcp, false);
+    when(confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration))
+        .thenReturn(true);
+
+    assertTrue(Util.configureCgroup(userIntent, provider, true, confGetter));
   }
 }

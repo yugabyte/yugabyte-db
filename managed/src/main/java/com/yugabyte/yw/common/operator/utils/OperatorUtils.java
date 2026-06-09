@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -56,7 +57,10 @@ import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParam
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.ReleaseArtifact;
@@ -239,12 +243,26 @@ public class OperatorUtils {
     return cust.getUuid().toString();
   }
 
+  /**
+   * Returns the UUID of the local PlatformInstance when HA is configured, or empty if HA is not set
+   * up. Used to track which YBA instances have applied a resource to their K8s cluster.
+   */
+  public Optional<UUID> getLocalPlatformInstanceUuid() {
+    return HighAvailabilityConfig.get()
+        .flatMap(HighAvailabilityConfig::getLocal)
+        .map(PlatformInstance::getUuid);
+  }
+
   public Universe getUniverseFromNameAndNamespace(
       Long customerId, String universeName, String namespace) throws Exception {
     KubernetesResourceDetails ybUniverseResourceDetails = new KubernetesResourceDetails();
     ybUniverseResourceDetails.name = universeName;
     ybUniverseResourceDetails.namespace = namespace;
     YBUniverse ybUniverse = getYBUniverse(ybUniverseResourceDetails);
+    if (ybUniverse == null) {
+      log.debug("YBUniverse '{}' not found in namespace '{}'", universeName, namespace);
+      return null;
+    }
     String name = YBUniverseReconciler.getUniverseName(ybUniverse);
     log.debug("Getting universe from name: {}", name);
     Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, name);
@@ -503,36 +521,58 @@ public class OperatorUtils {
       Cluster curCluster, UserIntent newIntent, YBUniverse ybUniverse) {
     if (ybUniverse.getSpec().getTserverVolume() != null
         || ybUniverse.getSpec().getMasterVolume() != null) {
+      UserIntent newIntentClone = newIntent.clone();
       AtomicBoolean deviceInfoChanged = new AtomicBoolean(false);
-      if (!curCluster.userIntent.deviceInfo.equals(newIntent.deviceInfo)) {
-        deviceInfoChanged.set(true);
+      // If new userIntent does not contain perAZ overrides for tserver, first assign old
+      // userIntentOverrides
+      if (!(ybUniverse.getSpec().getTserverVolume() != null
+          && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null)) {
+        newIntentClone.updateAZVolumeOverrides(
+            curCluster.userIntent,
+            curCluster.placementInfo.getAllAZUUIDs(),
+            null,
+            false /* isDedicatedMaster */);
       }
-      if (curCluster.clusterType != ClusterType.ASYNC) {
-        if (!curCluster.userIntent.masterDeviceInfo.equals(newIntent.masterDeviceInfo)) {
-          deviceInfoChanged.set(true);
-        }
+      // If new userIntent does not contain perAZ overrides for master, first assign old
+      // userIntentOverrides
+      if (curCluster.clusterType != ClusterType.ASYNC
+          && !(ybUniverse.getSpec().getMasterVolume() != null
+              && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null)) {
+        newIntentClone.updateAZVolumeOverrides(
+            curCluster.userIntent,
+            curCluster.placementInfo.getAllAZUUIDs(),
+            null,
+            true /* isDedicatedMaster */);
       }
       curCluster
           .placementInfo
           .getAllAZUUIDs()
           .forEach(
               azUUID -> {
-                if (ybUniverse.getSpec().getTserverVolume() != null
-                    && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null) {
-                  DeviceInfo tsDeviceInfo = curCluster.userIntent.getDeviceInfoForAz(azUUID, false);
-                  deviceInfoChanged.set(
-                      deviceInfoChanged.get()
-                          || !tsDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, false)));
-                }
-                if (ybUniverse.getSpec().getMasterVolume() != null
-                    && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null) {
+                DeviceInfo tsDeviceInfo = curCluster.userIntent.getDeviceInfoForAz(azUUID, false);
+                DeviceInfo newTsDeviceInfo = newIntentClone.getDeviceInfoForAz(azUUID, false);
+                log.debug(
+                    "Comparing tserver device info for AZ {}: old {}, new {}",
+                    azUUID,
+                    Json.toJson(tsDeviceInfo),
+                    Json.toJson(newTsDeviceInfo));
+                deviceInfoChanged.set(
+                    deviceInfoChanged.get() || !tsDeviceInfo.equals(newTsDeviceInfo));
+
+                if (curCluster.clusterType != ClusterType.ASYNC) {
                   DeviceInfo masterDeviceInfo =
                       curCluster.userIntent.getDeviceInfoForAz(azUUID, true);
+                  DeviceInfo newMasterDeviceInfo = newIntentClone.getDeviceInfoForAz(azUUID, true);
+                  log.debug(
+                      "Comparing master device info for AZ {}: old {}, new {}",
+                      azUUID,
+                      Json.toJson(masterDeviceInfo),
+                      Json.toJson(newMasterDeviceInfo));
                   deviceInfoChanged.set(
-                      deviceInfoChanged.get()
-                          || !masterDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, true)));
+                      deviceInfoChanged.get() || !masterDeviceInfo.equals(newMasterDeviceInfo));
                 }
               });
+      log.debug("Device info changed: {}", deviceInfoChanged.get());
       return deviceInfoChanged.get();
     } else {
       boolean tserverSizeChanged =
@@ -799,6 +839,13 @@ public class OperatorUtils {
     return spec;
   }
 
+  public DeviceInfo defaultDeviceInfo() {
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 100;
+    masterDeviceInfo.numVolumes = 2;
+    return masterDeviceInfo;
+  }
+
   public DeviceInfo defaultMasterDeviceInfo() {
     DeviceInfo masterDeviceInfo = new DeviceInfo();
     masterDeviceInfo.volumeSize = 50;
@@ -836,8 +883,7 @@ public class OperatorUtils {
       currentUserIntent.masterDeviceInfo = defaultMasterDeviceInfo();
     }
 
-    Provider provider =
-        Provider.getOrBadRequest(cust.getUuid(), UUID.fromString(currentUserIntent.provider));
+    Provider provider = Util.getSingleProvider(currentUserIntent);
     // Get all required params
     SpecificGFlags specGFlags = getGFlagsFromSpec(ybUniverse, provider);
     String incomingOverrides =
@@ -923,6 +969,8 @@ public class OperatorUtils {
             || !(u.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
                 == ybUniverse.getSpec().getUseYbdbInbuiltYbc());
     log.trace("Toggle Immutable YBC mismatch: {}", mismatch);
+    mismatch = mismatch || shouldRotateCerts(u, ybUniverse, cust.getUuid());
+    log.trace("certificate mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -1002,13 +1050,14 @@ public class OperatorUtils {
       @Nullable String namespace,
       String key,
       ResourceTracker resourceTracker,
-      KubernetesResourceDetails owner) {
+      KubernetesResourceDetails owner,
+      UUID localInstanceUuid) {
     Secret secret = getSecret(name, namespace);
     if (secret == null) {
       log.warn("Secret {} not found", name);
       return null;
     }
-    resourceTracker.trackDependency(owner, secret);
+    resourceTracker.trackDependency(owner, secret, localInstanceUuid);
     log.trace("Tracking secret {} as dependency of {}", secret.getMetadata().getName(), owner);
     return parseSecretForKey(secret, key);
   }
@@ -1092,6 +1141,35 @@ public class OperatorUtils {
       }
     }
     return false;
+  }
+
+  /*--- Certificate rotation helper methods ---*/
+
+  /**
+   * Checks if certificate rotation is needed for the universe.
+   *
+   * @param universe the current universe
+   * @param ybUniverse the YBUniverse spec
+   * @param customerUUID the customer UUID
+   * @return true if certificate rotation is needed, false otherwise
+   */
+  public boolean shouldRotateCerts(Universe universe, YBUniverse ybUniverse, UUID customerUUID) {
+    String specRootCAName = ybUniverse.getSpec().getRootCA();
+    UUID currentRootCA = universe.getUniverseDetails().rootCA;
+
+    // If no cert specified in spec, no rotation needed
+    if (StringUtils.isBlank(specRootCAName)) {
+      return false;
+    }
+
+    CertificateInfo specRootCACert = CertificateInfo.get(customerUUID, specRootCAName);
+    if (specRootCACert == null) {
+      log.warn("Certificate {} not found for customer {}", specRootCAName, customerUUID);
+      return false;
+    }
+
+    // Check if the certificate UUID differs from the current one
+    return !specRootCACert.getUuid().equals(currentRootCA);
   }
 
   /*--- Backup and Scheduled backup helper methods ---*/
@@ -1255,6 +1333,9 @@ public class OperatorUtils {
         CustomerConfig.get(backup.getCustomerUUID(), backup.getStorageConfigUUID());
     crSpec.setStorageConfig(storageConfigName);
     crSpec.setTimeBeforeDelete(params.timeBeforeDelete);
+    crSpec.setUseTablespaces(params.useTablespaces);
+    crSpec.setUseRoles(params.getUseRoles());
+    crSpec.setUsePrivileges(params.getUsePrivileges());
     Universe universe =
         Universe.getOrBadRequest(backup.getUniverseUUID(), Customer.get(backup.getCustomerUUID()));
     crSpec.setUniverse(universe.getUniverseDetails().getKubernetesResourceDetails().name);
@@ -1777,7 +1858,7 @@ public class OperatorUtils {
     }
   }
 
-  public void createReleaseCr(
+  public boolean createReleaseCr(
       com.yugabyte.yw.models.Release ybRelease,
       ReleaseArtifact k8sArtifact,
       ReleaseArtifact x86_64Artifact,
@@ -1793,7 +1874,7 @@ public class OperatorUtils {
               .get()
           != null) {
         log.info("Release {} already exists, skipping creation", ybRelease.getVersion());
-        return;
+        return true;
       }
       Release release = new Release();
       release.setMetadata(
@@ -1852,6 +1933,7 @@ public class OperatorUtils {
         downloadConfig.setHttp(http);
       } else {
         log.info("Release {} uses a local file", ybRelease.getVersion());
+        return false;
       }
       config.setDownloadConfig(downloadConfig);
 
@@ -1859,6 +1941,7 @@ public class OperatorUtils {
       release.setSpec(releaseSpec);
 
       kubernetesClient.resources(Release.class).inNamespace(namespace).resource(release).create();
+      return true;
     }
   }
 
@@ -2030,6 +2113,9 @@ public class OperatorUtils {
                 params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit));
       }
       spec.setEnablePointInTimeRestore(params.enablePointInTimeRestore);
+      spec.setUseTablespaces(params.useTablespaces);
+      spec.setUseRoles(params.getUseRoles());
+      spec.setUsePrivileges(params.getUsePrivileges());
       backupSchedule.setSpec(spec);
       kubernetesClient
           .resources(BackupSchedule.class)

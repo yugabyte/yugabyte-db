@@ -13,12 +13,28 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "yb/tserver/tserver_util_fwd.h"
+#include "yb/util/result.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb::pgwrapper {
+
+struct PgConfigPaths {
+  std::string hba_conf_path;
+  std::string guc_conf_path;
+  std::string ident_conf_path;
+};
+
+// Callback type: writes PG config files into tmp_dir using the given CSV overrides,
+// returns the paths to the generated files.
+using PgConfigGenerator = std::function<Result<PgConfigPaths>(
+    const std::string& tmp_dir,
+    const std::string& ysql_pg_conf_csv,
+    const std::string& hba_conf_csv,
+    const std::string& ident_conf_csv)>;
 
 class PgWrapperContext {
  public:
@@ -26,6 +42,7 @@ class PgWrapperContext {
   virtual void RegisterCertificateReloader(tserver::CertificateReloader reloader) = 0;
   virtual void RegisterPgProcessRestarter(std::function<Status(void)> restarter) = 0;
   virtual void RegisterPgProcessKiller(std::function<Status(void)> killer) = 0;
+  virtual void RegisterPgConfigGenerator(PgConfigGenerator generator) = 0;
   virtual Status StartSharedMemoryNegotiation() = 0;
   virtual Status StopSharedMemoryNegotiation() = 0;
   virtual int SharedMemoryNegotiationFd() = 0;

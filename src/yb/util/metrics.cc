@@ -366,6 +366,10 @@ scoped_refptr<MetricEntity> MetricRegistry::FindOrCreateEntity(
         prototype, id, initial_attributes, &metrics_aggregator_, std::move(mem_tracker));
     InsertOrDie(&entities_, id, e);
   } else {
+    CHECK_STREQ(e->prototype().name(), prototype->name())
+        << "Metric entity " << id << " already exists with type "
+        << e->prototype().name() << ", cannot re-instantiate as type "
+        << prototype->name();
     e->SetAttributes(initial_attributes);
   }
   return e;
@@ -526,12 +530,6 @@ Status Counter::SetUpPreAggregationForPrometheus(
   aggregated_prometheus_value_holder_->IncrementBy(value());
 
   return Status::OK();
-}
-
-Counter::~Counter() {
-  if (aggregated_prometheus_value_holder_ != nullptr) {
-    aggregated_prometheus_value_holder_->IncrementBy(-value());
-  }
 }
 
 bool Counter::IsPreAggregated() const {

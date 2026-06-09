@@ -32,9 +32,12 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/gutil/stl_util.h"
+
 #include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb::qlexpr {
 

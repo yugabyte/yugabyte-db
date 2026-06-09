@@ -78,6 +78,9 @@
 #include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Cgroup;
+
 namespace rpc {
 
 using ReactorTaskPtr = std::shared_ptr<ReactorTask>;
@@ -438,6 +441,8 @@ class Reactor {
           >>>;
 
   TrackedOutboundCalls tracked_outbound_calls_ GUARDED_BY_REACTOR_THREAD;
+
+  [[maybe_unused]] Cgroup* cgroup_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(Reactor);
 };

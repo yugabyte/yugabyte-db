@@ -14,10 +14,17 @@
 #pragma once
 
 #include <atomic>
+#include <shared_mutex>
 #include <utility>
+
+#include "yb/rocksdb/util/heap.h"
+
+#include "yb/util/flags.h"
 
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
+
+DECLARE_bool(TEST_vector_index_exact);
 
 namespace yb::vector_index {
 
@@ -31,8 +38,11 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     if (immutable_) {
       return STATUS_FORMAT(IllegalState, "Attempt to insert value to immutable vector");
     }
-    RETURN_NOT_OK(impl().DoInsert(vector_id, v));
-    return Status::OK();
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
+      std::unique_lock lock(TEST_search_exact_mutex_);
+      return impl().DoInsert(vector_id, v);
+    }
+    return impl().DoInsert(vector_id, v);
   }
 
   Result<VectorIndexIfPtr<Vector, DistanceResult>> SaveToFile(const std::string& path) override {
@@ -53,7 +63,29 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
   Result<std::vector<VectorWithDistance<DistanceResult>>> Search(
       const Vector& query_vector, const SearchOptions& options)
       const override {
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
+      std::shared_lock lock(TEST_search_exact_mutex_);
+      return SearchExact(query_vector, options);
+    }
     return impl().DoSearch(query_vector, options);
+  }
+
+  std::vector<VectorWithDistance<DistanceResult>> SearchExact(
+      const Vector& query_vector, const SearchOptions& options) const {
+    using Entry = VectorWithDistance<DistanceResult>;
+    rocksdb::BinaryHeap<Entry> top;
+    for (const auto& [vector_id, vector] : *this) {
+      if (options.filter && !options.filter(vector_id)) {
+        continue;
+      }
+      Entry element(vector_id, this->Distance(vector, query_vector));
+      if (top.size() < options.max_num_results) {
+        top.push(element);
+      } else if (element < top.top()) {
+        top.replace_top(element);
+      }
+    }
+    return MakeResult<DistanceResult>(options.max_num_results, top.data());
   }
 
   std::shared_ptr<void> Attach(std::shared_ptr<void> obj) override {
@@ -72,6 +104,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
 
   std::atomic<bool> immutable_{false};
   std::shared_ptr<void> attached_;
+  mutable std::shared_mutex TEST_search_exact_mutex_;
 };
 
 template <typename Vector, typename IteratorImpl>

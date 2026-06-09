@@ -22,6 +22,7 @@
 #include "yb/util/test_macros.h"
 
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -139,7 +140,8 @@ class PgSnapshotTooOldTest : public PgMiniTestBase {
     // Compacting the sys catalog tablet updates the history cutoff time
     // on the tablet to reflect the h/istory_retention_interval_sec flags
     LOG(INFO) << "Trigger a flush and compaction of the sys catalog tablet";
-    RETURN_NOT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+    RETURN_NOT_OK(
+        sys_catalog_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     RETURN_NOT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
 
     SleepFor(1s);

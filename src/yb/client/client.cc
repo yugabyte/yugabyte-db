@@ -188,6 +188,8 @@ using yb::master::IsLoadBalancedRequestPB;
 using yb::master::IsLoadBalancedResponsePB;
 using yb::master::IsLoadBalancerIdleRequestPB;
 using yb::master::IsLoadBalancerIdleResponsePB;
+using yb::master::IsNamespacePartOfCDCSDKRequestPB;
+using yb::master::IsNamespacePartOfCDCSDKResponsePB;
 using yb::master::IsObjectPartOfXReplRequestPB;
 using yb::master::IsObjectPartOfXReplResponsePB;
 using yb::master::ListCDCStreamsRequestPB;
@@ -622,11 +624,14 @@ Status YBClient::TruncateTables(const TableIds& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoint deadline) {
+Status YBClient::BackfillIndex(const TableId& table_id,
+                               std::optional<TransactionMetadata> requester_transaction,
+                               bool wait, CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
     deadline = CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms;
   }
-  return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
+  return data_->BackfillIndex(
+      this, YBTableName(), table_id, deadline, std::move(requester_transaction), wait);
 }
 
 Status YBClient::GetIndexBackfillProgress(
@@ -1006,7 +1011,6 @@ Status YBClient::CloneNamespace(
   }
   req.set_restore_ht(HybridTime::FromMicros(yb_clone_info.clone_time).ToUint64());
   req.set_target_namespace_name(target_namespace_name);
-  req.set_pg_source_owner(yb_clone_info.src_owner);
   req.set_pg_target_owner(yb_clone_info.tgt_owner);
 
   // Set clone_deadline to ysql_clone_pg_schema_rpc_timeout_ms to give time to clone pg schema
@@ -1935,6 +1939,15 @@ Result<bool> YBClient::IsObjectPartOfXRepl(const TableId& table_id) {
                           : Result<bool>(resp.is_object_part_of_xrepl());
 }
 
+Result<bool> YBClient::IsNamespacePartOfCDCSDK(const NamespaceId& namespace_id) {
+  IsNamespacePartOfCDCSDKRequestPB req;
+  IsNamespacePartOfCDCSDKResponsePB resp;
+  req.set_namespace_id(namespace_id);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsNamespacePartOfCDCSDK);
+  return resp.has_error() ? StatusFromPB(resp.error().status())
+                          : Result<bool>(resp.is_namespace_part_of_cdcsdk());
+}
+
 Result<bool> YBClient::IsBootstrapRequired(
     const TableIds& table_ids, const std::optional<xrepl::StreamId>& stream_id) {
   if (table_ids.empty()) {
@@ -2308,7 +2321,8 @@ Status YBClient::AddTransactionStatusTablet(const TableId& table_id) {
 Status YBClient::GetTabletsFromTableId(
     const TableId& table_id,
     const int32_t max_tablets,
-    RepeatedPtrField<TabletLocationsPB>* tablets) {
+    RepeatedPtrField<TabletLocationsPB>* tablets,
+    PartitionListVersion* partition_list_version) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   req.mutable_table()->set_table_id(table_id);
@@ -2320,6 +2334,9 @@ Status YBClient::GetTabletsFromTableId(
   }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTableLocations);
   *tablets = resp.tablet_locations();
+  if (partition_list_version) {
+    *partition_list_version = resp.partition_list_version();
+  }
   return Status::OK();
 }
 
@@ -2484,22 +2501,30 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   return Status::OK();
 }
 
-Status YBClient::GetTabletsAndUpdateCache(
-    const YBTableName& table_name,
-    const int32_t max_tablets,
-    vector<TabletId>* tablet_uuids,
-    vector<string>* ranges,
-    std::vector<master::TabletLocationsPB>* locations) {
+Result<const TableId&> YBClient::LookupTableId(const YBTableName& table_name, TableId& scratch) {
+  if (table_name.has_table_id()) {
+    return table_name.table_id();
+  }
+
+  scratch = VERIFY_RESULT(GetYBTableInfo(table_name)).table_id;
+  return scratch;
+}
+
+Status YBClient::GetLocationsByTableIdAndUpdateCache(
+    const TableId& table_id,
+    std::vector<master::TabletLocationsPB>& locations) {
   RepeatedPtrField<TabletLocationsPB> tablets;
   PartitionListVersion partition_list_version;
-  RETURN_NOT_OK(GetTablets(
-      table_name, max_tablets, &tablets, &partition_list_version, RequireTabletsRunning::kFalse));
-  FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
-  RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
-      tablets, partition_list_version, /* lookup_rpc = */ nullptr, AllowSplitTablet::kFalse));
+  RETURN_NOT_OK(GetTabletsFromTableId(
+      table_id, /* max_tablets = */ 0, &tablets, &partition_list_version));
 
-  return Status::OK();
+  std::vector<TabletId> tablet_uuids;
+  FillFromRepeatedTabletLocations(tablets, &tablet_uuids, /* ranges = */ nullptr, &locations);
+  return data_->meta_cache_->ProcessTabletLocations(
+      tablets,
+      AllowSplitTablet::kFalse,
+      internal::LookupContext{ table_id, partition_list_version });
 }
 
 rpc::Messenger* YBClient::messenger() const {
@@ -2909,6 +2934,11 @@ Result<std::pair<Schema, uint32_t>> YBClient::GetTableSchemaFromSysCatalog(
 
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetTableSchemaFromSysCatalog);
   RETURN_NOT_OK(SchemaFromPB(resp.schema(), &current_schema));
+
+  if (resp.has_pgschema_name() && !resp.pgschema_name().empty()) {
+    current_schema.SetSchemaName(resp.pgschema_name());
+  }
+
   VLOG(1) << "For table_id " << table_id << " found specific schema version from system catalog.";
 
   return std::make_pair(current_schema, resp.version());
@@ -3196,14 +3226,24 @@ Status YBClient::ClearMetacache(const std::string& namespace_id) {
   return data_->meta_cache_->ClearCacheEntries(namespace_id);
 }
 
-bool YBClient::RefreshTabletInfoWithConsensusInfo(
-    const tserver::TabletConsensusInfoPB& newly_received_info) {
+template <class PB>
+bool YBClient::DoRefreshTabletInfoWithConsensusInfo(const PB& newly_received_info) {
   auto status = data_->meta_cache_->RefreshTabletInfoWithConsensusInfo(newly_received_info);
   if(!status.ok()) {
     VLOG(1) << "Partially refreshing meta-cache for tablet failed because " << status;
     return false;
   }
   return true;
+}
+
+bool YBClient::RefreshTabletInfoWithConsensusInfo(
+    const tserver::TabletConsensusInfoPB& newly_received_info) {
+  return DoRefreshTabletInfoWithConsensusInfo(newly_received_info);
+}
+
+bool YBClient::RefreshTabletInfoWithConsensusInfo(
+    const tserver::LWTabletConsensusInfoPB& newly_received_info) {
+  return DoRefreshTabletInfoWithConsensusInfo(newly_received_info);
 }
 
 int64_t YBClient::GetRaftConfigOpidIndex(const TabletId& tablet_id) {

@@ -213,7 +213,7 @@ HistoryCutoff TabletRetentionPolicy::SanitizeHistoryCutoff(
   docdb::HistoryCutoff provided_allowed_cutoff;
   if (allowed_history_cutoff_provider_) {
     provided_allowed_cutoff = allowed_history_cutoff_provider_(&metadata_);
-    LOG_WITH_PREFIX_AND_FUNC_DETAIL << ", cutoff from the provider " << provided_allowed_cutoff;
+    LOG_WITH_PREFIX_AND_FUNC(DETAIL) << ", cutoff from the provider " << provided_allowed_cutoff;
   }
   docdb::HistoryCutoff allowed_cutoff = provided_allowed_cutoff;
   allowed_cutoff = ConstructMinCutoff(allowed_cutoff, proposed_cutoff);
@@ -222,17 +222,6 @@ HistoryCutoff TabletRetentionPolicy::SanitizeHistoryCutoff(
     // Cannot garbage-collect any records that are still being read.
     allowed_cutoff = ConstructMinCutoff(
         allowed_cutoff, { *active_readers_.begin(), *active_readers_.begin() });
-  }
-
-  if (metadata_.table_id() == kObsoleteShortPrimaryTableId) {
-    auto syscatalog_history_retention_interval_sec = ANNOTATE_UNPROTECTED_READ(
-        FLAGS_timestamp_syscatalog_history_retention_interval_sec);
-    if (syscatalog_history_retention_interval_sec) {
-      HybridTime allowed_from_syscatalog_flag =
-          clock_->Now().AddSeconds(-syscatalog_history_retention_interval_sec);
-      allowed_cutoff = ConstructMinCutoff(
-          allowed_cutoff, { allowed_from_syscatalog_flag, allowed_from_syscatalog_flag });
-    }
   }
 
   // If cotables_cutoff_ht from provider is invalid then keep it invalid.

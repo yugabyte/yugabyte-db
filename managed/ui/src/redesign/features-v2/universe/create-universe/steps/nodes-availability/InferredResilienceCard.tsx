@@ -75,6 +75,7 @@ export const InferredResilienceCard: FC<InferredResilienceCardProps> = ({
     availabilityZones
   );
   const notResilient = replicationFactor <= 1;
+  const cardVisible = notResilient || (inferredResilience !== null && outageCount > 0);
 
   const outageLevelLabel = useMemo(() => {
     if (!inferredResilience) {
@@ -85,7 +86,7 @@ export const InferredResilienceCard: FC<InferredResilienceCardProps> = ({
 
   // For RF=1, explicitly show the not-resilient message.
   // Otherwise hide when resilience cannot be inferred or outage tolerance is zero.
-  if (!notResilient && (inferredResilience === null || outageCount <= 0)) {
+  if (!cardVisible) {
     return null;
   }
 

@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesCluster;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -162,8 +163,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       }
 
       // Get helm values
-      Provider provider =
-          Provider.getOrBadRequest(UUID.fromString(universeCluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(universeCluster);
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       boolean isReadOnlyUniverseCluster = universeCluster.clusterType == ClusterType.ASYNC;
       String helmReleaseName =
@@ -327,8 +327,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       for (Cluster universeCluster : universeClusters) {
         Map<UUID, Map<String, String>> azToConfig =
             KubernetesUtil.getConfigPerAZ(universeCluster.getOverallPlacement());
-        Provider provider =
-            Provider.getOrBadRequest(UUID.fromString(universeCluster.userIntent.provider));
+        Provider provider = Util.getSingleProvider(universeCluster);
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
         boolean isReadOnlyUniverseCluster = universeCluster.clusterType == ClusterType.ASYNC;
 

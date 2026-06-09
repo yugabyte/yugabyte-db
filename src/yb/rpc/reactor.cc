@@ -62,6 +62,7 @@
 #include "yb/rpc/server_event.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"
@@ -262,7 +263,8 @@ Reactor::Reactor(Messenger* messenger,
                                  SOURCE_LOCATION())),
       num_connections_to_server_(bld.num_connections_to_server()),
       completed_call_queue_(std::make_shared<CompletedCallQueue>()),
-      cur_time_(CoarseMonoClock::Now()) {
+      cur_time_(CoarseMonoClock::Now()),
+      cgroup_(bld.system_high_cgroup()) {
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
 
@@ -730,6 +732,12 @@ void Reactor::CheckCurrentThread() const {
 }
 
 void Reactor::RunThread() {
+#ifdef __linux__
+  if (cgroup_) {
+    WARN_NOT_OK(cgroup_->MoveCurrentThreadToGroup(),
+                LogPrefix() + "Failed to move reactor thread to cgroup");
+  }
+#endif
   ThreadRestrictions::SetWaitAllowed(false);
   ThreadRestrictions::SetIOAllowed(false);
   DVLOG_WITH_PREFIX(6) << "Calling Reactor::RunThread()...";

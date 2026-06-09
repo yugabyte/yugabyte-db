@@ -14,7 +14,9 @@ type: docs
 
 YugabyteDB supports the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the [query planner](../../architecture/query-layer/planner-optimizer/) can devise plans that leverage multiple CPUs to answer queries faster.
 
-YugabyteDB supports parallel queries for [colocated](../colocation/), [hash-, and range-sharded](../../architecture/docdb-sharding/sharding/) tables.
+YugabyteDB supports parallel queries for [colocated](../colocation/) tables.
+
+{{<tags/feature/ea idea="1516">}}[Hash- and range-sharded](../../architecture/docdb-sharding/sharding/) tables are also supported in v2025.2.3 and later.
 
 To configure parallel queries, set the following configuration parameters.
 
@@ -22,9 +24,9 @@ To configure parallel queries, set the following configuration parameters.
 | :--- | :--- | :--- |
 | yb_enable_parallel_append | Enables the planner's use of parallel append plans in YugabyteDB. | `false` |
 | enable_parallel_append | PostgreSQL parameter for enabling the planner's use of parallel append plans. For more information, refer to [Parallel Append](https://www.postgresql.org/docs/15/parallel-plans.html#PARALLEL-APPEND) in the PostgreSQL documentation. | `true` |
-| yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables.<br>Available in v2025.2.2 and later. | `true` |
-| yb_enable_parallel_scan_hash_sharded | Enables the planner's use of parallel queries for hash-sharded tables.<br>Available in v2025.2.2 and later. | `false` |
-| yb_enable_parallel_scan_range_sharded | Enables the planner's use of parallel queries for range-sharded tables.<br>Available in v2025.2.2 and later. | `false` |
+| yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables.<br>This flag was added in v2025.2.2. | `true` |
+| {{<tags/feature/ea idea="1516">}}yb_enable_parallel_scan_hash_sharded | Enables the planner's use of parallel queries for hash-sharded tables.<br>v2025.2.3 and later. | `false` |
+| {{<tags/feature/ea idea="1516">}}yb_enable_parallel_scan_range_sharded | Enables the planner's use of parallel queries for range-sharded tables.<br>v2025.2.3 and later. | `false` |
 | yb_parallel_range_rows | The number of rows to plan per parallel worker. | `0` |
 | yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. Numeric with memory unit (B, kB, MB, or GB). | `1MB` |
 
@@ -48,7 +50,8 @@ To enable parallel query in v2025.2.2 or later, set the following parameters:
 
 - yb_enable_parallel_append: `true`.
 - yb_parallel_range_rows: a value other than 0 (10000 recommended).
-- yb_enable_parallel_scan_colocated, yb_enable_parallel_scan_hash_sharded, and/or yb_enable_parallel_scan_range_sharded: `true`.
+- yb_enable_parallel_scan_colocated: `true`.
+- yb_enable_parallel_scan_hash_sharded, and/or yb_enable_parallel_scan_range_sharded: `true` (v2025.2.3 and later only).
 
 To enable parallel query in v2025.2.1 and earlier, set the following parameters:
 

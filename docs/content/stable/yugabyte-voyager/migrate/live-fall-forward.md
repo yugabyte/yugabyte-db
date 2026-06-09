@@ -10,6 +10,8 @@ menu:
     parent: migration-types
     weight: 103
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 When migrating using YugabyteDB Voyager, it is prudent to have a backup strategy if the new database doesn't work as expected. A fall-forward approach consists of creating a third database (the source-replica database) that is a replica of your original source database.

@@ -124,6 +124,8 @@ CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
       last_live_tservers_(0) {
 }
 
+CatalogManagerBgTasks::~CatalogManagerBgTasks() = default;
+
 void CatalogManagerBgTasks::Wake() {
   MutexLock lock(lock_);
   pending_updates_ = true;

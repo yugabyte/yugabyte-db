@@ -780,13 +780,24 @@ public class Audit extends Model {
   }
 
   public static Audit getFromTaskUUID(UUID taskUUID) {
-    return find.query().where().eq("task_uuid", taskUUID).findOne();
+    return find.query()
+        .where()
+        .eq("task_uuid", taskUUID)
+        .orderBy("timestamp asc")
+        .setMaxRows(1)
+        .findOne();
   }
 
   public static Audit getOrBadRequest(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry =
-        find.query().where().eq("task_uuid", taskUUID).eq("customer_uuid", customerUUID).findOne();
+        find.query()
+            .where()
+            .eq("task_uuid", taskUUID)
+            .eq("customer_uuid", customerUUID)
+            .orderBy("timestamp asc")
+            .setMaxRows(1)
+            .findOne();
     if (entry == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Task " + taskUUID + " does not belong to customer " + customerUUID);

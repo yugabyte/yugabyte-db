@@ -1,24 +1,18 @@
 import { useRef } from 'react';
 import { mui } from '@yugabyte-ui-library/core';
 import { useToggle } from 'react-use';
-import { toast } from 'react-toastify';
 import { useGetEditPlacementContext } from './EditPlacementUtils';
 import { EditPlacementContextProps, EditPlacementSteps } from './EditPlacementContext';
 import GeoPartitionBreadCrumb from '../../geo-partition/add/GeoPartitionBreadCrumbs';
 import { NodesAvailability } from '../../create-universe/steps';
-import { getClusterByType } from '../EditUniverseUtils';
 import { UniverseActionButtons } from '../../create-universe/components/UniverseActionButtons';
 import { useTranslation } from 'react-i18next';
 import { EditPlacementConfirmModal } from './EditPlacementConfirmModal';
-import { useEditUniverse } from '@app/v2/api/universe/universe';
-import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
   CreateUniverseContext,
   createUniverseFormProps,
   StepsRef
 } from '../../create-universe/CreateUniverseContext';
-import { getPlacementRegions } from '../../create-universe/CreateUniverseUtils';
-import { createErrorMessage } from '@app/utils/ObjectUtils';
 
 const { Box } = mui;
 
@@ -32,7 +26,7 @@ export const EditPlacementNodesAndAvailability = () => {
   const context = useGetEditPlacementContext();
 
   const { setActiveStep } = context[1];
-  const { hideModal, onSubmit } = context[2];
+  const { hideModal, onSubmit, isSubmittingPlacementUpdate } = context[2];
 
   return (
     <CreateUniverseContext.Provider
@@ -61,7 +55,10 @@ export const EditPlacementNodesAndAvailability = () => {
           groupTitle={<>{t('placement')}</>}
           subTitle={<>{t('nodesAndAvailabilityZone')}</>}
         />
-        <NodesAvailability ref={nodesAndAvailabilityRef} />
+        <NodesAvailability
+          ref={nodesAndAvailabilityRef}
+          isGeoPartition
+        />
         <UniverseActionButtons
           prevButton={{
             text: t('back', { keyPrefix: 'common' }),
@@ -84,11 +81,14 @@ export const EditPlacementNodesAndAvailability = () => {
         />
         <EditPlacementConfirmModal
           visible={showEditPlacementModal}
+          isSubmitting={isSubmittingPlacementUpdate}
           onHide={() => {
             setShowEditPlacementModal(false);
           }}
           onSubmit={() => {
-            onSubmit(addEditPlacementData);
+            onSubmit(addEditPlacementData, () => {
+              setShowEditPlacementModal(false);
+            });
           }}
         />
       </Box>

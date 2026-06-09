@@ -210,6 +210,14 @@ Status ParseHeader(
           in->Skip(length);
         }
         break;
+      case RequestHeader::kPoolTagFieldNumber: {
+          uint32_t pool_tag;
+          if (!in->ReadVarint32(&pool_tag)) {
+            return STATUS(Corruption, "Unable to decode pool_tag field");
+          }
+          parsed_header->pool_tag = pool_tag;
+        }
+        break;
       case RequestHeader::kCrcFieldNumber: {
           uint32_t crc;
           if (!in->ReadLittleEndian32(&crc)) {
@@ -386,6 +394,9 @@ void ParsedRequestHeader::ToPB(RequestHeader* out) const {
     out->mutable_remote_method()->set_service_name(parsed_remote_method->service.ToBuffer());
     out->mutable_remote_method()->set_method_name(parsed_remote_method->method.ToBuffer());
   }
+  if (pool_tag) {
+    out->set_pool_tag(pool_tag);
+  }
   if (crc) {
     out->set_crc(*crc);
   }
@@ -393,7 +404,7 @@ void ParsedRequestHeader::ToPB(RequestHeader* out) const {
 
 std::string ParsedRequestHeader::ToString() const {
   return YB_STRUCT_TO_STRING(
-      (remote_method, RemoteMethodAsString()), call_id, timeout_ms, sidecar_offsets, crc);
+      (remote_method, RemoteMethodAsString()), call_id, timeout_ms, sidecar_offsets, pool_tag, crc);
 }
 
 Status ParseMetadata(Slice buf, AnyMessagePtr out) {

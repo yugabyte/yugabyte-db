@@ -157,14 +157,12 @@ class SCOPED_CAPABILITY SpinLockHolder {
  private:
   SpinLock* lock_;
  public:
-  inline explicit SpinLockHolder(SpinLock* l) ACQUIRE(l)
+  [[nodiscard]] inline explicit SpinLockHolder(SpinLock* l) ACQUIRE(l)
       : lock_(l) {
     l->Lock();
   }
 
   inline ~SpinLockHolder() RELEASE() { lock_->Unlock(); }
 };
-// Catch bug where variable name is omitted, e.g. SpinLockHolder (&lock);
-#define SpinLockHolder(x) COMPILE_ASSERT(0, spin_lock_decl_missing_var_name)
 
 } // namespace base

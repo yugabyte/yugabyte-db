@@ -22,7 +22,6 @@ cascade:
 | [v2025.2](v2025.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2025.2" release >}} | {{< yb-eol-dates "v2025.2" EOM >}} | {{< yb-eol-dates "v2025.2" EOL >}} |
 | [v2025.1](v2025.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2025.1" release >}} | {{< yb-eol-dates "v2025.1" EOM >}} | {{< yb-eol-dates "v2025.1" EOL >}} |
 | [v2024.2](v2024.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2024.2" release >}} | {{< yb-eol-dates "v2024.2" EOM >}} | {{< yb-eol-dates "v2024.2" EOL >}} |
-| [v2024.1](v2024.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
 | [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 
 {{< tip title="YugabyteDB Anywhere release notes have moved" >}}
@@ -43,6 +42,7 @@ The following stable and preview releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2024.1](end-of-life/v2024.1/) {{<tags/release/sts>}} | June 4, 2024 | September 4, 2025 | March 7, 2026 |
 | [v2.25](end-of-life/v2.25/) {{<tags/release/preview>}} | January 17, 2025  | n/a | n/a |
 | [v2.23](end-of-life/v2.23/) {{<tags/release/preview>}} | September 13, 2024  | n/a | n/a |
 | [v2.21](end-of-life/v2.21/) {{<tags/release/preview>}} | March 26, 2024 | n/a | n/a |

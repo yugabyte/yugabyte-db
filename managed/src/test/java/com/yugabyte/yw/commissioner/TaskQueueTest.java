@@ -114,7 +114,7 @@ public class TaskQueueTest extends PlatformGuiceApplicationBaseTest {
                     } catch (Exception e) {
                       fail("Exception occurred - " + e.getMessage());
                     } finally {
-                      when(t.hasTaskCompleted()).thenReturn(true);
+                      when(t.hasTaskTerminated()).thenReturn(true);
                       // Dequeue and submit the next.
                       taskQueue.dequeue(t, taskRunnerRef.get());
                       onCompletion.accept(t);

@@ -117,6 +117,13 @@ class YbHnswIndex :
     return index_.header().dimensions;
   }
 
+  // YbHnsw is a read-only, file-backed format that does not allocate per-vector heap memory in
+  // the same way as the in-memory hnswlib/usearch indexes. We don't size new chunks against it,
+  // so this estimate is unused in practice.
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return 0;
+  }
+
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
     return index_.Distance(
         pointer_cast<const std::byte*>(lhs.data()), pointer_cast<const std::byte*>(rhs.data()));
@@ -182,10 +189,9 @@ Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
 template <class Vector, class DistanceResult>
 Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
     const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path,
-    const hnsw::BlockCachePtr& block_cache) {
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
   auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
-      std::make_unique<hnsw::HnswlibMetric>(index.fstdistfunc_, index.dist_func_param_),
-      block_cache);
+      std::make_unique<hnsw::UsearchMetric>(options.CreateMetric<Vector>()), block_cache);
   RETURN_NOT_OK(result->Import(index, path));
   return result;
 }
@@ -198,7 +204,7 @@ Result<vector_index::VectorIndexIfPtr<FloatVector, float>> ImportYbHnsw<FloatVec
 template
 Result<vector_index::VectorIndexIfPtr<FloatVector, float>> ImportYbHnsw<FloatVector, float>(
     const hnsw::HnswlibIndex<float>& index, const std::string& path,
-    const hnsw::BlockCachePtr& block_cache);
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options);
 
 template <class Vector, class DistanceResult>
 vector_index::VectorIndexIfPtr<Vector, DistanceResult> CreateYbHnsw(

@@ -34,6 +34,31 @@
 namespace yb {
 namespace ql {
 
+namespace {
+
+std::vector<LWQLValuePB*> PrepareOptions(LWQLExpressionPB& expr, bool* has_null = nullptr) {
+  std::vector<LWQLValuePB*> result;
+  for (auto& value_pb : *expr.mutable_value()->mutable_list_value()->mutable_elems()) {
+    if (IsNull(value_pb)) {
+      if (has_null) {
+        *has_null = true;
+      }
+    } else {
+      result.push_back(&value_pb);
+    }
+  }
+  std::sort(result.begin(), result.end(), [](const auto* lhs, const auto* rhs) {
+    return *lhs < *rhs;
+  });
+  result.erase(
+      std::unique(result.begin(), result.end(),
+                  [](const auto* lhs, const auto* rhs) { return *lhs == *rhs; }),
+      result.end());
+  return result;
+}
+
+} // namespace
+
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::WhereClauseToPB(QLWriteRequestMsg *req,
@@ -88,9 +113,9 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestMsg* req,
 
   // Setup the lower/upper bounds on the partition key -- if any
   for (const auto& op : partition_key_ops) {
-    QLExpressionPB expr_pb;
+    LWQLExpressionPB expr_pb(&req->arena());
     RETURN_NOT_OK(PTExprToPB(op.expr(), &expr_pb));
-    qlexpr::QLExprResult result;
+    qlexpr::LWExprResult result(req);
     RETURN_NOT_OK(EvalExpr(expr_pb, qlexpr::QLTableRow::empty_row(), result.Writer()));
     const auto& value = result.Value();
     DCHECK(value.has_int64_value() || value.has_int32_value())
@@ -172,11 +197,11 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestMsg* req,
           RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb));
           RETURN_NOT_OK(EvalExpr(col_pb, qlexpr::QLTableRow::empty_row()));
         } else {
-          QLExpressionPB col_pb;
+          auto& col_pb = *req->arena().NewArenaObject<LWQLExpressionPB>();
           col_pb.set_column_id(col_desc->id());
           RETURN_NOT_OK(PTExprToPB(op.expr(), &col_pb));
           RETURN_NOT_OK(EvalExpr(&col_pb, qlexpr::QLTableRow::empty_row()));
-          tnode_context->hash_values_options().push_back({col_pb});
+          tnode_context->hash_values_options().push_back({&col_pb});
         }
         break;
       }
@@ -187,7 +212,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestMsg* req,
         }
 
         // De-duplicating and ordering values from the 'IN' expression.
-        QLExpressionPB col_pb;
+        LWQLExpressionPB col_pb(&req->arena());
         RETURN_NOT_OK(PTExprToPB(op.expr(), &col_pb));
 
         // Fast path for returning no results when 'IN' list is empty.
@@ -195,15 +220,8 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestMsg* req,
           return 0;
         }
 
-        std::set<QLValuePB> set_values;
         bool has_null = false;
-        for (QLValuePB& value_pb : *col_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
-          if (QLValue::IsNull(value_pb)) {
-            has_null = true;
-          } else {
-            set_values.insert(std::move(value_pb));
-          }
-        }
+        auto set_values = PrepareOptions(col_pb, &has_null);
 
         // Special case: WHERE x IN (null)
         if (has_null && set_values.empty() && req->hashed_column_values().empty()) {
@@ -214,10 +232,10 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestMsg* req,
         partitions_count *= set_values.size();
         tnode_context->hash_values_options().emplace_back();
         auto& options = tnode_context->hash_values_options().back();
-        for (auto& value_pb : set_values) {
-          options.emplace_back();
-          options.back().set_column_id(col_desc->id());
-          *options.back().mutable_value() = std::move(value_pb);
+        for (auto* value_pb : set_values) {
+          options.emplace_back(req->arena().ArenaObjectFactory());
+          options.back()->set_column_id(col_desc->id());
+          options.back()->ref_value(value_pb);
         }
         break;
       }
@@ -249,7 +267,8 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestMsg* req,
       // Update the estimate for the number of selected rows if needed.
       if (col_op.desc()->is_primary()) {
         if (cond->op() == QL_OP_IN) {
-          int in_size = cond->operands(1).value().list_value().elems_size();
+          auto it = cond->operands().begin();
+          auto in_size = (++it)->value().list_value().elems_size();
           if (in_size == 0) {  // Fast path for returning no results when 'IN' list is empty.
             return 0;
           } else if (max_rows_estimate <= std::numeric_limits<uint64_t>::max() / in_size) {
@@ -271,7 +290,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestMsg* req,
       RETURN_NOT_OK(WhereMultiColumnOpToPB(cond, col_op));
       DCHECK(cond->op() == QL_OP_IN);
       // Update the estimate for the number of selected rows if needed.
-      int in_size = cond->operands(1).value().list_value().elems_size();
+      auto in_size = (++cond->operands().begin())->value().list_value().elems_size();
       if (in_size == 0) {  // Fast path for returning no results when 'IN' list is empty.
         return 0;
       } else if (max_rows_estimate <= std::numeric_limits<uint64_t>::max() / in_size) {
@@ -316,19 +335,13 @@ Status Executor::WhereColumnOpToPB(QLConditionMsg* condition, const ColumnOp& co
   // Special case for IN condition arguments on primary key -- we de-duplicate and order them here
   // to match Cassandra semantics.
   if (col_op.yb_op() == QL_OP_IN && col_op.desc()->is_primary()) {
-    QLExpressionPB tmp_expr_pb;
+    LWQLExpressionPB tmp_expr_pb(&condition->arena());
     RETURN_NOT_OK(PTExprToPB(col_op.expr(), &tmp_expr_pb));
-    std::set<QLValuePB> opts_set;
-    for (QLValuePB& value_pb :
-        *tmp_expr_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
-      if (!QLValue::IsNull(value_pb)) {
-        opts_set.insert(std::move(value_pb));
-      }
-    }
+    auto opts_set = PrepareOptions(tmp_expr_pb);
 
     expr_pb->mutable_value()->mutable_list_value();  // Set value type to list.
-    for (const QLValuePB& value_pb : opts_set) {
-      *expr_pb->mutable_value()->mutable_list_value()->add_elems() = value_pb;
+    for (auto* value_pb : opts_set) {
+      expr_pb->mutable_value()->mutable_list_value()->mutable_elems()->push_back_ref(value_pb);
     }
     return Status::OK();
   }
@@ -365,19 +378,14 @@ Status Executor::WhereMultiColumnOpToPB(QLConditionMsg* condition, const MultiCo
 
   // Special case for IN condition arguments on primary key -- we de-duplicate and order them here
   // to match Cassandra semantics.
-  QLExpressionPB tmp_expr_pb;
+  LWQLExpressionPB tmp_expr_pb(&condition->arena());
   RETURN_NOT_OK(PTExprToPB(col_op.expr(), &tmp_expr_pb));
 
-  std::set<QLValuePB> opts_set;
-  for (QLValuePB& value_pb : *tmp_expr_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
-    if (!QLValue::IsNull(value_pb)) {
-      opts_set.insert(std::move(value_pb));
-    }
-  }
+  auto opts_set = PrepareOptions(tmp_expr_pb);
 
   expr_pb->mutable_value()->mutable_list_value();  // Set value type to list.
-  for (const QLValuePB& value_pb : opts_set) {
-    *expr_pb->mutable_value()->mutable_list_value()->add_elems() = value_pb;
+  for (auto* value_pb : opts_set) {
+    expr_pb->mutable_value()->mutable_list_value()->mutable_elems()->push_back_ref(value_pb);
   }
   return Status::OK();
 }

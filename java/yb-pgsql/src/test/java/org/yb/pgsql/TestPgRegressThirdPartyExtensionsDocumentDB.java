@@ -19,13 +19,21 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
-import org.yb.util.YBTestRunnerNonSanOrAArch64Mac;
+import org.yb.util.RequiresLinux;
+import org.yb.util.SkipOnAArch64;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 
 // (#26948): Builds like those on ubuntu22.04 do not support the extension and we currently have
 // no test runner to detect this.
 @Ignore("Disabled until fix for #26948 lands")
-@RunWith(value = YBTestRunnerNonSanOrAArch64Mac.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RequiresLinux
+@SkipOnAArch64
+@RunWith(value = YBTestRunner.class)
 public class TestPgRegressThirdPartyExtensionsDocumentDB extends BasePgRegressTest {
   @Before
   public void setUp() throws Exception {

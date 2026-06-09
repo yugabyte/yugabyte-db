@@ -16,10 +16,10 @@
 #include "yb/common/common_flags.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_replication.pb.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
@@ -39,7 +39,7 @@ size_t GetDefaultYbNumShardsPerTServer(const bool is_automatic_tablet_splitting_
   if (IsTsan()) {
     return 2;
   }
-  if (base::NumCPUs() <= 2) {
+  if (NumEffectiveCPUs() <= 2) {
     return 4;
   }
   return 8;
@@ -52,10 +52,10 @@ size_t GetDefaultYSQLNumShardsPerTServer(const bool is_automatic_tablet_splittin
   if (IsTsan()) {
     return 2;
   }
-  if (base::NumCPUs() <= 2) {
+  if (NumEffectiveCPUs() <= 2) {
     return 2;
   }
-  if (base::NumCPUs() <= 4) {
+  if (NumEffectiveCPUs() <= 4) {
     return 4;
   }
   return 8;
@@ -87,9 +87,9 @@ int GetInitialNumTabletsPerTable(bool is_ysql, size_t tserver_count) {
   // Special handling for low core machines with automatic tablet splitting enabled:
   // limit the number of tablets in case of low number of CPU cores.
   if (automatic_tablet_splitting_enabled) {
-    if (base::NumCPUs() <= 2) {
+    if (NumEffectiveCPUs() <= 2) {
       num_tablets = 1;
-    } else if (base::NumCPUs() <= 4) {
+    } else if (NumEffectiveCPUs() <= 4) {
       num_tablets = std::min<size_t>(2, num_tablets);
     }
   }

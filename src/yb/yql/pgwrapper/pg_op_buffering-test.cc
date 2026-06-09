@@ -366,13 +366,21 @@ void TestBulkLoadUseFastPathForColocated(PGConn* conn, const std::string& table_
   const int total_write_entries = num_rows * (num_indices + 1);
   ASSERT_OK(CreateTableWithIndex(conn, table_name, num_indices));
   ASSERT_OK(conn->Execute("SET yb_fast_path_for_colocated_copy=true"));
+
+  // COPY REPLACE is not supported on tables with secondary indexes, triggers,
+  // or FK constraints. Use plain COPY when indexes are present (table is empty
+  // so there are no duplicates anyway).
+  const std::string copy_options = num_indices > 0
+      ? "FORMAT CSV, HEADER"
+      : "FORMAT CSV, HEADER, REPLACE";
+
   // will take 2 buffers if not adjusted
   ASSERT_OK(SetMaxBatchSize(conn, total_write_entries - 1));
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
-      [&conn, &csv_filename, &table_name](){
+      [&conn, &csv_filename, &table_name, &copy_options](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
-            table_name, csv_filename);
+            "copy $0 from '$1' WITH ($2)",
+            table_name, csv_filename, copy_options);
       }));
 
   if (num_indices > 0) {
@@ -383,13 +391,20 @@ void TestBulkLoadUseFastPathForColocated(PGConn* conn, const std::string& table_
     ASSERT_EQ(write_rpc_count, 2);
   }
 
+  // Truncate before the second COPY to avoid duplicate key errors.
+  ASSERT_OK(conn->ExecuteFormat("TRUNCATE TABLE $0", table_name));
+
+  const std::string copy_options_with_batch = num_indices > 0
+      ? "FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 20000"
+      : "FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 20000, REPLACE";
+
   // For colocated table, if ROWS_PER_TRANSACTION is set explicitly, distributed transaction
   // will be used, so the buffer batch size will not be adjusted.
   write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
-      [&conn, &csv_filename, table_name](){
+      [&conn, &csv_filename, table_name, &copy_options_with_batch](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, ROWS_PER_TRANSACTION 20000, REPLACE)",
-            table_name, csv_filename);
+            "copy $0 from '$1' WITH ($2)",
+            table_name, csv_filename, copy_options_with_batch);
       }));
   // the buffer size is not adjusted, all write will take 2 rpc.
   ASSERT_EQ(write_rpc_count, 2);
@@ -412,10 +427,12 @@ void CheckBulkLoadForColocatedFK(PGConn* conn, const std::string& table_name,
                                  std::optional<SingleMetricWatcher>& write_rpc_watcher) {
   ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1,
                                  /* fk = */ true, num_rows));
+  // COPY REPLACE is not supported on tables with secondary indexes, triggers,
+  // or FK constraints. Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   ASSERT_EQ(write_rpc_count, 2);
@@ -440,10 +457,12 @@ void CheckBulkLoadForColocatedTrigger(PGConn* conn, const std::string& table_nam
       " FOR EACH ROW EXECUTE FUNCTION update_column()";
   ASSERT_OK(conn->ExecuteFormat(create_trigger_sql));
 
+  // COPY REPLACE is not supported on tables with triggers.
+  // Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   ASSERT_EQ(write_rpc_count, 2);
@@ -455,11 +474,13 @@ void CheckBulkLoadForColocatedExplicitTxn(PGConn* conn, const std::string& table
                                           const std::string& csv_filename,
                                           std::optional<SingleMetricWatcher>& write_rpc_watcher) {
   ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1));
+  // COPY REPLACE is not supported on tables with secondary indexes.
+  // Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
             "begin transaction isolation level repeatable read;"
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   ASSERT_EQ(write_rpc_count, 2);
@@ -472,10 +493,12 @@ void CheckBulkLoadForColocatedTempTable(PGConn* conn, const std::string& table_n
                                         std::optional<SingleMetricWatcher>& write_rpc_watcher) {
   ASSERT_OK(CreateTableWithIndex(conn, table_name, /* num_indices = */ 1, /* fk = */ false,
       /* num_rows*/ 0, /* temporary_table */ true));
+  // COPY REPLACE is not supported on tables with secondary indexes, triggers,
+  // or FK constraints. Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   ASSERT_EQ(write_rpc_count, 0);
@@ -512,13 +535,15 @@ TEST_F(PgOpBufferingTest, BulkLoadForNonColocatedTest) {
   ASSERT_OK(CreateTableWithIndex(&conn, table_name, /* num_indices = */ 1));
   ASSERT_OK(SetMaxBatchSize(&conn, num_rows * 2 - 1));
   ASSERT_OK(conn.Execute("SET yb_fast_path_for_colocated_copy=true"));
+  // COPY REPLACE is not supported on tables with secondary indexes.
+  // Use plain COPY (table is empty, no duplicates).
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn.ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
-  // For non-colcated table, table and index may be located in separate tables, so it takes
+  // For non-colocated table, table and index may be located in separate tables, so it takes
   // at least 2 rpc.
   ASSERT_GE(write_rpc_count, 2);
 }
@@ -537,7 +562,7 @@ void CheckBulkLoadForColocatedCheckConstraint(
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
          return conn->ExecuteFormat(
-             "copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+             "copy $0 from '$1' WITH (FORMAT CSV, HEADER, REPLACE)",
              table_name, csv_filename);
       }));
   // The buffer size will be adjusted so the number of rpc should be 1.
@@ -549,7 +574,7 @@ void CheckBulkLoadForColocatedCheckConstraint(
   std::string check_constraint_sql_2 =
       "ALTER TABLE " + table_name + " ADD CONSTRAINT check_constraint_test CHECK (v0 < 99)";
   ASSERT_OK(conn->ExecuteFormat(check_constraint_sql_2));
-  const auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER, REPLACE)",
+  const auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV, HEADER, REPLACE)",
       table_name, csv_filename);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), "violates check constraint");
@@ -571,7 +596,7 @@ void CheckBulkLoadForColocatedUniqueIndex(PGConn* conn, const std::string& table
   auto write_rpc_count = ASSERT_RESULT(write_rpc_watcher->Delta(
       [&conn, &csv_filename, &table_name](){
         return conn->ExecuteFormat(
-            "copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
+            "copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
             table_name, csv_filename);
       }));
   // The buffer size will be adjusted so the number of rpc should be 1.
@@ -584,7 +609,7 @@ void CheckBulkLoadForColocatedUniqueIndex(PGConn* conn, const std::string& table
   std::string truncate_table_sql = "TRUNCATE TABLE " + table_name;
   ASSERT_OK(conn->ExecuteFormat(truncate_table_sql));
   ASSERT_OK(SetMaxBatchSize(conn, 20000));
-  auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
+  auto status = conn->ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV, HEADER)",
                                     table_name, csv_filename);
   LOG(INFO) << "copy status: " << status;
   ASSERT_NOK(status);

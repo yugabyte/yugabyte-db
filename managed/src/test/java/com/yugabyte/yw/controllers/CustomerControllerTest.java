@@ -49,6 +49,7 @@ import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.controllers.handlers.CustomerHandler;
 import com.yugabyte.yw.forms.AlertingData;
@@ -64,7 +65,6 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -214,7 +214,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
   @Test
   public void testCustomerGETWithReadonlyUser() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
@@ -735,9 +735,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.put("start", "1479281737000");
     params.put("nodePrefix", "yb-tc-demo");
     Universe u1 = createUniverse("demo", customer.getId(), CloudType.kubernetes);
-    Provider provider =
-        Provider.get(
-            UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getSingleProvider(u1.getUniverseDetails().getPrimaryCluster());
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     Region r1 = Region.create(provider, "region-2", "PlacementRegion-2", "default-image");
@@ -787,9 +785,7 @@ public class CustomerControllerTest extends FakeDBApplication {
           Universe.saveDetails(
               u1.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithHelmNamingStyle(true));
     }
-    Provider provider =
-        Provider.get(
-            UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getSingleProvider(u1.getUniverseDetails().getPrimaryCluster());
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
 
@@ -841,9 +837,7 @@ public class CustomerControllerTest extends FakeDBApplication {
               details.nodeDetailsSet.add(node);
               univ.setUniverseDetails(details);
             });
-    Provider provider =
-        Provider.get(
-            UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getSingleProvider(u1.getUniverseDetails().getPrimaryCluster());
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
 

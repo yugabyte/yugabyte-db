@@ -56,6 +56,8 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetXClusterRole(PgGetXClusterRoleRequestPB) returns (PgGetXClusterRoleResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
+  rpc IsDatabaseColocated(PgIsDatabaseColocatedRequestPB)
+      returns (PgIsDatabaseColocatedResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB) {
@@ -73,7 +75,7 @@ service PgClientService {
   rpc GetTablePartitionList(PgGetTablePartitionListRequestPB)
       returns (PgGetTablePartitionListResponsePB);
   rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
-    option (yb.rpc.lightweight_method).sides = PROXY;
+    option (yb.rpc.lightweight_method).sides = BOTH;
   };
   rpc PollVectorIndexReady(PgPollVectorIndexReadyRequestPB)
       returns (PgPollVectorIndexReadyResponsePB) {
@@ -92,15 +94,38 @@ service PgClientService {
   rpc WaitForBackendsCatalogVersion(PgWaitForBackendsCatalogVersionRequestPB)
       returns (PgWaitForBackendsCatalogVersionResponsePB);
 
-  rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB) returns (PgInsertSequenceTupleResponsePB);
-  rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB) returns (PgUpdateSequenceTupleResponsePB);
-  rpc FetchSequenceTuple(PgFetchSequenceTupleRequestPB) returns (PgFetchSequenceTupleResponsePB);
-  rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB);
-  rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
-  rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
+  rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB)
+      returns (PgInsertSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB)
+      returns (PgUpdateSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc FetchSequenceTuple(PgFetchSequenceTupleRequestPB) returns (PgFetchSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB)
+      returns (PgDeleteSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
   rpc IsObjectPartOfXRepl(PgIsObjectPartOfXReplRequestPB)
       returns (PgIsObjectPartOfXReplResponsePB);
+  rpc IsNamespacePartOfCDCSDK(PgIsNamespacePartOfCDCSDKRequestPB)
+      returns (PgIsNamespacePartOfCDCSDKResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
@@ -111,7 +136,9 @@ service PgClientService {
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
 
-  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB);
+  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
 
   rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
       returns (PgGetNewObjectIdResponsePB);
@@ -125,6 +152,9 @@ service PgClientService {
   rpc ListClones(PgListClonesRequestPB) returns (PgListClonesResponsePB);
 
   rpc QueryAutoAnalyze(PgQueryAutoAnalyzeRequestPB) returns (PgQueryAutoAnalyzeResponsePB);
+
+  rpc ResetAutoAnalyzeMutationCounters(PgResetAutoAnalyzeMutationCountersRequestPB)
+      returns (PgResetAutoAnalyzeMutationCountersResponsePB);
 
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
@@ -147,7 +177,7 @@ service PgClientService {
 
   rpc AcquireObjectLock(PgAcquireObjectLockRequestPB)
       returns (PgAcquireObjectLockResponsePB) {
-    option (yb.rpc.lightweight_method).sides = PROXY;
+    option (yb.rpc.lightweight_method).sides = BOTH;
   }
   rpc ReleaseSessionObjectLock(PgReleaseSessionObjectLockRequestPB)
       returns (PgReleaseSessionObjectLockResponsePB);
@@ -231,6 +261,10 @@ message PgBackfillIndexRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
   reserved 3; // ASH metadata is now passed in RequestHeader PB
+  // When transactional DDL is enabled (ysql_yb_ddl_transaction_block_enabled), the CREATE INDEX
+  // backend uses the kPlain session transaction rather than an autonomous kDDL transaction.
+  // This flag must match the DDL mode so GetDdlTransactionMetadata fetches from the right txn.
+  bool use_regular_transaction_block = 4;
 }
 
 message PgBackfillIndexResponsePB {
@@ -307,7 +341,13 @@ message PgCreateDatabaseRequestPB {
   bool colocated = 7;
   fixed64 clone_time = 8;
   string source_database_name = 9;
-  string source_owner = 10;
+  // Reserved: previously held source_owner. Removed because ysql_dump now
+  // derives the source DB owner from pg_database.datdba via its
+  // --rename-owner machinery, so the master no longer needs to ship it.
+  reserved 10;
+  // Raw role name (as stored in pg_authid.rolname) of the new database
+  // owner. Forwarded to ysql_dump as --rename-owner=<target_owner>; ysql_dump
+  // applies fmtId() at emission time, so no pre-quoting is needed here.
   string target_owner = 11;
   reserved 12; // ASH metadata is now passed in RequestHeader PB
   bool use_regular_transaction_block = 13;
@@ -400,12 +440,8 @@ message PgCreateTableRequestPB {
 
   bool is_colocated_via_database = 10;
   PgObjectIdPB tablegroup_oid = 11;
-  // Auto-generated by catalog manager if not specified.
-  // Only makes sense for colocated tables.
-  // Note: proto3 v3.15 includes an "optional" keyword as a syntactic sugar for this oneof wrapper.
-  oneof optional_colocation_id {
-    uint32 colocation_id = 20;
-  }
+
+  optional uint32 colocation_id = 20;
 
   PgObjectIdPB tablespace_oid = 12;
   repeated PgCreateColumnPB create_columns = 13;
@@ -562,6 +598,17 @@ message PgGetDatabaseInfoResponsePB {
   AppStatusPB status = 1;
 
   master.GetNamespaceInfoResponsePB info = 2;
+}
+
+message PgIsDatabaseColocatedRequestPB {
+  uint32 database_oid = 1;
+}
+
+message PgIsDatabaseColocatedResponsePB {
+  AppStatusPB status = 1;
+
+  bool colocated = 2;
+  bool legacy_colocated_database = 3;
 }
 
 message PgIsInitDbDoneRequestPB {
@@ -1041,6 +1088,15 @@ message PgIsObjectPartOfXReplResponsePB {
   bool is_object_part_of_xrepl = 2;
 }
 
+message PgIsNamespacePartOfCDCSDKRequestPB {
+  uint32 database_oid = 1;
+}
+
+message PgIsNamespacePartOfCDCSDKResponsePB {
+  AppStatusPB status = 1;
+  bool is_namespace_part_of_cdcsdk = 2;
+}
+
 message PgGetTserverCatalogVersionInfoRequestPB {
   // True if we only want to return the size of the catalog version map from tserver.
   bool size_only = 1;
@@ -1311,6 +1367,15 @@ message PgAutoAnalyzeDataPB {
   bytes last_analyze_info = 3;
 }
 
+message PgResetAutoAnalyzeMutationCountersRequestPB {
+  uint32 database_oid = 1;
+  uint32 table_relfilenode_oid = 2;
+}
+
+message PgResetAutoAnalyzeMutationCountersResponsePB {
+  AppStatusPB status = 1;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Advisory lock - Acquire / Release locks.
 //--------------------------------------------------------------------------------------------------
@@ -1398,8 +1463,11 @@ message PgAcquireObjectLockResponsePB {
 
 message PgReleaseSessionObjectLockRequestPB {
   uint64 session_id = 1;
-  PgPerformOptionsPB options = 2;
+
+  PgPerformOptionsPB DEPRECATED_options = 2;
+
   ObjectLockOid lock_oid = 3;
+  bool release_all = 4;
 }
 
 message PgReleaseSessionObjectLockResponsePB {

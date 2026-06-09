@@ -39,7 +39,7 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
               .filter(n -> n.autoSyncMasterAddrs)
               .collect(Collectors.toSet());
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-      if (primaryCluster.userIntent.providerType == CloudType.local) {
+      if (primaryCluster.userIntent.getAllCloudTypes().contains(CloudType.local)) {
         isLocalProvider = true;
         nonMasterNodes.stream().map(NodeDetails::getNodeName).forEach(n -> nodesToStop.add(n));
       } else {

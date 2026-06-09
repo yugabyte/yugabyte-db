@@ -262,7 +262,7 @@ shared_ptr<YBSession> YBTableTestBase::NewSession() {
 }
 
 Status YBTableTestBase::PutKeyValue(YBSession* session, const string& key, const string& value) {
-  auto insert = table_.NewInsertOp();
+  auto insert = table_.NewInsertOp(session->arena());
   QLAddStringHashValue(insert->mutable_request(), key);
   table_.AddStringColumnValue(insert->mutable_request(), "v", value);
   return session->TEST_ApplyAndFlush(insert);

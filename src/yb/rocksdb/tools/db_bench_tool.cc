@@ -124,61 +124,46 @@ DEFINE_NON_RUNTIME_string(benchmarks,
               "randomreplacekeys",
 
               "Comma-separated list of operations to run in the specified"
-              " order. Available benchmarks:\n"
-              "\tfillseq       -- write N values in sequential key"
-              " order in async mode\n"
-              "\tfillrandom    -- write N values in random key order in async"
-              " mode\n"
-              "\toverwrite     -- overwrite N values in random key order in"
-              " async mode\n"
-              "\tfillsync      -- write N/100 values in random key order in "
-              "sync mode\n"
-              "\tfill100K      -- write N/1000 100K values in random order in"
-              " async mode\n"
-              "\tdeleteseq     -- delete N keys in sequential order\n"
-              "\tdeleterandom  -- delete N keys in random order\n"
-              "\treadseq       -- read N times sequentially\n"
-              "\treadtocache   -- 1 thread reading database sequentially\n"
-              "\treadreverse   -- read N times in reverse order\n"
-              "\treadrandom    -- read N times in random order\n"
-              "\treadmissing   -- read N missing keys in random order\n"
-              "\treadwhilewriting      -- 1 writer, N threads doing random "
-              "reads\n"
-              "\treadwhilemerging      -- 1 merger, N threads doing random "
-              "reads\n"
-              "\treadrandomwriterandom -- N threads doing random-read, "
-              "random-write\n"
-              "\tprefixscanrandom      -- prefix scan N times in random order\n"
-              "\tupdaterandom  -- N threads doing read-modify-write for random "
-              "keys\n"
-              "\tappendrandom  -- N threads doing read-modify-write with "
-              "growing values\n"
-              "\tmergerandom   -- same as updaterandom/appendrandom using merge"
-              " operator. "
-              "Must be used with merge_operator\n"
-              "\treadrandommergerandom -- perform N random read-or-merge "
-              "operations. Must be used with merge_operator\n"
-              "\tnewiterator   -- repeated iterator creation\n"
-              "\tseekrandom    -- N random seeks, call Next seek_nexts times "
-              "per seek\n"
-              "\tseekrandomwhilewriting -- seekrandom and 1 thread doing "
-              "overwrite\n"
-              "\tseekrandomwhilemerging -- seekrandom and 1 thread doing "
-              "merge\n"
-              "\tcrc32c        -- repeated crc32c of 4K of data\n"
-              "\txxhash        -- repeated xxHash of 4K of data\n"
-              "\tacquireload   -- load N*1000 times\n"
-              "\tfillseekseq   -- write N values in sequential key, then read "
-              "them by seeking to each key\n"
-              "\trandomreplacekeys     -- randomly replaces N keys by deleting "
-              "the old version and putting the new version\n\n"
-              "Meta operations:\n"
-              "\tcompact     -- Compact the entire DB\n"
-              "\tstats       -- Print DB stats\n"
-              "\tlevelstats  -- Print the number of files and bytes per level\n"
-              "\tsstables    -- Print sstable info\n"
-              "\theapprofile -- Dump a heap profile (if supported by this"
-              " port)\n");
+              " order. Available benchmarks: "
+              "fillseq -- write N values in sequential key order in async mode; "
+              "fillrandom -- write N values in random key order in async mode; "
+              "overwrite -- overwrite N values in random key order in async mode; "
+              "fillsync -- write N/100 values in random key order in sync mode; "
+              "fill100K -- write N/1000 100K values in random order in async mode; "
+              "deleteseq -- delete N keys in sequential order; "
+              "deleterandom -- delete N keys in random order; "
+              "readseq -- read N times sequentially; "
+              "readtocache -- 1 thread reading database sequentially; "
+              "readreverse -- read N times in reverse order; "
+              "readrandom -- read N times in random order; "
+              "readmissing -- read N missing keys in random order; "
+              "readwhilewriting -- 1 writer, N threads doing random reads; "
+              "readwhilemerging -- 1 merger, N threads doing random reads; "
+              "readrandomwriterandom -- N threads doing random-read, random-write; "
+              "prefixscanrandom -- prefix scan N times in random order; "
+              "updaterandom -- N threads doing read-modify-write for random keys; "
+              "appendrandom -- N threads doing read-modify-write with growing values; "
+              "mergerandom -- same as updaterandom/appendrandom using merge operator. "
+              "Must be used with merge_operator; "
+              "readrandommergerandom -- perform N random read-or-merge operations. "
+              "Must be used with merge_operator; "
+              "newiterator -- repeated iterator creation; "
+              "seekrandom -- N random seeks, call Next seek_nexts times per seek; "
+              "seekrandomwhilewriting -- seekrandom and 1 thread doing overwrite; "
+              "seekrandomwhilemerging -- seekrandom and 1 thread doing merge; "
+              "crc32c -- repeated crc32c of 4K of data; "
+              "xxhash -- repeated xxHash of 4K of data; "
+              "acquireload -- load N*1000 times; "
+              "fillseekseq -- write N values in sequential key, then read them by "
+              "seeking to each key; "
+              "randomreplacekeys -- randomly replaces N keys by deleting the old "
+              "version and putting the new version. "
+              "Meta operations: "
+              "compact -- Compact the entire DB; "
+              "stats -- Print DB stats; "
+              "levelstats -- Print the number of files and bytes per level; "
+              "sstables -- Print sstable info; "
+              "heapprofile -- Dump a heap profile (if supported by this port).");
 
 DEFINE_NON_RUNTIME_int64(num, 1000000, "Number of key/values to place in database");
 
@@ -193,8 +178,7 @@ DEFINE_NON_RUNTIME_int64(merge_keys, -1,
              "If negative, there will be FLAGS_num keys.");
 DEFINE_NON_RUNTIME_int32(num_column_families, 1, "Number of Column Families to use.");
 
-DEFINE_NON_RUNTIME_int32(
-    num_hot_column_families, 0,
+DEFINE_NON_RUNTIME_int32(num_hot_column_families, 0,
     "Number of Hot Column Families. If more than 0, only write to this "
     "number of column families. After finishing all the writes to them, "
     "create new set of column families and insert to them. Only used "
@@ -624,8 +608,7 @@ DEFINE_NON_RUNTIME_bool(allow_concurrent_memtable_write, false,
 DEFINE_NON_RUNTIME_bool(enable_write_thread_adaptive_yield, false,
             "Use a yielding spin loop for brief writer thread waits.");
 
-DEFINE_NON_RUNTIME_uint64(
-    write_thread_max_yield_usec, 100,
+DEFINE_NON_RUNTIME_uint64(write_thread_max_yield_usec, 100,
     "Maximum microseconds for enable_write_thread_adaptive_yield operation.");
 
 DEFINE_NON_RUNTIME_uint64(write_thread_slow_yield_usec, 3,
@@ -638,8 +621,7 @@ DEFINE_NON_RUNTIME_int32(rate_limit_delay_max_milliseconds, 1000,
 
 DEFINE_NON_RUNTIME_uint64(rate_limiter_bytes_per_sec, 0, "Set options.rate_limiter value.");
 
-DEFINE_NON_RUNTIME_uint64(
-    benchmark_write_rate_limit, 0,
+DEFINE_NON_RUNTIME_uint64(benchmark_write_rate_limit, 0,
     "If non-zero, db_bench will rate-limit the writes going into RocksDB. This "
     "is the global rate in bytes/second.");
 
@@ -898,8 +880,9 @@ class ReportFileOpEnv : public EnvWrapper {
 
       Status Truncate(uint64_t size) override { return target_->Truncate(size); }
       Status Close() override { return target_->Close(); }
-      Status Flush() override { return target_->Flush(); }
+      Status Flush(FlushMode mode) override { return target_->Flush(mode); }
       Status Sync() override { return target_->Sync(); }
+      uint64_t Size() const override { return target_->Size(); }
       const std::string& filename() const override { return target_->filename(); }
     };
 

@@ -6,10 +6,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -35,8 +35,6 @@ public class AccessKeyTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
-    keyInfo.vaultFile = "/path/to/vault_file";
-    keyInfo.vaultPasswordFile = "/path/to/vault_password";
 
     AccessKey ak = AccessKey.create(defaultProvider.getUuid(), "access-code1", keyInfo);
     assertNotNull(ak);
@@ -45,8 +43,6 @@ public class AccessKeyTest extends FakeDBApplication {
     JsonNode keyInfoJson = Json.toJson(ak.getKeyInfo());
     assertValue(keyInfoJson, "publicKey", "/path/to/public.key");
     assertValue(keyInfoJson, "privateKey", "/path/to/private.key");
-    assertValue(keyInfoJson, "vaultPasswordFile", "/path/to/vault_password");
-    assertValue(keyInfoJson, "vaultFile", "/path/to/vault_file");
   }
 
   @Test

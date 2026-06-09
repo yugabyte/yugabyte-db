@@ -96,8 +96,7 @@ DEFINE_NON_RUNTIME_bool(export_files, false,
     "Whether or not the files should be exported to a production "
     "cluster.");
 DEFINE_NON_RUNTIME_int32(bulk_load_num_threads, 16, "Number of threads to use for bulk load");
-DEFINE_NON_RUNTIME_int32(bulk_load_threadpool_queue_size, 10000,
-             "Maximum number of entries to queue in the threadpool");
+DEPRECATE_FLAG(int32, bulk_load_threadpool_queue_size, "05_2026");
 DEFINE_NON_RUNTIME_int32(bulk_load_num_memtables, 3, "Number of memtables to use for rocksdb");
 DEFINE_NON_RUNTIME_int32(bulk_load_max_background_flushes, 2,
     "Number of flushes to perform in the background");
@@ -211,7 +210,7 @@ void BulkLoadTask::Run() {
       /* decode_dockey */ false, /* increment_write_id */ false));
 
   if (FLAGS_flush_batch_for_tests) {
-    CHECK_OK(db_fixture_->FlushRocksDbAndWait());
+    CHECK_OK(db_fixture_->FlushRocksDbAndWait(rocksdb::FlushReason::kYbBulkLoadTool));
   }
 }
 
@@ -237,13 +236,13 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
       break;
     }
     case DataType::STRING: {
-      ql_valuepb->set_string_value(column);
+      ql_valuepb->dup_string_value(column);
       break;
     }
     case DataType::JSONB: {
       common::Jsonb jsonb;
       RETURN_NOT_OK(jsonb.FromString(column));
-      ql_valuepb->set_jsonb_value(jsonb.MoveSerializedJsonb());
+      ql_valuepb->dup_jsonb_value(jsonb.MoveSerializedJsonb());
       break;
     }
     case DataType::TIMESTAMP: {
@@ -253,7 +252,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
       break;
     }
     case DataType::BINARY: {
-      ql_valuepb->set_binary_value(column);
+      ql_valuepb->dup_binary_value(column);
       break;
     }
     default:
@@ -277,8 +276,9 @@ Status BulkLoadTask::InsertRow(const string &row,
                              ncolumns, schema.num_columns());
   }
 
-  QLResponsePB resp;
-  QLWriteRequestPB req;
+  auto arena = SharedThreadSafeArena();
+  auto& resp = *arena->NewArenaObject<LWQLResponsePB>();
+  auto& req = *arena->NewArenaObject<LWQLWriteRequestPB>();
   req.set_type(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT);
   req.set_client(YQL_CLIENT_CQL);
 
@@ -427,7 +427,7 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
   thread_pool_->Wait();
 
   // Now flush the DB.
-  RETURN_NOT_OK(db_fixture_->FlushRocksDbAndWait());
+  RETURN_NOT_OK(db_fixture_->FlushRocksDbAndWait(rocksdb::FlushReason::kYbBulkLoadTool));
 
   // Perform the necessary compactions.
   RETURN_NOT_OK(CompactFiles());
@@ -532,7 +532,6 @@ Status BulkLoad::InitYBBulkLoad() {
       ThreadPoolBuilder("bulk_load_tasks")
           .set_min_threads(FLAGS_bulk_load_num_threads)
           .set_max_threads(FLAGS_bulk_load_num_threads)
-          .set_max_queue_size(FLAGS_bulk_load_threadpool_queue_size)
           .set_idle_timeout(MonoDelta::FromMilliseconds(5000))
           .Build(&thread_pool_));
   return Status::OK();

@@ -1,9 +1,9 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -63,12 +63,7 @@ public class RestoreBackup extends UniverseTaskBase {
             if (!StringUtils.equals(
                 universe.getUniverseDetails().getYbcSoftwareVersion(),
                 ybcManager.getStableYbcVersion())) {
-              if (universe
-                  .getUniverseDetails()
-                  .getPrimaryCluster()
-                  .userIntent
-                  .providerType
-                  .equals(Common.CloudType.kubernetes)) {
+              if (Util.isKubernetesBasedUniverse(universe)) {
                 createUpgradeYbcTaskOnK8s(
                         taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion())
                     .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);

@@ -13,7 +13,7 @@ rightNav:
 type: docs
 ---
 
-Use [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain) and [EXPLAIN ANALYZE](../../../../api/ysql/the-sql-language/statements/perf_explain/#analyze) to understand how the [query planner](../../../../architecture/query-layer/#planner) has decided to [execute](../../../../architecture/query-layer/#executor) a query and view actual runtime performance statistics. These commands provide valuable insights into how YugabyteDB processes a query and by analyzing this output, you can identify potential bottlenecks, such as inefficient index usage, excessive sorting or inefficient join strategy, and other performance issues. This information can guide you to optimize queries, create appropriate indexes, or restructure the underlying data to improve query performance.
+Use [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain/) and [EXPLAIN ANALYZE](../../../../api/ysql/the-sql-language/statements/perf_explain/#analyze) to understand how the [query planner](../../../../architecture/query-layer/#planner) has decided to [execute](../../../../architecture/query-layer/#executor) a query and view actual runtime performance statistics. These commands provide valuable insights into how YugabyteDB processes a query and by analyzing this output, you can identify potential bottlenecks, such as inefficient index usage, excessive sorting or inefficient join strategy, and other performance issues. This information can guide you to optimize queries, create appropriate indexes, or restructure the underlying data to improve query performance.
 
 {{<note>}}
 The query is executed only when using _EXPLAIN ANALYZE_. With vanilla _EXPLAIN_ (that is, without _ANALYZE_), the output displays only estimates.

@@ -525,7 +525,7 @@ You have successfully executed a basic C# application that works with YugabyteDB
 
   {{% tab header="Ruby" lang="ruby" %}}
 
-The [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) connects to a YugabyteDB cluster using the [Ruby Pg driver](/stable/develop/drivers-orms/ruby/ruby-pg) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Ruby.
+The [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) connects to a YugabyteDB cluster using the [Ruby Pg driver](/stable/develop/drivers-orms/ruby/ruby-pg/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB in Ruby.
 
 The application requires the following:
 

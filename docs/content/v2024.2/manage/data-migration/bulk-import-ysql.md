@@ -19,7 +19,7 @@ Use the following steps to manually migrate PostgreSQL data and applications to 
 
 - [Prepare a cluster](#prepare-a-cluster)
 - [Import PostgreSQL data](#import-postgresql-data)
-- [Verify a migration](../verify-migration-ysql)
+- [Verify a migration](../verify-migration-ysql/)
 
 ## Prepare a cluster
 
@@ -166,4 +166,4 @@ After the data import step, remember to recreate any constraints and triggers th
 
 ## Verify migration
 
-After the data and schema have been migrated, follow the steps in [Verify migration](../verify-migration-ysql) to ensure the migration was successful.
+After the data and schema have been migrated, follow the steps in [Verify migration](../verify-migration-ysql/) to ensure the migration was successful.

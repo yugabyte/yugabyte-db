@@ -984,6 +984,9 @@ public class CloudProviderHelper {
             String.format("Provider with name %s already exists.", editProviderReq.getName()));
       }
     }
+    if (provider.getCloudCode() == CloudType.onprem) {
+      editProviderReq.validateInstanceTypeMountPoints(provider.getInstanceTypes());
+    }
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
     // Validate the provider request so as to ensure we only allow editing of fields
     // that does not impact the existing running universes.

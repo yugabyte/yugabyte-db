@@ -34,7 +34,15 @@ import org.apache.commons.lang3.StringUtils;
  */
 @Slf4j
 public class CheckDbNodePortConnectivity extends NodeTaskBase {
-  private static final long PORT_CHECK_TIMEOUT_SECS = 5;
+  /** Socket timeout for connect_ex in the embedded Python port check script. */
+  private static final long PORT_CHECK_TIMEOUT_SECS = 60;
+
+  /**
+   * Extra seconds beyond {@link #PORT_CHECK_TIMEOUT_SECS} for the node-agent gRPC deadline so the
+   * remote command can finish (bash/python startup, streaming) after the socket probe completes.
+   */
+  private static final long PORT_CHECK_GRPC_OVERHEAD_SECS = 30;
+
   private static final String PYTHON3 = "python3";
 
   /** Matches valid IPv4, IPv6, or DNS hostnames no shell metacharacters allowed. */
@@ -223,7 +231,7 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(true)
-            .timeoutSecs(PORT_CHECK_TIMEOUT_SECS + 5)
+            .timeoutSecs(PORT_CHECK_TIMEOUT_SECS + PORT_CHECK_GRPC_OVERHEAD_SECS)
             .build();
     try {
       ShellResponse response =

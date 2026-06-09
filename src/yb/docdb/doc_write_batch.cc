@@ -935,7 +935,7 @@ Status DocWriteBatch::TEST_SetPrimitive(
     const dockv::DocPath& doc_path,
     const QLValuePB& value) {
   auto arena = SharedThreadSafeArena();
-  return SetPrimitive(doc_path, ValueRef(value));
+  return SetPrimitive(doc_path, ValueRef(*arena->NewArenaObject<LWQLValuePB>(value)));
 }
 
 Status DocWriteBatch::TEST_SetPrimitive(
@@ -944,7 +944,7 @@ Status DocWriteBatch::TEST_SetPrimitive(
     const QLValuePB& value) {
   auto arena = SharedThreadSafeArena();
   return SetPrimitive(
-      doc_path, control_fields, ValueRef(value));
+      doc_path, control_fields, ValueRef(*arena->NewArenaObject<LWQLValuePB>(value)));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1000,7 +1000,7 @@ Result<std::string> WriteBatchToString(
 
 namespace {
 
-const QLValuePB kNullValuePB;
+const LWQLValuePB kNullValuePB(nullptr);
 
 }
 

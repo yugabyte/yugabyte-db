@@ -451,6 +451,17 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	rotateSshKeyInput := req.GetRotateSshKeyInput()
+	if rotateSshKeyInput != nil {
+		rotateSshKeyHandler := task.NewRotateSSHKeyHandler(rotateSshKeyInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, rotateSshKeyHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running rotate SSH key - %s", err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	return res, toGrpcErrorIfNeeded(codes.Unimplemented, errors.New("Unknown task"))
 }
 
@@ -536,20 +547,17 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 		filename = filepath.Join(userDetail.User.HomeDir, filename)
 	}
 	if chmod == 0 {
-		// Do not care about file perm.
-		// Set the default file mode in golang.
+		// Set the default file mode.
 		chmod = 0666
-	} else {
-		// Get stat to remove the file if it exists because OpenFile does not change perm of
-		// existing files. It simply truncates.
-		err = removeFileIfPresent(filename)
-		if err != nil {
-			util.FileLogger().Errorf(
-				ctx, "Error in deleting existing file %s - %s", filename, err.Error())
-			return toGrpcErrorIfNeeded(codes.Internal, err)
-		}
-		util.FileLogger().Infof(ctx, "Setting file permission for %s to %o", filename, chmod)
 	}
+	// Remove the file if it already exists.
+	err = removeFileIfPresent(filename)
+	if err != nil {
+		util.FileLogger().Errorf(
+			ctx, "Error in deleting existing file %s - %s", filename, err.Error())
+		return toGrpcErrorIfNeeded(codes.Internal, err)
+	}
+	util.FileLogger().Infof(ctx, "Setting file permission for %s to %o", filename, chmod)
 	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_RDWR|os.O_CREATE, fs.FileMode(chmod))
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Error in creating file %s - %s", filename, err.Error())
@@ -627,18 +635,21 @@ func (server *RPCServer) DownloadFile(
 	reader := bufio.NewReader(file)
 	for {
 		n, err := reader.Read(res.ChunkData)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
+		if err != nil && err != io.EOF {
 			util.FileLogger().Errorf(ctx, "Error in reading file %s - %s", filename, err.Error())
 			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
-		res.ChunkData = res.ChunkData[:n]
-		err = stream.Send(res)
-		if err != nil {
-			util.FileLogger().Errorf(ctx, "Error in sending file %s - %s", filename, err.Error())
-			return toGrpcErrorIfNeeded(codes.Internal, err)
+		if n > 0 {
+			res.ChunkData = res.ChunkData[:n]
+			sendErr := stream.Send(res)
+			if sendErr != nil {
+				util.FileLogger().
+					Errorf(ctx, "Error in sending file %s - %s", filename, sendErr.Error())
+				return toGrpcErrorIfNeeded(codes.Internal, sendErr)
+			}
+		}
+		if err == io.EOF {
+			break
 		}
 	}
 	return nil

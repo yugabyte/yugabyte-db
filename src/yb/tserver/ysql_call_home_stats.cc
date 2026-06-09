@@ -57,6 +57,11 @@
 //     FROM (SELECT COUNT(*) AS count FROM pg_tablespace) t
 //   Output: [{"count": 3}]
 
+DEFINE_RUNTIME_int32(callhome_ysql_interval_secs, 86400,
+    "Interval in seconds between YSQL call-home stats collections. YSQL collectors skip their "
+    "run if less than this interval has elapsed since the last successful collection. "
+    "Set to 0 to collect on every call-home cycle.");
+
 DEFINE_RUNTIME_int32(callhome_ysql_connect_timeout_ms, 30000,
     "Timeout in milliseconds for establishing a PostgreSQL connection during YSQL call-home "
     "collection. Set to 0 for no timeout.");
@@ -69,6 +74,19 @@ using std::string;
 
 namespace yb {
 namespace tserver {
+
+bool YsqlCollectionThrottle::ShouldCollect() {
+  if (FLAGS_callhome_ysql_interval_secs == 0) {
+    return true;
+  }
+  auto now = CoarseMonoClock::Now();
+  if (last_collection_time_ != CoarseTimePoint() &&
+      now - last_collection_time_ < MonoDelta::FromSeconds(FLAGS_callhome_ysql_interval_secs)) {
+    return false;
+  }
+  last_collection_time_ = now;
+  return true;
+}
 
 namespace {
 
@@ -158,13 +176,15 @@ string CollectPerDbStats(
   rapidjson::StringBuffer buffer;
   rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
   writer.StartArray();
+  int db_index = 1;
   for (const auto& dbname : databases) {
     auto stats = ResultToValueWithWarning(
         CollectDbStats(server, dbname, per_db_queries), string("{}"),
-        Format("Failed to collect stats for '$0'", dbname));
+        Format("Failed to collect stats for database #$0", db_index));
     writer.StartObject();
+    auto anonymized = Format("database_$0", db_index++);
     writer.Key("name");
-    writer.String(dbname.c_str(), static_cast<rapidjson::SizeType>(dbname.size()));
+    writer.String(anonymized.c_str(), static_cast<rapidjson::SizeType>(anonymized.size()));
     writer.Key("stats");
     writer.RawValue(stats.c_str(), stats.size(), rapidjson::kObjectType);
     writer.EndObject();

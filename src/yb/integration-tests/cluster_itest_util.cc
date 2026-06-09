@@ -46,6 +46,10 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/schema.h"
+#include "yb/client/client.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/entity_ids_types.h"
@@ -69,6 +73,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -111,6 +116,8 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 
 namespace yb {
 namespace itest {
+
+const client::YBTableName kYcqlTestTableName(YQL_DATABASE_CQL, "test_keyspace", "test_table");
 
 using client::YBSchema;
 using client::YBSchemaBuilder;
@@ -668,53 +675,49 @@ Status WaitUntilCommittedOpIdIndex(TServerDetails* replica,
   ConsensusStatePB cstate;
   while (true) {
     MonoDelta remaining_timeout = deadline.GetDeltaSince(MonoTime::Now());
+    if (remaining_timeout.IsPositive()) {
+      int64_t op_index = -1;
+      if (config) {
+        s = GetConsensusState(replica, tablet_id, CONSENSUS_CONFIG_COMMITTED,
+            remaining_timeout, &cstate);
+        if (s.ok()) {
+          op_index = cstate.config().committed_op_index();
+        }
+      } else {
+        auto last_op_id_result = GetLastOpIdForReplica(
+            tablet_id, replica, consensus::COMMITTED_OPID, remaining_timeout);
+        if (last_op_id_result.ok()) {
+          op_id = *last_op_id_result;
+          op_index = op_id.index;
+        } else {
+          s = last_op_id_result.status();
+        }
+      }
 
-    int64_t op_index = -1;
-    if (config) {
-      s = GetConsensusState(replica, tablet_id, CONSENSUS_CONFIG_COMMITTED,
-          remaining_timeout, &cstate);
-      if (s.ok()) {
-        op_index = cstate.config().opid_index();
+      if (s.ok() && context.Check(op_index)) {
+        if (config) {
+          LOG(INFO) << "Committed config state is: " << cstate.ShortDebugString()
+                    << " for replica: " << replica->instance_id.permanent_uuid();
+        } else {
+          LOG(INFO) << "Committed op_id index is: " << op_id << " for replica: "
+                    << replica->instance_id.permanent_uuid();
+        }
+        return Status::OK();
       }
     } else {
-      auto last_op_id_result = GetLastOpIdForReplica(
-          tablet_id, replica, consensus::COMMITTED_OPID, remaining_timeout);
-      if (last_op_id_result.ok()) {
-        op_id = *last_op_id_result;
-        op_index = op_id.index;
-      } else {
-        s = last_op_id_result.status();
-      }
-    }
-
-    if (s.ok() && context.Check(op_index)) {
-      if (config) {
-        LOG(INFO) << "Committed config state is: " << cstate.ShortDebugString() << " for replica: "
-                  << replica->instance_id.permanent_uuid();
-      } else {
-        LOG(INFO) << "Committed op_id index is: " << op_id << " for replica: "
-                  << replica->instance_id.permanent_uuid();
-      }
-      return Status::OK();
-    }
-    auto passed = MonoTime::Now().GetDeltaSince(start);
-    if (passed.MoreThan(timeout)) {
       auto name = config ? "config" : "consensus";
       auto last_value = config ? cstate.ShortDebugString() : AsString(op_id);
-      return STATUS(TimedOut,
-                    Substitute("Committed $0 opid_index does not equal $1 "
-                               "after waiting for $2. Last value: $3, Last status: $4",
-                               name,
-                               context.Desired(),
-                               passed.ToString(),
-                               last_value,
-                               s.ToString()));
+      return STATUS_FORMAT(
+          TimedOut,
+          "Committed $0 opid_index does not equal $1 "
+          "after waiting for $2. Last value: $3, Last status: $4",
+          name, context.Desired(), MonoTime::Now().GetDeltaSince(start), last_value, s.ToString());
     }
     if (!config) {
       LOG(INFO) << "Committed index is at: " << op_id.index << " and not yet at "
                 << context.Desired();
     }
-    SleepFor(MonoDelta::FromMilliseconds(100));
+    SleepFor(100ms);
   }
 }
 
@@ -1110,7 +1113,6 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
                           const string& string_val,
                           const MonoDelta& timeout) {
   WriteRequestPB req;
-  WriteResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(timeout);
 
@@ -1118,9 +1120,12 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
 
   AddTestRowInsert(key, int_val, string_val, &req);
 
-  RETURN_NOT_OK(replica->tserver_proxy->Write(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
+  auto arena = SharedThreadSafeArena();
+  auto lw_req = arena->NewArenaObject<tserver::LWWriteRequestPB>(req);
+  auto lw_resp = arena->NewArenaObject<tserver::LWWriteResponsePB>();
+  RETURN_NOT_OK(replica->tserver_proxy->Write(*lw_req, lw_resp, &rpc));
+  if (lw_resp->has_error()) {
+    return StatusFromPB(lw_resp->error().status());
   }
   return Status::OK();
 }
@@ -1635,6 +1640,25 @@ Result<TableId> CreateSimpleTable(
   auto table_id = VERIFY_RESULT(client.CreateTable(request));
   RETURN_NOT_OK(client.WaitForCreateTableDone(table_id, timeout));
   return table_id;
+}
+
+Status CreateTestTablet(client::YBClient& client) {
+  RETURN_NOT_OK(client.CreateNamespaceIfNotExists(
+      kYcqlTestTableName.namespace_name(),
+      master::GetDatabaseTypeForTable(
+          client::ClientToPBTableType(client::YBTableType::YQL_TABLE_TYPE))));
+
+  auto schema = GetSimpleTestSchema();
+  schema.SetTransactional(false);
+  YBSchema client_schema(schema);
+
+  std::unique_ptr<client::YBTableCreator> table_creator(client.NewTableCreator());
+  return table_creator->table_name(kYcqlTestTableName)
+      .schema(&client_schema)
+      .num_tablets(1)
+      .timeout(20s * kTimeMultiplier)
+      .table_type(client::YBTableType::YQL_TABLE_TYPE)
+      .Create();
 }
 
 } // namespace itest

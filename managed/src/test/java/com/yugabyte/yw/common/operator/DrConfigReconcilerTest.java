@@ -3,7 +3,9 @@
 package com.yugabyte.yw.common.operator;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -50,6 +52,7 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
@@ -155,6 +158,7 @@ public class DrConfigReconcilerTest extends FakeDBApplication {
 
   @Test
   public void testReconcileCreate() throws Exception {
+    stubUniverseResolution();
     DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
     UUID taskUUID = UUID.randomUUID();
 
@@ -192,6 +196,7 @@ public class DrConfigReconcilerTest extends FakeDBApplication {
 
   @Test
   public void testReconcileCreateSetsFinalizer() throws Exception {
+    stubUniverseResolution();
     DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
     // Ensure no finalizers set initially
     drConfig.getMetadata().setFinalizers(Collections.emptyList());
@@ -263,6 +268,7 @@ public class DrConfigReconcilerTest extends FakeDBApplication {
 
   @Test
   public void testCreateOnExceptionHandledGracefully() throws Exception {
+    stubUniverseResolution();
     DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
 
     doReturn(new DrConfigCreateForm())
@@ -279,5 +285,199 @@ public class DrConfigReconcilerTest extends FakeDBApplication {
     assertNull(
         drConfigReconciler.getDrConfigTaskMapValue(
             OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata())));
+  }
+
+  private void stubUniverseResolution() throws Exception {
+    doReturn(testSourceUniverse)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("source-universe"), eq(namespace));
+    doReturn(testTargetUniverse)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("target-universe"), eq(namespace));
+  }
+
+  @Test
+  public void testCreateBailsWhenTargetUniverseMissing() throws Exception {
+    doReturn(testSourceUniverse)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("source-universe"), eq(namespace));
+    doReturn(null)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("missing-target"), eq(namespace));
+
+    DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "missing-target");
+    drConfig.getMetadata().setFinalizers(Collections.emptyList());
+
+    drConfigReconciler.createActionReconcile(drConfig, testCustomer);
+
+    verify(mockDrConfigHelper, never()).createDrConfigTask(any(), any(DrConfigCreateForm.class));
+    verify(mockDrConfigResource, never()).patch(any(DrConfig.class));
+    assertNull(
+        drConfigReconciler.getDrConfigTaskMapValue(
+            OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata())));
+    assertNotNull(drConfig.getStatus());
+    String msg = drConfig.getStatus().getMessage();
+    assertTrue(msg, msg.contains("target universe 'missing-target'"));
+    assertTrue(msg, msg.contains("does not exist"));
+  }
+
+  @Test
+  public void testCreateBailsWhenSourceUniverseMissing() throws Exception {
+    doReturn(null)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("missing-source"), eq(namespace));
+    doReturn(testTargetUniverse)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("target-universe"), eq(namespace));
+
+    DrConfig drConfig = createDrConfigCr("test-dr", "missing-source", "target-universe");
+    drConfig.getMetadata().setFinalizers(Collections.emptyList());
+
+    drConfigReconciler.createActionReconcile(drConfig, testCustomer);
+
+    verify(mockDrConfigHelper, never()).createDrConfigTask(any(), any(DrConfigCreateForm.class));
+    verify(mockDrConfigResource, never()).patch(any(DrConfig.class));
+    String msg = drConfig.getStatus().getMessage();
+    assertTrue(msg, msg.contains("source universe 'missing-source'"));
+    assertTrue(msg, msg.contains("does not exist"));
+  }
+
+  @Test
+  public void testCreateBailsWhenBothUniversesMissing() throws Exception {
+    doReturn(null)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(eq(testCustomer.getId()), anyString(), eq(namespace));
+
+    DrConfig drConfig = createDrConfigCr("test-dr", "missing-source", "missing-target");
+    drConfig.getMetadata().setFinalizers(Collections.emptyList());
+
+    drConfigReconciler.createActionReconcile(drConfig, testCustomer);
+
+    verify(mockDrConfigHelper, never()).createDrConfigTask(any(), any(DrConfigCreateForm.class));
+    verify(mockDrConfigResource, never()).patch(any(DrConfig.class));
+    String msg = drConfig.getStatus().getMessage();
+    assertTrue(msg, msg.contains("source universe 'missing-source'"));
+    assertTrue(msg, msg.contains("target universe 'missing-target'"));
+    assertTrue(msg, msg.contains("do not exist"));
+  }
+
+  @Test
+  public void testUpdateBailsWhenTargetUniverseMissing() throws Exception {
+    doReturn(testSourceUniverse)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("source-universe"), eq(namespace));
+    doReturn(null)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("missing-target"), eq(namespace));
+
+    DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "missing-target");
+    UUID modelUuid = UUID.randomUUID();
+    DrConfigStatus status = new DrConfigStatus();
+    status.setResourceUUID(modelUuid.toString());
+    drConfig.setStatus(status);
+
+    com.yugabyte.yw.models.DrConfig mockModel = Mockito.mock(com.yugabyte.yw.models.DrConfig.class);
+    com.yugabyte.yw.models.XClusterConfig mockXCluster =
+        Mockito.mock(com.yugabyte.yw.models.XClusterConfig.class);
+    when(mockModel.getActiveXClusterConfig()).thenReturn(mockXCluster);
+
+    try (MockedStatic<com.yugabyte.yw.models.DrConfig> mocked =
+        Mockito.mockStatic(com.yugabyte.yw.models.DrConfig.class)) {
+      mocked
+          .when(() -> com.yugabyte.yw.models.DrConfig.maybeGet(modelUuid))
+          .thenReturn(java.util.Optional.of(mockModel));
+
+      drConfigReconciler.updateActionReconcile(drConfig, testCustomer);
+    }
+
+    verify(mockDrConfigHelper, never())
+        .failoverDrConfigTask(any(), any(), any(DrConfigFailoverForm.class));
+    verify(mockDrConfigHelper, never())
+        .switchoverDrConfigTask(any(), any(), any(DrConfigSwitchoverForm.class));
+    verify(mockDrConfigHelper, never())
+        .setDatabasesTask(any(), any(), any(DrConfigSetDatabasesForm.class));
+    String msg = drConfig.getStatus().getMessage();
+    assertTrue(msg, msg.contains("target universe 'missing-target'"));
+    assertTrue(msg, msg.contains("does not exist"));
+  }
+
+  @Test
+  public void testUpdateBailsWhenSourceUniverseMissing() throws Exception {
+    doReturn(null)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("missing-source"), eq(namespace));
+    doReturn(testTargetUniverse)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(
+            eq(testCustomer.getId()), eq("target-universe"), eq(namespace));
+
+    DrConfig drConfig = createDrConfigCr("test-dr", "missing-source", "target-universe");
+    UUID modelUuid = UUID.randomUUID();
+    DrConfigStatus status = new DrConfigStatus();
+    status.setResourceUUID(modelUuid.toString());
+    drConfig.setStatus(status);
+
+    com.yugabyte.yw.models.DrConfig mockModel = Mockito.mock(com.yugabyte.yw.models.DrConfig.class);
+    com.yugabyte.yw.models.XClusterConfig mockXCluster =
+        Mockito.mock(com.yugabyte.yw.models.XClusterConfig.class);
+    when(mockModel.getActiveXClusterConfig()).thenReturn(mockXCluster);
+
+    try (MockedStatic<com.yugabyte.yw.models.DrConfig> mocked =
+        Mockito.mockStatic(com.yugabyte.yw.models.DrConfig.class)) {
+      mocked
+          .when(() -> com.yugabyte.yw.models.DrConfig.maybeGet(modelUuid))
+          .thenReturn(java.util.Optional.of(mockModel));
+
+      drConfigReconciler.updateActionReconcile(drConfig, testCustomer);
+    }
+
+    verify(mockDrConfigHelper, never())
+        .switchoverDrConfigTask(any(), any(), any(DrConfigSwitchoverForm.class));
+    String msg = drConfig.getStatus().getMessage();
+    assertTrue(msg, msg.contains("source universe 'missing-source'"));
+    assertTrue(msg, msg.contains("does not exist"));
+  }
+
+  @Test
+  public void testUpdateBailsWhenBothUniversesMissing() throws Exception {
+    doReturn(null)
+        .when(mockOperatorUtils)
+        .getUniverseFromNameAndNamespace(eq(testCustomer.getId()), anyString(), eq(namespace));
+
+    DrConfig drConfig = createDrConfigCr("test-dr", "missing-source", "missing-target");
+    UUID modelUuid = UUID.randomUUID();
+    DrConfigStatus status = new DrConfigStatus();
+    status.setResourceUUID(modelUuid.toString());
+    drConfig.setStatus(status);
+
+    com.yugabyte.yw.models.DrConfig mockModel = Mockito.mock(com.yugabyte.yw.models.DrConfig.class);
+    com.yugabyte.yw.models.XClusterConfig mockXCluster =
+        Mockito.mock(com.yugabyte.yw.models.XClusterConfig.class);
+    when(mockModel.getActiveXClusterConfig()).thenReturn(mockXCluster);
+
+    try (MockedStatic<com.yugabyte.yw.models.DrConfig> mocked =
+        Mockito.mockStatic(com.yugabyte.yw.models.DrConfig.class)) {
+      mocked
+          .when(() -> com.yugabyte.yw.models.DrConfig.maybeGet(modelUuid))
+          .thenReturn(java.util.Optional.of(mockModel));
+
+      drConfigReconciler.updateActionReconcile(drConfig, testCustomer);
+    }
+
+    verify(mockDrConfigHelper, never())
+        .switchoverDrConfigTask(any(), any(), any(DrConfigSwitchoverForm.class));
+    String msg = drConfig.getStatus().getMessage();
+    assertTrue(msg, msg.contains("source universe 'missing-source'"));
+    assertTrue(msg, msg.contains("target universe 'missing-target'"));
+    assertTrue(msg, msg.contains("do not exist"));
   }
 }

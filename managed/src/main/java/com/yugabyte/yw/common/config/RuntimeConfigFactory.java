@@ -14,6 +14,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import java.util.UUID;
 
 public interface RuntimeConfigFactory {
   Config forCustomer(Customer customer);
@@ -25,4 +26,8 @@ public interface RuntimeConfigFactory {
   Config globalRuntimeConf();
 
   Config staticApplicationConf();
+
+  void invalidateScope(UUID scopeUuid);
+
+  void invalidateAllScopes();
 }

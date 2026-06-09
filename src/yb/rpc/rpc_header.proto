@@ -80,6 +80,8 @@ message RequestHeader {
 
   optional AshMetadataPB metadata = 5;
 
+  optional uint64 pool_tag = 7;
+
   // CRC32C for message body and header without CRC field. Use 15 as max 1 byte tag.
   optional fixed32 crc = 15;
 }

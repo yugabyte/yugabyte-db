@@ -169,6 +169,10 @@ struct VisitDoDecodeValueV2 {
     return Binary();
   }
 
+  Status Bson() const {
+    return Binary();
+  }
+
   template <class T>
   Status Primitive() const {
 #ifdef IS_LITTLE_ENDIAN
@@ -356,6 +360,10 @@ struct EncoderProvider {
 
   PgWireEncoder Vector() const {
     return EncodeVector<kLast>;
+  }
+
+  PgWireEncoder Bson() const {
+    return EncodeBinary<kLast>;
   }
 };
 
@@ -593,6 +601,10 @@ struct GetPackedColumnDecoderVisitorV2 {
     return Binary();
   }
 
+  PackedColumnDecoderV2 Bson() const {
+    return Binary();
+  }
+
  private:
   template<class Decoder>
   PackedColumnDecoderV2 Apply() const {
@@ -620,6 +632,10 @@ struct GetPackedColumnDecoderVisitorV1 {
   }
 
   PackedColumnDecoderV1 Vector() const {
+    return Binary();
+  }
+
+  PackedColumnDecoderV1 Bson() const {
     return Binary();
   }
 
@@ -765,7 +781,11 @@ QLValuePB PgValue::ToQLValuePB(DataType data_type) const {
     case DataType::INT64:
       result.set_int64_value(int64_value());
       return result;
-    case DataType::DECIMAL: FALLTHROUGH_INTENDED;
+    case DataType::DECIMAL: {
+      auto data = string_value();
+      result.set_decimal_value(data.cdata(), data.size());
+      return result;
+    }
     case DataType::STRING: {
       auto data = string_value();
       result.set_string_value(data.cdata(), data.size());

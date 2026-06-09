@@ -192,8 +192,8 @@ Status Executor::PTExprToPB(const PTAllColumns *ref_pt, QLReadRequestMsg *req) {
     req->add_selected_exprs()->set_column_id(col_desc.id());
 
     // Add the expression metadata (rsrow descriptor).
-    QLRSColDescPB *rscol_descs_pb = rsrow_desc_pb->add_rscol_descs();
-    rscol_descs_pb->set_name(col_desc.name());
+    auto *rscol_descs_pb = rsrow_desc_pb->add_rscol_descs();
+    rscol_descs_pb->dup_name(col_desc.name());
     col_desc.ql_type()->ToQLTypePB(rscol_descs_pb->mutable_ql_type());
   }
   return Status::OK();

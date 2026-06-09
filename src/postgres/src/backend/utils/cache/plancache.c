@@ -579,6 +579,10 @@ ReleaseGenericPlan(CachedPlanSource *plansource)
  *
  * Even if the prepare statement becomes valid after re-planning, proceeding
  * with the deallocation is still safe on receiving the CLOSE packet or DEALLOCATE sql.
+ *
+ * Precondition: a transaction must already be in progress so that
+ * CurrentResourceOwner is non-NULL. The search_path check inside OverrideSearchPathMatchesCurrent
+ * can do catcache lookups when the search-path cache has been invalidated.
  */
 bool
 YbIsCachedQueryValid(CachedPlanSource *plansource)
@@ -606,12 +610,16 @@ YbIsCachedQueryValid(CachedPlanSource *plansource)
 
 	/*
 	 * If the query is currently valid, we should have a saved search_path ---
-	 * check to see if that matches the current environment.  If not, we want
-	 * to force replan.
+	 * check to see if that matches the current environment.
 	 */
 	if (is_valid)
 	{
 		Assert(plansource->search_path != NULL);
+		/*
+		 * YB: Unlike RevalidateCachedQuery, this does not force replanning.
+		 * A search_path mismatch means the cached plan may resolve names
+		 * to wrong schemas, so treat the statement as invalid.
+		 */
 		if (!OverrideSearchPathMatchesCurrent(plansource->search_path))
 			return false;
 	}

@@ -24,12 +24,15 @@ import java.util.Map;
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.BasePgSQLTest;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestUserLoginLimit extends BaseYsqlConnMgr {
 
     @Override

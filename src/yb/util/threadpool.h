@@ -89,7 +89,7 @@ class Runnable {
         label " - run time event stats, microseconds.")
 
 #define THREAD_POOL_METRICS_INSTANCE(entity, name) { \
-      BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _run_time_us)).Instantiate(entity), \
+      BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _queue_length)).Instantiate(entity), \
       BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _queue_time_us)).Instantiate(entity), \
       BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _run_time_us)).Instantiate(entity) \
     }
@@ -101,6 +101,10 @@ class ThreadPoolToken {
   virtual Status SubmitFunc(std::function<void()> f) = 0;
   virtual void Shutdown() = 0;
 
+  // Set a per-task cgroup. All tasks submitted via this token will have their executing
+  // thread moved to this cgroup before running. Used for per-DB cgroup assignment.
+  virtual void SetTaskCgroup([[maybe_unused]] Cgroup* cgroup) {}
+
   Status SubmitClosure(const Closure& task);
   Status Submit(const std::shared_ptr<Runnable>& runnable);
 };
@@ -108,9 +112,9 @@ class ThreadPoolToken {
 class ThreadPool {
  public:
   explicit ThreadPool(const ThreadPoolOptions& options)
-      : underlying_(make_scoped_refptr<RefCountedData<YBThreadPool>>(options)) {}
+      : underlying_(std::make_shared<YBThreadPool>(options)) {}
 
-  explicit ThreadPool(YBThreadPoolScopedPtr underlying) : underlying_(std::move(underlying)) {}
+  explicit ThreadPool(YBThreadPoolPtr underlying) : underlying_(std::move(underlying)) {}
 
   void Shutdown() {
     underlying_->Shutdown();
@@ -154,11 +158,17 @@ class ThreadPool {
 
   std::unique_ptr<ThreadPoolToken> NewToken(ExecutionMode mode);
 
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup) {
+    underlying_->SetCgroup(cgroup);
+  }
+#endif
+
  private:
   template <class F>
   Status DoSubmit(const F& f);
 
-  YBThreadPoolScopedPtr underlying_;
+  YBThreadPoolPtr underlying_;
 };
 
 class ThreadPoolBuilder {
@@ -182,11 +192,6 @@ class ThreadPoolBuilder {
     return *this;
   }
 
-  ThreadPoolBuilder& set_max_queue_size(int max_queue_size) {
-    // TODO(!!!)
-    return *this;
-  }
-
   ThreadPoolBuilder& set_idle_timeout(const MonoDelta& idle_timeout) {
     options_.idle_timeout = idle_timeout;
     return *this;
@@ -197,10 +202,14 @@ class ThreadPoolBuilder {
     return *this;
   }
 
+  ThreadPoolBuilder& set_cgroup(Cgroup* cgroup) {
+    options_.cgroup = cgroup;
+    return *this;
+  }
+
   const std::string& name() const { return options_.name; }
   int min_threads() const { return 1; }
   int max_threads() const { return static_cast<int>(options_.max_workers); }
-  int max_queue_size() const { return std::numeric_limits<int>::max(); }
   const MonoDelta& idle_timeout() const { return options_.idle_timeout; }
 
   // Instantiate a new ThreadPool with the existing builder arguments.

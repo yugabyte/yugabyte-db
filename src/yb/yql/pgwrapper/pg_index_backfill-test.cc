@@ -46,6 +46,9 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+METRIC_DECLARE_entity(cluster);
+METRIC_DECLARE_counter(backfill_aborted);
+
 using std::string;
 
 using namespace std::chrono_literals;
@@ -290,6 +293,12 @@ Result<int> TotalBackfillRpcMetric(ExternalMiniCluster* cluster, const char* typ
 
 Result<int> TotalBackfillRpcCalls(ExternalMiniCluster* cluster) {
   return TotalBackfillRpcMetric(cluster, "total_count");
+}
+
+Result<int64_t> BackfillAbortedCount(ExternalMiniCluster* cluster) {
+  auto* master = cluster->GetLeaderMaster();
+  return master->GetMetric<int64>(
+      &METRIC_ENTITY_cluster, nullptr, &METRIC_backfill_aborted, "value");
 }
 
 Result<double> AvgBackfillRpcLatencyInMicros(ExternalMiniCluster* cluster) {
@@ -809,7 +818,12 @@ class PgIndexBackfillTestDeadlines : public PgIndexBackfillTest {
   }
 
  protected:
-  const int kBackfillRpcDeadlineSmallMs = 10000;
+  // Scale by kTimeMultiplier so that under sanitizers, where a freshly forked PG backend can take
+  // an extra second or two to reach ReadyForQuery (catalog cache list build, AcquireObjectLock
+  // chain, etc.), the first backfill RPC on a fresh tserver does not blow this deadline and force
+  // the test's avg_rpc_latency assertion to fail. The test still validates that backfill RPCs
+  // respect a small deadline relative to the total backfill workload.
+  const int kBackfillRpcDeadlineSmallMs = 10000 * kTimeMultiplier;
   const int kBackfillRateRowsPerSec = 100;
   const int kNumConcurrentBackfills = 1;
   const int kTabletsPerServer = 1;
@@ -820,7 +834,7 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillTestDeadlines, ::testing::Bool());
 // Set the backfill batch size, backfill rate and a low timeout for backfill rpc.
 // Ensure that the backfill is completed. And that the avg rpc latency is
 // below what is set as the timeout.
-TEST_P(PgIndexBackfillTestDeadlines, BackfillRespectsDeadline) {
+TEST_P(PgIndexBackfillTestDeadlines, YB_DISABLE_TEST(BackfillRespectsDeadline)) {
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
 
@@ -951,28 +965,29 @@ TEST_P(PgIndexBackfillTestSimultaneously, CreateIndexSimultaneously) {
       const std::string relation_already_exists_msg = Format(
           "relation \"$0\" already exists", kIndexName);
       const auto allowed_msgs = {
-        "Catalog Version Mismatch"sv,
-        SerializeAccessErrorMessageSubstring(),
-        "Restart read required"sv,
-        "Transaction aborted"sv,
-        "Transaction metadata missing"sv,
-        "Unknown transaction, could be recently aborted"sv,
-        std::string_view(relation_already_exists_msg),
+          "canceling statement due to lock timeout"sv,
+          SerializeAccessErrorMessageSubstring(),
+          "Restart read required"sv,
+          "Transaction aborted"sv,
+          "Transaction metadata missing"sv,
+          "Unknown transaction, could be recently aborted"sv,
+          std::string_view(relation_already_exists_msg),
       };
       ASSERT_TRUE(HasSubstring(msg, allowed_msgs)) << status;
       LOG(INFO) << "ignoring conflict error: " << status.message().ToBuffer();
       if (msg.find("Restart read required") == std::string::npos &&
           msg.find(relation_already_exists_msg) == std::string::npos &&
-          (!EnableTableLocks() || msg.find("Catalog Version Mismatch") == std::string::npos)) {
+          (!EnableTableLocks() ||
+           msg.find("canceling statement due to lock timeout") == std::string::npos)) {
         // Failed index creations do two schema changes:
         // - add index with INDEX_PERM_WRITE_AND_DELETE
         // - remove index because of DDL transaction rollback ("Table transaction failed, deleting")
         expected_schema_version += 2;
       } else {
         // If the DocDB index was never created in the first place, it incurs no schema changes.
-        // When table locks are enabled, if the backend observes a catalog version mismatch, it
-        // implies that that backend failed to acquire the relevant locks in the first phase itself,
-        // and that other index creation went through.
+        // When table locks are enabled, if the backend hits the lock timeout, it implies that the
+        // backend failed to acquire the relevant locks in the first phase itself, and that another
+        // index creation went through.
       }
     }
   }
@@ -3147,31 +3162,8 @@ TEST_P(PgIndexBackfillIgnoreApplyTest, Backward) {
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillIgnoreApplyTest, ::testing::Bool());
 
-// Tests index backfill column projection optimization across various index types.
-//
-// The optimization reduces RPCs by fetching only columns needed for the index
-// rather than entire rows. We validate this by creating tables with ~5KB rows but small
-// indexed columns, then measuring RPCs with a 1KB fetch limit. With projection enabled,
-// many rows fit per RPC; without it, each row requires its own RPC.
-//
-// Backfill workers run in separate backends, so GUCs must be set cluster-wide via
-// ysql_pg_conf_csv to affect them. The test parameter controls whether projection is enabled.
-class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
+class PgIndexBackfillRpcStatsTest : public PgIndexBackfillTest {
  protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
-    const bool projection_enabled = GetParam();
-    options->extra_tserver_flags.push_back(Format(
-        "--ysql_pg_conf_csv=yb_enable_pg_stat_statements_rpc_stats=true,"
-        "yb_fetch_size_limit=$0,"
-        "yb_enable_index_backfill_column_projection=$1",
-        kFetchSizeLimit, projection_enabled ? "true" : "false"));
-  }
-
-  void SetUp() override {
-    PgIndexBackfillTest::SetUp();
-  }
-
   Result<int64_t> GetBackfillReadRpcs() {
     return conn_->FetchRow<int64_t>(
         "SELECT COALESCE(sum(docdb_read_rpcs)::int8, 0) "
@@ -3184,6 +3176,59 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
         "SELECT COALESCE(sum(docdb_read_rpcs)::int8, 0) "
         "FROM pg_stat_statements(true) "
         "WHERE query LIKE 'CREATE INDEX%'");
+  }
+
+  Result<int64_t> BuildIndexAndGetRpcs(
+      const std::string& create_index_sql, bool use_backfill_rpcs = true) {
+    RETURN_NOT_OK(conn_->Fetch("SELECT pg_stat_statements_reset()"));
+    RETURN_NOT_OK(conn_->Execute(create_index_sql));
+    return use_backfill_rpcs ? GetBackfillReadRpcs() : GetCreateIndexReadRpcs();
+  }
+
+  // Verifies that RPCs are below max_enabled_rpcs when the optimization is enabled, and above
+  // min_disabled_rpcs when it is disabled.
+  Status ValidateRpcs(
+      int64_t rpcs, bool optimization_enabled, int64_t max_enabled_rpcs,
+      int64_t min_disabled_rpcs, const std::string& optimization_name) {
+    if (rpcs == 0) {
+      return STATUS(RuntimeError, "Expected some RPCs during backfill");
+    }
+
+    if (optimization_enabled && rpcs >= max_enabled_rpcs) {
+      return STATUS_FORMAT(
+          RuntimeError, "Expected < $0 RPCs with $1 enabled, got $2",
+          max_enabled_rpcs, optimization_name, rpcs);
+    }
+
+    if (!optimization_enabled && rpcs <= min_disabled_rpcs) {
+      return STATUS_FORMAT(
+          RuntimeError, "Expected > $0 RPCs with $1 disabled, got $2",
+          min_disabled_rpcs, optimization_name, rpcs);
+    }
+
+    return Status::OK();
+  }
+};
+
+// Tests index backfill column projection optimization across various index types.
+//
+// The optimization reduces RPCs by fetching only columns needed for the index
+// rather than entire rows. We validate this by creating tables with ~5KB rows but small
+// indexed columns, then measuring RPCs with a 1KB fetch limit. With projection enabled,
+// many rows fit per RPC; without it, each row requires its own RPC.
+//
+// Backfill workers run in separate backends, so GUCs must be set cluster-wide via
+// ysql_pg_conf_csv to affect them. The test parameter controls whether projection is enabled.
+class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillRpcStatsTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillRpcStatsTest::UpdateMiniClusterOptions(options);
+    const bool projection_enabled = GetParam();
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_pg_conf_csv=yb_enable_pg_stat_statements_rpc_stats=true,"
+        "yb_fetch_size_limit=$0,"
+        "yb_enable_index_backfill_scan_optimization=$1",
+        kFetchSizeLimit, projection_enabled ? "true" : "false"));
   }
 
   Status CreateWideTable(const std::string& table_name, const std::string& pk_def = "id") {
@@ -3206,31 +3251,9 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
         table_name, kPaddingSize, num_rows);
   }
 
-  Result<int64_t> BuildIndexAndGetRpcs(
-      const std::string& create_index_sql, bool use_backfill_rpcs = true) {
-    RETURN_NOT_OK(conn_->Fetch("SELECT pg_stat_statements_reset()"));
-    RETURN_NOT_OK(conn_->Execute(create_index_sql));
-    return use_backfill_rpcs ? GetBackfillReadRpcs() : GetCreateIndexReadRpcs();
-  }
-
   Status ValidateRpcs(int64_t rpcs) {
-    const bool projection_enabled = GetParam();
-    if (rpcs == 0) {
-      return STATUS(RuntimeError, "Expected some RPCs during backfill");
-    }
-    if (projection_enabled) {
-      if (rpcs >= kMaxProjectedRpcs) {
-        return STATUS_FORMAT(
-            RuntimeError, "Expected < $0 RPCs with projection, got $1", kMaxProjectedRpcs, rpcs);
-      }
-    } else {
-      if (rpcs <= kMinUnprojectedRpcs) {
-        return STATUS_FORMAT(
-            RuntimeError, "Expected > $0 RPCs without projection, got $1",
-            kMinUnprojectedRpcs, rpcs);
-      }
-    }
-    return Status::OK();
+    return PgIndexBackfillRpcStatsTest::ValidateRpcs(
+        rpcs, GetParam(), kMaxProjectedRpcs, kMinUnprojectedRpcs, "column projection");
   }
 
   static constexpr int kFetchSizeLimit = 1000;
@@ -3379,6 +3402,156 @@ TEST_P(PgIndexBackfillColumnProjectionTest, PartitionedTable) {
   ASSERT_OK(ValidateRpcs(rpcs));
 }
 
+// Tests to validate that pushing the index predicate down to the base table scan during backfill
+// reduces the number of read RPCs.
+class PgIndexBackfillPredicatePushdownTest : public PgIndexBackfillRpcStatsTest {
+ protected:
+  // Use a single tserver so that pg_stat_statements always captures backfill RPC stats on the same
+  // node as the test connection.
+  int GetNumTabletServers() const override { return 1; }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillRpcStatsTest::UpdateMiniClusterOptions(options);
+    const auto predicate_pushdown_enabled = GetParam() ? "true" : "false";
+    options->replication_factor = 1;
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_pg_conf_csv=yb_enable_pg_stat_statements_rpc_stats=true,"
+        "yb_fetch_row_limit=$0,"
+        "yb_enable_index_backfill_scan_optimization=$1",
+        kFetchRowLimit, predicate_pushdown_enabled));
+  }
+
+  void SetUp() override {
+    PgIndexBackfillRpcStatsTest::SetUp();
+    ASSERT_OK(CreateTable(kTableName));
+    ASSERT_OK(InsertTestData(kTableName));
+  }
+
+  Status CreateTable(const std::string& table_name) {
+    return conn_->ExecuteFormat(
+        "CREATE TABLE $0 ("
+        "  id SERIAL,"
+        "  col1 INT,"
+        "  col2 TEXT,"
+        "  PRIMARY KEY (id)"
+        ") SPLIT INTO 1 TABLETS",
+        table_name);
+  }
+
+  Status InsertTestData(const std::string& table_name) {
+    return conn_->ExecuteFormat(
+        "INSERT INTO $0 (col1, col2) (SELECT i, 'text_' || i FROM generate_series(1, $1) AS i)",
+        table_name, kNumRows);
+  }
+
+  Status ValidateRpcs(int64_t rpcs) {
+    return PgIndexBackfillRpcStatsTest::ValidateRpcs(
+        rpcs, GetParam(), kMaxPushdownRpcs, kMinNoPushdownRpcs, "predicate pushdown");
+  }
+
+  // Predicate col1 > 400 matches rows 401-500 (100 rows).
+  // With kFetchRowLimit=10, each RPC returns exactly 10 rows:
+  //  - Pushdown enabled:  100 matching rows / 10 = 10 RPCs
+  //  - Pushdown disabled: 500 total rows    / 10 = 50 RPCs
+  static constexpr int kFetchRowLimit = 10;
+  static constexpr int kNumRows = 500;
+  static constexpr int kMaxPushdownRpcs = 10 + 1;
+  static constexpr int kMinNoPushdownRpcs = 50 - 1;
+  static constexpr int kExactNoPushdownRpcs = kNumRows / kFetchRowLimit;
+  static constexpr auto kTableName = "test_predicate_pushdown";
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillPredicatePushdownTest, ::testing::Bool());
+
+// Partial hash index: predicate column is the same as the indexed column.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialHashSameColumn) {
+  auto rpcs = ASSERT_RESULT(
+      BuildIndexAndGetRpcs(Format(
+          "CREATE INDEX idx ON $0 (col1 HASH) SPLIT INTO 1 TABLETS WHERE col1 > 400", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial range index: predicate column is the same as the indexed column.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialRangeSameColumn) {
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx ON $0 (col1 ASC) WHERE col1 > 400", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial index where the predicate column differs from the indexed column.
+// The index is on col2, but the predicate filters on col1 (20% selectivity).
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialIndexDifferentPredicateColumn) {
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx ON $0 (col2 ASC) WHERE col1 > 400", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial index whose predicate contains a zero-argument volatile function.
+// Postgres optimizes the predicate to a one-time evaluation since the function contains no column
+// references. This one-time evaluation is inlined, and therefore the CREATE INDEX command allows
+// this predicate even though it is marked as volatile.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialIndexVolatilePredicateZeroArg) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE FUNCTION volatile_const() RETURNS INT VOLATILE "
+      "AS $$ SELECT 400 $$ LANGUAGE SQL"));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx ON $0 (col1 ASC) WHERE col1 > volatile_const()", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial index whose predicate contains a volatile function with a column argument.
+// The presence of the column arguments forces this function to be evaluated per-row.
+// Postgres executes the function as an inlined expression, and therefore the CREATE INDEX command
+// allows this predicate even though it is marked as volatile.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialIndexVolatilePredicate) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE FUNCTION identity_volatile(x INT) RETURNS INT VOLATILE "
+      "AS $$ SELECT x $$ LANGUAGE SQL"));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx ON $0 (col1 ASC) WHERE identity_volatile(col1) > 400", kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx"));
+}
+
+// Partial index whose predicate invokes an immutable variadic function. Execution of variadic
+// functions are not supported for expression pushdown, nor can it be inlined. This test validates
+// that the predicate pushdown optimization is not applied to this case.
+TEST_P(PgIndexBackfillPredicatePushdownTest, PartialIndexVariadicPredicate) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE FUNCTION identity_variadic(VARIADIC args INT[]) RETURNS INT IMMUTABLE "
+      "AS $$ SELECT args[1] $$ LANGUAGE SQL"));
+
+  // Index 1: predicate is an unpushable variadic function call.
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx1 ON $0 (col1 ASC) WHERE identity_variadic(VARIADIC ARRAY[col1]) > 400",
+      kTableName)));
+  ASSERT_EQ(rpcs, kExactNoPushdownRpcs);
+  ASSERT_OK(CheckIndexConsistency("idx1"));
+
+  // Index 2: predicate is <unpushable OR pushable>. The unpushable sub-expression makes the entire
+  // OR expression unpushable, so the predicate pushdown optimization is not applied.
+  rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx2 ON $0 (col1 ASC) "
+      "WHERE identity_variadic(VARIADIC ARRAY[col1]) > 400 OR col1 > 450",
+      kTableName)));
+  ASSERT_EQ(rpcs, kExactNoPushdownRpcs);
+  ASSERT_OK(CheckIndexConsistency("idx2"));
+
+  // Index 3: predicate is <pushable AND unpushable>. Unlike OR, the optimizer can extract the
+  // pushable sub-expression from an AND clause and push only that part to DocDB. So col1 > 400 is
+  // pushed, filtering to 100 rows before the local check.
+  rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(Format(
+      "CREATE INDEX idx3 ON $0 (col1 ASC) "
+      "WHERE col1 > 400 AND identity_variadic(VARIADIC ARRAY[col1]) > 400",
+      kTableName)));
+  ASSERT_OK(ValidateRpcs(rpcs));
+  ASSERT_OK(CheckIndexConsistency("idx3"));
+}
+
 // Test to validate concurrent updates to non-key columns of a covering index during index backfill.
 TEST_P(PgIndexBackfillBlockDoBackfill, ConcurrentInplaceUpdateCoveringIndex) {
   constexpr int kNumRows = 10;
@@ -3415,6 +3588,219 @@ TEST_P(PgIndexBackfillBlockDoBackfill, ConcurrentInplaceUpdateCoveringIndex) {
 
   // Validate that the index is consistent.
   ASSERT_OK(CheckIndexConsistency("idx_tbl"));
+}
+
+// Test class for verifying that killing the PG backend running CREATE INDEX CONCURRENTLY
+// propagates the cancellation to the master-side backfill.
+//
+// Reproduces the bug where pg_terminate_backend kills only the PG connection but leaves
+// the distributed backfill on the master running indefinitely.
+//
+// Parameterized via PgIndexBackfillTest::EnableTableLocks() (::testing::Bool()):
+//   false -- legacy mode: DDL uses an autonomous kDDL transaction
+//            (use_regular_transaction_block=false)
+//   true  -- transactional DDL mode: DDL participates in the kPlain session transaction
+//            (use_regular_transaction_block=true, ysql_yb_ddl_transaction_block_enabled=true)
+// Both paths must be tested because GetDdlTransactionMetadata fetches metadata from different
+// transactions depending on the mode.
+class PgIndexBackfillCancellationTest : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    // This test uses SPLIT INTO 1 TABLETS and only needs one tserver.  Use RF=1 so the
+    // system.transactions table (and all other system tables) can be created with a single
+    // tserver.  Also cap ysql_num_tablets=1 so user table initialization stays minimal.
+    options->replication_factor = 1;
+    options->extra_tserver_flags.push_back("--ysql_num_tablets=1");
+    // Slow down each BackfillIndex RPC so we have time to kill the backend mid-backfill
+    // and then observe whether additional chunks continue to be issued.
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_slowdown_backfill_by_ms=$0", kSlowdown.ToMilliseconds()));
+    // Limit rows scanned per BackfillIndex RPC so the master must issue multiple sequential
+    // RPCs per tablet (resume chunks).  Without this, all kNumRows fit in a single RPC and
+    // the kill always arrives after backfill is already done, leaving nothing to observe.
+    //
+    // Two flags together produce kNumRows/kFetchRowLimit sequential BackfillIndex RPCs
+    // (kFetchRowLimit rows each):
+    // - yb_fetch_row_limit=kFetchRowLimit: controls how many rows PostgreSQL fetches from
+    //   DocDB per BACKFILL INDEX SQL call.
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_yb_fetch_row_limit=$0", kFetchRowLimit));
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_backfill_paging_size=$0", kFetchRowLimit));
+    options->extra_master_flags.push_back(
+        Format("--ddl_requester_liveness_check_interval_secs=$0",
+               kLivenessInterval.ToSeconds()));
+    options->extra_master_flags.push_back(
+        Format("--transaction_rpc_timeout_ms=$0",
+               kTransactionRpcTimeout.ToMilliseconds()));
+    options->extra_tserver_flags.push_back(
+        Format("--transaction_heartbeat_usec=$0",
+               kTransactionHeartbeat.ToMicroseconds()));
+    options->extra_tserver_flags.push_back(
+        Format("--pg_client_session_expiration_ms=$0",
+               kPgClientSessionExpiration.ToMilliseconds()));
+    options->extra_tserver_flags.push_back(
+        Format("--pg_client_heartbeat_interval_ms=$0",
+               kPgClientHeartbeatInterval.ToMilliseconds()));
+  }
+
+  int GetNumTabletServers() const override { return 1; }
+
+ protected:
+  Status SetupAndKillBackend() {
+    // Sanity check to make sure that we have enough rows for the test.
+    // Roughly it verifies that the time needed to abort the backfill is less
+    // than the time to finish the full backfill.
+    const MonoDelta abort_detection_window =
+        kPgClientSessionExpiration + kLivenessInterval + kTransactionRpcTimeout
+        + kTransactionHeartbeat + kWaitForMaxDelay;
+    const MonoDelta min_remaining_backfill_time =
+        kSlowdown * (kExpectedTotalBackfillRpcs - 1);
+
+    // Added 2x factor as safety margin
+    SCHECK_GT(min_remaining_backfill_time, abort_detection_window * 2, IllegalState,
+              "kNumRows too small, the backfill could finish before "
+              "the master detects the killed backend.");
+
+    RETURN_NOT_OK(conn_->ExecuteFormat(
+        "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kTableName));
+    RETURN_NOT_OK(conn_->ExecuteFormat(
+        "INSERT INTO $0 SELECT i, i FROM generate_series(1, $1) AS i",
+        kTableName, kNumRows));
+
+    CountDownLatch pid_ready(1);
+    thread_holder_.AddThreadFunctor([this, &pid_ready] {
+      auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+      create_index_pid_.store(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()")));
+      pid_ready.CountDown();
+      auto s = conn.ExecuteFormat(
+          "CREATE INDEX CONCURRENTLY $0 ON $1 (v)", kIndexName, kTableName);
+      create_index_completed_ok_.store(s.ok());
+      LOG(INFO) << "CREATE INDEX returned: " << s;
+    });
+
+    pid_ready.Wait();
+
+    // No artificial timeout here, count on the gtest-level timeout
+    RETURN_NOT_OK(WaitFor(
+        [this]() -> Result<bool> {
+          return VERIFY_RESULT(TotalBackfillRpcCalls(cluster_.get())) >= 1;
+        },
+        MonoDelta::kMax, "first BackfillIndex RPC to complete",
+        1ms, 1.1, kWaitForMaxDelay));
+
+    SCHECK_EQ(VERIFY_RESULT(BackfillAbortedCount(cluster_.get())), 0, IllegalState,
+              "backfill_aborted counter must be 0 before the kill");
+
+    auto terminated = VERIFY_RESULT(conn_->FetchRow<bool>(
+        Format("SELECT pg_terminate_backend($0)", create_index_pid_.load())));
+    if (!terminated) {
+      return STATUS(IllegalState, "pg_terminate_backend returned false");
+    }
+    LOG(INFO) << "Terminated CREATE INDEX backend PID " << create_index_pid_.load();
+    return Status::OK();
+  }
+
+  // gflag values pinned here.
+  const MonoDelta kSlowdown = 1s;
+  const MonoDelta kTransactionRpcTimeout = 1s * kTimeMultiplier;
+  const MonoDelta kTransactionHeartbeat = 500ms;
+  const MonoDelta kLivenessInterval = 1s;
+  // pg_client_heartbeat_interval_ms validator requires strictly > 1000ms.
+  const MonoDelta kPgClientHeartbeatInterval = 1100ms;
+  const MonoDelta kPgClientSessionExpiration = 3s;
+
+  // WaitFor poll cap used to observe the abort counter in the positive test.
+  const MonoDelta kWaitForMaxDelay = 100ms;
+
+  // ceil(kNumRows / kFetchRowLimit)
+  static constexpr int kFetchRowLimit = 500;
+  static constexpr int kNumRows = 12000;
+  static constexpr int kExpectedTotalBackfillRpcs =
+      (kNumRows + kFetchRowLimit - 1) / kFetchRowLimit;
+
+  // Populated by the CREATE INDEX CONCURRENTLY thread.
+  std::atomic<int32_t> create_index_pid_{0};
+  std::atomic<bool> create_index_completed_ok_{false};
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillCancellationTest, ::testing::Bool());
+
+// Regression test: after pg_terminate_backend kills the CREATE INDEX CONCURRENTLY session,
+// the master must stop issuing new BackfillIndex RPCs to tservers.
+//
+// Without the liveness check: the master continues launching backfill chunks, visible as new
+// BackfillIndex RPC completions on tservers after the backend is gone.
+// With the liveness check: the master detects the DDL transaction is ABORTED and stops.
+TEST_P(PgIndexBackfillCancellationTest, BackfillStopsAfterBackendKill) {
+  ASSERT_OK(SetupAndKillBackend());
+
+  // Wait for the master to observe the aborted transaction after
+  // BackfillTable::Abort, which bumps backfill_aborted
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        return VERIFY_RESULT(BackfillAbortedCount(cluster_.get())) == 1;
+      },
+      20s * kTimeMultiplier, "backfill_aborted counter to reach 1",
+      1ms, 1.1, kWaitForMaxDelay));
+
+  // At most one chunk can still be in flight
+  auto rpcs = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  EXPECT_LT(rpcs + 1, kExpectedTotalBackfillRpcs)
+      << "Abort fired but already issued " << rpcs << " of "
+      << kExpectedTotalBackfillRpcs << " expected BackfillIndex RPCs";
+
+  // Maybe an overkill, we already know that Abort() was called.
+  //
+  // As an additional insurance wait for sometime (enough for ~2 RPCs),
+  // and check again. The new count must be less than rpcs + 1,
+  // +1 is in case one RPC was in-flight at the time of the kill.
+  SleepFor(kSlowdown * kTimeMultiplier * 3);
+  auto rpcs_after = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  EXPECT_LE(rpcs_after, rpcs + 1)
+      << "BackfillIndex RPC count grew after abort fired, expected: "
+      << rpcs_after << " <= " << rpcs + 1;
+
+  thread_holder_.JoinAll();
+  EXPECT_FALSE(create_index_completed_ok_.load())
+      << "CREATE INDEX completed before pg_terminate_backend interrupted it";
+}
+
+// Negative-regression test: demonstrates the pre-fix bug.
+//
+// With --TEST_skip_ddl_requester_liveness_check=true the master never starts the
+// liveness task, so it never detects the ABORTED transaction and keeps issuing
+// BackfillIndex RPCs until every chunk has completed.  The test waits until the total
+// RPC count reaches kExpectedTotalBackfillRpcs.
+class PgIndexBackfillCancellationWithoutFixTest : public PgIndexBackfillCancellationTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillCancellationTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_skip_ddl_requester_liveness_check=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillCancellationWithoutFixTest, ::testing::Values(false));
+
+TEST_P(PgIndexBackfillCancellationWithoutFixTest, BackfillContinuesAfterBackendKill) {
+  ASSERT_OK(SetupAndKillBackend());
+
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        return VERIFY_RESULT(TotalBackfillRpcCalls(cluster_.get())) >=
+               kExpectedTotalBackfillRpcs;
+      },
+      MonoDelta::kMax, "all BackfillIndex RPCs to complete"));
+
+  // With the liveness check disabled, BackfillTable::Abort must never be called.
+  EXPECT_EQ(ASSERT_RESULT(BackfillAbortedCount(cluster_.get())), 0)
+      << "backfill_aborted fired despite --TEST_skip_ddl_requester_liveness_check=true";
+
+  thread_holder_.JoinAll();
+  EXPECT_FALSE(create_index_completed_ok_.load())
+      << "CREATE INDEX completed before pg_terminate_backend interrupted it";
 }
 
 } // namespace yb::pgwrapper

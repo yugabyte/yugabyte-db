@@ -51,6 +51,7 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "nodes/pg_list.h"
 #include "pg_yb_utils.h"
+#include "portability/instr_time.h"
 #include "storage/procarray.h"
 #include "utils/catcache.h"
 #include <string.h>
@@ -100,6 +101,8 @@ static CatCacheHeader *CacheHdr = NULL;
 long		YbNumCatalogCacheMisses;
 long		YbNumCatalogCacheIdMisses[SysCacheSize] = {0};
 long		YbNumCatalogCacheTableMisses[YbNumCatalogCacheTables] = {0};
+long		YbNumCatalogCacheListMisses[YbNumCatalogCacheTables] = {0};
+long		YbNumCatalogCacheNegMisses[YbNumCatalogCacheTables] = {0};
 
 static inline HeapTuple SearchCatCacheInternal(CatCache *cache,
 											   int nkeys,
@@ -1386,13 +1389,6 @@ SetCatCacheList(CatCache *cache,
 												 hashValue, hashIndex);
 
 					/* upon failure, we must start the scan over */
-					/*
-					 * YB: failure is only expected for toasting, which YB
-					 * doesn't support.  By this assumption, we don't have to
-					 * worry about rescaning, which would be a pain since this
-					 * function assumes the scan was already done by the caller
-					 * unlike SearchCatCacheList.
-					 */
 					Assert(ct != NULL);
 				}
 
@@ -1903,27 +1899,55 @@ YbSetAdditionalNegCacheIds(List *neg_cache_ids)
 }
 
 /*
-* Function returns true in some special cases where we allow negative caches:
-* 1. pg_cast (CASTSOURCETARGET) to avoid master lookups during parsing.
-*    TODO: reconsider this now that we support CREATE CAST.
-* 2. pg_statistic (STATRELATTINH), pg_statistic_ext
-*    (STATEXTNAMENSP and STATEXTOID) and pg_statistic_ext_data
-*    (STATEXTDATASTXOID) to avoid redundant lookups for the entries that may
-*    not exist during query planning.
-* 3. pg_class (RELNAMENSP), pg_type (TYPENAMENSP)
-*    but only for system tables since users cannot create system tables in YSQL.
-*    This is violated in YSQL upgrade, but doing so will force cache refresh.
-* 4. Caches within temporary namespaces as data in this namespaces can be
-*    changed by current session only.
-* 5. pg_attribute as `ALTER TABLE` is used to add new columns and it increments
-*    catalog version.
-* 6. pg_type (TYPEOID and TYPENAMENSP) to avoid redundant master lookups while
-*    parsing functions that are checked to be possible type coercions.
-* 7. pg_namespace (NAMESPACEOID and NAMESPACENAME) to avoid lookups while
-*    recomputeNamespacePath. The CREATE SCHEMA stmt increments catalog version.
-*
-*  implicit_prefetch_entries: flag enable heap scan for certain catalogs with
-*    negative caching enabled.
+* Decide whether a negative cache miss may be cached for `cache_id`.
+ *
+ * Safety contract: every entry below must be a catalog where *every* DDL
+ * that adds, modifies, or removes a row reliably increments the YB catalog
+ * version. Otherwise a stale negative entry from one session could survive
+ * after another session creates the row. In practice this means either
+ *   (a) `yb_always_increment_catalog_version_on_ddl` is on (the default), or
+ *   (b) the specific DDLs for the catalog are known to bump unconditionally
+ *       (see `YbGetDdlMode` in pg_yb_utils.c).
+ * Adding a new catalog here without verifying this is a correctness bug.
+ *
+ * Always allowed (returns true):
+ *   - pg_amop (AMOPOPID, AMOPSTRATEGY) and pg_amproc (AMPROCNUM):
+ *       mutated only by CREATE/ALTER/DROP OPERATOR CLASS / FAMILY, all of
+ *       which bump catalog version (see T_CreateOpClass/FamilyStmt and
+ *       T_AlterOpFamilyStmt in YbGetDdlMode).
+ *   - pg_operator (OPERNAMENSP, OPEROID):
+ *       CREATE/ALTER/DROP OPERATOR and ALTER OPERATOR SET SCHEMA all bump.
+ *   - pg_range (RANGETYPE):
+ *       CREATE TYPE AS RANGE / ALTER TYPE / DROP TYPE / SET SCHEMA all bump.
+ *   - pg_cast (CASTSOURCETARGET):
+ *       Avoids master lookups during parsing. TODO: revisit now that we
+ *       support CREATE CAST.
+ *   - pg_statistic (STATRELATTINH), pg_statistic_ext (STATEXTNAMENSP,
+ *     STATEXTOID), pg_statistic_ext_data (STATEXTDATASTXOID):
+ *       Avoids redundant lookups for entries that may not exist during
+ *       query planning.
+ *
+ * Allowed only when implicit_prefetch_entries is false:
+ *   - pg_attribute (ATTNUM): ALTER TABLE bumps catalog version.
+ *   - pg_type (TYPEOID, TYPENAMENSP): avoids master lookups during type
+ *     coercion checks; CREATE/ALTER/DROP TYPE bumps catalog version.
+ *   - pg_namespace (NAMESPACEOID, NAMESPACENAME): avoids lookups in
+ *     recomputeNamespacePath; CREATE/DROP SCHEMA bumps catalog version.
+ *
+ * Allowed conditionally:
+ *   - pg_class (RELNAMENSP): only for system namespaces, since users
+ *     cannot create system tables in YSQL. Violated during YSQL upgrade,
+ *     but that path forces cache refresh.
+ *   - Any cache_id within a temporary namespace (data is session-local).
+ *   - Any cache_id added at runtime via yb_neg_catcache_ids.
+ *
+ * implicit_prefetch_entries distinguishes the two call sites:
+ *   - true:  caller wants to synthesize a negative entry from preloaded
+ *            state without scanning the heap.
+ *   - false: caller has already scanned the heap (found nothing) and wants
+ *            to persist that miss as a negative cache entry.
+ * Caches that return !implicit_prefetch_entries trust a real scan but
+ * refuse to short-circuit from preload alone.
 */
 static bool
 YbAllowNegativeCacheEntries(int cache_id,
@@ -1942,7 +1966,17 @@ YbAllowNegativeCacheEntries(int cache_id,
 
 	switch (cache_id)
 	{
+		case AMOPOPID:
+			yb_switch_fallthrough();
+		case AMOPSTRATEGY:
+			yb_switch_fallthrough();
 		case CASTSOURCETARGET:
+			yb_switch_fallthrough();
+		case OPERNAMENSP:
+			yb_switch_fallthrough();
+		case OPEROID:
+			yb_switch_fallthrough();
+		case RANGETYPE:
 			yb_switch_fallthrough();
 		case STATRELATTINH:
 			yb_switch_fallthrough();
@@ -2119,6 +2153,10 @@ SearchCatCacheMiss(CatCache *cache,
 		} while (stale);
 
 		table_close(relation, AccessShareLock);
+
+		if (IsYugaByteEnabled() && ct == NULL)
+			YbNumCatalogCacheNegMisses[
+				YbGetCatalogCacheTableIdFromCacheId(cache->id)]++;
 	}
 
 	/*
@@ -2255,6 +2293,120 @@ GetCatCacheHashValue(CatCache *cache,
 
 
 /*
+ * YbBuildCatCacheListFromPreloadedCache
+ *
+ * When a CatCache is fully loaded (yb_cc_is_fully_loaded), build a CatCList
+ * by scanning local hash buckets instead of doing an RPC to the master.
+ * Returns the new CatCList with refcount incremented.
+ *
+ * Code adapted from SetCatCacheList and SearchCatCacheList.
+ *
+ * No invalidation messages are expected to arrive during this function
+ * because we never
+ * open a relation or call anything that triggers AcceptInvalidationMessages.
+ * On OOM, any CatCTup entries created by
+ * CatalogCacheCreateEntry are valid cache entries (refcount 0, c_list NULL)
+ * that remain in the hash buckets for future use.
+ */
+static CatCList *
+YbBuildCatCacheListFromPreloadedCache(CatCache *cache, int nkeys,
+									  Datum *arguments, uint32 lHashValue)
+{
+	List	   *ctlist = NIL;
+	ListCell   *ctlist_item;
+	CatCTup    *ct = NULL;
+	CatCList   *cl = NULL;
+	int			nmembers = 0;
+	int			i = 0;
+	int			scanned = 0;
+	MemoryContext oldcxt;
+	instr_time	yb_start;
+
+	Assert(cache->yb_cc_is_fully_loaded);
+	INSTR_TIME_SET_CURRENT(yb_start);
+
+	for (i = 0; i < cache->cc_nbuckets; i++)
+	{
+		dlist_iter	iter;
+
+		dlist_foreach(iter, &cache->cc_bucket[i])
+		{
+			ct = dlist_container(CatCTup, cache_elem, iter.cur);
+			scanned++;
+
+			if (ct->dead || ct->negative)
+				continue;
+
+			if (!CatalogCacheCompareTuple(cache, nkeys, ct->keys, arguments))
+				continue;
+
+			if (ct->c_list)
+			{
+				/* If the entry already belongs to a list, create a new entry */
+				ct = CatalogCacheCreateEntry(cache, &ct->tuple, NULL,
+											 ct->hash_value,
+											 HASH_INDEX(ct->hash_value,
+														cache->cc_nbuckets));
+				Assert(ct != NULL);
+			}
+
+			ctlist = lappend(ctlist, ct);
+		}
+	}
+
+	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+	nmembers = list_length(ctlist);
+	cl = (CatCList *) palloc(offsetof(CatCList, members) +
+							 nmembers * sizeof(CatCTup *));
+	CatCacheCopyKeys(cache->cc_tupdesc, nkeys, cache->cc_keyno,
+					 arguments, cl->keys);
+	MemoryContextSwitchTo(oldcxt);
+
+	cl->cl_magic = CL_MAGIC;
+	cl->my_cache = cache;
+	cl->refcount = 0;
+	cl->dead = false;
+	cl->ordered = false;
+	cl->nkeys = nkeys;
+	cl->hash_value = lHashValue;
+	cl->n_members = nmembers;
+
+	i = 0;
+	foreach(ctlist_item, ctlist)
+	{
+		cl->members[i++] = ct = (CatCTup *) lfirst(ctlist_item);
+		Assert(ct->c_list == NULL);
+		ct->c_list = cl;
+	}
+	Assert(i == nmembers);
+
+	dlist_push_head(&cache->cc_lists, &cl->cache_elem);
+
+	cl->refcount++;
+	ResourceOwnerEnlargeCatCacheListRefs(CurrentResourceOwner);
+	ResourceOwnerRememberCatCacheListRef(CurrentResourceOwner, cl);
+
+	list_free(ctlist);
+
+	{
+		instr_time	yb_duration;
+		long		duration_us;
+
+		INSTR_TIME_SET_CURRENT(yb_duration);
+		INSTR_TIME_SUBTRACT(yb_duration, yb_start);
+		duration_us = INSTR_TIME_GET_MICROSEC(yb_duration);
+
+		if (duration_us > 10000 || yb_debug_log_catcache_events)
+			elog(LOG, "Built catalog cache list from preloaded cache %d (%s): "
+				 "nkeys %d, %d members, scanned %d entries, took %ld us",
+				 cache->id, cache->cc_relname, nkeys, nmembers, scanned,
+				 duration_us);
+	}
+
+	return cl;
+}
+
+/*
  *	SearchCatCacheList
  *
  *		Generate a list of all tuples matching a partial key (that is,
@@ -2366,6 +2518,18 @@ SearchCatCacheList(CatCache *cache,
 	}
 
 	/*
+	 * YB: If the cache is fully loaded and small enough, build the list from
+	 * local buckets instead of doing an RPC to the master.
+	 */
+	if (cache->yb_cc_is_fully_loaded &&
+		yb_catcache_list_from_preloaded_limit > 0 &&
+		cache->cc_ntup <= yb_catcache_list_from_preloaded_limit)
+	{
+		return YbBuildCatCacheListFromPreloadedCache(cache, nkeys,
+													arguments, lHashValue);
+	}
+
+	/*
 	 * List was not found in cache, so we have to build it by reading the
 	 * relation.  For each matching tuple found in the relation, use an
 	 * existing cache entry if possible, else build a new one.
@@ -2422,9 +2586,11 @@ SearchCatCacheList(CatCache *cache,
 
 		if (IsYugaByteEnabled())
 		{
+			int yb_table_id = YbGetCatalogCacheTableIdFromCacheId(cache->id);
 			YbNumCatalogCacheMisses++;
 			YbNumCatalogCacheIdMisses[cache->id]++;
-			YbNumCatalogCacheTableMisses[YbGetCatalogCacheTableIdFromCacheId(cache->id)]++;
+			YbNumCatalogCacheTableMisses[yb_table_id]++;
+			YbNumCatalogCacheListMisses[yb_table_id]++;
 		}
 
 		/*
@@ -3064,6 +3230,18 @@ long *
 YbGetCatCacheTableMisses()
 {
 	return YbNumCatalogCacheTableMisses;
+}
+
+long *
+YbGetCatCacheListMisses()
+{
+	return YbNumCatalogCacheListMisses;
+}
+
+long *
+YbGetCatCacheNegMisses()
+{
+	return YbNumCatalogCacheNegMisses;
 }
 
 YbCatCListIterator

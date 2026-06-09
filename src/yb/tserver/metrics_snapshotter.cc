@@ -338,7 +338,7 @@ Status MetricsSnapshotter::Thread::DoPrometheusMetricsSnapshot(const client::Tab
     shared_ptr<YBSession> session, const std::string& entity_type, const std::string& entity_id,
     const std::string& metric_name, int64_t metric_val,
     const rapidjson::Document* details = nullptr) {
-  auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto req = op->mutable_request();
 
   QLAddStringHashValue(req, server_->permanent_uuid());

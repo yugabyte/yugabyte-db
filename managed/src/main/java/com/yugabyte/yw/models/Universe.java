@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
@@ -1300,6 +1301,17 @@ public class Universe extends Model {
     return universe.getUniverseDetails().universePaused;
   }
 
+  public static void loadUniverseDetails(Iterable<Universe> universes) {
+    if (universes == null) {
+      return;
+    }
+    for (Universe universe : universes) {
+      if (universe != null) {
+        fillUniverseDetails(universe);
+      }
+    }
+  }
+
   private static Universe fillUniverseDetails(Universe universe) {
     JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
     universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
@@ -1355,6 +1367,7 @@ public class Universe extends Model {
   @PostRemove
   public void cleanupUniverse() {
     RoleBindingUtil.cleanupRoleBindings(ResourceType.UNIVERSE, this.getUniverseUUID());
+    RuntimeConfigCacheInvalidator.invalidateScopeForDeletedEntity(getUniverseUUID());
   }
 
   @JsonIgnore

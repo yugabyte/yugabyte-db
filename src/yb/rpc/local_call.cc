@@ -77,6 +77,10 @@ size_t LocalOutboundCall::TransferSidecars(Sidecars* dest) {
   return inbound_call_->sidecars().Transfer(dest);
 }
 
+TaggedThreadPools::Tag LocalOutboundCall::pool_tag() const {
+  return controller_->pool_tag();
+}
+
 LocalYBInboundCall::LocalYBInboundCall(
     RpcMetrics* rpc_metrics,
     const RemoteMethod& remote_method,
@@ -140,6 +144,10 @@ Status LocalYBInboundCall::ParseRequest(Slice param, const RefCntBuffer& buffer)
 
 AnyMessageConstPtr LocalYBInboundCall::SerializableResponse() {
   return outbound_call()->response();
+}
+
+TaggedThreadPools::Tag LocalYBInboundCall::pool_tag() const {
+  return outbound_call()->pool_tag();
 }
 
 void LocalYBInboundCallTracker::CallProcessed(InboundCall* call) {

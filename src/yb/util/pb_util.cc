@@ -102,10 +102,13 @@ using std::ostream;
 using strings::Substitute;
 using strings::Utf8SafeCEscape;
 
+using yb::operator""_KB;
 using yb::operator""_MB;
 
 DEFINE_test_flag(bool, fail_write_pb_container, false,
                  "Simulate a failure during WritePBContainer.");
+DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_uint32(protobuf_message_total_bytes_limit);
 
 // Protobuf container constants.
 static const int kPBContainerVersion = 1;
@@ -127,20 +130,70 @@ COMPILE_ASSERT((arraysize(kPBContainerMagic) - 1) == kPBContainerMagicLen,
 // The rpc layer adds its own headers, so we limit the rpc message size to 255MB.
 DEFINE_NON_RUNTIME_uint64(rpc_max_message_size, 255_MB,
     "The maximum size of a message of any RPC that the server will accept. The sum of "
-    "consensus_max_batch_size_bytes and 1MB should be less than rpc_max_message_size. "
+    "consensus_max_batch_size_bytes and 1KB should be less than rpc_max_message_size. "
     "This value must also be less than protobuf_message_total_bytes_limit.");
+
+namespace {
+bool RpcMaxMessageSizeValidator(const char* flag_name, uint64 value) {
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+  if (std::cmp_less_equal(value, FLAGS_consensus_max_batch_size_bytes + 1_KB)) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "Must be greater than consensus_max_batch_size_bytes + 1KB "
+        << "(value: " << FLAGS_consensus_max_batch_size_bytes + 1_KB << ")";
+    return false;
+  }
+
+  return true;
+}
+}  // namespace
+
+DEFINE_validator(rpc_max_message_size,
+    &RpcMaxMessageSizeValidator,
+    FLAG_LT_FLAG_VALIDATOR(protobuf_message_total_bytes_limit));
+
+// We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
+// Otherwise such batch would be rejected by RPC layer.
+DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
+    "The maximum per-tablet RPC batch size when updating peers. The sum of "
+    "consensus_max_batch_size_bytes and 1KB should be less than rpc_max_message_size");
+TAG_FLAG(consensus_max_batch_size_bytes, advanced);
+
+namespace {
+bool ConsensusBatchSizeValidator(const char* flag_name, uint64 value) {
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+  if (std::cmp_greater_equal(value + 1_KB, FLAGS_rpc_max_message_size)) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "consensus_max_batch_size_bytes + 1KB must be less than rpc_max_message_size "
+        << "(value: " << FLAGS_rpc_max_message_size << ")";
+    return false;
+  }
+  return true;
+}
+}  // namespace
+
+DEFINE_validator(consensus_max_batch_size_bytes, &ConsensusBatchSizeValidator);
+
+DEFINE_UNKNOWN_int64(rpc_throttle_threshold_bytes, 1_MB,
+    "Throttle inbound RPC calls larger than specified size on hitting mem tracker soft limit. "
+    "Throttling is disabled if negative value is specified. The value must be at least 16 and less "
+    "than the strictly enforced consensus_max_batch_size_bytes.");
+
+constexpr const auto kMinRpcThrottleThresholdBytes = 16;
+DEFINE_validator(rpc_throttle_threshold_bytes,
+    FLAG_LT_FLAG_VALIDATOR(consensus_max_batch_size_bytes),
+    FLAG_COND_VALIDATOR(
+        std::cmp_less_equal(_value, 0) ||
+            std::cmp_greater_equal(_value, kMinRpcThrottleThresholdBytes),
+        "Must be non-positive (disabled) or at least " << kMinRpcThrottleThresholdBytes));
 
 // To permit parsing of very large PB messages, we must use parse through a CodedInputStream and
 // bump the byte limit. The SetTotalBytesLimit() docs say that 512MB is the shortest theoretical
 // message length that may produce integer overflow warnings, so that's what we'll use.
-DEFINE_NON_RUNTIME_uint32(
-    protobuf_message_total_bytes_limit, 511_MB,
+DEFINE_NON_RUNTIME_uint32(protobuf_message_total_bytes_limit, 511_MB,
     "Limits single protobuf message size for deserialization. This value must be greater than "
     "rpc_max_message_size and less than 512MB.");
 TAG_FLAG(protobuf_message_total_bytes_limit, advanced);
 TAG_FLAG(protobuf_message_total_bytes_limit, hidden);
-
-DEFINE_validator(rpc_max_message_size, FLAG_LT_FLAG_VALIDATOR(protobuf_message_total_bytes_limit));
 
 DEFINE_validator(protobuf_message_total_bytes_limit,
     FLAG_GT_FLAG_VALIDATOR(rpc_max_message_size),
@@ -392,7 +445,7 @@ Status WritablePBContainerFile::Flush() {
   DCHECK(!closed_);
 
   // TODO: Flush just the dirty bytes.
-  RETURN_NOT_OK_PREPEND(writer_->Flush(WritableFile::FLUSH_ASYNC), "Failed to Flush() file");
+  RETURN_NOT_OK_PREPEND(writer_->Flush(), "Failed to Flush() file");
 
   return Status::OK();
 }

@@ -50,8 +50,9 @@ DEFINE_RUNTIME_bool(enable_global_load_balancing, true,
     "global load. Note that global balancing only occurs after all tables are balanced.");
 
 DEFINE_RUNTIME_int32(leader_balance_threshold, 0,
-    "Number of leaders per each tablet server to balance below. If this is configured to "
+    "Number of leaders per each tablet server per table to balance below. If this is configured to "
     "0 (the default), the leaders will be balanced optimally at extra cost.");
+TAG_FLAG(leader_balance_threshold, advanced);
 
 DEFINE_RUNTIME_int32(leader_balance_unresponsive_timeout_ms, 3 * 1000,
     "The period of time that a master can go without receiving a heartbeat from a "
@@ -1985,9 +1986,12 @@ const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
       return read_only_placement;
     }
   }
-  // Should never get here.
-  LOG(DFATAL) << "Could not find read only cluster with placement uuid: "
-              << state_->options_->placement_uuid;
+  // We can legitimately get here if the cluster's read-replica configuration changed (e.g. via
+  // yb-admin add_read_replica_placement_info / delete_read_replica_placement_info) between when
+  // the tablespace map was populated with this placement_uuid and now. Fall back to the first
+  // read-replica cluster; the next tablespace-map refresh will rebind to the current config.
+  LOG(WARNING) << "Could not find read only cluster with placement uuid: "
+               << state_->options_->placement_uuid;
   return replication_info.read_replicas(0);
 }
 

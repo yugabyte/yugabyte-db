@@ -1,0 +1,5 @@
+SET duckdb.force_execution = TRUE;
+COPY (SELECT 1 INTO frak UNION SELECT 2) TO '/blob';
+ERROR:  COPY (SELECT INTO) is not supported
+COPY (SELECT 1 INTO frak UNION SELECT 2) TO '/blob.parquet';
+ERROR:  (PGDuckDB/DuckdbUtilityHook_Cpp) Executor Error: (PGDuckDB/MakeDuckdbCopyQuery) DuckDB COPY only supports SELECT statements

@@ -1090,6 +1090,14 @@ public class AWSCloudImpl implements CloudAPI {
       Ec2Client ec2Client = getEC2Client(provider, region.getCode());
       DescribeImagesRequest request = DescribeImagesRequest.builder().imageIds(imageId).build();
       DescribeImagesResponse result = ec2Client.describeImages(request);
+      if (result.images().isEmpty()) {
+        LOG.error(
+            "AMI details extraction failed: image {} not found in region {}",
+            imageId,
+            region.getCode());
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Image not found: " + imageId + " in region " + region.getCode());
+      }
       return result.images().get(0);
     } catch (AwsServiceException e) {
       LOG.error("AMI details extraction failed: ", e);

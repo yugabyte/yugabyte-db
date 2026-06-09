@@ -123,7 +123,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
       for (Cluster cluster : taskParams.clusters) {
         String ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
         PlacementInfo pi = cluster.getOverallPlacement();
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+        Provider provider = Util.getSingleProvider(cluster);
         for (Region r : provider.getRegions()) {
           for (AvailabilityZone az : r.getZones()) {
             providersAZSet.add(az.getCode());

@@ -18,6 +18,8 @@
 
 namespace yb {
 
+class Cgroup;
+
 // ProcessWrapper is just a wrapper class for handling the details regarding running a
 // process (like, the Kill method used and command used for running the process).
 // It is used to invoke a child process once and is not thread-safe.
@@ -76,6 +78,12 @@ YB_DEFINE_ENUM(YbSubProcessState, (kNotStarted)(kRunning)(kStopping)(kPaused));
 //       (none)
 class ProcessSupervisor {
  public:
+  explicit ProcessSupervisor([[maybe_unused]] Cgroup* cgroup = nullptr)
+#ifdef __linux__
+      : cgroup_(cgroup)
+#endif
+      {}
+
   virtual ~ProcessSupervisor() {}
   virtual void Stop();
   Status Start();
@@ -86,12 +94,12 @@ class ProcessSupervisor {
   Status Restart();
   Status Pause();
 
-  std::optional<int64_t> ProcessId();
+  std::optional<int64_t> ProcessId() EXCLUDES(mtx_);
 
  protected:
   virtual std::shared_ptr<ProcessWrapper> CreateProcessWrapper() = 0;
   std::mutex mtx_;
-  std::shared_ptr<ProcessWrapper> process_wrapper_ = nullptr;
+  std::shared_ptr<ProcessWrapper> process_wrapper_ GUARDED_BY(mtx_) = nullptr;
   virtual void PrepareForStop() {}
   virtual Status PrepareForStart() { return Status::OK(); }
   virtual std::string GetProcessName() = 0;
@@ -113,6 +121,10 @@ class ProcessSupervisor {
   YbSubProcessState state_ GUARDED_BY(mtx_) = YbSubProcessState::kNotStarted;
 
   scoped_refptr<Thread> supervisor_thread_;
+
+#ifdef __linux__
+  Cgroup* cgroup_ = nullptr;
+#endif
 
   CountDownLatch thread_finished_latch_{1};
   std::condition_variable cond_;

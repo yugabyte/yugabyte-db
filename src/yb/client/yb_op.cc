@@ -90,16 +90,8 @@ void SetPartitionKey(const Slice& value, LWPgsqlReadRequestPB* request) {
   request->dup_partition_key(value);
 }
 
-void SetPartitionKey(const Slice& value, PgsqlReadRequestPB* request) {
-  request->set_partition_key(value.cdata(), value.size());
-}
-
 void SetPartitionKey(const Slice& value, LWPgsqlWriteRequestPB* request) {
   request->dup_partition_key(value);
-}
-
-void SetPartitionKey(const Slice& value, PgsqlWriteRequestPB* request) {
-  request->set_partition_key(value.cdata(), value.size());
 }
 
 template <typename Req>
@@ -429,7 +421,7 @@ Status DoGetRangePartitionBounds(const Schema& schema,
   return Status::OK();
 }
 
-std::string ResponseSuffix(const PgsqlResponsePB& response) {
+std::string ResponseSuffix(const LWPgsqlResponsePB& response) {
   const auto str = response.ShortDebugString();
   return str.empty() ? std::string() : (", response: " + str);
 }
@@ -443,19 +435,19 @@ auto NewYBPgsqlOp(Args&&... args) {
 }
 
 auto NewYBPgsqlWriteOp(
-    const shared_ptr<YBTable>& table, rpc::Sidecars* sidecars,
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars* sidecars,
     PgsqlWriteRequestPB::PgsqlStmtType stmt_type) {
-  auto op = NewYBPgsqlOp<YBPgsqlWriteOp>(table, *sidecars);
+  auto op = NewYBPgsqlOp<YBPgsqlWriteOp>(table, arena, *sidecars);
   auto& req = *op->mutable_request();
   req.set_stmt_type(stmt_type);
-  req.set_table_id(table->id());
+  req.ref_table_id(table->id());
   req.set_schema_version(table->schema().version());
   req.set_stmt_id(op->GetQueryId());
 
   return op;
 }
 
-auto NewYBPgsqlLockOp(const shared_ptr<YBTable>& table, bool is_lock = true) {
+auto NewYBPgsqlLockOp(const YBTablePtr& table, bool is_lock = true) {
   auto op = NewYBPgsqlOp<YBPgsqlLockOp>(table);
   auto& req = *op->mutable_request();
   req.set_is_lock(is_lock);
@@ -468,8 +460,8 @@ auto NewYBPgsqlLockOp(const shared_ptr<YBTable>& table, bool is_lock = true) {
 // YBOperation
 //--------------------------------------------------------------------------------------------------
 
-YBOperation::YBOperation(const shared_ptr<YBTable>& table)
-  : table_(table) {
+YBOperation::YBOperation(const YBTablePtr& table, const ThreadSafeArenaPtr& arena)
+    : table_(table), arena_(arena) {
 }
 
 YBOperation::~YBOperation() = default;
@@ -482,8 +474,8 @@ void YBOperation::ResetTablet() {
   tablet_.reset();
 }
 
-void YBOperation::ResetTable(YBTablePtr new_table) {
-  table_ = std::move(new_table);
+void YBOperation::ResetTable(const YBTablePtr& new_table) {
+  table_ = new_table;
   // tablet_ can no longer be valid.
   tablet_.reset();
 }
@@ -500,19 +492,8 @@ void YBOperation::MarkTablePartitionListAsStale() {
 // YBRedisOp
 //--------------------------------------------------------------------------------------------------
 
-YBRedisOp::YBRedisOp(const shared_ptr<YBTable>& table)
-    : YBOperation(table) {
-}
-
-RedisResponsePB* YBRedisOp::mutable_response() {
-  if (!redis_response_) {
-    redis_response_.reset(new RedisResponsePB());
-  }
-  return redis_response_.get();
-}
-
-const RedisResponsePB& YBRedisOp::response() const {
-  return *DCHECK_NOTNULL(redis_response_.get());
+YBRedisOp::YBRedisOp(const YBTablePtr& table)
+    : YBOperationBase(table, SharedThreadSafeArena()) {
 }
 
 OpGroup YBRedisReadOp::group() const {
@@ -522,16 +503,16 @@ OpGroup YBRedisReadOp::group() const {
 
 // YBRedisWriteOp -----------------------------------------------------------------
 
-YBRedisWriteOp::YBRedisWriteOp(const shared_ptr<YBTable>& table)
-    : YBRedisOp(table), redis_write_request_(new RedisWriteRequestPB()) {
+YBRedisWriteOp::YBRedisWriteOp(const YBTablePtr& table)
+    : YBRedisOp(table), redis_write_request_(arena_->ArenaObjectFactory()) {
 }
 
 size_t YBRedisWriteOp::space_used_by_request() const {
-  return redis_write_request_->ByteSizeLong();
+  return redis_write_request_->SpaceUsedLong();
 }
 
 std::string YBRedisWriteOp::ToString() const {
-  return "REDIS_WRITE " + redis_write_request_->key_value().key();
+  return Format("REDIS_WRITE $0", redis_write_request_->key_value().key());
 }
 
 void YBRedisWriteOp::SetHashCode(uint16_t hash_code) {
@@ -539,7 +520,7 @@ void YBRedisWriteOp::SetHashCode(uint16_t hash_code) {
   redis_write_request_->mutable_key_value()->set_hash_code(hash_code);
 }
 
-const std::string& YBRedisWriteOp::GetKey() const {
+std::string_view YBRedisWriteOp::GetKey() const {
   return redis_write_request_->key_value().key();
 }
 
@@ -550,8 +531,8 @@ Status YBRedisWriteOp::GetPartitionKey(std::string *partition_key) const {
 
 // YBRedisReadOp -----------------------------------------------------------------
 
-YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
-    : YBRedisOp(table), redis_read_request_(new RedisReadRequestPB()) {
+YBRedisReadOp::YBRedisReadOp(const YBTablePtr& table)
+    : YBRedisOp(table), redis_read_request_(arena_->ArenaObjectFactory()) {
 }
 
 size_t YBRedisReadOp::space_used_by_request() const {
@@ -559,7 +540,7 @@ size_t YBRedisReadOp::space_used_by_request() const {
 }
 
 std::string YBRedisReadOp::ToString() const {
-  return "REDIS_READ " + redis_read_request_->key_value().key();
+  return Format("REDIS_READ $0", redis_read_request_->key_value().key());
 }
 
 void YBRedisReadOp::SetHashCode(uint16_t hash_code) {
@@ -567,7 +548,7 @@ void YBRedisReadOp::SetHashCode(uint16_t hash_code) {
   redis_read_request_->mutable_key_value()->set_hash_code(hash_code);
 }
 
-const std::string& YBRedisReadOp::GetKey() const {
+std::string_view YBRedisReadOp::GetKey() const {
   return redis_read_request_->key_value().key();
 }
 
@@ -588,8 +569,8 @@ Status YBRedisReadOp::GetPartitionKey(std::string *partition_key) const {
 // - The name will be clean up later.
 //--------------------------------------------------------------------------------------------------
 
-YBqlOp::YBqlOp(const shared_ptr<YBTable>& table)
-      : YBOperation(table) , ql_response_(new QLResponsePB()) {
+YBqlOp::YBqlOp(const YBTablePtr& table, const ThreadSafeArenaPtr& arena)
+    : YBOperationBase(table, arena) {
 }
 
 YBqlOp::~YBqlOp() {
@@ -601,16 +582,20 @@ bool YBqlOp::succeeded() const {
 
 // YBqlWriteOp -----------------------------------------------------------------
 
-YBqlWriteOp::YBqlWriteOp(const shared_ptr<YBTable>& table)
-    : YBqlOp(table), ql_write_request_(new QLWriteRequestPB()) {
+YBqlWriteOp::YBqlWriteOp(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, LWQLWriteRequestPB* request)
+    : YBqlOp(table, arena),
+      ql_write_request_(request ? request : arena_->NewArenaObject<LWQLWriteRequestPB>()) {
 }
 
-YBqlWriteOp::~YBqlWriteOp() {}
+YBqlWriteOp::~YBqlWriteOp() = default;
 
-static std::unique_ptr<YBqlWriteOp> NewYBqlWriteOp(const shared_ptr<YBTable>& table,
-                                                   QLWriteRequestPB::QLStmtType stmt_type) {
-  auto op = std::unique_ptr<YBqlWriteOp>(new YBqlWriteOp(table));
-  QLWriteRequestPB* req = op->mutable_request();
+static std::unique_ptr<YBqlWriteOp> NewYBqlWriteOp(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena,
+    QLWriteRequestPB::QLStmtType stmt_type) {
+  auto op = std::unique_ptr<YBqlWriteOp>(
+      new YBqlWriteOp(table, arena, /* request= */ nullptr));
+  auto* req = op->mutable_request();
   req->set_type(stmt_type);
   req->set_client(YQL_CLIENT_CQL);
   // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
@@ -624,20 +609,23 @@ static std::unique_ptr<YBqlWriteOp> NewYBqlWriteOp(const shared_ptr<YBTable>& ta
   return op;
 }
 
-std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewInsert(const YBTablePtr& table) {
-  return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_INSERT);
+std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewInsert(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena) {
+  return NewYBqlWriteOp(table, arena, QLWriteRequestPB::QL_STMT_INSERT);
 }
 
-std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewUpdate(const YBTablePtr& table) {
-  return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_UPDATE);
+std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewUpdate(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena) {
+  return NewYBqlWriteOp(table, arena, QLWriteRequestPB::QL_STMT_UPDATE);
 }
 
-std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewDelete(const YBTablePtr& table) {
-  return NewYBqlWriteOp(table, QLWriteRequestPB::QL_STMT_DELETE);
+std::unique_ptr<YBqlWriteOp> YBqlWriteOp::NewDelete(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena) {
+  return NewYBqlWriteOp(table, arena, QLWriteRequestPB::QL_STMT_DELETE);
 }
 
 std::string YBqlWriteOp::ToString() const {
-  return "QL_WRITE " + ql_write_request_->ShortDebugString();
+  return Format("QL_WRITE $0", *ql_write_request_);
 }
 
 Status YBqlWriteOp::GetPartitionKey(string* partition_key) const {
@@ -694,24 +682,33 @@ size_t YBqlWriteHashKeyComparator::operator()(const YBqlWriteOpPtr& op) const {
   return hash;
 }
 
-bool YBqlWriteHashKeyComparator::operator()(const YBqlWriteOpPtr& op1,
-                                              const YBqlWriteOpPtr& op2) const {
+namespace {
+
+template <class Col>
+bool ValuesEquals(const Col& lhs, const Col& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  auto it1 = lhs.begin();
+  auto it2 = rhs.begin();
+  for (; it1 != lhs.end(); ++it1, ++it2) {
+    DCHECK(it1->has_value());
+    DCHECK(it2->has_value());
+    if (it1->value() != it2->value())
+      return false;
+  }
+  return true;
+}
+
+} // namespace
+
+bool YBqlWriteHashKeyComparator::operator()(
+    const YBqlWriteOpPtr& op1, const YBqlWriteOpPtr& op2) const {
   // Check if two write ops overlap that they apply to the same hash key in the same table.
   if (op1->table() != op2->table() && op1->table()->id() != op2->table()->id()) {
     return false;
   }
-  const QLWriteRequestPB& req1 = op1->request();
-  const QLWriteRequestPB& req2 = op2->request();
-  if (req1.hashed_column_values_size() != req2.hashed_column_values_size()) {
-    return false;
-  }
-  for (int i = 0; i < req1.hashed_column_values().size(); i++) {
-    DCHECK(req1.hashed_column_values()[i].has_value());
-    DCHECK(req2.hashed_column_values()[i].has_value());
-    if (req1.hashed_column_values()[i].value() != req2.hashed_column_values()[i].value())
-      return false;
-  }
-  return true;
+  return ValuesEquals(op1->request().hashed_column_values(), op2->request().hashed_column_values());
 }
 
 // YBqlWriteOp::PrimaryHash/Equal ---------------------------------------------------------------
@@ -728,45 +725,36 @@ size_t YBqlWritePrimaryKeyComparator::operator()(const YBqlWriteOpPtr& op) const
   return hash;
 }
 
-bool YBqlWritePrimaryKeyComparator::operator()(const YBqlWriteOpPtr& op1,
-                                                 const YBqlWriteOpPtr& op2) const {
+bool YBqlWritePrimaryKeyComparator::operator()(
+    const YBqlWriteOpPtr& op1, const YBqlWriteOpPtr& op2) const {
   if (!YBqlWriteHashKeyComparator()(op1, op2)) {
     return false;
   }
 
   // Check if two write ops overlap that they apply to the range key also.
-  const QLWriteRequestPB& req1 = op1->request();
-  const QLWriteRequestPB& req2 = op2->request();
-  if (req1.range_column_values_size() != req2.range_column_values_size()) {
-    return false;
-  }
-  for (int i = 0; i < req1.range_column_values().size(); i++) {
-    DCHECK(req1.range_column_values()[i].has_value());
-    DCHECK(req2.range_column_values()[i].has_value());
-    if (req1.range_column_values()[i].value() != req2.range_column_values()[i].value())
-      return false;
-  }
-  return true;
+  return ValuesEquals(op1->request().range_column_values(), op2->request().range_column_values());
 }
 
 // YBqlReadOp -----------------------------------------------------------------
 
-YBqlReadOp::YBqlReadOp(const shared_ptr<YBTable>& table)
-    : YBqlOp(table),
-      ql_read_request_(new QLReadRequestPB()),
+YBqlReadOp::YBqlReadOp(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, LWQLReadRequestPB* request)
+    : YBqlOp(table, arena),
+      ql_read_request_(request ? request : arena_->NewArenaObject<LWQLReadRequestPB>()),
       yb_consistency_level_(YBConsistencyLevel::STRONG) {
 }
 
-YBqlReadOp::~YBqlReadOp() {}
+YBqlReadOp::~YBqlReadOp() = default;
 
 OpGroup YBqlReadOp::group() const {
   return yb_consistency_level_ == YBConsistencyLevel::CONSISTENT_PREFIX
       ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
 }
 
-std::unique_ptr<YBqlReadOp> YBqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
-  std::unique_ptr<YBqlReadOp> op(new YBqlReadOp(table));
-  QLReadRequestPB *req = op->mutable_request();
+std::unique_ptr<YBqlReadOp> YBqlReadOp::NewSelect(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena) {
+  std::unique_ptr<YBqlReadOp> op(new YBqlReadOp(table, arena, /* request= */ nullptr));
+  auto* req = op->mutable_request();
   req->set_client(YQL_CLIENT_CQL);
   // TODO: Request ID should be filled with CQL stream ID. Query ID should be replaced too.
   req->set_request_id(reinterpret_cast<uint64_t>(op.get()));
@@ -780,7 +768,7 @@ std::unique_ptr<YBqlReadOp> YBqlReadOp::NewSelect(const shared_ptr<YBTable>& tab
 }
 
 std::string YBqlReadOp::ToString() const {
-  return "QL_READ " + ql_read_request_->DebugString();
+  return Format("QL_READ $0", *ql_read_request_);
 }
 
 void YBqlReadOp::SetHashCode(const uint16_t hash_code) {
@@ -857,14 +845,24 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
   return Status::OK();
 }
 
-std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
-  const google::protobuf::RepeatedPtrField<QLRSColDescPB>& rscol_descs) {
+template <class Col>
+std::vector<ColumnSchema> DoMakeColumnSchemasFromColDesc(const Col& rscol_descs) {
   std::vector<ColumnSchema> column_schemas;
   column_schemas.reserve(rscol_descs.size());
   for (const auto& rscol_desc : rscol_descs) {
     column_schemas.emplace_back(rscol_desc.name(), QLType::FromQLTypePB(rscol_desc.ql_type()));
   }
   return column_schemas;
+}
+
+std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
+    const google::protobuf::RepeatedPtrField<QLRSColDescPB>& rscol_descs) {
+  return DoMakeColumnSchemasFromColDesc(rscol_descs);
+}
+
+std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
+    const ArenaList<LWQLRSColDescPB>& rscol_descs) {
+  return DoMakeColumnSchemasFromColDesc(rscol_descs);
 }
 
 std::vector<ColumnSchema> YBqlReadOp::MakeColumnSchemasFromRequest() const {
@@ -887,8 +885,8 @@ Result<qlexpr::QLRowBlock> YBqlReadOp::MakeRowBlock() const {
 // YBPgsql Operators
 //--------------------------------------------------------------------------------------------------
 
-YBPgsqlOp::YBPgsqlOp(const shared_ptr<YBTable>& table)
-    : YBOperation(table) {
+YBPgsqlOp::YBPgsqlOp(const YBTablePtr& table, const ThreadSafeArenaPtr& arena)
+    : YBOperationBase(table, arena) {
 }
 
 bool YBPgsqlOp::succeeded() const {
@@ -896,37 +894,47 @@ bool YBPgsqlOp::succeeded() const {
 }
 
 bool YBPgsqlOp::applied() {
-  return succeeded() && !response_.skipped();
+  return succeeded() && !response().skipped();
 }
 
 YBPgsqlOpSidecarBase::YBPgsqlOpSidecarBase(
-    const shared_ptr<YBTable>& table, rpc::Sidecars& sidecars)
-    : YBPgsqlOp(table), sidecars_(sidecars) {
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars& sidecars)
+    : YBPgsqlOp(table, arena), sidecars_(sidecars) {
 }
 
 //--------------------------------------------------------------------------------------------------
 // YBPgsqlWriteOp
 
 YBPgsqlWriteOp::YBPgsqlWriteOp(
-    const shared_ptr<YBTable>& table, rpc::Sidecars& sidecars, PgsqlWriteRequestPB* request)
-    : YBPgsqlOpSidecarBase(table, sidecars), request_(request) {
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars& sidecars,
+    LWPgsqlWriteRequestPB* request)
+    : YBPgsqlOpSidecarBase(table, arena, sidecars),
+      request_(request ? request : arena_->NewArenaObject<LWPgsqlWriteRequestPB>()),
+      own_request_(!request) {
 }
 
-YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewInsert(const YBTablePtr& table, rpc::Sidecars* sidecars) {
-  return NewYBPgsqlWriteOp(table, sidecars, PgsqlWriteRequestPB::PGSQL_INSERT);
+YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewInsert(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars* sidecars) {
+  return NewYBPgsqlWriteOp(
+      table, arena, sidecars, PgsqlWriteRequestPB::PGSQL_INSERT);
 }
 
-YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewUpdate(const YBTablePtr& table, rpc::Sidecars* sidecars) {
-  return NewYBPgsqlWriteOp(table, sidecars, PgsqlWriteRequestPB::PGSQL_UPDATE);
+YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewUpdate(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars* sidecars) {
+  return NewYBPgsqlWriteOp(
+      table, arena, sidecars, PgsqlWriteRequestPB::PGSQL_UPDATE);
 }
 
-YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewDelete(const YBTablePtr& table, rpc::Sidecars* sidecars) {
-  return NewYBPgsqlWriteOp(table, sidecars, PgsqlWriteRequestPB::PGSQL_DELETE);
+YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewDelete(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars* sidecars) {
+  return NewYBPgsqlWriteOp(
+      table, arena, sidecars, PgsqlWriteRequestPB::PGSQL_DELETE);
 }
 
-YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewFetchSequence(const std::shared_ptr<YBTable>& table,
-                                                   rpc::Sidecars* sidecars) {
-  return NewYBPgsqlWriteOp(table, sidecars, PgsqlWriteRequestPB::PGSQL_FETCH_SEQUENCE);
+YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewFetchSequence(
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars* sidecars) {
+  return NewYBPgsqlWriteOp(
+      table, arena, sidecars, PgsqlWriteRequestPB::PGSQL_FETCH_SEQUENCE);
 }
 
 std::string YBPgsqlWriteOp::ToString() const {
@@ -940,12 +948,12 @@ void YBPgsqlWriteOp::SetHashCode(const uint16_t hash_code) {
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
-  if (!request_.is_owner()) {
+  if (!own_request_) {
     client::GetPartitionKey(*request_, partition_key);
     return Status::OK();
   }
   RETURN_NOT_OK(InitWritePartitionKey(
-      table_->InternalSchema(), table_->partition_schema(), request_.get()));
+      table_->InternalSchema(), table_->partition_schema(), request_));
   *partition_key = std::move(*request_->mutable_partition_key());
   return Status::OK();
 }
@@ -954,44 +962,37 @@ Status YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
 // YBPgsqlReadOp
 
 YBPgsqlReadOp::YBPgsqlReadOp(
-    const shared_ptr<YBTable>& table, rpc::Sidecars& sidecars, PgsqlReadRequestPB* request)
-    : YBPgsqlOpSidecarBase(table, sidecars),
-      request_(request) {
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars& sidecars,
+    LWPgsqlReadRequestPB* request)
+    : YBPgsqlOpSidecarBase(table, arena, sidecars),
+      request_(request ? request : arena_->NewArenaObject<LWPgsqlReadRequestPB>()),
+      own_request_(!request) {
 }
 
 YBPgsqlReadOpPtr YBPgsqlReadOp::NewSelect(
-    const shared_ptr<YBTable>& table, rpc::Sidecars* sidecars) {
-  auto op = NewYBPgsqlOp<YBPgsqlReadOp>(table, *sidecars);
+    const YBTablePtr& table, const ThreadSafeArenaPtr& arena, rpc::Sidecars* sidecars) {
+  auto op = NewYBPgsqlOp<YBPgsqlReadOp>(
+      table, arena, *sidecars);
   auto& req = *op->mutable_request();
-  req.set_table_id(table->id());
-  req.set_schema_version(table->schema().version());
+  req.ref_table_id(op->table()->id());
+  req.set_schema_version(op->table()->schema().version());
   req.set_stmt_id(op->GetQueryId());
 
   return op;
 }
 
 std::string YBPgsqlReadOp::ToString() const {
-  return "PGSQL_READ " + request_->ShortDebugString() + ResponseSuffix(response());
+  return Format("PGSQL_READ $0$1", *request_, ResponseSuffix(response()));
 }
 
 void YBPgsqlReadOp::SetHashCode(const uint16_t hash_code) {
   request_->set_hash_code(hash_code);
 }
 
-std::vector<ColumnSchema> YBPgsqlReadOp::MakeColumnSchemasFromColDesc(
-  const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs) {
-  std::vector<ColumnSchema> column_schemas;
-  column_schemas.reserve(rscol_descs.size());
-  for (const auto& rscol_desc : rscol_descs) {
-    column_schemas.emplace_back(rscol_desc.name(), QLType::FromQLTypePB(rscol_desc.ql_type()));
-  }
-  return column_schemas;
-}
-
 std::vector<ColumnSchema> YBPgsqlReadOp::MakeColumnSchemasFromRequest() const {
   // Tests don't have access to the QL internal statement object, so they have to use rsrow
   // descriptor from the read request.
-  return MakeColumnSchemasFromColDesc(request().rsrow_desc().rscol_descs());
+  return DoMakeColumnSchemasFromColDesc(request().rsrow_desc().rscol_descs());
 }
 
 OpGroup YBPgsqlReadOp::group() const {
@@ -1012,14 +1013,14 @@ Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
         FindPartitionKeyByUpperBound(*table_->GetPartitionsShared(), *request_));
     return Status::OK();
   }
-  if (!request_.is_owner()) {
+  if (!own_request_) {
     client::GetPartitionKey(*request_, partition_key);
     return Status::OK();
   }
 
   RETURN_NOT_OK(InitReadPartitionKey(
       table_->InternalSchema(), table_->partition_schema(), *(table_->GetPartitionsShared()),
-      request_.get()));
+      request_));
   *partition_key = std::move(*request_->mutable_partition_key());
   return Status::OK();
 }
@@ -1028,15 +1029,16 @@ Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
 // YBPgsqlLockOp
 ////////////////////////////////////////////////////////////
 
-YBPgsqlLockOp::YBPgsqlLockOp(const std::shared_ptr<YBTable>& table)
-    : YBPgsqlOp(table) {
+YBPgsqlLockOp::YBPgsqlLockOp(const YBTablePtr& table)
+    : YBPgsqlOp(table, SharedThreadSafeArena()),
+      request_(arena_->ArenaObjectFactory()) {
 }
 
-YBPgsqlLockOpPtr YBPgsqlLockOp::NewLock(const std::shared_ptr<YBTable>& table) {
+YBPgsqlLockOpPtr YBPgsqlLockOp::NewLock(const YBTablePtr& table) {
   return NewYBPgsqlLockOp(table);
 }
 
-YBPgsqlLockOpPtr YBPgsqlLockOp::NewUnlock(const std::shared_ptr<YBTable>& table) {
+YBPgsqlLockOpPtr YBPgsqlLockOp::NewUnlock(const YBTablePtr& table) {
   return NewYBPgsqlLockOp(table, /* is_lock = */ false);
 }
 

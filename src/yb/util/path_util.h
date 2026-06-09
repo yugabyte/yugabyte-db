@@ -41,10 +41,10 @@ namespace yb {
 class Env;
 
 // Appends path segments with the appropriate path separator, if necessary.
-void AppendPathSegments(std::string* out, const std::string &b);
+void AppendPathSegments(std::string* out, std::string_view b);
 
 template <class... Args>
-void AppendPathSegments(std::string* out, const std::string& a, Args&&... args) {
+void AppendPathSegments(std::string* out, std::string_view a, Args&&... args) {
   AppendPathSegments(out, a);
   AppendPathSegments(out, std::forward<Args>(args)...);
 }

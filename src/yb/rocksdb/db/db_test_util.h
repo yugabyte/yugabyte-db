@@ -45,9 +45,11 @@
 
 #include "yb/encryption/encryption_fwd.h"
 
+#include "yb/rocksdb/db/compaction_context.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/memtable/hash_linklist_rep.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/compaction_filter.h"
@@ -118,16 +120,100 @@ class OnFileDeletionListener : public EventListener {
   std::string expected_file_name_;
 };
 
-class CompactionStartedListener : public EventListener {
+class TestCompactionListener : public EventListener {
  public:
   void OnCompactionStarted() override {
     ++num_compactions_started_;
   }
 
+  void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& info) override {
+    ++num_compactions_completed_;
+  }
+
   int GetNumCompactionsStarted() { return num_compactions_started_; }
+
+  int GetNumCompactionsCompleted() { return num_compactions_completed_; }
 
  private:
   std::atomic<int> num_compactions_started_;
+  std::atomic<int> num_compactions_completed_;
+};
+
+class DelayedCompactionFeed : public CompactionFeed {
+ public:
+  DelayedCompactionFeed(CompactionFeed* next_feed, int64_t delay_ns)
+      : next_feed_(*next_feed), delay_ns_(delay_ns) {}
+
+  void SetDelayNs(int64_t delay_ns) {
+    delay_ns_ = delay_ns;
+  }
+
+  Status Feed(const Slice& key, const Slice& value) override;
+
+  Status Flush() override { return next_feed_.Flush(); }
+
+ private:
+  CompactionFeed& next_feed_;
+  std::atomic<int64_t> delay_ns_{0};
+};
+
+class DelayedCompactionContext : public CompactionContext {
+ public:
+  DelayedCompactionContext(
+      CompactionContextPtr context, int64_t delay_ns,
+      std::function<void(DelayedCompactionContext* context)> on_destruction_callback)
+      : context_(std::move(context)),
+        feed_(context_->Feed(), delay_ns),
+        on_destruction_callback_(std::move(on_destruction_callback)) {}
+
+  ~DelayedCompactionContext() {
+    on_destruction_callback_(this);
+  }
+
+  DelayedCompactionFeed* Feed() override { return &feed_; }
+
+  yb::storage::UserFrontierPtr GetLargestUserFrontier() const override {
+    return context_->GetLargestUserFrontier();
+  }
+
+  std::vector<std::pair<Slice, Slice>> GetLiveRanges() const override {
+    return context_->GetLiveRanges();
+  }
+
+  Status UpdateMeta(FileMetaData* meta) override {
+    return context_->UpdateMeta(meta);
+  }
+
+  void CompactionFinished() override {
+    context_->CompactionFinished();
+  }
+
+ private:
+  CompactionContextPtr context_;
+  DelayedCompactionFeed feed_;
+  std::function<void(DelayedCompactionContext* context)> on_destruction_callback_;
+};
+
+// Wraps an existing CompactionContextFactory, inserting a DelayedCompactionFeed in front of
+// each CompactionContext's feed chain.
+class CompactionContextFactoryDelayer {
+ public:
+  CompactionContextFactoryDelayer() : data_(std::make_shared<Data>()) {}
+  void SetDelayForNextCompactions(yb::MonoDelta delay);
+
+  void SetDelayForAllCompactions(yb::MonoDelta delay);
+
+  std::shared_ptr<CompactionContextFactory> WrapFactory(
+      std::shared_ptr<CompactionContextFactory> original);
+
+ private:
+  struct Data {
+    std::atomic<int64_t> delay_ns{0};
+    std::mutex mutex;
+    std::unordered_set<DelayedCompactionContext*> contexts GUARDED_BY(mutex);
+  };
+
+  std::shared_ptr<Data> data_;
 };
 
 namespace anon {
@@ -303,7 +389,7 @@ class SpecialEnv : public EnvWrapper {
 #endif  // !(defined NDEBUG) || !defined(OS_WIN)
         return base_->Close();
       }
-      Status Flush() override { return base_->Flush(); }
+      Status Flush(FlushMode mode) override { return base_->Flush(mode); }
       Status Sync() override {
         ++env_->sync_counter_;
         while (env_->delay_sstable_sync_.load(std::memory_order_acquire)) {
@@ -317,6 +403,7 @@ class SpecialEnv : public EnvWrapper {
       yb::IOPriority GetIOPriority() override {
         return base_->GetIOPriority();
       }
+      uint64_t Size() const override { return base_->Size(); }
       const std::string& filename() const override { return base_->filename(); }
     };
     class ManifestFile : public WritableFile {
@@ -332,7 +419,7 @@ class SpecialEnv : public EnvWrapper {
       }
       Status Truncate(uint64_t size) override { return base_->Truncate(size); }
       Status Close() override { return base_->Close(); }
-      Status Flush() override { return base_->Flush(); }
+      Status Flush(FlushMode mode) override { return base_->Flush(mode); }
       Status Sync() override {
         ++env_->sync_counter_;
         if (env_->manifest_sync_error_.load(std::memory_order_acquire)) {
@@ -341,7 +428,7 @@ class SpecialEnv : public EnvWrapper {
           return base_->Sync();
         }
       }
-      uint64_t GetFileSize() override { return base_->GetFileSize(); }
+      uint64_t Size() const override { return base_->Size(); }
       const std::string& filename() const override { return base_->filename(); }
 
      private:
@@ -374,7 +461,7 @@ class SpecialEnv : public EnvWrapper {
       }
       Status Truncate(uint64_t size) override { return base_->Truncate(size); }
       Status Close() override { return base_->Close(); }
-      Status Flush() override { return base_->Flush(); }
+      Status Flush(FlushMode mode) override { return base_->Flush(mode); }
       Status Sync() override {
         ++env_->sync_counter_;
         return base_->Sync();
@@ -382,6 +469,7 @@ class SpecialEnv : public EnvWrapper {
       bool IsSyncThreadSafe() const override {
         return env_->is_wal_sync_thread_safe_.load();
       }
+      uint64_t Size() const override { return base_->Size(); }
       const std::string& filename() const override { return base_->filename(); }
 
      private:

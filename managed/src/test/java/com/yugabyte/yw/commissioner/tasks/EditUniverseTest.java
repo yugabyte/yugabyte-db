@@ -17,6 +17,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
@@ -24,6 +25,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -49,7 +51,6 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -71,6 +72,7 @@ import org.apache.pekko.japi.function.Predicate;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
@@ -118,7 +120,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
-          TaskType.SetNodeState,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -134,6 +135,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
           TaskType.AnsibleClusterServerCtl, // Stop master
+          TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UpdateUniverseIntent,
           TaskType.WaitForTServerHeartBeats,
@@ -173,7 +175,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
-          TaskType.SetNodeState,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -189,6 +190,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
           TaskType.AnsibleClusterServerCtl, // Stop master
+          TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UpdateUniverseIntent,
           TaskType.WaitForTServerHeartBeats,
@@ -210,12 +212,15 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-    // Disable comprehensive prechecks (CheckSshConnection, CheckServiceLiveness) so task sequence
+    // Disable comprehensive prechecks (CheckNodeCommandExecution, CheckServiceLiveness) so task
+    // sequence
     // assertions remain valid. Tests verify core EditUniverse behavior.
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
-    RuntimeConfigEntry.upsert(
-        onPremUniverse, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory
+        .forUniverse(onPremUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
 
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
         CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
@@ -277,6 +282,63 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testComprehensivePrechecksSkippedOnRetryForEditUniverse() {
+    Universe universe = defaultUniverse;
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
+                  ImmutableMap.of("q", "v", "q1", "v1", "q3", "v3");
+            });
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "true");
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenAnswer(
+            inv -> {
+              List<String> cmd = inv.getArgument(2);
+              if (cmd != null && cmd.toString().contains("command-execution-test")) {
+                return ShellResponse.create(
+                    0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + " command-execution-test");
+              }
+              return ShellResponse.create(0, "Command output:\nLinux x86_64");
+            });
+    UniverseDefinitionTaskParams taskParams1 = universe.getUniverseDetails();
+    taskParams1.setUniverseUUID(universe.getUniverseUUID());
+    taskParams1.getPrimaryCluster().userIntent.instanceTags =
+        ImmutableMap.of("q", "vq", "q2", "v2");
+    taskParams1.setRunOnlyPrechecks(true);
+
+    TaskInfo taskInfo1 = submitTask(taskParams1);
+    assertEquals(Success, taskInfo1.getTaskState());
+    assertTrue(
+        taskInfo1.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
+    assertTrue(
+        taskInfo1.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams taskParams2 = universe.getUniverseDetails();
+    taskParams2.setUniverseUUID(universe.getUniverseUUID());
+    taskParams2.getPrimaryCluster().userIntent.instanceTags =
+        ImmutableMap.of("q", "vq2", "q2", "v2b");
+    taskParams2.setRunOnlyPrechecks(true);
+    taskParams2.setPreviousTaskUUID(taskInfo1.getUuid());
+
+    TaskInfo taskInfo2 = submitTask(taskParams2);
+    assertEquals(Success, taskInfo2.getTaskState());
+    assertFalse(
+        taskInfo2.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
+    assertFalse(
+        taskInfo2.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));
+  }
+
+  @Test
   public void testEditTags() throws JsonProcessingException {
     Universe universe = defaultUniverse;
     universe =
@@ -286,7 +348,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
               univ.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
                   ImmutableMap.of("q", "v", "q1", "v1", "q3", "v3");
             });
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     Map<String, String> newTags = ImmutableMap.of("q", "vq", "q2", "v2");
@@ -327,7 +389,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
               univ.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
                   ImmutableMap.of("q", "v");
             });
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     Map<String, String> newTags = ImmutableMap.of("q1", "v1");
@@ -342,9 +404,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testExpandSuccess() {
     Universe universe = defaultUniverse;
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -357,12 +419,14 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testExpandWithCapacityReservationAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(
-        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
-    RuntimeConfigEntry.upsert(
-        universe, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     taskParams.creatingUser = defaultUser;
@@ -374,7 +438,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         taskParams, defaultCustomer.getId(), taskParams.getPrimaryCluster().uuid, EDIT);
     updateIPs(taskParams);
     taskParams.expectedUniverseVersion = 2;
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
 
     assertEquals(Success, taskInfo.getTaskState());
@@ -389,7 +453,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 Map.of("1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        20,
+        14,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -402,13 +466,16 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testExpandWithCapacityReservationAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     Region.create(defaultProvider, "region-2", "region-2", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", defaultProvider);
-    RuntimeConfigEntry.upsert(
-        universe, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
 
     assertEquals(Success, taskInfo.getTaskState());
@@ -421,7 +488,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        20,
+        14,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -434,14 +501,64 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testExpandWithCapacityReservationGcpSuccess() throws Exception {
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationGcp.getKey(), "true");
+    Region.create(gcpProvider, "region-2", "region-2", "yb-image");
+    Universe universe = createUniverseForProvider("universe-test", gcpProvider);
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+
+    verifyCapacityReservationGcp(
+        universe.getUniverseUUID(),
+        Map.of(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
+
+    // GCP reservation names are random "r-<uuid>"; capture them to map by zone.
+    ArgumentCaptor<String> nameCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> zoneCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> typeCaptor = ArgumentCaptor.forClass(String.class);
+    verify(gcpProjectApiClient, org.mockito.Mockito.atLeast(0))
+        .createCapacityReservation(
+            nameCaptor.capture(),
+            zoneCaptor.capture(),
+            typeCaptor.capture(),
+            org.mockito.Mockito.anyInt(),
+            org.mockito.Mockito.anyMap());
+
+    Map<String, String> zoneToName = new HashMap<>();
+    for (int idx = 0; idx < nameCaptor.getAllValues().size(); idx++) {
+      zoneToName.put(zoneCaptor.getAllValues().get(idx), nameCaptor.getAllValues().get(idx));
+    }
+
+    verifyNodeInteractionsCapacityReservation(
+        14,
+        NodeManager.NodeCommandType.Create,
+        params -> ((AnsibleCreateServer.Params) params).capacityReservation,
+        Map.of(zoneToName.get("az-1"), Arrays.asList("host-n4", "host-n5")));
+  }
+
+  @Test
   public void testExpandOnPremSuccess() {
     AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
     createOnpremInstance(zone);
     createOnpremInstance(zone);
     Universe universe = onPremUniverse;
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -455,7 +572,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testExpandOnPremFailNoNodes() {
     Universe universe = onPremUniverse;
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
     List<NodeInstance> added = new ArrayList<>();
     added.add(createOnpremInstance(zone));
@@ -476,7 +593,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     createOnpremInstance(zone);
     createOnpremInstance(zone);
     Universe universe = onPremUniverse;
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
     preflightResponse.message = "{\"test\": false}";
     TaskInfo taskInfo = submitTask(taskParams);
@@ -486,8 +603,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testEditUniverseRetries() {
     Universe universe = defaultUniverse;
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
     super.verifyTaskRetries(
         defaultCustomer,
@@ -521,8 +638,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testVolumeSizeValidationIncNum() {
     Universe universe = defaultUniverse;
-    RuntimeConfigEntry.upsert(
-        universe, UniverseConfKeys.targetNodeDiskUsagePercentage.getKey(), "0");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.targetNodeDiskUsagePercentage.getKey(), "0");
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
     taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
@@ -625,10 +743,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .nodeCommand(any(), any());
     Universe universe = defaultUniverse;
     int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
-    RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "true");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
@@ -656,11 +774,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .nodeCommand(any(), any());
     Universe universe = defaultUniverse;
     int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
-    RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "true");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
     assertEquals(nodes * 2, taskParams.nodeDetailsSet.size());
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
@@ -691,11 +809,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .nodeCommand(any(), any());
     Universe universe = defaultUniverse;
     int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
-    RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "true");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
     assertEquals(nodes * 2, taskParams.nodeDetailsSet.size());
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
@@ -714,8 +832,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       createOnpremInstance(zone);
       createOnpremInstance(zone);
     }
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
-    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "100");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory
+        .forUniverse(universe)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "100");
     UniverseDefinitionTaskParams taskParams =
         editClusterSize(universe, ApiUtils.UTIL_INST_TYPE, 5, false /* move master */);
     setDumpEntitiesMock(universe, "", false);

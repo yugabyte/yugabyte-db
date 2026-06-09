@@ -33,12 +33,15 @@ import { RolesAndResourceMapping } from '../../policy';
 import { RbacUserWithResources } from '../../users/interface/Users';
 import {
   GetGroupContext,
+  getAllowSuperadminUserGroupMapping,
   getIsLDAPEnabled,
   getIsOIDCEnabled,
   getIsRbacGroupMappingEnabled,
   OIDC_RUNTIME_CONFIGS_QUERY_KEY,
   WrapDisabledElements
 } from './GroupUtils';
+import { UserPermission } from '../../common/rbac_constants';
+import { isSuperAdminUser } from '../../common/RbacUtils';
 import { mapResourceBindingsToApi } from '../../rbacUtils';
 import { api } from '../../../universe/universe-form/utils/api';
 import { isRbacEnabled } from '../../common/RbacUtils';
@@ -270,6 +273,14 @@ export const CreateEditGroup: FC = (_) => {
   const isLDAPEnabled = getIsLDAPEnabled(runtimeConfig);
   const isOIDCEnabled = getIsOIDCEnabled(runtimeConfig);
   const isRBACGroupMappingEnabled = getIsRbacGroupMappingEnabled(runtimeConfig);
+  const allowSuperadminUserGroupMapping = getAllowSuperadminUserGroupMapping(runtimeConfig);
+
+  const rbacPermissions = (window as unknown as { rbac_permissions?: UserPermission[] })
+    .rbac_permissions;
+  const allowSuperAdminRoleSelectionForGroup =
+    getAllowSuperadminUserGroupMapping(runtimeConfig) &&
+    !!rbacPermissions &&
+    isSuperAdminUser(rbacPermissions);
 
   const isEditMode = currentGroup !== null;
 
@@ -422,6 +433,7 @@ export const CreateEditGroup: FC = (_) => {
               customTitle={t('groupRolesTitle')}
               hideCustomRoles={!rbacEnabled || !isRBACGroupMappingEnabled}
               hideConnectOnlyHelpText={true}
+              allowSuperAdminRoleSelection={allowSuperAdminRoleSelectionForGroup}
             />
             {roleMappingErros.roleResourceDefinitions?.message && (
               <FormHelperText required error>

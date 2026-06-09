@@ -24,7 +24,7 @@ export type UpgradePace = (typeof UpgradePace)[keyof typeof UpgradePace];
 
 export const DEFAULT_WAIT_BETWEEN_BATCHES_SECONDS = 180;
 
-/** 
+/**
  * Runtime constants for DropResult.reason.
  * This is typed against the react-beautiful-dnd library.
  */
@@ -39,3 +39,9 @@ export const AzClusterKind = {
 } as const;
 export type AzClusterKind = (typeof AzClusterKind)[keyof typeof AzClusterKind];
 
+export const YBA_UNIVERSE_UPGRADE_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/upgrade-software/';
+export const YBA_YSQL_MAJOR_UPGRADE_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/ysql-major-upgrade-yba/';
+export const YBA_UNIVERSE_UPGRADE_EVALUATION_LINK =
+  'https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/upgrade-software-install/#monitor-the-universe';

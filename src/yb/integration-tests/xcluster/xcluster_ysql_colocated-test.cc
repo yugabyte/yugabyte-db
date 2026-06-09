@@ -203,7 +203,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
                  "still happening.";
     {
       auto tablet_ids = ListTabletIdsForTable(consumer_cluster(), colocated_parent_table_id);
-      auto old_ts = FindTabletLeader(consumer_cluster(), *tablet_ids.begin());
+      auto old_ts = GetLeaderForTablet(consumer_cluster(), *tablet_ids.begin());
       old_ts->Shutdown();
       const auto deadline = CoarseMonoClock::Now() + 10s * kTimeMultiplier;
       RETURN_NOT_OK(WaitUntilTabletHasLeader(consumer_cluster(), *tablet_ids.begin(), deadline));

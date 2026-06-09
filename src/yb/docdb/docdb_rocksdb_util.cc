@@ -34,7 +34,6 @@
 #include "yb/docdb/read_operation_data.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
@@ -54,6 +53,8 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/cgroups.h"
+#include "yb/util/enum_parse.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/priority_thread_pool.h"
@@ -104,9 +105,9 @@ DEFINE_UNKNOWN_int32(rocksdb_universal_compaction_min_merge_width, 4,
 DEFINE_RUNTIME_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
     "Use to control write rate of flush and compaction.");
 DEFINE_NON_RUNTIME_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
-    "Allows to control rate limit sharing/calculation across RocksDB instances\n"
-    "  tserver - rate limit is shared across all RocksDB instances at tabset server level\n"
-    "  none - rate limit is calculated independently for every RocksDB instance");
+    "Controls rate limit sharing across RocksDB instances: "
+    "tserver - rate limit is shared across all instances at the tserver level; "
+    "none - rate limit is calculated independently for every instance.");
 DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
     "Threshold beyond which compaction is considered large.");
 DEFINE_RUNTIME_uint64(rocksdb_max_file_size_for_compaction, 0,
@@ -122,8 +123,7 @@ DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
 DEFINE_NON_RUNTIME_uint64(rocksdb_max_manifest_file_size, 10_MB,
     "Maximum size of manifest file before which it is consolidated");
 
-DEFINE_RUNTIME_bool(
-    rocksdb_advise_random_on_open, true,
+DEFINE_RUNTIME_bool(rocksdb_advise_random_on_open, true,
     "If set to true, will hint the underlying file system that the file access pattern is random, "
     "when a sst file is opened.");
 
@@ -154,16 +154,16 @@ DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
 
 DEFINE_UNKNOWN_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
-DEFINE_RUNTIME_AUTO_bool(
-    allow_three_shared_parts_data_block_key_value_encoding, kExternal, false, true,
+DEFINE_RUNTIME_AUTO_bool(allow_three_shared_parts_data_block_key_value_encoding,
+    kExternal, false, true,
     "Allow to use three_shared_parts for writing RocksDB data blocks.");
 
 // DEPRECATED: replaced by ycql_regular_tablets_data_block_key_value_encoding and
 // ysql_regular_tablets_data_block_key_value_encoding.
 // Using class kExternal as this change affects the format of data in the SST files which are sent
 // to xClusters during bootstrap.
-DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(
-    regular_tablets_data_block_key_value_encoding, kExternal, "shared_prefix", "three_shared_parts",
+DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(regular_tablets_data_block_key_value_encoding,
+    kExternal, "shared_prefix", "three_shared_parts",
     "Key-value encoding to use for regular data blocks in RocksDB. Possible options: "
     "shared_prefix, three_shared_parts");
 
@@ -381,7 +381,7 @@ namespace {
 std::mutex rocksdb_flags_mutex;
 
 int32_t GetMaxBackgroundFlushes() {
-  const auto kNumCpus = base::NumCPUs();
+  const auto kNumCpus = NumEffectiveCPUs();
   if (FLAGS_rocksdb_max_background_flushes == -1) {
     constexpr auto kCpusPerFlushThread = 8;
     constexpr auto kAutoMaxBackgroundFlushesHighLimit = 4;
@@ -412,7 +412,7 @@ int32_t GetMaxBackgroundCompactions() {
     return rocksdb_max_background_compactions;
   }
 
-  const auto kNumCpus = base::NumCPUs();
+  const auto kNumCpus = NumEffectiveCPUs();
   if (kNumCpus <= 4) {
     rocksdb_max_background_compactions = 1;
   } else if (kNumCpus <= 8) {
@@ -627,7 +627,7 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
     // over that value.
     priority_thread_pool_size = GetMaxBackgroundCompactions();
   } else {
-    const int kNumCpus = base::NumCPUs();
+    const int kNumCpus = NumEffectiveCPUs();
     // If we did not override the per-rocksdb queue size, then just use a production friendly
     // formula.
     //
@@ -637,7 +637,7 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
     } else if (kNumCpus < 8) {
       priority_thread_pool_size = 2;
     } else {
-      priority_thread_pool_size = (int32_t) std::floor(kNumCpus * 3.5 / 8.0);
+      priority_thread_pool_size = static_cast<int32_t>(std::floor(kNumCpus * 3.5 / 8.0));
     }
   }
 
@@ -933,9 +933,9 @@ class RocksDBPatcher::Impl {
       auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file.largest.user_frontier);
       // If all the data in the file is already as of old time, no need to set any filter.
       if (consensus_frontier.hybrid_time() <= value) {
-        LOG_DETAIL << "No need to set hybrid time filter since the largest frontier is already"
-                  << " older. Largest frontier HT " << consensus_frontier.hybrid_time()
-                  << ", filter HT " << value;
+        LOG(DETAIL) << "No need to set hybrid time filter since the largest frontier is already"
+                    << " older. Largest frontier HT " << consensus_frontier.hybrid_time()
+                    << ", filter HT " << value;
         return;
       }
       if (db_oid) {

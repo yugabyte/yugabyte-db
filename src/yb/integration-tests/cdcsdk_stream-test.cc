@@ -86,7 +86,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
   }
 
   Result<google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB>> ListDBStreams(
-      const std::string& namespace_name = kNamespaceName, const TableId table_id = "") {
+    const TableId table_id = "") {
     // Listing the streams now.
     master::ListCDCStreamsRequestPB list_req;
     master::ListCDCStreamsResponsePB list_resp;
@@ -98,7 +98,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
       list_req.set_table_id(table_id);
     } else {
       list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
-      list_req.set_namespace_id(VERIFY_RESULT(GetNamespaceId(kNamespaceName)));
+      list_req.set_namespace_id(VERIFY_RESULT(GetNamespaceId(test_namespace_name)));
     }
 
     RpcController list_rpc;
@@ -140,19 +140,20 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::unordered_set<std::string> table_ids;
 
     // Get the namespace ID.
-    std::string namespace_id = ASSERT_RESULT(GetNamespaceId(kNamespaceName));
+    std::string namespace_id = ASSERT_RESULT(GetNamespaceId(test_namespace_name));
 
-    // Add the two pg_catalog tables which will be present in stream metadata.
+    // Add the pg_catalog tables which will be present in stream metadata.
     auto pg_database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id));
     table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
     table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+    table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
 
     if (with_table) {
       auto table =
-          ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+          ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
       // Get the table_id of the created table.
-      auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+      auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
       table_ids.insert(table_id);
     }
     // We will create some DB Streams to be listed out later.
@@ -169,7 +170,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::vector<xrepl::StreamId> resp_stream_ids;
     for (uint32_t i = 0; i < num_streams; ++i) {
       if (with_table) {
-        // Since there are three tables (1 user + 2 catalog), all the streams would contain three
+        // Since there are four tables (1 user + 3 catalog), all the streams would contain four
         // table_ids in their response.
         ASSERT_EQ(1 + kNumberOfCatalogTablesBeingPolledByCDC, list_streams.Get(i).table_id_size());
 
@@ -180,7 +181,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
           ASSERT_TRUE(table_ids.contains(table_id_in_resp));
         }
       } else {
-        // Since there are no user tables in DB, there would be 2 table_ids (catalog tables) in the
+        // Since there are no user tables in DB, there would be 3 table_ids (catalog tables) in the
         // response.
         ASSERT_EQ(kNumberOfCatalogTablesBeingPolledByCDC, list_streams.Get(i).table_id_size());
       }
@@ -199,31 +200,33 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
   void TestDBStreamInfo(
       const vector<std::string>& table_with_pk, const vector<std::string>& table_without_pk) {
     for (const auto& table_name : table_with_pk) {
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, table_name));
     }
 
     for (const auto& table_name : table_without_pk) {
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name,
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, table_name,
                                 1 /* num_tablets */, false));
     }
 
     std::unordered_set<std::string> tables_expected_in_stream_metadata;
     for (const auto& table_name : table_with_pk) {
       tables_expected_in_stream_metadata.insert(
-          ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, table_name)));
+          ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, table_name)));
     }
 
     std::vector<std::string> created_table_ids_without_pk;
 
     // Get the namespace ID.
-    std::string namespace_id = ASSERT_RESULT(GetNamespaceId(kNamespaceName));
+    std::string namespace_id = ASSERT_RESULT(GetNamespaceId(test_namespace_name));
 
-    // Add the two pg_catalog tables which will be present in stream metadata to
+    // Add the pg_catalog tables which will be present in stream metadata to
     // tables_expected_in_stream_metadata.
     auto pg_database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id));
     tables_expected_in_stream_metadata.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
     tables_expected_in_stream_metadata.insert(
         GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+    tables_expected_in_stream_metadata.insert(
+        GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
 
     auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
@@ -278,10 +281,11 @@ TEST_F(CDCSDKStreamTest, TestStreamCreation) {
 
   // Create a table with primary key.
   auto table1 =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_with_pk"));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_with_pk"));
   // Create another table without primary key.
   auto table2 = ASSERT_RESULT(
-      CreateTable(&test_cluster_, kNamespaceName, "table_without_pk", 1 /* num_tablets */, false));
+      CreateTable(
+          &test_cluster_, test_namespace_name, "table_without_pk", 1 /* num_tablets */, false));
 
   // We have a table with primary key and one without primary key so while creating
   // the DB Stream ID, the latter one will be ignored and will not be a part of streaming with CDC.
@@ -380,7 +384,7 @@ TEST_F(CDCSDKStreamTest, DBStreamInfoTest_AllTablesWithoutPrimaryKey) {
 TEST_F(CDCSDKStreamTest, CDCWithXclusterEnabled) {
   // Set up an RF 3 cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   // We not need to create both xcluster and cdc streams on a table,
   // and we will list them to check that they are not the same.
@@ -407,13 +411,13 @@ TEST_F(CDCSDKStreamTest, CDCWithXclusterEnabled) {
 
   // List streams for CDC and xCluster. They both should not be the same.
   std::vector<std::string> db_streams;
-  for (const auto& stream : ASSERT_RESULT(ListDBStreams(kNamespaceName))) {
+  for (const auto& stream : ASSERT_RESULT(ListDBStreams())) {
     db_streams.push_back(stream.stream_id());
   }
 
   // List the streams for xCluster.
   std::vector<std::string> xcluster_streams;
-  for (const auto& stream : ASSERT_RESULT(ListDBStreams(kNamespaceName, table.table_id()))) {
+  for (const auto& stream : ASSERT_RESULT(ListDBStreams(table.table_id()))) {
     xcluster_streams.push_back(stream.stream_id());
   }
   std::sort(xcluster_streams.begin(), xcluster_streams.end());
@@ -435,7 +439,7 @@ TEST_F(CDCSDKStreamTest, ImplicitCheckPointValidate) {
 
   // Get the list of dbstream.
   google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_streams =
-      ASSERT_RESULT(ListDBStreams(kNamespaceName));
+      ASSERT_RESULT(ListDBStreams());
   const uint32_t num_streams = list_streams.size();
 
   for (uint32_t i = 0; i < num_streams; ++i) {
@@ -464,7 +468,7 @@ TEST_F(CDCSDKStreamTest, ExplicitCheckPointValidate) {
 
     // Get the list of dbstream.
     google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_streams =
-        ASSERT_RESULT(ListDBStreams(kNamespaceName));
+        ASSERT_RESULT(ListDBStreams());
     const uint32_t num_streams = list_streams.size();
 
     for (uint32_t i = 0; i < num_streams; ++i) {
@@ -487,7 +491,7 @@ TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute(
       "create table t1 (id int primary key, name text, l_name varchar, hours float);"));
@@ -509,7 +513,7 @@ TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
           LOG(INFO) << "GetDBStreamInfo response = " << resp.ToString();
           RETURN_NOT_OK(StatusFromPB(resp->error().status()));
         }
-        // We will have 2 pg_catalog tables in the stream metadata.
+        // We will have 3 pg_catalog tables in the stream metadata.
         return (resp->table_info_size() == kNumberOfCatalogTablesBeingPolledByCDC);
       },
       MonoDelta::FromSeconds(60),
@@ -520,8 +524,8 @@ TEST_F(CDCSDKStreamTest, TestStreamRetentionWithTableDeletion) {
   ASSERT_OK(
       SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto resp = GetDBStreamInfo(stream_id);
@@ -551,7 +555,8 @@ TEST_F(CDCSDKStreamTest, TestDisallowImplicitStreamCreationWhenFlagDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = false;
 
   constexpr auto num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
 
   ASSERT_NOK_STR_CONTAINS(
       CreateConsistentSnapshotStream(

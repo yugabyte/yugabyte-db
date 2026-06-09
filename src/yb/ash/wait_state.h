@@ -50,6 +50,17 @@ DECLARE_bool(ysql_yb_enable_ash);
   yb::ash::ScopedWaitStatus _scoped_status( \
       BOOST_PP_CAT(yb::ash::WaitStateCode::k, code), __PRETTY_FUNCTION__)
 
+// Like SCOPED_WAIT_STATUS, but selects between two wait events based on the current query id.
+// Uses code_if_match if the current query id equals fixed_query_id, otherwise code_otherwise.
+#define SCOPED_WAIT_STATUS_FOR_QUERY_ID(fixed_query_id, code_if_match, code_otherwise) \
+  yb::ash::ScopedWaitStatus _scoped_status( \
+      (yb::ash::WaitStateInfo::CurrentWaitState() && \
+       yb::ash::WaitStateInfo::CurrentWaitState()->query_id() == \
+           std::to_underlying(fixed_query_id)) \
+          ? BOOST_PP_CAT(yb::ash::WaitStateCode::k, code_if_match) \
+          : BOOST_PP_CAT(yb::ash::WaitStateCode::k, code_otherwise), \
+      __PRETTY_FUNCTION__)
+
 #define ASH_ENABLE_CONCURRENT_UPDATES_FOR(ptr) \
   yb::ash::EnableConcurrentUpdates(ptr)
 #define ASH_ENABLE_CONCURRENT_UPDATES() \
@@ -150,6 +161,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRpc_Done)
     (kDeprecated_Rpcs_WaitOnMutexInShutdown)
     (kRetryableRequests_SaveToDisk)
+    (kWaitForInternalYSQLQueryCompletion)
 
     // Wait states related to tablet wait
     ((kMVCC_WaitForSafeTime, YB_ASH_MAKE_EVENT(TabletWait)))
@@ -161,7 +173,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kWaitForYSQLBackendsCatalogVersion)
     (kWriteSysCatalogSnapshotToDisk)
     (kDumpRunningRpc_WaitOnReactor)
-    (kConflictResolution_ResolveConficts)
+    (kConflictResolution_ResolveConflicts)
     (kConflictResolution_WaitOnConflictingTxns)
     (kRemoteBootstrap_FetchData)
     (kRemoteBootstrap_StartRemoteSession)
@@ -173,6 +185,8 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kSnapshot_RestoreCheckpoint)
     (kXCluster_WaitingForGetChanges)
     (kBackfillIndex_WaitToBackfillTablet)
+    (kXCluster_WaitForSafeTime)
+    (kXCluster_RateLimiter)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -277,6 +291,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kDeleteDBSequences)
   (kCheckIfPitrActive)
   (kIsObjectPartOfXRepl)
+  (kIsNamespacePartOfCDCSDK)
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
   (kSetTserverCatalogMessageList)
@@ -302,8 +317,10 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetYbSystemTableInfo)
   (kReleaseSessionObjectLock)
   (kQueryAutoAnalyze)
+  (kResetAutoAnalyzeMutationCounters)
   (kGetTabletForKey)
   (kRemotePgExec)
+  (kIsDatabaseColocated)
 
   // CDCService RPCs
   (kInitVirtualWALForCDC)
@@ -679,5 +696,7 @@ WaitStateTracker& SharedMemoryPgPerformTracker();
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
 WaitStateTracker& XClusterPollerTracker();
 WaitStateTracker& MinRunningHybridTimeTracker();
+
+bool TEST_ShouldSleepAtWaitCode(WaitStateCode c);
 
 }  // namespace yb::ash

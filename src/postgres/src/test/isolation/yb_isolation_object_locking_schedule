@@ -10,3 +10,4 @@ test: yb.orig.analyze_ddl_deadlock
 test: yb.orig.concurrent_insert_during_rewrite
 test: yb.orig.concurrent_partition_insert
 test: yb.orig.inplace_catalog_updates
+test: yb.orig.non_concurrent_index_with_parallel_dml

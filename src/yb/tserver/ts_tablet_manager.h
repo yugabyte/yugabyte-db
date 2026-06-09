@@ -90,8 +90,6 @@ class Schema;
 class BackgroundTask;
 class XClusterSafeTimeTest;
 
-YB_STRONGLY_TYPED_BOOL(UserTabletsOnly);
-
 namespace consensus {
 class RaftConfigPB;
 } // namespace consensus
@@ -190,6 +188,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void StartShutdown();
   // Completes shutdown process and waits for it's completeness.
   void CompleteShutdown();
+
+  rpc::ThreadPoolTag PoolTagForTablet(const tablet::TabletPtr& tablet);
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
@@ -434,6 +434,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
 
+  // Returns the last snapshot hybrid time tracked for `schedule_id` from the most recent master
+  // heartbeat response, or HybridTime::kMin if the schedule is not (yet) known to this tserver.
+  HybridTime TEST_LastSnapshotHybridTime(const SnapshotScheduleId& schedule_id) const
+      EXCLUDES(snapshot_schedule_info_mutex_);
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
   friend class ::yb::XClusterSafeTimeTest;
@@ -581,7 +586,18 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     return state_;
   }
 
+  // Lock-free check that StartShutdown has been entered on this tablet manager. Flips once
+  // from false to true at the top of StartShutdown and stays true afterward. Intended as a
+  // cancellation signal for long-running operations (e.g. remote bootstrap verification)
+  // that must exit promptly so shutdown can drain `remote_bootstrap_clients_` inside its
+  // 30s deadline.
+  bool IsShutdownStarted() const {
+    return shutdown_started_.load(std::memory_order_acquire);
+  }
+
   bool ClosingUnlocked() const REQUIRES_SHARED(mutex_);
+
+  bool IsOperational() const EXCLUDES(mutex_);
 
   // Initializes the RaftPeerPB for the local peer.
   // Guaranteed to include both uuid and last_seen_addr fields.
@@ -721,6 +737,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TSTabletManagerStatePB state_ GUARDED_BY(mutex_);
 
+  // Lock-free mirror of state_ transitioning to MANAGER_QUIESCING. See IsShutdownStarted.
+  std::atomic<bool> shutdown_started_{false};
+
   // Thread pool used to perform fsync operations corresponding to log::Log of each tablet_peer
   std::unique_ptr<ThreadPool> log_sync_pool_;
 
@@ -814,16 +833,21 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Gauge tracking number of peers on this tserver actively undergoing RBS.
   scoped_refptr<yb::AtomicGauge<uint64_t>> num_tablet_peers_undergoing_rbs_;
 
-  mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
-  std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
-      snapshot_schedule_allowed_history_cutoff_
-      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
+  struct SnapshotScheduleInfo {
+    HybridTime last_snapshot_ht;
+    uint64_t retention_duration_sec = 0;
+  };
+
+  mutable simple_spinlock snapshot_schedule_info_mutex_;
+  std::unordered_map<SnapshotScheduleId, SnapshotScheduleInfo, SnapshotScheduleIdHash>
+      snapshot_schedule_info_
+      GUARDED_BY(snapshot_schedule_info_mutex_);
   // Store snapshot schedules that were missing on previous calls to AllowedHistoryCutoff.
   std::unordered_map<SnapshotScheduleId, int64_t, SnapshotScheduleIdHash>
       missing_snapshot_schedules_
-      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
-  int64_t snapshot_schedules_version_ = 0;
-  HybridTime last_restorations_update_ht_;
+      GUARDED_BY(snapshot_schedule_info_mutex_);
+  int64_t snapshot_schedules_version_ GUARDED_BY(snapshot_schedule_info_mutex_) = 0;
+  HybridTime last_restorations_update_ht_ GUARDED_BY(snapshot_schedule_info_mutex_);
 
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;

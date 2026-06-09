@@ -115,7 +115,7 @@ bool AsyncFlushTablets::SendRequest(int attempt) {
   auto new_flags = flags_;
   if (table()->is_vector_index()) {
     req.add_vector_index_ids(table()->id());
-    new_flags = tablet::FLUSH_COMPACT_VECTOR_INDEX;
+    new_flags = tablet::FLUSH_COMPACT_VECTOR_INDEX_ONLY;
     LOG_IF_WITH_PREFIX(INFO, flags_ != new_flags) <<
         Format("Flush or compact flags changed from $0 to $1", flags_, new_flags);
   }

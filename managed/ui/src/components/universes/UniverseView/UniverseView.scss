@@ -23,7 +23,8 @@
         padding: 0;
         margin: 5px 0;
         background-color: colors.$YB_WHITE;
-        box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+        box-shadow:
+          0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
           0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
         li {
           padding: 5px 15px;
@@ -99,7 +100,8 @@
   background-color: white;
   border-radius: 8px !important;
   border: none;
-  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+  box-shadow:
+    0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
     0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
   color: colors.$YB_TEXT_COLOR;
   @include mixins.transition(0.125s);
@@ -216,14 +218,8 @@ a:hover .universe-name-cell {
     line-height: 60px;
     margin-left: 0;
     display: flex;
-  }
-}
-
-.list-universe-status-container .pending {
-  float: none;
-
-  .progress {
-    width: 100%;
+    align-items: center;
+    gap: 4px;
   }
 }
 
@@ -455,7 +451,8 @@ a:hover .universe-name-cell {
 
 .universe-table {
   position: relative;
-  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+  box-shadow:
+    0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
     0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
   border: none;
   background-color: #fff;
@@ -472,9 +469,11 @@ a:hover .universe-name-cell {
 
     table {
       th {
+        vertical-align: middle;
         padding-right: 32px;
       }
       td {
+        vertical-align: middle;
         padding-right: 32px;
         .universe-cost-cell {
           display: flex;
@@ -483,33 +482,77 @@ a:hover .universe-name-cell {
         }
         .universe-status-cell {
           display: flex;
-          font-weight: 500;
-          align-items: flex-start;
+          align-items: center;
+          font-size: 13px;
+          font-weight: 600;
           justify-content: space-between;
+          line-height: normal;
+          min-width: 0;
           overflow: unset;
+
+          > .universe-status {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            font-size: 13px;
+            font-weight: inherit;
+            justify-content: space-between;
+            line-height: normal;
+            margin-left: 0;
+            min-width: 0;
+            width: 100%;
+          }
+
+          // Status icons only (not alert badge); overrides UniverseStatus inline SVG sizes
+          > .universe-status > *:not(.universe-alert-badge) svg {
+            flex-shrink: 0;
+            height: 16px !important;
+            width: 16px !important;
+          }
+
+          .status-container {
+            display: flex;
+            align-items: center;
+            flex: 1 1 0;
+            gap: 4px;
+            min-width: 0;
+
+            > span {
+              font-size: 13px;
+              min-width: 0;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+          }
+          .universe-alert-badge {
+            flex-shrink: 0;
+          }
           .yb-loader-circle {
             margin: 5px 5px 0 0;
             width: 10px;
             height: 10px;
             position: relative;
+            flex-shrink: 0;
           }
           .fa {
+            flex-shrink: 0;
             padding: 3px 3px 0 0;
           }
           &.good {
-            color: colors.$YB_SUCCESS_COLOR;
+            color: #097345;
           }
           &.paused {
-            color: colors.$YB_WARNING_COLOR;
+            color: #6d7c88;
           }
           &.pending {
-            color: colors.$YB_PENDING_COLOR;
+            color: #1a44a5;
           }
           &.bad {
-            color: colors.$YB_FAIL_COLOR;
+            color: #da1515;
           }
           &.warning {
-            color: colors.$YB_WARNING_COLOR;
+            color: #c88900;
           }
           &.unknown {
             color: colors.$YB_PENDING_COLOR;

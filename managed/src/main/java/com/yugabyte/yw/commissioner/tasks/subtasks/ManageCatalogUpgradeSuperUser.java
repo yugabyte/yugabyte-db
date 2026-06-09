@@ -6,7 +6,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
@@ -47,12 +46,7 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
     Universe universe = getUniverse();
     NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
     String pgPassFileDir =
-        (universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
+        (Util.isKubernetesBasedUniverse(universe)
             ? Util.getDataDirectoryPath(universe, masterLeaderNode, config) + "/yw-data"
             : Util.getNodeHomeDir(universe.getUniverseUUID(), universe.getMasterLeaderNode()));
     String pgPassFilePath = pgPassFileDir + "/.pgpass";
@@ -106,12 +100,7 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
       String pgPassFilePath,
       String password) {
     String pgPassFileContent = "*:*:*:" + UPGRADE_SUPERUSER + ":" + password;
-    if (universe
-        .getUniverseDetails()
-        .getPrimaryCluster()
-        .userIntent
-        .providerType
-        .equals(CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(universe)) {
       String command =
           "rm -f "
               + pgPassFilePath

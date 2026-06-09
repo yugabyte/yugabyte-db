@@ -12,6 +12,7 @@
 //
 
 #include "yb/common/common_flags.h"
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/size_literals.h"
@@ -65,12 +66,10 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_ddl_rollback_enabled, true,
     "If true, upon failure of a YSQL DDL transaction that affects the DocDB syscatalog, the "
     "YB-Master will rollback the changes made to the DocDB syscatalog.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_db_catalog_version_mode, true,
-    "Enable the per database catalog version mode, a DDL statement that only "
-    "affects the current database will only increment catalog version for "
-    "the current database.");
-TAG_FLAG(ysql_enable_db_catalog_version_mode, advanced);
-TAG_FLAG(ysql_enable_db_catalog_version_mode, hidden);
+// Per-database catalog version mode is now mandatory; the legacy shared / global catalog version
+// mode is no longer supported. The flag is kept (as deprecated) so that existing deployments and
+// tooling that pass it explicitly continue to start.
+DEPRECATE_FLAG(bool, ysql_enable_db_catalog_version_mode, "04_2026");
 
 DEFINE_test_flag(bool, ysql_enable_db_logical_client_version_mode, true,
     "Enable the per database logical client version mode, a DDL statement that only "
@@ -85,43 +84,32 @@ DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_m
     " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms.");
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, advanced);
 
-DEPRECATE_FLAG(uint32, master_ts_ysql_catalog_lease_ms, "03_2026");
+DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
+    "Lease period between master and tserver that guarantees YSQL system catalog is not stale."
+    " Must be higher than --heartbeat_interval_ms, preferably many times higher.");
+TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
+TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
 
-DEFINE_NON_RUNTIME_bool(
-    ysql_enable_colocated_tables_with_tablespaces, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_colocated_tables_with_tablespaces, false,
     "Enable creation of colocated tables with a specified placement policy via a tablespace."
     "If true, creating a colocated table  will colocate the table on an implicit "
     "tablegroup that is determined by the tablespace it uses. We turn the feature off by default.");
-
-// We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
-// Otherwise such batch would be rejected by RPC layer.
-DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
-    "The maximum per-tablet RPC batch size when updating peers. The sum of "
-    "consensus_max_batch_size_bytes and 1KB should be less than rpc_max_message_size");
-TAG_FLAG(consensus_max_batch_size_bytes, advanced);
-
-DEFINE_UNKNOWN_int64(rpc_throttle_threshold_bytes, 1_MB,
-    "Throttle inbound RPC calls larger than specified size on hitting mem tracker soft limit. "
-    "Throttling is disabled if negative value is specified. The value must be at least 16 and less "
-    "than the strictly enforced consensus_max_batch_size_bytes.");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
     "If true, enable per-database PG new object identifier allocator.");
 TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, advanced);
 TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, hidden);
 
-DEFINE_RUNTIME_int32(
-    ysql_clone_pg_schema_rpc_timeout_ms, 10 * 60 * 1000,  // 10 min.
+DEFINE_RUNTIME_int32(ysql_clone_pg_schema_rpc_timeout_ms, 10 * 60 * 1000,  // 10 min.
     "Timeout used by the master when attempting to clone PG Schema objects using an async task to "
     "tserver");
 TAG_FLAG(ysql_clone_pg_schema_rpc_timeout_ms, advanced);
 
-DEFINE_RUNTIME_AUTO_bool(
-    yb_enable_cdc_consistent_snapshot_streams, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(yb_enable_cdc_consistent_snapshot_streams, kLocalPersisted, false, true,
     "Enable support for CDC Consistent Snapshot Streams");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, yb_enable_replication_slot_consumption, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_slot_consumption,
+    kLocalPersisted, false, true,
     "Enable consumption of changes via replication slots."
     "Requires yb_enable_replication_commands to be true.");
 
@@ -185,8 +173,7 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_commi
     "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
     "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether DDL savepoint support can be safely enabled "
     "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
     "must be true to enable the feature.");
@@ -219,6 +206,11 @@ DEFINE_RUNTIME_uint64(refresh_waiter_timeout_ms, 30000,
 TAG_FLAG(refresh_waiter_timeout_ms, advanced);
 TAG_FLAG(refresh_waiter_timeout_ms, hidden);
 
+// TODO: Cannot be runtime state due to cdc_client...
+DEFINE_NON_RUNTIME_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
+    "Timeout used for the Master->TS async rpc calls.");
+TAG_FLAG(master_ts_rpc_timeout_ms, advanced);
+
 #ifdef NDEBUG
 constexpr bool kEnableObjectLockingForTableLocks = kEnableDdlTransactionBlocks;
 #else
@@ -229,60 +221,72 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     "This flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, enable_object_locking_infra, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether table-level object locking can be safely enabled "
     "during upgrade. Both this flag and enable_object_locking_for_table_locks "
     "must be true to enable the feature.");
+
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
+                    "Use shared memory for executing read and write pg client queries");
+
+DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
+    "Whether to use shared memory fastpath for shared object locks.");
+
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_concurrent_ddl, false,
+    "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
+    "support.] Use this flag to toggle support for concurrent DDLs.");
+DEFINE_validator(ysql_enable_concurrent_ddl,
+    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+
 DEFINE_validator(enable_object_locking_for_table_locks,
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_db_catalog_version_mode),
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
-    FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms));
-DEFINE_validator(ysql_enable_db_catalog_version_mode,
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+    FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
+    FLAG_DELAYED_COND_VALIDATOR(
+        !_value || ::yb::flags_internal::compare_greater_equal(
+            FLAGS_master_ts_rpc_timeout_ms, FLAGS_refresh_waiter_timeout_ms),
+        "Requires master_ts_rpc_timeout_ms to be >= refresh_waiter_timeout_ms"),
+    FLAG_DELAYED_COND_VALIDATOR(
+        !_value || !FLAGS_enable_object_lock_fastpath || FLAGS_pg_client_use_shared_memory,
+      "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true"));
+
+DEFINE_validator(pg_client_use_shared_memory,
+    FLAG_DELAYED_COND_VALIDATOR(
+      _value || !FLAGS_enable_object_lock_fastpath || !FLAGS_enable_object_locking_for_table_locks,
+      "pg_client_use_shared_memory must be true with enable_object_locking_for_table_locks and "
+      "enable_object_lock_fastpath on"));
+
+DEFINE_validator(enable_object_lock_fastpath,
+    FLAG_DELAYED_COND_VALIDATOR(
+      !_value || FLAGS_pg_client_use_shared_memory || !FLAGS_enable_object_locking_for_table_locks,
+      "enable_object_lock_fastpath requires pg_client_use_shared_memory to be true when "
+      "enable_object_locking_for_table_locks is on"));
+
 DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
     FLAG_DELAYED_COND_VALIDATOR(
         (!_value || FLAGS_ysql_yb_ddl_rollback_enabled),
         "ysql_yb_ddl_rollback_enabled must be enabled"),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(refresh_waiter_timeout_ms,
-    FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+    FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
+    FLAG_DELAYED_COND_VALIDATOR(
+        !FLAGS_enable_object_locking_for_table_locks ||
+        ::yb::flags_internal::compare_less_equal(_value, FLAGS_master_ts_rpc_timeout_ms),
+        "Must be <= master_ts_rpc_timeout_ms when enable_object_locking_for_table_locks is true"));
+
+DEFINE_validator(master_ts_rpc_timeout_ms,
+    FLAG_DELAYED_COND_VALIDATOR(
+        !FLAGS_enable_object_locking_for_table_locks ||
+            ::yb::flags_internal::compare_greater_equal(_value, FLAGS_refresh_waiter_timeout_ms),
+        "Must be >= refresh_waiter_timeout_ms when enable_object_locking_for_table_locks is true"));
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key, false,
     "When set to true, allows streaming of tables without primary keys for CDCSDK logical "
     "replication streams.");
 
-namespace {
-
-constexpr const auto kMinRpcThrottleThresholdBytes = 16;
-
-bool RpcThrottleThresholdBytesValidator(const char* flag_name, int64 value) {
-  if (value <= 0) {
-    return true;
-  }
-
-  if (value < kMinRpcThrottleThresholdBytes) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
-        << "Must be at least " << kMinRpcThrottleThresholdBytes;
-    return false;
-  }
-
-  // This validation depends on the value of other flag(s): consensus_max_batch_size_bytes.
-  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
-
-  if (std::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
-        << "Must be less than consensus_max_batch_size_bytes "
-        << "(value: " << FLAGS_consensus_max_batch_size_bytes << ")";
-    return false;
-  }
-
-  return true;
-}
-
-}  // namespace
-
-DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_cdcsdk_allow_dml_without_pk, false,
+    "When set to true, allows UPDATE/DELETE on tables under a publication with "
+    "REPLICA IDENTITY DEFAULT or CHANGE that do not have a primary key.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_auto_flag_validation, kLocalPersisted, false, true,
     "Enables validation of AutoFlags between the xcluster universes");
@@ -317,6 +321,11 @@ DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
     "configurable threshold.");
 TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
 
+DEFINE_RUNTIME_AUTO_bool(cdc_enable_dynamic_schema_changes, kLocalPersisted, false, true,
+    "When set, enables streaming of dynamic schema changes via CDC. The dynamic schema changes "
+    "include any changes made to the publications and all the DDLs including those which cause "
+    "table rewrites.");
+
 DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup,
     kLocalPersisted,
     false,
@@ -348,14 +357,17 @@ DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
     "of any single transaction in your application.");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
-DEFINE_RUNTIME_AUTO_bool(
-    ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notify_queue_max_pages, 0,
+    "When positive, artificially limits the NOTIFY queue to this many pages for testing.");
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
     "Enable the infra required for Auto Analyze");
 
-DEFINE_RUNTIME_bool(
-    ysql_enable_auto_analyze, false,
+DEFINE_RUNTIME_bool(ysql_enable_auto_analyze, false,
     "Enable Auto Analyze to automatically trigger ANALYZE for updating table statistics of tables "
     "which have changed more than a configurable threshold.");
+
+DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
+
 namespace yb {
 
 void InitCommonFlags() {

@@ -16,13 +16,15 @@
 
 #include <string>
 
-#include "yb/common/schema.h"
 #include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 
 #include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb::pggate {
 
@@ -38,6 +40,14 @@ class PgReadRange {
  public:
   explicit PgReadRange(const PgTable& table) : table_(table) {}
   bool IsEmpty() const { return empty_; }
+  bool Equals(const PgReadRange& other) const;
+  bool Intersects(const PgReadRange& other) const;
+  bool operator==(const PgReadRange& other) const {
+    return Equals(other);
+  }
+  bool operator!=(const PgReadRange& other) const {
+    return !Equals(other);
+  }
 
   // The SetXXX methods update the range bounds. After the change the empty_ flag is updated, so
   // it is not required to compare bounds to check if the range is empty.
@@ -46,8 +56,37 @@ class PgReadRange {
   // Set the doc key as the range bound.
   template <class T>
   void SetDocKeyBound(const T& doc_key, bool is_inclusive, bool is_lower);
+
+  template <class Collection>
+  void SetDocKeyBound(uint16_t hash, const Collection& values, bool is_inclusive, bool is_lower) {
+    auto num_hash_key_columns = table_->schema().num_hash_key_columns();
+    auto num_range_key_columns = table_->schema().num_range_key_columns();
+    DCHECK_GT(num_hash_key_columns, 0);
+    auto null_type = is_lower ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest;
+    bool null_found = false;
+    auto hashed_group = MakeGroup(values, 0, num_hash_key_columns, null_type, &null_found);
+    dockv::KeyBytes out;
+    dockv::DocKeyEncoderAfterTableIdStep encoder(&out);
+    auto after_hash = encoder.Hash(hash, hashed_group);
+    if (!null_found && num_range_key_columns > 0) {
+      auto range_group = MakeGroup(
+          values, num_hash_key_columns, num_range_key_columns, null_type, &null_found);
+      after_hash.Range(range_group);
+    } else {
+      after_hash.Range(dockv::KeyEntryValues{});
+    }
+    if (is_lower) {
+      SetLowerBound(std::move(out), is_inclusive && !null_found);
+    } else {
+      SetUpperBound(std::move(out), is_inclusive && !null_found);
+    }
+    ComputeEmpty();
+  }
+
   // Set the partition's bounds as the range bounds.
   void SetPartitionBounds(size_t partition);
+  // Set the request's bounds as the range bounds.
+  void SetRequestBounds(const LWPgsqlReadRequestPB& req);
 
   // Update the bounds on the specified read request. If requests already has bounds, they are
   // updated if the respective new bound is stricter. If the resulting bounds represent an empty
@@ -61,6 +100,34 @@ class PgReadRange {
   // method to be two-byte hash code, or error out if the bound is not derived from hash code.
   static Status ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req);
  private:
+  static dockv::KeyEntryValue AsKeyEntryValue(const LWQLValuePB* value, const PgColumn& column) {
+    return dockv::KeyEntryValue::FromQLValuePB(*value, column.desc().sorting_type());
+  }
+  static bool IsNull(const LWQLValuePB* value) {
+    return value == nullptr || yb::IsNull(*value);
+  }
+  template <class Collection>
+  auto MakeGroup(
+      const Collection& values, size_t offset, size_t size,
+      const dockv::KeyEntryType& null_type, bool* null_found) {
+    std::vector<dockv::KeyEntryValue> group;
+    group.reserve(size);
+    const auto& columns = table_.columns();
+    for (size_t i = offset; i < offset + size; ++i) {
+      if ((null_found && *null_found) || i >= columns.size() || i > values.size()) {
+        break;
+      }
+      if (i < values.size() && !IsNull(values[i])) {
+        group.emplace_back(AsKeyEntryValue(values[i], columns[i]));
+      } else {
+        group.emplace_back(dockv::KeyEntryValue(null_type));
+        if (null_found) {
+          *null_found = true;
+        }
+      }
+    }
+    return group;
+  }
   static Status CheckBoundDerivedFromHashCode(Slice bound, bool is_lower);
   dockv::KeyBytes HashCodeToBound(uint16_t hash_code, bool is_lower) const;
   // After bounds change, check if the range is empty and update the empty flag.

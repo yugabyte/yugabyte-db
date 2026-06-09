@@ -14,18 +14,28 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver.messages.h"
+#include "yb/tserver/tserver_error.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(TEST_do_not_replicate_async_writes);
 DECLARE_bool(use_create_table_leader_hint);
 DECLARE_bool(yb_enable_read_committed_isolation);
@@ -63,6 +73,11 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
         ListTabletsForTableName(cluster_.get(), table_name, ListPeersFilter::kLeaders));
     SCHECK_EQ(tablets.size(), 1, IllegalState, "Expected 1 tablet");
     return tablets.front()->tablet_id();
+  }
+
+  Result<tablet::TabletPeerPtr> GetTabletPeerOnTserver(size_t ts_idx, const TabletId& tablet_id) {
+    return cluster_->mini_tablet_server(ts_idx)->server()->tablet_peer_lookup()->GetServingTablet(
+        tablet_id);
   }
 
   size_t GetLeaderIdx(const TabletId& tablet_id) {
@@ -148,22 +163,23 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
 
     auto log = VERIFY_RESULT(tablet_peer->GetRaftConsensus())->log();
     RETURN_NOT_OK(log->WaitUntilAllFlushed());
-    RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
+    RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     return Status::OK();
   }
 
-  Status ValidateData(std::string expected_all_as_string) {
+  Status ValidateData(
+      std::string expected_all_as_string, const TabletId& tablet_id = TabletId()) {
     auto table_data = VERIFY_RESULT(conn_->FetchAllAsString(kSelectAllStmt));
     SCHECK_EQ(table_data, expected_all_as_string, IllegalState, "Unexpected data in table");
 
+    if (!tablet_id.empty()) {
+      return WaitFor(
+          [this, &tablet_id]() -> Result<bool> {
+            return ValidateTabletDataAcrossReplicas(tablet_id).ok();
+          },
+          30s * kTimeMultiplier, "Wait for replicas to converge");
+    }
     return Status::OK();
-  }
-
-  std::string DumpTablet(size_t idx, TabletId tablet_id) {
-    return cluster_->GetTabletManager(idx)
-        ->LookupTablet(tablet_id)
-        ->shared_tablet_maybe_null()
-        ->TEST_DocDBDumpStr();
   }
 
   // Returns the leader index.
@@ -320,8 +336,15 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
   // Bring back the old leader.
   ASSERT_OK(SetupConnectivityWithAll(cluster_.get(), old_leader_idx));
 
+  auto get_row_count = [this]() -> Result<int64_t> {
+    return conn_->FetchRow<int64_t>(
+        Format("SELECT COUNT(*) FROM $0 WHERE key = 1", kTableName));
+  };
+
   // We should not be able to perform further reads, or commit the transaction.
   if (perform_read) {
+    // The async write was acked but never replicated. The read carries the pending async-write
+    // OpId; the new leader cannot verify that OpId, so the read fails and pg aborts the txn.
     ASSERT_NOK(
         conn_->FetchRow<std::string>(Format("SELECT value FROM $0 WHERE key = 1", kTableName)));
     // COMMIT of a failed transaction internally performs a ROLLBACK in pg.
@@ -332,16 +355,12 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
 
   // Reset the connection and make sure the transaction was aborted.
   conn_ = std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(Connect()));
-  auto row_count = ASSERT_RESULT(
-      conn_->FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0 WHERE key = 1", kTableName)));
-  ASSERT_EQ(row_count, 0);
+  ASSERT_EQ(ASSERT_RESULT(get_row_count()), 0);
 
   // Go back to the old leader and make sure aborted data is not visible.
   ASSERT_OK(StepDown(new_leader_idx, old_leader_idx, tablet_id));
 
-  row_count = ASSERT_RESULT(
-      conn_->FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0 WHERE key = 1", kTableName)));
-  ASSERT_EQ(row_count, 0);
+  ASSERT_EQ(ASSERT_RESULT(get_row_count()), 0);
 }
 
 // If the leader steps down before the async write operation is acked to client, make sure the
@@ -397,20 +416,20 @@ void YSqlAsyncWriteTest::LeaderStepDownBeforeWriteAckTest(bool use_pk) {
   ASSERT_OK(SetupConnectivityWithAll(cluster_.get(), old_leader_idx));
 
   const auto expected_value = "1, A";
-  ASSERT_OK(ValidateData(expected_value));
+  ASSERT_OK(ValidateData(expected_value, tablet_id));
 
   ASSERT_OK(conn_->CommitTransaction());
-  ASSERT_OK(ValidateData(expected_value));
+  ASSERT_OK(ValidateData(expected_value, tablet_id));
 
   // Go back to the old leader and make sure data is still visible.
   ASSERT_OK(StepDown(new_leader_idx, old_leader_idx, tablet_id));
 
-  ASSERT_OK(ValidateData(expected_value));
+  ASSERT_OK(ValidateData(expected_value, tablet_id));
 
   // Even after a full flush of the WAL, intents and regular DB the same data should be visible.
   ASSERT_OK(ResolveAndFlushTablet(old_leader_idx, tablet_id));
 
-  ASSERT_OK(ValidateData(expected_value));
+  ASSERT_OK(ValidateData(expected_value, tablet_id));
 }
 
 // Make sure there cannot be any situation where a intent that was written but not replicated is
@@ -582,21 +601,18 @@ END $$$$;)",
 
   // Validity checks.
   const auto expected_value = "1, B; 2, A";
-  ASSERT_OK(ValidateData(expected_value));
+  ASSERT_OK(ValidateData(expected_value, tablet_id));
 
   // Make sure the same data is visible on the old leader.
   ASSERT_OK(StepDown(new_leader_idx, old_leader_idx, tablet_id));
 
-  ASSERT_OK(ValidateData(expected_value));
+  ASSERT_OK(ValidateData(expected_value, tablet_id));
 
   // Even after a full flush of the WAL, intents and regular DB the (1, 'A') intent should not
   // become visible.
   ASSERT_OK(ResolveAndFlushTablet(old_leader_idx, tablet_id));
 
-  LOG(INFO) << "Temp Leader Dump:\n"
-            << DumpTablet(new_leader_idx, tablet_id) << "\nOld Leader Dump:\n"
-            << DumpTablet(old_leader_idx, tablet_id);
-  ASSERT_OK(ValidateData(expected_value));
+  ASSERT_OK(ValidateData(expected_value, tablet_id));
 }
 
 // Make sure async writes and subsequent reads are not blocked by follower network delay.
@@ -710,6 +726,344 @@ TEST_F(YSqlAsyncWriteTest, ForeignKeyAsyncWrite) {
   ASSERT_EQ(parent_rows, "1, p1; 2, p2");
   auto child_rows = ASSERT_RESULT(conn_->FetchAllAsString("SELECT * FROM child ORDER BY id"));
   ASSERT_EQ(child_rows, "10, 1; 20, 2");
+}
+
+// When async write intents are flushed before Raft commit, the SST frontier has a stale op_id
+// (skip_opid_update=true). After commit, UpdateOpIdForOperation sets the correct op_id on the
+// new (empty) memtable, but that update may not get flushed. If the tserver restarts at this point,
+// then it will replay from the stale op_id.
+// This test validates this scenario and ensures that write_ids continue advancing on the replay.
+TEST_F(YSqlAsyncWriteTest, RestartAfterFlushInMiddleOfTransaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 100;
+  google::SetVLOGLevel("running_transaction", 4);
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+  auto tablet_id = ASSERT_RESULT(GetTabletId());
+  const size_t leader_idx = ASSERT_RESULT(PrepareToBreakConnectivity(tablet_id));
+
+  // Delay followers so that we delay the Raft commit of the async writes.
+  const auto delay_duration = MonoDelta(30s);
+  auto follower_peers = ASSERT_RESULT(DelayFollowers(kTableName, delay_duration));
+
+  // With packed rows each row uses 1 write_id, without packed rows each uses 2.
+  const int writes_per_row = FLAGS_ysql_enable_packed_row ? 1 : 2;
+  const int initial_write_id = 5 * writes_per_row;
+
+  RegexWaiterLogSink initial_batch_replicated_log_sink(
+      Format(".*BatchReplicated.*next_write_id: $0.*", initial_write_id));
+
+  ASSERT_OK(conn_->Execute("BEGIN TRANSACTION"));
+  // Use generate_series to increment write_id counter.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, 'v' || g FROM generate_series(0, 4) g", kTableName));
+
+  // Flush the intents DB. Intent data moves to SST; a new empty memtable is created.
+  // The SST frontier has a stale op_id because the async writes used skip_opid_update=true.
+  auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+  auto leader_tablet = ASSERT_RESULT(leader_peer->shared_tablet());
+  ASSERT_OK(leader_tablet->Flush(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly));
+
+  // Resume followers so Raft entries commit. DoReplicated calls UpdateOpIdForOperation, which
+  // sets the correct op_id on the new empty memtable.
+  ResumeFollowersAndWait(follower_peers, delay_duration);
+
+  ASSERT_TRUE(initial_batch_replicated_log_sink.IsEventOccurred());
+
+  // Expect the replayed batch to continue advancing the write_ids.
+  const int replayed_write_id = initial_write_id * 2;
+  RegexWaiterLogSink restarted_batch_replicated_log_sink(
+      Format(".*BatchReplicated.*next_write_id: $0.*", replayed_write_id));
+
+  // Restart the leader tserver and trigger a bootstrap replay.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 6;
+  cluster_->mini_tablet_server(leader_idx)->Shutdown();
+  ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->WaitStarted());
+
+  // Validate that the write_ids continued advancing on the replay.
+  ASSERT_TRUE(restarted_batch_replicated_log_sink.IsEventOccurred());
+
+  // Validate the transaction commits and the data is correct.
+  ASSERT_OK(conn_->CommitTransaction());
+  auto table_data = ASSERT_RESULT(conn_->FetchAllAsString(kSelectAllStmt));
+  ASSERT_EQ(table_data, "0, v0; 1, v1; 2, v2; 3, v3; 4, v4");
+}
+
+class AsyncWritesExternalTest : public pgwrapper::LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_enable_write_pipelining");
+    options->extra_tserver_flags.push_back("--ysql_enable_write_pipelining=true");
+    options->extra_tserver_flags.push_back("--flush_rocksdb_on_shutdown=false");
+    options->extra_tserver_flags.push_back("--leader_failure_max_missed_heartbeat_periods=100");
+    options->extra_master_flags.push_back("--enable_load_balancing=false");
+    options->extra_master_flags.push_back("--use_create_table_leader_hint=false");
+  }
+
+  int GetNumTabletServers() const override { return 3; }
+};
+
+// Repro of DB-20043 bug: AddedAsPending with `skip_opid_update=false` writes the intents frontier
+// at RECEIVED_OPID on the leader.
+// Flushing intents on the leader captures the inflated frontier.  After leader shutdown + restart,
+// bootstrap's UpdateCommittedFromStored() inflates committed_op_id, raft catchup from the new
+// leader skips new WRITE_OPs, leading to data loss.
+TEST_F(AsyncWritesExternalTest, IntentsFrontierInflationCausesDataLoss) {
+  constexpr auto kTableName = "tbl1";
+  const auto kWaitTimeout = 120s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+
+  auto tablet_id = ASSERT_RESULT(GetSingleTabletId(kTableName));
+  LOG(INFO) << "Tablet: " << tablet_id;
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT g, 'v' || g FROM generate_series(0, 9) g", kTableName));
+  auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(leader_idx, {tablet_id}));
+
+  auto follower_indexes = ASSERT_RESULT(cluster_->GetTabletFollowerIndexes(tablet_id));
+  LOG(INFO) << "Leader tserver is: " << leader_idx;
+
+  // Delay both followers before they can mark the new entries as committed.
+  for (auto idx : follower_indexes) {
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(idx), "TEST_delay_update_consensus_before_mark_committed_tablet_id",
+        tablet_id));
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(idx), "TEST_delay_update_consensus_before_mark_committed_ms",
+        "30000"));
+  }
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  for (int k = 10; k < 20; ++k) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, k));
+  }
+
+  // The leader then can't get quorum for the new entries, and ends up with RECEIVED > COMMITTED.
+  // With `skip_opid_update=false`, flushing intents on the leader captures this inflated frontier.
+  // With `skip_opid_update=true`, the frontier is not updated until commit, so the flushed frontier
+  // is correct.
+  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(leader_idx, {tablet_id}));
+  LOG(INFO) << "Flushed intents on leader tserver: " << leader_idx;
+
+  // Shutdown the leader and kill the transaction.
+  cluster_->tablet_server(leader_idx)->Shutdown();
+
+  // Wait for a new leader to be elected.
+  // This new leader's index will be close to the same index as the first write from the failed txn,
+  // since none of those entries were able to be committed.
+  for (auto idx : follower_indexes) {
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(idx), "TEST_delay_update_consensus_before_mark_committed_ms", "0"));
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(idx), "leader_failure_max_missed_heartbeat_periods", "6"));
+  }
+  ASSERT_OK(LoggedWaitFor(
+      [this, &tablet_id, leader_idx]() -> Result<bool> {
+        auto current = cluster_->GetTabletLeaderIndex(tablet_id);
+        return current.ok() && *current != leader_idx;
+      },
+      kWaitTimeout, "Wait for new leader election"));
+  auto new_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+
+  // Reinsert the same rows on the new leader.
+  conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", follower_indexes[0]));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  for (int k = 10; k < 20; ++k) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, k));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+  auto result =
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName)));
+  ASSERT_EQ(result, 20);
+
+  // Now restart the old leader.
+  // If the frontier was inflated, then it will report an incorrect committed index and will miss
+  // all the new entries during the raft catchup. Importantly, this will skip over the first entry
+  // with batch_idx=0, so the transaction is not recognized and gets dropped.
+  ASSERT_OK(cluster_->tablet_server(leader_idx)->Start());
+
+  // Wait for the restarted node to rejoin as a follower and fully catch up.
+  auto healthy_dump = ASSERT_RESULT(DumpTabletData(new_leader_idx, tablet_id));
+  tserver::DumpTabletDataResponsePB restarted_dump;
+  EXPECT_OK(LoggedWaitFor(
+      [this, &tablet_id, leader_idx, &healthy_dump, &restarted_dump]() -> Result<bool> {
+        auto result = DumpTabletData(leader_idx, tablet_id);
+        if (!result.ok()) {
+          return false;
+        }
+        restarted_dump = *result;
+        return restarted_dump.row_count() == healthy_dump.row_count();
+      },
+      kWaitTimeout, "Wait for restarted node to catch up"));
+
+  LOG(INFO) << "New leader (tserver: " << new_leader_idx
+            << ") row_count=" << healthy_dump.row_count()
+            << ", restarted old leader (tserver: " << leader_idx
+            << ") row_count=" << restarted_dump.row_count();
+  EXPECT_EQ(restarted_dump.row_count(), healthy_dump.row_count())
+      << "Row count divergence on restarted old leader (tserver: " << leader_idx
+      << "). New leader has " << healthy_dump.row_count() << " rows, old leader has "
+      << restarted_dump.row_count() << ".";
+  EXPECT_EQ(restarted_dump.xor_hash(), healthy_dump.xor_hash())
+      << "Data hash mismatch on restarted old leader.";
+}
+
+// Verify that WaitForAsyncWrite RPCs retry via TabletInvoker when the leader steps down.
+// The write is replicated before the stepdown, so the retry on the new leader should succeed
+// by verifying the write was committed from the previous term.
+//
+// Debug-only because the test uses DEBUG_ONLY_TEST_SYNC_POINT.
+TEST_F(YSqlAsyncWriteTest, YB_DEBUG_ONLY_TEST(HandleLeaderStepDown)) {
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+
+  auto tablet_id = ASSERT_RESULT(GetTabletId());
+  const size_t old_leader_idx = ASSERT_RESULT(PrepareToBreakConnectivity(tablet_id));
+
+  // Block the first WaitForAsyncWrite handler invocation so we can step down the leader while the
+  // RPCs are in-flight.
+  auto sync_point = SyncPoint::GetInstance();
+  sync_point->LoadDependency(
+      {{"HandleLeaderStepDown::LeaderStepDownComplete",
+        "TabletServiceImpl::WaitForAsyncWrite::BeforeRegister"}});
+  std::atomic<bool> first_wait_blocked{false};
+  sync_point->SetCallBack("TabletServiceImpl::WaitForAsyncWrite::BeforeRegister", [&](void*) {
+    first_wait_blocked = true;
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([&sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  for (int i = 1; i <= 5; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, i));
+  }
+
+  ASSERT_OK(LoggedWaitFor(
+      [&first_wait_blocked] { return first_wait_blocked.load(); }, 30s,
+      "Wait for first async write to get blocked"));
+
+  ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), old_leader_idx));
+  size_t new_leader_idx = ASSERT_RESULT(WaitForNewTabletLeader(tablet_id, old_leader_idx));
+  ASSERT_OK(SetupConnectivityWithAll(cluster_.get(), old_leader_idx));
+
+  ASSERT_OK(LoggedWaitFor(
+      [this, &tablet_id, old_leader_idx]() -> Result<bool> {
+        auto peer = VERIFY_RESULT(GetTabletPeerOnTserver(old_leader_idx, tablet_id));
+        auto consensus = VERIFY_RESULT(peer->GetRaftConsensus());
+        return !consensus->GetLeaderState().ok();
+      },
+      30s, "Wait for old leader to step down"));
+
+  // Release the blocked writes.
+  DEBUG_ONLY_TEST_SYNC_POINT("HandleLeaderStepDown::LeaderStepDownComplete");
+
+  // Write some more data to the new leader.
+  for (int i = 6; i <= 10; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, i));
+  }
+
+  const auto expected_output =
+      "1, v1; 2, v2; 3, v3; 4, v4; 5, v5; 6, v6; 7, v7; 8, v8; 9, v9; 10, v10";
+
+  ASSERT_OK(conn_->CommitTransaction());
+  ASSERT_OK(ValidateData(expected_output));
+
+  // Verify data on the old leader too.
+  ASSERT_OK(StepDown(new_leader_idx, old_leader_idx, tablet_id));
+  ASSERT_OK(ValidateData(expected_output));
+}
+
+// Test the VerifyAsyncWriteCompletion logic by calling RegisterAsyncWriteCompletion directly.
+TEST_F(YSqlAsyncWriteTest, VerifyAsyncWriteCompletion) {
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+
+  auto tablet_id = ASSERT_RESULT(GetTabletId());
+
+  // Insert a value and get its op id.
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'A')", kTableName));
+
+  auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+  auto leader_consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
+  auto committed_op_id = ASSERT_RESULT(leader_consensus->GetLastOpId(consensus::COMMITTED_OPID));
+  const auto leader_idx = GetLeaderIdx(tablet_id);
+
+  LOG(INFO) << "Committed op_id on leader: " << committed_op_id;
+
+  // Case 1: Same term committed write should succeed.
+  {
+    Synchronizer sync;
+    leader_peer->RegisterAsyncWriteCompletion(committed_op_id, sync.AsStdStatusCallback());
+    ASSERT_OK(sync.Wait());
+  }
+
+  // Step down the leader to test cross-term scenarios.
+  const size_t new_leader_idx = (leader_idx + 1) % NumTabletServers();
+  ASSERT_OK(StepDown(leader_idx, new_leader_idx, tablet_id));
+
+  auto new_leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(new_leader_idx, tablet_id));
+  auto new_consensus = ASSERT_RESULT(new_leader_peer->GetRaftConsensus());
+  ASSERT_OK(LoggedWaitFor(
+      [&new_consensus]() { return new_consensus->GetLeaderState().ok(); }, 30s,
+      "new leader to be ready"));
+
+  auto new_committed = ASSERT_RESULT(new_consensus->GetLastOpId(consensus::COMMITTED_OPID));
+  LOG(INFO) << "New leader committed op_id: " << new_committed
+            << ", first_index_of_current_term: " << new_consensus->GetFirstIndexOfCurrentTerm();
+
+  // Case 2: A write from the previous term that was committed should succeed on the new leader.
+  // The committed_op_id from the old term should be verified as committed because its index
+  // is less than first_index_of_current_term.
+  {
+    ASSERT_LT(committed_op_id.index, new_consensus->GetFirstIndexOfCurrentTerm());
+    Synchronizer sync;
+    new_leader_peer->RegisterAsyncWriteCompletion(committed_op_id, sync.AsStdStatusCallback());
+    ASSERT_OK(sync.Wait());
+  }
+
+  // Case 3: A write from the previous term at or beyond first_index_of_current_term should fail
+  // because it was overwritten by the new leader's NO_OP.
+  {
+    auto first_index = new_consensus->GetFirstIndexOfCurrentTerm();
+    OpId overwritten_op_id(committed_op_id.term, first_index);
+    Synchronizer sync;
+    new_leader_peer->RegisterAsyncWriteCompletion(overwritten_op_id, sync.AsStdStatusCallback());
+    auto status = sync.Wait();
+    ASSERT_NOK(status);
+    ASSERT_TRUE(status.IsAborted()) << "Expected Aborted, got: " << status;
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "tablet leader changed");
+  }
+
+  // Case 4: A write from two terms ago should fail.
+  {
+    // Step down again to create a term gap of 2.
+    const size_t third_leader_idx = (new_leader_idx + 1) % NumTabletServers();
+    ASSERT_OK(StepDown(new_leader_idx, third_leader_idx, tablet_id));
+
+    auto third_leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(third_leader_idx, tablet_id));
+    auto third_consensus = ASSERT_RESULT(third_leader_peer->GetRaftConsensus());
+    ASSERT_OK(LoggedWaitFor(
+        [&third_consensus]() { return third_consensus->GetLeaderState().ok(); }, 30s,
+        "third leader to be ready"));
+
+    Synchronizer sync;
+    third_leader_peer->RegisterAsyncWriteCompletion(committed_op_id, sync.AsStdStatusCallback());
+    auto status = sync.Wait();
+    ASSERT_NOK(status);
+    ASSERT_TRUE(status.IsAborted()) << "Expected Aborted, got: " << status;
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "leader moved more than once");
+  }
 }
 
 }  // namespace yb

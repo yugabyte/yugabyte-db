@@ -13,15 +13,11 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertNotNull;
-import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
-import com.yugabyte.PGConnection;
 import com.yugabyte.PGNotification;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -33,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.json.JSONObject;
+import org.yb.minicluster.Metrics;
+import org.yb.minicluster.MiniYBDaemon;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -41,8 +39,12 @@ import org.yb.CommonNet;
 import org.yb.CommonNet.CloudInfoPB;
 import org.yb.CommonTypes;
 import org.yb.YBTestRunner;
+import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
+import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.ModifyClusterConfigLiveReplicas;
+import org.yb.client.SnapshotInfo;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.client.ModifyClusterConfigReadReplicas;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.TestUtils;
@@ -59,8 +61,34 @@ import org.yb.util.YBBackupUtil;
 public class TestPgListenNotify extends BasePgListenNotifyTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgListenNotify.class);
 
+  private static final int TSERVER_UNRESPONSIVE_TIMEOUT_MS = 10000;
+
   private static final String CHANNEL = "test_channel";
   private static final String PAYLOAD = "test_payload";
+  private static final String LARGE_PAYLOAD;
+  static {
+    char[] chars = new char[7000];
+    Arrays.fill(chars, 'x');
+    LARGE_PAYLOAD = new String(chars);
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("tserver_unresponsive_timeout_ms",
+        String.valueOf(TSERVER_UNRESPONSIVE_TIMEOUT_MS));
+    return flagMap;
+  }
+
+  private HostAndPort getRpcHostPortForTServer(int index) {
+    String pgHost = getPgHost(index);
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      if (hp.getHost().equals(pgHost)) {
+        return hp;
+      }
+    }
+    throw new IllegalStateException("No tserver RPC HostAndPort found for index " + index);
+  }
 
   /**
    * LISTEN should fail when cdc_max_virtual_wal_per_tserver is 0 (no virtual
@@ -267,13 +295,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
       // Give the restarted poller time to re-stream. If LSN persistence is broken,
       // old notifications would be re-delivered during this window.
-      Thread.sleep(5000);
-
-      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
-      listenerStmt.execute("SELECT 1");
-      PGNotification[] spurious = pgConn.getNotifications();
-      assertTrue("Old notifications should not be re-delivered after poller restart",
-          spurious == null || spurious.length == 0);
+      waitAndAssertNoNotifications(listenerConn,
+          "Old notifications should not be re-delivered after poller restart");
 
       // Verify that the restarted poller delivers new notifications.
       try (Connection notifierConn = getConnectionBuilder().connect();
@@ -398,14 +421,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         stmt.execute("NOTIFY " + CHANNEL + ", 'subtxn_listen_abort'");
       }
 
-      Thread.sleep(5000);
-      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
-      try (Statement stmt = listenerConn.createStatement()) {
-        stmt.execute("SELECT 1");
-      }
-      PGNotification[] notifs = pgConn.getNotifications();
-      assertTrue("Should not receive notifications when LISTEN was in rolled-back subtransaction",
-          notifs == null || notifs.length == 0);
+      waitAndAssertNoNotifications(listenerConn,
+          "Should not receive notifications when LISTEN was in rolled-back subtransaction");
     }
   }
 
@@ -564,14 +581,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         stmt.execute("LISTEN " + CHANNEL);
       }
 
-      Thread.sleep(5000);
-      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
-      try (Statement pollStmt = listenerConn.createStatement()) {
-        pollStmt.execute("SELECT 1");
-      }
-      PGNotification[] stale = pgConn.getNotifications();
-      assertTrue("Expected no spurious notifications after restore",
-          stale == null || stale.length == 0);
+      waitAndAssertNoNotifications(listenerConn,
+          "Expected no spurious notifications after restore");
 
       // Send a new NOTIFY on the restored database and verify delivery.
       try (Connection notifierConn = getConnectionBuilder().withDatabase(restoredDb).connect();
@@ -609,16 +620,24 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, "yugabyte",
         /* retentionInSecs */ 600, /* timeIntervalInSecs */ 10);
 
-    // Wait for at least one snapshot to be created.
+    // Wait for at least one snapshot to reach COMPLETE state.
     TestUtils.waitFor(() -> {
       ListSnapshotSchedulesResponse resp = client.listSnapshotSchedules(null);
       for (SnapshotScheduleInfo info : resp.getSnapshotScheduleInfoList()) {
-        if (!info.getSnapshotInfoList().isEmpty()) {
-          return true;
+        for (SnapshotInfo snap : info.getSnapshotInfoList()) {
+          if (snap.getState()
+              == CatalogEntityInfo.SysSnapshotEntryPB.State.COMPLETE) {
+            return true;
+          }
         }
       }
       return false;
     }, 60000);
+
+    // The snapshot's timestamp is assigned as MaxGlobalNow, which can be ahead
+    // of the physical clock. The clone's restore timestamp uses the physical
+    // clock, so wait for it to exceed the snapshot's timestamp.
+    Thread.sleep(2000);
 
     final String cloneDb = "clone_db";
     try (Statement stmt = connection.createStatement()) {
@@ -787,40 +806,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * Polls the given connection for notifications by executing "SELECT 1",
-   * collecting all received notifications until one matching the expected
-   * channel and payload is found. Returns the complete list of notifications
-   * received (including the match).
-   */
-  private List<PGNotification> waitForNotification(Connection connection,
-      String expectedChannel, String expectedPayload) throws Exception {
-    List<PGNotification> allNotifications = new ArrayList<>();
-    PGConnection pgConn = connection.unwrap(PGConnection.class);
-    boolean found = false;
-    try (Statement stmt = connection.createStatement()) {
-      for (int attempt = 0; attempt < 75 && !found; attempt++) {
-        stmt.execute("SELECT 1");
-        PGNotification[] notifications = pgConn.getNotifications();
-        if (notifications != null) {
-          for (PGNotification n : notifications) {
-            allNotifications.add(n);
-            if (n.getName().equals(expectedChannel)
-                && n.getParameter().equals(expectedPayload)) {
-              found = true;
-            }
-          }
-        }
-        if (!found) {
-          Thread.sleep(200);
-        }
-      }
-    }
-    assertTrue("Expected to receive notification on channel '" + expectedChannel
-        + "' with payload '" + expectedPayload + "'", found);
-    return allNotifications;
-  }
-
-  /**
    * Verifies that LISTEN succeeds, and that a NOTIFY sent from another
    * connection is delivered to the listener.
    */
@@ -861,13 +846,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
           notifierStmt.execute("NOTIFY " + channel + ", 'slow'");
         }
 
-        Thread.sleep(15000);
-
-        listenerStmt.execute("SELECT 1");
-        PGConnection pgConn = listener.unwrap(PGConnection.class);
-        PGNotification[] notifs = pgConn.getNotifications();
-        assertFalse("Notification should not arrive within 15s with 30s poll interval",
-            notifs != null && notifs.length > 0);
+        waitAndAssertNoNotifications(listener,
+            "Notification should not arrive within 5s with 30s poll interval");
       }
 
       try (Connection listener = getConnectionBuilder().connect();
@@ -889,6 +869,319 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
+  /**
+   * When the notifications poller crashes after writing notifications to the queue but before
+   * persisting the CDC ack, virtual WAL replays the same transaction when the poller process
+   * restarts. Test that duplicate queue entries do not produce duplicate NOTIFY deliveries
+   * (txn-begin markers suppress duplicates on read).
+   */
+  @Test
+  public void testListenNotifyNoDuplicateAfterPollerCrashBeforeAck() throws Exception {
+    final String channel = "chan";
+    final String payload = "payload";
+
+    try {
+      setFatalAfterNotifsQueueWriteFlag(true);
+      Thread.sleep(2000);
+
+      try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+           Connection notifierConn = getConnectionBuilder().withTServer(0).connect()) {
+
+        try (Statement listenerStmt = listenerConn.createStatement()) {
+          listenerStmt.execute("LISTEN " + channel);
+        }
+
+        try (Statement notifierStmt = notifierConn.createStatement()) {
+          notifierStmt.execute("NOTIFY " + channel + ", '" + payload + "'");
+        }
+
+        List<PGNotification> received = waitForNotification(listenerConn, channel, payload);
+        assertEquals(
+            "Expected exactly one NOTIFY for duplicate txn-begin replay suppression",
+            1,
+            received.size());
+
+        waitAndAssertNoNotifications(listenerConn,
+            "Old notifications should not be re-delivered after poller restart");
+      }
+    } finally {
+      setFatalAfterNotifsQueueWriteFlag(false);
+    }
+
+    verifyListenNotifyWorks();
+  }
+
+  /**
+   * When the NOTIFY queue fills up, verify that the slow listener is terminated.
+   */
+  @Test
+  public void testQueueFullWithOneSlowListener() throws Exception {
+    fillQueueAndAssertSlowListenersTerminated(1);
+  }
+
+  /**
+   * When the NOTIFY queue fills up, verify that both the slow listeners are terminated.
+   */
+  @Test
+  public void testQueueFullWithTwoSlowListeners() throws Exception {
+    fillQueueAndAssertSlowListenersTerminated(2);
+  }
+
+  /**
+   * When the NOTIFY queue fills up, verify that the slow listener is terminated and the fast
+   * listener receives all the notifications even though a single transaction sends more
+   * notifications than the queue capacity.
+   */
+  @Test
+  public void testQueueFullWithLargeTransaction() throws Exception {
+    try (Connection connFast = getConnectionBuilder().connect()) {
+      try (Statement stmt = connFast.createStatement()) {
+        stmt.execute("LISTEN ch1");
+      }
+      fillQueueAndAssertSlowListenersTerminated(1);
+      waitForNotification(connFast, "ch1", LARGE_PAYLOAD);
+    }
+  }
+
+  private Connection createSlowListener(String channel) throws Exception {
+    Connection conn = getConnectionBuilder().connect();
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("LISTEN " + channel);
+      stmt.execute("BEGIN");
+    }
+    return conn;
+  }
+
+  private Connection fillQueue(String channel, int count) throws Exception {
+    Connection conn = getConnectionBuilder().connect();
+    try (Statement stmt = conn.createStatement()) {
+      for (int i = 0; i < count; i++) {
+        stmt.execute("NOTIFY " + channel + ", '" + LARGE_PAYLOAD + "'");
+      }
+    }
+    return conn;
+  }
+
+  private void assertConnectionTerminated(Connection conn, String label) {
+    try (Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT 1");
+      fail(label + " should have been terminated");
+    } catch (SQLException e) {
+      LOG.info("{} error (expected): {}", label, e.getMessage());
+    }
+  }
+
+  /**
+   * Uses yb_test_notify_queue_max_pages to artificially limit the queue so it fills up with a
+   * handful of large-payload notifications.
+   */
+  private void fillQueueAndAssertSlowListenersTerminated(int numSlowListeners) throws Exception {
+    setNotifyQueueMaxPages("2");
+    try {
+      Connection[] slowListeners = new Connection[numSlowListeners];
+      for (int i = 0; i < numSlowListeners; i++) {
+        slowListeners[i] = createSlowListener("ch1");
+      }
+      Connection connNotifier = fillQueue("ch1", 10);
+      Thread.sleep(5000);
+      for (int i = 0; i < numSlowListeners; i++) {
+        assertConnectionTerminated(slowListeners[i], "Slow listener " + (i + 1));
+      }
+      connNotifier.close();
+    } finally {
+      setNotifyQueueMaxPages("0");
+    }
+  }
+
+  /**
+   * Triggers a CDC stream expiry by setting cdc_intent_retention_ms low (2s) and poller sleep
+   * high (5s). The poller's first poll succeeds, on the next poll it receives a non-retryable
+   * "stream expired" error.
+   *
+   */
+  private void triggerCdcStreamExpiry() throws Exception {
+    setCdcIntentRetentionMs("2000");
+    setNotificationsPollSleepDurationEmpty("5000");
+    Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(15000));
+  }
+
+  private void waitForPollerAndSlotCleanup(Connection conn) throws Exception {
+    waitForCondition(conn,
+        "SELECT CASE WHEN NOT EXISTS ("
+        + "SELECT 1 FROM pg_stat_activity"
+        + " WHERE backend_type = 'notifications poller'"
+        + ") THEN 1 ELSE 0 END");
+
+    waitForCondition(conn,
+        "SELECT CASE WHEN NOT EXISTS ("
+        + "SELECT 1 FROM pg_replication_slots"
+        + " WHERE slot_name LIKE 'yb_notifications_%'"
+        + ") THEN 1 ELSE 0 END");
+  }
+
+  @FunctionalInterface
+  private interface CdcRuntimeErrorTestBody {
+    void run(Connection nonListener) throws Exception;
+  }
+
+  /**
+   * Creates a nonListener on tserver 0, confirms the poller is running,
+   * triggers a CDC stream expiry, runs the test body, then verifies cleanup and recovery.
+   */
+  private void withCdcRuntimeError(CdcRuntimeErrorTestBody body) throws Exception {
+    Connection nonListener = getConnectionBuilder().withTServer(0).connect();
+    try {
+      try (Statement checkStmt = nonListener.createStatement()) {
+        getPollerPid(checkStmt);
+      }
+
+      triggerCdcStreamExpiry();
+
+      body.run(nonListener);
+
+      waitForPollerAndSlotCleanup(nonListener);
+    } finally {
+      nonListener.close();
+      setCdcIntentRetentionMs("28800000");
+      setNotificationsPollSleepDurationEmpty("100");
+    }
+
+    verifyListenNotifyWorks();
+  }
+
+  /**
+   * Validates that a non-retryable CDC runtime error (stream expiry) terminates all listening
+   * backends with a meaningful error, while non-listening sessions survive. Also verifies that the
+   * notifications poller is cleaned up, the replication slot is dropped, and recovery works.
+   */
+  @Test
+  public void testCdcRuntimeErrorTerminatesListeners() throws Exception {
+    Connection listener1 = getConnectionBuilder().withTServer(0).connect();
+    listener1.createStatement().execute("LISTEN ch1");
+
+    Connection listener2 = getConnectionBuilder().withTServer(0).connect();
+    listener2.createStatement().execute("LISTEN ch2");
+
+    withCdcRuntimeError(nonListener -> {
+      assertConnectionDead(listener1, "listener1");
+      assertConnectionDead(listener2, "listener2");
+      nonListener.createStatement().execute("SELECT 1");
+    });
+  }
+
+  /**
+   * Validates that a new LISTEN fails when the notifications poller receives a non-retryable
+   * error and the existing listeners are being cleaned up.
+   */
+  @Test
+  public void testCdcRuntimeErrorBlocksNewListener() throws Exception {
+    Connection listenerA = getConnectionBuilder().withTServer(0).connect();
+    listenerA.createStatement().execute("LISTEN ch1");
+
+    // Block listenerA's main loop with pg_sleep so it can't process the
+    // FATAL from has_runtime_error. This keeps listenerA registered as a
+    // listener, which keeps the poller alive in error state.
+    Thread sleepThread = new Thread(() -> {
+      try {
+        listenerA.createStatement().execute("SELECT pg_sleep(60)");
+      } catch (SQLException e) {
+        LOG.info("listenerA pg_sleep interrupted (expected): {}", e.getMessage());
+      }
+    });
+    sleepThread.start();
+    Thread.sleep(1000);
+
+    withCdcRuntimeError(nonListener -> {
+      // A new LISTEN should fail because the poller is in error state.
+      try (Connection listenerB = getConnectionBuilder().withTServer(0).connect();
+           Statement stmtB = listenerB.createStatement()) {
+        stmtB.execute("LISTEN ch2");
+        fail("LISTEN should have failed because poller has a runtime error");
+      } catch (SQLException e) {
+        LOG.info("listenerB LISTEN failed (expected): {}", e.getMessage());
+        assertTrue("Error should mention non-retryable error",
+            e.getMessage().contains("non-retryable error"));
+      }
+
+      sleepThread.join(Timeouts.adjustTimeoutSecForBuildType(120000));
+      assertConnectionDead(listenerA, "listenerA");
+    });
+  }
+
+  private void setCdcIntentRetentionMs(String value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      miniCluster.getClient().setFlag(tserver, "cdc_intent_retention_ms", value);
+    }
+  }
+
+  private void assertConnectionDead(Connection conn, String label) {
+    try {
+      conn.createStatement().execute("SELECT 1");
+      fail(label + " should have been terminated by FATAL");
+    } catch (SQLException e) {
+      LOG.info("{} terminated (expected): {}", label, e.getMessage());
+    }
+  }
+
+  /**
+   * Verifies that LISTEN/NOTIFY works even after a non-INSERT/DELETE record (i.e., an UPDATE)
+   * appears in the pg_yb_notifications CDC stream. The notifications poller consumes the CDC
+   * stream for pg_yb_notifications; an UPDATE record is unexpected (users never UPDATE this
+   * table) and must not break the poller.
+   *
+   * Scenario:
+   *   1. Session starts LISTEN.
+   *   2. NOTIFY is sent and received by the listener.
+   *   3. A dummy row is INSERTed into pg_yb_notifications and then UPDATEd (producing a
+   *      non-INSERT/DELETE CDC record).
+   *   4. Another NOTIFY is sent and received by the listener, proving the poller survived.
+   */
+  @Test
+  public void testNotifyWorksAfterUpdateOnNotificationsTable() throws Exception {
+    final String channel = "update_test";
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + channel);
+      }
+
+      // First NOTIFY: baseline check.
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + channel + ", 'before_update'");
+      }
+      waitForNotification(listenerConn, channel, "before_update");
+      LOG.info("Received notification before UPDATE on pg_yb_notifications");
+
+      // INSERT a dummy row into pg_yb_notifications and UPDATE it.
+      try (Connection ybSystemConn =
+               getConnectionBuilder().withDatabase("yb_system").connect();
+           Statement stmt = ybSystemConn.createStatement()) {
+        stmt.execute("INSERT INTO pg_yb_notifications"
+            + " (notif_uuid, sender_node_uuid, sender_pid, db_oid, is_listen, data)"
+            + " VALUES ('00000000-0000-0000-0000-000000000001',"
+            + " '00000000-0000-0000-0000-000000000002', 0, 0, false, '\\x00')");
+        stmt.execute("UPDATE pg_yb_notifications SET sender_pid = 1"
+            + " WHERE notif_uuid = '00000000-0000-0000-0000-000000000001'");
+        LOG.info("Inserted and updated dummy row in pg_yb_notifications");
+      }
+
+      // Second NOTIFY: must still work after the UPDATE record hit the CDC stream.
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + channel + ", 'after_update'");
+      }
+      waitForNotification(listenerConn, channel, "after_update");
+      LOG.info("Received notification after UPDATE on pg_yb_notifications");
+    }
+  }
+
+  private void setFatalAfterNotifsQueueWriteFlag(boolean value) throws Exception {
+    String v = value ? "true" : "false";
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "ysql_yb_test_fatal_after_notifs_queue_write", v);
+    }
+  }
+
   private void setNotificationsPollSleepDurationEmpty(String valueMs) throws Exception {
     Set<HostAndPort> tservers = miniCluster.getTabletServers().keySet();
     for (HostAndPort tserver : tservers) {
@@ -904,11 +1197,168 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
+  private void setNotifyQueueMaxPages(String value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "ysql_yb_test_notify_queue_max_pages", value);
+    }
+  }
+
   private void setMaxReplicationSlots(String value) throws Exception {
     for (HostAndPort master : miniCluster.getMasters().keySet()) {
       assertTrue("Failed to set max_replication_slots",
           miniCluster.getClient().setFlag(master, "max_replication_slots", value,
                                           /* force = */ true));
+    }
+  }
+
+  /**
+   * Validates that when a tserver crashes and restarts, its stale notifications
+   * replication slot is deleted by the master during re-registration.
+   *
+   * Scenario:
+   *   1. LISTEN on tserver 0 -- creates replication slot yb_notifications_<uuid>.
+   *   2. Verify the slot exists.
+   *   3. Crash (SIGKILL) tserver 0 and restart it.
+   *   4. Verify the old slot is gone.
+   */
+  @Test
+  public void testSlotCleanupOnTServerRestart() throws Exception {
+    final String channel = "restart_test";
+    HostAndPort ts0RpcHostPort = getRpcHostPortForTServer(0);
+
+    // Step 1: LISTEN to trigger replication slot creation.
+    Connection listenConn = getConnectionBuilder().withTServer(0).connect();
+    Statement listenStmt = listenConn.createStatement();
+    listenStmt.execute("LISTEN " + channel);
+
+    // Step 2: Verify the notifications replication slot exists.
+    List<Row> slots = getRowList(listenStmt,
+        "SELECT slot_name FROM pg_replication_slots"
+        + " WHERE slot_name LIKE 'yb_notifications_%'");
+    assertEquals("Expected one notifications replication slot", 1, slots.size());
+    LOG.info("Notifications replication slot before crash: " + slots.get(0).getString(0));
+
+    // Step 3: Crash tserver 0 and restart it.
+    miniCluster.crashAndRestartTServer(ts0RpcHostPort);
+    miniCluster.waitForTabletServers(miniCluster.getNumTServers());
+
+    // Step 4: Poll a surviving tserver until the old slot is gone.
+    try (Connection conn = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt = conn.createStatement()) {
+      TestUtils.waitFor(() -> getRowList(stmt,
+          "SELECT slot_name FROM pg_replication_slots"
+          + " WHERE slot_name LIKE 'yb_notifications_%'").isEmpty(),
+          Timeouts.adjustTimeoutSecForBuildType(30_000));
+    }
+  }
+
+  /**
+   * Validates that when a tserver is decommissioned via RemoveTabletServer,
+   * its notifications replication slot is deleted by the master.
+   *
+   * Scenario:
+   *   1. LISTEN on tserver 0 -- creates replication slot.
+   *   2. Add a 4th tserver, blacklist tserver 0, and wait for load to move off.
+   *   3. Kill tserver 0 and wait for it to become unresponsive.
+   *   4. Call RemoveTabletServer for tserver 0.
+   *   5. Verify the slot is gone.
+   */
+  @Test
+  public void testSlotCleanupOnTServerDecommission() throws Exception {
+    final String channel = "decommission_test";
+    YBClient client = miniCluster.getClient();
+
+    HostAndPort ts0RpcHostPort = getRpcHostPortForTServer(0);
+
+    String ts0Uuid = null;
+    for (org.yb.util.ServerInfo si : client.listTabletServers().getTabletServersList()) {
+      if (si.getHost().equals(ts0RpcHostPort.getHost())) {
+        ts0Uuid = si.getUuid();
+        break;
+      }
+    }
+    LOG.info("Tserver 0: rpc={}, uuid={}", ts0RpcHostPort, ts0Uuid);
+
+    // Step 1: LISTEN to trigger replication slot creation.
+    Connection listenConn = getConnectionBuilder().withTServer(0).connect();
+    Statement listenStmt = listenConn.createStatement();
+    listenStmt.execute("LISTEN " + channel);
+
+    List<Row> slots = getRowList(listenStmt,
+        "SELECT slot_name FROM pg_replication_slots"
+        + " WHERE slot_name LIKE 'yb_notifications_%'");
+    assertEquals("Expected one notifications replication slot", 1, slots.size());
+    LOG.info("Notifications slot before decommission: " + slots.get(0).getString(0));
+
+    // Step 2: Add a 4th tserver, blacklist tserver 0, and wait for load to move off.
+    spawnTServerWithFlags(new HashMap<>());
+    miniCluster.waitForTabletServers(4);
+
+    List<CommonNet.HostPortPB> blacklistHosts = new ArrayList<>();
+    blacklistHosts.add(CommonNet.HostPortPB.newBuilder()
+        .setHost(ts0RpcHostPort.getHost())
+        .setPort(ts0RpcHostPort.getPort())
+        .build());
+    new ModifyMasterClusterConfigBlacklist(client, blacklistHosts, true /* isAdd */).doCall();
+
+    TestUtils.waitFor(() -> {
+      GetLoadMovePercentResponse resp = client.getLoadMoveCompletion();
+      return resp.getPercentCompleted() >= 100 && resp.getRemaining() == 0;
+    }, Timeouts.adjustTimeoutSecForBuildType(120 * 1000));
+
+    // Step 3: SIGKILL tserver 0 and wait for it to become unresponsive.
+    miniCluster.getTabletServers().get(ts0RpcHostPort).getProcess().destroyForcibly().waitFor();
+    miniCluster.killTabletServerOnHostPort(ts0RpcHostPort);
+    Thread.sleep(TSERVER_UNRESPONSIVE_TIMEOUT_MS * 2);
+
+    // Step 4: Call RemoveTabletServer via yb-admin.
+    runProcess(TestUtils.findBinary("yb-admin"),
+        "--master_addresses", miniCluster.getMasterAddresses(),
+        "remove_tablet_server", ts0Uuid);
+    LOG.info("RemoveTabletServer succeeded for tserver " + ts0Uuid);
+
+    // Step 5: Verify the slot is gone.
+    try (Connection conn = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt = conn.createStatement()) {
+      List<Row> slotsAfter = getRowList(stmt,
+          "SELECT slot_name FROM pg_replication_slots"
+          + " WHERE slot_name LIKE 'yb_notifications_%'");
+      assertTrue("Notifications replication slot should have been deleted after decommission,"
+          + " but found: " + slotsAfter, slotsAfter.isEmpty());
+      LOG.info("Notifications slot successfully cleaned up after decommission");
+    }
+  }
+
+  private long getTotalWriteRpcCount() throws Exception {
+    long total = 0;
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      total += new Metrics(ts.getLocalhostIP(), ts.getWebPort(), "server")
+          .getHistogram("handler_latency_yb_tserver_TabletServerService_Write").totalCount;
+    }
+    return total;
+  }
+
+  /**
+   * Test that NOTIFYs within a transaction are buffered and flushed in batches.
+   */
+  @Test
+  public void testTxnNotifysAreBuffered() throws Exception {
+    final int N = 10;
+    final int tserverIndex = 0;
+
+    try (Connection conn = getConnectionBuilder().withTServer(tserverIndex).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("BEGIN");
+      for (int i = 0; i < N; i++) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'msg_" + i + "'");
+      }
+
+      long before = getTotalWriteRpcCount();
+      stmt.execute("COMMIT");
+      long delta = getTotalWriteRpcCount() - before;
+
+      LOG.info("NOTIFY flush optimization: {} notifications, {} Write RPCs", N, delta);
+      assertEquals("Write RPCs for " + N + " notifications", 2, delta);
     }
   }
 }

@@ -8,7 +8,7 @@ menu:
   v2024.2:
     identifier: configuration
     parent: reference
-    weight: 2600
+    weight: 200
 type: indexpage
 ---
 

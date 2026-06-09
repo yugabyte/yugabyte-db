@@ -45,6 +45,7 @@
 using std::string;
 
 DECLARE_bool(TEST_docdb_sort_weak_intents);
+DECLARE_bool(enable_scan_choices_variable_bloom_filter);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(use_fast_next_for_iteration);
 DECLARE_int32(max_nexts_to_avoid_seek);
@@ -2545,6 +2546,86 @@ TEST_F(DocRowwiseIteratorTest, ExhaustiveHtRollbackTest) {
   std::vector<KeyOpHtRollback> ops;
   ops.reserve(kNumKeyOps);
   TestHtRollbackRecursive(ops);
+}
+
+TEST_F(DocRowwiseIteratorTest, HtRollbackUpdatedRow) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_scan_choices_variable_bloom_filter) = false;
+
+  // Setup two rows with different timing scenarios
+  // Row 1: inserted at 1000, then updated at 2000
+  const KeyBytes encodedKey1 = dockv::MakeDocKey("row1", 11111).Encode();
+
+  // Get schema packing for packed row inserts
+  constexpr int kVersion = 0;
+  auto& schema_packing = ASSERT_RESULT(
+      doc_read_context().schema_packing_storage.GetPacking(kVersion)).get();
+
+  // Insert initial packed row for row1
+  InsertPackedRow(
+      kVersion, schema_packing, encodedKey1, HybridTime::FromMicros(1000),
+      {
+          {30_ColId, QLValue::Primitive("row1_c_initial")},
+          {40_ColId, QLValue::PrimitiveInt64(10000)},
+          {50_ColId, QLValue::Primitive("row1_e_initial")},
+      });
+
+  // Update row1 with new values using SetPrimitive
+  ASSERT_OK(SetPrimitive(
+      DocPath(encodedKey1, KeyEntryValue::MakeColumnId(30_ColId)),
+      QLValue::Primitive("row1_c_updated"), HybridTime::FromMicros(1500)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encodedKey1, KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::Primitive("row1_e_updated"), HybridTime::FromMicros(2000)));
+
+  // Row 2: inserted at 2500, not updated
+  const KeyBytes encodedKey2 = dockv::MakeDocKey("row2", 22222).Encode();
+  InsertPackedRow(
+      kVersion, schema_packing, encodedKey2, HybridTime::FromMicros(2500),
+      {
+          {30_ColId, QLValue::Primitive("row2_c")},
+          {40_ColId, QLValue::PrimitiveInt64(25000)},
+          {50_ColId, QLValue::Primitive("row2_e")},
+      });
+
+  // Test query: SELECT a WHERE a IN ("row1", "row3")
+  PgsqlConditionPB cond;
+  cond.set_op(QL_OP_IN);
+
+  auto* lhs = cond.add_operands();
+  lhs->set_column_id(10_ColId);
+
+  auto rhs = cond.add_operands()->mutable_value()->mutable_list_value();
+  rhs->add_elems()->set_string_value("row1");
+  rhs->add_elems()->set_string_value("row3");
+
+  const KeyEntryValues empty_key_components;
+  std::optional<int32_t> empty_hash_code;
+  auto schema = doc_read_context().schema();
+  DocPgsqlScanSpec spec(
+      schema,
+      rocksdb::kDefaultQueryId,
+      nullptr,
+      {},
+      empty_key_components,
+      PgsqlConditionPBPtr(&cond),
+      empty_hash_code,
+      empty_hash_code);
+
+  // Expected result: only row1 should be visible (row3 doesn't exist in our data)
+  std::string expected = "{string:\"row1\",missing,string:\"row1_c_updated\","
+                         "missing,string:\"row1_e_updated\"}\n";
+  HybridTime expected_max_seen_ht = HybridTime::FromMicros(2000);
+
+  // SELECT a, c, e @ 3000
+  Schema projection;
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"a", "c", "e"}, &projection));
+  CreateIteratorAndValidate(
+      doc_read_context().schema(),
+      ReadHybridTime::FromMicros(3000),
+      spec,
+      expected,
+      expected_max_seen_ht,
+      &projection);
 }
 
 }  // namespace docdb

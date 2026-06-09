@@ -47,6 +47,7 @@
 
 /* YB includes */
 #include "access/yb_scan.h"
+#include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 
 static void reform_and_rewrite_tuple(HeapTuple tuple,
@@ -1195,8 +1196,13 @@ heapam_index_build_range_scan(Relation heapRelation,
 	BlockNumber previous_blkno = InvalidBlockNumber;
 	BlockNumber root_blkno = InvalidBlockNumber;
 	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
+
+	/* YB variables */
 	MemoryContext oldcontext = CurrentMemoryContext;
 	int			yb_tuples_done = 0;
+	YbPushdownExprs *yb_pushdown = NULL;
+	List	   *yb_local_quals = NIL;
+	List	   *yb_rel_colrefs = NIL;
 
 	/*
 	 * sanity checks
@@ -1234,6 +1240,28 @@ heapam_index_build_range_scan(Relation heapRelation,
 	predicate = ExecPrepareQual(indexInfo->ii_Predicate, estate);
 
 	/*
+	 * YB: In case of a partial index, evaluate if the predicate can be pushed
+	 * down to DocDB.
+	 */
+	if (IsYBRelation(heapRelation) && indexInfo->ii_Predicate && !is_system_catalog &&
+		yb_enable_index_backfill_scan_optimization)
+	{
+		List	   *yb_rel_remote_quals = NIL;
+
+		yb_extract_pushdown_clauses_from_index_predicate(indexInfo->ii_Predicate,
+														 &yb_local_quals,
+														 &yb_rel_remote_quals,
+														 &yb_rel_colrefs,
+														 heapRelation->rd_id);
+
+		yb_pushdown = YbInstantiatePushdownExprs(&(YbPushdownExprs)
+			{
+				.quals = yb_rel_remote_quals, .colrefs = yb_rel_colrefs
+			},
+												 estate);
+	}
+
+	/*
 	 * Prepare for scan of the base relation.  In a normal index build, we use
 	 * SnapshotAny because we must retrieve all tuples and do our own time
 	 * qual checks (because we have to index RECENTLY_DEAD tuples). In a
@@ -1256,17 +1284,35 @@ heapam_index_build_range_scan(Relation heapRelation,
 		 */
 		if (!TransactionIdIsValid(OldestXmin))
 		{
-			snapshot = RegisterSnapshot(GetTransactionSnapshot());
+			/*
+			 * YB Note: A prior DML could have set the read time which
+			 * when reused would read stale data for index creation. Hence,
+			 * register a latest snapshot to read up to date data.
+			 *
+			 * Whereas for PG, things work with
+			 * 1. the current transaction snapshot for concurrent index builds
+			 * 2. SnapshotAny for serial index builds which skips MVCC and
+			 *    scans all tuples in the relation.
+			 * because it doesn't have the sticky read time/serial logic.
+			 *
+			 * Additionally, YB takes the latest snapshot route here even when
+			 * indexInfo->ii_Concurrent is true, which might not be necessary.
+			 * Can revert to GetTransactionSnapshot if it leads to any issues.
+			 */
+			snapshot = RegisterSnapshot(IsYugaByteEnabled() ? GetLatestSnapshot() :
+										GetTransactionSnapshot());
 			need_unregister_snapshot = true;
 		}
 		else
 			snapshot = SnapshotAny;
 
-		if (IsYBRelation(heapRelation) && yb_enable_index_backfill_column_projection && !is_system_catalog)
+		if (IsYBRelation(heapRelation) && !is_system_catalog &&
+			yb_enable_index_backfill_scan_optimization)
 		{
 			scan = ybc_heap_beginscan_for_index_build(heapRelation,
 													  snapshot,
-													  indexInfo);
+													  indexInfo,
+													  yb_pushdown);
 		}
 		else
 		{
@@ -1680,8 +1726,18 @@ heapam_index_build_range_scan(Relation heapRelation,
 		/*
 		 * In a partial index, discard tuples that don't satisfy the
 		 * predicate.
+		 *
+		 * YB: Evaluate the predicate of the partial index only when the
+		 * optimization to push it down is turned OFF or the predicate has
+		 * local filters.
+		 * TODO: An index predicate that contains both local and remote quals
+		 * can be further optimized by pushing down the remote quals to the base
+		 * table and evaluating only the local quals here. #31282
 		 */
-		if (predicate != NULL)
+		if (predicate != NULL &&
+			!(IsYBRelation(heapRelation) &&
+			  yb_enable_index_backfill_scan_optimization &&
+			  yb_local_quals == NIL))
 		{
 			if (!ExecQual(predicate, econtext))
 			{

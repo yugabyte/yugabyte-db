@@ -43,7 +43,7 @@ To learn more about how to import your data manually and best practices, see [Im
 After the data has been imported into the newly set up YugabyteDB cluster, you need to verify and validate that the data and the schema have been migrated correctly to ensure smooth functioning of your services.
 
 {{<lead link="">}}
-To understand the various steps involved in validating your data, see [Verify migration](./verify-migration-ysql).
+To understand the various steps involved in validating your data, see [Verify migration](./verify-migration-ysql/).
 {{</lead>}}
 
 ## Guide to migration from PostgreSQL

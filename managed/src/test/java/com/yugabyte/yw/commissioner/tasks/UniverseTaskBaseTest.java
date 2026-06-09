@@ -49,7 +49,6 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
@@ -500,10 +499,12 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   @Test
   public void testGetSleepTimeForProcessUsesRuntimeConfigWhenTaskParamsUnset() {
     Universe universe = setupUniverseForSleepTimeTest();
-    RuntimeConfigEntry.upsert(
-        universe, UniverseConfKeys.sleepAfterMasterRestartMs.getKey(), "1234");
-    RuntimeConfigEntry.upsert(
-        universe, UniverseConfKeys.sleepAfterTServerRestartMs.getKey(), "2345");
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.sleepAfterMasterRestartMs.getKey(), "1234");
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.sleepAfterTServerRestartMs.getKey(), "2345");
 
     UniverseTaskParams params = new UniverseTaskParams();
     params.setUniverseUUID(universe.getUniverseUUID());
@@ -518,10 +519,12 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   @Test
   public void testGetSleepTimeForProcessPrefersExplicitTaskParams() {
     Universe universe = setupUniverseForSleepTimeTest();
-    RuntimeConfigEntry.upsert(
-        universe, UniverseConfKeys.sleepAfterMasterRestartMs.getKey(), "1234");
-    RuntimeConfigEntry.upsert(
-        universe, UniverseConfKeys.sleepAfterTServerRestartMs.getKey(), "2345");
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.sleepAfterMasterRestartMs.getKey(), "1234");
+    mutableConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.sleepAfterTServerRestartMs.getKey(), "2345");
 
     UniverseTaskParams params = new UniverseTaskParams();
     params.setUniverseUUID(universe.getUniverseUUID());

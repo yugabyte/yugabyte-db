@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.KubernetesFullMoveReplicas.KubernetesFullMoveRepli
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -153,8 +154,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         primaryCluster = universeDetails.getPrimaryCluster();
       }
 
-      Provider provider =
-          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(primaryCluster);
 
       /* Steps for multi-cluster edit
       1) Compute masters with the new placement info.
@@ -213,11 +213,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.communicationPorts.masterRpcPort,
               newNamingStyle);
 
-      // validate clusters
-      for (Cluster cluster : taskParams().clusters) {
-        Cluster currCluster = universeDetails.getClusterByUuid(cluster.uuid);
-        validateEditParams(cluster, currCluster);
-      }
       boolean primaryRFChange =
           universeDetails.getPrimaryCluster().userIntent.replicationFactor
               != primaryCluster.userIntent.replicationFactor;
@@ -255,18 +250,28 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 primaryCluster.clusterType);
       }
       // read cluster edit.
-      for (Cluster cluster : taskParams().clusters) {
-        if (cluster.clusterType == ClusterType.ASYNC) {
-          // Use new master addresses for editing read cluster.
-          editCluster(
-              universe,
-              cluster,
-              universeDetails.getClusterByUuid(cluster.uuid),
-              masterAddresses,
-              masterAddresses /* existingMasterAddresses */,
-              mastersAddrChanged);
+      Cluster taskParamsAsyncCluster =
+          CollectionUtils.isNotEmpty(taskParams().getReadOnlyClusters())
+              ? taskParams().getReadOnlyClusters().get(0)
+              : null;
+      Cluster asyncCluster =
+          taskParamsAsyncCluster != null
+              ? taskParamsAsyncCluster
+              : (CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())
+                  ? universe.getUniverseDetails().getReadOnlyClusters().get(0)
+                  : null);
+      if (taskParamsAsyncCluster != null || (asyncCluster != null && mastersAddrChanged)) {
+        // Use new master addresses for editing read cluster.
+        editCluster(
+            universe,
+            asyncCluster,
+            universeDetails.getClusterByUuid(asyncCluster.uuid),
+            masterAddresses,
+            masterAddresses /* existingMasterAddresses */,
+            mastersAddrChanged);
+        if (taskParamsAsyncCluster != null) {
           // Updating cluster in DB
-          createUpdateUniverseIntentTask(cluster);
+          createUpdateUniverseIntentTask(asyncCluster);
         }
       }
 
@@ -355,7 +360,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster),
         curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+    Provider provider = Util.getSingleProvider(primaryCluster);
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
@@ -480,7 +485,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         nonFullMoveAZsPodsBiFunction.apply(tserversToRemoveAzMap, fullMoveTserverAZs);
 
     masterAddressesChanged =
-        CollectionUtils.isNotEmpty(mastersToAdd) || CollectionUtils.isNotEmpty(fullMoveMasterAZs);
+        masterAddressesChanged
+            || CollectionUtils.isNotEmpty(mastersToAdd)
+            || CollectionUtils.isNotEmpty(fullMoveMasterAZs);
     if (!mastersToAdd.isEmpty()) {
       // Bring up new masters and update the configs.
       // No need to check mastersToRemove as total number of masters is invariant.
@@ -806,22 +813,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
 
     return masterAddressesChanged;
-  }
-
-  private void validateEditParams(Cluster newCluster, Cluster curCluster) {
-    // Move this logic to UniverseDefinitionTaskBase.
-    String newProviderStr = newCluster.userIntent.provider;
-    String currProviderStr = curCluster.userIntent.provider;
-
-    if (!newProviderStr.equals(currProviderStr)) {
-      String msg =
-          String.format(
-              "Provider can't change during editing of the universe. "
-                  + "Expected provider %s but found %s for cluster type: %s",
-              currProviderStr, newProviderStr, newCluster.clusterType);
-      log.error(msg);
-      throw new IllegalArgumentException(msg);
-    }
   }
 
   private Set<NodeDetails> filterMastersToAdd(Set<NodeDetails> mastersToAdd, Universe universe) {
@@ -1831,8 +1822,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // 3. Run helm upgrade so that new StatefulSet is created with updated disk size.
     // The newly created statefulSet also claims the already running pods.
     String softwareVersion = userIntent.ybSoftwareVersion;
-    UUID providerUUID = UUID.fromString(userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUUID);
+    Provider provider = Util.getSingleProvider(newCluster);
 
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -1899,6 +1889,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       int numNodesInAZ = placement.tservers.getOrDefault(azUUID, 0);
       int numTservers = numNodesInAZ;
       PlacementInfoUtil.addPlacementZone(azUUID, azPI, rf, numNodesInAZ, true);
+      // Carry over the master and tserver STS index from the current placement so that the
+      // STS name generated for the delete/expand/helm-upgrade subtasks matches the existing
+      // StatefulSet (which can have a non-zero index, e.g. after a full move).
+      PlacementAZ placementAZ = placement.placementInfo.findByAZUUID(azUUID);
+      if (placementAZ != null) {
+        PlacementAZ azPlacementAZ = azPI.cloudList.get(0).regionList.get(0).azList.get(0);
+        azPlacementAZ.masterStsIndex = placementAZ.masterStsIndex;
+        azPlacementAZ.tsStsIndex = placementAZ.tsStsIndex;
+      }
+
       // Validate that the StorageClass has allowVolumeExpansion=true
       if (needsExpandPVCInZone) {
         // Only check for volume expansion if we are actually expanding the PVC.
@@ -1915,7 +1915,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 azName,
                 isReadOnlyCluster,
                 newNamingStyle,
-                providerUUID,
+                provider.getUuid(),
                 serverType));
         // create the three tasks to update volume size
         // Add subtask to stsDelete subtask group
@@ -2036,7 +2036,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               azName,
               isReadOnlyCluster,
               newNamingStyle,
-              providerUUID,
+              provider.getUuid(),
               newDiskSizeGi,
               serverType));
 

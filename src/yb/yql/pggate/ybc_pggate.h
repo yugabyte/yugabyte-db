@@ -108,10 +108,6 @@ YbcStatus YBCGetSharedDBCatalogVersion(
 // catalog version mode is enabled.
 YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 
-// Return true if the pg_yb_catalog_version table has been updated to
-// have one row per database.
-YbcStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
-
 YbcStatus YBCGetTserverCatalogMessageLists(
     YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
     YbcCatalogMessageLists* message_lists);
@@ -217,14 +213,12 @@ YbcStatus YBCPgIsDatabaseColocated(const YbcPgOid database_oid, bool *colocated,
 YbcStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called);
 
 YbcStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               int64_t seq_oid,
                                               uint64_t ysql_catalog_version,
-                                              bool is_db_catalog_version_mode,
                                               int64_t last_val,
                                               bool is_called,
                                               int64_t expected_last_val,
@@ -234,7 +228,6 @@ YbcStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
 YbcStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called,
                                  bool* skipped);
@@ -242,7 +235,6 @@ YbcStatus YBCUpdateSequenceTuple(int64_t db_oid,
 YbcStatus YBCFetchSequenceTuple(int64_t db_oid,
                                 int64_t seq_oid,
                                 uint64_t ysql_catalog_version,
-                                bool is_db_catalog_version_mode,
                                 uint32_t fetch_count,
                                 int64_t inc_by,
                                 int64_t min_value,
@@ -254,7 +246,6 @@ YbcStatus YBCFetchSequenceTuple(int64_t db_oid,
 YbcStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
-                               bool is_db_catalog_version_mode,
                                int64_t *last_val,
                                bool *is_called);
 
@@ -489,7 +480,8 @@ YbcStatus YBCPgWaitForBackendsCatalogVersion(
 
 YbcStatus YBCPgBackfillIndex(
     const YbcPgOid database_oid,
-    const YbcPgOid index_relfilenode_oid);
+    const YbcPgOid index_relfilenode_oid,
+    bool use_regular_transaction_block);
 
 YbcStatus YBCPgWaitVectorIndexReady(
     const YbcPgOid database_oid,
@@ -643,6 +635,7 @@ YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
+                         bool skip_intents_read,
                          int targrows,
                          double rstate_w,
                          uint64_t rand_state_s0,
@@ -664,12 +657,14 @@ YbcStatus YBCPgNewInsertBlock(
     YbcPgOid table_oid,
     YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
+    bool skip_intents_write,
     YbcPgStatement *handle);
 
 YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
+                         bool skip_intents_write,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
@@ -685,6 +680,7 @@ YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
+                         bool skip_intents_write,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
@@ -694,6 +690,7 @@ YbcStatus YBCPgNewDelete(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
+                         bool skip_intents_write,
                          YbcPgStatement *handle);
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle);
@@ -714,6 +711,7 @@ YbcStatus YBCPgNewSelect(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          const YbcPgPrepareParameters *prepare_params,
                          YbcPgTableLocalityInfo locality_info,
+                         bool skip_intents_read,
                          YbcPgStatement *handle);
 
 // Set forward/backward scan direction.
@@ -859,8 +857,12 @@ void YBCNotifyDeferredTriggersProcessingStarted();
 // Explicit Row-level Locking.
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
-    const YbcPgExplicitRowLockParams *params, YbcPgTableLocalityInfo locality_info);
+    const YbcPgExplicitRowLockParams *params, YbcPgTableLocalityInfo locality_info,
+    const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle);
 YbcPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
+YbcPgExplicitRowLockStatus YBCIsExplicitlyLockedRowSkipped(
+    YbcIsExplicitlyLockedRowSkippedCheckHandle handle, bool* result);
+YbcIsExplicitlyLockedRowSkippedCheckHandle YBCAcquireExplicitlyLockedRowSkippedCheckHandle();
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
 YbcStatus YBCPgAddInsertOnConflictKey(const YbcPgYBTupleIdDescriptor* tupleid, void* state,
@@ -951,6 +953,9 @@ YbcStatus YBCPgCheckIfPitrActive(bool* is_active);
 
 YbcStatus YBCIsObjectPartOfXRepl(YbcPgOid database_oid, YbcPgOid table_relfilenode_oid,
                                  bool* is_object_part_of_xrepl);
+
+YbcStatus YBCIsNamespacePartOfCDCSDK(YbcPgOid database_oid,
+                                    bool* is_namespace_part_of_cdcsdk);
 
 YbcStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
 
@@ -1097,22 +1102,23 @@ YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(
     const char *cmd_name, const char *func_name);
 YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
     uint64_t tuples_processed, const char *table_name);
-YbcFlushDebugContext YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(YbcPgOid db_oid);
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
+YbcStatus YBCResetAutoAnalyzeMutationCounters(
+    YbcPgOid database_oid, YbcPgOid table_relfilenode_oid);
 
 // ---------------------------------------------------------------------------
 // PgGlobalViewRead: scan interface for federated YugabyteDB global views.
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle);
-void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle);
+YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle);
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values);
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle, const char *query);
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(
+    YbcPgGlobalViewRead handle, const char *database_name, const char *query,
+    const char *tserver_uuid);
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
-bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle);
 
 #ifdef __cplusplus
 }  // extern "C"

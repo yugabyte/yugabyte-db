@@ -559,6 +559,19 @@ public class PlatformReplicationManager {
     }
   }
 
+  // When adding a new instance, do a sync for all instance and then demote the remote instance
+  // to ensure with "promote" as true, to ensure it gets restarted.
+  public void syncNewInstance(PlatformInstance newInstance) {
+    if (replicationHelper.isBackupScheduleEnabled()) {
+      this.sync();
+      if (!newInstance.isLeader()) {
+        replicationHelper.demoteRemoteInstance(newInstance, true);
+      } else {
+        log.debug("New instance {} is a leader, skipping demotion", newInstance.getAddress());
+      }
+    }
+  }
+
   private boolean precheckSyncCondition(HighAvailabilityConfig config) {
     Optional<PlatformInstance> localInstance = config.getLocal();
     if (!localInstance.isPresent()) {
@@ -782,17 +795,27 @@ public class PlatformReplicationManager {
     private final boolean excludePrometheus;
     // Whether to exclude the YB release binaries from the backup or not.
     private final boolean excludeReleases;
+    // Whether to exclude PA collector database from the backup or not.
+    private final boolean excludePADatabase;
+    // Whether to exclude PA collector collected data files from the backup or not.
+    private final boolean excludePAFiles;
     // Where to output the platform backup
     private final String outputDirectory;
 
     public CreatePlatformBackupParams() {
-      this(true, true, replicationHelper.getBackupDir().toString());
+      this(true, true, true, true, replicationHelper.getBackupDir().toString());
     }
 
     public CreatePlatformBackupParams(
-        boolean excludePrometheus, boolean excludeReleases, String outputDirectory) {
+        boolean excludePrometheus,
+        boolean excludeReleases,
+        boolean excludePADatabase,
+        boolean excludePAFiles,
+        String outputDirectory) {
       this.excludePrometheus = excludePrometheus;
       this.excludeReleases = excludeReleases;
+      this.excludePADatabase = excludePADatabase;
+      this.excludePAFiles = excludePAFiles;
       this.outputDirectory = outputDirectory;
     }
 
@@ -806,6 +829,12 @@ public class PlatformReplicationManager {
       }
       if (excludeReleases) {
         commandArgs.add("--exclude_releases");
+      }
+      if (excludePADatabase) {
+        commandArgs.add("--exclude_pa_database");
+      }
+      if (excludePAFiles) {
+        commandArgs.add("--exclude_pa_files");
       }
       commandArgs.add("--disable_version_check");
 
@@ -829,12 +858,27 @@ public class PlatformReplicationManager {
     private final File input;
     private final boolean k8sRestoreYbaDbOnRestart;
     private final boolean skipOldFiles;
+    // Whether to exclude PA collector database from the restore or not.
+    private final boolean excludePADatabase;
+    // Whether to exclude PA collector collected data files from the restore or not.
+    private final boolean excludePAFiles;
 
     public RestorePlatformBackupParams(
         File input, boolean k8sRestoreYbaDbOnRestart, boolean skipOldFiles) {
+      this(input, k8sRestoreYbaDbOnRestart, skipOldFiles, true, true);
+    }
+
+    public RestorePlatformBackupParams(
+        File input,
+        boolean k8sRestoreYbaDbOnRestart,
+        boolean skipOldFiles,
+        boolean excludePADatabase,
+        boolean excludePAFiles) {
       this.input = input;
       this.k8sRestoreYbaDbOnRestart = k8sRestoreYbaDbOnRestart;
       this.skipOldFiles = skipOldFiles;
+      this.excludePADatabase = excludePADatabase;
+      this.excludePAFiles = excludePAFiles;
     }
 
     @Override
@@ -843,6 +887,12 @@ public class PlatformReplicationManager {
       commandArgs.add("restore");
       commandArgs.add("--input");
       commandArgs.add(input.getAbsolutePath());
+      if (excludePADatabase) {
+        commandArgs.add("--exclude_pa_database");
+      }
+      if (excludePAFiles) {
+        commandArgs.add("--exclude_pa_files");
+      }
       commandArgs.add("--disable_version_check");
       String installation = replicationHelper.getInstallationType();
       if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
@@ -929,10 +979,20 @@ public class PlatformReplicationManager {
    * @return the output/results of running the script
    */
   public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart, boolean skipOldFiles) {
+    return restoreBackup(input, k8sRestoreYbaDbOnRestart, skipOldFiles, true, true);
+  }
+
+  public boolean restoreBackup(
+      File input,
+      boolean k8sRestoreYbaDbOnRestart,
+      boolean skipOldFiles,
+      boolean excludePADatabase,
+      boolean excludePAFiles) {
     log.info("Restoring platform backup...");
     ShellResponse response =
         replicationHelper.runCommand(
-            new RestorePlatformBackupParams(input, k8sRestoreYbaDbOnRestart, skipOldFiles));
+            new RestorePlatformBackupParams(
+                input, k8sRestoreYbaDbOnRestart, skipOldFiles, excludePADatabase, excludePAFiles));
     if (response.code != 0) {
       log.error("Restore failed: {}", response.message);
     } else {

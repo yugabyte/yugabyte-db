@@ -112,7 +112,12 @@ class XClusterDDLQueueHandler {
   // Executes DDLs at the commit_times in safe_time_batch_ if we have a valid batch.
   Status ExecuteCommittedDDLs();
 
-  Status RunAndLogQuery(const std::string& query);
+  // Processes all DDL queries for a single commit time, wrapping multiple DDLs in a transaction.
+  Status ProcessQueriesForCommitTime(const HybridTime& commit_time);
+
+  bool ShouldUseTransactionalDDL(const std::vector<XClusterDDLQueryInfo>& queries) const;
+
+  virtual Status RunAndLogQuery(const std::string& query);
 
   // Run the DDL query with the appropriate flags set.
   virtual Status ProcessDDLQuery(const XClusterDDLQueryInfo& query_info);

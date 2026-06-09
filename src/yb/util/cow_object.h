@@ -40,6 +40,7 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/logging.h"
 #include "yb/util/rwc_lock.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

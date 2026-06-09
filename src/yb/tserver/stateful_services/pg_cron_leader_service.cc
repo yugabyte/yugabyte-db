@@ -148,7 +148,7 @@ Status PgCronLeaderService::SetLastMinute(int64_t last_minute, CoarseTimePoint d
   auto session = VERIFY_RESULT(GetYBSession(deadline));
   auto* table = VERIFY_RESULT(GetServiceTable());
 
-  auto write_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  auto write_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
   auto* const req = write_op->mutable_request();
   QLAddInt64HashValue(req, kPgCronDataKey);
 
@@ -186,7 +186,7 @@ Result<int64_t> PgCronLeaderService::GetLastMinute(CoarseTimePoint deadline) {
   auto session = VERIFY_RESULT(GetYBSession(deadline));
   auto* table = VERIFY_RESULT(GetServiceTable());
 
-  auto read_op = table->NewReadOp();
+  auto read_op = table->NewReadOp(session->arena());
   auto* const read_req = read_op->mutable_request();
   QLAddInt64HashValue(read_req, kPgCronDataKey);
   table->AddColumns({kPgCronDataColName}, read_req);

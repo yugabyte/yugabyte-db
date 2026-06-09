@@ -311,7 +311,7 @@ public class ModelFactory {
     // Custom setup a default AWS provider, can be overridden later.
     List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
     Provider p = providerList.isEmpty() ? newProvider(c, cloudType) : providerList.get(0);
-
+    List<Region> regions = p.getAllRegions();
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
@@ -319,6 +319,8 @@ public class ModelFactory {
     userIntent.providerType = cloudType;
     userIntent.ybSoftwareVersion = "2.17.0.0-b1";
     userIntent.useSystemd = useSystemd;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.regionList = regions.stream().map(Region::getUuid).collect(Collectors.toList());
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(universeUUID);
     params.nodeDetailsSet = new HashSet<>();
@@ -332,10 +334,15 @@ public class ModelFactory {
       NodeDetails node = new NodeDetails();
       node.nodeUuid = UUID.randomUUID();
       node.cloudInfo = new CloudSpecificInfo();
+      node.cloudInfo.cloud = cloudType.toString();
+      node.cloudInfo.instance_type = userIntent.instanceType;
       node.cloudInfo.private_ip = "127.0.0.1";
       params.nodeDetailsSet.add(node);
       NodeDetails node2 = node.clone();
       node2.nodeUuid = UUID.randomUUID();
+      node.cloudInfo = new CloudSpecificInfo();
+      node.cloudInfo.instance_type = userIntent.instanceType;
+      node.cloudInfo.cloud = cloudType.toString();
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
     }
@@ -868,6 +875,11 @@ public class ModelFactory {
   // - For each mentioned regions we are trying to find it at first. If the region
   // isn't found, it is created. The same is about availability zones.
   public static Universe createFromConfig(Provider provider, String univName, String config) {
+    return createFromConfig(provider, univName, config, false);
+  }
+
+  public static Universe createFromConfig(
+      Provider provider, String univName, String config, boolean initPartitions) {
     Customer customer = Customer.get(provider.getCustomerUUID());
     Universe universe =
         createUniverse(univName, UUID.randomUUID(), customer.getId(), provider.getCloudCode());
@@ -955,6 +967,14 @@ public class ModelFactory {
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           primaryCluster.userIntent = userIntent;
           primaryCluster.placementInfo = placementInfo;
+          if (initPartitions) {
+            UniverseDefinitionTaskParams.PartitionInfo partitionInfo =
+                new UniverseDefinitionTaskParams.PartitionInfo();
+            partitionInfo.setReplicationFactor(userIntent.replicationFactor);
+            partitionInfo.setDefaultPartition(true);
+            partitionInfo.setPlacement(placementInfo);
+            primaryCluster.setPartitions(Collections.singletonList(partitionInfo));
+          }
         };
 
     return Universe.saveDetails(universe.getUniverseUUID(), updater);

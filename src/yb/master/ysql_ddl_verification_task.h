@@ -65,21 +65,33 @@ namespace master {
  * or use DDL entities created by uncommitted transactions.
  */
 
+// Callbacks for DdlRequesterLivenessTask to interact with the background DDL operation
+// (e.g. BackfillTable) that it is monitoring.
+struct BackgroundDdlCallbacks {
+  // Returns true when the operation has completed and no further polling is needed.
+  std::function<bool()> done_;
+  // Cancels the operation. Called when the initiating PG backend is detected as killed.
+  std::function<Status()> abort_;
+};
+
 // Helper class that encapsulates the logic to poll the transaction status.
 class PollTransactionStatusBase {
  public:
   PollTransactionStatusBase(
-      const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future);
+      const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future,
+      const std::string& description);
 
   virtual ~PollTransactionStatusBase();
 
  protected:
   Status VerifyTransaction();
   virtual void TransactionPending() = 0;
-  virtual void FinishPollTransaction() = 0;
+  virtual void FinishPollTransaction(bool aborted) = 0;
   void Shutdown();
+  std::string LogPrefix() const;
 
   TransactionMetadata transaction_;
+  std::string description_;
 
  private:
   void TransactionReceived(Status txn_status,
@@ -114,7 +126,7 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
   std::string type_name() const override { return "Namespace verification"; }
 
   std::string description() const override {
-    return Format("TableSchemaVerificationTask for $0", namespace_info_.ToString());
+    return Format("NamespaceSchemaVerificationTask for $0", namespace_info_.ToString());
   };
 
   ~NamespaceVerificationTask() = default;
@@ -133,7 +145,7 @@ class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
   Status FirstStep() override;
   void TransactionPending() override;
   Status ValidateRunnable() override;
-  void FinishPollTransaction() override;
+  void FinishPollTransaction(bool aborted) override;
   Status CheckNsExists();
   void TaskCompleted(const Status& status) override;
   void PerformAbort() override;
@@ -186,13 +198,53 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
   Status CheckTableExists();
   Status CompareSchema();
   Status FinishTask(Result<std::optional<bool>> is_committed);
-  void FinishPollTransaction() override;
+  void FinishPollTransaction(bool aborted) override;
   void TaskCompleted(const Status& status) override;
   void PerformAbort() override;
 
   SysCatalogTable& sys_catalog_;
   bool ddl_atomicity_enabled_;
   std::optional<bool> is_committed_{std::nullopt};
+};
+
+// Periodically polls a DDL backend's transaction and calls BackgroundDdlCallbacks::abort
+// when the transaction is detected as ABORTED (e.g. pg_terminate_backend killed the session).
+// Can be attached to any long-running background DDL operation.
+class DdlRequesterLivenessTask : public MultiStepTableTaskBase,
+                                 public PollTransactionStatusBase {
+ public:
+  static std::shared_ptr<DdlRequesterLivenessTask> CreateAndStartTask(
+        CatalogManager& catalog_manager,
+        scoped_refptr<TableInfo> table,
+        const TransactionMetadata& transaction,
+        BackgroundDdlCallbacks callbacks,
+        std::shared_future<client::YBClient*> client_future,
+        rpc::Messenger& messenger,
+        const LeaderEpoch& epoch);
+  DdlRequesterLivenessTask(
+      CatalogManager& catalog_manager,
+      scoped_refptr<TableInfo> table,
+      const TransactionMetadata& transaction,
+      BackgroundDdlCallbacks callbacks,
+      std::shared_future<client::YBClient*> client_future,
+      rpc::Messenger& messenger,
+      const LeaderEpoch& epoch);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kDdlRequesterLiveness;
+  }
+  std::string type_name() const override { return "DdlRequesterLivenessTask"; }
+  std::string description() const override;
+
+ private:
+  Status FirstStep() override;
+  void TransactionPending() override;
+  void FinishPollTransaction(bool aborted) override;
+  void TaskCompleted(const Status& status) override;
+  Status ValidateRunnable() override;
+  void PerformAbort() override;
+
+  BackgroundDdlCallbacks callbacks_;
 };
 
 }  // namespace master

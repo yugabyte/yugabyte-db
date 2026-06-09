@@ -159,7 +159,8 @@ class TSCallExecutor {
     return Status::OK();
   }
 
-  Result<bool> Exec(const dockv::PgTableRow& row, DocPgExprExecutor::Results* results) {
+  Result<bool> Exec(
+      const dockv::PgTableRow& row, ThreadSafeArena* arena, DocPgExprExecutor::Results* results) {
     // early exit if there are no operations to process
     if(where_clause_.empty() && targets_.empty()) {
       return true;
@@ -182,7 +183,7 @@ class TSCallExecutor {
       return false;
     }
     if (results && !targets_.empty()) {
-      RETURN_NOT_OK(EvalTargetExprCalls(results));
+      RETURN_NOT_OK(EvalTargetExprCalls(arena, results));
     }
     return true;
   }
@@ -255,13 +256,14 @@ class TSCallExecutor {
     return true;
   }
 
-  Status EvalTargetExprCalls(DocPgExprExecutor::Results* results) {
+  Status EvalTargetExprCalls(ThreadSafeArena* arena, DocPgExprExecutor::Results* results) {
     results->reserve(targets_.size());
     for (const auto& target : targets_) {
       auto [datum, is_null] = VERIFY_RESULT(DocPgEvalExpr(target.first, expr_ctx_));
       // Convert Postgres result to DocDB
-      RETURN_NOT_OK(yb::pggate::PgValueToPB(
-          target.second.var_type, datum, is_null, &results->emplace_back().Writer().NewValue()));
+      RETURN_NOT_OK(pggate::PgValueToPB(
+          target.second.var_type, datum, is_null,
+          &results->emplace_back(arena).Writer().NewValue()));
     }
     return Status::OK();
   }
@@ -342,9 +344,10 @@ class DocPgExprExecutor::State {
   }
 
   Result<bool> Exec(
-      const dockv::PgTableRow& row, Results* results) {
+      const dockv::PgTableRow& row, ThreadSafeArena* arena,
+      std::vector<qlexpr::LWExprResult>* results) {
     return (!condition_filter_ || VERIFY_RESULT(condition_filter_->IsMatch(row))) &&
-           (!tscall_executor_ || VERIFY_RESULT(tscall_executor_->Exec(row, results)));
+           (!tscall_executor_ || VERIFY_RESULT(tscall_executor_->Exec(row, arena, results)));
   }
 
   bool IsColumnRefsRequired() const {
@@ -389,8 +392,9 @@ DocPgExprExecutor::DocPgExprExecutor(std::unique_ptr<State> state)
 
 DocPgExprExecutor::~DocPgExprExecutor() = default;
 
-Result<bool> DocPgExprExecutor::Exec(const dockv::PgTableRow& row, Results* results) {
-  return state_->Exec(row, results);
+Result<bool> DocPgExprExecutor::Exec(
+    const dockv::PgTableRow& row, ThreadSafeArena* arena, Results* results) {
+  return state_->Exec(row, arena, results);
 }
 
 DocPgExprExecutorBuilder::DocPgExprExecutorBuilder(

@@ -25,18 +25,23 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 {{< warning >}}
 Review the following information before starting an upgrade.
 {{< /warning >}}
+{{< warning title="TA-31533: Universes with xCluster" >}}
+For some xCluster setups, before upgrading, you should run a verification script to check if the universe is affected by TA-31533. For more information, refer to {{<ta 31533>}}.
+{{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
 
-- You can only upgrade to the latest minor version of every release.
+- It is strongly recommended to upgrade to the latest minor version of every release.
 
-    For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
+    For example, if you are upgrading from v2.20.2.0, and the latest release in the v2024.2 release series is v2024.2.8.0, then you should upgrade to v2024.2.8.0 (and not v2024.2.1.0 or v2024.2.0.0).
 
     To view and download releases, refer to [Releases](/stable/releases/).
 
+- Upgrades must be to a chronologically later release - you cannot upgrade to a version that was released before the one you are currently running. For example, if you are running v2024.2.8.0 (released February 23, 2026), you cannot upgrade to v2025.2.1.0 (released February 12, 2026).
+
 - Upgrades are not supported between preview and stable versions.
 
-- Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
+- Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector at the top of the page.
 
 - Roll back is {{<tags/feature/ea>}} and supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 
@@ -282,7 +287,7 @@ Use the following procedure to roll back all YB-Masters:
 
 When you have unidirectional xCluster replication, it is recommended to upgrade the target cluster before the source. After the target cluster is upgraded and finalized, you can proceed to upgrade the source cluster.
 
-If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
+If you have bidirectional xCluster replication, perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
 
 {{< note title="Note" >}}
 xCluster replication requires the target cluster version to the same or later than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.

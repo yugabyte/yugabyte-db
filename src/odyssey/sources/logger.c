@@ -295,9 +295,10 @@ od_logger_format(od_logger_t *logger, od_logger_level_t level, char *context,
 				 * by PG. This helps correlated logs across the connection manager and PG
 				 * backends.
 				*/
+				struct tm tm;
 				len = strftime(dst_pos, dst_end - dst_pos,
 					       "%Y-%m-%d %H:%M:%S",
-					       gmtime(&tv.tv_sec));
+					       gmtime_r(&tv.tv_sec, &tm));
 				dst_pos += len;
 				len = od_snprintf(dst_pos, dst_end - dst_pos,
 						  ".%03d UTC",

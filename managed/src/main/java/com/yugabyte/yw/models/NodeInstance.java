@@ -309,13 +309,11 @@ public class NodeInstance extends Model {
       return Collections.emptyList();
     }
     Universe universe = optUniverse.get();
-    UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
     Set<UUID> nodeUUIDS =
         universe.getNodes().stream().map(NodeDetails::getNodeUuid).collect(Collectors.toSet());
-    List<NodeInstance> nodeInstances = NodeInstance.listByProvider(providerUUID);
     List<NodeInstance> filteredInstances =
-        nodeInstances.stream()
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAllProviderUUIDs().stream()
+            .flatMap(providerUUID -> NodeInstance.listByProvider(providerUUID).stream())
             .filter(instance -> nodeUUIDS.contains(instance.getNodeUuid()))
             .collect(Collectors.toList());
 

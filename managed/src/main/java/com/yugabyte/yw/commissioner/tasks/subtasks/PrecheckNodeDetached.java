@@ -9,9 +9,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -30,7 +30,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -136,6 +135,14 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
             .nodeInstance(instance)
             .build();
     ObjectNode rootNode = ynpConfigGenerator.generateConfig(configParams);
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck)) {
+      Object ynpVersion =
+          configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
+      if (ynpVersion != null) {
+        ((ObjectNode) rootNode.get("extra"))
+            .put("expected_ynp_version", ynpVersion.toString().trim());
+      }
+    }
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     YnpPreflightCheckInput checkParams =
@@ -159,18 +166,16 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
   @Override
   public void run() {
     Provider provider = taskParams().getProvider();
-    if (provider.getCloudCode() == CloudType.onprem && provider.getDetails().skipProvisioning) {
+    if (provider.isManualOnprem()) {
+      // Node agent must already be present and running for onprem manual (non-sudo).
       NodeInstance instance = NodeInstance.getOrBadRequest(taskParams().getNodeUuid());
-      Optional<NodeAgent> nodeAgentOpt =
-          nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-              instance.getDetails().ip, provider, null /* universe */);
-      if (nodeAgentOpt.isEmpty()
-          || confGetter.getGlobalConf(GlobalConfKeys.disableYnpNodePreflightCheck)) {
+      NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(instance.getDetails().ip);
+      if (confGetter.getGlobalConf(GlobalConfKeys.disableYnpNodePreflightCheck)) {
         // Run preflight_checks.sh.
         runLegacyPreflightChecks();
       } else {
         // Run the new YNP preflight checks implemented in node-agent.
-        runYnpPreflightChecks(provider, instance, nodeAgentOpt.get());
+        runYnpPreflightChecks(provider, instance, nodeAgent);
       }
     } else {
       // Sudo access is available, and YNP is not set up yet.

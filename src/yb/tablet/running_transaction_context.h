@@ -93,6 +93,8 @@ class RunningTransactionContext {
 
   virtual bool Closing() const = 0;
 
+  virtual Status CheckClosing() const = 0;
+
   virtual FastModeTransactionScope CreateFastModeTransactionScope(
       const TransactionMetadata& metadata) = 0;
 
@@ -108,6 +110,19 @@ class RunningTransactionContext {
   // Used only in tests.
   Delayer delayer_;
 };
+
+// Wraps a callback so it only executes while the weak_ptr target is alive.
+// The locked shared_ptr is held for the callback's duration, preventing destruction mid-callback.
+template <class Callback>
+auto GuardedByWeak(std::weak_ptr<void> weak, Callback&& callback) {
+  return [weak = std::move(weak), callback = std::forward<Callback>(callback)](auto&&... args) {
+    auto guard = weak.lock();
+    if (!guard) {
+      return;
+    }
+    callback(std::forward<decltype(args)>(args)...);
+  };
+}
 
 } // namespace tablet
 } // namespace yb

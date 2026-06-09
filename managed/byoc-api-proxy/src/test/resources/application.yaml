@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: ByocApiProxy
+
+yba:
+  uuid: ${YBA_UUID:e55a0e4c-3987-4e1b-89f2-28839e32c5b7}
+  base_url: ${YBA_BASE_URL:http://localhost:9001/api}
+proxied_app:
+  base_url: ${PROXIED_APP_BASE_URL:http://localhost:9000/api}
+  read_timeout: PT30S
+  poll_batch_size: ${PROXIED_APP_POLL_BATCH_SIZE:10}
+  auth:
+#    # a permanent API token is currently used to authenticate to task runners
+#    api_token:
+#    # API server private endpoints are authenticated using a 'service account'
+#    # and admin tokens valid for 12 hours
+    type: service_account
+    service_account:
+      email: cloud-admin-console-dev@yugabyte.com
+      password: random-password-1
+      refresh_interval: PT10H

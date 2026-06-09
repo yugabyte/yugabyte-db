@@ -73,14 +73,20 @@ export const prepareScheduledBackupPayload = (
     universeUUID,
     // backupObjects
     useTablespaces: backupObjects.useTablespaces,
+    useRoles: backupObjects.useRoles,
 
-    //Backup Frequency
-    schedulingFrequency:
-      backupFrequency.frequency *
-      (MILLISECONDS_IN as any)[backupFrequency.frequencyTimeUnit.toUpperCase()],
-    frequencyTimeUnit: backupFrequency.frequencyTimeUnit.toUpperCase(),
     enablePointInTimeRestore: backupFrequency.backupStrategy === BackupStrategyType.POINT_IN_TIME
   };
+
+  // Must send either cron OR scheduling frequency — backend rejects both (BackupsController).
+  if (backupFrequency.useCronExpression) {
+    payload['cronExpression'] = backupFrequency.cronExpression.trim();
+  } else {
+    payload['schedulingFrequency'] =
+      backupFrequency.frequency *
+      (MILLISECONDS_IN as any)[backupFrequency.frequencyTimeUnit.toUpperCase()];
+    payload['frequencyTimeUnit'] = backupFrequency.frequencyTimeUnit.toUpperCase();
+  }
 
   if (!generalSettings.isYBCEnabledInUniverse) {
     payload['parallelism'] = generalSettings.parallelism ?? ParallelThreads.MIN;

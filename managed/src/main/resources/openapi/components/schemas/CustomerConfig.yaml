@@ -1,0 +1,39 @@
+title: CustomerConfig
+description: Customer configuration with UI enrichment.
+type: object
+properties:
+  config_uuid:
+    description: Unique identifier of the customer configuration row.
+    type: string
+    format: uuid
+  config_name:
+    description: Configuration name.
+    type: string
+  customer_uuid:
+    description: Customer that owns this configuration.
+    type: string
+    format: uuid
+  type:
+    description: 'Configuration category (storage, alerts, call-home, password policy, etc.).'
+    type: string
+    enum:
+      - STORAGE
+      - ALERTS
+      - CALLHOME
+      - PASSWORD_POLICY
+  name:
+    description: Configuration key or subtype within the category.
+    type: string
+  data:
+    description: Masked configuration payload (opaque structure depends on type/name).
+    type: object
+    additionalProperties: true
+  state:
+    description: Lifecycle state of the configuration.
+    type: string
+    enum:
+      - Active
+      - QueuedForDeletion
+  is_kubernetes_operator_controlled:
+    description: Whether this configuration is managed by the Kubernetes operator.
+    type: boolean

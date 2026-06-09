@@ -3,11 +3,10 @@ title: Deploy on Microsoft Azure using Terraform
 headerTitle: Microsoft Azure
 linkTitle: Microsoft Azure
 description: Use Terraform to deploy YugabyteDB on Microsoft Azure.
-menu:
-  stable:
-    identifier: deploy-in-azure-3-terraform
-    parent: public-clouds
-    weight: 650
+private: true
+_build:
+  render: false
+  list: false
 type: docs
 ---
 

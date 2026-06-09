@@ -87,9 +87,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     verifyCertificateValidity(universe);
-    if (!userIntent.providerType.equals(CloudType.kubernetes)) {
+    if (!Util.isKubernetesBasedUniverse(universe.getUniverseDetails())) {
       verifyParamsForNormalUpgrade(universe, isFirstTry);
     } else {
       // TODO: Fix rotate certs api for VM universes and add this validation for VM universes.
@@ -303,7 +302,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
           rootCARotationType = CertRotationType.RootCert;
           break;
         case CustomCertHostPath:
-          if (!userIntent.providerType.equals(CloudType.onprem)) {
+          if (Util.checkAnyProviderType(userIntent, c -> c != CloudType.onprem)) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");
@@ -371,7 +370,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
           clientRootCARotationType = CertRotationType.RootCert;
           break;
         case CustomCertHostPath:
-          if (!userIntent.providerType.equals(CloudType.onprem)) {
+          if (Util.checkAnyProviderType(userIntent, c -> c != CloudType.onprem)) {
             throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");

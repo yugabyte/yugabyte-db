@@ -181,6 +181,7 @@ public class GFlagsValidation {
       xmlModule.setDefaultUseWrapper(false);
       XmlMapper xmlMapper = new XmlMapper(xmlModule);
       AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
+      setRestartInfo(data.flags);
       if (mostUsedGFlags) {
         InputStream inputStream =
             environment.resourceAsStream("gflags_metadata/most_used_gflags.json");
@@ -563,6 +564,23 @@ public class GFlagsValidation {
       return new HashSet<>();
     }
     return new HashSet<>(Arrays.asList(StringUtils.splitPreserveAllTokens(flagDetails.tags, ",")));
+  }
+
+  /**
+   * Sets requiresRestart on each flag from its tags. In YugabyteDB metadata, the "runtime" tag
+   * means the flag can be changed at runtime (no process restart); absence of "runtime" means the
+   * flag is read only at startup, so a restart (or rolling restart) is required for changes to take
+   * effect.
+   */
+  private void setRestartInfo(List<GFlagDetails> flags) {
+    if (flags == null) {
+      return;
+    }
+    for (GFlagDetails flag : flags) {
+      boolean isRuntime =
+          getFlagsTagSet(flag).stream().anyMatch(t -> "runtime".equalsIgnoreCase(t.trim()));
+      flag.requiresRestart = !isRuntime;
+    }
   }
 
   public boolean isAutoFlag(GFlagDetails flag) {

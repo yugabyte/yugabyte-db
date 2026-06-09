@@ -29,7 +29,7 @@ func MakeRequest(
 	url, method string,
 	headers map[string]string,
 	data interface{},
-	verifySSL bool,
+	skipTLSVerify bool,
 ) ([]byte, int, error) {
 	var reqBody []byte
 	var err error
@@ -40,7 +40,7 @@ func MakeRequest(
 		}
 	}
 	client := &http.Client{}
-	if !verifySSL {
+	if skipTLSVerify {
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}

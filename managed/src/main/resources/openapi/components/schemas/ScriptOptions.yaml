@@ -41,6 +41,9 @@ properties:
       Run the script as a particular Linux user.
       Defaults to yugabyte. When using Node Agent, the command is executed as this user.
       When using SSH fallback, this sets the SSH user.
+      If your script invokes sudo, the chosen linux_user must have NOPASSWD sudo
+      configured for those commands; otherwise the script will block on the password
+      prompt and surface as a timeout rather than an authorization error.
     type: string
     example: yugabyte
     default: yugabyte

@@ -79,13 +79,11 @@ DECLARE_bool(mem_tracker_logging);
 DECLARE_bool(mem_tracker_log_stack_trace);
 DECLARE_bool(use_libbacktrace);
 
-DEFINE_NON_RUNTIME_string(
-    external_daemon_heap_profile_prefix, "",
+DEFINE_NON_RUNTIME_string(external_daemon_heap_profile_prefix, "",
     "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
     "suffix for external mini-cluster daemons.");
 
-DEFINE_NON_RUNTIME_int64(
-    external_mini_cluster_max_log_bytes, 50_MB * 100,
+DEFINE_NON_RUNTIME_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
     "Max total size of log bytes produced by all external mini-cluster daemons. "
     "The test is shut down if this limit is exceeded.");
 

@@ -9,7 +9,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -26,7 +25,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -100,7 +98,7 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
       agentMap.put(nodeDetails.cloudInfo.private_ip, nodeAgent);
     }
 
-    when(mockNodeUniverseManager.maybeUpgradeAndGetNodeAgent(any(), any(), anyBoolean()))
+    when(mockNodeUniverseManager.maybeUpgradeAndGetNodeAgent(any(), any()))
         .then(
             invocation -> {
               NodeDetails node = invocation.getArgument(1);
@@ -123,9 +121,9 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
 
   @Test
   public void testTurnOnNoConfig() throws InterruptedException {
-    RuntimeConfigEntry.upsertGlobal("yb.ui.feature_flags.enable_earlyoom", "true");
+    factory.globalRuntimeConf().setValue("yb.ui.feature_flags.enable_earlyoom", "true");
     String earlyoomArgs = "-M 1024 -m 50";
-    RuntimeConfigEntry.upsertGlobal("yb.node_agent.earlyoom_default_args", earlyoomArgs);
+    factory.globalRuntimeConf().setValue("yb.node_agent.earlyoom_default_args", earlyoomArgs);
     AdditionalServicesStateData data = new AdditionalServicesStateData();
     data.setEarlyoomEnabled(true);
     Result result = runOperationInUniverse(defaultUniverse.getUniverseUUID(), data);
@@ -154,7 +152,7 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
 
   @Test
   public void testTurnOnWithConfig() throws InterruptedException {
-    RuntimeConfigEntry.upsertGlobal("yb.ui.feature_flags.enable_earlyoom", "true");
+    factory.globalRuntimeConf().setValue("yb.ui.feature_flags.enable_earlyoom", "true");
     AdditionalServicesStateData.EarlyoomConfig earlyoomConfig =
         new AdditionalServicesStateData.EarlyoomConfig();
     earlyoomConfig.setAvailMemoryTermKb(2024);
@@ -189,7 +187,7 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
 
   @Test
   public void testTurnOffNoConfig() throws InterruptedException {
-    RuntimeConfigEntry.upsertGlobal("yb.ui.feature_flags.enable_earlyoom", "true");
+    factory.globalRuntimeConf().setValue("yb.ui.feature_flags.enable_earlyoom", "true");
     AdditionalServicesStateData.EarlyoomConfig earlyoomConfig =
         new AdditionalServicesStateData.EarlyoomConfig();
     earlyoomConfig.setAvailMemoryTermKb(8024);

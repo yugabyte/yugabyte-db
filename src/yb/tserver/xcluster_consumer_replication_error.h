@@ -23,8 +23,7 @@
 
 namespace yb::tserver {
 
-YB_DEFINE_ENUM(
-    XClusterReplicationErrorSendState,
+YB_DEFINE_ENUM(XClusterReplicationErrorSendState,
     (kNotSent)  // Error has not been sent to master yet.
     (kSending)  // Error has been sent but master has not yet acknowledged it yet.
     (kSent));   // Error has been sent and master has acknowledged it.

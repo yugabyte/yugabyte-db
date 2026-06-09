@@ -18,10 +18,18 @@
 #include <memory>
 
 #include "yb/util/enums.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class WritableFile;
+}
 
 namespace rocksdb {
 
+using yb::WritableFile;
+
 class Arena;
+class BoundaryValuesExtractor;
 class Cache;
 class CompactionContext;
 class CompactionFeed;
@@ -36,13 +44,13 @@ class ReadFileFilter;
 class Statistics;
 class IteratorFilter;
 class TableReader;
-class WritableFile;
 class WriteBatch;
 
 struct BlockBasedTableOptions;
 struct CompactionContextOptions;
 struct CompactionInputFiles;
 struct FilterKeyCache;
+struct FileMetaData;
 struct KeyValueEntry;
 struct Options;
 struct QueryOptions;

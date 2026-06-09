@@ -14,8 +14,10 @@
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/ysql_call_home_stats.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/format.h"
 
 DECLARE_bool(enable_ysql);
@@ -59,6 +61,9 @@ class YsqlNodeStatsCollector : public TserverCollector {
   using TserverCollector::TserverCollector;
 
   void Collect(CollectionLevel collection_level) override {
+    if (!throttle_.ShouldCollect()) {
+      return;
+    }
     auto stats_json = BuildStatsJson(tserver(), {"template1"}, YsqlNodeQueries::kNodeLevel, {});
     json_ = Format("\"ysql_node_stats\":$0", stats_json);
   }
@@ -66,9 +71,19 @@ class YsqlNodeStatsCollector : public TserverCollector {
   string collector_name() override { return "YsqlNodeStatsCollector"; }
 
   CollectionLevel collection_level() override { return CollectionLevel::ALL; }
+
+ private:
+  YsqlCollectionThrottle throttle_;
 };
 
-TserverCallHome::TserverCallHome(TabletServer* server) : CallHome(server) {
+TserverCallHome::TserverCallHome(TabletServer* server) : CallHome(server, [&] -> Cgroup* {
+#ifdef __linux__
+    if (auto* cm = server->cgroup_manager()) {
+      return cm->SystemHighCgroup();
+    }
+#endif
+    return nullptr;
+  }()) {
   AddCollector<BasicCollector>();
   AddCollector<TabletsCollector>();
   if (FLAGS_enable_ysql) {

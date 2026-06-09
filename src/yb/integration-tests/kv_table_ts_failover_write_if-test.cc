@@ -91,7 +91,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
   }
 
   void SetValueAsync(const YBSessionPtr& session, int32_t key, int32_t value) {
-    const auto insert = table_.NewInsertOp();
+    const auto insert = table_.NewInsertOp(session->arena());
     auto* const req = insert->mutable_request();
     QLAddInt32HashValue(req, key);
     table_.AddInt32ColumnValue(req, kValueColumnName, value);
@@ -110,8 +110,9 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     });
   }
 
-  shared_ptr<YBqlWriteOp> CreateWriteIfOp(int32_t key, int32_t old_value, int32_t new_value) {
-    const auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  shared_ptr<YBqlWriteOp> CreateWriteIfOp(
+      const ThreadSafeArenaPtr& arena, int32_t key, int32_t old_value, int32_t new_value) {
+    const auto op = table_.NewWriteOp(arena, QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     // Set v = new_value.
     table_.AddInt32ColumnValue(req, kValueColumnName, new_value);
@@ -335,10 +336,11 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
   std::atomic<bool> cas_completed(false);
   const auto cas_old_value = initial_value;
   const auto cas_new_value = initial_value + 1;
-  const auto op = CreateWriteIfOp(key, cas_old_value, cas_new_value);
+  auto session = NewSession();
+  const auto op = CreateWriteIfOp(
+      session->arena(), key, cas_old_value, cas_new_value);
   const auto op_str = Format("$0: $1 -> $2", key, cas_old_value, cas_new_value);
   LOG(INFO) << "Sending CAS " << op_str;
-  auto session = NewSession();
   session->SetTimeout(15s);
   client::FlushCallback callback = [&session, &op, &op_str, &cas_completed,
                                     &callback](client::FlushStatus* flush_status) {

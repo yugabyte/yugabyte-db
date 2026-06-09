@@ -62,6 +62,7 @@ DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
 
 using namespace std::literals;
 
@@ -321,6 +322,53 @@ TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {
 
 TEST_F(PgObjectLocksTestRF1, TestPgLocks) {
   TestAllBlockingPairs(/*test_pg_locks=*/true);
+}
+
+class PgObjectLocksTestRF1Deadlock : public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = kRefreshWaiterTimeoutMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = kRefreshWaiterTimeoutMs;
+    PgObjectLocksTestRF1::SetUp();
+  }
+
+ private:
+  uint32_t kRefreshWaiterTimeoutMs = 10000 * kTimeMultiplier;
+};
+
+TEST_F(PgObjectLocksTestRF1Deadlock, YB_DISABLE_TEST_IN_SANITIZERS(TestDeadlockSimple)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_olm_poll_interval_ms) = kDefaultLockManagerPollIntervalMs * 10;
+  ASSERT_OK(cluster_->RestartSync());
+  Init();
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT)"));
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.Execute("LOCK TABLE test IN ACCESS SHARE MODE"));
+
+  ASSERT_OK(conn2.Execute("BEGIN;"));
+  auto status_future_1 = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"));
+    return Status::OK();
+  });
+  ASSERT_OK(WaitFor([&]() {
+    return NumWaitingLocks() >= 1;
+  }, 5s * kTimeMultiplier, "Timed out waiting for num waiting locks to be >= 1"));
+  auto status_future_2 = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn1.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"));
+    return Status::OK();
+  });
+  ASSERT_OK(WaitFor(
+      [&]() {
+        return status_future_1.wait_for(0s) == std::future_status::ready &&
+               status_future_2.wait_for(0s) == std::future_status::ready;
+      },
+      20s * kTimeMultiplier, "Timed out waiting for status futures to complete"));
+  // One of the tweo connections should have been aborted due to deadlock.
+  ASSERT_TRUE(status_future_1.get().ok() ^ status_future_2.get().ok());
+  ASSERT_OK(conn1.RollbackTransaction());
+  ASSERT_OK(conn2.RollbackTransaction());
 }
 
 class PgObjectLocksTestRF1SessionExpiry : public PgObjectLocksTestRF1 {
@@ -1298,6 +1346,8 @@ TEST_P(PgObjecLocksTestOutOfOrderMessageHandling, TestOutOfOrderMessageHandling)
     // the Acquire request to simulate out-of-order requests, along with the original blocked
     // request.
     ASSERT_OK(cluster_->SetFlagOnMasters(
+      "refresh_waiter_timeout_ms", yb::Format("$0", (kStatementTimeoutSec * 1000 / 10))));
+    ASSERT_OK(cluster_->SetFlagOnMasters(
         "master_ts_rpc_timeout_ms", yb::Format("$0", (kStatementTimeoutSec * 1000 / 10))));
   }
 
@@ -1729,8 +1779,9 @@ class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back(
-        "--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true");
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 };
 
@@ -1738,6 +1789,60 @@ TEST_F_EX(
     PgObjectLocksTest, TestConcurrentDdlSyncReleaseForGlobalLocksAndDdls,
     PgObjectLocksWithConcurrentDdl) {
   testSyncReleaseForGlobalLocksAndDdls();
+}
+
+// In YB, CREATE INDEX acquires session locks against the session level txn's by bumping up the
+// active subtxn id, and the releases all those locks at the end by rolling back the subtxn.
+// The below test asserts that consectuive CREATE INDEX from the same session don't deadlock
+// when there's another waiting txn on the create index. Also, it asserts that the session
+// advisory locks taken are still honored (as they are tagged to the same session level txn).
+TEST_F_EX(
+    PgObjectLocksTest, YB_DISABLE_TEST_IN_SANITIZERS(ConsecutiveCreateIndexDontDeadlock),
+    PgObjectLocksWithConcurrentDdl) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k int primary key, v int, v1 int)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test select i,i,i from generate_series(1, 100) as i"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_release", "true"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("vmodule", "object_lock_manager=1"));
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(1)"));
+
+  LogWaiter log_waiter1(ts1, "Pausing due to flag TEST_pause_session_lock_release");
+  auto status_future1 = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("CREATE INDEX test_idx on test(v)");
+  });
+  ASSERT_OK(log_waiter1.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  LogWaiter log_waiter2(cluster_->GetLeaderMaster(), "added to wait-queue");
+  auto status_future2 = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Execute("begin transaction isolation level repeatable read"));
+    return conn2.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode");
+  });
+  ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_release", "false"));
+  ASSERT_OK(status_future1.get());
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(2)"));
+
+  LogWaiter log_waiter3(cluster_->GetLeaderMaster(), "added to wait-queue");
+  auto status_future3 = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("CREATE INDEX test_idx2 on test(v1)");
+  });
+  ASSERT_OK(log_waiter3.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+
+  ASSERT_OK(status_future2.get());
+  ASSERT_OK(conn2.Execute("ALTER TABLE test add column v2 int"));
+  ASSERT_OK(conn2.CommitTransaction());
+  ASSERT_OK(status_future3.get());
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(2)"));
+  auto num_locks = ASSERT_RESULT(
+      conn1.FetchRow<PGUint64>("select count(*) from pg_locks where locktype=\'advisory\'"));
+  ASSERT_EQ(num_locks, 3);
 }
 
 }  // namespace yb::pgwrapper

@@ -49,7 +49,7 @@ class PgHeapSnapshotTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(PgHeapSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYsqlHeapSnapshotSimple)) {
+TEST_F(PgHeapSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYsqlHeapSnapshotSimple)) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
 

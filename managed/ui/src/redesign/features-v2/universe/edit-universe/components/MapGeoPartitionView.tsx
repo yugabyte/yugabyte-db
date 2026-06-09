@@ -13,6 +13,7 @@ import { useEditUniverseContext } from '../EditUniverseUtils';
 import { useTranslation } from 'react-i18next';
 import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import { MapRegionTooltip } from './MapTooltip';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
 
 const { styled, Box } = mui;
 
@@ -50,7 +51,7 @@ export const MapGeoPartitionView = () => {
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const preferedIcon = useGetMapIcons({ type: MarkerType.REGION_PREFERRED });
 
-  const regionCout = regions.length;
+  const regionCount = regions.length;
   const azCount = regions.reduce((acc, region) => acc + (region.zones?.length ?? 0), 0);
   const nodeCount = regions.reduce((acc, region) => {
     const regionNodeCount =
@@ -62,14 +63,16 @@ export const MapGeoPartitionView = () => {
   const regionsByName = groupBy(regions, 'code');
   const hasPrefferedRegions = regions.some((region) =>
     region.zones.some(
-      (zone: any) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! >= 0
+      (zone: any) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED
     )
   );
   return (
     <>
       {regions?.map((region, index) => {
         const hasHighestPreferedRank = region.zones.some(
-          (zone: any) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference === 0
+          (zone: any) =>
+            isDefinedNotNull(zone.leader_preference) &&
+            zone.leader_preference === AZ_PREFFERED_HIGHEST_RANK
         );
         return (
           <YBMapMarker
@@ -99,7 +102,7 @@ export const MapGeoPartitionView = () => {
           <MapLegendItem
             icon={<>{icon.normal}</>}
             label={t('region')}
-            subText={`${regionCout} ${pluralize(t('region'), regionCout)}, ${azCount} ${pluralize(
+            subText={`${regionCount} ${pluralize(t('region'), regionCount)}, ${azCount} ${pluralize(
               'AZ',
               azCount
             )}, ${nodeCount} ${pluralize('node', nodeCount)}`}

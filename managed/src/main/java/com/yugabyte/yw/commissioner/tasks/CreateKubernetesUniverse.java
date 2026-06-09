@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
@@ -157,9 +158,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Update the user intent.
       writeUserIntentToUniverse();
 
-      Provider provider =
-          Provider.getOrBadRequest(
-              UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
+      Provider provider = Util.getSingleProvider(taskParams().getPrimaryCluster());
 
       KubernetesPlacement placement = new KubernetesPlacement(pi, /*isReadOnlyCluster*/ false);
 
@@ -207,9 +206,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       } else if (readClusters.size() == 1) {
         Cluster readCluster = readClusters.get(0);
         PlacementInfo readClusterPI = readCluster.getOverallPlacement();
-        Provider readClusterProvider =
-            Provider.getOrBadRequest(UUID.fromString(readCluster.userIntent.provider));
-        CloudType readClusterProviderType = readCluster.userIntent.providerType;
+        Provider readClusterProvider = Util.getSingleProvider(readCluster);
+        CloudType readClusterProviderType = readClusterProvider.getCloudCode();
         if (readClusterProviderType != CloudType.kubernetes) {
           String msg =
               String.format(

@@ -156,6 +156,7 @@ message ConfigureServerInput {
     repeated string processes = 3;
     repeated string mountPoints = 4;
     uint32 numCoresToKeep = 5;
+    bool configureCgroup = 6;
 }
 
 message ConfigureServerOutput {
@@ -204,4 +205,14 @@ message YnpPreflightCheckInput {
 message YnpPreflightCheckOutput {
     uint32 exitCode = 1;
     string output = 2;
+}
+
+message RotateSshKeyInput {
+    string remoteTmp = 1;
+    string sshUser = 2;
+    string oldPublicKeyContent = 3;
+    string newPublicKeyContent = 4;
+}
+
+message RotateSshKeyOutput {
 }

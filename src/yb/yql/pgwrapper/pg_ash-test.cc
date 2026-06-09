@@ -126,6 +126,20 @@ class PgAshSingleNode : public PgAshTest {
   }
 };
 
+class PgAshMinRunningHybridTimeTest : public PgAshSingleNode {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--transaction_min_running_check_delay_ms=0");
+    options->extra_tserver_flags.push_back("--transaction_min_running_check_interval_ms=50");
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_inject_txn_get_status_delay_ms=$0", 4 * kTimeMultiplier * kSamplingIntervalMs));
+    options->extra_tserver_flags.push_back(
+      "--ysql_yb_disable_wait_for_backends_catalog_version=true");
+    options->extra_tserver_flags.push_back("--index_backfill_wait_for_old_txns_ms=30000");
+  }
+};
+
 class YbAshV2Test : public PgAshSingleNode {
  public:
   YbAshV2Test() : circular_buffer_size_kb_(16 * 1024) {}
@@ -156,7 +170,7 @@ class PgWaitEventAuxTest : public PgAshSingleNode {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
-        4 * kTimeMultiplier * kSamplingIntervalMs));
+        2 * kTimeMultiplier * kSamplingIntervalMs));
 
     options->extra_tserver_flags.push_back(Format(
         "--TEST_yb_test_wait_event_aux_to_sleep_at_csv=$0", ConvertToCSV(rpc_list_)));
@@ -197,6 +211,15 @@ class PgBgWorkersTest : public PgAshSingleNode {
     // Disable auto analyze because it changes the query plan of test: ValidateBgWorkers.
     options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
     PgAshSingleNode::UpdateMiniClusterOptions(options);
+  }
+};
+
+class PgWaitOnConflictAshTest : public PgAshSingleNode {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+    // Short refresh so several wait-queue refresh retries fire during the test window.
+    options->extra_tserver_flags.push_back("--refresh_waiter_timeout_ms=200");
   }
 };
 
@@ -469,7 +492,7 @@ class PgAshNestedQueryTracking : public PgAshSingleNode {
   }
 
   static constexpr auto kOuterQuery = "INSERT INTO trig_outer SELECT k, v FROM trig_data";
-  static constexpr int kNumRows = 1000;
+  static constexpr int kNumRows = 10000;
 
   int64_t outer_query_id_;
   int64_t inner_query_id_;
@@ -987,6 +1010,42 @@ TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   LOG_WITH_FUNC(INFO) << "done";
 }
 
+TEST_F(PgAshMinRunningHybridTimeTest, TestMinRunningHybridTimeWaitEventHasTabletId) {
+  static constexpr auto kTableName = "min_running_ash_test";
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+
+  const auto tablet_id = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT tablet_id FROM yb_local_tablets WHERE table_name = '$0'", kTableName)));
+
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET v = 2 WHERE k = 1", kTableName));
+
+  TestThreadHolder index_backfill_thread;
+  index_backfill_thread.AddThreadFunctor([this] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE INDEX idx_min_running_ash_test ON min_running_ash_test (v)"));
+  });
+
+  const auto min_running_query_id =
+      std::to_underlying(ash::FixedQueryId::kQueryIdForMinRunningHybridTime);
+  const auto ash_query = Format(
+      "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE query_id = $0 "
+      "AND wait_event = 'TransactionStatusCache_DoGetCommitData' "
+      "AND wait_event_component = 'TServer' "
+      "AND wait_event_aux = SUBSTRING('$1', 1, 15)",
+      min_running_query_id, tablet_id);
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(conn_->FetchRow<int64_t>(ash_query)) > 0;
+  }, 30s * kTimeMultiplier, "wait for MinRunningHybridTime ASH sample"));
+
+  ASSERT_OK(conn_->RollbackTransaction());
+}
+
 TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
   static constexpr auto kTableName = "test_table";
 
@@ -1307,9 +1366,9 @@ class PgTransactionWaitEventTest : public PgAshSingleNode {
   }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // Sleep for 4 * kSamplingIntervalMs to ensure ASH captures the wait events
+    // Sleep for 2 * kSamplingIntervalMs to ensure ASH captures the wait events
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
-        4 * kTimeMultiplier * kSamplingIntervalMs));
+        2 * kTimeMultiplier * kSamplingIntervalMs));
     // Set the specific wait code to sleep at
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
         std::to_underlying(WaitEvent)));
@@ -1498,6 +1557,63 @@ TEST_P(YbAshV2TestWithCircularBufferSize, TestYbAshFunctionAndViewReturnSameSamp
              "AND sample_time < '$2'", kView, start_time, end_time),
       Format("SELECT sample_time, query_id FROM $0('$1', '$2')",
              kView, start_time, end_time)}));
+}
+
+// Regression test: ASH samples for ConflictResolution_WaitOnConflictingTxns must carry the user's
+// query_id across wait-queue refresh retries. The wait queue refreshes a stalled waiter every
+// refresh_waiter_timeout_ms; the waiter's Write RPC times out and is re-sent by RpcRetrier on a
+// reactor thread. AsyncRpc::SendRpc re-adopts the caller's wait state so the new
+// LocalYBInboundCall's CallStateListener::UpdateInfo can copy the user's query_id from
+// CurrentWaitState() (rpc_wait_state.cc, is_local_call branch). Without that re-adopt, every
+// refresh creates a fresh wait state with query_id=0 and ASH attributes the conflict-wait time to
+// no query.
+TEST_F_EX(PgAshTest, ConflictWaitPropagatesQueryIdAcrossRefresh, PgWaitOnConflictAshTest) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE toto (id INT)"));
+  ASSERT_OK(conn_->Execute("INSERT INTO toto VALUES (1)"));
+
+  // Session 1: hold the row's intent lock open in a transaction.
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("UPDATE toto SET id = 2"));
+
+  // Session 2: conflicting UPDATE that will wait in the conflict wait queue.
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  TestThreadHolder thread_holder;
+  Status update_status;
+  thread_holder.AddThreadFunctor([&conn2, &update_status] {
+    update_status = conn2.Execute("UPDATE toto SET id = 3");
+  });
+
+  // Span multiple refresh_waiter_timeout_ms intervals so the buggy retry path fires several
+  // times.
+  SleepFor(1s);
+
+  // Release session 1 so session 2 unblocks.
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  thread_holder.JoinAll();
+  ASSERT_OK(update_status);
+
+  const auto ash_query =  "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE wait_event = 'ConflictResolution_WaitOnConflictingTxns'";
+
+  // Confirm the conflict-wait path was actually exercised.
+  const auto total_conflict_samples = ASSERT_RESULT(conn_->FetchRow<int64_t>(ash_query));
+
+  ASSERT_GT(total_conflict_samples, 0)
+      << "ASH did not record any ConflictResolution_WaitOnConflictingTxns samples; the "
+      << "conflict-wait path was not exercised.";
+
+  // No sample for this wait event should have query_id=0; every one should carry the UPDATE's
+  // query_id.
+  const auto zero_query_id_samples = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "$0 AND query_id = 0", ash_query)));
+
+  ASSERT_EQ(zero_query_id_samples, 0)
+      << "Found " << zero_query_id_samples << "ConflictResolution_WaitOnConflictingTxns "
+      << "samples with query_id=0. Wait-queue refresh retries are dropping the user's wait "
+      << "state when AsyncRpc::SendRpc runs on the reactor thread.";
 }
 
 } // namespace yb::pgwrapper

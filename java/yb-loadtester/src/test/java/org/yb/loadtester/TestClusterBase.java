@@ -30,6 +30,7 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static junit.framework.TestCase.*;
 import static org.yb.AssertionWrappers.assertEquals;
@@ -471,12 +472,25 @@ public class TestClusterBase extends BaseCQLTest {
       HostAndPort leaderHostPort = client.getLeaderMasterHostAndPort();
       removeMaster(leaderHostPort);
 
-      final GetLoadMovePercentResponse response = client.getLoadMoveCompletion();
+      // The new master reports remaining == total until it has tserver heartbeats;
+      // poll until it reports real progress.
+      final AtomicReference<GetLoadMovePercentResponse> postFailoverResponse =
+          new AtomicReference<>();
+      TestUtils.waitFor(() -> {
+        final GetLoadMovePercentResponse r = client.getLoadMoveCompletion();
+        LOG.info("Post-failover move remaining: {} out of total: {}",
+                 r.getRemaining(), r.getTotal());
+        if (r.getRemaining() < r.getTotal() && r.getRemaining() > 0) {
+          postFailoverResponse.set(r);
+          return true;
+        }
+        return false;
+      }, CLUSTER_MOVE_TIMEOUT_MS);
+
+      final GetLoadMovePercentResponse response = postFailoverResponse.get();
       long totalAfterKillMaster = response.getTotal();
       long remainingAfterKillMaster = response.getRemaining();
 
-      // TODO(sanket): We should ideally ensure here that there has been at least
-      // one TS HB to the new leader master otherwise remaining load could be 0.
       // After failover, the remaining load should be less than the initial load.
       assertLessThan(remainingAfterKillMaster, totalAfterKillMaster);
 

@@ -42,6 +42,8 @@ typedef enum {
 	/* YB */
 	/* Perform no-op on server, instructing server to return CloseComplete */
 	YB_KIWI_FE_CLOSE_ONLY_CLOSE_COMPLETE = 's',
+	/* YB: Unconditionally drop prepared statement (LRU eviction) */
+	YB_KIWI_FE_CLOSE_FORCE = 'F',
 } kiwi_fe_close_type_t;
 
 typedef enum {
@@ -85,6 +87,7 @@ typedef enum {
 	YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME = '5',
 	YB_BE_NO_PARSE_PARSE_COMPLETE = '6',
 	YB_BE_PARSE_NO_PARSE_COMPLETE = '7',
+	YB_BE_SYNC_ACK = 'Y',
 } kiwi_be_type_t;
 
 struct kiwi_header {
@@ -197,6 +200,8 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "YBNoParseParseComplete";
 	case YB_BE_PARSE_NO_PARSE_COMPLETE:
 		return "YBParseNoParseComplete";
+	case YB_BE_SYNC_ACK:
+		return "YBSyncAck";
 	}
 	return "Unknown";
 }

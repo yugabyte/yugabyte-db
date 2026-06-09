@@ -18,7 +18,7 @@ from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMe
                                        CreateRootVolumesMethod, DestroyInstancesMethod,
                                        ProvisionInstancesMethod, ReplaceRootVolumeMethod,
                                        DeleteRootVolumesMethod, HardRebootInstancesMethod)
-from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH, GCP_HYPERDISK_BALANCED,\
+from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH, GCP_HYPERDISK_BALANCED, \
     GCP_HYPERDISK_EXTREME
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.utils.ssh import format_rsa_key, validated_key_file
@@ -60,8 +60,10 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
                                  help="Desired iops for instance volumes.")
         self.parser.add_argument("--disk_throughput", type=int, default=None,
                                  help="Desired throughput for instance volumes.")
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation to use.")
 
-    def run_ansible_create(self, args):
+    def run_create_instance(self, args):
         if args.ssh_user is not None:
             self.SSH_USER = args.ssh_user
         server_type = args.type
@@ -97,8 +99,8 @@ class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
                                                            GCP_HYPERDISK_EXTREME],
                                  default="scratch", help="Storage type for GCP instances.")
 
-    def update_ansible_vars_with_args(self, args):
-        super(GcpProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
+    def update_extra_vars_with_args(self, args):
+        super(GcpProvisionInstancesMethod, self).update_extra_vars_with_args(args)
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
 
@@ -141,7 +143,7 @@ class GcpDeleteRootVolumesMethod(DeleteRootVolumesMethod):
 
 
 class GcpDestroyInstancesMethod(DestroyInstancesMethod):
-    """Subclass for deleting instances in GCP. Uses the API to delete instance bypassing Ansible.
+    """Subclass for deleting instances in GCP. Uses the API to delete instance.
     """
 
     def __init__(self, base_command):
@@ -310,8 +312,13 @@ class GcpChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
     def __init__(self, base_command):
         super(GcpChangeInstanceTypeMethod, self).__init__(base_command)
 
+    def add_extra_args(self):
+        super(GcpChangeInstanceTypeMethod, self).add_extra_args()
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation group to use.")
+
     def _change_instance_type(self, args, host_info):
-        self.cloud.change_instance_type(host_info, args.instance_type)
+        self.cloud.change_instance_type(host_info, args.instance_type, args.capacity_reservation)
 
     def _host_info(self, args, host_info):
         args.private_ip = host_info["private_ip"]
@@ -328,13 +335,15 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
         super(GcpResumeInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,
                                  help="The ip of the instance to resume.")
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation group to use.")
 
     def callback(self, args):
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         if args.boot_script is not None:
             self.cloud.update_user_data(args)
         server_ports = self.get_server_ports_to_check(args)
-        self.cloud.start_instance(vars(args), server_ports)
+        self.cloud.start_instance(vars(args), server_ports, args.capacity_reservation)
 
 
 class GcpPauseInstancesMethod(AbstractInstancesMethod):

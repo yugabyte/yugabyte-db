@@ -450,6 +450,38 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public void deleteStatefulSet(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
+    List<String> getCommandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "get", "sts", "-l", labelSelector, "-o", "json");
+    ShellResponse response =
+        execCommand(config, getCommandList, false)
+            .processErrors(String.format("Unable to get StatefulSets in namespace {}", namespace));
+    List<StatefulSet> stsList =
+        deserialize(response.getMessage(), StatefulSetList.class).getItems();
+    if (CollectionUtils.isEmpty(stsList)) {
+      log.warn(
+          "No StatefulSet found for release {} and app type {} in namespace {}, skipping delete",
+          helmReleaseName,
+          appName,
+          namespace);
+      return;
+    }
+    for (StatefulSet sts : stsList) {
+      String stsName = sts.getMetadata().getName();
+      log.info("Deleting StatefulSet {} in namespace {}", stsName, namespace);
+      deleteStatefulSet(config, namespace, stsName);
+    }
+  }
+
+  @Override
   public List<Quantity> getPVCSizeList(
       Map<String, String> config,
       String namespace,
@@ -1356,7 +1388,7 @@ public class ShellKubernetesManager extends KubernetesManager {
     PlacementInfo pi = cluster.getOverallPlacement();
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(cluster);
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
       Map<String, String> config = entry.getValue();
@@ -1408,7 +1440,7 @@ public class ShellKubernetesManager extends KubernetesManager {
     PlacementInfo pi = cluster.placementInfo;
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(cluster);
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     // Create a PDB policy for each AZ at the namespace level, filtering the pod selector
     // to match pods across the entire namespace. This results in the PDB policy being applied
@@ -1489,7 +1521,7 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   private Optional<Object> createPDBMatchExpressions(
       Universe universe, UniverseDefinitionTaskParams.Cluster cluster) {
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(cluster);
     Set<String> helmReleaseNames = new HashSet<>();
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {

@@ -22,6 +22,10 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
+DECLARE_bool(use_cgroups_cpu);
+DECLARE_int32(num_cpus);
+DECLARE_uint64(TEST_cgroups_delay_init_ms);
+
 using namespace std::literals;
 
 namespace yb {
@@ -95,6 +99,17 @@ TEST_F(CgroupsTest, TestSimple) {
   thread1.join();
 }
 
+TEST_F(CgroupsTest, TestCustomDefaultGroup) {
+  ASSERT_OK(SetupCgroupManagement(
+      ClearChildCgroups::kTrue,
+      /*default_group_init=*/[](Cgroup& root) -> Result<Cgroup&> {
+        return root.CreateOrLoadChild("test");
+      }));
+
+  auto& child_group = ASSERT_RESULT_REF(RootCgroup()->CreateOrLoadChild("test"));
+  ASSERT_EQ(&child_group, DefaultThreadCgroup());
+}
+
 TEST_F(CgroupsTest, TestCleanup) {
   auto root_cgroup_path = ASSERT_RESULT(GetProcessCpuCgroupPath());
   const std::vector<std::string_view> garbage_cgroups = {
@@ -151,6 +166,66 @@ TEST_F(CgroupsTest, TestCpuLimit) {
   auto throttled_group_time = TimeIncrementWorkload();
   LOG(INFO) << "Throttled group time: " << throttled_group_time;
   ASSERT_NEAR(base_time / static_cast<double>(throttled_group_time), 0.5, 0.25);
+}
+
+TEST_F(CgroupsTest, TestConcurrentCreation) {
+  ASSERT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+
+  constexpr auto move_to_child = [] -> Status {
+    auto& child = VERIFY_RESULT_REF(RootCgroup()->CreateOrLoadChild("child"));
+    return child.MoveCurrentThreadToGroup();
+  };
+
+  ASSERT_OK(ForkAndRunToCompletion(/*child=*/[&] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cgroups_delay_init_ms) = 5000;
+    ASSERT_OK(move_to_child());
+  }, /*parent=*/[&] {
+    SleepFor(2s);
+    ASSERT_OK(move_to_child());
+  }));
+}
+
+// Standalone tests for NumEffectiveCPUs that don't require running inside a dedicated
+// systemd cgroup scope.
+class NumEffectiveCPUsTest : public YBTest {
+ protected:
+  void TearDown() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cgroups_cpu) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 0;
+    YBTest::TearDown();
+  }
+};
+
+TEST_F(NumEffectiveCPUsTest, FlagOffMatchesBase) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cgroups_cpu) = false;
+  ASSERT_EQ(NumEffectiveCPUs(), base::NumCPUs());
+}
+
+TEST_F(NumEffectiveCPUsTest, PrintWithFlagOn) {
+  // Used as an end-to-end validator: print NumEffectiveCPUs and the host count when
+  // --use_cgroups_cpu is on. Run from inside a known cgroup (systemd-run scope, K8s pod,
+  // etc.) and inspect the log output.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cgroups_cpu) = true;
+  auto quota = GetCgroupCpuQuota();
+  LOG(INFO) << "VALIDATE NumEffectiveCPUs=" << NumEffectiveCPUs()
+            << " base::NumCPUs=" << base::NumCPUs()
+            << " GetCgroupCpuQuota=" << (quota.ok() ? AsString(*quota) : quota.status().ToString());
+}
+
+TEST_F(NumEffectiveCPUsTest, NumCpusOverridesCgroup) {
+  // --num_cpus is an explicit operator override and must win over --use_cgroups_cpu.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cgroups_cpu) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 7;
+  ASSERT_EQ(NumEffectiveCPUs(), 7);
+}
+
+TEST_F(NumEffectiveCPUsTest, GetCgroupCpuQuota) {
+  // The helper must return cleanly regardless of whether a CPU quota is set on the
+  // test process's cgroup. Either a non-negative effective CPU count or -1 for "no limit".
+  auto quota = ASSERT_RESULT(GetCgroupCpuQuota());
+  ASSERT_TRUE(quota == -1 || quota > 0) << "unexpected quota value: " << quota;
+  LOG(INFO) << "Cgroup CPU quota for test process: " << quota
+            << " (host CPUs: " << base::NumCPUs() << ")";
 }
 
 }  // namespace yb

@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <chrono>
+#include <optional>
+
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/master/master_admin.pb.h"
@@ -141,10 +144,26 @@ class YsqlManager : public YsqlManagerIf {
 
   void RunBgTasks(const LeaderEpoch& epoch);
 
+  bool IsPgCatalogVersionsBgTaskRunning() const {
+    return pg_catalog_versions_bg_task_running_.load();
+  }
+
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);
 
   Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);
+
+  void StartDdlPostProcessingFailedVerificationRetriggerIfStopped();
+
+  // Helper function to schedule the next iteration of the ddl post processing failed verification
+  // task.
+  void ScheduleDdlPostProcessingFailedVerificationRetriggerTask(bool schedule_now = false);
+
+  // Background task that re-triggers DDL verification for YSQL DDL transactions in
+  // kDdlPostProcessingFailed state.
+  // Note: This function should only ever be called by
+  // StartDdlPostProcessingFailedVerificationRetriggerIfStopped().
+  void RetriggerDdlPostProcessingFailedVerificationPeriodically();
 
   void StartTablespaceBgTaskIfStopped();
 
@@ -158,11 +177,17 @@ class YsqlManager : public YsqlManagerIf {
 
   void StartPgCatalogVersionsBgTaskIfStopped();
 
-  // Helper function to schedule the next iteration of the pg catalog versions task.
-  void ScheduleRefreshPgCatalogVersionsTask(bool schedule_now = false);
+  // Helper function to schedule one iteration of the pg catalog versions refresh after
+  // `delay`. Caller decides the delay: 0 for immediate (initial fire),
+  // FLAGS_heartbeat_interval_ms/2 for the regular cadence, or
+  // FLAGS_pg_catalog_versions_cache_retry_ms for a faster retry after refresh failure.
+  void ScheduleRefreshPgCatalogVersionsTask(std::chrono::milliseconds delay);
 
-  // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
-  void RefreshPgCatalogVersionInfoPeriodically();
+  // Runs one iteration of the pg catalog versions refresh. Returns the delay to the next
+  // iteration, or std::nullopt if the loop should stop (e.g. leadership lost). Used by the
+  // bg-pool body inside ScheduleRefreshPgCatalogVersionsTask to decide whether and when to
+  // reschedule itself.
+  std::optional<std::chrono::milliseconds> RefreshPgCatalogVersionCacheOnce();
 
   // Background task (and its helper functions) related to LISTEN/NOTIFY.
   Status ListenNotifyBgTask();
@@ -188,6 +213,12 @@ class YsqlManager : public YsqlManagerIf {
   std::atomic<bool> tablespace_bg_task_running_;
 
   rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
+
+  // Whether the periodic job to re-trigger DDL verification for kDdlPostProcessingFailed txns
+  // is running.
+  std::atomic<bool> ddl_post_processing_failed_verification_retrigger_running_{false};
+
+  rpc::ScheduledTaskTracker refresh_ysql_ddl_post_processing_failed_verification_task_;
 
   std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
   rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;

@@ -39,6 +39,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -84,6 +85,24 @@ DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
 
 DEFINE_test_flag(bool, skip_metadata_backfill_done, false,
     "Used in tests to skip triggering of RaftGroupMetadata::OnBackfillDone().");
+
+// Forces RaftGroupMetadata::IsLazySuperblockFlushEnabled() to return true for ALL tablets in
+// this process, bypassing the usual gating on colocated() / IsSysCatalog() / etc.
+//
+// This exists only because TabletTestHarness (and YBTabletTest on top of it) currently hardcodes
+// colocated=false when constructing the tablet's RaftGroupMetadata, and there is no test hook to
+// flip RaftGroupMetadata::colocated_ post-construction. As a result, unit tests that need to
+// exercise code paths gated on IsLazySuperblockFlushEnabled() (e.g. the RBS log-shipping clamp
+// in RemoteBootstrapSession::InitBootstrapSession that keeps at least
+// kMinSegmentsToReplayWithLazySuperblockFlush trailing WAL segments) cannot reach those branches
+// without this flag.
+//
+// TODO: replace with a proper test fixture once TabletTestHarness gains a way to create colocated
+// tablet metadata (e.g. an Options::colocated knob plumbed through CreateTestTablet). Until then
+// callers should set this only in narrow unit tests and reset it immediately after.
+DEFINE_test_flag(bool, force_lazy_superblock_flush, false,
+    "If true, RaftGroupMetadata::IsLazySuperblockFlushEnabled() returns true regardless of "
+    "tablet metadata. Tests-only escape hatch; do not enable in production code paths.");
 
 // Only used for colocated table creation currently.
 // The flag is non-runtime so that if it is changed from true to false, the node restarts and the
@@ -516,6 +535,12 @@ MetricAttributeMap TableInfo::CreateMetricAttributeMap() const {
   attrs["table_name"] = table_name;
   attrs["table_type"] = TableType_Name(table_type);
   attrs["namespace_name"] = namespace_name;
+  if (table_type == PGSQL_TABLE_TYPE && !namespace_id.empty()) {
+    auto db_oid = GetPgsqlDatabaseOid(namespace_id);
+    if (db_oid.ok()) {
+      attrs["database_oid"] = std::to_string(*db_oid);
+    }
+  }
   return attrs;
 }
 
@@ -1720,7 +1745,7 @@ Status RaftGroupMetadata::set_all_cdc_retention_barriers(
   return Flush();
 }
 
-Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
+Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
     bool require_history_cutoff, bool initial_retention_barrier) {
 
@@ -1778,7 +1803,7 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
                                                 set_cdc_sdk_safe_time_check));
   }
 
-  return set_cdc_min_checkpoint_op_id_check;
+  return Status::OK();
 }
 
 std::string RaftGroupMetadata::AllCDCRetentionBarriersToString() const {
@@ -1856,7 +1881,14 @@ bool RaftGroupMetadata::colocated() const {
 // only applicable on colocated table creation). This feature depends on
 // last_flushed_change_metadata_op_id to be valid. Hence, additionally requires
 // FLAGS_TEST_invalidate_last_change_metadata_op to be false.
+//
+// FLAGS_TEST_force_lazy_superblock_flush short-circuits everything to true so unit tests built on
+// the non-colocated TabletTestHarness can still exercise this branch. See the flag's definition
+// for the rationale and the TODO to replace it with a proper colocated test fixture.
 LazySuperblockFlushEnabled RaftGroupMetadata::IsLazySuperblockFlushEnabled() const {
+  if (PREDICT_FALSE(FLAGS_TEST_force_lazy_superblock_flush)) {
+    return LazySuperblockFlushEnabled::kTrue;
+  }
   bool lazy_superblock_flush_enabled = !FLAGS_TEST_invalidate_last_change_metadata_op &&
                                        FLAGS_lazily_flush_superblock && colocated() &&
                                        !IsSysCatalog();
@@ -1997,11 +2029,15 @@ Status RaftGroupMetadata::OldSchemaGC(
             << "Unknown table during " << __func__ << ": " << table_id.ToString();
         continue;
       }
-      if (!it->second->doc_read_context->schema_packing_storage.HasVersionBelow(schema_version)) {
+      const auto& schema_packing_storage = it->second->doc_read_context->schema_packing_storage;
+      const auto min_active = schema_packing_storage.registry().MinActiveVersion();
+      const auto new_min_schema_version =
+          min_active.has_value() && min_active.value() < schema_version ? min_active.value()
+                                                                        : schema_version;
+      if (!schema_packing_storage.HasVersionBelow(new_min_schema_version)) {
         continue;
       }
-      auto new_value = std::make_shared<TableInfo>(
-          *it->second, schema_version);
+      auto new_value = std::make_shared<TableInfo>(*it->second, new_min_schema_version);
       RETURN_NOT_OK(SetTableInfoUnlocked(it, std::move(new_value)));
       VLOG_WITH_PREFIX(1)
           << Format("After old schema GC, latest schema version of table $0($1) is $2",

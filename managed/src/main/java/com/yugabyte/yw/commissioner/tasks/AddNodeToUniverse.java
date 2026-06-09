@@ -24,11 +24,13 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -81,9 +83,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           "Retrying task to add node {} in state {}", taskParams().nodeName, currentNode.state);
     }
     Cluster cluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
-    UserIntent userIntent = cluster.userIntent;
-
-    if (userIntent.providerType.equals(CloudType.onprem)) {
+    Provider provider = Util.getProviderForNode(currentNode, cluster);
+    if (provider.getCloudCode() == CloudType.onprem) {
       if (currentNode.state == NodeState.Decommissioned) {
         // Node UUID does not make any sense if it is decommissioned.
         NodeInstance.maybeGetByName(currentNode.nodeName)
@@ -113,11 +114,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   private void configureNodeDetails(Universe universe) {
     Cluster cluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
+    Provider provider = Util.getProviderForNode(currentNode, cluster);
     UserIntent userIntent = cluster.userIntent;
     Optional<NodeInstance> nodeInstance = NodeInstance.maybeGetByName(currentNode.nodeName);
 
     if (currentNode.state == NodeState.Decommissioned
-        && userIntent.providerType.equals(CloudType.onprem)
+        && provider.getCloudCode() == CloudType.onprem
         && !nodeInstance.isPresent()) {
       reserveOnPremNodes(cluster, Collections.singleton(currentNode), false /* commit changes */);
       // Clone the node because isMaster and isTserver are not set yet in currentNode.

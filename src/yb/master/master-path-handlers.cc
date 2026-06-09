@@ -37,10 +37,14 @@
 #include <iomanip>
 #include <map>
 #include <memory>
+#include <regex>
 #include <sstream>
 #include <unordered_set>
+#include <vector>
 
 #include <boost/date_time/posix_time/time_formatters.hpp>
+
+#include "yb/gutil/strings/join.h"
 
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/xcluster_util.h"
@@ -59,6 +63,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/async_rbs_info_task.h"
@@ -96,13 +101,13 @@
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
+#include "yb/util/object_provider.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
 #include "yb/common/version_info.h"
 
-DEFINE_RUNTIME_int32(
-    hide_dead_node_threshold_mins, 60 * 24,
+DEFINE_RUNTIME_int32(hide_dead_node_threshold_mins, 60 * 24,
     "After this many minutes of no heartbeat from a node, hide it from the UI "
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");
@@ -185,6 +190,84 @@ std::string TSDescriptorToHtml(const std::string& ts_uuid,
                 EscapeForHtmlToString(HostPortPBToString(*public_http_hp)),
                 UrlEncodeToString(tablet_id),
                 EscapeForHtmlToString(public_http_hp->host()));
+}
+
+std::unordered_map<xcluster::ReplicationGroupId, std::unordered_map<TabletId, TabletId>>
+GetProducerTabletToConsumerTabletMap(const master::SysClusterConfigEntryPB& config) {
+  std::unordered_map<xcluster::ReplicationGroupId, std::unordered_map<TabletId, TabletId>> map;
+  for (const auto& [replication_group_id, producer_entry] :
+       config.consumer_registry().producer_map()) {
+    auto& tablet_map = map[xcluster::ReplicationGroupId(replication_group_id)];
+    for (const auto& [_, stream_entry] : producer_entry.stream_map()) {
+      for (const auto& [consumer_tablet_id, producer_tablets] :
+           stream_entry.consumer_producer_tablet_map()) {
+        for (const auto& producer_tablet_id : producer_tablets.tablets()) {
+          tablet_map[producer_tablet_id] = consumer_tablet_id;
+        }
+      }
+    }
+  }
+  return map;
+}
+
+Result<std::string> GetTserverXClusterUrlForLeader(
+    const master::CatalogManagerIf& catalog_manager,
+    const std::unordered_map<TabletId, TabletId>& producer_tablet_to_consumer_tablet_map,
+    const TabletId& producer_tablet_id) {
+  auto* consumer_tablet_id = FindOrNull(producer_tablet_to_consumer_tablet_map, producer_tablet_id);
+  SCHECK(
+      consumer_tablet_id, NotFound, "Consumer tablet not found for producer tablet $0",
+      producer_tablet_id);
+  auto tablet_info = VERIFY_RESULT(catalog_manager.GetTabletInfo(*consumer_tablet_id));
+  auto tablet_leader = VERIFY_RESULT(tablet_info->GetLeader());
+  auto public_http_hp = GetPublicHttpHostPort(tablet_leader->GetRegistration());
+  SCHECK(
+      public_http_hp, NotFound, "Unable to get public HTTP host port for consumer tablet $0",
+      *consumer_tablet_id);
+  return Format(
+      "$0://$1/xcluster", GetProtocol(),
+      EscapeForHtmlToString(HostPortPBToString(*public_http_hp)));
+}
+
+std::string LinkifyTabletIds(
+    const std::string& xcluster_status, const master::CatalogManagerIf& catalog_manager,
+    const std::unordered_map<TabletId, TabletId>& producer_tablet_to_consumer_tablet_map) {
+  static const std::regex kTabletIdRegex("Producer Tablet IDs: ([0-9a-f,]+)");
+
+  // Extract all tablet IDs from the status string and resolve their tserver URLs.
+  std::unordered_map<TabletId, std::string> tablet_to_link;
+  for (auto it =
+           std::sregex_iterator(xcluster_status.begin(), xcluster_status.end(), kTabletIdRegex);
+       it != std::sregex_iterator(); ++it) {
+    if (it->size() < 2) {
+      VLOG(1) << "Invalid tablet ID regex match: " << it->str();
+      continue;
+    }
+    for (const auto& tablet_id : SplitStringUsing((*it)[1].str(), ",")) {
+      if (tablet_to_link.contains(tablet_id)) {
+        continue;
+      }
+      auto url = GetTserverXClusterUrlForLeader(
+          catalog_manager, producer_tablet_to_consumer_tablet_map, tablet_id);
+      if (url && !url->empty()) {
+        tablet_to_link[tablet_id] = Format("<a href=\"$0\">$1</a>", url, tablet_id);
+      } else {
+        LOG_IF(WARNING, !url) << "Unable to get XCluster URL for tablet " << tablet_id << ": "
+                              << url.status();
+        tablet_to_link[tablet_id] = tablet_id;
+      }
+    }
+  }
+
+  // Replace each tablet ID in the HTML-escaped status string with its link.
+  auto result = EscapeForHtmlToString(xcluster_status);
+  for (const auto& [tablet_id, link] : tablet_to_link) {
+    auto pos = result.find(tablet_id);
+    if (pos != std::string::npos) {
+      result.replace(pos, tablet_id.size(), link);
+    }
+  }
+  return result;
 }
 
 }  // namespace
@@ -435,6 +518,34 @@ struct LocalTserverInfo {
   }
 };
 
+std::vector<std::string> LoadBalancerServerBlacklistReasons(
+    const std::shared_ptr<TSDescriptor>& ts_desc,
+    const BlacklistSet& persisted_server_blacklist) {
+  std::vector<std::string> reasons;
+  if (ts_desc->IsBlacklisted(persisted_server_blacklist)) {
+    reasons.push_back("config");
+  }
+  if (ts_desc->has_faulty_drive()) {
+    reasons.push_back("faulty_drive");
+  }
+  return reasons;
+}
+
+using EffectiveBlacklistEntry = std::pair<std::string, std::vector<std::string>>;
+
+std::vector<EffectiveBlacklistEntry> EffectiveLoadBalancerServerBlacklist(
+    const std::vector<std::shared_ptr<TSDescriptor>>& descs,
+    const BlacklistSet& persisted_server_blacklist) {
+  std::vector<EffectiveBlacklistEntry> result;
+  for (const auto& desc : descs) {
+    auto reasons = LoadBalancerServerBlacklistReasons(desc, persisted_server_blacklist);
+    if (!reasons.empty()) {
+      result.emplace_back(desc->permanent_uuid(), std::move(reasons));
+    }
+  }
+  return result;
+}
+
 }  // anonymous namespace
 
 MasterPathHandlers::UniverseTabletCounts MasterPathHandlers::CalculateUniverseTabletCounts(
@@ -486,13 +597,15 @@ void MasterPathHandlers::TServerDisplay(
     status = status.CloneAndPrepend("Unable to get preferred zone list");
     LOG(WARNING) << status.ToString();
   }
+  const auto lease_infos =
+      master_->catalog_manager_impl()->object_lock_info_manager()->GetLeaseInfos();
 
   auto html_table = html_print_helper.CreateTablePrinter(
       Format("$0_tserver", current_uuid),
       {"Server", "Time since heartbeat", "Status & Uptime", "User Tablet-Peers / Leaders",
        "System Tablet-Peers / Leaders", "RAM Used", "Num SST Files", "Total SST Files Size",
        "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec", "Placement",
-       "Active Tablet-Peers"});
+       "Active Tablet-Peers", "Lease Expiry", "Lease Epoch"});
 
   int max_peers = 0;
   for (const auto& desc : descs) {
@@ -521,11 +634,15 @@ void MasterPathHandlers::TServerDisplay(
 
     if (desc->IsBlacklisted(blacklist)) {
       tserver_info.color = tserver_info.color == "Green" ? kYBOrange : tserver_info.color;
-      tserver_info.status += "</br>Blacklisted";
+      tserver_info.status += "</br>Blacklisted (config)";
     }
     if (desc->IsBlacklisted(leader_blacklist)) {
       tserver_info.color = tserver_info.color == "Green" ? kYBOrange : tserver_info.color;
       tserver_info.status += "</br>Leader Blacklisted";
+    }
+    if (desc->has_faulty_drive()) {
+      tserver_info.color = tserver_info.color == "Green" ? kYBOrange : tserver_info.color;
+      tserver_info.status += "</br>Blacklisted (faulty drive)";
     }
 
     html_row.AddColumn(
@@ -554,6 +671,21 @@ void MasterPathHandlers::TServerDisplay(
     html_row.AddColumn(tserver_info.placement);
 
     html_row.AddColumn(counts ? desc->num_live_replicas() : 0);
+
+    {
+      auto lease_it = lease_infos.find(desc->permanent_uuid());
+      const std::string kLeaseCellTemplate{"<font color=\"$0\">$1"};
+      if (lease_it != lease_infos.end() && lease_it->second.lease_info.live_lease()) {
+        html_row.AddColumn(
+            Format(kLeaseCellTemplate, "Green", lease_it->second.lease_expiry.ToString()));
+        html_row.AddColumn(Format(
+            kLeaseCellTemplate, "Green",
+            std::to_string(lease_it->second.lease_info.lease_epoch())));
+      } else {
+        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+      }
+    }
   }
   html_table.Print();
 }
@@ -856,7 +988,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
         *output
             << "<h4 style=\"color:" << kYBOrange
             << "\"><i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>Cluster Load "
-               "is not Idle</h4>\n";
+               "Balancer is not Idle</h4>\n";
       }
     }
   }
@@ -927,6 +1059,9 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
           jw.String("uptime_seconds");
           jw.Uint(0);
         }
+
+        jw.String("has_faulty_drive");
+        jw.Bool(desc->has_faulty_drive());
 
         jw.String("start_time_us");
         jw.Uint64(desc->start_time_us());
@@ -1736,7 +1871,9 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   }
 
   Schema schema;
+  ObjectProvider<Schema> partition_keys_schema;
   dockv::PartitionSchema partition_schema;
+  TableId indexed_table_id;
   NamespaceName keyspace_name;
   TableName table_name;
   TabletInfos tablets;
@@ -1833,19 +1970,61 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     }
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);
-    if (s.ok()) {
-      s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
+    if (!s.ok()) {
+      *output << "Unable to decode table schema: " << EscapeForHtmlToString(s.ToString());
+      return;
     }
+    partition_keys_schema.reset(&schema);
+
+    s = dockv::PartitionSchema::FromPB(
+        l->pb.partition_schema(), *partition_keys_schema, &partition_schema);
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << EscapeForHtmlToString(s.ToString());
       return;
     }
+
     Result<TabletInfos> tablets_result = table->GetTabletsIncludeInactive();
     if (!tablets_result) {
       *output << "Unable to fetch tablets for table: " << EscapeForHtmlToString(s.ToString());
       return;
     }
     tablets = *tablets_result;
+
+    // If current table is a vector index, it is required to fetch the indexed table's schema and
+    // partition schema in order to display the partition keys correctly. But this should be done
+    // outside the current lock to avoid current table and indexed table lock contention.
+    if (l->is_vector_index()) {
+      indexed_table_id = l->indexed_table_id();
+    }
+  }
+
+  // Vector indexes are colocated on the indexed table's tablets, so their partition keys
+  // are encoded using the indexed table's schema, not the vector index's own schema.
+  if (!indexed_table_id.empty()) {
+    auto indexed_table = master_->catalog_manager()->GetTableInfo(indexed_table_id);
+    if (!indexed_table) {
+      *output << "Indexed table not found: " << indexed_table_id;
+      return;
+    }
+
+    auto indexed_lock = indexed_table->LockForRead();
+    partition_keys_schema.reset();
+    Status s = SchemaFromPB(indexed_lock->pb.schema(), partition_keys_schema.get());
+    if (!s.ok()) {
+      *output << "Unable to decode indexed table schema: "
+              << EscapeForHtmlToString(s.ToString());
+      return;
+    }
+
+    dockv::PartitionSchema indexed_partition_schema;
+    s = dockv::PartitionSchema::FromPB(
+        indexed_lock->pb.partition_schema(), *partition_keys_schema, &indexed_partition_schema);
+    if (!s.ok()) {
+      *output << "Unable to decode indexed table partition schema: "
+              << EscapeForHtmlToString(s.ToString());
+      return;
+    }
+    partition_schema = std::move(indexed_partition_schema);
   }
 
   server::HtmlOutputSchemaTable(schema, output);
@@ -1899,7 +2078,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     *output << Format(
         "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
         tablet->tablet_id(),
-        EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
+        EscapeForHtmlToString(
+            partition_schema.PartitionDebugString(partition, *partition_keys_schema)),
         l->pb.split_depth(),
         ReplicaInfoToHtml(sorted_locations, tablet->tablet_id()),
         state,
@@ -2057,7 +2237,9 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
   }
 
   Schema schema;
+  ObjectProvider<Schema> partition_keys_schema;
   dockv::PartitionSchema partition_schema;
+  TableId indexed_table_id;
   TabletInfos tablets;
   {
     auto keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
@@ -2143,9 +2325,15 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
     }
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);
-    if (s.ok()) {
-      s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
+    if (!s.ok()) {
+      jw.String("error");
+      jw.String("Unable to decode schema: " + s.ToString());
+      jw.EndObject();
+      return;
     }
+    partition_keys_schema.reset(&schema);
+
+    s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     if (!s.ok()) {
       jw.String("error");
       jw.String("Unable to decode partition schema: " + s.ToString());
@@ -2160,6 +2348,46 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
       return;
     }
     tablets = *tablets_result;
+
+    // If current table is a vector index, it is required to fetch the indexed table's schema and
+    // partition schema in order to display the partition keys correctly. But this should be done
+    // outside the current lock to avoid current table and indexed table lock contention.
+    if (l->is_vector_index()) {
+      indexed_table_id = l->indexed_table_id();
+    }
+  }
+
+  // Vector indexes are colocated on the indexed table's tablets, so their partition keys
+  // are encoded using the indexed table's schema, not the vector index's own schema.
+  if (!indexed_table_id.empty()) {
+    auto indexed_table = master_->catalog_manager()->GetTableInfo(indexed_table_id);
+    if (!indexed_table) {
+      jw.String("error");
+      jw.String("Indexed table not found: " + indexed_table_id);
+      jw.EndObject();
+      return;
+    }
+
+    auto indexed_lock = indexed_table->LockForRead();
+    partition_keys_schema.reset();
+    Status s = SchemaFromPB(indexed_lock->pb.schema(), partition_keys_schema.get());
+    if (!s.ok()) {
+      jw.String("error");
+      jw.String("Unable to decode indexed table schema: " + s.ToString());
+      jw.EndObject();
+      return;
+    }
+
+    dockv::PartitionSchema indexed_partition_schema;
+    s = dockv::PartitionSchema::FromPB(
+        indexed_lock->pb.partition_schema(), *partition_keys_schema, &indexed_partition_schema);
+    if (!s.ok()) {
+      jw.String("error");
+      jw.String("Unable to decode indexed table partition schema: " + s.ToString());
+      jw.EndObject();
+      return;
+    }
+    partition_schema = std::move(indexed_partition_schema);
   }
 
   JsonOutputSchemaTable(schema, &jw);
@@ -2180,7 +2408,7 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
     jw.String("tablet_id");
     jw.String(tablet->tablet_id());
     jw.String("partition");
-    jw.String(partition_schema.PartitionDebugString(partition, schema));
+    jw.String(partition_schema.PartitionDebugString(partition, *partition_keys_schema));
     jw.String("split_depth");
     jw.Uint64(l->pb.split_depth());
     jw.String("state");
@@ -3013,7 +3241,29 @@ void MasterPathHandlers::HandleGetClusterConfig(
     return;
   }
 
-  *output << "<div class=\"alert alert-success\">Successfully got cluster config!</div>"
+  *output << "<div class=\"alert alert-success\">Successfully got cluster config!</div>";
+
+  *output << "<h2>Effective load balancer server blacklist</h2>\n";
+  {
+    auto persisted_bl = master_->catalog_manager()->BlacklistSetFromPB(false);
+    const BlacklistSet bl = persisted_bl.ok() ? *persisted_bl : BlacklistSet();
+    auto effective_blacklist =
+        EffectiveLoadBalancerServerBlacklist(master_->ts_manager()->GetAllDescriptors(), bl);
+    if (!effective_blacklist.empty()) {
+      *output << "<table class=\"table\"><tr><th>Tablet server UUID</th><th>Blacklist reasons</th>"
+                 "</tr>\n";
+      for (const auto& [uuid, reasons] : effective_blacklist) {
+        *output << "<tr><td>" << EscapeForHtmlToString(uuid) << "</td><td>"
+                << EscapeForHtmlToString(JoinStrings(reasons, ", ")) << "</td></tr>\n";
+      }
+      *output << "</table>\n";
+    } else {
+      *output << "<p><i>None: no tablet servers are currently treated as server-blacklisted by "
+                 "the load balancer.</i></p>\n";
+    }
+  }
+
+  *output << "<h2>Persisted cluster configuration (sys catalog)</h2>\n"
           << "<pre class=\"prettyprint\">"
           << EscapeForHtmlToString(cluster_config_result->DebugString()) << "</pre>";
 }
@@ -3112,10 +3362,18 @@ void MasterPathHandlers::HandleXCluster(
         outbound_group_table_id++;
 
         for (const auto& table_status : namespace_status.table_statuses) {
-          outbound_replication_group.AddRow(
-              table_status.full_table_name, table_status.table_id, table_status.stream_id,
-              table_status.state, BoolToString(table_status.is_checkpointing),
-              BoolToString(table_status.is_part_of_initial_bootstrap));
+          auto color = HtmlTableRowColor::Default;
+          if (table_status.state.contains("PAUSED") || table_status.state.contains("INITIATED")) {
+            color = HtmlTableRowColor::Yellow;
+          } else if (table_status.state != "ACTIVE") {
+            color = HtmlTableRowColor::Red;
+          }
+          outbound_replication_group
+              .AddRow(
+                  table_status.full_table_name, table_status.table_id, table_status.stream_id,
+                  table_status.state, BoolToString(table_status.is_checkpointing),
+                  BoolToString(table_status.is_part_of_initial_bootstrap))
+              .SetColor(color);
         }
         outbound_replication_group.Print();
       }
@@ -3123,13 +3381,21 @@ void MasterPathHandlers::HandleXCluster(
   }
 
   if (!xcluster_status.outbound_table_stream_statuses.empty()) {
-    output << "<br><h3>Outbound table streams</h3>\n";
+    auto group_fs = html_print_helper.CreateFieldset("Outbound table streams");
     auto outbound_streams = html_print_helper.CreateTablePrinter(
         "outbound_table_streams", {"Table name", "Table Id", "Stream Id", "State"});
     for (const auto& table_status : xcluster_status.outbound_table_stream_statuses) {
-      outbound_streams.AddRow(
-          table_status.full_table_name, table_status.table_id, table_status.stream_id,
-          table_status.state);
+      auto color = HtmlTableRowColor::Default;
+      if (table_status.state.contains("PAUSED")) {
+        color = HtmlTableRowColor::Yellow;
+      } else if (table_status.state != "OK") {
+        color = HtmlTableRowColor::Red;
+      }
+      outbound_streams
+          .AddRow(
+              table_status.full_table_name, table_status.table_id, table_status.stream_id,
+              table_status.state)
+          .SetColor(color);
     }
     outbound_streams.Print();
   }
@@ -3137,6 +3403,17 @@ void MasterPathHandlers::HandleXCluster(
   output << "<br><h3>Inbound Replication Groups</h3>\n";
 
   uint32 inbound_group_table_id = 0;
+
+  std::unordered_map<xcluster::ReplicationGroupId, std::unordered_map<TabletId, TabletId>>
+      producer_tablet_to_consumer_tablet_map;
+  auto cluster_config_result = master_->catalog_manager()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
+    LOG(WARNING) << "Failed to get cluster config: " << cluster_config_result.status().ToString();
+  } else {
+    producer_tablet_to_consumer_tablet_map =
+        GetProducerTabletToConsumerTabletMap(*cluster_config_result);
+  }
+
   for (const auto& inbound_replication_group : xcluster_status.inbound_replication_group_statuses) {
     auto group_fs = html_print_helper.CreateFieldset(
         Format("Group: $0", inbound_replication_group.replication_group_id));
@@ -3161,21 +3438,35 @@ void MasterPathHandlers::HandleXCluster(
          inbound_replication_group.table_statuses_by_namespace) {
       auto namespace_fs = html_print_helper.CreateFieldset(Format("Namespace: $0", namespace_name));
 
-      auto inbound_replication_group = html_print_helper.CreateTablePrinter(
+      auto inbound_group_table = html_print_helper.CreateTablePrinter(
           "inbound_replication_group", inbound_group_table_id,
           {"Table name", "Producer Table Id", "Stream Id", "Consumer Table Id",
            "Producer Tablet Count", "Consumer Tablet Count", "Local tserver optimized",
            "Producer schema version", "Consumer schema version", "Status"});
       inbound_group_table_id++;
       for (const auto& table_status : table_statuses) {
-        inbound_replication_group.AddRow(
-            table_status.full_table_name, table_status.source_table_id, table_status.stream_id,
-            table_status.target_table_id, table_status.source_tablet_count,
-            table_status.target_tablet_count, BoolToString(table_status.local_tserver_optimized),
-            table_status.source_schema_version, table_status.target_schema_version,
-            table_status.status);
+        std::string status_html;
+        HtmlTableRowColor color =
+            table_status.status == "OK" ? HtmlTableRowColor::Default : HtmlTableRowColor::Red;
+        if (producer_tablet_to_consumer_tablet_map.contains(
+                inbound_replication_group.replication_group_id)) {
+          status_html = LinkifyTabletIds(
+              table_status.status, *master_->catalog_manager(),
+              producer_tablet_to_consumer_tablet_map.at(
+                  inbound_replication_group.replication_group_id));
+        } else {
+          status_html = table_status.status;
+        }
+        inbound_group_table
+            .AddRow(
+                table_status.full_table_name, table_status.source_table_id, table_status.stream_id,
+                table_status.target_table_id, table_status.source_tablet_count,
+                table_status.target_tablet_count,
+                BoolToString(table_status.local_tserver_optimized),
+                table_status.source_schema_version, table_status.target_schema_version, status_html)
+            .SetColor(color);
       }
-      inbound_replication_group.Print();
+      inbound_group_table.Print();
     }
   }
 }

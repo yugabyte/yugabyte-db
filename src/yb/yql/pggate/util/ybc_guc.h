@@ -176,16 +176,17 @@ extern bool yb_enable_consistent_replication_from_hash_range;
  */
 extern bool yb_cdcsdk_stream_tables_without_primary_key;
 
+/*
+ * GUC variable that allows UPDATE/DELETE on tables under a publication with REPLICA IDENTITY
+ * DEFAULT or CHANGE that do not have a primary key.
+ */
+extern bool yb_cdcsdk_allow_dml_without_pk;
+
 extern bool enable_object_locking_infra;
 
 extern bool yb_enable_ddl_savepoint_infra;
 
 extern bool yb_skip_ensure_read_time_in_parallel_execution;
-
-/*
- * Refer YBCIsLegacyModeForCatalogOps() for details.
- */
-extern bool yb_enable_concurrent_ddl;
 
 /*
  * xcluster consistency level
@@ -255,6 +256,7 @@ extern int yb_reorderbuffer_max_changes_in_memory;
  * Allows for customizing the maximum size of a batch of explicit row lock operations.
  */
 extern int yb_explicit_row_locking_batch_size;
+extern int yb_explicit_row_lock_skip_locked_max_read_ahead;
 
 /*
  * Ease transition to YSQL by reducing read restart errors for new apps.

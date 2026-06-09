@@ -49,7 +49,7 @@ class OnPremCreateInstancesMethod(CreateInstancesMethod):
         # step purely to validate that we can access the host.
         #
         # TODO: do we still want/need to change to the custom ssh port?
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         self.wait_for_host(args)
 
 
@@ -104,7 +104,7 @@ class OnPremListInstancesMethod(ListInstancesMethod):
 
         if 'server_type' in host_infos and host_infos['server_type'] is None:
             del host_infos['server_type']
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         if args.mount_points:
             for host_info in host_infos:
                 try:
@@ -147,8 +147,8 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         self.parser.add_argument("--clean_otel_collector", action="store_true",
                                  help='Check if OTel Collector should be stopped and disabled.')
 
-    def update_ansible_vars_with_args(self, args):
-        super(OnPremDestroyInstancesMethod, self).update_ansible_vars_with_args(args)
+    def update_extra_vars_with_args(self, args):
+        super(OnPremDestroyInstancesMethod, self).update_extra_vars_with_args(args)
         if args.clean_node_exporter:
             self.extra_vars["clean_node_exporter"] = args.clean_node_exporter
         if args.clean_otel_collector:
@@ -164,7 +164,7 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         # Force db-related commands to use the "yugabyte" user.
         ssh_user = args.ssh_user
         args.ssh_user = "yugabyte"
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
 
         # First stop both tserver and master processes.
         processes = ["tserver", "master", "controller"]
@@ -179,7 +179,7 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
 
         # Revert the force using of user yugabyte.
         args.ssh_user = ssh_user
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
 
         if args.provisioning_cleanup:
             self.cloud.run_control_script(
@@ -196,7 +196,7 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
 
         # Use "yugabyte" user again to do the cleanups.
         args.ssh_user = "yugabyte"
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         logging.info(("[app] Running control script to clean and clean-logs " +
                      "against master, tserver and controller at {}").format(host_info['name']))
         for process in processes:
@@ -273,6 +273,10 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                  help='Skip check for time synchronization.')
         self.parser.add_argument("--yb_home_dir", default=YB_HOME_DIR,
                                  help="YB-Home directory path, if not default.")
+        self.parser.add_argument(
+            "--yb_user_home",
+            default=None,
+            help="Home directory for the yugabyte OS user (for testing overrides).")
 
     def test_file_readable(self, remote_shell, path):
         node_file_verify = remote_shell.run_command_raw("test -r {}".format(path))
@@ -288,8 +292,8 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         logging.info("Running {} preflight checks for instance: {}".format(
             args.precheck_type, args.search_pattern))
 
-        self.update_ansible_vars_with_args(args)
-        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        self.update_extra_vars_with_args(args)
+        self.update_extra_vars_with_host_info(host_info, args.custom_ssh_port)
         try:
             is_configure = args.precheck_type == "configure"
             self.wait_for_host(args, default_port=is_configure)
@@ -304,12 +308,6 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             scp_result = copy_to_tmp(self.extra_vars, get_datafile_path('preflight_checks.sh'),
                                      remote_tmp_dir=args.remote_tmp_dir)
             results["SSH Connection"] = scp_result == 0
-            sudo_pass_file = '{}/.yb_sudo_pass.sh'.format(args.remote_tmp_dir)
-            self.extra_vars['sudo_pass_file'] = sudo_pass_file
-            ansible_status = self.cloud.setup_ansible(args).run("send_sudo_pass.yml",
-                                                                self.extra_vars, host_info,
-                                                                print_output=False)
-            results["Try Ansible Command"] = ansible_status == 0
             ports_to_check = ",".join([str(p) for p in [args.master_http_port,
                                                         args.master_rpc_port,
                                                         args.tserver_http_port,
@@ -325,14 +323,16 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                                         args.node_exporter_http_port]
                                       if p is not None])
             cmd = "{}/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
-                "--ports_to_check {} --sudo_pass_file {} --tmp_dir {} --cleanup".format(
+                "--ports_to_check {} --tmp_dir {} --cleanup".format(
                     args.remote_tmp_dir, args.precheck_type, args.yb_home_dir,
                     self.cloud.get_mount_points_csv(args),
-                    ports_to_check, sudo_pass_file, args.remote_tmp_dir)
+                    ports_to_check, args.remote_tmp_dir)
             if args.install_node_exporter:
                 cmd += " --install_node_exporter"
             if args.air_gap:
                 cmd += " --airgap"
+            if args.yb_user_home:
+                cmd += " --yb_user_home {}".format(args.yb_user_home)
 
             rc, stdout, stderr = remote_exec_command(self.extra_vars, cmd)
 
@@ -350,7 +350,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             print(output)
         else:
             input = PreflightCheckInput()
-            input.ybHomeDir = YB_HOME_DIR
+            input.ybHomeDir = args.yb_home_dir
             input.airGapInstall = args.air_gap
             input.installNodeExporter = args.install_node_exporter
             input.mountPaths.extend(self.cloud.get_mount_points_csv(args).split(","))
@@ -475,7 +475,7 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Instance: {} does not exist, cannot install node agent"
                                     .format(args.search_pattern))
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         url = urlparse(args.yba_url)
         self.https = True if url.scheme == 'https' else False
@@ -487,9 +487,6 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
         self.remote_installer_path = os.path.join(args.remote_tmp_dir, "node-agent-installer.sh")
         self.sudo_pass_file = '{}/.yb_sudo_pass.sh'.format(args.remote_tmp_dir)
         self.extra_vars['sudo_pass_file'] = self.sudo_pass_file
-        self.cloud.setup_ansible(args).run("send_sudo_pass.yml",
-                                           self.extra_vars, host_info,
-                                           print_output=False)
         remote_shell = RemoteShell(self.extra_vars)
         try:
             self.copy_installer_script(args)
@@ -662,7 +659,7 @@ class OnPremVerifyCertificatesMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Instance: {} does not exist, cannot verify certificates"
                                     .format(args.search_pattern))
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         results = {}
         # Verify NodeToNode certificates

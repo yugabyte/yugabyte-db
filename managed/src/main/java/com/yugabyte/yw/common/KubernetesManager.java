@@ -791,9 +791,9 @@ public abstract class KubernetesManager {
     if (primary.userIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
       return null;
     }
-    Provider provider = Provider.get(UUID.fromString(primary.userIntent.provider));
+    Provider provider = Util.getSingleProvider(primary);
 
-    if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+    if (provider.getCloudCode() != Common.CloudType.kubernetes) {
       return null;
     } else {
       PlacementInfo pi = universeDetails.getPrimaryCluster().getOverallPlacement();
@@ -931,6 +931,17 @@ public abstract class KubernetesManager {
 
   public abstract boolean deleteStatefulSet(
       Map<String, String> config, String namespace, String stsName);
+
+  // Fetch the StatefulSet(s) matching the given helm release name and app type
+  // (yb-master/yb-tserver) and delete them. The actual STS name can carry a non-zero STS index
+  // suffix (e.g. after a full move), so resolving the name via labels is more reliable than
+  // constructing it. If no matching StatefulSet is found, this is a no-op.
+  public abstract void deleteStatefulSet(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle);
 
   public abstract boolean expandPVC(
       UUID universeUUID,

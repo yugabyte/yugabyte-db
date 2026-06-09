@@ -46,7 +46,7 @@ This tutorial assumes that you have:
 
 - YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/stable/quick-start/macos/).
 - Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install AdoptOpenJDK/openjdk/adoptopenjdk8`.
-- [Apache Spark 3.3.0](https://spark.apache.org/downloads.html).
+- [Apache Spark 3.3.1](https://spark.apache.org/downloads.html).
 - [Apache Maven 3.3](https://maven.apache.org/index.html) or later.
 
 ## Setting Up a Project with Maven
@@ -55,9 +55,15 @@ Add the following to your `pom.xml` file for Scala 2.12:
 
 ```xml
 <dependency>
+  <groupId>org.scala-lang</groupId>
+  <artifactId>scala-library</artifactId>
+  <version>2.12.15</version>
+</dependency>
+
+<dependency>
   <groupId>com.yugabyte.spark</groupId>
   <artifactId>spark-cassandra-connector_2.12</artifactId>
-  <version>3.0-yb-8</version>
+  <version>3.3-yb-4</version>
 </dependency>
 ```
 

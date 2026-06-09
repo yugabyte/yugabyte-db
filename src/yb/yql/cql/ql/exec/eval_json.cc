@@ -219,7 +219,8 @@ Status Executor::PreExecTreeNode(PTInsertJsonClause* json_clause) {
   //
   // Resolve JSON string
   //
-  QLValuePB json_expr_pb;
+  ThreadSafeArena arena;
+  LWQLValuePB json_expr_pb(&arena);
   RETURN_NOT_OK(PTConstToPB(json_clause->Expr(), &json_expr_pb));
   std::string_view json_string = json_expr_pb.string_value();
 

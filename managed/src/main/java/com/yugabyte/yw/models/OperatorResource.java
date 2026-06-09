@@ -13,10 +13,13 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
@@ -47,6 +50,16 @@ public class OperatorResource extends Model {
   @Column(columnDefinition = "TEXT")
   private String data; // Raw YAML data
 
+  @Column(nullable = false)
+  private boolean deleted = false;
+
+  public boolean isDeleted() {
+    return deleted;
+  }
+
+  @Column(columnDefinition = "TEXT")
+  private String platformInstances; // Comma-separated PlatformInstance UUIDs
+
   @ToString.Exclude
   @ManyToMany(fetch = FetchType.LAZY)
   @JoinTable(
@@ -69,19 +82,25 @@ public class OperatorResource extends Model {
 
   public static final Finder<String, OperatorResource> find = new Finder<>(OperatorResource.class);
 
-  /** Get an OperatorResource by its name (type:namespace:name). */
+  /** Get a live (non-deleted) OperatorResource by its name (type:namespace:name). */
   public static OperatorResource getByName(String name) {
-    return find.byId(name);
+    return find.query().where().eq("name", name).eq("deleted", false).findOne();
   }
 
-  /** Get all tracked OperatorResources. */
+  /** Get all live (non-deleted) tracked OperatorResources. */
   public static List<OperatorResource> getAll() {
-    return find.query().findList();
+    return find.query().where().eq("deleted", false).findList();
+  }
+
+  /** Get all soft-deleted OperatorResources (tombstones awaiting K8s cleanup on failover). */
+  public static List<OperatorResource> getDeleted() {
+    return find.query().where().eq("deleted", true).findList();
   }
 
   /**
-   * Create or update an OperatorResource. If it already exists, updates the data (YAML). Returns
-   * the persisted resource.
+   * Create or update an OperatorResource. If it already exists (including soft-deleted rows),
+   * updates the data (YAML) and ensures {@code deleted} is {@code false}. Returns the persisted
+   * resource.
    */
   @Transactional
   public static OperatorResource createOrUpdate(String name, String yamlData) {
@@ -93,6 +112,10 @@ public class OperatorResource extends Model {
       resource.save();
       log.debug("Created OperatorResource: {}", name);
     } else {
+      if (resource.isDeleted()) {
+        log.info("Reviving previously soft-deleted OperatorResource: {}", name);
+        resource.setDeleted(false);
+      }
       resource.setData(yamlData);
       resource.update();
       log.debug("Updated OperatorResource: {}", name);
@@ -125,53 +148,148 @@ public class OperatorResource extends Model {
   }
 
   /**
-   * Delete an OperatorResource and return the set of KubernetesResourceDetails for dependencies
-   * that are no longer depended on by any other resource (orphaned dependencies). Orphaned
-   * dependencies are also removed from the database.
+   * Soft-delete an OperatorResource and return the set of KubernetesResourceDetails for
+   * dependencies that are no longer depended on by any other live resource (orphaned dependencies).
+   * Orphaned dependencies are also soft-deleted. The local platform instance UUID is removed from
+   * the resource (and its orphaned deps) since this K8s cluster no longer has the resource. The
+   * rows remain in the database as tombstones so that the HA restorer can clean up corresponding
+   * K8s resources on other clusters during failover.
+   *
+   * @param name the resource name
+   * @param localInstanceUuid the local PlatformInstance UUID (may be null if HA is not configured)
    */
   @Transactional
-  public static Set<KubernetesResourceDetails> deleteAndGetOrphaned(String name) {
+  public static Set<KubernetesResourceDetails> deleteAndGetOrphaned(
+      String name, UUID localInstanceUuid) {
     OperatorResource resource = find.byId(name);
-    if (resource == null) {
-      log.debug("Resource {} not found for deletion", name);
+    if (resource == null || resource.isDeleted()) {
+      log.debug("Resource {} not found (or already deleted) for deletion", name);
       return Collections.emptySet();
     }
 
     Set<OperatorResource> removedDeps = new HashSet<>(resource.getDependencies());
 
-    // Clear the dependency relationships before deleting
+    // Clear the dependency relationships, soft-delete, and remove local instance
     resource.getDependencies().clear();
+    resource.setDeleted(true);
+    if (localInstanceUuid != null) {
+      Set<UUID> uuids = resource.getPlatformInstanceUuids();
+      uuids.remove(localInstanceUuid);
+      resource.setPlatformInstanceUuids(uuids);
+    }
     resource.save();
-    resource.delete();
-    log.debug("Deleted OperatorResource: {}", name);
+    log.debug("Soft-deleted OperatorResource: {}", name);
 
     if (removedDeps.isEmpty()) {
       return Collections.emptySet();
     }
 
-    // Find and delete orphaned dependencies (no longer depended on by any other resource)
+    // Find and soft-delete orphaned dependencies (no remaining live dependents)
     Set<KubernetesResourceDetails> orphaned = new HashSet<>();
     for (OperatorResource dep : removedDeps) {
-      // Refresh from DB to get current dependents
       OperatorResource refreshed = find.byId(dep.getName());
       if (refreshed != null) {
-        // Force refresh to pick up latest join table state
         refreshed.refresh();
-        if (refreshed.getDependents().isEmpty()) {
+        boolean hasLiveDependents =
+            refreshed.getDependents().stream().anyMatch(d -> !d.isDeleted());
+        if (!hasLiveDependents) {
           orphaned.add(KubernetesResourceDetails.fromResourceName(dep.getName()));
-          // Clean up this orphan's own dependencies before deleting
           refreshed.getDependencies().clear();
+          refreshed.setDeleted(true);
+          if (localInstanceUuid != null) {
+            Set<UUID> depUuids = refreshed.getPlatformInstanceUuids();
+            depUuids.remove(localInstanceUuid);
+            refreshed.setPlatformInstanceUuids(depUuids);
+          }
           refreshed.save();
-          refreshed.delete();
-          log.debug("Deleted orphaned dependency: {}", dep.getName());
+          log.debug("Soft-deleted orphaned dependency: {}", dep.getName());
         }
       }
     }
     return orphaned;
   }
 
-  /** Check if a resource with the given name exists. */
+  /** Returns the set of PlatformInstance UUIDs that have this resource applied to their K8s. */
+  public Set<UUID> getPlatformInstanceUuids() {
+    if (platformInstances == null || platformInstances.isBlank()) {
+      return new HashSet<>();
+    }
+    return Arrays.stream(platformInstances.split(","))
+        .map(String::trim)
+        .filter(s -> !s.isEmpty())
+        .map(UUID::fromString)
+        .collect(Collectors.toCollection(HashSet::new));
+  }
+
+  /** Overwrites the set of PlatformInstance UUIDs. Sets to null when the set is empty. */
+  public void setPlatformInstanceUuids(Set<UUID> uuids) {
+    if (uuids == null || uuids.isEmpty()) {
+      this.platformInstances = null;
+    } else {
+      this.platformInstances = uuids.stream().map(UUID::toString).collect(Collectors.joining(","));
+    }
+  }
+
+  /**
+   * Record that the given PlatformInstance has this resource applied in its K8s cluster. No-op if
+   * {@code instanceUuid} is null.
+   */
+  @Transactional
+  public static void addPlatformInstance(String name, UUID instanceUuid) {
+    if (instanceUuid == null) {
+      return;
+    }
+    OperatorResource resource = find.byId(name);
+    if (resource != null) {
+      Set<UUID> uuids = resource.getPlatformInstanceUuids();
+      if (uuids.add(instanceUuid)) {
+        resource.setPlatformInstanceUuids(uuids);
+        resource.save();
+        log.debug("Added platform instance {} to resource {}", instanceUuid, name);
+      }
+    }
+  }
+
+  /**
+   * Remove the given PlatformInstance from this resource's instance set. If the set becomes empty,
+   * hard-delete the row (no instance references it anymore). No-op if {@code instanceUuid} is null.
+   *
+   * @return true if the row was hard-deleted because no instances remain
+   */
+  @Transactional
+  public static boolean removePlatformInstance(String name, UUID instanceUuid) {
+    if (instanceUuid == null) {
+      return false;
+    }
+    OperatorResource resource = find.byId(name);
+    if (resource == null) {
+      return false;
+    }
+    Set<UUID> uuids = resource.getPlatformInstanceUuids();
+    if (uuids.remove(instanceUuid)) {
+      resource.setPlatformInstanceUuids(uuids);
+      resource.save();
+      log.debug("Removed platform instance {} from resource {}", instanceUuid, name);
+    }
+    if (uuids.isEmpty()) {
+      hardDelete(name);
+      return true;
+    }
+    return false;
+  }
+
+  /** Permanently remove a resource row from the database (used after K8s cleanup on failover). */
+  @Transactional
+  public static void hardDelete(String name) {
+    OperatorResource resource = find.byId(name);
+    if (resource != null) {
+      resource.delete();
+      log.debug("Hard-deleted OperatorResource: {}", name);
+    }
+  }
+
+  /** Check if a live (non-deleted) resource with the given name exists. */
   public static boolean exists(String name) {
-    return find.byId(name) != null;
+    return find.query().where().eq("name", name).eq("deleted", false).exists();
   }
 }

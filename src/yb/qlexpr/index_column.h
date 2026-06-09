@@ -23,7 +23,7 @@ struct IndexColumn {
   ColumnId column_id;         // Column id in the index table.
   std::string column_name;    // Column name in the index table - colexpr.MangledName().
   ColumnId indexed_column_id; // Corresponding column id in indexed table.
-  QLExpressionPB colexpr;     // Index expression.
+  std::shared_ptr<LWQLExpressionPB> colexpr;     // Index expression.
 
   explicit IndexColumn(const IndexInfoPB::IndexColumnPB& pb);
   IndexColumn() {}

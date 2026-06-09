@@ -146,7 +146,9 @@ public class UniverseActionsHandler {
     }
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
-    if (!primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+    if (!Util.getSingleProvider(primaryCluster)
+        .getCloudCode()
+        .equals(Common.CloudType.kubernetes)) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Only applicable for k8s universes.");
     }
@@ -198,7 +200,7 @@ public class UniverseActionsHandler {
         universe.getUniverseUUID());
 
     // Determine if the universe is Kubernetes-based
-    boolean isKubernetes = isKubernetesUniverse(universe);
+    boolean isKubernetes = Util.isKubernetesBasedUniverse(universe);
 
     // Create the Commissioner task to pause the universe.
     TaskType taskType;
@@ -272,7 +274,7 @@ public class UniverseActionsHandler {
         universe.getUniverseUUID());
 
     // Determine if the universe is Kubernetes-based
-    boolean isKubernetes = isKubernetesUniverse(universe);
+    boolean isKubernetes = Util.isKubernetesBasedUniverse(universe);
     ObjectMapper mapper =
         Json.mapper()
             .copy()
@@ -410,12 +412,5 @@ public class UniverseActionsHandler {
         universe.getUniverseUUID(),
         universe.getName());
     return taskUUID;
-  }
-
-  // Helper method to determine if the universe is Kubernetes-based
-  private boolean isKubernetesUniverse(Universe universe) {
-    UniverseDefinitionTaskParams.Cluster primaryCluster =
-        universe.getUniverseDetails().getPrimaryCluster();
-    return primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes);
   }
 }

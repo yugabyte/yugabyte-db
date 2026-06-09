@@ -127,12 +127,24 @@ TAG_FLAG(evict_failed_followers, advanced);
 DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
                  "Whether a follower will return an error for all UpdateConsensus() requests.");
 
+DEFINE_test_flag(bool, skip_write_stop_check_in_update_consensus, false,
+    "When true, RaftConsensus::Update() does not reject UpdateConsensus RPCs when "
+    "writes are stopped. Used for negative testing of the write stall cascade fix. "
+    "See #30728.");
+
 DEFINE_test_flag(bool, follower_pause_update_consensus_requests, false,
                  "Whether a follower will pause all UpdateConsensus() requests.");
 
 DEFINE_test_flag(int32, delay_update_consensus_requests_ms, 0,
     "Delay execution of UpdateConsensus() requests for specified amount of milliseconds during "
     "tests");
+
+DEFINE_test_flag(string, delay_update_consensus_before_mark_committed_tablet_id, "",
+    "If non-empty, delay UpdateConsensus before MarkOperationsAsCommitted for this tablet id.");
+
+DEFINE_test_flag(int32, delay_update_consensus_before_mark_committed_ms, 0,
+    "Delay UpdateConsensus before MarkOperationsAsCommitted by this many ms, for the tablet "
+    "specified by TEST_delay_update_consensus_before_mark_committed_tablet_id.");
 
 DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
                  "Whether a follower will return an error for all UpdateConsensus() requests for "
@@ -249,13 +261,11 @@ DEFINE_UNKNOWN_bool(quick_leader_election_on_create, false,
 TAG_FLAG(quick_leader_election_on_create, advanced);
 TAG_FLAG(quick_leader_election_on_create, hidden);
 
-DEFINE_UNKNOWN_bool(
-    stepdown_disable_graceful_transition, false,
+DEFINE_UNKNOWN_bool(stepdown_disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
 
-DEFINE_UNKNOWN_bool(
-    raft_disallow_concurrent_outstanding_report_failure_tasks, true,
+DEFINE_UNKNOWN_bool(raft_disallow_concurrent_outstanding_report_failure_tasks, true,
     "If true, only submit a new report failure task if there is not one outstanding.");
 TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, advanced);
 TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, hidden);
@@ -442,7 +452,6 @@ RaftConsensus::RaftConsensus(
       step_down_check_tracker_(
           "step_down_check_tracker", &peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
-      shutdown_(false),
       deprecated_follower_memory_pressure_rejections_(
           tablet_metric_entity->FindOrCreateMetric<Counter>(
               &METRIC_follower_memory_pressure_rejections)),
@@ -480,6 +489,15 @@ RaftConsensus::RaftConsensus(
 
 RaftConsensus::~RaftConsensus() {
   Shutdown();
+}
+
+void RaftConsensus::SetPerDbCgroup(Cgroup* cgroup) {
+  if (raft_pool_concurrent_token_) {
+    raft_pool_concurrent_token_->SetTaskCgroup(cgroup);
+  }
+  if (queue_) {
+    queue_->SetNotificationStrandCgroup(cgroup);
+  }
 }
 
 Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
@@ -1123,16 +1141,17 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   if (!PREDICT_FALSE(FLAGS_TEST_leader_skip_no_op)) {
     auto round = make_scoped_refptr<ConsensusRound>(this, replicate);
-    round->SetCallback(MakeNonTrackedRoundCallback(round.get(),
-        [this, term = state_->GetCurrentTermUnlocked()](const Status& status) {
-      // Set 'Leader is ready to serve' flag only for committed NoOp operation
-      // and only if the term is up-to-date.
-      // It is guaranteed that successful notification is called only while holding replicate state
-      // mutex.
-      if (status.ok() && term == state_->GetCurrentTermUnlocked()) {
-        state_->SetLeaderNoOpCommittedUnlocked(true);
-      }
-    }));
+    round->SetCallback(MakeNonTrackedRoundCallback(
+        round.get(), [this, term = state_->GetCurrentTermUnlocked(),
+                      replicate](const Status& status) {
+          // Set 'Leader is ready to serve' flag only for committed NoOp operation
+          // and only if the term is up-to-date.
+          // It is guaranteed that successful notification is called only while holding replicate
+          // state mutex.
+          if (status.ok() && term == state_->GetCurrentTermUnlocked()) {
+            state_->SetLeaderNoOpCommittedUnlocked(true, OpId::FromPB(replicate->id()).index);
+          }
+        }));
     RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
   }
 
@@ -1339,7 +1358,15 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
       }
     }
 
-    OpId op_id = state_->NewIdUnlocked();
+    // Reject ops the operation filter won't allow BEFORE NotifyAddedToLeader runs, so that side
+    // effects of being added as pending don't fire for an op that will be immediately rolled back.
+    // In particular, WriteOperation::AddedAsPending synchronously invokes
+    // DoReplicated -> ApplyRowOperations for use_async_write requests, which writes intents into
+    // the intents memtable. Rolling back the op_id afterwards does not undo that memtable write, so
+    // the intents flushed_frontier can advance past split_op_id and propagate into the children via
+    // Tablet::CreateSubtablet's RocksDB checkpoint -- breaking bootstrap with
+    // "WAL files missing, or committed op id is incorrect" (TabletBootstrap::PlaySegments).
+    OpId op_id = VERIFY_RESULT(state_->NewIdUnlocked(round->replicate_msg()->op_type()));
 
     // We use this callback to transform write operations by substituting the hybrid_time into
     // the write batch inside the write operation.
@@ -1391,6 +1418,9 @@ void RaftConsensus::MajorityReplicatedNumSSTFilesChanged(
 void RaftConsensus::UpdateMajorityReplicated(
     const MajorityReplicatedData& majority_replicated_data, OpId* committed_op_id,
     OpId* last_applied_op_id) {
+  TEST_SYNC_POINT_CALLBACK(
+      "RaftConsensus::UpdateMajorityReplicated::Start",
+      const_cast<TabletId*>(&tablet_id()));
   TEST_PAUSE_IF_FLAG_WITH_LOG_PREFIX(TEST_pause_update_majority_replicated);
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
@@ -1527,9 +1557,10 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
   req.set_tablet_id(tablet_id());
   req.mutable_server()->set_permanent_uuid(uuid);
   req.set_type(REMOVE_SERVER);
-  req.set_cas_config_opid_index(committed_config.opid_index());
+  req.set_cas_config_opid_index(committed_config.committed_op_index());
   LOG_WITH_PREFIX(INFO) << "Attempting to remove follower " << uuid
-                        << " from the Raft config at commit index " << committed_config.opid_index()
+                        << " from the Raft config at commit index "
+                        << committed_config.committed_op_index()
                         << ". Reason: " << reason;
   std::optional<TabletServerErrorPB::Code> error_code;
   WARN_NOT_OK(
@@ -1580,6 +1611,22 @@ Status RaftConsensus::Update(
   response->ref_responder_uuid(state_->GetPeerUuid());
 
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request.ShortDebugString();
+
+  // Reject RPCs carrying operations when the tablet's RocksDB is in a hard write stop.
+  // This check runs BEFORE acquiring update_mutex_ to prevent RPC thread pile-up: if a
+  // thread is already blocked in DelayWrite() while holding update_mutex_, all subsequent
+  // threads would pile up on the mutex and never reach ShouldApplyWrite(). By checking
+  // here, we free the RPC thread immediately. Heartbeat-only RPCs (no ops) are allowed
+  // through to maintain leader leases and committed index advancement. See #30728.
+  if (!PREDICT_FALSE(FLAGS_TEST_skip_write_stop_check_in_update_consensus) &&
+      !request.ops().empty() && state_->context()->AreWritesStopped()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 5) << LogPrefix()
+        << "Rejecting UpdateConsensus with " << request.ops().size()
+        << " ops: writes are stopped on this tablet";
+    return STATUS(ServiceUnavailable,
+        "Writes are stopped on this tablet, rejecting UpdateConsensus to prevent "
+        "RPC thread pile-up on update_mutex_");
+  }
 
   UpdateReplicaResult result;
   {
@@ -2041,6 +2088,13 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   auto last_from_leader = EnqueueWritesUnlocked(
       deduped_req, WriteEmpty(prev_committed_op_id != deduped_req.committed_op_id));
 
+  if (PREDICT_FALSE(!deduped_req.messages.empty() &&
+                    FLAGS_TEST_delay_update_consensus_before_mark_committed_ms != 0 &&
+                    FLAGS_TEST_delay_update_consensus_before_mark_committed_tablet_id ==
+                        tablet_id())) {
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_update_consensus_before_mark_committed_ms);
+  }
+
   // 4 - Mark operations as committed
   RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(request, deduped_req, last_from_leader));
 
@@ -2497,10 +2551,12 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
         "Leader is not ready for Config Change, can try again. "
         "Type: $0. Has opid: $1. Committed config: $2. "
         "Pending config: $3. Current term: $4. Committed op id: $5. Pending split op id: $6",
-        ChangeConfigType_Name(type), active_config.has_opid_index(),
+        ChangeConfigType_Name(type), active_config.has_committed_op_index(),
         state_->GetCommittedConfigUnlocked().ShortDebugString(),
         state_->IsConfigChangePendingUnlocked()
-            ? state_->GetPendingConfigUnlocked().ShortDebugString()
+            ? Format(
+                  "(op_id: $0) $1", state_->GetPendingConfigOpIdUnlocked(),
+                  state_->GetPendingConfigUnlocked().ShortDebugString())
             : "",
         state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked(),
         state_->GetPendingSplitOpIdUnlocked());
@@ -2544,7 +2600,7 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
                              "Pending config: $3. Current term: $4. Committed op id: $5. "
                              "Num peers in transit: $6",
                              ChangeConfigType_Name(type),
-                             active_config.has_opid_index(),
+                             active_config.has_committed_op_index(),
                              state_->GetCommittedConfigUnlocked().ShortDebugString(),
                              state_->IsConfigChangePendingUnlocked() ?
                                  state_->GetPendingConfigUnlocked().ShortDebugString() : "",
@@ -2622,18 +2678,18 @@ Status RaftConsensus::ChangeConfig(
 
     // Support atomic ChangeConfig requests.
     if (req.has_cas_config_opid_index()) {
-      if (committed_config.opid_index() != req.cas_config_opid_index()) {
+      if (committed_config.committed_op_index() != req.cas_config_opid_index()) {
         *error_code = TabletServerErrorPB::CAS_FAILED;
         return STATUS(IllegalState, Substitute("Request specified cas_config_opid_index "
                                                "of $0 but the committed config has opid_index "
                                                "of $1",
                                                req.cas_config_opid_index(),
-                                               committed_config.opid_index()));
+                                               committed_config.committed_op_index()));
       }
     }
 
     RaftConfigPB new_config = committed_config;
-    new_config.clear_opid_index();
+    new_config.clear_committed_op_index();
     switch (type) {
       case ADD_SERVER:
         // Ensure the server we are adding is not already a member of the configuration.
@@ -2825,7 +2881,7 @@ Status RaftConsensus::UnsafeChangeConfig(
       change_config_request.set_tablet_id(tablet_id());
       change_config_request.mutable_server()->set_permanent_uuid(peer_uuid);
       change_config_request.set_type(REMOVE_SERVER);
-      change_config_request.set_cas_config_opid_index(committed_config.opid_index());
+      change_config_request.set_cas_config_opid_index(committed_config.committed_op_index());
       CHECK(RemoveFromRaftConfig(&new_config, change_config_request));
     }
   }
@@ -2845,7 +2901,7 @@ Status RaftConsensus::UnsafeChangeConfig(
   }
   new_config.set_unsafe_config_change(true);
   int64 replicate_opid_index = preceding_opid.index + 1;
-  new_config.clear_opid_index();
+  new_config.clear_committed_op_index();
 
   // Sanity check the new config.
   Status s = VerifyRaftConfig(new_config, UNCOMMITTED_QUORUM);
@@ -2907,14 +2963,14 @@ std::vector<FollowerCommunicationTime> RaftConsensus::GetFollowerCommunicationTi
   return queue_->GetFollowerCommunicationTimes();
 }
 
-void RaftConsensus::Shutdown() {
-  LOG_WITH_PREFIX(INFO) << "Shutdown.";
+void RaftConsensus::StartShutdown() {
+  auto expected = ShutdownState::kNotStarted;
+  if (!shutdown_state_.compare_exchange_strong(expected, ShutdownState::kStarted,
+                                               std::memory_order_acq_rel)) {
+    return;
+  }
 
-  // Avoid taking locks if already shut down so we don't violate
-  // ThreadRestrictions assertions in the case where the RaftConsensus
-  // destructor runs on the reactor thread due to an election callback being
-  // the last outstanding reference.
-  if (shutdown_.Load(kMemOrderAcquire)) return;
+  LOG_WITH_PREFIX(INFO) << "StartShutdown";
 
   CHECK_OK(ExecuteHook(PRE_SHUTDOWN));
 
@@ -2924,7 +2980,6 @@ void RaftConsensus::Shutdown() {
     CHECK_OK(state_->LockForShutdown(&lock));
     step_down_check_tracker_.StartShutdown();
   }
-  step_down_check_tracker_.CompleteShutdown();
 
   // Close the peer manager.
   peer_manager_->Close();
@@ -2933,6 +2988,17 @@ void RaftConsensus::Shutdown() {
   queue_->Close();
 
   CHECK_OK(state_->CancelPendingOperations());
+}
+
+void RaftConsensus::CompleteShutdown() {
+  auto state = shutdown_state_.load(std::memory_order_acquire);
+  if (state != ShutdownState::kStarted) {
+    LOG_IF_WITH_PREFIX_AND_FUNC(DFATAL, state != ShutdownState::kCompleted)
+        << "Wrong shutdown state: " << state;
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "CompleteShutdown";
 
   {
     ReplicaState::UniqueLock lock;
@@ -2941,6 +3007,8 @@ void RaftConsensus::Shutdown() {
     CHECK_OK(state_->ShutdownUnlocked());
     LOG_WITH_PREFIX(INFO) << "Raft consensus is shut down!";
   }
+
+  step_down_check_tracker_.CompleteShutdown();
 
   // Shut down things that might acquire locks during destruction.
   raft_pool_concurrent_token_->Shutdown();
@@ -2951,7 +3019,12 @@ void RaftConsensus::Shutdown() {
 
   CHECK_OK(ExecuteHook(POST_SHUTDOWN));
 
-  shutdown_.Store(true, kMemOrderRelease);
+  shutdown_state_.store(ShutdownState::kCompleted, std::memory_order_release);
+}
+
+void RaftConsensus::Shutdown() {
+  StartShutdown();
+  CompleteShutdown();
 }
 
 PeerRole RaftConsensus::GetActiveRole() const {
@@ -3210,6 +3283,15 @@ void RaftConsensus::SetLeaderUuidUnlocked(const string& uuid) {
   MarkDirty(context);
 }
 
+void RaftConsensus::ClearPendingConfigUnlocked() {
+  auto clear_status = state_->ClearPendingConfigUnlocked();
+  if (!clear_status.ok()) {
+    LOG(WARNING) << "Could not clear pending config: " << clear_status;
+    return;
+  }
+  queue_->ClearPendingConfigOpId();
+}
+
 Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& replicate_ref,
                                                     const RaftConfigPB& new_config,
                                                     ChangeConfigType type,
@@ -3236,14 +3318,12 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
   if (!status.ok()) {
     // We could just cancel pending config, because there could be only one pending config that
     // we've just set above and it corresponds to replicate_ref.
-    auto clear_status = state_->ClearPendingConfigUnlocked();
-    if (!clear_status.ok()) {
-      LOG(WARNING) << "Could not clear pending config: " << clear_status;
-    }
+    ClearPendingConfigUnlocked();
     return status;
   }
 
   RETURN_NOT_OK(state_->SetPendingConfigOpIdUnlocked(round->id()));
+  queue_->SetPendingConfigOpId(round->id());
 
   return Status::OK();
 }
@@ -3261,6 +3341,7 @@ void RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
   queue_->SetLeaderMode(state_->GetCommittedOpIdUnlocked(),
                         state_->GetCurrentTermUnlocked(),
                         state_->GetLastAppliedOpIdUnlocked(),
+                        state_->GetPendingConfigOpIdUnlocked(),
                         active_config);
 
   ScopedDnsTracker dns_tracker(update_raft_config_dns_latency_.get());
@@ -3281,6 +3362,15 @@ const TabletId& RaftConsensus::split_parent_tablet_id() const {
 
 const std::optional<CloneSourceInfo>& RaftConsensus::clone_source_info() const {
   return clone_source_info_;
+}
+
+OpId RaftConsensus::GetPendingConfigOpId() const {
+  auto lock = state_->LockForRead();
+  auto result = state_->GetPendingConfigOpIdUnlocked();
+  if (result.is_valid_not_empty()) {
+    return result;
+  }
+  return state_->GetPendingConfigOpIdFromRbsUnlocked();
 }
 
 LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const {
@@ -3574,6 +3664,20 @@ OpId RaftConsensus::GetAllAppliedOpId() {
   return queue_->GetAllAppliedOpId();
 }
 
+Status RaftConsensus::CheckReadyAsRbsSource() {
+  OpId pending_split_op_id;
+  {
+    auto lock = state_->LockForRead();
+    pending_split_op_id = state_->GetPendingSplitOpIdUnlocked();
+  }
+  if (pending_split_op_id.empty()) {
+    return Status::OK();
+  }
+  return STATUS_FORMAT(
+      TryAgain, "Replica can not be used as RBS source due to pending split operation $0",
+      pending_split_op_id);
+}
+
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {
   LOG_WITH_PREFIX(INFO) << "Calling mark dirty synchronously for reason code " << context->reason;
   mark_dirty_clbk_.Run(context);
@@ -3604,9 +3708,13 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
 
     // Clear out the pending state (ENG-590).
     if (IsChangeConfigOperation(op_type) && state_->GetPendingConfigOpIdUnlocked() == round->id()) {
-      WARN_NOT_OK(state_->ClearPendingConfigUnlocked(), "Could not clear pending config");
+      ClearPendingConfigUnlocked();
     }
   } else if (IsChangeConfigOperation(op_type)) {
+    // The config change has been committed; ReplicaState::ApplyConfigChangeUnlocked already
+    // cleared cmeta_'s pending config. Mirror the clear into the queue so RBS responses don't
+    // carry a stale pending_config_op_id.
+    queue_->ClearPendingConfigOpId();
     // Notify the TabletPeer owner object.
     state_->context()->ChangeConfigReplicated(state_->GetCommittedConfigUnlocked());
   }
@@ -3796,6 +3904,20 @@ void RaftConsensus::TrackOperationMemory(const yb::OpId& op_id) {
 int64_t RaftConsensus::TEST_LeaderTerm() const {
   auto lock = state_->LockForRead();
   return state_->GetCurrentTermUnlocked();
+}
+
+int64_t RaftConsensus::GetFirstIndexOfCurrentTerm() const {
+  auto lock = state_->LockForRead();
+  return state_->GetFirstIndexOfCurrentTermUnlocked();
+}
+
+std::pair<LeaderState, int64_t> RaftConsensus::GetLeaderStateAndFirstIndexOfCurrentTerm() const {
+  auto lock = state_->LockForRead();
+  auto leader_state = state_->GetLeaderStateUnlocked();
+  auto first_index = leader_state.ok()
+      ? state_->GetFirstIndexOfCurrentTermUnlocked()
+      : kInvalidOpIdIndex;
+  return {std::move(leader_state), first_index};
 }
 
 std::string RaftConsensus::DelayedStepDown::ToString() const {

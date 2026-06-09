@@ -26,6 +26,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(master_list_raft_peers_check_is_leader);
 DECLARE_bool(persist_tserver_registry);
 DECLARE_int32(replication_factor);
 DECLARE_int32(transaction_table_num_tablets);
@@ -71,6 +72,66 @@ class RemoveTabletServerTest : public MasterClusterTest {
   virtual MiniClusterOptions CreateMiniClusterOptions() override;
 
 };
+
+class ListMasterRaftPeersTest : public MasterClusterTest {
+ public:
+  // Init 3 masters to test both leader and non-leader master behavior
+  MiniClusterOptions CreateMiniClusterOptions() override {
+    auto opts = MasterClusterTest::CreateMiniClusterOptions();
+    opts.num_masters = 3;
+    return opts;
+  }
+
+ protected:
+  MasterClusterProxy ProxyFor(MiniMaster* mm) {
+    return MasterClusterProxy(proxy_cache_.get(), mm->bound_rpc_addr());
+  }
+
+  Result<ListMasterRaftPeersResponsePB> ListMasterRaftPeersOn(MiniMaster* mm) {
+    auto proxy = ProxyFor(mm);
+    ListMasterRaftPeersRequestPB req;
+    ListMasterRaftPeersResponsePB resp;
+    rpc::RpcController controller;
+    RETURN_NOT_OK(proxy.ListMasterRaftPeers(req, &resp, &controller));
+    return resp;
+  }
+
+  Result<MiniMaster*> GetAnyFollowerMiniMaster() {
+    auto* leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+      auto* mm = cluster_->mini_master(i);
+      if (mm != leader) {
+        return mm;
+      }
+    }
+    return STATUS(NotFound, "No follower master found in cluster");
+  }
+};
+
+TEST_F(ListMasterRaftPeersTest, FollowerServesRequestWhenCheckDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_list_raft_peers_check_is_leader) = false;
+  auto* follower = ASSERT_RESULT(GetAnyFollowerMiniMaster());
+  auto resp = ASSERT_RESULT(ListMasterRaftPeersOn(follower));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  EXPECT_EQ(resp.masters_size(), cluster_->num_masters());
+}
+
+TEST_F(ListMasterRaftPeersTest, LeaderServesRequestWhenCheckEnabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_list_raft_peers_check_is_leader) = true;
+  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto resp = ASSERT_RESULT(ListMasterRaftPeersOn(leader));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  EXPECT_EQ(resp.masters_size(), cluster_->num_masters());
+}
+
+TEST_F(ListMasterRaftPeersTest, FollowerRejectsRequestWhenCheckEnabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_list_raft_peers_check_is_leader) = true;
+  auto* follower = ASSERT_RESULT(GetAnyFollowerMiniMaster());
+  auto resp = ASSERT_RESULT(ListMasterRaftPeersOn(follower));
+  ASSERT_TRUE(resp.has_error())
+      << "Expected NOT_THE_LEADER from follower; got success: " << resp.DebugString();
+  EXPECT_EQ(resp.error().code(), MasterErrorPB::NOT_THE_LEADER);
+}
 
 TEST_F(RemoveTabletServerTest, HappyPath) {
   auto cluster_client = ASSERT_RESULT(CreateClusterClient());

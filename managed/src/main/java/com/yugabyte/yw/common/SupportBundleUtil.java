@@ -54,10 +54,10 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +84,9 @@ import play.libs.Json;
 public class SupportBundleUtil {
 
   public static final String kubectlOutputFormat = "yaml";
+  private static final String[] LOG_FILE_DATE_FORMATS = {
+    "yyyyMMdd-HHmmss", "yyyy-MM-dd_HHmmss", "yyyy-MM-dd", "yyyyMMdd"
+  };
 
   @Inject private GFlagsValidation gFlagsValidation;
 
@@ -136,25 +139,23 @@ public class SupportBundleUtil {
    * dates are given and valid 2. If only the start date is valid, filter from startDate till the
    * end 3. If only the end date is valid, filter from the beginning till endDate 4. Default : If no
    * dates are specified, download all the files from last n days
+   *
+   * <p>Start and end instants from the caller are preserved (including time-of-day). When neither
+   * date is set, the range ends at the current time and starts at {@code default_date_range} days
+   * before that instant.
    */
   public Pair<Date, Date> getValidStartAndEndDates(Config config, Date sDate, Date eDate)
       throws Exception {
     Date startDate, endDate;
     boolean startDateIsValid = isValidDate(sDate);
     boolean endDateIsValid = isValidDate(eDate);
+    int default_date_range = config.getInt("yb.support_bundle.default_date_range");
     if (!startDateIsValid && !endDateIsValid) {
-      int default_date_range = config.getInt("yb.support_bundle.default_date_range");
-      endDate = getTodaysDate();
-      startDate =
-          DateUtils.truncate(getDateNDaysAgo(endDate, default_date_range), Calendar.DAY_OF_MONTH);
+      endDate = new Date();
+      startDate = getDateNDaysAgo(endDate, default_date_range);
     } else {
-      // Strip the date object of the time and set only the date.
-      // This will ensure that we collect files inclusive of the start date.
-      startDate =
-          startDateIsValid
-              ? DateUtils.truncate(sDate, Calendar.DAY_OF_MONTH)
-              : new Date(Long.MIN_VALUE);
-      endDate = endDateIsValid ? eDate : new Date(Long.MAX_VALUE);
+      endDate = endDateIsValid ? eDate : new Date();
+      startDate = startDateIsValid ? sDate : getDateNDaysAgo(endDate, default_date_range);
     }
     return new Pair<Date, Date>(startDate, endDate);
   }
@@ -184,19 +185,91 @@ public class SupportBundleUtil {
    * Filter and return only the strings which match given regex patterns.
    *
    * @param list original list of paths
-   * @param regexList list of regex strings to match against any of them
+   * @param regexList list of regex strings to match against
    * @return list of paths after regex filtering
    */
   public List<String> filterList(List<String> list, List<String> regexList) {
+    return filterListByPatterns(list, compileRegexPatterns(regexList));
+  }
+
+  /**
+   * Filter and return only the strings which match any precompiled regex pattern.
+   *
+   * @param list original list of paths
+   * @param patterns list of precompiled regex patterns to match against
+   * @return list of paths after regex filtering
+   */
+  private List<String> filterListByPatterns(List<String> list, List<Pattern> patterns) {
     List<String> result = new ArrayList<String>();
     for (String entry : list) {
-      for (String regex : regexList) {
-        if (entry.matches(regex)) {
+      for (Pattern pattern : patterns) {
+        if (pattern.matcher(entry).matches()) {
           result.add(entry);
         }
       }
     }
     return result;
+  }
+
+  /**
+   * Compiles a list of regex strings into reusable {@link Pattern} instances.
+   *
+   * @param regexList list of regex strings
+   * @return list of compiled regex patterns
+   */
+  private List<Pattern> compileRegexPatterns(List<String> regexList) {
+    List<Pattern> patterns = new ArrayList<>(regexList.size());
+    for (String regex : regexList) {
+      patterns.add(Pattern.compile(regex));
+    }
+    return patterns;
+  }
+
+  private String extractFileTypeFromFileNameAndPatterns(
+      String fileName, List<Pattern> filePatterns) {
+    String fileType = "";
+    try {
+      for (Pattern filePattern : filePatterns) {
+        Matcher fileNameMatcher = filePattern.matcher(fileName);
+        if (fileNameMatcher.matches()) {
+          fileType = fileNameMatcher.group(1);
+          return fileType;
+        }
+      }
+    } catch (Exception e) {
+      log.error(
+          "Could not extract file type from file name '{}' and regex pattern list '{}'.",
+          fileName,
+          filePatterns);
+    }
+    return fileType;
+  }
+
+  private Date extractDateTimeFromFileNameAndPatterns(String fileName, List<Pattern> filePatterns) {
+    Date fileDate = new Date(0);
+    try {
+      for (Pattern filePattern : filePatterns) {
+        Matcher fileNameMatcher = filePattern.matcher(fileName);
+        if (fileNameMatcher.matches()) {
+          for (int groupIndex = 1; groupIndex <= fileNameMatcher.groupCount(); ++groupIndex) {
+            try {
+              String fileDateString = fileNameMatcher.group(groupIndex);
+              fileDate = DateUtils.parseDate(fileDateString, LOG_FILE_DATE_FORMATS);
+              return fileDate;
+            } catch (Exception e) {
+              // Do nothing and skip.
+              // We don't want to log this because it pollutes the logs.
+            }
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.error(
+          "Could not extract date from file name '{}' and regex pattern list '{}'.",
+          fileName,
+          filePatterns);
+    }
+    return fileDate;
   }
 
   // Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
@@ -230,7 +303,7 @@ public class SupportBundleUtil {
    * based on master, tserver, WARNING, INFO, postgresql, controller, etc.
    *
    * <p>Example: If file name =
-   * "/mnt/disk0/yb-data/yb-data/tserver/logs/postgresql-2022-11-15_000000.log", Then file type =
+   * "/mnt/disk0/yb-data/yb-data/tserver/logs/postgresql-2026-05-06_091713.log", Then file type =
    * "/mnt/disk0/yb-data/yb-data/tserver/logs/postgresql-"
    *
    * @param fileName the entire file name or path
@@ -238,60 +311,35 @@ public class SupportBundleUtil {
    * @return the file type string
    */
   public String extractFileTypeFromFileNameAndRegex(String fileName, List<String> fileRegexList) {
-    String fileType = "";
-    try {
-      for (String fileRegex : fileRegexList) {
-        Matcher fileNameMatcher = Pattern.compile(fileRegex).matcher(fileName);
-        if (fileNameMatcher.matches()) {
-          fileType = fileNameMatcher.group(1);
-          return fileType;
-        }
-      }
-    } catch (Exception e) {
-      log.error(
-          "Could not extract file type from file name '{}' and regex list '{}'.",
-          fileName,
-          fileRegexList);
-    }
-    return fileType;
+    return extractFileTypeFromFileNameAndPatterns(fileName, compileRegexPatterns(fileRegexList));
   }
 
   /**
-   * Uses capturing groups in regex pattern for easier retrieval of neccessary info. Extracts dates
-   * in formats "yyyyMMdd" and "yyyy-MM-dd" in a captured group in the file regex.
+   * Uses capturing groups in regex pattern for easier retrieval of necessary info. Extracts the
+   * timestamp from the filename capture in formats "yyyyMMdd-HHmmss" (master/tserver and
+   * yb-controller logs, e.g. {@code yb-controller-server...log.INFO.20260511-094842}),
+   * "yyyy-MM-dd_HHmmss" (postgresql and connection manager logs, e.g. {@code
+   * postgresql-2026-05-06_091713.log}, {@code ysql-conn-mgr-2024-12-24_065828.log}), "yyyy-MM-dd",
+   * or "yyyyMMdd". The full time-of-day from the capture is preserved when present.
    *
    * @param fileName the entire file name or path
    * @param fileRegexList list of regex strings to match against any of them
-   * @return the date in the file name regex group
+   * @return the parsed {@link Date} from the file name regex group
    */
   public Date extractDateFromFileNameAndRegex(String fileName, List<String> fileRegexList) {
-    Date fileDate = new Date(0);
-    try {
-      for (String fileRegex : fileRegexList) {
-        Matcher fileNameMatcher = Pattern.compile(fileRegex).matcher(fileName);
-        if (fileNameMatcher.matches()) {
-          for (int groupIndex = 1; groupIndex <= fileNameMatcher.groupCount(); ++groupIndex) {
-            try {
-              String fileDateString = fileNameMatcher.group(groupIndex);
-              // yyyyMMdd -> for master, tserver, controller log file names
-              // yyyy-MM-dd -> for postgres log file names
-              String[] possibleDateFormats = {"yyyyMMdd", "yyyy-MM-dd"};
-              fileDate = DateUtils.parseDate(fileDateString, possibleDateFormats);
-              return fileDate;
-            } catch (Exception e) {
-              // Do nothing and skip
-              // We don't want to log this because it pollutes the logs.
-            }
-          }
-        }
-      }
-    } catch (Exception e) {
-      log.error(
-          "Could not extract date from file name '{}' and regex list '{}'.",
-          fileName,
-          fileRegexList);
-    }
-    return fileDate;
+    return extractDateTimeFromFileNameAndRegex(fileName, fileRegexList);
+  }
+
+  /**
+   * Extracts the timestamp from the filename capture; same behavior as {@link
+   * #extractDateFromFileNameAndRegex} and kept for call sites that name this explicitly.
+   *
+   * @param fileName the entire file name or path
+   * @param fileRegexList list of regex strings to match against
+   * @return the parsed {@link Date} from the file name regex group
+   */
+  public Date extractDateTimeFromFileNameAndRegex(String fileName, List<String> fileRegexList) {
+    return extractDateTimeFromFileNameAndPatterns(fileName, compileRegexPatterns(fileRegexList));
   }
 
   /**
@@ -305,21 +353,39 @@ public class SupportBundleUtil {
    * therefore overlapping with given startDate
    *
    * @param logFilePaths list of file paths to filter and retrieve.
-   * @param fileRegexList list of regex strings to match against any of them.
+   * @param fileRegexList list of regex strings to match against.
    * @param startDate the start date to filter from (inclusive).
    * @param endDate the end date to filter till (inclusive).
    * @return list of paths after filtering based on dates.
-   * @throws ParseException
+   * @throws ParseException when a date cannot be parsed from a matching file name
    */
   public List<String> filterFilePathsBetweenDates(
       List<String> logFilePaths, List<String> fileRegexList, Date startDate, Date endDate)
+      throws ParseException {
+    return filterFilePathsBetweenDatesByPatterns(
+        logFilePaths, compileRegexPatterns(fileRegexList), startDate, endDate);
+  }
+
+  /**
+   * Filters a list of log file paths by precompiled regex patterns and between given start and end
+   * dates.
+   *
+   * @param logFilePaths list of file paths to filter and retrieve.
+   * @param filePatterns list of precompiled regex patterns to match against.
+   * @param startDate the start date to filter from (inclusive).
+   * @param endDate the end date to filter till (inclusive).
+   * @return list of paths after filtering based on dates.
+   * @throws ParseException when a date cannot be parsed from a matching file name
+   */
+  private List<String> filterFilePathsBetweenDatesByPatterns(
+      List<String> logFilePaths, List<Pattern> filePatterns, Date startDate, Date endDate)
       throws ParseException {
 
     // Final filtered log paths
     List<String> filteredLogFilePaths = new ArrayList<>();
 
     // Initial filtering of the file names based on regex
-    logFilePaths = filterList(logFilePaths, fileRegexList);
+    logFilePaths = filterListByPatterns(logFilePaths, filePatterns);
 
     // Map of the <fileType, List<filePath>>
     // This is required so that we can filter each type of file according to start and end dates.
@@ -332,7 +398,9 @@ public class SupportBundleUtil {
     Map<String, List<String>> fileTypeToDate =
         logFilePaths.stream()
             .collect(
-                Collectors.groupingBy(p -> extractFileTypeFromFileNameAndRegex(p, fileRegexList)));
+                Collectors.groupingBy(
+                    p -> extractFileTypeFromFileNameAndPatterns(p, filePatterns)));
+    Map<String, Date> cachedPaths = new HashMap<>();
 
     // Loop through each file type
     for (String fileType : fileTypeToDate.keySet()) {
@@ -342,25 +410,29 @@ public class SupportBundleUtil {
           new Comparator<String>() {
             @Override
             public int compare(String path1, String path2) {
-              Date date1 = extractDateFromFileNameAndRegex(path1, fileRegexList);
-              Date date2 = extractDateFromFileNameAndRegex(path2, fileRegexList);
+              Date date1 =
+                  cachedPaths.computeIfAbsent(
+                      path1, k -> extractDateTimeFromFileNameAndPatterns(k, filePatterns));
+              Date date2 =
+                  cachedPaths.computeIfAbsent(
+                      path2, k -> extractDateTimeFromFileNameAndPatterns(k, filePatterns));
               return date2.compareTo(date1);
             }
           });
 
       // Filter file paths according to start and end dates
       // Add filtered date paths to final list
-      Date extraStartDate = null;
       for (String filePathToCheck : fileTypeToDate.get(fileType)) {
-        Date dateToCheck = extractDateFromFileNameAndRegex(filePathToCheck, fileRegexList);
+        Date dateToCheck =
+            cachedPaths.computeIfAbsent(
+                filePathToCheck, k -> extractDateTimeFromFileNameAndPatterns(k, filePatterns));
         if (checkDateBetweenDates(dateToCheck, startDate, endDate)) {
           filteredLogFilePaths.add(filePathToCheck);
         }
         // This is required to collect extra log/s before the start date for partial overlap
-        if ((extraStartDate == null && dateToCheck.before(startDate))
-            || (extraStartDate != null && extraStartDate.equals(dateToCheck))) {
-          extraStartDate = dateToCheck;
+        else if (dateToCheck.before(startDate)) {
           filteredLogFilePaths.add(filePathToCheck);
+          break;
         }
       }
     }
@@ -969,9 +1041,7 @@ public class SupportBundleUtil {
             .filter(
                 path -> {
                   String fileName = path.getFileName().toString();
-                  return fileName.equals("server.conf")
-                      || (fileName.startsWith("postgresql") && fileName.endsWith(".log"))
-                      || (fileName.startsWith("filtered_postgresql") && fileName.endsWith(".log"));
+                  return fileName.equals("server.conf");
                 })
             .forEach(path -> redactSensitiveFile(path, universe));
       }

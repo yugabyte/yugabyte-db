@@ -132,7 +132,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Set<CloudType> validClouds = ImmutableSet.of(CloudType.aws, CloudType.azu, CloudType.gcp);
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
-    if (!userIntent.useSpotInstance || !validClouds.contains(userIntent.providerType)) {
+    if (!userIntent.useSpotInstance || !validClouds.containsAll(userIntent.getAllCloudTypes())) {
       throw new PlatformServiceException(BAD_REQUEST, "The universe doesn't use spot instances.");
     }
 

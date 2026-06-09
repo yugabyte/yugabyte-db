@@ -1049,8 +1049,9 @@ Status InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
   AddMapValue("sk1", "v1", &subdoc);
 
   return dwb->InsertSubDocument(
-      DocPath(encoded_doc_key, KeyEntryValue("s1"), KeyEntryValue("s2")), ValueRef(subdoc),
-      ReadOperationData(), rocksdb::kDefaultQueryId, ttl);
+      DocPath(encoded_doc_key, KeyEntryValue("s1"), KeyEntryValue("s2")),
+      ValueRef(*DocDBRocksDBUtil::MakeLWValue(subdoc)), ReadOperationData(),
+      rocksdb::kDefaultQueryId, ttl);
 }
 
 TEST_P(DocDBTestWrapper, TestUpdateDocWriteBatchTTL) {

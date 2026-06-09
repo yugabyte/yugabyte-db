@@ -28,7 +28,7 @@ StandardError=journal
 # ulimit
 LimitCORE=infinity
 LimitNOFILE=1048576
-LimitNPROC=12000
+LimitNPROC=64000
 
 [Install]
 WantedBy=default.target

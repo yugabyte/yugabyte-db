@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -72,8 +73,13 @@ public class TaskInfo extends Model {
   // This is a key lock for task info by UUID.
   private static final KeyLock<UUID> TASK_INFO_KEY_LOCK = new KeyLock<UUID>();
 
+  // Represents the task states that are considered completed from the task perspective.
   public static final Set<State> COMPLETED_STATES =
       Sets.immutableEnumSet(State.Success, State.Failure, State.Aborted);
+
+  // Represents the task states that are considered terminal from the execution perspective.
+  public static final Set<State> TERMINAL_STATES =
+      Sets.immutableEnumSet(State.Success, State.Failure, State.Aborted, State.Paused);
 
   public static final Set<State> ERROR_STATES = Sets.immutableEnumSet(State.Failure, State.Aborted);
 
@@ -389,6 +395,10 @@ public class TaskInfo extends Model {
     return COMPLETED_STATES.contains(taskState);
   }
 
+  public boolean hasTerminated() {
+    return TERMINAL_STATES.contains(taskState);
+  }
+
   @JsonIgnore
   public JsonNode getTaskParams() {
     return taskParams;
@@ -418,6 +428,69 @@ public class TaskInfo extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid task info UUID: " + taskUUID);
     }
     return taskInfo;
+  }
+
+  /**
+   * Returns the highest persisted {@code position} among direct children of {@code parentUuid}, if
+   * any. Used when reusing the same parent task row (e.g. canary resume) so new subtasks continue
+   * numbering after surviving children.
+   */
+  public static OptionalInt maxChildPosition(UUID parentUuid) {
+    TaskInfo last =
+        find.query()
+            .select("position")
+            .where()
+            .eq("parent_uuid", parentUuid)
+            .orderBy("position desc")
+            .setMaxRows(1)
+            .findOne();
+    if (last == null || last.getPosition() == null || last.getPosition() < 0) {
+      return OptionalInt.empty();
+    }
+    return OptionalInt.of(last.getPosition());
+  }
+
+  /**
+   * Returns the highest persisted {@code position} among direct children of {@code parentUuid} in
+   * the given {@code state}, if any.
+   */
+  public static OptionalInt maxChildPositionByState(UUID parentUuid, State state) {
+    TaskInfo last =
+        find.query()
+            .select("position")
+            .where()
+            .eq("parent_uuid", parentUuid)
+            .eq("task_state", state)
+            .orderBy("position desc")
+            .setMaxRows(1)
+            .findOne();
+    if (last == null || last.getPosition() == null || last.getPosition() < 0) {
+      return OptionalInt.empty();
+    }
+    return OptionalInt.of(last.getPosition());
+  }
+
+  /**
+   * Deletes direct child rows under {@code parentUuid} with {@code position} strictly greater than
+   * the highest {@link State#Success} child position (canary resume clears preview tail).
+   *
+   * @throws PlatformServiceException if there is no successful child under {@code parentUuid}
+   *     (cannot determine a prune boundary).
+   */
+  public static void deleteChildrenAfterMaxSuccessPosition(UUID parentUuid) {
+    OptionalInt maxSuccessPos = maxChildPositionByState(parentUuid, State.Success);
+    if (!maxSuccessPos.isPresent()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot resume canary upgrade: no successful subtasks recorded under task "
+              + parentUuid
+              + ". Aborting resume to avoid replaying from an unknown checkpoint.");
+    }
+    find.query()
+        .where()
+        .eq("parent_uuid", parentUuid)
+        .gt("position", maxSuccessPos.getAsInt())
+        .delete();
   }
 
   public static List<TaskInfo> find(Set<UUID> taskUUIDs) {

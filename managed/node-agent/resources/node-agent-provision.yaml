@@ -1,17 +1,24 @@
 # node-agent-provision.yaml
 
 ynp:
-  # Home directory for the 'yugabyte' user.
-  # This is where the YugabyteDB software and data will reside.
-  yb_home_dir: /home/yugabyte
 
   # NTP (Network Time Protocol) servers for time synchronization.
   # Example: ["0.pool.ntp.org", "1.pool.ntp.org"]
   chrony_servers: []
 
+  # Custom home directory for the software installation.
+  # This is where the YugabyteDB software and data will reside.
+  yb_home_dir: /home/yugabyte
+
+  # Home directory for the 'yugabyte' user.
+  # This is where the YugabyteDB software and data will reside.
+  # This defaults to the value of yb_home_dir if not set.
+  yb_user_home: /home/yugabyte
+
   # User ID for the 'yugabyte' user.
   # Applies to new user creation only if the user does not already exist.
   yb_user_id: 1004
+
   no_proxy_list: []
   # Indicates if the node is in an air-gapped environment (no internet access).
   # Set to 'true' if the node cannot access external networks.
@@ -41,13 +48,16 @@ ynp:
   # Ref: https://github.com/aws/clock-bound
   is_configure_clockbound: false
 
+  # When true, YNP configures TServer cgroup isolation. When false, no cgroup
+  # tuning is applied.
+  configure_cgroup: true
 yba:
   # The base URL of the Yugabyte Anywhere instance.
   # Example: 'https://yba.example.com'.
   url: <url>
 
   # Skip TLS certificate verification.
-  skip_tls_verify: false
+  skip_tls_verify: true
 
   # The UUID of the customer in Yugabyte Anywhere.
   # This is a unique identifier provided by YBA.

@@ -149,6 +149,7 @@ public class SupportBundleReconciler
       log.error("Error fetching universe with name " + bundle.getSpec().getUniverseName());
       return;
     }
+    bundleData.resolveDefaultDates(confGetter);
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe, confGetter);
     markStatus(bundle, SupportBundleStatus.Status.GENERATING, supportBundle.getBundleUUID());
     SupportBundleTaskParams taskParams =

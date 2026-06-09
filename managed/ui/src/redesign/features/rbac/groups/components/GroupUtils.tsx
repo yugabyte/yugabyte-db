@@ -25,6 +25,8 @@ export const LDAP_PATH = 'yb.security.ldap';
 const OIDC_CONFIG_KEY = `${OIDC_PATH}.use_oauth`;
 const LDAP_CONFIG_KEY = `${LDAP_PATH}.use_ldap`;
 const RBAC_GROUP_MAPPING_CONFIG_KEY = `yb.security.group_mapping_rbac_support`;
+export const ALLOW_SUPERADMIN_USER_GROUP_MAPPING_KEY =
+  'yb.security.allow_superadmin_user_group_mapping';
 
 const isEnabled = (runtimeConfigs: RunTimeConfig, configKey: string) => {
   return find(runtimeConfigs.configEntries, (config) => config.key === configKey)?.value === 'true';
@@ -40,6 +42,11 @@ export const getIsLDAPEnabled = (runtimeConfigs: RunTimeConfig) => {
 
 export const getIsRbacGroupMappingEnabled = (runtimeConfigs: RunTimeConfig) => {
   return isEnabled(runtimeConfigs, RBAC_GROUP_MAPPING_CONFIG_KEY);
+};
+
+/** When true, SuperAdmin may assign SuperAdmin via role bindings (incl. LDAP/OIDC users). */
+export const getAllowSuperadminUserGroupMapping = (runtimeConfigs: RunTimeConfig) => {
+  return isEnabled(runtimeConfigs, ALLOW_SUPERADMIN_USER_GROUP_MAPPING_KEY);
 };
 
 export const WrapDisabledElements = (children: JSX.Element, disabled: boolean, title: string) => {

@@ -160,7 +160,7 @@ UPDATE customers SET email = 'service@example.com' WHERE id = 1;
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8881476960074,
+      "ts_ms": 1775704408457,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:5::0:0\"]",
@@ -171,7 +171,7 @@ UPDATE customers SET email = 'service@example.com' WHERE id = 1;
       "xmin": null
     },
     "op": "u", --> 4
-    "ts_ms": 1646149134341,
+    "ts_ms": 1775704408463,
     "transaction": null
   }
 }

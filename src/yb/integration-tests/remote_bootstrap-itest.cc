@@ -43,8 +43,10 @@
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/opid.h"
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
@@ -70,6 +72,8 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet.h"
@@ -84,6 +88,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/pstack_watcher.h"
@@ -732,7 +737,8 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   scoped_refptr<tablet::RaftGroupMetadata> meta;
   ASSERT_OK(rb_client.Start(
       cluster_->tablet_server(kTsIndex)->uuid(), &cluster_->proxy_cache(),
-      cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(), ServerRegistrationPB(), &meta));
+      cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(), ServerRegistrationPB(), OpId(),
+      &meta));
 
   // Tombstone the tablet on the remote!
   ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
@@ -1154,7 +1160,7 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
   follower_considered_failed_sec = 10;
   ts_flags.push_back("--follower_unavailable_considered_failed_sec="+
                      std::to_string(follower_considered_failed_sec));
-  ts_flags.push_back("--heartbeat_interval_ms=100");
+  ts_flags.push_back("--raft_heartbeat_interval_ms=100");
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--TEST_crash_if_remote_bootstrap_sessions_greater_than=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessions + 1));
@@ -1816,8 +1822,20 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
 // the checkpoint creation takes longer than the RPC timeout, multiple
 // bootstrap attempts will be made (first one times out, others will error
 // with checkpoint lock contention, eventually first one finishes).
-// Without fix, this would create multiple stuck RBS RPC threads on the RBS source tserver.
-// With fix, this will create at most 2 RBS RPC threads on the RBS source tserver.
+//
+// Two source-side fixes together bound the resource footprint of these retries:
+//   1. RBS source uses TabletSnapshots::UseTryLock::kTrue on the per-tablet checkpoint lock, so
+//      subsequent retries fail fast with "Unable to acquire checkpoint lock" instead of queueing
+//      up RPC threads on the lock. Without this, we'd see one stuck RPC thread per retry.
+//   2. D52549 source-side prune in RemoteBootstrapServiceImpl::CreateRemoteSession evicts the
+//      prior (requestor_uuid, tablet_id) entry from sessions_ before inserting the new one.
+//      Without this, each retry would leave a stale RemoteBootstrapSession in sessions_ that's
+//      only reclaimed by the idle timer (FLAGS_remote_bootstrap_idle_timeout_ms), and those
+//      stale entries would pin checkpoint dirs + log anchors via their scoped_refptrs.
+//
+// Combined invariant: at most ~2 RBS RPC threads AND at most ~2 RBS sessions on the source
+// tserver at any given time during contention, regardless of how many retries the destination
+// makes.
 TEST_F(RemoteBootstrapITest, TestRBSWithCheckpointLockContention) {
   const auto kRBSSessionTimeoutMs = 5000;
 
@@ -1933,23 +1951,25 @@ TEST_F(RemoteBootstrapITest, TestRBSWithCheckpointLockContention) {
   } while (contention_errors < kMinExpectedContentionErrors);
 
   rpc_inbound_calls_alive = GetRPCInboundCallsAlive(leader_tserver);
-  auto prev_num_rbs_sessions = num_rbs_sessions;
   num_rbs_sessions = GetNumRBSessions(leader_tserver);
-  LOG(INFO) << "RBS sessions on leader (after timeout): " << num_rbs_sessions
-            << " rpc_inbound_calls_alive: " << rpc_inbound_calls_alive;
-  ASSERT_GE(num_rbs_sessions, prev_num_rbs_sessions + contention_errors);
-  // We should have at most 2 RPC threads doing RBS at any given time during this period.
-  // But with other inflight RPCs on the leader, and the current metric not differentiating
-  // between RBS and other RPCs, it may not be reliable to assert for that. Hence, a more relaxed
-  // assertion that the number of RPC threads is strictly less than the number of RBS sessions.
-  // Without fix, this would not hold true (it would be at least equal to the number of RBS sessions
-  // as each of them would be stuck waiting for the lock.).
-  ASSERT_LT(rpc_inbound_calls_alive, num_rbs_sessions);
+  LOG(INFO) << "RBS sessions on leader (after " << contention_errors << " contention errors): "
+            << num_rbs_sessions << " rpc_inbound_calls_alive: " << rpc_inbound_calls_alive;
+  // With both fixes in place we expect a bounded footprint regardless of how many contention
+  // retries the destination issued. The "+2" slack absorbs short-lived overlap with an unrelated
+  // RPC observation (e.g. heartbeat / tablet report) and the transient window inside
+  // CreateRemoteSession where a new entry is inserted but the previous one for the same
+  // (requestor, tablet) hasn't yet been pruned by the next retry.
+  ASSERT_LE(num_rbs_sessions, initial_num_rbs_sessions + 2)
+      << "Source-side prune (D52549) should keep sessions_ bounded across "
+      << contention_errors << " contention retries; got " << num_rbs_sessions
+      << " sessions (initial=" << initial_num_rbs_sessions << ").";
+  ASSERT_LE(rpc_inbound_calls_alive, initial_rpc_inbound_calls_alive + 2)
+      << "try_lock fix should keep RBS RPC threads from queuing on the checkpoint lock; got "
+      << rpc_inbound_calls_alive << " inbound calls alive (initial="
+      << initial_rpc_inbound_calls_alive << ").";
 
   // Reset the flag to release the checkpoint lock so the RBS can complete.
   ASSERT_OK(cluster_->SetFlag(leader_tserver, "TEST_pause_create_checkpoint", "false"));
-  // Set up a log waiter to detect when the first (timed out) RBS session expires.
-  LogWaiter session_expired_waiter(leader_tserver, "has expired. Terminating session");
 
   ASSERT_OK(WaitUntilTabletInState(follower_ts, tablet_id, tablet::RUNNING, kTimeout * 2));
 
@@ -1963,10 +1983,13 @@ TEST_F(RemoteBootstrapITest, TestRBSWithCheckpointLockContention) {
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(tablet_workload_info.table_name,
       ClusterVerifier::AT_LEAST, tablet_workload_info.rows_inserted));
 
-  // The first (timed out) RBS session's checkpoint may be around until expiry cleans it up.
-  // For this test (RBS idle timeout=10s, poll period=10s), worst case ~20s to expiry. But
-  // CheckCheckpointsCleared() waits only up to 10s, so teardowncan fail. Hence, the wait here.
-  ASSERT_OK(session_expired_waiter.WaitFor(kTimeout));
+  // Pre-D52549, the first (timed-out) RBS session sat in sessions_ until the idle timer reaped
+  // it (~20s with the test's settings), and the checkpoint dir leaked alongside it. With the
+  // source-side prune, that first session is evicted from sessions_ the moment the next retry
+  // arrives; the session object then goes out of scope as soon as the first RPC handler returns
+  // (after the pause flag is cleared) and the destructor cleans up the checkpoint dir. No
+  // explicit wait for expiration is necessary -- CheckCheckpointsCleared() in teardown finds the
+  // dir already gone.
 }
 
 TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFromClosestPeer) {
@@ -2060,6 +2083,113 @@ TEST_F(RemoteBootstrapITest, TestBootstrapSourceCrashesWhileFetchingData) {
 
 TEST_F(RemoteBootstrapITest, TestClientCrashesBeforeChangeRoleKeyValueTableType) {
   RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType::YQL_TABLE_TYPE);
+}
+
+// Verifies that a failure between RemoteBootstrapClient::Finish() and OpenTablet() during
+// remote bootstrap does not leave the tablet server in an invalid state. The injected crash
+// fires after Finish() has marked the new replica's superblock as TABLET_DATA_READY but
+// before OpenTablet() has actually opened the tablet (and started its consensus). The test
+// asserts that:
+//   1) The crashed tserver's on-disk superblock is at TABLET_DATA_READY (so the crash really
+//      did fire in the Finish()->OpenTablet() gap, not earlier in the RBS pipeline).
+//   2) While the restarted tserver is bootstrapping the still-not-running replica it rejects
+//      raft consensus RPCs targeting that tablet (TABLET_NOT_RUNNING), so the replica cannot
+//      silently participate in consensus before it is fully open.
+//   3) The tserver eventually opens the tablet - either by completing its local bootstrap
+//      or by being remote-bootstrapped again by the leader - and the cluster ends up healthy
+//      with the full voter quorum and all rows intact.
+TEST_F(RemoteBootstrapITest, TestTServerSurvivesCrashBetweenRBSFinishAndOpenTablet) {
+  crash_test_timeout_ = MonoDelta::FromSeconds(60);
+  CrashTestSetUp(YBTableType::YQL_TABLE_TYPE);
+
+  // Restart the previously-removed tserver and arm the fault that crashes between
+  // RemoteBootstrapClient::Finish() (which sets the superblock to TABLET_DATA_READY) and
+  // TSTabletManager::OpenTablet().
+  ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(crash_test_tserver_index_),
+      "TEST_fault_crash_after_rb_finish_before_open", "1.0"));
+
+  TServerDetails* ts =
+      ts_map_[cluster_->tablet_server(crash_test_tserver_index_)->uuid()].get();
+  ASSERT_OK(itest::AddServer(
+      crash_test_leader_ts_, crash_test_tablet_id_, ts, PeerMemberType::PRE_VOTER, std::nullopt,
+      crash_test_timeout_, /* error_code= */ nullptr, /* retry= */ true));
+
+  // The tserver should crash mid-RBS. The on-disk superblock should be TABLET_DATA_READY,
+  // confirming the crash landed in the Finish() -> OpenTablet() window (compared to a crash
+  // before Finish(), which would leave it at TABLET_DATA_COPYING).
+  ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_tserver_index_, kWaitForCrashTimeout_));
+  ASSERT_OK(inspect_->CheckTabletDataStateOnTS(
+      crash_test_tserver_index_, crash_test_tablet_id_, TABLET_DATA_READY));
+
+  // Persist TEST_pause_after_set_bootstrapping across the next restart so we can catch the
+  // restarting tserver while OpenTablet() has registered the peer but has not yet started
+  // its consensus. This is the window where the tablet must reject consensus rounds.
+  cluster_->tablet_server(crash_test_tserver_index_)->Shutdown();
+  cluster_->tablet_server(crash_test_tserver_index_)->AddExtraFlag(
+      "TEST_pause_after_set_bootstrapping", "true");
+  ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
+
+  // Recreating ts_map_ destroys the previous TServerDetails entries, so any pointers we
+  // were caching into it (crash_test_leader_ts_, ts) now dangle. Save the leader uuid
+  // first, refresh the map, and then re-resolve both pointers.
+  const std::string leader_uuid = crash_test_leader_ts_->uuid();
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  crash_test_leader_ts_ = ts_map_[leader_uuid].get();
+  ts = ts_map_[cluster_->tablet_server(crash_test_tserver_index_)->uuid()].get();
+
+  // While the bootstrap is paused, an UpdateConsensus targeting this tablet must be rejected
+  // with TABLET_NOT_RUNNING because the tablet peer's RaftConsensus has not been started
+  // yet. We require the specific error code (rather than any has_error()) so that this
+  // assertion stays meaningful even if TEST_pause_after_set_bootstrapping ever stops
+  // engaging - a request that races past the pause and hits a running replica would be
+  // rejected with INVALID_TERM/etc. and we want that to surface as a test failure.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        ThreadSafeArena arena;
+        consensus::LWConsensusRequestPB req(&arena);
+        consensus::LWConsensusResponsePB resp(&arena);
+        rpc::RpcController rpc;
+        rpc.set_timeout(MonoDelta::FromSeconds(5));
+        req.ref_tablet_id(crash_test_tablet_id_);
+        req.ref_dest_uuid(ts->uuid());
+        req.ref_caller_uuid(crash_test_leader_ts_->uuid());
+        req.set_caller_term(1);
+        OpId(1, 1).ToPB(req.mutable_committed_op_id());
+        OpId(1, 1).ToPB(req.mutable_preceding_id());
+        Status s = ts->consensus_proxy->UpdateConsensus(req, &resp, &rpc);
+        if (!s.ok()) {
+          return false;  // Connection not yet up; keep waiting.
+        }
+        if (!resp.has_error()) {
+          return false;
+        }
+        return resp.error().code() == tserver::TabletServerErrorPB::TABLET_NOT_RUNNING;
+      },
+      crash_test_timeout_,
+      "Waiting for UpdateConsensus to be rejected with TABLET_NOT_RUNNING while the tablet "
+      "is not running"));
+
+  // Unblock the bootstrap. Recovery should now complete: either by finishing the local
+  // OpenTablet() (since the superblock is TABLET_DATA_READY and the data files are intact)
+  // or by the leader driving another full remote bootstrap.
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_tserver_index_),
+                              "TEST_pause_after_set_bootstrapping", "false"));
+
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      crash_test_tserver_index_, crash_test_tablet_id_, TABLET_DATA_READY,
+      crash_test_timeout_ * 3));
+
+  // voter promotion only fires after the tablet has opened
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(
+      5, crash_test_leader_ts_, crash_test_tablet_id_, crash_test_timeout_ * 3));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
+      crash_test_workload_->table_name(), ClusterVerifier::AT_LEAST,
+      crash_test_workload_->rows_inserted()));
 }
 
 void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
@@ -2843,8 +2973,8 @@ TEST_F(PersistRetryableRequestsRBSITest, TestRetryableWrite) {
     return leader_peer->TEST_HasBootstrapStateOnDisk();
   }, 10s, "retryable requests flushed to disk"));
 
-  ASSERT_OK(
-      ASSERT_NOTNULL(leader_peer->shared_tablet_maybe_null())->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(ASSERT_NOTNULL(leader_peer->shared_tablet_maybe_null())
+                ->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   TEST_SYNC_POINT("PersistRetryableRequestsRBSITest::TestRetryableWrite:WaitForSetTimedOut");
 

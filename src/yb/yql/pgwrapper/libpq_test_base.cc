@@ -344,7 +344,6 @@ std::vector<YsqlMetric> LibPqTestBase::ParsePrometheusMetrics(const std::string&
 }
 
 // Parse metrics from the JSON output of the /metrics endpoint.
-// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
 std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metrics_output) {
   std::vector<YsqlMetric> parsed_metrics;
 
@@ -361,22 +360,20 @@ std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metri
     std::unordered_map<std::string, std::string> labels;
     if (metric["table_name"].IsValid()) {
       labels["table_name"] = EXPECT_RESULT(metric["table_name"].GetString());
-    } else {
-      LOG(INFO) << "No table name found for metric: " << metric_name;
     }
 
     parsed_metrics.emplace_back(
         metric_name, std::move(labels), EXPECT_RESULT(metric["count"].GetInt64()),
-        0  // JSON doesn't include timestamp
-    );
+        0,  // JSON doesn't include timestamp
+        "", "", EXPECT_RESULT(metric["sum"].GetInt64()));
   }
 
   return parsed_metrics;
 }
 
 // Helper function to get JSON metrics from the /metrics endpoint and parse them into YsqlMetrics.
-std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics() {
-  ExternalTabletServer* ts = cluster_->tablet_server(0);
+std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics(size_t ts_idx) {
+  ExternalTabletServer* ts = cluster_->tablet_server(ts_idx);
   auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
   EasyCurl c;
   faststring buf;
@@ -432,6 +429,30 @@ Result<int64_t> LibPqTestBase::GetCatCacheTableMissMetric(const std::string& tab
     }
   }
   return STATUS(NotFound, "metric for " + table_name + " not found");
+}
+
+Result<int64_t> LibPqTestBase::GetCatCacheListMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      return metric.value;
+    }
+  }
+  return STATUS(NotFound, "list miss metric for " + table_name + " not found");
+}
+
+Result<int64_t> LibPqTestBase::GetCatCacheNegMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      return metric.value;
+    }
+  }
+  return STATUS(NotFound, "negative miss metric for " + table_name + " not found");
 }
 
 } // namespace pgwrapper

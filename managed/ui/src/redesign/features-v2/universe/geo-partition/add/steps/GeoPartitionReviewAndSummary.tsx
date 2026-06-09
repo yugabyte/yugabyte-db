@@ -12,39 +12,21 @@ import {
 } from '../../../create-universe/steps/review-summary/ReviewAndSummaryComponent';
 
 import { ClusterType, Region } from '@app/redesign/helpers/dtos';
-import { ClusterPartitionSpec, Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 
 import { UniverseActionButtons } from '../../../create-universe/components/UniverseActionButtons';
-import { prepareAddGeoPartitionPayload, useGeoPartitionNavigation } from '../AddGeoPartitionUtils';
+import {
+  buildUniverseSpecForGeoPartitionPricing,
+  prepareAddGeoPartitionPayload,
+  sumNumNodesInClusterPartitionPlacement,
+  useGeoPartitionNavigation
+} from '../AddGeoPartitionUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import PinIcon from '@app/redesign/assets/pin.svg';
+import { getReadReplicaExitRoute } from '../../../read-replica/readReplicaUtils';
 
 const { Box } = mui;
-
-function mapGeoPartitionSpecToUniverseSpec(
-  geoPartitionSpec: ClusterPartitionSpec,
-  universeData: Universe
-) {
-  if (!universeData?.spec) return;
-
-  const primaryCluster = universeData.spec.clusters.find(
-    (c) => c.cluster_type === ClusterType.PRIMARY
-  );
-  if (!primaryCluster) return;
-
-  return {
-    spec: {
-      ...universeData.spec,
-      clusters: universeData.spec.clusters.map((cluster) => ({
-        ...cluster,
-        placement_spec: geoPartitionSpec.placement
-      }))
-    },
-    arch: universeData.info?.arch
-  };
-}
 
 export const GeoPartitionReviewAndSummary = () => {
   const [addGeoPartitionContext, addGeoPartitionMethods] = (useContext(
@@ -63,9 +45,9 @@ export const GeoPartitionReviewAndSummary = () => {
     geoPartitions.map((gp) => ({
       queryKey: ['geo-partition-cost', gp.name],
       queryFn: async () => {
-        const universeSpec = mapGeoPartitionSpecToUniverseSpec(
-          geoPartitionData.find((spec) => spec.name === gp.name)!,
-          universeData!
+        const universeSpec = buildUniverseSpecForGeoPartitionPricing(
+          universeData!,
+          geoPartitionData.find((spec) => spec.name === gp.name)!
         );
         if (!universeSpec) return;
         return getUniverseResources(universeSpec as any);
@@ -83,7 +65,12 @@ export const GeoPartitionReviewAndSummary = () => {
   const reviewItems: ReviewItem[] = geoPartitions.map((_, i) => ({
     name: geoPartitions[i].name,
     attributes: [
-      { name: 'Nodes', value: costs[i]?.data?.num_nodes ?? '-' },
+      {
+        name: 'Nodes',
+        value: geoPartitionData[i]?.placement
+          ? String(sumNumNodesInClusterPartitionPlacement(geoPartitionData[i]))
+          : '-'
+      },
       { name: 'Cores', value: costs[i]?.data?.num_cores ?? '-' },
       { name: 'Total Memory', value: costs[i]?.data?.mem_size_gb ?? '-' },
       { name: 'Total Storage', value: costs[i]?.data?.volume_size_gb ?? '-' }
@@ -113,22 +100,32 @@ export const GeoPartitionReviewAndSummary = () => {
     const primaryCluster = universeData.spec.clusters.find(
       (c) => c.cluster_type === ClusterType.PRIMARY
     );
-    if (!primaryCluster) return;
+    if (!primaryCluster?.uuid) return;
+
+    // When converting a non-geo-partitioned universe to a geo-partitioned one, payload[0] is the
+    // modified default partition that replaces the existing default. Otherwise we are appending
+    // brand new partitions to an already geo-partitioned cluster and must keep the existing ones.
+    const { isNewGeoPartition } = addGeoPartitionContext;
+    const partitionsSpec = isNewGeoPartition
+      ? payload
+      : [...(primaryCluster.partitions_spec ?? []), ...payload];
 
     editUniverse.mutate(
       {
         uniUUID: universeData!.info!.universe_uuid!,
         data: {
-          clusters: universeData!.spec!.clusters.map((cluster) => ({
-            uuid: cluster!.uuid!,
-            partitions_spec: [...(primaryCluster.partitions_spec ?? []), ...payload]
-          })),
-          expected_universe_version: -1
+          expected_universe_version: -1,
+          clusters: [
+            {
+              uuid: primaryCluster.uuid,
+              partitions_spec: partitionsSpec
+            }
+          ]
         }
       },
       {
         onSuccess: () => {
-          window.location.href = `/universes/${universeData!.info!.universe_uuid}`;
+          window.location.href = getReadReplicaExitRoute(universeData!.info!.universe_uuid);
         },
         onError: (error) => {
           toast.error((error.response?.data as any).error || error.message);

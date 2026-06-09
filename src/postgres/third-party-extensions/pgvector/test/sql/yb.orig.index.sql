@@ -103,6 +103,14 @@ CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
 CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 DROP TABLE items;
 
+-- Partial vector indexes are not supported (#31441).  The predicate is not
+-- pushed into the vector AM, so allowing them would silently produce wrong
+-- query results.  The CREATE INDEX should be rejected for both vector AMs.
+CREATE TABLE items (id serial PRIMARY KEY, embedding vector(3));
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops) WHERE id > 10;
+CREATE INDEX ON items USING ybdummyann (embedding) WHERE id > 10;
+DROP TABLE items;
+
 CREATE TABLE items(id serial PRIMARY KEY, embedding vector(3));
 CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
 SELECT indexdef FROM pg_indexes WHERE indexname = 'items_idx';
@@ -122,22 +130,9 @@ DROP TABLE vec1;
 
 CREATE TABLE vec1 (embedding vector(3));
 CREATE INDEX vec1_idx ON vec1 USING hnsw (embedding vector_l2_ops);
-SET ybhnsw.ef_search = 100;
 SET hnsw.ef_search = 100;
 \d vec1
 DROP TABLE vec1;
-
--- Test to validate that both GUCs ybhnsw.ef_search and hnsw.ef_search are in sync.
-SHOW ybhnsw.ef_search;
-SHOW hnsw.ef_search;
-
-SET ybhnsw.ef_search = 200;
-SHOW ybhnsw.ef_search;
-SHOW hnsw.ef_search;
-
-RESET hnsw.ef_search;
-SHOW ybhnsw.ef_search;
-SHOW hnsw.ef_search;
 
 -- ANALYZE should not produce any warnings on tables with ybhnsw indexes.
 CREATE TABLE vec_analyze (id serial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS;

@@ -50,6 +50,11 @@ public class CallHome {
   void scheduleRunner() {
     try {
       log.info("Running scheduler");
+      try {
+        callHomeManager.sendPlatformDiagnostics();
+      } catch (Exception e) {
+        log.error("Error sending platform callhome", e);
+      }
       for (Customer c : Customer.getAll()) {
         try {
           callHomeManager.sendDiagnostics(c);

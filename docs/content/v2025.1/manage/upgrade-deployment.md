@@ -36,18 +36,23 @@ Review the following information before starting an upgrade.
 {{< warning title="YSQL major version upgrades" >}}
 To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2025.1 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 {{< /warning >}}
+{{< warning title="TA-31533: Universes with xCluster" >}}
+For some xCluster setups, before upgrading, you should run a verification script to check if the universe is affected by TA-31533. For more information, refer to {{<ta 31533>}}.
+{{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
 
-- You can only upgrade to the latest minor version of every release.
+- It is strongly recommended to upgrade to the latest minor version of every release.
 
-    For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
+    For example, if you are upgrading from v2025.1.0, and the latest release in the v2025.2 release series is v2025.2.2.1, then you should upgrade to v2025.2.2.1 (and not v2025.2.1.0 or v2025.2.0.0).
 
     To view and download releases, refer to [Releases](/stable/releases/).
 
+- Upgrades must be to a chronologically later release - you cannot upgrade to a version that was released before the one you are currently running. For example, if you are running v2024.2.8.0 (released February 23, 2026), you cannot upgrade to v2025.2.1.0 (released February 12, 2026).
+
 - Upgrades are not supported between preview and stable versions.
 
-- Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
+- Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector at the top of the page.
 
 - Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 
@@ -335,7 +340,7 @@ To upgrade clusters in transactional xCluster, the sequence is as follows:
 
 ### Bidirectional xCluster
 
-If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
+If you have bidirectional xCluster replication, perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
 
 The sequence is as follows:
 

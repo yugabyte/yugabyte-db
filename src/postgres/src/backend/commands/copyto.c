@@ -515,9 +515,11 @@ BeginCopyTo(ParseState *pstate,
 					 errmsg("COPY query must have a RETURNING clause")));
 		}
 
-		/* plan the query */
+		/* plan the query. YB: parallel query is disabled for DDLs by default. */
 		plan = pg_plan_query(query, pstate->p_sourcetext,
-							 CURSOR_OPT_PARALLEL_OK, NULL);
+							 (IsYugaByteEnabled() && yb_disable_parallel_query_in_ddl) ?
+							 0 : CURSOR_OPT_PARALLEL_OK,
+							 NULL);
 
 		/*
 		 * With row-level security and a user using "COPY relation TO", we

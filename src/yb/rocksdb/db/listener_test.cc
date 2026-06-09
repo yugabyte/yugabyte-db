@@ -65,7 +65,7 @@ class TestPropertiesCollectorFactory : public TablePropertiesCollectorFactory {
   const char* Name() const override { return "TestTablePropertiesCollector"; }
 };
 
-class TestCompactionListener : public EventListener {
+class CompactionListener : public EventListener {
  public:
   void OnCompactionCompleted(DB *db, const CompactionJobInfo& ci) override {
     std::lock_guard lock(mutex_);
@@ -109,7 +109,7 @@ TEST_F(EventListenerTest, OnSingleDBCompactionTest) {
   options.table_properties_collector_factories.push_back(
       std::make_shared<TestPropertiesCollectorFactory>());
 
-  TestCompactionListener* listener = new TestCompactionListener();
+  CompactionListener* listener = new CompactionListener();
   options.listeners.emplace_back(listener);
   std::vector<std::string> cf_names = {
       "pikachu", "ilya", "muromec", "dobrynia",

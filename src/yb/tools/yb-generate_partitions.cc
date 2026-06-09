@@ -95,7 +95,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
         "key, found: $0 need atleast $1", ncolumns, schema.num_hash_key_columns());
   }
 
-  std::unique_ptr<client::YBqlReadOp> yb_op(table_->NewQLRead());
+  std::unique_ptr<client::YBqlReadOp> yb_op(table_->NewQLRead(SharedThreadSafeArena()));
   auto* ql_read = yb_op->mutable_request();
 
   // Set the hash column values to compute the partition key.
@@ -118,7 +118,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
       YB_SET_INT_VALUE(value_pb, *it, 32);
       YB_SET_INT_VALUE(value_pb, *it, 64);
       case DataType::STRING:
-        value_pb->set_string_value(*it);
+        value_pb->dup_string_value(*it);
         break;
       case DataType::TIMESTAMP: {
         auto ts = TimestampFromString(*it);

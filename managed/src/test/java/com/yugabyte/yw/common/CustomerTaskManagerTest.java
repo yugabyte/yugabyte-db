@@ -5,6 +5,7 @@ import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -22,11 +23,13 @@ import com.yugabyte.yw.forms.AZUpgradeStatus;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
+import io.ebean.DB;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -305,5 +308,122 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
             .getTserverAZUpgradeStatesList()
             .get(0)
             .getStatus());
+  }
+
+  private CustomerTask createYbaBackupTask(TaskType taskType) {
+    TaskInfo taskInfo = new TaskInfo(taskType, null);
+    taskInfo.setUuid(UUID.randomUUID());
+    taskInfo.setTaskState(TaskInfo.State.Running);
+    taskInfo.setTaskParams(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.save();
+    return CustomerTask.create(
+        customer,
+        UUID.randomUUID(),
+        taskInfo.getUuid(),
+        CustomerTask.TargetType.Yba,
+        CustomerTask.TaskType.CreateYbaBackup,
+        "yba-host");
+  }
+
+  @Test
+  public void testFinalizeRestoredYbaBackupTask() {
+    // A concurrent one-off backup task that was also in flight when the dump was taken; its
+    // outcome is unknown so it must keep the "Platform restarted" behavior.
+    CustomerTask olderBackupTask = createYbaBackupTask(TaskType.CreateYbaBackup);
+    DB.sqlUpdate("update task_info set create_time = :createTime where uuid = :uuid")
+        .setParameter("createTime", Date.from(Instant.now().minus(1, ChronoUnit.HOURS)))
+        .setParameter("uuid", olderBackupTask.getTaskUUID())
+        .execute();
+    // The most recently created in-flight backup task is the creator of the restored backup.
+    CustomerTask creatorTask = createYbaBackupTask(TaskType.CreateContinuousBackup);
+    ScheduleTask.create(creatorTask.getTaskUUID(), UUID.randomUUID());
+    // An unrelated in-flight task must keep the "Platform restarted" behavior.
+    CustomerTask universeTask =
+        createTask(CustomerTask.TargetType.Universe, UUID.randomUUID(), Create);
+    TaskInfo universeTaskInfo = TaskInfo.getOrBadRequest(universeTask.getTaskUUID());
+    universeTaskInfo.setTaskState(TaskInfo.State.Running);
+    universeTaskInfo.save();
+
+    taskManager.finalizeRestoredYbaBackupTask();
+
+    TaskInfo creatorTaskInfo = TaskInfo.getOrBadRequest(creatorTask.getTaskUUID());
+    assertEquals(TaskInfo.State.Success, creatorTaskInfo.getTaskState());
+    assertNull(creatorTaskInfo.getTaskError());
+    assertNotNull(CustomerTask.findByTaskUUID(creatorTask.getTaskUUID()).getCompletionTime());
+    // The scheduler skips runs while the last schedule task is incomplete.
+    assertNotNull(ScheduleTask.fetchByTaskUUID(creatorTask.getTaskUUID()).getCompletedTime());
+    // Only the creator task is finalized.
+    assertEquals(
+        TaskInfo.State.Running,
+        TaskInfo.getOrBadRequest(olderBackupTask.getTaskUUID()).getTaskState());
+    assertEquals(
+        TaskInfo.State.Running,
+        TaskInfo.getOrBadRequest(universeTask.getTaskUUID()).getTaskState());
+
+    taskManager.handleAllPendingTasks();
+
+    // The pending task sweep leaves the finalized creator task untouched and fails the rest.
+    creatorTaskInfo = TaskInfo.getOrBadRequest(creatorTask.getTaskUUID());
+    assertEquals(TaskInfo.State.Success, creatorTaskInfo.getTaskState());
+    assertNull(creatorTaskInfo.getTaskError());
+    for (CustomerTask task : Lists.newArrayList(olderBackupTask, universeTask)) {
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(task.getTaskUUID());
+      assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+      assertEquals("Platform restarted.", taskInfo.getTaskError().getMessage());
+    }
+  }
+
+  @Test
+  public void testIncompleteYbaBackupTaskFailsOnRestartWithoutRestore() {
+    // Without a preceding restore, an incomplete backup task is a genuine crash and must
+    // keep the "Platform restarted" failure.
+    CustomerTask backupTask = createYbaBackupTask(TaskType.CreateContinuousBackup);
+    ScheduleTask.create(backupTask.getTaskUUID(), UUID.randomUUID());
+
+    taskManager.handleAllPendingTasks();
+
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(backupTask.getTaskUUID());
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals("Platform restarted.", taskInfo.getTaskError().getMessage());
+    assertNotNull(ScheduleTask.fetchByTaskUUID(backupTask.getTaskUUID()).getCompletedTime());
+  }
+
+  @Test
+  public void testHandleRestoreTaskFinalizesYbaBackupTask() {
+    // The in-flight backup task row that the restored DB dump always contains.
+    CustomerTask backupTask = createYbaBackupTask(TaskType.CreateContinuousBackup);
+
+    // Simulate the restore task whose rows are wiped by the DB swap: create the rows,
+    // write the marker files, then delete the rows.
+    TaskInfo restoreTaskInfo = new TaskInfo(TaskType.RestoreContinuousBackup, null);
+    restoreTaskInfo.setUuid(UUID.randomUUID());
+    restoreTaskInfo.setTaskState(TaskInfo.State.Running);
+    restoreTaskInfo.setTaskParams(Json.newObject());
+    restoreTaskInfo.setOwner("");
+    restoreTaskInfo.setYbaVersion(Util.getYbaVersion());
+    restoreTaskInfo.save();
+    CustomerTask restoreCustomerTask =
+        CustomerTask.create(
+            customer,
+            UUID.randomUUID(),
+            restoreTaskInfo.getUuid(),
+            CustomerTask.TargetType.Yba,
+            CustomerTask.TaskType.RestoreContinuousBackup,
+            "yba-host");
+    Util.writeRestoreTaskInfo(restoreCustomerTask, restoreTaskInfo);
+    restoreCustomerTask.delete();
+    restoreTaskInfo.delete();
+
+    taskManager.handleRestoreTask();
+
+    // The backup task from the restored dump is finalized as succeeded.
+    TaskInfo backupTaskInfo = TaskInfo.getOrBadRequest(backupTask.getTaskUUID());
+    assertEquals(TaskInfo.State.Success, backupTaskInfo.getTaskState());
+    assertNull(backupTaskInfo.getTaskError());
+    // The restore task itself is re-inserted from the marker files.
+    TaskInfo reinsertedRestoreTaskInfo = TaskInfo.getOrBadRequest(restoreTaskInfo.getUuid());
+    assertEquals(TaskInfo.State.Success, reinsertedRestoreTaskInfo.getTaskState());
   }
 }

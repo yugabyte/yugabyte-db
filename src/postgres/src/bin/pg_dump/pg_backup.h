@@ -220,6 +220,34 @@ typedef struct _dumpOptions
 								 * is set */
 	char	   *yb_read_time;	/* read the data as of this time. Used in
 								 * Backup/Restore */
+
+	/*
+	 * YB: --rename-database=NEW. When non-NULL, every CREATE DATABASE,
+	 * ALTER DATABASE, COMMENT ON DATABASE, SECURITY LABEL ON DATABASE,
+	 * GRANT/REVOKE ON DATABASE, and \connect line in the dump refers to
+	 * NEW instead of the source database name. The substitution happens
+	 * inside ysql_dump using fmtId / appendPsqlMetaConnect, so the new
+	 * name is emitted with the correct identifier escaping.
+	 */
+	char	   *yb_rename_database;
+
+	/*
+	 * YB: --rename-owner=NEW. When non-NULL, every "OWNER TO X" clause
+	 * (and the matching role-existence check, when --dump-role-checks is
+	 * on) where X equals the source database owner is rewritten to
+	 * "OWNER TO NEW". Other owners are emitted unchanged. Requires
+	 * --create so that the source database owner can be captured from
+	 * pg_database.datdba in dumpDatabase().
+	 */
+	char	   *yb_rename_owner;
+
+	/*
+	 * YB: source database owner string (as returned by getRoleName, which
+	 * returns a pointer into a long-lived cache). Set by dumpDatabase()
+	 * when --rename-owner is supplied. Not a CLI flag and not owned by
+	 * DumpOptions, hence const.
+	 */
+	const char *yb_source_db_owner;
 } DumpOptions;
 
 /*

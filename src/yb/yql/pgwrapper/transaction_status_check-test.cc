@@ -176,12 +176,6 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
     }, timeout, "Waiting for tablet server to finish creating tablets");
   }
 
-  // Helper to sleep and return background task run count.
-  int32_t SleepAndGetBackgroundTaskRunCount() {
-    SleepFor(MonoDelta::FromSeconds(FLAGS_transaction_table_check_interval_sec * 3 + 2));
-    return master::TEST_catalog_manager_bg_task_run_count();
-  }
-
   Status WaitForBackgroundTaskRunCount(int32_t count, MonoDelta timeout) {
     return WaitFor([&] -> Result<bool> {
         return master::TEST_catalog_manager_bg_task_run_count() >= count;

@@ -76,10 +76,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -135,7 +137,8 @@ public class NodeAgentRpcPayload {
           .map(String::trim)
           .filter(s -> !s.isEmpty())
           .collect(Collectors.toList());
-    } else if (params.deviceInfo.numVolumes != null
+    }
+    if (params.deviceInfo.numVolumes != null
         && params.getProvider().getCloudCode() != Common.CloudType.onprem) {
       List<String> mountPoints = new ArrayList<>();
       for (int i = 0; i < params.deviceInfo.numVolumes; i++) {
@@ -147,15 +150,14 @@ public class NodeAgentRpcPayload {
   }
 
   private String getYbPackage(ReleaseContainer release, Architecture arch, Region region) {
+    Objects.requireNonNull(release, "Release container cannot be null");
     String ybServerPackage = null;
-    if (release != null) {
-      if (arch != null) {
-        ybServerPackage = release.getFilePath(arch);
-      } else {
-        ybServerPackage = release.getFilePath(region);
-      }
+    if (arch != null) {
+      ybServerPackage = release.getFilePath(arch);
+    } else {
+      ybServerPackage =
+          release.getFilePath(Objects.requireNonNull(region, "Region cannot be null"));
     }
-
     return ybServerPackage;
   }
 
@@ -329,7 +331,7 @@ public class NodeAgentRpcPayload {
       ybSoftwareVersion = params.ybSoftwareVersion;
     }
     Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getProviderForNode(nodeDetails, cluster);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
@@ -365,7 +367,7 @@ public class NodeAgentRpcPayload {
       ybSoftwareVersion = params.ybSoftwareVersion;
     }
     Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getProviderForNode(nodeDetails, cluster);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     downloadSoftwareInputBuilder =
@@ -394,7 +396,7 @@ public class NodeAgentRpcPayload {
     String ybServerPackage =
         getYbPackage(release, universe.getUniverseDetails().arch, taskParams.getRegion());
     Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getProviderForNode(nodeDetails, cluster);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String ybcPackage = null;
@@ -432,10 +434,14 @@ public class NodeAgentRpcPayload {
   }
 
   public ConfigureServerInput setUpConfigureServerBits(
-      Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
+      Universe universe,
+      NodeDetails nodeDetails,
+      NodeTaskParams taskParams,
+      NodeAgent nodeAgent,
+      @Nullable Boolean configureCgroupOverride) {
     ConfigureServerInput.Builder configureServerInputBuilder = ConfigureServerInput.newBuilder();
     Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getProviderForNode(nodeDetails, cluster);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
 
@@ -454,6 +460,11 @@ public class NodeAgentRpcPayload {
     Integer num_cores_to_keep =
         confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
     configureServerInputBuilder.setNumCoresToKeep(num_cores_to_keep);
+    boolean configureCgroup =
+        configureCgroupOverride != null
+            ? configureCgroupOverride
+            : Util.configureCgroup(cluster.userIntent, provider, false, confGetter);
+    configureServerInputBuilder.setConfigureCgroup(configureCgroup);
     return configureServerInputBuilder.build();
   }
 
@@ -462,7 +473,7 @@ public class NodeAgentRpcPayload {
     InstallOtelCollectorInput.Builder installOtelCollectorInputBuilder =
         InstallOtelCollectorInput.newBuilder();
     Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getProviderForNode(nodeDetails, cluster);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     Map<String, String> gflags = new HashMap<>();
@@ -639,6 +650,10 @@ public class NodeAgentRpcPayload {
     AnsibleClusterServerCtl.Params taskParams = null;
     if (nodeTaskParams instanceof AnsibleClusterServerCtl.Params) {
       taskParams = (AnsibleClusterServerCtl.Params) nodeTaskParams;
+    } else {
+      throw new RuntimeException(
+          "Expected AnsibleClusterServerCtl.Params for setupServerControlBits, but found "
+              + nodeTaskParams.getClass());
     }
     String serverName = "yb-" + taskParams.process;
     String serverHome =
@@ -658,7 +673,7 @@ public class NodeAgentRpcPayload {
       if (node != null
           && cluster != null
           && cluster.userIntent.getDeviceInfoForNode(node) != null
-          && cluster.userIntent.providerType != CloudType.onprem) {
+          && Util.getProviderForNode(nodeDetails, cluster).getCloudCode() != CloudType.onprem) {
         serverControlInputBuilder.setNumVolumes(
             cluster.userIntent.getDeviceInfoForNode(node).numVolumes);
       }
@@ -692,6 +707,9 @@ public class NodeAgentRpcPayload {
     AnsibleConfigureServers.Params taskParams = null;
     if (nodeTaskParams instanceof AnsibleConfigureServers.Params) {
       taskParams = (AnsibleConfigureServers.Params) nodeTaskParams;
+    } else {
+      throw new RuntimeException(
+          "Expected AnsibleConfigureServers.Params, but found " + nodeTaskParams.getClass());
     }
     String taskSubType = taskParams.getProperty("taskSubType");
     UserIntent userIntent = nodeManager.getUserIntentFromParams(universe, taskParams);
@@ -722,7 +740,8 @@ public class NodeAgentRpcPayload {
             Path localGflagDirPath = tmpDirectoryPath.resolve(nodeDetails.getNodeUuid().toString());
             // Validate directory exists
             if (Files.isDirectory(localGflagDirPath)) {
-              String providerUUID = userIntent.provider;
+              String providerUUID =
+                  Util.getProviderForNode(nodeDetails, universe).getUuid().toString();
               String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
               String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
 
@@ -735,7 +754,6 @@ public class NodeAgentRpcPayload {
                     ShellProcessContext.DEFAULT,
                     true);
                 // Create the gflags_dir.
-                StringBuilder sb = new StringBuilder();
                 nodeAgentClient.executeCommand(
                     nodeAgent,
                     Arrays.asList(
@@ -796,8 +814,7 @@ public class NodeAgentRpcPayload {
   public SetupCGroupInput setupSetupCGroupBits(
       Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
     SetupCGroupInput.Builder setupSetupCGroupBuilder = SetupCGroupInput.newBuilder();
-    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getProviderForNode(nodeDetails, universe);
 
     setupSetupCGroupBuilder.setYbHomeDir(provider.getYbHome());
     if (taskParams instanceof AnsibleConfigureServers.Params) {

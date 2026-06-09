@@ -48,8 +48,7 @@ struct VersionData {
   std::string json;
 };
 
-YB_DEFINE_ENUM(
-    ValidateVersionInfoOp,
+YB_DEFINE_ENUM(ValidateVersionInfoOp,
     (kVersionEQ)            // The version, build, and ysql major version are the same.
     (kYsqlMajorVersionLT)   // The ysql major version is lower.
     (kYsqlMajorVersionLE)   // The ysql major version is lower or equal.

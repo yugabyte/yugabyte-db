@@ -27,7 +27,7 @@ check_port() {
     local port=$2
     count=0
     # Start checking the port to respond faster for reachable ports.
-    until "echo > /dev/tcp/$ip/$port" >/dev/null 2>&1; do
+    until bash -c "echo > /dev/tcp/$ip/$port" >/dev/null 2>&1; do
         count=$((count + 1))
         if [ $count -gt 5 ]; then
             break
@@ -74,7 +74,7 @@ check_port_available() {
 }
 
 # Check for internet access.
-if [[ "{{ is_airgap }}" == 'False' ]]; then
+if [[ "{{ is_airgap }}" == "False" && "$cloud_type" == "onprem" ]]; then
     # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
     # --preserve-status flag will maintain the exit code of the "/dev/tcp" command.
     HOST="yugabyte.com"

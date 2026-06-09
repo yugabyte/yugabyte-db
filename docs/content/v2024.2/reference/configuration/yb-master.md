@@ -656,7 +656,7 @@ Default: `0` for no limit.
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
 
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 
 ## Tablet splitting flags
 

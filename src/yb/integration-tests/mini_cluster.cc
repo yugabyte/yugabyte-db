@@ -67,6 +67,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/object_lock_info_manager.h"
@@ -88,12 +89,14 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_flags.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
@@ -147,6 +150,10 @@ using master::GetMasterClusterConfigResponsePB;
 using master::ChangeMasterClusterConfigRequestPB;
 using master::ChangeMasterClusterConfigResponsePB;
 using master::SysClusterConfigEntryPB;
+
+Env* DefaultMiniClusterEnv() {
+  return Env::Default();
+}
 
 namespace {
 
@@ -335,6 +342,10 @@ Status MiniCluster::AddYbControllerServer(const std::shared_ptr<tserver::MiniTab
   return Status::OK();
 }
 
+std::vector<scoped_refptr<ExternalYbController>> MiniCluster::yb_controller_daemons() const {
+  return yb_controller_servers_;
+}
+
 Status MiniCluster::StartMasters() {
   CHECK_GE(master_rpc_ports_.size(), options_.num_masters);
   EnsurePortsAllocated();
@@ -389,6 +400,14 @@ Status MiniCluster::StartMasters() {
 Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra_tserver_options) {
   RETURN_NOT_OK(StartAsync(extra_tserver_options));
   return WaitForAllTabletServers();
+}
+
+Status MiniCluster::StartAsync() {
+  return StartAsync(std::vector<tserver::TabletServerOptions>());
+}
+
+Status MiniCluster::Start() {
+  return Start(std::vector<tserver::TabletServerOptions>());
 }
 
 Status MiniCluster::RestartSync() {
@@ -517,6 +536,14 @@ Status MiniCluster::AddTServerToBlacklist(const MiniTabletServer& ts) {
             << " was added to the blacklist";
 
   return Status::OK();
+}
+
+Status MiniCluster::AddTServerToBlacklist(size_t idx) {
+  return AddTServerToBlacklist(*mini_tablet_server(idx));
+}
+
+Status MiniCluster::AddTServerToLeaderBlacklist(size_t idx) {
+  return AddTServerToLeaderBlacklist(*mini_tablet_server(idx));
 }
 
 Status MiniCluster::AddTServerToLeaderBlacklist(const MiniTabletServer& ts) {
@@ -766,6 +793,32 @@ std::vector<std::shared_ptr<tablet::TabletPeer>> MiniCluster::GetTabletPeers(siz
   return GetTabletManager(idx)->GetTabletPeers();
 }
 
+Result<size_t> MiniCluster::GetTabletLeaderIndex(const TabletId& tablet_id) {
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
+    if (!mini_tablet_server(i)->is_started()) {
+      continue;
+    }
+    if (mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
+      return i;
+    }
+  }
+  return STATUS(NotFound, Format("Could not find leader of tablet $0.", tablet_id));
+}
+
+Result<std::vector<size_t>> MiniCluster::GetTabletFollowerIndexes(const TabletId& tablet_id) {
+  std::vector<size_t> result;
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
+    for (const auto& peer : GetTabletPeers(i)) {
+      if (peer->tablet_id() == tablet_id) {
+        if (peer->IsNotLeader()) {
+          result.push_back(i);
+        }
+      }
+    }
+  }
+  return result;
+}
+
 Status MiniCluster::WaitForReplicaCount(const TableId& tablet_id,
                                         int expected_count,
                                         TabletLocationsPB* locations) {
@@ -881,6 +934,14 @@ void MiniCluster::ConfigureClientBuilder(YBClientBuilder* builder) {
 
 Result<HostPort> MiniCluster::DoGetLeaderMasterBoundRpcAddr() {
   return VERIFY_RESULT(GetLeaderMiniMaster())->bound_rpc_addr();
+}
+
+HostPort MiniCluster::GetMasterBoundRpcAddr() {
+  return mini_master()->bound_rpc_addr();
+}
+
+HostPort MiniCluster::GetTServerBoundRpcAddr(size_t i) {
+  return HostPort(mini_tablet_server(i)->bound_rpc_addr());
 }
 
 void MiniCluster::AllocatePortsForDaemonType(
@@ -1228,19 +1289,14 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
 
 tserver::MiniTabletServer* GetLeaderForTablet(
     MiniCluster* cluster, const std::string& tablet_id, size_t* leader_idx) {
-  for (size_t i = 0; i < cluster->num_tablet_servers(); i++) {
-    if (!cluster->mini_tablet_server(i)->is_started()) {
-      continue;
-    }
-
-    if (cluster->mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
-      if (leader_idx) {
-        *leader_idx = i;
-      }
-      return cluster->mini_tablet_server(i);
-    }
+  auto status = cluster->GetTabletLeaderIndex(tablet_id);
+  if (!status.ok()) {
+    return nullptr;
   }
-  return nullptr;
+  if (leader_idx) {
+    *leader_idx = *status;
+  }
+  return cluster->mini_tablet_server(*status);
 }
 
 Result<tablet::TabletPeerPtr> GetLeaderPeerForTablet(
@@ -1534,20 +1590,6 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     }
   }
   return result;
-}
-
-MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id) {
-  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
-    auto server = cluster->mini_tablet_server(i);
-    if (!server->server()) { // Server is shut down.
-      continue;
-    }
-    if (server->server()->LeaderAndReady(tablet_id)) {
-      return server;
-    }
-  }
-
-  return nullptr;
 }
 
 void ShutdownAllTServers(MiniCluster* cluster) {

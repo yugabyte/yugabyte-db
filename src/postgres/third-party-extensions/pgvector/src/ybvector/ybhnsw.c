@@ -24,6 +24,7 @@
 
 #include "postgres.h"
 
+#include "access/reloptions.h"
 #include "catalog/pg_opclass.h"
 #include "commands/yb_cmds.h"
 #include "utils/syscache.h"
@@ -60,6 +61,7 @@ typedef struct YbHnswCreateOptions
 	int			m;				/* number of connections per node */
 	int			m0;				/* number of connections per node in base level */
 	int			ef_construction;	/* size of dynamic candidate list */
+	Oid			colocation_id;	/* YB: for ysql_dump/restore round trip */
 }			YbHnswCreateOptions;
 
 void
@@ -78,34 +80,19 @@ YbHnswInit(void)
 					  YBHNSW_DEFAULT_EF_CONSTRUCTION,
 					  YBHNSW_MIN_EF_CONSTRUCTION, YBHNSW_MAX_EF_CONSTRUCTION,
 					  AccessExclusiveLock);
-	/*
-	 * Notes:
-	 * - Both hnsw.ef_search and ybhnsw.ef_search map to the same underlying
-	 *   variable. This allows both GUCs to have the same value irrespective of
-	 *   which one is used.
-	 * - If both GUCs are set via 'ysql_pg_conf_csv', the value of ybhnsw.ef_search
-	 *   will override the value of hnsw.ef_search. This is because the new
-	 *   values of the GUCs are applied in the order in which the GUCs are
-	 *   defined in the extension init function (which invokes this function).
-	 * - A caveat of this mechanism is that if both of these GUCs are set via
-	 *   'ysql_pg_conf_csv', and the user runs a 'SHOW <guc-name>' query before
-	 *   the extension is init'ed, the GUCs will display different values. This
-	 *   is harmless (as one can't use the GUC meaningfully without the
-	 *   extension) and will get reconciled automatically upon running a query
-	 *   that causes the extension to initialize.
-	 */
+	/* YB: needed so ysql_dump's WITH (colocation_id=...) parses on restore. */
+	YbAddColocationIdReloption(ybhnsw_relopt_kind);
 	DefineCustomIntVariable("hnsw.ef_search", "Sets the size of the dynamic candidate list for search",
-							"Valid range is 1..1000. This parameter automatically maintains the "
-							"same value as ybhnsw.ef_search. If both are set at startup, the value "
-							"of ybhnsw.ef_search is prioritized over the value of hnsw.ef_search. ",
+							"Valid range is 1..1000.",
 							&ybhnsw_ef_search,
 							YBHNSW_DEFAULT_EF_SEARCH, YBHNSW_MIN_EF_SEARCH, YBHNSW_MAX_EF_SEARCH, PGC_USERSET, 0, NULL, NULL, NULL);
 	MarkGUCPrefixReserved("hnsw");
-
-	DefineCustomIntVariable("ybhnsw.ef_search", "Sets the size of the dynamic candidate list for search",
-							"Valid range is 1..1000. This parameter automatically maintains the "
-							"same value as hnsw.ef_search.", &ybhnsw_ef_search,
-							YBHNSW_DEFAULT_EF_SEARCH, YBHNSW_MIN_EF_SEARCH, YBHNSW_MAX_EF_SEARCH, PGC_USERSET, 0, NULL, NULL, NULL);
+	/*
+	 * YB: Keep the ybhnsw prefix reserved (even though we no longer define any
+	 * ybhnsw.* GUCs) so that lingering 'SET ybhnsw.ef_search = ...' or
+	 * ysql_pg_conf_csv entries from before the removal produce a clear error
+	 * / startup warning instead of silently being accepted as no-op placeholders.
+	 */
 	MarkGUCPrefixReserved("ybhnsw");
 }
 
@@ -123,6 +110,8 @@ ybhnswoptions(Datum reloptions, bool validate)
 		{"m0", RELOPT_TYPE_INT, offsetof(YbHnswCreateOptions, m0)},
 		{"ef_construction", RELOPT_TYPE_INT,
 		offsetof(YbHnswCreateOptions, ef_construction)},
+		{"colocation_id", RELOPT_TYPE_OID,
+		offsetof(YbHnswCreateOptions, colocation_id)},
 	};
 
 	return (bytea *) build_reloptions(reloptions, validate,

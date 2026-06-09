@@ -10,15 +10,15 @@ else
     add_result "Service Status Check" "FAIL" "$service_name is not active"
 fi
 
-clockbound_check="/usr/local/bin/clockbound-check 2>/dev/null"
+clockbound_check="/usr/local/bin/clockbound-check"
 
-# Attempt with 10 retries sleeping 2s each
+# Attempt with 50 retries sleeping 2s each
 
-retries=10
+retries=50
 synchronized=0
 
 while (( retries > 0 )); do
-    if $clockbound_check | grep -q "Synchronized" ; then
+    if $clockbound_check 2>/dev/null| grep -q "Synchronized" ; then
         synchronized=1
         break
     else

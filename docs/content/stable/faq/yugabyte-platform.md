@@ -31,7 +31,7 @@ Introduction to YugabyteDB Anywhere
 
 ### How do I report a security vulnerability?
 
-Follow the steps in the [vulnerability disclosure policy](/stable/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how Yugabyte will respond.
+Follow the steps in the [vulnerability disclosure policy](/stable/secure/vulnerability-disclosure-policy/) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how Yugabyte will respond.
 
 ## Installation
 
@@ -149,7 +149,7 @@ Legacy provisioning
 
 #### Public cloud provider configuration
 
-For [public cloud (AWS, GCP, and Azure) providers](../yugabyte-platform/yba-overview/#provider-configurations), node agents are automatically installed on each universe node during provisioning using SSH. After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like an SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to retain access for debugging.
+For [public cloud (AWS, GCP, and Azure) providers](../../yugabyte-platform/yba-overview/#provider-configurations), node agents are automatically installed on each universe node during provisioning using SSH. After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like an SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to retain access for debugging.
 
 ### Why does YugabyteDB Anywhere prompt for SSH details if the node agent is installed manually and can replace SSH?
 

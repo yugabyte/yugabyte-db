@@ -11,6 +11,9 @@ menu:
     weight: 90
 type: indexpage
 showRightNav: true
+cascade:
+  tags:
+    other: ysql
 ---
 
 Use xCluster Disaster Recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing, and failback after a failover.
@@ -171,6 +174,10 @@ Note that a universe configured for xCluster DR cannot be used for xCluster Repl
 {{</lead>}}
 
 ## Limitations
+
+- DR is only available for YSQL databases.
+
+- Replication is managed at the database level. All tables in the database are added to replication; you cannot replicate only a subset of tables in a database.
 
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the DR primary.
 

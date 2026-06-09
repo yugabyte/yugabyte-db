@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <mutex>
 #include <optional>
 
 #include "yb/client/client_fwd.h"
@@ -22,6 +23,10 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 
@@ -38,6 +43,7 @@
 #include "yb/rocksdb/db/filename.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
@@ -49,6 +55,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/json_document.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
@@ -94,6 +101,7 @@ DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(cleanup_intents_sst_files);
 DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_bool(ysql_enable_write_pipelining);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -201,7 +209,7 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     RETURN_NOT_OK(WaitForTableIntentsApplied(cluster_.get(), peer->tablet_metadata()->table_id()));
     auto tablet = peer->shared_tablet_maybe_null();
     SCHECK_NOTNULL(tablet);
-    return tablet->Flush(tablet::FlushMode::kSync);
+    return tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly);
   }
 
   Result<RemoteTabletPtr> LookupTabletById(const TabletId& tablet_id,
@@ -361,6 +369,15 @@ TEST_F(PgTabletSplitTest, TestDisableSplitWhenTableIsBeingHidden) {
 // Trigger a tablet split when a transaction has an outstanding statement in progress.
 // The split will cause ops to be retried at the YBSession level.
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)) {
+  // Route YSQL transactional writes through the async-write path
+  // (client::UseAsyncWrites). This is the path on which a racing WRITE_OP arriving
+  // while a SPLIT_OP is pending could have its intents leaked into the source's intents
+  // memtable via WriteOperation::AddedAsPending -> DoReplicated before the SplitOperation
+  // filter rejected it -- see the targeted AsyncWriteRaceWithSplit reproducer for the
+  // mechanism. Combined with the post-test restart below, this gives invariant-level
+  // regression coverage of the bug in this broader split-under-load context.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
+
   auto conn = ASSERT_RESULT(Connect());
   auto num_rows_str = "10000";
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS"));
@@ -392,6 +409,27 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)
   row_count_str = ASSERT_RESULT(conn.FetchRowAsString("SELECT COUNT(*) FROM t WHERE v=110"));
   ASSERT_EQ(row_count_str, "0");
   ASSERT_OK(conn.CommitTransaction());
+
+  // Restart the tserver to force a fresh bootstrap of the children. If the async-write
+  // race ever leaked an intent past split_op_id into the source's intents flushed_frontier,
+  // CreateSubtablet's checkpoint would propagate it into the children, and the children's
+  // bootstrap would fail the prev_op_id >= committed_op_id SCHECK in
+  // TabletBootstrap::PlaySegments. With the fix in RaftConsensus::AppendNewRoundsToQueueUnlocked,
+  // no such intent is ever written, so the children inherit a clean frontier and bootstrap
+  // succeeds.
+  auto* tserver = cluster_->mini_tablet_server(0);
+  ASSERT_OK(tserver->Restart());
+  ASSERT_OK(tserver->WaitStarted());
+
+  ASSERT_OK(WaitForTableActiveTabletLeadersPeers(
+      cluster_.get(), table_id, /* num_active_leaders = */ 2));
+
+  auto verify_conn = ASSERT_RESULT(Connect());
+  // After ROLLBACK TO a + COMMIT, all rows hold v = 10 (the result of the first UPDATE).
+  // We re-check that here against the bootstrapped children.
+  const auto post_restart_count = ASSERT_RESULT(
+      verify_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t WHERE v=10"));
+  ASSERT_EQ(post_restart_count, 10000);
 }
 
 // Make sure parent tablet shutdown does not crash during long scans and does not abort them.
@@ -597,6 +635,9 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
 
   // Create custom RocksDB listener to analyse files in a compaction.
   struct Listener : public rocksdb::EventListener {
+    using CompactedFiles = std::vector<uint64_t>;
+    using CompactionJob  = std::vector<CompactedFiles>;
+
     void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
       LOG(INFO) << "Compaction completed: db = " << db
                 << ", job id = " << ci.job_id
@@ -615,13 +656,21 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
         EXPECT_GT(file_number, 0);
         files.push_back(file_number);
       }
-      compactions_per_db[db].push_back(std::move(files));
+
+      {
+        std::lock_guard l(mutex);
+        compactions_per_db[db].push_back(std::move(files));
+      }
       compactions_done.CountDown();
     }
 
-    using CompactedFiles = std::vector<uint64_t>;
-    using CompactionJob  = std::vector<CompactedFiles>;
-    std::unordered_map<rocksdb::DB*, CompactionJob> compactions_per_db;
+    std::unordered_map<rocksdb::DB*, CompactionJob> GetCompactions() {
+      std::lock_guard l(mutex);
+      return compactions_per_db;
+    }
+
+    std::mutex mutex;
+    std::unordered_map<rocksdb::DB*, CompactionJob> compactions_per_db GUARDED_BY(mutex);
 
     // For each regular db we expect 4 post split compactions with files and 1 empty post split
     // compaction, which is triggered to signal the whole post split compaction is done (all its
@@ -749,8 +798,9 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
 
   // Analyse compactions. The order is preserved.
   // 1) We expected 4 instances (1 regular db and 1 intents db per child).
-  ASSERT_EQ(4, compactions_listener.compactions_per_db.size());
-  for (const auto& jobs : compactions_listener.compactions_per_db) {
+  auto compactions_per_db = compactions_listener.GetCompactions();
+  ASSERT_EQ(4, compactions_per_db.size());
+  for (const auto& jobs : compactions_per_db) {
     // 2) We expect at least one job.
     ASSERT_FALSE(jobs.second.empty());
     // Get type of DB.
@@ -2021,6 +2071,116 @@ TEST_F(PgTabletSplitTest, TestCommitAfterParentHidden) {
   auto val = ASSERT_RESULT(read_conn.FetchRow<int32_t>(
       Format("SELECT v FROM t WHERE k = $0", kKey)));
   ASSERT_EQ(val, kValue);
+}
+
+TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto source_tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_id));
+
+  const auto leader_peers =
+      ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(leader_peers.size(), 1);
+  const auto leader_peer = leader_peers.front();
+  ASSERT_EQ(leader_peer->tablet_id(), source_tablet_id);
+  auto source_tablet = ASSERT_RESULT(leader_peer->shared_tablet());
+  auto consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
+
+  CountDownLatch source_paused(1);
+  CountDownLatch resume_latch(1);
+  auto& sync_point = *SyncPoint::GetInstance();
+  sync_point.SetCallBack(
+      "RaftConsensus::UpdateMajorityReplicated::Start",
+      [&](void* arg) {
+        const auto& tablet_id = *static_cast<const TabletId*>(arg);
+        if (tablet_id != source_tablet_id) {
+          return;
+        }
+        source_paused.CountDown();
+        resume_latch.Wait();
+      });
+  sync_point.EnableProcessing();
+  auto sync_cleanup = ScopeExit([&]() {
+    resume_latch.CountDown();
+    sync_point.DisableProcessing();
+    sync_point.ClearAllCallBacks();
+  });
+
+  ASSERT_OK(SplitTablet(source_tablet_id));
+
+  OpId split_op_id;
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        if (source_paused.count() > 0) {
+          return false;
+        }
+        auto result = consensus->TEST_GetLastOpIdWithType(
+            consensus::OpIdType::RECEIVED_OPID, consensus::OperationType::SPLIT_OP);
+        if (!result.ok() || result->empty()) {
+          return false;
+        }
+        split_op_id = *result;
+        return true;
+      },
+      30s * kTimeMultiplier, "SPLIT_OP appended on leader and update paused"));
+  LOG(INFO) << "SPLIT_OP appended at " << split_op_id;
+
+  auto conn_writer = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  ASSERT_OK(conn_writer.Execute("SET statement_timeout = 5000"));
+  const auto insert_status =
+      conn_writer.Execute("INSERT INTO t VALUES (99999, 1)");
+  LOG(INFO) << "Racing async INSERT returned: " << insert_status;
+  WARN_NOT_OK(conn_writer.RollbackTransaction(), "rollback");
+
+  ASSERT_OK(source_tablet->Flush(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kIntents, rocksdb::FlushReason::kTestOnly));
+
+  const auto stored = ASSERT_RESULT(
+      source_tablet->MaxPersistentOpId(/* invalid_if_no_new_data = */ false));
+  LOG(INFO) << "After race+flush: split_op_id=" << split_op_id
+            << " regular_flushed_op_id=" << stored.regular
+            << " intents_flushed_op_id=" << stored.intents;
+
+  // If the async-write race fires, the leader wrote an intent at op_id = split_op_id + 1 before
+  // the SplitOperation filter rejected it. The flush turns that into an on-disk intents
+  // flushed_frontier that's strictly greater than split_op_id - exactly the state that, after
+  // split apply, makes the children fail bootstrap with "WAL files missing, or committed op id is
+  // incorrect".
+  EXPECT_LE(stored.intents.index, split_op_id.index)
+      << "Async-write race fired: source intents flushed_frontier (" << stored.intents
+      << ") advanced beyond SPLIT_OP (" << split_op_id
+      << "). After split apply, this state is propagated into the children via "
+         "Tablet::CreateSubtablet's RocksDB checkpoint, and bootstrap of the children on "
+         "this replica will fail with TabletBootstrap::PlaySegments's SCHECK.";
+
+  // Make sure split actually completes, and children bootstrap cleanly.
+  resume_latch.CountDown();
+
+  ASSERT_OK(WaitForSplitCompletion(table_id, /* expected_active_leaders = */ 2));
+
+  // Force a fresh bootstrap of the children by restarting the only tserver.
+  auto* tserver = cluster_->mini_tablet_server(0);
+  ASSERT_OK(tserver->Restart());
+  ASSERT_OK(tserver->WaitStarted());
+
+  // After restart, both children should come up RUNNING. If the async-write race had
+  // leaked an intent past split_op_id, the children's bootstrap would have failed with
+  // an IllegalState here.
+  ASSERT_OK(
+      WaitForTableActiveTabletLeadersPeers(cluster_.get(), table_id, /* num_active_leaders = */ 2));
+  ASSERT_OK(WaitAllReplicasReady(cluster_.get(), 20s * kTimeMultiplier));
+
+  auto verify_conn = ASSERT_RESULT(Connect());
+  auto count = ASSERT_RESULT(verify_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(count, 1000);
 }
 
 } // namespace yb::pgwrapper

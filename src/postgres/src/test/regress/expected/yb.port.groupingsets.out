@@ -1740,7 +1740,7 @@ select v||'a', case when grouping(v||'a') = 1 then 1 else 0 end, count(*)
 create table bug_16784(i int, j int);
 analyze bug_16784;
 alter table bug_16784 set (autovacuum_enabled = 'false');
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 -- YB: TODO(cost_model): enable the rest of the test.
 -- test handling of outer GroupingFunc within subqueries
 explain (costs off)

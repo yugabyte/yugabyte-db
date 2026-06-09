@@ -14,25 +14,33 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service.h"
 
+#include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-#include "yb/client/schema.h"
-
 #include "yb/client/table_handle.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
-#include "yb/client/session.h"
+
+#include "yb/common/hybrid_time.h"
+#include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+#include "yb/master/master.h"
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master.h"
+
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags/auto_flags_util.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -40,10 +48,10 @@
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint32(auto_flags_apply_delay_ms);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
+DECLARE_bool(TEST_xcluster_simulate_have_more_records);
 DECLARE_bool(ysql_enable_packed_row);
 
-namespace yb {
-namespace cdc {
+namespace yb::cdc {
 
 using namespace std::chrono_literals;
 const MonoDelta kTimeout = 20s * kTimeMultiplier;
@@ -111,7 +119,8 @@ class XClusterProducerTest : public MiniClusterTestWithClient<MiniCluster> {
 
     LOG(INFO) << "Writing " << end - start << (delete_op ? " deletes" : " inserts");
     for (int32_t i = start; i < end; i++) {
-      auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
+      auto op = delete_op ? table_handle.NewDeleteOp(session->arena())
+                          : table_handle.NewInsertOp(session->arena());
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, i);
       table_handle.AddInt32ColumnValue(req, table_handle->schema().Column(1).name(), i);
@@ -119,6 +128,30 @@ class XClusterProducerTest : public MiniClusterTestWithClient<MiniCluster> {
     }
     RETURN_NOT_OK(session->TEST_ApplyAndFlush(ops));
 
+    return Status::OK();
+  }
+
+  // Writes rows tagged as externally-replicated (external_hybrid_time set), as a consumer poller
+  // would when applying changes during a bidirectional switchover window.  GetChanges filters
+  // these rows out, so they never appear in the producer's output.
+  Status WriteExternalRows(int32_t start, int32_t end) {
+    tserver::WriteRequestPB write_request;
+    write_request.set_tablet_id(tablet_id_);
+    write_request.set_external_hybrid_time(kInitialHybridTimeValue);
+    for (int32_t i = start; i < end; i++) {
+      AddTestRowInsert(i, i, &write_request);
+    }
+
+    auto arena = SharedThreadSafeArena();
+    auto lightweight_request = arena->NewArenaObject<tserver::LWWriteRequestPB>(write_request);
+    auto lightweight_response = arena->NewArenaObject<tserver::LWWriteResponsePB>();
+    rpc::RpcController rpc;
+    RETURN_NOT_OK(tablet_server_->server()->proxy()->Write(
+        *lightweight_request, lightweight_response, &rpc));
+
+    tserver::WriteResponsePB write_response;
+    lightweight_response->ToGoogleProtobuf(&write_response);
+    SCHECK(!write_response.has_error(), IllegalState, write_response.error().DebugString());
     return Status::OK();
   }
 
@@ -188,6 +221,46 @@ TEST_F(XClusterProducerTest, GetChangesBasic) {
   }
 
   ASSERT_GT(resp.checkpoint().op_id().index(), last_op_id.index());
+}
+
+// Regression test for a transient "invalid xCluster safe time" WARNING seen during xCluster DR
+// switchovers.  When a GetChanges batch contains only external writes -- which are filtered out
+// before the safe time is computed -- and there are more messages to read, the non-transactional
+// safe time path used to stamp HybridTime::kInvalid into the response.  The producer must instead
+// leave safe_hybrid_time unset, so the consumer keeps its previous safe time and logs no warning.
+TEST_F(XClusterProducerTest, SafeTimeWithOnlyExternalRecords) {
+  // Establish a checkpoint past the table's initial WAL entries so the next GetChanges reads only
+  // the external writes below.
+  auto response = ASSERT_RESULT(GetChanges());
+  ASSERT_EQ(response.records_size(), 0);
+  auto last_op_id = response.checkpoint().op_id();
+
+  ASSERT_OK(WriteExternalRows(0, 2));
+
+  // Force have_more_messages = true so the non-transactional safe time path takes its first branch
+  // (return ht_of_last_returned_message).  With every message in the batch filtered out as an
+  // external write, that hybrid time stays kInvalid -- the exact condition that triggered the bug.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_have_more_records) = true;
+  response = ASSERT_RESULT(GetChanges(last_op_id));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_have_more_records) = false;
+
+  // All written rows were external, so none are returned.
+  ASSERT_EQ(response.records_size(), 0);
+  // The producer must not advertise an invalid safe time.  Before the fix it set
+  // safe_hybrid_time to HybridTime::kInvalid; the fix leaves the field unset instead.
+  ASSERT_FALSE(
+      response.has_safe_hybrid_time() &&
+      HybridTime(response.safe_hybrid_time()).is_special())
+      << "Producer returned an invalid safe time: " << response.safe_hybrid_time();
+
+  // The checkpoint has now advanced past the external writes, so a subsequent poll returns a valid
+  // safe time -- the condition is self-healing.
+  response = ASSERT_RESULT(GetChanges(response.checkpoint().op_id()));
+  ASSERT_EQ(response.records_size(), 0);
+  ASSERT_TRUE(response.has_safe_hybrid_time());
+  ASSERT_FALSE(HybridTime(response.safe_hybrid_time()).is_special())
+      << "Producer returned an invalid safe time after the checkpoint advanced: "
+      << response.safe_hybrid_time();
 }
 
 // Verify GetChanges errors out when the wrong AutoFlags config version is set.
@@ -347,5 +420,4 @@ TEST_F(XClusterProducerTest, ProducerUpgrade) {
   ASSERT_EQ(resp.records_size(), 0);
 }
 
-}  // namespace cdc
-}  // namespace yb
+} // namespace yb::cdc

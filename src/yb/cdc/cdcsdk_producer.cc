@@ -12,6 +12,8 @@
 
 #include "yb/cdc/cdc_producer.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client.h"
@@ -61,39 +63,31 @@ DEPRECATE_FLAG(int32, cdc_snapshot_batch_size, "02_2026");
 
 DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
 
-DEFINE_RUNTIME_bool(
-    enable_single_record_update, true,
+DEFINE_RUNTIME_bool(enable_single_record_update, true,
     "Enable packing updates corresponding to a row in single CDC record");
 
-DEFINE_RUNTIME_bool(
-    cdc_populate_safepoint_record, true,
+DEFINE_RUNTIME_bool(cdc_populate_safepoint_record, true,
     "If 'true' we will also send a 'SAFEPOINT' record at the end of each GetChanges call.");
 
-DEFINE_NON_RUNTIME_bool(
-    cdc_enable_consistent_records, true,
+DEFINE_NON_RUNTIME_bool(cdc_enable_consistent_records, true,
     "If 'true' we will ensure that the records are order by the commit_time.");
 
-DEFINE_RUNTIME_uint64(
-    cdc_stream_records_threshold_size_bytes, 4_MB,
+DEFINE_RUNTIME_uint64(cdc_stream_records_threshold_size_bytes, 4_MB,
     "The threshold for the size of the response of a GetChanges call. The actual size may be a "
     "little higher than this value.");
 
-DEFINE_RUNTIME_uint64(
-    cdc_snapshot_records_threshold_size_bytes, 4_MB,
+DEFINE_RUNTIME_uint64(cdc_snapshot_records_threshold_size_bytes, 4_MB,
     "The threshold for the size of the CDC snapshot GetChanges response. The actual size may be "
     "slightly higher than this value.");
 
-DEFINE_test_flag(
-    bool, cdc_snapshot_failure, false,
+DEFINE_test_flag(bool, cdc_snapshot_failure, false,
     "For testing only, When it is set to true, the CDC snapshot operation will fail.");
 
-DEFINE_RUNTIME_bool(
-    cdc_populate_end_markers_transactions, true,
+DEFINE_RUNTIME_bool(cdc_populate_end_markers_transactions, true,
     "If 'true', we will also send 'BEGIN' and 'COMMIT' records for both single shard and multi "
     "shard transactions");
 
-DEFINE_NON_RUNTIME_int64(
-    cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
+DEFINE_NON_RUNTIME_int64(cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
     "The lag threshold in milli seconds between the hybrid time returned by "
     "GetMinStartHTRunningTxnsForCDCProducer and LeaderSafeTime, when we decide the "
     "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");
@@ -759,8 +753,11 @@ void FillDDLInfo(
   }
 
   row_message->set_schema_version(schema_version);
-  // SchemaPB::pgschema_name is deprecated. See GHI: #12770.
-  row_message->set_pgschema_name(schema_pb.deprecated_pgschema_name());
+  // TODO(GHI#26196): Revist once the PR for removing deprecated_pg_schema_name is landed.
+  const auto& pgschema_name = current_schema_details.schema->SchemaName();
+  LOG_IF(DFATAL, pgschema_name.empty())
+      << "pgschema_name is empty for table " << table_id << " (" << table_name << ")";
+  row_message->set_pgschema_name(pgschema_name);
   CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb =
       row_message->mutable_schema()->mutable_tab_info();
 
@@ -1050,6 +1047,7 @@ Status PopulateCDCSDKIntentRecord(
     if (FLAGS_enable_single_record_update) {
       new_cdc_record_needed =
           (prev_key != primary_key) ||
+          (IsPackedRow(value_type) && row_message->op() == RowMessage_Op_DELETE) ||
           (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) ||
           prev_intent_phy_time != intent.intent_ht.hybrid_time().GetPhysicalValueMicros();
     } else {
@@ -1099,15 +1097,12 @@ Status PopulateCDCSDKIntentRecord(
                          : VERIFY_RESULT(GetTableInfoForColocatedTable(decoded_key, tablet));
         // If the table_info is null, then it means that the decoded_key belongs to a dropped
         // object on the colocated tablet.
-        if (!table_info) {
-          continue;
-        }
-        table_id = table_info->table_id;
-        if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
+        if (!table_info || !IsColocatedTableQualifiedForStreaming(table_info->table_id, metadata)) {
           *write_id = intent.write_id;
           *reverse_index_key = intent.reverse_index_key;
           continue;
         }
+        table_id = table_info->table_id;
 
         schema_packing_storage = &schema_packing_storages->at(table_id);
         std::tie(schema_version, schema) = VERIFY_RESULT(GetSchemaAndVersion(
@@ -1893,6 +1888,15 @@ Status ProcessIntents(
 
   if (end_of_transaction) {
     if (FLAGS_cdc_populate_end_markers_transactions) {
+      if (keyValueIntents->empty() && !resp->mutable_cdc_sdk_proto_records()->empty()) {
+        VLOG(2) << "Removing the added BEGIN record because there are no intents to add";
+        auto size = resp->cdc_sdk_proto_records_size();
+        auto& last_record = resp->cdc_sdk_proto_records(size - 1);
+        if (last_record.has_row_message() && last_record.row_message().op() == RowMessage::BEGIN) {
+          resp->mutable_cdc_sdk_proto_records()->RemoveLast();
+          return Status::OK();
+        }
+      }
       TEST_SYNC_POINT("FillCommitRecord::Start");
       FillCommitRecord(
           op_id, transaction_id, xrepl_origin_id, commit_time.ToUint64(), checkpoint, resp,
@@ -3252,8 +3256,9 @@ Status GetChangesForCDCSDK(
                              leader_safe_time, safe_hybrid_time_resp, have_more_messages,
                              consistent_stream_safe_time, snapshot_operation);
 
-  if (!snapshot_operation && !CheckResponseSafeTimeCorrectness(
-                                 last_read_wal_op_record_time, safe_time, is_entire_wal_read)) {
+  if (!snapshot_operation && safe_time != computed_safe_hybrid_time_req &&
+      !CheckResponseSafeTimeCorrectness(
+          last_read_wal_op_record_time, safe_time, is_entire_wal_read)) {
     LOG(DFATAL) << "Stream_id: " << stream_id << ", tablet_id: " << tablet_id
                 << ", response safe time: " << safe_time
                 << " is greater than last read WAL OP's record time: "

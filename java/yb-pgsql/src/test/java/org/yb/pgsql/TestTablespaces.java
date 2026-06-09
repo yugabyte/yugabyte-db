@@ -19,7 +19,8 @@ import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 import java.sql.Connection;
 import java.sql.Statement;
@@ -35,7 +36,8 @@ import com.google.common.collect.ImmutableMap;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestTablespaces extends BasePgSQLTest {
   private List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
       ImmutableMap.of(

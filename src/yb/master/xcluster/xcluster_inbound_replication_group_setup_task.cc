@@ -50,8 +50,7 @@
 DEFINE_RUNTIME_bool(check_bootstrap_required, false,
     "Is it necessary to check whether bootstrap is required for Universe Replication.");
 
-DEFINE_RUNTIME_uint32(
-    xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
+DEFINE_RUNTIME_uint32(xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
     "Timeout for XClusterEnsureSequenceUpdatesAreInWal RPCs.");
 DEFINE_validator(xcluster_ensure_sequence_updates_in_wal_timeout_sec, FLAG_GT_VALUE_VALIDATOR(0));
 

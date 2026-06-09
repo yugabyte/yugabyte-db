@@ -1,4 +1,4 @@
-import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle, useMemo } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +25,8 @@ import { getClusterByType } from '@app/redesign/features-v2/universe/edit-univer
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
-import { StorageType } from '@app/redesign/helpers/dtos';
+import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { buildRRInstanceSettingsFromCluster } from '../../../readReplicaUtils';
 
 const { Box, styled, CircularProgress } = mui;
 
@@ -47,7 +48,7 @@ export type RRInstanceSettingsProps = Partial<InstanceSettingProps> & {
 
 export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { instanceSettings, universeData },
+    { instanceSettings, universeData, regionsAndAZ },
     { moveToNextPage, moveToPreviousPage, saveInstanceSettings }
   ] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
 
@@ -78,32 +79,31 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const { control, watch, reset } = methods;
 
+  const regionsForHardwareFields = useMemo((): Region[] | undefined => {
+    const formRegions = regionsAndAZ?.regions;
+    if (!formRegions?.length) return undefined;
+    const uuids = [
+      ...new Set(
+        formRegions
+          .map((r) => r.regionUuid)
+          .filter((uuid): uuid is string => Boolean(uuid))
+      )
+    ];
+    if (!uuids.length) return undefined;
+    return uuids.map((uuid) => ({ uuid } as Region));
+  }, [regionsAndAZ]);
+
   const sameAsPrimary = watch(SAME_AS_PRIMARY_INST_FIELD);
   const ebsEnabled = watch(ENABLE_EBS_CONFIG_FIELD);
 
   // Reset form to initial values from primary cluster when sameAsPrimary is true
   useEffect(() => {
     if (sameAsPrimary && primaryCluster && universeData) {
-      const storageSpec = primaryCluster?.node_spec.storage_spec;
-      const cloudVolumeEncryption = storageSpec?.cloud_volume_encryption;
-      const initialInstanceSettings: RRInstanceSettingsProps = {
-        inheritPrimaryInstance: true,
-        arch: universeData?.info?.arch,
-        instanceType: primaryCluster?.node_spec.instance_type ?? null,
-        useSpotInstance: primaryCluster?.use_spot_instance ?? false,
-        deviceInfo: storageSpec
-          ? {
-              volumeSize: storageSpec?.volume_size,
-              numVolumes: storageSpec?.num_volumes,
-              diskIops: storageSpec?.disk_iops ?? null,
-              throughput: storageSpec?.throughput ?? null,
-              storageClass: 'standard',
-              storageType: (storageSpec?.storage_type as StorageType) ?? null
-            }
-          : null,
-        enableEbsVolumeEncryption: cloudVolumeEncryption?.enable_volume_encryption ?? false,
-        ebsKmsConfigUUID: cloudVolumeEncryption?.kms_config_uuid ?? null
-      };
+      const initialInstanceSettings: RRInstanceSettingsProps = buildRRInstanceSettingsFromCluster(
+        primaryCluster,
+        universeData!.info!.arch,
+        true
+      );
       reset(initialInstanceSettings);
     }
   }, [sameAsPrimary, primaryCluster, universeData, reset]);
@@ -156,8 +156,7 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                         isMaster={false}
                         disabled={!!sameAsPrimary}
                         provider={provider}
-                        //pass regions selected in first step
-                        // regions={}
+                        regions={regionsForHardwareFields}
                       />
                     )}
                     <VolumeInfoField
@@ -165,8 +164,7 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                       maxVolumeCount={maxVolumeCount}
                       disabled={!!sameAsPrimary}
                       provider={provider}
-                      //pass regions selected in first step
-                      // regions={}
+                      regions={regionsForHardwareFields}
                     />
                     {ebsVolumeEnabled && provider?.code === CloudType.aws && (
                       <EBSVolumeField disabled={!!sameAsPrimary} />
@@ -184,3 +182,5 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
     </FormProvider>
   );
 });
+
+RRInstanceSettings.displayName = 'RRInstanceSettings';

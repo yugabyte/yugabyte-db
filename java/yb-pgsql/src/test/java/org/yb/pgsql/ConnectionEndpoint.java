@@ -26,7 +26,13 @@ public enum ConnectionEndpoint {
 
   public final boolean enabled;
   private static final String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
+  // Java-only override used to enable YSQL Connection Manager for Java tests without affecting
+  // C++ tests (which only honor YB_ENABLE_YSQL_CONN_MGR_IN_TESTS). Set by Jenkins for builds where
+  // we want conn-mgr to be the Java-test default.
+  private static final String enableYsqlConnMgrJava =
+    System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS");
   public static ConnectionEndpoint DEFAULT =
-    (enableYsqlConnMgr != null) && enableYsqlConnMgr.equalsIgnoreCase("true")
+    (((enableYsqlConnMgr != null) && enableYsqlConnMgr.equalsIgnoreCase("true")) ||
+     ((enableYsqlConnMgrJava != null) && enableYsqlConnMgrJava.equalsIgnoreCase("true")))
     ? YSQL_CONN_MGR : POSTGRES;
 }

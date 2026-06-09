@@ -1,4 +1,4 @@
-import { ReactElement, useMemo, useEffect } from 'react';
+import { ReactElement, useMemo, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { Box, IconButton, Typography, MenuItem, makeStyles } from '@material-ui/core';
@@ -9,7 +9,8 @@ import {
   YBLabel,
   YBSelect
 } from '../../../../../../components';
-import { Placement, AZOverridePerAZ } from '../../../utils/dto';
+import { Placement, AZOverridePerAZ, ClusterType } from '../../../utils/dto';
+import { UniverseFormContext } from '../../../UniverseFormContainer';
 import DeleteIcon from '../../../../../../assets/delete.svg?img';
 
 export interface AZOverrideRowFormValue {
@@ -31,24 +32,42 @@ export interface AZOverridesFormValue {
   azOverrides: AZOverrideRowFormValue[];
 }
 
-function rowToAZOverrideEntry(row: AZOverrideRowFormValue): AZOverridePerAZ {
+function rowToAZOverrideEntry(row: AZOverrideRowFormValue, includeMaster: boolean): AZOverridePerAZ {
   const tserverDeviceInfo: { volumeSize?: number; numVolumes?: number; storageClass?: string } = {};
-  if (row.tserver.volumeSize !== null) tserverDeviceInfo.volumeSize = row.tserver.volumeSize;
-  if (row.tserver.numVolumes !== null) tserverDeviceInfo.numVolumes = row.tserver.numVolumes;
-  if (row.tserver.storageClass !== null && row.tserver.storageClass !== '')
-    tserverDeviceInfo.storageClass = row.tserver.storageClass;
-
-  const masterDeviceInfo: { volumeSize?: number; numVolumes?: number; storageClass?: string } = {};
-  if (row.master.volumeSize !== null) masterDeviceInfo.volumeSize = row.master.volumeSize;
-  if (row.master.numVolumes !== null) masterDeviceInfo.numVolumes = row.master.numVolumes;
-  if (row.master.storageClass !== null && row.master.storageClass !== '')
-    masterDeviceInfo.storageClass = row.master.storageClass;
+  if (row.tserver.volumeSize !== undefined && row.tserver.volumeSize !== null)
+    tserverDeviceInfo.volumeSize = row.tserver.volumeSize;
+  if (row.tserver.numVolumes !== undefined && row.tserver.numVolumes !== null)
+    tserverDeviceInfo.numVolumes = row.tserver.numVolumes;
+  const tserverSc = row.tserver.storageClass?.trim();
+  if (tserverSc) tserverDeviceInfo.storageClass = tserverSc;
 
   const perProcess: AZOverridePerAZ['perProcess'] = {};
   if (Object.keys(tserverDeviceInfo).length > 0) perProcess.TSERVER = { deviceInfo: tserverDeviceInfo };
-  if (Object.keys(masterDeviceInfo).length > 0) perProcess.MASTER = { deviceInfo: masterDeviceInfo };
+
+  if (includeMaster) {
+    const masterDeviceInfo: { volumeSize?: number; numVolumes?: number; storageClass?: string } = {};
+    if (row.master.volumeSize !== undefined && row.master.volumeSize !== null)
+      masterDeviceInfo.volumeSize = row.master.volumeSize;
+    if (row.master.numVolumes !== undefined && row.master.numVolumes !== null)
+      masterDeviceInfo.numVolumes = row.master.numVolumes;
+    const masterSc = row.master.storageClass?.trim();
+    if (masterSc) masterDeviceInfo.storageClass = masterSc;
+    if (Object.keys(masterDeviceInfo).length > 0) perProcess.MASTER = { deviceInfo: masterDeviceInfo };
+  }
 
   return Object.keys(perProcess).length > 0 ? { perProcess } : {};
+}
+
+/** K8s read replica (async) clusters have no masters; strip legacy MASTER overrides from saved payload. */
+function stripMasterFromAzOverrides(overrides: Record<string, AZOverridePerAZ>): void {
+  Object.keys(overrides).forEach((uuid) => {
+    const entry = overrides[uuid];
+    const perProcess = entry?.perProcess;
+    if (!perProcess?.MASTER) return;
+    const { MASTER: _m, ...rest } = perProcess;
+    if (Object.keys(rest).length === 0) delete overrides[uuid];
+    else overrides[uuid] = { perProcess: rest };
+  });
 }
 
 function objectToRow(
@@ -169,6 +188,8 @@ export const AZOverridesModal = ({
 }: AZOverridesModalProps): ReactElement => {
   const { t } = useTranslation();
   const modalClasses = useModalStyles();
+  const { clusterType } = (useContext(UniverseFormContext) as any)[0];
+  const tserverOnlyAzOverrides = clusterType === ClusterType.ASYNC;
 
   const placementUuidList = useMemo(
     () => placements.map((p) => p.uuid).sort().join(','),
@@ -226,10 +247,11 @@ export const AZOverridesModal = ({
     placementUuidSet.forEach((uuid) => delete result[uuid]);
     values.azOverrides?.forEach((row: AZOverrideRowFormValue) => {
       if (row?.azUuid) {
-        const entry = rowToAZOverrideEntry(row);
+        const entry = rowToAZOverrideEntry(row, !tserverOnlyAzOverrides);
         if (Object.keys(entry).length > 0) result[row.azUuid] = entry;
       }
     });
+    if (tserverOnlyAzOverrides) stripMasterFromAzOverrides(result);
     onSubmit(result);
     onClose();
   };
@@ -354,55 +376,57 @@ export const AZOverridesModal = ({
                 </Box>
               </Box>
 
-              <Box className={modalClasses.processSection}>
-                <Typography className={modalClasses.processLabel}>
-                  {t('universeForm.master')}
-                </Typography>
-                <Box className={modalClasses.fieldRow}>
-                  <Box className={modalClasses.fieldGroup}>
-                    <YBLabel>{t('universeForm.azOverrides.volumeCount')}</YBLabel>
-                    <YBInput
-                      type="number"
-                      fullWidth
-                      value={watch(`azOverrides.${index}.master.numVolumes`) ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setValue(
-                          `azOverrides.${index}.master.numVolumes`,
-                          v === '' ? undefined : Number(v) || undefined
-                        );
-                      }}
-                      inputProps={{ min: 1 }}
-                    />
-                  </Box>
-                  <Box className={modalClasses.fieldGroup}>
-                    <YBLabel>{t('universeForm.azOverrides.volumeSizeGib')}</YBLabel>
-                    <YBInput
-                      type="number"
-                      fullWidth
-                      value={watch(`azOverrides.${index}.master.volumeSize`) ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setValue(
-                          `azOverrides.${index}.master.volumeSize`,
-                          v === '' ? undefined : Number(v) || undefined
-                        );
-                      }}
-                      inputProps={{ min: 1 }}
-                    />
-                  </Box>
-                  <Box className={modalClasses.fieldGroup}>
-                    <YBLabel>{t('universeForm.instanceConfig.storageClass')}</YBLabel>
-                    <YBInput
-                      fullWidth
-                      value={watch(`azOverrides.${index}.master.storageClass`) ?? ''}
-                      onChange={(e) =>
-                        setValue(`azOverrides.${index}.master.storageClass`, e.target.value || undefined)
-                      }
-                    />
+              {!tserverOnlyAzOverrides && (
+                <Box className={modalClasses.processSection}>
+                  <Typography className={modalClasses.processLabel}>
+                    {t('universeForm.master')}
+                  </Typography>
+                  <Box className={modalClasses.fieldRow}>
+                    <Box className={modalClasses.fieldGroup}>
+                      <YBLabel>{t('universeForm.azOverrides.volumeCount')}</YBLabel>
+                      <YBInput
+                        type="number"
+                        fullWidth
+                        value={watch(`azOverrides.${index}.master.numVolumes`) ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setValue(
+                            `azOverrides.${index}.master.numVolumes`,
+                            v === '' ? undefined : Number(v) || undefined
+                          );
+                        }}
+                        inputProps={{ min: 1 }}
+                      />
+                    </Box>
+                    <Box className={modalClasses.fieldGroup}>
+                      <YBLabel>{t('universeForm.azOverrides.volumeSizeGib')}</YBLabel>
+                      <YBInput
+                        type="number"
+                        fullWidth
+                        value={watch(`azOverrides.${index}.master.volumeSize`) ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setValue(
+                            `azOverrides.${index}.master.volumeSize`,
+                            v === '' ? undefined : Number(v) || undefined
+                          );
+                        }}
+                        inputProps={{ min: 1 }}
+                      />
+                    </Box>
+                    <Box className={modalClasses.fieldGroup}>
+                      <YBLabel>{t('universeForm.instanceConfig.storageClass')}</YBLabel>
+                      <YBInput
+                        fullWidth
+                        value={watch(`azOverrides.${index}.master.storageClass`) ?? ''}
+                        onChange={(e) =>
+                          setValue(`azOverrides.${index}.master.storageClass`, e.target.value || undefined)
+                        }
+                      />
+                    </Box>
                   </Box>
                 </Box>
-              </Box>
+              )}
             </Box>
           ))}
         <YBButton

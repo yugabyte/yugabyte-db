@@ -139,4 +139,3 @@ Because `enable_object_locking_for_table_locks` is a preview flag, to use it, ad
 As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the flag [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
 
 For more information on the lock scopes and lifecycle, see [Table-level locks](../../../architecture/transactions/concurrency-control/#table-level-locks).
-

@@ -17,6 +17,7 @@
 #include <string_view>
 #include <vector>
 
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -32,15 +33,14 @@ struct YsqlCallHomeQuery {
 struct YsqlClusterQueries {
   static constexpr YsqlCallHomeQuery kClusterLevel[] = {
       {"databases",
-       "SELECT datname AS name, pg_encoding_to_char(encoding) AS encoding "
-       "FROM pg_database WHERE datistemplate = false"},
+       "SELECT COUNT(*) AS count, pg_encoding_to_char(encoding) AS encoding "
+       "FROM pg_database WHERE datistemplate = false GROUP BY encoding"},
   };
 
   static constexpr YsqlCallHomeQuery kDbLevel[] = {
       {"extensions",
-       "SELECT extname AS name, extversion AS version, nspname AS schema "
-       "FROM pg_extension e "
-       "JOIN pg_namespace n ON e.extnamespace = n.oid "
+       "SELECT extname AS name, extversion AS version "
+       "FROM pg_extension "
        "WHERE extname != 'plpgsql'"},
   };
 };
@@ -55,6 +55,14 @@ struct YsqlNodeQueries {
        "(SELECT setting::int FROM pg_settings WHERE name = 'max_connections') AS max_connections "
        "FROM pg_stat_activity WHERE datname IS NOT NULL"},
   };
+};
+
+class YsqlCollectionThrottle {
+ public:
+  bool ShouldCollect();
+
+ private:
+  CoarseTimePoint last_collection_time_;
 };
 
 std::string BuildStatsJson(

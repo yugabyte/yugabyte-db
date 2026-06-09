@@ -48,15 +48,15 @@ The zones allocated for compute can be virtual zones mapped to the storage zones
 
 Typically, the application connects to all the nodes in the cluster. In our local cluster, the application will connect to the 7 nodes in the 5 zones.
 
-Each node has a YB-TServer service that is comprised of the [Query Layer (YQL)](../../../architecture/query-layer) and the [DocDB](../../../architecture/docdb)-based storage layer. Each node in the cluster does both query processing and storage of data. Now let's see how to divide the responsibilities of the compute-heavy query layer and the storage-heavy DocDB layer between the nodes.
+Each node has a YB-TServer service that is comprised of the [Query Layer (YQL)](../../../architecture/query-layer/) and the [DocDB](../../../architecture/docdb/)-based storage layer. Each node in the cluster does both query processing and storage of data. Now let's see how to divide the responsibilities of the compute-heavy query layer and the storage-heavy DocDB layer between the nodes.
 
 {{<tip title="YB-Master">}}
-Remember that the [YB-Master](../../../architecture/yb-master) service manages the storage of the catalog data. When setting up the cluster, [yugabyted](../../../reference/configuration/yugabyted) automatically places the master services on the first 3 nodes, which we have allocated for storage.
+Remember that the [YB-Master](../../../architecture/yb-master) service manages the storage of the catalog data. When setting up the cluster, [yugabyted](../../../reference/configuration/yugabyted/) automatically places the master services on the first 3 nodes, which we have allocated for storage.
 {{</tip>}}
 
 ## Separating storage
 
-You can use the [Tablespace](../tablespaces) feature in YugabyteDB to restrict the storage to certain zones. Suppose you want to store data only in zones `storage-zone-a`, `storage-zone-b`, and `storage-zone-c`. For this, you need to create a tablespace limited to these zones. For example:
+You can use the [Tablespace](../tablespaces/) feature in YugabyteDB to restrict the storage to certain zones. Suppose you want to store data only in zones `storage-zone-a`, `storage-zone-b`, and `storage-zone-c`. For this, you need to create a tablespace limited to these zones. For example:
 
 ```sql
 CREATE TABLESPACE storage
@@ -82,7 +82,7 @@ This automatically ensures that the data is only stored in zones `storage-zone-a
 
 ## Separating compute
 
-Now that you have restricted storage to specific zones, the machines in the remaining zones can be used for query processing by having your applications connect only to the nodes in zones d and e. You can either configure your applications to only connect to the remaining nodes (127.0.0.4, 127.0.0.5, 127.0.0.6, 127.0.0.7), or use a [YugabyteDB Smart Driver](/stable/develop/drivers-orms/smart-drivers) to connect only to the nodes in zones `compute-zone-a` and `compute-zone-b` using [topology_keys](/stable/develop/drivers-orms/smart-drivers/#topology-keys). For example:
+Now that you have restricted storage to specific zones, the machines in the remaining zones can be used for query processing by having your applications connect only to the nodes in zones d and e. You can either configure your applications to only connect to the remaining nodes (127.0.0.4, 127.0.0.5, 127.0.0.6, 127.0.0.7), or use a [YugabyteDB Smart Driver](/stable/develop/drivers-orms/smart-drivers/) to connect only to the nodes in zones `compute-zone-a` and `compute-zone-b` using [topology_keys](/stable/develop/drivers-orms/smart-drivers/#topology-keys). For example:
 
 ```java
 topology_keys = "topology_keys=aws.east.compute-zone-a,aws.east.compute-zone-b";

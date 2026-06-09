@@ -333,7 +333,7 @@ class CompactionJobTest : public RocksDBTest {
   ColumnFamilyData* cfd_;
   std::unique_ptr<CompactionFilter> compaction_filter_;
   std::shared_ptr<MergeOperator> merge_op_;
-  Status bg_error_;
+  BackgroundError bg_error_;
 };
 
 TEST_F(CompactionJobTest, Simple) {

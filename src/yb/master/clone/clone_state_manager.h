@@ -59,9 +59,8 @@ class CloneStateManager {
 
   Result<std::pair<NamespaceId, uint32_t>> CloneNamespace(
     const NamespaceIdentifierPB& source_namespace,
-    const HybridTime& read_time,
+    HybridTime read_time,
     const std::string& target_namespace_name,
-    const std::string& pg_source_owner,
     const std::string& pg_target_owner,
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch);
@@ -71,7 +70,7 @@ class CloneStateManager {
       const NamespaceInfoPtr& source_namespace,
       YQLDatabase database_type,
       const std::string& target_namespace_name,
-      const HybridTime& restore_time);
+      HybridTime restore_time);
 
   Status TryCloneNamespace(
       CloneStateInfoPtr clone_state,
@@ -79,8 +78,11 @@ class CloneStateManager {
       CoarseTimePoint deadline,
       const NamespaceInfoPtr& source_namespace,
       const std::string& target_namespace_name,
-      const std::string& pg_source_owner,
       const std::string& pg_target_owner);
+
+  // Validates that no YSQL major or non-major upgrades occurred between restore_ht and now that
+  // affect the source_namespace.
+  Status ValidateYSQLUpgradeStates(NamespaceIdView source_namespace_id, HybridTime restore_ht);
 
   Status UpdateCloneStateWithSnapshotInfo(
       const CloneStateInfoPtr& clone_state,
@@ -93,7 +95,6 @@ class CloneStateManager {
       CloneStateInfoPtr clone_state,
       const std::string& source_db_name,
       const std::string& target_db_name,
-      const std::string& pg_source_owner,
       const std::string& pg_target_owner,
       const SnapshotScheduleId& snapshot_schedule_id,
       CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info);

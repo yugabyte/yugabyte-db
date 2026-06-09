@@ -15,6 +15,7 @@
 
 #include <arpa/inet.h>
 
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
@@ -42,8 +43,8 @@ DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::kIsDebug,
     "Add a trace line whenever the wait state code is updated.");
 DEFINE_test_flag(uint32, yb_ash_sleep_at_wait_state_ms, 0,
     "How long to sleep/delay when entering a particular wait state.");
-DEFINE_test_flag(uint32, yb_ash_wait_code_to_sleep_at, 0,
-    "If enabled, add a sleep/delay when we enter the specified wait state.");
+DEFINE_test_flag(string, yb_ash_wait_code_to_sleep_at, "",
+    "Comma-separated list of wait state codes (as integers) at which to sleep/delay.");
 DEPRECATE_FLAG(bool, TEST_export_ash_uuids_as_hex_strings, "04_2024");
 DEFINE_test_flag(bool, ash_debug_aux, false, "Set ASH aux_info to the first 16 characters"
     " of the method tserver is running");
@@ -56,6 +57,25 @@ DEFINE_test_flag(string, yb_test_wait_event_aux_to_sleep_at_csv, "",
 
 namespace yb::ash {
 
+bool TEST_ShouldSleepAtWaitCode(WaitStateCode c) {
+  const auto& csv = FLAGS_TEST_yb_ash_wait_code_to_sleep_at;
+  if (csv.empty()) {
+    return false;
+  }
+  auto code_str = std::to_string(std::to_underlying(c));
+  for (size_t pos = 0; pos < csv.size();) {
+    auto end = csv.find(',', pos);
+    if (end == std::string::npos) {
+      end = csv.size();
+    }
+    if (csv.compare(pos, end - pos, code_str) == 0) {
+      return true;
+    }
+    pos = end + 1;
+  }
+  return false;
+}
+
 namespace {
 
 // The current wait_state_ for this thread.
@@ -63,7 +83,7 @@ thread_local WaitStateInfoPtr threadlocal_wait_state_;
 std::atomic_bool TEST_entered_wait_state_code_for_sleep{false};
 
 void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
-  if (FLAGS_TEST_yb_ash_wait_code_to_sleep_at != std::to_underlying(c)) {
+  if (!TEST_ShouldSleepAtWaitCode(c)) {
     return;
   }
 
@@ -123,6 +143,10 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kRetryableRequests_SaveToDisk:
       return "The in-memory state of the retryable requests is being saved to the disk. "
           "This generally happens in the background during a WAL log roll, or remote bootstrap.";
+    case WaitStateCode::kWaitForInternalYSQLQueryCompletion:
+      return "An rpc/task is waiting for an internal YSQL query to complete. This occurs during "
+          "features that use libpq internally, such as xCluster DDL replication, index backfills, "
+          "and global views.";
     case WaitStateCode::kMVCC_WaitForSafeTime:
       return "A read/write rpc is waiting for the safe time to be at least the desired read-time.";
     case WaitStateCode::kWaitForReadTime:
@@ -146,7 +170,7 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "Writing initial sys catalog snapshot during initdb.";
     case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
       return "DumpRunningRpcs is waiting on reactor threads.";
-    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_ResolveConflicts:
       return "A read/write rpc is waiting to identify conflicting transactions.";
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
       return "A read/write rpc is waiting for conflicting transactions to complete.";
@@ -167,7 +191,10 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kSnapshot_RestoreCheckpoint:
       return "A snapshot operation is restoring a database checkpoint.";
     case WaitStateCode::kXCluster_WaitingForGetChanges:
-      return "XCluster Poller on target universe is waiting for changes from source universe.";
+      return "xCluster Poller on target universe is waiting for changes from source universe.";
+    case WaitStateCode::kXCluster_WaitForSafeTime:
+      return "A read rpc on target universe is waiting for the xCluster safe time to reach a "
+          "time when it can perform consistent reads.";
     case WaitStateCode::kRaft_WaitingForReplication:
       return "A write rpc is waiting for Raft replication.";
     case WaitStateCode::kRaft_ApplyingEdits:
@@ -208,6 +235,9 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "RocksDB is waiting for a new iterator to be created.";
     case WaitStateCode::kRocksDB_CreateCheckpoint:
       return "RocksDB is creating a database checkpoint.";
+    case WaitStateCode::kXCluster_RateLimiter:
+      return "xCluster on source / target universe is slowing down due to rate limiter "
+          "throttling the replication rate.";
     case WaitStateCode::kYCQL_Parse:
       return "YCQL is parsing a query.";
     case WaitStateCode::kYCQL_Read:
@@ -429,7 +459,7 @@ std::vector<WaitStatesDescription> WaitStateInfo::GetWaitStatesDescription() {
 }
 
 int WaitStateInfo::GetCircularBufferSizeInKiBs() {
-  int num_cpus = base::NumCPUs();
+  int num_cpus = NumEffectiveCPUs();
   int bytes;
   if (num_cpus <= 2) {
     bytes = 32_MB;
@@ -592,6 +622,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
     case WaitStateCode::kWaitForReadTime:
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
+    case WaitStateCode::kXCluster_WaitForSafeTime:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kCreatingNewTablet:
@@ -599,6 +630,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kTransactionStatusCache_DoGetCommitData:
+    case WaitStateCode::kWaitForInternalYSQLQueryCompletion:
       return WaitStateType::kRPCWait;
 
     case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
@@ -612,7 +644,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kRemoteBootstrap_RateLimiter:
       return WaitStateType::kWaitOnCondition;
 
-    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_ResolveConflicts:
       return WaitStateType::kRPCWait;
 
     case WaitStateCode::kLockedBatchEntry_Lock:
@@ -656,6 +688,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kRocksDB_RateLimiter:
     case WaitStateCode::kRocksDB_WaitForSubcompaction:
+    case WaitStateCode::kXCluster_RateLimiter:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kRocksDB_NewIterator:
@@ -696,7 +729,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
     case WaitStateCode::kWriteSysCatalogSnapshotToDisk:
     case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
-    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_ResolveConflicts:
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
     case WaitStateCode::kRemoteBootstrap_FetchData:
     case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
@@ -726,6 +759,8 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kRocksDB_CreateCheckpoint:
     case WaitStateCode::kXCluster_WaitingForGetChanges:
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
+    case WaitStateCode::kXCluster_RateLimiter:
+    case WaitStateCode::kXCluster_WaitForSafeTime:
       return "This contains tablet ID.";
 
     case WaitStateCode::kYCQL_Parse:
@@ -750,6 +785,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kTransactionTerminate:
     case WaitStateCode::kTransactionRollbackToSavepoint:
     case WaitStateCode::kTransactionCancel:
+    case WaitStateCode::kWaitForInternalYSQLQueryCompletion:
       return "";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);

@@ -54,6 +54,8 @@ class YsqlCatalogConfig {
 
   YsqlMajorCatalogUpgradeInfoPB_State GetMajorCatalogUpgradeState() const EXCLUDES(mutex_);
 
+  std::optional<YsqlMajorCatalogUpgradeInfoPB> GetMajorCatalogUpgradePB() const EXCLUDES(mutex_);
+
   Status GetMajorCatalogUpgradePreviousError() const EXCLUDES(mutex_);
 
   bool IsPreviousVersionCatalogCleanupRequired() const EXCLUDES(mutex_);

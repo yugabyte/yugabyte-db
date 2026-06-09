@@ -16,7 +16,6 @@ cascade:
 | [v2025.2](v2025.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2025.2" release >}} | {{< yb-eol-dates "v2025.2" EOM >}} | {{< yb-eol-dates "v2025.2" EOL >}} |
 | [v2025.1](v2025.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2025.1" release >}} | {{< yb-eol-dates "v2025.1" EOM >}} | {{< yb-eol-dates "v2025.1" EOL >}} |
 | [v2024.2](v2024.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2024.2" release >}} | {{< yb-eol-dates "v2024.2" EOM >}} | {{< yb-eol-dates "v2024.2" EOL >}} |
-| [v2024.1](v2024.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
 | [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 
 For end-of-life releases, see [Releases at end of life](../ybdb-releases/#eol-releases).
@@ -30,6 +29,8 @@ For information on release versioning, see [Versioning](../versioning/).
 YugabyteDB Anywhere is a control plane for deploying and managing YugabyteDB universes. You can use YugabyteDB Anywhere to deploy universes with an equivalent or earlier version of YugabyteDB.
 
 Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
+
+You should run the latest version of YugabyteDB Anywhere that is compatible with the versions of YugabyteDB that are being used by your universes.
 
 ### Supported versions
 

@@ -9,7 +9,7 @@ _get_provider_by_name_url() {
     local yba_url=$1
     local customer_uuid=$2
     local provider_name=$3
-    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers?name={$provider_name}"
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers?name=${provider_name}"
 }
 
 _get_nodes_in_provider() {
@@ -100,5 +100,5 @@ if [[ $matched == false ]]; then
     add_result "Node addition failed" "FAIL" "Node addition to the provider failed: {{ node_ip }}"
 else
     echo "Node addition to the provider passed: {{ node_ip }}"
-    add_result "Node addition failed" "PASS" "Node addition to the provider passed: {{ node_ip }}"
+    add_result "Node addition passed" "PASS" "Node addition to the provider passed: {{ node_ip }}"
 fi

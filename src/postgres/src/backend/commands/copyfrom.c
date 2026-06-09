@@ -923,6 +923,45 @@ CopyFrom(CopyFromState cstate)
 		 * useNonTxnInsert value.
 		 */
 		insertMethod = CIM_SINGLE;
+
+		/*
+		 * Upsert (via COPY REPLACE or yb_enable_upsert_mode GUC) is unsafe
+		 * on tables with secondary indexes, triggers, or foreign key
+		 * constraints. For COPY REPLACE: error out since the user explicitly
+		 * requested replace semantics. For the GUC on an unsafe table: warn
+		 * once and leave on_conflict_action alone so we fall back to a
+		 * normal insert. For the GUC on a safe table: promote
+		 * on_conflict_action to ONCONFLICT_YB_REPLACE so the per-row insert
+		 * path enables DocDB upsert mode just like COPY REPLACE.
+		 */
+		if (YBIsUpsertUnsafeOnRel(resultRelInfo->ri_RelationDesc))
+		{
+			const char *relname =
+				RelationGetRelationName(resultRelInfo->ri_RelationDesc);
+
+			if (cstate->opts.on_conflict_action == ONCONFLICT_YB_REPLACE)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("COPY with REPLACE is not supported on "
+								"table \"%s\" because it has secondary "
+								"indexes, triggers, or foreign key "
+								"constraints", relname),
+						 errhint("Consider using INSERT ... ON CONFLICT "
+								 "for true upsert semantics instead.")));
+			else if (yb_enable_upsert_mode)
+				ereport(WARNING,
+						(errmsg("upsert mode disabled for table \"%s\" "
+								"because it has secondary indexes, "
+								"triggers, or foreign key constraints",
+								relname),
+						 errhint("Consider using INSERT ... ON CONFLICT "
+								 "for true upsert semantics instead.")));
+		}
+		else if (yb_enable_upsert_mode &&
+				 cstate->opts.on_conflict_action == ONCONFLICT_NONE)
+		{
+			cstate->opts.on_conflict_action = ONCONFLICT_YB_REPLACE;
+		}
 	}
 
 	/*

@@ -96,7 +96,8 @@
 #define PRETTYFLAG_PAREN		0x0001
 #define PRETTYFLAG_INDENT		0x0002
 #define PRETTYFLAG_SCHEMA		0x0004
-#define YB_PRETTYFLAG_ARRAY	0x0008
+#define YB_PRETTYFLAG_ARRAY				0x0008
+#define YB_PRETTYFLAG_MASK_CONSTANTS	0x0010
 
 /* Standard conversion of a "bool pretty" option to detailed flags */
 #define GET_PRETTY_FLAGS(pretty) \
@@ -112,6 +113,8 @@
 #define PRETTY_SCHEMA(context)	((context)->prettyFlags & PRETTYFLAG_SCHEMA)
 #define YB_PRETTY_ARRAY(context) ((context)->prettyFlags & \
 									YB_PRETTYFLAG_ARRAY)
+#define YB_MASK_CONSTANTS(context) ((context)->prettyFlags & \
+									YB_PRETTYFLAG_MASK_CONSTANTS)
 
 #define YB_TRUNC_ARRAY_LIMIT 3
 
@@ -518,6 +521,8 @@ static char *flatten_reloptions(Oid relid);
 static void get_reloptions(StringInfo buf, Datum reloptions);
 
 /* YB functions */
+static char *yb_flatten_reloptions_filtered(Oid relid, const char *skip_option);
+static char *yb_extract_reloption_value(Oid relid, const char *option_name);
 static void get_batched_expr(YbBatchedExpr *var,
 							 deparse_context *context,
 							 bool showimplicit);
@@ -1148,7 +1153,11 @@ YbAppendIndexReloptions(StringInfo buf,
 						Oid index_oid,
 						YbcTableProperties yb_table_properties)
 {
-	char	   *str = flatten_reloptions(index_oid);
+	/*
+	 * Use filtered version to skip yb_presplit from the WITH clause.
+	 * yb_presplit is handled separately via ALTER INDEX SET.
+	 */
+	char	   *str = yb_flatten_reloptions_filtered(index_oid, "yb_presplit");
 
 	bool		has_reloptions = str && strcmp(str, "") != 0;
 	bool		has_colocation_id = (yb_table_properties &&
@@ -1614,9 +1623,30 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			appendStringInfo(&buf, " NULLS NOT DISTINCT");
 
 		if (includeYbMetadata && IsYBRelation(indexrel) &&
-			!idxrec->indisprimary && !amroutine->yb_amiscopartitioned)
+			!idxrec->indisprimary)
 		{
-			YbAppendIndexReloptions(&buf, indexrelid, YbGetTableProperties(indexrel));
+			YbcTableProperties props = YbGetTableProperties(indexrel);
+
+			/*
+			 * Copartitioned AMs (e.g. ybhnsw) always have is_colocated=true
+			 * on the index even when the base table isn't colocated via DB
+			 * or tablegroup. In that case, restore would reject
+			 * WITH (colocation_id=...) because DefineIndex gates it on the
+			 * base table's colocation. Suppress colocation_id here to match.
+			 */
+			if (amroutine->yb_amiscopartitioned)
+			{
+				Relation	baserel = table_open(indrelid, AccessShareLock);
+				bool		base_colocated =
+					IsYBRelation(baserel) &&
+					YbGetTableProperties(baserel)->is_colocated;
+
+				table_close(baserel, AccessShareLock);
+				if (!base_colocated)
+					props = NULL;
+			}
+
+			YbAppendIndexReloptions(&buf, indexrelid, props);
 		}
 
 		if (!IsYBRelation(indexrel))
@@ -1662,29 +1692,29 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		}
 
 		/*
-		 * YB: Print SPLIT INTO/AT clause.
+		 * YB: Emit split clause based on the current configuration.
+		 * - Hash indexes: SPLIT INTO N TABLETS (current tablet count).
+		 * - Range indexes: SPLIT AT VALUES (...) from yb_presplit, since
+		 *   SPLIT INTO N TABLETS is not valid for range-partitioned indexes.
 		 */
-		if (includeYbMetadata && indexrel->yb_table_properties)
+		if (includeYbMetadata && indexrel->yb_table_properties &&
+			indexrel->yb_table_properties->num_tablets > 1)
 		{
 			if (indexrel->yb_table_properties->num_hash_key_columns > 0)
 			{
-				/* For hash-partitioned tables */
 				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS",
 								 indexrel->yb_table_properties->num_tablets);
 			}
-			else
+			else if (!amroutine->yb_amiscopartitioned)
 			{
-				/* For range-partitioned tables */
-				if (indexrel->yb_table_properties->num_tablets > 1)
+				/* Skip range SPLIT for copartitioned AMs (e.g. ybhnsw); not valid on vector index. */
+				char	   *presplit = yb_extract_reloption_value(indexrelid,
+																  "yb_presplit");
+
+				if (presplit && presplit[0] == '(')
 				{
-					const char *range_split_clause;
-
-					range_split_clause =
-						DatumGetCString(DirectFunctionCall1(yb_get_range_split_clause,
-															ObjectIdGetDatum(indexrelid)));
-
-					if (strcmp(range_split_clause, "") != 0)
-						appendStringInfo(&buf, " %s", range_split_clause);
+					appendStringInfo(&buf, " SPLIT AT VALUES %s", presplit);
+					pfree(presplit);
 				}
 			}
 		}
@@ -2297,7 +2327,8 @@ pg_get_partconstrdef_string(Oid partitionId, char *aliasname)
 	constr_expr = get_partition_qual_relid(partitionId);
 	context = deparse_context_for(aliasname, partitionId);
 
-	return deparse_expression((Node *) constr_expr, context, true, false);
+	return deparse_expression((Node *) constr_expr, context, true, false,
+							  false, false); /* yb_pretty, yb_maskconstants */
 }
 
 /*
@@ -3621,8 +3652,9 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 			expr = (Node *) lfirst(nextargdefault);
 			nextargdefault = lnext(argdefaults, nextargdefault);
 
-			appendStringInfo(buf, " DEFAULT %s",
-							 deparse_expression(expr, NIL, false, false));
+		appendStringInfo(buf, " DEFAULT %s",
+						 deparse_expression(expr, NIL, false, false,
+											false, false)); /* yb_pretty, yb_maskconstants */
 		}
 		argsprinted++;
 
@@ -3741,7 +3773,8 @@ pg_get_function_arg_default(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	}
 	node = list_nth(argdefaults, nth_default);
-	str = deparse_expression(node, NIL, false, false);
+	str = deparse_expression(node, NIL, false, false,
+							 false, false); /* yb_pretty, yb_maskconstants */
 
 	ReleaseSysCache(proctup);
 
@@ -3841,20 +3874,21 @@ pg_get_function_sqlbody(PG_FUNCTION_ARGS)
  */
 char *
 deparse_expression(Node *expr, List *dpcontext,
-				   bool forceprefix, bool showimplicit)
+				   bool forceprefix, bool showimplicit,
+				   bool yb_pretty, bool yb_maskconstants)
 {
-	return deparse_expression_pretty(expr, dpcontext, forceprefix,
-									 showimplicit, 0, 0);
-}
+	int			yb_extra_flags = 0;
 
-char *
-yb_deparse_expression(Node *expr, List *dpcontext,
-					  bool forceprefix, bool showimplicit,
-					  bool verbose)
-{
+	if (IsYugaByteEnabled())
+	{
+		if (yb_pretty)
+			yb_extra_flags |= YB_PRETTYFLAG_ARRAY;
+		if (yb_maskconstants)
+			yb_extra_flags |= YB_PRETTYFLAG_MASK_CONSTANTS;
+	}
+
 	return deparse_expression_pretty(expr, dpcontext, forceprefix,
-									 showimplicit,
-									 verbose ? 0 : YB_PRETTYFLAG_ARRAY, 0);
+									 showimplicit, yb_extra_flags, 0);
 }
 
 /* ----------
@@ -10947,7 +10981,10 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 		 * Always label the type of a NULL constant to prevent misdecisions
 		 * about type when reparsing.
 		 */
-		appendStringInfoString(buf, "NULL");
+		if (!YB_MASK_CONSTANTS(context))
+			appendStringInfoString(buf, "NULL");
+		else
+			appendStringInfoChar(buf, '?');
 		if (showtype >= 0)
 		{
 			appendStringInfo(buf, "::%s",
@@ -10958,10 +10995,17 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 		return;
 	}
 
+	char *yb_extval_mask;
 	getTypeOutputInfo(constval->consttype,
 					  &typoutput, &typIsVarlena);
-
 	extval = OidOutputFunctionCall(typoutput, constval->constvalue);
+
+	if (YB_MASK_CONSTANTS(context))
+	{
+		yb_extval_mask = "?";
+	}
+	else
+		yb_extval_mask = NULL;
 
 	switch (constval->consttype)
 	{
@@ -10977,10 +11021,10 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 			 * seem that much prettier anyway.
 			 */
 			if (extval[0] != '-')
-				appendStringInfoString(buf, extval);
+				appendStringInfoString(buf, yb_extval_mask ? yb_extval_mask : extval);
 			else
 			{
-				appendStringInfo(buf, "'%s'", extval);
+				appendStringInfo(buf, "'%s'", yb_extval_mask ? yb_extval_mask : extval);
 				needlabel = true;	/* we must attach a cast */
 			}
 			break;
@@ -10995,24 +11039,24 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 			if (isdigit((unsigned char) extval[0]) &&
 				strcspn(extval, "eE.") != strlen(extval))
 			{
-				appendStringInfoString(buf, extval);
+				appendStringInfoString(buf, yb_extval_mask ? yb_extval_mask : extval);
 			}
 			else
 			{
-				appendStringInfo(buf, "'%s'", extval);
+				appendStringInfo(buf, "'%s'", yb_extval_mask ? yb_extval_mask : extval);
 				needlabel = true;	/* we must attach a cast */
 			}
 			break;
 
 		case BOOLOID:
 			if (strcmp(extval, "t") == 0)
-				appendStringInfoString(buf, "true");
+				appendStringInfoString(buf, yb_extval_mask ? yb_extval_mask : "true");
 			else
-				appendStringInfoString(buf, "false");
+				appendStringInfoString(buf, yb_extval_mask ? yb_extval_mask : "false");
 			break;
 
 		default:
-			simple_quote_literal(buf, extval);
+			simple_quote_literal(buf, yb_extval_mask ? yb_extval_mask : extval);
 			break;
 	}
 
@@ -12745,6 +12789,137 @@ flatten_reloptions(Oid relid)
 
 	ReleaseSysCache(tuple);
 
+	return result;
+}
+
+/*
+ * Generate a C string representing a relation's reloptions, skipping
+ * the option named skip_option (if non-NULL), or NULL if no remaining
+ * options.
+ */
+static char *
+yb_flatten_reloptions_filtered(Oid relid, const char *skip_option)
+{
+	char	   *result = NULL;
+	HeapTuple	tuple;
+	Datum		reloptions;
+	bool		isnull;
+
+	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for relation %u", relid);
+
+	reloptions = SysCacheGetAttr(RELOID, tuple,
+								 Anum_pg_class_reloptions, &isnull);
+	if (!isnull)
+	{
+		Datum	   *options;
+		int			noptions;
+		int			i;
+		bool		first = true;
+		StringInfoData buf;
+
+		initStringInfo(&buf);
+
+		deconstruct_array(DatumGetArrayTypeP(reloptions),
+						  TEXTOID, -1, false, TYPALIGN_INT,
+						  &options, NULL, &noptions);
+
+		for (i = 0; i < noptions; i++)
+		{
+			char	   *option = TextDatumGetCString(options[i]);
+			char	   *name;
+			char	   *separator;
+			char	   *value;
+
+			name = option;
+			separator = strchr(option, '=');
+			if (separator)
+			{
+				*separator = '\0';
+				value = separator + 1;
+			}
+			else
+				value = "";
+
+			/* Skip tablegroup (handled separately) and the specified option */
+			if (strcmp(name, "tablegroup") == 0 ||
+				(skip_option && strcmp(name, skip_option) == 0))
+			{
+				pfree(option);
+				continue;
+			}
+
+			if (!first)
+				appendStringInfoString(&buf, ", ");
+			appendStringInfo(&buf, "%s=", quote_identifier(name));
+
+			if (quote_identifier(value) == value)
+				appendStringInfoString(&buf, value);
+			else
+				simple_quote_literal(&buf, value);
+
+			first = false;
+			pfree(option);
+		}
+
+		result = buf.data;
+	}
+
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * yb_extract_reloption_value
+ *		Extract the value of a specific reloption for a relation.
+ *		Returns a palloc'd string, or NULL if the option is not found.
+ */
+static char *
+yb_extract_reloption_value(Oid relid, const char *option_name)
+{
+	char	   *result = NULL;
+	HeapTuple	tuple;
+	Datum		reloptions;
+	bool		isnull;
+
+	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for relation %u", relid);
+
+	reloptions = SysCacheGetAttr(RELOID, tuple,
+								 Anum_pg_class_reloptions, &isnull);
+	if (!isnull)
+	{
+		Datum	   *options;
+		int			noptions;
+		int			i;
+
+		deconstruct_array(DatumGetArrayTypeP(reloptions),
+						  TEXTOID, -1, false, TYPALIGN_INT,
+						  &options, NULL, &noptions);
+
+		for (i = 0; i < noptions; i++)
+		{
+			char	   *option = TextDatumGetCString(options[i]);
+			char	   *separator = strchr(option, '=');
+
+			if (separator)
+			{
+				*separator = '\0';
+				if (strcmp(option, option_name) == 0)
+				{
+					result = pstrdup(separator + 1);
+					pfree(option);
+					break;
+				}
+			}
+			pfree(option);
+		}
+	}
+
+	ReleaseSysCache(tuple);
 	return result;
 }
 

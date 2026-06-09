@@ -65,6 +65,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -303,7 +305,8 @@ public class PlacementInfoUtil {
         customerId,
         placementUuid,
         taskParams.clusterOperation,
-        taskParams.allowGeoPartitioning);
+        taskParams.allowGeoPartitioning,
+        taskParams.newUI);
   }
 
   public static Universe getUniverseForParams(UniverseDefinitionTaskParams taskParams) {
@@ -332,16 +335,18 @@ public class PlacementInfoUtil {
         customerId,
         placementUuid,
         clusterOpType,
-        false);
+        false,
+        !CollectionUtils.isEmpty(taskParams.getPrimaryCluster().getPartitions()));
   }
 
-  private static void updateUniverseDefinition(
+  static void updateUniverseDefinition(
       UniverseDefinitionTaskParams taskParams,
       @Nullable Universe universe,
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType,
-      boolean allowGeoPartitioning) {
+      boolean allowGeoPartitioning,
+      boolean isNewUI) {
 
     // Create node details set if needed.
     if (taskParams.nodeDetailsSet == null) {
@@ -353,7 +358,13 @@ public class PlacementInfoUtil {
     }
 
     updateUniverseDefinition(
-        universe, taskParams, customerId, placementUuid, clusterOpType, allowGeoPartitioning);
+        universe,
+        taskParams,
+        customerId,
+        placementUuid,
+        clusterOpType,
+        allowGeoPartitioning,
+        isNewUI);
   }
 
   private static void updateUniverseDefinitionV2(
@@ -396,7 +407,13 @@ public class PlacementInfoUtil {
             });
     verifyPlacement(cluster, taskParams.clusters, taskParams.nodeDetailsSet);
     cluster.placementInfo = cluster.getOverallPlacement();
-    cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.getOverallPlacement());
+    cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
+    if (cluster.getPartitions() != null) {
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        checkAndSetPerAZRF(partition.getPlacement(), partition.getReplicationFactor(), null, false);
+      }
+      cluster.userIntent.replicationFactor = cluster.getDefaultPartition().getReplicationFactor();
+    }
 
     // STEP 5: Sync nodes with placement info
     configureNodesUsingPlacementInfo(
@@ -404,10 +421,6 @@ public class PlacementInfoUtil {
     applyDedicatedModeChanges(universe, cluster, taskParams);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
-    for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
-      checkAndSetPerAZRF(partition.getPlacement(), partition.getReplicationFactor(), null, false);
-    }
-    cluster.userIntent.replicationFactor = cluster.getDefaultPartition().getReplicationFactor();
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
 
@@ -417,7 +430,8 @@ public class PlacementInfoUtil {
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType,
-      boolean allowGeoPartitioning) {
+      boolean allowGeoPartitioning,
+      boolean isNewUI) {
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
     LOG.info(
         "Start update universe definition: Placement={}, numNodes={}, AZ={} OpType={}.",
@@ -429,9 +443,12 @@ public class PlacementInfoUtil {
     // STEP 1: Validate
     validateAndInitParams(customerId, taskParams, cluster, clusterOpType, universe);
 
-    if (!CollectionUtils.isEmpty(cluster.getPartitions())) {
+    if (isNewUI) {
       updateUniverseDefinitionV2(universe, taskParams, customerId, placementUuid, clusterOpType);
       return;
+    } else if (cluster.isGeoPartitioned()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Universe is geo partitioned, cannot use old UI");
     }
     UUID defaultRegionUUID = cluster.clusterType == PRIMARY ? getDefaultRegion(taskParams) : null;
 
@@ -597,6 +614,14 @@ public class PlacementInfoUtil {
     removeUnusedPlacementAZs(cluster.placementInfo);
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
 
+    // Support old UI for universes saved through new UI but not geo-partitioned.
+    // For geo-partitioned case the exception is already thrown.
+    if (cluster.getPartitions() != null && cluster.getPartitions().size() == 1) {
+      UniverseDefinitionTaskParams.PartitionInfo partitionInfo = cluster.getPartitions().get(0);
+      partitionInfo.setPlacement(cluster.placementInfo);
+      partitionInfo.setReplicationFactor(cluster.userIntent.replicationFactor);
+    }
+
     // STEP 5: Sync nodes with placement info
     configureNodesUsingPlacementInfo(
         cluster, taskParams.nodeDetailsSet, taskParams, universe, clusterOpType);
@@ -606,6 +631,7 @@ public class PlacementInfoUtil {
     checkAndSetPerAZRF(
         cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID, false);
     LOG.info("Final Placement info: {}.", cluster.placementInfo);
+
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
 
@@ -984,26 +1010,32 @@ public class PlacementInfoUtil {
   }
 
   public static void validatePartitions(Cluster cluster) {
+    if (!cluster.isGeoPartitioned()
+        && cluster.getPartitions() != null
+        && cluster.getPartitions().size() > 1) {
+      LOG.info("Marking cluster {} as geo partitioned", cluster.uuid);
+      cluster.setGeoPartitioned(true);
+    }
     if (!CollectionUtils.isEmpty(cluster.getPartitions())) {
       Set<UUID> zoneUUIDs = new HashSet<>();
       Set<String> tablespaceNames = new HashSet<>();
       Set<String> names = new HashSet<>();
-      boolean geoPartitioned = cluster.getPartitions().size() > 1;
       List<UniverseDefinitionTaskParams.PartitionInfo> defaultPartitions =
           cluster.getPartitions().stream()
               .peek(
                   p -> {
-                    PlacementInfoUtil.validatePartition(p, geoPartitioned);
-                    if (!names.add(p.getName())) {
-                      throw new PlatformServiceException(
-                          BAD_REQUEST, "Found duplicate name for partition: " + p.getName());
+                    PlacementInfoUtil.validatePartition(p, cluster.isGeoPartitioned());
+                    if (cluster.isGeoPartitioned()) {
+                      if (!names.add(p.getName())) {
+                        throw new PlatformServiceException(
+                            BAD_REQUEST, "Found duplicate name for partition: " + p.getName());
+                      }
+                      if (!tablespaceNames.add(p.getTablespaceName())) {
+                        throw new PlatformServiceException(
+                            BAD_REQUEST,
+                            "Found duplicate tablespace name for partition: " + p.getName());
+                      }
                     }
-                    if (!tablespaceNames.add(p.getTablespaceName())) {
-                      throw new PlatformServiceException(
-                          BAD_REQUEST,
-                          "Found duplicate tablespace name for partition: " + p.getName());
-                    }
-
                     for (UUID azUUID : p.getPlacement().getAllAZUUIDs()) {
                       if (!zoneUUIDs.add(azUUID)) {
                         throw new PlatformServiceException(
@@ -1033,6 +1065,7 @@ public class PlacementInfoUtil {
       ClusterOperationType clusterOpType,
       Universe universe) {
     Cluster oldCluster;
+
     validatePartitions(cluster);
     if (clusterOpType == ClusterOperationType.EDIT) {
       if (universe == null) {
@@ -1383,14 +1416,12 @@ public class PlacementInfoUtil {
         .collect(Collectors.toSet());
   }
 
+  @Data
+  @AllArgsConstructor
   private static class AZInfo {
-    public AZInfo(boolean affinitized, int num) {
-      isAffinitized = affinitized;
-      numNodes = num;
-    }
-
     public boolean isAffinitized;
     public int numNodes;
+    public int leaderPreference;
   }
 
   // Helper function to check if the old placement and new placement after edit
@@ -1404,7 +1435,9 @@ public class PlacementInfoUtil {
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
         for (PlacementAZ oldAZ : oldRegion.azList) {
-          oldAZMap.put(oldAZ.uuid, new AZInfo(oldAZ.isAffinitized, oldAZ.numNodesInAZ));
+          oldAZMap.put(
+              oldAZ.uuid,
+              new AZInfo(oldAZ.isAffinitized, oldAZ.numNodesInAZ, oldAZ.leaderPreference));
         }
       }
     }
@@ -1416,8 +1449,9 @@ public class PlacementInfoUtil {
             return false;
           }
           AZInfo azInfo = oldAZMap.get(newAZ.uuid);
-          if (azInfo.isAffinitized != newAZ.isAffinitized
-              || azInfo.numNodes != newAZ.numNodesInAZ) {
+          if (!Objects.equals(
+              azInfo,
+              new AZInfo(newAZ.isAffinitized, newAZ.numNodesInAZ, newAZ.leaderPreference))) {
             return false;
           }
         }
@@ -1465,6 +1499,9 @@ public class PlacementInfoUtil {
       }
       if (!newCluster.areTagsSame(oldCluster)
           || !existingIntent.deviceInfo.equals(userIntent.deviceInfo)
+          || !Objects.equals(existingIntent.masterDeviceInfo, userIntent.masterDeviceInfo)
+          || !Objects.equals(existingIntent.instanceType, userIntent.instanceType)
+          || !Objects.equals(existingIntent.masterInstanceType, userIntent.masterInstanceType)
           || UniverseCRUDHandler.isKubernetesNodeSpecUpdate(oldCluster, newCluster)
           || UniverseCRUDHandler.isAwsArnChanged(oldCluster, newCluster)
           || UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)
@@ -2941,6 +2978,8 @@ public class PlacementInfoUtil {
     return addPlacementZone(zone, placementInfo, rf, numNodes, true);
   }
 
+  // addPlacementZone does not add the stsIndex for master/tserver, callsites using this method
+  // should set the stsIndex for master/tserver after calling this method.
   public static PlacementAZ addPlacementZone(
       UUID zone, PlacementInfo placementInfo, int rf, int numNodes, boolean isAffinitized) {
     // Get the zone, region and cloud.

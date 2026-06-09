@@ -19,12 +19,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 import com.google.common.collect.ImmutableMap;
 
 // Runs the pg_regress test suite on YB code.
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressTablegroup extends BasePgRegressTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressTablegroup.class);
 

@@ -39,7 +39,6 @@ namespace rocksdb {
 
 class BlockBuilder;
 class BlockHandle;
-class WritableFile;
 struct BlockBasedTableOptions;
 
 extern const uint64_t kBlockBasedTableMagicNumber;

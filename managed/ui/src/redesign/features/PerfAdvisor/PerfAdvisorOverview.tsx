@@ -1,19 +1,18 @@
 import { useState } from 'react';
 import { Tab } from 'react-bootstrap';
-import { useSelector } from 'react-redux';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Box } from '@material-ui/core';
-import { AppName, ConfigureUniverseMetadata } from '@yugabytedb/perf-advisor-ui';
 import { YBErrorIndicator, YBLoading } from '../../../components/common/indicators';
 import { YBTabsPanel } from '../../../components/panels';
 import { PerfAdvisorUniverseConfig } from './PerfAdvisorUniverseConfig';
 import { PerfAdvisorRegistration } from './PerfAdvisorRegistration';
+import { PerfAdvisorUniverseList } from './PerfAdvisorUniverseList';
 import { QUERY_KEY, PerfAdvisorAPI } from './api';
-import { isNonEmptyString } from '../../../utils/ObjectUtils';
 
 interface PerfAdvisorOverviewProps {
   activeTab: string | undefined;
+  isNewPerfAdvisorUIEnabled: boolean;
 }
 
 export const ROUTE_PREFIX = 'troubleshoot';
@@ -24,11 +23,10 @@ export const ConfigTabKey = {
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
 
-export const PerfAdvisorOverview = ({ activeTab }: PerfAdvisorOverviewProps) => {
+export const PerfAdvisorOverview = ({ activeTab, isNewPerfAdvisorUIEnabled }: PerfAdvisorOverviewProps) => {
   const { t } = useTranslation();
 
   const [paData, setPaData] = useState<any>([]);
-  const currentCustomerInfo = useSelector((state: any) => state.customer.currentCustomer.data);
   const tabToDisplay = activeTab ?? ConfigTabKey.REGISTER;
 
   const perfAdvisorUniverseList = useQuery(
@@ -90,18 +88,19 @@ export const PerfAdvisorOverview = ({ activeTab }: PerfAdvisorOverviewProps) => 
             <PerfAdvisorRegistration onRefetchConfig={onRefetchConfig} />
           )}
         </Tab>
-        <Tab
-          eventKey={ConfigTabKey.UNIVERSES}
-          title={t('clusterDetail.troubleshoot.universesTabTitle')}
-          key={ConfigTabKey.UNIVERSES}
-          unmountOnExit={true}
-        >
-          <ConfigureUniverseMetadata
-            appName={AppName.YBA}
-            customerUuid={currentCustomerInfo?.uuid}
-            apiUrl={isNonEmptyString(paData?.[0]?.paUrl) ? `${paData[0].paUrl}/api` : ''}
-          />
-        </Tab>
+        {paData?.length > 0 && (
+          <Tab
+            eventKey={ConfigTabKey.UNIVERSES}
+            title={t('clusterDetail.troubleshoot.universesTabTitle')}
+            key={ConfigTabKey.UNIVERSES}
+            unmountOnExit={true}
+          >
+            <PerfAdvisorUniverseList
+              paUuid={paData[0].uuid}
+              isNewPerfAdvisorUIEnabled={isNewPerfAdvisorUIEnabled}
+            />
+          </Tab>
+        )}
       </YBTabsPanel>
     </Box>
   );

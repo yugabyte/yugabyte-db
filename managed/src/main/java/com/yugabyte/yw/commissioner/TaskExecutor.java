@@ -52,6 +52,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
@@ -174,6 +175,9 @@ public class TaskExecutor {
 
   // Skip or perform abortable check for subtasks.
   private final boolean skipSubTaskAbortableCheck;
+
+  // Used for testing to set the max wait time.
+  private volatile Duration maxWaitForTime = Duration.ZERO;
 
   private static final String COMMISSIONER_TASK_WAITING_SEC_METRIC =
       "ybp_commissioner_task_waiting_sec";
@@ -332,6 +336,12 @@ public class TaskExecutor {
     if (HighAvailabilityConfig.isFollower()) {
       throw new IllegalStateException("Can not submit task on HA follower");
     }
+  }
+
+  @VisibleForTesting
+  // Used to speed up tests.
+  public void setMaxWaitForTime(Duration maxWaitForTime) {
+    this.maxWaitForTime = maxWaitForTime;
   }
 
   /** Task params for creating a RunnableTask. */
@@ -574,7 +584,7 @@ public class TaskExecutor {
     if (previousTaskUUID != null
         && runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableTaskRuntimeInfoOnRetry)) {
       TaskInfo previousTaskInfo = TaskInfo.getOrBadRequest(previousTaskUUID);
-      if (taskVersion != previousTaskInfo.getTaskVersion()) {
+      if (taskVersion == previousTaskInfo.getTaskVersion()) {
         log.info("Inherting runtime task info from the previous task {}", previousTaskUUID);
         taskInfo.inherit(previousTaskInfo);
         if (log.isDebugEnabled() && taskInfo.getRuntimeInfo() != null) {
@@ -1105,6 +1115,10 @@ public class TaskExecutor {
       return getTaskInfo().hasCompleted();
     }
 
+    public boolean hasTaskTerminated() {
+      return getTaskInfo().hasTerminated();
+    }
+
     @Override
     public String toString() {
       TaskInfo taskInfo = getTaskInfo();
@@ -1255,11 +1269,19 @@ public class TaskExecutor {
         new AtomicReference<>();
     // Time when the abort is set.
     private final AtomicReference<Supplier<Instant>> abortTimeSupplierRef = new AtomicReference<>();
+    // Set when the task is paused by a subtask group.
     private volatile boolean paused = false;
 
     RunnableTask(ITask task, UUID taskUuid) {
       super(task);
       super.setTaskUUID(taskUuid);
+      // When reusing the same parent task row (e.g. canary resume), continue subTaskPosition past
+      // any surviving children so new subtasks get strictly higher positions than prior Success
+      // rows.
+      OptionalInt maxPos = TaskInfo.maxChildPosition(taskUuid);
+      if (maxPos.isPresent()) {
+        this.subTaskPosition = maxPos.getAsInt() + 1;
+      }
     }
 
     /**
@@ -1505,6 +1527,11 @@ public class TaskExecutor {
      */
     public void waitFor(Duration waitTime) {
       checkNotNull(waitTime);
+      Duration cappedWaitTime = maxWaitForTime;
+      if (cappedWaitTime != null && cappedWaitTime.toMillis() > 0) {
+        waitTime = waitTime.compareTo(cappedWaitTime) > 0 ? cappedWaitTime : waitTime;
+        log.debug("Using the capped max wait time of {}ms", waitTime.toMillis());
+      }
       try {
         if (waiterLatch.await(waitTime.toMillis(), TimeUnit.MILLISECONDS)) {
           // Count reached zero first, another thread must have decreased it.

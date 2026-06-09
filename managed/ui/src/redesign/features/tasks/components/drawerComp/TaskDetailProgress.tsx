@@ -45,6 +45,7 @@ export const TaskDetailProgress: FC<TaskDrawerCompProps> = ({ currentTask }) => 
       case TaskState.INITIALIZING:
       case TaskState.CREATED:
       case TaskState.RUNNING:
+      case TaskState.PAUSED:
         return YBProgressBarState.InProgress;
       case TaskState.SUCCESS:
         return YBProgressBarState.Success;

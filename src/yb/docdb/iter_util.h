@@ -19,6 +19,7 @@
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 namespace yb::docdb {
 

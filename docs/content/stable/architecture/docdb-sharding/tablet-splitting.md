@@ -258,7 +258,6 @@ In the event that performance suffers due to automatic tablet splitting, the fol
   * `outstanding_tablet_split_limit_per_tserver` limits the total number of outstanding tablet splits per node to 1 by default. Tablets that are performing post-split compactions count against this limit.
 * [YB-TServer flags](../../../reference/configuration/yb-tserver/#sharding-flags):
   * `post_split_trigger_compaction_pool_max_threads` indicates the number of threads dedicated to post-split compaction tasks per node. By default, this is limited to 1. Increasing this may complete tablet splits faster, but would require more CPU and disk resources.
-  * `post_split_trigger_compaction_pool_max_queue_size` indicates the number of outstanding post-split compaction tasks that can be queued at once per node, limited to 16 by default.
   * `automatic_compaction_extra_priority` provides additional compaction priorities to [smaller compactions](../../yb-tserver/#compaction-queues) when automatic tablet splitting is enabled. This prevents smaller compactions from being starved for resources by the larger post-split compactions. This is set to 50 by default (the maximum recommended), and can be reduced to 0.
 
 #### YCSB workload with automatic tablet splitting example

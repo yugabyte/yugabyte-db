@@ -46,22 +46,18 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/master/master_client.fwd.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
+
+#include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/env.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/tsan_util.h"
 
@@ -69,8 +65,17 @@ using namespace std::literals;
 
 namespace yb {
 
+class Env;
+
+// Returns Env::Default(). Avoids pulling the full definition of yb::Env.
+Env* DefaultMiniClusterEnv();
+
 namespace server {
 class SkewedClockDeltaChanger;
+}
+
+namespace master {
+class MiniMaster;
 }
 
 namespace tserver {
@@ -91,7 +96,7 @@ struct MiniClusterOptions {
   // Number of drives to use on TS.
   int num_drives = 1;
 
-  Env* master_env = Env::Default();
+  Env* master_env = DefaultMiniClusterEnv();
 
   // Custom Env and rocksdb::Env to be used by MiniTabletServer,
   // otherwise MiniTabletServer will use own Env and rocksdb::Env.
@@ -125,16 +130,19 @@ class MiniCluster : public MiniClusterBase {
 
   // Start a cluster with a Master and 'num_tablet_servers' TabletServers.
   // All servers run on the loopback interface with ephemeral ports.
-  Status StartAsync(
-      const std::vector<tserver::TabletServerOptions>& extra_tserver_options =
-          std::vector<tserver::TabletServerOptions>());
+  //
+  // Note: the no-arg overloads are defined out-of-line so that mini_cluster.h
+  // does not need the full definition of tserver::TabletServerOptions (the
+  // default-arg form would require std::vector<TabletServerOptions>{} which
+  // instantiates std::vector ops on an incomplete T).
+  Status StartAsync(const std::vector<tserver::TabletServerOptions>& extra_tserver_options);
+  Status StartAsync();
 
-  // Like the previous method but performs initialization synchronously, i.e.
-  // this will wait for all TS's to be started and initialized. Tests should
-  // use this if they interact with tablets immediately after Start();
-  Status Start(
-      const std::vector<tserver::TabletServerOptions>& extra_tserver_options =
-      std::vector<tserver::TabletServerOptions>());
+  // Like StartAsync but performs initialization synchronously, i.e. this will
+  // wait for all TS's to be started and initialized. Tests should use this if
+  // they interact with tablets immediately after Start();
+  Status Start(const std::vector<tserver::TabletServerOptions>& extra_tserver_options);
+  Status Start();
 
   // Deprecated. Use Start() instead.
   Status StartSync() { return Start(); }
@@ -177,13 +185,10 @@ class MiniCluster : public MiniClusterBase {
   Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
   Status ClearBlacklist();
 
-  Status AddTServerToBlacklist(size_t idx) {
-    return AddTServerToBlacklist(*mini_tablet_server(idx));
-  }
-
-  Status AddTServerToLeaderBlacklist(size_t idx) {
-    return AddTServerToLeaderBlacklist(*mini_tablet_server(idx));
-  }
+  // Defined out-of-line so that mini_cluster.h does not need the full
+  // definition of tserver::MiniTabletServer.
+  Status AddTServerToBlacklist(size_t idx);
+  Status AddTServerToLeaderBlacklist(size_t idx);
 
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if
@@ -237,10 +242,12 @@ class MiniCluster : public MiniClusterBase {
 
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(size_t idx);
 
+  Result<size_t> GetTabletLeaderIndex(const TabletId& tablet_id);
+
+  Result<std::vector<size_t>> GetTabletFollowerIndexes(const TabletId& tablet_id);
+
   // Return all YBController servers.
-  std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
-    return yb_controller_servers_;
-  }
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override;
 
   tserver::TSTabletManager* GetTabletManager(size_t idx);
 
@@ -277,9 +284,24 @@ class MiniCluster : public MiniClusterBase {
     return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
   }
 
+  // Returns the bound RPC address of the single master. CHECKs that there is
+  // exactly one master. Defined out-of-line so that mini_cluster.h does not
+  // need the full definition of master::MiniMaster.
+  HostPort GetMasterBoundRpcAddr();
+
   template <typename T>
   T GetMasterProxy() {
-    return T(proxy_cache_.get(), mini_master()->bound_rpc_addr());
+    return T(proxy_cache_.get(), GetMasterBoundRpcAddr());
+  }
+
+  // Returns the bound RPC address of the i-th tablet server. Defined
+  // out-of-line so that mini_cluster.h does not need the full definition
+  // of tserver::MiniTabletServer.
+  HostPort GetTServerBoundRpcAddr(size_t i);
+
+  template <typename T>
+  T GetTServerProxy(size_t i) {
+    return T(&proxy_cache(), GetTServerBoundRpcAddr(i));
   }
 
   std::string GetClusterId() { return options_.cluster_id; }
@@ -481,8 +503,6 @@ Result<TableId> FindTableId(MiniCluster* cluster, const std::string& table_name)
 Status WaitForInitDb(MiniCluster* cluster);
 
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
-
-tserver::MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id);
 
 void ShutdownAllTServers(MiniCluster* cluster);
 Status StartAllTServers(MiniCluster* cluster);

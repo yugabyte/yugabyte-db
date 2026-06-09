@@ -337,15 +337,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
-  public static final ConfKeyInfo<Boolean> enableNodeAgentClient =
-      new ConfKeyInfo<>(
-          "yb.node_agent.client.enabled",
-          ScopeType.PROVIDER,
-          "Enable Node Agent Client",
-          "Enable node agent client for communication to DB nodes.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-
   /**
    * @deprecated Constant value. Remove this after moving to YNP pre-flight checks completely.
    */
@@ -359,14 +350,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
-  public static final ConfKeyInfo<Boolean> enableAnsibleOffloading =
-      new ConfKeyInfo<>(
-          "yb.node_agent.ansible_offloading.enabled",
-          ScopeType.PROVIDER,
-          "Enable Ansible Offloading",
-          "Offload ansible tasks to the DB nodes.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useSpotInstances =
       new ConfKeyInfo<>(
           "yb.use_spot_instances",
@@ -558,6 +541,14 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Default earlyoom arguments",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableEarlyoomOnOSUpgrade =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_earlyoom_on_os_upgrade",
+          ScopeType.PROVIDER,
+          "Whether to install and enable earlyoom during OS upgrade",
+          "Whether to install and enable earlyoom during OS upgrade (for old universes)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> gcpConnectionDrainingTimeout =
       new ConfKeyInfo<>(
           "yb.gcp.operations.connection_draining_timeout",
@@ -581,5 +572,39 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Enable capacity reservations for AWS",
           "Enable capacity reservations for AWS for tasks that need new nodes",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCgroupConfiguration =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_cgroup_configuration",
+          ScopeType.PROVIDER,
+          "Enable cgroup configuration",
+          "When true, TServer CPU cgroup isolation is configured during provisioning and"
+              + " configure-server. Only effective when user-level systemd is in use.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useSystemLevelSystemd =
+      new ConfKeyInfo<>(
+          "yb.node_agent.use_system_level_systemd",
+          ScopeType.PROVIDER,
+          "Use System Level Systemd",
+          "Use system-level systemd instead of user-level systemd for service management",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCapacityReservationGcp =
+      new ConfKeyInfo<>(
+          "yb.task.enable_capacity_reservation_gcp",
+          ScopeType.PROVIDER,
+          "Enable capacity reservations for GCP",
+          "Enable capacity reservations for GCP for tasks that need new nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> ybUserHomeOverride =
+      new ConfKeyInfo<>(
+          "yb.internal.yb_user_home_override",
+          ScopeType.PROVIDER,
+          "YB User Home Override",
+          "Custom home directory for the yb user for CSPs and sudo onprem mainly for testing"
+              + " purposes",
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

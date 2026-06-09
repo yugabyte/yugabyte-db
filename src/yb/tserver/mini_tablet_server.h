@@ -128,8 +128,10 @@ class MiniTabletServer {
 
   // Stop and start the tablet server on the same RPC and webserver ports. The tserver must be
   // running.
-  Status Restart();
-  Status RestartStoppedServer();
+  Status Restart(
+      WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kFalse);
+  Status RestartStoppedServer(
+      WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kFalse);
 
   // Add a new tablet to the test server, use the default consensus configuration.
   //

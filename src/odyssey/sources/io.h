@@ -132,7 +132,13 @@ static inline int od_io_read(od_io_t *io, char *dest, int size,
 			size -= to_read;
 			pos += to_read;
 			od_readahead_pos_read_advance(&io->readahead, to_read);
-		} else {
+		}
+
+		/*
+		 * YB: Make space to pull new data into buffer in case it has been
+		 * exhausted (i.e. exisitng data fully read) by (or before) the read op above.
+		 */
+		if (unread == 0 || od_readahead_left(&io->readahead) == 0) {
 			od_readahead_reuse(&io->readahead);
 		}
 

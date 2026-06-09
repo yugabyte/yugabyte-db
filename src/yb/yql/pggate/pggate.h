@@ -48,7 +48,6 @@
 #include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
@@ -68,6 +67,7 @@ namespace yb::pggate {
 class PgDmlRead;
 class PgFlushDebugContext;
 class PgGlobalViewRead;
+class ExplicitRowLockBuffer;
 
 struct PgMemctxComparator {
   using is_transparent = void;
@@ -120,6 +120,10 @@ class PgApiImpl {
 
   ~PgApiImpl();
 
+  // Must be called before the global pgapi pointer is nulled, so that transaction abort paths
+  // can still access pgapi (e.g., YBCIsLegacyModeForCatalogOps).
+  void Shutdown();
+
   void SetupPgBackendCgroup(YbcPgOid dboid);
 
   const YbcPgCallbacks* pg_callbacks() const { return &pg_callbacks_; }
@@ -164,7 +168,6 @@ class PgApiImpl {
 
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
-  Result<bool> CatalogVersionTableInPerdbMode();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
   Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
@@ -189,14 +192,12 @@ class PgApiImpl {
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
-                             bool is_db_catalog_version_mode,
                              int64_t last_val,
                              bool is_called);
 
   Status UpdateSequenceTupleConditionally(int64_t db_oid,
                                           int64_t seq_oid,
                                           uint64_t ysql_catalog_version,
-                                          bool is_db_catalog_version_mode,
                                           int64_t last_val,
                                           bool is_called,
                                           int64_t expected_last_val,
@@ -206,7 +207,6 @@ class PgApiImpl {
   Status UpdateSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
-                             bool is_db_catalog_version_mode,
                              int64_t last_val,
                              bool is_called,
                              bool* skipped);
@@ -214,7 +214,6 @@ class PgApiImpl {
   Status FetchSequenceTuple(int64_t db_oid,
                             int64_t seq_oid,
                             uint64_t ysql_catalog_version,
-                            bool is_db_catalog_version_mode,
                             uint32_t fetch_count,
                             int64_t inc_by,
                             int64_t min_value,
@@ -226,7 +225,6 @@ class PgApiImpl {
   Status ReadSequenceTuple(int64_t db_oid,
                            int64_t seq_oid,
                            uint64_t ysql_catalog_version,
-                           bool is_db_catalog_version_mode,
                            int64_t *last_val,
                            bool *is_called);
 
@@ -372,6 +370,8 @@ class PgApiImpl {
 
   Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
 
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id);
+
   Result<YbcPgColumnInfo> GetColumnInfo(YbcPgTableDesc table_desc,
                                         int16_t attr_number);
 
@@ -434,7 +434,7 @@ class PgApiImpl {
 
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
-  Status BackfillIndex(const PgObjectId& table_id);
+  Status BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block);
   Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,
@@ -564,11 +564,13 @@ class PgApiImpl {
   Result<PgStatement*> NewInsertBlock(
       const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
-      YbcPgTransactionSetting transaction_setting);
+      YbcPgTransactionSetting transaction_setting,
+      bool skip_intents_write);
 
   Status NewInsert(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
                    YbcPgTransactionSetting transaction_setting,
+                   bool skip_intents_write,
                    PgStatement **handle);
 
   Status ExecInsert(PgStatement *handle);
@@ -584,6 +586,7 @@ class PgApiImpl {
   Status NewUpdate(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
                    YbcPgTransactionSetting transaction_setting,
+                   bool skip_intents_write,
                    PgStatement **handle);
 
   Status ExecUpdate(PgStatement *handle);
@@ -593,6 +596,7 @@ class PgApiImpl {
   Status NewDelete(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
                    YbcPgTransactionSetting transaction_setting,
+                   bool skip_intents_write,
                    PgStatement **handle);
 
   Status ExecDelete(PgStatement *handle);
@@ -614,7 +618,7 @@ class PgApiImpl {
   Status NewSelect(
       const PgObjectId& table_id, const PgObjectId& index_id,
       const YbcPgPrepareParameters* prepare_params, const YbcPgTableLocalityInfo& locality_info,
-      PgStatement** handle);
+      bool skip_intents_read, PgStatement** handle);
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
@@ -661,8 +665,9 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Analyze.
   Status NewSample(
-      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
-      const SampleRandomState& rand_state, PgStatement **handle);
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read, int targrows, const SampleRandomState& rand_state,
+      PgStatement **handle);
 
   Result<bool> SampleNextBlock(PgStatement* handle);
 
@@ -757,6 +762,7 @@ class PgApiImpl {
   Status AddExplicitRowLockIntent(
       const PgObjectId& table_id, const Slice& ybctid,
       const YbcPgExplicitRowLockParams& params, const YbcPgTableLocalityInfo& locality_info,
+      std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle,
       YbcPgExplicitRowLockErrorInfo& error_info);
   Status FlushExplicitRowLockIntents(YbcPgExplicitRowLockErrorInfo& error_info);
 
@@ -793,6 +799,7 @@ class PgApiImpl {
   void PauseSysTablePrefetching();
   void ResumeSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
+  bool IsParallelWorker() const;
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
       bool fetch_ybctid);
@@ -807,6 +814,8 @@ class PgApiImpl {
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<bool> IsNamespacePartOfCDCSDK(uint32_t database_oid);
 
   Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
@@ -901,8 +910,10 @@ class PgApiImpl {
 
   Status TriggerRelcacheInitConnection(const std::string& dbname);
 
-  Status NewGlobalViewRead(const char* database_name, PgGlobalViewRead** handle);
-  YbcRemotePgExecResult Exec(PgGlobalViewRead* handle, std::string_view query);
+  Status NewGlobalViewRead(PgGlobalViewRead** handle);
+  YbcRemotePgExecResult ExecGlobalViewScan(
+      PgGlobalViewRead* handle, std::string_view database_name, std::string_view query,
+      std::string_view tserver_uuid);
 
   //----------------------------------------------------------------------------------------------
   // Advisory Locks.
@@ -923,6 +934,10 @@ class PgApiImpl {
   auto TemporaryDisableReadTimeHistoryCutoff() {
     return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();
   }
+
+  YbcIsExplicitlyLockedRowSkippedCheckHandle AcquireExplicitlyLockedRowSkippedCheckHandle();
+  Result<bool> IsRowSkipped(
+      YbcIsExplicitlyLockedRowSkippedCheckHandle handle, YbcPgExplicitRowLockErrorInfo& error_info);
 
   struct PgSharedData;
   struct SignedPgSharedData;
@@ -951,6 +966,9 @@ class PgApiImpl {
   PgTableDesc* GetTabledescFromCurrentPgMemctx(size_t table_desc_id);
 
   PgMemctx& GetCurrentYbMemctx();
+
+  [[nodiscard]] ExplicitRowLockBuffer& explicit_row_lock_buffer();
+  Result<SetupPerformOptionsAccessorTag> FlushBufferedEntities(const PgFlushDebugContext& dbg_ctx);
 
   class Interrupter;
 
@@ -995,6 +1013,8 @@ class PgApiImpl {
 
   const WaitEventWatcher wait_event_watcher_;
 
+  bool is_parallel_worker_;
+
   PgSharedDataHolder pg_shared_data_;
 
   tserver::TServerSharedData& tserver_shared_object_;
@@ -1016,7 +1036,6 @@ class PgApiImpl {
   BufferingSettings buffering_settings_;
   PgSessionPtr pg_session_;
   PgFKReferenceCache fk_reference_cache_;
-  ExplicitRowLockBuffer explicit_row_lock_buffer_;
 
   ash::WaitStateInfoPtr wait_state_;
 

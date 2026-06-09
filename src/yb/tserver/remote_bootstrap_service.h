@@ -171,6 +171,21 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
       const std::string& session_id, RemoteBootstrapErrorPB::Code* app_error)
       REQUIRES(log_anchors_mutex_);
 
+  // Prune stale log_anchors_map_ entries for the same (requestor, tablet) on
+  // BeginRemoteBootstrapSession. Covers the case where a prior attempt used S != L and
+  // registered a remote anchor on the leader, and the retry uses S == L (so no new
+  // RegisterLogAnchor RPC arrives on the leader).
+  void PruneStaleRemoteLogAnchorsForNewSessionUnlocked(
+      const std::string& tablet_id, const std::string& requestor_uuid,
+      const std::string& new_session_id)
+      REQUIRES(log_anchors_mutex_);
+
+  // Prune stale sessions_ for the same (requestor, tablet) on BeginRemoteBootstrapSession.
+  void PruneStaleRemoteBootstrapSessionsUnlocked(
+      const std::string& tablet_id, const std::string& requestor_uuid,
+      const std::string& new_session_id)
+      REQUIRES(sessions_mutex_);
+
   void RemoveRemoteBootstrapSession(const std::string& session_id) REQUIRES(sessions_mutex_);
 
   void RemoveLogAnchorSession(const std::string& session_id) REQUIRES(log_anchors_mutex_);

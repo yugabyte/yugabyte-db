@@ -1,15 +1,19 @@
-import { makeStyles, Typography } from '@material-ui/core';
+import { Link as MUILink, makeStyles, Typography } from '@material-ui/core';
+import { YBTag, YBTooltip } from '@yugabyte-ui-library/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
-import { YBTooltip } from '@yugabyte-ui-library/core';
 
+import { usePillStyles } from '@app/redesign/styles/styles';
 import { precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
+import {
+  YBA_UNIVERSE_UPGRADE_DOCUMENTATION_URL,
+  YBA_YSQL_MAJOR_UPGRADE_DOCUMENTATION_URL
+} from './constants';
+
 import DocumentationIcon from '@app/redesign/assets/documentation.svg';
 import InfoIcon from '@app/redesign/assets/info-message.svg';
-import UnavailableIcon from '@app/redesign/assets/revoke-key-5.svg';
+import UnavailableIcon from '@app/redesign/assets/approved/revoke-key-5.svg';
 import UpgradeIcon from '@app/redesign/assets/upgrade.svg';
-import { usePillStyles } from '@app/redesign/styles/styles';
-import clsx from 'clsx';
 
 const TRANSLATION_KEY_PREFIX =
   'universeActions.dbUpgrade.upgradeModal.dbVersionStep.upgradeInfoCard';
@@ -103,7 +107,7 @@ const useStyles = makeStyles((theme) => ({
 
     padding: theme.spacing(2),
 
-    backgroundColor: theme.palette.ybacolors?.tipBackgroundLightGray ?? '#F7F9FB',
+    backgroundColor: theme.palette.grey[50],
     border: `1px solid ${theme.palette.grey[200]}`,
     borderRadius: theme.shape.borderRadius,
 
@@ -119,7 +123,7 @@ const useStyles = makeStyles((theme) => ({
     }
   },
   underlineLink: {
-    cursor: 'pointer',
+    color: theme.palette.grey[700],
     textDecoration: 'underline'
   },
   learnMoreLink: {
@@ -218,16 +222,26 @@ export const DbUpgradeInfoCard = ({
       </div>
 
       <div className={classes.upgradeRestrictionsBox}>
-        <div className={clsx(pillClasses.pill, pillClasses.metadataWhite)}>
-          <UnavailableIcon width={16} height={16} />
-          <span>{t('temporaryRestrictions')}</span>
-        </div>
+        <YBTag size="medium" variant="light" startIcon={<UnavailableIcon width={16} height={16} />}>
+          {t('temporaryRestrictions')}
+        </YBTag>
         <ul>
           <li>
             <Trans
               t={t}
               i18nKey={getRestrictionsKey()}
-              components={{ underline: <span className={classes.underlineLink} /> }}
+              components={{
+                underline: (
+                  <MUILink
+                    href={YBA_UNIVERSE_UPGRADE_DOCUMENTATION_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={classes.underlineLink}
+                    underline="always"
+                    data-testid="db-upgrade-info-card-operations-link"
+                  />
+                )
+              }}
             />
           </li>
           <li>{t('clusterMayHaveSlowerPerformance')}</li>
@@ -235,10 +249,17 @@ export const DbUpgradeInfoCard = ({
       </div>
 
       {isYsqlMajorUpgrade && (
-        <Typography variant="subtitle1" className={classes.learnMoreLink}>
+        <MUILink
+          href={YBA_YSQL_MAJOR_UPGRADE_DOCUMENTATION_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={classes.learnMoreLink}
+          underline="none"
+          data-testid="db-upgrade-info-card-learn-more-link"
+        >
           <DocumentationIcon width={16} height={16} />
           <span>{t('learnMoreAboutUpgrade')}</span>
-        </Typography>
+        </MUILink>
       )}
     </div>
   );

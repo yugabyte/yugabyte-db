@@ -15,11 +15,13 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import com.google.common.net.HostAndPort;
+import com.yugabyte.util.PSQLException;
 import org.hamcrest.CoreMatchers;
+import org.junit.Assume;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import com.yugabyte.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBCluster;
@@ -135,10 +137,14 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         statement2.execute("INSERT INTO cache_test2(a,b) VALUES (true, 11)");
         expectedRows.add(new Row(true, 11));
       } catch (PSQLException psqle) {
-        // Any failure should be due to a catalog version mismatch.
+        // Any failure should be due to a stale catalog cache that hasn't learned about column b.
         assertThat(
             psqle.getMessage(),
-            CoreMatchers.containsString("Catalog Version Mismatch")
+            CoreMatchers.anyOf(
+                CoreMatchers.containsString(
+                  "column \"b\" of relation \"cache_test2\" does not exist"),
+                CoreMatchers.containsString("schema version mismatch")
+            )
         );
       }
 
@@ -276,22 +282,50 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Force a cache refresh on connection 2.
       statement2.execute("SELECT * FROM test_table");
 
+      // For the non-ConnMgr path, disable heartbeats so that catalog version
+      // updates from each ALTER on connection 1 are not propagated to
+      // connection 2's tserver during the loop. Without this, the prologue
+      // check in YBCheckSharedCatalogCacheVersion may refresh connection 2's
+      // catcache before the SELECT runs, hiding the expected "Catalog Version
+      // Mismatch" error. The race window is widened under TSAN where ALTER
+      // runtimes span multiple heartbeat intervals. The ConnMgr path
+      // intentionally waits for the heartbeat (DDL sleeps), so keep heartbeats
+      // enabled there to preserve the separate "no failures" assertion below.
+      final boolean disableHeartbeats = !isTestRunningWithConnectionManager();
+
       final int attempts = 5;
-      List<Throwable> errors = IntStream.range(0, attempts)
-          .boxed()
-          .map((i) -> captureThrow(() -> {
-            // Add some artificial delay to space out attempts.
-            Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS / attempts);
+      final List<Throwable> errors;
+      try {
+        if (disableHeartbeats) {
+          for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+            assertTrue(miniCluster.getClient().setFlag(
+                hp, "TEST_tserver_disable_heartbeat", "true", true));
+          }
+        }
 
-            // Add new row from connection 1.
-            statement1.execute("ALTER TABLE test_table ADD COLUMN x" + i + " int");
+        errors = IntStream.range(0, attempts)
+            .boxed()
+            .map((i) -> captureThrow(() -> {
+              // Add some artificial delay to space out attempts.
+              Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS / attempts);
 
-            // Immediately try selecting row from connection 2.
-            statement2.execute("SELECT x" + i + " FROM test_table");
-          }))
-          .filter(Optional::isPresent)
-          .map(Optional::get)
-          .collect(Collectors.toList());
+              // Add new row from connection 1.
+              statement1.execute("ALTER TABLE test_table ADD COLUMN x" + i + " int");
+
+              // Immediately try selecting row from connection 2.
+              statement2.execute("SELECT x" + i + " FROM test_table");
+            }))
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toList());
+      } finally {
+        if (disableHeartbeats) {
+          for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+            assertTrue(miniCluster.getClient().setFlag(
+                hp, "TEST_tserver_disable_heartbeat", "false", true));
+          }
+        }
+      }
 
       if (isTestRunningWithConnectionManager()) {
         // Due to DDL sleeps with Connection Manager, all select statements
@@ -300,24 +334,28 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
          errors.size(),
          0);
       } else {
-        // At least half the select statements should fail.
+        // Expect at least one of the select statements to fail (the transparent retry can mask
+        // most of them, but the very first attempt typically races the heartbeat).
         assertGreaterThanOrEqualTo(
             String.format(
-                "Expected at least %d failures out of %d attempts, got %d",
-                attempts / 2,
+                "Expected at least 1 failure out of %d attempts, got %d",
                 attempts,
                 errors.size()
               ),
             errors.size(),
-            attempts / 2
+            1
           );
       }
 
-      // All errors should be catalog version mismatches.
+      // All errors should be due to a stale catalog cache (either the new column is not yet
+      // visible in pg's parser, or docdb returns a schema version mismatch).
       for (Throwable error : errors) {
         assertThat(
             error.getMessage(),
-            CoreMatchers.containsString("Catalog Version Mismatch")
+            CoreMatchers.anyOf(
+                CoreMatchers.containsString("schema version mismatch"),
+                CoreMatchers.containsString("does not exist")
+            )
         );
       }
     }
@@ -368,8 +406,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
       waitForTServerHeartbeat();
 
-      // Select should fail because the alter modified the table (catalog version mismatch).
-      runInvalidQuery(statement2,"SELECT * FROM test_table", "Catalog Version Mismatch");
+      // Select should fail because the alter modified the table (schema version mismatch).
+      runInvalidQuery(statement2,"SELECT * FROM test_table", "schema version mismatch");
 
       // COMMIT will succeed as a command but will rollback the transaction due to the error above.
       statement2.execute("COMMIT");
@@ -818,10 +856,13 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
     }
   }
 
-  // Check that an error message contains all the relevant error information with the Catalog
-  // Version Mismatch message appended.
+  // Check that when a query fails due to a stale catalog cache, the original error information
+  // (including the hint) is preserved.
   @Test
   public void testCatalogVersionLogging() throws Exception {
+    Assume.assumeFalse("Disabling heartbeats causes Connection Manager DDL sleeps to hang",
+        isTestRunningWithConnectionManager());
+
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(1).connect();
          Statement statement1 = connection1.createStatement();
@@ -834,26 +875,24 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Force a cache refresh on connection 2.
       statement2.execute("SELECT * FROM test_table");
 
+      // Disable heartbeats so the catalog version bump from the ALTER
+      // cannot propagate to tserver 1 before the SELECT x1.
+      for (HostAndPort hostAndPort : miniCluster.getTabletServers().keySet()) {
+        assertTrue(miniCluster.getClient().setFlag(
+            hostAndPort, "TEST_tserver_disable_heartbeat", "true", true));
+      }
+
       statement1.execute("ALTER TABLE test_table ADD COLUMN x1 int");
 
+      // Connection 2's tserver still has stale catalog; SELECT x1 must fail.
+      String query = "SELECT x1 FROM test_table";
       try {
-        // Immediately try selecting row from connection 2.
-        String query = "SELECT x1 FROM test_table";
         statement2.execute(query);
-
-        // Connection Manager enabled runs will not fail due to DDL sleeps.
-        if (!isTestRunningWithConnectionManager()) {
-          fail(String.format("Statement did not fail: %s", query));
-        }
+        fail(String.format("Statement did not fail: %s", query));
       } catch (SQLException error) {
-        if (isTestRunningWithConnectionManager()) {
-          fail("Connection Manager enabled run should not have failed");
-        }
         LOG.info(error.getMessage());
-        assertThat(
-          error.getMessage(),
-          CoreMatchers.containsString("Catalog Version Mismatch")
-        );
+        // The original hint must be preserved (we used to also append a "Catalog Version
+        // Mismatch" context; this assertion guards against regressing to a "(null)" hint).
         assertThat(
           error.getMessage(),
           CoreMatchers.containsString("Hint: Perhaps you meant to reference the column " +

@@ -554,7 +554,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 		leaf_part_rri->ri_IndexRelationDescs == NULL)
 		ExecOpenIndices(leaf_part_rri,
 						(node != NULL &&
-						 node->onConflictAction != ONCONFLICT_NONE));
+						 YbOnConflictClauseIsExplicitlySpecified(node->onConflictAction)));
 
 	/*
 	 * Build WITH CHECK OPTION constraints for the partition.  Note that we
@@ -693,7 +693,7 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 	/*
 	 * If there is an ON CONFLICT clause, initialize state for it.
 	 */
-	if (node && node->onConflictAction != ONCONFLICT_NONE)
+	if (node && YbOnConflictClauseIsExplicitlySpecified(node->onConflictAction))
 	{
 		TupleDesc	partrelDesc = RelationGetDescr(partrel);
 		ExprContext *econtext = mtstate->ps.ps_ExprContext;

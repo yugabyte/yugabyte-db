@@ -1,5 +1,5 @@
 DIRS = \
-	age \
+	mage \
 	documentdb \
 	hypopg \
 	orafce \

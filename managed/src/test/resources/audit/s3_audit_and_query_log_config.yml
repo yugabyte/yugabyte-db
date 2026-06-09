@@ -119,7 +119,7 @@ receivers:
       expr: body matches "unable to find pgstat entry for abnormally terminated PID",
       type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body matches "^[IWEF]\\d{4} \\d{2}:\\d{2}:\\d{2}\\.\\d{6} \\d+ .*\\.cc:\\d+"',
+      expr: 'body matches "^[IWEF]\\d{4} \\d{2}:\\d{2}:\\d{2}\\.\\d{6} \\d+ .*\\.[ch]+:\\d+"',
       type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
       on_error: drop

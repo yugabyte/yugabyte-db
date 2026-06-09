@@ -34,8 +34,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 
-DEFINE_test_flag(
-    bool, simulate_long_restore, false,
+DEFINE_test_flag(bool, simulate_long_restore, false,
     "Simulate a long restore failing to transition task to completion state if successful, thereby "
     "constantly retrying the RESTORE_ON_TABLET operation.");
 

@@ -36,8 +36,21 @@
 #include "utils/typcache.h"
 
 /* YB includes */
+#include "commands/prepare.h"
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_dist_trace.h"
 
+#define YB_SPI_DIST_TRACE_START_SPAN(op_name) \
+	do { \
+		if (yb_enable_spi_dist_tracing) \
+			YB_DIST_TRACE_START_SPAN(op_name); \
+	} while (0)
+
+#define YB_SPI_DIST_TRACE_END_SPAN() \
+	do { \
+		if (yb_enable_spi_dist_tracing) \
+			YB_DIST_TRACE_END_SPAN(); \
+	} while (0)
 
 /*
  * These global variables are part of the API for various SPI functions
@@ -53,6 +66,14 @@ static _SPI_connection *_SPI_stack = NULL;
 static _SPI_connection *_SPI_current = NULL;
 static int	_SPI_stack_depth = 0;	/* allocated size of _SPI_stack */
 static int	_SPI_connected = -1;	/* current stack index */
+
+/*
+ * YB: True if the current top-level CALL/DO ran a statement not safe to retry.
+ * Reset at outermost SPI_connect_ext(); consumed by YbProcRetryBlocked() /
+ * yb_is_retry_possible() in postgres.c. See YbIsRetriableProcStmtTag for the
+ * safe set.
+ */
+static bool yb_proc_retry_blocked = false;
 
 typedef struct SPICallbackArg
 {
@@ -90,6 +111,9 @@ static int	_SPI_end_call(bool use_exec);
 static MemoryContext _SPI_execmem(void);
 static MemoryContext _SPI_procmem(void);
 static bool _SPI_checktuples(void);
+
+static bool YbIsRetriableProcStmtTag(CommandTag command_tag);
+static bool YbSpiStmtBlocksProcRetry(CachedPlanSource *plansource);
 
 
 /* =================== interface functions =================== */
@@ -133,6 +157,10 @@ SPI_connect_ext(int options)
 	/* Enter new stack level */
 	_SPI_connected++;
 	Assert(_SPI_connected >= 0 && _SPI_connected < _SPI_stack_depth);
+
+	/* YB: reset proc-retriability tracking at the outermost SPI connect. */
+	if (_SPI_connected == 0)
+		yb_proc_retry_blocked = false;
 
 	_SPI_current = &(_SPI_stack[_SPI_connected]);
 	_SPI_current->processed = 0;
@@ -2255,7 +2283,9 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 	/*
 	 * Parse the request string into a list of raw parse trees.
 	 */
+	YB_SPI_DIST_TRACE_START_SPAN("parse");
 	raw_parsetree_list = raw_parser(src, plan->parse_mode);
+	YB_SPI_DIST_TRACE_END_SPAN();
 
 	/*
 	 * Do parse analysis and rule rewrite for each raw parsetree, storing the
@@ -2363,7 +2393,9 @@ _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan)
 	/*
 	 * Parse the request string into a list of raw parse trees.
 	 */
+	YB_SPI_DIST_TRACE_START_SPAN("parse");
 	raw_parsetree_list = raw_parser(src, plan->parse_mode);
+	YB_SPI_DIST_TRACE_END_SPAN();
 
 	/*
 	 * Construct plancache entries, but don't do parse analysis yet.
@@ -2446,6 +2478,8 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 	spierrcontext.arg = &spicallbackarg;
 	spierrcontext.previous = error_context_stack;
 	error_context_stack = &spierrcontext;
+
+	YB_SPI_DIST_TRACE_START_SPAN("spi.query");
 
 	/*
 	 * We support four distinct snapshot management behaviors:
@@ -2573,6 +2607,9 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 							   false);	/* not fixed result */
 		}
 
+		/* YB: accumulate per-top-level-CALL/DO proc-retriability. */
+		yb_proc_retry_blocked |= YbSpiStmtBlocksProcRetry(plansource);
+
 		/*
 		 * If asked to, complain when query does not return tuples.
 		 * (Replanning can't change this, so we can check it before that.
@@ -2599,8 +2636,10 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 		 * Replan if needed, and increment plan refcount.  If it's a saved
 		 * plan, the refcount must be backed by the plan_owner.
 		 */
+		YB_SPI_DIST_TRACE_START_SPAN("get_cached_plan");
 		cplan = GetCachedPlan(plansource, options->params,
 							  plan_owner, _SPI_current->queryEnv);
+		YB_SPI_DIST_TRACE_END_SPAN();
 
 		stmt_list = cplan->stmt_list;
 
@@ -2848,6 +2887,9 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 
 fail:
 
+	/* YB: end of the spi.query span */
+	YB_SPI_DIST_TRACE_END_SPAN();
+
 	/* Pop the snapshot off the stack if we pushed one */
 	if (pushed_active_snap)
 		PopActiveSnapshot();
@@ -2961,6 +3003,8 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 	else
 		eflags = EXEC_FLAG_SKIP_TRIGGERS;
 
+	YB_SPI_DIST_TRACE_START_SPAN("execute");
+
 	ExecutorStart(queryDesc, eflags);
 
 	ExecutorRun(queryDesc, ForwardScanDirection, tcount, true);
@@ -2976,6 +3020,10 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 
 	ExecutorFinish(queryDesc);
 	ExecutorEnd(queryDesc);
+
+	/* YB: end of the execute span */
+	YB_SPI_DIST_TRACE_END_SPAN();
+
 	/* FreeQueryDesc is done by the caller */
 
 #ifdef SPI_EXECUTOR_STATS
@@ -3435,4 +3483,72 @@ SPI_register_trigger_data(TriggerData *tdata)
 	}
 
 	return SPI_OK_TD_REGISTER;
+}
+
+int
+YbGetSPIStackDepth(void)
+{
+	/*
+	 *_SPI_connected is -1 when idle.
+	 * We return _SPI_connected + 1 so that:
+	 * 0 = Top level (standalone)
+	 * 1+ = Nested (Function/Trigger/Procedure)
+	 */
+	return _SPI_connected + 1;
+}
+
+bool
+YbProcRetryBlocked(void)
+{
+	/* Flag is per top-level CALL/DO; only valid while SPI is connected. */
+	return yb_proc_retry_blocked && _SPI_connected >= 0;
+}
+
+static bool
+YbIsRetriableProcStmtTag(CommandTag command_tag)
+{
+	if (command_tag == CMDTAG_COPY ||
+		command_tag == CMDTAG_COPY_FROM ||
+		command_tag == CMDTAG_ANALYZE)
+		return false;
+
+	if (command_tag == CMDTAG_SELECT ||
+		command_tag == CMDTAG_INSERT ||
+		command_tag == CMDTAG_UPDATE ||
+		command_tag == CMDTAG_DELETE ||
+		command_tag == CMDTAG_CALL ||
+		command_tag == CMDTAG_DO)
+		return true;
+
+	if (yb_extra_commands_to_retry_in_proc != NULL &&
+		yb_extra_commands_to_retry_in_proc[command_tag])
+		return true;
+
+	return false;
+}
+
+static bool
+YbSpiStmtBlocksProcRetry(CachedPlanSource *plansource)
+{
+	CommandTag	command_tag = plansource->commandTag;
+
+	/*
+	 * For SQL-level EXECUTE, resolve to the prepared statement's own tag so
+	 * EXECUTE of a retriable command stays retriable; an unresolved EXECUTE
+	 * conservatively blocks.
+	 */
+	if (command_tag == CMDTAG_EXECUTE &&
+		plansource->raw_parse_tree != NULL &&
+		IsA(plansource->raw_parse_tree->stmt, ExecuteStmt))
+	{
+		ExecuteStmt *execute_stmt = (ExecuteStmt *) plansource->raw_parse_tree->stmt;
+		PreparedStatement *prepared_stmt = FetchPreparedStatement(execute_stmt->name,
+																  false /* throwError */ );
+
+		command_tag = (prepared_stmt != NULL ?
+					   prepared_stmt->plansource->commandTag :
+					   CMDTAG_UNKNOWN);
+	}
+
+	return !YbIsRetriableProcStmtTag(command_tag);
 }

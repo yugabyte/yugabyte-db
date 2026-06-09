@@ -484,12 +484,18 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case STS_DELETE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
-        // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
         String appType = taskParams().serverType == ServerType.TSERVER ? "yb-tserver" : "yb-master";
-        String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + appType;
+        // Resolve the actual StatefulSet via release name + app type and delete it. The name can
+        // carry a non-zero STS index suffix (e.g. after a full move), so the manager fetches the
+        // matching StatefulSet(s) and deletes them, ignoring if none are found.
         kubernetesManagerFactory
             .getManager()
-            .deleteStatefulSet(config, taskParams().namespace, appName);
+            .deleteStatefulSet(
+                config,
+                taskParams().namespace,
+                taskParams().helmReleaseName,
+                appType,
+                newNamingStyle);
         break;
       case PVC_EXPAND_SIZE:
         try {
@@ -817,21 +823,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? taskUniverseDetails.getReadOnlyClusters().get(0)
             : taskUniverseDetails.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+
     // TODO Support overriden instance types
-    InstanceType instanceType =
-        InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), userIntent.instanceType);
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       log.info(
           "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
-          "Unable to fetch InstanceType for {}, {}",
-          userIntent.providerType,
-          userIntent.instanceType);
+          "Unable to fetch InstanceType for {}, {}", provider.getUuid(), userIntent.instanceType);
       throw new RuntimeException(
-          "Unable to fetch InstanceType "
-              + userIntent.providerType
-              + ": "
-              + userIntent.instanceType);
+          "Unable to fetch InstanceType " + provider.getUuid() + ": " + userIntent.instanceType);
     }
 
     int numNodes = 0, replicationFactorZone = 0, replicationFactor = 0;
@@ -1062,10 +1063,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             : taskParams().ybSoftwareVersion;
     imageInfo.put("tag", imageTag);
 
+    boolean isOpenShift =
+        config.containsKey("KUBECONFIG_PROVIDER")
+            && config.get("KUBECONFIG_PROVIDER").equals("openshift");
     // Since the image registry will remain the same across differnet clusters,
     // it will always be at the provider level.
     if (config.containsKey("KUBECONFIG_IMAGE_REGISTRY")) {
-      imageInfo.put("repository", config.get("KUBECONFIG_IMAGE_REGISTRY"));
+      String imageRegistry = config.get("KUBECONFIG_IMAGE_REGISTRY");
+      imageInfo.put("repository", imageRegistry);
+      // If the image is a UBI image and we are not on OpenShift, we need to set the security
+      // context.
+      if (KubernetesUtil.isUbiImage(imageRegistry) && !isOpenShift) {
+        overrides.put("podSecurityContext", KubernetesUtil.getSecurityContextForUbiImage());
+      }
     }
     if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
       imageInfo.put("pullSecretName", config.get("KUBECONFIG_IMAGE_PULL_SECRET_NAME"));
@@ -1073,8 +1083,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     overrides.put("Image", imageInfo);
 
     // Override for openshift
-    if (config.containsKey("KUBECONFIG_PROVIDER")
-        && config.get("KUBECONFIG_PROVIDER").equals("openshift")) {
+    if (isOpenShift) {
       Map<String, Object> ocpCompatibility = new HashMap<>();
       ocpCompatibility.put("enabled", true);
       overrides.put("ocpCompatibility", ocpCompatibility);
@@ -1576,7 +1585,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Handle STS index overrides
     handleStsIndexOverrides(overrides, pi, savedPi, azUuid);
     // Handle volume overrides
-    handleVolumeOverrides(overrides, userIntent, userIntentFromDB, azUuid);
+    handleVolumeOverrides(overrides, userIntent, userIntentFromDB, pi, savedPi, azUuid);
     // Handle full move overrides
     handleFullMoveOverrides(overrides, userIntent, pi, azUuid);
 
@@ -1693,6 +1702,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> overrides,
       UserIntent taskUserIntent,
       UserIntent savedUserIntent,
+      PlacementInfo newPi,
+      PlacementInfo savedPi,
       UUID azUUID) {
     // Override disk count and size for the tserver/master pods according to user intent.
     Map<String, Object> storageOverrides =
@@ -1702,33 +1713,38 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, Object> masterDiskSpecs =
         (HashMap) storageOverrides.getOrDefault("master", new HashMap<>());
 
-    DeviceInfo savedTsDeviceInfo =
-        savedUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
-    DeviceInfo savedMasterDeviceInfo =
-        savedUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+    boolean newlyAddedAZ = savedPi.findByAZUUID(azUUID) == null;
 
-    if (savedTsDeviceInfo != null) {
-      if (savedTsDeviceInfo.numVolumes != null) {
-        tserverDiskSpecs.put("count", savedTsDeviceInfo.numVolumes);
+    // Add old deviceInfo/masterDeviceInfo spec if existing AZ
+    if (!newlyAddedAZ) {
+      DeviceInfo savedTsDeviceInfo =
+          savedUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
+      DeviceInfo savedMasterDeviceInfo =
+          savedUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+
+      if (savedTsDeviceInfo != null) {
+        if (savedTsDeviceInfo.numVolumes != null) {
+          tserverDiskSpecs.put("count", savedTsDeviceInfo.numVolumes);
+        }
+        if (savedTsDeviceInfo.volumeSize != null) {
+          tserverDiskSpecs.put("size", String.format("%dGi", savedTsDeviceInfo.volumeSize));
+        }
+        // Storage class override applies to both tserver and master.
+        if (savedTsDeviceInfo.storageClass != null) {
+          tserverDiskSpecs.put("storageClass", savedTsDeviceInfo.storageClass);
+        }
       }
-      if (savedTsDeviceInfo.volumeSize != null) {
-        tserverDiskSpecs.put("size", String.format("%dGi", savedTsDeviceInfo.volumeSize));
-      }
-      // Storage class override applies to both tserver and master.
-      if (savedTsDeviceInfo.storageClass != null) {
-        tserverDiskSpecs.put("storageClass", savedTsDeviceInfo.storageClass);
-      }
-    }
-    // Override disk count and size for master pods
-    if (savedMasterDeviceInfo != null) {
-      if (savedMasterDeviceInfo.numVolumes != null) {
-        masterDiskSpecs.put("count", savedMasterDeviceInfo.numVolumes);
-      }
-      if (savedMasterDeviceInfo.volumeSize != null) {
-        masterDiskSpecs.put("size", String.format("%dGi", savedMasterDeviceInfo.volumeSize));
-      }
-      if (savedMasterDeviceInfo.storageClass != null) {
-        masterDiskSpecs.put("storageClass", savedMasterDeviceInfo.storageClass);
+      // Override disk count and size for master pods
+      if (savedMasterDeviceInfo != null) {
+        if (savedMasterDeviceInfo.numVolumes != null) {
+          masterDiskSpecs.put("count", savedMasterDeviceInfo.numVolumes);
+        }
+        if (savedMasterDeviceInfo.volumeSize != null) {
+          masterDiskSpecs.put("size", String.format("%dGi", savedMasterDeviceInfo.volumeSize));
+        }
+        if (savedMasterDeviceInfo.storageClass != null) {
+          masterDiskSpecs.put("storageClass", savedMasterDeviceInfo.storageClass);
+        }
       }
     }
 
@@ -1741,7 +1757,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().oldMasterDiskSize != null) {
       masterDiskSpecs.put("size", String.format("%dGi", taskParams().oldMasterDiskSize));
     }
-    if (taskParams().useNewMasterDeviceInfo) {
+    // Use new masterDeviceInfo for newly added AZs or full move
+    if (taskParams().useNewMasterDeviceInfo || newlyAddedAZ) {
       if (taskMasterDeviceInfo.numVolumes != null) {
         masterDiskSpecs.put("count", taskMasterDeviceInfo.numVolumes);
       }
@@ -1756,7 +1773,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().oldTsDiskSize != null) {
       tserverDiskSpecs.put("size", String.format("%dGi", taskParams().oldTsDiskSize));
     }
-    if (taskParams().useNewTserverDeviceInfo) {
+    // Use new deviceInfo for newly added AZs or full move
+    if (taskParams().useNewTserverDeviceInfo || newlyAddedAZ) {
       if (taskTsDeviceInfo.numVolumes != null) {
         tserverDiskSpecs.put("count", taskTsDeviceInfo.numVolumes);
       }

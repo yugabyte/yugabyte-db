@@ -524,7 +524,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       log.info("Kubeconfig cache miss for {}, fetching secret", kubeConfigFileName);
       Secret secret = operatorUtils.getSecret(secretName, secretNamespace);
       if (secret != null) {
-        resourceTracker.trackDependency(currentReconcileResource, secret);
+        resourceTracker.trackDependency(currentReconcileResource, secret, currentLocalInstanceUuid);
         log.trace(
             "Tracking secret {} as dependency of {}",
             secret.getMetadata().getName(),

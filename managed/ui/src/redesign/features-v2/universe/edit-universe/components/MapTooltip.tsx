@@ -8,6 +8,8 @@ import { RegionsAndNodesFormType } from '../../geo-partition/add/AddGeoPartition
 import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import { ClusterSpecClusterType, PlacementAZ } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import './MapTooltip.css';
+import pluralize from 'pluralize';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
 
 const { styled, Typography, Divider } = mui;
 
@@ -48,13 +50,13 @@ const ZoneItem = styled('li')<{ preferredRank?: number }>(({ preferredRank }) =>
   fontWeight: 600,
   height: '16px',
   padding: '14px 0px',
-  color: preferredRank === 0 ? '#BB42BC' : '#735AF5',
+  color: preferredRank === AZ_PREFFERED_HIGHEST_RANK ? '#BB42BC' : '#735AF5',
   '&::before': {
     content: '""',
     display: 'block',
     width: '4px',
     height: '4px',
-    backgroundColor: preferredRank === 0 ? '#BB42BC' : '#735AF5',
+    backgroundColor: preferredRank === AZ_PREFFERED_HIGHEST_RANK ? '#BB42BC' : '#735AF5',
     borderRadius: '50%'
   }
 }));
@@ -75,12 +77,12 @@ const RegionList: FC<{ regions: RegionsAndNodesFormType['regions']; t: TFunction
       {regions?.map((region) => {
         const sortedZones = [...(region?.zones ?? [])].sort((a, b) => {
           const prefA = isDefinedNotNull(a.leader_preference)
-            ? a.leader_preference! !== -1
+            ? a.leader_preference! !== AZ_NOT_PREFERRED
               ? a.leader_preference!
               : Number.MAX_VALUE
             : Number.MAX_VALUE;
           const prefB = isDefinedNotNull(b.leader_preference)
-            ? b.leader_preference! !== -1
+            ? b.leader_preference! !== AZ_NOT_PREFERRED
               ? b.leader_preference!
               : Number.MAX_VALUE
             : Number.MAX_VALUE;
@@ -94,12 +96,12 @@ const RegionList: FC<{ regions: RegionsAndNodesFormType['regions']; t: TFunction
                   {zone.name}
                 </Typography>
                 <StyledNodeCount>
-                  {t('totalNodes', { total: (zone as PlacementAZ).num_nodes_in_az ?? 0 })}
+                  {pluralize(t('totalNodes', { total: (zone as PlacementAZ).num_nodes_in_az ?? AZ_NOT_PREFERRED }), (zone as PlacementAZ).num_nodes_in_az ?? 0)}
                 </StyledNodeCount>
-                {isDefinedNotNull(zone.leader_preference) && zone.leader_preference! >= 0 && (
+                {isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED && (
                   <YBSmartStatus
                     type={StatusType.OTHER}
-                    label={t('preferredRank', { rank: zone.leader_preference! + 1 })}
+                    label={t('preferredRank', { rank: zone.leader_preference! })}
                     iconPosition={IconPosition.NONE}
                   />
                 )}

@@ -91,7 +91,7 @@ YugabyteDB has been designed with operational simplicity in mind, providing feat
 
 ## Heterogeneous workload support
 
-Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc/), [analytical queries](../../sample-data/retail-analytics/), [real-time data ingestion](/stable/develop/tutorials/azure/azure-event-hubs/), [time-series](/stable/develop/data-modeling/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
+Depending on the use case, the database may need to support diverse workloads, such as [transactional processing](../../benchmark/tpcc/), [analytical queries](/stable/develop/sample-data/retail-analytics/), [real-time data ingestion](/stable/develop/tutorials/azure/azure-event-hubs/), [time-series](/stable/develop/data-modeling/common-patterns/timeseries/), and [key-value](../../benchmark/key-value-workload-ycql/) workloads.
 
 ## Transaction isolation levels
 
@@ -151,7 +151,7 @@ YugabyteDB supports [Row Level Geo-Partitioning](../../explore/multi-region-depl
 
 ## Cloud-ready
 
-YugabyteDB is a cloud-native database, and can be deployed out of the box in most public cloud services like [AWS, GCP, and Azure](../../deploy/public-clouds/). YugabyteDB also supports a [mult-cloud deployment](/stable/develop/multi-cloud/multicloud-setup/) which enables a cluster to be spread across different cloud providers.
+YugabyteDB is a cloud-native database, and can be deployed out of the box in most public cloud services like [AWS, GCP, and Azure](../../deploy/public-clouds/). YugabyteDB also supports a [multi-cloud deployment](/stable/develop/multi-cloud/multicloud-setup/) which enables a cluster to be spread across different cloud providers.
 
 ## Running on commodity hardware
 

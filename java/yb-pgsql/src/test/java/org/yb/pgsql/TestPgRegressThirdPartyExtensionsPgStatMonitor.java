@@ -3,14 +3,16 @@ package org.yb.pgsql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 import java.io.File;
 import java.sql.Statement;
 
 import java.util.Map;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
@@ -27,9 +29,8 @@ public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegres
   }
 
   @Test
+  @BypassConnMgr(reason = BasePgSQLTest.GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT)
   public void schedule() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT,
-                isTestRunningWithConnectionManager());
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/pg_stat_monitor"),
                      "yb_schedule");

@@ -154,19 +154,22 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
                 DnsManager.DnsCommandType.Delete, params().isForceDelete, universe)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
-        if (primaryCluster.userIntent.providerType.equals(CloudType.onprem)) {
+        Set<NodeDetails> onpremNodes =
+            Util.filterByProviderType(
+                universe.getNodes(), universe.getUniverseDetails().clusters, CloudType.onprem);
+        if (!onpremNodes.isEmpty()) {
           // Remove all nodes from load balancer.
           createManageLoadBalancerTasks(
               createLoadBalancerMap(
-                  universe.getUniverseDetails(), null, new HashSet<>(universe.getNodes()), null));
+                  universe.getUniverseDetails(), null, new HashSet<>(onpremNodes), null));
 
           // Stop master and tservers.
-          createStopServerTasks(universe.getNodes(), ServerType.MASTER, params().isForceDelete)
+          createStopServerTasks(onpremNodes, ServerType.MASTER, params().isForceDelete)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createStopServerTasks(universe.getNodes(), ServerType.TSERVER, params().isForceDelete)
+          createStopServerTasks(onpremNodes, ServerType.TSERVER, params().isForceDelete)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           if (universe.isYbcEnabled()) {
-            createStopYbControllerTasks(universe.getNodes(), params().isForceDelete)
+            createStopYbControllerTasks(onpremNodes, params().isForceDelete)
                 .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           }
         }
@@ -178,7 +181,7 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
         createDestroyServerTasks(
                 universe,
                 universe.getNodes(),
-                params().isForceDelete,
+                node -> params().isForceDelete,
                 true /* delete node */,
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)
@@ -348,12 +351,13 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
       xClusterConfigs.forEach(
           xClusterConfig -> {
             DrConfig drConfig = xClusterConfig.getDrConfig();
+            boolean hasPitrConfigs = !xClusterConfig.getPitrConfigs().isEmpty();
             createDeleteXClusterConfigSubtasks(
                 xClusterConfig,
                 false /* keepEntry */,
                 params().isForceDelete,
-                true /* deleteSourcePitrConfigs */,
-                true /* deleteTargetPitrConfigs */);
+                hasPitrConfigs /* deleteSourcePitrConfigs */,
+                hasPitrConfigs /* deleteTargetPitrConfigs */);
           });
 
       // When the last xCluster config associated with this DR config is deleted, the dr config

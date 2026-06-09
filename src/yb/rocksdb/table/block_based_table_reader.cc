@@ -81,8 +81,7 @@ DEFINE_RUNTIME_uint64(rocksdb_iterator_sequential_disk_reads_for_auto_readahead,
     "will be enabled with the first disk read. If set to N > 1, iterator readahead will be used "
     "with the Nth sequential disk read.");
 
-DEFINE_RUNTIME_uint64(
-    rocksdb_iterator_sequential_disk_reads_factor, 1,
+DEFINE_RUNTIME_uint64(rocksdb_iterator_sequential_disk_reads_factor, 1,
     "Treat read as sequential for readahead purposes if next read operation is skipping up to "
     "readahead window size multiplied by rocksdb_iterator_sequential_disk_reads_factor bytes.");
 TAG_FLAG(rocksdb_iterator_sequential_disk_reads_for_auto_readahead, advanced);

@@ -59,6 +59,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     defaultUniverse = createUniverse(defaultCustomer.getId());
 
     PlacementInfo placementInfo =

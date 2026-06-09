@@ -600,9 +600,6 @@ LaunchParallelWorkers(ParallelContext *pcxt)
 
 	if (IsYugaByteEnabled())
 	{
-		/* TODO(#30588): Allow parallel workers after the fix */
-		if (!YBCIsLegacyModeForCatalogOps())
-			return;
 		/*
 		 * Semantics of the "EnsureReadPoint" contradicts "RestartReadPoint".
 		 * Hence, if we are restarting, proceed without parallel workers.

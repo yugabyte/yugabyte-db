@@ -9,7 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessContext;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeAgent;
@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public class YNPProvisioning extends NodeTaskBase {
   private final YNPConfigGenerator ynpConfigGenerator;
   private ShellProcessContext shellContext =
-      ShellProcessContext.builder().logCmdOutput(true).build();
+      ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
 
   @Inject
   protected YNPProvisioning(
@@ -56,13 +56,18 @@ public class YNPProvisioning extends NodeTaskBase {
 
   @VisibleForTesting
   Path generateProvisionConfig(
-      Universe universe, NodeDetails node, Provider provider, Path nodeAgentHome) {
+      Universe universe,
+      NodeDetails node,
+      Provider provider,
+      Path nodeAgentHome,
+      UserIntent userIntent) {
     YNPConfigGenerator.ConfigParams configParams =
         YNPConfigGenerator.ConfigParams.builder()
             .nodeAgentHome(nodeAgentHome)
             .provider(provider)
             .nodeDetails(node)
             .universe(universe)
+            .userIntent(userIntent)
             .isYbPrebuiltImage(taskParams().isYbPrebuiltImage)
             .build();
     return ynpConfigGenerator.generateConfigFile(configParams);
@@ -76,30 +81,29 @@ public class YNPProvisioning extends NodeTaskBase {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
 
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
+    Provider provider = Util.getProviderForNode(node, universe);
 
     /*
      *  But First, setup the dual NIC on YBM if needed. Let's do that even before we run
      *  YNP based provisioning because dual NIC setup will require a reboot which might
      *  clean up the tmp directory where the YNP config is created.
      */
-    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
+    AnsibleSetupServer.Params ansibleParams =
+        buildDualNicSetupParams(universe, node, provider, taskParams().userIntent);
     nodeManager
         .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
         .processErrors("Dual NIC setup failed");
-    boolean disableGolangYnpDriver =
-        confGetter.getGlobalConf(GlobalConfKeys.disableGolangYnpDriver);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String targetConfigPath =
         Paths.get(
                 customTmpDirectory, String.format("config_%d.json", Instant.now().getEpochSecond()))
             .toString();
-    Path tmpConfigFilepath = generateProvisionConfig(universe, node, provider, nodeAgentHomePath);
+    Path tmpConfigFilepath =
+        generateProvisionConfig(
+            universe, node, provider, nodeAgentHomePath, taskParams().userIntent);
     nodeUniverseManager.uploadFileToNode(
         node, universe, tmpConfigFilepath.toString(), targetConfigPath, "755", shellContext);
     // Copy the conf file to scripts folder and run the provisioning script as in manual onprem.
@@ -108,9 +112,6 @@ public class YNPProvisioning extends NodeTaskBase {
     sb.append(" && mv -f ").append(targetConfigPath);
     sb.append(" config.json && chmod +x node-agent-provision.sh");
     sb.append(" && ./node-agent-provision.sh --extra_vars config.json");
-    if (disableGolangYnpDriver) {
-      sb.append(" --use_python_driver");
-    }
     sb.append(" --cloud_type ").append(node.cloudInfo.cloud);
     if (provider.getDetails().airGapInstall) {
       sb.append(" --is_airgap");
@@ -125,11 +126,13 @@ public class YNPProvisioning extends NodeTaskBase {
   }
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(
-      Universe universe, NodeDetails node, Provider provider) {
-    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+      Universe universe, NodeDetails node, Provider provider, UserIntent taskUserIntent) {
+    UserIntent userIntent =
+        taskUserIntent == null
+            ? universe.getCluster(node.placementUuid).userIntent
+            : taskUserIntent;
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
     fillSetupParamsForNode(ansibleParams, userIntent, node);
-    ansibleParams.skipAnsiblePlaybook = true;
     ansibleParams.sshUserOverride = node.sshUserOverride;
     ansibleParams.sshPortOverride = node.sshPortOverride;
     return ansibleParams;

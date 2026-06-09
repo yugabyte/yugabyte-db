@@ -23,6 +23,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 #include "yb/rocksdb/compaction_job_stats.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table_properties.h"
@@ -83,6 +84,117 @@ YB_DEFINE_ENUM(CompactionReason,
   // Post-split compaction
   (kPostSplitCompaction));
 
+// FlushReason tags why a flush was triggered. Unlike upstream RocksDB's `CompactionReason`,
+// this is a Yugabyte extension for logging and per-reason ticker metrics.
+//
+// `SwitchMemtable` and `InstallSuperVersionAndScheduleWork` always receive an explicit reason in
+// production DB code (memtable triggers, `kPost*` metadata paths, etc.). Unit/integration tests and
+// mini-cluster helpers may pass `kTestOnly` when the trigger is intentionally unspecified (see
+// below). `kUnknown` is `FlushOptions`' default for callers that omit a reason (e.g. RocksDB unit
+// tests); `ColumnFamilyData::pending_flush_reason()` uses `kUnknown` when no flush is pending.
+// The running flush job uses a snapshot from dequeue / flush-task start.
+//
+// Only values that are actually assigned in `db_impl.cc` (or via `FlushOptions` from callers)
+// are listed here.
+YB_DEFINE_ENUM(FlushReason,
+  // Unset default (`FlushOptions`), no pending flush, or callers that have not set a reason yet.
+  // Prefer `kTestOnly` in test-only code so production paths stay searchable for accidental
+  // `kUnknown`.
+  (kUnknown)
+
+  // Sys catalog tablet: `CatalogManager::FlushSysCatalog` RPC or initial snapshot export flush in
+  // `InitialSysCatalogSnapshotWriter::WriteSnapshot`.
+  (kSysCatalogFlush)
+
+  // Tablet server admin `FlushTablets` RPC (`TabletServiceAdminImpl` / `TabletsFlusher`).
+  (kAdminFlush)
+
+  // `TabletVectorIndexes::Backfill` flushes regular DB before dependent steps.
+  (kVectorIndexBackfill)
+
+  // `Tablet::CreateSubtablet`: sync flush before RocksDB checkpoint for the tablet split child.
+  (kSubtabletCreation)
+
+  // `Tablet::ModifyFlushedFrontier`: flush before applying flushed-frontier edits for crash safety.
+  (kFlushedFrontierModification)
+
+  // Intents SST cleanup loop in `Tablet::DoCleanupIntentFiles`.
+  (kIntentFilesCleanup)
+
+  // `FLAGS_force_recover_flushed_frontier` bootstrap troubleshooting path.
+  (kFlushedFrontierRecovery)
+
+  // Flush before listing SSTs for RocksDB checkpoint (`CreateCheckpoint`).
+  (kCheckpointCreation)
+
+  // `DBImpl::Import`: flush before applying an imported SST layout / version edit.
+  (kImport)
+
+  // Tablet snapshot: flush regular RocksDB before file copy (`TabletSnapshots::Create`).
+  (kSnapshotCreation)
+
+  // Intents-apply path: forced flush when apply stalls (shutdown, timeout, blocked). The flush
+  // target ([R] regular vs intents) is visible in the log line.
+  (kIntentsApply)
+
+  // Intents DB idle vs raft log apply (`FLAGS_num_raft_ops_to_force_idle_intents_db_to_flush`).
+  (kIdleIntents)
+
+  // Memtable-driven flush (`FlushScheduler::ScheduleFlush` / memtable full).
+  // `ScheduleFlushes` passes `kMemtableSizeLimit` through `SwitchMemtable`.
+  (kMemtableSizeLimit)
+
+  // Global write-buffer pressure: set in `DBImpl::WriteImpl()` when
+  // `write_buffer_.ShouldFlush()` forces a `SwitchMemtable` on the largest non-empty column family
+  // (RocksDB `WriteBufferManager`), and in `TabletMemoryManager::FlushTabletIfLimitExceeded()`.
+  (kGlobalMemstoreLimit)
+
+  // Shutdown path: `DBImpl` destructor flushing when configured.
+  (kShutdown)
+
+  // WAL pruning: `DBImpl::WriteImpl()` when total WAL size exceeds `max_total_wal_size`.
+  (kMaxTotalWalSize)
+
+  // Compaction requested an explicit flush first (`DBImpl::FlushMemTable` with this reason).
+  (kCompactionDependency)
+
+  // SuperVersion installed after `CompactFilesImpl` (may schedule follow-up flush/compaction).
+  (kPostCompactFiles)
+
+  // SuperVersion installed after background compaction (FIFO delete, trivial move, or full job).
+  (kPostBackgroundCompaction)
+
+  // SuperVersion installed after `ReFitLevel`.
+  (kPostRefitLevel)
+
+  // SuperVersion installed after external file ingest (`AddFile`).
+  (kPostExternalFileIngest)
+
+  // SuperVersion installed when re-enabling background compactions on a CF
+  // (`DBImpl::EnableAutoCompaction`).
+  (kPostEnableBackgroundCompaction)
+
+  // SuperVersion installed after `DeleteFile`.
+  (kPostDeleteFile)
+
+  // SuperVersion installed after `DeleteFilesInRange`.
+  (kPostDeleteFilesInRange)
+
+  // SuperVersion installed when creating a column family.
+  (kPostCreateColumnFamily)
+
+  // SuperVersion installed during DB open after applying stored state.
+  (kPostOpen)
+
+  // `yb-bulk_load` tool: explicit flush between batches / before finishing a tablet via
+  // `DocDBRocksDBUtil::FlushRocksDbAndWait`.
+  (kYbBulkLoadTool)
+
+  // Unit/integration tests and test helpers (e.g. mini-cluster) where the flush trigger is not
+  // modeled. Future lint may restrict use of this value to test-only translation units.
+  // If the test code path mimics one of the above cases, use that reason instead.
+  (kTestOnly)
+);
 
 struct TableFileDeletionInfo {
   // The name of the database where the file was deleted.
@@ -120,6 +232,12 @@ struct FlushJobInfo {
   SequenceNumber largest_seqno;
   // Table properties of the table being flushed
   TableProperties table_properties;
+
+  // Why this flush was scheduled (best effort). Tablet production paths set a concrete reason;
+  // `kUnknown` may appear from default `FlushOptions` (e.g. RocksDB tests). When our bundled Abseil
+  // headers expose
+  // ABSL_REQUIRE_EXPLICIT_INIT, apply it here so aggregate initialization must name this member.
+  FlushReason flush_reason;
 };
 
 struct CompactionJobInfo {

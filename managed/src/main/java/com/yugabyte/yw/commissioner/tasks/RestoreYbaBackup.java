@@ -88,7 +88,9 @@ public class RestoreYbaBackup extends AbstractTaskBase {
     if (!replicationManager.restoreBackup(
         backupFile,
         true /* k8sRestoreYbaDbOnRestart */,
-        KubernetesEnvironmentVariables.isYbaRunningInKubernetes() /* skipOldFiles */)) {
+        KubernetesEnvironmentVariables.isYbaRunningInKubernetes() /* skipOldFiles */,
+        false /* excludePADatabase */,
+        false /* excludePAFiles */)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "YBA restore failed.");
     }
 

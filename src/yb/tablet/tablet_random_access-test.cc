@@ -181,7 +181,7 @@ class TestRandomAccess : public YBTabletTest {
   // Wakes up periodically to perform a flush or compaction.
   void BackgroundOpThread() {
     while (!done_.WaitFor(MonoDelta::FromMilliseconds(FLAGS_sleep_between_background_ops_ms))) {
-      CHECK_OK(tablet()->Flush(tablet::FlushMode::kSync));
+      CHECK_OK(tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     }
   }
 
@@ -226,14 +226,16 @@ class TestRandomAccess : public YBTabletTest {
     QLReadRequestPB req;
     auto* condition = req.mutable_where_expr()->mutable_condition();
     QLSetInt32Condition(condition, kFirstColumnId, QL_OP_EQUAL, key);
-    QLReadRequestResult result;
+    ThreadSafeArena arena;
+    QLReadRequestResult result(arena);
     TransactionMetadataPB transaction;
     QLAddColumns(schema_, {}, &req);
     WriteBuffer rows_data(1024);
     EXPECT_OK(tablet()->HandleQLReadRequest(
-        docdb::ReadOperationData::FromReadTime(read_time), req, transaction, &result, &rows_data));
+        docdb::ReadOperationData::FromReadTime(read_time), LWQLReadRequestPB(&arena, req),
+        LWTransactionMetadataPB(&arena, transaction), &result, &rows_data));
 
-    EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
+    EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response->status());
 
     auto row_block = qlexpr::CreateRowBlock(
         QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());
@@ -353,7 +355,7 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
         cur_val = pending_val;
         break;
       case TEST_FLUSH_TABLET:
-        ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
+        ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
         break;
       default:
         LOG(FATAL) << test_op;

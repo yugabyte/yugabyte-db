@@ -18,13 +18,17 @@
 #include "yb/ann_methods/usearch_wrapper.h"
 #include "yb/ann_methods/vector_lsm-test.pb.h"
 
+#include "yb/hnsw/vector_index_test_base.h"
+
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/path_util.h"
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -33,8 +37,9 @@
 #include "yb/vector_index/vectorann_util.h"
 
 using namespace std::literals;
+using namespace yb::size_literals;
 
-DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
@@ -54,6 +59,26 @@ extern MonoDelta TEST_sleep_on_merged_chunk_populated;
 
 namespace yb::ann_methods {
 
+namespace {
+
+using ParamType = std::tuple<ANNMethodKind, bool>;
+
+ANNMethodKind GetANNMethodKind(const ParamType& param) {
+  return std::get<0>(param);
+}
+
+bool UseYbHnsw(const ParamType& param) {
+  return std::get<1>(param);
+}
+
+std::string ParamToString(const testing::TestParamInfo<ParamType>& param_info) {
+  return "k"s +
+         (UseYbHnsw(param_info.param) ? "YbHnsw" : "") +
+         AsString(GetANNMethodKind(param_info.param)).substr(1);
+}
+
+} // namespace
+
 using vector_index::VectorId;
 
 using FloatVectorLSM = vector_index::VectorLSM<std::vector<float>, float>;
@@ -61,10 +86,6 @@ using InsertEntries = typename FloatVectorLSM::InsertEntries;
 using MergeFilter = vector_index::VectorLSMMergeFilter;
 using MergeFilterPtr = vector_index::VectorLSMMergeFilterPtr;
 
-using TestUsearchIndexFactory = vector_index::MakeVectorIndexFactory<
-    SimplifiedUsearchIndexFactory, FloatVectorLSM>;
-using TestHnswlibIndexFactory = vector_index::MakeVectorIndexFactory<
-    SimplifiedHnswlibIndexFactory, FloatVectorLSM>;
 
 class SimpleVectorLSMKeyValueStorage {
  public:
@@ -161,7 +182,9 @@ class TestFrontier : public storage::UserFrontier {
 
 using TestFrontiers = storage::UserFrontiersBase<TestFrontier>;
 
-class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMethodKind> {
+class VectorLSMTest
+    : public hnsw::VectorIndexTestBase,
+      public testing::WithParamInterface<ParamType> {
  protected:
   // Usearch creates an index with min capacity of 64 vectors.
   constexpr static size_t kDefaultChunkSize = 64;
@@ -172,17 +195,20 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
           .max_workers = 10,
         }),
         priority_thread_pool_(/* max_running_tasks = */ 2) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   }
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
-    YBTest::SetUp();
+    hnsw::VectorIndexTestBase::SetUp();
   }
 
   Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
 
-  Status OpenVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
+  Status OpenVectorLSM(
+      FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk,
+      vector_index::DistanceKind distance_kind = vector_index::DistanceKind::kL2Squared,
+      const MemTrackerPtr& mem_tracker = {});
 
   Status InsertCube(
       FloatVectorLSM& lsm, size_t dimensions,
@@ -213,6 +239,8 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   void TestBootstrap(bool flush);
 
   void TestBackgroundCompactionSizeRatio(bool test_metrics);
+
+  void TestMultipleChunksSimpleCompaction(vector_index::DistanceKind distance_kind);
 
   MergeFilterPtr GetMergeFilter();
 
@@ -246,19 +274,37 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   simple_spinlock merge_filter_mutex_;
   MergeFilterPtr merge_filter_;
 
-  std::unique_ptr<MetricRegistry> metric_registry_ = std::make_unique<MetricRegistry>();
   MetricEntityPtr vector_index_metric_entity_ =
-      METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test");
+      METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test_table");
 };
 
-auto GetVectorIndexFactory(ANNMethodKind ann_method) {
-  switch (ann_method) {
+auto GetVectorIndexFactory(
+    const ParamType& param, const hnsw::BlockCachePtr& block_cache,
+    const MemTrackerPtr& mem_tracker = {}) {
+  bool use_yb_hnsw = UseYbHnsw(param);
+  switch (GetANNMethodKind(param)) {
     case ANNMethodKind::kUsearch:
-      return TestUsearchIndexFactory::Create;
+      return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
+          vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
+          [use_yb_hnsw, block_cache, mem_tracker](
+              vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
+            return UsearchIndexFactory<std::vector<float>, float>::Create(
+                mode, block_cache, options,
+                use_yb_hnsw ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::USEARCH,
+                mem_tracker);
+          });
     case ANNMethodKind::kHnswlib:
-      return TestHnswlibIndexFactory::Create;
+      return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
+          vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
+          [use_yb_hnsw, block_cache, mem_tracker](
+              vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
+            return HnswlibIndexFactory<std::vector<float>, float>::Create(
+                mode, block_cache, options,
+                use_yb_hnsw ? HnswBackend::YB_HNSW_HNSWLIB : HnswBackend::HNSWLIB,
+                mem_tracker);
+          });
   }
-  return decltype(&TestUsearchIndexFactory::Create)(nullptr);
+  FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
 }
 
 constexpr static size_t GetNumEntriesByDimensions(size_t dimensions) {
@@ -370,30 +416,32 @@ Status VectorLSMTest::InsertRandomAndFlush(
 
 Status VectorLSMTest::WaitForBackgroundInsertsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
   return LoggedWaitFor(
-      [&lsm] { return !lsm.TEST_HasBackgroundInserts(); }, timeout,
+      [&lsm] { return !lsm.TEST_HasBackgroundInserts(); }, timeout * kTimeMultiplier,
       "Background inserts done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
 }
 
 Status VectorLSMTest::WaitForCompactionsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
   return LoggedWaitFor(
-      [&lsm] { return !lsm.TEST_HasCompactions(); }, timeout,
+      [&lsm] { return !lsm.TEST_HasCompactions(); }, timeout * kTimeMultiplier,
       "Compactions done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
 }
 
 Status VectorLSMTest::OpenVectorLSM(
-    FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk) {
+    FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk,
+    vector_index::DistanceKind distance_kind, const MemTrackerPtr& mem_tracker) {
 
   std::string test_dir;
   RETURN_NOT_OK(Env::Default()->GetTestDirectory(&test_dir));
   test_dir = JoinPathSegments(test_dir, "vector_lsm_test_" + Uuid::Generate().ToString());
 
-  auto factory = GetVectorIndexFactory(GetParam());
+  auto factory = GetVectorIndexFactory(GetParam(), block_cache_, mem_tracker);
   FloatVectorLSM::Options options = {
     .log_prefix = "Test: ",
     .storage_dir = JoinPathSegments(test_dir, "vector_lsm"),
-    .vector_index_factory = [factory, dimensions](vector_index::FactoryMode mode) {
+    .vector_index_factory = [factory, dimensions, distance_kind](vector_index::FactoryMode mode) {
       vector_index::HNSWOptions hnsw_options = {
         .dimensions = dimensions,
+        .distance_kind = distance_kind,
       };
       return factory(mode, hnsw_options);
     },
@@ -420,8 +468,18 @@ Status VectorLSMTest::InitVectorLSM(
 }
 
 void VectorLSMTest::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
-  CheckQueryVector(lsm, FloatVectorLSM::Vector(dimensions, 0.f), dimensions + 1);
-  CheckQueryVector(lsm, FloatVectorLSM::Vector(dimensions, 1.f), dimensions + 1);
+  // Use power-of-2 query vectors to guarantee unique distances for all distance kinds
+  // (L2, inner product, cosine). Uniform queries like (0,...,0) are degenerate for cosine,
+  // and linear queries like (1,2,3,...) produce ties for cosine (e.g., subsets {0,5} and {1,4}
+  // have the same sum). Powers of 2 ensure unique subset sums, preventing ties.
+  FloatVectorLSM::Vector query1(dimensions);
+  FloatVectorLSM::Vector query2(dimensions);
+  for (size_t d = 0; d < dimensions; ++d) {
+    query1[d] = static_cast<float>(1 << d);
+    query2[d] = static_cast<float>(1 << (dimensions - 1 - d));
+  }
+  CheckQueryVector(lsm, query1, dimensions + 1);
+  CheckQueryVector(lsm, query2, dimensions + 1);
 }
 
 void VectorLSMTest::CheckQueryVector(
@@ -448,7 +506,8 @@ void VectorLSMTest::CheckQueryVector(
       .ef = 0,
     };
     auto search_result = ASSERT_RESULT(lsm.Search(query_vector, options));
-    VLOG(1) << "Search result: " << AsString(search_result);
+    VLOG(1) << "  Search result: " << AsString(search_result);
+    VLOG(1) << "Expected result: " << AsString(expected_results);
 
     ASSERT_EQ(search_result.size(), expected_results.size());
 
@@ -547,7 +606,8 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
 }
 
-TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
+void VectorLSMTest::TestMultipleChunksSimpleCompaction(
+    vector_index::DistanceKind distance_kind) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
   static_assert(kNumEntries > 2 * kDefaultChunkSize);
@@ -561,7 +621,7 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   constexpr size_t kExpectedNumChunks = (kNumInserts + kBlocksPerChunk - 1) / kBlocksPerChunk;
 
   FloatVectorLSM lsm;
-  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize, distance_kind));
   ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
   ASSERT_OK(InsertCube(lsm, kDimensions, kBlockSize));
   ASSERT_EQ(kNumEntries, inserted_entries_.size());
@@ -601,6 +661,18 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   ++compacted_idx;
   files = AsString(ASSERT_RESULT(GetFiles(lsm)));
   ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
+}
+
+TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
+  TestMultipleChunksSimpleCompaction(vector_index::DistanceKind::kL2Squared);
+}
+
+TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionInnerProduct) {
+  TestMultipleChunksSimpleCompaction(vector_index::DistanceKind::kInnerProduct);
+}
+
+TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionCosine) {
+  TestMultipleChunksSimpleCompaction(vector_index::DistanceKind::kCosine);
 }
 
 // The purpose of this test is to make sure compaction works fine if all chunks got
@@ -794,6 +866,7 @@ void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
 
   if (test_metrics) {
     ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
+    ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
   }
 
   // Insert the last min chunk to trigger background compaction.
@@ -808,6 +881,7 @@ void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   if (test_metrics) {
     // The write metric should be incremented by the size of the new chunk created by compaction.
     ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), lsm.TEST_LatestChunkSize());
+    ASSERT_GT(lsm.metrics().compact_read_bytes->value(), 0);
   } else {
     // Check expected files after the compaction.
     expected_files.str({});
@@ -874,10 +948,12 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
   ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
 
   // Empty compaction, write metric remains unchanged.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
 
   // Insert 1 batch of entries to create 1 chunk file.
   ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
@@ -885,16 +961,22 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   ASSERT_EQ(1, lsm.NumImmutableChunks());
 
   // Compact single file into a single file, write metric increases by size of new chunk file.
+  // The single input chunk is read during compaction.
+  auto compaction_reads = lsm.TEST_LatestChunkSize();
   ASSERT_OK(lsm.Compact(/* wait = */ true));
   ASSERT_EQ(1, lsm.NumImmutableChunks());
   auto compaction_writes = lsm.TEST_LatestChunkSize();
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
+  ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), compaction_reads);
 
   // Insert 5 more batches for a total of 6 chunk files.
+  // Track input sizes: the compacted chunk from the 1st compaction is now an input to the 2nd.
   constexpr size_t kNumChunks = 6;
+  compaction_reads += compaction_writes;
   for (size_t i = 1; i < kNumChunks; ++i) {
     ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
     ASSERT_EQ(kNumEntriesPerChunk, inserted_entries_.size());
+    compaction_reads += lsm.TEST_LatestChunkSize();
   }
   ASSERT_EQ(kNumChunks, lsm.NumImmutableChunks());
 
@@ -903,6 +985,7 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   ASSERT_EQ(1, lsm.NumImmutableChunks());
   compaction_writes += lsm.TEST_LatestChunkSize();
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
+  ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), compaction_reads);
 }
 
 void VectorLSMTest::TestBootstrap(bool flush) {
@@ -954,6 +1037,81 @@ TEST_P(VectorLSMTest, NotSavedChunk) {
   TestBootstrap(/* flush= */ false);
 }
 
+// Verifies that VectorLSM::EstimateNumVectorsForBytes returns a vector count whose actual on-disk
+// chunk size is close to the requested byte budget. This exercises the per-vector memory
+// accounting in the underlying ann_methods wrappers (usearch / hnswlib). The MemTracker
+// consumption is logged for visibility but not asserted on, because the gross heap usage
+// reported by the wrappers (especially usearch's mmap arena allocators) does not line up
+// neatly with the per-vector cost model used by EstimateNumVectorsForBytes.
+TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
+  constexpr size_t kDimensions = 64;
+  constexpr size_t kBytesLimit = 1_MB;
+
+  // Avoid background compactions interfering with the size measurement.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  auto mem_tracker = MemTracker::CreateTracker("vector_lsm_num_vectors_for_bytes");
+
+  FloatVectorLSM lsm;
+  // The InsertContext below sizes the mutable chunk; the default chunk capacity is just a floor.
+  ASSERT_OK(OpenVectorLSM(
+      lsm, kDimensions, kDefaultChunkSize, vector_index::DistanceKind::kL2Squared, mem_tracker));
+
+  const size_t num_vectors = lsm.EstimateNumVectorsForBytes(kBytesLimit);
+  LOG(INFO) << "EstimateNumVectorsForBytes(" << kBytesLimit << ") = " << num_vectors;
+  ASSERT_GT(num_vectors, 0u);
+
+  inserted_entries_ = RandomEntries(kDimensions, num_vectors);
+  for (size_t i = 0; i < inserted_entries_.size(); ++i) {
+    key_value_storage_.StoreVector(inserted_entries_[i].vector_id, i + 1);
+  }
+
+  TestFrontiers frontiers;
+  frontiers.Smallest().SetVertexId(inserted_entries_.front().vector_id);
+  frontiers.Largest().SetVertexId(inserted_entries_.front().vector_id);
+  ASSERT_OK(lsm.Insert(inserted_entries_, {
+    .frontiers = &frontiers,
+    .chunk_size = num_vectors,
+  }));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm, 120s));
+
+  // Snapshot tracker consumption while the in-memory chunk is fully built but before the flush
+  // turns it into a serialized (or YbHnsw) chunk that uses a different memory layout. The
+  // wrappers create two child trackers ("index_data" and "search_contexts"); we log them
+  // separately so that each ann backend's split is visible.
+  const int64_t total_consumption = mem_tracker->consumption();
+  LOG(INFO) << "MemTracker consumption (total): " << total_consumption << " bytes, budget: "
+            << kBytesLimit << " bytes, ratio: "
+            << (static_cast<double>(total_consumption) / kBytesLimit);
+  for (const auto& child : mem_tracker->ListChildren()) {
+    LOG(INFO) << "  child '" << child->id() << "': " << child->consumption() << " bytes";
+  }
+
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+
+  const uint64_t on_disk_size = lsm.TEST_LatestChunkSize();
+  const double ratio = static_cast<double>(on_disk_size) / kBytesLimit;
+  LOG(INFO) << "On-disk chunk size: " << on_disk_size << " bytes, budget: " << kBytesLimit
+            << " bytes, ratio: " << ratio;
+
+  // The byte budget approximates in-memory consumption: it includes per-vector pointer tables
+  // (vectors_lookup_, nodes_, linkLists_) that don't make it into the serialized chunk file,
+  // so the on-disk size is expected to be smaller than the budget but still close to it. The
+  // exact ratio depends on the backend layout and on whether the chunk is rewritten through
+  // the YbHnsw saver, which packs less data than the native usearch/hnswlib formats.
+  const auto on_disk_lower_bound_ratio = [&]() -> double {
+    switch (GetANNMethodKind(GetParam())) {
+      case ANNMethodKind::kUsearch:
+        return UseYbHnsw(GetParam()) ? 0.80 : 0.90;
+      case ANNMethodKind::kHnswlib:
+        return UseYbHnsw(GetParam()) ? 0.65 : 0.70;
+    }
+    FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(GetParam()));
+  }();
+  ASSERT_GE(on_disk_size, kBytesLimit * on_disk_lower_bound_ratio);
+  ASSERT_LE(on_disk_size, kBytesLimit);
+}
+
 TEST_F(VectorLSMTest, MergeChunkResults) {
   const auto kIds = GenerateVectorIds(7);
 
@@ -973,12 +1131,12 @@ TEST_F(VectorLSMTest, MergeChunkResults) {
   }
 }
 
-std::string ANNMethodKindToString(
-    const testing::TestParamInfo<ANNMethodKind>& param_info) {
-  return AsString(param_info.param);
-}
-
 INSTANTIATE_TEST_SUITE_P(
-    , VectorLSMTest, ::testing::ValuesIn(kANNMethodKindArray), ANNMethodKindToString);
+    ,
+    VectorLSMTest,
+    testing::Combine(
+        testing::ValuesIn(kANNMethodKindArray),
+        testing::Bool()),
+    ParamToString);
 
 }  // namespace yb::ann_methods

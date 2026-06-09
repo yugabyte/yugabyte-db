@@ -31,7 +31,9 @@
 //
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_set>
@@ -50,6 +52,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/metrics_aggregator.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -61,6 +64,7 @@ using namespace std::literals;
 
 DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_bool(TEST_pause_flush_aggregated_metrics);
+DECLARE_bool(TEST_enable_sync_points);
 
 namespace yb {
 
@@ -362,7 +366,7 @@ TEST_F(MetricsTest, AggregationTest) {
     ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
     CheckPreAggreatedAndScrapeTimeValues(writer, kSumGaugeName, "table_1_id", 9, std::nullopt);
     CheckPreAggreatedAndScrapeTimeValues(writer, kMaxGaugeName, "table_1_id", std::nullopt, 9);
-    CheckPreAggreatedAndScrapeTimeValues(writer, kSumCounterName, "table_1_id", 9, std::nullopt);
+    CheckPreAggreatedAndScrapeTimeValues(writer, kSumCounterName, "table_1_id", 19, std::nullopt);
     MetricEntity::AttributeMap attributes;
     attributes["metric_type"] = "tablet";
     attributes["table_id"] = "table_1_id";
@@ -376,7 +380,7 @@ TEST_F(MetricsTest, AggregationTest) {
     ASSERT_OK(registry_.WriteForPrometheus(&writer2, opts));
     CheckPreAggreatedAndScrapeTimeValues(writer2, kSumGaugeName, "table_1_id", 20, std::nullopt);
     CheckPreAggreatedAndScrapeTimeValues(writer2, kMaxGaugeName, "table_1_id", std::nullopt, 11);
-    CheckPreAggreatedAndScrapeTimeValues(writer2, kSumCounterName, "table_1_id", 20, std::nullopt);
+    CheckPreAggreatedAndScrapeTimeValues(writer2, kSumCounterName, "table_1_id", 30, std::nullopt);
     CheckPreStoredAndScrapeTimeAttributes(writer2, "table_1_id", attributes, attributes);
 
     // Finally, bump the values and verify.
@@ -397,7 +401,7 @@ TEST_F(MetricsTest, AggregationTest) {
     ASSERT_OK(registry_.WriteForPrometheus(&writer3, opts));
     CheckPreAggreatedAndScrapeTimeValues(writer3, kSumGaugeName, "table_1_id", 21, std::nullopt);
     CheckPreAggreatedAndScrapeTimeValues(writer3, kMaxGaugeName, "table_1_id", std::nullopt, 12);
-    CheckPreAggreatedAndScrapeTimeValues(writer3, kSumCounterName, "table_1_id", 21, std::nullopt);
+    CheckPreAggreatedAndScrapeTimeValues(writer3, kSumCounterName, "table_1_id", 31, std::nullopt);
     CheckPreStoredAndScrapeTimeAttributes(writer3, "table_1_id", attributes, attributes);
   }
 }
@@ -953,6 +957,63 @@ TEST_F(MetricsTest, MetricsAggregatorCreateCleanupRace) {
   for (auto& t : threads) {
     t.join();
   }
+}
+
+TEST_F(MetricsTest, FlushStalePreAggregatedAttribute) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  MetricEntity::AttributeMap stable_attrs;
+  stable_attrs["table_name"] = "t";
+  stable_attrs["table_id"] = "table_id_flush_segfault";
+  stable_attrs["tablet_id"] = "tablet_id_flush_segfault";
+  const std::string kTabletEntityId = "tablet_flush_segfault_entity";
+  auto tablet = METRIC_ENTITY_tablet.Instantiate(&registry_, kTabletEntityId, stable_attrs);
+  ASSERT_TRUE(tablet);
+
+  // Clear the metrics from the tablet entity, and recreate it with the same attributes.
+  {
+    scoped_refptr<Counter> counter = METRIC_t_counter.Instantiate(tablet);
+    tablet->RemoveFromMetricMap(&METRIC_t_counter);
+  }
+  registry_.TEST_metrics_aggregator()->CleanupRetiredMetricsAndCorrespondingAttributes();
+  MetricEntity::AttributeMap updated_attrs = stable_attrs;
+  tablet = METRIC_ENTITY_tablet.Instantiate(&registry_, kTabletEntityId, updated_attrs);
+  ASSERT_TRUE(tablet);
+
+  // Set up a sync point to wait for the flush thread to reach the attributesnapshot.
+  std::mutex sync_mutex;
+  std::condition_variable sync_cv;
+  bool after_snapshots_reached = false;
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->ClearAllCallBacks();
+  SyncPoint::GetInstance()->SetCallBack(
+      "FlushPreAggregatedValues.after_snapshots",
+      [&](void*) {
+        std::lock_guard<std::mutex> lock(sync_mutex);
+        after_snapshots_reached = true;
+        sync_cv.notify_one();
+      });
+  SyncPoint::GetInstance()->LoadDependency({SyncPoint::Dependency{
+      "tablet_holder_ready", "FlushPreAggregatedValues.after_snapshots"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  std::thread flush_thread([&]() {
+    MetricPrometheusOptions opts;
+    opts.export_help_and_type = ExportHelpAndType::kFalse;
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    CHECK_OK(registry_.WriteForPrometheus(&writer, opts));
+  });
+
+  {
+    std::unique_lock<std::mutex> lock(sync_mutex);
+    sync_cv.wait(lock, [&] { return after_snapshots_reached; });
+  }
+  // Instantiate a new counter on the tablet entity.
+  ASSERT_TRUE(METRIC_t_counter.Instantiate(tablet));
+  // Signal the flush thread to continue.
+  TEST_SYNC_POINT("tablet_holder_ready");
+
+  flush_thread.join();
 }
 
 } // namespace yb

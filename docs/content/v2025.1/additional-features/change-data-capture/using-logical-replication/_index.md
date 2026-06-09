@@ -110,8 +110,6 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 
-- Support for point-in-time recovery (PITR) is tracked in issue {{<issue 10938>}}.
-
 - Transaction savepoints are supported starting from v2025.1.4.0. Issue {{<issue 10936>}}.
 
 - Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
@@ -123,3 +121,9 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 - If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the replica identity is not CHANGE, then CDC will throw an error while processing such events.
 
     To handle updates/deletes with a non-CHANGE replica identity, set the YB-TServer flag `cdc_send_null_before_image_if_not_exists` to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
+
+- Adding an expired or not-of-interest table to a publication renders the replication slot associated with this publication unusable. In such a scenario, the slot must be dropped and a new slot must be created to proceed. Tracked in issue {{<issue 28310>}}.
+
+### CDC with point-in-time recovery
+
+[Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with logical replication configured, you need to create new replication slots after the restore is complete, and start streaming from that point. Creating new slots ensures that you start streaming from the correct checkpoints.

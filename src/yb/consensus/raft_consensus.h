@@ -36,6 +36,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "yb/common/entity_ids_types.h"
@@ -59,6 +60,7 @@ DECLARE_int32(ht_lease_duration_ms);
 
 namespace yb {
 
+class Cgroup;
 class Counter;
 class HostPort;
 class ThreadPool;
@@ -90,6 +92,8 @@ YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
 
 std::unique_ptr<ConsensusRoundCallback> MakeNonTrackedRoundCallback(
     ConsensusRound* round, const StdStatusCallback& callback);
+
+YB_DEFINE_ENUM(RaftConsensusShutdownState, (kNotStarted)(kStarted)(kCompleted));
 
 class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                       public Consensus,
@@ -139,6 +143,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     RetryableRequests* retryable_requests);
 
   virtual ~RaftConsensus() override;
+
+  // Set the per-database cgroup on consensus tokens/strands for per-DB cgroup mode.
+  void SetPerDbCgroup(Cgroup* cgroup);
 
   virtual Status Start(const ConsensusBootstrapInfo& info) override;
 
@@ -191,6 +198,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   const std::optional<CloneSourceInfo>& clone_source_info() const override;
 
+  OpId GetPendingConfigOpId() const override;
+
   LeaderLeaseStatus GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const;
   LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const;
 
@@ -211,6 +220,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   void DumpStatusHtml(std::ostream& out) const override;
 
+  void StartShutdown();
+  void CompleteShutdown();
   void Shutdown() override;
 
   // Return the active (as opposed to committed) role.
@@ -240,6 +251,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   OpId GetLastAppliedOpId() override;
 
   OpId GetAllAppliedOpId();
+
+  Status CheckReadyAsRbsSource();
 
   Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
@@ -306,6 +319,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   Result<OpId> TEST_GetLastOpIdWithType(OpIdType opid_type, OperationType op_type);
 
   int64_t TEST_LeaderTerm() const;
+
+  int64_t GetFirstIndexOfCurrentTerm() const;
+
+  // Atomically returns the leader state and the first log index of the current leader's term.
+  // The first index is only meaningful when the leader state's status is LEADER_AND_READY.
+  std::pair<LeaderState, int64_t> GetLeaderStateAndFirstIndexOfCurrentTerm() const;
 
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
@@ -692,6 +711,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Checked whether we should start step down when protege did not synchronize before timeout.
   void CheckDelayedStepDown(const Status& status);
 
+  void ClearPendingConfigUnlocked();
+
   // Threadpool token for constructing requests to peers, handling RPC callbacks,
   // etc.
   std::unique_ptr<ThreadPoolToken> raft_pool_concurrent_token_;
@@ -752,7 +773,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   std::atomic<bool> outstanding_report_failure_task_{false};
 
-  AtomicBool shutdown_;
+  using ShutdownState = RaftConsensusShutdownState;
+  std::atomic<ShutdownState> shutdown_state_{ShutdownState::kNotStarted};
 
   scoped_refptr<Counter> deprecated_follower_memory_pressure_rejections_;
   scoped_refptr<AtomicGauge<int64_t>> term_metric_;

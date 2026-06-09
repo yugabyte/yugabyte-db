@@ -16,12 +16,16 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
+
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Runs the pg_regress test suite for DDL savepoint support.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestDdlSavepoints extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
@@ -37,8 +41,16 @@ public class TestDdlSavepoints extends BasePgRegressTest {
     builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
     builder.addCommonTServerFlag("enable_object_locking_for_table_locks", "true");
     builder.addCommonTServerFlag("ysql_yb_enable_ddl_savepoint_support", "true");
+    builder.addCommonTServerFlag("ysql_bypass_anonymous_savepoint_ddl_check", "false");
     builder.addCommonTServerFlag(
-        "allowed_preview_flags_csv", "ysql_yb_enable_ddl_savepoint_support");
+        "allowed_preview_flags_csv",
+        "ysql_yb_enable_ddl_savepoint_support,ysql_yb_enable_new_relation_fastpath_write_in_txn_"
+            + "blocks");
+    boolean enableSkipIntents = ThreadLocalRandom.current().nextBoolean();
+    if (enableSkipIntents) {
+      builder.addCommonTServerFlag(
+          "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks", "true");
+    }
     builder.addCommonTServerFlag("yb_enable_read_committed_isolation", "true");
     builder.addMasterFlag("ysql_yb_ddl_transaction_block_enabled", "true");
     builder.addMasterFlag("ysql_yb_enable_ddl_savepoint_support", "true");

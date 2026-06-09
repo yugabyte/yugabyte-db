@@ -21,7 +21,6 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Sets;
 import com.google.common.hash.Hashing;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
@@ -74,9 +73,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 import javax.inject.Singleton;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -97,8 +96,6 @@ public class LocalNodeManager {
   private static final String MAX_MEM_RATIO_MASTER = "0.05";
 
   private static final int ERROR_LINES_TO_DUMP = 200;
-  private static final int OUT_LINES_TO_DUMP = 200;
-  private static final int EXIT_LINES_TO_DUMP = 10;
 
   private static final String LOOPBACK_PREFIX = "127.0.";
   public static final String COMMAND_OUTPUT_PREFIX = "Command output:";
@@ -258,14 +255,27 @@ public class LocalNodeManager {
     }
   }
 
+  private void destroyProcess(ProcessHandle processHandle) {
+    long pid = processHandle.pid();
+    processHandle.destroy();
+    log.info("Waiting for PID {} to exit", pid);
+    processHandle.onExit().completeOnTimeout(null, 5, TimeUnit.SECONDS).join();
+    if (processHandle.isAlive()) {
+      processHandle.destroyForcibly();
+      processHandle.onExit().join();
+    }
+  }
+
   private void terminateProcessAndSubprocesses(long pid, boolean throwIfAbsent) {
     ProcessHandle.of(pid)
         .ifPresentOrElse(
             process -> {
-              // Terminate the process and all its subprocesses
-              Stream<ProcessHandle> descendants = process.descendants();
-              descendants.forEach(ProcessHandle::destroy);
-              process.destroy();
+              // Collect the child processes first.
+              // Terminating the parent process should gracefully shutdown child processes.
+              List<ProcessHandle> descendants = process.descendants().toList();
+              destroyProcess(process);
+              descendants.stream().filter(ProcessHandle::isAlive).forEach(this::destroyProcess);
+              log.info("Process {} is stopped", pid);
             },
             () -> {
               if (throwIfAbsent) {
@@ -431,7 +441,6 @@ public class LocalNodeManager {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
     ShellResponse response = null;
-    Config config = confGetter.getStaticConf();
     final NodeInfo nodeInfo = nodesByNameMap.get(nodeTaskParam.nodeName);
     if (nodeInfo != null) {
       response = successResponse(convertNodeInfoToJson(nodeInfo));
@@ -619,7 +628,6 @@ public class LocalNodeManager {
       NodeInfo nodeInfo,
       UniverseDefinitionTaskParams.UserIntent userIntent) {
     TransferXClusterCerts.Params tParams = (TransferXClusterCerts.Params) taskParams;
-    String homeDir = getNodeRoot(userIntent, nodeInfo);
     String destinationCertsDir =
         replaceYbHome(tParams.destinationCertsDir.getAbsolutePath(), userIntent, nodeInfo);
     String replicationGroupName = tParams.replicationGroupName;
@@ -744,7 +752,10 @@ public class LocalNodeManager {
 
   private synchronized void updateSoftwareOnNode(
       UniverseDefinitionTaskParams.UserIntent userIntent, String version) {
+    // This returns the cached bean from the database.
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    // Reload from the DB.
+    provider.refresh();
     String newYBBinDir = versionBinPathMap.get(version);
     LocalCloudInfo localCloudInfo = getCloudInfo(userIntent);
     if (StringUtils.isNotEmpty(newYBBinDir)) {
@@ -935,7 +946,7 @@ public class LocalNodeManager {
     thread.start();
   }
 
-  private String pickNewIP(NodeDetails nodeDetails) {
+  private synchronized String pickNewIP(NodeDetails nodeDetails) {
     if (predefinedConfig != null) {
       return predefinedConfig.get(nodeDetails.getNodeIdx());
     }

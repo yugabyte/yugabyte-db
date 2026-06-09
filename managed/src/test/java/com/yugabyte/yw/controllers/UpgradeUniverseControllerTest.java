@@ -54,6 +54,7 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -604,13 +605,21 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     taskInfo.setTaskParams(Json.toJson(storedParams));
     taskInfo.save();
 
+    TaskInfo subTask = new TaskInfo(TaskType.WaitForDuration, UUID.randomUUID());
+    subTask.setParentUuid(taskUUID);
+    subTask.setPosition(0);
+    subTask.setTaskState(TaskInfo.State.Success);
+    subTask.setTaskParams(Json.newObject());
+    subTask.setOwner("test");
+    subTask.save();
+
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             u -> {
               UniverseDefinitionTaskParams details = u.getUniverseDetails();
               details.softwareUpgradeState = SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = taskUUID;
+              details.placementModificationTaskUuid = taskUUID;
               u.setUniverseDetails(details);
             });
 
@@ -1988,9 +1997,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   @Test
   public void testThirdpartyUpgradeOnpremWithManual() {
     Universe onprem = ModelFactory.createUniverse("onprem", customer.getId(), CloudType.onprem);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(onprem.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getSingleProvider(onprem.getUniverseDetails().getPrimaryCluster());
     provider.getDetails().skipProvisioning = true;
     provider.save();
     PlatformServiceException exception =

@@ -127,6 +127,17 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         .thenReturn(true);
   }
 
+  /** Minimal child row so canary resume can find a max-success position to prune past. */
+  private static void persistSuccessfulCanaryChildSubtask(UUID parentTaskUuid) {
+    TaskInfo subTask = new TaskInfo(TaskType.WaitForDuration, UUID.randomUUID());
+    subTask.setParentUuid(parentTaskUuid);
+    subTask.setPosition(0);
+    subTask.setTaskState(TaskInfo.State.Success);
+    subTask.setTaskParams(Json.newObject());
+    subTask.setOwner("test");
+    subTask.save();
+  }
+
   private static Object[] tlsToggleCustomTypeNameParams() {
     return new Object[][] {
       {false, false, true, false, "TLS Toggle ON"},
@@ -1381,6 +1392,46 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpgradeDBVersionCanaryRejectedWhenUniversePausedWithoutResume() {
+    when(runtimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.enableYbcForUniverse)))
+        .thenReturn(false);
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcCompatibleDbVersion)))
+        .thenReturn("2.17.0.0-b1");
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    final UUID universeUuid = u.getUniverseUUID();
+    UUID pausedTaskUuid = UUID.randomUUID();
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+              "2.20.2.0-b1";
+          universe.getUniverseDetails().softwareUpgradeState =
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+          universe.getUniverseDetails().updatingTaskUUID = pausedTaskUuid;
+          universe.setUniverseDetails(universe.getUniverseDetails());
+        });
+
+    Universe fresh = Universe.getOrBadRequest(universeUuid);
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.setUniverseUUID(universeUuid);
+    params.ybSoftwareVersion = "2.22.0.0-b1";
+    params.clusters.add(fresh.getUniverseDetails().getPrimaryCluster());
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.upgradeDBVersion(params, c, Universe.getOrBadRequest(universeUuid)));
+    assertEquals(400, ex.getHttpStatus());
+    assertTrue(ex.getMessage().contains("paused canary"));
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
   public void testResumeCanarySoftwareUpgradeRejectsWhenFlagDisabled() {
     Customer c = ModelFactory.testCustomer();
     Universe u = ModelFactory.createUniverse(c.getId());
@@ -1424,9 +1475,11 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = taskUUID;
+              details.placementModificationTaskUuid = taskUUID;
               universe.setUniverseDetails(details);
             });
+
+    persistSuccessfulCanaryChildSubtask(taskUUID);
 
     when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class)))
         .thenAnswer(invocation -> invocation.getArgument(2));
@@ -1573,7 +1626,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = otherTaskUUID;
+              details.placementModificationTaskUuid = otherTaskUUID;
               universe.setUniverseDetails(details);
             });
 
@@ -1648,9 +1701,11 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
-              details.updatingTaskUUID = taskUUID;
+              details.placementModificationTaskUuid = taskUUID;
               universe.setUniverseDetails(details);
             });
+
+    persistSuccessfulCanaryChildSubtask(taskUUID);
 
     CustomerTask customerTask =
         CustomerTask.create(

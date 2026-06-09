@@ -18,32 +18,41 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/macros.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/clone/clone_state_entity.h"
 #include "yb/master/clone/external_functions.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_writer.h"
 #include "yb/master/tablet_creation_limits.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/ysql/ysql_catalog_config.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/rpc/rpc_context.h"
-#include "yb/rpc/rpc_controller.h"
 
+#include "yb/tablet/tablet.h"
+
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
@@ -51,7 +60,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-DEFINE_RUNTIME_bool(enable_db_clone, false, "Enable DB cloning.");
+DEFINE_RUNTIME_AUTO_bool(enable_db_clone, kLocalPersisted, false, true, "Enable DB cloning.");
 TAG_FLAG(enable_db_clone, advanced);
 
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
@@ -121,13 +130,12 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
 
   Status ScheduleClonePgSchemaTask(
       const TabletServerId& ts_uuid, const std::string& source_db_name,
-      const std::string& target_db_name, const std::string& pg_source_owner,
-      const std::string& pg_target_owner, HybridTime restore_ht,
-      AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline) override {
+      const std::string& target_db_name, const std::string& pg_target_owner,
+      HybridTime restore_ht, AsyncClonePgSchema::ClonePgSchemaCallbackType callback,
+      MonoTime deadline) override {
     auto task = std::make_shared<AsyncClonePgSchema>(
         master_, catalog_manager_->AsyncTaskPool(), ts_uuid, source_db_name,
-        target_db_name, restore_ht, pg_source_owner, pg_target_owner, std::move(callback),
-        deadline);
+        target_db_name, restore_ht, pg_target_owner, std::move(callback), deadline);
     return catalog_manager_->ScheduleTask(task);
   }
 
@@ -190,6 +198,55 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
     return catalog_manager_->BlacklistSetFromPB();
   }
 
+  Result<int64_t> CountPgYbMigrationRows(
+      uint32_t database_oid, const ReadHybridTime& read_time) override {
+    return sys_catalog_->CountPgYbMigrationRows(database_oid, read_time);
+  }
+
+  Result<std::optional<YsqlMajorCatalogUpgradeInfoPB>> GetYsqlMajorCatalogUpgradeInfoAt(
+      std::optional<std::reference_wrapper<const ReadHybridTime>> read_time) override {
+    if (!read_time) {
+      return master_->ysql_manager().GetYsqlCatalogConfig().GetMajorCatalogUpgradePB();
+    }
+    auto tablet = VERIFY_RESULT(sys_catalog_->Tablet());
+    auto doc_read_context = tablet->GetDocReadContext();
+    const auto& schema = doc_read_context->schema();
+    dockv::ReaderProjection projection(schema);
+    auto doc_iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+        projection, read_time.value(), /* table_id */ "", /* deadline */ CoarseTimePoint::max(),
+        tablet::AllowBootstrappingState::kTrue));
+    auto request_scope = VERIFY_RESULT(tablet->CreateRequestScope());
+
+    std::optional<YsqlMajorCatalogUpgradeInfoPB> result;
+    // SYS_CONFIG is the type used for catalog entities that store cluster wide metadata. The
+    // corresponding proto message schema is SysConfigEntryPB. The proto schema uses oneof to define
+    // different types of config information. Here we want the SysYSQLCatalogConfigEntryPB proto,
+    // which stores the status of any YSQL major upgrade in progress.
+    RETURN_NOT_OK(EnumerateSysCatalog(
+        doc_iter.get(), schema, SysRowEntryType::SYS_CONFIG,
+        [&](const Slice& id, const Slice& data) -> Status {
+          if (id.ToBuffer() != kYsqlCatalogConfigType) {
+            return Status::OK();
+          }
+          auto config =
+              VERIFY_RESULT(pb_util::ParseFromSlice<SysConfigEntryPB>(data));
+          if (config.has_ysql_catalog_config() &&
+              config.ysql_catalog_config().has_ysql_major_catalog_upgrade_info()) {
+            result = config.ysql_catalog_config()
+              .ysql_major_catalog_upgrade_info();
+          }
+          return Status::OK();
+        }));
+
+    // If the config entry doesn't exist at this read time (e.g. predates its creation), treat
+    // it as DONE, consistent with YsqlCatalogConfig::GetMajorCatalogUpgradeState().
+    return result;
+  }
+
+  bool IsMajorYsqlUpgradeInProgress() override {
+    return master_->ysql_manager().IsMajorUpgradeInProgress();
+  }
+
   // Sys catalog.
   Status Upsert(int64_t leader_term, const CloneStateInfoPtr& clone_state) override {
     return sys_catalog_->Upsert(leader_term, clone_state);
@@ -199,6 +256,10 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
       int64_t leader_term, const CloneStateInfoPtr& clone_state,
       const NamespaceInfoPtr& source_namespace) override {
     return sys_catalog_->Upsert(leader_term, clone_state, source_namespace);
+  }
+
+  Status UpsertTabletInfo(const LeaderEpoch& epoch, const TabletInfoPtr& tablet) override {
+    return sys_catalog_->Upsert(epoch, tablet);
   }
 
   Status Load(
@@ -268,7 +329,6 @@ Status CloneStateManager::CloneNamespace(
       req->source_namespace(),
       restore_time,
       req->target_namespace_name(),
-      req->pg_source_owner(),
       req->pg_target_owner(),
       rpc->GetClientDeadline(),
       epoch));
@@ -280,9 +340,8 @@ Status CloneStateManager::CloneNamespace(
 
 Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
     const NamespaceIdentifierPB& source_namespace_identifier,
-    const HybridTime& restore_time,
+    HybridTime restore_time,
     const std::string& target_namespace_name,
-    const std::string& pg_source_owner,
     const std::string& pg_target_owner,
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch) {
@@ -324,7 +383,7 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
       target_namespace_name, restore_time));
 
   auto status = TryCloneNamespace(clone_state, snapshot_schedule_id, deadline, source_namespace,
-      target_namespace_name, pg_source_owner, pg_target_owner);
+      target_namespace_name, pg_target_owner);
   if (!status.ok()) {
     WARN_NOT_OK(MarkCloneAborted(clone_state, status.ToString()), "Failed to mark clone aborted");
   }
@@ -337,7 +396,6 @@ Status CloneStateManager::TryCloneNamespace(
     CoarseTimePoint deadline,
     const NamespaceInfoPtr& source_namespace,
     const std::string& target_namespace_name,
-    const std::string& pg_source_owner,
     const std::string& pg_target_owner) {
   // Export snapshot info.
   HybridTime restore_ht(clone_state->LockForRead()->pb.restore_time());
@@ -354,8 +412,9 @@ Status CloneStateManager::TryCloneNamespace(
   // callback of ClonePgSchemaObjects async task.
   Status status;
   if (source_namespace->database_type() == YQL_DATABASE_PGSQL) {
+    RETURN_NOT_OK(ValidateYSQLUpgradeStates(source_namespace->id(), restore_ht));
     status = ClonePgSchemaObjects(
-        clone_state, source_namespace->name(), target_namespace_name, pg_source_owner,
+        clone_state, source_namespace->name(), target_namespace_name,
         pg_target_owner, snapshot_schedule_id, std::move(clone_snapshot_info));
   } else {
     // For YCQL, start tablets cloning directly.
@@ -364,6 +423,49 @@ Status CloneStateManager::TryCloneNamespace(
         deadline);
   }
   return status;
+}
+
+Status CloneStateManager::ValidateYSQLUpgradeStates(
+    NamespaceIdView source_namespace_id, HybridTime restore_ht) {
+  // Check that we are not doing a major YSQL upgrade right now.
+  if (external_funcs_->IsMajorYsqlUpgradeInProgress()) {
+    return STATUS(NotSupported, "Cannot clone database: YSQL major catalog upgrade is in progress");
+  }
+  auto upgrade_state =
+      VERIFY_RESULT(external_funcs_->GetYsqlMajorCatalogUpgradeInfoAt(std::nullopt));
+  // Check that we weren't in the middle of a major YSQL upgrade at restore_ht.
+  auto restore_read_hybrid_time = ReadHybridTime::SingleTime(restore_ht);
+  auto upgrade_state_at_restore = VERIFY_RESULT(
+      external_funcs_->GetYsqlMajorCatalogUpgradeInfoAt(std::cref(restore_read_hybrid_time)));
+  if (upgrade_state_at_restore &&
+      upgrade_state_at_restore->state() != YsqlMajorCatalogUpgradeInfoPB::DONE) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Cannot clone database: YSQL major catalog upgrade was in state $0 at the restore time",
+        YsqlMajorCatalogUpgradeInfoPB::State_Name(upgrade_state_at_restore->state()));
+  }
+
+  // Ensure we didn't do a YSQL major upgrade between restore_ht and now.
+  if (upgrade_state_at_restore.has_value() != upgrade_state.has_value() ||
+      (upgrade_state &&
+       upgrade_state->catalog_version() != upgrade_state_at_restore->catalog_version())) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Cannot clone database: YSQL major catalog upgrade occurred between the restore time and "
+        "now");
+  }
+
+  // Ensure we didn't do a YSQL non-major upgrade between restore_ht and now.
+  auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id));
+  auto current_migration_rows =
+      VERIFY_RESULT(external_funcs_->CountPgYbMigrationRows(db_oid, ReadHybridTime()));
+  auto restore_migration_rows =
+      VERIFY_RESULT(external_funcs_->CountPgYbMigrationRows(db_oid, restore_read_hybrid_time));
+  if (current_migration_rows != restore_migration_rows) {
+    return STATUS(
+        NotSupported, "Cannot clone database: YSQL upgrade was performed since the restore time");
+  }
+  return Status::OK();
 }
 
 Status CloneStateManager::ImportSnapshotAndStartTabletsCloning(
@@ -440,7 +542,6 @@ Status CloneStateManager::ClonePgSchemaObjects(
     CloneStateInfoPtr clone_state,
     const std::string& source_db_name,
     const std::string& target_db_name,
-    const std::string& pg_source_owner,
     const std::string& pg_target_owner,
     const SnapshotScheduleId& snapshot_schedule_id,
     CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info) {
@@ -453,7 +554,7 @@ Status CloneStateManager::ClonePgSchemaObjects(
   // Deadline passed to the ClonePgSchemaTask (including rpc time and callback execution deadline)
   auto deadline = MonoTime::Now() + FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms;
   RETURN_NOT_OK(external_funcs_->ScheduleClonePgSchemaTask(
-      ts->permanent_uuid(), source_db_name, target_db_name, pg_source_owner, pg_target_owner,
+      ts->permanent_uuid(), source_db_name, target_db_name, pg_target_owner,
       HybridTime(clone_state->LockForRead()->pb.restore_time()),
       MakeDoneClonePgSchemaCallback(
           clone_state, snapshot_schedule_id, target_db_name, std::move(clone_snapshot_info),
@@ -502,7 +603,7 @@ Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
     const NamespaceInfoPtr& source_namespace,
     YQLDatabase database_type,
     const std::string& target_namespace_name,
-    const HybridTime& restore_time) {
+    HybridTime restore_time) {
   // Check if there is an ongoing clone for the source namespace.
   std::lock_guard lock(mutex_);
   auto it = source_clone_state_map_.find(source_namespace->id());
@@ -616,6 +717,50 @@ Status CloneStateManager::ScheduleCloneOps(
         external_funcs_->GetTabletInfo(tablet_data.target_tablet_id));
     auto source_table = source_tablet->table();
     auto target_table = target_tablet->table();
+
+    // Seed the target tablet's committed_consensus_state peers on the master from the source
+    // tablet's config so that when the cloned replicas heartbeat back, ProcessTabletReportBatch
+    // sees them as part of the expected Raft config and does not tombstone them. The source
+    // tablet's peers are exactly the tservers that will materialize the clone target (see
+    // DoApplyCloneTablet in src/yb/tserver/ts_tablet_manager.cc).
+    //
+    // Only the peers list is copied. current_term and leader_uuid are left at the values
+    // SetupTabletInfo set (kMinimumTerm, empty) so that the cloned replicas' first heartbeat is
+    // not classified as stale by ProcessCommittedConsensusState's term comparison, and the
+    // normal post-clone reconciliation runs: the master hints an election, the tablet
+    // transitions to RUNNING, and the load balancer fills in any replicas missing from the
+    // target's placement policy.
+    {
+      auto source_tablet_lock = source_tablet->LockForRead();
+      auto target_tablet_lock = target_tablet->LockForWrite();
+      if (target_tablet_lock->pb.committed_consensus_state().config().peers_size() == 0) {
+        const auto& source_peers =
+            source_tablet_lock->pb.committed_consensus_state().config().peers();
+        // Source tablets reaching ScheduleCloneOps are expected to already have peers in
+        // committed_consensus_state - they're running tablets that have been heartbeating to this
+        // master, and ProcessCommittedConsensusState populates this on every heartbeat. An empty
+        // peers list here means either (a) the source tablet has never reported back to this master
+        // (e.g. extremely fresh leader after failover and we raced the first heartbeat), or (b) we
+        // have a real bug in the heartbeat -> catalog plumbing. Falling through without seeding
+        // lets the clone proceed and lets master-side reconciliation try to recover.
+        if (PREDICT_FALSE(source_peers.empty())) {
+          LOG(DFATAL) << "Source tablet " << tablet_data.source_tablet_id
+                      << " has empty peers in committed_consensus_state at clone scheduling time"
+                      << " (target=" << tablet_data.target_tablet_id << "). Expected:"
+                      << " ProcessCommittedConsensusState should have populated peers"
+                      << " from a prior heartbeat. Cloned target will not be seeded;"
+                      << " ProcessTabletReportBatch may tombstone the cloned replicas.";
+        } else {
+          auto* target_config =
+              target_tablet_lock.mutable_data()->pb.mutable_committed_consensus_state()
+                  ->mutable_config();
+          target_config->mutable_peers()->CopyFrom(source_peers);
+          RETURN_NOT_OK(external_funcs_->UpsertTabletInfo(
+              clone_state->Epoch(), target_tablet));
+          target_tablet_lock.Commit();
+        }
+      }
+    }
 
     // Don't need to worry about ordering here because these are both read locks.
     auto source_table_lock = source_table->LockForRead();

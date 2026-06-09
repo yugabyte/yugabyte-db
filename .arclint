@@ -12,10 +12,11 @@
      "([.]txt$)",
      "(^[.]gitmodules$)",
      "(Makefile$)",
-     "(src/yb/common/ql_type[.]cc$)",
-     "(src/yb/gutil/valgrind[.]h$)",
-     "(^src/odyssey/)",
      "(^src/inline-thirdparty/)",
+     "(^src/lint/cpplint[.]py$)",
+     "(^src/odyssey/)",
+     "(^src/yb/common/ql_type[.]cc$)",
+     "(^src/yb/gutil/valgrind[.]h$)",
      "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
      "(^managed/src/main/resources/alert/.*[.]template$)",
@@ -109,11 +110,18 @@
         "(^cmake_modules/FindBoost[.]cmake$)",
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
-        "(^src/postgres/)"
+        "(^src/postgres/)",
+        "(^src/yb/integration-tests/.*[.]out$)",
+        "(^[.]gitignore$)",
+        "(^.*[.]svg$)",
+        "(^.*[.]md$)",
+        "(^java/yb-pgsql/src/test/resources/expected/)",
+        "(^java/yb-pgsql/src/test/resources/TestYbBackup/)",
+        "(^java/yb-pgsql/src/test/resources/TestYsqlDump/)"
       ]
     },
     "pycodestyle": {
-      "type": "pep8",
+      "type": "flake8",
       "include": "([.]py$)",
       "exclude": [
         "(^[.]ycm_extra_conf[.]py$)",
@@ -142,6 +150,7 @@
         "([.]hpp$)",
         "([.]h$)"
       ],
+      "bin": "src/lint/cpplint.py",
       "cpplint.header_guard_root_dir": "src",
       "cpplint.max_line_length": 100,
       "severity.rules": {
@@ -184,7 +193,7 @@
         "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*[^/]*$)"
       ],
       "exclude": [
-        "(^src/postgres/third-party-extensions/age/sql/)",
+        "(^src/postgres/third-party-extensions/mage/sql/)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb/sql/.*$)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb_core/sql/.*$)",
         "(^src/postgres/third-party-extensions/pg_hint_plan/.*$)",

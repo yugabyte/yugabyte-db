@@ -235,7 +235,7 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
         {/* Enabling PG Compatibility */}
         {!isPGEnabled && pgToggleValue && (
           <Box mt={2} className={currentRF >= 3 ? classes.infoContainer : classes.errorContainer}>
-            <img src={currentRF >= 3 ? InfoBlue : InfoError} alt="--" />
+            {currentRF >= 3 ? <InfoBlue /> : <InfoError />}
             <Typography variant="body2">
               <Trans
                 i18nKey={
@@ -251,7 +251,7 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
         {/* Disabling PG Compatibility */}
         {isPGEnabled && !pgToggleValue && (
           <Box mt={2} className={currentRF >= 3 ? classes.infoContainer : classes.errorContainer}>
-            <img src={currentRF >= 3 ? InfoBlue : InfoError} alt="--" />
+            {currentRF >= 3 ? <InfoBlue /> : <InfoError />}
             {currentRF >= 3 ? (
               <Typography variant="body2">
                 <Trans i18nKey={'universeActions.pgCompatibility.disableWarning1'} /> <br />

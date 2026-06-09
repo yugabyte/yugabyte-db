@@ -10,6 +10,8 @@ menu:
     parent: migration-types
     weight: 103
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The following instructions describe the steps to perform and verify a successful live migration to YugabyteDB, including changes that continuously occur on the source.

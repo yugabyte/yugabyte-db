@@ -52,11 +52,11 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_conns_per_db, 0,
     "Maximum number of concurrent database connections Ysql Connection Manager can create per "
     "pool.");
 
-DEFINE_NON_RUNTIME_string(ysql_conn_mgr_username, "yugabyte",
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_internal_conn_user, "yugabyte",
     "Username to be used by Ysql Connection Manager while creating database connections.");
 
-DEFINE_NON_RUNTIME_string(ysql_conn_mgr_password, "yugabyte",
-    "Password to be used by Ysql Connection Manager while creating database connections.");
+DEPRECATE_FLAG(string, ysql_conn_mgr_username, "04_2026");
+DEPRECATE_FLAG(string, ysql_conn_mgr_password, "04_2026");
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_internal_conn_db, "yugabyte",
     "Database to which Ysql Connection Manager will make connections to "
@@ -81,6 +81,12 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "managed by Ysql Connection Manager can remain open after its creation. Once this time "
     "is reached, the connection is automatically closed, regardless of activity, ensuring that "
     "fresh backend connections are regularly maintained.");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, max_prepared_statements, 500,
+    "Soft limit on prepared statements per server connection. When the limit is exceeded, the"
+    "least recently used statements are closed on the backend. This is enforced periodically at "
+    "connection detach points, so the actual count may temporarily exceed this value. Set to 0 "
+    "to disable LRU eviction.");
 
 DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
@@ -137,12 +143,15 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "Enable optimized extended query protocol in Ysql Connection Manager. "
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_deallocate_if_invalid_prep_stmt, true,
-    "When enabled, the YSQL Connection Manager deallocates a prepared statement "
-    "upon receiving a Close message if the statement exists on the backend "
-    "but is marked invalid. If flag is disabled then receiving CLOSE packet is a no-operation "
-    "from connection manager and can cause errors. ysql_conn_mgr_optimized_extended_query_protocol "
-    "needs to be enabled to enable this flag.");
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_prep_stmt_close, true,
+    "When enabled, the YSQL Connection Manager forwards Close messages to the backend, which "
+    "drops the prepared statement only if its cached plan is invalid or the connection is sticky; "
+    "valid plans on non-sticky connections are retained for reuse across logical connections. "
+    "When disabled, Close messages are handled as a no-op by the connection manager itself "
+    "and never reach the backend, which can cause errors. "
+    "Requires ysql_conn_mgr_optimized_extended_query_protocol to be enabled.");
+
+DEPRECATE_FLAG(bool, ysql_conn_mgr_deallocate_if_invalid_prep_stmt, "04_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, true,
     "Enable the use of the dynamic multi-route pooling. "
@@ -173,12 +182,43 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "If set to greater than 0, tcmalloc current heap snapshot will be dumped to the conn mgr "
     "logs after every ysql_conn_mgr_dump_heap_snapshot_interval number of seconds.");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
+    "Enables tracking of in-flight Parse operations in the YSQL Connection Manager. "
+    "This is used so that prepared-statement state tracked on the Connection Manager can be "
+    "reconciled with the backend when errors disrupt the expected packet sequence. When "
+    "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
+    "the backend, which may surface as errors such as 'prepared statement does not exist'.");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
+    "When enabled, the YSQL Connection Manager stops reading further client packets after "
+    "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
+    "backend is received, preventing cross-Sync-boundary pipelining. if set to false, there"
+    " can be correctness issues with pipelining.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
     "Sampling is disabled if this is set to 0. This flag will only be in effect if "
     "ysql_conn_mgr_dump_heap_snapshot_interval is set to greater than 0 i.e if dumping heap "
     "snapshots is enabled. Otherwise we keep the sample period same as what google tcmalloc "
     "has set for connection manager process");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcmalloc_gc_interval, 300,
+    "Interval in seconds between tcmalloc page-heap GC checks in Ysql Connection Manager. "
+    "Each tick invokes yb::MemTracker::GcTcmallocIfNeeded(); if the pageheap free-list "
+    "overhead exceeds tcmalloc_max_free_bytes_percentage of currently-allocated bytes, the "
+    "excess is returned to the OS. Set to 0 to disable periodic GC.");
+
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 100,
+    "Upper bound in milliseconds for which Connection Manager will synchronously wait for a "
+    "backend's socket to be closed when closing the backend connection. Setting this to 0 "
+    "skips the wait entirely, which may cause subsequent connection attempts to fail with "
+    "'sorry, too many clients already'. Setting it too high can cause Connection Manager "
+    "worker threads to block on closing sockets, reducing throughput.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
+    "Maximum number of pending TCP connections queued by the kernel on "
+    "Connection Manager's listening socket (the backlog argument to listen(2)). "
+    "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
 
 namespace {
 
@@ -211,7 +251,7 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
-DEFINE_validator(ysql_conn_mgr_deallocate_if_invalid_prep_stmt,
+DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
 
 namespace yb {
@@ -255,7 +295,11 @@ Status YsqlConnMgrWrapper::Start() {
   proc_->SetEnv("YB_YSQLCONNMGR_PDEATHSIG", Format("$0", SIGINT));
 
   if (getenv("YB_YSQL_CONN_MGR_USER") == NULL) {
-    proc_->SetEnv("YB_YSQL_CONN_MGR_USER", FLAGS_ysql_conn_mgr_username);
+    proc_->SetEnv("YB_YSQL_CONN_MGR_USER", FLAGS_ysql_conn_mgr_internal_conn_user);
+  }
+
+  if (getenv("YB_YSQL_CONN_MGR_DB") == NULL) {
+    proc_->SetEnv("YB_YSQL_CONN_MGR_DB", FLAGS_ysql_conn_mgr_internal_conn_db);
   }
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", UInt64ToString(conf_.yb_tserver_key()));
@@ -337,7 +381,7 @@ Status YsqlConnMgrWrapper::UpdateAndReloadConfig() {
 }
 
 YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(conf), stat_shm_key_(stat_shm_key) {}
+    : ProcessSupervisor(conf.cgroup), conf_(conf), stat_shm_key_(stat_shm_key) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
   return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);

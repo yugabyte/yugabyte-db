@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
 import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -41,6 +42,7 @@ public class ProviderDetails extends MigratedKeyInfoFields {
     @ApiModelProperty public AWSCloudInfo aws;
     @ApiModelProperty public AzureCloudInfo azu;
     @ApiModelProperty public GCPCloudInfo gcp;
+    @ApiModelProperty public OCICloudInfo oci;
     @ApiModelProperty public KubernetesInfo kubernetes;
     @ApiModelProperty public OnPremCloudInfo onprem;
     @ApiModelProperty public LocalCloudInfo local;

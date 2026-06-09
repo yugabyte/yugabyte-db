@@ -88,6 +88,7 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 
 namespace yb {
 
+class Cgroup;
 class FsManager;
 class MetricEntity;
 
@@ -102,15 +103,23 @@ YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
-inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(std::to_underlying(lhs) | std::to_underlying(rhs));
 }
 
-inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(std::to_underlying(lhs) & std::to_underlying(rhs));
 }
 
-inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator~(FlushFlags a) {
+  return static_cast<FlushFlags>(~std::to_underlying(a));
+}
+
+constexpr inline FlushFlags operator-(FlushFlags a, FlushFlags b) {
+  return a & ~b;
+}
+
+constexpr inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
   return (lhs & rhs) != FlushFlags::kNone;
 }
 
@@ -224,7 +233,8 @@ class Tablet : public AbstractTablet,
       const HybridTime read_time,
       const CoarseTimePoint deadline,
       const bool is_main_table,
-      std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* consistency_stats);
@@ -232,14 +242,16 @@ class Tablet : public AbstractTablet,
   Status FlushVerifyBatchIfRequired(
       const HybridTime read_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* index_consistency_states);
   Status FlushVerifyBatch(
       const HybridTime read_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* index_consistency_states);
@@ -267,6 +279,7 @@ class Tablet : public AbstractTablet,
       const std::vector<qlexpr::IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -276,11 +289,13 @@ class Tablet : public AbstractTablet,
   Status FlushWriteIndexBatchIfRequired(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
   Status FlushWriteIndexBatch(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      const ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -338,12 +353,16 @@ class Tablet : public AbstractTablet,
   // Apply all of the row operations associated with this transaction.
   Status ApplyRowOperations(
       WriteOperation* operation,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages = {},
+      bool skip_opid_update = false);
+
+  Status UpdateOpIdForOperation(WriteOperation* operation);
 
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages = {},
+      bool skip_opid_update = false);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
@@ -445,9 +464,13 @@ class Tablet : public AbstractTablet,
       const TableId& table_id = "");
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
-  Status Flush(FlushMode mode,
-               FlushFlags flags = FlushFlags::kAllDbs,
-               int64_t ignore_if_flushed_after_tick = rocksdb::FlushOptions::kNeverIgnore);
+  Status Flush(
+      FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick,
+      rocksdb::FlushReason rocksdb_flush_reason);
+
+  Status Flush(FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason);
+
+  Status Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason);
 
   Status WaitForFlush();
 
@@ -631,6 +654,9 @@ class Tablet : public AbstractTablet,
     return intents_db_.get();
   }
 
+  // Set per-task cgroup on both regular and intents RocksDB instances for per-DB compaction mode.
+  void SetRocksDbTaskCgroup(Cgroup* cgroup);
+
   // The only way to make any conclusion that a tablet is a product of a split is to check its key
   // bounds are initialized as it is supposed that these key bounds are setup during tablet split.
   const docdb::KeyBounds& key_bounds() const {
@@ -711,6 +737,10 @@ class Tablet : public AbstractTablet,
   HybridTime Get(HybridTime lower_bound);
 
   bool ShouldApplyWrite();
+
+  // Returns true if any backing RocksDB (regular_db or intents_db) is in a hard write stop.
+  // Lightweight check on atomic counters, safe to call from outside consensus locks.
+  bool AreWritesStopped();
 
   Status TEST_SwitchMemtable();
 
@@ -907,6 +937,11 @@ class Tablet : public AbstractTablet,
       bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
+      const LWTransactionMetadataPB& transaction_metadata,
+      bool is_ysql_catalog_table,
+      const LWSubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
+
   bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
 
   // Store the new AutoFlags config to disk and then applies it. Error Status is returned only for
@@ -1057,6 +1092,10 @@ class Tablet : public AbstractTablet,
       const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+      const LWSubTransactionMetadataPB* subtransaction_metadata) const;
+
   // Pause new read/write operations that are blocking/not blocking start of RocksDB shutdown and
   // wait for all such pending read/write operations to finish.
   // If stop is false, ScopedRWOperation constructor will wait while ScopedRWOperationPause is
@@ -1128,7 +1167,18 @@ class Tablet : public AbstractTablet,
   Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
 
   Status ProcessPgsqlGetTableKeyRangesRequest(
-      const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
+      const LWPgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
+
+  template <class TransactionMetadata, class SubTransactionMetadata>
+  Result<TransactionOperationContext> DoCreateTransactionOperationContext(
+      const TransactionMetadata& transaction_metadata,
+      bool is_ysql_catalog_table,
+      const SubTransactionMetadata* subtransaction_metadata) const;
+
+  template <class SubTransactionPB>
+  Result<TransactionOperationContext> DoCreateTransactionOperationContext(
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+      const SubTransactionPB* subtransaction_metadata) const;
 
   template <class Out>
   void TEST_DocDBDumpToContainerImpl(

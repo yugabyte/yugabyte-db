@@ -17,6 +17,8 @@
 #include <string>
 #include <utility>
 
+#include "nodes/lockoptions.h"
+
 #include "yb/gutil/port.h"
 
 #include "yb/util/flags/flag_tags.h"
@@ -26,6 +28,8 @@
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_ybctid_reader.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
+
+DECLARE_bool(enable_wait_queues);
 
 namespace yb::pggate {
 namespace {
@@ -42,8 +46,8 @@ void Erase(Container& container, const Key& key) {
 
 class PgFKReferenceCache::Impl {
  public:
-  Impl(const PgSessionPtr& pg_session, const BufferingSettings& buffering_settings)
-      : ybctid_reader_(pg_session), buffering_settings_(buffering_settings) {}
+  Impl(PgSession& session, const BufferingSettings& buffering_settings)
+      : ybctid_reader_(session), buffering_settings_(buffering_settings) {}
 
   void Clear() {
     references_.clear();
@@ -149,7 +153,11 @@ class PgFKReferenceCache::Impl {
           }
     });
     const auto ybctids = VERIFY_RESULT(batch.Read(
-        database_id, table_locality_map_, {.rowmark = ROW_MARK_KEYSHARE}));
+        database_id, table_locality_map_,
+        {.rowmark = ROW_MARK_KEYSHARE,
+         .pg_wait_policy = LockWaitBlock,
+         .docdb_wait_policy = FLAGS_enable_wait_queues ? WAIT_BLOCK : WAIT_ERROR
+        }));
     // In case all FK has been read successfully it is reasonable to move requested intents into
     // references instead of cleanup intents and create new elements in references.
     if (ybctids.size() == requested_read_count) {
@@ -183,9 +191,8 @@ class PgFKReferenceCache::Impl {
 };
 
 PgFKReferenceCache::PgFKReferenceCache(
-    const PgSessionPtr& pg_session,
-    std::reference_wrapper<const BufferingSettings> buffering_settings)
-    : impl_(new Impl(pg_session, buffering_settings)) {}
+    PgSession& session, std::reference_wrapper<const BufferingSettings> buffering_settings)
+    : impl_(new Impl(session, buffering_settings)) {}
 
 PgFKReferenceCache::~PgFKReferenceCache() = default;
 

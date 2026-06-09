@@ -39,6 +39,8 @@ export const getEnabledDrConfigActions = (
         DrConfigAction.SWITCHOVER,
         DrConfigAction.FAILOVER
       ];
+    case DrConfigState.PAUSED:
+      return [DrConfigAction.DELETE, DrConfigAction.EDIT, DrConfigAction.EDIT_TARGET, DrConfigAction.FAILOVER];
     case DrConfigState.HALTED:
       return [DrConfigAction.DELETE, DrConfigAction.EDIT, DrConfigAction.EDIT_TARGET];
     default:

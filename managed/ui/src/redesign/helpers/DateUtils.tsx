@@ -17,7 +17,8 @@ export const YBTimeFormats = {
   YB_DATE_ONLY_TIMESTAMP: 'MMM-DD-YYYY',
   YB_HOURS_FIRST_TIMESTAMP: 'HH:mm:ss MMM-DD-YYYY [UTC]ZZ',
   YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]HH:mm:ssZZ',
-  YB_TIME_ONLY_TIMESTAMP: 'HH:mm:ss'
+  YB_TIME_ONLY_TIMESTAMP: 'HH:mm:ss',
+  YB_LONG_DATETIME: 'MMM D, YYYY h:mm A [UTC]ZZ'
 } as const;
 
 export type YBTimeFormats = typeof YBTimeFormats[keyof typeof YBTimeFormats];

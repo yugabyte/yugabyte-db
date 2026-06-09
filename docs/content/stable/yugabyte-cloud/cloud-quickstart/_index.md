@@ -69,7 +69,7 @@ To create your Sandbox cluster:
 
 YugabyteDB Aeon bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
 
-When the cluster is ready, the cluster [Overview](/stable/yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon.
+When the cluster is ready, the cluster **Overview** is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon.
 
 ## Connect to the cluster
 
@@ -109,7 +109,7 @@ To connect to your cluster, do the following:
 
 > The command line interface (CLI) being used is called [ysqlsh](/stable/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/stable/api/ysql/). Cloud Shell also supports [ycqlsh](/stable/api/ycqlsh/), a CLI for the [YCQL API](/stable/api/ycql/).
 >
-> For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect).
+> For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect/).
 
 ## Explore distributed SQL
 

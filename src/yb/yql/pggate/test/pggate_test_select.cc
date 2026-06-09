@@ -22,9 +22,11 @@
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/test/pggate_test.h"
@@ -99,7 +101,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -156,7 +158,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -239,7 +242,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -463,7 +467,8 @@ Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
   YbcPgStatement pg_stmt = nullptr;
 
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      db_oid, table_oid, NULL /* prepare_params */, PggateTest::kDefaultTableLocality, &pg_stmt));
+      db_oid, table_oid, NULL /* prepare_params */, PggateTest::kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
@@ -726,7 +731,7 @@ class PggateTestBucketizedSelect : public PggateTest {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewInsert(
         kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-        YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
+        YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
     // Allocate constant expressions.
     YbcPgExpr expr_bkt;
@@ -779,7 +784,8 @@ class PggateTestBucketizedSelect : public PggateTest {
       const std::vector<YbcSortKey>& sort_keys) {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewSelect(
-        kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+        kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+        false /* skip_intents_read */, &pg_stmt));
 
     // Specify the selected expressions.
     YbcPgExpr colref;

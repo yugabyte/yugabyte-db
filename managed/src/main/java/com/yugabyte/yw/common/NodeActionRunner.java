@@ -106,6 +106,7 @@ public class NodeActionRunner {
     String tarFilename = node.getNodeName() + "-support_package.tar.gz";
     List<String> command = new ArrayList<>();
     command.add("tar");
+    command.add("--warning=no-file-changed");
     command.add("-czvf");
     command.add(tarFilename);
     command.add("-h");

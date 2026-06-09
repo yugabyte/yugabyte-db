@@ -136,19 +136,31 @@ public class PerfAdvisorClient {
     }
   }
 
-  public PACollectorExt.InUseStatus getInUseStatus(PACollector collector) {
+  public List<UniverseMetadata> listUniverseMetadata(PACollector collector) {
     String universeMetadataUrl = collector.getPaUrl() + "/api/universe/metadata";
     try {
-      JsonNode universeMetadataList =
+      JsonNode result =
           getApiHelper()
               .getRequest(
                   universeMetadataUrl,
                   authHeader(collector),
                   ImmutableMap.of("customer_uuid", collector.getCustomerUUID().toString()));
-      if (!universeMetadataList.isArray()) {
-        return PACollectorExt.InUseStatus.ERROR;
+      handleError(result);
+      if (!result.isArray()) {
+        throw new RuntimeException("Unexpected response received " + result);
       }
-      return universeMetadataList.isEmpty()
+      return Json.mapper().convertValue(result, new TypeReference<List<UniverseMetadata>>() {});
+    } catch (Exception e) {
+      log.error("Failed to list universe metadata from " + universeMetadataUrl, e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to list universe metadata from " + universeMetadataUrl);
+    }
+  }
+
+  public PACollectorExt.InUseStatus getInUseStatus(PACollector collector) {
+    try {
+      List<UniverseMetadata> universes = listUniverseMetadata(collector);
+      return universes.isEmpty()
           ? PACollectorExt.InUseStatus.NOT_IN_USE
           : PACollectorExt.InUseStatus.IN_USE;
     } catch (Exception e) {

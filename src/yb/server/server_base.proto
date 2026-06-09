@@ -156,12 +156,23 @@ message GetAutoFlagsConfigVersionResponsePB {
 }
 
 message ValidateFlagValueRequestPB {
-  required string flag_name = 1;
-  required string flag_value = 2;
+  // Legacy single-flag fields. Still supported for backward compatibility.
+  // Cannot be specified together with the batch 'flags' field.
+  optional string flag_name = 1;
+  optional string flag_value = 2;
+
+  // Batch validation: list of flags to validate.
+  message FlagValuePB {
+    required string name = 1;
+    required string value = 2;
+  }
+  repeated FlagValuePB flags = 3;
 }
 
 message ValidateFlagValueResponsePB {
-  // RPC will fail on errors.
+  // Per-flag validation errors. Only flags that failed validation appear here.
+  // Empty means all flags are valid. Key is the flag name, value is the error message.
+  map<string, string> errors = 1;
 }
 
 service GenericService {

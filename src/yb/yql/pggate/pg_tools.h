@@ -44,6 +44,9 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id);
+std::ostream& operator<<(std::ostream& str, const YbcAdvisoryLockId& lock_id);
+
 namespace yb::pggate {
 
 class PgSession;
@@ -179,9 +182,6 @@ struct YbctidGenerator {
  private:
   DISALLOW_COPY_AND_ASSIGN(YbctidGenerator);
 };
-
-std::string ToString(const YbcAdvisoryLockId& lock_id);
-std::string ToString(const YbcObjectLockId& lock_id);
 
 class TablespaceCache {
  public:

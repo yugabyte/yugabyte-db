@@ -46,6 +46,7 @@
 /* YB includes */
 #include "access/htup_details.h"
 #include "access/yb_scan.h"
+#include "catalog/partition.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
@@ -133,6 +134,7 @@ static SetOp *create_setop_plan(PlannerInfo *root, SetOpPath *best_path,
 static RecursiveUnion *create_recursiveunion_plan(PlannerInfo *root, RecursiveUnionPath *best_path);
 static LockRows *create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 									  int flags);
+static bool yb_update_modifies_partition_key(Relation leaf_rel, Bitmapset *update_attrs);
 static bool yb_single_row_update_or_delete_path(PlannerInfo *root,
 												ModifyTablePath *path,
 												List **modify_tlist,
@@ -1102,6 +1104,167 @@ yb_get_actual_batched_clauses(PlannerInfo *root,
 	List	   *zipped_batched = yb_zip_batched_exprs(root, batched_quals, false);
 
 	return list_concat(zipped_batched, non_batched_quals);
+}
+
+/*
+ * Check whether a clause is already represented in a qual list.  BNL planning
+ * may see the original scalar clause with operands switched relative to the
+ * join qual, while the executor will treat either orientation as the same
+ * recheck condition.
+ */
+static bool
+yb_clause_list_contains_equivalent(List *clauses, Node *clause)
+{
+	ListCell   *lc;
+
+	foreach(lc, clauses)
+	{
+		Node	   *candidate = (Node *) lfirst(lc);
+
+		if (equal(candidate, clause))
+			return true;
+
+		if (is_opclause(candidate) && is_opclause(clause))
+		{
+			OpExpr	   *candidate_op = (OpExpr *) candidate;
+			OpExpr	   *clause_op = (OpExpr *) clause;
+
+			if (list_length(candidate_op->args) == 2 &&
+				list_length(clause_op->args) == 2 &&
+				get_commutator(clause_op->opno) == candidate_op->opno &&
+				equal(linitial(clause_op->args), lsecond(candidate_op->args)) &&
+				equal(lsecond(clause_op->args), linitial(candidate_op->args)))
+				return true;
+		}
+	}
+
+	return false;
+}
+
+#ifdef USE_ASSERT_CHECKING
+/*
+ * Returns true iff at least one bare clause in joinclauses corresponds
+ * to a RestrictInfo that is both a batched join clause and mergejoinable.
+ */
+static bool
+yb_bnl_joinclauses_have_batched_mergejoinable(List *joinclauses,
+											  List *joinrestrictclauses,
+											  List *ppi_clauses,
+											  Relids batched_outerrelids,
+											  Relids inner_relids)
+{
+	ListCell   *lc;
+
+	foreach(lc, joinrestrictclauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		if (!list_member_ptr(joinclauses, rinfo->clause))
+			continue;
+		if (rinfo->mergeopfamilies == NIL)
+			continue;
+		if (!yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
+			continue;
+		return true;
+	}
+
+	foreach(lc, ppi_clauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		if (!list_member_ptr(joinclauses, rinfo->clause))
+			continue;
+		if (rinfo->mergeopfamilies == NIL)
+			continue;
+		if (!yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
+			continue;
+		return true;
+	}
+
+	return false;
+}
+#endif
+
+/*
+ * Returns true iff some clause in joinrestrictclauses (whose bare clause
+ * is in joinclauses) was generated from the same EquivalenceClass as
+ * candidate_ec.  Used to skip BNL recheck clauses that are EC-redundant
+ * with what the planner already kept in joinclauses: per the standard PG
+ * comment on RestrictInfo.parent_ec, "Multiple clauses with the same
+ * parent_ec in the same join are redundant."  This avoids re-adding e.g.
+ * `b.x = c.x` when joinclauses already has `a.x = b.x` and an outer-side
+ * join enforces `a.x = c.x` via the shared EC {a.x, b.x, c.x}.
+ */
+static bool
+yb_bnl_joinclauses_share_parent_ec(List *joinclauses,
+								   List *joinrestrictclauses,
+								   EquivalenceClass *candidate_ec)
+{
+	ListCell   *lc;
+
+	if (candidate_ec == NULL)
+		return false;
+
+	foreach(lc, joinrestrictclauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		if (rinfo->parent_ec != candidate_ec)
+			continue;
+		if (!list_member_ptr(joinclauses, rinfo->clause))
+			continue;
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * Compute the hashOp to use for a single bare join-qual clause when filling
+ * a YbBNLHashClauseInfo entry, or InvalidOid if the clause cannot be served
+ * by BNL's hash strategy.
+ */
+static Oid
+yb_bnl_compute_hash_op(Node *clause,
+					   List *rinfo_search_list,
+					   Relids batched_outerrelids,
+					   Relids inner_relids)
+{
+	ListCell   *lc;
+
+	foreach(lc, rinfo_search_list)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		RestrictInfo *batched_rinfo;
+		Oid			hashOpno;
+
+		if ((Node *) rinfo->clause != clause)
+			continue;
+
+		if (!rinfo->can_join || !OidIsValid(rinfo->hashjoinoperator))
+			return InvalidOid;
+
+		if (!yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
+			return InvalidOid;
+
+		Assert(is_opclause(rinfo->clause));
+		batched_rinfo = yb_get_batched_restrictinfo(rinfo,
+													batched_outerrelids,
+													inner_relids);
+
+		if (!yb_can_hash_batched_rinfo(batched_rinfo,
+									   batched_outerrelids,
+									   inner_relids))
+			return InvalidOid;
+
+		hashOpno = ((OpExpr *) rinfo->clause)->opno;
+		if (!bms_equal(batched_rinfo->left_relids, rinfo->left_relids))
+			hashOpno = get_commutator(hashOpno);
+
+		return hashOpno;
+	}
+
+	return InvalidOid;
 }
 
 /*
@@ -3235,6 +3398,46 @@ has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attr
 }
 
 /*
+ * yb_leaf_update_modifies_partition_key
+ *
+ * Returns true if any column in the input bitmapset is a partition key column
+ * of any ancestor partitioned table.
+ * Note that ancestor partitioned tables may have non-overlapping partition keys
+ * as well as different column orderings. An update that modifies the partition
+ * key at any level counts as a cross-partition update and must be handled as a
+ * distributed transaction.
+ * For example:
+ * Root table: (k1 INT, k2 INT, v INT) PARTITION BY RANGE (k1)
+ * Mid-level table: (k2 INT, k1 INT, v INT) PARTITION BY RANGE (k2)
+ * Leaf table: (v INT, k1 INT, k2 INT)
+ * UPDATE leaf SET k1 = 10 WHERE k2 = 1;
+ */
+static bool
+yb_update_modifies_partition_key(Relation leaf_rel, Bitmapset *update_attrs)
+{
+	List	   *ancestors = get_partition_ancestors(RelationGetRelid(leaf_rel));
+	ListCell   *lc;
+	bool		result = false;
+
+	foreach(lc, ancestors)
+	{
+		Oid			ancestor_relid = lfirst_oid(lc);
+		Relation	ancestor_rel = RelationIdGetRelation(ancestor_relid);
+
+		result = yb_has_ancestor_partition_attrs(leaf_rel, ancestor_rel,
+												 update_attrs);
+
+		RelationClose(ancestor_rel);
+
+		if (result)
+			break;
+	}
+
+	list_free(ancestors);
+	return result;
+}
+
+/*
  * yb_fetch_subpaths
  *
  * Helper function for yb_single_row_update_or_delete_path to fetch the
@@ -3624,6 +3827,26 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	update_attrs = bms_add_members(update_attrs, affected_generated_attrs);
 	bms_free(generated_cols_source_attrs);
 	bms_free(affected_generated_attrs);
+
+	/*
+	 * In most cases, the primary key of a leaf partition is a superset of the
+	 * partition key. However, it is possible that the two are non-overlapping
+	 * and in such cases, the primary key functions purely as a clustering key.
+	 * An example of this is when the root partition has no primary key while
+	 * leaf partition declare a partition level primary key:
+	 * CREATE TABLE root (part_key INT, cluster_key INT, v INT) PARTITION BY RANGE (part_key);
+	 * CREATE TABLE leaf PARTITION OF root (PRIMARY KEY (cluster_key)) FOR VALUES ...;
+	 *
+	 * In such cases, an update that modifies a partitioning key column could
+	 * result in the row being moved to a different partition. Disallow single
+	 * shard updates in such scenarios.
+	 */
+	if (path->operation == CMD_UPDATE && relation->rd_rel->relispartition &&
+		yb_update_modifies_partition_key(relation, update_attrs))
+	{
+		RelationClose(relation);
+		return false;
+	}
 
 	/*
 	 * Cannot support before row triggers for single-row update/delete, as the
@@ -6064,52 +6287,174 @@ create_nestloop_plan(PlannerInfo *root,
 		 */
 		ListCell   *l;
 
-		yb_hashClauseInfos =
-			palloc0(joinrestrictclauses->length * sizeof(YbBNLHashClauseInfo));
-
-		/* YB: This length is later adjusted in setrefs.c. */
-		yb_num_hashClauseInfos = joinrestrictclauses->length;
-
 		Relids		batched_outerrelids = bms_difference(outerrelids,
 														 yb_get_unbatched_relids(best_path));
 
 		Relids		inner_relids = best_path->jpath.innerjoinpath->parent->relids;
 
-		YbBNLHashClauseInfo *current_hinfo = yb_hashClauseInfos;
+		Relids		available_rels = bms_copy(best_path->jpath.path.parent->relids);
+		List	   *recheck_joinclauses = NIL;
+		List	   *recheck_otherclauses = NIL;
 
-		foreach(l, joinrestrictclauses)
+		/*
+		 * Batched index quals only prove that an inner tuple matches
+		 * some outer tuple in the batch.  Whenever the inner side absorbed
+		 * batched join equalities via parameterization (so the original
+		 * scalar form does not appear in joinclauses), re-add a scalar copy
+		 * to the BNL's Join Filter so the executor can authoritatively
+		 * recheck per (outer, inner) tuple pair.  This guards two distinct
+		 * failure modes:
+		 *
+		 *   - When a SubPlan-bearing join qual sits next to a batched
+		 *     equality, the SubPlan must not pass for the wrong outer
+		 *     tuple from the batch (the scalar recheck short-circuits
+		 *     before the SubPlan is evaluated since it is prepended).
+		 *
+		 *   - When all join quals were absorbed into the inner path (e.g.
+		 *     #31724's plan with no SubPlan), joinclauses is empty and
+		 *     BNL would rely entirely on the inner-side ANY() to enforce
+		 *     the join condition.  That is unsafe whenever the batched
+		 *     form over-approximates the scalar predicate.
+		 *
+		 * The collected clauses must be batchable (so they came in through
+		 * batched parameterization in the first place) and mergejoinable
+		 * (so the recheck is an authoritative equality, satisfying the
+		 * Join Filter invariants asserted below).  The condition is
+		 * independent of yb_bnl_enable_hashing, which is PGC_USERSET and
+		 * only flips the executor's strategy choice.
+		 */
+		if (best_path->jpath.path.param_info)
 		{
-			Oid			hashOpno = InvalidOid;
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+			available_rels =
+				bms_add_members(available_rels,
+								best_path->jpath.path.param_info->ppi_req_outer);
+		}
 
-			if (!list_member_ptr(joinclauses, rinfo->clause))
+		if (best_path->jpath.innerjoinpath->param_info)
+		{
+			foreach(l, best_path->jpath.innerjoinpath->param_info->ppi_clauses)
 			{
-				yb_num_hashClauseInfos--;
-				continue;
-			}
+				RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+				RestrictInfo *batched_rinfo;
 
-			if (rinfo->can_join &&
-				OidIsValid(rinfo->hashjoinoperator) &&
-				yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
-			{
-				/* if nlhash can process this */
-				Assert(is_opclause(rinfo->clause));
-				RestrictInfo *batched_rinfo = yb_get_batched_restrictinfo(rinfo,
-																		  batched_outerrelids,
-																		  inner_relids);
-
-				/* Can't use this clause for hashing during the BNL. */
-				if (!yb_can_hash_batched_rinfo(batched_rinfo, batched_outerrelids, inner_relids))
+				if (rinfo->pseudoconstant ||
+					!bms_is_subset(rinfo->required_relids, available_rels))
 					continue;
 
-				hashOpno = ((OpExpr *) rinfo->clause)->opno;
-				if (!bms_equal(batched_rinfo->left_relids, rinfo->left_relids))
-					hashOpno = get_commutator(hashOpno);
+				if (rinfo->mergeopfamilies == NIL)
+					continue;
+
+				batched_rinfo = yb_get_batched_restrictinfo(rinfo,
+															batched_outerrelids,
+															inner_relids);
+				if (!batched_rinfo)
+					continue;
+
+				/*
+				 * Skip clauses whose generating EquivalenceClass is
+				 * already represented in joinclauses by a peer derived from
+				 * the same EC; transitive closure makes the recheck
+				 * redundant.  Plain expression equalities (no parent_ec)
+				 * are never EC-redundant and always fall through.
+				 */
+				if (yb_bnl_joinclauses_share_parent_ec(joinclauses,
+													   joinrestrictclauses,
+													   rinfo->parent_ec))
+					continue;
+
+				if (IS_OUTER_JOIN(best_path->jpath.jointype) &&
+					RINFO_IS_PUSHED_DOWN(rinfo,
+										 best_path->jpath.path.parent->relids))
+				{
+					if (!yb_clause_list_contains_equivalent(otherclauses,
+															(Node *) rinfo->clause) &&
+						!yb_clause_list_contains_equivalent(recheck_otherclauses,
+															(Node *) rinfo->clause))
+						recheck_otherclauses =
+							lappend(recheck_otherclauses, rinfo->clause);
+				}
+				else if (!yb_clause_list_contains_equivalent(joinclauses,
+															 (Node *) rinfo->clause) &&
+						 !yb_clause_list_contains_equivalent(recheck_joinclauses,
+															 (Node *) rinfo->clause))
+				{
+					recheck_joinclauses =
+						lappend(recheck_joinclauses, rinfo->clause);
+				}
 			}
+		}
+		joinclauses = list_concat(recheck_joinclauses, joinclauses);
+		otherclauses = list_concat(recheck_otherclauses, otherclauses);
+		bms_free(available_rels);
+
+		yb_hashClauseInfos =
+			palloc0(list_length(joinclauses) * sizeof(YbBNLHashClauseInfo));
+
+		/* This length is later adjusted in setrefs.c. */
+		yb_num_hashClauseInfos = list_length(joinclauses);
+
+		YbBNLHashClauseInfo *current_hinfo = yb_hashClauseInfos;
+		List	   *inner_ppi_clauses =
+			best_path->jpath.innerjoinpath->param_info ?
+			best_path->jpath.innerjoinpath->param_info->ppi_clauses :
+			NIL;
+
+		foreach(l, joinclauses)
+		{
+			Node	   *clause = (Node *) lfirst(l);
+			Oid			hashOpno;
+
+			/*
+			 * Look up the originating RestrictInfo by pointer equality.
+			 * For original clauses the rinfo is in joinrestrictclauses; for
+			 * recheck-prepended clauses (added above from the inner path's
+			 * absorbed batched equalities) the rinfo is in ppi_clauses.
+			 * Searching both keeps slot/clause alignment without tracking
+			 * origin per clause.
+			 */
+			hashOpno = yb_bnl_compute_hash_op(clause,
+											  joinrestrictclauses,
+											  batched_outerrelids,
+											  inner_relids);
+
+			if (!OidIsValid(hashOpno))
+				hashOpno = yb_bnl_compute_hash_op(clause,
+												  inner_ppi_clauses,
+												  batched_outerrelids,
+												  inner_relids);
 
 			current_hinfo->hashOp = hashOpno;
 			current_hinfo++;
 		}
+
+		/*
+		 * BNL correctness invariants.  Verified here while the
+		 * RestrictInfos behind joinclauses are still reachable via pointer
+		 * equality (replace_nestloop_params, below, rewrites the bare
+		 * clauses by substituting outer-rel Vars with Params and would
+		 * break list_member_ptr lookups).
+		 *
+		 *   1. joinclauses must be non-empty.  An empty Join Filter means
+		 *      the BNL relies entirely on the inner-side batched ANY() to
+		 *      enforce the join condition, which is unsafe whenever the
+		 *      batched form over-approximates the original predicate
+		 *      (e.g. see #31724).
+		 *   2. At least one Join Filter clause must be a mergejoinable
+		 *      batched equality so the recheck can authoritatively reject
+		 *      tuples that matched the batched index qual but not the
+		 *      scalar predicate.
+		 *
+		 * Both invariants must hold regardless of yb_bnl_enable_hashing,
+		 * which is PGC_USERSET and only affects executor strategy choice.
+		 */
+		Assert(joinclauses != NIL);
+		Assert(yb_bnl_joinclauses_have_batched_mergejoinable(joinclauses,
+			   joinrestrictclauses,
+			   best_path->jpath.innerjoinpath->param_info ?
+			   best_path->jpath.innerjoinpath->param_info->ppi_clauses :
+			   NIL,
+			   batched_outerrelids,
+			   inner_relids));
 
 		/* If there is a limit and yb_bnl_optimize_first_batch is on. */
 		if (yb_bnl_optimize_first_batch && root->limit_tuples)

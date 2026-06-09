@@ -16,7 +16,10 @@ import { useEditUniverseContext } from '../EditUniverseUtils';
 
 import Close from '../../../../assets/close rounded inverted.svg';
 import YBLogo from '../../../../assets/yb_logo.svg';
-import { getResilienceAndRegionsProps } from './EditPlacementUtils';
+import {
+  getNodesAvailabilityDefaultsForEditPlacement,
+  getResilienceAndRegionsProps
+} from './EditPlacementUtils';
 
 const { styled, Grid2: Grid, Typography } = mui;
 
@@ -34,7 +37,8 @@ interface EditPlacementProps {
   onHide: () => void;
   skipResilienceAndRegionsStep?: boolean;
   selectedPartitionUUID?: string;
-  onSubmit: (context: EditPlacementContextProps) => void;
+  isSubmittingPlacementUpdate?: boolean;
+  onSubmit: (context: EditPlacementContextProps, onSuccess?: () => void) => void;
 }
 
 export const EditPlacement: FC<EditPlacementProps> = ({
@@ -42,6 +46,7 @@ export const EditPlacement: FC<EditPlacementProps> = ({
   onHide,
   skipResilienceAndRegionsStep = false,
   selectedPartitionUUID,
+  isSubmittingPlacementUpdate = false,
   onSubmit
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
@@ -51,7 +56,8 @@ export const EditPlacement: FC<EditPlacementProps> = ({
   });
   const { universeData, providerRegions } = useEditUniverseContext();
   const activeStep = editPlacementContext[0].activeStep;
-  const { resetContext, setActiveStep, setResilience } = editPlacementContext[1];
+  const { resetContext, setActiveStep, setNodesAndAvailability, setResilience } =
+    editPlacementContext[1];
 
   const steps = useMemo(() => {
     return [
@@ -70,13 +76,24 @@ export const EditPlacement: FC<EditPlacementProps> = ({
   }, []);
 
   useEffect(() => {
-    if (skipResilienceAndRegionsStep) {
+    if (!visible) {
+      resetContext();
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (skipResilienceAndRegionsStep && visible) {
       const regions = getResilienceAndRegionsProps(
         universeData!,
         providerRegions,
         selectedPartitionUUID
       );
+      const nodesAndAvailability = getNodesAvailabilityDefaultsForEditPlacement(
+        universeData!,
+        selectedPartitionUUID
+      );
       setResilience(regions);
+      setNodesAndAvailability(nodesAndAvailability);
       setActiveStep(EditPlacementSteps.NODES_AND_AVAILABILITY_ZONES);
     }
   }, [visible, skipResilienceAndRegionsStep, selectedPartitionUUID]);
@@ -96,7 +113,7 @@ export const EditPlacement: FC<EditPlacementProps> = ({
         value={
           ([
             ...editPlacementContext,
-            { hideModal, selectedPartitionUUID, onSubmit }
+            { hideModal, selectedPartitionUUID, isSubmittingPlacementUpdate, onSubmit }
           ] as unknown) as EditPlacementContextProps
         }
       >

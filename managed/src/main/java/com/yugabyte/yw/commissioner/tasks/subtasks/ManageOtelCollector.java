@@ -5,11 +5,12 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
-import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeAgentClient;
+import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -19,8 +20,6 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -59,6 +58,7 @@ public class ManageOtelCollector extends NodeTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
+    Cluster nodeCluster = universe.getCluster(node.placementUuid);
     taskParams().useSudo =
         isTServerServiceSystemLevel(universe, node) && taskParams().installOtelCollector;
 
@@ -66,33 +66,28 @@ public class ManageOtelCollector extends NodeTaskBase {
         "Managing OpenTelemetry collector on instance {} with useSudo set to {}",
         taskParams().nodeName,
         taskParams().useSudo);
-    Optional<NodeAgent> optional =
-        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
-            ? Optional.empty()
-            : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-                getUniverse(), node, true /*check feature flag*/);
-
-    if (optional.isPresent()) {
+    boolean isNodeAgentSupported =
+        NodeAgentClient.isCloudTypeSupported(nodeCluster.userIntent.providerType);
+    if (isNodeAgentSupported) {
+      NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(node.cloudInfo.private_ip);
       log.info("Configuring otel-collector using node-agent");
       if (taskParams().otelCollectorEnabled) {
         nodeAgentClient.runInstallOtelCollector(
-            optional.get(),
+            nodeAgent,
             nodeAgentRpcPayload.setupInstallOtelCollectorBits(
-                universe, node, taskParams(), optional.get()),
+                universe, node, taskParams(), nodeAgent),
             NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
     } else {
-      log.info("Configuring otel-collector using ansible");
+      log.info("Configuring otel-collector using legacy mode without node-agent");
       getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Manage_Otel_Collector, taskParams())
+          .nodeCommand(NodeCommandType.Manage_Otel_Collector, taskParams())
           .processErrors();
     }
   }
 
   private boolean isTServerServiceSystemLevel(Universe universe, NodeDetails node) {
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getPrimaryCluster();
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getProviderForNode(node, universe);
     String ybHomeDir = provider.getYbHome();
     log.debug("Using ybHomeDir {} to check for the tserver service unit file", ybHomeDir);
     String serviceFilePath = String.format("%s/.config/systemd/user/yb-tserver.service", ybHomeDir);

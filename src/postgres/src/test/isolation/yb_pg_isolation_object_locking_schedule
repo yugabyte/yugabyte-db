@@ -1,0 +1,5 @@
+test: fk-partitioned-1
+test: propagate-lock-delete
+test: yb.port.sequence-ddl
+test: partition-concurrent-attach
+test: truncate-conflict

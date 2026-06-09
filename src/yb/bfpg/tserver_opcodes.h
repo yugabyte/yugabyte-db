@@ -24,8 +24,7 @@
 namespace yb {
 namespace bfpg {
 
-YB_DEFINE_ENUM(
-  TSOpcode,
+YB_DEFINE_ENUM(TSOpcode,
   ((kNoOp, 0))
 
   (kWriteTime)

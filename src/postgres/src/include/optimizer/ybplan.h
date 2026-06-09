@@ -45,6 +45,10 @@ extern void yb_extract_pushdown_clauses(List *restrictinfo_list,
 										List **idx_colrefs, Oid relid,
 										Bitmapset *non_pushable_attnums);
 
+extern void yb_extract_pushdown_clauses_from_index_predicate(List *expr_list, List **local_quals,
+													   List **rel_remote_quals, List **rel_colrefs,
+													   Oid relid);
+
 /* YbSkippableEntities helper functions */
 extern YbSkippableEntities *YbInitSkippableEntities(List *no_update_index_list);
 extern void YbCopySkippableEntities(YbSkippableEntities *dst,
@@ -57,3 +61,13 @@ extern void YbClearSkippableEntities(YbSkippableEntities *skip_entities);
 extern struct YbUpdateAffectedEntities *YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 																			 const Relation rel,
 																			 Bitmapset *update_attrs);
+
+struct PlannerInfo;
+struct RelOptInfo;
+struct RangeTblEntry;
+
+extern Bitmapset *YbExtractFederatedTserverFilter(struct PlannerInfo *root,
+												  struct RelOptInfo *rel,
+												  struct RangeTblEntry *rte,
+												  YbcServerDescriptor *servers,
+												  size_t nservers);

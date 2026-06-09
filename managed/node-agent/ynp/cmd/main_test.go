@@ -63,6 +63,20 @@ func testRootCmd() *cobra.Command {
 	}
 }
 
+func getScriptPath(t *testing.T, tmpPath string, suffix string) string {
+	entries, err := os.ReadDir(tmpPath)
+	if err != nil {
+		t.Fatalf("Failed to read directory: %v", err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), suffix) {
+			return filepath.Join(tmpPath, entry.Name())
+		}
+	}
+	t.Fatalf("No script found with suffix %s", suffix)
+	return ""
+}
+
 // Check for the presence of the overridden config values in the generated config.ini file.
 func checkLine(t *testing.T, iniFile string, searchStrings []string) {
 	file, err := os.Open(iniFile)
@@ -320,4 +334,50 @@ func TestEnabledModuleInvalidTemplatePath(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "otelcol does not exist for module ConfigureOtelcol") {
 		t.Fatalf("Expected error about invalid template path, got %v", err)
 	}
+}
+
+func TestYNPProvisionWithYbHomeDir(t *testing.T) {
+	configPath := configFilePath(t, ynpCloudConfig)
+	projectDir := os.Getenv("PROJECT_DIR")
+	ynpBasePath := filepath.Join(projectDir, "resources/ynp")
+	yamlConfigPath := filepath.Join(projectDir, "resources/node-agent-provision.yaml")
+	tmpDir, err := os.MkdirTemp("/tmp", "ynp-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temporary directory: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	testRootCmd := testRootCmd()
+	testRootCmd.SetArgs([]string{
+		"--ynp_base_path",
+		ynpBasePath,
+		"--config_file",
+		yamlConfigPath,
+		"--extra_vars",
+		configPath,
+		"--dry_run",
+		"--skip_module",
+		"InstallNodeAgent", /* This needs YBA */
+		"--skip_module",
+		"ConfigureSystemd", /* This requires some setup */
+		"--config_override",
+		`ynp.yb_home_dir="/home/yugabyte"`,
+		"--config_override",
+		`ynp.yb_user_home="/home/software"`,
+		"--config_override",
+		`ynp.tmp_directory="` + tmpDir + `"`,
+	})
+	setupCommand(testRootCmd)
+	if err := testRootCmd.Execute(); err != nil {
+		t.Fatalf("Error executing command: %v\n", err)
+	}
+	t.Logf("Generated scripts in %s", tmpDir)
+	iniFile := filepath.Join(ynpBasePath, "configs/config.ini")
+	checkLine(t, iniFile, []string{
+		"yb_home_dir = /home/yugabyte",
+		"yb_user_home = /home/software",
+	})
+	// Verify the precheck script is present.
+	getScriptPath(t, tmpDir, "_precheck")
+	// Verify the precheck script is present.
+	getScriptPath(t, tmpDir, "_run")
 }

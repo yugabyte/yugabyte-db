@@ -257,6 +257,9 @@ extern void *build_reloptions(Datum reloptions, bool validate,
 							  Size relopt_struct_size,
 							  const relopt_parse_elt *relopt_elems,
 							  int num_relopt_elems);
+
+/* YB: register "colocation_id" for a custom AM's relopt_kind. */
+extern void YbAddColocationIdReloption(bits32 kinds);
 extern void *build_local_reloptions(local_relopts *relopts, Datum options,
 									bool validate);
 

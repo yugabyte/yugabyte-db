@@ -14,6 +14,7 @@ import { HelpOutline } from '@material-ui/icons';
 import Return from '../../../../../assets/tree.svg';
 import RemoveIcon from '../../../../../assets/close-large.svg';
 import BookIcon from '../../../../../assets/blue-book.svg';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../helpers/constants';
 
 const { MenuItem, Typography, IconButton, Link, styled } = mui;
 
@@ -115,23 +116,33 @@ export const Zone: FC<ZoneProps> = ({
       values(availabilityZones ?? {})
         .map((az) => az.map((zone) => zone.preffered))
         .flat()
-        .reduce((a, b) => Math.max(a, b), -1),
+        .filter((rank) => rank > AZ_NOT_PREFERRED)
+        .reduce(
+          (maxRank, rank) => Math.max(maxRank, rank),
+          AZ_NOT_PREFERRED
+        ),
     [availabilityZones]
   );
 
   const preferredMenuItems = isPrefferedAllowed
-    ? Array.from({ length: zonesCount }, (_, i) => (
-      <StyledPreferedMenuItem key={i} value={i} disabled={i > maxPrefferedRankSelected + 1}>
-        <Typography variant="body1">{`Rank ${i + 1}`}</Typography>
+    ? Array.from({ length: zonesCount }, (_, i) => i + AZ_PREFFERED_HIGHEST_RANK).map((rank) => (
+      <StyledPreferedMenuItem
+        key={rank}
+        value={rank}
+        disabled={rank > maxPrefferedRankSelected + 1}
+      >
+        <Typography variant="body1">{`Rank ${rank}`}</Typography>
         <Typography variant="subtitle1">
-          {i === 0 ? 'Default Preferred Zone' : 'Preferred zone if higher-rank zones fail.'}
+          {rank === AZ_PREFFERED_HIGHEST_RANK
+            ? 'Default Preferred Zone'
+            : 'Preferred zone if higher-rank zones fail.'}
         </Typography>
       </StyledPreferedMenuItem>
     ))
     : null;
 
   preferredMenuItems?.unshift(
-    <StyledPreferedMenuItem key="no-option-selected" value={-1}>
+    <StyledPreferedMenuItem key="no-option-selected" value={AZ_NOT_PREFERRED}>
       <Typography variant="body1">No</Typography>
       <Typography variant="subtitle1">Not Preferred</Typography>
     </StyledPreferedMenuItem>
@@ -193,7 +204,11 @@ export const Zone: FC<ZoneProps> = ({
             onChange={(e) => {
               const selectedZone = region.zones.find((z) => z.name === e.target.value);
               if (selectedZone) {
-                field.onChange({ ...field.value, ...selectedZone });
+                field.onChange({
+                  ...selectedZone,
+                  nodeCount: zone.nodeCount ?? field.value?.nodeCount,
+                  preffered: zone.preffered ?? field.value?.preffered
+                });
               }
             }}
             menuProps={menuProps}
@@ -284,7 +299,7 @@ export const Zone: FC<ZoneProps> = ({
               }}
               menuProps={menuProps}
               renderValue={(value) => {
-                return value === -1 ? 'No' : `Rank ${parseInt(value as string) + 1}`;
+                return value === AZ_NOT_PREFERRED ? 'No' : `Rank ${value}`;
               }}
               dataTestId="availability-zone-preferred-select"
             >

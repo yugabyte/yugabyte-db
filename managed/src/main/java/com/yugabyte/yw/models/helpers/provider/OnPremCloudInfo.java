@@ -32,6 +32,11 @@ public class OnPremCloudInfo implements CloudInfoInterface {
   @EditableInUseProvider(name = "Configure and use clockbound", allowed = true)
   public boolean useClockbound;
 
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1")
+  @ApiModelProperty(value = "WARNING: This is a preview API that could change.")
+  @EditableInUseProvider(name = "Enable multi-tenancy", allowed = true)
+  public boolean enableMultiTenancy;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();

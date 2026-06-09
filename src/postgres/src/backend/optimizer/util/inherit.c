@@ -37,6 +37,8 @@
 
 /* YB includes */
 #include "executor/ybExpr.h"
+#include "optimizer/ybplan.h"
+#include "partitioning/partbounds.h"
 #include "pg_yb_utils.h"
 
 
@@ -59,6 +61,10 @@ static Bitmapset *translate_col_privs_multilevel(PlannerInfo *root,
 												 Bitmapset *parent_cols);
 static void expand_appendrel_subquery(PlannerInfo *root, RelOptInfo *rel,
 									  RangeTblEntry *rte, Index rti);
+static void yb_expand_federated_rtentry(PlannerInfo *root, RelOptInfo *rel,
+										RangeTblEntry *parentrte,
+										Index parentRTindex,
+										Relation parentrel);
 
 
 /*
@@ -136,6 +142,20 @@ expand_inherited_rtentry(PlannerInfo *root, RelOptInfo *rel,
 		oldrc->isParent = true;
 		/* Save initial value of allMarkTypes before children add to it */
 		old_allMarkTypes = oldrc->allMarkTypes;
+	}
+
+	/*
+	 * YB: Federated YugabyteDB foreign tables are expanded into per-tserver
+	 * children, each scanning a single tserver. This lets the standard
+	 * append-rel machinery (Append, MergeAppend, partitionwise aggregation)
+	 * work automatically.
+	 */
+	if (rte->relkind == RELKIND_FOREIGN_TABLE &&
+		yb_is_federated_yb_foreign_table(rte->relid))
+	{
+		yb_expand_federated_rtentry(root, rel, rte, rti, oldrelation);
+		table_close(oldrelation, NoLock);
+		return;
 	}
 
 	/* Scan the inheritance set and expand it */
@@ -982,4 +1002,138 @@ apply_child_basequals(PlannerInfo *root, RelOptInfo *parentrel,
 	childrel->baserestrict_min_security = cq_min_security;
 
 	return true;
+}
+
+/*
+ * yb_expand_federated_rtentry
+ *		Expand a federated YugabyteDB foreign table into per-tserver children.
+ *
+ * This is analogous to expand_partitioned_rtentry: for each requested tserver
+ * we create a child RTE (with the same foreign-table OID), an AppendRelInfo
+ * with identity column mapping, and a child RelOptInfo. The mapping from
+ * each child's RT index to its target tserver UUID is recorded in
+ * PlannerInfo.yb_tserver_uuids; postgres_fdw's GetForeignRelSize callback
+ * later reads it back and stores the UUID in PgFdwRelationInfo.
+ * The planner then treats the parent as an append relation and generates
+ * Append / MergeAppend paths automatically.
+ *
+ * If the parent rel's baserestrictinfo restricts the hardcoded
+ * "tserver_uuid" column to a known UUID set, we apply that filter here -
+ * mirroring expand_partitioned_rtentry's plan-time partition pruning - so
+ * that filtered-out tservers never get a child RTE/RelOptInfo and no rows
+ * from them make it into the plan.
+ *
+ * We also populate the partition metadata fields (part_scheme, boundinfo,
+ * nparts, part_rels, live_parts) on the parent RelOptInfo so that
+ * IS_PARTITIONED_REL() returns true. This enables partitionwise aggregation
+ * in the core planner: each per-tserver child can compute a partial
+ * aggregate that gets combined by a finalize aggregate at the top.
+ */
+static void
+yb_expand_federated_rtentry(PlannerInfo *root, RelOptInfo *rel,
+							RangeTblEntry *parentrte, Index parentRTindex,
+							Relation parentrel)
+{
+	YbcServerDescriptor *servers;
+	size_t		nservers;
+	size_t		i;
+	PartitionScheme part_scheme;
+	PartitionBoundInfo boundinfo;
+	/* Indexes into 'servers' that survive plan-time pruning */
+	Bitmapset  *requested_servers;
+	int			num_requested;
+	int			idx;
+
+	/*
+	 * TODO(#30918): The tserver list is captured at plan time. Cached plans
+	 * (prepared statements, PL/pgSQL) are not invalidated when the tserver
+	 * topology changes, so a scale-up/down may leave stale children.
+	 *
+	 * The UUID strings are palloc-ed by YBCGetTabletServerHosts() in the
+	 * planner's memory context, so they live as long as the plan tree
+	 * produced for this query.  postgres_fdw later copies them into String
+	 * nodes inside ForeignScan->fdw_private (see postgresGetForeignPlan),
+	 * which is what query execution actually reads.
+	 */
+	HandleYBStatus(YBCGetTabletServerHosts(&servers, &nservers));
+
+	/*
+	 * Plan-time pruning: if the parent rel's baserestrictinfo restricts the
+	 * tserver_uuid column to a known set, only the matching tservers survive.
+	 * When no restriction is recognized the bitmap has every index set, so
+	 * the iteration below visits every tserver.
+	 */
+	requested_servers = YbExtractFederatedTserverFilter(root, rel, parentrte,
+														servers, nservers);
+	num_requested = bms_num_members(requested_servers);
+
+	/*
+	 * Build a minimal PartitionScheme with zero partition-key columns. The
+	 * core planner checks IS_PARTITIONED_REL to decide whether to attempt
+	 * partitionwise aggregation (see create_ordinary_grouping_paths).
+	 */
+	part_scheme = (PartitionScheme) palloc0(sizeof(PartitionSchemeData));
+	part_scheme->strategy = PARTITION_STRATEGY_HASH;
+	part_scheme->partnatts = 0;
+
+	/*
+	 * Build a minimal PartitionBoundInfo. IS_PARTITIONED_REL requires it to
+	 * be non-NULL too. We keep one slot per tserver (including pruned ones,
+	 * which will have NULL part_rels entries) - this mirrors how
+	 * expand_partitioned_rtentry leaves NULL slots for pruned partitions.
+	 */
+	boundinfo = (PartitionBoundInfo) palloc0(sizeof(PartitionBoundInfoData));
+	boundinfo->strategy = PARTITION_STRATEGY_HASH;
+	boundinfo->ndatums = (int) nservers;
+	boundinfo->nindexes = (int) nservers;
+	boundinfo->indexes = (int *) palloc(sizeof(int) * nservers);
+
+	for (i = 0; i < nservers; i++)
+		boundinfo->indexes[i] = (int) i;
+
+	boundinfo->null_index = -1;
+	boundinfo->default_index = -1;
+
+	rel->part_scheme = part_scheme;
+	rel->boundinfo = boundinfo;
+	rel->nparts = (int) nservers;
+	rel->part_rels = (RelOptInfo **) palloc0(sizeof(RelOptInfo *) * nservers);
+
+	/* Nothing more to do if pruning removed every tserver. */
+	if (num_requested == 0)
+		return;
+
+	expand_planner_arrays(root, num_requested);
+
+	idx = -1;
+	while ((idx = bms_next_member(requested_servers, idx)) >= 0)
+	{
+		RangeTblEntry *childrte;
+		Index		childRTindex;
+		RelOptInfo *childrel;
+
+		/*
+		 * Create the child RTE and AppendRelInfo. Since every child targets
+		 * the same foreign table, we pass parentrel as both the parent and
+		 * child relation, which produces an identity column mapping in the
+		 * AppendRelInfo.
+		 */
+		expand_single_inheritance_child(root, parentrte, parentRTindex,
+										parentrel, NULL, parentrel,
+										&childrte, &childRTindex);
+
+		childrel = build_simple_rel(root, childRTindex, rel);
+
+		/*
+		 * Record the child -> tserver mapping in PlannerInfo so that
+		 * postgresGetForeignRelSize() can look it up and store the UUID in
+		 * PgFdwRelationInfo
+		 */
+		YbAddFederatedPartitionTserverUuid(root, childRTindex,
+										   servers[idx].uuid);
+		rel->part_rels[idx] = childrel;
+		rel->live_parts = bms_add_member(rel->live_parts, idx);
+		rel->all_partrels = bms_add_members(rel->all_partrels,
+											childrel->relids);
+	}
 }

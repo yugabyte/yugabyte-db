@@ -12,6 +12,8 @@ menu:
     parent: migration-types
     weight: 102
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The following page describes the steps to perform and verify a successful offline migration to YugabyteDB.

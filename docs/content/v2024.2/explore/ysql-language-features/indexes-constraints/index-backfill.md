@@ -149,5 +149,5 @@ This should give you an output similar to the following when an index is being b
 ## Learn more
 
 - [Primary keys](../primary-key-ysql/)
-- [Secondary indexes](../secondary-indexes-ysql)
-- [Optimize query performance](../../../../launch-and-manage/monitor-and-alert/query-tuning)
+- [Secondary indexes](../secondary-indexes-ysql/)
+- [Optimize query performance](../../../../launch-and-manage/monitor-and-alert/query-tuning/)

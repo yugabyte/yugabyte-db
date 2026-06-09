@@ -36,8 +36,6 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -69,7 +67,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -613,7 +610,12 @@ public class GCPUtil implements CloudUtil {
             EXPECTATION_FAILED, "Error while creating Storage service from GCS Data!");
       }
 
-      validateOnLocation(storage, YbcBackupUtil.DEFAULT_REGION_STRING, configData, permissions);
+      validateOnLocation(
+          storage,
+          YbcBackupUtil.DEFAULT_REGION_STRING,
+          configData,
+          permissions,
+          gcsData.immutableStorage);
 
       if (CollectionUtils.isNotEmpty(gcsData.regionLocations)) {
         for (RegionLocations location : gcsData.regionLocations) {
@@ -622,7 +624,8 @@ public class GCPUtil implements CloudUtil {
                 EXPECTATION_FAILED, "Region of a location cannot be empty.");
           }
 
-          validateOnLocation(storage, location.region, configData, permissions);
+          validateOnLocation(
+              storage, location.region, configData, permissions, gcsData.immutableStorage);
         }
       }
     } else {
@@ -638,7 +641,8 @@ public class GCPUtil implements CloudUtil {
       Storage storage,
       String bucketName,
       String prefix,
-      List<ExtraPermissionToValidate> permissions) {
+      List<ExtraPermissionToValidate> permissions,
+      boolean skipDelete) {
     Optional<ExtraPermissionToValidate> unsupportedPermission =
         permissions.stream()
             .filter(
@@ -668,7 +672,9 @@ public class GCPUtil implements CloudUtil {
       validateListBlobs(storage, bucketName, completeFileName);
     }
 
-    validateDelete(storage, bucketName, completeFileName);
+    if (!skipDelete) {
+      validateDelete(storage, bucketName, completeFileName);
+    }
   }
 
   /**
@@ -679,9 +685,10 @@ public class GCPUtil implements CloudUtil {
       Storage storage,
       String region,
       CustomerConfigData configData,
-      List<ExtraPermissionToValidate> permissions) {
+      List<ExtraPermissionToValidate> permissions,
+      boolean skipDelete) {
     CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, null);
-    validateOnBucket(storage, cLInfo.bucket, cLInfo.cloudPath, permissions);
+    validateOnBucket(storage, cLInfo.bucket, cLInfo.cloudPath, permissions, skipDelete);
   }
 
   /**
@@ -754,39 +761,19 @@ public class GCPUtil implements CloudUtil {
     return new String(readBytes);
   }
 
-  public UniverseInterruptionResult spotInstanceUniverseStatus(Universe universe) {
-    UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
-
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    Provider primaryClusterProvider =
-        Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-    GCPCloudInfo primaryGcpInfo = primaryClusterProvider.getDetails().getCloudInfo().getGcp();
+  public void addSpotInstanceUniverseStatus(
+      UniverseInterruptionResult result,
+      NodeDetails nodeDetails,
+      Universe universe,
+      Provider provider) {
+    GCPCloudInfo primaryGcpInfo = provider.getDetails().getCloudInfo().getGcp();
     String startTime = universe.getCreationDate().toInstant().toString().substring(0, 10);
-    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
-
-    // For nodes in primary cluster
-    for (final NodeDetails nodeDetails : universe.getNodesInCluster(primaryClusterUUID)) {
-      result.addNodeStatus(
-          nodeDetails.nodeName,
-          isSpotInstanceInterrupted(
-                  nodeDetails.nodeName, nodeDetails.getZone(), startTime, primaryGcpInfo)
-              ? InterruptionStatus.Interrupted
-              : InterruptionStatus.NotInterrupted);
-    }
-    // For nodes in read replicas
-    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      GCPCloudInfo gcpInfo = provider.getDetails().getCloudInfo().getGcp();
-      for (final NodeDetails nodeDetails : universe.getNodesInCluster(cluster.uuid)) {
-        result.addNodeStatus(
-            nodeDetails.nodeName,
-            isSpotInstanceInterrupted(
-                    nodeDetails.nodeName, nodeDetails.getZone(), startTime, gcpInfo)
-                ? InterruptionStatus.Interrupted
-                : InterruptionStatus.NotInterrupted);
-      }
-    }
-    return result;
+    result.addNodeStatus(
+        nodeDetails.nodeName,
+        isSpotInstanceInterrupted(
+                nodeDetails.nodeName, nodeDetails.getZone(), startTime, primaryGcpInfo)
+            ? InterruptionStatus.Interrupted
+            : InterruptionStatus.NotInterrupted);
   }
 
   private boolean isSpotInstanceInterrupted(

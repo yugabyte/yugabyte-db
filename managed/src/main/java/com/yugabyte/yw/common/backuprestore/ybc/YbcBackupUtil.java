@@ -845,6 +845,9 @@ public class YbcBackupUtil {
     if (proxyConfig != null) {
       cloudStoreConfigBuilder.setProxyConfig(proxyConfig);
     }
+    boolean immutableStorage =
+        ((CustomerConfigStorageData) config.getDataObject()).immutableStorage;
+    cloudStoreConfigBuilder.setSkipDeleteTest(immutableStorage);
     return cloudStoreConfigBuilder.build();
   }
 
@@ -867,7 +870,9 @@ public class YbcBackupUtil {
         storageUtilFactory
             .getStorageUtil(config.getName())
             .createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, null, pConfig);
+    boolean immutableStorage =
+        ((CustomerConfigStorageData) config.getDataObject()).immutableStorage;
+    return getCloudStoreConfig(defaultSpec, null, pConfig, immutableStorage, false);
   }
 
   // TODO: Add per-region spec for in the next cut.
@@ -886,7 +891,7 @@ public class YbcBackupUtil {
         storageUtilFactory
             .getStorageUtil(config.getName())
             .createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, null, pConfig);
+    return getCloudStoreConfig(defaultSpec, null, pConfig, true, true);
   }
 
   public CloudStoreConfig createRestoreConfig(
@@ -914,7 +919,7 @@ public class YbcBackupUtil {
         storageUtilFactory
             .getStorageUtil(config.getName())
             .createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, regionSpecMap, pConfig);
+    return getCloudStoreConfig(defaultSpec, regionSpecMap, pConfig, true, true);
   }
 
   public CloudStoreConfig createDsmConfig(
@@ -924,13 +929,15 @@ public class YbcBackupUtil {
     CloudStoreSpec defaultSpec =
         storageUtil.createDsmCloudStoreSpec(defaultBackupLocation, configData, universe);
     ProxyConfig pConfig = storageUtil.createYbcProxyConfig(universe, config.getDataObject());
-    return getCloudStoreConfig(defaultSpec, null, pConfig);
+    return getCloudStoreConfig(defaultSpec, null, pConfig, true, true);
   }
 
   public static CloudStoreConfig getCloudStoreConfig(
       CloudStoreSpec defaultSpec,
       @Nullable Map<String, CloudStoreSpec> regionSpecMap,
-      @Nullable ProxyConfig proxyConfig) {
+      @Nullable ProxyConfig proxyConfig,
+      boolean skipDeleteTest,
+      boolean skipWriteTest) {
     CloudStoreConfig.Builder csConfigBuilder = CloudStoreConfig.newBuilder();
     csConfigBuilder.setDefaultSpec(defaultSpec);
     if (MapUtils.isNotEmpty(regionSpecMap)) {
@@ -939,6 +946,8 @@ public class YbcBackupUtil {
     if (proxyConfig != null) {
       csConfigBuilder.setProxyConfig(proxyConfig);
     }
+    csConfigBuilder.setSkipDeleteTest(skipDeleteTest);
+    csConfigBuilder.setSkipWriteTest(skipWriteTest);
     return csConfigBuilder.build();
   }
 

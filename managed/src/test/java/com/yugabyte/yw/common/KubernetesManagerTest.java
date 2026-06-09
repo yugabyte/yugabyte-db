@@ -49,7 +49,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -515,7 +514,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
           universe.getUniverseDetails().getClusterByType(clusterType);
       UniverseDefinitionTaskParams.Cluster cluster = clusters.isEmpty() ? null : clusters.get(0);
 
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(cluster);
       Set<String> helmReleaseNames = new HashSet<>();
       boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
       for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {

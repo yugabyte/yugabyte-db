@@ -52,6 +52,8 @@ class LocalOutboundCall : public OutboundCall {
 
   bool is_local() const override { return true; }
 
+  ThreadPoolTag pool_tag() const;
+
  protected:
   void Serialize(ByteBlocks* output) override;
 
@@ -79,6 +81,8 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
   const Endpoint& remote_address() const override;
   const Endpoint& local_address() const override;
   CoarseTimePoint GetClientDeadline() const override { return deadline_; }
+
+  ThreadPoolTag pool_tag() const override;
 
   Status ParseParam(RpcCallParams* params) override;
 

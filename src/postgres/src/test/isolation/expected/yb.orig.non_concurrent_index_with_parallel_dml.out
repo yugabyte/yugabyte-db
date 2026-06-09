@@ -1,0 +1,116 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1begin s1update s2begin s2indexcreate s1commit s2select s2commit s2indexcheck
+step s1begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1update: UPDATE test SET v=100 WHERE k=4;
+step s2begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+s2: NOTICE:  making create index for table "test" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+step s2indexcreate: CREATE INDEX idx_test ON test(v); <waiting ...>
+step s1commit: COMMIT;
+step s2indexcreate: <... completed>
+step s2select: SELECT * FROM test ORDER BY k;
+ k|  v
+--+---
+ 1|  1
+ 2|  2
+ 3|  3
+ 4|100
+ 5|  5
+ 6|  6
+ 7|  7
+ 8|  8
+ 9|  9
+10| 10
+(10 rows)
+
+step s2commit: COMMIT;
+step s2indexcheck: SELECT yb_index_check('idx_test'::regclass);
+yb_index_check
+--------------
+              
+(1 row)
+
+
+starting permutation: s1begin s1update s2begin s2select s2indexcreate s1commit s2select s2commit s2indexcheck
+step s1begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1update: UPDATE test SET v=100 WHERE k=4;
+step s2begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2select: SELECT * FROM test ORDER BY k;
+ k| v
+--+--
+ 1| 1
+ 2| 2
+ 3| 3
+ 4| 4
+ 5| 5
+ 6| 6
+ 7| 7
+ 8| 8
+ 9| 9
+10|10
+(10 rows)
+
+s2: NOTICE:  making create index for table "test" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+step s2indexcreate: CREATE INDEX idx_test ON test(v); <waiting ...>
+step s1commit: COMMIT;
+step s2indexcreate: <... completed>
+step s2select: SELECT * FROM test ORDER BY k;
+ k| v
+--+--
+ 1| 1
+ 2| 2
+ 3| 3
+ 4| 4
+ 5| 5
+ 6| 6
+ 7| 7
+ 8| 8
+ 9| 9
+10|10
+(10 rows)
+
+step s2commit: COMMIT;
+step s2indexcheck: SELECT yb_index_check('idx_test'::regclass);
+yb_index_check
+--------------
+              
+(1 row)
+
+
+starting permutation: s1begin s1update s2begin s2update s2indexcreate s1commit s2select s2commit s2indexcheck
+step s1begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1update: UPDATE test SET v=100 WHERE k=4;
+step s2begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2update: UPDATE test SET v=200 WHERE k=5;
+s2: NOTICE:  making create index for table "test" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+step s2indexcreate: CREATE INDEX idx_test ON test(v); <waiting ...>
+step s1commit: COMMIT;
+step s2indexcreate: <... completed>
+step s2select: SELECT * FROM test ORDER BY k;
+ k|  v
+--+---
+ 1|  1
+ 2|  2
+ 3|  3
+ 4|100
+ 5|200
+ 6|  6
+ 7|  7
+ 8|  8
+ 9|  9
+10| 10
+(10 rows)
+
+step s2commit: COMMIT;
+step s2indexcheck: SELECT yb_index_check('idx_test'::regclass);
+yb_index_check
+--------------
+              
+(1 row)
+

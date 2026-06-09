@@ -25,7 +25,9 @@ import java.sql.Statement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
@@ -41,6 +43,7 @@ import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
 import org.yb.pgsql.ConnectionBuilder;
+import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.ProcessUtil;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -60,7 +63,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
   private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
-  private static boolean ysql_conn_mgr_deallocate_if_invalid_prep_stmt = true;
+  private static boolean ysql_conn_mgr_enable_prep_stmt_close = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -82,8 +85,8 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
     builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
       Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
-    builder.addCommonTServerFlag("ysql_conn_mgr_deallocate_if_invalid_prep_stmt",
-      Boolean.toString(ysql_conn_mgr_deallocate_if_invalid_prep_stmt));
+    builder.addCommonTServerFlag("ysql_conn_mgr_enable_prep_stmt_close",
+      Boolean.toString(ysql_conn_mgr_enable_prep_stmt_close));
   }
 
   @Override
@@ -151,8 +154,6 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
       throws Exception {
     Map<String, String> tsFlagMap = new HashMap<>();
-    tsFlagMap.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
-        + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
     tsFlagMap.put("enable_ysql_conn_mgr", "true");
 
     // Keeping sane value for TTL based on GUC Adoption strategy, old backends to expire in 1 second
@@ -178,7 +179,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
     // ysql_conn_mgr_deallocate_prepared_statements can only be enabled if
     // optimized_extended_query_protocol is enabled.
-    ysql_conn_mgr_deallocate_if_invalid_prep_stmt = optimized_extended_query_protocol;
+    ysql_conn_mgr_enable_prep_stmt_close = optimized_extended_query_protocol;
     restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 
@@ -564,18 +565,20 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         },
         600000);
     LOG.info("initdb has completed successfully on master");
-    verifyClusterAcceptsPGConnections();
+    verifyClusterAcceptsConnMgrConnections();
   }
 
   public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
     return builder;
   }
 
-  public void verifyClusterAcceptsPGConnections() throws Exception {
+  public void verifyClusterAcceptsConnMgrConnections() throws Exception {
     LOG.info("Waiting for the cluster to accept pg connections");
     TestUtils.waitFor(() -> {
         try {
-          connectionBuilderForVerification(getConnectionBuilder()).connect().close();
+          connectionBuilderForVerification(
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR))
+                .connect().close();
           return true;
         } catch (Exception e) {
           return false;
@@ -665,5 +668,60 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         TestUtils.findBinary("yb-ts-cli"), "--server_address", server.toString(),
         "set_flag", flag, value);
     ProcessUtil.runProcess(args, 60 /* timeoutSeconds */);
+  }
+
+  protected static long getRssForPid(int pid) throws Exception {
+    Process process = Runtime.getRuntime().exec(
+        String.format("ps -p %d -o rss=", pid));
+    try (Scanner scanner = new Scanner(process.getInputStream())) {
+      return scanner.nextLong();
+    }
+  }
+
+  protected static int getOdysseyPid() throws Exception {
+    Process p = Runtime.getRuntime().exec(
+        new String[]{"/bin/sh", "-c", "pgrep -f odyssey | head -1"});
+    try (BufferedReader reader =
+             new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+      String line = reader.readLine();
+      if (line == null || line.trim().isEmpty()) {
+        throw new RuntimeException("Could not find Odyssey process via pgrep");
+      }
+      return Integer.parseInt(line.trim());
+    }
+  }
+
+  protected static int getOdysseyPidForHost(String host) throws Exception {
+    // Defensive: this value is spliced into a shell command below. Test code
+    // always passes an IPv4 literal or a hostname, but reject anything that
+    // could escape the single-quoted awk string.
+    if (host == null || !host.matches("[a-zA-Z0-9._-]+")) {
+      throw new IllegalArgumentException("Invalid host for odyssey lookup: " + host);
+    }
+
+    // For every odyssey PID pgrep finds, ask `ss` whether that PID owns a
+    // listening TCP socket whose local address starts with "<host>:". First
+    // match wins. The trailing comma in the awk match anchors "pid=<pid>"
+    // against the format `users:(("odyssey",pid=12345,fd=7))` so pid=12 does
+    // not accidentally match pid=1234.
+    String script =
+        "for pid in $(pgrep -f odyssey); do "
+        + "  if ss -H -lntp 2>/dev/null "
+        + "       | awk -v pid=\"$pid\" -v ip='" + host + "' "
+        + "             '$4 ~ (\"^\"ip\":\") && $0 ~ (\"pid=\"pid\",\") {f=1} "
+        + "              END { exit !f }'; "
+        + "  then echo \"$pid\"; exit 0; fi; "
+        + "done; "
+        + "exit 1";
+    Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", script});
+    try (BufferedReader reader =
+             new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+      String line = reader.readLine();
+      if (line == null || line.trim().isEmpty()) {
+        throw new RuntimeException(
+            "Could not find Odyssey process listening on host " + host);
+      }
+      return Integer.parseInt(line.trim());
+    }
   }
 }

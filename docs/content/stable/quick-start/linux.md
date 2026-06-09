@@ -58,21 +58,15 @@ The local cluster setup on a single host is intended for development and learnin
   </li>
 </ul>
 
-## Install YugabyteDB
-
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the YugabyteDB package](#download).
-
-### Prerequisites
+## Prerequisites
 
 {{% readfile "include-prerequisites-linux.md" %}}
 
-#### ulimits
+### ulimits
 
 Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](/stable/deploy/manual-deployment/system-config/#set-ulimits).
 
-### Download
-
-The following instructions are for downloading the Preview release of YugabyteDB, which is recommended for development and testing only. For other versions, see [Releases](/stable/releases/).
+## Download
 
 YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
@@ -136,17 +130,18 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 ## Migrate from PostgreSQL
 
-For PostgreSQL users seeking to transition to a modern, horizontally scalable database solution with built-in resilience, YugabyteDB offers a seamless lift-and-shift approach that ensures compatibility with PostgreSQL syntax and features while providing the scalability benefits of distributed SQL.
+[YugabyteDB Voyager](../../yugabyte-voyager/) simplifies moving applications from traditional RDBMS platforms to YugabyteDB. While YugabyteDB Voyager handles migration logistics, its primary value is modernizing your database architecture for cloud-native scale and performance.
 
-YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
+Voyager creates an end-to-end modernization workflow by analyzing multiple signals across your source database and application, including schema layout, IOPS and table/index access patterns, column count and row size, query plan efficiency, potential performance bottlenecks, extensions, and more.
 
-[YugabyteDB Voyager](/stable/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
+Key capabilities:
 
-You can [install](/stable/yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
+- Schema modernization: Evaluates and transforms features, data types, query constructs, and PL/pgSQL objects for optimal distributed database performance
+- Sizing recommendations: Provides accurate infrastructure sizing estimates
+- Performance analysis: Delivers workload analysis, optimization recommendations, and inefficiency identification
+- Migration planning: Estimates migration timeline for confident, predictable execution
 
-In addition to [offline migration](/stable/yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](/stable/yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](/stable/yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](/stable/yugabyte-voyager/migrate/live-fall-back/) capabilities.
-
-Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
+For more information, refer to [YugabyteDB Voyager](../../yugabyte-voyager/).
 
 ## Next steps
 

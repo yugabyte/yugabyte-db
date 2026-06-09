@@ -208,7 +208,15 @@ class PgClient {
 
   Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
 
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id);
+
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
+
+  struct DbColocationInfo {
+    bool colocated;
+    bool legacy_colocated_database;
+  };
+  Result<DbColocationInfo> IsDatabaseColocated(PgOid oid);
 
   Result<bool> PollVectorIndexReady(const PgObjectId& table_id);
 
@@ -259,14 +267,12 @@ class PgClient {
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
-                             bool is_db_catalog_version_mode,
                              int64_t last_val,
                              bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
-                                   bool is_db_catalog_version_mode,
                                    int64_t last_val,
                                    bool is_called,
                                    std::optional<int64_t> expected_last_val,
@@ -275,7 +281,6 @@ class PgClient {
   Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
                                                          int64_t seq_oid,
                                                          uint64_t ysql_catalog_version,
-                                                         bool is_db_catalog_version_mode,
                                                          uint32_t fetch_count,
                                                          int64_t inc_by,
                                                          int64_t min_value,
@@ -284,7 +289,7 @@ class PgClient {
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
       int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
-      bool is_db_catalog_version_mode, std::optional<uint64_t> read_time = std::nullopt);
+      std::optional<uint64_t> read_time = std::nullopt);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
@@ -304,6 +309,8 @@ class PgClient {
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<bool> IsNamespacePartOfCDCSDK(uint32_t database_oid);
 
   Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
@@ -389,8 +396,8 @@ class PgClient {
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
 
   Result<tserver::PgRemoteExecResponsePB> RemoteExec(
-      std::string_view query, const std::string& database_name,
-      const std::string& tserver_uuid, const std::vector<std::optional<std::string>>& params);
+      std::string_view query, std::string_view database_name, std::string_view tserver_uuid,
+      const std::vector<std::optional<std::string>>& params);
 
  private:
   class Impl;

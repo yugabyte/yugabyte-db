@@ -13,6 +13,7 @@ import (
 	"node-agent/ynp/command"
 	"node-agent/ynp/config"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 
@@ -416,7 +417,21 @@ func handleCommand(
 			return nil
 		}
 	}
-	iniConfig, err := config.GenerateConfigINI(ctx, &pArgs.Args)
+	// Override after INI is read.
+	overrideFunc := func(ctx context.Context, iniConfig *config.INIConfig) error {
+		defaultValues := iniConfig.DefaultSectionValue()
+		userInfo, err := user.Lookup(defaultValues["yb_user"].(string))
+		if err == nil {
+			defaultValues["yb_user_home"] = userInfo.HomeDir
+			defaultValues["yb_user_id"] = userInfo.Uid
+		} else if _, ok := err.(user.UnknownUserError); !ok {
+			return fmt.Errorf("Failed to look up user: %v\n", err)
+		} else if val, ok := defaultValues["yb_user_home"]; !ok || val == "" {
+			defaultValues["yb_user_home"] = defaultValues["yb_home_dir"]
+		}
+		return nil
+	}
+	iniConfig, err := config.GenerateConfigINI(ctx, &pArgs.Args, overrideFunc)
 	if err != nil {
 		util.ConsoleLogger().Errorf(ctx, "Failed to generate INI config: %v", err)
 		return err

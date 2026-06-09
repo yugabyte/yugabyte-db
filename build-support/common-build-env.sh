@@ -178,8 +178,8 @@ readonly LOCAL_THIRDPARTY_DIR_PARENT="$OPT_YB_BUILD_DIR/thirdparty"
 readonly YSQL_SNAPSHOTS_DIR_PARENT="$OPT_YB_BUILD_DIR/ysql-sys-catalog-snapshots"
 
 # Parent directories for different compiler toolchains that we know how to download and install.
-readonly TOOLCHAIN_PARENT_DIR_LINUXBREW="$OPT_YB_BUILD_DIR/brew"
 readonly TOOLCHAIN_PARENT_DIR_LLVM="$OPT_YB_BUILD_DIR/llvm"
+readonly TOOLCHAIN_PARENT_DIR_GCC="$OPT_YB_BUILD_DIR/gcc"
 
 readonly LOCAL_DOWNLOAD_DIR="${LOCAL_DOWNLOAD_DIR:-$OPT_YB_BUILD_DIR/download_cache}"
 
@@ -229,6 +229,8 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc
   gcc12
   gcc13
+  gcc14
+  gcc15
   clang
   clang14
   clang15
@@ -289,7 +291,7 @@ declare -i -r MAX_ATTEMPTS_TO_GET_BUILD_WORKER=10
 
 readonly YB_VIRTUALENV_BASENAME=venv
 
-readonly YB_LLVM_MAJOR_VERSION_FOR_GCC=19
+readonly YB_LLVM_MAJOR_VERSION_FOR_GCC=21
 
 # -------------------------------------------------------------------------------------------------
 # Maven related constants
@@ -359,6 +361,16 @@ fi
 yb_llvm_toolchain_dir_origin=""
 if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} ]]; then
   yb_llvm_toolchain_dir_origin="from environment"
+fi
+
+yb_gcc_toolchain_url_origin=""
+if [[ -n ${YB_GCC_TOOLCHAIN_URL:-} ]]; then
+  yb_gcc_toolchain_url_origin="from environment"
+fi
+
+yb_gcc_toolchain_dir_origin=""
+if [[ -n ${YB_GCC_TOOLCHAIN_DIR:-} ]]; then
+  yb_gcc_toolchain_dir_origin="from environment"
 fi
 
 # To deduplicate Maven arguments
@@ -555,17 +567,14 @@ set_build_type_based_on_jenkins_job_name() {
 set_default_compiler_type() {
   expect_vars_to_be_set build_type
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
-    if is_mac; then
-      YB_COMPILER_TYPE=clang
-      adjust_compiler_type_on_mac
-    elif [[ $OSTYPE =~ ^linux ]]; then
-      YB_COMPILER_TYPE=clang21
-    else
-      fatal "Cannot set default compiler type on OS $OSTYPE"
-    fi
+    YB_COMPILER_TYPE=clang21
     export YB_COMPILER_TYPE
     readonly YB_COMPILER_TYPE
   fi
+}
+
+is_apple_clang() {
+  is_mac && [[ $YB_COMPILER_TYPE == clang ]]
 }
 
 is_clang() {
@@ -1058,29 +1067,11 @@ find_compiler_by_type() {
       cc_executable+=${YB_GCC_SUFFIX:-}
       cxx_executable+=${YB_GCC_SUFFIX:-}
     ;;
+    # GCC of a specific version. We will download our pre-built GCC package if necessary.
     gcc*)
-      local gcc_major_version=${YB_COMPILER_TYPE#gcc}
-      if [[ ! $gcc_major_version =~ ^[0-9]+$ ]]; then
-        fatal "Invalid GCC major version: '$gcc_major_version'" \
-              "(from compiler type '$YB_COMPILER_TYPE')."
-      fi
-      if is_redhat_family; then
-        local gcc_bin_dir
-        if [[ -d /opt/rh/gcc-toolset-$gcc_major_version ]]; then
-          gcc_bin_dir=/opt/rh/gcc-toolset-$gcc_major_version/root/usr/bin
-        else
-          gcc_bin_dir=/opt/rh/devtoolset-$gcc_major_version/root/usr/bin
-        fi
-        cc_executable=$gcc_bin_dir/gcc
-        cxx_executable=$gcc_bin_dir/g++
-        # This is needed for other tools, such as "as" (the assembler).
-        put_path_entry_first "$gcc_bin_dir"
-      else
-        # shellcheck disable=SC2230
-        cc_executable=$(which "gcc-$gcc_major_version")
-        # shellcheck disable=SC2230
-        cxx_executable=$(which "g++-$gcc_major_version")
-      fi
+      cc_executable="$YB_GCC_TOOLCHAIN_DIR/bin/gcc${YB_GCC_SUFFIX:-}"
+      cxx_executable="$YB_GCC_TOOLCHAIN_DIR/bin/g++${YB_GCC_SUFFIX:-}"
+      export YB_GCC_PREFIX=$YB_GCC_TOOLCHAIN_DIR
     ;;
     # Default Clang compiler on macOS, or a custom Clang installation with explicitly specified
     # prefix.
@@ -1296,17 +1287,28 @@ download_thirdparty() {
   download_toolchain
 }
 
-create_llvm_toolchain_symlink() {
+create_toolchain_symlink() {
+  expect_num_args 2 "$@"
+  local skip_creation="$1"
+  local toolchain_dir="$2"
   local symlink_path=${BUILD_ROOT}/toolchain
-  if [[ ${YB_SKIP_LLVM_TOOLCHAIN_SYMLINK_CREATION:-0} != "1" &&
-        -n ${YB_LLVM_TOOLCHAIN_DIR:-} &&
-        ! -L ${symlink_path} ]]; then
-    if ! ln -s "${YB_LLVM_TOOLCHAIN_DIR}" "${symlink_path}" &&
+  if [[ ${skip_creation:-0} != "1" && -n ${toolchain_dir:-} && ! -L ${symlink_path} ]]; then
+    if ! ln -s "${toolchain_dir}" "${symlink_path}" &&
        # If someone else created this symlink in the meantime, that's OK.
        [[ ! -L ${symlink_path} ]]; then
-      fatal "Could not create symlink from ${symlink_path} to ${YB_LLVM_TOOLCHAIN_DIR}"
+      fatal "Could not create symlink from ${symlink_path} to ${toolchain_dir}"
     fi
   fi
+}
+
+create_llvm_toolchain_symlink() {
+  create_toolchain_symlink "${YB_SKIP_LLVM_TOOLCHAIN_SYMLINK_CREATION:-0}" \
+                           "${YB_LLVM_TOOLCHAIN_DIR:-}"
+}
+
+create_gcc_toolchain_symlink() {
+  create_toolchain_symlink "${YB_SKIP_GCC_TOOLCHAIN_SYMLINK_CREATION:-0}" \
+                           "${YB_GCC_TOOLCHAIN_DIR:-}"
 }
 
 download_toolchain() {
@@ -1367,10 +1369,35 @@ download_toolchain() {
     fi
     export YB_LLVM_TOOLCHAIN_URL
   fi
+
   if [[ -n ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
     toolchain_urls+=( "${YB_LLVM_TOOLCHAIN_URL}" )
+    create_llvm_toolchain_symlink
   fi
-  create_llvm_toolchain_symlink
+
+  if [[ -z ${YB_GCC_TOOLCHAIN_URL:-} &&
+        -z ${YB_GCC_TOOLCHAIN_DIR:-} &&
+        ${YB_COMPILER_TYPE:-} =~ ^gcc([0-9]+)$ &&
+        ${YB_USE_SYSTEM_GCC:-} != "1" ]]; then
+    local gcc_major_version=${YB_COMPILER_TYPE#gcc}
+    if [[ -z ${YB_GCC_TOOLCHAIN_URL:-} ]]; then
+      YB_GCC_TOOLCHAIN_URL=$(
+        activate_virtualenv &>/dev/null
+        python3 -m llvm_installer --print-url --gcc "--major-version=$gcc_major_version"
+      )
+    fi
+    if [[ ${YB_GCC_TOOLCHAIN_URL} != https://* ]]; then
+      fatal "Failed to determine GCC toolchain URL using the llvm-installer utility." \
+            "YB_GCC_TOOLCHAIN_URL=${YB_GCC_TOOLCHAIN_URL}. See" \
+            "https://github.com/yugabyte/llvm-installer for details."
+    fi
+    export YB_GCC_TOOLCHAIN_URL
+  fi
+
+  if [[ -n ${YB_GCC_TOOLCHAIN_URL:-} ]]; then
+    toolchain_urls+=( "${YB_GCC_TOOLCHAIN_URL}" )
+    create_gcc_toolchain_symlink
+  fi
 
   if [[ ${#toolchain_urls[@]} -eq 0 ]]; then
     return
@@ -1379,31 +1406,19 @@ download_toolchain() {
   for toolchain_url in "${toolchain_urls[@]}"; do
     local toolchain_url_basename=${toolchain_url##*/}
     local is_llvm=false
-    local is_linuxbrew=false
+    local is_gcc=false
     if [[ $toolchain_url_basename == yb-llvm-* ]]; then
       toolchain_dir_parent=$TOOLCHAIN_PARENT_DIR_LLVM
       is_llvm=true
-    elif [[ $toolchain_url_basename =~ ^(yb-)?linuxbrew-.*$ ]]; then
-      toolchain_dir_parent=$TOOLCHAIN_PARENT_DIR_LINUXBREW
-      is_linuxbrew=true
+    elif [[ $toolchain_url_basename == yb-gcc-* ]]; then
+      toolchain_dir_parent=$TOOLCHAIN_PARENT_DIR_GCC
+      is_gcc=true
     else
       fatal "Unable to determine the installation parent directory for the toolchain archive" \
             "named '$toolchain_url_basename'. Toolchain URL: '${toolchain_url}'."
     fi
 
     download_and_extract_archive "$toolchain_url" "$toolchain_dir_parent"
-    if [[ ${is_linuxbrew} == "true" ]]; then
-      if [[ -n ${YB_LINUXBREW_DIR:-} &&
-            $YB_LINUXBREW_DIR != "$extracted_dir" ]]; then
-        log_thirdparty_and_toolchain_details
-        fatal "YB_LINUXBREW_DIR is already set to '$YB_LINUXBREW_DIR', cannot set it to" \
-              "'$extracted_dir'"
-      fi
-      export YB_LINUXBREW_DIR=$extracted_dir
-      yb_linuxbrew_dir_origin="downloaded from $toolchain_url"
-      save_brew_path_to_build_dir
-    fi
-
     if [[ ${is_llvm} == "true" ]]; then
       if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} &&
             ${YB_LLVM_TOOLCHAIN_DIR} != "${extracted_dir}" ]]; then
@@ -1426,6 +1441,12 @@ download_toolchain() {
         save_llvm_toolchain_info_to_build_dir
       fi
     fi
+
+    if [[ ${is_gcc} == "true" ]]; then
+      export YB_GCC_TOOLCHAIN_DIR=$extracted_dir
+      yb_gcc_toolchain_dir_origin="downloaded from $toolchain_url"
+      save_gcc_toolchain_info_to_build_dir
+   fi
   done
 }
 
@@ -1441,6 +1462,7 @@ disable_linuxbrew() {
 detect_toolchain() {
   detect_brew
   detect_llvm_toolchain
+  detect_gcc_toolchain
 }
 
 detect_brew() {
@@ -1495,10 +1517,15 @@ save_brew_path_to_build_dir() {
 }
 
 save_llvm_toolchain_info_to_build_dir() {
-  if is_linux; then
+  if is_linux || ! is_apple_clang; then
     save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_DIR:-}" "llvm_path.txt"
     save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_URL:-}" "llvm_url.txt"
   fi
+}
+
+save_gcc_toolchain_info_to_build_dir() {
+  save_var_to_file_in_build_dir "${YB_GCC_TOOLCHAIN_DIR:-}" "gcc_path.txt"
+  save_var_to_file_in_build_dir "${YB_GCC_TOOLCHAIN_URL:-}" "gcc_url.txt"
 }
 
 save_thirdparty_info_to_build_dir() {
@@ -1510,6 +1537,7 @@ save_paths_and_archive_urls_to_build_dir() {
   save_brew_path_to_build_dir
   save_thirdparty_info_to_build_dir
   save_llvm_toolchain_info_to_build_dir
+  save_gcc_toolchain_info_to_build_dir
 }
 
 detect_linuxbrew() {
@@ -1546,6 +1574,38 @@ detect_llvm_toolchain() {
     YB_LLVM_TOOLCHAIN_DIR=$(<"$BUILD_ROOT/llvm_path.txt")
     export YB_LLVM_TOOLCHAIN_DIR
     yb_llvm_toolchain_dir_origin="from file '$BUILD_ROOT/llvm_path.txt')"
+  fi
+}
+
+detect_gcc_toolchain() {
+  if [[ -n ${YB_GCC_TOOLCHAIN_DIR:-} ]]; then
+    export YB_GCC_TOOLCHAIN_DIR
+    return
+  fi
+
+  if [[ ${YB_USE_SYSTEM_GCC:-} == "1" ]]; then
+    local gcc_major_version=${YB_COMPILER_TYPE#gcc}
+    if is_redhat_family; then
+      if [[ -d /opt/rh/gcc-toolset-$gcc_major_version ]]; then
+        YB_GCC_TOOLCHAIN_DIR=/opt/rh/gcc-toolset-$gcc_major_version/root/usr
+      else
+        YB_GCC_TOOLCHAIN_DIR=/opt/rh/devtoolset-$gcc_major_version/root/usr
+      fi
+      # This is needed for other tools, such as "as" (the assembler).
+      put_path_entry_first "$YB_GCC_TOOLCHAIN_DIR"
+    else
+      # shellcheck disable=SC2230
+      YB_GCC_TOOLCHAIN_DIR="$(dirname "$(which "gcc-$gcc_major_version")")/.."
+      YB_GCC_SUFFIX="-$gcc_major_version"
+    fi
+    export YB_GCC_TOOLCHAIN_DIR
+    return
+  fi
+
+  if [[ $is_clean_build != "true" && -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/gcc_path.txt ]]; then
+    YB_GCC_TOOLCHAIN_DIR=$(<"$BUILD_ROOT/gcc_path.txt")
+    export YB_GCC_TOOLCHAIN_DIR
+    yb_gcc_toolchain_dir_origin="from file '$BUILD_ROOT/gcc_path.txt')"
   fi
 }
 
@@ -2094,6 +2154,8 @@ log_thirdparty_and_toolchain_details() {
     fi
     log_env_var YB_LLVM_TOOLCHAIN_URL "${yb_llvm_toolchain_url_origin}"
     log_env_var YB_LLVM_TOOLCHAIN_DIR "${yb_llvm_toolchain_dir_origin}"
+    log_env_var YB_GCC_TOOLCHAIN_URL "${yb_gcc_toolchain_url_origin}"
+    log_env_var YB_GCC_TOOLCHAIN_DIR "${yb_gcc_toolchain_dir_origin}"
     log_env_var YB_DOWNLOAD_THIRDPARTY ""
     log_env_var NO_REBUILD_THIRDPARTY ""
   ) >&2
@@ -2480,6 +2542,7 @@ lint_java_code() {
     # shellcheck disable=SC2207
     java_test_files=( $(
       find "$java_project_dir" \( -name "Test*.java" -or -name "*Test.java" \) -and \
+          -not -name "TestFilterUtil.java" -and \
           -not -name "TestUtils.java" -and \
           -not -name "*Base.java" -and \
           -not -name "Base*Test.java"
@@ -2492,14 +2555,15 @@ lint_java_code() {
       run_with_pattern+='YBTestRunnerNonSanitizersOrMac|YBTestRunnerNonSanOrAArch64Mac|'
       run_with_pattern+='YBTestRunnerNonTsanOnly|YBTestRunnerNonTsanAsan|'
       run_with_pattern+='YBTestRunnerReleaseOnly|YBTestRunnerYsqlConnMgr|'
-      run_with_pattern+='YBTestRunnerNonMac|YBTestRunner)\.class\)'
+      run_with_pattern+='YBParameterizedTestRunnerYsqlConnMgr|YBTestRunnerNonMac|'
+      run_with_pattern+='YBTestRunner)\.class\)'
       if ! grep -Eq "$run_with_pattern" "$java_test_file"; then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
             "YBParameterizedTestRunnerNonTsanOnly, YBTestRunnerNonTsanOnly, " \
             " YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
-            "YBTestRunnerNonSanOrAArch64Mac, " \
-            "YBTestRunnerReleaseOnly, YBTestRunnerYsqlConnMgr, nor YBTestRunnerNonMac " \
-            " are being used in test"
+            "YBTestRunnerNonSanOrAArch64Mac, YBTestRunnerReleaseOnly, " \
+            "YBTestRunnerYsqlConnMgr, YBParameterizedTestRunnerYsqlConnMgr " \
+            "nor YBTestRunnerNonMac are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
@@ -2580,6 +2644,7 @@ set_prebuilt_thirdparty_url() {
       local thirdparty_url_file_path="$BUILD_ROOT/thirdparty_url.txt"
       local thirdparty_checksum_url_file_path="$BUILD_ROOT/thirdparty_checksum_url.txt"
       local llvm_url_file_path="$BUILD_ROOT/llvm_url.txt"
+      local gcc_url_file_path="$BUILD_ROOT/gcc_url.txt"
       if [[ -f $thirdparty_url_file_path ]]; then
         rm -f "$thirdparty_url_file_path"
       fi
@@ -2628,6 +2693,14 @@ set_prebuilt_thirdparty_url() {
         yb_llvm_toolchain_url_origin="determined automatically based on the OS and compiler type"
         log "Setting LLVM toolchain URL to $YB_LLVM_TOOLCHAIN_URL"
         save_var_to_file_in_build_dir "$YB_LLVM_TOOLCHAIN_URL" llvm_url.txt
+      fi
+
+      if [[ -f $gcc_url_file_path ]]; then
+        YB_GCC_TOOLCHAIN_URL=$(<"$gcc_url_file_path")
+        export YB_GCC_TOOLCHAIN_URL
+        yb_gcc_toolchain_url_origin="determined automatically based on the OS and compiler type"
+        log "Setting GCC toolchain URL to $YB_GCC_TOOLCHAIN_URL"
+        save_var_to_file_in_build_dir "$YB_GCC_TOOLCHAIN_URL" gcc_url.txt
       fi
 
     else

@@ -13,7 +13,11 @@
 
 #include <queue>
 
+#include "yb/client/client_error.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
@@ -52,7 +56,7 @@
 
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_string(vector_index_backend);
@@ -77,20 +81,26 @@ namespace yb::docdb {
 extern bool TEST_vector_index_filter_allowed;
 extern size_t TEST_vector_index_max_checked_entries;
 
-}
+} // namespace yb::docdb
+
+namespace yb::internal {
+
+extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
+
+} // namespace yb::internal
 
 namespace yb::tablet {
 
 extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
-}
+} // namespace yb::tablet
 
 namespace yb::vector_index {
 
 extern MonoDelta TEST_sleep_during_flush;
 
-}
+} // namespace yb::vector_index
 
 namespace yb::pgwrapper {
 
@@ -123,7 +133,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
     auto packing_mode = GetPackingMode();
@@ -726,6 +736,44 @@ TEST_P(PgVectorIndexTest, DropWithFlush) {
   ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
 }
 
+// Regression test for GH#30640: DROP INDEX on a colocated, partitioned table
+// fails with "current transaction is expired or aborted".
+TEST_P(PgVectorIndexTest, DropPartitioned) {
+  tablet::TEST_fail_on_seq_scan_with_vector_indexes = false;
+
+  auto colocated = IsColocated();
+  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  if (colocated) {
+    ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db COLOCATION = true"));
+    conn = ASSERT_RESULT(Connect());
+  }
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (id int, v1 varchar(100), vec_col vector(2), "
+      "PRIMARY KEY (id, v1)) PARTITION BY LIST(v1)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_part_a PARTITION OF test FOR VALUES IN ('cat a')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_part_b PARTITION OF test FOR VALUES IN ('cat b')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_part_default PARTITION OF test DEFAULT"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test (id, v1, vec_col) "
+      "SELECT i, "
+      "  CASE WHEN i % 3 = 0 THEN 'cat a' "
+      "       WHEN i % 3 = 1 THEN 'cat b' "
+      "       ELSE 'cat c' END, "
+      "  ('[' || (i % 10)::text || ',' || ((i + 1) % 10)::text || ']')::vector "
+      "FROM generate_series(1, 100) AS s(i)"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX vi_part ON test USING ybhnsw (vec_col vector_l2_ops)"));
+
+  ASSERT_OK(conn.Execute("DROP INDEX vi_part"));
+}
+
 void PgVectorIndexTest::TestManyRows(AddFilter add_filter, Backfill backfill) {
   constexpr size_t kNumRows = RegularBuildVsSanitizers(2000, 64);
 
@@ -1095,7 +1143,7 @@ TEST_P(PgVectorIndexTest, EfSearch) {
   constexpr int kSmallEf = 1;
   constexpr int kBigEf = 1000;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
@@ -1104,7 +1152,7 @@ TEST_P(PgVectorIndexTest, EfSearch) {
 
   for (int i = 0; i != kIterations; ++i) {
     for (int ef : {kSmallEf, kBigEf}) {
-      ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
+      ASSERT_OK(conn.ExecuteFormat("SET hnsw.ef_search = $0", ef));
       ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_max_checked_entries) = ef * 100;
       auto valid = RowsMatch(conn, "", ExpectedRows(1));
       ASSERT_TRUE(valid || ef == kSmallEf);
@@ -1351,6 +1399,37 @@ class PgDistributedVectorIndexTest
   virtual int GetCleanupSplitTabletsIntervalSec() const {
     return 1;
   }
+
+  // May return stale partitioning if the table was cached before the split.
+  Result<std::vector<client::internal::RemoteTabletPtr>> LookupAllTabletsWithRetry(
+      const client::YBTablePtr& table, size_t num_retries = 1) {
+    LOG(INFO) << "Lookup tablets for table: " << table->ToString();
+    const auto deadline = CoarseMonoClock::Now() + 30s * kTimeMultiplier;
+    auto result = client_->LookupAllTabletsFuture(table, deadline).get();
+    for (size_t retry = 0; retry < num_retries && !result.ok(); ++retry) {
+      if (client::ClientError(result.status()) !=
+          client::ClientErrorCode::kTablePartitionListIsStale) {
+        break;
+      }
+      LOG(INFO) << "Lookup retry #" << retry << " status: " << result.status();
+      // It is required mark the table partitions as stale, so the next lookup will refresh the
+      // partition list from the master.
+      table->MarkPartitionsAsStale();
+      result = client_->LookupAllTabletsFuture(table, deadline).get();
+    }
+    return result;
+  }
+
+  Result<size_t> LookupNumTabletsWithRetry(
+      const client::YBTablePtr& table, size_t num_retries = 1) {
+    auto result = LookupAllTabletsWithRetry(table, num_retries);
+    RETURN_NOT_OK(result);
+    return result->size();
+  }
+
+  Result<size_t> LookupNumTablets(const client::YBTablePtr& table) {
+    return LookupNumTabletsWithRetry(table, /* num_retries = */ 0);
+  }
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgDistributedVectorIndexTest);
@@ -1471,6 +1550,111 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
   ASSERT_LE(num_found, kNumRows);
 
   // TODO(vector_index): Verify compacted tablets content once GH29378 is fixed.
+}
+
+TEST_P(PgDistributedVectorIndexTest, AnotherVectorIndexCreationAfterManualSplit) {
+  constexpr size_t kNumRows = 80;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1));
+
+  const auto main_table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto main_table = ASSERT_RESULT(client_->OpenTable(main_table_id));
+
+  // Warm meta cache with pre-split layout.
+  auto count = ASSERT_RESULT(conn.FetchAllAsString("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(kNumRows, std::stoi(count));
+
+  // Keep a stale base-table schema snapshot (without vector indexes) so that
+  // RefreshTablePartitions(base) does not erase vector-index entries from MetaCache.
+  ASSERT_TRUE(main_table->index_map().empty());
+
+  ASSERT_OK(CreateIndex(conn));
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  LOG(INFO) << "Creating another index";
+  ASSERT_OK(CreateIndex(conn, "another"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+TEST_P(PgDistributedVectorIndexTest, MetaCacheBaseTableStaleLookupAfterSplit) {
+  constexpr size_t kNumRows = 40;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  const auto main_table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto main_table = ASSERT_RESULT(client_->OpenTable(main_table_id));
+
+  // Warm up cache with pre-split tablet layout.
+  ASSERT_EQ(ASSERT_RESULT(LookupNumTablets(main_table)), 1);
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  ASSERT_OK(CreateIndex(conn));
+
+  const auto vector_table_id = ASSERT_RESULT(GetTableIDFromTableName(kVectorIndexName));
+  auto vector_table = ASSERT_RESULT(client_->OpenTable(vector_table_id));
+
+  // Vector index lookup should observe post-split partitions.
+  ASSERT_GE(ASSERT_RESULT(LookupNumTabletsWithRetry(vector_table)), 2);
+
+  // The expectation here is to have main table still see stale partition list, because
+  // nothing was triggered for the main table since the split.
+  ASSERT_EQ(1, ASSERT_RESULT(LookupNumTablets(main_table)));
+
+  auto query_vector = Vector(RandomUniformInt(0UL, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+  ASSERT_GE(static_cast<float>(num_found), kNumRows * 0.9);
+  ASSERT_LE(num_found, kNumRows);
+
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+TEST_P(PgDistributedVectorIndexTest, MetaCacheLookupAfterDropWithoutReads) {
+  constexpr size_t kNumRows = 20;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  // Warm up main table cache before split.
+  const auto main_table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto main_table = ASSERT_RESULT(client_->OpenTable(main_table_id));
+  ASSERT_EQ(ASSERT_RESULT(LookupNumTablets(main_table)), 1);
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  // Create vector index after the base table split and then drop the table
+  // without running any vector query. The main table may still have stale
+  // partition information in cache at this point.
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
 }
 
 ////////////////////////////////////////////////////////
@@ -1678,7 +1862,8 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   auto flush_tablet_and_wait = [&tablet, db_impl, cluster = cluster_.get()](
       const std::string& description) -> Status {
     RETURN_NOT_OK(WaitForAllIntentsApplied(cluster, 10s));
-    RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+    RETURN_NOT_OK(tablet->Flush(
+        tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs, rocksdb::FlushReason::kTestOnly));
 
     // Wait for the files are really being flushed.
     SleepFor(MonoDelta::FromMilliseconds(200));
@@ -1891,7 +2076,61 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
   PackingMode GetPackingMode() const override {
     return PackingMode::kV1;
   }
+
+  // Flushes the single tablet and returns the vector index reverse mapping entries currently
+  // persisted in the Regular DB.
+  Result<std::string> DumpSingleTabletReverseMapping() {
+    RETURN_NOT_OK(WaitNoBackgroundInserts());
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    auto table_peers = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+    SCHECK_EQ(table_peers.size(), 1, IllegalState, "Expected exactly one tablet leader");
+    auto tablet = VERIFY_RESULT(table_peers.front()->shared_tablet());
+    auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
+    SCHECK(!rocksdb_dir.empty(), IllegalState, "Empty RocksDB dir");
+    LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
+
+    TestKVFormatter formatter;
+    RETURN_NOT_OK(RunSstDump(formatter, rocksdb_dir));
+    auto output = formatter.FormatVectorsMeta();
+    LOG(INFO) << "Parsed SST dump output:\n" << output;
+    return output;
+  }
 };
+
+TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
+  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+
+  constexpr size_t kNumRows = 5;
+  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+
+  // No reverse mapping entries are expected: backfill skipped them and the rows predate the index.
+  ASSERT_TRUE(output.empty()) << "Unexpected reverse mapping entries:\n" << output;
+}
+
+TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
+  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+
+  constexpr size_t kNumRows = 5;
+  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+
+  // The order is deterministic and stable, but follows [HT, str(hash, id)] ordering, where
+  // HT is the backfill time and is the same for all entries for this particular backfill case.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_1_vector_1 -> ybctid_1
+      )#",
+      output);
+}
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {
   constexpr size_t kNumRows = 5;
@@ -1901,21 +2140,8 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
 
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 4"));
-  ASSERT_OK(cluster_->FlushTablets());
 
-  auto table_peers = ASSERT_RESULT(
-      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
-  ASSERT_EQ(table_peers.size(), 1);
-  auto tablet = ASSERT_RESULT(table_peers.front()->shared_tablet());
-  auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
-  ASSERT_FALSE(rocksdb_dir.empty());
-  LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
-
-  TestKVFormatter formatter;
-  ASSERT_OK(RunSstDump(formatter, rocksdb_dir));
-
-  auto output = formatter.FormatVectorsMeta();
-  LOG(INFO) << "Parsed SST dump output:\n" << output;
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
 
   // The entires order is different from what sst_dump really prints, it's required to re-sort
   // to be able to compare the expected results.

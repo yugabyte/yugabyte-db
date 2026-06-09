@@ -35,8 +35,8 @@ class PgFKReferenceCache {
     bool is_deferred;
   };
 
-  PgFKReferenceCache(const PgSessionPtr& pg_session,
-                     std::reference_wrapper<const BufferingSettings> buffering_settings);
+  PgFKReferenceCache(
+      PgSession& session, std::reference_wrapper<const BufferingSettings> buffering_settings);
   ~PgFKReferenceCache();
 
   void Clear();

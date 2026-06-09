@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
 import java.util.List;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -36,7 +37,11 @@ public class RegisterUniverseWithPaCollector extends UniverseTaskBase {
     this.perfAdvisorService = perfAdvisorService;
   }
 
-  public static class Params extends UniverseTaskParams {}
+  public static class Params extends UniverseTaskParams {
+    // When set, use explicit collector/observability values instead of auto-registration config.
+    public UUID paCollectorUuid;
+    public Boolean advancedObservability;
+  }
 
   protected Params taskParams() {
     return (Params) taskParams;
@@ -50,28 +55,37 @@ public class RegisterUniverseWithPaCollector extends UniverseTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       Customer customer = Customer.get(universe.getCustomerId());
 
-      if (!confGetter.getConfForScope(customer, CustomerConfKeys.paAutoRegistrationEnabled)) {
-        log.info("PA auto-registration is disabled, skipping");
-        return;
-      }
+      PACollector collector;
+      boolean advancedObservability;
 
-      List<PACollector> collectors =
-          perfAdvisorService.list(
-              PACollectorFilter.builder().customerUuid(customer.getUuid()).build());
-      if (CollectionUtils.isEmpty(collectors)) {
-        log.info(
-            "No PA Collector configured for customer {}, skipping auto-registration",
-            customer.getUuid());
-        return;
-      }
+      if (taskParams().paCollectorUuid != null) {
+        collector =
+            perfAdvisorService.getOrBadRequest(customer.getUuid(), taskParams().paCollectorUuid);
+        advancedObservability = Boolean.TRUE.equals(taskParams().advancedObservability);
+      } else {
+        if (!confGetter.getConfForScope(customer, CustomerConfKeys.paAutoRegistrationEnabled)) {
+          log.info("PA auto-registration is disabled, skipping");
+          return;
+        }
 
-      PACollector collector = collectors.get(0);
-      boolean advancedObservability =
-          confGetter.getConfForScope(
-              customer, CustomerConfKeys.paAutoRegistrationAdvancedObservability);
+        List<PACollector> collectors =
+            perfAdvisorService.list(
+                PACollectorFilter.builder().customerUuid(customer.getUuid()).build());
+        if (CollectionUtils.isEmpty(collectors)) {
+          log.info(
+              "No PA Collector configured for customer {}, skipping auto-registration",
+              customer.getUuid());
+          return;
+        }
+
+        collector = collectors.get(0);
+        advancedObservability =
+            confGetter.getConfForScope(
+                customer, CustomerConfKeys.paAutoRegistrationAdvancedObservability);
+      }
 
       log.info(
-          "Auto-registering universe {} with PA Collector {} (advancedObservability={})",
+          "Registering universe {} with PA Collector {} (advancedObservability={})",
           universe.getUniverseUUID(),
           collector.getUuid(),
           advancedObservability);

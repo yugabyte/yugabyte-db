@@ -400,6 +400,143 @@ public class OperatorResourceRestorerTest extends FakeDBApplication {
   }
 
   // ---------------------------------------------------------------------------
+  // restoreOperatorResources - soft-deleted tombstone cleanup
+  // ---------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testRestore_deletesStaleK8sResourceForTombstone() {
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(true);
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace))
+        .thenReturn(NAMESPACE);
+
+    Release release = createRelease("stale-release", NAMESPACE, "100");
+    String yaml = Serialization.asYaml(release);
+    createSoftDeletedResource("release:" + NAMESPACE + ":stale-release", yaml);
+
+    Release existingInK8s = createRelease("stale-release", NAMESPACE, "100");
+
+    NamespaceableResource<HasMetadata> namespaceable = mock(NamespaceableResource.class);
+    NamespaceableResource<HasMetadata> inNs = mock(NamespaceableResource.class);
+    when(mockClient.resource(any(HasMetadata.class))).thenReturn(namespaceable);
+    when(namespaceable.inNamespace(anyString())).thenReturn(inNs);
+    when(inNs.get()).thenReturn(existingInK8s);
+
+    restorer.restoreOperatorResources();
+
+    verify(inNs).delete();
+    assertTrue(
+        "Tombstone should be hard-deleted after K8s cleanup",
+        OperatorResource.getDeleted().isEmpty());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testRestore_hardDeletesTombstoneEvenWhenAbsentFromK8s() {
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(true);
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace))
+        .thenReturn(NAMESPACE);
+
+    Release release = createRelease("gone-release", NAMESPACE, "100");
+    String yaml = Serialization.asYaml(release);
+    createSoftDeletedResource("release:" + NAMESPACE + ":gone-release", yaml);
+
+    NamespaceableResource<HasMetadata> namespaceable = mock(NamespaceableResource.class);
+    NamespaceableResource<HasMetadata> inNs = mock(NamespaceableResource.class);
+    when(mockClient.resource(any(HasMetadata.class))).thenReturn(namespaceable);
+    when(namespaceable.inNamespace(anyString())).thenReturn(inNs);
+    when(inNs.get()).thenReturn(null);
+
+    restorer.restoreOperatorResources();
+
+    verify(inNs, never()).delete();
+    assertTrue(
+        "Tombstone should be hard-deleted even when resource is absent from K8s",
+        OperatorResource.getDeleted().isEmpty());
+  }
+
+  @Test
+  public void testRestore_tombstoneWithBlankDataSkipsK8sDeletion() {
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(true);
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace))
+        .thenReturn(NAMESPACE);
+
+    createSoftDeletedResource("release:" + NAMESPACE + ":no-data-release", "");
+
+    restorer.restoreOperatorResources();
+
+    verify(mockClient, never()).resource(any(HasMetadata.class));
+    assertTrue(
+        "Tombstone with blank data should still be hard-deleted",
+        OperatorResource.getDeleted().isEmpty());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testRestore_mixedLiveAndDeletedResources() {
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(true);
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace))
+        .thenReturn(NAMESPACE);
+
+    // Live resource: should be created in K8s
+    Release liveRelease = createRelease("live-release", NAMESPACE, "100");
+    OperatorResource.createOrUpdate(
+        "release:" + NAMESPACE + ":live-release", Serialization.asYaml(liveRelease));
+
+    // Soft-deleted resource: should be deleted from K8s
+    Release deletedRelease = createRelease("deleted-release", NAMESPACE, "50");
+    createSoftDeletedResource(
+        "release:" + NAMESPACE + ":deleted-release", Serialization.asYaml(deletedRelease));
+
+    Release existingDeleted = createRelease("deleted-release", NAMESPACE, "50");
+
+    NamespaceableResource<HasMetadata> namespaceable = mock(NamespaceableResource.class);
+    NamespaceableResource<HasMetadata> inNsLive = mock(NamespaceableResource.class);
+    NamespaceableResource<HasMetadata> inNsDeleted = mock(NamespaceableResource.class);
+
+    when(mockClient.resource(any(HasMetadata.class))).thenReturn(namespaceable);
+    when(namespaceable.inNamespace(anyString()))
+        .thenReturn(inNsLive)
+        .thenReturn(inNsLive)
+        .thenReturn(inNsDeleted)
+        .thenReturn(inNsDeleted);
+
+    when(inNsLive.get()).thenReturn(null);
+    when(inNsDeleted.get()).thenReturn(existingDeleted);
+
+    restorer.restoreOperatorResources();
+
+    verify(inNsLive).create();
+    verify(inNsDeleted).delete();
+    assertTrue(OperatorResource.getDeleted().isEmpty());
+    assertFalse(OperatorResource.getAll().isEmpty());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testRestore_onlyDeletedResourcesStillOpensK8sClient() {
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(true);
+    when(confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace))
+        .thenReturn(NAMESPACE);
+
+    Release release = createRelease("to-delete", NAMESPACE, "100");
+    createSoftDeletedResource("release:" + NAMESPACE + ":to-delete", Serialization.asYaml(release));
+
+    Release existingInK8s = createRelease("to-delete", NAMESPACE, "100");
+
+    NamespaceableResource<HasMetadata> namespaceable = mock(NamespaceableResource.class);
+    NamespaceableResource<HasMetadata> inNs = mock(NamespaceableResource.class);
+    when(mockClient.resource(any(HasMetadata.class))).thenReturn(namespaceable);
+    when(namespaceable.inNamespace(anyString())).thenReturn(inNs);
+    when(inNs.get()).thenReturn(existingInK8s);
+
+    restorer.restoreOperatorResources();
+
+    verify(kubernetesClientFactory).getKubernetesClientWithConfig(any());
+    verify(inNs).delete();
+  }
+
+  // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
@@ -413,5 +550,11 @@ public class OperatorResourceRestorerTest extends FakeDBApplication {
     ReleaseSpec spec = new ReleaseSpec();
     release.setSpec(spec);
     return release;
+  }
+
+  private void createSoftDeletedResource(String name, String yamlData) {
+    OperatorResource resource = OperatorResource.createOrUpdate(name, yamlData);
+    resource.setDeleted(true);
+    resource.update();
   }
 }

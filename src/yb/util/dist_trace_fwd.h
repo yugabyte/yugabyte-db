@@ -22,6 +22,7 @@ template <class T> class shared_ptr;
 } // namespace nostd
 
 namespace trace {
+class Span;
 class Tracer;
 class SpanContext;
 } // namespace trace

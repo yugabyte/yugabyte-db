@@ -13,9 +13,9 @@
 
 #include "yb/tserver/tablet_limits.h"
 
-#include "yb/gutil/sysinfo.h"
-
 #include "yb/tserver/tablet_memory_manager.h"
+
+#include "yb/util/cgroups.h"
 
 namespace yb::tserver {
 
@@ -23,7 +23,7 @@ namespace {
 
 // Does not fill in result.total_live_replicas.
 AggregatedClusterInfo GetClusterInfoForJustThisTserver() {
-  static const int64_t num_cpus = base::NumCPUs();
+  static const int64_t num_cpus = NumEffectiveCPUs();
   AggregatedClusterInfo result;
   result.total_cores = num_cpus;
   int64_t tablet_overhead_limit = yb::tserver::ComputeTabletOverheadLimit();

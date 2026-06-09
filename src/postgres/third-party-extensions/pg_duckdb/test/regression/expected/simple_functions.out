@@ -1,0 +1,48 @@
+CREATE FUNCTION test_escape_uri(
+    input TEXT
+)
+RETURNS TEXT
+SET search_path = pg_catalog, pg_temp
+LANGUAGE C AS 'pg_duckdb', 'pgduckdb_test_escape_uri';
+SELECT test_escape_uri('https://duckdb.org');
+     test_escape_uri      
+--------------------------
+ https%3A%2F%2Fduckdb.org
+(1 row)
+
+SELECT test_escape_uri('https://duckdb.org/with space');
+             test_escape_uri             
+-----------------------------------------
+ https%3A%2F%2Fduckdb.org%2Fwith%20space
+(1 row)
+
+SELECT test_escape_uri('foo $ bar # baz / qux');
+             test_escape_uri             
+-----------------------------------------
+ foo%20%24%20bar%20%23%20baz%20%2F%20qux
+(1 row)
+
+SELECT test_escape_uri('foo 😀 bar # baz / qux');
+                 test_escape_uri                  
+--------------------------------------------------
+ foo%20%F0%9F%98%80%20bar%20%23%20baz%20%2F%20qux
+(1 row)
+
+SELECT test_escape_uri('Hannes Mühleisen');
+     test_escape_uri     
+-------------------------
+ Hannes%20M%C3%BChleisen
+(1 row)
+
+SELECT test_escape_uri('Hannes M□hleisen');
+      test_escape_uri       
+----------------------------
+ Hannes%20M%E2%96%A1hleisen
+(1 row)
+
+SELECT test_escape_uri('some 19 really $  - @ weird name 😀 84');
+                             test_escape_uri                              
+--------------------------------------------------------------------------
+ some%2019%20really%20%24%20%20-%20%40%20weird%20name%20%F0%9F%98%80%2084
+(1 row)
+

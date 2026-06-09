@@ -4,9 +4,6 @@ headerTitle: Disaster Recovery
 linkTitle: Disaster recovery
 description: Enable Disaster recovery for clusters
 headContent: Fail over to a replica cluster in case of unplanned outages
-cascade:
-  tags:
-    feature: early-access
 menu:
   stable_yugabyte-cloud:
     parent: cloud-clusters
@@ -17,10 +14,6 @@ showRightNav: true
 ---
 
 Use xCluster Disaster Recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing, and failback after a failover.
-
-{{<tip title="Early Access">}}
-This feature is Early Access; to try it, contact {{% support-cloud %}}.
-{{</tip>}}
 
 A DR configuration consists of the following:
 
@@ -67,8 +60,14 @@ DR further allows for the role of each cluster to switch during planned switchov
 
 ## Limitations
 
-- Disaster recovery requires both clusters to be running the same version of YugabyteDB, and the version must be {{<release "2025.2.2.0">}} or later.
+- Disaster recovery requires both clusters to be running the same version of YugabyteDB, and the version must be {{<release "2025.2.2.1">}} or later.
 
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the Source.
 
 - Currently in YugabyteDB Aeon, you cannot use xCluster Disaster Recovery with point-in-time recovery (PITR) on the same database. If you have PITR configured for a database and want to set up xCluster Disaster Recovery, [disable PITR](../aeon-pitr/#disable-pitr) first.
+
+- You cannot perform DDL operations on databases while they are in the process of being added to replication.
+
+- You cannot use xCluster Disaster Recovery with [Partition by Region](../../cloud-basics/create-clusters/create-clusters-geopartition/) clusters.
+
+xCluster Disaster Recovery in YugabyteDB Aeon uses YugabyteDB's [transactional xCluster](../../../architecture/docdb-replication/async-replication/#transactional-replication) automatic mode. For information on limitations in transactional xCluster in YugabyteDB, refer to [Limitations](../../../architecture/docdb-replication/async-replication/#limitations).

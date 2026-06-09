@@ -2,12 +2,15 @@
 
 package com.yugabyte.yw.metrics;
 
+import com.yugabyte.yw.common.AuthUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.TimeZone;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -106,5 +109,15 @@ public class MetricUrlProvider {
       throw new RuntimeException("yb.metrics.url not set");
     }
     return metricsUrl.replace(API_PATH, StringUtils.EMPTY);
+  }
+
+  public Map<String, String> getAuthHeaders() {
+    Boolean authEnabled = runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsAuth);
+    if (!authEnabled) {
+      return Collections.emptyMap();
+    }
+    String username = runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsAuthUsername);
+    String password = runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsAuthPassword);
+    return AuthUtil.getBasicAuthHeader(username, password);
   }
 }

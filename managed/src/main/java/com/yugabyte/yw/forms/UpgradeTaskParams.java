@@ -6,8 +6,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
@@ -126,7 +126,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
               + " states.");
     }
 
-    if (isKubernetesUpgradeSupported() && userIntent.providerType.equals(CloudType.kubernetes)) {
+    if (isKubernetesUpgradeSupported() && Util.isKubernetesBasedUniverse(universe)) {
       if (!universeConfig.containsKey(Universe.HELM2_LEGACY)) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
@@ -138,7 +138,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
       }
     }
 
-    if (!isKubernetesUpgradeSupported() && userIntent.providerType.equals(CloudType.kubernetes)) {
+    if (!isKubernetesUpgradeSupported() && Util.isKubernetesBasedUniverse(universe)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Kubernetes Upgrade is not supported.");
     }

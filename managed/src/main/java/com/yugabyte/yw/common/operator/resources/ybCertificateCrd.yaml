@@ -47,6 +47,9 @@ spec:
               required:
                 - certType
                 - certificateSecretRef
+              x-kubernetes-validations:
+                - message: spec is immutable; delete and recreate YBCertificate for changes.
+                  rule: self == oldSelf
               properties:
                 certType:
                   description:
@@ -64,9 +67,11 @@ spec:
                 certificateSecretRef:
                   description: |
                     Secret reference containing certificate and key content.
-                    For SELF_SIGNED: secret must contain both 'ca.crt' and 'ca.key'
-                    For K8S_CERT_MANAGER: secret must contain 'ca.crt'
-                    Recommended to use type: "tls" for better Kubernetes integration
+                    For SELF_SIGNED: secret must contain cert and key as either
+                    ('ca.crt' and 'ca.key') or ('tls.crt' and 'tls.key').
+                    For K8S_CERT_MANAGER: secret must contain cert as either
+                    'ca.crt' or 'tls.crt'.
+                    Recommended to use type: "tls" for better Kubernetes integration.
                   type: object
                   required:
                     - name

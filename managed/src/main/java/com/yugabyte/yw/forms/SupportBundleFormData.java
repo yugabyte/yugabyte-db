@@ -3,6 +3,8 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 import com.yugabyte.yw.models.helpers.BundleDetails.PromExportType;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
@@ -13,6 +15,7 @@ import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @ApiModel(description = "Support bundle form metadata")
 public class SupportBundleFormData {
@@ -127,4 +130,23 @@ public class SupportBundleFormData {
 
   @ApiModelProperty(value = "Specifies metrics format.")
   public PrometheusMetricsFormat paMetricsFormat = PrometheusMetricsFormat.PROM_CHUNK;
+
+  public void resolveDefaultDates(RuntimeConfGetter confGetter) {
+    if (endDate == null) {
+      return;
+    }
+    if (promDumpStartDate == null && promDumpEndDate == null) {
+      int defaultPromDumpRange =
+          confGetter.getGlobalConf(GlobalConfKeys.supportBundleDefaultPromDumpRange);
+      promDumpEndDate = endDate;
+      promDumpStartDate =
+          new Date(endDate.getTime() - TimeUnit.MINUTES.toMillis(defaultPromDumpRange));
+    }
+    if (paDumpStartDate == null && paDumpEndDate == null) {
+      int defaultPaDumpRange =
+          confGetter.getGlobalConf(GlobalConfKeys.supportBundleDefaultPaDumpRange);
+      paDumpEndDate = endDate;
+      paDumpStartDate = new Date(endDate.getTime() - TimeUnit.MINUTES.toMillis(defaultPaDumpRange));
+    }
+  }
 }

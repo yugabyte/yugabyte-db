@@ -6,11 +6,13 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -113,14 +115,8 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
               FileUtils.getOrCreateTmpDirectory(
                   confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
           Path localGflagFilePath = tmpDirectoryPath.resolve(cluster.uuid.toString());
-          String providerUUID = cluster.userIntent.provider;
-
-          if (providerUUID == null) {
-            log.warn("Cluster is not associated with provider. Can't continue.");
-            continue;
-          }
-
-          String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
+          Provider provider = Util.getSingleProvider(cluster);
+          String ybHomeDir = provider.getYbHome();
           String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
           List<NodeDetails> activeNodes =
               universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()

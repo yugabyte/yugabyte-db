@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.base.Stopwatch;
 import com.google.common.net.HostAndPort;
+import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -70,7 +71,6 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -152,10 +152,14 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   private static final String YB_PATH_ENV_KEY = "YB_PATH";
   private static final String BASE_DIR_ENV_KEY = "TEST_BASE_DIR";
+  private static final String IP_RANGE_START_SYS_PROP = "yb.local.test.ipRangeStart";
+  private static final String IP_RANGE_END_SYS_PROP = "yb.local.test.ipRangeEnd";
+  private static final String IP_RANGE_START_ENV_KEY = "TEST_IP_RANGE_START";
+  private static final String IP_RANGE_END_ENV_KEY = "TEST_IP_RANGE_END";
   private static final String SKIP_WAIT_FOR_CLUSTER_ENV_KEY = "YB_SKIP_WAIT_FOR_CLUSTER";
 
   private static final String DEFAULT_BASE_DIR = "/tmp/local";
-  protected static String YBC_VERSION;
+  public static String YBC_VERSION = "2.2.0.4-b4";
   public static String DB_VERSION = "2024.1.0.0-b129";
   private static final String DOWNLOAD_URL =
       "https://downloads.yugabyte.com/releases/"
@@ -184,7 +188,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   public Map<String, String> getYbcGFlags(UniverseDefinitionTaskParams.UserIntent userIntent) {
     Map<String, String> ybcGFlags = new HashMap<>();
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    Provider provider = Util.getSingleProvider(userIntent);
     LocalCloudInfo cloudInfo = CloudInfoInterface.get(provider);
     String baseBinDir = cloudInfo.getYugabyteBinDir();
     File binDirectory = new File(baseBinDir);
@@ -228,7 +232,6 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   protected UpgradeUniverseHandler upgradeUniverseHandler;
   protected NodeUIApiHelper nodeUIApiHelper;
   protected YBClientService ybClientService;
-  protected RuntimeConfGetter confGetter;
   protected BackupHelper backupHelper;
   protected YcqlQueryExecutor ycqlQueryExecutor;
   protected UniverseTableHandler tableHandler;
@@ -256,7 +259,15 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     waitForClusterToStabilize = System.getenv(SKIP_WAIT_FOR_CLUSTER_ENV_KEY) == null;
     setUpYBSoftware(os, arch);
     ybcBinPath = System.getenv(YBC_BIN_ENV_KEY);
-    subDir = DATE_FORMAT.format(new Date());
+    setUpYBCSoftware(os, arch);
+    subDir = DATE_FORMAT.format(new Date()) + "_" + ProcessHandle.current().pid();
+    File subDirPath = Paths.get(baseDir, subDir).toFile();
+    if (!subDirPath.exists()) {
+      subDirPath.mkdirs();
+    }
+    if (!KEEP_FAILED_UNIVERSE && !KEEP_ALWAYS) {
+      subDirPath.deleteOnExit();
+    }
   }
 
   @Rule public Timeout globalTimeout = Timeout.seconds(1200);
@@ -265,7 +276,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     if (System.getenv(BASE_DIR_ENV_KEY) != null) {
       baseDir = System.getenv(BASE_DIR_ENV_KEY);
     } else {
-      baseDir = DEFAULT_BASE_DIR;
+      baseDir = DEFAULT_BASE_DIR + "_" + ProcessHandle.current().pid();
     }
   }
 
@@ -283,13 +294,12 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     log.debug("YB version {} bin path {}", ybVersion, ybBinPath);
   }
 
-  private void setUpYBCSoftware(String os, String arch) {
+  private static void setUpYBCSoftware(String os, String arch) {
+    YBC_VERSION = ConfigFactory.load().getString(GlobalConfKeys.ybcStableVersion.getKey());
     if (ybcBinPath == null) {
-      String ybcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
-      YBC_VERSION = ybcVersion;
-      validateYBCVersion(ybcVersion);
-      log.debug("ybc Version to use {}", ybcVersion);
-      downloadAndSetUpYBCSoftware(os, arch, ybcVersion);
+      validateYBCVersion(YBC_VERSION);
+      log.debug("ybc Version to use {}", YBC_VERSION);
+      downloadAndSetUpYBCSoftware(os, arch, YBC_VERSION);
     } else {
       File binFile = new File(ybcBinPath);
       Pattern pattern = Pattern.compile("((\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)\\-b[0-9]+)");
@@ -373,7 +383,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
   }
 
-  private void downloadAndSetUpYBCSoftware(String os, String arch, String ybcVersion) {
+  private static void downloadAndSetUpYBCSoftware(String os, String arch, String ybcVersion) {
     String ybcS3URL = YBC_BASE_S3_URL + ybcVersion + "/ybc-" + ybcVersion + "-%s-%s.tar.gz";
     String ybcDownloadURL = String.format(ybcS3URL, os, arch);
     String ybcBaseDir = baseDir + "/ybc/ybc-" + ybcVersion + "-%s-%s.tar.gz";
@@ -400,7 +410,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
           new TarArchiveInputStream(
               new GzipCompressorInputStream(new FileInputStream(baseDownloadPath)))) {
         TarArchiveEntry currentEntry;
-        while ((currentEntry = tarInput.getNextTarEntry()) != null) {
+        while ((currentEntry = tarInput.getNextEntry()) != null) {
           Path extractTo = destination.resolve(currentEntry.getName());
           if (currentEntry.isDirectory()) {
             Files.createDirectories(extractTo);
@@ -470,19 +480,10 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         .globalRuntimeConf()
         .setValue("yb.universe.consistency_check.enabled", "true");
     Pair<Integer, Integer> ipRange = getIpRange();
+    log.info("Using local test IP range [{}, {})", ipRange.getFirst(), ipRange.getSecond());
     localNodeManager.setIpRangeStart(ipRange.getFirst());
     localNodeManager.setIpRangeEnd(ipRange.getSecond());
-
-    setUpYBCSoftware(os, arch);
-    File baseDirFile = new File(baseDir);
-    File curDir = new File(baseDirFile, subDir);
-    if (!baseDirFile.exists() || !curDir.exists()) {
-      curDir.mkdirs();
-      if (!KEEP_FAILED_UNIVERSE && !KEEP_ALWAYS) {
-        curDir.deleteOnExit();
-      }
-    }
-    File testDir = new File(curDir, testName);
+    File testDir = Paths.get(baseDir, subDir, testName).toFile();
     testDir.mkdirs();
 
     YugawareProperty.addConfigProperty(
@@ -535,15 +536,29 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
             5.5,
             new InstanceType.InstanceTypeDetails());
 
-    RuntimeConfigEntry.upsertGlobal("yb.task.verify_cluster_state", "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.verify_cluster_state", "true");
   }
 
-  /**
-   * Range of IPs to use. Two last bytes of each number are used to form 127.0.x.y ip
-   *
-   * @return
-   */
-  protected abstract Pair<Integer, Integer> getIpRange();
+  /** Range of IPs to use. Two last bytes of each number are used to form 127.0.x.y ip. */
+  protected Pair<Integer, Integer> getIpRange() {
+    String startProp = System.getProperty(IP_RANGE_START_SYS_PROP);
+    String endProp = System.getProperty(IP_RANGE_END_SYS_PROP);
+    if (startProp != null && endProp != null) {
+      log.info("Using ip range [{}, {}) from system property", startProp, endProp);
+      return new Pair<>(Integer.parseInt(startProp), Integer.parseInt(endProp));
+    }
+    String startEnv = System.getenv(IP_RANGE_START_ENV_KEY);
+    String endEnv = System.getenv(IP_RANGE_END_ENV_KEY);
+    if (startEnv != null && endEnv != null) {
+      log.info("Using ip range [{}, {}) from env", startEnv, endEnv);
+      return new Pair<>(Integer.parseInt(startEnv), Integer.parseInt(endEnv));
+    }
+    Pair<Integer, Integer> defaultRange = new Pair<>(2, 100);
+    log.info("Using default ip range [{}, {})", defaultRange.getFirst(), defaultRange.getSecond());
+    return defaultRange;
+  }
 
   protected JsonNode getMetadataJson(String release, boolean isYbc) {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
@@ -604,7 +619,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
     if ((!failed || !KEEP_FAILED_UNIVERSE) && !KEEP_ALWAYS) {
       try {
-        FileUtils.deleteDirectory(new File(new File(new File(baseDir), subDir), testName));
+        FileUtils.deleteDirectory(Paths.get(baseDir, subDir, testName).toFile());
       } catch (Exception ignored) {
       }
       localNodeManager.shutdown();
@@ -756,7 +771,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
             nodeDetails, universe, YUGABYTE_DB, createCommand, 10, authEnabled);
-    assertTrue(response.isSuccess());
+    assertTrue(response.getMessage(), response.isSuccess());
     response =
         localNodeUniverseManager.runYsqlCommand(
             nodeDetails,
@@ -844,38 +859,39 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     // Create `yugabyte` keyspace.
     formData.setQuery("CREATE KEYSPACE IF NOT EXISTS yugabyte;");
     formData.setTableType(TableType.YQL_TABLE_TYPE);
-    JsonNode response =
-        ycqlQueryExecutor.executeQuery(
-            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
-    assertFalse(response.has("error"));
+    executeYcqlQueryWithRetry(universe, formData, authEnabled, password);
 
     // Create table.
     formData.setQuery(
-        "CREATE TABLE yugabyte.some_table (id int, name text, age int, PRIMARY KEY((id, name)));");
-    response =
-        ycqlQueryExecutor.executeQuery(
-            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
-    assertFalse(response.has("error"));
+        "CREATE TABLE IF NOT EXISTS yugabyte.some_table (id int, name text, age int, PRIMARY"
+            + " KEY((id, name)));");
+    executeYcqlQueryWithRetry(universe, formData, authEnabled, password);
 
     // Insert Data.
     formData.setQuery("INSERT INTO yugabyte.some_table (id, name, age) VALUES (1, 'John', 20);");
-    response =
-        ycqlQueryExecutor.executeQuery(
-            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
-    assertFalse(response.has("error"));
+    executeYcqlQueryWithRetry(universe, formData, authEnabled, password);
 
     formData.setQuery("INSERT INTO yugabyte.some_table (id, name, age) VALUES (2, 'Mary', 18);");
-    response =
-        ycqlQueryExecutor.executeQuery(
-            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
-    assertFalse(response.has("error"));
+    executeYcqlQueryWithRetry(universe, formData, authEnabled, password);
 
     formData.setQuery(
         "INSERT INTO yugabyte.some_table (id, name, age) VALUES (10000, 'Stephen', 50);");
-    response =
-        ycqlQueryExecutor.executeQuery(
-            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
-    assertFalse(response.has("error"));
+    executeYcqlQueryWithRetry(universe, formData, authEnabled, password);
+  }
+
+  private void executeYcqlQueryWithRetry(
+      Universe universe, RunQueryFormData formData, boolean authEnabled, String password) {
+    doWithRetry(
+        Duration.ofSeconds(1),
+        Duration.ofSeconds(60),
+        () -> {
+          JsonNode response =
+              ycqlQueryExecutor.executeQuery(
+                  universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
+          if (response.has("error")) {
+            throw new RuntimeException(response.get("error").asText());
+          }
+        });
   }
 
   protected void verifyYCQL(Universe universe) {
@@ -1430,7 +1446,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   private void verifyDNS(Universe universe) {
     UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        Util.getSingleProviderUUID(universe.getUniverseDetails().getPrimaryCluster());
     Provider curProvider = Provider.getOrBadRequest(providerUUID);
     if (curProvider.getDetails().getCloudInfo().local.getHostedZoneId() != null) {
       Set<String> dns = localDnsManager.ipsList.getOrDefault(providerUUID, Collections.emptySet());

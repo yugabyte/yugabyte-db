@@ -50,6 +50,7 @@ struct ChildTransactionData {
   ConsistentReadPoint::HybridTimeMap local_limits;
 
   static Result<ChildTransactionData> FromPB(const ChildTransactionDataPB& data);
+  static Result<ChildTransactionData> FromPB(const LWChildTransactionDataPB& data);
 };
 
 template<class T>
@@ -167,6 +168,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Apply results from child to this parent transaction.
   // `result` should be prepared with FinishChild of child transaction.
   Status ApplyChildResult(const ChildTransactionResultPB& result);
+  Status ApplyChildResult(const LWChildTransactionResultPB& result);
 
   std::shared_future<Result<TransactionMetadata>> GetMetadata(CoarseTimePoint deadline) const;
 
@@ -184,6 +186,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   void SetActiveSubTransaction(SubTransactionId id);
 
   std::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
+
+  SubTransactionId IncrementAndGetSubTransactionId();
+
+  SubTransactionId GetActiveSubTransactionId() const;
 
   Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks);
 
@@ -221,7 +227,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id);
   void RecordAsyncWriteCompletion(
       const TabletId& tablet_id, const OpId& op_id, const Status& status);
-  std::optional<int64_t> GetPendingAsyncWriteTerm(const TabletId& tablet_id) const;
+  // Returns the op_id the server should verify before serving a read on this tablet, so the read
+  // sees all of this transaction's pending async writes. Returns OpId::Invalid() if there are no
+  // pending writes, or IllegalState if pending writes span 2+ terms (unsupported).
+  Result<OpId> GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const;
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
   void SetOriginId(uint32_t origin_id);
 

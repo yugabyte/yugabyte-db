@@ -139,19 +139,6 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
-  public static final ConfKeyInfo<Boolean> showDrXClusterConfig =
-      new ConfKeyInfo<>(
-          "yb.ui.xcluster.dr.show_xcluster_config",
-          ScopeType.CUSTOMER,
-          "Show underlying xCluster configs from DR setup",
-          "YBA creates an underlying transactional xCluster config when setting "
-              + "up an active-active single-master disaster recovery (DR) config. During regular "
-              + "operation you should manage the DR config through the DR UI instead of the "
-              + "xCluster UI. This feature flag serves as a way to expose the underlying "
-              + "xCluster config for troubleshooting.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static final ConfKeyInfo<Boolean> enableSkipBootstrapping =
       new ConfKeyInfo<>(
           "yb.ui.xcluster.enable_skip_bootstrapping",
@@ -233,14 +220,6 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Fetch Batch Size of Task Info",
           "Knob that can be used to make lesser number of calls to DB",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> useAnsibleProvisioning =
-      new ConfKeyInfo<>(
-          "yb.node_agent.use_ansible_provisioning",
-          ScopeType.CUSTOMER,
-          "Use Ansible for provisioning",
-          "If enabled use Ansible for provisioning",
-          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> notifyUserOnPasswordReset =
       new ConfKeyInfo<>(

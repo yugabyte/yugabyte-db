@@ -92,6 +92,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
 #include "commands/dbcommands.h"
+#include "utils/catcache.h"
 #include "utils/yb_inheritscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
@@ -242,7 +243,7 @@ PerformAuthentication(Port *port)
 												  "Postmaster",
 												  ALLOCSET_DEFAULT_SIZES);
 
-	if (!load_hba())
+	if (!load_hba(NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * It makes no sense to continue if we fail to load the HBA file,
@@ -252,7 +253,7 @@ PerformAuthentication(Port *port)
 				(errmsg("could not load pg_hba.conf")));
 	}
 
-	if (!load_ident(NULL /* yb_ident_context */ ))
+	if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * It is ok to continue if we fail to load the IDENT file, although it
@@ -337,12 +338,74 @@ PerformAuthentication(Port *port)
 	ClientAuthInProgress = false;	/* client_min_messages is active now */
 }
 
+void
+YbLogAuthPassthroughConnReceived(struct Port *port)
+{
+	/*
+	 * YB: Now we issue the Log_connections message, if wanted.
+	 * Conn Mgr does not provide the port number, so we only log the host.
+	 */
+
+	if (Log_connections)
+		ereport(LOG,
+				(errmsg("connection received (Auth Passthrough): host=%s",
+						port->remote_host)));
+}
+
+/*
+ * YbLogAuthPassthroughConnAuthenticated -- post-authentication bookkeeping
+ * for connections authenticated via the auth passthrough path.
+ *
+ * Mirrors the logging and counter updates done in PerformAuthentication(),
+ * adapted for logical connections through the connection manager.
+ */
+void
+YbLogAuthPassthroughConnAuthenticated(Port *port)
+{
+	Assert(YbIsAuthPassthroughInProgress(port));
+	/*
+	 * YB: SSL details are not available for logical connections, so we only
+	 * log that SSL is enabled on the CM-client side. Similarly, GSS is not
+	 * supported with Connection Manager, so we don't log that either.
+	 */
+	if (Log_connections)
+	{
+		StringInfoData logmsg;
+
+		initStringInfo(&logmsg);
+		if (am_walsender)
+			appendStringInfo(&logmsg,
+							 _("replication connection authorized: user=%s"),
+							 port->user_name);
+		else
+			appendStringInfo(&logmsg, _("connection authorized: user=%s"),
+							 port->user_name);
+		if (!am_walsender)
+			appendStringInfo(&logmsg, _(" database=%s"),
+							 port->database_name);
+
+		if (port->application_name != NULL)
+			appendStringInfo(&logmsg, _(" application_name=%s"),
+							 port->application_name);
+
+		if (port->yb_is_ssl_enabled_in_logical_conn)
+			appendStringInfo(&logmsg, _(" SSL enabled"));
+
+		appendStringInfo(&logmsg, _(" (via Auth Passthrough)"));
+
+		ereport(LOG, errmsg_internal("%s", logmsg.data));
+		pfree(logmsg.data);
+	}
+
+	YbNumAuthorizedConnections++;
+}
+
 static int
 YbHandleAuthPassthroughFailureAndGetElevel()
 {
 	Assert(YbIsAuthPassthroughInProgress(MyProcPort));
 
-	MyProcPort->yb_has_auth_passthrough_failed = true;
+	MyProcPort->yb_has_auth_passthrough_finished = true;
 	YbSendFatalForLogicalConnectionPacket();
 
 	return YbAuthFailedErrorLevel(true /* auth_passthrough */ );
@@ -357,8 +420,10 @@ YbHandleAuthPassthroughFailureAndGetElevel()
  *   1) Whether the supplied dbname matches the dboid
  *   2) Whether the database is accepting connections
  *   3) Whether the user has login privileges for this db
+ *   4) Whether there is any collation version mismatch for the target db.
  *
- * We do not perform the GUC settings in the latter half of the function to
+ * Finally, we do update the client and server encoding GUCs but skip modifying
+ * the lc_collate and lc_ctype GUCs (these will be set on the txn backend) to
  * avoid unnecessary state changes on the control backend as these will be done
  * on the appropriate transactional backend when the client fires a query.
  */
@@ -370,6 +435,20 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 
 	HeapTuple	tup;
 	Form_pg_database dbform;
+	Datum		datum;
+	bool		isnull;
+	char	   *collate;
+	char	   *iculocale;
+
+	/*
+	 * YB: Connection Manager Authentication Passthrough mode specific:
+	 * Flush cached pg_database entries.  The control backend tracks its own
+	 * database's catalog version, so it never sees invalidations triggered by
+	 * DDL in other databases (e.g. ALTER DATABASE ... REFRESH COLLATION
+	 * VERSION).  Since we may be looking up any database here, a stale entry
+	 * would silently return outdated attribute values.
+	 */
+	CatalogCacheFlushCatalog(DatabaseRelationId);
 
 	/* Fetch our pg_database row normally, via syscache */
 	tup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(db_oid));
@@ -391,6 +470,7 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 				 errdetail("Database OID %u now seems to belong to \"%s\".", db_oid,
 						   NameStr(dbform->datname))));
 
+		ReleaseSysCache(tup);
 		return;
 	}
 
@@ -416,6 +496,7 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 							"connections",
 							name)));
 
+			ReleaseSysCache(tup);
 			return;
 		}
 
@@ -433,6 +514,7 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 					 errmsg("permission denied for database \"%s\"", name),
 					 errdetail("User does not have CONNECT privilege.")));
 
+			ReleaseSysCache(tup);
 			return;
 		}
 
@@ -455,6 +537,7 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 					 errmsg("too many connections for database \"%s\"", name)));
 
+			ReleaseSysCache(tup);
 			return;
 		}
 	}
@@ -462,17 +545,81 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 	/*
 	 * OK, we're golden.  Next to-do item is to save the encoding info out of
 	 * the pg_database tuple.
-	 * YB: GUC SOURCE has been changed to PGC_S_CLIENT from
-	 * PGC_S_DEFAULT_DYNAMIC in order to avoid setting defaults and sending
-	 * PARAMETER STATUS packets back on auth failure.
+	 *
+	 * YB: Ideally, during an Auth Passthrough authentication, GUC modifications
+	 * need to:
+	 *   - Set the current value of the GUC (change visible on calling SHOW)
+	 *   - Be reported to the client *only if* they were
+	 *       - set by the client (startup packet); or
+	 *       - marked to be reported by default (GUC_REPORT).
+	 *   - Not set the GUC default (GUC sources >= PGC_S_INTERACTIVE)
+	 *
+	 * However, here we make an exception to the last rule as this setting is
+	 * done for every authentication before any text encoding conversion is
+	 * done. Conversely, these encoding set calls need to be here because both
+	 * these vars are GUC_REPORT, and will always be reported back to the
+	 * client.
+	 *
+	 * Thus, every incoming client sees the encoding set for their supplied db
+	 * only (or encoding set via startup packet, if suppliec).
 	 */
 	SetDatabaseEncoding(dbform->encoding);
 	/* Record it as a GUC internal option, too */
 	SetConfigOption("server_encoding", GetDatabaseEncodingName(), PGC_INTERNAL,
-					PGC_S_CLIENT);
+					PGC_S_DYNAMIC_DEFAULT);
 	/* If we have no other source of client_encoding, use server encoding */
 	SetConfigOption("client_encoding", GetDatabaseEncodingName(), PGC_BACKEND,
-					PGC_S_CLIENT);
+					PGC_S_DYNAMIC_DEFAULT);
+
+	/*
+	 * Check collation version.  See similar code in CheckMyDatabase() and
+	 * pg_newlocale_from_collation().  Note that here we warn instead of error
+	 * in any case, so that we don't prevent connecting.
+	 */
+	datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_datcollate,
+							&isnull);
+	Assert(!isnull);
+	collate = TextDatumGetCString(datum);
+
+	if (dbform->datlocprovider == COLLPROVIDER_ICU)
+	{
+		datum = SysCacheGetAttr(DATABASEOID, tup,
+								Anum_pg_database_daticulocale, &isnull);
+		Assert(!isnull);
+		iculocale = TextDatumGetCString(datum);
+	}
+	else
+		iculocale = NULL;
+
+	datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_datcollversion,
+							&isnull);
+	if (!isnull)
+	{
+		char	   *actual_versionstr;
+		char	   *collversionstr;
+
+		collversionstr = TextDatumGetCString(datum);
+
+		actual_versionstr = get_collation_actual_version(dbform->datlocprovider, dbform->datlocprovider == COLLPROVIDER_ICU ? iculocale : collate);
+		if (!actual_versionstr)
+			/* should not happen */
+			elog(WARNING,
+				 "database \"%s\" has no actual collation version, but a version was recorded",
+				 name);
+		else if (strcmp(actual_versionstr, collversionstr) != 0)
+			ereport(WARNING,
+					(errmsg("database \"%s\" has a collation version mismatch",
+							name),
+					 errdetail("The database was created using collation version %s, "
+							   "but the operating system provides version %s.",
+							   collversionstr, actual_versionstr),
+					 errhint("Rebuild all objects in this database that use the default collation and run "
+							 "ALTER DATABASE %s REFRESH COLLATION VERSION, "
+							 "or build PostgreSQL with the right library version.",
+							 quote_identifier(name))));
+	}
+
+	ReleaseSysCache(tup);
 }
 
 /*
@@ -1816,6 +1963,29 @@ ShutdownPostgres(int code, Datum arg)
 }
 
 
+#if defined(ADDRESS_SANITIZER)
+static volatile int yb_skip_lsan_check = 0;
+
+int
+__lsan_is_turned_off(void)
+{
+	return yb_skip_lsan_check;
+}
+#endif
+
+static void
+YbKillMe(int sig)
+{
+#if defined(ADDRESS_SANITIZER)
+	yb_skip_lsan_check = 1;
+#endif
+#ifdef HAVE_SETSID
+	/* try to signal whole process group */
+	kill(-MyProcPid, sig);
+#endif
+	kill(MyProcPid, sig);
+}
+
 /*
  * STATEMENT_TIMEOUT handler: trigger a query-cancel interrupt.
  */
@@ -1831,11 +2001,7 @@ StatementTimeoutHandler(void)
 	if (ClientAuthInProgress)
 		sig = SIGTERM;
 
-#ifdef HAVE_SETSID
-	/* try to signal whole process group */
-	kill(-MyProcPid, sig);
-#endif
-	kill(MyProcPid, sig);
+	YbKillMe(sig);
 }
 
 /*
@@ -1844,11 +2010,7 @@ StatementTimeoutHandler(void)
 static void
 LockTimeoutHandler(void)
 {
-#ifdef HAVE_SETSID
-	/* try to signal whole process group */
-	kill(-MyProcPid, SIGINT);
-#endif
-	kill(MyProcPid, SIGINT);
+	YbKillMe(SIGINT);
 }
 
 static void

@@ -42,6 +42,7 @@
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/intent.h"
 #include "yb/dockv/subdocument.h"
@@ -339,7 +340,7 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
       // Ensure we set appropriate error in the response object for QL errors.
       const auto& resp = down_cast<QLWriteOperation*>(doc_op.get())->response();
       resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
-      resp->set_error_message(std::move(error_msg));
+      resp->dup_error_message(error_msg);
       continue;
     }
 
@@ -457,6 +458,15 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
             // Skip intents from aborted subtransactions (Ex: From rolled-back savepoints).
             // These writes were never committed and should not be streamed to CDC.
             if (aborted.Test(decoded_value.subtransaction_id)) {
+              reverse_index_iter.Next();
+              continue;
+            }
+
+            // Skip colocated table tombstone intents (DELETEs with no primary key).
+            // These are generated during colocated table rewrites and should not be
+            // streamed by CDC.
+            dockv::DocKeyDecoder decoder(intent.doc_path);
+            if (VERIFY_RESULT(decoder.DecodeColocationId()) && decoder.GroupEnded()) {
               reverse_index_iter.Next();
               continue;
             }

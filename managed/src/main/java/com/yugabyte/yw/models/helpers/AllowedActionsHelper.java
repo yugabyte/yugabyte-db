@@ -11,14 +11,13 @@
 package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
@@ -123,50 +122,57 @@ public class AllowedActionsHelper {
     return null;
   }
 
+  // This finds the nodes in the cluster that are of the same kind as this node.
+  private long getSimilarNodeCount(Cluster cluster, Predicate<NodeDetails> additionalFilter) {
+    long numNodesToCheck =
+        universe.getNodes().stream()
+            .filter(n -> cluster.uuid.equals(n.placementUuid))
+            .filter(n -> node.dedicatedTo == null || n.dedicatedTo == node.dedicatedTo)
+            .filter(additionalFilter)
+            .count();
+    LOG.debug(
+        "Found {} nodes equivalent to current node {} (dedicatedTo={}, isMaster={}, isTserver={})",
+        numNodesToCheck,
+        node.dedicatedTo,
+        node.isMaster,
+        node.isTserver);
+    return numNodesToCheck;
+  }
+
   private String removeSingleNodeErrOrNull(NodeActionType action) {
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    if (cluster.clusterType == PRIMARY) {
-      if (node.isMaster) {
-        // a primary node is being removed
-        long numNodesUp =
-            universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
-                .filter(n -> n != node && n.state == Live)
-                .count();
-        if (numNodesUp == 0) {
-          return errorMsg(action, "It is a last live node in a PRIMARY cluster");
-        }
-      }
+    Cluster cluster = universe.getCluster(node.placementUuid);
+    long numOtherNodesUp =
+        getSimilarNodeCount(cluster, n -> n.state == Live && !n.nodeName.equals(node.nodeName));
+    if (numOtherNodesUp == 0) {
+      return errorMsg(action, "It is a last live node in " + cluster.clusterType + " cluster");
     }
     return null;
   }
 
   private String removeProcessesErrOrNull(NodeActionType action) {
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    if (cluster.clusterType == PRIMARY) {
-      if (node.isMaster) {
-        return removePrimaryProcessOrNull(action, cluster, true);
-      } else if (node.isTserver && cluster.userIntent.dedicatedNodes) {
-        return removePrimaryProcessOrNull(action, cluster, false);
+    Cluster cluster = universe.getCluster(node.placementUuid);
+    Predicate<NodeDetails> commonPredicate =
+        n -> n.state == Live && !n.nodeName.equals(node.nodeName);
+    long numOtherNodesUp = Long.MAX_VALUE;
+    String processName = "masters";
+    if (node.isMaster) {
+      numOtherNodesUp = getSimilarNodeCount(cluster, n -> n.isMaster && commonPredicate.test(n));
+    }
+    if (node.isTserver) {
+      long numOtherTservers =
+          getSimilarNodeCount(cluster, n -> n.isTserver && commonPredicate.test(n));
+      if (numOtherTservers < numOtherNodesUp) {
+        // Track only the smaller number.
+        numOtherNodesUp = numOtherTservers;
+        processName = "tservers";
       }
     }
-    return null;
-  }
-
-  private String removePrimaryProcessOrNull(
-      NodeActionType action, UniverseDefinitionTaskParams.Cluster cluster, boolean isMaster) {
-    Predicate<NodeDetails> predicate = n -> isMaster ? n.isMaster : n.isTserver;
-    long numOtherNodesUp =
-        universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
-            .filter(predicate)
-            .filter(n -> n.state == Live)
-            .filter(n -> !n.nodeName.equals(node.nodeName))
-            .count();
     if (numOtherNodesUp < (cluster.userIntent.replicationFactor + 1) / 2) {
       long currentCount = numOtherNodesUp;
-      if (predicate.test(node) && node.state == Live) {
+      if (node.state == Live) {
+        // Node runs one or both the servers if it reaches here.
         currentCount++;
       }
-      String processName = isMaster ? "masters" : "tservers";
       return errorMsg(
           action,
           "As it will under replicate the "
@@ -180,22 +186,19 @@ public class AllowedActionsHelper {
     return null;
   }
 
+  // This is a basic check. More comprehensive checks are in the task prechecks.
   private String deleteSingleNodeErrOrNull(NodeActionType action) {
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    if ((cluster.clusterType == PRIMARY)
-        && ((node.state == NodeState.Decommissioned) || action == NodeActionType.DECOMMISSION)) {
-      int nodesInCluster = universe.getUniverseDetails().getNodesInCluster(cluster.uuid).size();
-      int minNodes =
-          cluster.userIntent.dedicatedNodes
-              ? cluster.userIntent.replicationFactor * 2
-              : cluster.userIntent.replicationFactor;
-      if (nodesInCluster <= minNodes) {
+    Cluster cluster = universe.getCluster(node.placementUuid);
+    if (node.state == NodeState.Decommissioned || action == NodeActionType.DECOMMISSION) {
+      // Field dedicatedTo is still set even for Decommissioned node state.
+      long numNodesToCheck = getSimilarNodeCount(cluster, n -> true);
+      if (numNodesToCheck <= cluster.userIntent.replicationFactor) {
         return errorMsg(
             action,
             String.format(
-                "Unable to have less nodes than %s (count = %d, replicationFactor = %d)",
-                cluster.userIntent.dedicatedNodes ? "2 * RF" : "RF",
-                nodesInCluster,
+                "Unable to have less nodes%s than RF (count = %d, replicationFactor = %d)",
+                node.dedicatedTo == null ? "" : " (dedicated to " + node.dedicatedTo + ")",
+                numNodesToCheck,
                 cluster.userIntent.replicationFactor));
       }
     }

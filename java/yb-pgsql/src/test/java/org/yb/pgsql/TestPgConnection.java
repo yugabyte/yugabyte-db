@@ -125,29 +125,11 @@ public class TestPgConnection extends BasePgSQLTest {
   }
 
   @Test
+  // This test reaches the MAX_CONNECTIONS limit on physical Postgres connections, which conn-mgr
+  // would interfere with (its pooled/worker connections consume backends). Bypassing builds the
+  // cluster with no connection manager, so all connections go straight to the Postgres port.
+  @BypassConnMgr(reason = BasePgSQLTest.LESSER_PHYSICAL_CONNS)
   public void testConnectionKills() throws Exception {
-    Boolean isTestRunWithConnectionManager =
-      isTestRunningWithConnectionManager();
-    skipYsqlConnMgr(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
-      isTestRunWithConnectionManager);
-
-    if (isTestRunWithConnectionManager){
-      // Before entering into the test, test already creates connections
-      // to connection manager as part of initial setup and we see in below
-      // getRemainingAvailableConnections function. So, we need to get rid of
-      // those connections before we start the test in order to have clean
-      // state. The test fails in cleanUpAfter with conn mgr, as it uses
-      // the existing connection created to conn mgr in initial set up to
-      // execute queries. While executing an attempt is made to create backend
-      // in transaction pool which crosses the MAX_CONNECTIONS number of
-      // physical connections and test fails with conn mgr error for too
-      // many connections.
-      // Therefore it's better to restart the cluster so we have all
-      // connections made to PgPort no interference of connections to conn mgr
-      // port is there when test is made to skip with conn mgr.
-      restartCluster();
-    }
-
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();
 
     final Connection[] connections = createConnections(NUM_CONNECTIONS);
@@ -184,10 +166,8 @@ public class TestPgConnection extends BasePgSQLTest {
   }
 
   @Test
+  @BypassConnMgr(reason = BasePgSQLTest.LESSER_PHYSICAL_CONNS)
   public void testConnectionKillsAndRestarts() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
-      isTestRunningWithConnectionManager());
-
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();
 
     // Create N connections, kill them all. Repeat this process a few times

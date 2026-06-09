@@ -189,11 +189,13 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                     rpc::ProxyCache* proxy_cache,
                                     const HostPort& bootstrap_peer_addr,
                                     const ServerRegistrationPB& tablet_leader_conn_info,
+                                    const OpId& pending_config_op_id_from_rbs,
                                     RaftGroupMetadataPtr* meta,
                                     TSTabletManager* ts_manager) {
   CHECK(!started_);
   start_time_micros_ = GetCurrentTimeMicros();
   bootstrap_source_uuid_ = bootstrap_peer_uuid;
+  pending_config_op_id_from_rbs_ = pending_config_op_id_from_rbs;
 
   // Set up RPC proxies for the RemoteBootstrapService. The uncompressed proxy is used to download
   // SST files (which are already Snappy compressed). The other files use the compressed proxy.
@@ -504,7 +506,8 @@ Status RemoteBootstrapClient::Finish() {
 }
 
 Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
-    const shared_ptr<consensus::Consensus>& shared_consensus) {
+    const shared_ptr<consensus::Consensus>& shared_consensus,
+    const std::function<bool()>& is_cancelled) {
 
   if (!shared_consensus) {
     return STATUS(InvalidArgument, "Invalid consensus object");
@@ -517,6 +520,14 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
   RaftConfigPB committed_config;
 
   do {
+    if (is_cancelled && is_cancelled()) {
+      return STATUS_FORMAT(
+          ShutdownInProgress,
+          "Abandoning VerifyChangeRoleSucceeded for peer $0: cancellation requested (likely "
+          "tserver shutdown). The peer's data is already persisted; the leader will promote it "
+          "to VOTER on the next RBS for this tablet.",
+          permanent_uuid());
+    }
     committed_config = shared_consensus->CommittedConfig();
     for (const auto &peer : committed_config.peers()) {
       if (peer.permanent_uuid() != permanent_uuid()) {
@@ -734,12 +745,15 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
     cmeta_ = VERIFY_RESULT(ConsensusMetadata::Create(
         &fs_manager(), tablet_id_, fs_manager().uuid(), remote_committed_cstate_->config(),
         remote_committed_cstate_->current_term()));
-    return Status::OK();
+  } else {
+    // Otherwise, update the consensus metadata to reflect the config and term
+    // sent by the remote bootstrap source.
+    cmeta_->MergeCommittedConsensusStatePB(*remote_committed_cstate_);
   }
 
-  // Otherwise, update the consensus metadata to reflect the config and term
-  // sent by the remote bootstrap source.
-  cmeta_->MergeCommittedConsensusStatePB(*remote_committed_cstate_);
+  if (pending_config_op_id_from_rbs_.is_valid_not_empty()) {
+    cmeta_->set_pending_config_op_id_from_rbs(pending_config_op_id_from_rbs_);
+  }
   RETURN_NOT_OK(cmeta_->Flush());
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {

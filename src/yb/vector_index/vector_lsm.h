@@ -50,6 +50,7 @@ struct VectorLSMInsertEntry {
 
 struct VectorLSMInsertContext {
   const storage::UserFrontiers* frontiers = nullptr;
+  size_t chunk_size = 0;
 };
 
 template<IndexableVectorType Vector,
@@ -116,6 +117,10 @@ class VectorLSM {
   storage::FlushAbility GetFlushAbility();
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
+
+  // Returns an estimate, derived from the underlying vector index implementation, of the number
+  // of vectors that fit into the specified byte budget.
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
@@ -212,6 +217,11 @@ class VectorLSM {
 
   // Creates vector index and reserve at least for `min_vectors` entries.
   Result<VectorIndexPtr> CreateVectorIndex(size_t min_vectors) const;
+
+  // Returns an index instance suitable for queries that don't depend on chunk contents
+  // (e.g. EstimateNumVectorsForBytes, Distance). Reuses an existing chunk's index when available,
+  // and falls back to a freshly created factory probe otherwise.
+  VectorIndexPtr GetProbeIndex() const EXCLUDES(mutex_);
 
   Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
 

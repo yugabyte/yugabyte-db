@@ -164,8 +164,18 @@ class IntentAwareIterator final {
 
   Result<ReadRestartData> GetReadRestartData() const;
 
-  MaxSeenHtData ObtainMaxSeenHtCheckpoint();
-  void RollbackMaxSeenHt(MaxSeenHtData checkpoint);
+  // Checkpoint stores only the HT; the offending key need not be snapshotted.
+  // We don't promise a specific key on read restart; any observation that causes
+  // read restart is good enough. UpdateMaxSeenHt records the first such key and
+  // the empty-guard freezes it.
+  //   - checkpoint HT > read_time: a key was already frozen before the
+  //     snapshot, so the iterator's current key equals the snapshot-time key;
+  //     nothing to restore.
+  //   - checkpoint HT <= read_time: no key existed at snapshot time, so any
+  //     key recorded since is for an observation we're undoing.
+  //     RollbackMaxSeenHt clears it.
+  EncodedDocHybridTime ObtainMaxSeenHtCheckpoint();
+  void RollbackMaxSeenHt(const EncodedDocHybridTime& checkpoint);
 
   HybridTime TEST_MaxSeenHt() const;
 
@@ -365,7 +375,7 @@ class IntentAwareIterator final {
 #endif
   }
 
-  void UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice key);
+  void UpdateMaxSeenHt(const EncodedDocHybridTime& seen_ht, Slice key);
 
   const ReadHybridTime read_time_;
   const EncodedReadHybridTime encoded_read_time_;

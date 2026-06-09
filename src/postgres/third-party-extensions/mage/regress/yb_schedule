@@ -1,0 +1,3 @@
+# third-party-extensions/mage/regress/yb_schedule
+
+test: yb.orig.basic

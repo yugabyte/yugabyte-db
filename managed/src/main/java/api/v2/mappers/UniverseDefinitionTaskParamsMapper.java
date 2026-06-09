@@ -63,6 +63,11 @@ public interface UniverseDefinitionTaskParamsMapper {
   public static UniverseDefinitionTaskParamsMapper INSTANCE =
       Mappers.getMapper(UniverseDefinitionTaskParamsMapper.class);
 
+  @Mapping(target = "allProviderUUIDs", ignore = true)
+  @Mapping(target = "allCloudTypes", ignore = true)
+  public UniverseDefinitionTaskParams.UserIntent userIntentToUserIntent(
+      UniverseDefinitionTaskParams.UserIntent userIntent, @Context Request request);
+
   @InheritConfiguration(name = "defaultMapping")
   public UniverseConfigureTaskParams toUniverseConfigureTaskParams(
       UniverseDefinitionTaskParams source, @Context Request request);

@@ -97,9 +97,20 @@ public class RoleBindingUtil {
 
   public void validateRoles(
       UUID customerUUID, List<RoleResourceDefinition> roleResourceDefinitions) {
+    validateRoles(customerUUID, roleResourceDefinitions, false);
+  }
+
+  /**
+   * @param allowSuperAdminRole when true, SuperAdmin may appear in roleResourceDefinitions (guarded
+   *     at API layer by runtime flag and SuperAdmin caller).
+   */
+  public void validateRoles(
+      UUID customerUUID,
+      List<RoleResourceDefinition> roleResourceDefinitions,
+      boolean allowSuperAdminRole) {
     for (RoleResourceDefinition roleResourceDefinition : roleResourceDefinitions) {
       Role role = Role.getOrBadRequest(customerUUID, roleResourceDefinition.getRoleUUID());
-      if (Users.Role.SuperAdmin.name().equals(role.getName())) {
+      if (!allowSuperAdminRole && Users.Role.SuperAdmin.name().equals(role.getName())) {
         String errMsg =
             String.format(
                 "Cannot assign SuperAdmin role to a user or group in the roleResourceDefinition:"

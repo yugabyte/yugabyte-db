@@ -224,7 +224,7 @@ export const GFlagsFieldNew = ({
           const newFlagArr: Gflag[] = [];
           if (Object.keys(formValues).length > 0) {
             Object.entries(formValues).forEach(([key, val]) => {
-              const obj = { Name: key, [values?.server]: val };
+              const obj = { Name: key, [values?.server]: val, isNewlyAdded: true };
               checkExistsAndPush(obj);
               newFlagArr.push(obj);
             });
@@ -244,8 +244,11 @@ export const GFlagsFieldNew = ({
       case ADD_GFLAG: {
         const obj: AddGFlagConfObject = {
           Name: values?.flagname,
-          [values?.server]: values?.flagvalue
+          [values?.server]: values?.flagvalue,
+          isNewlyAdded: true
         };
+        if (values?.tags !== null) obj.tags = values.tags;
+        if (values?.requiresRestart !== null) obj.requiresRestart = values.requiresRestart;
         if (MULTILINE_GFLAGS_ARRAY.includes(values?.server)) {
           // In case of any multi-line csv flags, the below variables
           // will have concatenated string and preview flag value to be displayed

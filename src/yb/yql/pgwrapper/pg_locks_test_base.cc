@@ -259,7 +259,7 @@ std::vector<PgClientServiceProxy*> PgLocksTestBase::get_pg_client_service_proxie
 
 Result<std::future<Status>> PgLocksTestBase::ExpectBlockedAsync(
     pgwrapper::PGConn* conn, const std::string& query) {
-  auto status = std::async(std::launch::async, [&conn, query]() {
+  auto status = std::async(std::launch::async, [conn, query]() {
     return conn->Execute(query);
   });
   // TODO: Once https://github.com/yugabyte/yugabyte-db/issues/17295 is fixed, remove the

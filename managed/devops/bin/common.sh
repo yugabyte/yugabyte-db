@@ -94,15 +94,12 @@ readonly yb_script_name=${0##*/}
 readonly yb_script_name_no_extension=${yb_script_name%.sh}
 
 readonly yb_devops_home=$( cd "${BASH_SOURCE%/*}"/.. && pwd )
-if [[ ! -d $yb_devops_home/roles ]]; then
-  fatal "No 'roles' subdirectory found inside yb_devops_home ('$yb_devops_home')"
-fi
 
 if [ -L /opt/yugabyte/devops ]; then
  export yb_devops_home_link="/opt/yugabyte/devops"
 fi
 
-# We need to export yb_devops_home because we rely on it in ansible.cfg.
+# We need to export yb_devops_home.
 export yb_devops_home
 
 # We need this in addition to yb_devops_home, because we sometimes just install a subset of scripts
@@ -320,7 +317,7 @@ create_pymodules_package() {
   chmod 777 "$YB_PYTHON_MODULES_DIR"
   extra_install_flags=""
   run_pip install --upgrade pip > /dev/null
-  # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
+  # Download the scripts necessary. Remove the modules afterwards to avoid
   # system-specific libraries.
   log "Downloading package scripts"
   run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
@@ -459,7 +456,6 @@ install_pip() {
     log "Installing python-pip (will need sudo privileges for that)..."
     if [[ ${is_debian} == "true" ]]; then
       # Need pip to install Python dependencies.
-      # http://docs.ansible.com/ansible/guide_gce.html
       sudo apt-get install python-pip
     elif [[ ${is_centos} == "true" ]]; then
       # TODO: can the two commands below be done as one command? Or does the
@@ -581,7 +577,6 @@ activate_pex() {
   export PEX_ROOT="$pex_venv_dir"
   SCRIPT_PATH="$yb_devops_home/opscli/ybops/scripts/ybcloud.py"
   export SCRIPT_PATH
-  export ANSIBLE_CONFIG="$yb_devops_home/ansible.cfg"
   PY_VERSION_MARKER="$pex_venv_dir/.python_version"
   trap "set +e cleanup_pexlock" EXIT INT TERM
   # Create and activate virtualenv
@@ -644,14 +639,6 @@ activate_pex() {
 
 detect_os
 
-#
-# We should not load up ansible.env in all our shells scripts anymore! This should be automatically
-# sourced in our env, or manually sourced in individial scripts that need credentials to be setup.
-# Otherwise, for production scripts, run from YW, they should get all the relevant vars from YW
-# directly!
-#
-
-export ANSIBLE_HOST_KEY_CHECKING=False
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 

@@ -117,7 +117,7 @@ As soon as the `yugaplus-backend` container starts, it applies the database migr
 ![Tables](/images/tutorials/build-and-learn/chapter5-movie-tables.png)
 
 {{< note title="Can't connect to YugabyteDB Aeon?" >}}
-If the application fails to connect to YugabyteDB Aeon, ensure you've added your IP address to the [IP Allow list](/stable/yugabyte-cloud/cloud-secure-clusters/add-connections).
+If the application fails to connect to YugabyteDB Aeon, ensure you've added your IP address to the [IP Allow list](/stable/yugabyte-cloud/cloud-secure-clusters/add-connections/).
 {{< /note >}}
 
 ## Ask for movie recommendations one last time
