@@ -149,6 +149,10 @@ if [[ $YB_SRC_ROOT == */ ]]; then
   fatal "YB_SRC_ROOT ends with '/' (not allowed): '$YB_SRC_ROOT'"
 fi
 
+# Source our yb.env file to set expected defaults
+# shellcheck source=yb.env
+. "$YB_SRC_ROOT/yb.env"
+
 initialize_yugabyte_bash_common
 
 # shellcheck source=build/yugabyte-bash-common/src/yugabyte-bash-common.sh
