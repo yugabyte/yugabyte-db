@@ -136,7 +136,7 @@ Implicit publication is controlled by the following flags. Set them on both YB-M
 
 | Flag | Details |
 | :--- | :--- |
-| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default in v2026.1 and later), modifications to a publication are reflected implicitly. This replaces the periodic publication refresh mechanism used in versions earlier than v2026.1 with PostgreSQL-like semantics for dynamic tables. |
+| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default), modifications to a publication are reflected implicitly, providing PostgreSQL-like semantics for dynamic tables. When set to `false`, the publication's tables list is [periodically refreshed](#periodoc-publication). |
 | cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
 
 ### Periodoc publication
@@ -171,30 +171,24 @@ If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you s
 
 ## Streaming DDLs causing table rewrite
 
-Available in v2026.1 and later only for the logical replication model of CDC.
-
-Prior to v2026.1, any DDL that causes a table rewrite (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)) is blocked when CDC is active on the database. To perform such a DDL, you have to drop replication slots, run the DDL, and recreate the slots—potentially requiring a new CDC snapshot.
-
-Starting in v2026.1, with streaming of DDLs that cause table rewrite enabled by default, logical replication can detect a table rewrite, send a DDL event to the client, and transition to streaming changes from the re-written table's tablets after finishing data from the older tablets.
+By default (v2026.1 and later), streaming DDLs that cause table rewrites are detected by logical replication, which sends a DDL event to the client, and transitions to streaming changes from the re-written table's tablets after finishing data from the older tablets.
 
 In addition, you can perform DDL on _non-colocated_ tables in a database with active logical replication without dropping replication slots. CDC detects the DDL, sends a record informing the client about the schema change, and shifts to the new tablets when the DDL causes a table rewrite.
 
 For more details, see [Table rewrite and DROP TABLE handling](../../../../architecture/docdb-replication/cdc-logical-replication/#table-rewrite-and-drop-table-handling).
 
+This feature is controlled by the following flags. Set them on both YB-Master and YB-TServer.
+
+| Flag | Details |
+| :--- | :--- |
+| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | When set to `true` (the default), CDC does not block DDLs that cause table rewrites. Records from the re-written tablets are streamed after CDC finishes streaming data from the older tablets. When set to `false`, any DDL that causes a table rewrite (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)) is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1.); to perform such a DDL, you have to drop replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. |
+| cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
+
 ### Unsupported scenarios
 
 - When you truncate a table that is being replicated by CDC, CDC does not send a truncate record to the client. Tracked in {{<issue 29674>}}.
 - When a DDL causes a table rewrite, existing data is re-written to new tablets. CDC re-sends this existing data again after the table rewrite. Tracked in {{<issue 31636>}}.
-- Streaming DDLs that cause table rewrites is not supported only for colocated tables when CDC is enabled. Tracked in {{<issue 31908>}}.
-
-### Configuration
-
-The feature is controlled by the following flags. Set them on both YB-Master and YB-TServer.
-
-| Flag | Details |
-| :--- | :--- |
-| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | When set to `true` (default in v2026.1 and later), CDC does not block DDLs that cause table rewrites. Records from the re-written tablets are streamed after CDC finishes streaming data from the older tablets. |
-| cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
+- Streaming DDLs that cause table rewrites is not supported for _colocated_ tables when CDC is enabled. Tracked in {{<issue 31908>}}.
 
 ## Initial snapshot
 
