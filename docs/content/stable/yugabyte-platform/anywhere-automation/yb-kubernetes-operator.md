@@ -455,7 +455,7 @@ spec:
           memory: 8Gi
 ```
 
-### Create a universe with Read Replicas
+### Create a universe with read replicas
 
 {{<tags/feature/ea idea="2460">}}Starting from YugabyteDB Anywhere v2026.1, you can specify a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster in the YBUniverse CR using the `readReplica` field.
 
@@ -1050,6 +1050,8 @@ spec:
 
 #### Failover
 
+Fail over to the replica:
+
 1. Set the current target as `sourceUniverse` and use a null string (`""`) for `targetUniverse` to initiate a failover:
 
     ```yaml
@@ -1278,11 +1280,11 @@ Importing a universe to the operator creates or adopts the following in the targ
 - Storage configurations related to the backups or backup schedules, including secrets to access the storage configuration.
 - Release, including secrets to access the release.
 
-## Operator high availability
+## Operator High Availability
 
-{{<tags/feature/ea idea="2460">}}If you deploy YBA across separate Kubernetes clusters with [YBA high availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
+{{<tags/feature/ea idea="2460">}}If you deploy YBA across separate Kubernetes clusters with [YBA High Availability](../../administer-yugabyte-platform/high-availability/) enabled, Operator HA synchronizes operator CRs and their associated secrets to the standby cluster during failover and failback. This lets the standby YBA instance resume management of operator-controlled universes without manually recreating resources.
 
-For details, see [Operator high availability](../../administer-yugabyte-platform/operator-high-availability/).
+For details, see [Operator High Availability](../../administer-yugabyte-platform/operator-high-availability/).
 
 ## Limitations
 
