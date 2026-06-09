@@ -52,6 +52,7 @@ static void yb_check_invalid_indexes();
 static void yb_check_installed_extensions();
 static void yb_check_pgcrypto_schema();
 static void yb_check_yb_role_prefix();
+static void yb_check_stale_acl_grantors();
 
 #define YB_SUPERUSER  "yb_superuser"
 
@@ -236,6 +237,7 @@ check_and_dump_old_cluster(bool live_check)
 	yb_check_installed_extensions();
 	yb_check_pgcrypto_schema();
 	yb_check_yb_role_prefix();
+	yb_check_stale_acl_grantors();
 
 	if (yb_has_check_fatal)
 		pg_fatal("\n");
@@ -2108,4 +2110,128 @@ yb_check_yb_role_prefix()
 	}
 	else
 		check_ok();
+}
+
+/*
+ * yb_check_stale_acl_grantors()
+ *
+ * Check for ACL entries whose grantor is not the current object owner.
+ */
+static void
+yb_check_stale_acl_grantors()
+{
+	int			dbnum;
+	bool		found = false;
+	char		output_path[MAXPGPATH];
+	FILE	   *script = NULL;
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "stale_acl_grantors.txt");
+
+	prep_status("Checking for privileges with stale grantors");
+
+	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult   *res;
+		int			ntups;
+		int			rowno;
+		int			i_script;
+		DbInfo	   *active_db = &old_cluster.dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(&old_cluster, active_db->db_name);
+
+		res = executeQueryOrDie(conn,
+			"WITH stale AS ( "
+			"  SELECT p.oid AS oid, "
+			"         '\"' || replace(n.nspname, '\"', '\"\"') || '\".\"' || "
+			"         replace(p.proname, '\"', '\"\"') || '\"(' || "
+			"         pg_get_function_identity_arguments(p.oid) || ')' AS func, "
+			"         '\"' || replace(pg_get_userbyid(p.proowner), '\"', '\"\"') || '\"' AS owner, "
+			"         '\"' || replace(pg_get_userbyid(a.grantor), '\"', '\"\"') || '\"' AS grantor, "
+			"         CASE WHEN a.grantee = 0 THEN 'PUBLIC' "
+			"              ELSE '\"' || replace(pg_get_userbyid(a.grantee), '\"', '\"\"') || '\"' "
+			"         END AS grantee, "
+			"         a.privilege_type AS priv "
+			"  FROM pg_proc p "
+			"  JOIN pg_namespace n ON n.oid = p.pronamespace "
+			"  CROSS JOIN LATERAL aclexplode(p.proacl) a "
+			"  WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') "
+			"    AND a.grantor <> p.proowner "
+			"), "
+			"steps AS ( "
+
+			/* stage 1a: become each stale grantor so we can revoke its grants */
+			"  SELECT oid, func, 1 AS stage, grantor AS grp, 0 AS seq, grantor AS tie, "
+			"         'ALTER FUNCTION ' || func || ' OWNER TO ' || grantor || ';' AS stmt "
+			"    FROM stale GROUP BY oid, func, grantor "
+
+			"  UNION ALL "
+
+			/* stage 1b: revoke what that grantor granted (owner is now the grantor) */
+			"  SELECT oid, func, 1, grantor, 1, grantee, "
+			"         'REVOKE ALL ON FUNCTION ' || func || ' FROM ' || grantee || ';' "
+			"    FROM stale GROUP BY oid, func, grantor, grantee "
+
+			"  UNION ALL "
+
+			/* stage 2: restore the real owner */
+			"  SELECT DISTINCT oid, func, 2, '', 0, '', "
+			"         'ALTER FUNCTION ' || func || ' OWNER TO ' || owner || ';' "
+			"    FROM stale "
+
+			"  UNION ALL "
+
+			/* stage 3: re-grant the preserved privileges from the real owner */
+			"  SELECT oid, func, 3, '', 1, grantee || ' ' || priv, "
+			"         'GRANT ' || priv || ' ON FUNCTION ' || func || ' TO ' || grantee || ';' "
+			"    FROM stale GROUP BY oid, func, grantee, priv "
+			") "
+
+			"SELECT string_agg('    ' || stmt, E'\\n' "
+			"                  ORDER BY stage, grp, seq, tie) AS script "
+			"  FROM steps "
+			" GROUP BY oid, func "
+			" ORDER BY func"
+		);
+		ntups = PQntuples(res);
+		if (ntups > 0)
+		{
+			found = true;
+			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+				pg_fatal("could not open file \"%s\": %s\n", output_path,
+						strerror(errno));
+
+			i_script = PQfnumber(res, "script");
+
+			yb_fprintf_and_log(script, "In database: %s\n", active_db->db_name);
+			yb_fprintf_and_log(script, "    \\c %s\n", active_db->db_name);
+
+			for (rowno = 0; rowno < ntups; rowno++)
+				yb_fprintf_and_log(script, "%s\n\n",
+								PQgetvalue(res, rowno, i_script));
+
+		}
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	if (script)
+		fclose(script);
+
+	if (found)
+	{
+		yb_fatal("Your installation contains function privileges whose grantor is not\n"
+				 "the current owner. This can happen when function ownership is changed\n"
+				 "after privileges were granted (for example, ALTER FUNCTION ... OWNER\n"
+				 "TO). These stale ACL entries cause major version upgrade to fail.\n"
+				 "To fix, connect to each database listed below and run the commands\n"
+				 "printed for each affected function.\n"
+				 "A list of affected functions and fix commands is printed above and in\n"
+				 "the file:\n"
+				 "    %s\n\n", output_path);
+	}
+	else
+	{
+		check_ok();
+	}
 }
