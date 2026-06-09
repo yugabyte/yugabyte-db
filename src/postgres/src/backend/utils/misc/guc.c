@@ -124,6 +124,7 @@
 #include "executor/ybModifyTable.h"
 #include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
+#include "tcop/cmdtag.h"
 #include "tcop/pquery.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
@@ -290,6 +291,14 @@ static bool check_transaction_priority_upper_bound(double *newval, void **extra,
 static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
 static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
+static bool yb_check_extra_commands_to_retry(char **newval, void **extra,
+											 GucSource source);
+static void yb_assign_extra_commands_to_retry(const char *newval, void *extra);
+static bool yb_check_extra_commands_to_retry_in_proc(char **newval,
+													 void **extra,
+													 GucSource source);
+static void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
+													  void *extra);
 static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
@@ -7339,6 +7348,52 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		yb_check_neg_catcache_ids,
 		yb_set_neg_catcache_ids, NULL
+	},
+
+	{
+		{"yb_extra_commands_to_retry", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Comma-separated list of command tags to additionally "
+						 "retry on a serialization error."),
+			gettext_noop("By default the query layer retries SELECT/INSERT/"
+						 "UPDATE/DELETE, and under READ COMMITTED also any "
+						 "command tag on kConflict/kDeadlock/kAborted "
+						 "(historical) and CALL/DO whose body ran only those "
+						 "same four statements (or nested CALL/DO with only "
+						 "those same four statements) on kReadRestart. Each "
+						 "tag listed here joins the retriable set; tag names "
+						 "are case-insensitive and follow the names shown in "
+						 "psql command tags. COPY, COPY FROM, and ANALYZE "
+						 "are rejected at SET time -- they are not safe to "
+						 "retry. Use with caution: re-executing DDL or other "
+						 "utility statements may have unintended effects."),
+			GUC_LIST_INPUT
+		},
+		&yb_extra_commands_to_retry_string,
+		"",
+		yb_check_extra_commands_to_retry,
+		yb_assign_extra_commands_to_retry, NULL
+	},
+
+	{
+		{"yb_extra_commands_to_retry_in_proc", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Comma-separated list of command tags that, when run "
+						 "inside a CALL/DO body, do not block retry of the "
+						 "enclosing CALL/DO."),
+			gettext_noop("By default a CALL/DO is retried only when its body "
+						 "ran nothing but SELECT/INSERT/UPDATE/DELETE or "
+						 "nested CALL/DO, since a retry re-runs the entire "
+						 "body. Each tag listed here joins that set, e.g. "
+						 "'LOCK TABLE'. Tag names are case-insensitive. "
+						 "COPY, COPY FROM, and ANALYZE are rejected at SET "
+						 "time -- they are not safe to retry. Use with "
+						 "caution: re-executing the listed statements may "
+						 "have unintended effects."),
+			GUC_LIST_INPUT
+		},
+		&yb_extra_commands_to_retry_in_proc_string,
+		"",
+		yb_check_extra_commands_to_retry_in_proc,
+		yb_assign_extra_commands_to_retry_in_proc, NULL
 	},
 
 	{
@@ -17244,6 +17299,108 @@ yb_set_neg_catcache_ids(const char *newval, void *extra)
 		YbSetAdditionalNegCacheIds(neg_cache_ids_list);
 		list_free(neg_cache_ids_list);
 	}
+}
+
+/*
+ * YB: Parse a comma-separated list of command tag names into a bool array
+ * indexed by CommandTag. Used by yb_extra_commands_to_retry[_in_proc] check
+ * hooks. On success, the caller-supplied *extra receives a guc_malloc'd bool
+ * array of size COMMAND_TAG_NEXTTAG which the assign hook later moves into
+ * the runtime variable.
+ *
+ * Empty input is allowed (yields an all-false array). Embedded spaces within
+ * tag names ("CREATE TABLE") are supported via SplitDirectoriesString. Tag
+ * lookup is case-insensitive (GetCommandTagEnum). Unknown tags cause the
+ * check to fail.
+ *
+ * Validates the whole list before any allocation, so error paths don't have
+ * to free anything.
+ */
+static bool
+yb_parse_command_tag_list(const char *list_str, void **extra)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	ListCell   *l;
+	bool	   *arr;
+
+	rawstring = pstrdup(list_str);
+
+	if (!SplitDirectoriesString(rawstring, ',', &elemlist))
+	{
+		GUC_check_errdetail("List syntax is invalid.");
+		pfree(rawstring);
+		list_free_deep(elemlist);
+		return false;
+	}
+
+	/* First pass: validate every tag name before allocating anything. */
+	foreach(l, elemlist)
+	{
+		char	   *tok = (char *) lfirst(l);
+		CommandTag	tag = GetCommandTagEnum(tok);
+
+		if (tag == CMDTAG_UNKNOWN)
+		{
+			GUC_check_errdetail("Unrecognized command tag: \"%s\".", tok);
+			pfree(rawstring);
+			list_free_deep(elemlist);
+			return false;
+		}
+
+		/*
+		 * COPY/COPY FROM/ANALYZE are never safe to retry: re-executing
+		 * COPY can double-apply rows, and ANALYZE errors out on retry.
+		 * Reject the setting outright.
+		 */
+		if (tag == CMDTAG_COPY || tag == CMDTAG_COPY_FROM ||
+			tag == CMDTAG_ANALYZE)
+		{
+			GUC_check_errdetail("\"%s\" cannot be retried "
+								"(COPY may double-apply rows; "
+								"ANALYZE errors out on retry).", tok);
+			pfree(rawstring);
+			list_free_deep(elemlist);
+			return false;
+		}
+	}
+
+	/* Second pass: allocate and populate the array now that all tags are known good. */
+	arr = guc_malloc(ERROR, COMMAND_TAG_NEXTTAG * sizeof(bool));
+	MemSet(arr, 0, COMMAND_TAG_NEXTTAG * sizeof(bool));
+	foreach(l, elemlist)
+		arr[GetCommandTagEnum((char *) lfirst(l))] = true;
+
+	pfree(rawstring);
+	list_free_deep(elemlist);
+
+	*extra = arr;
+	return true;
+}
+
+static bool
+yb_check_extra_commands_to_retry(char **newval, void **extra, GucSource source)
+{
+	return yb_parse_command_tag_list(*newval, extra);
+}
+
+static void
+yb_assign_extra_commands_to_retry(const char *newval, void *extra)
+{
+	yb_extra_commands_to_retry = (bool *) extra;
+}
+
+static bool
+yb_check_extra_commands_to_retry_in_proc(char **newval, void **extra,
+										 GucSource source)
+{
+	return yb_parse_command_tag_list(*newval, extra);
+}
+
+static void
+yb_assign_extra_commands_to_retry_in_proc(const char *newval, void *extra)
+{
+	yb_extra_commands_to_retry_in_proc = (bool *) extra;
 }
 
 static bool

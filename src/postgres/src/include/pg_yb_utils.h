@@ -710,6 +710,12 @@ extern bool yb_is_non_atomic_commit_done;
  */
 extern bool yb_enable_retry_after_non_atomic_commit;
 
+extern char *yb_extra_commands_to_retry_string;
+extern bool *yb_extra_commands_to_retry;
+
+extern char *yb_extra_commands_to_retry_in_proc_string;
+extern bool *yb_extra_commands_to_retry_in_proc;
+
 /*
  * Relaxes some internal sanity checks for system catalogs to allow creating them.
  */

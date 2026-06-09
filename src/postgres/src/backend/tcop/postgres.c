@@ -87,6 +87,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "commands/portalcmds.h"
 #include "commands/variable.h"
+#include "executor/spi.h"
 #include "libpq/auth.h"
 #include "libpq/yb_pqcomm_extensions.h"
 #include "pg_yb_utils.h"
@@ -5271,7 +5272,11 @@ YBIsTransactionControlCommandTag(CommandTag command_tag)
 			command_tag == CMDTAG_RELEASE);
 }
 
-/* Whether we are allowed to restart current query/txn. */
+/*
+ * Whether we are allowed to restart current query/txn.
+ *
+ * Design/rationale for query-layer retries: see the README in this directory.
+ */
 static bool
 yb_is_retry_possible(ErrorData *edata, int attempt,
 					 const YBQueryRetryData *retry_data)
@@ -5534,6 +5539,10 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		command_tag = prepared_stmt->plansource->commandTag;
 	}
 
+	/*
+	 * NB: command_tag comes from the raw parse tree, so all SELECT variants
+	 * (including FOR UPDATE/SHARE/...) arrive here as plain CMDTAG_SELECT.
+	 */
 	bool		is_read = command_tag == CMDTAG_SELECT;
 	bool		is_dml = YBIsDmlCommandTag(command_tag);
 
@@ -5552,25 +5561,68 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	}
 
 	/*
-	 * pg_client_session rejects read restarts in DDL mode.
-	 * Retrying in that case is not only wasteful but also results in a non-retryable error
-	 * instead of the expected read restart error. For that reason, reject read restarts
-	 * for non DML statements.
-	 * However, allow retries on conflict errors in read committed isolation.
+	 * Supported retries:
+	 *
+	 * 1. READ COMMITTED:
+	 *    a. kConflict/kDeadlock/kAborted: any command tag retried
+	 *       (historical RC behavior).
+	 *    b. kReadRestart: SELECT/INSERT/UPDATE/DELETE, plus CALL/DO whose
+	 *       body ran only the same four statements or nested CALL/DO
+	 *       (extendable via yb_extra_commands_to_retry_in_proc). Other
+	 *       top-level tags are retried only if listed in
+	 *       yb_extra_commands_to_retry.
+	 *
+	 * 2. REPEATABLE READ / SERIALIZABLE:
+	 *    For all error kinds, only SELECT/INSERT/UPDATE/DELETE retry by
+	 *    default. CALL/DO and other tags retry only if listed in
+	 *    yb_extra_commands_to_retry; when CALL/DO is opted in, the
+	 *    proc-retriability gate still applies (body must be safe to
+	 *    re-execute, tracked by SPI as YbProcRetryBlocked()).
 	 */
-	if ((!IsYBReadCommitted() || is_read_restart_error) && !(is_read || is_dml))
+	if (command_tag == CMDTAG_CALL || command_tag == CMDTAG_DO)
 	{
-		/*
-		 * if !read committed, we only support retries with
-		 * SELECT/UPDATE/INSERT/DELETE. There are other statements that might
-		 * result in a kReadRestart/kConflict like CREATE INDEX. We don't retry
-		 * those as of now.
-		 */
-		if (yb_debug_log_internal_restarts)
-			elog(LOG,
-				 "query layer retries not possible because statement isn't one of "
-				 "SELECT/UPDATE/INSERT/DELETE");
-		return false;
+		bool		rc_carveout = (IsYBReadCommitted() && !is_read_restart_error);
+		bool		opted_in = (yb_extra_commands_to_retry != NULL &&
+								yb_extra_commands_to_retry[command_tag]);
+
+		if (!IsYBReadCommitted() && !opted_in)
+		{
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "query layer retry isn't possible: retry of %s "
+					 "outside READ COMMITTED has not been validated",
+					 GetCommandTagName(command_tag));
+			return false;
+		}
+
+		if (!rc_carveout && YbProcRetryBlocked())
+		{
+			const char *stmt_kind = (command_tag == CMDTAG_CALL ?
+									 "CALL" : "DO block");
+			const char *user_err = psprintf("query layer retry isn't possible because the "
+											"%s executed a statement whose retry behavior "
+											"has not been validated.",
+											stmt_kind);
+
+			edata->message = psprintf("%s (%s)", edata->message, user_err);
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "%s", user_err);
+			return false;
+		}
+	}
+	else if (!(is_read || is_dml))
+	{
+		bool		rc_carveout = (IsYBReadCommitted() && !is_read_restart_error);
+		bool		opted_in = (yb_extra_commands_to_retry != NULL &&
+								yb_extra_commands_to_retry[command_tag]);
+
+		if (!rc_carveout && !opted_in)
+		{
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "query layer retry isn't possible: %s is not in "
+					 "the default retriable set",
+					 GetCommandTagName(command_tag));
+			return false;
+		}
 	}
 
 	return true;
@@ -6080,6 +6132,9 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 	PG_END_TRY();
 }
 
+/*
+ * The query-layer retry loop. Design/rationale: see the README in this directory.
+ */
 static void
 yb_exec_query_wrapper(MemoryContext exec_context,
 					  const YBQueryRetryData *retry_data,
