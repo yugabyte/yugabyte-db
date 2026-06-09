@@ -211,6 +211,11 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     return tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly);
   }
 
+  Status WaitForIntentsAppliedAndFlush() {
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    return cluster_->FlushTablets();
+  }
+
   Result<RemoteTabletPtr> LookupTabletById(const TabletId& tablet_id,
                                            const std::shared_ptr<client::YBTable>& table = nullptr,
                                            UseCache use_cache = client::UseCache::kTrue) {
@@ -2066,9 +2071,10 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
-  ASSERT_OK(cluster_->FlushTablets());
 
   const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
+
   const auto source_tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_id));
 
   const auto leader_peers =
