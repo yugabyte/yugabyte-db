@@ -5971,7 +5971,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_BYTE | GUC_EXPLAIN
 		},
 		&yb_parallel_range_size,
-		1024 * 1024, 1, INT_MAX,
+		16 * 1024 * 1024, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
