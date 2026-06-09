@@ -23,8 +23,12 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/path_util.h"
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -43,6 +47,7 @@ DECLARE_int32(vector_index_compaction_size_ratio_percent);
 DECLARE_int32(vector_index_compaction_size_ratio_min_merge_width);
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
+DECLARE_uint64(vector_index_task_size);
 
 METRIC_DEFINE_entity(table);
 
@@ -735,6 +740,47 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
     SleepFor(MonoDelta::FromSeconds(1));
   }
+}
+
+// Guards against a VectorLSM shutdown deadlock: when shutdown began while a background compaction
+// was scheduling merge sub-tasks, the allocated-but-not-yet-executed batch was dropped without
+// releasing its reserved capacity, so the merge registry's allocated task counter never returned to
+// zero and CompleteShutdown() spun forever waiting for it.
+TEST_P(VectorLSMTest, ShutdownDuringBackgroundMerge) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kNumChunks = 4;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
+  // One vector per merge sub-task, so the merge reliably fans out into the thread-pool path.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  for (size_t n = 0; n < kNumChunks; ++n) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, 10));
+  }
+
+  // Begin shutdown from the sync point callback, i.e. exactly when the background merge has a batch
+  // of sub-tasks allocated but not yet executed -- the window that used to leak their reserved
+  // capacity.
+  CountDownLatch shutdown_started{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::DoMergeWithThreadPool:AfterAllocate",
+      [&lsm, &shutdown_started](void*) {
+        lsm.StartShutdown();
+        shutdown_started.CountDown();
+      });
+  sync_point->EnableProcessing();
+
+  ASSERT_OK(lsm.Compact(/* wait = */ false));
+  ASSERT_TRUE(shutdown_started.WaitFor(30s * kTimeMultiplier))
+      << "Background merge did not allocate sub-tasks and start shutdown";
+
+  // With the bug, CompleteShutdown() spins forever waiting for the leaked merge tasks; the test
+  // then fails via the harness test timeout (run with --test-timeout-sec). With the fix it returns
+  // promptly.
+  lsm.CompleteShutdown();
 }
 
 void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
