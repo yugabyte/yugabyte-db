@@ -2270,6 +2270,7 @@ bool		yb_plpgsql_disable_prefetch_in_for_query = false;
 bool		yb_enable_sequence_pushdown = true;
 bool		yb_disable_wait_for_backends_catalog_version = false;
 bool		yb_enable_base_scans_cost_model = false;
+bool		yb_prefetch_column_statistics = true;
 bool		yb_enable_update_reltuples_after_create_index = false;
 bool		yb_enable_index_backfill_scan_optimization = false;
 int			yb_wait_for_backends_catalog_version_timeout = 15 * 60 * 1000;	/* 15 min */
