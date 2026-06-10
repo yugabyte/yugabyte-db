@@ -146,7 +146,7 @@ To register an application, do the following:
 
 1. Select the tenant for the application.
 
-1. Set the redirect URI. Enter the [OIDC callback URI](#oidc-callback-uri). This is where the IdP redirects after authentication.
+1. Set the [redirect URI](#oidc-callback-uri). This is where the IdP redirects after authentication.
 
 1. Click **Register**.
 
