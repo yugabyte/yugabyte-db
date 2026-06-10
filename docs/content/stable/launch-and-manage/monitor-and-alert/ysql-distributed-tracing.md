@@ -1,7 +1,7 @@
 ---
-title: YSQL distributed tracing
-linkTitle: YSQL distributed tracing
-headerTitle: YSQL distributed tracing
+title: YSQL Distributed Tracing
+linkTitle: YSQL Distributed Tracing
+headerTitle: YSQL Distributed Tracing
 description: Export OpenTelemetry traces for YSQL query execution.
 headcontent: Trace YSQL queries with OpenTelemetry
 menu:
@@ -16,23 +16,34 @@ rightNav:
   hideH4: true
 ---
 
-When a YSQL query is slow, the time can be spent in many places: parsing, planning, execution, transaction commit, and RPC calls to tablet servers. YugabyteDB can export timing data for these stages as OpenTelemetry (OTel) traces so you can inspect a waterfall view of query execution in tools such as Jaeger, Grafana Tempo, or Honeycomb.
+YSQL queries spends time in many places: parsing, planning, execution, transaction commit, and RPC calls to tablet servers. YugabyteDB can export timing data for these stages as OpenTelemetry (OTel) traces so you can inspect a waterfall view of query execution in tools such as [Jaeger](/stable/integrations/jaeger/), [Grafana Tempo](https://grafana.com/oss/tempo/), or [Honeycomb](https://www.honeycomb.io).
 
-Distributed tracing is {{<tags/feature/tp>}} and is currently only available for YSQL. Tracing inside tablet servers is not included in this release.
+Distributed Tracing is {{<tags/feature/tp>}} and is currently only available for YSQL. Tracing inside tablet servers is not included in this release.
 
 ## How it works
 
-YSQL distributed tracing follows the [W3C Trace Context](https://www.w3.org/TR/trace-context/) standard. Your application (or a SQL comment or session setting) supplies a `traceparent` value. YugabyteDB creates spans for the query lifecycle and exports them to an OTel collector over OTLP/HTTP.
+YSQL Distributed Tracing follows the [W3C Trace Context](https://www.w3.org/TR/trace-context/) standard. Your application (or a SQL comment or session setting) supplies a `traceparent` value. YugabyteDB creates spans for the query lifecycle and exports them to an OTel collector over OTLP/HTTP.
 
 Each traced query produces a _trace_ made up of _spans_. Spans are nested to show where time is spent. For example, planning, execution, commit, and individual RPC calls to `PgClientService`.
 
 When tracing is disabled (the default), there is no measurable performance impact. When tracing is enabled for a query, other queries and other YSQL backends are not affected.
 
+## Configure Distributed Tracing
+
+To configure Distributed Tracing, set the following YB-TServer flags on each node in the cluster. Changing these flags requires a YB-TServer restart.
+
+| Flag | Description | Default |
+| :--- | :---------- | :------ |
+| otel_collector_traces_endpoint | OTLP/HTTP URL where spans are exported. For example, `http://<collector-host>:4318/v1/traces`.<br>Setting this flag enables tracing infrastructure in each YSQL backend process. | Empty |
+| otel_batch_max_queue_size | Maximum spans buffered before export. Spans beyond this limit are dropped. | `2048` |
+| otel_batch_schedule_delay_ms | Milliseconds between batch exports. Lower values reduce export latency but increase export frequency. | `5000` |
+| otel_batch_max_export_batch_size | Maximum spans per export batch. | `512` |
+
 ## Prerequisites
 
 - YSQL must be enabled on the cluster.
-- An OTLP/HTTP endpoint must be reachable from each YB-TServer node. YugabyteDB does not export traces unless `otel_collector_traces_endpoint` is set.
-- Because distributed tracing is a preview feature, add `otel_collector_traces_endpoint` to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list before setting it.
+- The OTLP/HTTP endpoint must be reachable from each YB-TServer node.
+- Because Distributed Tracing is a preview feature, add `otel_collector_traces_endpoint` to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list before setting it.
 
 ## Set up tracing
 
@@ -52,17 +63,6 @@ docker run --rm --name jaeger \
 
 Open the Jaeger UI at [http://localhost:16686](http://localhost:16686).
 
-### Configure YugabyteDB
-
-Set the following YB-TServer flags on each node in the cluster. Changing these flags requires a YB-TServer restart.
-
-| Flag | Description |
-| :--- | :---------- |
-| otel_collector_traces_endpoint | OTLP/HTTP URL where spans are exported. For example, `http://<collector-host>:4318/v1/traces`. Setting this flag enables tracing infrastructure in each YSQL backend process. |
-| otel_batch_max_queue_size | Maximum spans buffered before export. Spans beyond this limit are dropped. Default: `2048`. |
-| otel_batch_schedule_delay_ms | Milliseconds between batch exports. Default: `5000`. Lower values reduce export latency but increase export frequency. |
-| otel_batch_max_export_batch_size | Maximum spans per export batch. Default: `512`. |
-
 For a local single-node cluster started with yugabyted:
 
 ```sh
@@ -74,7 +74,7 @@ If you use YugabyteDB Anywhere, set the flags using [Edit configuration flags](.
 
 {{< note title="Note" >}}
 
-If `otel_collector_traces_endpoint` is not set, attempting to use the `yb_dist_tracecontext` configuration parameter returns an error indicating that distributed tracing is not enabled.
+If `otel_collector_traces_endpoint` is not set, attempting to use the [yb_dist_tracecontext](#configuration-parameter-per-session-or-transaction) configuration parameter returns an error indicating that Distributed Tracing is not enabled.
 
 {{</note >}}
 
@@ -102,7 +102,7 @@ If another block comment appears before a leading `traceparent` comment, or afte
 
 #### Configuration parameter (per session or transaction)
 
-Set the `yb_dist_tracecontext` parameter to trace every query in the session or transaction:
+Set the `yb_dist_tracecontext` YSQL [configuration parameter](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters) to trace every query in a session or transaction:
 
 ```sql
 BEGIN;
