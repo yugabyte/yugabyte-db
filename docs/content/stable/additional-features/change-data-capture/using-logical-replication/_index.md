@@ -114,7 +114,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - When a DDL causes a table rewrite, CDC re-sends existing data that was re-written to the new tablets. Tracked in issue {{<issue 31636>}}.
 
-- DDLs that cause table rewrites on **colocated** tables remain blocked when CDC is enabled, even in v2026.1 and later. Tracked in issue {{<issue 31908>}}.
+- DDLs that cause table rewrites on _colocated_ tables remain blocked when CDC is enabled, even in v2026.1 and later. Tracked in issue {{<issue 31908>}}.
 
 - YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 
