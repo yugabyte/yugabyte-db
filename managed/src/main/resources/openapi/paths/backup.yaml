@@ -1,0 +1,42 @@
+'/customers/{cUUID}/backups/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListBackups
+    summary: List universe backups.
+    description: |
+      Returns universe backups for the specified customer with pagination and optional filters.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Backup and Restore
+    requestBody:
+      $ref: "../components/requestBodies/BackupPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/BackupPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview

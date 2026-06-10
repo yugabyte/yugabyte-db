@@ -1,0 +1,8 @@
+title: Backup
+description: Universe backup resource.
+type: object
+properties:
+  spec:
+    $ref: "./BackupSpec.yaml"
+  info:
+    $ref: "./BackupInfo.yaml"

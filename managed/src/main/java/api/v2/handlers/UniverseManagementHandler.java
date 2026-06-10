@@ -1352,7 +1352,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     if (Boolean.TRUE.equals(nodeSelection.getMastersOnly())
         && Boolean.TRUE.equals(nodeSelection.getTserversOnly())) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "masters_only and tservers_only both cannot be true");
+          BAD_REQUEST, "masters_only and tservers_only cannot both be true");
     }
     validateRequestedNodeNames(universe, nodeSelection.getNodeNames());
     int maxParallelNodes =
