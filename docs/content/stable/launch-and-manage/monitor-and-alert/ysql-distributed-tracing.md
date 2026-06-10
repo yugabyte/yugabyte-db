@@ -18,7 +18,7 @@ rightNav:
 
 YSQL queries spends time in many places: parsing, planning, execution, transaction commit, and RPC calls to tablet servers. YugabyteDB can export timing data for these stages as OpenTelemetry (OTel) traces so you can inspect a waterfall view of query execution in tools such as [Jaeger](/stable/integrations/jaeger/), [Grafana Tempo](https://grafana.com/oss/tempo/), or [Honeycomb](https://www.honeycomb.io).
 
-Distributed Tracing is {{<tags/feature/tp>}} and is currently only available for YSQL. Tracing inside tablet servers is not included in this release.
+Distributed Tracing is {{<tags/feature/tp>}} and available in v2025.2.4.0 and later, and is currently only available for YSQL. Tracing inside tablet servers is not included in this release.
 
 ## How it works
 
