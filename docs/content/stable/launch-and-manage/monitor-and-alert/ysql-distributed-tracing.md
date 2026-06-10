@@ -35,7 +35,7 @@ To configure Distributed Tracing, set the following YB-TServer flags on each nod
 | Flag | Description | Default |
 | :--- | :---------- | :------ |
 | otel_collector_traces_endpoint | OTLP/HTTP URL where spans are exported. For example, `http://<collector-host>:4318/v1/traces`.<br>Setting this flag enables tracing infrastructure in each YSQL backend process. | Empty |
-| otel_batch_max_queue_size | Maximum spans buffered before export. Spans beyond this limit are dropped. Must be greater than 0 and at least as large as `otel_batch_max_export_batch_size`. | `2048` |
+| otel_batch_max_queue_size | Maximum number of spans buffered in the queue. Spans beyond this limit are dropped. Must be greater than 0 and at least as large as `otel_batch_max_export_batch_size`. | `2048` |
 | otel_batch_schedule_delay_ms | Milliseconds between batch exports. Lower values reduce export latency but increase export frequency. | `5000` |
 | otel_batch_max_export_batch_size | Maximum spans per export batch. Must be greater than 0 and no larger than `otel_batch_max_queue_size`. | `512` |
 
@@ -118,7 +118,11 @@ To stop tracing for the session:
 RESET yb_dist_tracecontext;
 ```
 
-Note: If you provide both a `traceparent` parameter _and_ SQL comment, the parameter takes priority and a warning is emitted.
+{{< note title="Parameter takes precedence" >}}
+
+If you provide both a `traceparent` parameter _and_ SQL comment, the parameter takes priority and a warning is emitted.
+
+{{< /note >}}
 
 ### View traces
 
