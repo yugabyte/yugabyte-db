@@ -1017,7 +1017,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     }
 
     context->ListenConnectionShutdown([this, session_id, pid = req.pid()]() {
+#if defined(__APPLE__)
+      auto delay = 250ms;
+#else
       auto delay = RegularBuildVsSanitizers(50ms, 1000ms);
+#endif
       messenger_.scheduler().Schedule([this, session_id, pid](const Status& status) {
         if (!status.ok()) {
           // Task was aborted.
