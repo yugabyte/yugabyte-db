@@ -805,6 +805,34 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfill) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_concurrent_writes) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_insert_tasks) = 1;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
+
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_GT(indexes.size(), 0);
+
+  // Each replica backfills its own data, but CREATE INDEX only waits for the leader. So wait for
+  // every replica's backfill to finish before checking the progress metric, otherwise followers
+  // could still be mid-backfill.
+  for (const auto& index : indexes) {
+    ASSERT_OK(WaitFor(
+        [&index] { return index->BackfillDone(); }, 60s * kTimeMultiplier, "Backfill done"));
+  }
+
+  // backfill_inserted_entries is a table-level metric, so all tablets of the index living on the
+  // same tserver share one counter. Sum the distinct counters and the per-tablet entry counts:
+  // without restarts every entry is backfilled exactly once, so the two totals must match.
+  std::unordered_set<Counter*> counted;
+  size_t total_backfilled = 0;
+  size_t total_entries = 0;
+  for (const auto& index : indexes) {
+    total_entries += ASSERT_RESULT(index->TotalEntries());
+    const auto& counter = index->metrics().backfill_inserted_entries;
+    if (counted.insert(counter.get()).second) {
+      total_backfilled += counter->value();
+    }
+  }
+  LOG(INFO) << "Backfilled entries: " << total_backfilled << ", total entries: " << total_entries;
+  ASSERT_GT(total_backfilled, 0);
+  ASSERT_EQ(total_backfilled, total_entries);
 }
 
 TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
