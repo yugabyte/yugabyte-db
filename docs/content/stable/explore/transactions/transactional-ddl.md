@@ -69,7 +69,7 @@ yugabyte=# SELECT * FROM foo;
 
 - [Savepoints](/stable/develop/learn/transactions/transactions-retries-ysql/#savepoints) are unsupported for DDL statements. As a result, you cannot create a savepoint in a transaction block that has executed a DDL statement. Similarly, you cannot execute a DDL statement in a transaction block in which a savepoint has been created.
 
-- Concurrent transaction blocks with DDLs that touch the same or different catalog data can result in undefined behavior without any error. This situation also applies to DDLs that are run concurrently without transactional DDL enabled. The difference is that, with transactional DDL enabled, it is easier for such behaviour to occur with using READ COMMITTED isolation level. With transactional DDL in REPEATABLE READ isolation level, the chances of such an issue occuring are slim (similar to when transactional DDL is disabled).
+- Concurrent transaction blocks with DDLs that touch the same or different catalog data can result in undefined behavior without any error. This situation also applies to DDLs that are run concurrently without transactional DDL enabled. The difference is that, with transactional DDL enabled, it is easier for such behavior to occur when using READ COMMITTED isolation level. With transactional DDL in REPEATABLE READ isolation level, the chances of such an issue occurring are slim (similar to when transactional DDL is disabled).
 
 For example, in the following sequence, the column `a` added by Session 1 is missing after Session 2 commits:
 
