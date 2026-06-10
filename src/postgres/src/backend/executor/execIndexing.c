@@ -763,13 +763,21 @@ YbUniqueIndexKeyHasNull(IndexInfo *indexInfo,
 {
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
+	MemoryContext oldContext;
+	bool		result;
 
 	Assert(indexInfo->ii_Unique);
+
+	oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 	GetPerTupleExprContext(estate)->ecxt_scantuple = slot;
 	FormIndexDatum(indexInfo, slot, estate, values, isnull);
 
-	return YbIsAnyIndexKeyColumnNull(indexInfo, isnull);
+	result = YbIsAnyIndexKeyColumnNull(indexInfo, isnull);
+
+	MemoryContextSwitchTo(oldContext);
+
+	return result;
 }
 
 List *
