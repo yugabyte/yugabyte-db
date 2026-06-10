@@ -40,8 +40,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 
-DEFINE_NON_RUNTIME_bool(
-    use_memory_defaults_optimized_for_ysql, false,
+DEFINE_NON_RUNTIME_bool(use_memory_defaults_optimized_for_ysql, false,
     "If true, the recommended defaults for the memory usage settings take into account the amount "
     "of RAM and cores available and are optimized for using YSQL.  "
     "If false, the recommended defaults will be the old defaults, which are more suitable "

@@ -1,0 +1,23 @@
+CREATE TEMP TABLE t_ddb(a int) USING duckdb;
+INSERT INTO t_ddb VALUES (1);
+
+CREATE OR REPLACE FUNCTION f2() RETURNS void
+    LANGUAGE plpgsql
+    RETURNS NULL ON NULL INPUT
+    AS
+$$
+BEGIN
+    CREATE TEMP TABLE t_ddb2(a int) USING duckdb;
+    CREATE TEMP TABLE t_ddb3(a) USING duckdb AS SELECT 1;
+    DROP TABLE t_ddb3;
+    INSERT INTO t_ddb2 VALUES (1);
+    ALTER TABLE t_ddb2 ADD COLUMN b int;
+    ALTER TABLE t_ddb2 ADD COLUMN c int;
+    ALTER TABLE t_ddb2 ADD COLUMN d int DEFAULT 100, ADD COLUMN e int DEFAULT 10;
+    ALTER TABLE t_ddb2 RENAME COLUMN b TO f;
+    ALTER TABLE t_ddb2 RENAME TO t_ddb4;
+END;
+$$;
+
+SELECT * FROM f2();
+SELECT * FROM f2();

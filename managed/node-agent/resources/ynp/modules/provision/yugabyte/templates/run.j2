@@ -27,7 +27,7 @@ else
     useradd -u {{ yb_user_id }} -s /bin/bash --create-home --home-dir {{ yb_user_home }} -U {{ yb_user }}
     chown -R {{ yb_user }}:{{ yb_user }} {{ yb_user_home }}
     chown -R {{ yb_user }}:{{ yb_user }} {{ ynp_dir }}/../../scripts
-    chmod -R 711 {{ yb_user_home }}
+    chmod 711 {{ yb_user_home }}
     echo "User {{ yb_user }} created"
 fi
 
@@ -124,6 +124,6 @@ chmod 750 "{{ yb_user_home }}"
 # Create yugabyte software home directory.
 mkdir -p "{{ yb_home_dir }}"
 chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_home_dir }}"
-chmod -R 750 "{{ yb_home_dir }}"
+chmod 750 "{{ yb_home_dir }}"
 
 echo "Yugabyte software home directory created: {{ yb_home_dir }}"

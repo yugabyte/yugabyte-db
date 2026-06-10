@@ -9,7 +9,6 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -23,11 +22,6 @@ import play.mvc.Result;
 
 @Slf4j
 public class CertRotationLocalTest extends LocalProviderUniverseTestBase {
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(210, 240);
-  }
 
   private Result updateTLSConfig(Universe universe, TlsConfigUpdateParams formData) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(

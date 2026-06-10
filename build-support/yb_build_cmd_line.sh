@@ -388,7 +388,12 @@ set_default_yb_build_args() {
   export YB_DOWNLOAD_THIRDPARTY=${YB_DOWNLOAD_THIRDPARTY:-1}
   export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
-  export YB_EXTRA_GTEST_FLAGS=""
+  # Honor any value the caller has already exported (e.g. from a wrapper script or interactive
+  # shell). The downstream consumers in common-test-env.sh and bin/repeat_unit_test.sh all
+  # dereference YB_EXTRA_GTEST_FLAGS as ${YB_EXTRA_GTEST_FLAGS:-}, and --test-args (below)
+  # appends with +=, so preserving the caller's value is safe and lets people prefix gtest
+  # flags onto the command without having to discover --test-args.
+  export YB_EXTRA_GTEST_FLAGS="${YB_EXTRA_GTEST_FLAGS:-}"
   unset BUILD_ROOT
 
   if [[ ${YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT:-} == "1" ]]; then

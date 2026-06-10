@@ -404,12 +404,17 @@ $$ AS query \gset
 -- must choose a bitmap scan, what plan does it choose? Does that plan work?
 --
 SET yb_enable_base_scans_cost_model = true;
+SET yb_fetch_size_limit = 0;
+SET yb_fetch_row_limit = 0;
 
 CREATE TABLE test_and (a INT, b INT, c INT);
 CREATE INDEX ON test_and (a ASC);
 CREATE INDEX ON test_and (b ASC);
 CREATE INDEX ON test_and (c ASC);
-INSERT INTO test_and SELECT i, j, k FROM generate_series(1, 20) i, generate_series(1, 20) j, generate_series(1, 20) k;
+INSERT INTO test_and SELECT i, j, k FROM generate_series(1, 50) i, generate_series(1, 52) j, generate_series(1, 56) k;
+ALTER TABLE test_and ALTER COLUMN a SET STATISTICS 1000;
+ALTER TABLE test_and ALTER COLUMN b SET STATISTICS 1000;
+ALTER TABLE test_and ALTER COLUMN c SET STATISTICS 1000;
 ANALYZE test_and;
 
 \set explain 'EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF)'
@@ -433,12 +438,14 @@ ANALYZE test_and;
 :query
 
 -- complex nested queries
-\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 5 AND (b < 3 OR b > 16);'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 5 AND (b < 3 OR b > 48);'
 :query
-\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 5);'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 48 AND a < 5);'
 :query
-\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 6);'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 48 AND a < 7);'
 :query
 
+RESET yb_fetch_size_limit;
+RESET yb_fetch_row_limit;
 RESET yb_enable_base_scans_cost_model;
 RESET enable_bitmapscan;

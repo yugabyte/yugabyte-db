@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from 'react-query';
 import { ThemeProvider } from '@material-ui/core';
 import { Provider } from 'react-redux';
 import { createStore } from 'redux';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mainTheme } from '@app/redesign/theme/mainTheme';
 import { EditUniverseContext, EditUniverseTabs } from '../EditUniverseContext';
 import { HardwareTab } from './HardwareTab';
@@ -15,8 +15,14 @@ import {
   makeNonGeoUniverse,
   makeNonGeoUniverseWithDedicatedNodeDetails,
   makeNonGeoUniverseWithReadReplicaPlacementSpec,
+  makeGeoK8sUniverse,
+  makeK8sUniverse,
   makeProviderRegions
 } from '../__fixtures__/editUniverseFixtures';
+
+const runtimeConfigState = vi.hoisted(() => ({
+  useK8CustomResources: true
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -33,6 +39,18 @@ vi.mock('../components/LinuxVersion', () => ({
 
 vi.mock('../edit-hardware/EditHardwareConfirmModal', () => ({
   EditHardwareConfirmModal: () => null
+}));
+
+vi.mock('../../create-universe/helpers/utils', () => ({
+  useRuntimeConfigValues: () => ({
+    useK8CustomResources: runtimeConfigState.useK8CustomResources,
+    osPatchingEnabled: false,
+    maxVolumeCount: 16,
+    canUseSpotInstance: false,
+    isRuntimeConfigLoading: false,
+    isProviderRuntimeConfigLoading: false,
+    ebsVolumeEnabled: false
+  })
 }));
 
 const noopStore = createStore(() => ({}));
@@ -61,6 +79,10 @@ function renderHardwareTab(universeData: Universe) {
 }
 
 describe('HardwareTab', () => {
+  beforeEach(() => {
+    runtimeConfigState.useK8CustomResources = true;
+  });
+
   it('renders non-dedicated view with one cluster instance edit control when no dedicated nodes', () => {
     renderHardwareTab(makeNonGeoUniverse());
     expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(1);
@@ -90,5 +112,24 @@ describe('HardwareTab', () => {
     } as Universe;
     renderHardwareTab(withDedicated);
     expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(3);
+  });
+
+  it('renders K8s custom-resource universe as dedicated T-Server and Master cards', () => {
+    renderHardwareTab(makeK8sUniverse(true));
+    expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(2);
+    expect(screen.getAllByText('cpuCores')).toHaveLength(2);
+    expect(screen.getAllByText('memory')).toHaveLength(2);
+  });
+
+  it('renders K8s instance-type universe as a cluster instance card when custom resources are absent', () => {
+    runtimeConfigState.useK8CustomResources = false;
+    renderHardwareTab(makeK8sUniverse(false));
+    expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(1);
+    expect(screen.getByText('yb-k8s-small')).toBeInTheDocument();
+  });
+
+  it('renders geo-partitioned K8s custom-resource universe without per-partition hardware cards', () => {
+    renderHardwareTab(makeGeoK8sUniverse(true));
+    expect(screen.getAllByTestId('edit-placement-edit-button')).toHaveLength(2);
   });
 });

@@ -1085,7 +1085,7 @@ stmt:
 			| AlterSeqStmt
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTableStmt
-			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
+			| AlterTblSpcStmt
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterPublicationStmt
 			| AlterRoleSetStmt
@@ -10001,7 +10001,6 @@ reindex_target_multitable:
 AlterTblSpcStmt:
 			ALTER TABLESPACE name SET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLESPACE", 1153);
 					AlterTableSpaceOptionsStmt *n =
 						makeNode(AlterTableSpaceOptionsStmt);
 
@@ -10012,7 +10011,6 @@ AlterTblSpcStmt:
 				}
 			| ALTER TABLESPACE name RESET reloptions
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLESPACE", 1153);
 					AlterTableSpaceOptionsStmt *n =
 						makeNode(AlterTableSpaceOptionsStmt);
 

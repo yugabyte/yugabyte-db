@@ -44,8 +44,7 @@ namespace yb::pggate {
 
 // These should match XACT_READ_UNCOMMITED, XACT_READ_COMMITED, XACT_REPEATABLE_READ,
 // XACT_SERIALIZABLE from xact.h. Please do not change this enum.
-YB_DEFINE_ENUM(
-  PgIsolationLevel,
+YB_DEFINE_ENUM(PgIsolationLevel,
   ((READ_UNCOMMITED, 0))
   ((READ_COMMITTED, 1))
   ((REPEATABLE_READ, 2))
@@ -251,6 +250,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   HybridTime read_time_for_follower_reads_;
   bool deferrable_ = false;
 
+  // DDL state is set either when entering a separate DDL transaction or when executing a DDL
+  // statement within a regular transaction block with transactional DDL enabled i.e.,
+  // ysql_yb_ddl_transaction_block_enabled=true. When executing as part of a regular transaction, it
+  // stays set until the lifetime of the transaction.
   std::optional<DdlState> ddl_state_;
 
   // On a transaction conflict error we want to recreate the transaction with the same priority as

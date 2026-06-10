@@ -17,6 +17,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
@@ -211,7 +212,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-    // Disable comprehensive prechecks (CheckSshConnection, CheckServiceLiveness) so task sequence
+    // Disable comprehensive prechecks (CheckNodeCommandExecution, CheckServiceLiveness) so task
+    // sequence
     // assertions remain valid. Tests verify core EditUniverse behavior.
     factory
         .forUniverse(defaultUniverse)
@@ -293,6 +295,16 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     factory
         .forUniverse(universe)
         .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "true");
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenAnswer(
+            inv -> {
+              List<String> cmd = inv.getArgument(2);
+              if (cmd != null && cmd.toString().contains("command-execution-test")) {
+                return ShellResponse.create(
+                    0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + " command-execution-test");
+              }
+              return ShellResponse.create(0, "Command output:\nLinux x86_64");
+            });
     UniverseDefinitionTaskParams taskParams1 = universe.getUniverseDetails();
     taskParams1.setUniverseUUID(universe.getUniverseUUID());
     taskParams1.getPrimaryCluster().userIntent.instanceTags =
@@ -303,7 +315,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo1.getTaskState());
     assertTrue(
         taskInfo1.getSubTasks().stream()
-            .anyMatch(t -> t.getTaskType() == TaskType.CheckSshConnection));
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
     assertTrue(
         taskInfo1.getSubTasks().stream()
             .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));
@@ -320,7 +332,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo2.getTaskState());
     assertFalse(
         taskInfo2.getSubTasks().stream()
-            .anyMatch(t -> t.getTaskType() == TaskType.CheckSshConnection));
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
     assertFalse(
         taskInfo2.getSubTasks().stream()
             .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));

@@ -1,6 +1,7 @@
 import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ClusterNodeSpec, ClusterStorageSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import type { K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { StyledContent, StyledHeader } from './Component';
 import { mui, YBButton } from '@yugabyte-ui-library/core';
 
@@ -8,11 +9,16 @@ import { StyledInfoRow } from '../../create-universe/components/DefaultComponent
 import { LinuxVersion } from '../components';
 
 import EditIcon from '@app/redesign/assets/edit2.svg';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
+import { useIsUniverseReady } from '../EditUniverseUtils';
 interface InstanceCardProps {
   title: string;
   arch?: string;
   nodeSpec?: ClusterNodeSpec;
   storageSpec?: ClusterStorageSpec;
+  isK8s?: boolean;
+  k8sResourceSpec?: K8NodeSpec | null;
   onEditClicked?: () => void;
 }
 
@@ -23,22 +29,27 @@ export const InstanceCard: FC<InstanceCardProps> = ({
   arch,
   nodeSpec,
   storageSpec,
+  isK8s = false,
+  k8sResourceSpec,
   onEditClicked
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.hardware' });
-
+  const isUniverseReady = useIsUniverseReady();
   return (
     <StyledContent>
       <StyledHeader>
         <div className="header-title">{title}</div>
-        <YBButton
-          dataTestId="edit-placement-edit-button"
-          variant="ghost"
-          startIcon={<EditIcon />}
-          onClick={() => onEditClicked && onEditClicked()}
-        >
-          {t('edit', { keyPrefix: 'common' })}
-        </YBButton>
+        <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT} isControl>
+          <YBButton
+            dataTestId="edit-placement-edit-button"
+            variant="ghost"
+            startIcon={<EditIcon />}
+            onClick={() => onEditClicked && onEditClicked()}
+            disabled={!isUniverseReady}
+          >
+            {t('edit', { keyPrefix: 'common' })}
+          </YBButton>
+        </RbacValidator>
       </StyledHeader>
       {arch && (
         <>
@@ -55,39 +66,78 @@ export const InstanceCard: FC<InstanceCardProps> = ({
         </>
       )}
 
-      <StyledInfoRow>
-        <div>
-          <span className="header">{t('instanceType')}</span>
-          <span className="value">{nodeSpec?.instance_type ?? '-'}</span>
-        </div>
-      </StyledInfoRow>
-      <StyledInfoRow sx={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <div>
-          <span className="header">{t('volumeAndNode')}</span>
-          <span className="value">
-            {t('volumeAndNodeValue', {
-              volumeSize: storageSpec?.volume_size,
-              nodeCount: storageSpec?.num_volumes
-            })}
-          </span>
-        </div>
-        <div>
-          <span className="header">{t('ebsType')}</span>
-          <span className="value">{storageSpec?.storage_type ?? '-'}</span>
-        </div>
-        <div>
-          <span className="header">{t('iops')}</span>
-          <span className="value">{storageSpec?.disk_iops ?? '-'}</span>
-        </div>
-        <div>
-          <span className="header">{t('throughput')}</span>
-          <span className="value">
-            {storageSpec?.throughput
-              ? t('throughtputValue', { throughput: storageSpec?.throughput })
-              : '-'}
-          </span>
-        </div>
-      </StyledInfoRow>
+      {isK8s && k8sResourceSpec ? (
+        <>
+          <StyledInfoRow sx={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <div>
+              <span className="header">{t('cpuCores')}</span>
+              <span className="value">{k8sResourceSpec.cpuCoreCount ?? '-'}</span>
+            </div>
+            <div>
+              <span className="header">{t('memory')}</span>
+              <span className="value">
+                {k8sResourceSpec.memoryGib
+                  ? t('memoryValue', { memory: k8sResourceSpec.memoryGib })
+                  : '-'}
+              </span>
+            </div>
+            <div>
+              <span className="header">{t('storageClass')}</span>
+              <span className="value">{storageSpec?.storage_class ?? '-'}</span>
+            </div>
+          </StyledInfoRow>
+          <StyledInfoRow sx={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <div>
+              <span className="header">{t('volumeSize')}</span>
+              <span className="value">
+                {storageSpec?.volume_size
+                  ? t('volumeSizeValue', { volumeSize: storageSpec.volume_size })
+                  : '-'}
+              </span>
+            </div>
+            <div>
+              <span className="header">{t('numVolumes')}</span>
+              <span className="value">{storageSpec?.num_volumes ?? '-'}</span>
+            </div>
+          </StyledInfoRow>
+        </>
+      ) : (
+        <>
+          <StyledInfoRow>
+            <div>
+              <span className="header">{t('instanceType')}</span>
+              <span className="value">{nodeSpec?.instance_type ?? '-'}</span>
+            </div>
+          </StyledInfoRow>
+          <StyledInfoRow sx={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <div>
+              <span className="header">{t('volumeAndNode')}</span>
+              <span className="value">
+                {t('volumeAndNodeValue', {
+                  volumeSize: storageSpec?.volume_size,
+                  nodeCount: storageSpec?.num_volumes
+                })}
+              </span>
+            </div>
+            <div>
+              <span className="header">{t('ebsType')}</span>
+              <span className="value">{storageSpec?.storage_type ?? '-'}</span>
+            </div>
+            <div>
+              <span className="header">{t('iops')}</span>
+              <span className="value">{storageSpec?.disk_iops ?? '-'}</span>
+            </div>
+            <div>
+              <span className="header">{t('throughput')}</span>
+              <span className="value">
+                {storageSpec?.throughput
+                  ? t('throughtputValue', { throughput: storageSpec?.throughput })
+                  : '-'}
+              </span>
+            </div>
+          </StyledInfoRow>
+        </>
+      )}
     </StyledContent>
   );
 };

@@ -27,8 +27,7 @@
 
 namespace yb::vector_index {
 
-YB_DEFINE_ENUM(
-    DistanceKind,
+YB_DEFINE_ENUM(DistanceKind,
 
     // Squared Euclidean (L2) distance -- sum of squares between coordinate differences.
     (kL2Squared)

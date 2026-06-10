@@ -192,11 +192,6 @@ class ThreadPoolBuilder {
     return *this;
   }
 
-  ThreadPoolBuilder& set_max_queue_size(int max_queue_size) {
-    // TODO(!!!)
-    return *this;
-  }
-
   ThreadPoolBuilder& set_idle_timeout(const MonoDelta& idle_timeout) {
     options_.idle_timeout = idle_timeout;
     return *this;
@@ -215,7 +210,6 @@ class ThreadPoolBuilder {
   const std::string& name() const { return options_.name; }
   int min_threads() const { return 1; }
   int max_threads() const { return static_cast<int>(options_.max_workers); }
-  int max_queue_size() const { return std::numeric_limits<int>::max(); }
   const MonoDelta& idle_timeout() const { return options_.idle_timeout; }
 
   // Instantiate a new ThreadPool with the existing builder arguments.

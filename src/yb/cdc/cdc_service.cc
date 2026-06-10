@@ -81,6 +81,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -188,15 +189,14 @@ DEFINE_RUNTIME_uint32(xcluster_checkpoint_max_staleness_secs, 300,
     "and all WAL segments will be retained until the next refresh. "
     "Setting to 0 will disable Opid-based and time-based WAL segment retention for XCluster.");
 
-DEFINE_RUNTIME_int32(
-    cdcsdk_max_expired_tables_to_clean_per_run, 1,
+DEFINE_RUNTIME_int32(cdcsdk_max_expired_tables_to_clean_per_run, 1,
     "This flag determines the maximum number of tables to be cleaned up per run of "
     "UpdatePeersAndMetrics. Since a lot of tables can become not of interest at the same time, "
     "this flag is used to prevent storming of cleanup requests to master. When the flag value is "
     "1, the number of cleanup requests sent will be min(num_tables_to_cleanup, num_of_nodes)");
 
-DEFINE_RUNTIME_AUTO_bool(
-    cdcsdk_enable_cleanup_of_expired_table_entries, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_cleanup_of_expired_table_entries,
+    kLocalPersisted, false, true,
     "When enabled, Update Peers and Metrics will look for entries in the state table that have "
     "either become not of interest or have expired for a stream. The cleanup logic will then "
     "update these entries in cdc_state table and also move the corresponding table's entry to "
@@ -204,6 +204,9 @@ DEFINE_RUNTIME_AUTO_bool(
 
 DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
     "When enabled, users will be able to create a CDC stream having IMPLICIT checkpointing.");
+
+DEFINE_RUNTIME_bool(cdc_enable_local_rpc_in_virtual_wal, true,
+    "When enabled, RPCs will be called locally via empty HostPort in the VirtualWAL.");
 
 DEFINE_RUNTIME_uint32(cdc_max_virtual_wal_per_tserver, 5,
                       "Maximum VirtualWAL instances that can be present on a tserver at any time.");
@@ -2846,8 +2849,8 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     // - If the tablet is colocated, we check the replica identities of this tablet's tables which
     // are present in the stream metadata's replica identity map.
     // - If the tablet is sys catalog, we check the replica identities of only tables
-    // 'pg_publication_rel' & 'pg_class' residing in it (This is because currently only these sys
-    // catalog tables are part of publication's table list).
+    // 'pg_publication_rel', 'pg_class' & 'pg_replication_origin' residing in it (This is because
+    // currently only these sys catalog tables are part of publication's table list).
     // If before image is active for any such tables then we should return true.
     if (is_colocated_tablet || is_sys_catalog_tablet) {
       auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
@@ -3214,8 +3217,7 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
 
 void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
     TabletIdCDCCheckpointMap* tablet_min_checkpoint_map) {
-  auto enable_update_local_peer_min_index =
-      FLAGS_enable_update_local_peer_min_index;
+  auto enable_update_local_peer_min_index = context_->ShouldLocalPeerUpdateOwnBarriers();
 
   for (auto& [tablet_id, tablet_info] : *tablet_min_checkpoint_map) {
     auto s =
@@ -3459,6 +3461,12 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 }
 
 void CDCServiceImpl::UpdatePeersAndMetrics() {
+#ifdef __linux__
+  if (auto* cgroup = context_->SystemHighCgroup()) {
+    WARN_NOT_OK(cgroup->MoveCurrentThreadToGroup(),
+                "Failed to move update_peers_and_metrics thread to cgroup");
+  }
+#endif
   MonoTime time_since_update_peers = MonoTime::kUninitialized;
   MonoTime time_since_update_metrics = MonoTime::kUninitialized;
 
@@ -3583,7 +3591,6 @@ void CDCServiceImpl::CDCMasterBgTask() {
     time_since_last_run = MonoTime::Now();
     VLOG(2) << "Running CDCMasterBgTask";
 
-    TabletCDCCheckpointInfo checkpoint_info;
     TableIdToStreamIdMap expired_tables_map;
 
     auto result = PopulateSysCatalogTabletCheckPointInfo(&expired_tables_map);
@@ -3591,8 +3598,14 @@ void CDCServiceImpl::CDCMasterBgTask() {
       LOG(WARNING) << "Failed to compute sys_catalog barriers from full scan: " << result.status();
       continue;
     }
-    checkpoint_info = result->first;
-    auto& grpc_safe_times = result->second;
+    if (!*result) {
+      // No CDCSDK stream entry visible in cdc_state yet - nothing to advance, nothing to update.
+      // Skip propagation so the initial barriers set by stream creation aren't trampled by the
+      // sentinel "Max" values we'd otherwise compute.
+      VLOG(2) << "CDCMasterBgTask: no CDCSDK streams visible in cdc_state, skipping propagation";
+      continue;
+    }
+    auto& [checkpoint_info, grpc_safe_times] = **result;
 
     auto update_status = UpdateGRPCSlotEntries(grpc_safe_times);
     if (!update_status.ok()) {
@@ -3600,15 +3613,16 @@ void CDCServiceImpl::CDCMasterBgTask() {
     }
 
     auto propagate_status = UpdateTabletPeerWithCheckpoint(
-        master::kSysCatalogTabletId, &checkpoint_info,
-        true /* enable_update_local_peer_min_index */, true /* ignore_rpc_failures */);
+        master::kSysCatalogTabletId, &checkpoint_info, context_->ShouldLocalPeerUpdateOwnBarriers(),
+        true /* ignore_rpc_failures */);
     WARN_NOT_OK(propagate_status, "Failed to propagate sys_catalog retention barriers");
     if (propagate_status.ok()) {
       set_cdc_master_bg_task_ran_once();
     }
 
     if (FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries &&
-        FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
+        FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup &&
+        !FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
       WARN_NOT_OK(
           CleanupExpiredTables(expired_tables_map),
           "Failed to remove an expired table entry from stream");
@@ -3622,7 +3636,7 @@ void CDCServiceImpl::CDCMasterBgTask() {
   } while (sleep_while_not_stopped());
 }
 
-Result<std::pair<TabletCDCCheckpointInfo, StreamIdHybridTimeMap>>
+Result<std::optional<std::pair<TabletCDCCheckpointInfo, StreamIdHybridTimeMap>>>
 CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* expired_tables_map) {
   TabletCDCCheckpointInfo info;
   info.cdc_sdk_op_id = OpId::Max();
@@ -3788,9 +3802,18 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     info.cdc_sdk_safe_time = std::min(info.cdc_sdk_safe_time, restart_time);
   }
 
+  // If no CDCSDK stream entry was visible in cdc_state, there is nothing to advance. Return
+  // nullopt so the caller skips both the gRPC slot entry update and the sys_catalog barrier
+  // propagation - otherwise the default sentinel values (cdc_sdk_op_id = OpId::Max,
+  // cdc_sdk_safe_time = HybridTime::kInvalid) would clobber initial barriers that may have just
+  // been set by stream creation.
+  if (!cdcsdk_stream_available) {
+    return std::nullopt;
+  }
+
   // If we have any CDCSDK streams available but all such streams are expired for sys_catalog
   // tablet, then we set the safe time to the current time.
-  if (info.cdc_sdk_safe_time == HybridTime::kInvalid && cdcsdk_stream_available) {
+  if (info.cdc_sdk_safe_time == HybridTime::kInvalid) {
     info.cdc_sdk_safe_time = HybridTime::FromMicros(GetCurrentTimeMicros());
   }
 
@@ -4202,9 +4225,9 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
   std::vector<const std::string*> rollback_tablet_id_vec;
   RollBackTabletIdCheckpointMap rollback_tablet_id_map;
   auto scope_exit = ScopeExit([this, &rollback_tablet_id_map] {
-    for (const auto& [tablet_id, rollback_checkpoint_info] : rollback_tablet_id_map) {
+    for (const auto& [tablet_id, rollback_info] : rollback_tablet_id_map) {
       VLOG(1) << "Rolling back the cdc replicated index for the tablet_id: " << tablet_id;
-      RollbackCdcReplicatedIndexEntry(*tablet_id, rollback_checkpoint_info);
+      RollbackCdcReplicatedIndexEntry(*tablet_id, rollback_info);
     }
   });
 
@@ -4271,32 +4294,37 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
   }
 
   if (rollback_tablet_id_map) {
+    auto remaining_expiration =
+        tablet_peer->cdc_sdk_min_checkpoint_op_id_expiration() - CoarseMonoClock::Now();
     (*rollback_tablet_id_map)[&tablet_id] = {
-        tablet_peer->get_cdc_min_replicated_index(), tablet_peer->cdc_sdk_min_checkpoint_op_id()};
+        tablet_peer->get_cdc_min_replicated_index(), tablet_peer->cdc_sdk_min_checkpoint_op_id(),
+        tablet_peer->get_cdc_sdk_safe_time(),
+        remaining_expiration > MonoDelta::kZero ? remaining_expiration : MonoDelta::kZero};
   }
 
-  if (initial_retention_barrier) {
-    RETURN_NOT_OK(tablet_peer->SetAllInitialCDCRetentionBarriers(
-        replicated_index, cdc_sdk_replicated_op, cdc_sdk_safe_time,
-        true /* require_history_cutoff */));
-  } else {
-    auto barrier_revised = VERIFY_RESULT(tablet_peer->MoveForwardAllCDCRetentionBarriers(
-        replicated_index, cdc_sdk_replicated_op, cdc_sdk_op_id_expiration, cdc_sdk_safe_time,
-        true /* require_history_cutoff */));
-    if (!barrier_revised) {
-      // No need to rollback in this case
-      if (rollback_tablet_id_map) {
-        (*rollback_tablet_id_map).erase(&tablet_id);
-      }
-      return STATUS(TryAgain, "Revision of CDC retention barriers is currently blocked");
+  auto barrier_revised = VERIFY_RESULT(tablet_peer->SetAllCDCRetentionBarriers(
+      replicated_index, cdc_sdk_replicated_op, cdc_sdk_op_id_expiration, cdc_sdk_safe_time,
+      cdc_sdk_safe_time == HybridTime::kInitial ? false : true /* require_history_cutoff */,
+      initial_retention_barrier));
+  // If initial_retention_barrier was passed as true to tablet_peer's
+  // SetAllCDCRetentionBarriers(), it always returns true for an OK status since the tablet's
+  // SetAllInitialCDCRetentionBarriers() gets called.
+  // Thus, if barrier_revised is false, it means initial_retention_barrier was passed as false
+  // (signifying tablet's MoveForwardAllCDCRetentionBarriers() was called) and the barrier
+  // revision is blocked.
+  if (!barrier_revised) {
+    // No need to rollback in this case
+    if (rollback_tablet_id_map) {
+      (*rollback_tablet_id_map).erase(&tablet_id);
     }
+    return STATUS(TryAgain, "Revision of CDC retention barriers is currently blocked");
   }
 
   return Status::OK();
 }
 
 void CDCServiceImpl::RollbackCdcReplicatedIndexEntry(
-    const string& tablet_id, const pair<int64_t, OpId>& rollback_checkpoint_info) {
+    const string& tablet_id, const RollbackBarrierInfo& rollback_info) {
   auto tablet_peer = GetServingTablet(tablet_id);
   if (!tablet_peer.ok()) {
     LOG(WARNING) << "Unable to rollback replicated index for " << tablet_id;
@@ -4304,14 +4332,13 @@ void CDCServiceImpl::RollbackCdcReplicatedIndexEntry(
   }
 
   WARN_NOT_OK(
-      (**tablet_peer).set_cdc_min_replicated_index(rollback_checkpoint_info.first),
+      (**tablet_peer).set_cdc_min_replicated_index(rollback_info.cdc_min_replicated_index),
       "Unable to update min index for tablet $0 " + tablet_id);
   WARN_NOT_OK(
       (**tablet_peer)
           .SetCDCSDKRetainOpIdAndTime(
-              rollback_checkpoint_info.second,
-              MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms),
-              HybridTime::kInvalid),
+              rollback_info.cdc_sdk_min_checkpoint_op_id, rollback_info.cdc_sdk_op_id_expiration,
+              rollback_info.cdc_sdk_safe_time),
       "Unable to update op id and expiration time for tablet $0 " + tablet_id);
 }
 
@@ -4836,6 +4863,7 @@ Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
   auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+  table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
   return table_ids;
 }
 
@@ -5526,9 +5554,16 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     }
   }
 
-  HostPort hostport = RPC_VERIFY_RESULT(
-      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
-      CDCErrorPB::INTERNAL_ERROR, context);
+  // If cdc_enable_local_rpc_in_virtual_wal is enabled, pass empty HostPort so that local
+  // short-circuit is used in the RPC framework. See call_local_service_ in Proxy::DoAsyncRequest
+  // for more details.
+  // TODO(#20946): Remove the HostPort parameter once we don't need the fallback to remote call.
+  HostPort hostport;
+  if (!FLAGS_cdc_enable_local_rpc_in_virtual_wal) {
+    hostport = RPC_VERIFY_RESULT(
+        context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+  }
 
   Status s = virtual_wal->InitVirtualWALInternal(
       table_list, oid_to_relfilenode, hostport, GetDeadline(context, client()),
@@ -5586,9 +5621,18 @@ void CDCServiceImpl::GetConsistentChanges(
   }
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
-  HostPort hostport = RPC_VERIFY_RESULT(
-      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
-      CDCErrorPB::INTERNAL_ERROR, context);
+
+  // If cdc_enable_local_rpc_in_virtual_wal is enabled, pass empty HostPort so that local
+  // short-circuit is used in the RPC framework. See call_local_service_ in Proxy::DoAsyncRequest
+  // for more details.
+  // TODO(#20946): Remove the HostPort parameter once we don't need the fallback to remote call.
+  HostPort hostport;
+  if (!FLAGS_cdc_enable_local_rpc_in_virtual_wal) {
+    hostport = RPC_VERIFY_RESULT(
+        context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+  }
+
   Status s =
       virtual_wal->GetConsistentChangesInternal(resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {

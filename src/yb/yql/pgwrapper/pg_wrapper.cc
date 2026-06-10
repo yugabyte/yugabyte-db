@@ -319,22 +319,20 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, f
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_block_based_sampling_algorithm,
     kLocalVolatile, false, true, "Allow YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, yb_allow_separate_requests_for_sampling_stages, kLocalVolatile, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_separate_requests_for_sampling_stages,
+    kLocalVolatile, false, true,
     "Allow using separate requests for block-based sampling stages");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, yb_allow_dockey_bounds, kLocalVolatile, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_dockey_bounds, kLocalVolatile, false, true,
     "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
     "applicable for hash-sharded tables.");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, yb_test_make_all_ddl_statements_incrementing, kLocalVolatile, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_test_make_all_ddl_statements_incrementing,
+    kLocalVolatile, false, true,
     "When set, all DDL statements will cause the catalog version to increment. This mainly "
     "affects CREATE commands such as CREATE TABLE, CREATE VIEW, and CREATE SEQUENCE.");
 
-DEFINE_RUNTIME_PG_FLAG(
-    string, yb_default_replica_identity, "CHANGE",
+DEFINE_RUNTIME_PG_FLAG(string, yb_default_replica_identity, "CHANGE",
     "The default replica identity to be assigned to user defined tables at the time of creation. "
     "The flag is case sensitive and can take four possible values, 'FULL', 'DEFAULT', 'NOTHING' "
     "and 'CHANGE'. If any value other than these is assigned to the flag, the replica identity "
@@ -352,8 +350,7 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 10,  /
     "the CDC service in case the last received response was empty. The response can be empty in "
     "case there are no DMLs happening in the system.");
 
-DEFINE_RUNTIME_PG_FLAG(
-    uint32, yb_reorderbuffer_max_changes_in_memory, 4096,
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_reorderbuffer_max_changes_in_memory, 4096,
     "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
     "streaming changes via logical replication . After that, changes are spooled to disk.");
 
@@ -438,16 +435,14 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_test_fatal_after_notifs_queue_write, false,
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
-DEFINE_RUNTIME_PG_FLAG(
-    bool, yb_query_diagnostics_disable_database_connection_bgworker, false,
+DEFINE_RUNTIME_PG_FLAG(bool, yb_query_diagnostics_disable_database_connection_bgworker, false,
     "Disables the background worker that establishes a database connection for query diagnostics. "
     "If set to true, any diagnostics data requiring SPI or query execution will not be available.");
 
 TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, advanced);
 TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, hidden);
 
-DEFINE_RUNTIME_PG_FLAG(
-    int32, yb_log_heap_snapshot_on_exit_threshold, -1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_log_heap_snapshot_on_exit_threshold, -1,
     "When a process exits, log a peak heap snapshot showing the "
     "approximate memory usage of each malloc call stack if its peak RSS "
     "is greater than or equal to this threshold in KB. Set to -1 to disable.");
@@ -777,6 +772,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
 
   // Add cron.database_name
   lines.push_back(Format("cron.database_name='$0'", FLAGS_ysql_cron_database_name));
+
+  if (FLAGS_openssl_require_fips) {
+    lines.push_back("pgcrypto.builtin_crypto_enabled=fips");
+  }
 
   if (FLAGS_ysql_enable_documentdb) {
     auto gateway_config_path = VERIFY_RESULT(WriteDocumentDBGatewayConfig(conf));
@@ -1530,7 +1529,7 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // ------------------------------------------------------------------------------------------------
 
 PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
-    : conf_(std::move(conf)), server_(server) {
+    : ProcessSupervisor(conf.cgroup), conf_(std::move(conf)), server_(server) {
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));

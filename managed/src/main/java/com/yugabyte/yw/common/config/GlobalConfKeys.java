@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
+import com.yugabyte.yw.common.YbaOidcCallbackUrlResolver.OidcCallbackMode;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Users.Role;
@@ -97,6 +98,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Display JWT Token on Login Screen",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<OidcCallbackMode> oidcCallbackMode =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_callback_mode",
+          ScopeType.GLOBAL,
+          "OIDC Callback Mode",
+          "Controls whether OIDC callback URLs use the default query parameter style or path"
+              + " parameter style. Possible values are: query, path.",
+          ConfDataType.OidcCallbackModeEnum,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybClientID =
       new ConfKeyInfo<>(
           "yb.security.clientID",
@@ -1465,6 +1475,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables validation for GCP Provider and returns the validation errors json if any",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableOciProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.oci_provider_validation",
+          ScopeType.GLOBAL,
+          "OCI provider validation",
+          "Enable OCI Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapSearchFilter =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_search_filter",
@@ -1618,6 +1636,17 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enable RBAC for Groups",
           "Map LDAP/OIDC groups to custom roles defined by RBAC.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowSuperadminUserGroupMapping =
+      new ConfKeyInfo<>(
+          "yb.security.allow_superadmin_user_group_mapping",
+          ScopeType.GLOBAL,
+          "Allow SuperAdmin in LDAP/OIDC group and user role mappings",
+          "When true, a SuperAdmin may assign the SuperAdmin system role"
+              + " via role bindings (including to LDAP/OIDC users) and may"
+              + " include SuperAdmin in LDAP/OIDC group mappings. When false,"
+              + " those operations are rejected.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> autoMasterFailoverPollerInterval =

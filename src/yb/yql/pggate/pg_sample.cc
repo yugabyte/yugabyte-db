@@ -36,8 +36,8 @@
 DEFINE_test_flag(bool, refresh_partitions_after_fetched_sample_blocks, false,
     "Force table partitions refresh after sample blocks are fetched.");
 
-DEFINE_RUNTIME_int32(
-    ysql_docdb_blocks_sampling_method, yb::DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3,
+DEFINE_RUNTIME_int32(ysql_docdb_blocks_sampling_method,
+    yb::DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3,
     "Controls how we define blocks for 1st phase of block-based sampling.");
 TAG_FLAG(ysql_docdb_blocks_sampling_method, hidden);
 
@@ -386,6 +386,7 @@ class SamplePickerBase : public PgSelect {
 
   Status Prepare(
       const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read,
       HybridTime read_time) {
     target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
     bind_ = PgTable(nullptr);
@@ -395,6 +396,9 @@ class SamplePickerBase : public PgSelect {
     // when PgSample tries to fetch the rows.
     read_op->set_read_time(ReadHybridTime::SingleTime(read_time));
     read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
+    if (skip_intents_read) {
+      read_req_->set_skip_intents_read(skip_intents_read);
+    }
     doc_op_ = std::make_shared<PgDocSampleOp>(pg_session_, &target_, std::move(read_op));
     return Status::OK();
   }
@@ -503,12 +507,13 @@ class SampleBlocksPicker : public SamplePickerBase {
 
   static Result<std::unique_ptr<SampleBlocksPicker>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
-      const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const YbcPgTableLocalityInfo& locality_info, bool skip_read_skip, int targrows,
       const SampleRandomState& rand_state, HybridTime read_time,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
     std::unique_ptr<SampleBlocksPicker> result{new SampleBlocksPicker{pg_session}};
     RETURN_NOT_OK(result->Prepare(
-        table_id, locality_info, targrows, rand_state, read_time, ysql_sampling_algorithm));
+        table_id, locality_info, skip_read_skip, targrows, rand_state, read_time,
+        ysql_sampling_algorithm));
     return result;
   }
 
@@ -518,12 +523,13 @@ class SampleBlocksPicker : public SamplePickerBase {
   }
 
   Status Prepare(
-      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read, int targrows,
       const SampleRandomState& rand_state, HybridTime read_time,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
 
     RETURN_NOT_OK(
-        SamplePickerBase::Prepare(table_id, locality_info, read_time));
+        SamplePickerBase::Prepare(table_id, locality_info, skip_intents_read, read_time));
     SetSamplingState(targrows, rand_state, ysql_sampling_algorithm);
     read_req_->mutable_sampling_state()->set_is_blocks_sampling_stage(true);
 
@@ -617,12 +623,13 @@ class SampleRowsPicker : public SamplePickerBase, public SampleRowsPickerIf {
 
   static Result<std::unique_ptr<SampleRowsPicker>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
-      const YbcPgTableLocalityInfo& locality_info,
+      const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read,
       int targrows, const SampleRandomState& rand_state, HybridTime read_time,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
     std::unique_ptr<SampleRowsPicker> result{new SampleRowsPicker{pg_session}};
     RETURN_NOT_OK(result->Prepare(
-        table_id, locality_info, targrows, rand_state, read_time, ysql_sampling_algorithm));
+        table_id, locality_info, skip_intents_read, targrows, rand_state, read_time,
+        ysql_sampling_algorithm));
     return result;
   }
 
@@ -632,10 +639,10 @@ class SampleRowsPicker : public SamplePickerBase, public SampleRowsPickerIf {
   }
 
   Status Prepare(
-      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
-      const SampleRandomState& rand_state, HybridTime read_time,
-      YsqlSamplingAlgorithm ysql_sampling_algorithm) {
-    RETURN_NOT_OK(SamplePickerBase::Prepare(table_id, locality_info, read_time));
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read, int targrows, const SampleRandomState& rand_state,
+      HybridTime read_time, YsqlSamplingAlgorithm ysql_sampling_algorithm) {
+    RETURN_NOT_OK(SamplePickerBase::Prepare(table_id, locality_info, skip_intents_read, read_time));
 
     SetSamplingState(targrows, rand_state, ysql_sampling_algorithm);
     read_req_->mutable_sampling_state()->set_is_blocks_sampling_stage(false);
@@ -696,12 +703,13 @@ class TwoStageSampleRowsPicker : public SampleRowsPickerIf {
 
   static Result<std::unique_ptr<SampleRowsPickerIf>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
-      const YbcPgTableLocalityInfo& locality_info,
+      const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read,
       int targrows, const SampleRandomState& rand_state, HybridTime read_time,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
     std::unique_ptr<TwoStageSampleRowsPicker> result{new TwoStageSampleRowsPicker{pg_session}};
     RETURN_NOT_OK(result->Prepare(
-        table_id, locality_info, targrows, rand_state, read_time, ysql_sampling_algorithm));
+        table_id, locality_info, skip_intents_read, targrows, rand_state, read_time,
+        ysql_sampling_algorithm));
     return result;
   }
 
@@ -711,14 +719,15 @@ class TwoStageSampleRowsPicker : public SampleRowsPickerIf {
   }
 
   Status Prepare(
-      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read, int targrows,
       const SampleRandomState& rand_state, HybridTime read_time,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
     sample_blocks_picker_ = VERIFY_RESULT(SampleBlocksPicker::Make(
-        pg_session_, table_id, locality_info, targrows, rand_state, read_time,
+        pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state, read_time,
         ysql_sampling_algorithm));
     sample_rows_picker_ = VERIFY_RESULT(SampleRowsPicker::Make(
-        pg_session_, table_id, locality_info, targrows, rand_state, read_time,
+        pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state, read_time,
         ysql_sampling_algorithm));
     return Status::OK();
   }
@@ -737,7 +746,8 @@ PgSample::PgSample(const PgSessionPtr& pg_session)
 PgSample::~PgSample() {}
 
 Status PgSample::Prepare(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_read, int targrows,
     const SampleRandomState& rand_state, HybridTime read_time) {
   // Setup target and bind descriptor.
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
@@ -756,11 +766,11 @@ Status PgSample::Prepare(
 
   if (ysql_sampling_algorithm == YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING) {
     sample_rows_picker_ = VERIFY_RESULT(TwoStageSampleRowsPicker::Make(
-        pg_session_, table_id, locality_info, targrows, rand_state, read_time,
+        pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state, read_time,
         ysql_sampling_algorithm));
   } else {
     sample_rows_picker_ = VERIFY_RESULT(SampleRowsPicker::Make(
-        pg_session_, table_id, locality_info, targrows, rand_state, read_time,
+        pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state, read_time,
         ysql_sampling_algorithm));
   }
 
@@ -771,6 +781,9 @@ Status PgSample::Prepare(
   // Clamp the read uncertainty window to avoid read restart errors.
   read_op->set_read_time(ReadHybridTime::SingleTime(read_time));
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
+  if (skip_intents_read) {
+    read_req_->set_skip_intents_read(skip_intents_read);
+  }
   doc_op_ = make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
 
   VLOG_WITH_FUNC(3)
@@ -800,10 +813,11 @@ EstimatedRowCount PgSample::GetEstimatedRowCount() {
 
 Result<std::unique_ptr<PgSample>> PgSample::Make(
     const PgSessionPtr& pg_session, const PgObjectId& table_id,
-    const YbcPgTableLocalityInfo& locality_info,
+    const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read,
     int targrows, const SampleRandomState& rand_state, HybridTime read_time) {
   std::unique_ptr<PgSample> result{new PgSample{pg_session}};
-  RETURN_NOT_OK(result->Prepare(table_id, locality_info, targrows, rand_state, read_time));
+  RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_read, targrows,
+      rand_state, read_time));
   return result;
 }
 

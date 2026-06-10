@@ -88,8 +88,7 @@ DEFINE_RUNTIME_bool(ycql_enable_packed_row, kYcqlPackedRowEnabled,
 DEFINE_RUNTIME_bool(ycql_jsonb_use_member_cache, true,
                     "Whether we use member cache during jsonb processing in YCQL.");
 
-DEFINE_UNKNOWN_uint64(
-    ycql_packed_row_size_limit, 0,
+DEFINE_UNKNOWN_uint64(ycql_packed_row_size_limit, 0,
     "Packed row size limit for YCQL in bytes. 0 to make this equal to SSTable block size.");
 
 namespace yb {
@@ -1974,11 +1973,7 @@ Status QLReadOperation::PopulateResultSet(const std::unique_ptr<qlexpr::QLScanSp
 }
 
 Status QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
-  if (aggr_result_.empty()) {
-    while (aggr_result_.size() < request_.selected_exprs().size()) {
-      aggr_result_.emplace_back(&request_.arena());
-    }
-  }
+  PrepareAggregateResults(request_.selected_exprs().size());
 
   int aggr_index = 0;
   for (const auto& expr : request_.selected_exprs()) {

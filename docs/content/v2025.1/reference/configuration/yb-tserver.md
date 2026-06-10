@@ -1937,16 +1937,6 @@ Default: `1`
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
 
-##### --full_compaction_pool_max_queue_size
-
-{{% tags/wrap %}}
-
-
-Default: `500`
-{{% /tags/wrap %}}
-
-The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
-
 ##### --auto_compact_check_interval_sec
 
 {{% tags/wrap %}}
@@ -2351,7 +2341,7 @@ Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 {{% tags/wrap %}}
 
 
-Default: `-1`, where the system automatically calculates the value to be approximately 1 second.
+Default: `-1`, where the system automatically calculates the margin. For YSQL index backfill the baseline is 3 minutes (180000 ms); for YCQL the baseline is approximately 1 second (1000 ms). The effective margin is the greater of that baseline and a value derived from `backfill_index_write_batch_size` and `backfill_index_rate_rows_per_sec`.
 {{% /tags/wrap %}}
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.

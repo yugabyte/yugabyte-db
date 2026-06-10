@@ -22,9 +22,11 @@
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/test/pggate_test.h"
@@ -99,7 +101,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -156,7 +158,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -239,7 +242,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -463,7 +467,8 @@ Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
   YbcPgStatement pg_stmt = nullptr;
 
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      db_oid, table_oid, NULL /* prepare_params */, PggateTest::kDefaultTableLocality, &pg_stmt));
+      db_oid, table_oid, NULL /* prepare_params */, PggateTest::kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
@@ -726,7 +731,7 @@ class PggateTestBucketizedSelect : public PggateTest {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewInsert(
         kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-        YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
+        YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
     // Allocate constant expressions.
     YbcPgExpr expr_bkt;
@@ -779,7 +784,8 @@ class PggateTestBucketizedSelect : public PggateTest {
       const std::vector<YbcSortKey>& sort_keys) {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewSelect(
-        kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+        kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+        false /* skip_intents_read */, &pg_stmt));
 
     // Specify the selected expressions.
     YbcPgExpr colref;
@@ -1377,6 +1383,81 @@ TEST_F_EX(PggateTestSelect, TestGetYbSystemTableInfo, PggateTestSelectWithYbSyst
     CHECK_EQ(oid, fetched_table_oid);
     CHECK_EQ(relfilenode, fetched_relfilenode);
   }
+}
+
+class PggateTestBackwardScanSelect : public PggateTestSelectWithYsql {
+ protected:
+  Result<PgObjectId> CreateTable(
+      const std::string& db_name, const std::string& table_name, int num_tablets, int num_rows) {
+    auto conn = VERIFY_RESULT(PgConnect(db_name));
+    RETURN_NOT_OK(conn.Execute(Format(
+        "CREATE TABLE $0(a INT PRIMARY KEY) SPLIT INTO $1 TABLETS", table_name, num_tablets)));
+    RETURN_NOT_OK(conn.Execute(Format(
+        "INSERT INTO $0 SELECT generate_series(1, $1)", table_name, num_rows)));
+    auto db_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", db_name)));
+    auto table_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+        "SELECT oid FROM pg_class WHERE relname = '$0'", table_name)));
+    return PgObjectId{db_oid, table_oid};
+  }
+
+  int ReadTableBackward(const PgObjectId& pg_table_id) {
+    YbcPgStatement pg_stmt;
+    CHECK_YBC_STATUS(YBCPgNewSelect(
+        pg_table_id.database_oid, pg_table_id.object_oid, NULL /* prepare_params */,
+        kDefaultTableLocality, false /* skip_intents_read */, &pg_stmt));
+
+    // Specify the selected expressions.
+    YbcPgExpr colref;
+    const YbcPgTypeAttrs type_attrs = { 0 };
+    CHECK_YBC_STATUS(YBCPgNewColumnRef(
+        pg_stmt, 1, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        &type_attrs, &colref));
+    CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
+    CHECK_YBC_STATUS(YBCPgSetForwardScan(pg_stmt, false /* is_forward */));
+
+    BeginTransaction();
+    CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
+
+    // Fetching rows and check their contents.
+    uint64_t values;
+    bool isnulls;
+    YbcPgSysColumns syscols;
+    int select_row_count = 0;
+    for (;;) {
+      bool has_data = false;
+      CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, 1, &values, &isnulls, &syscols, &has_data));
+      if (!has_data) {
+        break;
+      }
+      ++select_row_count;
+    }
+    CommitTransaction();
+    return select_row_count;
+  }
+
+};
+
+TEST_F(PggateTestBackwardScanSelect, HashBackwardScanOneTablet) {
+  constexpr auto kDatabaseName = "yugabyte";
+  constexpr auto kTableName = "htab1";
+  constexpr auto kNumRows = 4000;
+  CHECK_OK(Init(
+      "HashBackwardScanOneTablet", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+  auto pg_table_id = ASSERT_RESULT(CreateTable(kDatabaseName, kTableName, 1, kNumRows));
+  CHECK_EQ(ReadTableBackward(pg_table_id), kNumRows);
+}
+
+TEST_F(PggateTestBackwardScanSelect, HashBackwardScanMultiTablet) {
+  constexpr auto kDatabaseName = "yugabyte";
+  constexpr auto kTableName = "htab3";
+  constexpr auto kNumRows = 4000;
+  CHECK_OK(Init(
+      "HashBackwardScanMultiTablet", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+  auto pg_table_id = ASSERT_RESULT(CreateTable(kDatabaseName, kTableName, 3, kNumRows));
+  CHECK_EQ(ReadTableBackward(pg_table_id), kNumRows);
 }
 
 } // namespace pggate

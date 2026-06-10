@@ -434,6 +434,14 @@ class ApiService {
     return Promise.reject('Failed to fetch namespaces. No universe UUID provided.');
   };
 
+  provisionUniverseNodes = (
+    universeUuid: string,
+    payload: { nodeNames: string[] }
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/upgrade/provision_nodes`;
+    return axios.post<YBPTask>(requestUrl, payload).then((response) => response.data);
+  };
+
   createProvider = (
     providerConfigMutation: YBProviderMutation,
     shouldValidate = true,

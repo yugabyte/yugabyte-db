@@ -58,6 +58,7 @@ DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_max_prepared_statements);
 DECLARE_bool(ysql_conn_mgr_enable_parse_queue_tracking);
+DECLARE_bool(ysql_conn_mgr_wait_for_rfq_on_sync);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
 DECLARE_uint32(ysql_conn_mgr_reserve_internal_conns);
 DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
@@ -65,6 +66,8 @@ DECLARE_string(ysql_conn_mgr_alter_guc_adoption_strategy);
 DECLARE_int32(ysql_conn_mgr_alter_guc_stale_backend_ttl_ms);
 DECLARE_uint32(ysql_conn_mgr_auth_msg_timeout);
 DECLARE_uint32(ysql_conn_mgr_tcmalloc_gc_interval);
+DECLARE_uint32(ysql_conn_mgr_backend_drain_timeout_ms);
+DECLARE_uint32(ysql_conn_mgr_socket_listen_backlog);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -249,6 +252,8 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_max_prepared_statements%}", std::to_string(FLAGS_ysql_conn_mgr_max_prepared_statements)},
     {"{%yb_enable_parse_queue_tracking%}",
       BoolToString(FLAGS_ysql_conn_mgr_enable_parse_queue_tracking)},
+    {"{%yb_wait_for_rfq_on_sync%}",
+      BoolToString(FLAGS_ysql_conn_mgr_wait_for_rfq_on_sync)},
     {"{%yb_jitter_time%}", std::to_string(FLAGS_ysql_conn_mgr_jitter_time)},
     {"{%TEST_yb_auth_delay_ms%}", std::to_string(FLAGS_TEST_ysql_conn_mgr_auth_delay_ms)},
     {"{%yb_alter_guc_adoption_strategy%}", FLAGS_ysql_conn_mgr_alter_guc_adoption_strategy},
@@ -256,9 +261,13 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
         std::to_string(FLAGS_ysql_conn_mgr_alter_guc_stale_backend_ttl_ms)},
     {"{%yb_tcmalloc_gc_interval%}",
         std::to_string(FLAGS_ysql_conn_mgr_tcmalloc_gc_interval)},
+    {"{%yb_backend_drain_timeout_ms%}",
+        std::to_string(FLAGS_ysql_conn_mgr_backend_drain_timeout_ms)},
     {"{%unix_socket_dir%}",
-      PgDeriveSocketDir(postgres_address_)}}; // Return unix socket
+      PgDeriveSocketDir(postgres_address_)}, // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"
+    {"{%yb_socket_listen_backlog%}",
+      std::to_string(FLAGS_ysql_conn_mgr_socket_listen_backlog)}};
 
   AddSslConfig(&ysql_conn_mgr_configs);
 

@@ -65,6 +65,7 @@ typedef struct
 	CommandId	output_cid;		/* cmin to insert in output tuples */
 	int			ti_options;		/* table_tuple_insert performance options */
 	BulkInsertState bistate;	/* bulk insert state */
+	MemoryContext yb_per_tuple_context; /* YB: per-tuple context to avoid unbounded memory growth */
 } DR_intorel;
 
 /* utility functions for CTAS definition creation */
@@ -330,9 +331,11 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		query = linitial_node(Query, rewritten);
 		Assert(query->commandType == CMD_SELECT);
 
-		/* plan the query */
+		/* plan the query. YB: parallel query is disabled for DDLs by default. */
 		plan = pg_plan_query(query, pstate->p_sourcetext,
-							 CURSOR_OPT_PARALLEL_OK, params);
+							 (IsYugaByteEnabled() && yb_disable_parallel_query_in_ddl) ?
+							 0 : CURSOR_OPT_PARALLEL_OK,
+							 params);
 
 		/*
 		 * Use a snapshot with an updated command ID to ensure this query sees
@@ -595,6 +598,17 @@ intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	 * This may be harmless, but this function hasn't planned for it.
 	 */
 	Assert(RelationGetTargetBlock(intoRelationDesc) == InvalidBlockNumber);
+
+	/*
+	 * YB: Create and switch to a temporary memory context that we can reset
+	 * once per row to recover Yugabyte palloc'd memory.
+	 */
+	if (IsYBRelation(intoRelationDesc))
+		myState->yb_per_tuple_context = AllocSetContextCreate(CurrentMemoryContext,
+															  "CREATE TABLE AS (YB)",
+															  ALLOCSET_DEFAULT_SIZES);
+	else
+		myState->yb_per_tuple_context = NULL;
 }
 
 /*
@@ -618,12 +632,17 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 
 		if (IsYBRelation(myState->rel))
 		{
+			MemoryContext oldcontext = MemoryContextSwitchTo(myState->yb_per_tuple_context);
+
 			/* Update the tuple with table oid */
 			slot->tts_tableOid = RelationGetRelid(myState->rel);
 
 			YBCExecuteInsert(myState->rel,
 							 slot,
 							 ONCONFLICT_NONE);
+
+			MemoryContextSwitchTo(oldcontext);
+			MemoryContextReset(myState->yb_per_tuple_context);
 		}
 		else
 			/*
@@ -659,6 +678,12 @@ intorel_shutdown(DestReceiver *self)
 	{
 		FreeBulkInsertState(myState->bistate);
 		table_finish_bulk_insert(myState->rel, myState->ti_options);
+	}
+
+	if (myState->yb_per_tuple_context)
+	{
+		MemoryContextDelete(myState->yb_per_tuple_context);
+		myState->yb_per_tuple_context = NULL;
 	}
 
 	/* close rel, but keep lock until commit */

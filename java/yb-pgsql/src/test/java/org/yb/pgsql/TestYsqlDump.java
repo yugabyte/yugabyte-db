@@ -39,11 +39,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.util.SideBySideDiff;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 import org.yb.util.StringUtil;
-import org.yb.util.YBTestRunnerNonTsanAsan;
 
 /**
  * TestYsqlDump
@@ -60,7 +62,9 @@ import org.yb.util.YBTestRunnerNonTsanAsan;
  *    which always fails on a new cluster.
  *
  */
-@RunWith(value=YBTestRunnerNonTsanAsan.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RunWith(value=YBTestRunner.class)
 public class TestYsqlDump extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDump.class);
 

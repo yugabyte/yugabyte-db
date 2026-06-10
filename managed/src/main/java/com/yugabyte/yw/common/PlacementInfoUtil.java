@@ -339,7 +339,7 @@ public class PlacementInfoUtil {
         !CollectionUtils.isEmpty(taskParams.getPrimaryCluster().getPartitions()));
   }
 
-  private static void updateUniverseDefinition(
+  static void updateUniverseDefinition(
       UniverseDefinitionTaskParams taskParams,
       @Nullable Universe universe,
       Long customerId,
@@ -408,6 +408,12 @@ public class PlacementInfoUtil {
     verifyPlacement(cluster, taskParams.clusters, taskParams.nodeDetailsSet);
     cluster.placementInfo = cluster.getOverallPlacement();
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
+    if (cluster.getPartitions() != null) {
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        checkAndSetPerAZRF(partition.getPlacement(), partition.getReplicationFactor(), null, false);
+      }
+      cluster.userIntent.replicationFactor = cluster.getDefaultPartition().getReplicationFactor();
+    }
 
     // STEP 5: Sync nodes with placement info
     configureNodesUsingPlacementInfo(
@@ -415,12 +421,6 @@ public class PlacementInfoUtil {
     applyDedicatedModeChanges(universe, cluster, taskParams);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
-    if (cluster.getPartitions() != null) {
-      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
-        checkAndSetPerAZRF(partition.getPlacement(), partition.getReplicationFactor(), null, false);
-      }
-    }
-    cluster.userIntent.replicationFactor = cluster.getDefaultPartition().getReplicationFactor();
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
 
@@ -614,6 +614,14 @@ public class PlacementInfoUtil {
     removeUnusedPlacementAZs(cluster.placementInfo);
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
 
+    // Support old UI for universes saved through new UI but not geo-partitioned.
+    // For geo-partitioned case the exception is already thrown.
+    if (cluster.getPartitions() != null && cluster.getPartitions().size() == 1) {
+      UniverseDefinitionTaskParams.PartitionInfo partitionInfo = cluster.getPartitions().get(0);
+      partitionInfo.setPlacement(cluster.placementInfo);
+      partitionInfo.setReplicationFactor(cluster.userIntent.replicationFactor);
+    }
+
     // STEP 5: Sync nodes with placement info
     configureNodesUsingPlacementInfo(
         cluster, taskParams.nodeDetailsSet, taskParams, universe, clusterOpType);
@@ -623,14 +631,6 @@ public class PlacementInfoUtil {
     checkAndSetPerAZRF(
         cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID, false);
     LOG.info("Final Placement info: {}.", cluster.placementInfo);
-
-    // Support old UI for universes saved through new UI but not geo-partitioned.
-    // For geo-partitioned case the exception is already thrown.
-    if (cluster.getPartitions() != null && cluster.getPartitions().size() == 1) {
-      UniverseDefinitionTaskParams.PartitionInfo partitionInfo = cluster.getPartitions().get(0);
-      partitionInfo.setPlacement(cluster.placementInfo);
-      partitionInfo.setReplicationFactor(cluster.userIntent.replicationFactor);
-    }
 
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
@@ -1499,6 +1499,9 @@ public class PlacementInfoUtil {
       }
       if (!newCluster.areTagsSame(oldCluster)
           || !existingIntent.deviceInfo.equals(userIntent.deviceInfo)
+          || !Objects.equals(existingIntent.masterDeviceInfo, userIntent.masterDeviceInfo)
+          || !Objects.equals(existingIntent.instanceType, userIntent.instanceType)
+          || !Objects.equals(existingIntent.masterInstanceType, userIntent.masterInstanceType)
           || UniverseCRUDHandler.isKubernetesNodeSpecUpdate(oldCluster, newCluster)
           || UniverseCRUDHandler.isAwsArnChanged(oldCluster, newCluster)
           || UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)
@@ -2975,6 +2978,8 @@ public class PlacementInfoUtil {
     return addPlacementZone(zone, placementInfo, rf, numNodes, true);
   }
 
+  // addPlacementZone does not add the stsIndex for master/tserver, callsites using this method
+  // should set the stsIndex for master/tserver after calling this method.
   public static PlacementAZ addPlacementZone(
       UUID zone, PlacementInfo placementInfo, int rf, int numNodes, boolean isAffinitized) {
     // Get the zone, region and cloud.

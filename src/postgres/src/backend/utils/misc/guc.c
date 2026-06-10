@@ -124,6 +124,7 @@
 #include "executor/ybModifyTable.h"
 #include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
+#include "tcop/cmdtag.h"
 #include "tcop/pquery.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
@@ -290,6 +291,14 @@ static bool check_transaction_priority_upper_bound(double *newval, void **extra,
 static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, GucSource source);
 static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
+static bool yb_check_extra_commands_to_retry(char **newval, void **extra,
+											 GucSource source);
+static void yb_assign_extra_commands_to_retry(const char *newval, void *extra);
+static bool yb_check_extra_commands_to_retry_in_proc(char **newval,
+													 void **extra,
+													 GucSource source);
+static void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
+													  void *extra);
 static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
@@ -303,13 +312,15 @@ static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 
 static bool check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source);
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
-static bool check_yb_enable_concurrent_ddl(bool *newval, void **extra, GucSource source);
 static bool check_yb_dist_tracecontext(char **newval, void **extra, GucSource source);
 static void assign_yb_dist_tracecontext(const char *newval, void *extra);
 
 static bool check_yb_silence_advisory_locks_not_supported_error(bool *newval, void **extra,
 																GucSource source);
 static void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra);
+static bool check_yb_enable_new_relation_fastpath_write(bool *newval, void **extra, GucSource source);
+static bool check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
+																	 GucSource source);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -722,6 +733,14 @@ static const struct config_enum_entry yb_qpm_plan_format_options[] =
 	{"xml", EXPLAIN_FORMAT_XML, false},
 	{"json", EXPLAIN_FORMAT_JSON, false},
 	{"yaml", EXPLAIN_FORMAT_YAML, false},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry yb_test_force_parallel_options[] =
+{
+	{"off", YB_FORCE_PARALLEL_OFF, false},
+	{"prefer", YB_FORCE_PARALLEL_PREFER, false},
+	{"force", YB_FORCE_PARALLEL_FORCE, false},
 	{NULL, 0, false}
 };
 
@@ -2498,6 +2517,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_spi_dist_tracing", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enables distributed tracing for SPI (Server Programming Interface) calls."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_spi_dist_tracing,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
 			gettext_noop("Deprecated. This is no-op."),
 			NULL,
@@ -3105,6 +3135,22 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_disable_parallel_query_in_ddl", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Disables parallel query for the SELECT planned by DDLs "
+						 "such as CREATE TABLE AS, SELECT INTO, CREATE/REFRESH "
+						 "MATERIALIZED VIEW, COPY (query) TO, and EXPLAIN "
+						 "[ANALYZE] CREATE TABLE AS."),
+			gettext_noop("Enabled by default because parallel query in these "
+						 "DDLs has not been QA tested in YugabyteDB. Set to off "
+						 "as an escape hatch to restore upstream PostgreSQL "
+						 "behavior for workloads that rely on it.")
+		},
+		&yb_disable_parallel_query_in_ddl,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_skip_binding_scan_keys", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("For YB scans, skip binding scan keys to pggate. "
 						 "ybgin and internal scans are not affected."),
@@ -3441,14 +3487,14 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_index_backfill_column_projection", PGC_USERSET, QUERY_TUNING_OTHER,
-			gettext_noop("Enables index backfill column projection optimization. "
-						 "If true, index build/backfill only reads columns needed for the index, "
-						 "rather than all columns from the base table."),
+		{"yb_enable_index_backfill_scan_optimization", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Enables index backfill scan optimizations. "
+						 "If true, index build/backfill reads only the columns needed for the "
+						 "index and pushes partial index predicates down to the base table scan."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_enable_index_backfill_column_projection,
+		&yb_enable_index_backfill_scan_optimization,
 		false,
 		NULL, NULL, NULL
 	},
@@ -3460,6 +3506,18 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_fkey_catcache,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_BACKEND, DEVELOPER_OPTIONS,
+			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
+						 "when types mismatch."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_fkey_batched_docdb_lookup_when_types_mismatch,
 		true,
 		NULL, NULL, NULL
 	},
@@ -3522,17 +3580,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_advisory_locks,
 		true,
 		check_yb_enable_advisory_locks, NULL, NULL
-	},
-
-	{
-		{"yb_enable_concurrent_ddl", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("DEPRECATED - Please see the documentation for the correct flag"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_enable_concurrent_ddl,
-		false,
-		check_yb_enable_concurrent_ddl, NULL, NULL
 	},
 
 	{
@@ -3715,6 +3762,18 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_use_internal_auto_analyze_service_conn,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_analyze_dont_reset_mutations", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("[Test Only GUC] - When set, a manual ANALYZE does not reset the "
+						 "auto-analyze mutation counters, reverting to the pre-reset behavior."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_analyze_dont_reset_mutations,
 		false,
 		NULL, NULL, NULL
 	},
@@ -4047,6 +4106,41 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_pg_stat_plans_show_max_exec_params", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Show QPM maximum execution time parameter values."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_qpm_configuration.show_max_exec_params,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_new_relation_fastpath_write", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables fastpath writes for relations created in the current transaction "
+						 "(apply writes directly to the regular RocksDB DB when safe, skipping the "
+						 "intents DB)."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_new_relation_fastpath_write,
+		true,
+		check_yb_enable_new_relation_fastpath_write, NULL, NULL
+	},
+
+	{
+		{"yb_enable_new_relation_fastpath_write_in_txn_blocks", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Allows yb_enable_new_relation_fastpath_write to be applicable inside explicit transaction blocks too."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_new_relation_fastpath_write_in_txn_blocks,
+		false,
+		check_yb_enable_new_relation_fastpath_write_in_txn_blocks, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -4080,14 +4174,26 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_test_sleep_before_executor_start_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sleep before executing a statement. "
+						 "Can be used to simulate race conditions where "
+						 "catalog is updated between planning and execution."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_sleep_before_executor_start_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_test_fail_next_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set to non-zero, the next DDL will fail: "
-						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash."),
+						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash, 5=conflict."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_next_ddl,
-		0, 0, 4,
+		0, 0, 5,
 		NULL, NULL, NULL
 	},
 	{
@@ -4110,6 +4216,18 @@ static struct config_int ConfigureNamesInt[] =
 		&yb_explicit_row_locking_batch_size,
 		1024, 1, INT_MAX,
 		check_yb_explicit_row_locking_batch_size, NULL, NULL
+	},
+	{
+		{"yb_explicit_row_lock_skip_locked_max_read_ahead", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Max number of rows that are read ahead for "
+						 "SKIP LOCKED explicit row locking"),
+			gettext_noop("Set to 1 to preserve original behavior, "
+						 "read ahead is not performed by default"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_explicit_row_lock_skip_locked_max_read_ahead,
+		1, 1, 1024,
+		NULL, NULL, NULL
 	},
 	{
 		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,
@@ -5924,7 +6042,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_BYTE | GUC_EXPLAIN
 		},
 		&yb_parallel_range_size,
-		1024 * 1024, 1, INT_MAX,
+		16 * 1024 * 1024, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -6019,7 +6137,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_max_num_invalidation_messages,
-		4096, 0, INT_MAX,
+		8192, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -7397,6 +7515,52 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
+		{"yb_extra_commands_to_retry", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Comma-separated list of command tags to additionally "
+						 "retry on a serialization error."),
+			gettext_noop("By default the query layer retries SELECT/INSERT/"
+						 "UPDATE/DELETE, and under READ COMMITTED also any "
+						 "command tag on kConflict/kDeadlock/kAborted "
+						 "(historical) and CALL/DO whose body ran only those "
+						 "same four statements (or nested CALL/DO with only "
+						 "those same four statements) on kReadRestart. Each "
+						 "tag listed here joins the retriable set; tag names "
+						 "are case-insensitive and follow the names shown in "
+						 "psql command tags. COPY, COPY FROM, and ANALYZE "
+						 "are rejected at SET time -- they are not safe to "
+						 "retry. Use with caution: re-executing DDL or other "
+						 "utility statements may have unintended effects."),
+			GUC_LIST_INPUT
+		},
+		&yb_extra_commands_to_retry_string,
+		"",
+		yb_check_extra_commands_to_retry,
+		yb_assign_extra_commands_to_retry, NULL
+	},
+
+	{
+		{"yb_extra_commands_to_retry_in_proc", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Comma-separated list of command tags that, when run "
+						 "inside a CALL/DO body, do not block retry of the "
+						 "enclosing CALL/DO."),
+			gettext_noop("By default a CALL/DO is retried only when its body "
+						 "ran nothing but SELECT/INSERT/UPDATE/DELETE or "
+						 "nested CALL/DO, since a retry re-runs the entire "
+						 "body. Each tag listed here joins that set, e.g. "
+						 "'LOCK TABLE'. Tag names are case-insensitive. "
+						 "COPY, COPY FROM, and ANALYZE are rejected at SET "
+						 "time -- they are not safe to retry. Use with "
+						 "caution: re-executing the listed statements may "
+						 "have unintended effects."),
+			GUC_LIST_INPUT
+		},
+		&yb_extra_commands_to_retry_in_proc_string,
+		"",
+		yb_check_extra_commands_to_retry_in_proc,
+		yb_assign_extra_commands_to_retry_in_proc, NULL
+	},
+
+	{
 		{"yb_dist_tracecontext", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the W3C trace context (traceparent) for distributed tracing."),
 			NULL,
@@ -7942,6 +8106,18 @@ static struct config_enum ConfigureNamesEnum[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_test_force_parallel", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Influences planner selection of parallel paths for tests."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_EXPLAIN
+		},
+		&yb_test_force_parallel,
+		YB_FORCE_PARALLEL_OFF,
+		yb_test_force_parallel_options,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, NULL, NULL, NULL, NULL
@@ -7980,6 +8156,7 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_speculatively_execute_pl_statements",
 	"yb_whitelist_extra_statements_for_pl_speculative_execution",
 	"yb_test_make_all_ddl_statements_incrementing",
+	"yb_pg_stat_plans_show_max_exec_params",
 };
 
 
@@ -12022,8 +12199,7 @@ set_config_option_ext(const char *name, const char *value,
 			}
 	}
 
-	if (changeVal && yb_should_report_guc(record) &&
-		!(YbIsClientYsqlConnMgr() && (action & GUC_ACTION_LOCAL)))
+	if (changeVal && yb_should_report_guc(record))
 	{
 		record->status |= GUC_NEEDS_REPORT;
 		report_needed = true;
@@ -17305,6 +17481,108 @@ yb_set_neg_catcache_ids(const char *newval, void *extra)
 	}
 }
 
+/*
+ * YB: Parse a comma-separated list of command tag names into a bool array
+ * indexed by CommandTag. Used by yb_extra_commands_to_retry[_in_proc] check
+ * hooks. On success, the caller-supplied *extra receives a guc_malloc'd bool
+ * array of size COMMAND_TAG_NEXTTAG which the assign hook later moves into
+ * the runtime variable.
+ *
+ * Empty input is allowed (yields an all-false array). Embedded spaces within
+ * tag names ("CREATE TABLE") are supported via SplitDirectoriesString. Tag
+ * lookup is case-insensitive (GetCommandTagEnum). Unknown tags cause the
+ * check to fail.
+ *
+ * Validates the whole list before any allocation, so error paths don't have
+ * to free anything.
+ */
+static bool
+yb_parse_command_tag_list(const char *list_str, void **extra)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	ListCell   *l;
+	bool	   *arr;
+
+	rawstring = pstrdup(list_str);
+
+	if (!SplitDirectoriesString(rawstring, ',', &elemlist))
+	{
+		GUC_check_errdetail("List syntax is invalid.");
+		pfree(rawstring);
+		list_free_deep(elemlist);
+		return false;
+	}
+
+	/* First pass: validate every tag name before allocating anything. */
+	foreach(l, elemlist)
+	{
+		char	   *tok = (char *) lfirst(l);
+		CommandTag	tag = GetCommandTagEnum(tok);
+
+		if (tag == CMDTAG_UNKNOWN)
+		{
+			GUC_check_errdetail("Unrecognized command tag: \"%s\".", tok);
+			pfree(rawstring);
+			list_free_deep(elemlist);
+			return false;
+		}
+
+		/*
+		 * COPY/COPY FROM/ANALYZE are never safe to retry: re-executing
+		 * COPY can double-apply rows, and ANALYZE errors out on retry.
+		 * Reject the setting outright.
+		 */
+		if (tag == CMDTAG_COPY || tag == CMDTAG_COPY_FROM ||
+			tag == CMDTAG_ANALYZE)
+		{
+			GUC_check_errdetail("\"%s\" cannot be retried "
+								"(COPY may double-apply rows; "
+								"ANALYZE errors out on retry).", tok);
+			pfree(rawstring);
+			list_free_deep(elemlist);
+			return false;
+		}
+	}
+
+	/* Second pass: allocate and populate the array now that all tags are known good. */
+	arr = guc_malloc(ERROR, COMMAND_TAG_NEXTTAG * sizeof(bool));
+	MemSet(arr, 0, COMMAND_TAG_NEXTTAG * sizeof(bool));
+	foreach(l, elemlist)
+		arr[GetCommandTagEnum((char *) lfirst(l))] = true;
+
+	pfree(rawstring);
+	list_free_deep(elemlist);
+
+	*extra = arr;
+	return true;
+}
+
+static bool
+yb_check_extra_commands_to_retry(char **newval, void **extra, GucSource source)
+{
+	return yb_parse_command_tag_list(*newval, extra);
+}
+
+static void
+yb_assign_extra_commands_to_retry(const char *newval, void *extra)
+{
+	yb_extra_commands_to_retry = (bool *) extra;
+}
+
+static bool
+yb_check_extra_commands_to_retry_in_proc(char **newval, void **extra,
+										 GucSource source)
+{
+	return yb_parse_command_tag_list(*newval, extra);
+}
+
+static void
+yb_assign_extra_commands_to_retry_in_proc(const char *newval, void *extra)
+{
+	yb_extra_commands_to_retry_in_proc = (bool *) extra;
+}
+
 static bool
 check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source)
 {
@@ -17320,16 +17598,6 @@ check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source)
 	ereport(WARNING,
 			(errmsg("the parameter \"yb_enable_advisory_locks\" is deprecated, "
 					"toggle the runtime flag \"ysql_yb_enable_advisory_locks\" instead.")));
-	return true;				/* still allow usage, but warn */
-}
-
-static bool
-check_yb_enable_concurrent_ddl(bool *newval, void **extra, GucSource source)
-{
-	ereport(WARNING,
-			(errmsg("the parameter \"yb_enable_concurrent_ddl\" is deprecated "
-					"and has no effect."),
-			 errhint("Please check the documentation for the correct flag.")));
 	return true;				/* still allow usage, but warn */
 }
 
@@ -17413,6 +17681,42 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
 	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	yb_guc_remote_span_ctx = YBCGetValidSpanContext((const char *) extra);
 	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+ * YB: check_skip_intents_internal
+ * Common logic for skip-intent GUCs to handle transaction block restrictions.
+ */
+static bool
+check_skip_intents_internal(const char *guc_name, bool *newval, GucSource source)
+{
+	if (IsTransactionBlock() || FirstSnapshotSet)
+	{
+		GUC_check_errdetail("%s cannot be changed inside a transaction block or "
+							"after any query has been run in the transaction.", guc_name);
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+check_yb_enable_new_relation_fastpath_write(bool *newval, void **extra, GucSource source)
+{
+	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write", newval, source);
+}
+
+static bool
+check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
+														  GucSource source)
+{
+	if (*newval && !yb_enable_new_relation_fastpath_write)
+	{
+		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
+							"when yb_enable_new_relation_fastpath_write is disabled.");
+		return false;
+	}
+	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write_in_txn_blocks", newval, source);
 }
 
 #include "guc-file.c"

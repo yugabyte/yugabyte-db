@@ -37,7 +37,7 @@ grpcio-tools==1.76.0
 Jinja2==3.1.6
 MarkupSafe==2.0.1
 msrestazure
-oauth2client<4.0.0  # GCP SDK seems to require version <4 of oauth2client: https://goo.gl/7uC34W
+oci==2.176.0
 paramiko==3.4.0
 protobuf==6.33.5
 psycopg2
@@ -48,4 +48,4 @@ requests==2.33.0
 scp==0.14.5
 setuptools==80.10.2
 six
-urllib3==2.6.3
+urllib3==2.7.0

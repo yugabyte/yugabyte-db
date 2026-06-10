@@ -25,8 +25,7 @@ using namespace std::literals;
 
 namespace yb::client {
 
-YB_DEFINE_ENUM(
-    ClientErrorCode,
+YB_DEFINE_ENUM(ClientErrorCode,
     // Special value used to indicate no error of this type.
     (kNone)
     (kTablePartitionListIsStale)

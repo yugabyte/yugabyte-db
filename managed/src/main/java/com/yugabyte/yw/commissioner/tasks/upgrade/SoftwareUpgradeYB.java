@@ -408,8 +408,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         universe.getUniverseUUID(),
         true /* ignoreErrors */,
         AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-    createUpdateSoftwareVersionTask(ctx.newVersion, false /* isSoftwareUpdateViaVm */)
-        .setSubTaskGroupType(getTaskSubGroupType());
     if (!taskParams().rollbackSupport) {
       createFinalizeUpgradeTasks(
           taskParams().upgradeSystemCatalog,
@@ -427,6 +425,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             true /* isSoftwareRollbackAllowed */);
       }
     }
+    createUpdateSoftwareVersionTask(ctx.newVersion, false /* isSoftwareUpdateViaVm */)
+        .setSubTaskGroupType(getTaskSubGroupType());
   }
 
   @Override
@@ -603,8 +603,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               universe.getUniverseUUID(),
               true /* ignoreErrors */,
               AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
-          createUpdateSoftwareVersionTask(newVersion, false /* isSoftwareUpdateViaVm */)
-              .setSubTaskGroupType(getTaskSubGroupType());
 
           if (!taskParams().rollbackSupport) {
             // When rollback is not supported, finalize within this task
@@ -625,6 +623,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                   true /* isSoftwareRollbackAllowed */);
             }
           }
+          createUpdateSoftwareVersionTask(newVersion, false /* isSoftwareUpdateViaVm */)
+              .setSubTaskGroupType(getTaskSubGroupType());
         },
         null /* firstRunTxnCallback */,
         () -> {
@@ -1402,17 +1402,24 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
   /** Creates only the remaining subtask groups for a canary resume. */
   private void runCanaryResume(Universe universe) {
-    UniverseDefinitionTaskParams.SoftwareUpgradeState entryState =
-        universe.getUniverseDetails().softwareUpgradeState;
     UpgradeTaskCreationContext ctx = buildContext(universe, true);
     final boolean requireAdditionalSuperUserForCatalogUpgrade =
         ctx.requireAdditionalSuperUserForCatalogUpgrade;
     runUpgrade(
         () -> {
-          if (entryState == UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed) {
-            createUpdateUniverseSoftwareUpgradeStateTask(
-                UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
-                true /* isSoftwareRollbackAllowed */);
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
+              true /* isSoftwareRollbackAllowed */);
+          PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+          if (prev != null
+              && prev.getCanaryPauseState() != null
+              && prev.getCanaryPauseState() != CanaryPauseState.NOT_PAUSED) {
+            createSaveSoftwareUpgradeProgressTask(
+                true /* isCanaryUpgrade */,
+                CanaryPauseState.NOT_PAUSED,
+                prev.getMasterAZUpgradeStatesList(),
+                prev.getTserverAZUpgradeStatesList(),
+                false /* pauseAfter */);
           }
           createUpgradeSubtasks(universe, ctx);
         },

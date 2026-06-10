@@ -70,6 +70,9 @@
 
 /* YB includes */
 #include "access/yb_scan.h"
+#include "pg_yb_utils.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 
 /* Per-index data for ANALYZE */
@@ -709,6 +712,25 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 							  (va_cols == NIL));
 	else if (onerel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 		pgstat_report_analyze(onerel, 0, 0, (va_cols == NIL));
+
+	/*
+	 * YB: yb auto-analyze treats a full manual ANALYZE as making table
+	 * statistics fresh enough that it does not need to immediately re-analyze
+	 * based on mutations collected before this ANALYZE. Clear only the persisted
+	 * YCQL mutation stats; do not coordinate with auto-analyze service-local
+	 * buffers or caches.
+	 */
+	if (!inh && IsYBRelation(onerel) && va_cols == NIL &&
+		!yb_use_internal_auto_analyze_service_conn &&
+		!yb_is_internal_connection &&
+		!yb_test_analyze_dont_reset_mutations)
+	{
+		YbcStatus	reset_status =
+			YBCResetAutoAnalyzeMutationCounters(YBCGetDatabaseOid(onerel),
+												YbGetRelfileNodeId(onerel));
+
+		HandleYBStatusAtErrorLevel(reset_status, WARNING);
+	}
 
 	/*
 	 * If this isn't part of VACUUM ANALYZE, let index AMs do cleanup.
@@ -1879,7 +1901,9 @@ ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull)
 }
 
 
-/*==========================================================================
+/*
+ * YB: yb lint requires an empty opening comment line for this banner.
+ *==========================================================================
  *
  * Code below this point represents the "standard" type-specific statistics
  * analysis algorithms.  This code can be replaced on a per-data-type basis

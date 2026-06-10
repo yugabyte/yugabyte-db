@@ -21,3 +21,6 @@ export const ArchitectureType = {
   ARM64: 'aarch64'
 } as const;
 export type ArchitectureType = typeof ArchitectureType[keyof typeof ArchitectureType];
+
+export const AZ_NOT_PREFERRED = 0;
+export const AZ_PREFFERED_HIGHEST_RANK = 1;

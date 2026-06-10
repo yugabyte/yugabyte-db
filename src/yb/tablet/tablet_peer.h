@@ -42,6 +42,7 @@
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/log_fwd.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
@@ -130,8 +131,7 @@ struct TabletOnDiskSizeInfo {
   }
 };
 
-YB_DEFINE_ENUM(
-    TabletObjectState,
+YB_DEFINE_ENUM(TabletObjectState,
     (kUninitialized)
     (kAvailable)
     (kDestroyed));
@@ -329,11 +329,14 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void GetInFlightOperations(Operation::TraceType trace_type,
                              std::vector<consensus::OperationStatusPB>* out) const;
 
-  // Returns the minimum known log index that is in-memory or in-flight.
-  // Used for selection of log segments to delete during Log GC.
-  // If details is specified then this function appends explanation of how index was calculated
+  // Returns the op-index floors that bound Log GC for this tablet (see log::MinRetainLogIndexInfo):
+  // the earliest index needed by the tablet itself (in-memory / in-flight / durability) and the
+  // index xrepl (CDCSDK/xCluster) still needs retained. Both the Log GC path and remote bootstrap
+  // consume this.
+  // If details is specified then this function appends explanation of how the index was calculated
   // to it.
-  Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
+  Result<log::MinRetainLogIndexInfo> GetEarliestNeededLogIndex(
+      std::string* details = nullptr) const;
 
   Result<OpId> MaxPersistentOpId() const override;
 
@@ -529,6 +532,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback)
       EXCLUDES(async_write_queries_mutex_) override;
 
+  // Verifies that this peer has the op_id in its local log.
+  Status VerifyAsyncWriteReceived(const OpId& op_id);
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
@@ -638,6 +644,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool FlushBootstrapStateEnabled() const;
 
   void MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht);
+
+  Status VerifyAsyncWriteCompletion(const OpId& op_id);
 
   MetricRegistry* metric_registry_;
 

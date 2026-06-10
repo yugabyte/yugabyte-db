@@ -159,7 +159,7 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.5.6",
+  "org.postgresql" % "postgresql" % "42.7.11",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.5.32",
   "org.codehaus.janino" % "janino" % "3.1.9",
@@ -170,7 +170,7 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
   "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
-  "org.apache.mina" % "mina-core" % "2.2.4",
+  "org.apache.mina" % "mina-core" % "2.2.7",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
@@ -181,16 +181,16 @@ libraryDependencies ++= Seq(
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.springframework.security" % "spring-security-core" % "5.8.16",
   // AWS SDK 2.x dependencies
-  "software.amazon.awssdk" % "bom" % "2.33.10" pomOnly(),
-  "software.amazon.awssdk" % "core" % "2.33.10",
-  "software.amazon.awssdk" % "ec2" % "2.33.10",
-  "software.amazon.awssdk" % "kms" % "2.33.10",
-  "software.amazon.awssdk" % "iam" % "2.33.10",
-  "software.amazon.awssdk" % "sts" % "2.33.10",
-  "software.amazon.awssdk" % "s3" % "2.33.10",
-  "software.amazon.awssdk" % "elasticloadbalancingv2" % "2.33.10",
-  "software.amazon.awssdk" % "route53" % "2.33.10",
-  "software.amazon.awssdk" % "cloudtrail" % "2.33.10",
+  "software.amazon.awssdk" % "bom" % "2.29.52" pomOnly(),
+  "software.amazon.awssdk" % "core" % "2.29.52",
+  "software.amazon.awssdk" % "ec2" % "2.29.52",
+  "software.amazon.awssdk" % "kms" % "2.29.52",
+  "software.amazon.awssdk" % "iam" % "2.29.52",
+  "software.amazon.awssdk" % "sts" % "2.29.52",
+  "software.amazon.awssdk" % "s3" % "2.29.52",
+  "software.amazon.awssdk" % "elasticloadbalancingv2" % "2.29.52",
+  "software.amazon.awssdk" % "route53" % "2.29.52",
+  "software.amazon.awssdk" % "cloudtrail" % "2.29.52",
   "net.minidev" % "json-smart" % "2.5.2",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
@@ -213,8 +213,8 @@ libraryDependencies ++= Seq(
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
   // pac4j and nimbusds libraries need to be upgraded together.
   "org.pac4j" %% "play-pac4j" % "11.0.0-PLAY2.8",
-  "org.pac4j" % "pac4j-oauth" % "5.7.7" exclude("commons-io" , "commons-io"),
-  "org.pac4j" % "pac4j-oidc" % "5.7.7"  exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oauth" % "5.7.10" exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oidc" % "5.7.10"  exclude("commons-io" , "commons-io"),
   "com.nimbusds" % "nimbus-jose-jwt" % "10.8",
   "com.nimbusds" % "oauth2-oidc-sdk" % "11.34",
   "commons-validator" % "commons-validator" % "1.10.0",
@@ -253,7 +253,6 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.14.0",
   "io.fabric8" % "kubernetes-client-api" % "6.14.0",
   "io.fabric8" % "kubernetes-model-core" % "6.14.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.14.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -285,6 +284,7 @@ libraryDependencies ++= Seq(
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "1.0.2" % Test,
+  "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
 // Clear default resolvers.
@@ -446,6 +446,8 @@ releaseModulesLocally := {
   val status = Process("mvn install -DskipTests -P releaseLocally", baseDirectory.value / "parent-module").!
   status
 }
+
+releaseModulesLocally := (releaseModulesLocally dependsOn buildVenv).value
 
 buildDependentArtifacts / fileInputs += baseDirectory.value.toGlob /
   "node-agent/**"
@@ -1020,7 +1022,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.116-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.117-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b4"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
@@ -1033,9 +1035,11 @@ libraryDependencies ++= Seq(
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.132.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.132.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.132.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.133.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.133.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.133.Final"
+
+dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client. The
@@ -1115,6 +1119,18 @@ val testShardSize = SettingKey[Int]("testShardSize",
   "Number of test classes, executed by each forked JVM")
 testShardSize := 30
 
+val testLocalShardSize = SettingKey[Int]("testLocalShardSize",
+  "Number of local test classes, executed by each forked JVM")
+testLocalShardSize := 4
+
+val testLocalIpRangeStart = SettingKey[Int]("testLocalIpRangeStart",
+  "First loopback IP index for local provider tests (127.0.x.y encoding)")
+testLocalIpRangeStart := 2
+
+val testLocalIpRangeSize = SettingKey[Int]("testLocalIpRangeSize",
+  "Number of loopback IP indices allocated per forked local test JVM group")
+testLocalIpRangeSize := 35
+
 Global / concurrentRestrictions += Tags.limit(Tags.ForkedTestGroup, testParallelForks.value)
 
 def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
@@ -1127,9 +1143,41 @@ def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
       Group("testGroup" + index, tests, SubProcess(options))
   } toSeq
 
+def partitionLocalTests(
+    tests: Seq[TestDefinition],
+    shardSize: Int,
+    ipRangeStart: Int,
+    ipRangeSize: Int) =
+  tests.sortWith(_.name.hashCode() < _.name.hashCode()).grouped(shardSize).zipWithIndex map {
+    case (tests, index) =>
+      val rangeStart = ipRangeStart + index * ipRangeSize
+      val rangeEnd = rangeStart + ipRangeSize
+      val options = ForkOptions().withRunJVMOptions(Vector(
+        "-Xmx3g", "-XX:MaxMetaspaceSize=600m", "-XX:MetaspaceSize=200m",
+        "-Dconfig.resource=application.test.conf",
+        s"-Dyb.local.test.ipRangeStart=$rangeStart",
+        s"-Dyb.local.test.ipRangeEnd=$rangeEnd"
+      ))
+      Group("testGroup" + index, tests, SubProcess(options))
+  } toSeq
+
 Test / parallelExecution := true
 Test / fork := true
-Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSize.value )
+Test / testGrouping := partitionTests(
+  (Test / definedTests).value
+    .filter(t => !localTestSuiteFilter(t.name)),
+  testShardSize.value
+)
+
+// Add local tests only grouping to avoid multiple local tests falling into one bucket.
+TestLocalProviderSuite / parallelExecution := true
+TestLocalProviderSuite / testGrouping := partitionLocalTests(
+  (TestLocalProviderSuite / definedTests).value
+    .filter(t => localTestSuiteFilter(t.name)),
+  testLocalShardSize.value,
+  testLocalIpRangeStart.value,
+  testLocalIpRangeSize.value
+)
 
 Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")

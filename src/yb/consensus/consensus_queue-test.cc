@@ -244,7 +244,7 @@ class ConsensusQueueTest : public YBTest {
 TEST_F(ConsensusQueueTest, TestStartTrackingAfterStart) {
   queue_->Init(OpId::Min());
   queue_->SetLeaderMode(
-      OpId::Min(), OpId::Min().term, OpId::Min(), BuildRaftConfigPBForTests(2));
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(2));
   AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 100);
 
   ThreadSafeArena arena;
@@ -284,7 +284,7 @@ TEST_F(ConsensusQueueTest, TestStartTrackingAfterStart) {
 TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
   queue_->Init(OpId::Min());
   queue_->SetLeaderMode(
-      OpId::Min(), OpId::Min().term, OpId::Min(), BuildRaftConfigPBForTests(2));
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(2));
 
   const int kOpsPerRequest = 9;
   int32_t page_size_estimate = 0;
@@ -369,7 +369,7 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
 TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {
   queue_->Init(OpId::Min());
   queue_->SetLeaderMode(
-      OpId::Min(), OpId::Min().term, OpId::Min(), BuildRaftConfigPBForTests(3));
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(3));
   AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, kNumMessages);
 
   // Wait for the local peer to append all messages
@@ -445,7 +445,7 @@ TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {
 TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   queue_->Init(OpId::Min());
   queue_->SetLeaderMode(
-      OpId::Min(), OpId::Min().term, OpId::Min(), BuildRaftConfigPBForTests(5));
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(5));
   // Track 4 additional peers (in addition to the local peer).
   TrackPeer(*queue_, "peer-1");
   TrackPeer(*queue_, "peer-2");
@@ -538,7 +538,7 @@ TEST_F(ConsensusQueueTest, FindBestNewLeaderExcludesNonvoters) {
     raft_config.mutable_peers(i)->set_member_type(kNonVoterTypes[i - 1]);
   }
   queue_->Init(OpId::Min());
-  queue_->SetLeaderMode(OpId::Min(), OpId::Min().term, OpId::Min(), raft_config);
+  queue_->SetLeaderMode(OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
 
   // Get a response from each peer to set the member type and verify that it is set correctly.
   ThreadSafeArena arena;
@@ -581,7 +581,8 @@ TEST_F(ConsensusQueueTest, TestQueueLoadsOperationsForPeer) {
   const auto last_applied_op = committed_index;
   queue_->Init(committed_index);
   queue_->SetLeaderMode(
-      committed_index, committed_index.term, last_applied_op, BuildRaftConfigPBForTests(3));
+      committed_index, committed_index.term, last_applied_op, OpId(),
+      BuildRaftConfigPBForTests(3));
 
   ThreadSafeArena arena;
   LWConsensusRequestPB request(&arena);
@@ -641,7 +642,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   const OpId committed_op_id(2, 15);
   queue_->Init(OpId(2, 20));
   queue_->SetLeaderMode(
-      committed_op_id, committed_op_id.term, committed_op_id,
+      committed_op_id, committed_op_id.term, committed_op_id, OpId(),
       BuildRaftConfigPBForTests(3));
 
   // Now get a request for a simulated old leader, which contains more operations
@@ -782,7 +783,7 @@ TEST_F(ConsensusQueueTest, TestOnlyAdvancesWatermarkWhenPeerHasAPrefixOfOurLog) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 1024 * 10;
 
   queue_->Init(OpId(72, 30));
-  queue_->SetLeaderMode(OpId(72, 31), 76, OpId(72, 31), BuildRaftConfigPBForTests(3));
+  queue_->SetLeaderMode(OpId(72, 31), 76, OpId(72, 31), OpId(), BuildRaftConfigPBForTests(3));
 
   ThreadSafeArena arena;
   LWConsensusRequestPB request(&arena);
@@ -890,7 +891,7 @@ TEST_F(ConsensusQueueTest, TestOnlyAdvancesWatermarkWhenPeerHasAPrefixOfOurLog) 
 TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
   queue_->Init(OpId::Min());
   queue_->SetLeaderMode(
-      OpId::Min(), OpId::Min().term, OpId::Min(), BuildRaftConfigPBForTests(3));
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(3));
   AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 100);
 
   ThreadSafeArena arena;
@@ -934,7 +935,7 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   auto start_op_id = MakeOpIdForIndex(3); // Starting after the normal first index.
   queue_->Init(start_op_id);
   queue_->SetLeaderMode(
-      start_op_id, start_op_id.term, start_op_id, BuildRaftConfigPBForTests(2));
+      start_op_id, start_op_id.term, start_op_id, OpId(), BuildRaftConfigPBForTests(2));
   TrackPeer(*queue_, kPeerUuid);
 
   AppendReplicateMessagesToQueue(queue_.get(), clock_, start_op_id.index, kNumMessages);
@@ -1009,7 +1010,8 @@ class ConsensusQueueDelayedCommitTest : public ConsensusQueueTest {
 TEST_F(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster) {
   const auto start_op_id = MakeOpIdForIndex(3);  // Starting after the normal first index.
   queue_->Init(start_op_id);
-  queue_->SetLeaderMode(start_op_id, start_op_id.term, start_op_id, BuildRaftConfigPBForTests(2));
+  queue_->SetLeaderMode(
+      start_op_id, start_op_id.term, start_op_id, OpId(), BuildRaftConfigPBForTests(2));
   TrackPeer(*queue_, kPeerUuid);
 
   AppendReplicateMessagesToQueue(queue_.get(), clock_, start_op_id.index, kNumMessages);

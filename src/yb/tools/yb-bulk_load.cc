@@ -96,8 +96,7 @@ DEFINE_NON_RUNTIME_bool(export_files, false,
     "Whether or not the files should be exported to a production "
     "cluster.");
 DEFINE_NON_RUNTIME_int32(bulk_load_num_threads, 16, "Number of threads to use for bulk load");
-DEFINE_NON_RUNTIME_int32(bulk_load_threadpool_queue_size, 10000,
-             "Maximum number of entries to queue in the threadpool");
+DEPRECATE_FLAG(int32, bulk_load_threadpool_queue_size, "05_2026");
 DEFINE_NON_RUNTIME_int32(bulk_load_num_memtables, 3, "Number of memtables to use for rocksdb");
 DEFINE_NON_RUNTIME_int32(bulk_load_max_background_flushes, 2,
     "Number of flushes to perform in the background");
@@ -533,7 +532,6 @@ Status BulkLoad::InitYBBulkLoad() {
       ThreadPoolBuilder("bulk_load_tasks")
           .set_min_threads(FLAGS_bulk_load_num_threads)
           .set_max_threads(FLAGS_bulk_load_num_threads)
-          .set_max_queue_size(FLAGS_bulk_load_threadpool_queue_size)
           .set_idle_timeout(MonoDelta::FromMilliseconds(5000))
           .Build(&thread_pool_));
   return Status::OK();

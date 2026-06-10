@@ -1931,158 +1931,165 @@ $$ AS query \gset
 -- must choose a bitmap scan, what plan does it choose? Does that plan work?
 --
 SET yb_enable_base_scans_cost_model = true;
+SET yb_fetch_size_limit = 0;
+SET yb_fetch_row_limit = 0;
 CREATE TABLE test_and (a INT, b INT, c INT);
 CREATE INDEX ON test_and (a ASC);
 CREATE INDEX ON test_and (b ASC);
 CREATE INDEX ON test_and (c ASC);
-INSERT INTO test_and SELECT i, j, k FROM generate_series(1, 20) i, generate_series(1, 20) j, generate_series(1, 20) k;
+INSERT INTO test_and SELECT i, j, k FROM generate_series(1, 50) i, generate_series(1, 52) j, generate_series(1, 56) k;
+ALTER TABLE test_and ALTER COLUMN a SET STATISTICS 1000;
+ALTER TABLE test_and ALTER COLUMN b SET STATISTICS 1000;
+ALTER TABLE test_and ALTER COLUMN c SET STATISTICS 1000;
 ANALYZE test_and;
 \set explain 'EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF)'
 \set Q1 '/*+ BitmapScan(t) */'
 \set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 6 AND b < 6;'
 :query
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- YB Bitmap Table Scan on test_and t (actual rows=500 loops=1)
-   ->  BitmapAnd (actual rows=500 loops=1)
-         ->  Bitmap Index Scan on test_and_b_idx (actual rows=2000 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_and t (actual rows=1400 loops=1)
+   ->  BitmapAnd (actual rows=1400 loops=1)
+         ->  Bitmap Index Scan on test_and_b_idx (actual rows=14000 loops=1)
                Index Cond: (b < 6)
-         ->  Bitmap Index Scan on test_and_a_idx (actual rows=2000 loops=1)
+         ->  Bitmap Index Scan on test_and_a_idx (actual rows=14560 loops=1)
                Index Cond: (a < 6)
 (6 rows)
 
 \set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 6 AND c < 6;'
 :query
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- YB Bitmap Table Scan on test_and t (actual rows=500 loops=1)
-   ->  BitmapAnd (actual rows=500 loops=1)
-         ->  Bitmap Index Scan on test_and_c_idx (actual rows=2000 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_and t (actual rows=1300 loops=1)
+   ->  BitmapAnd (actual rows=1300 loops=1)
+         ->  Bitmap Index Scan on test_and_c_idx (actual rows=13000 loops=1)
                Index Cond: (c < 6)
-         ->  Bitmap Index Scan on test_and_a_idx (actual rows=2000 loops=1)
+         ->  Bitmap Index Scan on test_and_a_idx (actual rows=14560 loops=1)
                Index Cond: (a < 6)
 (6 rows)
 
 \set query ':explain :Q1 SELECT * FROM test_and t WHERE b < 6 AND c < 6;'
 :query
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- YB Bitmap Table Scan on test_and t (actual rows=500 loops=1)
-   ->  BitmapAnd (actual rows=500 loops=1)
-         ->  Bitmap Index Scan on test_and_c_idx (actual rows=2000 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_and t (actual rows=1250 loops=1)
+   ->  BitmapAnd (actual rows=1250 loops=1)
+         ->  Bitmap Index Scan on test_and_c_idx (actual rows=13000 loops=1)
                Index Cond: (c < 6)
-         ->  Bitmap Index Scan on test_and_b_idx (actual rows=2000 loops=1)
+         ->  Bitmap Index Scan on test_and_b_idx (actual rows=14000 loops=1)
                Index Cond: (b < 6)
 (6 rows)
 
 \set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 6 AND b < 6 AND c < 7;'
 :query
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=150 loops=1)
    Storage Filter: (c < 7)
-   ->  BitmapAnd (actual rows=500 loops=1)
-         ->  Bitmap Index Scan on test_and_b_idx (actual rows=2000 loops=1)
+   ->  BitmapAnd (actual rows=1400 loops=1)
+         ->  Bitmap Index Scan on test_and_b_idx (actual rows=14000 loops=1)
                Index Cond: (b < 6)
-         ->  Bitmap Index Scan on test_and_a_idx (actual rows=2000 loops=1)
+         ->  Bitmap Index Scan on test_and_a_idx (actual rows=14560 loops=1)
                Index Cond: (a < 6)
 (7 rows)
 
 \set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 10 AND b < 10;'
 :query
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- YB Bitmap Table Scan on test_and t (actual rows=1620 loops=1)
-   ->  BitmapAnd (actual rows=1620 loops=1)
-         ->  Bitmap Index Scan on test_and_b_idx (actual rows=3600 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_and t (actual rows=4536 loops=1)
+   ->  BitmapAnd (actual rows=4536 loops=1)
+         ->  Bitmap Index Scan on test_and_b_idx (actual rows=25200 loops=1)
                Index Cond: (b < 10)
-         ->  Bitmap Index Scan on test_and_a_idx (actual rows=3600 loops=1)
+         ->  Bitmap Index Scan on test_and_a_idx (actual rows=26208 loops=1)
                Index Cond: (a < 10)
 (6 rows)
 
 \set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 10 AND c < 10;'
 :query
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- YB Bitmap Table Scan on test_and t (actual rows=1620 loops=1)
-   ->  BitmapAnd (actual rows=1620 loops=1)
-         ->  Bitmap Index Scan on test_and_c_idx (actual rows=3600 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_and t (actual rows=4212 loops=1)
+   ->  BitmapAnd (actual rows=4212 loops=1)
+         ->  Bitmap Index Scan on test_and_c_idx (actual rows=23400 loops=1)
                Index Cond: (c < 10)
-         ->  Bitmap Index Scan on test_and_a_idx (actual rows=3600 loops=1)
+         ->  Bitmap Index Scan on test_and_a_idx (actual rows=26208 loops=1)
                Index Cond: (a < 10)
 (6 rows)
 
 \set query ':explain :Q1 SELECT * FROM test_and t WHERE b < 10 AND c < 10;'
 :query
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- YB Bitmap Table Scan on test_and t (actual rows=1620 loops=1)
-   ->  BitmapAnd (actual rows=1620 loops=1)
-         ->  Bitmap Index Scan on test_and_c_idx (actual rows=3600 loops=1)
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_and t (actual rows=4050 loops=1)
+   ->  BitmapAnd (actual rows=4050 loops=1)
+         ->  Bitmap Index Scan on test_and_c_idx (actual rows=23400 loops=1)
                Index Cond: (c < 10)
-         ->  Bitmap Index Scan on test_and_b_idx (actual rows=3600 loops=1)
+         ->  Bitmap Index Scan on test_and_b_idx (actual rows=25200 loops=1)
                Index Cond: (b < 10)
 (6 rows)
 
 \set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 10 AND b < 10 AND c < 10;'
 :query
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  YB Bitmap Table Scan on test_and t (actual rows=729 loops=1)
    Storage Filter: (a < 10)
-   ->  BitmapAnd (actual rows=1620 loops=1)
-         ->  Bitmap Index Scan on test_and_c_idx (actual rows=3600 loops=1)
+   ->  BitmapAnd (actual rows=4050 loops=1)
+         ->  Bitmap Index Scan on test_and_c_idx (actual rows=23400 loops=1)
                Index Cond: (c < 10)
-         ->  Bitmap Index Scan on test_and_b_idx (actual rows=3600 loops=1)
+         ->  Bitmap Index Scan on test_and_b_idx (actual rows=25200 loops=1)
                Index Cond: (b < 10)
 (7 rows)
 
 -- complex nested queries
-\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 5 AND (b < 3 OR b > 16);'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE a < 5 AND (b < 3 OR b > 48);'
 :query
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- YB Bitmap Table Scan on test_and t (actual rows=480 loops=1)
-   ->  BitmapAnd (actual rows=480 loops=1)
-         ->  Bitmap Index Scan on test_and_a_idx (actual rows=1600 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_and t (actual rows=1344 loops=1)
+   ->  BitmapAnd (actual rows=1344 loops=1)
+         ->  Bitmap Index Scan on test_and_a_idx (actual rows=11648 loops=1)
                Index Cond: (a < 5)
-         ->  BitmapOr (actual rows=2400 loops=1)
-               ->  Bitmap Index Scan on test_and_b_idx (actual rows=800 loops=1)
+         ->  BitmapOr (actual rows=16800 loops=1)
+               ->  Bitmap Index Scan on test_and_b_idx (actual rows=5600 loops=1)
                      Index Cond: (b < 3)
-               ->  Bitmap Index Scan on test_and_b_idx (actual rows=1600 loops=1)
-                     Index Cond: (b > 16)
+               ->  Bitmap Index Scan on test_and_b_idx (actual rows=11200 loops=1)
+                     Index Cond: (b > 48)
 (9 rows)
 
-\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 5);'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 48 AND a < 5);'
 :query
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- YB Bitmap Table Scan on test_and t (actual rows=480 loops=1)
-   ->  BitmapAnd (actual rows=480 loops=1)
-         ->  Bitmap Index Scan on test_and_a_idx (actual rows=1600 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_and t (actual rows=1344 loops=1)
+   ->  BitmapAnd (actual rows=1344 loops=1)
+         ->  Bitmap Index Scan on test_and_a_idx (actual rows=11648 loops=1)
                Index Cond: (a < 5)
-         ->  BitmapOr (actual rows=2400 loops=1)
-               ->  Bitmap Index Scan on test_and_b_idx (actual rows=800 loops=1)
+         ->  BitmapOr (actual rows=16800 loops=1)
+               ->  Bitmap Index Scan on test_and_b_idx (actual rows=5600 loops=1)
                      Index Cond: (b < 3)
-               ->  Bitmap Index Scan on test_and_b_idx (actual rows=1600 loops=1)
-                     Index Cond: (b > 16)
+               ->  Bitmap Index Scan on test_and_b_idx (actual rows=11200 loops=1)
+                     Index Cond: (b > 48)
 (9 rows)
 
-\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 6);'
+\set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 48 AND a < 7);'
 :query
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
- YB Bitmap Table Scan on test_and t (actual rows=560 loops=1)
-   Storage Filter: (((b < 3) AND (a < 5)) OR ((b > 16) AND (a < 6)))
-   ->  BitmapOr (actual rows=1200 loops=1)
-         ->  Bitmap Index Scan on test_and_b_idx (actual rows=800 loops=1)
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_and t (actual rows=1792 loops=1)
+   Storage Filter: (((b < 3) AND (a < 5)) OR ((b > 48) AND (a < 7)))
+   ->  BitmapOr (actual rows=6944 loops=1)
+         ->  Bitmap Index Scan on test_and_b_idx (actual rows=5600 loops=1)
                Index Cond: (b < 3)
-         ->  BitmapAnd (actual rows=400 loops=1)
-               ->  Bitmap Index Scan on test_and_b_idx (actual rows=1600 loops=1)
-                     Index Cond: (b > 16)
-               ->  Bitmap Index Scan on test_and_a_idx (actual rows=2000 loops=1)
-                     Index Cond: (a < 6)
+         ->  BitmapAnd (actual rows=1344 loops=1)
+               ->  Bitmap Index Scan on test_and_b_idx (actual rows=11200 loops=1)
+                     Index Cond: (b > 48)
+               ->  Bitmap Index Scan on test_and_a_idx (actual rows=17472 loops=1)
+                     Index Cond: (a < 7)
 (10 rows)
 
+RESET yb_fetch_size_limit;
+RESET yb_fetch_row_limit;
 RESET yb_enable_base_scans_cost_model;
 RESET enable_bitmapscan;

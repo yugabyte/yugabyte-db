@@ -311,16 +311,66 @@ Status TabletVectorIndexes::DoCreateIndex(
 
 namespace {
 
-class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
+class VectorIndexBackfillContext;
+
+class ReverseMappingBackfiller : public rocksdb::DirectWriter {
  public:
-  explicit VectorIndexBackfillHelper(HybridTime backfill_ht, OpId op_id)
-      : backfill_ht_(backfill_ht), op_id_(op_id) {}
+  explicit ReverseMappingBackfiller(OpId op_id) : op_id_(op_id) {
+  }
+
+  void Apply(Tablet& tablet, const VectorIndexBackfillContext& context);
+
+ private:
+  Status Apply(rocksdb::DirectWriteHandler& handler) override;
+
+  const VectorIndexBackfillContext* context_ = nullptr;
+  const OpId op_id_;
+};
+using ReverseMappingBackfillerPtr = std::unique_ptr<ReverseMappingBackfiller>;
+
+class VectorIndexBackfillContext {
+ public:
+  explicit VectorIndexBackfillContext(HybridTime backfill_ht) : backfill_ht_(backfill_ht) {
+  }
 
   void Add(Slice ybctid, Slice value) {
     ybctids_.push_back(arena_.DupSlice(ybctid));
     entries_.emplace_back(docdb::DocVectorIndexInsertEntry {
       .value = ValueBuffer(value),
     });
+  }
+
+  void Reset() {
+    entries_.clear();
+    ybctids_.clear();
+    arena_.Reset(ResetMode::kKeepLast);
+  }
+
+  HybridTime backfill_ht() const {
+    return backfill_ht_;
+  }
+
+  const auto& entries() const {
+    return entries_;
+  }
+
+  const std::vector<Slice>& ybctids() const {
+    return ybctids_;
+  }
+
+ private:
+  const HybridTime backfill_ht_;
+  docdb::DocVectorIndexInsertEntries entries_;
+  std::vector<Slice> ybctids_;
+  Arena arena_;
+};
+
+class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
+ public:
+  explicit VectorIndexBackfillHelper(
+      HybridTime backfill_ht, ReverseMappingBackfillerPtr reverse_mapping_backfiller)
+      : VectorIndexBackfillContext(backfill_ht),
+        reverse_mapping_backfiller_(std::move(reverse_mapping_backfiller)) {
   }
 
   void SetChunkSize(size_t chunk_size) {
@@ -332,18 +382,14 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
   }
 
   bool NeedFlush() {
-    return entries_.size() >= FLAGS_vector_index_initial_chunk_size;
+    return entries().size() >= FLAGS_vector_index_initial_chunk_size;
   }
 
   Status Flush(Tablet& tablet, docdb::DocVectorIndex& index, Slice next_ybctid) {
     ++num_chunks_;
-    {
-      docdb::ConsensusFrontiers frontiers;
-      frontiers.Smallest().set_op_id(op_id_);
-      frontiers.Largest().set_op_id(op_id_);
-      rocksdb::WriteBatch write_batch;
-      write_batch.SetDirectWriter(this);
-      tablet.WriteToRocksDB(frontiers, &write_batch, docdb::StorageDbType::kRegular);
+
+    if (reverse_mapping_backfiller_) {
+      reverse_mapping_backfiller_->Apply(tablet, *this);
     }
 
     docdb::ConsensusFrontiers frontiers;
@@ -356,32 +402,50 @@ class VectorIndexBackfillHelper : public rocksdb::DirectWriter {
       .frontiers = &frontiers,
       .chunk_size = chunk_size_,
     };
-    RETURN_NOT_OK_PREPEND(index.Insert(entries_, options), "Insert entries");
-    if (!next_ybctid.empty()) {
-      entries_.clear();
-      ybctids_.clear();
-      arena_.Reset(ResetMode::kKeepLast);
-    }
-    return Status::OK();
-  }
+    RETURN_NOT_OK_PREPEND(index.Insert(entries(), options), "Insert entries");
 
-  Status Apply(rocksdb::DirectWriteHandler& handler) override {
-    for (size_t i = 0; i != ybctids_.size(); ++i) {
-      docdb::DocVectorIndex::ApplyReverseEntry(
-          handler, ybctids_[i], entries_[i].value.AsSlice(), DocHybridTime(backfill_ht_, 0));
+    if (!next_ybctid.empty()) {
+      Reset();
     }
+
     return Status::OK();
   }
 
  private:
-  const HybridTime backfill_ht_;
-  const OpId op_id_;
-  docdb::DocVectorIndexInsertEntries entries_;
-  std::vector<Slice> ybctids_;
-  Arena arena_;
   size_t chunk_size_ = 0;
   size_t num_chunks_ = 0;
+  ReverseMappingBackfillerPtr reverse_mapping_backfiller_ = nullptr;
 };
+
+void ReverseMappingBackfiller::Apply(Tablet& tablet, const VectorIndexBackfillContext& context) {
+  if (!context_) {
+    context_ = &context;
+  }
+  DCHECK_EQ(context_, &context); // Sanity check.
+
+  docdb::ConsensusFrontiers frontiers;
+  frontiers.Smallest().set_op_id(op_id_);
+  frontiers.Largest().set_op_id(op_id_);
+  rocksdb::WriteBatch write_batch;
+  write_batch.SetDirectWriter(this);
+  tablet.WriteToRocksDB(frontiers, &write_batch, docdb::StorageDbType::kRegular);
+}
+
+// Required by rocksdb::WriteBatch in Apply().
+Status ReverseMappingBackfiller::Apply(rocksdb::DirectWriteHandler& handler) {
+  DCHECK_ONLY_NOTNULL(context_);
+
+  const auto backfill_ht = context_->backfill_ht();
+  const auto& entries = context_->entries();
+  const auto& ybctids = context_->ybctids();
+  DCHECK_EQ(entries.size(), ybctids.size());
+
+  for (size_t i = 0; i != ybctids.size(); ++i) {
+    docdb::DocVectorIndex::ApplyReverseEntry(
+        handler, ybctids[i], entries[i].value.AsSlice(), DocHybridTime(backfill_ht, 0));
+  }
+  return Status::OK();
+}
 
 } // namespace
 
@@ -400,8 +464,13 @@ Status TabletVectorIndexes::Backfill(
   IndexedTableReader reader(*vector_index);
   RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
+  ReverseMappingBackfillerPtr reverse_mapping_backfiller;
+  if (!vector_index->options().skip_reverse_mapping_backfill()) {
+    reverse_mapping_backfiller = std::make_unique<ReverseMappingBackfiller>(op_id);
+  }
+
   // Expecting one row at most.
-  VectorIndexBackfillHelper helper(backfill_ht, op_id);
+  VectorIndexBackfillHelper helper(backfill_ht, std::move(reverse_mapping_backfiller));
 
   // Convert the byte budget into a vector count using the index implementation's own per-vector
   // memory layout. The same number of vectors with different numbers of dimensions can consume

@@ -21,6 +21,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 
 | Statement | Description |
 | :-------- | :---------- |
+| [ALTER AGGREGATE](ddl_alter_aggregate/) | Change aggregate function definition |
 | [ALTER DATABASE](ddl_alter_db/) | Change database definition |
 | [ALTER DOMAIN](ddl_alter_domain/) | Change domain definition |
 | [ALTER FOREIGN DATA WRAPPER](ddl_alter_foreign_data_wrapper/) | Change foreign data wrapper definition |
@@ -32,6 +33,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [ALTER SERVER](ddl_alter_server/) | Change foreign server definition |
 | [ALTER SCHEMA](ddl_alter_schema/) | Change schema definition |
 | [ALTER TABLE](ddl_alter_table/) | Change table definition |
+| [ALTER TABLESPACE](ddl_alter_tablespace/) | Change tablespace placement options |
 | [COMMENT](ddl_comment/) | Set, update, or remove a comment on a database object |
 | [CREATE AGGREGATE](ddl_create_aggregate/) | Create an aggregate |
 | [CREATE CAST](ddl_create_cast/) | Create a cast |

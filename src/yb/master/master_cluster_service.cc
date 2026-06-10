@@ -41,6 +41,11 @@ DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
 DECLARE_bool(emergency_repair_mode);
 
+DEFINE_RUNTIME_bool(master_list_raft_peers_check_is_leader, false,
+    "When enabled, ListMasterRaftPeers RPC will reject "
+    "with NOT_THE_LEADER if processed by a non-leader master."
+);
+
 using namespace std::literals;
 
 namespace yb {
@@ -159,10 +164,10 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       desc->GetMetrics(entry->mutable_metrics());
       auto it = ysql_lease_infos.find(desc->id());
       if (it != ysql_lease_infos.end() &&
-          it->second.instance_seqno() == entry->instance_id().instance_seqno()) {
+          it->second.lease_info.instance_seqno() == entry->instance_id().instance_seqno()) {
         auto& lease_info = *entry->mutable_lease_info();
-        lease_info.set_is_live(it->second.live_lease());
-        lease_info.set_lease_epoch(it->second.lease_epoch());
+        lease_info.set_is_live(it->second.lease_info.live_lease());
+        lease_info.set_lease_epoch(it->second.lease_info.lease_epoch());
       }
     }
     rpc.RespondSuccess();
@@ -225,6 +230,13 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       const ListMasterRaftPeersRequestPB* req,
       ListMasterRaftPeersResponsePB* resp,
       rpc::RpcContext rpc) override {
+    if (FLAGS_master_list_raft_peers_check_is_leader) {
+      // check if the master is leader and return NOT_THE_LEADER if not
+      SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+      if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
+        return;
+      }
+    }
     std::vector<consensus::RaftPeerPB> masters;
     Status s = server_->ListRaftConfigMasters(&masters);
     if (s.ok()) {

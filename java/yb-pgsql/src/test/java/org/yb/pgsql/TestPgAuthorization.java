@@ -22,6 +22,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.MiniYBClusterBuilder;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -57,14 +58,21 @@ public class TestPgAuthorization extends BasePgSQLTest {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_hba_conf", CUSTOM_PG_HBA_CONFIG);
     if(isTestRunningWithConnectionManager()) {
-       flags.put("allowed_preview_flags_csv",
-                "ysql_conn_mgr_alter_guc_adoption_strategy,"
-                + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
       flags.put("enable_ysql_conn_mgr", "true");
       flags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
       flags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", "-1");
     }
     return flags;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    // Since BasePgSQLTest is setting the warmup mode to random, we need to
+    // overwrite the flag to none here
+    if (isTestRunningWithConnectionManager()) {
+      builder.addCommonTServerFlag("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+    }
   }
 
   @Test
@@ -363,12 +371,11 @@ public class TestPgAuthorization extends BasePgSQLTest {
   }
 
   @Test
+  // (DB-10760) Role OID-based pool design is needed in addition to waiting
+  // for connection count-related statistics for this test to pass when
+  // Connection Manager is enabled. Running on the Postgres port instead.
+  @BypassConnMgr(reason = BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED)
   public void testAttributes() throws Exception {
-    // (DB-10760) Role OID-based pool design is needed in addition to waiting
-    // for connection count-related statistics for this test to pass when
-    // Connection Manager is enabled. Skipping this test temporarily.
-    skipYsqlConnMgr(BasePgSQLTest.RECREATE_USER_SUPPORT_NEEDED);
-
     // NOTE: The INHERIT attribute is tested separately in testMembershipInheritance.
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
@@ -2852,10 +2859,9 @@ public class TestPgAuthorization extends BasePgSQLTest {
   }
 
   @Test
+  // (DB-12741) Bypass connection manager for this test.
+  @BypassConnMgr(reason = BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR)
   public void testConnectionLimitDecreasedMidSession() throws Exception {
-    // (DB-12741) Skip this test if running with connection manager.
-    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR);
-
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
 
@@ -2923,15 +2929,13 @@ public class TestPgAuthorization extends BasePgSQLTest {
   }
 
   @Test
+  // The test fails with Connection Manager enabled as the role GUC variable
+  // is replayed at the beginning of every transaction boundary. This test
+  // requires that the role GUC variable is not changed even after revoking
+  // membership from a role group in order to succeed, which would not be the
+  // case when Connection Manager is enabled.
+  @BypassConnMgr(reason = BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE)
   public void testMembershipRevokedInsideGroup() throws Exception {
-
-    // The test fails with Connection Manager enabled as the role GUC variable
-    // is replayed at the beginning of every transaction boundary. This test
-    // requires that the role GUC variable is not changed even after revoking
-    // membership from a role group in order to succeed, which would not be the
-    // case when Connection Manager is enabled.
-    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_CONN_STATE);
-
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
       statement1.execute("CREATE ROLE test_role LOGIN");
@@ -3227,15 +3231,14 @@ public class TestPgAuthorization extends BasePgSQLTest {
   }
 
   @Test
+  // (DB-10387) (DB-10760) Using long passwords with Connection Manager
+  // causes I/O errors during test execution. Running on the Postgres port
+  // instead until support for the same can be provided with Connection Manager.
+  // This test will further need the support of role OID-based pooling
+  // to help support recreate role operations (DROP ROLE followed by
+  // CREATE ROLE).
+  @BypassConnMgr(reason = BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED)
   public void testLongPasswords() throws Exception {
-    // (DB-10387) (DB-10760) Using long passwords with Connection Manager
-    // causes I/O errors during test execution. Skip this test temporarily
-    // until support for the same can be provided with Connection Manager.
-    // This test will further need the support of role OID-based pooling
-    // to help support recreate role operations (DROP ROLE followed by
-    // CREATE ROLE).
-    skipYsqlConnMgr(BasePgSQLTest.LONG_PASSWORD_SUPPORT_NEEDED);
-
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE unprivileged");
 

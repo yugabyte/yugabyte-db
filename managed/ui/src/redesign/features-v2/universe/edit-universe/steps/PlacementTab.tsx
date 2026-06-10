@@ -4,7 +4,7 @@ import { mui } from '@yugabyte-ui-library/core';
 import { useToggle } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { ClusterType } from '@app/redesign/helpers/dtos';
-import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { useApplyMasterAllocation } from '../hooks/useApplyMasterAllocation';
 import { useEditUniverse } from '@app/v2/api/universe/universe';
@@ -19,9 +19,11 @@ import EditIcon from '@app/redesign/assets/edit2.svg';
 import DeleteOutlineIcon from '@app/redesign/assets/delete2.svg';
 import { getAddReadReplicaRoute } from '../../read-replica/readReplicaUtils';
 import { GeoPartitionPlacementView } from '../edit-placement/GeoPartitionPlacementView';
-import { getExistingGeoPartitions } from '../../geo-partition/add/AddGeoPartitionUtils';
 import { EditPlacementContextProps } from '../edit-placement/EditPlacementContext';
-import { buildPrimaryPlacementEditPayload } from '../edit-placement/EditPlacementUtils';
+import {
+  buildGeoPartitionPlacementEditPayload,
+  buildPrimaryPlacementEditPayload
+} from '../edit-placement/EditPlacementUtils';
 import { getNodeCount } from '../../create-universe/CreateUniverseUtils';
 import { PlacementActionsMenu } from '../edit-placement/PlacementActionsMenu';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
@@ -45,6 +47,11 @@ export const PlacementTab = () => {
   const spec = universeData?.spec as Record<string, unknown> | undefined;
   const rawName = String(spec?.name ?? spec?.universeName ?? spec?.universe_name ?? '').trim();
   const universeDisplayName = rawName || universeUuid;
+  const primaryGeoPartitions = primaryCluster?.partitions_spec ?? [];
+  const singlePrimaryGeoPartition =
+    primaryGeoPartitions.length === 1 ? primaryGeoPartitions[0] : undefined;
+  const isMultiPrimaryGeoPartition = primaryGeoPartitions.length > 1;
+  const isUniverseReady = useIsUniverseReady();
 
   const [showDeleteReadReplicaModal, setShowDeleteReadReplicaModal] = useState(false);
 
@@ -79,7 +86,8 @@ export const PlacementTab = () => {
         onClick: () => {
           window.location.href = getAddReadReplicaRoute(universeUuid);
         },
-        startIcon: <EditIcon />
+        startIcon: <EditIcon />,
+        disabled: !isUniverseReady
       },
       {
         id: 'delete-read-replica',
@@ -88,10 +96,11 @@ export const PlacementTab = () => {
         showDividerBefore: true,
         destructive: true,
         onClick: () => setShowDeleteReadReplicaModal(true),
-        startIcon: <DeleteOutlineIcon />
+        startIcon: <DeleteOutlineIcon />,
+        disabled: !isUniverseReady
       }
     ];
-  }, [readReplicaCluster?.uuid, t, universeUuid]);
+  }, [isUniverseReady, readReplicaCluster?.uuid, t, universeUuid]);
 
   const [showEditResilienceAndRegionsModal, setShowEditResilienceAndRegionsModal] = useToggle(
     false
@@ -108,6 +117,7 @@ export const PlacementTab = () => {
   const { applyMasterAllocation, isSubmitting: isMasterAllocSubmitting } = useApplyMasterAllocation({
     universeData,
     providerRegions,
+    selectedPartitionUUID: singlePrimaryGeoPartition?.uuid,
     onAfterApplied: () => setShowMasterServerNodeAllocationModal(false)
   });
 
@@ -117,35 +127,50 @@ export const PlacementTab = () => {
       return;
     }
 
-    let clusterUUID: string;
-    let placementSpec: ReturnType<typeof buildPrimaryPlacementEditPayload>['placementSpec'];
+    let clusterPayload: {
+      uuid: string;
+      num_nodes?: number;
+      placement_spec?: ReturnType<typeof buildPrimaryPlacementEditPayload>['placementSpec'];
+      partitions_spec?: ReturnType<typeof buildGeoPartitionPlacementEditPayload>['partitionsSpec'];
+    };
     try {
-      ({ clusterUUID, placementSpec } = buildPrimaryPlacementEditPayload(
-        universeData!,
-        context.resilience,
-        context.nodesAndAvailability
-      ));
+      if (singlePrimaryGeoPartition?.uuid) {
+        const { clusterUUID, partitionsSpec } = buildGeoPartitionPlacementEditPayload(
+          universeData!,
+          singlePrimaryGeoPartition.uuid,
+          context.resilience,
+          context.nodesAndAvailability
+        );
+        clusterPayload = {
+          uuid: clusterUUID,
+          partitions_spec: partitionsSpec
+        };
+      } else {
+        const { clusterUUID, placementSpec } = buildPrimaryPlacementEditPayload(
+          universeData!,
+          context.resilience,
+          context.nodesAndAvailability
+        );
+        const num_nodes = context.nodesAndAvailability
+          ? getNodeCount(context.nodesAndAvailability.availabilityZones)
+          : undefined;
+        clusterPayload = {
+          uuid: clusterUUID,
+          ...(num_nodes !== undefined ? { num_nodes } : {}),
+          placement_spec: placementSpec
+        };
+      }
     } catch (e) {
       toast.error(createErrorMessage(e));
       return;
     }
-
-    const num_nodes = context.nodesAndAvailability
-      ? getNodeCount(context.nodesAndAvailability.availabilityZones)
-      : undefined;
 
     editUniverse.mutate(
       {
         uniUUID: universeData!.info!.universe_uuid!,
         data: {
           expected_universe_version: -1,
-          clusters: [
-            {
-              uuid: clusterUUID,
-              ...(num_nodes !== undefined ? { num_nodes } : {}),
-              placement_spec: placementSpec
-            }
-          ]
+          clusters: [clusterPayload]
         }
       },
       {
@@ -162,9 +187,7 @@ export const PlacementTab = () => {
     );
   };
 
-  const hasGeoPartitions = getExistingGeoPartitions(universeData!).length > 0;
-
-  if (hasGeoPartitions) {
+  if (isMultiPrimaryGeoPartition) {
     return <GeoPartitionPlacementView />;
   }
 
@@ -174,7 +197,7 @@ export const PlacementTab = () => {
         <PlacementActionsMenu
           universeUuid={universeUUID}
           onEditMasterAllocationClick={() => setShowMasterServerNodeAllocationModal(true)}
-          showAddGeoPartition
+          showAddGeoPartition={false}
         />
       </Box>
       <ClusterInstanceCard
@@ -184,7 +207,8 @@ export const PlacementTab = () => {
             {t('primaryCluster')}
           </Typography>
         }
-        placement={primaryCluster!.placement_spec!}
+        parition={singlePrimaryGeoPartition}
+        placement={singlePrimaryGeoPartition?.placement ?? primaryCluster!.placement_spec!}
         editMasterServerNodeAllocationClicked={() => {
           setShowMasterServerNodeAllocationModal(true);
         }}
@@ -227,6 +251,7 @@ export const PlacementTab = () => {
               setSkipResilienceAndRegionsStep(false);
             }}
             skipResilienceAndRegionsStep={skipResilienceAndRegionsStep}
+            selectedPartitionUUID={singlePrimaryGeoPartition?.uuid}
             isSubmittingPlacementUpdate={editUniverse.isLoading}
             onSubmit={(ctx) => {
               editPlacement(ctx);
@@ -239,6 +264,7 @@ export const PlacementTab = () => {
         onClose={() => setShowMasterServerNodeAllocationModal(false)}
         onApply={applyMasterAllocation}
         isSubmitting={isMasterAllocSubmitting}
+        selectedPartitionUUID={singlePrimaryGeoPartition?.uuid}
       />
     </Box>
   );

@@ -29,15 +29,19 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
-import org.yb.util.YBTestRunnerNonTsanAsan;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 
 /**
  * Tests that SPLIT INTO / SPLIT AT VALUES clauses are correctly
  * stored and preserved across ysql_dump operations.
  */
-@RunWith(value = YBTestRunnerNonTsanAsan.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RunWith(value = YBTestRunner.class)
 public class TestYsqlDumpSplitOptions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDumpSplitOptions.class);
 

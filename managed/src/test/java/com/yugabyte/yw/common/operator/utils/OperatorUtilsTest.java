@@ -162,6 +162,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     spec.put("universe", "operator-universe");
     spec.put("schedulingFrequency", "3600000");
     spec.put("incrementalBackupFrequency", "900000");
+    spec.put("useTablespaces", true);
+    spec.put("useRoles", true);
+    spec.put("usePrivileges", false);
     return spec;
   }
 
@@ -172,6 +175,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     spec.put("storageConfig", "operator-storage");
     spec.put("universe", "operator-universe");
     spec.put("incrementalBackupBase", "full-backup");
+    spec.put("useTablespaces", true);
+    spec.put("useRoles", true);
+    spec.put("usePrivileges", false);
     return spec;
   }
 
@@ -195,6 +201,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(scheduleParams.keyspaceTableList.size(), 1);
     assertEquals(scheduleParams.keyspaceTableList.get(0).keyspace, "testdb");
     assertEquals(scheduleParams.backupType, TableType.PGSQL_TABLE_TYPE);
+    assertEquals(true, scheduleParams.useTablespaces);
+    assertEquals(true, scheduleParams.getUseRoles());
+    assertEquals(false, scheduleParams.getUsePrivileges());
   }
 
   @Test
@@ -251,6 +260,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(backupParams.keyspaceTableList.get(0).keyspace, "testdb");
     assertEquals(backupParams.backupType, TableType.PGSQL_TABLE_TYPE);
     assertEquals(backupParams.baseBackupUUID, backup.getBackupUUID());
+    assertEquals(true, backupParams.useTablespaces);
+    assertEquals(true, backupParams.getUseRoles());
+    assertEquals(false, backupParams.getUsePrivileges());
   }
 
   @Test
@@ -508,6 +520,39 @@ public class OperatorUtilsTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateReleaseCrLocalFileSkipped() throws Exception {
+    Release release = Release.create("2025.2.0.0", "LTS");
+    com.yugabyte.yw.models.ReleaseLocalFile k8sLocalFile =
+        com.yugabyte.yw.models.ReleaseLocalFile.create("/tmp/k8s-artifact.tgz");
+    com.yugabyte.yw.models.ReleaseLocalFile x86_64LocalFile =
+        com.yugabyte.yw.models.ReleaseLocalFile.create("/tmp/x86_64-artifact.tgz");
+    ReleaseArtifact k8sArtifact =
+        ReleaseArtifact.create(
+            "sha2561234", ReleaseArtifact.Platform.KUBERNETES, null, k8sLocalFile.getFileUUID());
+    ReleaseArtifact x86_64Artifact =
+        ReleaseArtifact.create(
+            "sha256123456",
+            ReleaseArtifact.Platform.LINUX,
+            PublicCloudConstants.Architecture.x86_64,
+            x86_64LocalFile.getFileUUID());
+    release.addArtifact(k8sArtifact);
+    release.addArtifact(x86_64Artifact);
+
+    boolean imported =
+        operatorUtils.createReleaseCr(
+            release, k8sArtifact, x86_64Artifact, "namespace", "awsSecret");
+
+    assertFalse(imported);
+    resetMockKubernetesClientForChecking();
+    KubernetesResourceList<io.yugabyte.operator.v1alpha1.Release> releases =
+        kubernetesClient
+            .resources(io.yugabyte.operator.v1alpha1.Release.class)
+            .inNamespace("namespace")
+            .list();
+    assertEquals(0, releases.getItems().size());
+  }
+
+  @Test
   public void testCreateSecretCr() throws Exception {
     operatorUtils.createSecretCr("secret", "namespace", "key", "value");
     resetMockKubernetesClientForChecking();
@@ -672,6 +717,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
         Json.fromJson(backupSchedule.getTaskParams(), BackupRequestParams.class);
     params.schedulingFrequency = 3600L;
     params.frequencyTimeUnit = TimeUnit.MINUTES;
+    params.useTablespaces = true;
+    params.setUseRoles(true);
+    params.setUsePrivileges(false);
     backupSchedule.setTaskParams(Json.toJson(params));
     backupSchedule.save();
 
@@ -698,6 +746,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(
         3600L * 60 * 1000,
         spec.getSchedulingFrequency().longValue()); // From ModelFactory.createScheduleBackup
+    assertEquals(true, spec.getUseTablespaces());
+    assertEquals(true, spec.getUseRoles());
+    assertEquals(false, spec.getUsePrivileges());
   }
 
   @Test

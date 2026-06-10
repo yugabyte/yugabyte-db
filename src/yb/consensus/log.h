@@ -76,24 +76,21 @@ class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 
 namespace log {
 
-YB_DEFINE_ENUM(
-    SyncType,
+YB_DEFINE_ENUM(SyncType,
     (kNoSync)
     (kAsyncFsync)
     (kForceFsync)
 );
 
 YB_STRONGLY_TYPED_BOOL(CreateNewSegment);
-YB_DEFINE_ENUM(
-    SegmentAllocationState,
+YB_DEFINE_ENUM(SegmentAllocationState,
     (kAllocationNotStarted)  // No segment allocation requested
     (kAllocationInProgress)  // Next segment allocation started
     (kAllocationFinished)    // Next segment ready
     (kAllocationFailed)      // Next segment allocation failed
 );
 
-YB_DEFINE_ENUM(
-    SegmentOpIdRelation,
+YB_DEFINE_ENUM(SegmentOpIdRelation,
     // Segment is empty
     (kEmptySegment)
     // OpId is before the segment
@@ -109,6 +106,25 @@ YB_DEFINE_ENUM(
 YB_STRONGLY_TYPED_BOOL(SkipWalWrite);
 
 using NewSegmentAllocationCallback = std::function<Status(void)>;
+
+// The op-index floors that bound WAL GC for a tablet, computed once by
+// TabletPeer::GetEarliestNeededLogIndex() and consumed by both the Log GC path and remote
+// bootstrap. Bundling them keeps a single source of truth for "what must the WAL retain".
+struct MinRetainLogIndexInfo {
+  // Earliest op index the tablet's own correctness requires retaining (durability, recovery,
+  // anchors, pending ops, ...). HARD floor: GC never deletes a segment at or above this,
+  // regardless of other policies.
+  int64_t earliest_needed_log_index = std::numeric_limits<int64_t>::max();
+
+  // Op index xrepl (CDCSDK + xCluster) still needs the source to retain. SOFT floor: GC keeps
+  // segments at or above it unless they also violate the max-time / min-disk-space policies.
+  // std::numeric_limits<int64_t>::max() means "no xrepl constraint".
+  int64_t log_index_needed_by_cdc = std::numeric_limits<int64_t>::max();
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(earliest_needed_log_index, log_index_needed_by_cdc);
+  }
+};
 
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
 // Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
@@ -232,14 +248,35 @@ class Log : public RefCountedThreadSafe<Log> {
   // Runs the garbage collector on the set of previous segments. Segments that only refer to in-mem
   // state that has been flushed are candidates for garbage collection.
   //
-  // 'min_op_idx' is the minimum operation index required to be retained.  If successful, num_gced
-  // is set to the number of deleted log segments.
+  // 'min_retain_log_index_info' carries the op-index floors required to be retained (see
+  // MinRetainLogIndexInfo). If successful, num_gced is set to the number of deleted log segments.
   //
   // This method is thread-safe.
-  Status GC(int64_t min_op_idx, int* num_gced);
+  Status GC(const MinRetainLogIndexInfo& min_retain_log_index_info, int* num_gced);
+
+  // Test-only convenience overload for callers with no xrepl (CDCSDK/xCluster) retention constraint
+  // of their own: equivalent to passing log_index_needed_by_cdc = int64 max. GC still applies the
+  // Log's own current xrepl floor internally, so this never drops xrepl-needed WAL.
+  Status TEST_GC(int64_t earliest_needed_log_index, int* num_gced) {
+    return GC(MinRetainLogIndexInfo{earliest_needed_log_index}, num_gced);
+  }
 
   // Computes the amount of bytes that would have been GC'd if Log::GC had been called.
-  Status GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const;
+  Status GetGCableDataSize(
+      const MinRetainLogIndexInfo& min_retain_log_index_info, int64_t* total_size) const;
+
+  // Test-only public wrapper around the private GetSegmentsToGC, used by unit tests that need to
+  // compute the GC-eligible prefix Log::GC would pick for a given 'min_op_idx' (with the full
+  // retention policy stack applied: xCluster/CDC retention, FLAGS_log_min_segments_to_retain, and
+  // time-based retention). Production callers should not consult GC's reclaimable set directly --
+  // remote bootstrap, for instance, drives its own trim off a frozen GetSegmentsSnapshot() to
+  // avoid races with the GC thread.
+  //
+  // This method is thread-safe.
+  Status TEST_GetSegmentsToGC(int64_t min_op_idx, SegmentSequence* segments_to_gc) const
+      EXCLUDES(state_lock_) {
+    return GetSegmentsToGC(MinRetainLogIndexInfo{min_op_idx}, segments_to_gc);
+  }
 
   // Returns the file system location of the currently active WAL segment.
   const WritableLogSegment* TEST_ActiveSegment() const {
@@ -331,6 +368,12 @@ class Log : public RefCountedThreadSafe<Log> {
   int64_t cdc_min_replicated_index() {
     return cdc_min_replicated_index_.load(std::memory_order_acquire);
   }
+
+  // Minimum replicate index that xrepl (CDCSDK + xCluster) still requires the source to retain --
+  // the same boundary GetSegmentsToGCUnlocked() applies on top of the caller-supplied min_op_idx
+  // (see the cdc_max_replicated_index argument of LogReader::GetSegmentPrefixNotIncluding). Returns
+  // std::numeric_limits<int64_t>::max() when no xrepl consumer constrains retention.
+  int64_t GetXReplMinReplicatedIndex() const;
 
   // Copies log to a new dir. Expects dest_wal_dir to be absent.
   // If max_included_op_id is specified - only part of the log up to and including
@@ -476,10 +519,12 @@ class Log : public RefCountedThreadSafe<Log> {
   // Updates the reader on how far it can read the active segment. Called from ::Sync()
   Status UpdateSegmentReadableOffset() EXCLUDES(active_segment_mutex_);
 
-  // Helper method to get the segment sequence to GC based on the provided min_op_idx.
-  Status GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const
+  // Helper method to get the segment sequence to GC based on the provided retention floors.
+  Status GetSegmentsToGCUnlocked(const MinRetainLogIndexInfo& min_retain_log_index_info,
+                                 SegmentSequence* segments_to_gc) const
       REQUIRES_SHARED(state_lock_);
-  Status GetSegmentsToGC(int64_t min_op_idx, SegmentSequence* segments_to_gc) const
+  Status GetSegmentsToGC(
+      const MinRetainLogIndexInfo& min_retain_log_index_info, SegmentSequence* segments_to_gc) const
       EXCLUDES(state_lock_);
 
   // Discards segments from 'segments_to_gc' if they have not yet met the minimim retention time.

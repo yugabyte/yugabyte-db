@@ -19,8 +19,7 @@
 
 #include "yb/util/minmax.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 namespace {
 
@@ -481,5 +480,269 @@ TEST_F(DocDBTestRedis, TestBuildSubDocumentBounds) {
   EXPECT_FALSE(subdoc_found);
 }
 
-}  // namespace docdb
-}  // namespace yb
+class DocDBMissingSchemaTest : public DocDBTestQl {
+ public:
+  void MarkMissing(const Uuid& id) {
+    missing_cotable_ids_.insert(id);
+  }
+
+  void MarkMissing(ColocationId id) {
+    missing_colocation_ids_.insert(id);
+  }
+
+  template <typename T>
+  void TestRowLevelTombstoneRetainedDuringPartialCompaction(T id);
+
+  template <typename T>
+  void TestTableLevelTombstoneRetainedDuringPartialCompaction(T id);
+
+  template <typename T>
+  void TestNonTombstoneDroppedDuringPartialCompaction(T missing_id, T known_id);
+
+  template <typename T>
+  Status InsertLivenessColumnRecord(const T& id, int row_idx, HybridTime ht) {
+    DocKey doc_key;
+    SetId(&doc_key, id);
+    doc_key.ResizeRangeComponents(/* new_size = */ 1);
+    doc_key.SetRangeComponent(KeyEntryValue(Format("r$0", row_idx)), /* idx = */ 0);
+    return SetPrimitive(
+        DocPath(doc_key.Encode(), KeyEntryValue::kLivenessColumn),
+        ValueRef(ValueEntryType::kNullLow), ht);
+  }
+
+  template <typename T>
+  Status InsertLivenessColumnRecords(const T& id, int start_idx, int end_idx, HybridTime ht) {
+    for (auto i = start_idx; i <= end_idx; ++i) {
+      RETURN_NOT_OK(InsertLivenessColumnRecord(id, i, ht));
+    }
+    return Status::OK();
+  }
+
+  template <typename T>
+  Status InsertTombstoneRecords(const T& id, int start_idx, int end_idx, HybridTime ht) {
+    for (auto row_idx = start_idx; row_idx <= end_idx; ++row_idx) {
+      DocKey doc_key;
+      SetId(&doc_key, id);
+      doc_key.ResizeRangeComponents(/* new_size = */ 1);
+      doc_key.SetRangeComponent(KeyEntryValue(Format("r$0", row_idx)), /* idx = */ 0);
+      RETURN_NOT_OK(SetPrimitive(
+         DocPath(doc_key.Encode()), ValueRef(ValueEntryType::kTombstone), ht));
+    }
+    return Status::OK();
+  }
+
+  template <typename T>
+  Status InsertTableTombstoneRecord(const T& id, HybridTime ht) {
+    DocKey table_key;
+    SetId(&table_key, id);
+    return SetPrimitive(DocPath(table_key.Encode()), ValueRef(ValueEntryType::kTombstone), ht);
+  }
+
+ protected:
+  Result<CompactionSchemaInfo> CotablePacking(
+      const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) override {
+    if (missing_cotable_ids_.contains(table_id)) {
+      return STATUS(NotFound, "Table has been dropped");
+    }
+    return DocDBRocksDBUtil::CotablePacking(table_id, schema_version, history_cutoff);
+  }
+
+  Result<CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override {
+    if (missing_colocation_ids_.contains(colocation_id)) {
+      return STATUS(NotFound, "Table has been dropped");
+    }
+    return DocDBRocksDBUtil::ColocationPacking(colocation_id, schema_version, history_cutoff);
+  }
+
+ private:
+  std::unordered_set<Uuid> missing_cotable_ids_;
+  std::unordered_set<ColocationId> missing_colocation_ids_;
+};
+
+// Verifies that tombstones for entries with a missing schema (dropped table) are retained
+// during partial compaction. Dropping them would expose stale data in SST files not included
+// in the compaction. This is the scenario described in
+// https://github.com/yugabyte/yugabyte-db/issues/28314.
+template <typename T>
+void DocDBMissingSchemaTest::TestRowLevelTombstoneRetainedDuringPartialCompaction(T id) {
+  ASSERT_OK(DisableCompactions());
+
+  // 1. SST file #1: data rows for the colocated table.
+  ASSERT_OK(InsertLivenessColumnRecords(id, 1, 5, HybridTime::FromMicros(1000)));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  // 2. SST file #2: tombstones deleting some of those rows and new rows.
+  ASSERT_OK(InsertTombstoneRecords(id, 1, 3, HybridTime::FromMicros(2000)));
+  ASSERT_OK(InsertLivenessColumnRecords(id, 6, 8, HybridTime::FromMicros(2000)));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  ASSERT_EQ(2, NumSSTableFiles());
+
+  const auto id_str = IdToString(id);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], ["r1"]), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r2"]), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r3"]), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r4"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r5"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r6"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r7"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r8"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+      )#",
+      id_str));
+
+  // Simulate the table being dropped: schema is no longer resolvable.
+  MarkMissing(id);
+
+  // Minor compaction of only the tombstone file (file #2). The SST file #1 is NOT included.
+  // Before the fix, tombstones would be dropped here because the schema is missing,
+  // exposing stale data from file 1.
+  MinorCompaction(
+      HybridTime::FromMicros(5000), /* num_files_to_compact = */ 1, /* start_index = */ 1);
+
+  // Tombstones must survive the partial compaction, otherwise the data in
+  // SST file #1 would become visible again, leading to stale data exposure.
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], ["r1"]), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r2"]), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r3"]), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r4"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r5"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      )#",
+      id_str));
+}
+
+// Verifies that when a table-level tombstone is present for a missing-schema coprefix, row-level
+// tombstones are redundant and get dropped during partial compaction. The table-level tombstone
+// already masks all data, so individual row tombstones are not needed.
+template <typename T>
+void DocDBMissingSchemaTest::TestTableLevelTombstoneRetainedDuringPartialCompaction(T id) {
+  ASSERT_OK(DisableCompactions());
+
+  // 1. SST file #1: data rows for the colocated table.
+  ASSERT_OK(InsertLivenessColumnRecords(id, 1, 5, HybridTime::FromMicros(1000)));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  // 2. SST file #2: table-level tombstone (DROP TABLE) followed by row-level tombstones.
+  ASSERT_OK(InsertTableTombstoneRecord(id, HybridTime::FromMicros(3000)));
+  ASSERT_OK(InsertTombstoneRecords(id, 1, 3, HybridTime::FromMicros(2000)));
+  ASSERT_OK(InsertLivenessColumnRecords(id, 6, 8, HybridTime::FromMicros(2000)));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  ASSERT_EQ(2, NumSSTableFiles());
+
+  const auto id_str = IdToString(id);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], []), [HT{ physical: 3000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r1"]), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r2"]), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r3"]), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r4"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r5"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r6"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r7"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r8"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+      )#",
+      id_str));
+
+  MarkMissing(id);
+
+  // Minor compaction of only the tombstone file (file #2).
+  MinorCompaction(
+      HybridTime::FromMicros(5000), /* num_files_to_compact = */ 1, /* start_index = */ 1);
+
+  // Only the table-level tombstone should survive. Row-level tombstones are redundant
+  // because the table tombstone masks all data beneath it.
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], []), [HT{ physical: 3000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r4"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r5"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      )#",
+      id_str));
+}
+
+// Verifies that non-tombstone entries with a missing schema are still dropped during
+// partial compaction (the fix only preserves tombstones, not regular values).
+template <typename T>
+void DocDBMissingSchemaTest::TestNonTombstoneDroppedDuringPartialCompaction(
+    T id, T missing_id) {
+  ASSERT_OK(DisableCompactions());
+
+  // 1. SST file #1: data rows for non-missing colocated table.
+  ASSERT_OK(InsertLivenessColumnRecord(id, 1, HybridTime::FromMicros(1000)));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  // 2. SST file #2: data for both missing and non-missing colocated tables.
+  // Entry from the missing colocated table (should be dropped).
+  ASSERT_OK(InsertLivenessColumnRecord(missing_id, 2, HybridTime::FromMicros(2000)));
+  // Entry from the non-missing colocated table (should survive).
+  ASSERT_OK(InsertLivenessColumnRecord(id, 3, HybridTime::FromMicros(2000)));
+  ASSERT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+
+  ASSERT_EQ(2, NumSSTableFiles());
+
+  MarkMissing(missing_id);
+
+  // Minor compaction of only the newer SST file #2.
+  MinorCompaction(
+      HybridTime::FromMicros(5000), /* num_files_to_compact = */ 1, /* start_index = */ 1);
+
+  // The non-tombstone entry from the missing colocated table should be removed.
+  // Both non-missing colocated table entries survive (one in each SST file).
+  const auto id_str = IdToString(id);
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+      )#",
+      id_str));
+}
+
+TEST_F(DocDBMissingSchemaTest, CotableRowLevelTombstoneRetainedDuringPartialCompaction) {
+  TestRowLevelTombstoneRetainedDuringPartialCompaction(Uuid::Generate());
+}
+
+TEST_F(DocDBMissingSchemaTest, ColocationRowLevelTombstoneRetainedDuringPartialCompaction) {
+  const auto id = RandomUniformInt<ColocationId>(
+      kFirstNormalColocationId, std::numeric_limits<ColocationId>::max());
+  TestRowLevelTombstoneRetainedDuringPartialCompaction(id);
+}
+
+TEST_F(DocDBMissingSchemaTest, CotableTableLevelTombstoneRetainedDuringPartialCompaction) {
+  TestTableLevelTombstoneRetainedDuringPartialCompaction(Uuid::Generate());
+}
+
+TEST_F(DocDBMissingSchemaTest, ColocationTableLevelTombstoneRetainedDuringPartialCompaction) {
+  const auto id = RandomUniformInt<ColocationId>(
+      kFirstNormalColocationId, std::numeric_limits<ColocationId>::max());
+  TestTableLevelTombstoneRetainedDuringPartialCompaction(id);
+}
+
+TEST_F(DocDBMissingSchemaTest, CotableNonTombstoneDroppedDuringPartialCompaction) {
+  const auto id = Uuid::Generate();
+  auto missing_id = Uuid::Generate();
+  while (id == missing_id) {
+    missing_id = Uuid::Generate();
+  }
+  TestNonTombstoneDroppedDuringPartialCompaction(id, missing_id);
+}
+
+TEST_F(DocDBMissingSchemaTest, ColocationNonTombstoneDroppedDuringPartialCompaction) {
+  const auto id = RandomUniformInt<ColocationId>(
+      kFirstNormalColocationId, std::numeric_limits<ColocationId>::max() - 1);
+  TestNonTombstoneDroppedDuringPartialCompaction(id, id + 1);
+}
+
+}  // namespace yb::docdb

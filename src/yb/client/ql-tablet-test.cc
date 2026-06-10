@@ -710,9 +710,9 @@ void VerifyLogIndicies(MiniCluster* cluster) {
     auto peers = cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
 
     for (const auto& peer : peers) {
-      int64_t index = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
+      auto retain = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
       auto consensus = ASSERT_RESULT(peer->GetConsensus());
-      ASSERT_EQ(consensus->GetLastCommittedOpId().index, index);
+      ASSERT_EQ(consensus->GetLastCommittedOpId().index, retain.earliest_needed_log_index);
     }
   }
 }
@@ -819,8 +819,10 @@ TEST_F(QLTabletTest, WaitFlush) {
   bool leader_found = false;
   while (!leader_found) {
     for (size_t i = 0; i != peers.size(); ++i) {
-      if (peers[i]->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-        peers[(i + 1) % peers.size()]->log()->TEST_SetSleepDuration(500ms);
+      auto& next_peer = peers[(i + 1) % peers.size()];
+      if (peers[i]->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY &&
+          next_peer->log_available()) {
+        next_peer->log()->TEST_SetSleepDuration(500ms);
         leader_found = true;
         break;
       }

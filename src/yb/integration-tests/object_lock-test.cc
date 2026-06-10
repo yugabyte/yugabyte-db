@@ -46,8 +46,6 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/test_macros.h"
-// #include "yb/util/test_thread_holder.h"
-// #include "yb/util/unique_lock.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

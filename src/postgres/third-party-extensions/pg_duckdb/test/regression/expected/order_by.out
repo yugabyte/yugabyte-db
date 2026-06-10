@@ -1,0 +1,51 @@
+CREATE TABLE t1(id int, c text);
+INSERT INTO t1 VALUES (1, 'a'), (2, 'b'), (null, 'c');
+SELECT * FROM t1 ORDER BY id;
+ id | c 
+----+---
+  1 | a
+  2 | b
+    | c
+(3 rows)
+
+SELECT * FROM t1 ORDER BY id NULLS FIRST;
+ id | c 
+----+---
+    | c
+  1 | a
+  2 | b
+(3 rows)
+
+SELECT * FROM t1 ORDER BY id NULLS LAST;
+ id | c 
+----+---
+  1 | a
+  2 | b
+    | c
+(3 rows)
+
+SELECT * FROM t1 ORDER BY id DESC;
+ id | c 
+----+---
+    | c
+  2 | b
+  1 | a
+(3 rows)
+
+SELECT * FROM t1 ORDER BY id DESC NULLS FIRST;
+ id | c 
+----+---
+    | c
+  2 | b
+  1 | a
+(3 rows)
+
+SELECT * FROM t1 ORDER BY id DESC NULLS LAST;
+ id | c 
+----+---
+  2 | b
+  1 | a
+    | c
+(3 rows)
+
+DROP TABLE t1;

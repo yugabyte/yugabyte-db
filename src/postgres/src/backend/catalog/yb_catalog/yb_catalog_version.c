@@ -908,6 +908,7 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 								  YBCatalogVersionRelationId,
 								  NULL /* prepare_params */ ,
 								  YbBuildSystemTableLocalityInfo(YBCatalogVersionRelationId),
+								  false /* skip_intents_read */ ,
 								  &ybc_stmt));
 
 	if (!(acquire_row_lock && yb_use_internal_auto_analyze_service_conn))

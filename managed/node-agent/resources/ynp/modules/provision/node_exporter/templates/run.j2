@@ -9,7 +9,7 @@ mkdir -p /opt/prometheus
 mkdir -p /etc/prometheus
 mkdir -p /var/log/prometheus
 mkdir -p /var/run/prometheus
-mkdir -p /tmp/yugabyte/metrics
+mkdir -p "{{ yb_home_dir }}/metrics"
 
 # Detect system architecture
 arch=$(uname -m)
@@ -69,8 +69,8 @@ chown -R prometheus:{{ yb_user }} /opt/prometheus
 chown -R prometheus:{{ yb_user }} /etc/prometheus
 chown -R prometheus:{{ yb_user }} /var/log/prometheus
 chown -R prometheus:{{ yb_user }} /var/run/prometheus
-chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
-chmod -R 755 /tmp/yugabyte/metrics
+chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_home_dir }}/metrics"
+chmod -R 755 "{{ yb_home_dir }}/metrics"
 
 if [ -f "/opt/prometheus/$node_exporter_package" ]; then
     chmod +r /opt/prometheus/$node_exporter_package

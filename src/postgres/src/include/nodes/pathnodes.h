@@ -874,6 +874,14 @@ typedef struct RelOptInfo
 	PlannerInfo *ybRoot;
 
 	char	   *ybRelationName;
+
+	/*
+	 * YB: Path picked by yb_test_force_parallel for set_cheapest() to promote
+	 * over cheapest_total_path.  Tracked by add_path() as the cheapest
+	 * unparameterized Gather/GatherMerge-containing path, preferring subtrees
+	 * with a Parallel Hash Join.  NULL when no such path was created.
+	 */
+	struct Path *yb_forced_gather_path;
 } RelOptInfo;
 
 /*
@@ -1286,6 +1294,7 @@ typedef struct YbPlanInfo
 	double		estimated_num_nexts_prevs;
 	double		estimated_num_seeks;
 	int			estimated_docdb_result_width;
+	int			estimated_ybctid_width;
 	double		estimated_num_table_result_pages;
 	double		estimated_num_index_result_pages;
 	double		estimated_num_bmscan_nexts_prevs;

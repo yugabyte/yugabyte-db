@@ -13,11 +13,12 @@
 
 #pragma once
 
+#include <boost/range/iterator_range.hpp>
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace rpc {

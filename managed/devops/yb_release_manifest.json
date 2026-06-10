@@ -23,7 +23,8 @@
     "bin/filtered_logs.sh",
     "bin/node_utils.sh",
     "bin/yb_netprob.py",
-    "bin/yb_attach_detach.py"
+    "bin/yb_attach_detach.py",
+    "bin/add_superadmin_user.py"
   ],
   "filter_plugins": [
     "filter_plugins/*"

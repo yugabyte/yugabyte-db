@@ -2542,6 +2542,7 @@ lint_java_code() {
     # shellcheck disable=SC2207
     java_test_files=( $(
       find "$java_project_dir" \( -name "Test*.java" -or -name "*Test.java" \) -and \
+          -not -name "TestFilterUtil.java" -and \
           -not -name "TestUtils.java" -and \
           -not -name "*Base.java" -and \
           -not -name "Base*Test.java"

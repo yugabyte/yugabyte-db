@@ -448,7 +448,11 @@ public class SessionController extends AbstractPlatformController {
         request.queryString("show_api_token").map(Boolean::parseBoolean);
     String email = thirdPartyLoginHandler.getEmailFromCtx(request);
     Users user = Users.getByEmail(email);
-    if (user != null && user.getRole().equals(Users.Role.SuperAdmin)) {
+    // Block local SuperAdmin accounts from using the SSO callback; SSO-provisioned SuperAdmin
+    // users (for example via OIDC group mapping) must still be able to sign in via SSO.
+    if (user != null
+        && user.getRole().equals(Users.Role.SuperAdmin)
+        && UserType.local.equals(user.getUserType())) {
       throw new PlatformServiceException(FORBIDDEN, "SuperAdmin is not allowed login via SSO!");
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {

@@ -26,6 +26,15 @@ DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
 
+DEFINE_RUNTIME_bool(ysql_bypass_anonymous_savepoint_ddl_check, true,
+    "If true, bypass the check for interleaving SAVEPOINT & DDL in anonymous subtransactions "
+    "(such as those created by PL/pgSQL EXCEPTION blocks) when DDL savepoint support is disabled. "
+    "Setting to false enables strict detection and prevents potential orphaned tables. "
+    "This flag should be deprecated when ysql_yb_enable_ddl_savepoint_support is moved out "
+    "of preview and turned on by default.");
+TAG_FLAG(ysql_bypass_anonymous_savepoint_ddl_check, advanced);
+DEFINE_NEW_INSTALL_VALUE(ysql_bypass_anonymous_savepoint_ddl_check, false);
+
 DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
     "If true, disables read, write, and execute of local server files. "
     "File access can be re-enabled if set to false.");
@@ -79,16 +88,14 @@ DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
     "If true, disable global impact ddl statements in per database catalog "
     "version mode.");
 
-DEFINE_NON_RUNTIME_bool(
-    ysql_minimal_catalog_caches_preload, false,
+DEFINE_NON_RUNTIME_bool(ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching, "2026_02");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching_connect_higher_version, "2026_02");
 
-DEFINE_NON_RUNTIME_PREVIEW_string(
-    ysql_conn_mgr_alter_guc_adoption_strategy, "fluctuating",
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(string, alter_guc_adoption_strategy, "gradual",
     "Defines strategy used by connection manager to adopt settings of ALTER statements modifying "
     "GUCs. The possible values are 'fluctuating', 'gradual' and 'connection_static'. 'fluctuating'"
     "means no handling is done, 'gradual' means existing sessions are gradually shifted to newer "
@@ -96,8 +103,7 @@ DEFINE_NON_RUNTIME_PREVIEW_string(
     "existing sessions will never see new GUC settings. In 'gradual' and 'connection_static' "
     "modes, new sessions will always see effects of ALTERs executed before they were created");
 
-DEFINE_NON_RUNTIME_PREVIEW_int32(
-    ysql_conn_mgr_alter_guc_stale_backend_ttl_ms, -1,
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(int32, alter_guc_stale_backend_ttl_ms, 60000,
     "TTL of backends which don't have latest settings of ALTER GUC commands. When set to a "
     "positive value, stale backends will be terminated uniformly till the TTL period after "
     "execution of ALTER. -1 means that no action is taken on stale backends. 0 means that stale "
@@ -120,8 +126,7 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, fals
     "during connection setup. Only applicable when connection manager "
     "is used.");
 
-DEFINE_NON_RUNTIME_bool(
-    ysql_enable_scram_channel_binding, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_scram_channel_binding, false,
     "Offer the option of SCRAM-SHA-256-PLUS (i.e. SCRAM with channel binding) as an SASL method if "
     "the server supports it in the SASL-Authentication message. This flag is disabled by default "
     "as connection manager does not support SCRAM with channel binding and enabling it would "
@@ -140,8 +145,11 @@ DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
 
-DEFINE_test_flag(
-    bool, enable_obj_tuple_locks, false, "Enable object tuple locks in the lock manager.");
+DEFINE_test_flag(bool, enable_obj_tuple_locks, false,
+    "Enable object tuple locks in the lock manager.");
+
+DEFINE_test_flag(bool, force_use_explicit_row_lock_skip_locked_read_ahead_optimization, false,
+    "Force use read ahead optimization for explicit row lock SKIP LOCKED queries");
 
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
@@ -174,8 +182,7 @@ bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::str
 }  // namespace
 
 DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
-DEFINE_validator(
-    ysql_conn_mgr_alter_guc_adoption_strategy,
+DEFINE_validator(ysql_conn_mgr_alter_guc_adoption_strategy,
     FLAG_IN_SET_VALIDATOR("fluctuating", "gradual", "connection_static"));
 
 namespace yb::pggate {
@@ -211,6 +218,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
       .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
       .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
+      .ysql_cdcsdk_enable_old_namespace_streams  = &FLAGS_ysql_cdcsdk_enable_old_namespace_streams,
       .ysql_enable_pg_per_database_oid_allocator =
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
       .TEST_hide_details_for_pg_regress =
@@ -236,6 +244,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_enable_object_locking_for_table_locks,
       .ysql_yb_enable_ddl_savepoint_support =
           &FLAGS_ysql_yb_enable_ddl_savepoint_support,
+      .ysql_bypass_anonymous_savepoint_ddl_check =
+          &FLAGS_ysql_bypass_anonymous_savepoint_ddl_check,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
@@ -255,6 +265,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
+      .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
+          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization
   };
   // clang-format on
   return &accessor;

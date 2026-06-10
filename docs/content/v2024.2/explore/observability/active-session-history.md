@@ -141,7 +141,7 @@ ORDER BY
 
 ### Detect a hot shard
 
-In this example, you can see that a particular tablet is getting a lot of requests as compared to the other tablets. The `wait_event_aux` field contains the `tablet_id` in case of YB-TServer events.
+In this example, a particular tablet is getting many more requests than others. For TServer events tied to a tablet, `wait_event_aux` contains the first 15 characters of the tablet ID.
 
 ```sql
 SELECT

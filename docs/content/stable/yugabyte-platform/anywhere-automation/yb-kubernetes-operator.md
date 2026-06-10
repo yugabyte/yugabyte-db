@@ -861,7 +861,7 @@ kubectl apply yb-certificate.yaml -n yb-operator
 
 ```yaml
 # yb-certificate.yaml
-apiVersion: ybcertificates.operator.yugabyte.io/v1alpha1
+apiVersion: operator.yugabyte.io/v1alpha1
 kind: YBCertificate
 metadata:
   name: yb-certificate

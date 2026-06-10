@@ -16,14 +16,16 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.SkipOnTSAN;
 
 import com.google.common.collect.ImmutableMap;
 /**
  * Runs the pg_regress test suite on extension queries.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressBetaExtension extends BasePgRegressTest {
 
   private Map<String, String> commonTserverFlags = ImmutableMap.of(

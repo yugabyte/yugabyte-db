@@ -28,7 +28,8 @@ export const buildStorageSpecFromDeviceInfo = (
     ...(deviceInfo.throughput !== undefined && deviceInfo.throughput !== null
       ? { throughput: deviceInfo.throughput }
       : {}),
-    ...(deviceInfo.storageType ? { storage_type: deviceInfo.storageType } : {})
+    ...(deviceInfo.storageType ? { storage_type: deviceInfo.storageType } : {}),
+    ...(deviceInfo.mountPoints ? { mount_points: deviceInfo.mountPoints } : {})
   };
 
   if (enableEbsVolumeEncryption) {

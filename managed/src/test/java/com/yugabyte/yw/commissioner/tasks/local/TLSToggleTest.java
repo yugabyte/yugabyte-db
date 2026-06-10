@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -36,11 +35,6 @@ public class TLSToggleTest extends LocalProviderUniverseTestBase {
         "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/update_tls",
         user.createAuthToken(),
         Json.toJson(formData));
-  }
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(270, 300);
   }
 
   @Test

@@ -28,15 +28,19 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 
 /*
  * Tests for correct Odyssey behaviour when handling parse errors.
  */
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestParseErrors extends BaseYsqlConnMgr {
   private static final Logger LOG = LoggerFactory.getLogger(TestParseErrors.class);
 
@@ -672,6 +676,129 @@ public class TestParseErrors extends BaseYsqlConnMgr {
       assertEquals("Unexpected trailing bytes after ReadyForQuery",
           0, in.available());
 
+      out.write(buildTerminate());
+      out.flush();
+    }
+  }
+
+  // Tests that the connection manager correctly updates it's state when
+  // error occurs in pipeline. It specifically re-uses the same prepared statement
+  // name after sync packet which get ignored due to an error, and verifies that the
+  // connection manager correctly updates it's state and able to execute the statement.
+  @Test
+  public void testSyncAfterError() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+    String tableName = "test_no_staleness_when_error_comes";
+
+    // Phase 1: set up a clean table
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+
+      // DROP TABLE IF EXISTS
+      out.write(buildParse("DROP TABLE IF EXISTS " + tableName));
+      out.write(buildBind());
+      out.write(buildExecute());
+      out.write(buildSync());
+      out.flush();
+      for (int i = 0; i < 4; i++) {
+        PgMessage msg = readMessage(in);
+        LOG.info("Drop response[" + i + "]: " + msg);
+      }
+
+      // CREATE TABLE
+      out.write(buildParse("CREATE TABLE " + tableName + " (id int)"));
+      out.write(buildBind());
+      out.write(buildExecute());
+      out.write(buildSync());
+      out.flush();
+      for (int i = 0; i < 4; i++) {
+        PgMessage msg = readMessage(in);
+        LOG.info("Create response[" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Error during table creation: " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+      }
+
+      out.write(buildTerminate());
+      out.flush();
+    }
+
+    Thread.sleep(SLEEP_BEFORE_FINAL_SYNC_MS);
+
+    // Phase 2: send pipeline with an error, then verify recovery
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Pipeline connection ready");
+
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("S1", "INSERT INTO " +
+            tableName + " VALUES (42)", new int[0]));
+      pipeline.write(buildBind("S1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      pipeline.write(buildParse("S_Wrong",
+          "INSERT INTO " + tableName + " VALUES (42, 43)", new int[0]));
+      pipeline.write(buildBind("S_Wrong", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("S2", "SELECT * from " + tableName, new int[0]));
+      pipeline.write(buildBind("S2", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      pipeline.write(buildParse("S2", "SELECT * from " + tableName, new int[0]));
+      pipeline.write(buildBind("S2", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+
+
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline: P(S1)+B(S1)+E + P(S_Wrong)+B(S_Wrong)+E "
+          + "P(S2)+B(S2)+E + SYNC + P(S2)+B(S2)+E + Sync");
+
+      int count_rfq = 0;
+      for (;;) {
+        PgMessage msg = readMessage(in);
+        LOG.info("response[" + msg.type + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          if (StringUtils.contains(new String(msg.body, StandardCharsets.UTF_8),
+          "INSERT has more expressions than target columns" )) {
+            LOG.info("Expected error in S_Wrong: " +
+                new String(msg.body, StandardCharsets.UTF_8));
+            continue;
+          }
+          fail("Unexpected error: " + new String(msg.body, StandardCharsets.UTF_8));
+        }
+        if (msg.type == BE_READY_FOR_QUERY)
+          count_rfq++;
+        if (count_rfq == 3)
+          break;
+      }
+
+      // Clean up
       out.write(buildTerminate());
       out.flush();
     }

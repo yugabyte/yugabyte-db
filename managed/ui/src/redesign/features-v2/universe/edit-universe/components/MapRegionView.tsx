@@ -18,6 +18,8 @@ import {
   getClusterByType,
   useEditUniverseContext
 } from '../EditUniverseUtils';
+import { PlacementAZ } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
 
 type ZoneType = RegionsAndNodesFormType['regions'][number]['zones'][number];
 
@@ -26,7 +28,7 @@ interface MapRegionsViewProps {
 }
 export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
   const { universeData } = useEditUniverseContext();
-
+  
   const regionsByName = groupBy(regions, 'code');
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.general' });
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
@@ -42,16 +44,17 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
 
   const hasPrefferedRegions = regions.some((region) =>
     region.zones.some(
-      (zone: ZoneType) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! >= 0
+      (zone: PlacementAZ) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED
     )
   );
-  
+
   return (
     <>
       {regions?.map((region) => {
         const hasHighestPreferedRank = region?.zones?.some(
-          (zone: ZoneType) =>
-            isDefinedNotNull(zone.leader_preference) && zone.leader_preference === 0
+          (zone: PlacementAZ) =>
+            isDefinedNotNull(zone.leader_preference) &&
+            zone.leader_preference === AZ_PREFFERED_HIGHEST_RANK
         );
         return (
           <YBMapMarker

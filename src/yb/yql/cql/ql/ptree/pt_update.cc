@@ -32,8 +32,7 @@
 using std::string;
 using std::max;
 
-DEFINE_RUNTIME_bool(
-    ycql_bind_collection_assignment_using_column_name, false,
+DEFINE_RUNTIME_bool(ycql_bind_collection_assignment_using_column_name, false,
     "Enable using column name for binding the value of subscripted collection column");
 
 namespace yb {

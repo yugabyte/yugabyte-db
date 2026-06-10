@@ -6036,7 +6036,8 @@ DeparseSimpleExprForDocument(uint64 collectionId, Expr *expr)
 	List *deparseContext = deparse_context_for(get_rel_name(documentsTableOid),
 											   documentsTableOid);
 	char *str = deparse_expression((Node *) expr, deparseContext,
-								   useTableNamePrefix, showImplicitCast);
+								   useTableNamePrefix, showImplicitCast,
+								   false, false); /* yb_pretty, yb_maskconstants */
 
 	/* restore search_path */
 	AtEOXact_GUC(true, saveNestLevel);

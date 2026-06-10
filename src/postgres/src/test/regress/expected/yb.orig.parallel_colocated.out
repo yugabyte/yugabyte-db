@@ -254,14 +254,18 @@ SELECT * FROM pctest1 WHERE c = 10;
 (20 rows)
 
 --secondary index
+/*+ Parallel(pctest1 2 hard) IndexScan(pctest1) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
-                   QUERY PLAN                    
--------------------------------------------------
+                           QUERY PLAN                           
+----------------------------------------------------------------
  Limit
-   ->  Index Scan using pctest1_a_idx on pctest1
-(2 rows)
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Parallel Index Scan using pctest1_a_idx on pctest1
+(4 rows)
 
+/*+ Parallel(pctest1 2 hard) IndexScan(pctest1) */
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
   k   | a |  b  | c  |     d     
 ------+---+-----+----+-----------
@@ -556,7 +560,7 @@ SELECT * FROM
                Workers Planned: 2
                ->  Parallel Hash Join
                      Hash Cond: (pctest4.c = pctest1.b)
-                     ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest4
+                     ->  Parallel Seq Scan on pctest2 pctest4
                      ->  Parallel Hash
                            ->  Parallel Hash Join
                                  Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))

@@ -139,19 +139,15 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     [pricingContext, regionsList]
   );
 
-  const proposedAsyncClusterUuid = useMemo(
-    () => crypto.randomUUID(),
-    [rrPricingFingerprint]
-  );
 
   const pricingSpec = useMemo(
     () =>
       buildUniverseSpecForReadReplicaPricing(
         pricingContext,
         regionsList as Region[],
-        proposedAsyncClusterUuid
+        ''
       ),
-    [pricingContext, regionsList, proposedAsyncClusterUuid]
+    [pricingContext, regionsList]
   );
 
   const { data: primaryPricingData, isLoading: isPrimaryPricingLoading } = useQuery(

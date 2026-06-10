@@ -17,13 +17,15 @@ import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.SkipOnTSAN;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressFeature extends BasePgRegressTest {
 
   private static final int TURN_OFF_SEQUENCE_CACHE_FLAG = 0;

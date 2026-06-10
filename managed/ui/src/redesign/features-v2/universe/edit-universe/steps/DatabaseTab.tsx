@@ -15,7 +15,8 @@ import { KeyboardArrowDown } from '@material-ui/icons';
 import {
   convertGFlagApiRespToFormValues,
   getClusterByType,
-  useEditUniverseContext
+  useEditUniverseContext,
+  useIsUniverseReady
 } from '../EditUniverseUtils';
 
 import { EditGflagsModal } from '@app/redesign/features/universe/universe-actions/edit-gflags/EditGflags';
@@ -54,6 +55,8 @@ import {
   transformSpecificGFlagToFlagsArray,
   transformGFlagToFlagsArray
 } from '@app/redesign/features/universe/universe-form/utils/helpers';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 const { Box, Grid2: Grid, MenuItem, styled } = mui;
 
@@ -79,6 +82,7 @@ export const DatabaseTab = () => {
   const [ysqlModalOpen, setYsqlModalOpen] = useState(false);
   const [ycqlModalOpen, setYcqlModalOpen] = useState(false);
   const [gflagsModalOpen, setGflagsModalOpen] = useState(false);
+  const isUniverseReady = useIsUniverseReady();
 
   const universeUUID = universeData?.info?.universe_uuid;
 
@@ -163,32 +167,36 @@ export const DatabaseTab = () => {
                 </YBButton>
               }
             >
-              <MenuItem
-                data-test-id="edit-ysql-settings"
-                data-testid="edit-ysql-settings"
-                disabled={isLegacyUniverseLoading || !legacyUniverse}
-                onClick={() => setYsqlModalOpen(true)}
-              >
-                <Box
-                  sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
+              <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
+                <MenuItem
+                  data-test-id="edit-ysql-settings"
+                  data-testid="edit-ysql-settings"
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                  onClick={() => setYsqlModalOpen(true)}
                 >
-                  <EditIcon />
-                </Box>
-                {t('editYSQLSettings')}
-              </MenuItem>
-              <MenuItem
-                data-test-id="edit-ycql-settings"
-                data-testid="edit-ycql-settings"
-                disabled={isLegacyUniverseLoading || !legacyUniverse}
-                onClick={() => setYcqlModalOpen(true)}
-              >
-                <Box
-                  sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
+                  <Box
+                    sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
+                  >
+                    <EditIcon />
+                  </Box>
+                  {t('editYSQLSettings')}
+                </MenuItem>
+              </RbacValidator>
+              <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL} isControl>
+                <MenuItem
+                  data-test-id="edit-ycql-settings"
+                  data-testid="edit-ycql-settings"
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                  onClick={() => setYcqlModalOpen(true)}
                 >
-                  <EditIcon />
-                </Box>
-                {t('editYCQLSettings')}
-              </MenuItem>
+                  <Box
+                    sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
+                  >
+                    <EditIcon />
+                  </Box>
+                  {t('editYCQLSettings')}
+                </MenuItem>
+              </RbacValidator>
             </YBDropdown>
           </Grid>
         </StyledHeader>
@@ -244,32 +252,36 @@ export const DatabaseTab = () => {
                 </YBButton>
               }
             >
-              <MenuItem
-                data-test-id="edit-pooling-settings"
-                data-testid="edit-pooling-settings"
-                disabled={isLegacyUniverseLoading || !legacyUniverse}
-                onClick={() => setConnectionPoolModalOpen(true)}
-              >
-                <Box
-                  sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
+              <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
+                <MenuItem
+                  data-test-id="edit-pooling-settings"
+                  data-testid="edit-pooling-settings"
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                  onClick={() => setConnectionPoolModalOpen(true)}
                 >
-                  <EditIcon />
-                </Box>
-                {t('editConnectionPooling')}
-              </MenuItem>
-              <MenuItem
-                data-test-id="edit-postgres-compatibility-settings"
-                data-testid="edit-postgres-compatibility-settings"
-                disabled={isLegacyUniverseLoading || !legacyUniverse}
-                onClick={() => setPgCompatibilityModalOpen(true)}
-              >
-                <Box
-                  sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
+                  <Box
+                    sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
+                  >
+                    <EditIcon />
+                  </Box>
+                  {t('editConnectionPooling')}
+                </MenuItem>
+              </RbacValidator>
+              <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
+                <MenuItem
+                  data-test-id="edit-postgres-compatibility-settings"
+                  data-testid="edit-postgres-compatibility-settings"
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                  onClick={() => setPgCompatibilityModalOpen(true)}
                 >
-                  <EditIcon />
-                </Box>
-                {t('editPostgresCompatibility')}
-              </MenuItem>
+                  <Box
+                    sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
+                  >
+                    <EditIcon />
+                  </Box>
+                  {t('editPostgresCompatibility')}
+                </MenuItem>
+              </RbacValidator>
             </YBDropdown>
           </Grid>
         </StyledHeader>
@@ -300,15 +312,17 @@ export const DatabaseTab = () => {
         >
           {t('advancedConfigFlags')}
           {legacyGflags.length > 0 && (
-            <YBButton
-              dataTestId="edit-gflags-button"
-              variant="ghost"
-              startIcon={<EditIcon />}
-              disabled={isLegacyUniverseLoading || !legacyUniverse}
-              onClick={() => setGflagsModalOpen(true)}
-            >
-              {t('edit', { keyPrefix: 'common' })}
-            </YBButton>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+              <YBButton
+                dataTestId="edit-gflags-button"
+                variant="ghost"
+                startIcon={<EditIcon />}
+                disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                onClick={() => setGflagsModalOpen(true)}
+              >
+                {t('edit', { keyPrefix: 'common' })}
+              </YBButton>
+            </RbacValidator>
           )}
         </StyledHeader>
         <StyledContent>
@@ -329,16 +343,18 @@ export const DatabaseTab = () => {
               }}
             >
               {t('noGflagsAdded')} <br />
-              <YBButton
-                variant="secondary"
-                dataTestId="add-gflags-button"
-                startIcon={<AddCircleIcon />}
-                sx={{ mt: 2 }}
-                disabled={isLegacyUniverseLoading || !legacyUniverse}
-                onClick={() => setGflagsModalOpen(true)}
-              >
-                {t('addFlag')}
-              </YBButton>
+              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+                <YBButton
+                  variant="secondary"
+                  dataTestId="add-gflags-button"
+                  startIcon={<AddCircleIcon />}
+                  sx={{ mt: 2 }}
+                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                  onClick={() => setGflagsModalOpen(true)}
+                >
+                  {t('addFlag')}
+                </YBButton>
+              </RbacValidator>
             </Box>
           ) : (
             <ReadOnlyGflagTable gFlags={legacyGflags} isPrimary={true} />

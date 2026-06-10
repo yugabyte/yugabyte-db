@@ -55,7 +55,7 @@ To capture and stream your changes in YugabyteDB to an external system, you need
 For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connector-yugabytedb/).
 {{</lead>}}
 
-## Known limitations
+## Limitations
 
 * A single stream can only be used to stream data from one namespace only.
 * There should be a primary key on the table you want to stream the changes from.
@@ -67,13 +67,12 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 * YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 * [Composite types](../../../explore/ysql-language-features/data-types#composite-types) are currently not supported. Issue {{<issue 25221>}}.
 
-* If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the replica identity is not CHANGE, then CDC will throw an error while processing such events.
+* If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event unless the YB-TServer flag [cdc_enable_intra_transactional_before_image](../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image) is enabled (v2025.2.4.0+). If the replica identity is not CHANGE and a before image still cannot be found, CDC throws an error while processing the event.
 
     To handle updates/deletes with a non-CHANGE replica identity, set the YB-TServer flag `cdc_send_null_before_image_if_not_exists` to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
-* Support for point-in-time recovery (PITR) is tracked in issue {{<issue 10938>}}.
 * Transaction savepoints are supported starting from v2025.2.2.0. Issue {{<issue 10936>}}.
 * Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
 * Support for schema evolution with before image is tracked in issue {{<issue 15197>}}.

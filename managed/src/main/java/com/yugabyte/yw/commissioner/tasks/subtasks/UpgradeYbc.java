@@ -71,7 +71,8 @@ public class UpgradeYbc extends AbstractTaskBase {
       ybcUpgrade.upgradeYBC(taskParams().universeUUID, taskParams().ybcVersion, true /* force */);
       waitForYbcUpgrade();
       boolean success =
-          ybcUpgrade.pollUpgradeTaskResult(taskParams().universeUUID, taskParams().ybcVersion);
+          ybcUpgrade.pollUpgradeTaskResult(
+              taskParams().universeUUID, taskParams().ybcVersion, true /* verbose */);
 
       if (!success && !taskParams().validateOnlyLiveNodes) {
         throw new RuntimeException("YBC Upgrade task did not complete in expected time.");
@@ -90,11 +91,8 @@ public class UpgradeYbc extends AbstractTaskBase {
                 + " on universe "
                 + taskParams().universeUUID);
       }
-      // Only update the universe YBC version if all nodes that should be running YBC have the
-      // new version. YBC is only co-located with tservers, so master-only nodes (K8s master
-      // pods or dedicated-master VMs) are excluded from this check.
-      long expectedYbcNodes = universe.getNodes().stream().filter(n -> n.isTserver).count();
-      if (sourceYbcVersions.size() == expectedYbcNodes) {
+      // Only update the universe YBC version if all nodes have the new version.
+      if (sourceYbcVersions.size() == universe.getNodes().size()) {
         UniverseUpdater updater =
             new UniverseUpdater() {
               @Override
@@ -122,12 +120,10 @@ public class UpgradeYbc extends AbstractTaskBase {
     int numRetries = 0;
     while (numRetries < ybcUpgrade.MAX_YBC_UPGRADE_POLL_RESULT_TRIES) {
       numRetries++;
-      // This is just a check the UUID is in a list, so it is fine to check both k8s and non-k8s.
-      if (!ybcUpgrade.checkYBCUpgradeProcessExists(taskParams().universeUUID)
-          || !ybcUpgrade.checkYBCUpgradeProcessExistsOnK8s(taskParams().universeUUID)) {
+      if (!ybcUpgrade.checkYBCUpgradeProcessExists(taskParams().universeUUID)) {
         break;
       } else if (ybcUpgrade.pollUpgradeTaskResult(
-          taskParams().universeUUID, taskParams().ybcVersion)) {
+          taskParams().universeUUID, taskParams().ybcVersion, false /* verbose */)) {
         break;
       }
       waitFor(Duration.ofMillis(ybcUpgrade.YBC_UPGRADE_POLL_RESULT_SLEEP_MS));

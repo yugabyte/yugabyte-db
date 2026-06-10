@@ -361,6 +361,9 @@ public interface UserIntentMapper {
         overrides.setPerProcess(perProcess);
       }
       perProcess.put(ServerType.MASTER, masterOverrides);
+      // Our code is using masterInstanceType and masterDeviceInfo now instead of overrides.
+      userIntent.masterInstanceType = masterOverrides.getInstanceType();
+      userIntent.masterDeviceInfo = masterOverrides.getDeviceInfo();
     }
     if (clusterNodeSpec.getTserver() != null) {
       UserIntentOverrides overrides = userIntent.getUserIntentOverrides();

@@ -675,7 +675,12 @@ TEST_P(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentColocatedCompaction)) 
   static const auto kRetryableErrors = {
       "Try again",
       "Snapshot too old",
-      "Restart read required"
+      "Restart read required",
+      // Concurrent colocated DDLs can conflict on pg_yb_catalog_version, and a CREATE TABLE that
+      // races with another backend's catalog bump can leave this backend's local cache stale
+      // until the next refresh, surfacing as "relation does not exist" on the following INSERT.
+      "could not serialize access due to concurrent update",
+      "does not exist",
   };
   const auto retry_until_success = [&](PGConn& conn, const std::string& stmt) {
     while (true) {
@@ -736,6 +741,7 @@ TEST_P(PgPackedRowTest, Serial) {
 }
 
 TEST_P(PgPackedRowTest, PackDuringCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   const auto kNumKeys = 10;
@@ -764,6 +770,9 @@ TEST_P(PgPackedRowTest, PackDuringCompaction) {
 
 // Check that we correctly interpret packed row size limit.
 TEST_P(PgPackedRowTest, BigValue) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
   constexpr size_t kValueLimit = 512;
   const std::string kBigValue(kValueLimit, 'B');
   const std::string kHalfBigValue(kValueLimit / 2, 'H');

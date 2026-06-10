@@ -268,6 +268,64 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     UniverseCRUDHandler.checkInstanceTypeConsistency(u);
   }
 
+  @Parameters({
+    // enableYSQL, enableYCQL, skipYcqlPrecheck, expectError, expectedFragment
+    "true,  false, false, false, ",
+    "true,  false, true,  false, ",
+    "true,  true,  false, true,  YCQL API should be disabled",
+    "true,  true,  true,  false, ",
+    "false, false, false, true,  YSQL API should be enabled",
+    "false, false, true,  true,  YSQL API should be enabled",
+    "false, true,  false, true,  YSQL API should be enabled",
+    "false, true,  true,  true,  YSQL API should be enabled",
+  })
+  @Test
+  public void validateMultiTenancyApiConfig_truthTable(
+      boolean enableYSQL,
+      boolean enableYCQL,
+      boolean skipYcqlPrecheck,
+      boolean expectError,
+      String expectedFragment) {
+    if (!expectError) {
+      UniverseCRUDHandler.validateMultiTenancyApiConfig(enableYSQL, enableYCQL, skipYcqlPrecheck);
+      return;
+    }
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                UniverseCRUDHandler.validateMultiTenancyApiConfig(
+                    enableYSQL, enableYCQL, skipYcqlPrecheck));
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(
+        "Expected message to contain '"
+            + expectedFragment
+            + "', got: "
+            + ex.getUserVisibleMessage(),
+        ex.getUserVisibleMessage().contains(expectedFragment));
+  }
+
+  @Test
+  public void validateMultiTenancyApiConfig_skipYcqlPrecheckBypassesYcqlOn() {
+    // The regression case: skipYcqlPrecheck=true with YSQL on and YCQL on must pass.
+    UniverseCRUDHandler.validateMultiTenancyApiConfig(
+        true /* enableYSQL */, true /* enableYCQL */, true /* skipYcqlPrecheck */);
+  }
+
+  @Test
+  public void validateMultiTenancyApiConfig_ysqlOffReportsYsqlError() {
+    // Even when skipYcqlPrecheck would bypass the YCQL check, YSQL-off must still fail,
+    // and the error message must point at YSQL (not the legacy combined string).
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                UniverseCRUDHandler.validateMultiTenancyApiConfig(
+                    false /* enableYSQL */, false /* enableYCQL */, true /* skipYcqlPrecheck */));
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(ex.getUserVisibleMessage().contains("YSQL API should be enabled"));
+  }
+
   @Test
   public void checkInstanceTypeConsistency_skipsToBeAddedAndToBeRemoved() {
     Universe u = ModelFactory.createUniverse(customer.getId());

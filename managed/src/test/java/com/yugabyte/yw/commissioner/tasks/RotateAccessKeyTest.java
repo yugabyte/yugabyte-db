@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -10,6 +9,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
@@ -22,6 +23,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -38,32 +42,38 @@ public class RotateAccessKeyTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> ROTATE_ACCESS_KEY_SEQUENCE_PRIMARY_CLUSTER =
       ImmutableList.of(
-          TaskType.VerifyNodeSSHAccess, // yugabyte user
-          TaskType.VerifyNodeSSHAccess, // centos (ssh_user) user
           TaskType.AddAuthorizedKey, // yugabyte user
           TaskType.AddAuthorizedKey, // centos user
+          TaskType.VerifyNodeSSHAccess, // verify yugabyte ssh access
+          TaskType.VerifyNodeSSHAccess, // verify centos ssh access
           TaskType.RemoveAuthorizedKey, // centos user
           TaskType.RemoveAuthorizedKey, // yugabyte user
+          TaskType.VerifyNodeSSHAccess, // verify yugabyte ssh access
+          TaskType.VerifyNodeSSHAccess, // verify centos ssh access
           TaskType.UpdateUniverseAccessKey); // primary cluster
 
   private static final List<TaskType> ROTATE_ACCESS_KEY_SEQUENCE_WITH_READ_REPLICA =
       ImmutableList.of(
           // primary cluster steps
-          TaskType.VerifyNodeSSHAccess, // yugabyte user
-          TaskType.VerifyNodeSSHAccess, // centos (ssh_user) user
           TaskType.AddAuthorizedKey, // yugabyte user
           TaskType.AddAuthorizedKey, // centos user
+          TaskType.VerifyNodeSSHAccess, // verify yugabyte ssh access
+          TaskType.VerifyNodeSSHAccess, // verify centos ssh access
           TaskType.RemoveAuthorizedKey, // centos user
           TaskType.RemoveAuthorizedKey, // yugabyte user
+          TaskType.VerifyNodeSSHAccess, // verify yugabyte ssh access
+          TaskType.VerifyNodeSSHAccess, // verify centos ssh access
           TaskType.UpdateUniverseAccessKey, // primary cluster
 
           // read replica steps
-          TaskType.VerifyNodeSSHAccess, // yugabyte user
-          TaskType.VerifyNodeSSHAccess, // centos user
           TaskType.AddAuthorizedKey, // yugabyte user
           TaskType.AddAuthorizedKey, // centos user
+          TaskType.VerifyNodeSSHAccess, // verify yugabyte ssh access
+          TaskType.VerifyNodeSSHAccess, // verify centos ssh access
           TaskType.RemoveAuthorizedKey, // centos user
           TaskType.RemoveAuthorizedKey, // yugabyte user
+          TaskType.VerifyNodeSSHAccess, // verify yugabyte ssh access
+          TaskType.VerifyNodeSSHAccess, // verify centos ssh access
           TaskType.UpdateUniverseAccessKey); // primary cluster
 
   private AccessKey newAccessKey;
@@ -72,7 +82,18 @@ public class RotateAccessKeyTest extends UniverseModifyBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-    newAccessKey = createAccessKeyForProvider("new-key", defaultProvider);
+    newAccessKey = spy(createAccessKeyForProvider("new-key", defaultProvider));
+    doReturn("public-key").when(newAccessKey).getPublicKeyContent();
+    for (AccessKey accessKey : AccessKey.getAll(defaultProvider.getUuid())) {
+      try {
+        Path path = Files.createTempFile("ssh-key", "pub");
+        path.toFile().deleteOnExit();
+        accessKey.getKeyInfo().publicKey = path.toString();
+        accessKey.save();
+      } catch (IOException e) {
+        fail(e.getMessage());
+      }
+    }
   }
 
   private TaskInfo submitTask(RotateAccessKeyParams taskParams) {
@@ -138,7 +159,7 @@ public class RotateAccessKeyTest extends UniverseModifyBaseTest {
     RotateAccessKeyParams taskParams = createRotateAccessKeyParams(defaultUniverse, newAccessKey);
     PlatformServiceException thrown =
         assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
-    assertThat(thrown.getMessage(), containsString("is currently paused"));
+    assertThat(thrown.getMessage(), containsString("is paused"));
     AccessKeyRotationUtilTest.setUniversePaused(false, defaultUniverse);
   }
 
@@ -146,8 +167,9 @@ public class RotateAccessKeyTest extends UniverseModifyBaseTest {
   public void testRotateAccessKeyNonLiveFailure() {
     setNodeNonLive(true, defaultUniverse);
     RotateAccessKeyParams taskParams = createRotateAccessKeyParams(defaultUniverse, newAccessKey);
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    PlatformServiceException thrown =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+    assertThat(thrown.getMessage(), containsString("has non-live nodes"));
     setNodeNonLive(false, defaultUniverse);
   }
 

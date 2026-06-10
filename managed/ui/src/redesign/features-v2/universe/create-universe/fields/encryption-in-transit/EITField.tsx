@@ -29,6 +29,7 @@ import {
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 const { Box, Typography, styled } = mui;
 
@@ -80,12 +81,25 @@ const CERTComponent: FC<CertCompProps> = ({ toggleFieldPath, certFieldPath, cert
 
   return (
     <FieldContainer sx={{ padding: '16px 24px' }}>
-      <YBToggleField
-        control={control}
-        name={toggleFieldPath}
-        label={t(toggleFieldPath)}
-        dataTestId={`enable-encryption-in-transit-field`}
-      />
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: '4px'
+        }}
+      >
+        <Box sx={{ marginBottom: '-5px' }}>
+          <YBToggleField
+            control={control}
+            name={toggleFieldPath}
+            label={(<Trans>{t(toggleFieldPath)}</Trans>) as any}
+            dataTestId={`enable-encryption-in-transit-field`}
+          />
+        </Box>
+        <InfoIcon />
+      </Box>
+
       {isOptionEnabled && (
         <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', mt: 4, gap: '16px' }}>
           <Box sx={{ display: 'flex', flexDirection: 'row', gap: '16px', alignItems: 'center' }}>
@@ -123,11 +137,11 @@ const CERTComponent: FC<CertCompProps> = ({ toggleFieldPath, certFieldPath, cert
                       >
                         <YBAutoComplete
                           loading={isLoading}
-                          options={(certificates as unknown) as Record<string, string>[]}
+                          options={certificates as unknown as Record<string, string>[]}
                           getOptionLabel={getOptionLabel}
                           fullWidth={true}
                           onChange={handleChange}
-                          value={(value as unknown) as never}
+                          value={value as unknown as never}
                           ybInputProps={{
                             placeholder: t('rootCertificatePlaceHolder'),
                             error: !!fieldState.error,
@@ -306,11 +320,11 @@ export const K8EITField: FC<EARProps> = ({ disabled }) => {
                           >
                             <YBAutoComplete
                               loading={isLoading}
-                              options={(certificates as unknown) as Record<string, string>[]}
+                              options={certificates as unknown as Record<string, string>[]}
                               getOptionLabel={getOptionLabel}
                               fullWidth={true}
                               onChange={handleChange}
-                              value={(value as unknown) as never}
+                              value={value as unknown as never}
                               ybInputProps={{
                                 placeholder: t('rootCertificatePlaceHolder'),
                                 error: !!fieldState.error,

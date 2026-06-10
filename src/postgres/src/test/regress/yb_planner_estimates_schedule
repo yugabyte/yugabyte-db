@@ -3,9 +3,23 @@
 ####################################################################################################
 # Testsuite for tests covering planner/optimizer estimates.
 ####################################################################################################
-test: yb.orig.row_estimates
+# Dependency for `yb.orig.cardinality_estimate_*`
+test: yb.orig.cardinality_estimate_setup
+
+test: yb.orig.cardinality_estimate_modes
+test: yb.orig.cardinality_estimate_consistency
 
 # Dependency for the seeknext estimate tests
 test: yb.orig.seeknext_estimate_setup
 
 test: yb.orig.seeknext_estimate
+
+# Dependency for the roundtrip estimate tests
+test: yb.orig.roundtrip_estimate_setup
+
+test: yb.orig.roundtrip_estimate
+
+# Dependency for the parallel roundtrip estimate tests
+test: yb.orig.roundtrip_estimate_parallel_setup
+
+test: yb.orig.roundtrip_estimate_parallel

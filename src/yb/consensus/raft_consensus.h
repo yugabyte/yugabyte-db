@@ -36,6 +36,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "yb/common/entity_ids_types.h"
@@ -197,6 +198,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   const std::optional<CloneSourceInfo>& clone_source_info() const override;
 
+  OpId GetPendingConfigOpId() const override;
+
   LeaderLeaseStatus GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const;
   LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const;
 
@@ -248,6 +251,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   OpId GetLastAppliedOpId() override;
 
   OpId GetAllAppliedOpId();
+
+  Status CheckReadyAsRbsSource();
 
   Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
@@ -314,6 +319,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   Result<OpId> TEST_GetLastOpIdWithType(OpIdType opid_type, OperationType op_type);
 
   int64_t TEST_LeaderTerm() const;
+
+  int64_t GetFirstIndexOfCurrentTerm() const;
+
+  // Atomically returns the leader state and the first log index of the current leader's term.
+  // The first index is only meaningful when the leader state's status is LEADER_AND_READY.
+  std::pair<LeaderState, int64_t> GetLeaderStateAndFirstIndexOfCurrentTerm() const;
 
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
@@ -699,6 +710,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Checked whether we should start step down when protege did not synchronize before timeout.
   void CheckDelayedStepDown(const Status& status);
+
+  void ClearPendingConfigUnlocked();
 
   // Threadpool token for constructing requests to peers, handling RPC callbacks,
   // etc.

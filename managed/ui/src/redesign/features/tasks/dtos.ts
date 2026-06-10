@@ -147,6 +147,9 @@ export interface SubTaskInfo {
       message: string;
       originMessage: string;
     };
+    // Total time taken for the subtask to complete.
+    // It includes the queued time and the execution time.
+    totalTimeMs?: number;
   };
   taskParams?: {
     nodeName?: string;

@@ -33,7 +33,7 @@ TEST_F(CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestTxnUpdatesAndDelet
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   // Create a table with primary key and 2 additional columns (total 3 columns)
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 ($1 INT PRIMARY KEY, $2 INT, $3 INT)", kTableName, kKeyColumnName,
@@ -41,7 +41,7 @@ TEST_F(CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestTxnUpdatesAndDelet
 
   // Discover tablets for the table
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
@@ -110,14 +110,14 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 ($1 INT PRIMARY KEY, $2 INT, $3 INT)", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
@@ -197,14 +197,14 @@ TEST_F(
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 ($1 INT PRIMARY KEY, $2 INT, $3 INT)", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
@@ -301,14 +301,14 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 ($1 INT PRIMARY KEY, $2 INT, $3 INT)", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
@@ -361,14 +361,14 @@ TEST_F(CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestIntraTxnMultipleRo
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 ($1 INT PRIMARY KEY, $2 INT, $3 INT)", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
@@ -433,14 +433,14 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 ($1 INT PRIMARY KEY, $2 INT, $3 INT)", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
@@ -526,14 +526,14 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 ($1 INT PRIMARY KEY, $2 INT, $3 INT)", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 

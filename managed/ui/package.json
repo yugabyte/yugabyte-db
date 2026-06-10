@@ -8,7 +8,7 @@
     "cleanup": "rimraf build && rimraf ../src/main/public",
     "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zx -C build/static",
     "test": "vitest",
-    "test:ci": "vitest run",
+    "test:ci": "./test-ci.sh",
     "test:watch": "vitest watch",
     "build-core": "./build-core.sh",
     "build": "npm run cleanup && CI=false npm run build-core",

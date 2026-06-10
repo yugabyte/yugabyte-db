@@ -4754,10 +4754,11 @@ transformPartitionBound(ParseState *pstate, Relation parent,
 			colname = get_attname(RelationGetRelid(parent),
 								  key->partattrs[0], false);
 		else
-			colname = deparse_expression((Node *) linitial(partexprs),
-										 deparse_context_for(RelationGetRelationName(parent),
-															 RelationGetRelid(parent)),
-										 false, false);
+		colname = deparse_expression((Node *) linitial(partexprs),
+									 deparse_context_for(RelationGetRelationName(parent),
+														 RelationGetRelid(parent)),
+									 false, false,
+									 false, false); /* yb_pretty, yb_maskconstants */
 		/* Need its type data too */
 		coltype = get_partition_col_typid(key, 0);
 		coltypmod = get_partition_col_typmod(key, 0);
@@ -4904,10 +4905,11 @@ transformPartitionRangeBounds(ParseState *pstate, List *blist,
 									  key->partattrs[i], false);
 			else
 			{
-				colname = deparse_expression((Node *) list_nth(partexprs, j),
-											 deparse_context_for(RelationGetRelationName(parent),
-																 RelationGetRelid(parent)),
-											 false, false);
+			colname = deparse_expression((Node *) list_nth(partexprs, j),
+										 deparse_context_for(RelationGetRelationName(parent),
+															 RelationGetRelid(parent)),
+										 false, false,
+										 false, false); /* yb_pretty, yb_maskconstants */
 				++j;
 			}
 

@@ -16,6 +16,7 @@
 #include <sstream>
 
 #include "yb/util/enums.h"
+#include "yb/util/status.h"
 #include "yb/util/tostring.h"
 
 namespace yb {

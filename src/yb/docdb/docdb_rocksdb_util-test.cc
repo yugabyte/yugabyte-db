@@ -14,6 +14,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/rocksdb/table.h"
 
+#include "yb/util/enum_parse.h"
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
 

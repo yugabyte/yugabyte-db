@@ -7,7 +7,7 @@ import {
   StyledInfoRow,
   StyledPanel
 } from '../../create-universe/components/DefaultComponents';
-import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
 
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { EditAdvancedSettingsModal } from '../edit-advanced/EditAdvancedSettingsModal';
@@ -15,6 +15,8 @@ import { EditAdvancedSettingsModal } from '../edit-advanced/EditAdvancedSettings
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import Disabled from '@app/redesign/assets/revoke.svg';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 const { styled } = mui;
 
@@ -40,6 +42,7 @@ export const AdvancedTab = () => {
   );
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const networking_spec = primaryCluster?.networking_spec;
+  const isUniverseReady = useIsUniverseReady();
 
   const getNoProxyList = () => {
     if (!networking_spec?.proxy_config?.no_proxy_list?.length) {
@@ -58,16 +61,19 @@ export const AdvancedTab = () => {
     <StyledPanel>
       <StyledHeader sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {t('proxyConfiguration')}
-        <YBButton
-          dataTestId="edit-security-transit-button"
-          variant="ghost"
-          startIcon={<EditIcon />}
-          onClick={() => {
-            setEditAdvancedSettingsModalVisible(true);
-          }}
-        >
-          {t('edit', { keyPrefix: 'common' })}
-        </YBButton>
+        <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+          <YBButton
+            dataTestId="edit-security-transit-button"
+            variant="ghost"
+            startIcon={<EditIcon />}
+            onClick={() => {
+              setEditAdvancedSettingsModalVisible(true);
+            }}
+            disabled={!isUniverseReady}
+          >
+            {t('edit', { keyPrefix: 'common' })}
+          </YBButton>
+        </RbacValidator>
       </StyledHeader>
       <StyledContent>
         <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>

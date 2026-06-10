@@ -37,6 +37,7 @@
 
 DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(disable_clock_sync_error);
+DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_int32(ht_lease_duration_ms);
 DECLARE_string(time_source);
 
@@ -115,6 +116,16 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
 
   virtual void SetupFlags() {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = "mock";
+    // MockClock returns a frozen physical time, so each call to HybridClock::NowWithError()
+    // (driven by background pollers in transactional tablets) advances only HybridClock's
+    // internal logical counter -- MockClock itself never moves.  After 4096 such calls the
+    // overflow handler bumps last_usec by 1; the next read then sees the (still-frozen)
+    // physical time as 1us behind last_usec and trips a FATAL when
+    // fail_on_out_of_range_clock_skew is true (the default).  Under ASAN the slower run
+    // gives pollers enough wall-clock time to reach the 4096-call threshold before
+    // TestClockSkewError's body finishes (#31467, ~97% flake rate on alma9-clang21-asan).
+    // Disable the FATAL the same way transaction-test.cc and snapshot-txn-test.cc do.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
   }
 
   std::unique_ptr<client::YBClient> client_;
@@ -128,6 +139,11 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
   constexpr static const char* const kTableName = "my_table";
 };
 
+// Verifies the cluster keeps serving DDL + writes when the (mocked) physical clock reports an
+// NTP max_error above FLAGS_max_clock_sync_error_usec.  This exercises the
+// disable_clock_sync_error=true path (the default) added by ENG-2012 (commit 577b0cbcf2, 2017):
+// with that flag set, CheckClockSyncError swallows the high max_error instead of returning
+// ServiceUnavailable, so CreateTable and PerformOps below should both succeed.
 TEST_F(ClockSynchronizationTest, TestClockSkewError) {
   mock_clock_.Set({0, FLAGS_max_clock_sync_error_usec + 1});
 

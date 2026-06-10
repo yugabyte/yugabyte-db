@@ -81,6 +81,22 @@ uuid_out(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Return a palloc'd 32-character lowercase hex representation of 'uuid' (no
+ * dashes, null-terminated). This is the format used internally by YugabyteDB
+ * (e.g. by YBCGetTabletServerHosts) and is not the canonical UUID textual
+ * format produced by uuid_out().
+ */
+char *
+yb_convert_uuid_to_yb_uuid_string_repr(const pg_uuid_t *uuid)
+{
+	char	   *hex = (char *) palloc(2 * UUID_LEN + 1);
+
+	hex_encode((const char *) uuid->data, UUID_LEN, hex);
+	hex[2 * UUID_LEN] = '\0';
+	return hex;
+}
+
+/*
  * We allow UUIDs as a series of 32 hexadecimal digits with an optional dash
  * after each group of 4 hexadecimal digits, and optionally surrounded by {}.
  * (The canonical format 8x-4x-4x-4x-12x, where "nx" means n hexadecimal

@@ -42,8 +42,10 @@ export const AccessKeyField: FC<AccessKeyFieldProps> = ({ disabled, provider }) 
           name={ACCESS_KEY_FIELD}
           control={control}
           disabled={disabled}
+          sx={{ width: '560px' }}
           label={t('createUniverseV2.otherAdvancedSettings.accessKeyLabel')}
           dataTestId="access-key-select"
+          helperText={t('createUniverseV2.otherAdvancedSettings.accessKeyHelper')}
         >
           {allAccessKeys?.map((item: AccessKey) => (
             <MenuItem key={item.idKey.keyCode} value={item.idKey.keyCode}>

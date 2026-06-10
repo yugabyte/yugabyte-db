@@ -248,7 +248,7 @@ export const DbUpgradeInfoCard = ({
         </ul>
       </div>
 
-      {!isYsqlMajorUpgrade && (
+      {isYsqlMajorUpgrade && (
         <MUILink
           href={YBA_YSQL_MAJOR_UPGRADE_DOCUMENTATION_URL}
           target="_blank"

@@ -141,7 +141,8 @@ public class YNPConfigGenerator {
         String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minTempDirSpaceGb)));
     ynpNode.put(
         "min_prometheus_space_gb",
-        String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minHomeDirSpaceGb)));
+        String.valueOf(
+            confGetter.getConfForScope(provider, ProviderConfKeys.minPrometheusSpaceGb)));
     extraNode.put("is_cloud", !provider.isManualOnprem());
     extraNode.put("cloud_type", provider.getCode());
     ynpNode.put("configure_cgroup", Util.configureCgroup(provider, true, confGetter));
@@ -290,6 +291,10 @@ public class YNPConfigGenerator {
     ynpNode.put("is_install_node_agent", false);
     ynpNode.put("yb_user_id", "1994");
     ynpNode.put("is_yb_prebuilt_image", params.isYbPrebuiltImage());
+    // Propagate the YNP version check flag so the YNP (Go) code respects it uniformly when
+    // comparing versions across all provisioning and precheck paths.
+    extraNode.put(
+        "enable_ynp_version_check", confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck));
     // Set the logging level based on the global config.
     loggingNode.put("level", getLogLevel());
     loggingNode.put("directory", params.getNodeAgentHome().resolve("logs").toString());

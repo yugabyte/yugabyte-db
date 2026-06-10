@@ -46,6 +46,32 @@ For more information, refer to [How the connector works](../../../additional-fea
 
 - YugabyteDB Connector. Download the latest version of the Connector JAR file from the [YugabyteDB Connector repository](https://github.com/yugabyte/debezium/releases).
 
+## Permissions
+
+By default, only users with the REPLICATION attribute can configure CDC streaming. For clusters created using YugabyteDB v2024.1.0 or later, admin users can enable or disable replication for users using the following functions:
+
+- `enable_replication_role('username')` – Enables replication for the specified user.
+- `disable_replication_role('username')` – Disables replication for the specified user.
+
+For example, to enable replication for the user `replication_user`:
+
+```sql
+SELECT enable_replication_role('replication_user');
+```
+
+To disable replication for the user:
+
+```sql
+SELECT disable_replication_role('replication_user');
+```
+
+Note the following:
+
+- Only the admin user (created when you created the cluster) can execute these functions.
+- The functions are only available in the `yugabyte` database.
+- The functions are available for clusters created or upgraded to v2024.1.0 or later starting April 2, 2025. Clusters already running these versions prior to this date do not have these functions.
+- Because YugabyteDB Aeon [restricts access to superuser](../../cloud-secure-clusters/cloud-users/), you cannot set the REPLICATION attribute using CREATE or ALTER; you must use these functions.
+
 ## Limitations
 
 By default, you have a maximum of two active replication slots. If you need more slots, contact {{% support-cloud %}}.
@@ -230,7 +256,6 @@ On the cluster **Metrics** tab, you can view the following metrics:
 | :------------------------ | :--- |
 | cdcsdk_change_event_count | The number of records sent by the CDC Service. |
 | cdcsdk_traffic_sent       | Total traffic sent, in bytes. |
-| cdcsdk_event_lag_micros   | Lag, calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the connector. |
 | cdcsdk_expiry_time_ms     | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
 | cdcsdk_flush_lag          | This lag metric shows the difference between the timestamp of the latest record in the WAL and the replication slot's restart time, in seconds. |
 
@@ -250,32 +275,6 @@ To do this, [connect to your cluster](../../cloud-connect/connect-client-shell/)
     sslrootcert=root.crt \
     replication=database"
 ```
-
-### Permissions
-
-By default, only the admin user can configure CDC streaming. For clusters created using YugabyteDB v2024.1.0 or later, you can additionally enable or disable replication for other users using the following functions:
-
-- `enable_replication_role('username')` – Enables replication for the specified user.
-- `disable_replication_role('username')` – Disables replication for the specified user.
-
-For example, to enable replication for the user `replication_user`:
-
-```sql
-SELECT enable_replication_role('replication_user');
-```
-
-To disable replication for the user:
-
-```sql
-SELECT disable_replication_role('replication_user');
-```
-
-Note the following:
-
-- Only the admin user (created when you created the cluster) can execute these functions.
-- The functions are only available in the `yugabyte` database.
-- The functions aren't available for clusters which are already on v2024.1.0 or later (created prior to April 2, 2025), only newly created clusters, or clusters that are newly upgraded to v2024.1.0.
-- Because YugabyteDB Aeon [restricts access to superuser](../../cloud-secure-clusters/cloud-users/), you cannot set the REPLICATION attribute using CREATE or ALTER; you must use these functions.
 
 ## FAQ
 

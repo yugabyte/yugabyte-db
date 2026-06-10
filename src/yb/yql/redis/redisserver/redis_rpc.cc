@@ -56,8 +56,7 @@ DEFINE_UNKNOWN_uint64(redis_max_read_buffer_size, 128_MB,
 DEFINE_UNKNOWN_uint64(redis_max_queued_bytes, 128_MB,
               "Max number of bytes in queued redis commands.");
 
-DEFINE_UNKNOWN_int32(
-    redis_connection_soft_limit_grace_period_sec, 60,
+DEFINE_UNKNOWN_int32(redis_connection_soft_limit_grace_period_sec, 60,
     "The duration for which the outbound data needs to exceeed the softlimit "
     "before the connection gets closed down.");
 

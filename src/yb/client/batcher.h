@@ -125,8 +125,7 @@ class TxnBatcherIf {
 
 // Batcher state changes sequentially in the order listed below, with the exception that kAborted
 // could be reached from any state.
-YB_DEFINE_ENUM(
-    BatcherState,
+YB_DEFINE_ENUM(BatcherState,
     (kGatheringOps)       // Initial state, while we adding operations to the batcher.
     (kResolvingTablets)   // Flush was invoked on batcher, waiting until tablets for all operations
                           // are resolved and move to the next state.
@@ -332,7 +331,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void FlushFinished();
   void AllLookupsDone();
-  std::shared_ptr<AsyncRpc> CreateRpc(
+  Result<std::shared_ptr<AsyncRpc>> CreateRpc(
       const BatcherPtr& self, RemoteTablet* tablet, const InFlightOpsGroup& group,
       bool allow_local_calls_in_curr_thread, bool need_consistent_read);
 
@@ -368,7 +367,13 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void HandleAsyncWriteResponse(
       const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
-      std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy);
+      const std::shared_ptr<const YBTable>& table);
+
+  // Returns true if the operations in this batcher are configured to skip the intents DB.
+  // Because all operations within a single batch must share the exact same skip_intents
+  // behavior, this is efficiently determined by inspecting the protobuf request of just
+  // the first operation in the buffer.
+  bool SkipIntents() const;
 
   BatcherState state_ = BatcherState::kGatheringOps;
 

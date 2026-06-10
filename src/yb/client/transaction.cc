@@ -16,6 +16,7 @@
 #include "yb/client/transaction.h"
 
 #include <atomic>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <boost/atomic.hpp>
@@ -156,7 +157,7 @@ std::ostream& operator<<(std::ostream& str, const TaggedLogPrefix& value) {
 }
 
 struct AsyncWriteQuery {
-  std::unordered_set<OpId> op_ids;
+  std::set<OpId> op_ids;
   std::vector<StdStatusCallback> waiters_ = {};
 };
 
@@ -1044,6 +1045,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtxn_metadata_pb;
   }
 
+  SubTransactionId IncrementAndGetSubTransactionId() {
+    const auto new_subtxn_id = subtransaction_.get().subtransaction_id + 1;
+    subtransaction_.SetActiveSubTransaction(new_subtxn_id);
+    return new_subtxn_id;
+  }
+
+  SubTransactionId GetActiveSubTransactionId() const {
+    return subtransaction_.get().subtransaction_id;
+  }
+
   Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
     VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
     RSTATUS_DCHECK(
@@ -1236,11 +1247,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX_AND_FUNC(4) << YB_STRUCT_TO_STRING(tablet_id, op_id);
 
     std::lock_guard l(async_write_query_mutex_);
-    auto& write_query = inflight_async_writes_[tablet_id];
-    DCHECK(write_query.op_ids.empty() || write_query.op_ids.begin()->term == op_id.term)
-        << "Received async write op_id with different term. OpId: " << op_id
-        << ", expected term: " << write_query.op_ids.begin()->term;
-    return InsertIfNotPresent(&write_query.op_ids, op_id);
+    return InsertIfNotPresent(&inflight_async_writes_[tablet_id].op_ids, op_id);
   }
 
   void RecordAsyncWriteCompletion(
@@ -1289,11 +1296,40 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  std::optional<int64_t> GetPendingAsyncWriteTerm(const TabletId& tablet_id) const
+  Result<OpId> GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const
       EXCLUDES(async_write_query_mutex_) {
     std::lock_guard l(async_write_query_mutex_);
     auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
-    return write_query ? std::optional<int64_t>(write_query->op_ids.begin()->term) : std::nullopt;
+    if (!write_query || write_query->op_ids.empty()) {
+      return OpId::Invalid();
+    }
+    // Pending writes across >2 terms means the tablet leader moved more than once before the
+    // earlier async writes were confirmed complete. Currently we don't support this (the server's
+    // VerifyAsyncWriteReceived only handles same-term and one-term-ago), so fail client-side and
+    // abort the transaction.
+    auto min_op = *write_query->op_ids.begin();
+    auto max_op = *write_query->op_ids.rbegin();
+    SCHECK_FORMAT(
+        max_op.term - min_op.term <= 1, IllegalState,
+        "Tablet $0: tablet leader moved more than once before async writes completed "
+        "(min_op: $1, max_op: $2)",
+        tablet_id, min_op, max_op);
+
+    // Now we either have pending writes within the same term, or across 2 consecutive terms.
+    //
+    // In either case, we return the max op_id of the earliest pending term - raft's prefix property
+    // covers all earlier writes from that term.
+    // - If the pending writes are in the same term, then this max covers all pending writes.
+    // - If the pending writes are across 2 terms, then the leader will locally have the writes from
+    //   the greater term, so there's no need to check for those.
+    //
+    // If leader moves before we can send this read, then the server will also validate:
+    // - If the pending writes are in the same term, then verifying the new leader has the last
+    //   write is still sufficient (we are only at a 1 term difference which is supported).
+    // - If the pending writes are across 2 terms, then we now have a write that is 2+ terms old, so
+    //   the server will abort the transaction.
+    auto next_term_begin = write_query->op_ids.lower_bound(OpId(min_op.term + 1, 0));
+    return *std::prev(next_term_begin);
   }
 
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
@@ -2796,6 +2832,14 @@ std::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadata
   return impl_->GetSubTransactionMetadataPB();
 }
 
+SubTransactionId YBTransaction::IncrementAndGetSubTransactionId() {
+  return impl_->IncrementAndGetSubTransactionId();
+}
+
+SubTransactionId YBTransaction::GetActiveSubTransactionId() const {
+  return impl_->GetActiveSubTransactionId();
+}
+
 Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) {
   return impl_->RollbackToSubTransaction(id, deadline);
 }
@@ -2846,8 +2890,8 @@ void YBTransaction::RecordAsyncWriteCompletion(
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
 }
 
-std::optional<int64_t> YBTransaction::GetPendingAsyncWriteTerm(const TabletId& tablet_id) const {
-  return impl_->GetPendingAsyncWriteTerm(tablet_id);
+Result<OpId> YBTransaction::GetAsyncWriteOpIdForReadCheck(const TabletId& tablet_id) const {
+  return impl_->GetAsyncWriteOpIdForReadCheck(tablet_id);
 }
 
 void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {

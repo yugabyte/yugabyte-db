@@ -1,6 +1,6 @@
 // Copyright (c) YugabyteDB, Inc.
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import * as Yup from 'yup';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -15,11 +15,15 @@ import {
   RbacValidator,
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  getAllowSuperadminUserGroupMapping
+} from '../../../redesign/features/rbac/groups/components/GroupUtils';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import { Action } from '../../../redesign/features/rbac';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { YUGABYTE_TITLE } from '../../../config';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import WarningIcon from '../icons/warning_icon';
 import Bulb from '../../universes/images/bulb.svg?img';
 import Mapping from '../icons/mapping_icon';
@@ -150,6 +154,10 @@ const DEFAULT_SCOPE = LDAP_SCOPES[2];
 
 export const YBA_ROLES = [
   {
+    label: 'SuperAdmin',
+    value: 'SuperAdmin'
+  },
+  {
     label: 'Admin',
     value: 'Admin'
   },
@@ -186,6 +194,12 @@ export const LDAPAuth = (props) => {
   const queryClient = useQueryClient();
   const initMappingValue = useRef([]);
   const configEntries = runtimeConfigs?.data?.configEntries ?? [];
+  const allowSuperadminUserGroupMapping = useMemo(() => {
+    if (!getPromiseState(runtimeConfigs).isSuccess() || !runtimeConfigs?.data) {
+      return false;
+    }
+    return getAllowSuperadminUserGroupMapping(runtimeConfigs.data);
+  }, [runtimeConfigs]);
   const enableLDAPRoleMapping =
     featureFlags.test.enableLDAPRoleMapping || featureFlags.released.enableLDAPRoleMapping;
 
@@ -1208,6 +1222,7 @@ export const LDAPAuth = (props) => {
                     <LDAPMappingModal
                       open={LDAPMapping}
                       values={mappingData}
+                      allowSuperadminUserGroupMapping={allowSuperadminUserGroupMapping}
                       onClose={() => setLDAPMapping(false)}
                       onSubmit={(values) => {
                         setLDAPMapping(false);
