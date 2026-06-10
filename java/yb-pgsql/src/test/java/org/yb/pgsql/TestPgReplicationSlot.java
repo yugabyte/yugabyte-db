@@ -996,10 +996,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void setFlagsForDynamicTablesTest(Map<String, String> tserverFlags,
       Map<String, String> masterFlags, Boolean usePubRefresh, Boolean streamTablesWithoutPrimaryKey)
       throws Exception {
-    tserverFlags.put(
-        "allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
-            + "enable_table_rewrite_for_cdcsdk_table");
+    tserverFlags.put("allowed_preview_flags_csv", "enable_table_rewrite_for_cdcsdk_table");
     tserverFlags.put(
         "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
         "" + !usePubRefresh);
@@ -1009,10 +1006,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     tserverFlags.put(
         "enable_table_rewrite_for_cdcsdk_table", "true");
 
-    masterFlags.put(
-        "allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
-            + "enable_table_rewrite_for_cdcsdk_table");
+    masterFlags.put("allowed_preview_flags_csv", "enable_table_rewrite_for_cdcsdk_table");
     masterFlags.put(
         "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
         "" + !usePubRefresh);
@@ -1226,14 +1220,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
       miniCluster.getClient().setFlag(
-          tServer, "allowed_preview_flags_csv", "ysql_yb_cdcsdk_stream_tables_without_primary_key");
-      miniCluster.getClient().setFlag(
           tServer, "ysql_yb_cdcsdk_stream_tables_without_primary_key", "true");
     }
 
     for (HostAndPort master : miniCluster.getMasters().keySet()) {
-      miniCluster.getClient().setFlag(
-          master, "allowed_preview_flags_csv", "ysql_yb_cdcsdk_stream_tables_without_primary_key");
       miniCluster.getClient().setFlag(
           master, "ysql_yb_cdcsdk_stream_tables_without_primary_key", "true");
     }

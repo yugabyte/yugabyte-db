@@ -280,7 +280,8 @@ DEFINE_validator(master_ts_rpc_timeout_ms,
             ::yb::flags_internal::compare_greater_equal(_value, FLAGS_refresh_waiter_timeout_ms),
         "Must be >= refresh_waiter_timeout_ms when enable_object_locking_for_table_locks is true"));
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key,
+    kLocalPersisted, false, true,
     "When set to true, allows streaming of tables without primary keys for CDCSDK logical "
     "replication streams.");
 

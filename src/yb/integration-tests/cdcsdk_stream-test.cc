@@ -213,6 +213,10 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
       tables_expected_in_stream_metadata.insert(
           ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, table_name)));
     }
+    for (const auto& table_name : table_without_pk) {
+      tables_expected_in_stream_metadata.insert(
+          ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, table_name)));
+    }
 
     std::vector<std::string> created_table_ids_without_pk;
 
