@@ -59,6 +59,9 @@ DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(consensus_rpc_timeout_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(TEST_delay_tablet_export_metadata_ms);
@@ -442,7 +445,10 @@ TEST_F(CqlTest, TestTruncateTableWithIndexes) {
   // the CQL driver's default 20 s deadline doesn't fire before the server
   // finishes. Linux apply stays under 3 s, so no override is needed there.
   FLAGS_consensus_rpc_timeout_ms = 60'000;
-  constexpr uint32_t kTruncateTimeoutMs = 60'000;
+  FLAGS_master_ts_rpc_timeout_ms = 60'000;
+  FLAGS_transaction_rpc_timeout_ms = 60'000;
+  FLAGS_leader_failure_max_missed_heartbeat_periods = 12.0;
+  constexpr uint32_t kTruncateTimeoutMs = 120'000;
 #else
   // Use driver default.
   constexpr uint32_t kTruncateTimeoutMs = 0;
