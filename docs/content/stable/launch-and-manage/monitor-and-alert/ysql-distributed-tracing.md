@@ -16,13 +16,13 @@ rightNav:
   hideH4: true
 ---
 
-YSQL queries spends time in many places: parsing, planning, execution, transaction commit, and RPC calls to tablet servers. YugabyteDB can export timing data for these stages as OpenTelemetry (OTel) traces so you can inspect a waterfall view of query execution in tools such as [Jaeger](/stable/integrations/jaeger/), [Grafana Tempo](https://grafana.com/oss/tempo/), or [Honeycomb](https://www.honeycomb.io).
+YSQL queries spend time in many places: parsing, planning, execution, transaction commit, and RPC calls to tablet servers. YugabyteDB can export timing data for these stages as OpenTelemetry (OTel) traces so you can inspect a waterfall view of query execution in tools such as [Jaeger](/stable/integrations/jaeger/), [Grafana Tempo](https://grafana.com/oss/tempo/), or [Honeycomb](https://www.honeycomb.io).
 
 Distributed Tracing is {{<tags/feature/tp>}} and available in v2025.2.4.0 and later, and is currently only available for YSQL. Tracing inside tablet servers is not included in this release.
 
 ## How it works
 
-YSQL Distributed Tracing follows the [W3C Trace Context](https://www.w3.org/TR/trace-context/) standard. Your application (or a SQL comment or session setting) supplies a `traceparent` value. YugabyteDB creates spans for the query lifecycle and exports them to an OTel collector over OTLP/HTTP.
+YSQL Distributed Tracing follows the [W3C Trace Context](https://www.w3.org/TR/trace-context/) standard. Your application supplies a `traceparent` value. YugabyteDB creates spans for the query lifecycle and exports them to an OTel collector over OTLP/HTTP.
 
 Each traced query produces a _trace_ made up of _spans_. Spans are nested to show where time is spent. For example, planning, execution, commit, and individual RPC calls to `PgClientService`.
 
@@ -35,9 +35,9 @@ To configure Distributed Tracing, set the following YB-TServer flags on each nod
 | Flag | Description | Default |
 | :--- | :---------- | :------ |
 | otel_collector_traces_endpoint | OTLP/HTTP URL where spans are exported. For example, `http://<collector-host>:4318/v1/traces`.<br>Setting this flag enables tracing infrastructure in each YSQL backend process. | Empty |
-| otel_batch_max_queue_size | Maximum spans buffered before export. Spans beyond this limit are dropped. | `2048` |
+| otel_batch_max_queue_size | Maximum spans buffered before export. Spans beyond this limit are dropped. Must be greater than 0 and at least as large as `otel_batch_max_export_batch_size`. | `2048` |
 | otel_batch_schedule_delay_ms | Milliseconds between batch exports. Lower values reduce export latency but increase export frequency. | `5000` |
-| otel_batch_max_export_batch_size | Maximum spans per export batch. | `512` |
+| otel_batch_max_export_batch_size | Maximum spans per export batch. Must be greater than 0 and no larger than `otel_batch_max_queue_size`. | `512` |
 
 ## Prerequisites
 
@@ -84,7 +84,7 @@ After the cluster is running with tracing configured, enable tracing for individ
 
 #### SQL comment (per query)
 
-Prepend or append a block comment that contains a W3C `traceparent` value. The comment must be the _first_ block comment at the start of the query, or the _last_ block comment at the end of the query.
+Prepend or append a block comment that contains a W3C `traceparent` value. The comment must be the _first_ block comment at the start of the query, or the _last_ block comment at the end of the query. If the comment is not the first or last, the `traceparent` is not parsed.
 
 ```sql
 /*traceparent='00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'*/
@@ -98,11 +98,11 @@ SELECT * FROM orders WHERE customer_id = 500
 /*traceparent='00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'*/;
 ```
 
-If another block comment appears before a leading `traceparent` comment, or after a trailing `traceparent` comment, the `traceparent` is not parsed.
-
 #### Configuration parameter (per session or transaction)
 
-Set the `yb_dist_tracecontext` YSQL [configuration parameter](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters) to trace every query in a session or transaction:
+Set the `yb_dist_tracecontext` YSQL [configuration parameter](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters).
+
+For example, to trace every query in the current transaction:
 
 ```sql
 BEGIN;
@@ -112,13 +112,13 @@ UPDATE accounts SET balance = balance - 100 WHERE id = 10;
 COMMIT;
 ```
 
-If both the parameter and a SQL comment supply a `traceparent`, the parameter takes priority and a warning is emitted.
-
 To stop tracing for the session:
 
 ```sql
 RESET yb_dist_tracecontext;
 ```
+
+Note: If you provide both a `traceparent` parameter _and_ SQL comment, the parameter takes priority and a warning is emitted.
 
 ### View traces
 
