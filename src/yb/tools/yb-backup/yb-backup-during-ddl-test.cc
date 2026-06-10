@@ -933,9 +933,6 @@ TEST_P(YBBackupDuringAlterTable, RenameColumn) {
 class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
  public:
   void SetUp() override {
-  #ifndef __linux__
-    GTEST_SKIP() << "YB Controller is only built/supported on Linux";
-  #endif
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_anonymizer) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_yb_controller) = true;
     YBBackupDuringDdl::SetUp();
@@ -1013,6 +1010,9 @@ class YBCloneWithAnonymizerTest : public YBBackupWithAnonymizerTest {
 // Same scenario as RestoreAfterRoleRenameWithAnonymizer but using database clone
 // instead of manual backup/restore.
 TEST_F(YBCloneWithAnonymizerTest, CloneAfterRoleRenameWithAnonymizer) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC";
+  }
   auto conn = ASSERT_RESULT(SetUpAnonymizer());
 
   ASSERT_RESULT(snapshot_util_->CreateSchedule(
