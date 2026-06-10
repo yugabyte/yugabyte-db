@@ -3,7 +3,8 @@
 package api.v2.mappers;
 
 import api.v2.models.KmsConfiguration;
-import api.v2.models.KmsConfigurationMetadata;
+import api.v2.models.KmsConfigurationInfo;
+import api.v2.models.KmsConfigurationSpec;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -25,27 +26,29 @@ public interface KmsConfigurationMapper {
 
   KmsConfigurationMapper INSTANCE = Mappers.getMapper(KmsConfigurationMapper.class);
 
+  @Mapping(target = "spec", source = ".")
+  @Mapping(target = "info", source = ".")
+  KmsConfiguration toKmsConfiguration(KmsConfig config);
+
   @Mapping(
       target = "credentials",
       source = "authConfig",
       qualifiedByName = "maskedCredentialsFromAuth")
-  @Mapping(target = "metadata", source = ".")
-  KmsConfiguration toKmsConfiguration(KmsConfig config);
-
-  @Mapping(target = "configUuid", source = "configUUID")
   @Mapping(target = "provider", expression = "java(source.getKeyProvider().name())")
+  KmsConfigurationSpec toKmsConfigurationSpec(KmsConfig source);
+
+  @Mapping(target = "uuid", source = "configUUID")
   @Mapping(
       target = "inUse",
       expression =
           "java(com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.configInUse(source.getConfigUUID()))")
   @Mapping(target = "universeDetails", ignore = true)
-  KmsConfigurationMetadata toKmsConfigurationMetadata(KmsConfig source);
+  KmsConfigurationInfo toKmsConfigurationInfo(KmsConfig source);
 
-  // workaround for collectionMappingStrategy = ADDER_PREFERRED in CentralConfig
   @AfterMapping
   default void fillKmsConfigurationUniverseDetails(
-      KmsConfig source, @MappingTarget KmsConfigurationMetadata metadata) {
-    metadata.setUniverseDetails(
+      KmsConfig source, @MappingTarget KmsConfigurationInfo info) {
+    info.setUniverseDetails(
         EncryptionAtRestUtil.getUniverses(source.getConfigUUID()).stream()
             .map(UniverseDetailSubsetMapper.INSTANCE::toV2)
             .collect(Collectors.toList()));

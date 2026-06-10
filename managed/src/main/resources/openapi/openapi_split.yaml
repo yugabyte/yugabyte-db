@@ -30,6 +30,8 @@ tags:
     description: CRUD operations for Continuous YBA Backups
   - name: Customer Configuration
     description: Customer configuration management
+  - name: Disaster Recovery
+    description: Disaster recovery configuration management
   - name: Encryption at rest
     description: Encryption at rest management
   - name: Image Bundle
@@ -40,6 +42,8 @@ tags:
     description: Job Scheduler
   - name: Metrics
     description: CRUD operations for YBA metrics
+  - name: PITR
+    description: Point-in-time recovery configuration management
   - name: Telemetry Provider
     description: Operations for Telemetry Providers
   - name: Universe

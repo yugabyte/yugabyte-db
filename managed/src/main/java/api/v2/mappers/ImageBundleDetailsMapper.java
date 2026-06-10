@@ -7,7 +7,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 
-@Mapper(config = CentralConfig.class, uses = ImageBundleInfoMapper.class)
+@Mapper(config = CentralConfig.class, uses = ImageBundleRegionInfoMapper.class)
 public interface ImageBundleDetailsMapper {
 
   ImageBundleDetailsMapper INSTANCE = Mappers.getMapper(ImageBundleDetailsMapper.class);

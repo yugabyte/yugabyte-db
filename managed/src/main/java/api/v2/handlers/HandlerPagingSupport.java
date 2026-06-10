@@ -26,7 +26,7 @@ public final class HandlerPagingSupport {
     return offset != null ? offset : 0;
   }
 
-  static NormalizedPaginationSpec normalize(PaginationSpec spec) {
+  public static NormalizedPaginationSpec normalize(PaginationSpec spec) {
     validatePagination(spec);
     return new NormalizedPaginationSpec(
         HandlerPagingSupport.normalizedOffset(spec.getOffset()),
@@ -71,7 +71,7 @@ public final class HandlerPagingSupport {
     return mapPage(page.getList(), mapper);
   }
 
-  static <M, I, R extends PaginationResp<I>> R pagedResponse(
+  public static <M, I, R extends PaginationResp<I>> R pagedResponse(
       R resp, PagedList<M> page, Function<M, I> mapper) {
     resp.setHasNext(page.hasNext())
         .setHasPrev(page.hasPrev())

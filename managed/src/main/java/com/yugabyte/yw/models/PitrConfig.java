@@ -4,6 +4,8 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import api.v2.handlers.HandlerPagingSupport;
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -12,8 +14,10 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import io.ebean.DB;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PagedList;
 import io.ebean.SqlRow;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -45,8 +49,7 @@ import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 @EqualsAndHashCode(callSuper = false)
 public class PitrConfig extends Model {
 
-  private static final Finder<UUID, PitrConfig> find =
-      new Finder<UUID, PitrConfig>(PitrConfig.class) {};
+  private static final Finder<UUID, PitrConfig> find = new Finder<>(PitrConfig.class) {};
 
   @Id
   @ApiModelProperty(value = "PITR config UUID")
@@ -152,6 +155,27 @@ public class PitrConfig extends Model {
     return find.query().where().eq("universe_uuid", universeUUID).findList();
   }
 
+  public static PagedList<PitrConfig> getPagedListForUniverse(
+      UUID universeUuid, NormalizedPaginationSpec normalized) {
+    return getPagedListForUniverse(universeUuid, null, normalized);
+  }
+
+  public static PagedList<PitrConfig> getPagedListForUniverse(
+      UUID universeUuid, UUID drConfigUuid, NormalizedPaginationSpec normalized) {
+    ExpressionList<PitrConfig> expr = find.query().where().eq("universe_uuid", universeUuid);
+    if (drConfigUuid != null) {
+      expr =
+          expr.raw(
+              "exists (select 1 from xcluster_pitr xp "
+                  + "inner join xcluster_config xc on xc.uuid = xp.xcluster_uuid "
+                  + "where xp.pitr_uuid = t0.uuid and xc.dr_config_uuid = ?)",
+              drConfigUuid);
+    }
+    String order = normalized.order();
+    String orderBy = String.format("coalesce(lower(name), '') %s, uuid %s", order, order);
+    return HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
+  }
+
   public static Optional<PitrConfig> maybeGetByName(UUID universeUUID, String name) {
     return find.query().where().eq("universe_uuid", universeUUID).eq("name", name).findOneOrEmpty();
   }
@@ -164,15 +188,6 @@ public class PitrConfig extends Model {
     this.disabled = disabled;
     this.updateTime = new Date();
     this.save();
-  }
-
-  public static boolean updateDisabledStatus(UUID configUUID, boolean disabled) {
-    PitrConfig pitrConfig = get(configUUID);
-    if (pitrConfig != null) {
-      pitrConfig.updateDisabledStatus(disabled);
-      return true;
-    }
-    return false;
   }
 
   public void updateIntermittentMinRecoverTimeInMillis(long intermittentMinRecoverTimeInMillis) {

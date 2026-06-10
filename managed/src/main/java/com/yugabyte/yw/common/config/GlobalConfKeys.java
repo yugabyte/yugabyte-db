@@ -388,6 +388,33 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "XCluster/DR config GET API timeout in milliseconds",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitrListApiTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.pitr.list_api.snapshot_schedules.request_timeout_ms",
+          ScopeType.GLOBAL,
+          "PITR list API snapshot schedules request timeout",
+          "YB client admin operation timeout in milliseconds for PITR list APIs that call"
+              + " listSnapshotSchedules",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitrListSnapshotSchedulesCacheTtlMs =
+      new ConfKeyInfo<>(
+          "yb.pitr.list_api.snapshot_schedules.cache.ttl_ms",
+          ScopeType.GLOBAL,
+          "PITR list API snapshot schedules cache TTL",
+          "Per-universe cache TTL in milliseconds for listSnapshotSchedules results used by PITR"
+              + " list APIs",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitrListSnapshotSchedulesCacheMaxUniverses =
+      new ConfKeyInfo<>(
+          "yb.pitr.list_api.snapshot_schedules.cache.max_size",
+          ScopeType.GLOBAL,
+          "PITR list API snapshot schedules cache max size",
+          "Maximum number of universes whose listSnapshotSchedules results are cached for PITR"
+              + " list APIs",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(

@@ -84,6 +84,9 @@
 | "YBC admin operation timeout" | "ybc.timeout.admin_operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for admin operations" | "Integer" |
 | "XCluster config DB sync timeout" | "yb.xcluster.db_sync_timeout_ms" | "GLOBAL" | "XCluster config background DB sync timeout in milliseconds" | "Integer" |
 | "XCluster/DR config GET API timeout" | "yb.xcluster.get_api_timeout_ms" | "GLOBAL" | "XCluster/DR config GET API timeout in milliseconds" | "Integer" |
+| "PITR list API snapshot schedules request timeout" | "yb.pitr.list_api.snapshot_schedules.request_timeout_ms" | "GLOBAL" | "YB client admin operation timeout in milliseconds for PITR list APIs that call listSnapshotSchedules" | "Integer" |
+| "PITR list API snapshot schedules cache TTL" | "yb.pitr.list_api.snapshot_schedules.cache.ttl_ms" | "GLOBAL" | "Per-universe cache TTL in milliseconds for listSnapshotSchedules results used by PITR list APIs" | "Integer" |
+| "PITR list API snapshot schedules cache max size" | "yb.pitr.list_api.snapshot_schedules.cache.max_size" | "GLOBAL" | "Maximum number of universes whose listSnapshotSchedules results are cached for PITR list APIs" | "Integer" |
 | "YBC socket read timeout" | "ybc.timeout.socket_read_timeout_ms" | "GLOBAL" | "YBC client socket read timeout in milliseconds" | "Integer" |
 | "YBC operation timeout" | "ybc.timeout.operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for operations" | "Integer" |
 | "DNS debug logging threshold" | "yb.client.dns_debug_threshold_ns" | "GLOBAL" | "Threshold in nanoseconds above which DNS lookups are logged at DEBUG level" | "Integer" |

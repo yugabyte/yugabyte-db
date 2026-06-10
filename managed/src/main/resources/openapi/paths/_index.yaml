@@ -817,6 +817,61 @@
       noAuthz: true
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/pitr-configs/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListPitrConfigs
+    summary: List PITR configurations (paged)
+    description: |
+      Returns PITR configurations for the specified universe with pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - PITR
+    requestBody:
+      $ref: "../components/requestBodies/PitrConfigPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/PitrConfigPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or universe not found
+      '429':
+        description: Another PITR list request is already in progress
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/telemetry-provider/types':
   parameters:
     - name: cUUID
