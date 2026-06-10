@@ -5979,7 +5979,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPri
 
   // Set checkpoint should throw an error, for the tablet that is not part of the stream, because
   // it's non-primary key table.
-  ASSERT_NOK(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_OK(SetCDCCheckpoint(stream_id, tablets));
 
   ASSERT_OK(WriteRowsHelper(
       0 /* start */, 1 /* end */, &test_cluster_, true, 2, tables_wo_pk[0].c_str()));
@@ -5987,7 +5987,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamWithAllTablesHaveNonPri
   // Get changes should throw an error, for the tablet that is not part of the stream, because
   // it's non-primary key table.
   auto change_resp = GetChangesFromCDC(stream_id, tablets);
-  ASSERT_FALSE(change_resp.ok());
+  ASSERT_TRUE(change_resp.ok());
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeOfTransactionRecords)) {
@@ -13682,6 +13682,7 @@ TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIneligibleTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key) = false;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,

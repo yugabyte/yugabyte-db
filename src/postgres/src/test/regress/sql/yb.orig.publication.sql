@@ -11,10 +11,10 @@ CREATE TABLE testpub_tbl4_nopk (foo int, bar int);
 
 CREATE PUBLICATION testpub FOR ALL TABLES;
 
--- testpub_tbl3_nopk should get filtered out.
+-- All tables (including those without primary key) are included.
 SELECT * FROM pg_publication_tables;
 
--- errors out since tables without pk are unsupported.
+-- Tables without primary key are allowed in an explicit list publication.
 CREATE PUBLICATION testpub_explicit_list FOR TABLE testpub_tbl2, testpub_tbl3_nopk;
 
 DROP PUBLICATION testpub;

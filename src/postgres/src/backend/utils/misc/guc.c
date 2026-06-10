@@ -2771,7 +2771,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_cdcsdk_stream_tables_without_primary_key,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 

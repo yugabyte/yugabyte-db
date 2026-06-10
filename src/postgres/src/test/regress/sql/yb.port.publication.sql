@@ -73,8 +73,6 @@ RESET client_min_messages;
 DROP TABLE testpub_tbl3, testpub_tbl3a;
 DROP PUBLICATION testpub3, testpub4;
 -- YB Note: Drop publications one by one to ensure cleanup.
--- These will fail now but will pass once we support streaming
--- tables without pk.
 DROP PUBLICATION testpub3;
 DROP PUBLICATION testpub4;
 
@@ -103,8 +101,6 @@ CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_view;
 
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1, pub_test.testpub_nopk;
--- YB Note: tables without pk are unsupported.
-CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1;
 RESET client_min_messages;
 -- fail - already added
 ALTER PUBLICATION testpub_fortbl ADD TABLE testpub_tbl1;
@@ -127,8 +123,6 @@ ALTER PUBLICATION testpib_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tb
 \dRp+ testpub_default
 
 ALTER PUBLICATION testpub_default DROP TABLE testpub_tbl1, pub_test.testpub_nopk;
--- YB Note: tables without pk are unsupported.
-ALTER PUBLICATION testpub_default DROP TABLE testpub_tbl1;
 -- fail - nonexistent
 ALTER PUBLICATION testpub_default DROP TABLE pub_test.testpub_nopk;
 
