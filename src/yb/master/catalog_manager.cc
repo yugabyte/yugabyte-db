@@ -7272,10 +7272,15 @@ Status CatalogManager::DeleteTableInternal(
   TRACE("Committing in-memory state");
   std::unordered_set<TableId> sys_table_ids;
   std::unordered_set<TableId> deleted_table_ids;
+  std::unordered_set<TableId> non_retained_cdcsdk_deleted_table_ids;
   for (auto& deleting_table : tables) {
     deleted_table_ids.insert(deleting_table.table_info_with_write_lock->id());
     if (deleting_table.table_info_with_write_lock->is_system()) {
       sys_table_ids.insert(deleting_table.table_info_with_write_lock->id());
+    }
+    if (!deleting_table.delete_retainer.active_cdcsdk) {
+      non_retained_cdcsdk_deleted_table_ids.insert(
+          deleting_table.table_info_with_write_lock->id());
     }
     deleting_table.table_info_with_write_lock.Commit();
   }
@@ -7376,12 +7381,21 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   // The catalog manager's background task removes the tables from such streams' metadata. Note that
-  // the streams associated with the 'deleted_table_ids' are not being dropped.
-  if (!FLAGS_enable_table_rewrite_for_cdcsdk_table) {
+  // the streams associated with the cdcsdk_cleanup_table_ids are not being dropped.
+  //
+  // When enable_table_rewrite_for_cdcsdk_table is set, tables retained as hidden for CDCSDK logical
+  // replication streams are removed from the stream metadata later by CleanupHiddenTables, once all
+  // their tablets are deleted. Tables that are not retained for CDCSDK (e.g. tables that are part
+  // of only gRPC streams) are deleted immediately, so they must be removed from the stream metadata
+  // here. When the flag is unset, all dropped tables are cleaned up from stream metadata here.
+  const auto& cdcsdk_cleanup_table_ids = FLAGS_enable_table_rewrite_for_cdcsdk_table
+                                             ? non_retained_cdcsdk_deleted_table_ids
+                                             : deleted_table_ids;
+  if (!cdcsdk_cleanup_table_ids.empty()) {
     if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
-      RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(deleted_table_ids));
+      RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(cdcsdk_cleanup_table_ids));
     } else {
-      RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+      RETURN_NOT_OK(DropCDCSDKStreams(cdcsdk_cleanup_table_ids));
     }
   }
 
@@ -7429,6 +7443,7 @@ Status CatalogManager::DeleteTableInMemoryAcquireLocks(
     const scoped_refptr<master::TableInfo>& table,
     bool is_index_table,
     bool update_indexed_table,
+    const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
     std::map<TableId, DeletingTableData>* data_map) {
   data_map->emplace(table->id(), DeletingTableData(table));
   {
@@ -7461,6 +7476,12 @@ Status CatalogManager::DeleteTableInMemoryAcquireLocks(
       }
     }
   }
+
+  for (auto& [_, data] : *data_map) {
+    data.delete_retainer = VERIFY_RESULT(GetDeleteRetainerInfoForTableDrop(
+        *data.table_info_with_write_lock.info, schedules_to_tables_map));
+  }
+
   // Lock the table and indexes in the order of their table_ids.
   for (auto& [_, data] : *data_map) {
     data.table_info_with_write_lock.Lock();
@@ -7521,8 +7542,8 @@ Status CatalogManager::DeleteTableInMemory(
   std::map<TableId, DeletingTableData> data_map;
   if (!data_map_ptr) {
     TRACE(Substitute("Locking $0", object_type));
-    RETURN_NOT_OK(
-        DeleteTableInMemoryAcquireLocks(table, is_index_table, update_indexed_table, &data_map));
+    RETURN_NOT_OK(DeleteTableInMemoryAcquireLocks(
+        table, is_index_table, update_indexed_table, schedules_to_tables_map, &data_map));
     data_map_ptr = &data_map;
   }
   auto& data = data_map_ptr->find(table->id())->second;
@@ -7534,9 +7555,6 @@ Status CatalogManager::DeleteTableInMemory(
     Status s = STATUS(NotFound, "The object does not exist");
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
-
-  data.delete_retainer =
-      VERIFY_RESULT(GetDeleteRetainerInfoForTableDrop(*table, schedules_to_tables_map));
 
   bool hide_only = data.delete_retainer.IsHideOnly();
 

@@ -3489,21 +3489,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsumptionAfterDroppingTable
     // Drop test2 which is not part of the publication.
     LOG(INFO) << "Dropping table: " << table2.table_name();
     DropTable(&test_cluster_, table2.table_name().c_str());
-    VerifyTablesInStreamMetadata(
-        stream_id, {table1.table_id()},
-        "Waiting for stream metadata cleanup after dropping test2",
-        std::nullopt /* expected_unqualified_table_ids */, true /* include_catalog_tables */);
-
-    // Verify state table entries for tablets of test2 are also removed.
-    std::unordered_set<TabletId> expected_tablets;
-    expected_tablets.insert(kCDCSDKSlotEntryTabletId);
-    for (auto& entry : table_1_tablets) {
-      expected_tablets.insert(entry.tablet_id());
-    }
-    CheckTabletsInCDCStateTable(
-        expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
-        "Timed out waiting for state table entries for test2 to be deleted",
-        true /* include_catalog_tables */);
   });
 
   auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
