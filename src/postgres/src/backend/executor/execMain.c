@@ -140,6 +140,12 @@ void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	/*
+	 * Disable skip intents if this query has a modifying CTE. We must do this
+	 * before execution starts because the write might occur before any read.
+	 */
+	YbDisableSkipIntentsIfModifyingCTE(queryDesc);
+
+	/*
 	 * In some cases (e.g. an EXECUTE statement or an execute message with the
 	 * extended query protocol) the query_id won't be reported, so do it now.
 	 *
