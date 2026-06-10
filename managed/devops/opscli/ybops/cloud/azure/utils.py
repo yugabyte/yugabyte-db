@@ -176,6 +176,16 @@ def cloud_init_encoded(**kwargs):
         cloud_init["mounts"].extend(additional_mounts)
 
     cloud_init.update(**kwargs)
+
+    boot_script = kwargs.pop("boot_script", None)
+    if boot_script:
+        cloud_init["write_files"] = [{
+            "path": "/usr/local/bin/yb-boot-script.sh",
+            "permissions": "0755",
+            "content": boot_script,
+        }]
+        cloud_init["runcmd"] = [["/bin/bash", "/usr/local/bin/yb-boot-script.sh"]]
+
     ci_data = yaml.dump(cloud_init)
     logging.debug("created cloud init data: {}".format(ci_data))
 
@@ -892,7 +902,7 @@ class AzureCloudAdmin():
                             region, nic_id, tags, disk_iops, disk_throughput, spot_price,
                             use_spot_instance, vm_custom, disk_custom, use_plan, is_edit=False,
                             json_output=True, capacity_reservation=None,
-                            cloud_instance_types=[]):
+                            cloud_instance_types=[], boot_script=None):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
 
@@ -979,7 +989,11 @@ class AzureCloudAdmin():
         # Base64 encode the cloud init data. Python base64 takes in and returns
         # byte-like objects, so we must encode the yaml and then decode the output.
         # This allows us to pass the cloud init as a base64 encoded string.
-        cloud_init = cloud_init_encoded()
+        boot_script_content = None
+        if boot_script:
+            with open(boot_script, 'r') as _bs:
+                boot_script_content = _bs.read()
+        cloud_init = cloud_init_encoded(boot_script=boot_script_content)
         vm_parameters = {
             "location": region,
             "os_profile": {
