@@ -171,9 +171,7 @@ If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you s
 
 ## Streaming DDLs causing table rewrite
 
-By default (v2026.1 and later), streaming DDLs that cause table rewrites are detected by logical replication, which sends a DDL event to the client, and transitions to streaming changes from the re-written table's tablets after finishing data from the older tablets.
-
-In addition, you can perform DDL on _non-colocated_ tables in a database with active logical replication without dropping replication slots. CDC detects the DDL, sends a record informing the client about the schema change, and shifts to the new tablets when the DDL causes a table rewrite.
+By default (v2026.1 and later), you can perform DDL on _non-colocated_ tables in a database with active logical replication without dropping replication slots. When a DDL causes a table rewrite, logical replication detects it, sends a DDL event to the client, and transitions to streaming changes from the re-written table's tablets after finishing data from the older tablets.
 
 For more details, see [Table rewrite and DROP TABLE handling](../../../../architecture/docdb-replication/cdc-logical-replication/#table-rewrite-and-drop-table-handling).
 
