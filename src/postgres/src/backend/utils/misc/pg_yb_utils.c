@@ -4851,6 +4851,7 @@ yb_servers(PG_FUNCTION_ARGS)
 		if (ncols >= YB_SERVERS_COLS_V3)
 			TupleDescInitEntry(tupdesc, (AttrNumber) 10,
 							   "universe_uuid", TEXTOID, -1, 0);
+		TupleDescFinalize(tupdesc);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
 		YbcServerDescriptor *servers = NULL;
@@ -5153,6 +5154,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
 						   "colocation_id", OIDOID, -1, 0);
 	}
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	if (!not_found)
@@ -7682,6 +7684,7 @@ YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
 			case CONSTRAINT_UNIQUE:
 			case CONSTRAINT_TRIGGER:
 			case CONSTRAINT_EXCLUSION:
+			case CONSTRAINT_NOTNULL:
 				break;
 			default:
 				elog(ERROR, "invalid constraint type \"%c\"",

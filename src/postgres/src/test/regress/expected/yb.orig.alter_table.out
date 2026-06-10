@@ -519,4 +519,4 @@ HINT:  Alter the table instead.
 CREATE TEMP TABLE pg_foo(id INT, PRIMARY KEY(id));
 ALTER INDEX pg_foo_pkey OWNER TO postgres;
 WARNING:  cannot change owner of index "pg_foo_pkey"
-HINT:  Change the ownership of the index's table, instead.
+HINT:  Change the ownership of the index's table instead.

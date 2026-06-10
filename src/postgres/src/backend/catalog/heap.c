@@ -2010,6 +2010,14 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 	attStruct->attgenerated = '\0';
 
 	/*
+	 * attname is part of pg_attribute's primary key in YB, so the existing
+	 * row must be deleted by its original key before the column is renamed
+	 * below; otherwise the delete would target the renamed (nonexistent) key.
+	 */
+	if (IsYugaByteEnabled())
+		CatalogTupleDelete(attr_rel, tuple);
+
+	/*
 	 * Change the column name to something that isn't likely to conflict
 	 */
 	snprintf(newattname, sizeof(newattname),
@@ -2041,9 +2049,9 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 	{
 		/*
 		 * TODO: Should be changed to CatalogTupleUpdate() when we are
-		 * able to update a row's primary key
+		 * able to update a row's primary key.  The original row was already
+		 * deleted above, before the rename.
 		 */
-		CatalogTupleDelete(attr_rel, tuple);
 		CatalogTupleInsert(attr_rel, tuple);
 	}
 	else

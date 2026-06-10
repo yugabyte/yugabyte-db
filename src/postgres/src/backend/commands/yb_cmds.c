@@ -1520,7 +1520,6 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 		case AT_ValidateConstraint:
 		case AT_DropExpression:
 			{
-				Assert(cmd->subtype != AT_DropConstraint);
 				if (cmd->subtype == AT_AlterColumnType)
 				{
 					HeapTuple	typeTuple;

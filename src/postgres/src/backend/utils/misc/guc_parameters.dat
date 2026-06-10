@@ -3655,11 +3655,31 @@
   options => 'xmloption_options',
 },
 
+{ name => 'yb_ddl_rollback_enabled', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'If set, any DDL that involves DocDB schema changes will have those changes rolled back upon failure.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_ddl_rollback_enabled',
+  boot_val => 'true',
+},
+
+{ name => 'yb_enable_alter_table_rewrite', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
+  short_desc => 'Enable ALTER TABLE rewrite operations',
+  variable => 'yb_enable_alter_table_rewrite',
+  boot_val => 'true',
+},
+
 { name => 'yb_enable_create_with_table_oid', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'Enables the ability to set table oids when creating tables or indexes.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_enable_create_with_table_oid',
   boot_val => 'false',
+},
+
+{ name => 'yb_enable_ddl_atomicity_infra', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Used along side with yb_ddl_rollback_enabled to control whether DDL atomicity is enabled.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_enable_ddl_atomicity_infra',
+  boot_val => 'true',
 },
 
 { name => 'yb_explain_hide_non_deterministic_fields', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
@@ -3674,6 +3694,15 @@
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_non_ddl_txn_for_sys_tables_allowed',
   boot_val => 'false',
+},
+
+{ name => 'yb_test_fail_next_ddl', type => 'int', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'When set to non-zero, the next DDL will fail: 1=ERROR, 2=FATAL, 3=PANIC, 4=crash.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_test_fail_next_ddl',
+  boot_val => '0',
+  min => '0',
+  max => '4',
 },
 
 { name => 'zero_damaged_pages', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',

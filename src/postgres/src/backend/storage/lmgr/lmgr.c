@@ -387,6 +387,15 @@ CheckRelationLockedByMe(Relation relation, LOCKMODE lockmode, bool orstronger)
 bool
 CheckRelationOidLockedByMe(Oid relid, LOCKMODE lockmode, bool orstronger)
 {
+	/*
+	 * In LockAcquireExtended, YB reports LOCKACQUIRE_OK if we attempt to
+	 * acquire a lock on any relation, because locking is handled separately.
+	 * We always return true here because we assume that the caller has already
+	 * tried to acquire the lock.
+	 */
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
+		return true;
+
 	LOCKTAG		tag;
 
 	SetLocktagRelationOid(&tag, relid);
@@ -438,7 +447,7 @@ LockRelationIdForSession(LockRelId *relid, LOCKMODE lockmode)
 				 relid->relId, relid->dbId);
 		}
 		/* YB_TODO_PG19MERGE: PG19 added bool orstronger arg. */
-		if (!LockHeldByMe(&tag, lockmode, false /* orstronger */))
+		if (!LockHeldByMe(&tag, lockmode, false /* orstronger */ ))
 		{
 			elog(FATAL, "expected active txn lock on relid %d, dbid: %d",
 				 relid->relId, relid->dbId);

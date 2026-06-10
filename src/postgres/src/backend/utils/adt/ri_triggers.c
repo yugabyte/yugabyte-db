@@ -757,7 +757,7 @@ RI_FKey_check(TriggerData *trigdata)
 	 * themselves if no matching PK row is found, so they only return on
 	 * success.
 	 */
-	if (ri_fastpath_is_applicable(riinfo))
+	if (!IsYBRelation(fk_rel) && ri_fastpath_is_applicable(riinfo))
 	{
 		if (AfterTriggerIsActive())
 		{
@@ -801,7 +801,7 @@ RI_FKey_check(TriggerData *trigdata)
 				ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CHECK_LOOKUPPK);
 				/* YB_TODO_PG19MERGE: new PG paramter "is_restrict". */
 				ri_ReportViolation(riinfo, pk_rel, fk_rel, newslot, NULL, qkey.constr_queryno,
-								   false /* is_restrict */,
+								   false /* is_restrict */ ,
 								   false /* partgone */ );
 			}
 			table_close(pk_rel, RowShareLock);
