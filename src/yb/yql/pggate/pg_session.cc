@@ -862,6 +862,7 @@ Result<FlushFuture> PgSession::FlushOperations(
 NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
   return NonTransactionalWrites(
       pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL &&
+      !pg_txn_manager_->IsDdlMode() &&
       std::ranges::any_of(operations, [](const auto& op) { return !IsReadOnly(*op); }));
 }
 
@@ -1089,6 +1090,13 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
 
   return SetupPerformOptions(*options, NonTransactionalWrites::kFalse);
+}
+
+void PgSession::SetupDeferReadPointOptionForSeparateDdlTxn(
+    tserver::PgPerformOptionsPB* options) const {
+  if (pg_txn_manager_->ShouldDeferReadPoint()) {
+    options->mutable_read_time_options()->set_defer_read_point(true);
+  }
 }
 
 void PgSession::SetTransactionHasWrites() {

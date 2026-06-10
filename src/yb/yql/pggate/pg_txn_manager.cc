@@ -432,23 +432,6 @@ Status PgTxnManager::CalculateIsolation(
           : (pg_isolation_level_ == PgIsolationLevel::READ_COMMITTED
               ? IsolationLevel::READ_COMMITTED
               : IsolationLevel::SNAPSHOT_ISOLATION);
-  // Users can use the deferrable mode via:
-  // (1) DEFERRABLE READ ONLY setting in transaction blocks
-  // (2) SET yb_read_after_commit_visibility = 'deferred';
-  //
-  // The feature doesn't take affect for non-read only serializable isolation txns
-  // and fast-path transactions because they don't face read restart errors in the first place.
-  //
-  // (1) Serializable isolation txns don't face read restart errors because
-  //    they use the latest timestamp for reading.
-  // (2) Fast-path txns don't face read restart errors because
-  //    they pick a read time after conflict resolution.
-  // We already skip (2) because CalculateIsolation is not called for fast-path
-  //    (i.e., NON_TRANSACTIONAL).
-  need_defer_read_point_ =
-      ((read_only_ && deferrable_)
-        || yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY)
-      && docdb_isolation != IsolationLevel::SERIALIZABLE_ISOLATION;
 
   VLOG_TXN_STATE(2) << "DocDB isolation level: " << IsolationLevel_Name(docdb_isolation);
 
@@ -620,7 +603,6 @@ void PgTxnManager::ResetTxnAndSession() {
   crosstxn_snapshot_read_time_is_used_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
-  need_defer_read_point_ = false;
   clamp_uncertainty_window_ = false;
 
   // GH #22353 - Ideally the reset of the ddl_state_ should happen without the if condition, but
@@ -740,7 +722,8 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
     const tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
     std::optional<ReadTimeAction> read_time_action,
     tserver::ReadTimeManipulation manipulation,
-    NonTransactionalWrites ops_has_non_transactional_writes) const {
+    NonTransactionalWrites ops_has_non_transactional_writes,
+    bool need_defer_read_point) const {
   const auto has_read_time = read_time_options.has_read_time();
 
   if (need_restart_ || manipulation == tserver::ReadTimeManipulation::RESTART) {
@@ -753,7 +736,7 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
     RSTATUS_DCHECK(
         !ShouldClamp(), IllegalState, "Clamped reads do not face read restart errors.");
     RSTATUS_DCHECK(
-        !need_defer_read_point_, IllegalState, "Deferred reads do not face read restart errors.");
+        !need_defer_read_point, IllegalState, "Deferred reads do not face read restart errors.");
     RSTATUS_DCHECK(
         !has_read_time, IllegalState,
         "Reads as of a time (e.g., backfill, yb_read_time) do not face read restart errors.");
@@ -825,8 +808,11 @@ Status PgTxnManager::SetupReadTimeOptions(
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   }
 
+  const auto need_defer_read_point = ShouldDeferReadPoint();
+
   RETURN_NOT_OK(CheckConflictsAcrossReadTimeOptions(
-      read_time_options, read_time_action, manipulation, ops_has_non_transactional_writes));
+      read_time_options, read_time_action, manipulation, ops_has_non_transactional_writes,
+      need_defer_read_point));
 
   if (ShouldResetReadTime(read_time_action)) {
     read_time_options.mutable_read_time()->Clear();
@@ -862,10 +848,10 @@ Status PgTxnManager::SetupReadTimeOptions(
     return Status::OK();
   }
 
-  if (need_defer_read_point_) {
-    // Two ways to defer read point:
-    // 1. SET TRANSACTION READ ONLY DEFERRABLE
-    // 2. SET yb_read_after_commit_visibility = 'deferred'
+  // Fast-path txns and serializable isolation transactions do not need deferred mode since they
+  // can't face read restart errors. We return early if ops_has_non_transactional_writes/
+  // IsSerializableIsolation().
+  if (need_defer_read_point) {
     read_time_options.set_defer_read_point(true);
     return Status::OK();
   }
