@@ -16,15 +16,15 @@ rightNav:
   hideH4: true
 ---
 
-When a YSQL query is slow, the time can be spent in many places: parsing, planning, execution, transaction commit, and RPC calls to tablet servers. YugabyteDB can export timing data for these stages as **OpenTelemetry (OTel)** traces so you can inspect a waterfall view of query execution in tools such as Jaeger, Grafana Tempo, or Honeycomb.
+When a YSQL query is slow, the time can be spent in many places: parsing, planning, execution, transaction commit, and RPC calls to tablet servers. YugabyteDB can export timing data for these stages as OpenTelemetry (OTel) traces so you can inspect a waterfall view of query execution in tools such as Jaeger, Grafana Tempo, or Honeycomb.
 
-Distributed tracing is {{<tags/feature/tp>}} and currently instruments the **YSQL (Postgres) layer only**. Tracing inside tablet servers is not included in this release.
+Distributed tracing is {{<tags/feature/tp>}} and is currently only available for YSQL. Tracing inside tablet servers is not included in this release.
 
 ## How it works
 
 YSQL distributed tracing follows the [W3C Trace Context](https://www.w3.org/TR/trace-context/) standard. Your application (or a SQL comment or session setting) supplies a `traceparent` value. YugabyteDB creates spans for the query lifecycle and exports them to an OTel collector over OTLP/HTTP.
 
-Each traced query produces a **trace** made up of **spans**. Spans are nested to show where time is spent—for example, planning, execution, commit, and individual RPC calls to `PgClientService`.
+Each traced query produces a _trace_ made up of _spans_. Spans are nested to show where time is spent. For example, planning, execution, commit, and individual RPC calls to `PgClientService`.
 
 When tracing is disabled (the default), there is no measurable performance impact. When tracing is enabled for a query, other queries and other YSQL backends are not affected.
 
@@ -38,7 +38,7 @@ When tracing is disabled (the default), there is no measurable performance impac
 
 The following example uses [Jaeger](https://www.jaegertracing.io/) as the trace backend. Jaeger accepts OTLP over HTTP on port 4318.
 
-### 1. Start Jaeger
+### Start Jaeger
 
 Run Jaeger all-in-one with OTLP enabled:
 
@@ -52,14 +52,13 @@ docker run --rm --name jaeger \
 
 Open the Jaeger UI at [http://localhost:16686](http://localhost:16686).
 
-### 2. Configure YugabyteDB
+### Configure YugabyteDB
 
 Set the following YB-TServer flags on each node in the cluster. Changing these flags requires a YB-TServer restart.
 
 | Flag | Description |
 | :--- | :---------- |
-| [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Must include `otel_collector_traces_endpoint`. |
-| otel_collector_traces_endpoint | OTLP/HTTP URL where spans are exported—for example, `http://<collector-host>:4318/v1/traces`. Setting this flag enables tracing infrastructure in each YSQL backend process. |
+| otel_collector_traces_endpoint | OTLP/HTTP URL where spans are exported. For example, `http://<collector-host>:4318/v1/traces`. Setting this flag enables tracing infrastructure in each YSQL backend process. |
 | otel_batch_max_queue_size | Maximum spans buffered before export. Spans beyond this limit are dropped. Default: `2048`. |
 | otel_batch_schedule_delay_ms | Milliseconds between batch exports. Default: `5000`. Lower values reduce export latency but increase export frequency. |
 | otel_batch_max_export_batch_size | Maximum spans per export batch. Default: `512`. |
@@ -79,13 +78,13 @@ If `otel_collector_traces_endpoint` is not set, attempting to use the `yb_dist_t
 
 {{</note >}}
 
-### 3. Trace a query
+### Trace a query
 
 After the cluster is running with tracing configured, enable tracing for individual queries using one of the following methods.
 
 #### SQL comment (per query)
 
-Prepend or append a block comment that contains a W3C `traceparent` value. The comment must be the **first** block comment at the start of the query, or the **last** block comment at the end of the query.
+Prepend or append a block comment that contains a W3C `traceparent` value. The comment must be the _first_ block comment at the start of the query, or the _last_ block comment at the end of the query.
 
 ```sql
 /*traceparent='00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'*/
@@ -121,7 +120,7 @@ To stop tracing for the session:
 RESET yb_dist_tracecontext;
 ```
 
-### 4. View traces
+### View traces
 
 Run a traced query, wait a few seconds for spans to be batched and exported (controlled by `otel_batch_schedule_delay_ms`), then open the Jaeger UI.
 
@@ -164,6 +163,6 @@ Because YugabyteDB accepts W3C `traceparent` values, you can continue a trace st
 
 ## Related topics
 
-- [Monitor with Active Session History](active-session-history-monitor/) — sample-based view of database wait events
-- [Query tuning](query-tuning/) — optimize query performance with EXPLAIN, pg_stat_statements, and related tools
-- [Jaeger integration](../../../integrations/jaeger/) — use YCQL as Jaeger trace storage (separate from YSQL query tracing)
+- [Monitor with Active Session History](../active-session-history-monitor/) - sample-based view of database wait events
+- [Query tuning](../query-tuning/) - optimize query performance with EXPLAIN, pg_stat_statements, and related tools
+- [Jaeger integration](../../../integrations/jaeger/) - use YCQL as Jaeger trace storage (separate from YSQL query tracing)
