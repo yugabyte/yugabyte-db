@@ -260,3 +260,27 @@ EXPLAIN (VERBOSE) /*+ IndexOnlyScan(t_simple multi_include) */ SELECT v1, v2, v3
 EXPLAIN (VERBOSE) /*+ IndexScan(multi_include) */ SELECT * FROM t_simple ORDER BY (v1, v2);
 /*+ IndexScan(multi_include) */ SELECT * FROM t_simple ORDER BY (v1, v2);
 SELECT * FROM t_simple;
+
+--
+-- Primary key updates on unique indexes with NULL key columns must not use
+-- in-place index updates because ybuniqueidxkeysuffix stores the base ybctid.
+--
+SET yb_enable_inplace_index_update TO on;
+DROP TABLE IF EXISTS t_unique_null_pk_update;
+CREATE TABLE t_unique_null_pk_update (
+  h BIGINT,
+  r BIGINT,
+  k SMALLINT DEFAULT 0 NOT NULL,
+  v BYTEA,
+  active BOOLEAN,
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
+);
+CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_null_pk_update_uq
+ON t_unique_null_pk_update (h HASH, v ASC)
+WHERE active;
+INSERT INTO t_unique_null_pk_update (h, r, k, v, active)
+VALUES (1, 1, 0, NULL, true);
+UPDATE t_unique_null_pk_update SET k = 1
+WHERE h = 1 AND r = 1 AND k = 0;
+SELECT yb_index_check('t_unique_null_pk_update_uq'::regclass);
+DROP TABLE t_unique_null_pk_update;

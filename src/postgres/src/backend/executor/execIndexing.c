@@ -756,6 +756,22 @@ YbExecDoUpdateIndexTuple(ResultRelInfo *resultRelInfo,
 	MemoryContextSwitchTo(oldContext);
 }
 
+static bool
+YbUniqueIndexKeyHasNull(IndexInfo *indexInfo,
+						 TupleTableSlot *slot,
+						 EState *estate)
+{
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
+
+	Assert(indexInfo->ii_Unique);
+
+	GetPerTupleExprContext(estate)->ecxt_scantuple = slot;
+	FormIndexDatum(indexInfo, slot, estate, values, isnull);
+
+	return YbIsAnyIndexKeyColumnNull(indexInfo, isnull);
+}
+
 List *
 YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 						TupleTableSlot *slot,
@@ -955,10 +971,12 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		/*
 		 * In the following scenarios, the index tuple can be modified (updated)
 		 * in-place, without the need to delete and reinsert the tuple:
-		 * - The index is a covering index (number of key columns < number of columns in the index),
-		 *   only the non-key columns need to be updated, and the primary key is not updated.
-		 * - The index is a unique index and only the non-key columns of the index need to be
-		 *   updated (irrespective of whether the primary key is updated).
+		 * - The index is a covering index (number of key columns < number of
+		 *   columns in the index), only the non-key columns need to be updated,
+		 *   and the primary key is not updated.
+		 * - The index is a unique index and only the non-key columns of the
+		 *   index need to be updated. Primary key updates are also safe unless
+		 *   the hidden unique index key suffix depends on the base row ybctid.
 		 */
 		if ((indexData->indnkeyatts == indexData->indnatts || is_pk_updated) &&
 			(!indexData->indisunique))
@@ -1012,6 +1030,22 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		}
 
 		if (j < indexRelation->rd_index->indnkeyatts)
+		{
+			deleteIndexes = lappend_int(deleteIndexes, i);
+			insertIndexes = lappend_int(insertIndexes, i);
+			continue;
+		}
+
+		/*
+		 * Unique indexes that use NULLS DISTINCT semantics store
+		 * ybuniqueidxkeysuffix as the base table ybctid whenever any key column
+		 * is NULL.  That suffix is part of the index row key, so a primary key
+		 * update changes the index row key and must be modeled as DELETE + INSERT
+		 * rather than an in-place UPDATE.
+		 */
+		if (is_pk_updated && indexData->indisunique &&
+			!indexData->indnullsnotdistinct &&
+			YbUniqueIndexKeyHasNull(indexInfo, slot, estate))
 		{
 			deleteIndexes = lappend_int(deleteIndexes, i);
 			insertIndexes = lappend_int(insertIndexes, i);
