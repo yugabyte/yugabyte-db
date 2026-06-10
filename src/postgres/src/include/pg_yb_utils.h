@@ -541,6 +541,13 @@ extern bool yb_disable_wait_for_backends_catalog_version;
 extern bool yb_enable_base_scans_cost_model;
 
 /*
+ * When enabled, the planner warms the catalog cache with all of a relation's
+ * pg_statistic rows in a single batched RPC (instead of one point lookup per
+ * column) the first time the relation is planned in a backend.
+ */
+extern bool yb_prefetch_column_statistics;
+
+/*
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
 extern int yb_wait_for_backends_catalog_version_timeout;

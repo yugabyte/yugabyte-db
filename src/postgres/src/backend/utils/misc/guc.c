@@ -2666,6 +2666,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_prefetch_column_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Prefetch a relation's column statistics in one catalog "
+						 "read during planning."),
+			NULL
+		},
+		&yb_prefetch_column_statistics,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_add_column_missing_default", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enable using the default value for existing rows"
 						 " after an ADD COLUMN ... DEFAULT operation."),

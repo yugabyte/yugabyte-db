@@ -67,6 +67,7 @@ static void get_relation_foreign_keys(PlannerInfo *root, RelOptInfo *rel,
 static bool infer_collation_opclass_match(InferenceElem *elem, Relation idxRel,
 							  List *idxExprs);
 static int32 get_rel_data_width(Relation rel, int32 *attr_widths);
+static void yb_prefetch_column_stats(Relation relation);
 static List *get_relation_constraints(PlannerInfo *root,
 						 Oid relationObjectId, RelOptInfo *rel,
 						 bool include_notnull);
@@ -138,6 +139,17 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 		palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(Relids));
 	rel->attr_widths = (int32 *)
 		palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(int32));
+
+	/*
+	 * YB: When the cost model (CBO) is enabled, costing a scan reads one
+	 * pg_statistic row per column on a cold backend -- get_attavgwidth() is
+	 * called over the relation's full-row width -- so a wide table is a burst of
+	 * one catalog RPC per column.  Warm them all with a single batched list
+	 * lookup first so those per-column lookups hit cache.
+	 */
+	if (IsYugaByteEnabled() && yb_prefetch_column_statistics &&
+		yb_enable_base_scans_cost_model)
+		yb_prefetch_column_stats(relation);
 
 	/*
 	 * Estimate relation size --- unless it's an inheritance parent, in which
@@ -1210,6 +1222,39 @@ get_relation_data_width(Oid relid, int32 *attr_widths)
 	heap_close(relation, NoLock);
 
 	return result;
+}
+
+/*
+ * yb_prefetch_column_stats
+ *		Warm the catalog cache with all of a relation's pg_statistic rows in one
+ *		batched list lookup, so the planner's per-column get_attavgwidth() calls
+ *		hit warm cache instead of issuing a catalog RPC each.
+ */
+static void
+yb_prefetch_column_stats(Relation relation)
+{
+	CatCList   *list;
+
+	switch (relation->rd_rel->relkind)
+	{
+		case RELKIND_RELATION:
+		case RELKIND_MATVIEW:
+		case RELKIND_PARTITIONED_TABLE:
+		case RELKIND_FOREIGN_TABLE:
+			break;
+		default:
+			/* No column statistics to prefetch for this relation kind. */
+			return;
+	}
+
+	/*
+	 * Prefix scan on the leading key (starelid).  Releasing the list keeps the
+	 * per-tuple member entries cached for the upcoming point lookups; we only
+	 * want the side effect of populating the cache, not the list itself.
+	 */
+	list = SearchSysCacheList1(STATRELATTINH,
+							   ObjectIdGetDatum(RelationGetRelid(relation)));
+	ReleaseSysCacheList(list);
 }
 
 
