@@ -26,6 +26,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -45,6 +46,8 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
+import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
+import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -74,6 +77,7 @@ import java.util.UUID;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.yb.CommonTypes;
 import org.yb.Schema;
@@ -1440,5 +1444,149 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
     assertOk(result);
     assertNumXClusterConfigs(1);
+  }
+
+  private XClusterConfig createRunningXClusterConfigForRestartTests() {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    xClusterConfig.updateReplicationSetupDone(exampleTables);
+    return xClusterConfig;
+  }
+
+  private XClusterConfig createReverseDirectionXClusterConfig(Set<String> tableIds) {
+    XClusterConfigCreateFormData reverseFormData = new XClusterConfigCreateFormData();
+    reverseFormData.name = configName + "-reverse";
+    reverseFormData.sourceUniverseUUID = targetUniverseUUID;
+    reverseFormData.targetUniverseUUID = sourceUniverseUUID;
+    reverseFormData.tables = tableIds;
+    XClusterConfig reverseConfig =
+        XClusterConfig.create(reverseFormData, XClusterConfigStatusType.Running);
+    reverseConfig.updateReplicationSetupDone(tableIds);
+    return reverseConfig;
+  }
+
+  private RestartBootstrapParams createRestartBootstrapParams() {
+    RestartBootstrapParams restartBootstrapParams = new RestartBootstrapParams();
+    restartBootstrapParams.backupRequestParams =
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
+    restartBootstrapParams.backupRequestParams.storageConfigUUID =
+        ModelFactory.createS3StorageConfig(customer, "restart-s3-config").getConfigUUID();
+    return restartBootstrapParams;
+  }
+
+  @Test
+  public void testRestartRejectedWhenBootstrapParamsAreNull() throws Exception {
+    initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
+    XClusterConfig xClusterConfig = createRunningXClusterConfigForRestartTests();
+
+    ObjectNode restartRequest = Json.newObject();
+    restartRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+
+    String restartAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", restartAPIEndpoint, user.createAuthToken(), restartRequest));
+    assertEquals(contentAsString(result), BAD_REQUEST, result.status());
+    assertResponseError("{\"bootstrapParams\":[\"error.required\"]}", result);
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testRestartRejectedWhenAllRequestedTablesExcludedFromBootstrap() throws Exception {
+    initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
+    XClusterConfig xClusterConfig = createRunningXClusterConfigForRestartTests();
+    XClusterConfig reverseConfig = createReverseDirectionXClusterConfig(exampleTables);
+
+    ObjectNode restartRequest = Json.newObject();
+    restartRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+    restartRequest.set("bootstrapParams", Json.toJson(createRestartBootstrapParams()));
+
+    String restartAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", restartAPIEndpoint, user.createAuthToken(), restartRequest));
+    assertEquals(contentAsString(result), BAD_REQUEST, result.status());
+    assertBadRequest(
+        result,
+        "Restart is not allowed because one or more requested tables have corresponding"
+            + " target tables already involved in other xCluster replication on the target"
+            + " universe. Remove the other replication configurations to make this"
+            + " configuration uni-directional replication and try again.");
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
+    reverseConfig.delete();
+  }
+
+  @Test
+  public void testRestartAllowedWhenNoBidirectionalReplication() throws Exception {
+    initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
+    XClusterConfig xClusterConfig = createRunningXClusterConfigForRestartTests();
+
+    UUID restartTaskUUID = buildTaskInfo(null, TaskType.RestartXClusterConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(restartTaskUUID);
+
+    ObjectNode restartRequest = Json.newObject();
+    restartRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+    restartRequest.set("bootstrapParams", Json.toJson(createRestartBootstrapParams()));
+
+    String restartAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST", restartAPIEndpoint, user.createAuthToken(), restartRequest);
+
+    assertOk(result);
+    ArgumentCaptor<XClusterConfigTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(XClusterConfigTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.RestartXClusterConfig), paramsArgumentCaptor.capture());
+    XClusterConfigTaskParams params = paramsArgumentCaptor.getValue();
+    assertNotNull(params.getBootstrapParams());
+    assertEquals(exampleTables, new HashSet<>(params.getBootstrapParams().tables));
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testRestartRejectedWhenSomeRequestedTablesExcludedFromBootstrap() throws Exception {
+    initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
+    XClusterConfig xClusterConfig = createRunningXClusterConfigForRestartTests();
+    XClusterConfig reverseConfig =
+        createReverseDirectionXClusterConfig(Collections.singleton(exampleTableID1));
+
+    ObjectNode restartRequest = Json.newObject();
+    restartRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+    restartRequest.set("bootstrapParams", Json.toJson(createRestartBootstrapParams()));
+
+    String restartAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", restartAPIEndpoint, user.createAuthToken(), restartRequest));
+    assertEquals(contentAsString(result), BAD_REQUEST, result.status());
+    assertBadRequest(
+        result,
+        "Restart is not allowed because one or more requested tables have corresponding"
+            + " target tables already involved in other xCluster replication on the target"
+            + " universe. Remove the other replication configurations to make this"
+            + " configuration uni-directional replication and try again.");
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
+    reverseConfig.delete();
   }
 }
