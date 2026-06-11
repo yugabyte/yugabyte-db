@@ -1411,6 +1411,12 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     return s.CloneAndPrepend("Unable to append operations to consensus queue");
   }
 
+  for (const auto& round : rounds) {
+    if (round->bound_term() != OpId::kUnknownTerm) {
+      round->NotifySubmittedToLeaderQueue();
+    }
+  }
+
   state_->UpdateLastReceivedOpIdUnlocked(OpId::FromPB(replicate_msgs->back()->id()));
   return Status::OK();
 }
