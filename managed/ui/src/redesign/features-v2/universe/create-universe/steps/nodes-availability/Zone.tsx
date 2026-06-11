@@ -261,7 +261,7 @@ export const Zone: FC<ZoneProps> = ({
                 value={field.value}
                 onChange={(e) => {
                   const nextValue = parseInt(e.target.value, 10);
-                  if (parseInt(e.target.value) < 1) {
+                  if (isNaN(nextValue) || nextValue < 1) {
                     return;
                   }
                   if (resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED) {
