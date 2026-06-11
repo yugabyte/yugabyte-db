@@ -4474,6 +4474,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       List<AZUpgradeState> masterAZUpgradeStatesList,
       List<AZUpgradeState> tserverAZUpgradeStatesList,
       boolean pauseAfter) {
+    return createSaveSoftwareUpgradeProgressTask(
+        isCanaryUpgrade,
+        canaryPauseState,
+        masterAZUpgradeStatesList,
+        tserverAZUpgradeStatesList,
+        pauseAfter,
+        false /* markMasterPauseCompleted */);
+  }
+
+  protected SubTaskGroup createSaveSoftwareUpgradeProgressTask(
+      boolean isCanaryUpgrade,
+      CanaryPauseState canaryPauseState,
+      List<AZUpgradeState> masterAZUpgradeStatesList,
+      List<AZUpgradeState> tserverAZUpgradeStatesList,
+      boolean pauseAfter,
+      boolean markMasterPauseCompleted) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup("SaveSoftwareUpgradeProgress", SubTaskGroupType.UpgradingSoftware);
     if (pauseAfter) {
@@ -4492,6 +4508,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             ? new ArrayList<>(tserverAZUpgradeStatesList)
             : new ArrayList<>();
     params.pauseAfter = pauseAfter;
+    params.markMasterPauseCompleted = markMasterPauseCompleted;
     SaveSoftwareUpgradeProgress task = createTask(SaveSoftwareUpgradeProgress.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

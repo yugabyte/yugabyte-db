@@ -2596,6 +2596,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty(
         value =
+            "WARNING: This is a preview API that could change. True once the canary"
+                + " pauseAfterMasters checkpoint has been reached and resumed, so it is not"
+                + " re-emitted on a subsequent abort+retry of the upgrade.")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private boolean masterPauseCompleted = false;
+
+    @ApiModelProperty(
+        value =
             "WARNING: This is a preview API that could change. Per-AZ master upgrade progress"
                 + " (standard and canary)")
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")

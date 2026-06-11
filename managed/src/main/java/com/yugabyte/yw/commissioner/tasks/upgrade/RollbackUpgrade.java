@@ -15,7 +15,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -107,15 +110,29 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
             requireAdditionalSuperUserForCatalogUpgrade =
                 softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
                     universe, oldVersion, newVersion);
-
-            int autoFlagConfigVersion = prevYBSoftwareConfig.getAutoFlagConfigVersion();
-            // Restore old auto flag Config
-            createRollbackAutoFlagTask(taskParams().getUniverseUUID(), autoFlagConfigVersion);
           }
 
-          // Download software to nodes which does not have either master or tserver with new
-          // version.
+          // Download target software on all nodes that need restart (masters + tservers in one
+          // concurrent SubTaskGroup; non-live nodes are a subset of nodes).
           createDownloadTasks(toOrderedSet(nodes.asPair()), oldVersion);
+
+          MastersAndTservers nonLive = getNonLiveServers(universe);
+          if (prevYBSoftwareConfig != null) {
+            createCompleteRollbackForNonLiveServersTasks(
+                universe, oldVersion, ysqlMajorVersionUpgrade, nonLive);
+
+            // RollbackAutoFlags is a cluster-wide master RPC; skip when all masters are already on
+            // the target version (e.g. rolled back in a prior attempt) so retries do not re-emit
+            // it.
+            if (nodes.mastersList.size() > 0) {
+              int autoFlagConfigVersion = prevYBSoftwareConfig.getAutoFlagConfigVersion();
+              // Restore old auto flag Config
+              createRollbackAutoFlagTask(taskParams().getUniverseUUID(), autoFlagConfigVersion);
+            }
+          }
+
+          // Exclude non-live nodes already rolled back above from the main rolling-restart flows.
+          MastersAndTservers nodesToRoll = excludeNodes(nodes, nonLive);
 
           if (ysqlMajorVersionUpgrade) {
             // Set ysql_yb_major_version_upgrade_compatibility to `11` for tservers during ysql
@@ -124,16 +141,20 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
                 universe, YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS);
           }
 
-          if (nodes.tserversList.size() > 0) {
+          if (nodesToRoll.tserversList.size() > 0) {
             createTServerUpgradeFlowTasks(
                 universe,
-                nodes.tserversList,
+                nodesToRoll.tserversList,
                 oldVersion,
                 getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
                 false /* reProvisionRequired */,
                 ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null);
           }
 
+          // Gate on the (pre-dedup) restart set: when masters are already on the target version
+          // (e.g. rolled back in a prior attempt) they are filtered out and nodes.mastersList is
+          // empty, so the catalog rollback RPC (GetYsqlMajorCatalogUpgradeState, which only exists
+          // on the new-version master) is not issued against an already-rolled-back master.
           if (nodes.mastersList.size() > 0) {
             // Perform rollback ysql major version catalog upgrade only when all masters were
             // upgraded to the target ysql major version.
@@ -146,21 +167,27 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
                   false /* allTserversUpgradedToYsqlMajorVersion */);
             }
 
-            createMasterUpgradeFlowTasks(
-                universe,
-                getNonMasterNodes(nodes.mastersList, nodes.tserversList),
-                oldVersion,
-                getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
-                ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null,
-                false /* activeRole */);
+            if (nodesToRoll.mastersList.size() > 0) {
+              createMasterUpgradeFlowTasks(
+                  universe,
+                  getNonMasterNodes(nodesToRoll.mastersList, nodesToRoll.tserversList),
+                  oldVersion,
+                  getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
+                  ysqlMajorVersionUpgrade
+                      ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS
+                      : null,
+                  false /* activeRole */);
 
-            createMasterUpgradeFlowTasks(
-                universe,
-                nodes.mastersList,
-                oldVersion,
-                getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
-                ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null,
-                true /* activeRole */);
+              createMasterUpgradeFlowTasks(
+                  universe,
+                  nodesToRoll.mastersList,
+                  oldVersion,
+                  getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
+                  ysqlMajorVersionUpgrade
+                      ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS
+                      : null,
+                  true /* activeRole */);
+            }
           }
 
           if (ysqlMajorVersionUpgrade) {
@@ -190,5 +217,73 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
               false /* isSoftwareRollbackAllowed */);
         });
+  }
+
+  /** Returns masters and tservers that are not in Live state. */
+  private MastersAndTservers getNonLiveServers(Universe universe) {
+    List<NodeDetails> nonLiveMasters =
+        universe.getMasters().stream()
+            .filter(n -> n.state != NodeState.Live)
+            .collect(Collectors.toList());
+    List<NodeDetails> nonLiveTservers =
+        universe.getTServers().stream()
+            .filter(n -> n.state != NodeState.Live)
+            .collect(Collectors.toList());
+    return new MastersAndTservers(nonLiveMasters, nonLiveTservers);
+  }
+
+  /**
+   * Completely rolls back non-live masters and tservers (e.g. left stopped by a prior aborted
+   * rollback) to the target version so subsequent in-memory RPCs (SetFlagInMemory,
+   * RollbackAutoFlags) can reach them. No-op when {@code nonLive} is empty. Non-live tservers are
+   * rolled back before non-live masters so an old-version master is not brought up while live
+   * tservers are still on the new version.
+   */
+  private void createCompleteRollbackForNonLiveServersTasks(
+      Universe universe,
+      String oldVersion,
+      boolean ysqlMajorVersionUpgrade,
+      MastersAndTservers nonLive) {
+    YsqlMajorVersionUpgradeState state =
+        ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS : null;
+    if (!nonLive.tserversList.isEmpty()) {
+      log.info(
+          "Completely rolling back non-live tservers before rollback RPCs: {}",
+          nonLive.tserversList);
+      createTServerUpgradeFlowTasks(
+          universe,
+          nonLive.tserversList,
+          oldVersion,
+          getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
+          false /* reProvision */,
+          state);
+    }
+    if (!nonLive.mastersList.isEmpty()) {
+      log.info(
+          "Completely rolling back non-live masters before rollback RPCs: {}", nonLive.mastersList);
+      createMasterUpgradeFlowTasks(
+          universe,
+          nonLive.mastersList,
+          oldVersion,
+          getRollbackUpgradeContext(taskParams().ybSoftwareVersion),
+          state,
+          true /* activeRole */);
+    }
+  }
+
+  /** Returns nodes from {@code nodes} that are not present in {@code toExclude}. */
+  private static MastersAndTservers excludeNodes(
+      MastersAndTservers nodes, MastersAndTservers toExclude) {
+    Set<NodeDetails> excludeMasters = new HashSet<>(toExclude.mastersList);
+    Set<NodeDetails> excludeTservers = new HashSet<>(toExclude.tserversList);
+    List<NodeDetails> masters =
+        nodes.mastersList.stream()
+            .filter(n -> !excludeMasters.contains(n))
+            .collect(Collectors.toList());
+    List<NodeDetails> tservers =
+        nodes.tserversList.stream()
+            .filter(n -> !excludeTservers.contains(n))
+            .collect(Collectors.toList());
+    return new MastersAndTservers(masters, tservers);
   }
 }
