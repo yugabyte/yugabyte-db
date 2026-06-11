@@ -11360,7 +11360,7 @@ set_config_option_ext(const char *name, const char *value,
 				 * control backends set the flag before skipping the GUC apply.
 				 */
 				if (YbIsYsqlConnMgrEnabled() &&
-					(!IsUnderPostmaster || yb_conn_mgr_is_auth_passthrough_backend) &&
+					(!IsUnderPostmaster || YbIsAuthPassthroughControlBackend()) &&
 					changeVal && !is_reload)
 					yb_conn_mgr_sighup_had_backend_guc_change = true;
 

@@ -90,8 +90,8 @@ bool		yb_conn_mgr_is_auth_passthrough_backend = false;
 bool
 YbIsAuthPassthroughInProgress(struct Port *port)
 {
-	return YbIsClientYsqlConnMgr() && port != NULL &&
-		   port->yb_is_auth_passthrough_req;
+	return YbIsClientYsqlConnMgr() && YbIsAuthPassthroughControlBackend() &&
+		   port != NULL && port->yb_is_auth_passthrough_req;
 }
 
 /*

@@ -1667,6 +1667,7 @@ extern bool YbUseFastBackwardScan();
 extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 extern bool YbIsAuthBackend();
+extern bool YbIsAuthPassthroughControlBackend();
 
 extern bool YbIsYsqlConnMgrEnabled();
 
