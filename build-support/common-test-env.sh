@@ -2025,6 +2025,7 @@ run_python_doctest() {
     if [[ $python_file == managed/* ||
           $python_file == cloud/* ||
           $python_file == src/postgres/src/test/locale/sort-test.py ||
+          $python_file == src/postgres/contrib/*/scripts/* ||
           $python_file == src/postgres/third-party-extensions/* ||
           $python_file == bin/test_bsopt.py ||
           $python_file == python/ai/rag_agent/* ||
