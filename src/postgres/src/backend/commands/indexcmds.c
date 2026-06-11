@@ -5299,7 +5299,7 @@ YbWaitForBackendsCatalogVersion()
 
 		if (!s)					/* ok */
 			continue;
-		if (YBCStatusIsTryAgain(s))
+		if (YBCStatusIsTryAgain(s) || YBCStatusIsTimedOut(s))
 		{
 			YBCFreeStatus(s);
 			continue;

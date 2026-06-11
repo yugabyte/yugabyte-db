@@ -270,6 +270,10 @@ bool YBCStatusIsTryAgain(YbcStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }
 
+bool YBCStatusIsTimedOut(YbcStatus s) {
+  return StatusWrapper(s)->IsTimedOut();
+}
+
 bool YBCStatusIsAlreadyPresent(YbcStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
