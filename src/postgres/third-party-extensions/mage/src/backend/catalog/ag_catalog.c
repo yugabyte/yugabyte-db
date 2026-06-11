@@ -154,7 +154,7 @@ static bool is_age_drop(PlannedStmt *pstmt)
                  * graphs from the mag_catalog.ag_graph table. When the mage
                  * extension is not installed, that lookup errors out.
                  */
-                if (!OidIsValid(get_extension_oid("mage", true)))
+                if (!OidIsValid(get_extension_oid("mage", true /* missing_ok */ )))
                     return false;
 
                 return true;
