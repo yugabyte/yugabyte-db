@@ -4946,8 +4946,6 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	const bool	is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
 	const bool	is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
 
-	edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
-
 	/*
 	 * Note that 'is_dml' could be set for a Select operation on a pg_catalog
 	 * table. Even if it fails due to conflict, a retry is expected to succeed
@@ -7063,7 +7061,6 @@ PostgresMain(const char *dbname, const char *username)
 							{
 								errorcontext = MemoryContextSwitchTo(yb_oldcontext);
 								edata = CopyErrorData();
-								edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
 								MemoryContextSwitchTo(errorcontext);
 								ThrowErrorData(edata);
 							}
@@ -7350,7 +7347,6 @@ PostgresMain(const char *dbname, const char *username)
 							{
 								errorcontext = MemoryContextSwitchTo(oldcontext);
 								edata = CopyErrorData();
-								edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
 								MemoryContextSwitchTo(errorcontext);
 								ThrowErrorData(edata);
 							}
@@ -7581,7 +7577,6 @@ PostgresMain(const char *dbname, const char *username)
 					MemoryContext errorcontext = MemoryContextSwitchTo(yb_oldcontext);
 					ErrorData  *edata = CopyErrorData();
 
-					edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
 					MemoryContextSwitchTo(errorcontext);
 					ThrowErrorData(edata);
 				}
