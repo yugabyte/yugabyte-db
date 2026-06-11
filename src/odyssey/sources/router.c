@@ -1523,7 +1523,7 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 
 void od_router_close(od_router_t *router, od_client_t *client)
 {
-	(void)router;
+	od_instance_t *instance = router->global->instance;
 	od_route_t *route = client->route;
 	assert(route != NULL);
 
@@ -1542,6 +1542,10 @@ void od_router_close(od_router_t *router, od_client_t *client)
 
 	assert(server->io.io == NULL);
 	od_server_free(server);
+
+	/* notify waiters */
+	yb_signal_all_routes(router, route,
+			     instance->config.yb_enable_multi_route_pool);
 }
 
 static inline int od_router_cancel_cmp(od_server_t *server, void **argv)
