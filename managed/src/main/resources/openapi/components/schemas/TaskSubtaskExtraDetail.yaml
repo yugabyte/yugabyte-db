@@ -1,0 +1,5 @@
+title: TaskSubtaskExtraDetail
+description: |
+  Opaque per-subtask progress or error payload (structure varies by subtask type).
+type: object
+additionalProperties: true

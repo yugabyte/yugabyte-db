@@ -25183,7 +25183,8 @@
               "KubernetesToggleImmutableYbc",
               "OperatorImport",
               "RegisterWithPACollector",
-              "UnregisterFromPACollector"
+              "UnregisterFromPACollector",
+              "Unknown"
             ],
             "type" : "string"
           },

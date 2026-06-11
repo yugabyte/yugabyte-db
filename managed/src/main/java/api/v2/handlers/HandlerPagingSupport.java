@@ -24,7 +24,7 @@ public final class HandlerPagingSupport {
 
   private HandlerPagingSupport() {}
 
-  static int normalizedOffset(Integer offset) {
+  public static int normalizedOffset(Integer offset) {
     return offset != null ? offset : 0;
   }
 
@@ -36,7 +36,7 @@ public final class HandlerPagingSupport {
         sqlSortOrder(spec.getDirection()));
   }
 
-  static int normalizedLimit(Integer limit) {
+  public static int normalizedLimit(Integer limit) {
     return limit != null ? limit : DEFAULT_PAGE_LIMIT;
   }
 
@@ -48,7 +48,7 @@ public final class HandlerPagingSupport {
         .findPagedList();
   }
 
-  static void validatePagination(PaginationSpec spec) {
+  public static void validatePagination(PaginationSpec spec) {
     int o = normalizedOffset(spec.getOffset());
     int l = normalizedLimit(spec.getLimit());
     if (o < 0) {
