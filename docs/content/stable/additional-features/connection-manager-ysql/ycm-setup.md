@@ -124,6 +124,8 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_optimized_session_parameters | Optimize usage of session parameters in YSQL Connection Manager. If set to false, all applied session parameters are replayed at transaction boundaries for each client connection.<br>Default: true |
 | ysql_conn_mgr_max_phy_conn_percent | Deprecated in v2025.2.1.0. Use `ysql_conn_mgr_reserve_internal_conns` instead.<br>Maximum percentage of `ysql_max_connections` that YSQL Connection Manager can use for its server connections. A value of 85 establishes a soft limit of 0.85 * `ysql_max_connections` on server connections.<br>Default: 85 |
 | ysql_conn_mgr_reserve_internal_conns | The number of physical connections to reserve for internal operations, out of the total number of connections (per node) as set using [ysql_max_connections](../../../reference/configuration/yb-tserver/#ysql-max-connections). The reserved connections bypass YSQL Connection Manager; the remaining connections are available for the Connection Manager pool. For example, if `ysql_max_connections` is 300 and this flag is set to 15, YSQL Connection Manager will have a physical connection limit of 285 (300 - 15) per node.<br>Default: 15. v2025.2.1.0 and later only. |
+| ysql_conn_mgr_alter_guc_adoption_strategy | Strategy used by YSQL Connection Manager to adopt configuration parameter (GUC) settings changed by ALTER ROLE and ALTER DATABASE statements. One of `fluctuating`, `gradual`, or `connection_static`. See [Handling ALTER ROLE and ALTER DATABASE](#handling-alter-role-and-alter-database).<br>Default: gradual |
+| ysql_conn_mgr_alter_guc_stale_backend_ttl_ms | Maximum time (in milliseconds) that a backend which doesn't have the latest ALTER GUC settings is allowed to stay alive. When set to a positive value, stale backends are terminated uniformly within the TTL period after the ALTER is executed. `-1` means no action is taken on stale backends; `0` means stale idle backends are destroyed immediately and stale active backends are destroyed when they next become idle. Applies regardless of the `ysql_conn_mgr_alter_guc_adoption_strategy` setting.<br>Default: 60000 |
 
 ## Authentication methods
 
@@ -234,9 +236,21 @@ When using YSQL Connection Manager, sticky connections can form in the following
   - Any string-type variables of extensions
   - `yb_read_after_commit_visibility`
 
+## Handling ALTER ROLE and ALTER DATABASE
+
+`ALTER ROLE ... SET` and `ALTER DATABASE ... SET` statements change the default values of configuration parameters (GUCs) for a role or database. Because YSQL Connection Manager multiplexes many client sessions over a smaller pool of backend processes, a backend that was created before such an ALTER may not have the new settings. The `ysql_conn_mgr_alter_guc_adoption_strategy` flag controls how existing sessions behave after an ALTER:
+
+- `fluctuating` — No special handling is done. Successive transactions in the same session may run on backends with or without the new settings, so the configuration parameter values observed by the session may fluctuate.
+- `gradual` (default) — Existing sessions gradually adopt the new settings. Subsequent transactions are routed to backends that have the latest ALTER settings.
+- `connection_static` — Existing sessions retain the configuration parameter settings they had at the time of connection and never observe later ALTER statements. This is closest to the behavior of vanilla PostgreSQL.
+
+In both the `gradual` and `connection_static` modes, new sessions always observe the effects of ALTER statements that were issued before they were created.
+
+Independent of the adoption strategy, the `ysql_conn_mgr_alter_guc_stale_backend_ttl_ms` flag bounds how long backends that don't have the latest ALTER settings ("stale" backends) are allowed to stay alive, so that they are eventually recycled. Only _idle_ stale backends are terminated: a stale backend that is currently running a transaction is never interrupted, and is recycled only after it becomes idle. As a result, the effective lifetime of a stale backend can exceed the configured TTL if it stays busy.
+
 ## Limitations
 
-- Changes to [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.
+- The logical client version increment caused by an ALTER ROLE SET or ALTER DATABASE SET query is only observed by the YSQL Connection Manager instance on the node where the ALTER was executed; it is not yet propagated to Connection Manager instances on other nodes. As a result, the stale-backend TTL (`ysql_conn_mgr_alter_guc_stale_backend_ttl_ms`) takes effect only on that node, and stale backends on other nodes do not respect the TTL. New connections on all nodes continue to observe the settings of the latest ALTER. For more information on how ALTER statements are handled, see [Handling ALTER ROLE and ALTER DATABASE](#handling-alter-role-and-alter-database). {{<issue 30425>}}
 - YSQL Connection Manager can route up to 10,000 connection pools. This includes pools corresponding to dropped users and databases.
 - Prepared statements may be visible to other sessions in the same connection pool. {{<issue 24652>}}
 - Attempting to use DEALLOCATE/DEALLOCATE ALL queries can result in unexpected behavior. {{<issue 24653>}}
