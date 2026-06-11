@@ -236,7 +236,7 @@ When using YSQL Connection Manager, sticky connections can form in the following
   - Any string-type variables of extensions
   - `yb_read_after_commit_visibility`
 
-## Handling ALTER ROLE and ALTER DATABASE
+## ALTER ROLE SET / ALTER DATABASE SET commands
 
 `ALTER ROLE ... SET` and `ALTER DATABASE ... SET` statements change the default values of configuration parameters (GUCs) for a role or database. Because YSQL Connection Manager multiplexes many client sessions over a smaller pool of backend processes, a backend that was created before such an ALTER may not have the new settings. The `ysql_conn_mgr_alter_guc_adoption_strategy` flag controls how existing sessions behave after an ALTER:
 
@@ -250,7 +250,6 @@ Independent of the adoption strategy, the `ysql_conn_mgr_alter_guc_stale_backend
 
 ## Limitations
 
-- The logical client version increment caused by an ALTER ROLE SET or ALTER DATABASE SET query is only observed by the YSQL Connection Manager instance on the node where the ALTER was executed; it is not yet propagated to Connection Manager instances on other nodes. As a result, the stale-backend TTL (`ysql_conn_mgr_alter_guc_stale_backend_ttl_ms`) takes effect only on that node, and stale backends on other nodes do not respect the TTL. New connections on all nodes continue to observe the settings of the latest ALTER. For more information on how ALTER statements are handled, see [Handling ALTER ROLE and ALTER DATABASE](#handling-alter-role-and-alter-database). {{<issue 30425>}}
 - YSQL Connection Manager can route up to 10,000 connection pools. This includes pools corresponding to dropped users and databases.
 - Prepared statements may be visible to other sessions in the same connection pool. {{<issue 24652>}}
 - Attempting to use DEALLOCATE/DEALLOCATE ALL queries can result in unexpected behavior. {{<issue 24653>}}
@@ -262,3 +261,4 @@ Independent of the adoption strategy, the `ysql_conn_mgr_alter_guc_stale_backend
 - The use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate client connections can result in higher connection acquisition latencies. Contact {{% support-general %}} about whether setting `ysql_conn_mgr_use_auth_backend` to false is the recommended setting for your workload. {{<issue 25313>}}
 - Unix socket connections to YSQL Connection Manager are not supported. {{<issue 20048>}}
 - Connection manager is not supported or included in the MacOS YugabyteDB releases, and there are currently no plans to support it.
+- The logical client version increment caused by an ALTER ROLE SET or ALTER DATABASE SET query is only observed by the YSQL Connection Manager instance on the node where the ALTER was executed; it is not yet propagated to Connection Manager instances on other nodes. As a result, the stale-backend TTL (`ysql_conn_mgr_alter_guc_stale_backend_ttl_ms`) takes effect only on that node, and stale backends on other nodes do not respect the TTL. New connections on all nodes continue to observe the settings of the latest ALTER. For more information on how ALTER statements are handled, see [Handling ALTER ROLE and ALTER DATABASE](#handling-alter-role-and-alter-database). {{<issue 30425>}}
