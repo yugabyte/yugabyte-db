@@ -77,7 +77,6 @@ namespace cdc {
 constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
 static const std::string kUniverseId = "test_universe";
-static const std::string kNamespaceName = "test_namespace";
 static const std::string kEnumTypeName = "coupon_discount_type";
 static const std::string kReplicationSlotName = "test_replication_slot";
 constexpr static const char* const kTableName = "test_table";
@@ -97,6 +96,14 @@ struct CDCSDKTestParams {
 
 class CDCSDKTestBase : public YBTest {
  public:
+  // The namespace name the test fixture runs against. Uses the snapshot-baked "yugabyte"
+  // (kDefaultYsqlDatabaseName) namespace when no fresh DB is needed (the common case).
+  // SetUpWithParams() points this at "test_namespace" when the test passes colocated=true
+  // (a colocated DB has to be created) or requires_fresh_db=true (escape hatch for tests
+  // that race CDC cleanup tasks sensitive to the extra pg_catalog tablets in "yugabyte").
+  // Per-instance so each fixture owns its own state.
+  std::string test_namespace_name = kDefaultYsqlDatabaseName;
+
   class Cluster {
    public:
     std::unique_ptr<MiniCluster> mini_cluster_;
@@ -173,8 +180,7 @@ class CDCSDKTestBase : public YBTest {
   }
 
   Status CreateDatabase(
-      PostgresMiniCluster* cluster, const std::string& namespace_name = kNamespaceName,
-      bool colocated = false);
+      PostgresMiniCluster* cluster, const std::string& namespace_name, bool colocated = false);
 
   Status InitPostgres(PostgresMiniCluster* cluster);
 
@@ -182,7 +188,8 @@ class CDCSDKTestBase : public YBTest {
 
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
-      bool cdc_populate_safepoint_record = false, bool set_pgsql_proxy_bind_address = false);
+      bool cdc_populate_safepoint_record = false, bool set_pgsql_proxy_bind_address = false,
+      bool requires_fresh_db = false);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> SetUpWithOneTablet(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false);
@@ -227,20 +234,40 @@ class CDCSDKTestBase : public YBTest {
 
   void InitCreateStreamRequest(
       CreateCDCStreamRequestPB* create_req,
-      const CDCCheckpointType& checkpoint_type = CDCCheckpointType::EXPLICIT,
-      const CDCRecordType& record_type = CDCRecordType::CHANGE,
-      const std::string& namespace_name = kNamespaceName,
+      const CDCCheckpointType& checkpoint_type,
+      const CDCRecordType& record_type,
+      const std::string& namespace_name,
       CDCSDKDynamicTablesOption dynamic_tables_option =
           CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
 
+  // Delegating overload: uses test_namespace_name when caller omits namespace_name.
+  void InitCreateStreamRequest(
+      CreateCDCStreamRequestPB* create_req,
+      const CDCCheckpointType& checkpoint_type = CDCCheckpointType::EXPLICIT,
+      const CDCRecordType& record_type = CDCRecordType::CHANGE,
+      CDCSDKDynamicTablesOption dynamic_tables_option =
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED) {
+    InitCreateStreamRequest(
+        create_req, checkpoint_type, record_type, test_namespace_name, dynamic_tables_option);
+  }
+
+  Result<xrepl::StreamId> CreateDBStream(
+      CDCCheckpointType checkpoint_type,
+      CDCRecordType record_type,
+      std::string namespace_name,
+      CDCSDKDynamicTablesOption dynamic_tables_option =
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
+
+  // Delegating overload: uses test_namespace_name when caller omits namespace_name.
   Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE,
-      std::string namespace_name = kNamespaceName,
       CDCSDKDynamicTablesOption dynamic_tables_option =
-          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED) {
+    return CreateDBStream(checkpoint_type, record_type, test_namespace_name, dynamic_tables_option);
+  }
 
-  // Creates a DB stream on the database kNamespaceName using the Replication Slot syntax.
+  // Creates a DB stream on the database test_namespace_name using the Replication Slot syntax.
   // Only supports the CDCCheckpointType::EXPLICIT and CDCRecordType::CHANGE.
   // TODO(#19260): Support customizing the CDCRecordType.
   Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
@@ -250,18 +277,37 @@ class CDCSDKTestBase : public YBTest {
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       const std::string& replication_slot_name,
+      CDCSDKSnapshotOption snapshot_option,
+      bool verify_snapshot_name,
+      std::string namespace_name);
+
+  // Delegating overload: uses test_namespace_name when caller omits namespace_name.
+  Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
+      const std::string& replication_slot_name,
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
-      bool verify_snapshot_name = false,
-      std::string namespace_name = kNamespaceName);
+      bool verify_snapshot_name = false) {
+    return CreateConsistentSnapshotStreamWithReplicationSlot(
+        replication_slot_name, snapshot_option, verify_snapshot_name, test_namespace_name);
+  }
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       bool verify_snapshot_name = false);
+
+  Result<xrepl::StreamId> CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption snapshot_option,
+      CDCCheckpointType checkpoint_type,
+      CDCRecordType record_type,
+      std::string namespace_name);
+
+  // Delegating overload: uses test_namespace_name when caller omits namespace_name.
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
-      CDCRecordType record_type = CDCRecordType::CHANGE,
-      std::string namespace_name = kNamespaceName);
+      CDCRecordType record_type = CDCRecordType::CHANGE) {
+    return CreateConsistentSnapshotStream(
+        snapshot_option, checkpoint_type, record_type, test_namespace_name);
+  }
 
   Result<xrepl::StreamId> CreateDBStreamBasedOnCheckpointType(CDCCheckpointType checkpoint_type);
 

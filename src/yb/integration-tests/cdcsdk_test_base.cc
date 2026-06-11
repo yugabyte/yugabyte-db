@@ -153,7 +153,8 @@ Status CDCSDKTestBase::InitPostgres(
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
     uint32_t replication_factor, uint32_t num_masters, bool colocated,
-    bool cdc_populate_safepoint_record, bool set_pgsql_proxy_bind_address) {
+    bool cdc_populate_safepoint_record, bool set_pgsql_proxy_bind_address,
+    bool requires_fresh_db) {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
@@ -194,7 +195,17 @@ Status CDCSDKTestBase::SetUpWithParams(
   } else {
     RETURN_NOT_OK(InitPostgres(&test_cluster_));
   }
-  RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
+
+  // Pick the database the test runs against.  Reuse the snapshot-baked "yugabyte"
+  // database unless the test needs an isolated one (colocated, or explicit opt-in via
+  // requires_fresh_db).  Skipping CreateDatabase here saves the ~10s CopyPgsqlSysTables
+  // cost for the vast majority of CDC tests.
+  if (colocated || requires_fresh_db) {
+    test_namespace_name = "test_namespace";
+    RETURN_NOT_OK(CreateDatabase(&test_cluster_, test_namespace_name, colocated));
+  } else {
+    test_namespace_name = kDefaultYsqlDatabaseName;
+  }
 
   cdc_proxy_ = GetCdcProxy();
 
@@ -207,7 +218,7 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>
         uint32_t replication_factor, uint32_t num_masters, bool colocated) {
 
   RETURN_NOT_OK(SetUpWithParams(replication_factor, num_masters, colocated));
-  auto table = VERIFY_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = VERIFY_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   RETURN_NOT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   SCHECK_EQ(tablets.size(), 1, InternalError, "Only 1 tablet was expected");
@@ -360,7 +371,7 @@ Result<std::string> CDCSDKTestBase::GetNamespaceId(const std::string& namespace_
   master::GetNamespaceInfoResponsePB namespace_info_resp;
 
   RETURN_NOT_OK(
-      test_client()->GetNamespaceInfo(kNamespaceName, YQL_DATABASE_PGSQL, &namespace_info_resp));
+      test_client()->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &namespace_info_resp));
 
   // Return namespace_id.
   return namespace_info_resp.namespace_().id();
@@ -419,7 +430,7 @@ void CDCSDKTestBase::InitCreateStreamRequest(
       dynamic_tables_option);
 }
 
-// This creates a DB stream on the database kNamespaceName by default.
+// This creates a DB stream on the database identified by `namespace_name`.
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
     CDCCheckpointType checkpoint_type, CDCRecordType record_type, std::string namespace_name,
     CDCSDKDynamicTablesOption dynamic_tables_option) {
@@ -449,7 +460,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
     const std::string& replication_slot_name,
     CDCRecordType record_type) {
-  auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   RETURN_NOT_OK(conn.FetchFormat(
       "SELECT * FROM pg_create_logical_replication_slot('$0', 'pgoutput', false)",
       replication_slot_name));
@@ -512,7 +523,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
       slot_name, snapshot_option, verify_snapshot_name);
 }
 
-// This creates a Consistent Snapshot stream on the database kNamespaceName by default.
+// This creates a Consistent Snapshot stream on the database identified by `namespace_name`.
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
     CDCSDKSnapshotOption snapshot_option,
     CDCCheckpointType checkpoint_type,
@@ -562,7 +573,7 @@ Result<master::GetCDCStreamResponsePB> CDCSDKTestBase::GetCDCStream(
 }
 
 Result<master::ListCDCStreamsResponsePB> CDCSDKTestBase::ListDBStreams() {
-  auto ns_id = VERIFY_RESULT(GetNamespaceId(kNamespaceName));
+  auto ns_id = VERIFY_RESULT(GetNamespaceId(test_namespace_name));
 
   master::ListCDCStreamsRequestPB req;
   master::ListCDCStreamsResponsePB resp;
