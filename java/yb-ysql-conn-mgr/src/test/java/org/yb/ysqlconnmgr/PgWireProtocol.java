@@ -45,6 +45,9 @@ public final class PgWireProtocol {
   public static final char BE_COMMAND_COMPLETE = 'C';
   public static final char BE_ERROR_RESPONSE = 'E';
   public static final char BE_COPY_IN_RESPONSE = 'G';
+  public static final char BE_COPY_OUT_RESPONSE = 'H';
+  public static final char BE_COPY_DATA = 'd';
+  public static final char BE_COPY_DONE = 'c';
   public static final char BE_NOTICE_RESPONSE = 'N';
   public static final char BE_ROW_DESCRIPTION = 'T';
 
@@ -58,9 +61,30 @@ public final class PgWireProtocol {
       this.body = body;
     }
 
+    public String typeToString() {
+      switch (type) {
+        case 'R': return "Authentication";
+        case 'S': return "ParameterStatus";
+        case 'K': return "BackendKeyData";
+        case 'Z': return "ReadyForQuery";
+        case '1': return "ParseComplete";
+        case '2': return "BindComplete";
+        case 'D': return "DataRow";
+        case 'C': return "CommandComplete";
+        case 'E': return "ErrorResponse";
+        case 'G': return "CopyInResponse";
+        case 'H': return "CopyOutResponse";
+        case 'd': return "CopyData";
+        case 'c': return "CopyDone";
+        case 'N': return "NoticeResponse";
+        case 'T': return "RowDescription";
+        default:  return "Unknown('" + type + "')";
+      }
+    }
+
     @Override
     public String toString() {
-      return "PgMessage['" + type + "', len=" + body.length + "]";
+      return "PgMessage[" + typeToString() + ", len=" + body.length + "]";
     }
   }
 
