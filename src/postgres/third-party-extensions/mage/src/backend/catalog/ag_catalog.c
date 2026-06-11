@@ -35,7 +35,7 @@
 #include "utils/ag_cache.h"
 
 /* YB includes */
-#include "commands/extension.h" /* YB: get_extension_oid() */
+#include "commands/extension.h"
 #include "commands/graph_commands.h"
 
 static object_access_hook_type prev_object_access_hook;

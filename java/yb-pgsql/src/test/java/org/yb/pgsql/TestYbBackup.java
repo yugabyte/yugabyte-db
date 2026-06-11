@@ -2209,17 +2209,14 @@ public class TestYbBackup extends BasePgSQLTest {
     //
     // The restore generates a ysql_dump in binary-upgrade mode that emits
     // `DROP EXTENSION IF EXISTS mage;` before recreating an empty extension
-    // shell. Before the is_age_drop() fix in
-    // src/postgres/third-party-extensions/mage/src/backend/catalog/ag_catalog.c
-    // that DROP errored with `table "ag_graph" does not exist` and aborted
-    // the entire restore -- so any backup of a database using mage was
-    // effectively unrestorable.
+    // shell. 
     //
     // The test deliberately installs the extension *without* creating a graph.
     // create_graph() materializes per-graph vertex/edge tables whose snapshot
     // import currently hits an orthogonal issue at the master metadata stage;
     // covering the extension itself is enough to exercise the failing DROP
     // EXTENSION IF EXISTS mage path in ysql_dump that this fix targets.
+    // DB-21840
     String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE EXTENSION mage");
