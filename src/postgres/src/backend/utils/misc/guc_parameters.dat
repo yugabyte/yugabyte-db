@@ -3655,6 +3655,23 @@
   options => 'xmloption_options',
 },
 
+{ name => 'yb_bnl_batch_size', type => 'int', context => 'PGC_USERSET', group => 'QUERY_TUNING_OTHER',
+  short_desc => 'Batch size of nested loop joins',
+  long_desc => 'Set to 1 to always use simple nested loop joins',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_EXPLAIN',
+  variable => 'yb_bnl_batch_size',
+  boot_val => '1024',
+  min => '1',
+  max => 'INT_MAX',
+},
+
+{ name => 'yb_bnl_optimize_first_batch', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
+  short_desc => 'Enables batched nested loop joins to predict the size of its first batch and optimize if it\'s smaller than yb_bnl_batch_size.',
+  flags => 'GUC_EXPLAIN',
+  variable => 'yb_bnl_optimize_first_batch',
+  boot_val => 'true',
+},
+
 { name => 'yb_ddl_rollback_enabled', type => 'bool', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'If set, any DDL that involves DocDB schema changes will have those changes rolled back upon failure.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -3665,6 +3682,20 @@
 { name => 'yb_enable_alter_table_rewrite', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'Enable ALTER TABLE rewrite operations',
   variable => 'yb_enable_alter_table_rewrite',
+  boot_val => 'true',
+},
+
+{ name => 'yb_enable_base_scans_cost_model', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
+  short_desc => 'Enables YB cost model for Sequential and Index scans.   DEPRECATED: This setting is deprecated and will be removed in a future release.  Use "yb_enable_cbo" instead.',
+  flags => 'GUC_EXPLAIN',
+  variable => 'yb_enable_base_scans_cost_model',
+  boot_val => 'false',
+},
+
+{ name => 'yb_enable_batchednl', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
+  short_desc => 'Enables the planner\'s use of batched nested-loop join plans.',
+  flags => 'GUC_EXPLAIN',
+  variable => 'yb_enable_batchednl',
   boot_val => 'true',
 },
 
@@ -3682,6 +3713,27 @@
   boot_val => 'true',
 },
 
+{ name => 'yb_enable_derived_equalities', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
+  short_desc => 'Enable derivation of additional equalities for generated columns and expression indexes',
+  flags => 'GUC_EXPLAIN',
+  variable => 'yb_enable_derived_equalities',
+  boot_val => 'false',
+},
+
+{ name => 'yb_enable_expression_pushdown', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
+  short_desc => 'Push supported expressions down to DocDB for evaluation.',
+  variable => 'yb_enable_expression_pushdown',
+  # YB_TODO_PG19MERGE: disable expression pushdown for now
+  boot_val => 'false',
+},
+
+{ name => 'yb_enable_optimizer_statistics', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
+  short_desc => 'Enables use of the PostgreSQL selectivity estimation which utilizes table statistics collected with ANALYZE. When disabled, a simpler heuristics based selectivity estimation is used.  DEPRECATED: This settting is deprecated and will be removed in a future release.  Use "yb_enable_cbo" instead.',
+  flags => 'GUC_EXPLAIN',
+  variable => 'yb_enable_optimizer_statistics',
+  boot_val => 'false',
+},
+
 { name => 'yb_explain_hide_non_deterministic_fields', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'If set, all fields that vary from run to run are hidden from the output of EXPLAIN.',
   flags => 'GUC_NOT_IN_SAMPLE',
@@ -3694,6 +3746,13 @@
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_non_ddl_txn_for_sys_tables_allowed',
   boot_val => 'false',
+},
+
+{ name => 'yb_prefer_bnl', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
+  short_desc => 'If enabled, planner will force a preference of batched nested loop join plans over classic nested loop join plans.',
+  flags => 'GUC_EXPLAIN',
+  variable => 'yb_prefer_bnl',
+  boot_val => 'true',
 },
 
 { name => 'yb_test_fail_next_ddl', type => 'int', context => 'PGC_SUSET', group => 'DEVELOPER_OPTIONS',

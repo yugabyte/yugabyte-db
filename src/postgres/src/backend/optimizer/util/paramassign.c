@@ -56,7 +56,7 @@
 #include "optimizer/placeholder.h"
 #include "rewrite/rewriteManip.h"
 
-int			yb_bnl_batch_size = 1;
+int			yb_bnl_batch_size = 1024;
 
 
 /*

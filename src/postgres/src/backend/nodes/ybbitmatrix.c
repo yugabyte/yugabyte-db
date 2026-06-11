@@ -35,7 +35,7 @@
 static inline void
 check_matrix_invariants(const YbBitMatrix *matrix)
 {
-	if (!matrix || !matrix->data)
+	if (!matrix)
 		elog(ERROR, "YB bitmatrix not defined");
 }
 
@@ -64,10 +64,6 @@ YbInitBitMatrix(YbBitMatrix *matrix, int nrows, int ncols)
 
 	matrix->nrows = nrows;
 	matrix->ncols = ncols;
-	const int	max_idx = matrix->nrows * matrix->ncols;
-
-	if (max_idx)
-		matrix->data = bms_del_member(bms_add_member(NULL, max_idx), max_idx);
 }
 
 void

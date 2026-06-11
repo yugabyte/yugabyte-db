@@ -759,6 +759,20 @@ typedef struct SeqScan
  * ----------------
  */
 
+/*
+ * Describes a column referenced by a pushed-down expression, so DocDB knows
+ * the type/collation to evaluate it.
+ */
+typedef struct YbExprColrefDesc
+{
+	NodeTag		type;
+
+	int32		attno;
+	int32		typid;
+	int32		typmod;
+	int32		collid;
+} YbExprColrefDesc;
+
 typedef struct YbPushdownExprs
 {
 	List	   *quals;
