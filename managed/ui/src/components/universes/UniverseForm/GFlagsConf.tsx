@@ -47,6 +47,7 @@ export const useStyles = makeStyles((theme: Theme) => ({
 const GFlagDescription = {
   ysql_hba_conf_csv: 'universeForm.gFlags.hbaConfDescription',
   ysql_ident_conf_csv: 'universeForm.gFlags.identConfDescriptionFirst',
+  ycql_ident_conf_csv: 'universeForm.gFlags.identConfDescriptionFirst',
   ysql_pg_conf_csv: 'universeForm.gFlags.pgConfDescription'
 } as const;
 
@@ -104,7 +105,7 @@ export const GFlagsConf: FC<GFlagConfProps> = ({
       <Box mt={1}>
         <Box mt={1}>
           {t(GFlagDescription[flagName])}
-          {flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV && (
+          {(flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV || flagName === MultilineGFlags.YCQL_IDENT_CONF_CSV) && (
             <>
               <a
                 href={POSTGRES_USERNAME_MAP}
@@ -114,7 +115,7 @@ export const GFlagsConf: FC<GFlagConfProps> = ({
               >
                 {t('universeForm.gFlags.identConfPostgreSQL')}
               </a>
-              {t('universeForm.gFlags.identConfDescriptionSecond')}
+              {flagName === MultilineGFlags.YCQL_IDENT_CONF_CSV ? t('universeForm.gFlags.ycqlIdentConfDescriptionSecond') : t('universeForm.gFlags.identConfDescriptionSecond')}
             </>
           )}
           {readMore && (
