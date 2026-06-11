@@ -124,6 +124,9 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_optimized_session_parameters | Optimize usage of session parameters in YSQL Connection Manager. If set to false, all applied session parameters are replayed at transaction boundaries for each client connection.<br>Default: true |
 | ysql_conn_mgr_max_phy_conn_percent | Deprecated in v2025.2.1.0. Use `ysql_conn_mgr_reserve_internal_conns` instead.<br>Maximum percentage of `ysql_max_connections` that YSQL Connection Manager can use for its server connections. A value of 85 establishes a soft limit of 0.85 * `ysql_max_connections` on server connections.<br>Default: 85 |
 | ysql_conn_mgr_reserve_internal_conns | The number of physical connections to reserve for internal operations, out of the total number of connections (per node) as set using [ysql_max_connections](../../../reference/configuration/yb-tserver/#ysql-max-connections). The reserved connections bypass YSQL Connection Manager; the remaining connections are available for the Connection Manager pool. For example, if `ysql_max_connections` is 300 and this flag is set to 15, YSQL Connection Manager will have a physical connection limit of 285 (300 - 15) per node.<br>Default: 15. v2025.2.1.0 and later only. |
+| ysql_conn_mgr_internal_conn_db | Database to which YSQL Connection Manager connects when creating internal database connections.<br>Default: yugabyte |
+| ysql_conn_mgr_internal_conn_user | Username used by YSQL Connection Manager when creating internal database connections.<br>Default: yugabyte |
+| ysql_conn_mgr_socket_listen_backlog | Maximum number of pending TCP connections queued by the kernel on Connection Manager's listening socket (the backlog argument to `listen(2)`). Incoming connections beyond this limit may be refused or dropped during connection bursts.<br>Default: 128 |
 
 ## Authentication methods
 
