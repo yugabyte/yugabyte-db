@@ -1503,7 +1503,7 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 
 Status PgSession::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
-  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
+  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
@@ -1536,15 +1536,10 @@ uint16_t PgSession::GetSessionReplicationOriginId() const {
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
-  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
+  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
     return Status::OK();
   }
   tserver::PgReleaseSessionObjectLockRequestPB req;
-  auto& options = *req.mutable_options();
-  RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-      false /* read_only, doesn't matter */,
-      pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
-      IsLocalObjectLockOp(false)));
   std::string lock_id_str;
   YbcFlushDebugContext debug_context {};
   debug_context.reason = YbcFlushReason::YB_RELEASE_SESSION_OBJECT_LOCK;
@@ -1552,11 +1547,8 @@ Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
     lock_id_str = ToString(lock_id);
     debug_context.strarg1 = lock_id_str.c_str();
   }
-  RETURN_NOT_OK(SetupPerformOptions(
-      VERIFY_RESULT(FlushBufferedOperations(debug_context)),
-      &options));
   if (release_all) {
-    options.clear_active_sub_transaction_id();
+    req.set_release_all(true);
   } else {
     auto& lock_oid = *req.mutable_lock_oid();
     lock_oid.set_database_oid(lock_id.db_oid);
