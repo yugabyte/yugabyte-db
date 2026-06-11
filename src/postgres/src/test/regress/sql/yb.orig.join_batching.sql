@@ -648,6 +648,15 @@ set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
 select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
 
+-- expression-based index
+CREATE INDEX ON p2 ((b + 123) ASC);
+/*+ Set(yb_enable_cbo on) Leading((p1 p2)) YbBatchedNL(p1 p2) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
+
+/*+ Set(yb_enable_cbo on) Leading((p1 p2)) YbBatchedNL(p1 p2) */
+SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
+
 DROP TABLE p1;
 DROP TABLE p2;
 DROP TABLE p3;

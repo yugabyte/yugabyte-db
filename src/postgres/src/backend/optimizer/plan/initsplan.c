@@ -93,7 +93,7 @@ static void check_hashjoinable(RestrictInfo *restrictinfo);
 static void check_memoizable(RestrictInfo *restrictinfo);
 
 /* YB declarations */
-static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
+static void yb_check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 static ListCell *yb_find_wholerow_of_record_type(List *expr);
 
 
@@ -1913,7 +1913,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	check_mergejoinable(restrictinfo);
 	if (IsYugaByteEnabled())
 	{
-		check_batchable(root, restrictinfo);
+		yb_check_batchable(root, restrictinfo);
 	}
 
 	/*
@@ -2502,7 +2502,7 @@ build_implied_join_equality(PlannerInfo *root,
 
 	if (IsYugaByteEnabled())
 	{
-		check_batchable(root, restrictinfo);
+		yb_check_batchable(root, restrictinfo);
 	}
 	return restrictinfo;
 }
@@ -2752,7 +2752,7 @@ check_hashjoinable(RestrictInfo *restrictinfo)
 }
 
 /*
- * check_batchable
+ * yb_check_batchable
  *	  If the restrictinfo's clause can potentially be a batched join clause
  *	  then yb_batched_rinfo is filled in with candidate batched versions of
  *	  this clause.
@@ -2763,7 +2763,7 @@ check_hashjoinable(RestrictInfo *restrictinfo)
  *	  var_1 op YbBatchedExpr(var_2) and var_2 op YbBatchedExpr(var_1).
  */
 static void
-check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
+yb_check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 {
 	Expr	   *clause = restrictinfo->clause;
 	Node	   *leftarg;
@@ -2814,13 +2814,32 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 		inner = args[i];
 		outer = args[1 - i];
 		Node	   *inner_var = inner;
+		int			inner_varno = 0;
 
 		if (IsA(inner_var, RelabelType))
 			inner_var = (Node *) ((RelabelType *) inner_var)->arg;
-		if (!IsA(inner_var, Var))
+
+		if (IsA(inner_var, Var))
+		{
+			inner_varno = ((Var *) inner_var)->varno;
+		}
+		else if (yb_enable_base_scans_cost_model)
+		{
+			/* Expression key column disabled in the legacy mode */
+			Relids		inner_relids = pull_varnos(root, inner);
+			bool		single_rel = bms_membership(inner_relids) == BMS_SINGLETON;
+
+			if (single_rel)
+				inner_varno = bms_singleton_member(inner_relids);
+			bms_free(inner_relids);
+
+			if (!single_rel)
+				continue;
+		}
+		else
 			continue;
 
-		RangeTblEntry *rte = root->simple_rte_array[((Var *) inner_var)->varno];
+		RangeTblEntry *rte = root->simple_rte_array[inner_varno];
 
 		/* Skip batching if inner relation is not a YB relation */
 		if (rte->rtekind == RTE_RELATION && !IsYBRelationById(rte->relid))
@@ -3108,7 +3127,7 @@ yb_get_clause_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_re
 											nullable_relids);
 
 	check_mergejoinable(rinfo);
-	check_batchable(root, rinfo);
+	yb_check_batchable(root, rinfo);
 	return rinfo;
 }
 

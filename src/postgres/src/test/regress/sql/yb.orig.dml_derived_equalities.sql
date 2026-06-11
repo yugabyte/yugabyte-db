@@ -101,8 +101,6 @@ EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o orders_no_bucket_user_i
 -- BNL with generated column (should show bucket condition)
 EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u JOIN orders_gen o ON o.user_id = u.id;
 
--- TODO: BNL is not supported when the index clause is on an expression column
--- This will pick NL
 EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o orders_expr_idx) */ * FROM users u JOIN orders_expr o ON o.user_id = u.id;
 
 -- With WHERE clause filter

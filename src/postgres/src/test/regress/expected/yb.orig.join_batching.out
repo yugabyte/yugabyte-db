@@ -2070,6 +2070,35 @@ select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.
  510 | 10 | 0510 | 510 | 10 | 0510 | 510 | 10 | 0510 | 560 | 10 | 0560
 (16 rows)
 
+-- expression-based index
+CREATE INDEX ON p2 ((b + 123) ASC);
+/*+ Set(yb_enable_cbo on) Leading((p1 p2)) YbBatchedNL(p1 p2) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (p1.a = (p2.b + 123))
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: (b >= 22)
+   ->  Index Scan using p2_expr_idx on p2
+         Index Cond: ((b + 123) = ANY (ARRAY[p1.a, $1, $2, ..., $9]))
+(6 rows)
+
+/*+ Set(yb_enable_cbo on) Leading((p1 p2)) YbBatchedNL(p1 p2) */
+SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
+  a  | b  |  c   |  a  | b |  c   
+-----+----+------+-----+---+------
+ 124 | 24 | 0124 | 126 | 1 | 0126
+ 124 | 24 | 0124 | 351 | 1 | 0351
+ 124 | 24 | 0124 | 276 | 1 | 0276
+ 124 | 24 | 0124 |  51 | 1 | 0051
+ 124 | 24 | 0124 | 576 | 1 | 0576
+ 124 | 24 | 0124 | 426 | 1 | 0426
+ 124 | 24 | 0124 | 501 | 1 | 0501
+ 124 | 24 | 0124 | 201 | 1 | 0201
+(8 rows)
+
 DROP TABLE p1;
 DROP TABLE p2;
 DROP TABLE p3;
