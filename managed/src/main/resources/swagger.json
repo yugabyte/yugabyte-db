@@ -16639,7 +16639,10 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "tables" ],
+      "required" : [
+        "bootstrapParams",
+        "tables"
+      ],
       "type" : "object"
     },
     "XClusterInfo" : {

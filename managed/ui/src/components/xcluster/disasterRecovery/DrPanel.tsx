@@ -13,8 +13,7 @@ import { EditTablesModal } from './editTables/EditTablesModal';
 import {
   PollingIntervalMs,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
-  XClusterConfigAction,
-  XClusterConfigType
+  XClusterConfigAction
 } from '../constants';
 import { YBButton } from '../../../redesign/components';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -22,14 +21,9 @@ import {
   api,
   drConfigQueryKey,
   metricQueryKey,
-  universeQueryKey,
-  xClusterQueryKey
+  universeQueryKey
 } from '../../../redesign/helpers/api';
-import {
-  getEnabledConfigActions,
-  getInConfigTableUuid,
-  getIsXClusterConfigAllBidirectional
-} from '../ReplicationUtils';
+import { getEnabledConfigActions } from '../ReplicationUtils';
 import { getEnabledDrConfigActions, getXClusterConfig } from './utils';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
 import { EditConfigTargetModal } from './editConfigTarget/EditConfigTargetModal';
@@ -50,7 +44,6 @@ import {
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { EditConfigModal } from './editConfig/EditConfigModal';
-import { isBootstrapRequired } from '../../../actions/xClusterReplication';
 
 interface DrPanelProps {
   currentUniverseUuid: string;
@@ -159,25 +152,6 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
       ? [currentUniverseQuery.data, participantUniverseQuery.data]
       : [participantUniverseQuery.data, currentUniverseQuery.data];
 
-  const inConfigTableUuids = getInConfigTableUuid(drConfigQuery.data?.tableDetails ?? []);
-  const bootstrapRequirementQuery = useQuery(
-    xClusterQueryKey.needBootstrap({
-      sourceUniverseUuid: drConfigQuery.data?.primaryUniverseUuid,
-      targetUniverseUuid: drConfigQuery.data?.drReplicaUniverseUuid,
-      tableUuids: inConfigTableUuids,
-      configType: drConfigQuery.data?.type,
-      includeDetails: true
-    }),
-    () =>
-      isBootstrapRequired(
-        drConfigQuery.data?.primaryUniverseUuid ?? '',
-        drConfigQuery.data?.drReplicaUniverseUuid ?? '',
-        inConfigTableUuids,
-        drConfigQuery.data?.type ?? XClusterConfigType.TXN,
-        true
-      ),
-    { enabled: !!drConfigQuery.data }
-  );
   // Polling for live metrics and config updates.
   useInterval(() => {
     if (getUniverseStatus(sourceUniverse)?.state === UniverseState.PENDING) {
@@ -316,16 +290,12 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
     targetUniverse
   );
 
-  const isXClusterConfigAllBidirectional = bootstrapRequirementQuery.data
-    ? getIsXClusterConfigAllBidirectional(bootstrapRequirementQuery.data)
-    : false;
   const xClusterConfig = getXClusterConfig(drConfig);
   const deleteConfigRedirectUrl = `/universes/${currentUniverseUuid}/recovery`;
   const enabledXClusterConfigActions = getEnabledConfigActions(
     xClusterConfig,
     sourceUniverse,
     targetUniverse,
-    isXClusterConfigAllBidirectional,
     drConfig.state
   );
   return (
