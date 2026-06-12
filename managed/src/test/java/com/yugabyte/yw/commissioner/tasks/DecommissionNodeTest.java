@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
@@ -28,6 +29,9 @@ public class DecommissionNodeTest extends UniverseModifyBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    factory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     testUniverse = createUniverseForProvider("test-decommission-universe", defaultProvider, 6);
     mockCommonForEditUniverseBasedTasks(testUniverse);
   }

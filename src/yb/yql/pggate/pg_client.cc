@@ -672,7 +672,8 @@ static PggateRPC kDebugLogRPCs[] = {
   PggateRPC::kReleaseAdvisoryLock,
   PggateRPC::kAcquireObjectLock,
   PggateRPC::kTruncateTable,
-  PggateRPC::kReleaseSessionObjectLock
+  PggateRPC::kReleaseSessionObjectLock,
+  PggateRPC::kWaitForLockersMultiple
 };
 
 class PgClient::Impl : public BigDataFetcher {

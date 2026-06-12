@@ -3014,8 +3014,19 @@ Result<bool> PgsqlReadOperation::SetPagingState(
   auto* paging_state = response_.mutable_paging_state();
   auto encoded_row_key = row_key.Encode().ToStringBuffer();
   if (schema.num_hash_key_columns() > 0) {
-    paging_state->dup_next_partition_key(
-        dockv::PartitionSchema::EncodeMultiColumnHashValue(row_key.doc_key().hash()));
+    auto hash_code = row_key.doc_key().hash();
+    if (request_.is_forward_scan()) {
+      paging_state->dup_next_partition_key(
+          dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code));
+    } else {
+      // In backward scan the partition key is exclusive.
+      if (hash_code == dockv::PartitionSchema::kMaxPartitionKey) {
+        paging_state->clear_next_partition_key();
+      } else {
+        paging_state->dup_next_partition_key(
+            dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code + 1));
+      }
+    }
   } else {
     paging_state->dup_next_partition_key(encoded_row_key);
   }

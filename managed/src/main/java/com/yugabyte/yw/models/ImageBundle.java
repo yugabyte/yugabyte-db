@@ -199,15 +199,14 @@ public class ImageBundle extends Model {
       // In case exception is thrown we will fallback to manual filtering, specifically for UTs
       bundles = find.query().where().eq("provider_uuid", providerUUID).findList();
       bundles.removeIf(
-          bundle -> {
-            return bundle.getMetadata() == null
-                || bundle.getMetadata().getType() == null
-                || !bundle
-                    .getMetadata()
-                    .getType()
-                    .toString()
-                    .equals(ImageBundleType.YBA_ACTIVE.toString());
-          });
+          bundle ->
+              bundle.getMetadata() == null
+                  || bundle.getMetadata().getType() == null
+                  || !bundle
+                      .getMetadata()
+                      .getType()
+                      .toString()
+                      .equals(ImageBundleType.YBA_ACTIVE.toString()));
     }
     return bundles;
   }

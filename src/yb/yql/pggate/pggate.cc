@@ -2745,6 +2745,11 @@ Status PgApiImpl::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
   return pg_session_->ReleaseSessionObjectLock(lock_id, release_all);
 }
 
+Status PgApiImpl::WaitForLockersMultiple(
+    const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
+  return pg_session_->WaitForLockersMultiple(lock_ids, lock_mode, num_locks);
+}
+
 //------------------------------------------------------------------------------------------------
 // Export/Import Pg Txn Snapshot.
 //------------------------------------------------------------------------------------------------

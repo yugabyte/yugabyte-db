@@ -8,6 +8,7 @@ import {
 } from '../../resilence-regions/dtos';
 import { getFaultToleranceNeeded, getNodeCount } from '../../../CreateUniverseUtils';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../../helpers/constants';
+import { OnPremValidationContext } from './onPrem';
 
 type CreateErrorFn = (opts: { path: string; message?: string }) => Yup.ValidationError;
 
@@ -21,6 +22,7 @@ export type ValidationArgs = {
   availabilityZones: NodeAvailabilityProps['availabilityZones'];
   path: string;
   createError: CreateErrorFn;
+  onPremContext?: OnPremValidationContext;
   resilienceAndRegionsProps?: ResilienceAndRegionsProps;
 };
 

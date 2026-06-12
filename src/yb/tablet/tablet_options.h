@@ -49,6 +49,7 @@ struct RocksDBPriorityThreadPoolMetrics;
 namespace yb {
 
 class AutoFlagsManagerBase;
+class Cgroup;
 class Env;
 class MemTracker;
 class MetricRegistry;
@@ -104,6 +105,9 @@ struct TabletInitData {
   TransactionManagerProvider transaction_manager_provider;
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   ThreadPool* wait_queue_pool = nullptr;
+  // Per-DB cgroup for wait-queue tasks. Set at construction time when QoS is active and the
+  // tablet belongs to a user database; null otherwise.
+  Cgroup* wait_queue_cgroup = nullptr;
   AutoFlagsManagerBase* auto_flags_manager = nullptr;
   ThreadPool* full_compaction_pool;
   ThreadPool* admin_triggered_compaction_pool;

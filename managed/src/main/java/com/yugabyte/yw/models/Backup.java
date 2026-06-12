@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.concurrent.KeyLock;
@@ -1150,6 +1151,11 @@ public class Backup extends Model {
   }
 
   public static <T> ExpressionList<T> appendActionTypeClause(ExpressionList<T> query) {
+    if (AppInit.isH2Db()) {
+      // H2 does not support PostgreSQL JSON operators used in production queries.
+      return query;
+    }
+
     String rawSql =
         "t0.backup_uuid in "
             + "(select B.backup_uuid from backup B "

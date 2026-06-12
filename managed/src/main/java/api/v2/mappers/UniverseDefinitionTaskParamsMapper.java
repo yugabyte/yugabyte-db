@@ -58,7 +58,7 @@ import play.mvc.Http.Request;
 @Mapper(
     config = CentralConfig.class,
     mappingControl = DeepClone.class,
-    uses = {ClusterMapper.class, UserMapper.class})
+    uses = {ClusterMapper.class, UserMapper.class, DateTimeMapper.class})
 public interface UniverseDefinitionTaskParamsMapper {
   public static UniverseDefinitionTaskParamsMapper INSTANCE =
       Mappers.getMapper(UniverseDefinitionTaskParamsMapper.class);

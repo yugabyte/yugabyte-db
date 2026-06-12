@@ -1,0 +1,6 @@
+title: TaskPagedResp
+description: Paged list response for customer tasks.
+type: object
+x-data-container: PaginationResp
+x-data-item: Task
+x-data-entities-description: Customer tasks for this page.

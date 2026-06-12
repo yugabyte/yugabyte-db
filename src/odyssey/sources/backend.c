@@ -524,7 +524,7 @@ static inline int od_backend_startup(od_server_t *server,
 
 	od_client_t *external_client = client->yb_external_client;
 	int argc = 0;
-	const int max_default_args = 16;
+	const int max_default_args = 18;
 	int num_startup_args =
 		external_client ? external_client->yb_startup_settings.size : 0;
 
@@ -543,6 +543,9 @@ static inline int od_backend_startup(od_server_t *server,
 	yb_kiwi_set_fe_arg(&argv[argc++], "1", 2);
 	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("yb_authonly"));
 	yb_kiwi_set_fe_arg(&argv[argc++], is_authenticating ? "1" : "0", 2);
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("yb_is_control_conn"));
+	yb_kiwi_set_fe_arg(&argv[argc++],
+			   yb_is_control_pool(server->route) ? "1" : "0", 2);
 
 	if (route->id.physical_rep) {
 		yb_kiwi_set_fe_arg(&argv[argc++],

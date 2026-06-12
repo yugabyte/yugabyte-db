@@ -309,9 +309,11 @@ select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
 from check_roundtrip_estimates
 where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
 order by qid, nid;
- qid | nid | Node Type | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
------+-----+-----------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
-(0 rows)
+  qid  | nid |      Node Type      | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-------+-----+---------------------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
+ 20202 |   1 | Parallel Index Scan | r_b_v_idx  | idx       | f            |     1 |     1 |     0 |     0 |   2 |   0 |          5 |         5 |        10 |         0 | failed          | passed
+ 20203 |   1 | Parallel Index Scan | r_b_v_idx  | idx       | f            |     1 |     1 |     0 |     0 |   2 |   0 |          5 |         5 |        10 |         0 | failed          | passed
+(2 rows)
 
 -- Block 2: halve yb_parallel_range_size to roughly double planned partitions
 -- (~5 -> ~10).  Keeps partition count comfortably >= planned loops while
@@ -396,8 +398,8 @@ where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
 order by qid, nid;
   qid  | nid |      Node Type      | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
 -------+-----+---------------------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
- 20202 |   1 | Parallel Index Scan | r_b_v_idx  | idx       | f            |     1 |     1 |     2 |     2 |   2 |   4 |          4 |         4 |         8 |        16 | failed          | passed
- 20203 |   1 | Parallel Index Scan | r_b_v_idx  | idx       | f            |     1 |     1 |     2 |     2 |   2 |   4 |          4 |         4 |         8 |        16 | failed          | passed
+ 20202 |   1 | Parallel Index Scan | r_b_v_idx  | idx       | f            |     1 |     1 |     0 |     0 |   2 |   0 |          4 |         4 |         8 |         0 | failed          | passed
+ 20203 |   1 | Parallel Index Scan | r_b_v_idx  | idx       | f            |     1 |     1 |     0 |     0 |   2 |   0 |          4 |         4 |         8 |         0 | failed          | passed
 (2 rows)
 
 reset parallel_leader_participation;

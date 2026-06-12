@@ -73,6 +73,8 @@ DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
+DECLARE_uint64(vector_index_task_size);
+DECLARE_bool(enable_automatic_tablet_splitting);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
@@ -221,6 +223,20 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   Result<PGConn> MakeIndexAndFillRandom(size_t num_rows);
   Status InsertRows(PGConn& conn, size_t start_row, size_t end_row, bool keep_vectors = false);
   Status InsertRandomRows(PGConn& conn, size_t num_rows);
+
+  // Inserts `count` rows with ids [start_id, start_id + count) as a single multi-row statement, so
+  // they reach VectorLSM::Insert as one batch that fans out into per-vector insert tasks.
+  Status InsertBatch(PGConn& conn, int64_t start_id, int64_t count) {
+    std::string values;
+    for (int64_t i = 0; i != count; ++i) {
+      auto id = start_id + i;
+      if (!values.empty()) {
+        values += ", ";
+      }
+      values += Format("($0, '$1')", id, AsString(Vector(id)));
+    }
+    return conn.Execute("INSERT INTO test VALUES " + values);
+  }
 
   void VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter);
   void VerifyRows(
@@ -805,6 +821,34 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfill) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_concurrent_writes) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_insert_tasks) = 1;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
+
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_GT(indexes.size(), 0);
+
+  // Each replica backfills its own data, but CREATE INDEX only waits for the leader. So wait for
+  // every replica's backfill to finish before checking the progress metric, otherwise followers
+  // could still be mid-backfill.
+  for (const auto& index : indexes) {
+    ASSERT_OK(WaitFor(
+        [&index] { return index->BackfillDone(); }, 60s * kTimeMultiplier, "Backfill done"));
+  }
+
+  // backfill_inserted_entries is a table-level metric, so all tablets of the index living on the
+  // same tserver share one counter. Sum the distinct counters and the per-tablet entry counts:
+  // without restarts every entry is backfilled exactly once, so the two totals must match.
+  std::unordered_set<Counter*> counted;
+  size_t total_backfilled = 0;
+  size_t total_entries = 0;
+  for (const auto& index : indexes) {
+    total_entries += ASSERT_RESULT(index->TotalEntries());
+    const auto& counter = index->metrics().backfill_inserted_entries;
+    if (counted.insert(counter.get()).second) {
+      total_backfilled += counter->value();
+    }
+  }
+  LOG(INFO) << "Backfilled entries: " << total_backfilled << ", total entries: " << total_entries;
+  ASSERT_GT(total_backfilled, 0);
+  ASSERT_EQ(total_backfilled, total_entries);
 }
 
 TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
@@ -860,6 +904,72 @@ TEST_P(PgVectorIndexTest, ManyReads) {
   }
 
   threads.WaitAndStop(5s);
+}
+
+// Drives concurrent index writes and searches against a single mutable chunk to reproduce (and,
+// with the fix, guard against) the data race where the lock-free search traversal reads node state
+// a concurrent insert is still publishing. usearch backends crash without the fix; for hnswlib
+// backends this doubles as a concurrency stress test.
+TEST_P(PgVectorIndexTest, ConcurrentInsertAndSearch) {
+  // Under sanitizers, a single writer and reader is enough to expose (or, with the fix, clear) the
+  // search-vs-insert race, and the run is kept short because sanitizers are much slower. The vector
+  // index insert/search concurrency is left at its default, which is already capped under
+  // sanitizers (see SanitizerCappedConcurrency); forcing it higher made the sustained, CPU-heavy
+  // insert/search traffic starve the cluster's raft heartbeats into cascading RPC timeouts and grow
+  // the usearch search-context memory until the Postgres backends were OOM-killed -- neither being
+  // the race this test guards against.
+  const size_t kWriters = RegularBuildVsSanitizers<size_t>(4, 1);
+  const size_t kReaders = RegularBuildVsSanitizers<size_t>(8, 1);
+  const auto kRunTime = RegularBuildVsSanitizers<std::chrono::seconds>(180s, 30s);
+  constexpr int64_t kBatchSize = 50;
+
+  // The base fixture forces exact (brute force) search, which serializes inserts behind a mutex in
+  // IndexWrapperBase::Insert and never traverses the HNSW graph -- both hide the race. Run against
+  // the real index instead, with one insert task per vector so a single mutable chunk receives many
+  // concurrent writes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+  // Keep everything in a single tablet (hence a single mutable chunk) so writers and readers hit
+  // the same index.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  num_pre_split_tablets_ = 1;
+
+  auto conn = ASSERT_RESULT(MakeTable(/* dimensions= */ 64));
+  ASSERT_OK(CreateIndex(conn));
+
+  // Seed a few rows so concurrent readers always have a non-empty index to traverse.
+  ASSERT_OK(InsertBatch(conn, 1, 100));
+
+  std::atomic<int64_t> next_id{1000};
+  TestThreadHolder threads;
+
+  // Writers: keep inserting multi-row batches for the whole run. With task_size=1 every batch fans
+  // out into many concurrent add() calls on the chunk's index. Ids come from a shared counter so
+  // they stay unique across writers; once a chunk fills it simply rolls into a new mutable chunk.
+  for (size_t w = 0; w != kWriters; ++w) {
+    threads.AddThreadFunctor([this, &next_id, &stop_flag = threads.stop_flag()] {
+      auto write_conn = ASSERT_RESULT(Connect());
+      while (!stop_flag.load(std::memory_order_acquire)) {
+        ASSERT_OK(InsertBatch(
+            write_conn, next_id.fetch_add(kBatchSize, std::memory_order_relaxed), kBatchSize));
+      }
+    });
+  }
+
+  // Readers: continuously search the (mutable) chunk that writers are filling. Returned rows are
+  // not validated -- without the fix this crashes inside the usearch distance/traversal code.
+  for (size_t r = 0; r != kReaders; ++r) {
+    threads.AddThreadFunctor([this, &stop_flag = threads.stop_flag()] {
+      auto read_conn = ASSERT_RESULT(Connect());
+      while (!stop_flag.load(std::memory_order_acquire)) {
+        auto query = Vector(RandomUniformInt<int64_t>(1, 1000));
+        ASSERT_RESULT(read_conn.FetchAllAsString(
+            "SELECT id FROM test" + IndexQuerySuffix(query, 10)));
+      }
+    });
+  }
+
+  threads.WaitAndStop(kRunTime);
 }
 
 void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {

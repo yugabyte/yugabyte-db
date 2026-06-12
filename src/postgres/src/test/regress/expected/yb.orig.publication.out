@@ -2,32 +2,44 @@
 -- PUBLICATION
 --
 CREATE ROLE regress_publication_user LOGIN SUPERUSER;
+ERROR:  role "regress_publication_user" already exists
 SET SESSION AUTHORIZATION 'regress_publication_user';
 CREATE TABLE testpub_tbl1 (id serial primary key, data text);
 CREATE TABLE testpub_tbl2 (id int primary key, data text);
 CREATE TABLE testpub_tbl3_nopk (foo int, bar int);
 CREATE TABLE testpub_tbl4_nopk (foo int, bar int);
 CREATE PUBLICATION testpub FOR ALL TABLES;
-NOTICE:  tables without primary key will be skipped
--- testpub_tbl3_nopk should get filtered out.
+-- All tables (including those without primary key) are included.
 SELECT * FROM pg_publication_tables;
- pubname | schemaname |  tablename   | attnames  | rowfilter 
----------+------------+--------------+-----------+-----------
- testpub | public     | testpub_tbl1 | {id,data} | 
- testpub | public     | testpub_tbl2 | {id,data} | 
-(2 rows)
+ pubname | schemaname |     tablename     | attnames  | rowfilter 
+---------+------------+-------------------+-----------+-----------
+ testpub | public     | testpub_tbl3      | {a}       | 
+ testpub | public     | testpub_tbl3a     | {a,b}     | 
+ testpub | public     | testpub_tbl1      | {id,data} | 
+ testpub | public     | testpub_tbl2      | {id,data} | 
+ testpub | public     | testpub_tbl3_nopk | {foo,bar} | 
+ testpub | public     | testpub_tbl4_nopk | {foo,bar} | 
+(6 rows)
 
--- errors out since tables without pk are unsupported.
+-- Tables without primary key are allowed in an explicit list publication.
 CREATE PUBLICATION testpub_explicit_list FOR TABLE testpub_tbl2, testpub_tbl3_nopk;
-ERROR:  table "testpub_tbl3_nopk" cannot be replicated
-DETAIL:  Replicating tables without primary key is not yet supported.
 DROP PUBLICATION testpub;
 DROP TABLE testpub_tbl1;
 DROP TABLE testpub_tbl2;
+ERROR:  cannot drop a table which is part of a publication.
+HINT:  Use pg_publication_tables to find all such publications and retry after dropping the table from them.
 DROP TABLE testpub_tbl3_nopk;
+ERROR:  cannot drop a table which is part of a publication.
+HINT:  Use pg_publication_tables to find all such publications and retry after dropping the table from them.
 DROP TABLE testpub_tbl4_nopk;
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_publication_user;
+ERROR:  role "regress_publication_user" cannot be dropped because some objects depend on it
+DETAIL:  owner of publication testpub_explicit_list
+owner of table testpub_tbl2
+owner of table testpub_tbl3
+owner of table testpub_tbl3_nopk
+owner of table testpub_tbl3a
 -- Test yb_db_admin role can create publications with ALL TABLES
 CREATE SCHEMA my_schema;
 CREATE ROLE regress_yb_db_admin_user LOGIN;

@@ -84,6 +84,9 @@
 | "YBC admin operation timeout" | "ybc.timeout.admin_operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for admin operations" | "Integer" |
 | "XCluster config DB sync timeout" | "yb.xcluster.db_sync_timeout_ms" | "GLOBAL" | "XCluster config background DB sync timeout in milliseconds" | "Integer" |
 | "XCluster/DR config GET API timeout" | "yb.xcluster.get_api_timeout_ms" | "GLOBAL" | "XCluster/DR config GET API timeout in milliseconds" | "Integer" |
+| "PITR list API snapshot schedules request timeout" | "yb.pitr.list_api.snapshot_schedules.request_timeout_ms" | "GLOBAL" | "YB client admin operation timeout in milliseconds for PITR list APIs that call listSnapshotSchedules" | "Integer" |
+| "PITR list API snapshot schedules cache TTL" | "yb.pitr.list_api.snapshot_schedules.cache.ttl_ms" | "GLOBAL" | "Per-universe cache TTL in milliseconds for listSnapshotSchedules results used by PITR list APIs" | "Integer" |
+| "PITR list API snapshot schedules cache max size" | "yb.pitr.list_api.snapshot_schedules.cache.max_size" | "GLOBAL" | "Maximum number of universes whose listSnapshotSchedules results are cached for PITR list APIs" | "Integer" |
 | "YBC socket read timeout" | "ybc.timeout.socket_read_timeout_ms" | "GLOBAL" | "YBC client socket read timeout in milliseconds" | "Integer" |
 | "YBC operation timeout" | "ybc.timeout.operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for operations" | "Integer" |
 | "DNS debug logging threshold" | "yb.client.dns_debug_threshold_ns" | "GLOBAL" | "Threshold in nanoseconds above which DNS lookups are logged at DEBUG level" | "Integer" |
@@ -206,6 +209,7 @@
 | "Allow Duplicates in Existing AZs" | "yb.provider.allow_existing_duplicate_az" | "GLOBAL" | "Allow duplicates in already existing availability zones" | "Boolean" |
 | "Disable YNP Node Preflight Check" | "yb.node_agent.disable_ynp_node_preflight_check" | "GLOBAL" | "Disable preflight check in YNP node agent provision" | "Boolean" |
 | "Enable YNP Version Check" | "yb.node_agent.enable_ynp_version_check" | "GLOBAL" | "Enable YNP version check when adding nodes to a universe. When enabled, the node's YNP major version must match the expected version." | "Boolean" |
+| "Skip PA Collector memory validation" | "yb.pa.skip_memory_validation" | "GLOBAL" | "Skip memory availability validation when enabling Performance Advisor Collection" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |

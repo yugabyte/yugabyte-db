@@ -1307,7 +1307,8 @@ static List *
 YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						int *col, bool *needsYBAlter,
 						YbcPgStatement *rollbackHandle,
-						bool isPartitionOfAlteredTable)
+						bool isPartitionOfAlteredTable,
+						LOCKMODE lockmode)
 {
 	Oid			relationId = RelationGetRelid(rel);
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
@@ -1566,10 +1567,10 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					cmd->subtype == AT_DetachPartition)
 				{
 					RangeVar   *partition_rv = ((PartitionCmd *) cmd->def)->name;
-					Relation	r = relation_openrv(partition_rv, AccessExclusiveLock);
+					Relation	r = relation_openrv(partition_rv, lockmode);
 					char		relkind = r->rd_rel->relkind;
 
-					relation_close(r, AccessExclusiveLock);
+					relation_close(r, lockmode);
 					/*
 					 * If alter is performed on an index as opposed to a table
 					 * skip schema version increment.
@@ -1583,7 +1584,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					List	   *affectedPartitions = NIL;
 
 					affectedPartitions = lappend(affectedPartitions,
-												 table_openrv(partition_rv, AccessExclusiveLock));
+												 table_openrv(partition_rv, lockmode));
 
 					/*
 					 * While attaching a partition to the parent partitioned table,
@@ -1599,7 +1600,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 						if (OidIsValid(defaultOid))
 						{
-							Relation	defaultPartition = table_open(defaultOid, AccessExclusiveLock);
+							Relation	defaultPartition = table_open(defaultOid, lockmode);
 
 							affectedPartitions = lappend(affectedPartitions, defaultPartition);
 						}
@@ -1618,7 +1619,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						if (!IsYBBackedRelation(partition) ||
 							partition->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 						{
-							table_close(partition, AccessExclusiveLock);
+							table_close(partition, lockmode);
 							continue;
 						}
 						dependent_rels = lappend(dependent_rels, partition);
@@ -1633,7 +1634,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				{
 					dependent_rels = lappend(dependent_rels,
 											 table_openrv(((Constraint *) cmd->def)->pktable,
-														  AccessExclusiveLock));
+														  lockmode));
 				}
 				/*
 				 * For drop foreign key case, assigning the primary key table
@@ -1675,7 +1676,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						relationId != con->confrelid)
 					{
 						dependent_rels = lappend(dependent_rels,
-												 table_open(con->confrelid, AccessExclusiveLock));
+												 table_open(con->confrelid, lockmode));
 					}
 				}
 				/*
@@ -1698,7 +1699,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 										" not yet supported")));
 					}
 					dependent_rels = lappend(dependent_rels,
-											 table_openrv(index->relation, AccessExclusiveLock));
+											 table_openrv(index->relation, lockmode));
 				}
 
 				/*
@@ -1748,7 +1749,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					HandleYBStatus(YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
 					handles = lappend(handles, alter_cmd_handle);
 					YbTrackAlteredTableId(relationId);
-					table_close(dependent_rel, AccessExclusiveLock);
+					table_close(dependent_rel, lockmode);
 				}
 				*needsYBAlter = true;
 				break;
@@ -1844,7 +1845,8 @@ YBCPrepareAlterTable(List **subcmds,
 					 int subcmds_size,
 					 Oid relationId,
 					 YbcPgStatement *rollbackHandle,
-					 bool isPartitionOfAlteredTable)
+					 bool isPartitionOfAlteredTable,
+					 LOCKMODE lockmode)
 {
 	/* Appropriate lock was already taken */
 	Relation	rel = relation_open(relationId, NoLock);
@@ -1875,7 +1877,8 @@ YBCPrepareAlterTable(List **subcmds,
 			handles = YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd),
 											  rel, handles, &col,
 											  &subcmd_needs_yb_alter, rollbackHandle,
-											  isPartitionOfAlteredTable);
+											  isPartitionOfAlteredTable,
+											  lockmode);
 			needs_yb_alter |= subcmd_needs_yb_alter;
 		}
 	}

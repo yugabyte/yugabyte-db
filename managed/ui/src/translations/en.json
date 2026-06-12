@@ -3934,7 +3934,9 @@
           "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
           "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps.",
           "expertResilienceUninferable": "<b>Invalid configuration!</b> RF {{rf}} requires either {{rf}} AZs or a minimum of {{rf}} total nodes. The current placement falls below this requirement.",
-          "expertAzBlank": "<b>Invalid configuration!</b> Availability zone cannot be left blank."
+          "expertAzBlank": "<b>Invalid configuration!</b> Availability zone cannot be left blank.",
+          "onPremFreeNodesExceeded": "<b>Invalid configuration:</b> Availability zone <b>{{az_name}}</b> requires <b>{{requested_count}}</b> nodes but only <b>{{free_count}}</b> free nodes are available.",
+          "onPremNodesLoading": "<b>Please wait:</b> Loading available on-prem nodes before validating placement."
         }
       },
       "instanceSettings": {
@@ -4247,6 +4249,7 @@
         "actions": "Actions",
         "editResilienceAndRegions": "Edit Regions",
         "editNodesAndAvailabilityZones": "Edit AZ and Node Placement",
+        "advancedPlacementOptions": "Advanced Placement Options",
         "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
         "clusterPlacement": "Cluster Placement",
         "primaryCluster": "Primary Cluster",
@@ -4256,6 +4259,7 @@
         "addGeoPartition": "Add Geo Partition",
         "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
         "faultTolerance": "Fault Tolerance",
+        "resilienceLevel": "Resilience Level",
         "replicationFactor": "Replication Factor",
         "totalNodes": "Total Nodes",
         "totalNodesTServerMaster": "{{total_nodes}} ({{tservers}} T-Servers | {{masters}} Masters)",

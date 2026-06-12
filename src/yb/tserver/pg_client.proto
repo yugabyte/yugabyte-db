@@ -182,6 +182,11 @@ service PgClientService {
   rpc ReleaseSessionObjectLock(PgReleaseSessionObjectLockRequestPB)
       returns (PgReleaseSessionObjectLockResponsePB);
 
+  rpc WaitForLockersMultiple(PgWaitForLockersMultipleRequestPB)
+      returns (PgWaitForLockersMultipleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
 
@@ -1471,6 +1476,20 @@ message PgReleaseSessionObjectLockRequestPB {
 }
 
 message PgReleaseSessionObjectLockResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgWaitForLockersMultipleRequestPB {
+  message ObjectLockEntry {
+    ObjectLockOid lock_oid = 1;
+    ObjectLockMode lock_mode = 2;
+  }
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  repeated ObjectLockEntry lock_entries = 3;
+}
+
+message PgWaitForLockersMultipleResponsePB {
   AppStatusPB status = 1;
 }
 

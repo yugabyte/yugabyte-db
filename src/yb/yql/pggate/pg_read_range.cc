@@ -160,12 +160,9 @@ Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
     return Status::OK();
   }
 
-  // If the bounds are hash code already, there is nothing to do.
-  if (client::AreBoundsHashCode(req)) {
-    return Status::OK();
-  }
-
-  if (req.has_lower_bound()) {
+  // Skip if the bound is a hash code bound already.
+  if (req.has_lower_bound() &&
+      !dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.lower_bound().key())) {
     RETURN_NOT_OK(CheckBoundDerivedFromHashCode(req.lower_bound().key(), /* is_lower = */ true));
     const auto hash_code = VERIFY_RESULT(dockv::DocKey::DecodeHash(req.lower_bound().key()));
     const auto& bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
@@ -173,7 +170,9 @@ Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
     req.mutable_lower_bound()->set_is_inclusive(true);
   }
 
-  if (req.has_upper_bound()) {
+  // Skip if the bound is a hash code bound already.
+  if (req.has_upper_bound() &&
+      !dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.upper_bound().key())) {
     RETURN_NOT_OK(CheckBoundDerivedFromHashCode(req.upper_bound().key(), /* is_lower = */ false));
     const auto hash_code = VERIFY_RESULT(dockv::DocKey::DecodeHash(req.upper_bound().key()));
     const auto& bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);

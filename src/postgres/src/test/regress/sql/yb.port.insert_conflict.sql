@@ -581,14 +581,12 @@ create trigger parted_conflict_update
     for each statement
     execute procedure parted_conflict_update_func();
 
-/* YB: Disabled as create trigger above fails
 truncate parted_conflict;
 
 insert into parted_conflict values (0, 'cero', 1);
 
 insert into parted_conflict values(0, 'cero', 1)
   on conflict (a,b) do update set c = parted_conflict.c + 1;
-*/ -- YB
 
 drop table parted_conflict;
 drop function parted_conflict_update_func();

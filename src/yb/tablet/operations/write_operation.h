@@ -72,7 +72,7 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
 
   void SetAsyncWrite(AsyncWriteCallback callback);
 
-  void AddedAsPending(const TabletPtr& tablet) override;
+  void SubmittedToLeaderQueue() override;
 
  private:
   // Executes a Prepare for a write transaction

@@ -442,6 +442,12 @@ void TabletServer::SetupAsyncClientInit(client::AsyncClientInitializer* async_cl
       client->SetLocalTabletServer(uuid, proxy, tserver);
     });
   }
+#ifdef __linux__
+  async_client_init->AddPostCreateHook([this](client::YBClient* client) {
+    client->SetCallbackCgroupProvider(
+        [this](uint64_t tag) { return PerDbCgroupProvider(tag); });
+  });
+#endif
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {

@@ -31,6 +31,19 @@ _LAZY_EXPORTS = {
         "rag_pipeline.partition_chunk_pipeline",
         "stream_partition_and_chunk",
     ),
+    "chunk_markdown_whole_file": (
+        "rag_pipeline.markdown_finetuning_chunker",
+        "chunk_markdown_whole_file",
+    ),
+    "is_markdown_finetuning_enabled": (
+        "rag_pipeline.markdown_finetuning_chunker",
+        "is_markdown_finetuning_enabled",
+    ),
+    "MekoMarkdownParser": ("rag_pipeline.md_parser", "MekoMarkdownParser"),
+    "parse_markdown": ("rag_pipeline.md_parser", "parse_markdown"),
+    "parse_file": ("rag_pipeline.md_parser", "parse_file"),
+    "ParsedDocument": ("rag_pipeline.md_parser", "ParsedDocument"),
+    "ParsedChunk": ("rag_pipeline.md_parser", "ParsedChunk"),
     "chunk": ("rag_pipeline.chunk", "chunk"),
     "chunk_langchain_docs": (
         "rag_pipeline.chunk", "chunk_langchain_docs",

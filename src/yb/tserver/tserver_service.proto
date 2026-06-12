@@ -154,6 +154,10 @@ service TabletServerService {
       returns (ReleaseObjectLockResponsePB) {
     option (yb.rpc.send_metadata) = true;
   }
+  rpc WaitForLockersMultiple(WaitForLockersMultipleRequestPB)
+      returns (WaitForLockersMultipleResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc GetYSQLLeaseInfo(GetYSQLLeaseInfoRequestPB) returns (GetYSQLLeaseInfoResponsePB) {
     option (yb.rpc.trivial) = true;
   };

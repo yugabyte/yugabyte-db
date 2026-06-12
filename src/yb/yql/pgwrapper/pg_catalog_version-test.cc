@@ -2881,7 +2881,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
   auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
   TestThreadHolder thread_holder;
-  constexpr int kThreads = 5;
+  // Use fewer connection-creating threads under sanitizers so the tserver does
+  // not accumulate enough PG backend / session state to make daemon shutdown
+  // exceed the unit-test wall-clock timeout. "A few" threads is still enough
+  // to exercise the race the test targets.
+  constexpr int kThreads = RegularBuildVsSanitizers(5, 2);
   // Start a few threads to simulate the situation where we keep creating new connections,
   // and run a query, while the main thread concurrently running DDLs to increment catalog
   // versions. Some of the new connections should see a catalog version V1 during setup,

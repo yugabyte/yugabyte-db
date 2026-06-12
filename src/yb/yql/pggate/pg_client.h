@@ -74,7 +74,8 @@ struct DdlMode {
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
     (AcquireAdvisoryLock)(ReleaseAdvisoryLock) \
-    (ReleaseSessionObjectLock)
+    (ReleaseSessionObjectLock) \
+    (WaitForLockersMultiple)
 
 struct PerformResult {
   Status status;

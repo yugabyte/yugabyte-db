@@ -10,7 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_WEBSERVER_YBC_PG_WEBSERVER_WRAPPER_H
+#define YB_YQL_PGGATE_WEBSERVER_YBC_PG_WEBSERVER_WRAPPER_H
 
 #include <sys/types.h>
 #ifdef __cplusplus
@@ -117,3 +121,5 @@ void WriteDoubleArrayToJson(void *p1, const char *key, const double *values, con
 }  // extern "C"
 }  // namespace yb::pggate
 #endif
+
+#endif  // YB_YQL_PGGATE_WEBSERVER_YBC_PG_WEBSERVER_WRAPPER_H
