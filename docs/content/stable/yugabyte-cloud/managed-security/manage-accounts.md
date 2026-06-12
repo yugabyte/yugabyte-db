@@ -52,7 +52,7 @@ This feature is Early Access; to try it, contact {{% support-cloud %}}.
 
 Each account can have its own users, and can create and manage its own clusters. A single user can be added to multiple accounts, with different roles and permissions in each.
 
-To manage accounts, click the Profile icon in the top right corner and choose **Manage Accounts** to display the **Manage Account** page.
+To manage accounts, click the Profile icon in the top right corner and choose **Manage Accounts** to display the **Manage Accounts** page.
 
 Note that only users designated by Yugabyte Support when you enabled the feature can add and manage accounts.
 
