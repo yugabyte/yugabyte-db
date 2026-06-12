@@ -113,6 +113,7 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_server_lifetime | The maximum duration (in seconds) that a backend PostgreSQL connection managed by YSQL Connection Manager can remain open after creation.<br>Default: 3600 |
 | ysql_conn_mgr_log_settings | Comma-separated list of log settings for YSQL Connection Manger. Can include 'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'.<br>Default: "" |
 | ysql_conn_mgr_use_auth_backend | Enable the use of the auth-backend for authentication of client connections. When false, the older auth-passthrough implementation is used.<br>Default: true |
+| ysql_conn_mgr_username | Username used by YSQL Connection Manager when creating internal control connections (for example, for authentication passthrough and internal queries).<br>Default: yugabyte |
 | ysql_conn_mgr_readahead_buffer_size | Size of the per-connection buffer (in bytes) used for IO read-ahead operations in YSQL Connection Manager.<br>Default: 8192 |
 | ysql_conn_mgr_tcp_keepalive | TCP keepalive time (in seconds) in YSQL Connection Manager. Set to zero to disable keepalive.<br>Default: 15 |
 | ysql_conn_mgr_tcp_keepalive_keep_interval | TCP keepalive interval (in seconds) in YSQL Connection Manager. Only applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled.<br>Default: 75 |
