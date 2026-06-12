@@ -257,9 +257,14 @@ export const getResilientType = (
   });
 };
 
-const getPlacementSpecForCluster = (
+export const getPlacementSpecForCluster = (
   cluster: ClusterSpec | ClusterPartitionSpec
 ): ClusterPlacementSpec | undefined => {
+
+  if('partitions_spec' in cluster && cluster.partitions_spec) {
+    return cluster.partitions_spec.find((partition) => partition.default_partition)?.placement;
+  }
+
   if ('placement_spec' in cluster && cluster.placement_spec) {
     return cluster.placement_spec;
   }

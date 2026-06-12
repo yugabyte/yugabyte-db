@@ -4275,6 +4275,7 @@
           "current": "Current",
           "new": "New",
           "faultTolerance": "Fault Tolerance:",
+          "replicationFactor": "Replication Factor:",
           "totalNodes": "Total Nodes:",
           "node": "node",
           "rank": "Rank {{rank}}",
