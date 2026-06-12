@@ -2194,6 +2194,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const scoped_refptr<master::TableInfo>& table,
       bool is_index_table,
       bool update_indexed_table,
+      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
       std::map<TableId, DeletingTableData>* data_map);
 
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
