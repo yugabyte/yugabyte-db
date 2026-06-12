@@ -131,7 +131,15 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_internal_conn_db | Database to which YSQL Connection Manager connects when creating internal control connections.<br>Default: yugabyte. v2025.2.4.0 and later only. |
 | ysql_conn_mgr_internal_conn_user | Username used by YSQL Connection Manager when creating internal control connections (for example, for authentication passthrough and internal queries). Replaces the deprecated `ysql_conn_mgr_username` flag.<br>Default: yugabyte. v2025.2.4.0 and later only. |
 | ysql_conn_mgr_socket_listen_backlog | Maximum number of pending TCP connections queued by the kernel on Connection Manager's listening socket (the backlog argument to `listen(2)`). Incoming connections beyond this limit may be refused or dropped during heavy connection bursts.<br>Default: 128. v2025.2.4.0 and later only. |
-<sup>1</sup> In v2025.2.3.0, this flag was named `ysql_conn_mgr_deallocate_if_invalid_prep_stmt`; the old name is deprecated.
+
+### Deprecated flags
+
+| Deprecated flag | Use instead |  
+| :-------------- | :---------- |  
+| `ysql_conn_mgr_username` | `ysql_conn_mgr_internal_conn_user`<br>v2025.2.4.0 and later |  
+| `ysql_conn_mgr_password` | Not used; internal connections authenticate with the TServer key in v2024.1.0.0 and later |  
+| `ysql_conn_mgr_max_phy_conn_percent` | `ysql_conn_mgr_reserve_internal_conns`<br>v2025.2.1.0 and later |  
+| `ysql_conn_mgr_deallocate_if_invalid_prep_stmt` (only available in v2025.2.3.0) | `ysql_conn_mgr_enable_prep_stmt_close`<br>v2025.2.4.0 and later |
 
 ## Authentication methods
 
