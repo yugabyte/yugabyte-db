@@ -28,6 +28,12 @@ Each traced query produces a _trace_ made up of _spans_. Spans are nested to sho
 
 When tracing is disabled (the default), there is no measurable performance impact. When tracing is enabled for a query, other queries and other YSQL backends are not affected.
 
+## Prerequisites
+
+- YSQL must be enabled on the cluster.
+- The OTLP/HTTP endpoint must be reachable from each YB-TServer node.
+- Because Distributed Tracing is a preview feature, add `otel_collector_traces_endpoint` to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list before setting it.
+
 ## Configure Distributed Tracing
 
 To configure Distributed Tracing, set the following YB-TServer flags on each node in the cluster. Changing these flags requires a YB-TServer restart.
@@ -39,15 +45,9 @@ To configure Distributed Tracing, set the following YB-TServer flags on each nod
 | otel_batch_schedule_delay_ms | Milliseconds between batch exports. Lower values reduce export latency but increase export frequency. | `5000` |
 | otel_batch_max_export_batch_size | Maximum spans per export batch. Must be greater than 0 and no larger than `otel_batch_max_queue_size`. | `512` |
 
-## Prerequisites
-
-- YSQL must be enabled on the cluster.
-- The OTLP/HTTP endpoint must be reachable from each YB-TServer node.
-- Because Distributed Tracing is a preview feature, add `otel_collector_traces_endpoint` to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list before setting it.
-
 ## Set up tracing
 
-The following example uses [Jaeger](https://www.jaegertracing.io/) as the trace backend. Jaeger accepts OTLP over HTTP on port 4318.
+The following example uses [Jaeger](https://www.jaegertracing.io/) as the trace backend. Jaeger accepts OTLP over HTTP on port 4318. Other OTLP-compatible backends follow the same pattern; change the endpoint as appropriate.
 
 ### Start Jaeger
 
@@ -120,7 +120,7 @@ RESET yb_dist_tracecontext;
 
 {{< note title="Parameter takes precedence" >}}
 
-If you provide both a `traceparent` parameter _and_ SQL comment, the parameter takes priority and a warning is emitted.
+If you provide a traceparent using both the parameter _and_ SQL comment, the parameter takes priority and a warning is emitted.
 
 {{< /note >}}
 
