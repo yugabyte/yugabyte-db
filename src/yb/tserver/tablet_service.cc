@@ -3965,6 +3965,42 @@ void TabletServiceImpl::ReleaseObjectLocks(
   }
 }
 
+void TabletServiceImpl::WaitForLockersMultiple(
+    const WaitForLockersMultipleRequestPB* req, WaitForLockersMultipleResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("Start WaitForLockersMultiple");
+  VLOG(2) << "Received WaitForLockersMultiple RPC: " << req->DebugString();
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    LOG_WITH_FUNC(INFO)
+        << "Flag enable_object_locking_for_table_locks disabled. "
+        << "Ignoring wait_for_lockers request.";
+    return context.RespondSuccess();
+  }
+  if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
+  }
+  auto ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    VLOG_WITH_FUNC(1) << "TSLocalLockManager not found...";
+    return SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+  }
+  TransactionId background_txn_id = TransactionId::Nil();
+  if (!req->background_transaction_id().empty()) {
+    auto res = FullyDecodeTransactionId(req->background_transaction_id());
+    if (!res.ok()) {
+      return SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
+    }
+    background_txn_id = *res;
+  }
+  const auto deadline = context.GetClientDeadline();
+  ts_local_lock_manager->WaitForLockersAsync(
+      req->object_locks(), deadline,
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()),
+      background_txn_id);
+}
+
 Result<GetYSQLLeaseInfoResponsePB> TabletServiceImpl::GetYSQLLeaseInfo(
     const GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) {
   auto lease_info = VERIFY_RESULT(server_->GetYSQLLeaseInfo());

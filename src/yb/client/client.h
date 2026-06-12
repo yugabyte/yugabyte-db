@@ -739,6 +739,9 @@ class YBClient {
   void ReleaseObjectLocksGlobalAsync(
       const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
       CoarseTimePoint deadline);
+  void WaitForLockersMultipleGlobalAsync(
+      const master::WaitForLockersMultipleGlobalRequestPB& request, StdStatusCallback callback,
+      CoarseTimePoint deadline);
 
   // Update a CDC stream's options.
   Status UpdateCDCStream(

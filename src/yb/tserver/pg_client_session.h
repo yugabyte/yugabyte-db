@@ -92,6 +92,7 @@ namespace tserver {
 #define PG_CLIENT_SESSION_ASYNC_LW_METHODS \
     (AcquireObjectLock) \
     (GetTableKeyRanges) \
+    (WaitForLockersMultiple) \
     /**/
 
 YB_STRONGLY_TYPED_BOOL(IsDDL);

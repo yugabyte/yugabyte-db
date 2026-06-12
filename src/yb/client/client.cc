@@ -2128,6 +2128,12 @@ void YBClient::ReleaseObjectLocksGlobalAsync(
   data_->ReleaseObjectLocksGlobalAsync(this, request, deadline, callback);
 }
 
+void YBClient::WaitForLockersMultipleGlobalAsync(
+    const master::WaitForLockersMultipleGlobalRequestPB& request, StdStatusCallback callback,
+    CoarseTimePoint deadline) {
+  data_->WaitForLockersMultipleGlobalAsync(this, request, deadline, std::move(callback));
+}
+
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
     PartitionsOnly partitions_only, GetTableLocationsCallback callback) {

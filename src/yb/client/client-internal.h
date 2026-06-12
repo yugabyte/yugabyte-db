@@ -377,6 +377,10 @@ class YBClient::Data {
       YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
       StdStatusCallback callback);
 
+  void WaitForLockersMultipleGlobalAsync(
+      YBClient* client, master::WaitForLockersMultipleGlobalRequestPB request,
+      CoarseTimePoint deadline, StdStatusCallback callback);
+
   void GetTableLocations(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,

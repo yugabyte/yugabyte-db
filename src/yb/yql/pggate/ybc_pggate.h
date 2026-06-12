@@ -1079,6 +1079,9 @@ YbcStatus YBCAcquireObjectLock(
     YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock);
 YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all);
 
+YbcStatus YBCWaitForLockersMultiple(
+    YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks);
+
 // Indicates if the YB universe is in the process of a YSQL major version upgrade (e.g., pg11 to
 // pg15). This will return true before any process has been upgraded to the new version, and will
 // return false after the upgrade has been finalized.

@@ -531,6 +531,34 @@ class TSLocalLockManager::Impl {
     return was_a_blocker;
   }
 
+  void WaitForLockersAsync(
+      const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
+      CoarseTimePoint deadline,
+      StdStatusCallback&& callback,
+      const TransactionId& background_txn_id) {
+    auto s = CheckShutdown();
+    if (!s.ok()) {
+      callback(s);
+      return;
+    }
+    s = WaitUntilBootstrapped(deadline);
+    if (!s.ok()) {
+      callback(s);
+      return;
+    }
+    auto keys_to_check = DetermineObjectsToLock(object_locks);
+    if (!keys_to_check.ok()) {
+      callback(keys_to_check.status());
+      return;
+    }
+    if (keys_to_check->lock_batch.empty()) {
+      callback(Status::OK());
+      return;
+    }
+    object_lock_manager_.WaitForConflictingLockers(
+        *keys_to_check, std::move(callback), deadline, background_txn_id);
+  }
+
   void Poll() {
     object_lock_manager_.Poll();
   }
@@ -731,6 +759,14 @@ Result<docdb::TxnBlockedTableLockRequests> TSLocalLockManager::ReleaseObjectLock
   auto ret = impl_->ReleaseObjectLocks(req, deadline);
   DVLOG_WITH_FUNC(3) << "Dumping after release : " << impl_->DumpLocksToHtml();
   return ret;
+}
+
+void TSLocalLockManager::WaitForLockersAsync(
+    const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
+    CoarseTimePoint deadline,
+    StdStatusCallback&& callback,
+    const TransactionId& background_txn_id) {
+  impl_->WaitForLockersAsync(object_locks, deadline, std::move(callback), background_txn_id);
 }
 
 void TSLocalLockManager::Start(

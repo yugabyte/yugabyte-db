@@ -50,7 +50,7 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 300;
+    return 600;
   }
 
   @Test

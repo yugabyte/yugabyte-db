@@ -7011,6 +7011,13 @@ void CatalogManager::ReleaseObjectLocksGlobal(
   object_lock_info_manager_->UnlockObject(*req, *resp, std::move(rpc));
 }
 
+void CatalogManager::WaitForLockersMultipleGlobal(
+    const WaitForLockersMultipleGlobalRequestPB* req,
+    WaitForLockersMultipleGlobalResponsePB* resp,
+    rpc::RpcContext rpc) {
+  object_lock_info_manager_->WaitForLockersMultipleGlobal(*req, *resp, std::move(rpc));
+}
+
 Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
                                                 GetIndexBackfillProgressResponsePB* resp,
                                                 rpc::RpcContext* rpc) {

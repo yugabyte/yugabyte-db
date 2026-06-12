@@ -131,6 +131,7 @@ class TserverXClusterContextIf;
 #define YB_PG_CLIENT_ASYNC_LW_METHODS \
     (AcquireObjectLock) \
     (GetTableKeyRanges) \
+    (WaitForLockersMultiple) \
     /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {

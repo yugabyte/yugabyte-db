@@ -3373,6 +3373,11 @@ YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all)
   return ToYBCStatus(pgapi->ReleaseSessionObjectLock(lock_id, release_all));
 }
 
+YbcStatus YBCWaitForLockersMultiple(
+    YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
+  return ToYBCStatus(pgapi->WaitForLockersMultiple(lock_ids, lock_mode, num_locks));
+}
+
 bool YBCPgYsqlMajorVersionUpgradeInProgress() {
   /*
    * yb_upgrade_to_pg15_completed is only available on the newer code version.

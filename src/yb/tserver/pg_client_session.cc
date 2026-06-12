@@ -3065,6 +3065,57 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
+  Status DoWaitForLockersMultiple(
+      const LWPgWaitForLockersMultipleRequestPB& req,
+      LWPgWaitForLockersMultipleResponsePB* resp,
+      std::shared_ptr<rpc::RpcContext> context) {
+    VLOG_WITH_FUNC(1) << req.ShortDebugString();
+
+    master::WaitForLockersMultipleGlobalRequestPB master_req;
+    master_req.set_session_host_uuid(instance_uuid());
+    master_req.set_lease_epoch(lease_epoch_);
+    auto now = clock().get()->Now();
+    master_req.set_propagated_hybrid_time(now.ToUint64());
+    for (const auto& entry : req.lock_entries()) {
+      auto* lock = master_req.add_object_locks();
+      lock->set_database_oid(entry.lock_oid().database_oid());
+      lock->set_relation_oid(entry.lock_oid().relation_oid());
+      lock->set_object_oid(entry.lock_oid().object_oid());
+      lock->set_object_sub_oid(entry.lock_oid().object_sub_oid());
+      lock->set_lock_type(static_cast<TableLockType>(entry.lock_mode()));
+    }
+    auto& background_session_data = GetSessionData(PgClientSessionKind::kPgSession);
+    if (background_session_data.transaction) {
+      auto txn_id = background_session_data.transaction->id();
+      master_req.set_background_transaction_id(txn_id.data(), txn_id.size());
+    }
+
+    auto deadline = context->GetClientDeadline();
+    client_.WaitForLockersMultipleGlobalAsync(
+        master_req,
+        [resp, context](const Status& status) {
+          if (!status.ok()) {
+            StatusToPB(status, resp->mutable_status());
+          }
+          context->RespondSuccess();
+        },
+        deadline);
+    return Status::OK();
+  }
+
+  void WaitForLockersMultiple(
+      const LWPgWaitForLockersMultipleRequestPB& req,
+      LWPgWaitForLockersMultipleResponsePB* resp,
+      rpc::RpcContext&& context) {
+    auto shared_ctx = std::make_shared<rpc::RpcContext>(std::move(context));
+    auto s = DoWaitForLockersMultiple(req, resp, shared_ctx);
+    if (!s.ok()) {
+      StatusToPB(s, resp->mutable_status());
+      shared_ctx->RespondSuccess();
+      return;
+    }
+  }
+
   void StartShutdown(bool pg_service_shutting_down) {
     VLOG(2) << "StartShutdown for session id: " << id();
     if (!pg_service_shutting_down) {

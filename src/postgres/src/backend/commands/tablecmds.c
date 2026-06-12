@@ -5486,7 +5486,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 											   AT_NUM_PASSES,
 											   main_relid,
 											   &yb_rollback_handle,
-											   false /* isPartitionOfAlteredTable */ );
+											   false /* isPartitionOfAlteredTable */ ,
+											   lockmode);
 
 	if (yb_rollback_handle)
 		*yb_rollback_handles = lappend(*yb_rollback_handles, yb_rollback_handle);
@@ -5513,7 +5514,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 														 AT_NUM_PASSES,
 														 childrelid,
 														 &yb_child_rollback_handle,
-														 true /* isPartitionOfAlteredTable */ );
+														 true /* isPartitionOfAlteredTable */ ,
+														 lockmode);
 		ListCell   *listcell = NULL;
 
 		foreach(listcell, child_handles)

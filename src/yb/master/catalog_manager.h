@@ -448,6 +448,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ReleaseObjectLocksGlobal(
       const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
+  void WaitForLockersMultipleGlobal(
+      const WaitForLockersMultipleGlobalRequestPB* req,
+      WaitForLockersMultipleGlobalResponsePB* resp,
+      rpc::RpcContext rpc);
   ObjectLockInfoManager* object_lock_info_manager() { return object_lock_info_manager_.get(); }
 
   // Gets the progress of ongoing index backfills.
