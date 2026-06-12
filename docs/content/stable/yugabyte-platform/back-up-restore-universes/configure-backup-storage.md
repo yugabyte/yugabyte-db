@@ -161,8 +161,6 @@ You can configure Azure as your backup target.
 - [Blob container](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-portal#create-a-container).
 - [SAS Token](https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview?toc=/azure/storage/blobs/toc.json&bc=/azure/storage/blobs/breadcrumb/toc.json) or [Managed identity (IAM)](#azure-managed-identity-authentication).
 
-    Note that you must generate the SAS Token on the Storage Account, not the Container.
-
 ### Create an Azure storage configuration
 
 In YugabyteDB Anywhere:
