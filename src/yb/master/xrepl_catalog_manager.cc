@@ -5231,6 +5231,9 @@ Status CatalogManager::CleanupStaleCDCStreams(
 
       all_stream_ids.insert(stream_id);
       NamespaceId stream_namespace = stream_lock->namespace_id();
+      // Some CDC streams do not persist namespace_id in stream metadata. Resolve those via the
+      // first table_id when possible so namespace-filtered cleanup can attribute their cdc_state
+      // rows.
       if (stream_namespace.empty() && !stream_lock->table_id().empty()) {
         auto table = tables_->FindTableOrNull(stream_lock->table_id().Get(0));
         if (table) {
