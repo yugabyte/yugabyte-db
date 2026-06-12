@@ -63,6 +63,7 @@
 
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -805,6 +806,10 @@ Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool gracefu
 }
 
 void RaftConsensus::CheckDelayedStepDown(const Status& status) {
+  if (!status.ok()) {
+    return;  // Scheduled task was aborted.
+  }
+
   ReplicaState::UniqueLock lock;
   auto lock_status = state_->LockForConfigChange(&lock);
   if (!lock_status.ok()) {
@@ -937,7 +942,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     if (peer && peer->member_type() == PeerMemberType::VOTER) {
       auto timeout_ms = FLAGS_protege_synchronization_timeout_ms;
       if (timeout_ms != 0 &&
-          queue_->PeerLastReceivedOpId(new_leader_uuid) < GetLatestOpIdFromLog()) {
+          queue_->PeerLastReceivedOpId(new_leader_uuid) < state_->GetLastReceivedOpIdUnlocked()) {
         delayed_step_down_ = DelayedStepDown {
           .term = state_->GetCurrentTermUnlocked(),
           .protege = new_leader_uuid,
@@ -1576,6 +1581,12 @@ Status RaftConsensus::Update(
   }
 
   TEST_PAUSE_IF_FLAG(TEST_follower_pause_update_consensus_requests);
+
+  if (PREDICT_FALSE(TEST_pause_update_consensus_.load(std::memory_order_acquire))) {
+    CHECK_OK(LoggedWaitFor(
+        [this] { return !TEST_pause_update_consensus_.load(std::memory_order_acquire); },
+        MonoDelta::kMax, LogPrefix() + "Paused by TEST_PauseUpdateConsensus"));
+  }
 
   const auto& request = *request_ptr;
   auto reject_mode = reject_mode_.load(std::memory_order_acquire);

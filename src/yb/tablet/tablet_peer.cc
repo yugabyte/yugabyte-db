@@ -420,7 +420,11 @@ Status TabletPeer::MajorityReplicated(const OpId& committed_op_id) {
 }
 
 void TabletPeer::BecomeReplica() {
-  // TODO(#28383): delay this until the new leader is caught up to async writes too.
+  // For graceful stepdowns, this gets called after we wait for the protege to catch up (which also
+  // waits for any in-progress async writes to make it to the protege). Note that if that drain
+  // takes longer than FLAGS_protege_synchronization_timeout_ms, then ongoing async writes will
+  // likely abort - FailAllAsyncWrites will make the client retry on the new leader to validate.
+
   // Return NOT_THE_LEADER so the client can retry on a different leader.
   FailAllAsyncWrites(STATUS(
       IllegalState, Format("Tablet $0 leader changed during async write", tablet_id()),
