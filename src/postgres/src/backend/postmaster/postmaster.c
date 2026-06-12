@@ -2149,6 +2149,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	bool		yb_logical_conn_type_provided = false;
 	bool		yb_auto_analyze_backend = false;
 	bool		yb_is_auth_via_conn_mgr = false;
+	bool		yb_is_control_conn = false;
 
 	pq_startmsgread();
 
@@ -2439,6 +2440,25 @@ retry1:
 				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_is_control_conn") == 0)
+			{
+				if (!parse_bool(valptr, &yb_is_control_conn))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_is_control_conn",
+									valptr),
+							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
+
+				/* Client needs to be connected on the unix domain socket */
+				if (port->raddr.addr.ss_family != AF_UNIX)
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("yb_is_control_conn can only be set "
+									"if the connection is made over unix domain "
+									"socket")));
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
 				yb_auth_backend_remote_host = pstrdup(valptr);
 			else if (YBIsEnabledInPostgresEnvVar()
@@ -2525,6 +2545,24 @@ retry1:
 
 	yb_is_auth_via_conn_mgr = yb_is_auth_backend ||
 		port->yb_is_auth_passthrough_req;
+
+	/*
+	 * YB: Connection Manager's auth-passthrough control backends are long-lived
+	 * pooled backends that authenticate external clients via the 'A' packet
+	 * flow. Both CM auth backends and CM auth-passthrough control backends use
+	 * the CM control pool (yb_is_control_conn=1), but auth backends are
+	 * one-shot and identified separately via yb_authonly=1. They are excluded
+	 * here so this flag only marks the reusable AP control backends.
+	 *
+	 * The `if` condition is required as incoming AP requests also parse the
+	 * startup packet via ProcessStartupPacket, thus this would unset this var
+	 * on control backends because those startup packets are forwarded "as-is"
+	 * without adding the yb_is_control_conn flag. So, the flag is made set-only
+	 * and is never unset on a control backend.
+	 */
+	if (!yb_conn_mgr_is_auth_passthrough_backend)
+		yb_conn_mgr_is_auth_passthrough_backend = yb_is_control_conn &&
+			!yb_is_auth_backend;
 
 	if (YBIsEnabledInPostgresEnvVar())
 	{

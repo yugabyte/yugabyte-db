@@ -8090,6 +8090,12 @@ YbIsAuthBackend()
 	return yb_is_auth_backend;
 }
 
+bool
+YbIsAuthPassthroughControlBackend()
+{
+	return yb_conn_mgr_is_auth_passthrough_backend;
+}
+
 /* Used in YB to check if an attribute is a key column. */
 bool
 YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
