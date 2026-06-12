@@ -2743,12 +2743,15 @@ void TabletServiceImpl::Write(const WriteRequestMsg* req,
 void TabletServiceImpl::WaitForAsyncWrite(
     const WaitForAsyncWriteRequestPB* req, WaitForAsyncWriteResponsePB* resp,
     rpc::RpcContext context) {
-  auto callback = [resp, context_ptr = std::make_shared<rpc::RpcContext>(std::move(context))](
+  auto callback = [op_id = OpId::FromPB(req->op_id()), resp,
+                   context_ptr = std::make_shared<rpc::RpcContext>(std::move(context))](
                       const Status& status) {
     if (!status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
       return;
     }
+    TEST_SYNC_POINT_CALLBACK(
+        "TabletServiceImpl::WaitForAsyncWrite::Verified", const_cast<OpId*>(&op_id));
     context_ptr->RespondSuccess();
   };
 

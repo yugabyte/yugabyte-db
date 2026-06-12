@@ -277,6 +277,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TEST_delay_update_.store(duration, std::memory_order_release);
   }
 
+  void TEST_PauseUpdateConsensus(bool paused) {
+    TEST_pause_update_consensus_.store(paused, std::memory_order_release);
+  }
+
   Result<XClusterReadOpsResult> ReadReplicatedMessagesForXCluster(
       const OpId& from, const CoarseTimePoint deadline, bool fetch_single_entry) override;
 
@@ -793,6 +797,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CoarseTimePoint disable_pre_elections_until_ = CoarseTimePoint::min();
 
   std::atomic<MonoDelta> TEST_delay_update_{MonoDelta::kZero};
+  std::atomic<bool> TEST_pause_update_consensus_{false};
 
   std::atomic<uint64_t> majority_num_sst_files_{0};
 
