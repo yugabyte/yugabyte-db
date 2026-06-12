@@ -28,6 +28,7 @@
 /* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
+#include "yb_internal_conn.h"
 
 
 /* ----------
@@ -378,7 +379,8 @@ pgstat_bestart(void)
 	if (lbeentry.st_procpid > 0 &&
 		(lbeentry.st_backendType == B_BACKEND ||
 		 lbeentry.st_backendType == YB_AUTO_ANALYZE_BACKEND ||
-		 lbeentry.st_backendType == YB_YSQL_CONN_MGR))
+		 lbeentry.st_backendType == YB_YSQL_CONN_MGR ||
+		 YbIsInternalConnBackendType(lbeentry.st_backendType)))
 		(*yb_new_conn)++;
 
 	if (YBIsEnabledInPostgresEnvVar() && lbeentry.st_databaseid > 0)
@@ -402,7 +404,8 @@ pgstat_bestart(void)
 		|| lbeentry.st_backendType == B_BG_WORKER
 		|| lbeentry.st_backendType == YB_AUTO_ANALYZE_BACKEND
 		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR
-		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR_WAL_SENDER)
+		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR_WAL_SENDER
+		|| YbIsInternalConnBackendType(lbeentry.st_backendType))
 		lbeentry.st_userid = GetSessionUserId();
 	else
 		lbeentry.st_userid = InvalidOid;
