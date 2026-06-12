@@ -7,21 +7,21 @@ BEGIN;
     provolatile, proparallel, pronargs, pronargdefaults, prorettype, proargtypes,
     proallargtypes, proargmodes, proargnames, proargdefaults, protrftypes,
     prosrc, probin, prosqlbody, proconfig, proacl) VALUES
-    (8894, 'pg_replication_origin_session_setup_shared', 11, 10, 12, 1, 0, 0,
-     '-', 'f', false, false, false, false, 'v', 'u', 1, 0, 2278, '25',
+    (8894, 'yb_replication_origin_session_setup_shared', 11, 10, 12, 1, 0, 0,
+     '-', 'f', false, false, true, false, 'v', 'u', 1, 0, 2278, '25',
      NULL, NULL, NULL, NULL, NULL,
-     'pg_replication_origin_session_setup_shared', NULL, NULL, NULL, '{postgres=X/postgres}'),
-    (8895, 'pg_replication_origin_session_reset_shared', 11, 10, 12, 1, 0, 0,
-     '-', 'f', false, false, false, false, 'v', 'u', 0, 0, 2278, '',
+     'yb_replication_origin_session_setup_shared', NULL, NULL, NULL, '{postgres=X/postgres}'),
+    (8895, 'yb_replication_origin_session_reset_shared', 11, 10, 12, 1, 0, 0,
+     '-', 'f', false, false, true, false, 'v', 'u', 0, 0, 2278, '',
      NULL, NULL, NULL, NULL, NULL,
-     'pg_replication_origin_session_reset_shared', NULL, NULL, NULL, '{postgres=X/postgres}')
+     'yb_replication_origin_session_reset_shared', NULL, NULL, NULL, '{postgres=X/postgres}')
   ON CONFLICT DO NOTHING;
 
   INSERT INTO pg_catalog.pg_description (
     objoid, classoid, objsubid, description
   ) VALUES
     (8894, 1255, 0, 'set session replication origin without exclusive lock (for concurrent write tagging)'),
-    (8895, 1255, 0, 'reset shared replication origin set by pg_replication_origin_session_setup_shared')
+    (8895, 1255, 0, 'reset shared replication origin set by yb_replication_origin_session_setup_shared')
   ON CONFLICT DO NOTHING;
 
   INSERT INTO pg_catalog.pg_init_privs (

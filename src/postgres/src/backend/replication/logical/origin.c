@@ -1234,7 +1234,7 @@ void
 replorigin_session_advance(XLogRecPtr remote_commit, XLogRecPtr local_commit)
 {
 	/* Shared origin sessions only tag writes and do not track progress. */
-	if (session_replication_state == NULL)
+	if (yb_enable_replication_origin_shared && session_replication_state == NULL)
 		return;
 
 	Assert(session_replication_state != NULL);
@@ -1368,6 +1368,12 @@ pg_replication_origin_session_setup(PG_FUNCTION_ARGS)
 	RepOriginId origin;
 
 	replorigin_check_prerequisites(true, false);
+	if (yb_enable_replication_origin_shared &&
+		session_replication_state == NULL &&
+		replorigin_session_origin != InvalidRepOriginId)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("replication origin session already setup")));
 
 	name = text_to_cstring((text *) DatumGetPointer(PG_GETARG_DATUM(0)));
 	origin = replorigin_by_name(name, false);
@@ -1387,10 +1393,15 @@ pg_replication_origin_session_setup(PG_FUNCTION_ARGS)
  * only suitable for write tagging (e.g., CDC origin filtering).
  */
 Datum
-pg_replication_origin_session_setup_shared(PG_FUNCTION_ARGS)
+yb_replication_origin_session_setup_shared(PG_FUNCTION_ARGS)
 {
 	char	   *name;
 	RepOriginId origin;
+
+	if (!yb_enable_replication_origin_shared)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("yb_replication_origin_session_setup_shared requires yb_enable_replication_origin_shared to be enabled")));
 
 	replorigin_check_prerequisites(true, false);
 
@@ -1408,6 +1419,11 @@ pg_replication_origin_session_setup_shared(PG_FUNCTION_ARGS)
 	origin = replorigin_by_name(name, false);
 
 	replorigin_session_origin = origin;
+	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Incrementing sticky object count for setting shared replication origin in session");
+		increment_sticky_object_count();
+	}
 
 	pfree(name);
 
@@ -1433,12 +1449,17 @@ pg_replication_origin_session_reset(PG_FUNCTION_ARGS)
 
 /*
  * Reset a shared replication origin previously set with
- * pg_replication_origin_session_setup_shared(). Simply clears the
+ * yb_replication_origin_session_setup_shared(). Simply clears the
  * session variable without touching shared-memory slots.
  */
 Datum
-pg_replication_origin_session_reset_shared(PG_FUNCTION_ARGS)
+yb_replication_origin_session_reset_shared(PG_FUNCTION_ARGS)
 {
+	if (!yb_enable_replication_origin_shared)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("yb_replication_origin_session_reset_shared requires yb_enable_replication_origin_shared to be enabled")));
+
 	if (session_replication_state != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),

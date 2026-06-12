@@ -13210,15 +13210,15 @@ TEST_F(CDCSDKYsqlTest, TestSharedOriginIdFromConcurrentSessions) {
   ASSERT_EQ(tablets.size(), 1);
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
-  ASSERT_OK(conn1.FetchFormat("SELECT pg_replication_origin_session_setup_shared('$0');", kOrigin));
-  ASSERT_OK(conn2.FetchFormat("SELECT pg_replication_origin_session_setup_shared('$0');", kOrigin));
+  ASSERT_OK(conn1.FetchFormat("SELECT yb_replication_origin_session_setup_shared('$0');", kOrigin));
+  ASSERT_OK(conn2.FetchFormat("SELECT yb_replication_origin_session_setup_shared('$0');", kOrigin));
   ASSERT_OK(conn1.Execute("CREATE TEMP TABLE shared_origin_temp(i int)"));
   ASSERT_OK(conn1.Execute("INSERT INTO shared_origin_temp VALUES (1)"));
   ASSERT_OK(conn1.Execute("DROP TABLE shared_origin_temp"));
   ASSERT_OK(conn1.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
   ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 VALUES (2, 200)", kTableName));
-  ASSERT_OK(conn1.Fetch("SELECT pg_replication_origin_session_reset_shared()"));
-  ASSERT_OK(conn2.Fetch("SELECT pg_replication_origin_session_reset_shared()"));
+  ASSERT_OK(conn1.Fetch("SELECT yb_replication_origin_session_reset_shared()"));
+  ASSERT_OK(conn2.Fetch("SELECT yb_replication_origin_session_reset_shared()"));
 
   auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   LOG(INFO) << "CDC response: " << change_resp.ShortDebugString();

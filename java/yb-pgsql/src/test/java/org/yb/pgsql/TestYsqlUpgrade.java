@@ -1138,6 +1138,41 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     runMigrations(false /* useSingleConnection */);
   }
 
+  @SkipOnTSAN
+  @Test
+  public void sharedReplicationOriginMigration() throws Exception {
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
+    createDbConnections();
+    runMigrations(false /* useSingleConnection */);
+
+    try (Connection conn = template1Cb.connect();
+         Statement stmt = conn.createStatement()) {
+      assertQuery(stmt,
+          "SELECT p.oid::int, p.proname, p.proisstrict, oidvectortypes(p.proargtypes), "
+              + "p.prosrc, p.proacl::text, d.description "
+              + "FROM pg_catalog.pg_proc p "
+              + "JOIN pg_catalog.pg_description d "
+              + "ON d.objoid = p.oid AND d.classoid = 'pg_proc'::regclass AND d.objsubid = 0 "
+              + "WHERE p.oid IN (8894, 8895) "
+              + "ORDER BY p.oid",
+          new Row(8894, "yb_replication_origin_session_setup_shared", true, "text",
+              "yb_replication_origin_session_setup_shared", "{postgres=X/postgres}",
+              "set session replication origin without exclusive lock (for concurrent write tagging)"),
+          new Row(8895, "yb_replication_origin_session_reset_shared", true, "",
+              "yb_replication_origin_session_reset_shared", "{postgres=X/postgres}",
+              "reset shared replication origin set by "
+                  + "yb_replication_origin_session_setup_shared"));
+
+      assertQuery(stmt,
+          "SELECT objoid::int, initprivs::text "
+              + "FROM pg_catalog.pg_init_privs "
+              + "WHERE objoid IN (8894, 8895) "
+              + "ORDER BY objoid",
+          new Row(8894, "{postgres=X/postgres}"),
+          new Row(8895, "{postgres=X/postgres}"));
+    }
+  }
+
   //
   // Helpers
   //

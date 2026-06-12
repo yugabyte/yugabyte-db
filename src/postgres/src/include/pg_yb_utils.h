@@ -876,6 +876,9 @@ extern int	yb_test_reset_retry_counts;
 */
 extern bool yb_enable_ddl_atomicity_infra;
 
+/* Enable shared replication origin write tagging. */
+extern bool yb_enable_replication_origin_shared;
+
 /*
  * Allow to return to the client SQL status codes defined by YugabyteDB (YBxxx).
  * Those codes are used internally to determine if transparent retry is
