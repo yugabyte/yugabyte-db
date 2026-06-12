@@ -1000,8 +1000,10 @@ Result<bool> PgDocReadOp::BindExprsRegular(
     auto hash = VERIFY_RESULT(table->partition_schema().PgsqlHashColumnCompoundValue(hash_values));
     PgReadRange scan_range(table);
     if (yb_allow_dockey_bounds) {
-      scan_range.SetDocKeyBound(hash, values, true /* is_inclusive */, true /* is_lower */);
-      scan_range.SetDocKeyBound(hash, values, true /* is_inclusive */, false /* is_lower */);
+      RETURN_NOT_OK(scan_range.SetHashAndRangeValuesBound(
+          hash, values, true /* is_inclusive */, true /* is_lower */));
+      RETURN_NOT_OK(scan_range.SetHashAndRangeValuesBound(
+          hash, values, true /* is_inclusive */, false /* is_lower */));
     } else {
       scan_range.SetHashCodeBound(hash, true /* is_inclusive */, true /* is_lower */);
       scan_range.SetHashCodeBound(hash, true /* is_inclusive */, false /* is_lower */);
@@ -1066,10 +1068,10 @@ Result<bool> PgDocReadOp::BindExprsToBatch(
     // values, but different range values. It is a single value range if there's no range columns.
     // Skip the permutation if it is fully outside of the request range.
     PgReadRange permutation_range(table_);
-    permutation_range.SetDocKeyBound(
-        hash_code, values, true /* is_inclusive */, true /* is_lower */);
-    permutation_range.SetDocKeyBound(
-        hash_code, values, true /* is_inclusive */, false /* is_lower */);
+    RETURN_NOT_OK(permutation_range.SetHashAndRangeValuesBound(
+        hash_code, values, true /* is_inclusive */, true /* is_lower */));
+    RETURN_NOT_OK(permutation_range.SetHashAndRangeValuesBound(
+        hash_code, values, true /* is_inclusive */, false /* is_lower */));
     if (!partition_batch.request_range->Intersects(permutation_range)) {
       return false;
     }
