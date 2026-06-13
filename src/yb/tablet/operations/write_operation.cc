@@ -105,7 +105,8 @@ Status WriteOperation::ApplyOperation(int64_t leader_term, bool skip_opid_update
   }
 
   RETURN_NOT_OK(VERIFY_RESULT(tablet_safe())
-                    ->ApplyRowOperations(this, /*apply_to_storages=*/{}, skip_opid_update));
+                    ->ApplyRowOperations(
+                        this, /*apply_to_storages=*/docdb::StorageSet::All(), skip_opid_update));
 
   // Now that all of the changes have been applied make the changes visible to readers.
   TRACE("FINISH: making edits visible");

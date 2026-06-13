@@ -1034,13 +1034,14 @@ NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
     SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers& frontiers,
-    const DocVectorIndexesPtr& vector_indexes)
+    const DocVectorIndexesPtr& vector_indexes, const StorageSet& apply_to_storages)
     : FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       put_batch_(put_batch),
       write_hybrid_time_(write_hybrid_time),
       batch_hybrid_time_(batch_hybrid_time),
       intents_write_batch_(intents_write_batch),
-      vector_indexes_(vector_indexes) {
+      vector_indexes_(vector_indexes),
+      apply_to_storages_(apply_to_storages) {
   if (put_batch_.apply_external_transactions().size() > 0) {
     intents_db_iter_ = CreateRocksDBIterator(
         intents_db, &docdb::KeyBounds::kNoBounds, BloomFilterOptions::Inactive(),
@@ -1092,7 +1093,7 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
   }
 
   VectorIndexesUpdater vector_indexes_updater(
-      vector_indexes_, schema_packing_provider_, frontiers_, StorageSet::All(),
+      vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
       apply_data.commit_ht, apply_data.write_id, /* xcluster_target= */ true);
   for (;;) {
     auto key_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
@@ -1122,14 +1123,22 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     // Since external intents only contain one key since D24185, this should be all or nothing.
     DCHECK(can_delete_entire_batch);
 
-    std::array<Slice, 2> key_parts = {{
-        output_key,
-        doc_ht_buffer.EncodeWithValueType(apply_data.commit_ht, apply_data.write_id),
-    }};
-    std::array<Slice, 1> value_parts = {{
-        output_value,
-    }};
-    regular_write_handler.Put(key_parts, value_parts);
+    // GH#31899: apply this write to a storage only when apply_to_storages_ marks it in
+    // scope. Tablet-bootstrap replay clears a storage's bit when this op is already durably
+    // flushed there, so we don't write a duplicate -- in the regular DB a duplicate Put would,
+    // after a packed-row repack, shadow the merged row and drop a column update; in a vector index
+    // it would insert an already-present entry. Every non-bootstrap caller passes All(). The
+    // regular-DB Put is gated here; the vector-index bits are honored inside the updater.
+    if (apply_to_storages_.TestRegularDB()) {
+      std::array<Slice, 2> key_parts = {{
+          output_key,
+          doc_ht_buffer.EncodeWithValueType(apply_data.commit_ht, apply_data.write_id),
+      }};
+      std::array<Slice, 1> value_parts = {{
+          output_value,
+      }};
+      regular_write_handler.Put(key_parts, value_parts);
+    }
     RETURN_NOT_OK(vector_indexes_updater.Feed(regular_write_handler, output_key, output_value));
     ++apply_data.write_id;
 

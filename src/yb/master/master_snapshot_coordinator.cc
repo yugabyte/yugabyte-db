@@ -386,7 +386,8 @@ class MasterSnapshotCoordinator::Impl {
 
     auto tablet = VERIFY_RESULT(operation.tablet_safe());
     RETURN_NOT_OK(tablet->ApplyOperation(
-        operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
+        operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch),
+        docdb::StorageSet::All()));
     if (sys_catalog_snapshot_data) {
       RETURN_NOT_OK(tablet->snapshots().Create(*sys_catalog_snapshot_data));
     }
@@ -595,7 +596,8 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     RETURN_NOT_OK(tablet->ApplyOperation(
-        operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
+        operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch),
+        docdb::StorageSet::All()));
 
     PostScheduleOperations(std::move(operations), leader_term);
     return Status::OK();
