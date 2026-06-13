@@ -71,6 +71,7 @@
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/cgroups.h"
@@ -140,6 +141,9 @@ DEFINE_test_flag(bool, pause_session_lock_before_release, false,
 
 DEFINE_test_flag(bool, pause_session_lock_after_release, false,
     "Pause after releasing session object lock.");
+
+DEFINE_test_flag(uint64, shared_exchange_big_response_delay_ms, 0,
+    "Delay before sending response that does not fit into the shared exchange buffer.");
 
 #ifdef __linux__
 DECLARE_bool(enable_qos);
@@ -1155,6 +1159,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     std::pair<uint64_t, std::byte*> shared_memory_segment(0, nullptr);
     RefCntBuffer buffer;
     if (!start) {
+      AtomicFlagSleepMs(&FLAGS_TEST_shared_exchange_big_response_delay_ms);
       shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
       if (shared_memory_segment.second) {
         start = shared_memory_segment.second;
@@ -2766,6 +2771,7 @@ class PgClientSession::Impl {
   void ProcessSharedRequest(
       size_t size, SharedExchange* exchange,
       const RequestProcessingPreconditionWaiter& precondition_waiter) {
+    ReleaseAbandonedBigSharedMemSegment();
     auto input = to_uchar_ptr(exchange->Obtain(size));
     const auto req_type_id = *input;
     input += sizeof(req_type_id);
@@ -2787,6 +2793,23 @@ class PgClientSession::Impl {
         << ", max allowed: " << tserver::PgSharedExchangeReqType_MAX
         << ". Would lead to pg backend timing out/entering a stuck state.";
     FATAL_INVALID_PB_ENUM_VALUE(tserver::PgSharedExchangeReqType, req_type);
+  }
+
+  // Postgres releases the big shared memory segment before reusing the exchange for the next
+  // request. It could only skip the release after a request failure, like a timeout, when the
+  // response is abandoned without being loaded. So when a new request is received via the
+  // exchange while the segment is still marked as in use, the response stored in the segment was
+  // abandoned and it is safe to clear the flag, making the segment reusable. The same is not true
+  // for requests received via TCP, since they could be issued while the exchange response is
+  // delivered but not yet loaded.
+  void ReleaseAbandonedBigSharedMemSegment() {
+    {
+      std::lock_guard lock(big_shared_mem_mutex_);
+      if (!big_shared_mem_handle_ || !InUseAtomic(big_shared_mem_handle_).exchange(false)) {
+        return;
+      }
+    }
+    LOG_WITH_PREFIX(INFO) << "Big shared memory response was abandoned by postgres";
   }
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size) {
