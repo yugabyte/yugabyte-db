@@ -18,14 +18,72 @@
 #include "yb/docdb/docdb-test.h"
 
 #include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/rocksdb_writer.h"
 #include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/partition.h"
 
 namespace yb::docdb {
 
 static const char* kTabletUUID = "4c3e1d91-5ea7-4449-8bb3-8b0a3f9ae903";
 static const char* kTxnId = "0000000000000001";
+
+// Minimal DocVectorIndex test double for the external-apply vector-feed gating test (GH#31899).
+// Only the methods the external apply touches are functional -- indexed_table_key_prefix(),
+// column_id(), hybrid_time(), and Insert() (which records how many entries were fed). Everything
+// else is unreachable on this path and fatal if called.
+class CountingVectorIndex : public DocVectorIndex {
+ public:
+  CountingVectorIndex(Slice table_key_prefix, ColumnId column_id)
+      : table_key_prefix_(table_key_prefix.ToBuffer()), column_id_(column_id) {}
+
+  Slice indexed_table_key_prefix() const override { return table_key_prefix_; }
+  ColumnId column_id() const override { return column_id_; }
+  HybridTime hybrid_time() const override { return HybridTime::kMin; }
+  Status Insert(
+      const DocVectorIndexInsertEntries& entries, const InsertOptions& options) override {
+    inserted_entries_ += entries.size();
+    return Status::OK();
+  }
+  size_t inserted_entries() const { return inserted_entries_; }
+
+  // Unused on the external-apply vector-feed path.
+  const TableId& table_id() const override { LOG(FATAL) << "Unexpected call"; }
+  const PgVectorIdxOptionsPB& options() const override { LOG(FATAL) << "Unexpected call"; }
+  const std::string& path() const override { LOG(FATAL) << "Unexpected call"; }
+  const DocVectorIndexContext& context() const override { LOG(FATAL) << "Unexpected call"; }
+  const DocVectorIndexMetrics& metrics() const override { LOG(FATAL) << "Unexpected call"; }
+  size_t EstimateNumVectorsForBytes(size_t) const override { LOG(FATAL) << "Unexpected call"; }
+  Result<DocVectorIndexSearchResult> Search(
+      Slice, const vector_index::SearchOptions&, bool, DocDBStatistics*) override {
+    LOG(FATAL) << "Unexpected call";
+  }
+  Result<EncodedDistance> Distance(Slice, Slice) override { LOG(FATAL) << "Unexpected call"; }
+  void EnableAutoCompactions() override { LOG(FATAL) << "Unexpected call"; }
+  Status Compact() override { LOG(FATAL) << "Unexpected call"; }
+  Status WaitForCompaction() override { LOG(FATAL) << "Unexpected call"; }
+  Status Flush() override { LOG(FATAL) << "Unexpected call"; }
+  Status WaitForFlush() override { LOG(FATAL) << "Unexpected call"; }
+  ConsensusFrontierPtr GetFlushedFrontier() override { LOG(FATAL) << "Unexpected call"; }
+  storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
+  Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
+  const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }
+  Result<bool> HasVectorId(const vector_index::VectorId&) const override {
+    LOG(FATAL) << "Unexpected call";
+  }
+  Status Destroy() override { LOG(FATAL) << "Unexpected call"; }
+  Result<size_t> TotalEntries() const override { LOG(FATAL) << "Unexpected call"; }
+  void StartShutdown() override { LOG(FATAL) << "Unexpected call"; }
+  void CompleteShutdown() override { LOG(FATAL) << "Unexpected call"; }
+  bool TEST_HasBackgroundInserts() const override { LOG(FATAL) << "Unexpected call"; }
+  size_t TEST_NextManifestFileNo() const override { LOG(FATAL) << "Unexpected call"; }
+
+ private:
+  const std::string table_key_prefix_;
+  const ColumnId column_id_;
+  size_t inserted_entries_ = 0;
+};
 
 class NonTransactionalBatchWriterTest : public DocDBTestBase {
  public:
@@ -39,12 +97,14 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
   Schema CreateSchema() override { return Schema(); }
 
   Status SendWriteBatch(
-      const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime write_ht, HybridTime batch_ht) {
+      const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime write_ht, HybridTime batch_ht,
+      const DocVectorIndexesPtr& vector_indexes = nullptr,
+      const StorageSet& apply_to_storages = StorageSet::All()) {
     ConsensusFrontiers frontiers;
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
         put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, frontiers,
-        /*vector_indexes=*/nullptr);
+        vector_indexes, apply_to_storages);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetFrontiers(&frontiers);
@@ -492,6 +552,56 @@ SubDocKey(DocKey([], ["r8"]), [HT{ physical: 6000 w: 2 }]) -> "value16"
 SubDocKey(DocKey([], ["r9"]), [HT{ physical: 6000 w: 5 }]) -> "value19"
 SubDocKey(DocKey([], ["r9"]), [HT{ physical: 6000 w: 4 }]) -> "value18"
     )#");
+}
+
+// GH#31899: the fused external apply honors the vector-index bit of apply_to_storages.
+// On bootstrap replay, a vector index already durably flushed past the op has its bit cleared and
+// must NOT be re-fed; an index whose bit is set (online apply, or a lagging index on replay) is fed
+// as before. This drives NonTransactionalBatchWriter directly with the StorageSet, so it exercises
+// the gating deterministically -- no cluster, restart, or intents-lag timing involved.
+TEST_F(NonTransactionalBatchWriterTest, ExternalApplyGatesVectorIndexFeed) {
+  // Applies one column-keyed external write (column_id 11) to a vector-indexed table with the given
+  // StorageSet, and returns how many entries the external apply fed into the vector index.
+  auto fed_entries = [&](const StorageSet& apply_to_storages, const char* txn_hex,
+                         uint16_t hash) -> size_t {
+    auto index = std::make_shared<CountingVectorIndex>(/*table_key_prefix=*/Slice(), ColumnId(11));
+    auto indexes = std::make_shared<DocVectorIndexes>();
+    indexes->push_back(index);
+
+    Uuid involved_tablet = CHECK_RESULT(Uuid::FromString(kTabletUUID));
+    TransactionId txn = CHECK_RESULT(FullyDecodeTransactionId(txn_hex));
+    const DocKey hk(hash, MakeKeyEntryValues("h1"));
+    auto column_path = DocPath(hk.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)));
+
+    const auto kBatchHT = 5000_usec_ht;
+    const auto kWriteHT = 6000_usec_ht;
+
+    // Write the external intent (a single column value)...
+    docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+    std::vector<ExternalIntent> intents = {
+        {column_path, EncodeValue(QLValue::Primitive("vec"))}};
+    AddExternalIntentsWritePair(&put_batch, txn, kMinSubTransactionId, intents, involved_tablet);
+    CHECK_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
+
+    // ...then apply it, passing the vector index and the StorageSet under test.
+    put_batch.Clear();
+    AddApplyExternalTxn(&put_batch, txn, kWriteHT);
+    CHECK_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT, indexes, apply_to_storages));
+    return index->inserted_entries();
+  };
+
+  // Vector-index bit clear (already flushed past this op) -> the apply must skip the vector feed.
+  // The regular bit is left clear too, so the apply doesn't also write the regular-DB reverse
+  // mapping (which would require a real encoded vector value); this isolates the vector-feed gate.
+  StorageSet vector_flushed;
+  EXPECT_EQ(fed_entries(vector_flushed, "0000000000000001", 0), 0)
+      << "External apply re-fed a vector index whose bit was clear (already durably flushed).";
+
+  // Vector-index bit set (lagging index) -> the apply feeds the vector index.
+  StorageSet vector_lagging;
+  vector_lagging.SetVectorIndex(0);
+  EXPECT_EQ(fed_entries(vector_lagging, "0000000000000002", 100), 1)
+      << "External apply did not feed a vector index whose bit was set.";
 }
 
 }  // namespace yb::docdb
