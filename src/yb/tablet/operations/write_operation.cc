@@ -34,6 +34,8 @@
 
 #include "yb/consensus/consensus.messages.h"
 
+#include "yb/docdb/storage_set.h"
+
 #include "yb/tablet/tablet.h"
 
 #include "yb/util/debug-util.h"
@@ -111,7 +113,8 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
     TEST_PAUSE_IF_FLAG(TEST_tablet_pause_apply_write_ops);
   }
 
-  *complete_status = VERIFY_RESULT(tablet_safe())->ApplyRowOperations(this);
+  *complete_status = VERIFY_RESULT(tablet_safe())->ApplyRowOperations(
+      this, /*apply_to_storages=*/docdb::StorageSet::All());
   // Failure is regular case, since could happen because transaction was aborted, while
   // replicating its intents.
   LOG_IF(INFO, !complete_status->ok()) << "Apply operation failed: " << *complete_status;
