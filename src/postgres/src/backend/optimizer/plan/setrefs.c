@@ -29,6 +29,9 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "utils/relcache.h"
+
 
 typedef struct
 {
@@ -573,23 +576,49 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				 */
 				if (splan->yb_idx_pushdown.quals)
 				{
-					indexed_tlist *index_itlist;
-					index_itlist = build_tlist_index(splan->indextlist);
-					splan->yb_idx_pushdown.quals = (List *)
-						fix_upper_expr(root,
-									   (Node *) splan->yb_idx_pushdown.quals,
-									   index_itlist,
-									   INDEX_VAR,
-									   rtoffset);
-					splan->yb_idx_pushdown.colrefs = (List *)
-						fix_upper_expr(root,
-									   (Node *) splan->yb_idx_pushdown.colrefs,
-									   index_itlist,
-									   INDEX_VAR,
-									   rtoffset);
-					splan->indextlist =
-						fix_scan_list(root, splan->indextlist, rtoffset);
-					pfree(index_itlist);
+					Relation	index = RelationIdGetRelation(splan->indexid);
+					bool		is_primary = index->rd_index->indisprimary;
+
+					RelationClose(index);
+
+					if (is_primary)
+					{
+						/*
+						 * For a bitmap index scan on a primary index, we must
+						 * use base-table attnums instead of index-relative
+						 * attnums because the primary index is part
+						 * of the base table and ordering of the columns in the
+						 * base table can be different from ordering of the
+						 * columns in the primary index.
+						 */
+						splan->yb_idx_pushdown.quals = (List *)
+							fix_scan_list(root,
+										  splan->yb_idx_pushdown.quals,
+										  rtoffset);
+						splan->indextlist =
+							fix_scan_list(root, splan->indextlist, rtoffset);
+					}
+					else
+					{
+						indexed_tlist *index_itlist;
+
+						index_itlist = build_tlist_index(splan->indextlist);
+						splan->yb_idx_pushdown.quals = (List *)
+							fix_upper_expr(root,
+										   (Node *) splan->yb_idx_pushdown.quals,
+										   index_itlist,
+										   INDEX_VAR,
+										   rtoffset);
+						splan->yb_idx_pushdown.colrefs = (List *)
+							fix_upper_expr(root,
+										   (Node *) splan->yb_idx_pushdown.colrefs,
+										   index_itlist,
+										   INDEX_VAR,
+										   rtoffset);
+						splan->indextlist =
+							fix_scan_list(root, splan->indextlist, rtoffset);
+						pfree(index_itlist);
+					}
 				}
 			}
 			break;
