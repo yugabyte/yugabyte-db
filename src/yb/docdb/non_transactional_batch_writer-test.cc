@@ -43,7 +43,8 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
     ConsensusFrontiers frontiers;
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
-        put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, &frontiers);
+        put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, &frontiers,
+        /* already_applied_to_regular_db= */ false);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetFrontiers(&frontiers);

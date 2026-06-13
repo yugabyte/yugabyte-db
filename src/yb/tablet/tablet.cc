@@ -1719,14 +1719,13 @@ Status Tablet::ApplyKeyValueRowOperations(
   } else {
     // See comments for PrepareExternalWriteBatch.
 
-    // This should be only set when we are replicating the transaction status table (since this is
-    // only used for UPDATE_TRANSACTION_OP).
-    DCHECK(!already_applied_to_regular_db);
-
+    // GH#31899: on tablet-bootstrap replay, already_applied_to_regular_db is true for a fused
+    // external WRITE_OP whose regular-DB effect is already durably flushed; the writer then skips
+    // re-applying it to the regular DB. Every non-bootstrap caller leaves it false.
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers);
+        GetSchemaPackingProvider(), frontiers, static_cast<bool>(already_applied_to_regular_db));
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);

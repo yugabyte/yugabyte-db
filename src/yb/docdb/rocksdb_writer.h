@@ -293,7 +293,7 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider& schema_packing_provider,
-      ConsensusFrontiers* frontiers);
+      ConsensusFrontiers* frontiers, bool already_applied_to_regular_db);
   bool Empty() const;
 
   Status Apply(rocksdb::DirectWriteHandler* handler) override;
@@ -325,6 +325,7 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   BoundedRocksDbIterator intents_db_iter_;
   Slice intents_db_iter_upperbound_;
   rocksdb::WriteBatch* intents_write_batch_;
+  bool already_applied_to_regular_db_;
 };
 
 } // namespace docdb

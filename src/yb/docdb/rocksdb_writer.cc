@@ -808,12 +808,14 @@ struct ExternalTxnApplyStateData {
 NonTransactionalBatchWriter::NonTransactionalBatchWriter(
     std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
     HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
-    SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers* frontiers)
+    SchemaPackingProvider& schema_packing_provider, ConsensusFrontiers* frontiers,
+    bool already_applied_to_regular_db)
     : FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       put_batch_(put_batch),
       write_hybrid_time_(write_hybrid_time),
       batch_hybrid_time_(batch_hybrid_time),
-      intents_write_batch_(intents_write_batch) {
+      intents_write_batch_(intents_write_batch),
+      already_applied_to_regular_db_(already_applied_to_regular_db) {
   if (put_batch_.apply_external_transactions().size() > 0) {
     intents_db_iter_ = CreateRocksDBIterator(
         intents_db, &docdb::KeyBounds::kNoBounds, docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -892,14 +894,20 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     // Since external intents only contain one key since D24185, this should be all or nothing.
     DCHECK(can_delete_entire_batch);
 
-    std::array<Slice, 2> key_parts = {{
-        output_key,
-        doc_ht_buffer.EncodeWithValueType(apply_data->commit_ht, apply_data->write_id),
-    }};
-    std::array<Slice, 1> value_parts = {{
-        output_value,
-    }};
-    regular_write_handler->Put(key_parts, value_parts);
+    // GH#31899: skip re-applying to the regular DB when tablet-bootstrap replay has determined this
+    // external write is already durably flushed there. Otherwise, after a packed-row repack, the
+    // duplicate Put would shadow the merged row and drop a column update. Every non-bootstrap
+    // caller passes already_applied_to_regular_db_ = false.
+    if (!already_applied_to_regular_db_) {
+      std::array<Slice, 2> key_parts = {{
+          output_key,
+          doc_ht_buffer.EncodeWithValueType(apply_data->commit_ht, apply_data->write_id),
+      }};
+      std::array<Slice, 1> value_parts = {{
+          output_value,
+      }};
+      regular_write_handler->Put(key_parts, value_parts);
+    }
     ++apply_data->write_id;
 
     // Update min/max schema version.

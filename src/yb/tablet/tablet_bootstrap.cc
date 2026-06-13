@@ -1162,10 +1162,22 @@ class TabletBootstrap {
     }
 
     if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
-      // Write intents that have not been flushed into the intents DB.
+      // A transactional WRITE_OP writes external intents to the intents DB and -- for an xCluster
+      // external transaction whose APPLY is fused into the same op -- applies them inline to the
+      // regular DB (see NonTransactionalBatchWriter). Replay it while it is unflushed in the
+      // intents DB, but if the regular DB already has this op durably flushed, gate off the
+      // regular-DB apply, exactly as the APPLYING branch above does: after an ungraceful restart
+      // whose intents flushed OpId lags, re-applying an already-durable external write would, after
+      // a packed-row repack, shadow the merged row and drop a column update (GH#31899).
+      const auto already_applied_to_regular_db = index <= regular_flushed_index
+          ? AlreadyAppliedToRegularDB::kTrue
+          : AlreadyAppliedToRegularDB::kFalse;
       VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
-                                   << "intents_flushed_index: " << intents_flushed_index;
-      return {index > intents_flushed_index};
+                                   << "intents_flushed_index: " << intents_flushed_index
+                                   << " regular_flushed_index: " << regular_flushed_index
+                                   << " already_applied_to_regular_db: "
+                                   << already_applied_to_regular_db;
+      return {index > intents_flushed_index, already_applied_to_regular_db};
     }
 
     VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
