@@ -559,7 +559,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + ", row_type_oid = " + newSysOid()
           + ")";
 
-      stmt.execute("SET yb_test_fail_next_ddl TO true");
+      stmt.execute("SET yb_test_fail_next_ddl TO 1");
       runInvalidQuery(stmt, ddlSql, "Failed DDL operation as requested");
 
       // Letting CatalogManagerBgTasks do the cleanup.

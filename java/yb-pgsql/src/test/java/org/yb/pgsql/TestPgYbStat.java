@@ -73,6 +73,7 @@ public class TestPgYbStat extends BasePgSQLTest {
         startSignal.countDown();
         startSignal.await();
         try {
+          LOG.info("Executing query: {}", query);
           statement.execute(query);
         } catch (Throwable throwable) {
           if(isTestRunningWithConnectionManager())
@@ -86,6 +87,7 @@ public class TestPgYbStat extends BasePgSQLTest {
         startSignal.countDown();
         startSignal.await();
         Thread.sleep(100); // Allow the query execution a headstart before killing
+        LOG.info("Sending signal {} to backend pid {}", signal, pid);
         ProcessUtil.signalProcess(pid, signal);
       });
       MiscUtil.runInParallel(cmds, startSignal, 60);
