@@ -532,8 +532,10 @@ SELECT pctest1.* FROM pctest1, pctest2
  1000 |  0 | 333 |  0 | Value1000
 (20 rows)
 
+-- Keep Gather Merge over a sorted BNL on record; the copy in the parallel
+-- hints section shows the Sort variant.
 EXPLAIN (costs off)
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
                               QUERY PLAN                              
@@ -549,7 +551,7 @@ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
          Index Cond: (k = ANY (ARRAY[pctest1.k, $2, $3, ..., $1024]))
 (9 rows)
 
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard)*/
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Set(enable_sort off)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
   k  |  a  | b  | c  |    d     |  k  
@@ -1210,18 +1212,19 @@ SELECT pctest1.* FROM pctest1, pctest2
 EXPLAIN (costs off)
 /*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (pctest1.k = pctest2.k)
-   Sort Keys: pctest1.k
-   ->  Gather Merge
-         Workers Planned: 2
-         ->  Parallel Index Scan using pctest1_pkey on pctest1
-               Storage Filter: (c = 42)
-   ->  Index Scan using pctest2_pkey on pctest2
-         Index Cond: (k = ANY (ARRAY[pctest1.k, $2, $3, ..., $1024]))
-(9 rows)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Sort
+   Sort Key: pctest1.k
+   ->  YB Batched Nested Loop Join
+         Join Filter: (pctest1.k = pctest2.k)
+         ->  Gather
+               Workers Planned: 2
+               ->  Parallel Index Scan using pctest1_c_idx on pctest1
+                     Index Cond: (c = 42)
+         ->  Index Scan using pctest2_pkey on pctest2
+               Index Cond: (k = ANY (ARRAY[pctest1.k, $2, $3, ..., $1024]))
+(10 rows)
 
 /*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;

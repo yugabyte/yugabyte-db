@@ -3214,6 +3214,8 @@ create_nestloop_path(PlannerInfo *root,
 	pathnode->jpath.innerjoinpath = inner_path;
 	pathnode->jpath.joinrestrictinfo = restrict_clauses;
 
+	pathnode->yb_first_batch_size = workspace->yb_first_batch_size;
+
 	if (IsYugaByteEnabled())
 	{
 		yb_assign_unique_path_node_id(root, (Path *) pathnode);

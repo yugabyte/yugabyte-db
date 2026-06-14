@@ -1012,6 +1012,7 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	/*
 	 * copy remainder of node
 	 */
+	COPY_SCALAR_FIELD(first_batch_size);
 	COPY_SCALAR_FIELD(num_hashClauseInfos);
 
 	if (from->num_hashClauseInfos > 0)

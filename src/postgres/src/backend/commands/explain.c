@@ -3314,6 +3314,26 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										 bnl->numSortCols, 0, bnl->sortColIdx,
 										 bnl->sortOperators, bnl->collations,
 										 bnl->nullsFirst, ancestors, es);
+
+				if (is_yb_planning_stats_required &&
+					bnl->first_batch_size > 0)
+					ExplainPropertyInteger("First Batch Size", NULL,
+										   bnl->first_batch_size, es);
+
+				/*
+				 * The trimmed size the executor ran the first batch with; it
+				 * differs from the planned one only when the LIMIT was not
+				 * known at plan time.
+				 */
+				if (is_yb_planning_stats_required && es->analyze)
+				{
+					YbBatchedNestLoopState *bnlstate =
+						(YbBatchedNestLoopState *) planstate;
+
+					if (bnlstate->first_batch_size > 0)
+						ExplainPropertyInteger("Actual First Batch Size", NULL,
+											   bnlstate->first_batch_size, es);
+				}
 			}
 
 			show_upper_qual(plan->qual, "Filter", planstate, ancestors, es);

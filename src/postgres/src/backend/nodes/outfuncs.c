@@ -858,6 +858,7 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 
 	_outJoinPlanInfo(str, (const Join *) node);
 	WRITE_NODE_FIELD(nl.nestParams);
+	WRITE_INT_FIELD(first_batch_size);
 	WRITE_INT_FIELD(num_hashClauseInfos);
 	appendStringInfoString(str, " :hashOps");
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
@@ -2423,6 +2424,9 @@ _outNestPath(StringInfo str, const NestPath *node)
 	WRITE_NODE_TYPE("NESTPATH");
 
 	_outJoinPathInfo(str, (const JoinPath *) node);
+
+	/* YB */
+	WRITE_INT_FIELD(yb_first_batch_size);
 }
 
 static void

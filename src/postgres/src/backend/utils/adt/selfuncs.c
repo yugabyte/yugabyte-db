@@ -8379,3 +8379,166 @@ brincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 
 	*indexPages = index->pages;
 }
+
+/*
+ * yb_bnl_outer_skip_selectivity
+ *	  Filter-aware estimate of the fraction of the FILTERED outer rows that a
+ *	  YB Batched Nested Loop pulls before it reaches the inner's first matching
+ *	  join key, when the outer is sorted on that key.
+ *
+ * mergejoinscansel() derives the outer "scan start" selectivity from the FULL
+ * outer-column histogram below the inner's minimum (ASC) / above the inner's
+ * maximum (DESC) join key.  That fraction ignores the outer scan's own
+ * restriction, so multiplying it by the (already restricted) outer row count
+ * over-counts the leading mismatch whenever the outer is itself restricted to
+ * start at or above the inner's matching range -- e.g. "outer.k >= c" with
+ * c >= min(inner.k) has no leading mismatch at all, yet the full-column
+ * fraction is large.
+ *
+ * We instead condition that fraction on the outer relation's baserestrictinfo:
+ *
+ *	  P(outer.k < inner_min | restrict)
+ *		= clauselist_selectivity([outer.k < inner_min] + restrict)
+ *		  / clauselist_selectivity(restrict)
+ *
+ * The inner's histogram contributes only the boundary value inner_min
+ * (inner_max for DESC, via get_variable_range); both probabilities are then
+ * evaluated against the OUTER's own statistics.
+ *
+ * clauselist_selectivity() range-merges inequality clauses on the same
+ * variable, so a lower-bound restriction on the join key (the common
+ * ORDER BY ... LIMIT case) collapses the leading-mismatch fraction to ~0 when
+ * the outer already starts at/above the inner range, while a genuine low-key
+ * prefix (no restriction, or one whose bound is below the inner range) is left
+ * essentially unchanged.  With no outer restriction the conditioned value
+ * equals the unconditional mergejoinscansel fraction.
+ *
+ * Returns the conditioned fraction in [0, 1], or -1.0 when no usable
+ * comparison operator or inner-range statistic is available, so the caller can
+ * fall back to the conservative no-skip (0) estimate that plain merge join
+ * also uses.
+ */
+double
+yb_bnl_outer_skip_selectivity(PlannerInfo *root, Node *clause,
+							  Oid opfamily, int strategy,
+							  Relids outer_relids,
+							  List *outer_baserestrictinfo)
+{
+	OpExpr	   *opclause;
+	Node	   *left;
+	Node	   *right;
+	Node	   *outervar;
+	Node	   *innervar;
+	bool		outer_on_left;
+	Oid			opno;
+	Oid			collation;
+	int			op_strategy;
+	Oid			op_lefttype;
+	Oid			op_righttype;
+	Oid			outertype;
+	Oid			innertype;
+	Oid			innerltop;
+	Oid			cmpop;
+	bool		isgt;
+	VariableStatData innervardata;
+	Datum		innermin;
+	Datum		innermax;
+	Datum		bound;
+	int16		typlen;
+	bool		typbyval;
+	Const	   *boundconst;
+	Expr	   *cmpexpr;
+	List	   *condclauses;
+	Selectivity sel_restrict;
+	Selectivity sel_cond;
+	Selectivity result;
+
+	if (!is_opclause(clause))
+		return -1.0;
+	opclause = (OpExpr *) clause;
+	opno = opclause->opno;
+	collation = opclause->inputcollid;
+	left = get_leftop((Expr *) clause);
+	right = get_rightop((Expr *) clause);
+	if (left == NULL || right == NULL)
+		return -1.0;
+
+	/* Identify which side of the mergeclause belongs to the outer relation. */
+	if (bms_is_subset(pull_varnos(root, left), outer_relids))
+	{
+		outervar = left;
+		innervar = right;
+		outer_on_left = true;
+	}
+	else if (bms_is_subset(pull_varnos(root, right), outer_relids))
+	{
+		outervar = right;
+		innervar = left;
+		outer_on_left = false;
+	}
+	else
+		return -1.0;
+
+	/* The "=" operator's declared input types, in left/right order. */
+	get_op_opfamily_properties(opno, opfamily, false,
+							   &op_strategy, &op_lefttype, &op_righttype);
+	outertype = outer_on_left ? op_lefttype : op_righttype;
+	innertype = outer_on_left ? op_righttype : op_lefttype;
+
+	/* ASC sort: skip outer < inner_min; DESC sort: skip outer > inner_max. */
+	isgt = (strategy == BTGreaterStrategyNumber);
+
+	/* '<' on the inner type, so get_variable_range can read its histogram. */
+	innerltop = get_opfamily_member(opfamily, innertype, innertype,
+									BTLessStrategyNumber);
+	if (!OidIsValid(innerltop))
+		return -1.0;
+
+	/* "outer < bound" (ASC) / "outer > bound" (DESC): leading-mismatch test. */
+	cmpop = get_opfamily_member(opfamily, outertype, innertype,
+								isgt ? BTGreaterStrategyNumber :
+								BTLessStrategyNumber);
+	if (!OidIsValid(cmpop))
+		return -1.0;
+
+	examine_variable(root, innervar, 0, &innervardata);
+	if (!get_variable_range(root, &innervardata, innerltop, collation,
+							&innermin, &innermax))
+	{
+		ReleaseVariableStats(innervardata);
+		return -1.0;
+	}
+	bound = isgt ? innermax : innermin;
+	get_typlenbyval(innertype, &typlen, &typbyval);
+	boundconst = makeConst(innertype, -1, collation, (int) typlen,
+						   datumCopy(bound, typbyval, typlen),
+						   false, typbyval);
+	ReleaseVariableStats(innervardata);
+
+	/* Outer var on the left, the inner bound on the right. */
+	cmpexpr = make_opclause(cmpop, BOOLOID, false,
+							(Expr *) outervar, (Expr *) boundconst,
+							InvalidOid, collation);
+
+	sel_restrict = clauselist_selectivity(root, outer_baserestrictinfo,
+										  0, JOIN_INNER, NULL);
+	if (sel_restrict <= 0.0)
+		return -1.0;
+
+	/*
+	 * Append the leading-mismatch comparison to the outer restriction so
+	 * clauselist_selectivity() range-merges it with any restriction on the
+	 * same column, then normalize by the restriction's own selectivity to get
+	 * the conditional fraction.  list_copy keeps the caller's list intact.
+	 */
+	condclauses = lappend(list_copy(outer_baserestrictinfo), cmpexpr);
+	sel_cond = clauselist_selectivity(root, condclauses, 0, JOIN_INNER, NULL);
+	list_free(condclauses);
+
+	result = sel_cond / sel_restrict;
+	if (result < 0.0)
+		result = 0.0;
+	if (result > 1.0)
+		result = 1.0;
+	return result;
+}

@@ -1630,7 +1630,7 @@ make_bnl_plan(Plan *lefttree, Plan *righttree, Var *join_clause_lhs,
 	join_plan->nl.join.inner_unique = true;
 	join_plan->nl.join.joinqual = list_make1(join_clause);
 	join_plan->nl.nestParams = list_make1(nlp);
-	join_plan->first_batch_factor = 1.0;
+	join_plan->first_batch_size = 0;
 	join_plan->num_hashClauseInfos = 1;
 	join_plan->hashClauseInfos = palloc0(sizeof(YbBNLHashClauseInfo));
 	join_plan->hashClauseInfos->hashOp = ByteaEqualOperator;

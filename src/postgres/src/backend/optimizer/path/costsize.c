@@ -242,7 +242,6 @@ static bool cost_qual_eval_walker(Node *node, cost_qual_eval_context *context);
 static void get_restriction_qual_cost(PlannerInfo *root, RelOptInfo *baserel,
 									  ParamPathInfo *param_info,
 									  QualCost *qpqual_cost);
-static List *yb_get_bnl_extra_quals(JoinPath *joinpath);
 static bool has_indexed_join_quals(NestPath *path);
 static double approx_tuple_count(PlannerInfo *root, JoinPath *path,
 								 List *quals);
@@ -265,6 +264,15 @@ static void set_rel_width(PlannerInfo *root, RelOptInfo *rel);
 static double relation_byte_size(double tuples, int width);
 static double page_size(double tuples, int width);
 static double get_parallel_divisor(Path *path);
+
+/* YB declarations */
+static List *yb_get_bnl_extra_quals(JoinPath *joinpath);
+static Cost yb_get_lsm_seek_cost(Cardinality num_tuples,
+								 int num_key_value_pairs_per_tuple,
+								 int num_sst_files);
+static void yb_get_roundtrip_transfer_costs(Oid tablespace_id,
+											Cost *roundtrip_cost,
+											Cost *transfer_cost);
 
 
 /*
@@ -3291,19 +3299,169 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	bool		yb_costing_bnl = yb_batch_size > 1 && !yb_legacy_bnl_cost;
 
 	/*
+	 * YB: the source data costs a modern BNL pays before its first output
+	 * tuple, charged to startup_cost where those costs are added below, the
+	 * way merge join charges its scan-start selectivities.  In BNL batch
+	 * units: the leading empty batches (from yb_outer_skip_rows), then the
+	 * first productive batch -- additive, not max, since the empty prefix is
+	 * processed before the first productive batch.  yb_outer_startup_frac is
+	 * the outer run cost's share (outer rows pulled before the first output
+	 * tuple); yb_inner_startup_run_cost is the inner probe work, which for
+	 * the first productive batch counts only when the BNL sorts its output
+	 * (see there).  Gated on modern BNL costing via yb_costing_bnl.
+	 */
+	double		yb_outer_startup_frac = 0.0;
+	Cost		yb_inner_startup_run_cost = 0.0;
+
+	if (yb_costing_bnl && outer_path_rows > 0)
+	{
+		double		batch_keys;
+		double		skip_rows = workspace->yb_outer_skip_rows;
+		double		first_size;
+		double		first_keys;
+		double		first_batch_rows;
+		double		startup_outer_rows;
+		bool		empty_first_batch;
+		double		empty_full_batches;
+		Cost		rescan_run_cost = inner_rescan_total_cost -
+			inner_rescan_start_cost;
+		Cost		empty_probe_full;
+		Cost		empty_probe_first;
+
+		if (skip_rows < 0.0)
+			skip_rows = 0.0;
+
+		/*
+		 * Keys spanned by one inner probe, exactly as the inner path was
+		 * costed: yb_batch_expr_size() caps the pushed-down batch by the
+		 * outer cardinality (get_loop_count), so a probe covers
+		 * Min(yb_bnl_batch_size, outer rows) keys, not always a full batch.
+		 * This is the divisor for the per-key run cost (using a hard-coded
+		 * batch would under-charge per_key when the outer is small).
+		 */
+		batch_keys = (outer_path_rows < yb_bnl_batch_size) ?
+			outer_path_rows : yb_bnl_batch_size;
+
+		/*
+		 * Batches are fixed windows over the outer stream: the first holds
+		 * yb_first_batch_size rows when the LIMIT trims it, every later one
+		 * yb_bnl_batch_size (nodeYbBatchedNestloop.c).  The batch holding the
+		 * first matching outer row, skip_rows in, is the first productive one,
+		 * so the outer rows pulled before the first output tuple run to the
+		 * end of that batch, and the batches before it are the empty ones.
+		 */
+		if (workspace->yb_first_batch_size > 0 &&
+			workspace->yb_first_batch_size < yb_bnl_batch_size)
+			first_size = (double) workspace->yb_first_batch_size;
+		else
+			first_size = (double) yb_bnl_batch_size;
+		first_keys = Min(first_size, batch_keys);
+
+		Assert(skip_rows <= outer_path_rows);
+		if (skip_rows < first_size)
+		{
+			empty_first_batch = false;
+			empty_full_batches = 0.0;
+			first_batch_rows = first_keys;
+			startup_outer_rows = first_size;
+		}
+		else
+		{
+			empty_first_batch = true;
+			empty_full_batches = floor((skip_rows - first_size) /
+									   yb_bnl_batch_size);
+			first_batch_rows = batch_keys;
+			startup_outer_rows = first_size +
+				(empty_full_batches + 1.0) * yb_bnl_batch_size;
+		}
+		if (startup_outer_rows > outer_path_rows)
+			startup_outer_rows = outer_path_rows;
+
+		/*
+		 * Inner probe cost of an empty batch: one round trip and a seek per
+		 * probed key, no transfer.  For an index inner we re-derive the seek
+		 * and round-trip terms exactly as yb_cost_index computes them (those
+		 * locals are not persisted on the path; estimated_num_nexts_prevs
+		 * over-counts empty probes, so it is not usable here).  For any other
+		 * inner path we keep the probe's run cost.  Never charge an empty
+		 * batch more than a productive one of the same key count.
+		 */
+		empty_probe_full = rescan_run_cost;
+		empty_probe_first = rescan_run_cost * first_keys / batch_keys;
+		if (IsA(inner_path, IndexPath))
+		{
+			IndexOptInfo *index = ((IndexPath *) inner_path)->indexinfo;
+
+			if (index != NULL && index->tuples > 0)
+			{
+				Cost		index_roundtrip_cost;
+				Cost		index_transfer_cost;
+				Cost		per_merge_cost;
+				Cost		index_per_seek_cost;
+				Cost		probe_cost;
+
+				yb_get_roundtrip_transfer_costs(index->reltablespace,
+												&index_roundtrip_cost,
+												&index_transfer_cost);
+				per_merge_cost = (YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE *
+								  yb_docdb_merge_cpu_cycles *
+								  cpu_operator_cost);
+				index_per_seek_cost =
+					yb_get_lsm_seek_cost(index->tuples,
+										 YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE,
+										 YB_DEFAULT_NUM_SST_FILES_PER_TABLE) +
+					per_merge_cost;
+				probe_cost = index_roundtrip_cost +
+					batch_keys * index_per_seek_cost;
+				if (probe_cost < empty_probe_full)
+					empty_probe_full = probe_cost;
+				probe_cost = index_roundtrip_cost +
+					first_keys * index_per_seek_cost;
+				if (probe_cost < empty_probe_first)
+					empty_probe_first = probe_cost;
+			}
+		}
+
+		/*
+		 * Inner probe work done before the first output tuple: the empty
+		 * batches, then the first productive batch only when the BNL sorts
+		 * its output, since then the whole batch is probed before the first
+		 * tuple: its per-key RUN portion scaled to the key count; its FIXED
+		 * overhead (inner_rescan_start_cost == inner_path->startup_cost) is
+		 * charged with the paths' startup costs below, so adding it again
+		 * here would double-count.  An unsorted BNL emits on the batch's
+		 * first response, which inner_path->startup_cost stands for, as it
+		 * does for a plain nested loop's first probe; charging more would
+		 * rank BNL behind NL on startup whenever their totals tie.
+		 */
+		yb_inner_startup_run_cost = empty_full_batches * empty_probe_full;
+		if (empty_first_batch)
+			yb_inner_startup_run_cost += empty_probe_first;
+		if (workspace->yb_sorted_batches)
+			yb_inner_startup_run_cost +=
+				first_batch_rows * rescan_run_cost / batch_keys;
+
+		yb_outer_startup_frac = startup_outer_rows / outer_path_rows;
+	}
+
+	/*
 	 * NOTE: clearly, we must pay both outer and inner paths' startup_cost
 	 * before we can start returning tuples, so the join's startup cost is
 	 * their sum.  We'll also pay the inner path's rescan startup cost
 	 * multiple times.
 	 */
 	startup_cost += outer_path->startup_cost + inner_path->startup_cost;
-	run_cost += outer_path->total_cost - outer_path->startup_cost;
+	/* YB: outer rows a BNL pulls before its first output tuple are startup */
+	startup_cost += (outer_path->total_cost - outer_path->startup_cost) *
+		yb_outer_startup_frac;
+	run_cost += (outer_path->total_cost - outer_path->startup_cost) *
+		(1.0 - yb_outer_startup_frac);
 	if (outer_path_rows > yb_batch_size)
 		run_cost += (outer_path_rows - yb_batch_size) * inner_rescan_start_cost
 			/ yb_batch_size;
 
 	inner_run_cost = inner_path->total_cost - inner_path->startup_cost;
-	inner_rescan_run_cost = (inner_rescan_total_cost - inner_rescan_start_cost);
+	inner_rescan_run_cost = inner_rescan_total_cost - inner_rescan_start_cost;
 
 	if ((jointype == JOIN_SEMI || jointype == JOIN_ANTI ||
 		 extra->inner_unique) && !yb_costing_bnl)
@@ -3326,12 +3484,20 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 		/*
 		 * In the case of a BNL, yb_batch_size would be whatever the batch
 		 * batch size of outer tuples we are working with. We effectively
-		 * rescan the inner path for each outer tuple batch.
+		 * rescan the inner path for each outer tuple batch.  The probe work a
+		 * BNL does before its first output tuple (yb_inner_startup_run_cost)
+		 * is startup, never more than the inner run cost as a whole.
 		 */
-		run_cost += inner_run_cost;
+		Cost		yb_inner_total_run_cost = inner_run_cost;
+
 		if (outer_path_rows > yb_batch_size)
-			run_cost += ((outer_path_rows - yb_batch_size) / yb_batch_size) *
+			yb_inner_total_run_cost +=
+				((outer_path_rows - yb_batch_size) / yb_batch_size) *
 				inner_rescan_run_cost;
+		if (yb_inner_startup_run_cost > yb_inner_total_run_cost)
+			yb_inner_startup_run_cost = yb_inner_total_run_cost;
+		startup_cost += yb_inner_startup_run_cost;
+		run_cost += yb_inner_total_run_cost - yb_inner_startup_run_cost;
 	}
 
 	/* CPU costs left for later */
@@ -8370,6 +8536,13 @@ yb_estimate_saop_bounding_range_selectivity(PlannerInfo *root,
  * TODO(#20955) : Aggregate pushdown to DocDB is not modeled. We should detect
  * if aggregate functions are being pushed down, in which case we need not
  * transfer rows from DocDB to pggate.
+ *
+ * This scan is costed as if it pulls all of its rows, even when it is the
+ * inner of a Batched Nested Loop whose LIMIT-driven first-batch optimization
+ * pushes a smaller per-batch limit down at run time.  Accounting for that is
+ * left to the consuming BNL node (initial_cost_nestloop), matching
+ * PostgreSQL's convention that only the consumer prices in a LIMIT; pricing it
+ * in here too would double-count the savings.
  */
 void
 yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
@@ -9535,4 +9708,177 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	path->startup_cost = startup_cost;
 	path->total_cost = startup_cost + run_cost;
+}
+
+/*
+ * yb_bnl_outer_skip_rows
+ *	  Estimate the number of leading OUTER rows a Batched Nested Loop pulls
+ *	  before it reaches the first outer key that matches anything in the inner,
+ *	  when the outer is sorted on the join key.
+ *
+ * A BNL PROBES the inner by key (a parameterized "key = ANY(batch)" scan), so
+ * the inner is never walked or skipped the way a merge-join inner is -- inner
+ * sortedness is irrelevant.  The inner mismatch manifests entirely as the
+ * outer skipping: low-key (or high-key, for a DESC scan) leading outer batches
+ * probe the inner and return nothing until the outer reaches the inner's
+ * matching range.  That leading prefix is this function's estimate.
+ *
+ * We require only that the OUTER is sorted on a join key: take the leading
+ * outer pathkey and find a mergejoinable join clause whose equivalence class
+ * matches it (no inner pathkey is needed).  Both sides' statistics are used,
+ * in different roles: the INNER histogram supplies a single boundary value --
+ * its lowest join key (highest for a DESC outer) -- and the OUTER's own
+ * statistics estimate the fraction of outer rows that sort before that
+ * boundary.  This is the outer half of what initial_cost_mergejoin derives.
+ *
+ * Unlike merge join, we make that fraction FILTER-AWARE
+ * (yb_bnl_outer_skip_selectivity): mergejoinscansel measures the leading
+ * mismatch over the FULL outer column histogram, ignoring the outer scan's
+ * own restriction.  Multiplying that full-column fraction by the already
+ * restricted outer_path_rows over-counts the skip whenever the outer is
+ * itself bounded to start at/above the inner's matching range (e.g.
+ * "outer.k >= c" with c >= min(inner.k) has NO leading mismatch, yet the
+ * full-column fraction is large).  Conditioning the fraction on the outer
+ * relation's baserestrictinfo collapses it to ~0 there while preserving a
+ * genuine low-key prefix.
+ *
+ * Returns 0 (the conservative fallback merge join also uses) when the outer is
+ * unsorted, no mergejoinable join clause matches the leading pathkey, or the
+ * stats/bounds needed for a filter-aware estimate are unavailable.
+ */
+static double
+yb_bnl_outer_skip_rows(PlannerInfo *root, Path *outer_path,
+					   JoinType jointype, List *joinrestrictinfo)
+{
+	double		outer_path_rows = outer_path->rows;
+	PathKey    *opathkey;
+	EquivalenceClass *opeclass;
+	ListCell   *lc;
+
+	if (outer_path->pathkeys == NIL || outer_path_rows <= 0)
+		return 0.0;
+
+	/* An outer-side (LEFT/ANTI) join must scan the whole outer: no skip. */
+	if (jointype == JOIN_LEFT || jointype == JOIN_ANTI)
+		return 0.0;
+
+	opathkey = (PathKey *) linitial(outer_path->pathkeys);
+	opeclass = opathkey->pk_eclass;
+
+	foreach(lc, joinrestrictinfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		double		outerstartsel;
+
+		if (rinfo->mergeopfamilies == NIL)
+			continue;
+
+		update_mergeclause_eclasses(root, rinfo);
+
+		/*
+		 * The clause must reference the outer leading pathkey's equivalence
+		 * class on one of its sides; the inner side then supplies the
+		 * boundary key for the leading-mismatch fraction.
+		 */
+		if (rinfo->left_ec != opeclass && rinfo->right_ec != opeclass)
+			continue;
+
+		/*
+		 * Fraction of the filtered outer that sorts before the inner's first
+		 * matching key.  Negative means the needed stats were unavailable:
+		 * fall back to the conservative no-skip estimate.
+		 */
+		outerstartsel =
+			yb_bnl_outer_skip_selectivity(root, (Node *) rinfo->clause,
+										  opathkey->pk_opfamily,
+										  opathkey->pk_strategy,
+										  outer_path->parent->relids,
+										  outer_path->parent->baserestrictinfo);
+		if (outerstartsel < 0.0)
+			return 0.0;
+
+		return rint(outer_path_rows * outerstartsel);
+	}
+	return 0.0;
+}
+
+/*
+ * yb_init_bnl_workspace
+ *	  Populate the BNL-specific fields of `workspace`, ahead of
+ *	  initial_cost_nestloop's startup adjustment.  yb_first_batch_size is
+ *	  also copied onto the NestPath, so createplan.c derives the executor's
+ *	  first-batch factor from the sizing that was actually costed.  For
+ *	  non-BNL paths the fields are reset to their no-op defaults.
+ */
+void
+yb_init_bnl_workspace(JoinCostWorkspace *workspace, PlannerInfo *root,
+					  RelOptInfo *joinrel,
+					  Path *outer_path, Path *inner_path, List *pathkeys,
+					  JoinType jointype, JoinPathExtraData *extra)
+{
+	/*
+	 * The full batch size reads as "first batch not trimmed" to every
+	 * consumer, making it the safe no-op default even for non-YB rels.
+	 */
+	workspace->yb_first_batch_size = yb_bnl_batch_size;
+	workspace->yb_outer_skip_rows = 0.0;
+	workspace->yb_sorted_batches = false;
+
+	if (!IsYugaByteEnabled())
+		return;
+
+	/*
+	 * yb_is_outer_inner_batched matches the gate initial_cost_nestloop uses
+	 * to decide yb_batch_size, and is equivalent here to createplan.c's
+	 * yb_is_nestloop_batched (per the disjointness asserted in
+	 * yb_get_batched_relids).
+	 */
+	if (!yb_is_outer_inner_batched(outer_path, inner_path))
+		return;
+
+	/*
+	 * The fields are consumed only under the modern cost model: legacy BNL
+	 * costing ignores them, and createplan.c's legacy branch derives its own
+	 * first-batch factor.
+	 */
+	if (!yb_enable_base_scans_cost_model)
+		return;
+
+	/* createplan.c sorts each batch's output when the join has pathkeys. */
+	workspace->yb_sorted_batches = (pathkeys != NIL);
+
+	/*
+	 * Decide the LIMIT-driven first-batch outer-row count.  When the
+	 * optimization does not apply, leave yb_first_batch_size at the full
+	 * batch size, matching the executor falling through to a full batch.
+	 */
+	if (yb_bnl_optimize_first_batch && root->limit_tuples > 0)
+	{
+		SemiAntiJoinFactors semifactors;
+		double		output_tuple_per_outer_tuple;
+
+		compute_semi_anti_join_factors(root, joinrel,
+									   outer_path->parent, inner_path->parent,
+									   jointype, NULL, extra->restrictlist,
+									   &semifactors);
+		output_tuple_per_outer_tuple =
+			semifactors.outer_match_frac * semifactors.match_count;
+
+		if (output_tuple_per_outer_tuple > 0)
+		{
+			double		fbs = ceil(root->limit_tuples /
+								   output_tuple_per_outer_tuple);
+
+			if (fbs < 1.0)
+				fbs = 1.0;
+			if (fbs > (double) yb_bnl_batch_size)
+				fbs = (double) yb_bnl_batch_size;
+			workspace->yb_first_batch_size = (int) fbs;
+		}
+	}
+
+	/* Leading empty outer batches, when the outer is sorted on the join key. */
+	workspace->yb_outer_skip_rows =
+		yb_bnl_outer_skip_rows(root, outer_path, jointype,
+							   extra->restrictlist);
 }

@@ -2306,6 +2306,7 @@ _readYbBatchedNestLoop(void)
 	ReadCommonJoin(&local_node->nl.join);
 
 	READ_NODE_FIELD(nl.nestParams);
+	READ_INT_FIELD(first_batch_size);
 	READ_INT_FIELD(num_hashClauseInfos);
 	local_node->hashClauseInfos =
 		palloc0(local_node->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));

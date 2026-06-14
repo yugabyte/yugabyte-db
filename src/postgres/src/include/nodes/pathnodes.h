@@ -1854,11 +1854,18 @@ typedef struct JoinPath
 
 /*
  * A nested-loop path needs no special fields.
+ *
+ * YB: yb_first_batch_size is the number of outer rows the BNL pulls for
+ * its first batch: yb_bnl_batch_size unless the LIMIT-driven first-batch
+ * trimming shrinks it.
  */
 
 typedef struct NestPath
 {
 	JoinPath	jpath;
+
+	/* YB fields */
+	int			yb_first_batch_size;	/* BNL first-batch outer rows */
 } NestPath;
 
 /*
@@ -2908,6 +2915,14 @@ typedef struct
  *
  * (Ideally we'd declare this in cost.h, but it's also needed in pathnode.h,
  * so seems best to put it here.)
+ *
+ * YB: the yb_ fields at the end are BNL-specific, populated by
+ * yb_init_bnl_workspace ahead of initial_cost_nestloop.
+ * yb_first_batch_size is the LIMIT-driven first-batch sizing, copied onto
+ * the NestPath (see there); yb_outer_skip_rows is the estimated count of
+ * leading outer rows with no inner match, and yb_sorted_batches whether the
+ * BNL sorts each batch's output, both consumed by initial_cost_nestloop's
+ * startup adjustment.
  */
 typedef struct JoinCostWorkspace
 {
@@ -2932,6 +2947,11 @@ typedef struct JoinCostWorkspace
 	int			numbuckets;
 	int			numbatches;
 	Cardinality inner_rows_total;
+
+	/* YB fields (see the header comment) */
+	int			yb_first_batch_size; /* LIMIT-trimmed first-batch size */
+	double		yb_outer_skip_rows; /* leading outer rows with no match */
+	bool		yb_sorted_batches;	/* BNL sorts each batch's output */
 } JoinCostWorkspace;
 
 /*
