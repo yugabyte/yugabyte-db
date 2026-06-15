@@ -5058,7 +5058,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     final String originId2 = "shared_origin2";
 
     Connection replConn = getConnectionBuilder().withTServer(0).replicationConnect();
-    PGReplicationConnection replConnection = replConn.unwrap(PGConnection.class).getReplicationAPI();
+    PGReplicationConnection replConnection =
+        replConn.unwrap(PGConnection.class).getReplicationAPI();
     Connection conn2 = getConnectionBuilder().withTServer(1).connect();
 
     try (Statement stmt1 = connection.createStatement();
@@ -5109,6 +5110,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
       stmt1.execute("SELECT yb_replication_origin_session_reset_shared()");
       stmt2.execute("SELECT yb_replication_origin_session_reset_shared()");
+      stmt1.execute("INSERT INTO shared_origin_tbl1 values (3, 'local_after_reset')");
 
       stmt1.execute("SELECT pg_replication_origin_session_setup('" + originId1 + "')");
       runInvalidQuery(
@@ -5131,10 +5133,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                                      .withSlotOption("publication_names", "shared_origin_pub")
                                      .start();
 
-    List<PgOutputMessage> result = receiveMessage(stream, 10);
+    List<PgOutputMessage> result = receiveMessage(stream, 13);
+    int originMessages = 0;
     int origin1Messages = 0;
     int origin2Messages = 0;
     for (PgOutputMessage message : result) {
+      if (message.messageType() == PgOutputMessageType.ORIGIN) {
+        originMessages++;
+      }
       if (message.equals(PgOutputOriginMessage.Create(originId1))) {
         origin1Messages++;
       }
@@ -5142,6 +5148,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         origin2Messages++;
       }
     }
+    assertEquals(2, originMessages);
     assertEquals(1, origin1Messages);
     assertEquals(1, origin2Messages);
 
