@@ -887,7 +887,9 @@ YbcReadPointHandle PgTxnManager::GetCurrentReadPoint() const {
 YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const { return serial_no_.max_read_time(); }
 
 TxnReadPoint PgTxnManager::GetCurrentReadPointState() const {
-  return TxnReadPoint{serial_no_.txn(), serial_no_.read_time(), clamp_uncertainty_window_};
+  return TxnReadPoint{
+      serial_no_.txn(), serial_no_.read_time(), clamp_uncertainty_window_,
+      follower_read_staleness_ms_};
 }
 
 Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
@@ -909,6 +911,7 @@ Status PgTxnManager::RestoreReadPoint(const TxnReadPoint& saved_read_point) {
     return Status::OK();
   }
   clamp_uncertainty_window_ = saved_read_point.is_clamped;
+  follower_read_staleness_ms_ = saved_read_point.follower_read_staleness_ms;
   return RestoreReadPoint(saved_read_point.read_time_serial_no);
 }
 

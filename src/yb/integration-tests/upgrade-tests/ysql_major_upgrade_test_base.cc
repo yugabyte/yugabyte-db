@@ -48,8 +48,15 @@ void YsqlMajorUpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
   // locks an autoflag.
   AddUnDefOkAndSetFlag(
       opts.extra_master_flags, "enable_object_locking_for_table_locks", "false");
+  // Concurrent DDL requires object locking, so keep the two flags consistent.
+  AddUnDefOkAndSetFlag(opts.extra_master_flags, "ysql_enable_concurrent_ddl", "false");
+  AddUnDefOkAndSetFlag(
+      opts.extra_master_flags, "allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "enable_object_locking_for_table_locks", "false");
+  AddUnDefOkAndSetFlag(opts.extra_tserver_flags, "ysql_enable_concurrent_ddl", "false");
+  AddUnDefOkAndSetFlag(
+      opts.extra_tserver_flags, "allowed_preview_flags_csv", "ysql_enable_concurrent_ddl");
 }
 
 Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {

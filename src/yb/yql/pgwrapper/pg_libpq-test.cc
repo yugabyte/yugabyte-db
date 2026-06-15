@@ -2982,6 +2982,10 @@ class PgLibPqTestDisableObjectLocking : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 };
 
@@ -5706,6 +5710,10 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
     // Enabling table locks+concurrent DDLs causes the ConcurrentAnalyzeWithDDL fail.
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -5954,6 +5962,13 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
     options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_master_flags, "ysql_enable_concurrent_ddl");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
 
     // DDL statement retries are only supported in READ COMMITTED isolation.
     // In debug builds, this flag defaults to false, causing READ COMMITTED to fall back

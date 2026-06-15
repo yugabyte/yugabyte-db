@@ -59,6 +59,7 @@ struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
   uint64_t read_time_serial_no; // Read time serial number
   bool is_clamped; // Whether the uncertainty window is clamped
+  std::optional<uint64_t> follower_read_staleness_ms; // Follower read time staleness
 };
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
@@ -174,6 +175,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldEnableTableLocking() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
+  void ResetFollowerReadTime() { follower_read_staleness_ms_ = std::nullopt; }
 
  private:
   class SerialNo {
