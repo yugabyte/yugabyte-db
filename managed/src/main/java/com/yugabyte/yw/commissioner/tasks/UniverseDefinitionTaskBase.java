@@ -2763,10 +2763,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.debug("Skipping DB node port connectivity check: no source nodes");
       return;
     }
-    if (!isFirstTry()) {
-      log.debug("Skipping DB node port connectivity check on retry");
-      return;
-    }
     if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
       log.debug("Skipping DB node port connectivity check: comprehensive prechecks are disabled");
       return;
