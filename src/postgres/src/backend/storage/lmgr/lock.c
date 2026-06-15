@@ -950,8 +950,21 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	 *
 	 * If lockCleared is already set, caller need not worry about absorbing
 	 * sinval messages related to the lock's object.
+	 *
+	 * YB Note: Force txn locks to go to the tserver when there's just a
+	 * session lock with the same mode. This is necessary since session
+	 * lock acquire/release don't respect the local lock table cache in
+	 * YB, and always go to the tserver. So skipping a redundantly seeming
+	 * transactional lock here (when session lock is the sole other owner)
+	 * could lead to the txn operating on the relation without any active
+	 * object locks as the session lock might be released early on docdb,
+	 * before the txn commit.
 	 */
-	if (locallock->nLocks > 0 && !sessionLock) /* YB: session locks go to the tserver */
+	bool yb_force_tserver_lock_acquire =
+		IsYugaByteEnabled() &&
+		((locallock->numLockOwners == 1 && locallock->lockOwners[0].owner == NULL) ||
+		 sessionLock);
+	if (locallock->nLocks > 0 && !yb_force_tserver_lock_acquire) /* YB: session locks go to the tserver */
 	{
 		GrantLockLocal(locallock, owner);
 		if (locallock->lockCleared)
@@ -2182,6 +2195,10 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 	 */
 	locallock->nLocks--;
 
+	/*
+	 * YB Note: Always forward the session lock release to the tserver as this
+	 * is tied to a different transaction.
+	 */
 	if (sessionLock)
 	{
 		HandleYBStatus(YBCReleaseSessionObjectLock(GetYbObjectLockId(locktag),
