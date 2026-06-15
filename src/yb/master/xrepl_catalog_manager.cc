@@ -611,9 +611,6 @@ Status CatalogManager::LoadUniverseReplicationBootstrap() {
 // Helper class to print a vector of CDCStreamInfo pointers.
 namespace {
 
-constexpr auto kCDCStateStaleMissingStream = "stream not found";
-constexpr auto kCDCStateStaleMissingTablet = "tablet not found";
-
 template <class CDCStreamInfoPointer>
 std::string CDCStreamInfosAsString(const std::vector<CDCStreamInfoPointer>& cdc_streams) {
   std::vector<std::string> cdc_stream_ids;
@@ -5280,11 +5277,8 @@ Status CatalogManager::CleanupStaleCDCStreams(
   }
   RETURN_NOT_OK(iteration_status);
 
-  // get the tablet info for all candidate tablets
   std::unordered_map<TabletId, TabletInfoPtr> tablet_info_map;
   {
-    // use a set to deduplicate tablet ids
-    // we will use these tablet ids to fetch tablet info
     std::unordered_set<TabletId> tablet_ids;
     for (const auto& key : all_entry_keys) {
       // Ignore sys catalog tablet and slot entry.
@@ -5294,7 +5288,6 @@ Status CatalogManager::CleanupStaleCDCStreams(
 
       if (!namespace_filter.empty()) {
         const auto it = stream_namespaces.find(key.stream_id);
-        // if the stream is found but belongs to a different namespace, skip it
         if (it != stream_namespaces.end() && it->second != namespace_filter) {
           continue;
         }
@@ -5396,12 +5389,12 @@ Status CatalogManager::CleanupStaleCDCStreams(
     // Classify the remaining candidate row in order: missing stream, then missing tablet.
     if (!stream_exists) {
       add_stale_entry(
-          key, tablet_tables ? *tablet_tables : no_tables, kCDCStateStaleMissingStream);
+          key, tablet_tables ? *tablet_tables : no_tables, "stream not found");
       continue;
     }
 
     if (tablet_iter == tablet_info_map.end()) {
-      add_stale_entry(key, {}, kCDCStateStaleMissingTablet);
+      add_stale_entry(key, {}, "tablet not found");
       continue;
     }
   }
