@@ -5,6 +5,7 @@ package api.v2.mappers;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterInfo;
+import api.v2.models.ClusterPlacementSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.PlacementAZ;
 import api.v2.models.UniverseResizeNodesCluster;
@@ -122,6 +123,8 @@ public interface ClusterMapper {
 
   @InheritInverseConfiguration
   PlacementAZ toV2PlacementAZ(PlacementInfo.PlacementAZ placementAZ);
+
+  PlacementInfo toV1PlacementInfo(ClusterPlacementSpec clusterPlacementSpec);
 
   @ValueMappings(@ValueMapping(target = "ASYNC", source = "READ_REPLICA"))
   UniverseDefinitionTaskParams.ClusterType toV1ClusterType(

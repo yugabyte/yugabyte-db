@@ -134,6 +134,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -695,8 +696,8 @@ Status TSTabletManager::Init() {
       admin_triggered_compaction_pool_->SetCgroup(sys_med);
     }
 
-    // These pools always go to system-med regardless of compaction mode flag,
-    // since they are not per-tablet in nature.
+    // Pool-level fallback: workers land in @system-med when no per-task cgroup is set.
+    // waiting_txn_pool tokens get per-task cgroup wired up per-tablet in MaybeAssignPerDbCgroups.
     open_tablet_pool_->SetCgroup(sys_med);
     flush_bootstrap_state_pool_->SetCgroup(sys_med);
     waiting_txn_pool_->SetCgroup(sys_med);
@@ -2079,33 +2080,33 @@ Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
 #ifdef __linux__
 namespace {
 
+// Returns the per-DB Cgroup* for |meta|, or nullptr if QoS is off / not applicable.
+// Also registers the DB name for metrics on first call. Does NOT set any cgroup on tablet
+// components -- callers are responsible for that.
+Result<Cgroup*> GetPerDbCgroup(const RaftGroupMetadata& meta, TServerCgroupManager* cm) {
+  if (!cm) return nullptr;
+  if (meta.table_type() != PGSQL_TABLE_TYPE) return nullptr;
+  auto namespace_id = meta.namespace_id();
+  if (namespace_id.empty()) return nullptr;
+  auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  if (FLAGS_qos_system_dbs_use_shared_pool && IsQosSystemDatabaseOid(db_oid)) {
+    return nullptr;
+  }
+  cm->RegisterDbName(db_oid, meta.namespace_name());
+  return &VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
+}
+
 Status MaybeAssignPerDbCgroups(
     TabletPeer* tablet_peer, tablet::Tablet* tablet,
     const RaftGroupMetadata& meta, TServerCgroupManager* cm) {
-  if (!cm) return Status::OK();
+  auto* cgroup = VERIFY_RESULT(GetPerDbCgroup(meta, cm));
+  if (!cgroup) return Status::OK();
 
-  if (meta.table_type() != PGSQL_TABLE_TYPE) return Status::OK();
-  auto namespace_id = meta.namespace_id();
-  if (namespace_id.empty()) return Status::OK();
-
-  auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
-  if (FLAGS_qos_system_dbs_use_shared_pool && IsQosSystemDatabaseOid(db_oid)) {
-    return Status::OK();
+  if (FLAGS_qos_consensus_per_db_cgroups) {
+    tablet_peer->SetPerDbCgroup(cgroup);
   }
-
-  // Register database name for metrics, regardless of per-DB cgroup flags.
-  cm->RegisterDbName(db_oid, meta.namespace_name());
-
-  bool consensus_per_db = FLAGS_qos_consensus_per_db_cgroups;
-  bool compaction_per_db = FLAGS_qos_compaction_per_db_cgroups;
-  if (!consensus_per_db && !compaction_per_db) return Status::OK();
-
-  auto& cgroup = VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
-  if (consensus_per_db) {
-    tablet_peer->SetPerDbCgroup(&cgroup);
-  }
-  if (compaction_per_db) {
-    tablet->SetRocksDbTaskCgroup(&cgroup);
+  if (FLAGS_qos_compaction_per_db_cgroups) {
+    tablet->SetRocksDbTaskCgroup(cgroup);
   }
   return Status::OK();
 }
@@ -2201,6 +2202,21 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
           allow_compaction_failures_for_tablet_ids_.contains(tablet_id));
     }
 
+    // Compute the per-DB cgroup before constructing the Tablet so the WaitQueue token can be
+    // assigned its cgroup at construction time rather than via a post-construction setter.
+    Cgroup* wait_queue_cgroup = nullptr;
+#ifdef __linux__
+    {
+      auto result = GetPerDbCgroup(*meta, server_->cgroup_manager());
+      if (result.ok()) {
+        wait_queue_cgroup = *result;
+      } else {
+        LOG(WARNING) << kLogPrefix << "Failed to get per-db cgroup for wait-queue: "
+                     << result.status();
+      }
+    }
+#endif
+
     tablet::TabletInitData tablet_init_data = {
         .metadata = meta,
         .client_future = server_->client_future(),
@@ -2232,6 +2248,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         },
         .waiting_txn_registry = waiting_txn_registry_.get(),
         .wait_queue_pool = waiting_txn_pool_.get(),
+        .wait_queue_cgroup = wait_queue_cgroup,
         .full_compaction_pool = full_compaction_pool(),
         .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
         .post_split_compaction_added = ts_post_split_compaction_added_,
@@ -3855,7 +3872,9 @@ rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThrea
         ? FLAGS_vector_index_concurrent_writes : 0,
   };
   if (options.max_workers == 0) {
-    options.max_workers = std::thread::hardware_concurrency();
+    // Auto: use all CPUs, but cap under sanitizers (see SanitizerCappedConcurrency) so the vector
+    // index thread pools do not saturate an instrumented machine.
+    options.max_workers = SanitizerCappedConcurrency();
   }
   LOG(INFO) << "Use " << options.max_workers << " for vector index " << type << " thread pool";
   thread_pool_ptr.reset(result = new rpc::ThreadPool(std::move(options)));

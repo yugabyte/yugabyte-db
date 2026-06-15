@@ -238,6 +238,8 @@ set(UTIL_SRCS
   timestamp.cc
   tostring.cc
   trace.cc
+  tsan_util.cc
+  two_group_mutex.cc
   ulimit.cc
   ulimit_util.cc
   url-coding.cc
@@ -460,6 +462,7 @@ ADD_YB_TEST(thread_pool-test)
 ADD_YB_TEST(threadpool-test)
 ADD_YB_TEST(tostring-test)
 ADD_YB_TEST(trace-test)
+ADD_YB_TEST(two_group_mutex-test)
 ADD_YB_TEST(url-coding-test)
 ADD_YB_TEST(user-test)
 ADD_YB_TEST(uuid-test)

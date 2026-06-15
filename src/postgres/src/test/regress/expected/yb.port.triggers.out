@@ -1935,10 +1935,8 @@ create view my_view as select * from my_table;
 create function my_trigger_function() returns trigger as $$ begin end; $$ language plpgsql;
 create trigger my_trigger after update on my_view referencing old table as old_table
    for each statement execute procedure my_trigger_function();
-ERROR:  REFERENCING clause (transition tables) not supported yet
-LINE 1: create trigger my_trigger after update on my_view referencin...
-                                                          ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
+ERROR:  "my_view" is a view
+DETAIL:  Triggers on views cannot have transition tables.
 drop function my_trigger_function();
 drop view my_view;
 drop table my_table;
@@ -1955,10 +1953,8 @@ DETAIL:  Tables cannot have INSTEAD OF triggers.
 create trigger failed after update on parted_trig
   referencing old table as old_table
   for each row execute procedure trigger_nothing();
-ERROR:  REFERENCING clause (transition tables) not supported yet
-LINE 2:   referencing old table as old_table
-          ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
+ERROR:  "parted_trig" is a partitioned table
+DETAIL:  ROW triggers with transition tables are not supported on partitioned tables.
 drop table parted_trig;
 --
 -- Verify trigger creation for partitioned tables, and drop behavior
@@ -2692,7 +2688,7 @@ $$
   begin
     raise notice 'trigger = %, new table = %',
                  TG_NAME,
-                 (select string_agg(new_table::text, ', ' order by a) from new_table);
+                 (select string_agg(new_table::text, ', ' order by new_table::text) from new_table); -- YB
     return null;
   end;
 $$;
@@ -2701,8 +2697,8 @@ $$
   begin
     raise notice 'trigger = %, old table = %, new table = %',
                  TG_NAME,
-                 (select string_agg(old_table::text, ', ' order by a) from old_table),
-                 (select string_agg(new_table::text, ', ' order by a) from new_table);
+                 (select string_agg(old_table::text, ', ' order by old_table::text) from old_table), -- YB
+                 (select string_agg(new_table::text, ', ' order by new_table::text) from new_table);
     return null;
   end;
 $$;
@@ -2711,7 +2707,7 @@ $$
   begin
     raise notice 'trigger = %, old table = %',
                  TG_NAME,
-                 (select string_agg(old_table::text, ', ' order by a) from old_table);
+                 (select string_agg(old_table::text, ', ' order by old_table::text) from old_table); -- YB
     return null;
   end;
 $$;
@@ -2734,11 +2730,6 @@ alter table parent attach partition child3 for values in ('CCC');
 create trigger parent_insert_trig
   after insert on parent referencing new table as new_table
   for each statement execute procedure dump_insert();
-ERROR:  REFERENCING clause (transition tables) not supported yet
-LINE 2:   after insert on parent referencing new table as new_table
-                                 ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
-/* YB: Transition tables (REFERENCING clause) are not supported
 create trigger parent_update_trig
   after update on parent referencing old table as old_table new table as new_table
   for each statement execute procedure dump_update();
@@ -2754,7 +2745,6 @@ create trigger child1_update_trig
 create trigger child1_delete_trig
   after delete on child1 referencing old table as old_table
   for each statement execute procedure dump_delete();
-
 create trigger child2_insert_trig
   after insert on child2 referencing new table as new_table
   for each statement execute procedure dump_insert();
@@ -2764,7 +2754,6 @@ create trigger child2_update_trig
 create trigger child2_delete_trig
   after delete on child2 referencing old table as old_table
   for each statement execute procedure dump_delete();
-
 create trigger child3_insert_trig
   after insert on child3 referencing new table as new_table
   for each statement execute procedure dump_insert();
@@ -2774,42 +2763,58 @@ create trigger child3_update_trig
 create trigger child3_delete_trig
   after delete on child3 referencing old table as old_table
   for each statement execute procedure dump_delete();
-
 SELECT trigger_name, event_manipulation, event_object_schema, event_object_table,
        action_order, action_condition, action_orientation, action_timing,
        action_reference_old_table, action_reference_new_table
   FROM information_schema.triggers
   WHERE event_object_table IN ('parent', 'child1', 'child2', 'child3')
   ORDER BY trigger_name COLLATE "C", 2;
+    trigger_name    | event_manipulation | event_object_schema | event_object_table | action_order | action_condition | action_orientation | action_timing | action_reference_old_table | action_reference_new_table 
+--------------------+--------------------+---------------------+--------------------+--------------+------------------+--------------------+---------------+----------------------------+----------------------------
+ child1_delete_trig | DELETE             | public              | child1             |            1 |                  | STATEMENT          | AFTER         | old_table                  | 
+ child1_insert_trig | INSERT             | public              | child1             |            1 |                  | STATEMENT          | AFTER         |                            | new_table
+ child1_update_trig | UPDATE             | public              | child1             |            1 |                  | STATEMENT          | AFTER         | old_table                  | new_table
+ child2_delete_trig | DELETE             | public              | child2             |            1 |                  | STATEMENT          | AFTER         | old_table                  | 
+ child2_insert_trig | INSERT             | public              | child2             |            1 |                  | STATEMENT          | AFTER         |                            | new_table
+ child2_update_trig | UPDATE             | public              | child2             |            1 |                  | STATEMENT          | AFTER         | old_table                  | new_table
+ child3_delete_trig | DELETE             | public              | child3             |            1 |                  | STATEMENT          | AFTER         | old_table                  | 
+ child3_insert_trig | INSERT             | public              | child3             |            1 |                  | STATEMENT          | AFTER         |                            | new_table
+ child3_update_trig | UPDATE             | public              | child3             |            1 |                  | STATEMENT          | AFTER         | old_table                  | new_table
+ parent_delete_trig | DELETE             | public              | parent             |            1 |                  | STATEMENT          | AFTER         | old_table                  | 
+ parent_insert_trig | INSERT             | public              | parent             |            1 |                  | STATEMENT          | AFTER         |                            | new_table
+ parent_update_trig | UPDATE             | public              | parent             |            1 |                  | STATEMENT          | AFTER         | old_table                  | new_table
+(12 rows)
 
 -- insert directly into children sees respective child-format tuples
 insert into child1 values ('AAA', 42);
+NOTICE:  trigger = child1_insert_trig, new table = (AAA,42)
 insert into child2 values ('BBB', 42);
+NOTICE:  trigger = child2_insert_trig, new table = (BBB,42)
 insert into child3 values (42, 'CCC');
-
+NOTICE:  trigger = child3_insert_trig, new table = (42,CCC)
 -- update via parent sees parent-format tuples
 update parent set b = b + 1;
-
+NOTICE:  trigger = parent_update_trig, old table = (AAA,42), (BBB,42), (CCC,42), new table = (AAA,43), (BBB,43), (CCC,43)
 -- delete via parent sees parent-format tuples
 delete from parent;
-
+NOTICE:  trigger = parent_delete_trig, old table = (AAA,43), (BBB,43), (CCC,43)
 -- insert into parent sees parent-format tuples
 insert into parent values ('AAA', 42);
+NOTICE:  trigger = parent_insert_trig, new table = (AAA,42)
 insert into parent values ('BBB', 42);
+NOTICE:  trigger = parent_insert_trig, new table = (BBB,42)
 insert into parent values ('CCC', 42);
-
+NOTICE:  trigger = parent_insert_trig, new table = (CCC,42)
 -- delete from children sees respective child-format tuples
 delete from child1;
+NOTICE:  trigger = child1_delete_trig, old table = (AAA,42)
 delete from child2;
+NOTICE:  trigger = child2_delete_trig, old table = (BBB,42)
 delete from child3;
-
+NOTICE:  trigger = child3_delete_trig, old table = (42,CCC)
 -- copy into parent sees parent-format tuples
 copy parent (a, b) from stdin;
-AAA	42
-BBB	42
-CCC	42
-\.
-
+NOTICE:  trigger = parent_insert_trig, new table = (AAA,42), (BBB,42), (CCC,42)
 -- DML affecting parent sees tuples collected from children even if
 -- there is no transition table trigger on the children
 drop trigger child1_insert_trig on child1;
@@ -2822,15 +2827,11 @@ drop trigger child3_insert_trig on child3;
 drop trigger child3_update_trig on child3;
 drop trigger child3_delete_trig on child3;
 delete from parent;
-
+NOTICE:  trigger = parent_delete_trig, old table = (AAA,42), (BBB,42), (CCC,42)
 -- copy into parent sees tuples collected from children even if there
 -- is no transition-table trigger on the children
 copy parent (a, b) from stdin;
-AAA	42
-BBB	42
-CCC	42
-\.
-
+NOTICE:  trigger = parent_insert_trig, new table = (AAA,42), (BBB,42), (CCC,42)
 -- insert into parent with a before trigger on a child tuple before
 -- insertion, and we capture the newly modified row in parent format
 create or replace function intercept_insert() returns trigger language plpgsql as
@@ -2840,73 +2841,105 @@ $$
     return new;
   end;
 $$;
-
 create trigger intercept_insert_child3
   before insert on child3
   for each row execute procedure intercept_insert();
-
-
 -- insert, parent trigger sees post-modification parent-format tuple
 insert into parent values ('AAA', 42), ('BBB', 42), ('CCC', 66);
-
+NOTICE:  trigger = parent_insert_trig, new table = (AAA,42), (BBB,42), (CCC,1066)
 -- copy, parent trigger sees post-modification parent-format tuple
 copy parent (a, b) from stdin;
-AAA	42
-BBB	42
-CCC	234
-\.
-
+NOTICE:  trigger = parent_insert_trig, new table = (AAA,42), (BBB,42), (CCC,1234)
 drop table child1, child2, child3, parent;
 drop function intercept_insert();
-
 --
 -- Verify prohibition of row triggers with transition triggers on
 -- partitions
 --
 create table parent (a text, b int) partition by list (a);
 create table child partition of parent for values in ('AAA');
-
 -- adding row trigger with transition table fails
 create trigger child_row_trig
   after insert on child referencing new table as new_table
   for each row execute procedure dump_insert();
-
+ERROR:  ROW triggers with transition tables are not supported on partitions
 -- detaching it first works
 alter table parent detach partition child;
-
 create trigger child_row_trig
   after insert on child referencing new table as new_table
   for each row execute procedure dump_insert();
-
 -- but now we're not allowed to reattach it
 alter table parent attach partition child for values in ('AAA');
-
+ERROR:  trigger "child_row_trig" prevents table "child" from becoming a partition
+DETAIL:  ROW triggers with transition tables are not supported on partitions.
 -- drop the trigger, and now we're allowed to attach it again
 drop trigger child_row_trig on child;
 alter table parent attach partition child for values in ('AAA');
-
 drop table child, parent;
-
+--
+-- Verify access of transition tables with UPDATE triggers and tuples
+-- moved across partitions.
+--
+create or replace function dump_update_new() returns trigger language plpgsql as
+$$
+  begin
+    raise notice 'trigger = %, new table = %', TG_NAME,
+                 (select string_agg(new_table::text, ', ' order by a) from new_table);
+    return null;
+  end;
+$$;
+create or replace function dump_update_old() returns trigger language plpgsql as
+$$
+  begin
+    raise notice 'trigger = %, old table = %', TG_NAME,
+                 (select string_agg(old_table::text, ', ' order by a) from old_table);
+    return null;
+  end;
+$$;
+create table trans_tab_parent (a text) partition by list (a);
+create table trans_tab_child1 partition of trans_tab_parent for values in ('AAA1', 'AAA2');
+create table trans_tab_child2 partition of trans_tab_parent for values in ('BBB1', 'BBB2');
+create trigger trans_tab_parent_update_trig
+  after update on trans_tab_parent referencing old table as old_table
+  for each statement execute procedure dump_update_old();
+create trigger trans_tab_parent_insert_trig
+  after insert on trans_tab_parent referencing new table as new_table
+  for each statement execute procedure dump_insert();
+create trigger trans_tab_parent_delete_trig
+  after delete on trans_tab_parent referencing old table as old_table
+  for each statement execute procedure dump_delete();
+insert into trans_tab_parent values ('AAA1'), ('BBB1');
+NOTICE:  trigger = trans_tab_parent_insert_trig, new table = (AAA1), (BBB1)
+-- should not trigger access to new table when moving across partitions.
+update trans_tab_parent set a = 'BBB2' where a = 'AAA1';
+NOTICE:  trigger = trans_tab_parent_update_trig, old table = (AAA1)
+drop trigger trans_tab_parent_update_trig on trans_tab_parent;
+create trigger trans_tab_parent_update_trig
+  after update on trans_tab_parent referencing new table as new_table
+  for each statement execute procedure dump_update_new();
+-- should not trigger access to old table when moving across partitions.
+update trans_tab_parent set a = 'AAA2' where a = 'BBB1';
+NOTICE:  trigger = trans_tab_parent_update_trig, new table = (AAA2)
+delete from trans_tab_parent;
+NOTICE:  trigger = trans_tab_parent_delete_trig, old table = (AAA2), (BBB2)
+-- clean up
+drop table trans_tab_parent, trans_tab_child1, trans_tab_child2;
+drop function dump_update_new, dump_update_old;
 --
 -- Verify behavior of statement triggers on (non-partition)
 -- inheritance hierarchy with transition tables; similar to the
 -- partition case, except there is no rerouting on insertion and child
 -- tables can have extra columns
 --
-
 -- set up inheritance hierarchy with different TupleDescriptors
 create table parent (a text, b int);
-
 -- a child matching parent
 create table child1 () inherits (parent);
-
 -- a child with a different column order
 create table child2 (b int, a text);
 alter table child2 inherit parent;
-
 -- a child with an extra column
 create table child3 (c text) inherits (parent);
-
 create trigger parent_insert_trig
   after insert on parent referencing new table as new_table
   for each statement execute procedure dump_insert();
@@ -2916,7 +2949,6 @@ create trigger parent_update_trig
 create trigger parent_delete_trig
   after delete on parent referencing old table as old_table
   for each statement execute procedure dump_delete();
-
 create trigger child1_insert_trig
   after insert on child1 referencing new table as new_table
   for each statement execute procedure dump_insert();
@@ -2926,7 +2958,6 @@ create trigger child1_update_trig
 create trigger child1_delete_trig
   after delete on child1 referencing old table as old_table
   for each statement execute procedure dump_delete();
-
 create trigger child2_insert_trig
   after insert on child2 referencing new table as new_table
   for each statement execute procedure dump_insert();
@@ -2936,7 +2967,6 @@ create trigger child2_update_trig
 create trigger child2_delete_trig
   after delete on child2 referencing old table as old_table
   for each statement execute procedure dump_delete();
-
 create trigger child3_insert_trig
   after insert on child3 referencing new table as new_table
   for each statement execute procedure dump_insert();
@@ -2946,43 +2976,42 @@ create trigger child3_update_trig
 create trigger child3_delete_trig
   after delete on child3 referencing old table as old_table
   for each statement execute procedure dump_delete();
-
 -- insert directly into children sees respective child-format tuples
 insert into child1 values ('AAA', 42);
+NOTICE:  trigger = child1_insert_trig, new table = (AAA,42)
 insert into child2 values (42, 'BBB');
+NOTICE:  trigger = child2_insert_trig, new table = (42,BBB)
 insert into child3 values ('CCC', 42, 'foo');
-
+NOTICE:  trigger = child3_insert_trig, new table = (CCC,42,foo)
 -- update via parent sees parent-format tuples
 update parent set b = b + 1;
-
+NOTICE:  trigger = parent_update_trig, old table = (AAA,42), (BBB,42), (CCC,42), new table = (AAA,43), (BBB,43), (CCC,43)
 -- delete via parent sees parent-format tuples
 delete from parent;
-
+NOTICE:  trigger = parent_delete_trig, old table = (AAA,43), (BBB,43), (CCC,43)
 -- reinsert values into children for next test...
 insert into child1 values ('AAA', 42);
+NOTICE:  trigger = child1_insert_trig, new table = (AAA,42)
 insert into child2 values (42, 'BBB');
+NOTICE:  trigger = child2_insert_trig, new table = (42,BBB)
 insert into child3 values ('CCC', 42, 'foo');
-
+NOTICE:  trigger = child3_insert_trig, new table = (CCC,42,foo)
 -- delete from children sees respective child-format tuples
 delete from child1;
+NOTICE:  trigger = child1_delete_trig, old table = (AAA,42)
 delete from child2;
+NOTICE:  trigger = child2_delete_trig, old table = (42,BBB)
 delete from child3;
-
+NOTICE:  trigger = child3_delete_trig, old table = (CCC,42,foo)
 -- copy into parent sees parent-format tuples (no rerouting, so these
 -- are really inserted into the parent)
 copy parent (a, b) from stdin;
-AAA	42
-BBB	42
-CCC	42
-\.
-
+NOTICE:  trigger = parent_insert_trig, new table = (AAA,42), (BBB,42), (CCC,42)
 -- same behavior for copy if there is an index (interesting because rows are
 -- captured by a different code path in copy.c if there are indexes)
 create index on parent(b);
 copy parent (a, b) from stdin;
-DDD	42
-\.
-
+NOTICE:  trigger = parent_insert_trig, new table = (DDD,42)
 -- DML affecting parent sees tuples collected from children even if
 -- there is no transition table trigger on the children
 drop trigger child1_insert_trig on child1;
@@ -2995,36 +3024,32 @@ drop trigger child3_insert_trig on child3;
 drop trigger child3_update_trig on child3;
 drop trigger child3_delete_trig on child3;
 delete from parent;
-
+NOTICE:  trigger = parent_delete_trig, old table = (AAA,42), (BBB,42), (CCC,42), (DDD,42)
 drop table child1, child2, child3, parent;
-
 --
 -- Verify prohibition of row triggers with transition triggers on
 -- inheritance children
 --
 create table parent (a text, b int);
 create table child () inherits (parent);
-
 -- adding row trigger with transition table fails
 create trigger child_row_trig
   after insert on child referencing new table as new_table
   for each row execute procedure dump_insert();
-
+ERROR:  ROW triggers with transition tables are not supported on inheritance children
 -- disinheriting it first works
 alter table child no inherit parent;
-
 create trigger child_row_trig
   after insert on child referencing new table as new_table
   for each row execute procedure dump_insert();
-
 -- but now we're not allowed to make it inherit anymore
 alter table child inherit parent;
-
+ERROR:  trigger "child_row_trig" prevents table "child" from becoming an inheritance child
+DETAIL:  ROW triggers with transition tables are not supported in inheritance hierarchies.
 -- drop the trigger, and now we're allowed to make it inherit again
 drop trigger child_row_trig on child;
 alter table child inherit parent;
-*/
-drop table parent; -- YB: child table was commented out above
+drop table child, parent;
 --
 -- Verify behavior of queries with wCTEs, where multiple transition
 -- tuplestores can be active at the same time because there are
@@ -3036,33 +3061,36 @@ create table table2 (a text);
 create trigger table1_trig
   after insert on table1 referencing new table as new_table
   for each statement execute procedure dump_insert();
-ERROR:  REFERENCING clause (transition tables) not supported yet
-LINE 2:   after insert on table1 referencing new table as new_table
-                                 ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
--- TODO When transition tables ('REFERENCING' clause) are supported in YB enable the tests below.
-/*
 create trigger table2_trig
   after insert on table2 referencing new table as new_table
   for each statement execute procedure dump_insert();
-
 with wcte as (insert into table1 values (42))
   insert into table2 values ('hello world');
-
+NOTICE:  trigger = table2_trig, new table = ("hello world")
+NOTICE:  trigger = table1_trig, new table = (42)
 with wcte as (insert into table1 values (43))
   insert into table1 values (44);
+NOTICE:  trigger = table1_trig, new table = (43), (44)
+select * from table1 order by a; -- YB
+ a  
+----
+ 42
+ 43
+ 44
+(3 rows)
 
-select * from table1;
 select * from table2;
+      a      
+-------------
+ hello world
+(1 row)
 
 drop table table1;
 drop table table2;
-
 --
 -- Verify behavior of INSERT ... ON CONFLICT DO UPDATE ... with
 -- transition tables.
 --
-
 create table my_table (a int primary key, b text);
 create trigger my_table_insert_trig
   after insert on my_table referencing new table as new_table
@@ -3070,26 +3098,27 @@ create trigger my_table_insert_trig
 create trigger my_table_update_trig
   after update on my_table referencing old table as old_table new table as new_table
   for each statement execute procedure dump_update();
-
 -- inserts only
 insert into my_table values (1, 'AAA'), (2, 'BBB')
   on conflict (a) do
   update set b = my_table.b || ':' || excluded.b;
-
+NOTICE:  trigger = my_table_update_trig, old table = <NULL>, new table = <NULL>
+NOTICE:  trigger = my_table_insert_trig, new table = (1,AAA), (2,BBB)
 -- mixture of inserts and updates
 insert into my_table values (1, 'AAA'), (2, 'BBB'), (3, 'CCC'), (4, 'DDD')
   on conflict (a) do
   update set b = my_table.b || ':' || excluded.b;
-
+NOTICE:  trigger = my_table_update_trig, old table = (1,AAA), (2,BBB), new table = (1,AAA:AAA), (2,BBB:BBB)
+NOTICE:  trigger = my_table_insert_trig, new table = (3,CCC), (4,DDD)
 -- updates only
 insert into my_table values (3, 'CCC'), (4, 'DDD')
   on conflict (a) do
   update set b = my_table.b || ':' || excluded.b;
-
+NOTICE:  trigger = my_table_update_trig, old table = (3,CCC), (4,DDD), new table = (3,CCC:CCC), (4,DDD:DDD)
+NOTICE:  trigger = my_table_insert_trig, new table = <NULL>
 --
 -- now using a partitioned table
 --
-
 create table iocdu_tt_parted (a int primary key, b text) partition by list (a);
 create table iocdu_tt_parted1 partition of iocdu_tt_parted for values in (1);
 create table iocdu_tt_parted2 partition of iocdu_tt_parted for values in (2);
@@ -3101,53 +3130,49 @@ create trigger iocdu_tt_parted_insert_trig
 create trigger iocdu_tt_parted_update_trig
   after update on iocdu_tt_parted referencing old table as old_table new table as new_table
   for each statement execute procedure dump_update();
-
 -- inserts only
 insert into iocdu_tt_parted values (1, 'AAA'), (2, 'BBB')
   on conflict (a) do
   update set b = iocdu_tt_parted.b || ':' || excluded.b;
-
+NOTICE:  trigger = iocdu_tt_parted_update_trig, old table = <NULL>, new table = <NULL>
+NOTICE:  trigger = iocdu_tt_parted_insert_trig, new table = (1,AAA), (2,BBB)
 -- mixture of inserts and updates
 insert into iocdu_tt_parted values (1, 'AAA'), (2, 'BBB'), (3, 'CCC'), (4, 'DDD')
   on conflict (a) do
   update set b = iocdu_tt_parted.b || ':' || excluded.b;
-
+NOTICE:  trigger = iocdu_tt_parted_update_trig, old table = (1,AAA), (2,BBB), new table = (1,AAA:AAA), (2,BBB:BBB)
+NOTICE:  trigger = iocdu_tt_parted_insert_trig, new table = (3,CCC), (4,DDD)
 -- updates only
 insert into iocdu_tt_parted values (3, 'CCC'), (4, 'DDD')
   on conflict (a) do
   update set b = iocdu_tt_parted.b || ':' || excluded.b;
-
+NOTICE:  trigger = iocdu_tt_parted_update_trig, old table = (3,CCC), (4,DDD), new table = (3,CCC:CCC), (4,DDD:DDD)
+NOTICE:  trigger = iocdu_tt_parted_insert_trig, new table = <NULL>
 drop table iocdu_tt_parted;
-
 --
 -- Verify that you can't create a trigger with transition tables for
 -- more than one event.
 --
-
 create trigger my_table_multievent_trig
   after insert or update on my_table referencing new table as new_table
   for each statement execute procedure dump_insert();
-
+ERROR:  transition tables cannot be specified for triggers with more than one event
 --
 -- Verify that you can't create a trigger with transition tables with
 -- a column list.
 --
-
 create trigger my_table_col_update_trig
   after update of b on my_table referencing new table as new_table
   for each statement execute procedure dump_insert();
-
+ERROR:  transition tables cannot be specified for triggers with column lists
 drop table my_table;
-
 --
 -- Test firing of triggers with transition tables by foreign key cascades
 --
-
 create table refd_table (a int primary key, b text);
 create table trig_table (a int, b text,
   foreign key (a) references refd_table on update cascade on delete cascade
 );
-
 create trigger trig_table_before_trig
   before insert or update or delete on trig_table
   for each statement execute procedure trigger_func('trig_table');
@@ -3160,7 +3185,6 @@ create trigger trig_table_update_trig
 create trigger trig_table_delete_trig
   after delete on trig_table referencing old table as old_table
   for each statement execute procedure dump_delete();
-
 insert into refd_table values
   (1, 'one'),
   (2, 'two'),
@@ -3172,24 +3196,35 @@ insert into trig_table values
   (2, 'two b'),
   (3, 'three a'),
   (3, 'three b');
-
+NOTICE:  trigger_func(trig_table) called: action = INSERT, when = BEFORE, level = STATEMENT
+NOTICE:  trigger = trig_table_insert_trig, new table = (1,"one a"), (1,"one b"), (2,"two a"), (2,"two b"), (3,"three a"), (3,"three b")
 update refd_table set a = 11 where b = 'one';
+NOTICE:  trigger_func(trig_table) called: action = UPDATE, when = BEFORE, level = STATEMENT
+NOTICE:  trigger = trig_table_update_trig, old table = (1,"one a"), (1,"one b"), new table = (11,"one a"), (11,"one b")
+select * from trig_table order by a, b; -- YB
+ a  |    b    
+----+---------
+  2 | two a
+  2 | two b
+  3 | three a
+  3 | three b
+ 11 | one a
+ 11 | one b
+(6 rows)
 
-select * from trig_table;
-
+/* YB: FK cascade DELETE with transition tables crashes (see #1668)
 delete from refd_table where length(b) = 3;
 
-select * from trig_table;
+select * from trig_table order by a, b; -- YB
 
 drop table refd_table, trig_table;
-
+*/ -- YB
+drop table refd_table, trig_table;
 --
 -- self-referential FKs are even more fun
 --
-
 create table self_ref (a int primary key,
                        b int references self_ref(a) on delete cascade);
-
 create trigger self_ref_before_trig
   before delete on self_ref
   for each statement execute procedure trigger_func('self_ref');
@@ -3199,24 +3234,161 @@ create trigger self_ref_r_trig
 create trigger self_ref_s_trig
   after delete on self_ref referencing old table as old_table
   for each statement execute procedure dump_delete();
-
 insert into self_ref values (1, null), (2, 1), (3, 2);
-
 delete from self_ref where a = 1;
-
+NOTICE:  trigger_func(self_ref) called: action = DELETE, when = BEFORE, level = STATEMENT
+NOTICE:  trigger = self_ref_r_trig, old table = (1,), (2,1)
+NOTICE:  trigger_func(self_ref) called: action = DELETE, when = BEFORE, level = STATEMENT
+NOTICE:  trigger = self_ref_r_trig, old table = (1,), (2,1)
+NOTICE:  trigger = self_ref_s_trig, old table = (1,), (2,1)
+NOTICE:  trigger = self_ref_r_trig, old table = (3,2)
+NOTICE:  trigger = self_ref_s_trig, old table = (3,2)
 -- without AR trigger, cascaded deletes all end up in one transition table
 drop trigger self_ref_r_trig on self_ref;
-
 insert into self_ref values (1, null), (2, 1), (3, 2), (4, 3);
-
 delete from self_ref where a = 1;
-
+NOTICE:  trigger_func(self_ref) called: action = DELETE, when = BEFORE, level = STATEMENT
+NOTICE:  trigger = self_ref_s_trig, old table = (1,), (2,1), (3,2), (4,3)
 drop table self_ref;
-*/
+--
+-- test transition tables with MERGE
+--
+create table merge_target_table (a int primary key, b text);
+create trigger merge_target_table_insert_trig
+  after insert on merge_target_table referencing new table as new_table
+  for each statement execute procedure dump_insert();
+create trigger merge_target_table_update_trig
+  after update on merge_target_table referencing old table as old_table new table as new_table
+  for each statement execute procedure dump_update();
+create trigger merge_target_table_delete_trig
+  after delete on merge_target_table referencing old table as old_table
+  for each statement execute procedure dump_delete();
+create table merge_source_table (a int, b text);
+insert into merge_source_table
+  values (1, 'initial1'), (2, 'initial2'),
+         (3, 'initial3'), (4, 'initial4'); -- YB
+merge into merge_target_table t
+using merge_source_table s
+on t.a = s.a
+when not matched then
+  insert values (a, b);
+ERROR:  This statement not supported yet
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+merge into merge_target_table t
+using merge_source_table s
+on t.a = s.a
+when matched and s.a <= 2 then
+	update set b = t.b || ' updated by merge'
+when matched and s.a > 2 then
+	delete
+when not matched then
+  insert values (a, b);
+ERROR:  This statement not supported yet
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+merge into merge_target_table t
+using merge_source_table s
+on t.a = s.a
+when matched and s.a <= 2 then
+	update set b = t.b || ' updated again by merge'
+when matched and s.a > 2 then
+	delete
+when not matched then
+  insert values (a, b);
+ERROR:  This statement not supported yet
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+drop table merge_source_table, merge_target_table;
 -- cleanup
 drop function dump_insert();
 drop function dump_update();
 drop function dump_delete();
+-- YB: verify transition table conversion slot's lifetime
+-- https://postgr.es/m/39a71864-b120-5a5c-8cc5-c632b6f16761@amazon.com
+create table convslot_test_parent (col1 text primary key);
+create table convslot_test_child (col1 text primary key,
+	foreign key (col1) references convslot_test_parent(col1) on delete cascade on update cascade
+);
+alter table convslot_test_child add column col2 text not null default 'tutu';
+insert into convslot_test_parent(col1) values ('1');
+insert into convslot_test_child(col1) values ('1');
+insert into convslot_test_parent(col1) values ('3');
+insert into convslot_test_child(col1) values ('3');
+create function convslot_trig1()
+returns trigger
+language plpgsql
+AS $$
+begin
+raise notice 'trigger = %, old_table = %',
+          TG_NAME,
+          (select string_agg(old_table::text, ', ' order by col1) from old_table);
+return null;
+end; $$;
+create function convslot_trig2()
+returns trigger
+language plpgsql
+AS $$
+begin
+raise notice 'trigger = %, new table = %',
+          TG_NAME,
+          (select string_agg(new_table::text, ', ' order by col1) from new_table);
+return null;
+end; $$;
+create trigger but_trigger after update on convslot_test_child
+referencing new table as new_table
+for each statement execute function convslot_trig2();
+update convslot_test_parent set col1 = col1 || '1';
+NOTICE:  trigger = but_trigger, new table = (11,tutu), (31,tutu)
+create function convslot_trig3()
+returns trigger
+language plpgsql
+AS $$
+begin
+raise notice 'trigger = %, old_table = %, new table = %',
+          TG_NAME,
+          (select string_agg(old_table::text, ', ' order by col1) from old_table),
+          (select string_agg(new_table::text, ', ' order by col1) from new_table);
+return null;
+end; $$;
+create trigger but_trigger2 after update on convslot_test_child
+referencing old table as old_table new table as new_table
+for each statement execute function convslot_trig3();
+update convslot_test_parent set col1 = col1 || '1';
+NOTICE:  trigger = but_trigger, new table = (111,tutu), (311,tutu)
+NOTICE:  trigger = but_trigger2, old_table = (11,tutu), (31,tutu), new table = (111,tutu), (311,tutu)
+create trigger bdt_trigger after delete on convslot_test_child
+referencing old table as old_table
+for each statement execute function convslot_trig1();
+delete from convslot_test_parent;
+NOTICE:  trigger = bdt_trigger, old_table = (111,tutu), (311,tutu)
+drop table convslot_test_child, convslot_test_parent;
+drop function convslot_trig1();
+drop function convslot_trig2();
+drop function convslot_trig3();
+-- Bug #17607: variant of above in which trigger function raises an error;
+-- we don't see any ill effects unless trigger tuple requires mapping
+create table convslot_test_parent (id int primary key, val int)
+partition by range (id);
+create table convslot_test_part (val int, id int not null);
+alter table convslot_test_parent
+  attach partition convslot_test_part for values from (1) to (1000);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+create function convslot_trig4() returns trigger as
+$$begin raise exception 'BOOM!'; end$$ language plpgsql;
+create trigger convslot_test_parent_update
+    after update on convslot_test_parent
+    referencing old table as old_rows new table as new_rows
+    for each statement execute procedure convslot_trig4();
+insert into convslot_test_parent (id, val) values (1, 2);
+begin;
+savepoint svp;
+update convslot_test_parent set val = 3;  -- error expected
+ERROR:  BOOM!
+CONTEXT:  PL/pgSQL function convslot_trig4() line 1 at RAISE
+rollback to savepoint svp;
+rollback;
+drop table convslot_test_parent;
+drop function convslot_trig4();
 --
 -- Rows per transaction should be disabled if table contains non Referential Integrity triggers.
 --

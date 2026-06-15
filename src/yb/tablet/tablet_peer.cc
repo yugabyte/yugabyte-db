@@ -2024,8 +2024,8 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
   }
 
   if (op_id.term + 1 == leader_state.term) {
-    // One term ago - since the leader is ready, the initial NO_OP has committed
-    // and all entries from the previous term at index < NO_OP index are also committed.
+    // One term ago - the current term's NO_OP committed everything before it. Also covers
+    // a split child on its first elected term, since first_index == split_op_id.index + 1.
     if (op_id.index < first_index) {
       return Status::OK();
     }

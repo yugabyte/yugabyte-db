@@ -11,13 +11,16 @@ package com.yugabyte.yw.common.pa;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.forms.PACollectorExt;
 import com.yugabyte.yw.forms.PaUniverseInfo;
 import com.yugabyte.yw.forms.PaUniverseInfo.SortBy;
@@ -25,6 +28,7 @@ import com.yugabyte.yw.forms.paging.PaUniverseApiFilter;
 import com.yugabyte.yw.forms.paging.PaUniversePagedApiQuery;
 import com.yugabyte.yw.forms.paging.PaUniversePagedApiResponse;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
@@ -46,17 +50,20 @@ public class PerfAdvisorService {
   private final PerfAdvisorClient client;
   private final RuntimeConfGetter confGetter;
   private final SettableRuntimeConfigFactory configFactory;
+  private final MetricQueryHelper metricQueryHelper;
 
   @Inject
   public PerfAdvisorService(
       BeanValidator beanValidator,
       PerfAdvisorClient client,
       RuntimeConfGetter confGetter,
-      SettableRuntimeConfigFactory configFactory) {
+      SettableRuntimeConfigFactory configFactory,
+      MetricQueryHelper metricQueryHelper) {
     this.beanValidator = beanValidator;
     this.client = client;
     this.confGetter = confGetter;
     this.configFactory = configFactory;
+    this.metricQueryHelper = metricQueryHelper;
   }
 
   @Transactional
@@ -218,6 +225,231 @@ public class PerfAdvisorService {
     response.setHasNext(toIndex < totalCount);
     response.setTotalCount(totalCount);
     return response;
+  }
+
+  /**
+   * Per-universe Performance Advisor memory consumption mode used by the memory precheck. The
+   * caller passes the current and target modes; the validator looks up the per-node memory budget
+   * for each from runtime config and checks that the YBA node has enough headroom for the delta.
+   */
+  public enum PaMemoryMode {
+    /** No PA collection. */
+    NONE,
+    /** PA collector enabled without advanced observability. */
+    COLLECTOR_ONLY,
+    /** PA collector enabled with advanced observability. */
+    ADVANCED,
+  }
+
+  /**
+   * Validates that the YBA installation has enough free memory to transition the universe from
+   * {@code currentMode} to {@code targetMode}. The PA-collector budget is consumed in the yugaware
+   * container; the advanced-observability budget is consumed in the prometheus container. In K8s we
+   * validate each container's headroom independently; on VM both run on the same host so we
+   * validate the sum against the host's available memory. When the target is the same as or below
+   * the current mode (e.g. disabling advanced observability or unregistering) the change frees
+   * memory, so this is a no-op.
+   *
+   * @param actionDescription short human-readable description of the action that triggered the
+   *     validation (for example {@code "Cannot register universe with Performance Advisor"}). It is
+   *     prefixed onto any BAD_REQUEST message produced by this method so the user can tell which
+   *     operation was rejected.
+   */
+  public void validatePerfAdvisorMemory(
+      Universe universe,
+      PaMemoryMode currentMode,
+      PaMemoryMode targetMode,
+      String actionDescription) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.skipPaMemoryValidation)) {
+      return;
+    }
+
+    int additionalCollectorPerNodeMb =
+        Math.max(0, yugawareMemoryPerNodeMb(targetMode) - yugawareMemoryPerNodeMb(currentMode));
+    int additionalAdvancedPerNodeMb =
+        Math.max(0, prometheusMemoryPerNodeMb(targetMode) - prometheusMemoryPerNodeMb(currentMode));
+    if (additionalCollectorPerNodeMb == 0 && additionalAdvancedPerNodeMb == 0) {
+      return;
+    }
+
+    // Count tservers from nodeDetailsSet directly. Universe.getTServers() filters out nodes
+    // whose cloud private_ip is not set yet, which is the case while CreateUniverse runs its
+    // prechecks - we'd otherwise see 0 tservers and silently skip the validation.
+    int tserverCount =
+        (int)
+            universe.getUniverseDetails().nodeDetailsSet.stream().filter(n -> n.isTserver).count();
+    long additionalCollectorMb = (long) tserverCount * additionalCollectorPerNodeMb;
+    long additionalAdvancedMb = (long) tserverCount * additionalAdvancedPerNodeMb;
+
+    if (KubernetesEnvironmentVariables.isYbaRunningInKubernetes()) {
+      validateK8sContainerMemory(
+          "yugaware",
+          additionalCollectorMb,
+          tserverCount,
+          additionalCollectorPerNodeMb,
+          actionDescription);
+      validateK8sContainerMemory(
+          "prometheus",
+          additionalAdvancedMb,
+          tserverCount,
+          additionalAdvancedPerNodeMb,
+          actionDescription);
+      return;
+    }
+
+    long requiredAdditionalMb = additionalCollectorMb + additionalAdvancedMb;
+    long availableMemoryMb = getVmAvailableMemoryMb();
+    if (availableMemoryMb < 0) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Could not determine YBA node available memory");
+    }
+    if (requiredAdditionalMb > availableMemoryMb) {
+      int additionalPerNodeMb = additionalCollectorPerNodeMb + additionalAdvancedPerNodeMb;
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s: this change would require approximately %d MB of additional memory "
+                  + "(%d tserver nodes x %d MB/node), but only %d MB is available on the YBA node.",
+              actionDescription,
+              requiredAdditionalMb,
+              tserverCount,
+              additionalPerNodeMb,
+              availableMemoryMb));
+    }
+  }
+
+  private void validateK8sContainerMemory(
+      String containerName,
+      long requiredMb,
+      int tserverCount,
+      int perNodeMb,
+      String actionDescription) {
+    if (requiredMb == 0) {
+      return;
+    }
+    long availableMb = getK8sContainerAvailableMemoryMb(containerName);
+    if (availableMb < 0) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format("Could not determine available memory for container %s", containerName));
+    }
+    if (requiredMb > availableMb) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s: this change would require approximately %d MB of additional memory in"
+                  + " container %s (%d tserver nodes x %d MB/node), but only %d MB is available.",
+              actionDescription, requiredMb, containerName, tserverCount, perNodeMb, availableMb));
+    }
+  }
+
+  /** Memory consumed by Performance Advisor data ingestion in the yugaware container, per node. */
+  private int yugawareMemoryPerNodeMb(PaMemoryMode mode) {
+    switch (mode) {
+      case NONE:
+        return 0;
+      case COLLECTOR_ONLY:
+      case ADVANCED:
+        return confGetter.getGlobalConf(GlobalConfKeys.paMemoryPerNodePaCollectorMb);
+    }
+    throw new IllegalArgumentException("Unknown PaMemoryMode: " + mode);
+  }
+
+  /**
+   * Additional memory consumed in the prometheus container when advanced observability is enabled,
+   * per node. This is the increment on top of the yugaware container budget, so the configured
+   * advanced-observability total is reduced by the PA collector budget.
+   */
+  private int prometheusMemoryPerNodeMb(PaMemoryMode mode) {
+    switch (mode) {
+      case NONE:
+      case COLLECTOR_ONLY:
+        return 0;
+      case ADVANCED:
+        int totalMb =
+            confGetter.getGlobalConf(GlobalConfKeys.paMemoryPerNodeAdvancedObservabilityMb);
+        int collectorMb = confGetter.getGlobalConf(GlobalConfKeys.paMemoryPerNodePaCollectorMb);
+        return Math.max(0, totalMb - collectorMb);
+    }
+    throw new IllegalArgumentException("Unknown PaMemoryMode: " + mode);
+  }
+
+  private long getVmAvailableMemoryMb() {
+    // Linux node_exporter exposes node_memory_MemAvailable_bytes directly; macOS does not, so
+    // we fall back to free + inactive + purgeable (memory the kernel can reclaim without
+    // significant impact). The `or` guarantees we pick whichever series the YBA host publishes.
+    String query =
+        "node_memory_MemAvailable_bytes{job=\"yba-node-exporter\"}"
+            + " or ("
+            + "node_memory_free_bytes{job=\"yba-node-exporter\"}"
+            + " + node_memory_inactive_bytes{job=\"yba-node-exporter\"}"
+            + " + node_memory_purgeable_bytes{job=\"yba-node-exporter\"})";
+    try {
+      ArrayList<MetricQueryResponse.Entry> results = metricQueryHelper.queryDirect(query);
+      if (results != null && !results.isEmpty()) {
+        double bytes = results.get(0).values.get(0).getRight();
+        return (long) (bytes / (1024 * 1024));
+      }
+    } catch (Exception e) {
+      log.warn("Failed to query YBA node available memory from Prometheus", e);
+    }
+    return -1;
+  }
+
+  private long getK8sContainerAvailableMemoryMb(String containerName) {
+    String podName = KubernetesEnvironmentVariables.getPodName();
+    String namespace = KubernetesEnvironmentVariables.getPodNamespace();
+    if (podName == null || namespace == null) {
+      return -1;
+    }
+    try {
+      // Prefer the configured limit (kube-state-metrics doesn't emit the series when the limit
+      // is unset). If the limit is missing or 0, fall back to the configured request - same
+      // semantics as the K8s alert templates.
+      long capacityBytes =
+          queryScalarBytes(
+              String.format(
+                  "max(kube_pod_container_resource_limits_memory_bytes{pod_name=\"%s\","
+                      + "container_name=\"%s\",namespace=\"%s\"})",
+                  podName, containerName, namespace));
+      if (capacityBytes <= 0) {
+        capacityBytes =
+            queryScalarBytes(
+                String.format(
+                    "max(kube_pod_container_resource_requests_memory_bytes{pod_name=\"%s\","
+                        + "container_name=\"%s\",namespace=\"%s\"})",
+                    podName, containerName, namespace));
+      }
+      if (capacityBytes <= 0) {
+        return -1;
+      }
+      long usedBytes =
+          queryScalarBytes(
+              String.format(
+                  "max(container_memory_working_set_bytes{pod_name=\"%s\","
+                      + "container_name=\"%s\",namespace=\"%s\"})",
+                  podName, containerName, namespace));
+      if (usedBytes < 0) {
+        return -1;
+      }
+      long availableBytes = Math.max(0L, capacityBytes - usedBytes);
+      return availableBytes / (1024 * 1024);
+    } catch (Exception e) {
+      log.warn("Failed to query container memory for {} from Prometheus", containerName, e);
+    }
+    return -1;
+  }
+
+  /**
+   * Runs an instant Prometheus query that is expected to produce a single scalar/series value in
+   * bytes and returns it. Returns -1 when the series is missing or the query fails.
+   */
+  private long queryScalarBytes(String query) {
+    ArrayList<MetricQueryResponse.Entry> results = metricQueryHelper.queryDirect(query);
+    if (results == null || results.isEmpty()) {
+      return -1;
+    }
+    return (long) (double) results.get(0).values.get(0).getRight();
   }
 
   public void putUniverse(

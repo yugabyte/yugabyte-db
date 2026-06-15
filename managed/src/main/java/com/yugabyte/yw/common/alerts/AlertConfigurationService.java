@@ -742,8 +742,12 @@ public class AlertConfigurationService {
     List<AlertConfiguration> alertConfigurations =
         Arrays.stream(AlertTemplate.values())
             .filter(
-                template ->
-                    alertTemplateService.getTemplateDescription(template).isCreateForNewCustomer())
+                template -> {
+                  AlertTemplateDescription description =
+                      alertTemplateService.getTemplateDescription(template);
+                  return description.isCreateForNewCustomer()
+                      && description.isApplicableToCurrentEnvironment();
+                })
             .map(template -> createConfigurationTemplate(customer, template))
             .map(AlertConfigurationTemplate::getDefaultConfiguration)
             .collect(Collectors.toList());

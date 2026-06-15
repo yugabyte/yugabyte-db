@@ -199,3 +199,6 @@ race:std::fs::
 race:std::sys::
 race:documentdb_gateway::
 race:pg_documentdb_gw_host::
+
+# False positive because we compile OpenSSL without TSAN instrumentation (#32121).
+race:libcrypto.so.3

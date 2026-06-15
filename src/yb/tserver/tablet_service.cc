@@ -2755,8 +2755,8 @@ void TabletServiceImpl::WaitForAsyncWrite(
     context_ptr->RespondSuccess();
   };
 
-  // We dont need the leader check here because if the peer gracefully transitioned to a follower
-  // we still want to succeed previously committed async writes received by this peer.
+  // Don't need to do a leader check here: a follower or post-split parent can still verify writes
+  // from its log.
   auto tablet_result = LookupTabletPeer(server_->tablet_peer_lookup(), req->tablet_id());
   if (!tablet_result) {
     callback(tablet_result.status());
@@ -3963,6 +3963,42 @@ void TabletServiceImpl::ReleaseObjectLocks(
   } else {
     context.RespondSuccess();
   }
+}
+
+void TabletServiceImpl::WaitForLockersMultiple(
+    const WaitForLockersMultipleRequestPB* req, WaitForLockersMultipleResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("Start WaitForLockersMultiple");
+  VLOG(2) << "Received WaitForLockersMultiple RPC: " << req->DebugString();
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    LOG_WITH_FUNC(INFO)
+        << "Flag enable_object_locking_for_table_locks disabled. "
+        << "Ignoring wait_for_lockers request.";
+    return context.RespondSuccess();
+  }
+  if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
+  }
+  auto ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    VLOG_WITH_FUNC(1) << "TSLocalLockManager not found...";
+    return SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+  }
+  TransactionId background_txn_id = TransactionId::Nil();
+  if (!req->background_transaction_id().empty()) {
+    auto res = FullyDecodeTransactionId(req->background_transaction_id());
+    if (!res.ok()) {
+      return SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
+    }
+    background_txn_id = *res;
+  }
+  const auto deadline = context.GetClientDeadline();
+  ts_local_lock_manager->WaitForLockersAsync(
+      req->object_locks(), deadline,
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()),
+      background_txn_id);
 }
 
 Result<GetYSQLLeaseInfoResponsePB> TabletServiceImpl::GetYSQLLeaseInfo(

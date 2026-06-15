@@ -49,7 +49,7 @@ function mapReadReplicaGFlags(
   if (!Object.keys(tserver).length) {
     return undefined;
   }
-  return { tserver };
+  return { tserver, master: {} };
 }
 
 /** Sum of per-AZ replication_factor; must match partition/cluster RF for YBA placement validation. */

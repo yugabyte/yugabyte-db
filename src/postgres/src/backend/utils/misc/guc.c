@@ -2782,7 +2782,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_cdcsdk_stream_tables_without_primary_key,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2879,6 +2879,17 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_all_drops,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_fail_drop_after_heap_drop", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Test fault injection: fail drop after heap_drop_with_catalog."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_drop_after_heap_drop,
 		false,
 		NULL, NULL, NULL
 	},
@@ -3306,6 +3317,17 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_base_scans_cost_model,
 		false,
 		NULL, assign_yb_enable_base_scans_cost_model, NULL
+	},
+
+	{
+		{"yb_prefetch_column_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Prefetch a relation's column statistics in one catalog "
+						 "read during planning."),
+			NULL
+		},
+		&yb_prefetch_column_statistics,
+		true,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -4001,7 +4023,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_docdb_metrics,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -11349,7 +11371,7 @@ set_config_option_ext(const char *name, const char *value,
 				 * control backends set the flag before skipping the GUC apply.
 				 */
 				if (YbIsYsqlConnMgrEnabled() &&
-					(!IsUnderPostmaster || yb_conn_mgr_is_auth_passthrough_backend) &&
+					(!IsUnderPostmaster || YbIsAuthPassthroughControlBackend()) &&
 					changeVal && !is_reload)
 					yb_conn_mgr_sighup_had_backend_guc_change = true;
 

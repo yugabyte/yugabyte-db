@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms.filters;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -21,17 +22,27 @@ public class TaskApiFilter {
   @ApiModelProperty(
       value = "The start date to filter paged query.",
       example = "2022-12-12T13:07:18Z")
+  @JsonAlias("date_range_start")
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date dateRangeStart;
 
   @ApiModelProperty(value = "The end date to filter paged query.", example = "2022-12-12T13:07:18Z")
+  @JsonAlias("date_range_end")
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date dateRangeEnd;
 
+  @JsonAlias("target_list")
   private Set<CustomerTask.TargetType> targetList;
+
+  @JsonAlias("target_uuid_list")
   private Set<UUID> targetUUIDList;
+
+  @JsonAlias("type_list")
   private Set<CustomerTask.TaskType> typeList;
+
+  @JsonAlias("type_name_list")
   private Set<String> typeNameList;
+
   private Set<TaskInfo.State> status;
 
   public TaskFilter toFilter() {

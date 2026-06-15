@@ -15,6 +15,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <tuple>
 
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
@@ -65,6 +66,17 @@ Status CreateTable(PGConn* conn, const std::string& name = kTable) {
     "CREATE TABLE $0(k INT CONSTRAINT $1 PRIMARY KEY, v INT DEFAULT 1) SPLIT INTO 1 TABLETS",
     name, PKConstraintName(name)));
   return Status::OK();
+}
+
+constexpr size_t NumBatches(size_t num_rows, size_t batch_size) {
+  return (num_rows + batch_size - 1) / batch_size;
+}
+
+Result<std::tuple<int64_t, int64_t>> GetTempFileStats(PGConn* conn) {
+  RETURN_NOT_OK(conn->Fetch("SELECT pg_stat_force_next_flush()"));
+  RETURN_NOT_OK(conn->Fetch("SELECT pg_stat_clear_snapshot()"));
+  return conn->FetchRow<int64_t, int64_t>(
+      "SELECT temp_files, temp_bytes FROM pg_stat_database WHERE datname = current_database()");
 }
 
 Status EnsureDupKeyError(Status status, const std::string& constraint_name) {
@@ -179,6 +191,155 @@ TEST_F(PgOpBufferingTest, MaxBatchSize) {
         }));
     ASSERT_EQ(write_rpc_count, std::ceil(static_cast<double>(items_for_insert) / max_batch_size));
   }
+}
+
+TEST_F(PgOpBufferingTest, TransitionTablesLargeNumberOfRows) {
+  auto conn =
+      ASSERT_RESULT(SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
+  constexpr size_t kBatchSize = 64;
+  constexpr size_t kInsertRows = 1000;
+  constexpr size_t kDeleteRows = 500;
+  constexpr size_t kUpdateRows = 100;
+  constexpr size_t kPayloadBytes = 1024;
+  constexpr size_t kInsertBatches = NumBatches(kInsertRows, kBatchSize);
+  constexpr size_t kDeleteBatches = NumBatches(kDeleteRows, kBatchSize);
+  constexpr size_t kUpdateBatches = NumBatches(kUpdateRows, kBatchSize);
+  constexpr size_t kStatementInsertWriteRpcs = 2 * kInsertBatches;
+  constexpr size_t kStatementDeleteWriteRpcs = 2 * kDeleteBatches;
+  constexpr size_t kStatementUpdateWriteRpcs = 3 * kUpdateBatches;
+  constexpr size_t kRowTriggerInsertWriteRpcs = kInsertBatches + kInsertRows;
+  ASSERT_OK(SetMaxBatchSize(&conn, kBatchSize));
+  ASSERT_OK(conn.Execute("SET work_mem = '64kB'"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_test (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_insert_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_delete_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_update_old_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_update_new_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_write_large_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_insert_log SELECT id, val FROM new_table;
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_write_large_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_delete_log SELECT id, val FROM old_table;
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_write_large_update() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_update_old_log SELECT id, val FROM old_table;
+      INSERT INTO tt_update_new_log SELECT id, val FROM new_table;
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_test_ins AFTER INSERT ON tt_test
+      REFERENCING NEW TABLE AS new_table
+      FOR EACH STATEMENT EXECUTE FUNCTION tt_write_large_insert()
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_test_del AFTER DELETE ON tt_test
+      REFERENCING OLD TABLE AS old_table
+      FOR EACH STATEMENT EXECUTE FUNCTION tt_write_large_delete()
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_test_upd AFTER UPDATE ON tt_test
+      REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+      FOR EACH STATEMENT EXECUTE FUNCTION tt_write_large_update()
+  )"));
+
+  const auto insert_query_template = Format(
+      "INSERT INTO tt_test "
+      "SELECT g, repeat('x', $0) || g FROM generate_series($$0, $$1) AS g",
+      kPayloadBytes);
+  const auto [temp_files_before_insert, temp_bytes_before_insert] =
+      ASSERT_RESULT(GetTempFileStats(&conn));
+  const auto insert_rpc_count =
+      ASSERT_RESULT(write_rpc_watcher_->Delta([&conn, &insert_query_template, kInsertRows] {
+        return conn.ExecuteFormat(insert_query_template, 1, kInsertRows);
+      }));
+  ASSERT_EQ(insert_rpc_count, kStatementInsertWriteRpcs);
+  const auto [temp_files_after_insert, temp_bytes_after_insert] =
+      ASSERT_RESULT(GetTempFileStats(&conn));
+  ASSERT_GT(temp_files_after_insert, temp_files_before_insert);
+  ASSERT_GT(temp_bytes_after_insert, temp_bytes_before_insert);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_test")), kInsertRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_insert_log")),
+      kInsertRows);
+
+  const auto delete_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn] {
+    return conn.Execute("DELETE FROM tt_test WHERE id <= 500");
+  }));
+  ASSERT_EQ(delete_rpc_count, kStatementDeleteWriteRpcs);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_test")),
+      kInsertRows - kDeleteRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_delete_log")),
+      kDeleteRows);
+
+  const auto update_rpc_count = ASSERT_RESULT(write_rpc_watcher_->Delta([&conn] {
+    return conn.Execute("UPDATE tt_test SET val = 'bulk_' || val WHERE id > 500 AND id <= 600");
+  }));
+  ASSERT_EQ(update_rpc_count, kStatementUpdateWriteRpcs);
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          conn.FetchRow<int64_t>(
+              "SELECT count(*) FROM tt_test WHERE id > 500 AND id <= 600 AND val LIKE 'bulk_%'")),
+      kUpdateRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_update_old_log")),
+      kUpdateRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_update_new_log")),
+      kUpdateRows);
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_row_test (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tt_row_insert_log (id INT PRIMARY KEY, val TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_row_write_large_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_row_insert_log VALUES (NEW.id, NEW.val);
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_row_test_ins AFTER INSERT ON tt_row_test
+      FOR EACH ROW EXECUTE FUNCTION tt_row_write_large_insert()
+  )"));
+
+  const auto row_insert_query_template = Format(
+      "INSERT INTO tt_row_test "
+      "SELECT g, repeat('y', $0) || g FROM generate_series($$0, $$1) AS g",
+      kPayloadBytes);
+  const auto row_insert_rpc_count =
+      ASSERT_RESULT(write_rpc_watcher_->Delta([&conn, &row_insert_query_template, kInsertRows] {
+        return conn.ExecuteFormat(row_insert_query_template, 1, kInsertRows);
+      }));
+  ASSERT_EQ(row_insert_rpc_count, kRowTriggerInsertWriteRpcs);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_row_test")),
+      kInsertRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tt_row_insert_log")),
+      kInsertRows);
 }
 
 // The test checks that buffering mechanism flushes currently buffered operations in case of

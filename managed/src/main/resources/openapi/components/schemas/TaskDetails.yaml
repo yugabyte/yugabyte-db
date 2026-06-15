@@ -1,0 +1,31 @@
+title: TaskDetails
+description: Structured task details returned with customer task entries.
+type: object
+properties:
+  task_details:
+    description: User-facing subtask groups for this task.
+    type: array
+    items:
+      $ref: "./TaskSubtaskGroupDetails.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("taskDetails")'
+  version_numbers:
+    $ref: "./TaskVersionNumbers.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("versionNumbers")'
+  software_upgrade_progress:
+    $ref: "./SoftwareUpgradeProgress.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("softwareUpgradeProgress")'
+  audit_log_config:
+    $ref: "./AuditLogConfig.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("auditLogConfig")'
+  query_log_config:
+    $ref: "./QueryLogConfig.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("queryLogConfig")'
+  metrics_export_config:
+    $ref: "./MetricsExportConfig.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("metricsExportConfig")'

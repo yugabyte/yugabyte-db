@@ -267,6 +267,21 @@ class UniverseDetail extends Component {
       }
     }
 
+    // Refresh PA registration status whenever a PA register/unregister task on this universe
+    // completes, otherwise the actions menu keeps the pre-task label until a full reload.
+    const prevDetails = prevProps.universe.currentUniverse.data?.universeDetails;
+    const currDetails = currentUniverse?.data?.universeDetails;
+    const justCompleted =
+      prevDetails?.updateInProgress === true && currDetails?.updateInProgress === false;
+    const paTaskTypes = ['RegisterUniverseWithPACollector', 'UnregisterUniverseFromPACollector'];
+    if (
+      justCompleted &&
+      paTaskTypes.includes(prevDetails?.updatingTask) &&
+      isNonEmptyArray(ybaToPaServiceDetails?.data)
+    ) {
+      this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
+    }
+
     // Redirect to Overview when on Performance tab but it should no longer be shown
     // (perf advisor collector or advanced observability disabled for the universe)
     const isOnPerfAdvisorTab = this.props.location?.pathname?.includes(PERF_ADVISOR_PATH);
@@ -522,12 +537,15 @@ class UniverseDetail extends Component {
         (c) => c.key === RuntimeConfigKey.ENABLE_PA_COLLECTOR
       )?.value === 'true';
 
-    // Performance Tab should be shown only if Perf Advisor is enabled for the universe with advanced observability
-    const isPerformanceTabEnabled =
+    const isNewPerfAdvisorUiEnabled =
       isPerfAdvisorServiceEnabled &&
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
-      )?.value === 'true' &&
+      )?.value === 'true';
+
+    // Performance Tab should be shown only if Perf Advisor is enabled for the universe with advanced observability
+    const isPerformanceTabEnabled =
+      isNewPerfAdvisorUiEnabled &&
       universePaRegistrationStatus?.data?.success &&
       universePaRegistrationStatus?.data?.advancedObservability;
 
@@ -1730,7 +1748,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                    {isPerformanceTabEnabled &&
+                    {isNewPerfAdvisorUiEnabled &&
                       !universePaused &&
                       universePaRegistrationStatus?.data?.success &&
                       !universePaRegistrationStatus?.data?.advancedObservability && (
@@ -1748,7 +1766,8 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                    {!universePaused &&
+                    {isNewPerfAdvisorUiEnabled &&
+                      !universePaused &&
                       universePaRegistrationStatus?.data?.success &&
                       universePaRegistrationStatus?.data?.advancedObservability && (
                         <RbacValidator
@@ -2022,7 +2041,7 @@ class UniverseDetail extends Component {
               this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
             }
           }}
-          isPerformanceTabEnabled={isPerformanceTabEnabled}
+          isNewPerfAdvisorUiEnabled={isNewPerfAdvisorUiEnabled}
           paUuid={ybaToPaServiceDetails?.data?.[0]?.uuid}
           universeData={currentUniverse.data}
           perfAdvisorStatus={universePaRegistrationStatus}

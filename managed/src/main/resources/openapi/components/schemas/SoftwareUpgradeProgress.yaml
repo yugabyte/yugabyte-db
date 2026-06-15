@@ -1,0 +1,36 @@
+title: SoftwareUpgradeProgress
+description: |
+  Software upgrade progress by availability zone (standard and canary).
+  Present on universe software-upgrade tasks when exposed by the backend.
+type: object
+properties:
+  canary_upgrade:
+    description: Whether this software upgrade is using a canary rollout.
+    type: boolean
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("isCanaryUpgrade")'
+  canary_pause_state:
+    description: 'Pause point reached during a canary software upgrade, if applicable.'
+    type: string
+    enum:
+      - NOT_PAUSED
+      - PAUSED_AFTER_MASTERS
+      - PAUSED_AFTER_TSERVERS_AZ
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("canaryPauseState")'
+  master_az_upgrade_states_list:
+    description: Per-AZ upgrade status for master processes.
+    type: array
+    items:
+      $ref: "./AZUpgradeState.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("masterAZUpgradeStatesList")'
+  tserver_az_upgrade_states_list:
+    description: Per-AZ upgrade status for tserver processes.
+    type: array
+    items:
+      $ref: "./AZUpgradeState.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("tserverAZUpgradeStatesList")'
+x-yba-api-since: 2026.1.0.0-b0
+x-yba-api-visibility: preview

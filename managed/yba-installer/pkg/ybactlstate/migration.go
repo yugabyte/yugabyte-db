@@ -26,6 +26,7 @@ const asRootRetry = 10
 const improvedCertHandling = 11
 const stateServices = 12
 const asRootState = 13
+const nodeExporterConfig = 14
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -296,6 +297,43 @@ func migrateInitialized(state *State) error {
 	return nil
 }
 
+// migrateNodeExporterConfig backfills the nodeExporter.* section in yba-ctl.yml
+// on upgrades from a version that pre-dates the co-located node-exporter.
+// Default values are sourced from viper after overlaying the reference
+// yba-ctl.yml, so the migration stays in sync with the canonical defaults
+// without duplicating them.
+//
+// Note: viper.IsSet on the global viper returns true for any key that has a
+// registered default (see Viper.find which consults v.defaults), so it can't
+// be used here to determine whether the user's file already has a key. We
+// load the user's file into a fresh viper (no defaults) to make that check.
+func migrateNodeExporterConfig(state *State) error {
+	keys := []string{
+		"nodeExporter.enabled",
+		"nodeExporter.port",
+		"nodeExporter.scheme",
+		"nodeExporter.enableAuth",
+		"nodeExporter.authUsername",
+		"nodeExporter.authPassword",
+	}
+	userCfg := viper.New()
+	userCfg.SetConfigFile(common.InputFile())
+	if err := userCfg.ReadInConfig(); err != nil {
+		return fmt.Errorf("error reading %s: %w", common.InputFile(), err)
+	}
+	viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+	for _, key := range keys {
+		if userCfg.IsSet(key) {
+			continue
+		}
+		if err := common.SetYamlValue(common.InputFile(), key, viper.Get(key)); err != nil {
+			return fmt.Errorf("error migrating %s: %w", key, err)
+		}
+	}
+	common.InitViper()
+	return nil
+}
+
 var migrations map[int]migrator = map[int]migrator{
 	defaultMigratorValue: defaultMigrate,
 	promConfigMV:         migratePrometheus,
@@ -310,6 +348,7 @@ var migrations map[int]migrator = map[int]migrator{
 	improvedCertHandling: migrateCertHandler,
 	stateServices:        migrateStateServices,
 	asRootState:          migrateAsRootState,
+	nodeExporterConfig:   migrateNodeExporterConfig,
 }
 
 func getMigrationHandler(toSchema int) migrator {

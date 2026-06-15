@@ -103,7 +103,7 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | :---- | :---------- |
 | enable_ysql_conn_mgr | Enables YSQL Connection Manager for the cluster. YB-TServer starts a YSQL Connection Manager process as a child process.<br>Default: false |
 | enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint `<ip_address_of_cluster>:13000/connections`. <br>Default: true |
-| ysql_conn_mgr_idle_time | Specifies the maximum idle time (in seconds) allowed for database connections created by YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding this value, it is automatically closed by YSQL Connection Manager.<br>Default: 60 |
+| ysql_conn_mgr_idle_time | Specifies the maximum idle time (in seconds) allowed for database connections created by YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding this value, it is automatically closed by YSQL Connection Manager.<br>Default: 180 |
 | ysql_conn_mgr_max_client_connections | Maximum number of concurrent client connections allowed.<br>Default: 10000 |
 | ysql_conn_mgr_min_conns_per_db | Minimum number of server connections that is present in the pool. This limit is not considered while closing a broken server connection.<br>Default: 1 |
 | ysql_conn_mgr_num_workers | Number of worker threads used by YSQL Connection Manager. If set to 0, the number of worker threads will be half of the number of CPU cores.<br>Default: 0 |

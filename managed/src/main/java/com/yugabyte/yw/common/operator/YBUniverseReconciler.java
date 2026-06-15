@@ -36,6 +36,7 @@ import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -47,6 +48,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -1063,6 +1066,50 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
+  private static UpgradeOption getUpgradeOption(YBUniverse ybUniverse) {
+    if (ybUniverse.getSpec() == null || ybUniverse.getSpec().getUpgradeOption() == null) {
+      return UpgradeOption.ROLLING_UPGRADE;
+    }
+    switch (ybUniverse.getSpec().getUpgradeOption().getValue()) {
+      case "Non-Rolling":
+        return UpgradeOption.NON_ROLLING_UPGRADE;
+      case "Non-Restart":
+        return UpgradeOption.NON_RESTART_UPGRADE;
+      case "Rolling":
+      default:
+        return UpgradeOption.ROLLING_UPGRADE;
+    }
+  }
+
+  private static void applyUpgradeOptions(UpgradeTaskParams requestParams, YBUniverse ybUniverse) {
+    requestParams.upgradeOption = getUpgradeOption(ybUniverse);
+    if (ybUniverse.getSpec() == null) {
+      return;
+    }
+    io.yugabyte.operator.v1alpha1.YBUniverseSpec spec = ybUniverse.getSpec();
+    io.yugabyte.operator.v1alpha1.ybuniversespec.RollMaxBatchSize specBatchSize =
+        spec.getRollMaxBatchSize();
+    if (requestParams.upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
+      if (specBatchSize != null) {
+        RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
+        if (specBatchSize.getPrimaryBatchSize() != null) {
+          rollMaxBatchSize.setPrimaryBatchSize(specBatchSize.getPrimaryBatchSize().intValue());
+        }
+        if (specBatchSize.getReadReplicaBatchSize() != null) {
+          rollMaxBatchSize.setReadReplicaBatchSize(
+              specBatchSize.getReadReplicaBatchSize().intValue());
+        }
+        requestParams.rollMaxBatchSize = rollMaxBatchSize;
+      }
+      if (spec.getTserverWaitSeconds() != null) {
+        requestParams.sleepAfterTServerRestartMillis = (int) (spec.getTserverWaitSeconds() * 1000L);
+      }
+      if (spec.getMasterWaitSeconds() != null) {
+        requestParams.sleepAfterMasterRestartMillis = (int) (spec.getMasterWaitSeconds() * 1000L);
+      }
+    }
+  }
+
   private UUID toggleYbcYbUniverse(
       UniverseDefinitionTaskParams taskParams,
       Customer cust,
@@ -1082,6 +1129,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       log.error("Failed at creating toggle immutable YBC params", e);
     }
     requestParams.setUseYbdbInbuiltYbc(useYbdbInbuiltYbc);
+    applyUpgradeOptions(requestParams, ybUniverse);
 
     Universe oldUniverse =
         Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
@@ -1112,6 +1160,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
     requestParams.universeOverrides = universeOverrides;
     requestParams.skipNodeChecks = isRerun;
+    applyUpgradeOptions(requestParams, ybUniverse);
 
     Universe oldUniverse =
         Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
@@ -1142,6 +1191,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       log.error("Failed at creating upgrade software params", e);
     }
     requestParams.skipNodeChecks = isRerun;
+    applyUpgradeOptions(requestParams, ybUniverse);
 
     Universe oldUniverse =
         Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
@@ -1168,6 +1218,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     } catch (Exception e) {
       log.error("Failed at creating upgrade software params", e);
     }
+    applyUpgradeOptions(requestParams, ybUniverse);
 
     Universe oldUniverse =
         Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
@@ -1192,6 +1243,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       log.error("Failed at creating certs rotate params", e);
       throw new RuntimeException("Failed to create certs rotate params", e);
     }
+    applyUpgradeOptions(requestParams, ybUniverse);
 
     // Get the rootCA from the spec
     String rootCAName = ybUniverse.getSpec().getRootCA();

@@ -4,7 +4,7 @@ import {
   UniverseRespResponse
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { TFunction } from 'i18next';
-import _ from 'lodash';
+import _, { isEmpty } from 'lodash';
 import { AddRRContextProps } from './AddReadReplicaContext';
 import type { RRInstanceSettingsProps } from './steps/RRInstanceSettings/RRInstanceSettings';
 import {
@@ -125,7 +125,7 @@ export function getRegionsAndAZFromReadReplicaCluster(
 }
 
 export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRContextProps> => {
-  const primaryClusterSpec = getClusterByType(data, ClusterSpecClusterType.PRIMARY) as
+  const primaryClusterSpec = getClusterByType(data, ClusterSpecClusterType.ASYNC) as
     | ClusterSpec
     | undefined;
   const primaryRf = getPrimaryReplicationFactor(data);
@@ -158,15 +158,17 @@ export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRConte
     specificGFlags?: Record<string, unknown>;
   };
 
+  const gFlags = primaryWithOptionalSpecificGFlags?.specificGFlags
+  ? transformSpecificGFlagToFlagsArray(primaryWithOptionalSpecificGFlags.specificGFlags)
+  : transformGFlagToFlagsArray(
+      primaryClusterSpec?.gflags?.master,
+      primaryClusterSpec?.gflags?.tserver
+    );
+
   return {
     databaseSettings: {
-      gFlags: primaryWithOptionalSpecificGFlags?.specificGFlags
-        ? transformSpecificGFlagToFlagsArray(primaryWithOptionalSpecificGFlags.specificGFlags)
-        : transformGFlagToFlagsArray(
-            primaryClusterSpec?.gflags?.master,
-            primaryClusterSpec?.gflags?.tserver
-          ),
-      customizeRRFlags: false
+      gFlags,
+      customizeRRFlags: !isEmpty(gFlags)
     },
     regionsAndAZ,
     regionsAndAZBaseline: _.cloneDeep(regionsAndAZ),

@@ -29,6 +29,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/yb_catalog_version.h"
 #include "executor/ybExpr.h"
+#include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/pathnodes.h"
@@ -170,6 +171,13 @@ YBCIsSingleRowModify(PlannedStmt *pstmt)
  *  - it is UPDATE or DELETE command.
  *  - source data is a Result node (meaning we are skipping scan and thus
  *    are single row).
+ *
+ * Transition-table capture does not need to be checked here: the single-row
+ * UPDATE/DELETE path in createplan.c is only taken when no row triggers
+ * apply (see has_applicable_triggers()), and that helper consults
+ * YBRelHasOldRowTriggers() which already rejects any relation carrying an
+ * AFTER UPDATE/DELETE trigger with REFERENCING OLD/NEW TABLE.  So a Result
+ * outer plan implies no transition_capture.
  */
 bool
 YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable)

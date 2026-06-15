@@ -53,6 +53,34 @@ YbReleaseBufferedTuplestore(LockRowsState *lrstate)
 	}
 }
 
+/*
+ * Function to fetch tuple from tuplestore in the same format as that of the outer plan.
+ */
+static TupleTableSlot *
+YbFetchTupleSlot(Tuplestorestate *store, TupleTableSlot *minimal_slot, TupleTableSlot *result_slot)
+{
+	TupleTableSlot *dst = result_slot;
+	bool		need_copy = false;
+	ExecClearTuple(dst);
+
+	/* minimal_slot is initialized when result_slot is in a different format. */
+	if (minimal_slot)
+	{
+		Assert(!TTS_IS_MINIMALTUPLE(result_slot));
+		dst = minimal_slot;
+		need_copy = true;
+	}
+
+	if (!tuplestore_gettupleslot(store, /* forward */ true, /* copy */ true , dst))
+		return NULL;
+
+	if (need_copy)
+		return ExecCopySlot(result_slot /* dstslot */, dst /* srcslot */ );
+
+	slot_getallattrs(dst);
+	return dst;
+}
+
 /* ----------------------------------------------------------------
  *		ExecLockRows
  * ----------------------------------------------------------------
@@ -362,15 +390,15 @@ ExecLockRows(PlanState *pstate)
 	YbLockRowsStateInfo *yb_info = &lrstate->yb_info;
 	for (Tuplestorestate *buffered = yb_info->buffered_slots; buffered; )
 	{
-		TupleTableSlot *result = yb_info->tuple_slot;
+		TupleTableSlot *result = NULL;
 		for (;!tuplestore_ateof(buffered);)
 		{
-			ExecClearTuple(result);
-			if (tuplestore_gettupleslot(buffered, /* forward */ true, /* copy */ true , result) &&
+			if ((result = YbFetchTupleSlot(buffered,
+										   yb_info->minimal_tuple_slot,
+										   yb_info->result_slot)) &&
 				!YbIsRowSkipped(yb_info->check_handles[yb_info->buffered_slot_index++]))
 			{
 				++yb_info->rows_fetched;
-				slot_getallattrs(result);
 				return result;
 			}
 		}
@@ -550,11 +578,19 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 			yb_explicit_row_lock_skip_locked_max_read_ahead > 1 &&
 			YbIsSkipLockedReadAheadOptimizationAllowed(estate))
 		{
+			TupleDesc desc = outerPlanState(lrstate)->ps_ResultTupleDesc;
 			yb_info->buffered_slots = tuplestore_begin_heap(false, false, work_mem);
 			yb_info->buffered_slots_capacity = yb_explicit_row_lock_skip_locked_max_read_ahead;
-			yb_info->tuple_slot =
-				ExecInitExtraTupleSlot(estate, outerPlanState(lrstate)->ps_ResultTupleDesc,
-									&TTSOpsMinimalTuple);
+			yb_info->result_slot = ExecInitExtraTupleSlot(estate, desc, lrstate->ps.resultops);
+
+			/*
+			 * If the slot returned by the outer plan is not a MinimalTuple slot,
+			 * initialize an explicit MinimalTuple slot to hold results from the
+			 * tuplestore.
+			 */
+			if (!TTS_IS_MINIMALTUPLE(yb_info->result_slot))
+				yb_info->minimal_tuple_slot =
+					ExecInitExtraTupleSlot(estate, desc, &TTSOpsMinimalTuple);
 			yb_info->check_handles =
 				palloc(sizeof(YbcIsExplicitlyLockedRowSkippedCheckHandle) * yb_info->buffered_slots_capacity);
 		}

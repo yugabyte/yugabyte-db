@@ -12,10 +12,14 @@ export const formatYbSoftwareVersionString = (
   return includeBuildTag ? `v${ybSoftwareVersion}` : `v${ybSoftwareVersion.split('-', 1)}`;
 };
 
+const getPluralizedDurationLabel = (label: string, value: number) =>
+  value === 1 ? label : `${label}s`;
+
 /**
  * Format the duration into _d _h _m _s _ms format.
+ * When `useFullLabel` is true, it uses full unit labels (e.g. "2 hours" instead of "2h").
  */
-export const formatDuration = (milliseconds: number) => {
+export const formatDuration = (milliseconds: number, useFullLabel = false) => {
   const isNegative = milliseconds < 0;
   const absoluteMilliseconds = Math.abs(milliseconds);
 
@@ -24,32 +28,36 @@ export const formatDuration = (milliseconds: number) => {
   const MINUTES_IN_HOUR = 60;
   const HOURS_IN_DAY = 24;
 
-  // d - day, h - hour, m - minutes, s - seconds, ms - milliseconds).
   // Units from greatest to least. Base unit should always be last in the array.
   const durationUnits = [
     {
       value: 0,
       unit: 'd',
+      fullLabel: 'day',
       baseUnitFactor: MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE * MINUTES_IN_HOUR * HOURS_IN_DAY
     },
     {
       value: 0,
       unit: 'h',
+      fullLabel: 'hour',
       baseUnitFactor: MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE * MINUTES_IN_HOUR
     },
     {
       value: 0,
       unit: 'm',
+      fullLabel: 'minute',
       baseUnitFactor: MILLISECONDS_IN_SECOND * SECONDS_IN_MINUTE
     },
     {
       value: 0,
       unit: 's',
+      fullLabel: 'second',
       baseUnitFactor: MILLISECONDS_IN_SECOND
     },
     {
       value: 0,
       unit: 'ms',
+      fullLabel: 'millisecond',
       baseUnitFactor: 1
     }
   ];
@@ -61,7 +69,10 @@ export const formatDuration = (milliseconds: number) => {
   }
 
   if (milliseconds === 0) {
-    return `0${durationUnits[durationUnits.length - 1].unit}`;
+    const baseDurationUnit = durationUnits[durationUnits.length - 1];
+    return useFullLabel
+      ? `0 ${getPluralizedDurationLabel(baseDurationUnit.fullLabel, 0)}`
+      : `0${baseDurationUnit.unit}`;
   }
 
   let allocatedDuration = 0;
@@ -73,11 +84,21 @@ export const formatDuration = (milliseconds: number) => {
     allocatedDuration += durationUnit.value * durationUnit.baseUnitFactor;
   });
 
-  return `${isNegative ? '-' : ''} ${durationUnits
+  const formattedDuration = durationUnits
     .map((durationUnit) =>
-      durationUnit.value > 0 ? `${durationUnit.value}${durationUnit.unit}` : ''
+      durationUnit.value > 0
+        ? useFullLabel
+          ? `${durationUnit.value} ${getPluralizedDurationLabel(
+              durationUnit.fullLabel,
+              durationUnit.value
+            )}`
+          : `${durationUnit.value}${durationUnit.unit}`
+        : ''
     )
-    .join(' ')}`;
+    .filter(Boolean)
+    .join(' ');
+
+  return `${isNegative ? '-' : ''}${formattedDuration}`;
 };
 
 /**

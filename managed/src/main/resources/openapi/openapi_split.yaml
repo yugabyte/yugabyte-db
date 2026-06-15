@@ -44,6 +44,8 @@ tags:
     description: CRUD operations for YBA metrics
   - name: PITR
     description: Point-in-time recovery configuration management
+  - name: Task
+    description: Customer task management
   - name: Telemetry Provider
     description: Operations for Telemetry Providers
   - name: Universe

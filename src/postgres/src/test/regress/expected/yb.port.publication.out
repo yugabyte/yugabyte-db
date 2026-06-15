@@ -59,7 +59,6 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thum
 RESET client_min_messages;
 -- YB Note: publishing subset of records is unsupported (#19250).
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES;
-NOTICE:  tables without primary key will be skipped
 ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update');
 ERROR:  publishing only a subset of DML commands is not yet supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19250. React with thumbs up to raise its priority.
@@ -108,27 +107,36 @@ CREATE TABLE testpub_tbl3 (a int);
 CREATE TABLE testpub_tbl3a (b text) INHERITS (testpub_tbl3);
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub3 FOR TABLE testpub_tbl3;
-ERROR:  table "testpub_tbl3" cannot be replicated
-DETAIL:  Replicating tables without primary key is not yet supported.
 CREATE PUBLICATION testpub4 FOR TABLE ONLY testpub_tbl3;
-ERROR:  table "testpub_tbl3" cannot be replicated
-DETAIL:  Replicating tables without primary key is not yet supported.
 RESET client_min_messages;
 \dRp+ testpub3
+                                    Publication testpub3
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | f          | t       | t       | t       | t         | f
+Tables:
+    "public.testpub_tbl3"
+    "public.testpub_tbl3a"
+
 \dRp+ testpub4
+                                    Publication testpub4
+          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Via root 
+--------------------------+------------+---------+---------+---------+-----------+----------
+ regress_publication_user | f          | t       | t       | t       | t         | f
+Tables:
+    "public.testpub_tbl3"
+
 DROP TABLE testpub_tbl3, testpub_tbl3a;
+ERROR:  cannot drop a table which is part of a publication.
+HINT:  Use pg_publication_tables to find all such publications and retry after dropping the table from them.
 DROP PUBLICATION testpub3, testpub4;
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP PUBLICATION testpub3, testpub4;
                          ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs up to raise its priority
 -- YB Note: Drop publications one by one to ensure cleanup.
--- These will fail now but will pass once we support streaming
--- tables without pk.
 DROP PUBLICATION testpub3;
-ERROR:  publication "testpub3" does not exist
 DROP PUBLICATION testpub4;
-ERROR:  publication "testpub4" does not exist
 -- Tests for partitioned tables
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_forparted;
@@ -145,8 +153,6 @@ ALTER TABLE testpub_parted ATTACH PARTITION testpub_parted2 FOR VALUES IN (2);
 UPDATE testpub_parted1 SET a = 1;
 -- only parent is listed as being in publication, not the partition
 ALTER PUBLICATION testpub_forparted ADD TABLE testpub_parted;
-ERROR:  table "testpub_parted" cannot be replicated
-DETAIL:  Replicating tables without primary key is not yet supported.
 DROP TABLE testpub_parted1, testpub_parted2;
 DROP PUBLICATION testpub_forparted, testpub_forparted1;
 ERROR:  DROP multiple objects not supported yet
@@ -162,10 +168,6 @@ ERROR:  cannot add relation "testpub_view" to publication
 DETAIL:  This operation is not supported for views.
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1, pub_test.testpub_nopk;
-ERROR:  table "testpub_nopk" cannot be replicated
-DETAIL:  Replicating tables without primary key is not yet supported.
--- YB Note: tables without pk are unsupported.
-CREATE PUBLICATION testpub_fortbl FOR TABLE testpub_tbl1;
 RESET client_min_messages;
 -- fail - already added
 ALTER PUBLICATION testpub_fortbl ADD TABLE testpub_tbl1;
@@ -179,6 +181,7 @@ ERROR:  publication "testpub_fortbl" already exists
 --------------------------+------------+---------+---------+---------+-----------+----------
  regress_publication_user | f          | t       | t       | t       | t         | f
 Tables:
+    "pub_test.testpub_nopk"
     "public.testpub_tbl1"
 
 -- fail - view
@@ -188,8 +191,6 @@ DETAIL:  This operation is not supported for views.
 ALTER PUBLICATION testpub_default ADD TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default SET TABLE testpub_tbl1;
 ALTER PUBLICATION testpub_default ADD TABLE pub_test.testpub_nopk;
-ERROR:  table "testpub_nopk" cannot be replicated
-DETAIL:  Replicating tables without primary key is not yet supported.
 ALTER PUBLICATION testpib_ins_trunct ADD TABLE pub_test.testpub_nopk, testpub_tbl1;
 ERROR:  publication "testpib_ins_trunct" does not exist
 \d+ pub_test.testpub_nopk
@@ -198,6 +199,9 @@ ERROR:  publication "testpib_ins_trunct" does not exist
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  foo    | integer |           |          |         | plain   |              | 
  bar    | integer |           |          |         | plain   |              | 
+Publications:
+    "testpub_default"
+    "testpub_fortbl"
 
 \d+ testpub_tbl1
                                                 Table "public.testpub_tbl1"
@@ -217,12 +221,10 @@ Publications:
 --------------------------+------------+---------+---------+---------+-----------+----------
  regress_publication_user | f          | t       | t       | t       | t         | f
 Tables:
+    "pub_test.testpub_nopk"
     "public.testpub_tbl1"
 
 ALTER PUBLICATION testpub_default DROP TABLE testpub_tbl1, pub_test.testpub_nopk;
-ERROR:  relation "testpub_nopk" is not part of the publication
--- YB Note: tables without pk are unsupported.
-ALTER PUBLICATION testpub_default DROP TABLE testpub_tbl1;
 -- fail - nonexistent
 ALTER PUBLICATION testpub_default DROP TABLE pub_test.testpub_nopk;
 ERROR:  relation "testpub_nopk" is not part of the publication
@@ -302,4 +304,7 @@ DROP SCHEMA pub_test CASCADE;
 NOTICE:  drop cascades to table pub_test.testpub_nopk
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_publication_user, regress_publication_user2;
+ERROR:  role "regress_publication_user" cannot be dropped because some objects depend on it
+DETAIL:  owner of table testpub_tbl3
+owner of table testpub_tbl3a
 DROP ROLE regress_publication_user_dummy;
