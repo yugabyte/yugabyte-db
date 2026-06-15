@@ -2423,6 +2423,42 @@ _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan)
 	error_context_stack = spierrcontext.previous;
 }
 
+/* YB: assertion-only helper validating the plancache_list query strings */
+#ifdef USE_ASSERT_CHECKING
+/*
+ * YbVerifyQueryStringIsSameInPlanCacheList
+ *		Check that every plansource in the given plancache list carries the
+ *		same query string as the first one.  Used only in assertions.
+ */
+static bool
+YbVerifyQueryStringIsSameInPlanCacheList(List *plancache_list)
+{
+	ListCell   *lc;
+	const char *first_query_string;
+
+	if (plancache_list == NIL)
+		return true;
+
+	first_query_string =
+		((CachedPlanSource *) linitial(plancache_list))->query_string;
+
+	foreach(lc, plancache_list)
+	{
+		CachedPlanSource *plansource = (CachedPlanSource *) lfirst(lc);
+
+		if (plansource->query_string == NULL || first_query_string == NULL)
+		{
+			if (plansource->query_string != first_query_string)
+				return false;
+		}
+		else if (strcmp(plansource->query_string, first_query_string) != 0)
+			return false;
+	}
+
+	return true;
+}
+#endif							/* USE_ASSERT_CHECKING */
+
 /*
  * _SPI_execute_plan: execute the given plan with the given options
  *
@@ -2480,6 +2516,19 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 	error_context_stack = &spierrcontext;
 
 	YB_SPI_DIST_TRACE_START_SPAN("spi.query");
+
+	/* All plansources share the same SPI query string. */
+	if (yb_enable_spi_dist_tracing && YBCIsDistTraceActive() &&
+		plan->plancache_list != NIL)
+	{
+		CachedPlanSource *first_plansource =
+			(CachedPlanSource *) linitial(plan->plancache_list);
+
+		Assert(YbVerifyQueryStringIsSameInPlanCacheList(plan->plancache_list));
+		if (first_plansource->query_string)
+			YBCDistTraceSetCurrSpanAttrStr("spi.query.text",
+										   first_plansource->query_string);
+	}
 
 	/*
 	 * We support four distinct snapshot management behaviors:
