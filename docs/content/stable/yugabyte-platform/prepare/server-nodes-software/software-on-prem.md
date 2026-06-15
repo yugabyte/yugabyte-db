@@ -183,7 +183,7 @@ For troubleshooting, you can run the script's preflight checks separately as fol
 sudo ./node-agent-provision.sh --preflight_check
 ```
 
-Use the `--preflight_check_out_file` flag to specify the file path for the preflight_check output. Only the check JSON output is saved. You can read and parse the files for automation.
+Use the `--preflight_check_out_file` flag (v2025.2.4.0 and later) to specify the file path for the preflight_check output. Only the check JSON output is saved. You can read and parse the files for automation.
 
 #### Override configuration
 
