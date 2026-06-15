@@ -181,57 +181,21 @@ select qid, nid, "Node Type", "Index Name",
 from check_roundtrip_estimates
 where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
 order by qid, nid;
-  qid  | nid |             Node Type             |   Index Name    | Actual Workers | Went Parallel | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | Total Estimates | Field Layout 
--------+-----+-----------------------------------+-----------------+----------------+---------------+-----------+--------------+-------+-------+-------+-------+-----+-----+-----------------+--------------
- 10301 |   1 | Parallel Index Scan               | r_pkey          |              4 | t             | pk        | f            |     0 |    14 |    12 |     0 |  14 |  12 | failed          | passed
- 10302 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 10303 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |    14 |     0 |    11 |  14 |  11 | failed          | passed
- 10401 |   1 | Parallel Index Scan               | r_pkey          |              4 | t             | pk        | f            |     0 |    16 |    13 |     0 |  16 |  13 | failed          | passed
- 10402 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |    15 |     0 |    12 |  15 |  12 | failed          | passed
- 10403 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |    15 |     0 |    12 |  15 |  12 | failed          | passed
- 10501 |   1 | Parallel Index Scan               | r_pkey          |              4 | t             | pk        | f            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
- 10502 |   1 | Parallel Index Scan               | r_pkey          |              4 | t             | pk        | f            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
- 10601 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
- 10602 |   1 | Parallel Index Scan               | i_r_b           |              4 | t             | idx       | f            |     2 |     1 |    11 |    11 |   3 |  22 | failed          | passed
- 10603 |   1 | Parallel Index Scan               | i_r_b           |              4 | t             | idx       | f            |     2 |     1 |    11 |    11 |   3 |  22 | failed          | passed
- 10701 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
- 10702 |   1 | Parallel Index Only Scan          | i_r_b           |              4 | t             | ios       | f            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
- 20301 |   1 | Parallel Index Scan               | rc_pkey         |              4 | t             | pk        | t            |     0 |    14 |    12 |     0 |  14 |  12 | failed          | passed
- 20302 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 20303 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |    14 |     0 |    11 |  14 |  11 | failed          | passed
- 20401 |   1 | Parallel Index Scan               | rc_pkey         |              4 | t             | pk        | t            |     0 |    16 |    13 |     0 |  16 |  13 | failed          | passed
- 20402 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |    15 |     0 |    12 |  15 |  12 | failed          | passed
- 20403 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |    15 |     0 |    12 |  15 |  12 | failed          | passed
- 20501 |   1 | Parallel Index Scan               | rc_pkey         |              4 | t             | pk        | t            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
- 20502 |   1 | Parallel Index Scan               | rc_pkey         |              4 | t             | pk        | t            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
- 20601 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
- 20602 |   1 | Parallel Index Scan               | rc_b_v_idx      |              4 | t             | idx       | t            |     2 |     0 |     0 |    14 |   2 |  14 | failed          | passed
- 20603 |   1 | Parallel Index Scan               | rc_b_v_idx      |              4 | t             | idx       | t            |     2 |     0 |     0 |    14 |   2 |  14 | failed          | passed
- 20701 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
- 20702 |   1 | Parallel Index Only Scan          | rc_b_v_idx      |              4 | t             | ios       | t            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
- 51001 |   1 | Parallel Index Only Scan          | r_dv1_idx       |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 51002 |   1 | Parallel Index Only Scan          | r_f1000_idx     |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 51003 |   1 | Parallel Index Only Scan          | r_f100_idx      |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 52001 |   1 | Parallel Index Only Scan          | r_dv1_idx       |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 52002 |   1 | Parallel Index Only Scan          | r_f1000_idx     |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 52003 |   1 | Parallel Index Only Scan          | r_f100_idx      |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 53001 |   1 | Parallel Index Only Scan Backward | r_dv1_idx       |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 53002 |   1 | Parallel Index Only Scan Backward | r_f1000_idx     |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 53003 |   1 | Parallel Index Only Scan Backward | r_f100_idx      |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 54001 |   1 | Parallel Index Only Scan Backward | r_dv1_idx       |              4 | t             | ios       | f            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 54002 |   1 | Parallel Index Only Scan Backward | r_f1000_idx     |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 54003 |   1 | Parallel Index Only Scan Backward | r_f100_idx      |              4 | t             | ios       | f            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 61001 |   1 | Parallel Index Only Scan          | rc_dv1_vv_idx   |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 61002 |   1 | Parallel Index Only Scan          | rc_f1000_vv_idx |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 61003 |   1 | Parallel Index Only Scan          | rc_f100_vv_idx  |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 62001 |   1 | Parallel Index Only Scan          | rc_dv1_vv_idx   |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 62002 |   1 | Parallel Index Only Scan          | rc_f1000_vv_idx |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 62003 |   1 | Parallel Index Only Scan          | rc_f100_vv_idx  |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 63001 |   1 | Parallel Index Only Scan Backward | rc_dv1_vv_idx   |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 63002 |   1 | Parallel Index Only Scan Backward | rc_f1000_vv_idx |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 63003 |   1 | Parallel Index Only Scan Backward | rc_f100_vv_idx  |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 64001 |   1 | Parallel Index Only Scan Backward | rc_dv1_vv_idx   |              4 | t             | ios       | t            |     0 |    13 |     0 |    11 |  13 |  11 | failed          | passed
- 64002 |   1 | Parallel Index Only Scan Backward | rc_f1000_vv_idx |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
- 64003 |   1 | Parallel Index Only Scan Backward | rc_f100_vv_idx  |              4 | t             | ios       | t            |     0 |    11 |     0 |     9 |  11 |   9 | failed          | passed
-(50 rows)
+  qid  | nid |        Node Type         | Index Name | Actual Workers | Went Parallel | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | Total Estimates | Field Layout 
+-------+-----+--------------------------+------------+----------------+---------------+-----------+--------------+-------+-------+-------+-------+-----+-----+-----------------+--------------
+ 10501 |   1 | Parallel Index Scan      | r_pkey     |              4 | t             | pk        | f            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
+ 10502 |   1 | Parallel Index Scan      | r_pkey     |              4 | t             | pk        | f            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
+ 10601 |   1 | Parallel Index Only Scan | i_r_b      |              4 | t             | ios       | f            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 10602 |   1 | Parallel Index Scan      | i_r_b      |              4 | t             | idx       | f            |     2 |     1 |    11 |    11 |   3 |  22 | failed          | passed
+ 10603 |   1 | Parallel Index Scan      | i_r_b      |              4 | t             | idx       | f            |     2 |     1 |    11 |    11 |   3 |  22 | failed          | passed
+ 10701 |   1 | Parallel Index Only Scan | i_r_b      |              4 | t             | ios       | f            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 10702 |   1 | Parallel Index Only Scan | i_r_b      |              4 | t             | ios       | f            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 20501 |   1 | Parallel Index Scan      | rc_pkey    |              4 | t             | pk        | t            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
+ 20502 |   1 | Parallel Index Scan      | rc_pkey    |              4 | t             | pk        | t            |     0 |     5 |    12 |     0 |   5 |  12 | failed          | passed
+ 20601 |   1 | Parallel Index Only Scan | rc_b_v_idx |              4 | t             | ios       | t            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 20602 |   1 | Parallel Index Scan      | rc_b_v_idx |              4 | t             | idx       | t            |     2 |     0 |     0 |    14 |   2 |  14 | failed          | passed
+ 20603 |   1 | Parallel Index Scan      | rc_b_v_idx |              4 | t             | idx       | t            |     2 |     0 |     0 |    14 |   2 |  14 | failed          | passed
+ 20701 |   1 | Parallel Index Only Scan | rc_b_v_idx |              4 | t             | ios       | t            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+ 20702 |   1 | Parallel Index Only Scan | rc_b_v_idx |              4 | t             | ios       | t            |     0 |     5 |     0 |    11 |   5 |  11 | failed          | passed
+(14 rows)
 
