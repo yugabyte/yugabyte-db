@@ -2522,7 +2522,7 @@ TEST_F_EX(
   // Wait for compaction to complete.
   ASSERT_OK(WaitForTabletPostSplitCompacted(leader_idx, tablets[0].tablet_id()));
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
-      default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
+      db_name, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
       tablets[0].tablet_id()));
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);
