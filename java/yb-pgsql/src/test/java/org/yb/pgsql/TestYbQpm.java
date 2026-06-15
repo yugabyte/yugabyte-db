@@ -32,6 +32,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 import org.yb.util.SkipOnTSAN;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import static org.yb.AssertionWrappers.*;
 import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainQueryId;
 import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainPlanId;
@@ -1128,6 +1132,63 @@ public class TestYbQpm extends BasePgSQLTest {
         assertNull(maxParams);
         assertFalse(rs.next());
       }
+    }
+  }
+
+  /**
+   * testYbQpmPlanTextNoNondeterministicFields
+   *  GH 30743 : Prevent non-deterministic fields like "Peak Memory Usage"
+   * from appearing in QPM plan text.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testYbQpmPlanTextNoNondeterministicFields() throws Exception {
+
+    // Set the flags that reproduce the bug.
+    Map<String, String> flagMap = super.getTServerFlags();
+    appendToYsqlPgConf(flagMap, "shared_preload_libraries=auto_explain");
+    appendToYsqlPgConf(flagMap, "auto_explain.log_min_duration=0");
+    appendToYsqlPgConf(flagMap, "auto_explain.log_analyze=true");
+    appendToYsqlPgConf(flagMap, "auto_explain.log_dist=true");
+    appendToYsqlPgConf(flagMap, "yb_qpm_configuration.track_catalog_queries=true");
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_track=all");
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_plan_format=json");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+
+    Statement stmt = connection.createStatement();
+
+    stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
+    stmt.execute("CREATE TABLE t1(a1 INT)");
+    stmt.execute("CREATE TABLE t2(a2 INT)");
+    stmt.execute("INSERT INTO t1 SELECT c FROM generate_series(1, 100) AS dt(c)");
+    stmt.execute("INSERT INTO t2 SELECT c FROM generate_series(80, 200) AS dt(c)");
+    String query = new String("/*+ HashJoin(t1 t2) */ SELECT MAX(a1+a2) FROM t1 " +
+                              "JOIN t2 ON a1=a2");
+    long queryId = getExplainQueryId(stmt, query);
+    stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
+    stmt.execute(query);
+
+    String qpmQuery = String.format("SELECT plan FROM yb_pg_stat_plans WHERE queryid=%d",
+                                    queryId);
+
+    try (ResultSet rs = stmt.executeQuery(qpmQuery)) {
+        assertTrue(rs.next());
+        String planText = rs.getString("plan");
+        LOG.info("Plan text : " + planText);
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root = mapper.readTree(planText);
+
+        // Check for non-deterministic field "Peak Memory Usage".
+        // Should not find it.
+        assertNull(root.findValue("Peak Memory Usage"));
+
+        // Make sure we actually forced a Hash Join.
+        List<JsonNode> nodeTypes = root.findValues("Node Type");
+        boolean hasHashJoin = nodeTypes.stream()
+            .anyMatch(n -> "Hash Join".equals(n.asText()));
+        assertTrue(hasHashJoin);
     }
   }
 
