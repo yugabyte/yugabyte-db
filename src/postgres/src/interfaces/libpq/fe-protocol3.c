@@ -2238,6 +2238,9 @@ build_startup_packet(const PGconn *conn, char *packet,
 		ADD_STARTUP_OPTION("options", conn->pgoptions);
 	if (conn->yb_auto_analyze && conn->yb_auto_analyze[0])
 		ADD_STARTUP_OPTION("yb_auto_analyze", conn->yb_auto_analyze);
+	if (conn->yb_internal_conn_kind && conn->yb_internal_conn_kind[0])
+		ADD_STARTUP_OPTION("yb_internal_conn_kind",
+						   conn->yb_internal_conn_kind);
 	if (conn->send_appname)
 	{
 		/* Use appname if present, otherwise use fallback */

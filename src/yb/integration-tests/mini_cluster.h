@@ -405,6 +405,10 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeers(
 Result<std::vector<tablet::TabletPeerPtr>> ListTabletActivePeers(
     MiniCluster* cluster, const TabletId& tablet_id);
 
+// Returns all vector indexes hosted by tablet peers matching the given filter.
+std::vector<docdb::DocVectorIndexPtr> ListVectorIndexes(
+    MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kAll);
+
 std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
     MiniCluster* cluster, const TableId& table_id, ListPeersFilter filter = ListPeersFilter::kAll);
 

@@ -400,6 +400,13 @@ public class UniverseCRUDHandler {
           BAD_REQUEST, "Only systemd is supported. Set useSystemd=true for the primary cluster");
     }
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    if ((userIntent.masterDeviceInfo != null || userIntent.masterInstanceType != null)
+        && !userIntent.dedicatedNodes) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "masterDeviceInfo and masterInstanceType can only be set when dedicated nodes for "
+              + "master and tserver are selected.");
+    }
     if (userIntent.deviceInfo != null) {
       userIntent.deviceInfo.validate();
     }
@@ -2762,7 +2769,7 @@ public class UniverseCRUDHandler {
               throw new PlatformServiceException(
                   BAD_REQUEST, "Cannot delete default partition " + cur.getName());
             }
-          } else {
+          } else if (curCluster.isGeoPartitioned()) {
             boolean autoTablespaceUpdate =
                 confGetter.getGlobalConf(GlobalConfKeys.automaticTablespaceUpdate);
             if (!autoTablespaceUpdate

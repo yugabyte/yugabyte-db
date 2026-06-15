@@ -130,7 +130,11 @@ export const buildPrimaryPlacementEditPayload = (
     throw new Error('Primary cluster placement data is missing');
   }
 
-  const regionList = getPlacementRegions(resilience, nodesAndAvailability?.availabilityZones);
+  const regionList = getPlacementRegions(
+    resilience,
+    nodesAndAvailability?.availabilityZones,
+    nodesAndAvailability
+  );
 
   return {
     clusterUUID: primaryCluster.uuid,
@@ -156,9 +160,16 @@ export const buildGeoPartitionPlacementEditPayload = (
     throw new Error('Selected partition placement data is missing');
   }
 
-  const regionList = getPlacementRegions(resilience, nodesAndAvailability?.availabilityZones);
+  const regionList = getPlacementRegions(
+    resilience,
+    nodesAndAvailability?.availabilityZones,
+    nodesAndAvailability
+  );
   const updatedPlacement = buildPlacementSpecFromRegionList(selectedPartition.placement, regionList);
-  const effectiveReplicationFactor = getEffectiveReplicationFactorForResilience(resilience);
+  const effectiveReplicationFactor = getEffectiveReplicationFactorForResilience(
+    resilience,
+    nodesAndAvailability
+  );
 
   const partitionsSpec: ClusterPartitionSpec[] = primaryCluster.partitions_spec.map((partition) =>
     partition.uuid === selectedPartitionUUID

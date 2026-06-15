@@ -829,6 +829,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/restart'
     },
+    UPGRADE_UNIVERSE_PROVISION_NODES: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/upgrade/provision_nodes'
+    },
     UPGRADE_UNIVERSE_ROLLBACK: {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/rollback'

@@ -559,6 +559,19 @@ public class PlatformReplicationManager {
     }
   }
 
+  // When adding a new instance, do a sync for all instance and then demote the remote instance
+  // to ensure with "promote" as true, to ensure it gets restarted.
+  public void syncNewInstance(PlatformInstance newInstance) {
+    if (replicationHelper.isBackupScheduleEnabled()) {
+      this.sync();
+      if (!newInstance.isLeader()) {
+        replicationHelper.demoteRemoteInstance(newInstance, true);
+      } else {
+        log.debug("New instance {} is a leader, skipping demotion", newInstance.getAddress());
+      }
+    }
+  }
+
   private boolean precheckSyncCondition(HighAvailabilityConfig config) {
     Optional<PlatformInstance> localInstance = config.getLocal();
     if (!localInstance.isPresent()) {

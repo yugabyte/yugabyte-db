@@ -195,6 +195,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -2107,7 +2108,9 @@ bool IsYcqlNamespace(const NamespaceInfo& ns) {
 }
 
 bool IsYcqlTable(const TableInfo& table) {
-  return table.GetTableType() == TableType::YQL_TABLE_TYPE && table.id() != kSysCatalogTableId;
+  return table.GetTableType() == TableType::YQL_TABLE_TYPE &&
+         table.id() != kSysCatalogTableId &&
+         table.name() != tserver::kPgAdvisoryLocksTableName;
 }
 
 Status CatalogManager::PrepareNamespace(
@@ -7011,6 +7014,13 @@ void CatalogManager::ReleaseObjectLocksGlobal(
   object_lock_info_manager_->UnlockObject(*req, *resp, std::move(rpc));
 }
 
+void CatalogManager::WaitForLockersMultipleGlobal(
+    const WaitForLockersMultipleGlobalRequestPB* req,
+    WaitForLockersMultipleGlobalResponsePB* resp,
+    rpc::RpcContext rpc) {
+  object_lock_info_manager_->WaitForLockersMultipleGlobal(*req, *resp, std::move(rpc));
+}
+
 Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
                                                 GetIndexBackfillProgressResponsePB* resp,
                                                 rpc::RpcContext* rpc) {
@@ -7272,10 +7282,15 @@ Status CatalogManager::DeleteTableInternal(
   TRACE("Committing in-memory state");
   std::unordered_set<TableId> sys_table_ids;
   std::unordered_set<TableId> deleted_table_ids;
+  std::unordered_set<TableId> non_retained_cdcsdk_deleted_table_ids;
   for (auto& deleting_table : tables) {
     deleted_table_ids.insert(deleting_table.table_info_with_write_lock->id());
     if (deleting_table.table_info_with_write_lock->is_system()) {
       sys_table_ids.insert(deleting_table.table_info_with_write_lock->id());
+    }
+    if (!deleting_table.delete_retainer.active_cdcsdk) {
+      non_retained_cdcsdk_deleted_table_ids.insert(
+          deleting_table.table_info_with_write_lock->id());
     }
     deleting_table.table_info_with_write_lock.Commit();
   }
@@ -7376,12 +7391,21 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   // The catalog manager's background task removes the tables from such streams' metadata. Note that
-  // the streams associated with the 'deleted_table_ids' are not being dropped.
-  if (!FLAGS_enable_table_rewrite_for_cdcsdk_table) {
+  // the streams associated with the cdcsdk_cleanup_table_ids are not being dropped.
+  //
+  // When enable_table_rewrite_for_cdcsdk_table is set, tables retained as hidden for CDCSDK logical
+  // replication streams are removed from the stream metadata later by CleanupHiddenTables, once all
+  // their tablets are deleted. Tables that are not retained for CDCSDK (e.g. tables that are part
+  // of only gRPC streams) are deleted immediately, so they must be removed from the stream metadata
+  // here. When the flag is unset, all dropped tables are cleaned up from stream metadata here.
+  const auto& cdcsdk_cleanup_table_ids = FLAGS_enable_table_rewrite_for_cdcsdk_table
+                                             ? non_retained_cdcsdk_deleted_table_ids
+                                             : deleted_table_ids;
+  if (!cdcsdk_cleanup_table_ids.empty()) {
     if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
-      RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(deleted_table_ids));
+      RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(cdcsdk_cleanup_table_ids));
     } else {
-      RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+      RETURN_NOT_OK(DropCDCSDKStreams(cdcsdk_cleanup_table_ids));
     }
   }
 
@@ -7429,6 +7453,7 @@ Status CatalogManager::DeleteTableInMemoryAcquireLocks(
     const scoped_refptr<master::TableInfo>& table,
     bool is_index_table,
     bool update_indexed_table,
+    const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
     std::map<TableId, DeletingTableData>* data_map) {
   data_map->emplace(table->id(), DeletingTableData(table));
   {
@@ -7461,6 +7486,12 @@ Status CatalogManager::DeleteTableInMemoryAcquireLocks(
       }
     }
   }
+
+  for (auto& [_, data] : *data_map) {
+    data.delete_retainer = VERIFY_RESULT(GetDeleteRetainerInfoForTableDrop(
+        *data.table_info_with_write_lock.info, schedules_to_tables_map));
+  }
+
   // Lock the table and indexes in the order of their table_ids.
   for (auto& [_, data] : *data_map) {
     data.table_info_with_write_lock.Lock();
@@ -7521,8 +7552,8 @@ Status CatalogManager::DeleteTableInMemory(
   std::map<TableId, DeletingTableData> data_map;
   if (!data_map_ptr) {
     TRACE(Substitute("Locking $0", object_type));
-    RETURN_NOT_OK(
-        DeleteTableInMemoryAcquireLocks(table, is_index_table, update_indexed_table, &data_map));
+    RETURN_NOT_OK(DeleteTableInMemoryAcquireLocks(
+        table, is_index_table, update_indexed_table, schedules_to_tables_map, &data_map));
     data_map_ptr = &data_map;
   }
   auto& data = data_map_ptr->find(table->id())->second;
@@ -7534,9 +7565,6 @@ Status CatalogManager::DeleteTableInMemory(
     Status s = STATUS(NotFound, "The object does not exist");
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
-
-  data.delete_retainer =
-      VERIFY_RESULT(GetDeleteRetainerInfoForTableDrop(*table, schedules_to_tables_map));
 
   bool hide_only = data.delete_retainer.IsHideOnly();
 
@@ -14105,7 +14133,6 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
   }
   DbOidToCatalogVersionMap versions;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
-  bool changed = false;
   if (!s.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 20) << "Catalog versions refresh failed: " << s.ToString();
     // Keep the existing cache intact; stale data is preferable to forcing every
@@ -14115,6 +14142,34 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
   VLOG_WITH_FUNC(2) << "Refreshed " << versions.size() << " catalog versions in memory";
   const auto fingerprint = yb::FingerprintCatalogVersions<DbOidToCatalogVersionMap>(versions);
   VLOG_WITH_FUNC(2) << "fingerprint: " << fingerprint;
+
+  bool changed = false;
+  {
+    SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
+    changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
+    if (FLAGS_ysql_yb_enable_invalidation_messages && !changed) {
+      // nullopt means the previous refresh has failed.
+      changed = !heartbeat_pg_inval_messages_cache_.has_value();
+    }
+  }
+
+  bool messages_refresh_failed = false;
+  std::optional<DbOidVersionToMessageListMap> messages;
+  if (FLAGS_ysql_yb_enable_invalidation_messages && changed) {
+    // Cache invalidation messages are considered as an optimization extension of
+    // the catalog versions. If we cannot read the messages successfully, it means
+    // we will skip the optimization this time but it will not affect correctness
+    // because PG backends will fall back to do catalog cache refreshes.
+    auto msg_res = GetYsqlCatalogInvalationMessagesImpl();
+    if (!msg_res.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 20)
+          << "Catalog invalidation messages refresh failed: " << msg_res.status();
+      messages_refresh_failed = true;
+    } else {
+      messages = std::move(*msg_res);
+    }
+  }
+
   {
     LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
     if (heartbeat_pg_catalog_versions_cache_) {
@@ -14122,38 +14177,17 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
     } else {
       heartbeat_pg_catalog_versions_cache_ = std::move(versions);
     }
-    changed = heartbeat_pg_catalog_versions_cache_fingerprint_ != fingerprint;
     heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
     LOG_IF(INFO, PREDICT_FALSE(FLAGS_TEST_log_catalog_version_cache_events))
         << "RefreshPgCatalogVersionCache: cache refreshed, databases: "
         << heartbeat_pg_catalog_versions_cache_->size();
-  }
 
-  if (FLAGS_ysql_yb_enable_invalidation_messages) {
-    // Maybe last time invalidation messages refresh failed, read it again.
-    if (!changed) {
-      SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
-      // nullopt means the previous refresh has failed.
-      changed = !heartbeat_pg_inval_messages_cache_.has_value();
-    }
-    if (changed) {
-      // Cache invalidation messages are considered as an optimization extension of
-      // the catalog versions. If we cannot read the messages successfully, it means
-      // we will skip the optimization this time but it will not affect correctness
-      // because PG backends will fall back to do catalog cache refreshes.
-      auto messages = GetYsqlCatalogInvalationMessagesImpl();
-      if (!messages.ok()) {
-        YB_LOG_EVERY_N_SECS(WARNING, 20)
-            << "Catalog invalidation messages refresh failed: " << messages.status();
-        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
-        // Reset to std::nullopt to indicate next time we want to read again.
+    if (FLAGS_ysql_yb_enable_invalidation_messages && changed) {
+      if (messages_refresh_failed) {
         heartbeat_pg_inval_messages_cache_ = std::nullopt;
-        return false;
-      }
-      VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
-                        << " catalog inval messages in memory";
-      {
-        LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
+      } else {
+        VLOG_WITH_FUNC(2) << "Refreshed " << messages->size()
+                          << " catalog inval messages in memory";
         if (heartbeat_pg_inval_messages_cache_) {
           heartbeat_pg_inval_messages_cache_->swap(*messages);
         } else {
@@ -14162,7 +14196,8 @@ bool CatalogManager::RefreshPgCatalogVersionCache() {
       }
     }
   }
-  return true;
+
+  return !messages_refresh_failed;
 }
 
 Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTabletDrop(

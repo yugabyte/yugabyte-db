@@ -3269,6 +3269,12 @@ YbcStatus YBCQueryAutoAnalyze(
   return YBCStatusOK();
 }
 
+YbcStatus YBCResetAutoAnalyzeMutationCounters(
+    YbcPgOid database_oid, YbcPgOid table_relfilenode_oid) {
+  return ToYBCStatus(pgapi->ResetAutoAnalyzeMutationCounters(
+      PgObjectId(database_oid, table_relfilenode_oid)));
+}
+
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
 
 int YBCGetXClusterRole(uint32_t db_oid) {
@@ -3365,6 +3371,11 @@ YbcStatus YBCAcquireObjectLock(
 
 YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all) {
   return ToYBCStatus(pgapi->ReleaseSessionObjectLock(lock_id, release_all));
+}
+
+YbcStatus YBCWaitForLockersMultiple(
+    YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
+  return ToYBCStatus(pgapi->WaitForLockersMultiple(lock_ids, lock_mode, num_locks));
 }
 
 bool YBCPgYsqlMajorVersionUpgradeInProgress() {

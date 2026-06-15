@@ -205,6 +205,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   Status AcquireObjectLock(
       const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
   Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
+  Status WaitForLockersMultiple(
+      const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks);
 
   template<class... Args>
   [[nodiscard]] static PgSessionPtr Make(Args&&... args) {
@@ -299,7 +301,6 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   const WaitEventWatcher& wait_event_watcher_;
   TablespaceCache tablespace_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
-  bool last_op_skipped_intents_ = false;
 };
 
 template<class PB>

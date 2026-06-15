@@ -151,6 +151,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
+#include "yb_internal_conn.h"
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 
@@ -606,6 +607,17 @@ YBGetTableFullPrimaryKeyBms(Relation rel)
 	return rel->full_primary_key_bms;
 }
 
+/*
+ * Returns true if the relation has triggers whose firing depends on the
+ * pre-modification (old) tuple of each affected row.
+ *
+ * Despite the name, this also reports true for AFTER-ROW / NEW-table triggers
+ * on UPDATE.  Reason: an UPDATE may not touch every column, and the executor
+ * reconstructs the unmodified columns from the old tuple before passing the
+ * "new" row to the trigger.  For partitioned-table UPDATEs we also consider
+ * DELETE triggers, since cross-partition UPDATEs are executed as
+ * DELETE+INSERT on the underlying leaves.
+ */
 extern bool
 YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 {
@@ -618,7 +630,8 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 	if (operation == CMD_DELETE)
 	{
 		return trigdesc->trig_delete_after_row ||
-			trigdesc->trig_delete_before_row;
+			trigdesc->trig_delete_before_row ||
+			trigdesc->trig_delete_old_table;
 	}
 	if (operation != CMD_UPDATE)
 	{
@@ -628,7 +641,9 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 		!rel->rd_rel->relispartition)
 	{
 		return (trigdesc->trig_update_after_row ||
-				trigdesc->trig_update_before_row);
+				trigdesc->trig_update_before_row ||
+				trigdesc->trig_update_old_table ||
+				trigdesc->trig_update_new_table);
 	}
 	/*
 	 * This is an update operation. We look for both update and delete triggers
@@ -637,7 +652,10 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 	return (trigdesc->trig_update_after_row ||
 			trigdesc->trig_update_before_row ||
 			trigdesc->trig_delete_after_row ||
-			trigdesc->trig_delete_before_row);
+			trigdesc->trig_delete_before_row ||
+			trigdesc->trig_update_old_table ||
+			trigdesc->trig_update_new_table ||
+			trigdesc->trig_delete_old_table);
 }
 
 bool
@@ -2184,7 +2202,8 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 }
 
 bool
-YbWholeRowAttrRequired(Relation relation, CmdType operation)
+YbWholeRowAttrRequired(Relation relation, Relation root_relation,
+					   CmdType operation)
 {
 	Assert(IsYBRelation(relation));
 
@@ -2195,14 +2214,43 @@ YbWholeRowAttrRequired(Relation relation, CmdType operation)
 	if (operation == CMD_UPDATE)
 		return true;
 
+	if (operation != CMD_DELETE)
+		return false;
+
 	/*
 	 * For DELETE, wholerow is required for tables with:
-	 * 1. secondary indexes to removing index entries
+	 * 1. secondary indexes to remove index entries.
 	 * 2. row triggers to pass the old row for trigger execution.
 	 */
-	return (operation == CMD_DELETE &&
-			(YBRelHasSecondaryIndices(relation) ||
-			 YBRelHasOldRowTriggers(relation, operation)));
+	if (YBRelHasSecondaryIndices(relation) ||
+		YBRelHasOldRowTriggers(relation, operation))
+		return true;
+
+	/*
+	 * For a leaf in an inheritance/partition hierarchy, the wholerow attribute
+	 * is also needed when the relation explicitly named in the query (PG's
+	 * "root" result relation, mtstate->rootResultRelInfo) has an AFTER DELETE
+	 * transition table.  "Root" here is the query's named target, not the
+	 * topmost ancestor in the hierarchy -- statement-level triggers fire only
+	 * on the relation named in the SQL, so no intermediate parent matters.
+	 * Unlike heap tables (where GetTupleForTrigger can re-fetch the old tuple
+	 * via ctid), YB needs the wholerow junk attribute to supply old tuples
+	 * for that transition-table capture.
+	 *
+	 * The caller passes root_relation only when it is already open; this
+	 * function does not open any relation itself, so callers without it in
+	 * hand should pass NULL (and open the query's target themselves only if
+	 * this function returns false on the basic check).
+	 */
+	if (root_relation != NULL && root_relation != relation)
+	{
+		TriggerDesc *root_trigdesc = root_relation->trigdesc;
+
+		if (root_trigdesc && root_trigdesc->trig_delete_old_table)
+			return true;
+	}
+
+	return false;
 }
 
 /*------------------------------------------------------------------------------
@@ -2223,6 +2271,7 @@ bool		yb_plpgsql_disable_prefetch_in_for_query = false;
 bool		yb_enable_sequence_pushdown = true;
 bool		yb_disable_wait_for_backends_catalog_version = false;
 bool		yb_enable_base_scans_cost_model = false;
+bool		yb_prefetch_column_statistics = true;
 bool		yb_enable_update_reltuples_after_create_index = false;
 bool		yb_enable_index_backfill_scan_optimization = false;
 int			yb_wait_for_backends_catalog_version_timeout = 15 * 60 * 1000;	/* 15 min */
@@ -2232,6 +2281,7 @@ bool		yb_enable_saop_pushdown = true;
 int			yb_toast_catcache_threshold = 2048; /* 2 KB */
 int			yb_catcache_list_from_preloaded_limit = 100000;
 int			yb_parallel_range_size = 1024 * 1024;
+bool		yb_disable_parallel_query_in_ddl = true;
 int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
@@ -2296,15 +2346,25 @@ bool		yb_is_non_atomic_commit_done = false;
 
 bool		yb_enable_retry_after_non_atomic_commit = false;
 
+char	   *yb_extra_commands_to_retry_string = NULL;
+bool	   *yb_extra_commands_to_retry = NULL;
+
+char	   *yb_extra_commands_to_retry_in_proc_string = NULL;
+bool	   *yb_extra_commands_to_retry_in_proc = NULL;
+
 bool		yb_test_system_catalogs_creation = false;
 
 int			yb_test_sleep_before_executor_start_ms = 0;
 
 int			yb_test_fail_next_ddl = 0;
 
+bool		yb_test_fail_drop_after_heap_drop = false;
+
 bool		yb_force_catalog_update_on_next_ddl = false;
 
 bool		yb_test_fail_all_drops = false;
+
+bool		yb_test_analyze_dont_reset_mutations = false;
 
 bool		yb_test_invalidate_relcache_in_planner = false;
 
@@ -2352,7 +2412,7 @@ bool		yb_user_ddls_preempt_auto_analyze = true;
 
 bool		yb_enable_pg_stat_statements_rpc_stats = true;
 
-bool		yb_enable_pg_stat_statements_docdb_metrics = false;
+bool		yb_enable_pg_stat_statements_docdb_metrics = true;
 
 bool		yb_enable_global_views = false;
 
@@ -8687,6 +8747,12 @@ YbIsAuthBackend()
 	return yb_is_auth_backend;
 }
 
+bool
+YbIsAuthPassthroughControlBackend()
+{
+	return yb_conn_mgr_is_auth_passthrough_backend;
+}
+
 /* Used in YB to check if an attribute is a key column. */
 bool
 YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
@@ -9030,13 +9096,21 @@ YbCatalogPreloadRequired()
 bool
 YbUseMinimalCatalogCachesPreload()
 {
+	YbInternalConnKind kind;
+
 	if (*YBCGetGFlags()->ysql_minimal_catalog_caches_preload)
 		return true;
 	if (YbNeedAdditionalCatalogTables())
 		return false;
-	if (yb_is_internal_connection)
-		return true;
-	return false;
+	/*
+	 * Per-kind preload behavior comes from the registry (yb_internal_conn.h).
+	 * Only kinds whose descriptor sets use_minimal_preload = true (e.g. the
+	 * relcache-init builder) run with minimal preload; the rest preload
+	 * normally even though they are tserver-owned internal connections.
+	 */
+	kind = YbLookupInternalConnKindByBackendType(MyBackendType);
+	return kind != YB_INTERNAL_CONN_KIND_NONE &&
+		YbInternalConnKindDescriptors[kind].use_minimal_preload;
 }
 
 /* Comparison function for sorting strings in a List */

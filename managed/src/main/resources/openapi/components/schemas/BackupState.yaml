@@ -1,0 +1,27 @@
+title: BackupState
+description: Backup lifecycle state.
+type: string
+enum:
+  - InProgress
+  - Completed
+  - Failed
+  - Deleted
+  - Skipped
+  - FailedToDelete
+  - Stopping
+  - Stopped
+  - QueuedForDeletion
+  - QueuedForForcedDeletion
+  - DeleteInProgress
+x-enum-varnames:
+  - BackupInProgress
+  - BackupCompleted
+  - BackupFailed
+  - BackupDeleted
+  - BackupSkipped
+  - BackupFailedToDelete
+  - BackupStopping
+  - BackupStopped
+  - BackupQueuedForDeletion
+  - BackupQueuedForForcedDeletion
+  - BackupDeleteInProgress

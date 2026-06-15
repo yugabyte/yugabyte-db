@@ -446,10 +446,10 @@ if id "yugabyte" &>/dev/null; then
   # Set to the current user's home directory.
   # This is the behavior in YNP precheck.
   yb_user_home=$(getent passwd "yugabyte" | cut -d: -f6)
-  echo "Overriding yb_user_home to $yb_user_home from user's home directory"
+  echo "Overriding yb_user_home to $yb_user_home from user's home directory" >&2
 else
   yb_user_home="$yb_home_dir"
-  echo "Using yb_home_dir as yb_user_home: $yb_user_home"
+  echo "Using yb_home_dir as yb_user_home: $yb_user_home" >&2
 fi
 
 yb_user_home=$(readlink -m "$yb_user_home" 2>&1)

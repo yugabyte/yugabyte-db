@@ -1,9 +1,11 @@
     {
         "schemaMappings": {
-          "PaginationResp": "api.v2.models.PaginationResp"
+          "PaginationResp": "api.v2.models.PaginationResp",
+          "TaskApiFilter": "com.yugabyte.yw.forms.filters.TaskApiFilter"
         },
         "importMappings": {
-          "PaginationResp": "api.v2.models.PaginationResp"
+          "PaginationResp": "api.v2.models.PaginationResp",
+          "TaskApiFilter": "com.yugabyte.yw.forms.filters.TaskApiFilter"
         },
         "hideGenerationTimestamp": "true",
         "groupId": "com.yugabyte",

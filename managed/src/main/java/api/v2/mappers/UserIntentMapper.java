@@ -138,6 +138,9 @@ public interface UserIntentMapper {
     @ValueMapping(target = "PREMIUM_LRS", source = "Premium_LRS"),
     @ValueMapping(target = "PREMIUMV2_LRS", source = "PremiumV2_LRS"),
     @ValueMapping(target = "ULTRASSD_LRS", source = "UltraSSD_LRS"),
+    @ValueMapping(target = "OCI_BALANCED", source = "OCI_Balanced"),
+    @ValueMapping(target = "OCI_HIGHERPERFORMANCE", source = "OCI_HigherPerformance"),
+    @ValueMapping(target = "OCI_LOWERCOST", source = "OCI_LowerCost"),
     @ValueMapping(target = "LOCAL", source = "Local"),
     @ValueMapping(target = "IO2", source = "IO2"),
   })
@@ -361,6 +364,9 @@ public interface UserIntentMapper {
         overrides.setPerProcess(perProcess);
       }
       perProcess.put(ServerType.MASTER, masterOverrides);
+      // Our code is using masterInstanceType and masterDeviceInfo now instead of overrides.
+      userIntent.masterInstanceType = masterOverrides.getInstanceType();
+      userIntent.masterDeviceInfo = masterOverrides.getDeviceInfo();
     }
     if (clusterNodeSpec.getTserver() != null) {
       UserIntentOverrides overrides = userIntent.getUserIntentOverrides();

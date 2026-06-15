@@ -68,6 +68,10 @@ METRIC_DEFINE_event_stats(table, vector_index_found_intents,
 METRIC_DEFINE_event_stats(table, vector_index_result_size,
     "Resulting entries of vector index search", yb::MetricUnit::kEntries,
     "Number of entries returned by vector index search.");
+METRIC_DEFINE_counter(table, vector_index_backfill_inserted_entries,
+    "Backfilled entries of vector index", yb::MetricUnit::kEntries,
+    "Number of entries inserted into the vector index during backfill. Tracks the progress of "
+    "vector index backfill.");
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(vector_index_skip_filter_check);
@@ -536,7 +540,9 @@ DocVectorIndexMetrics::DocVectorIndexMetrics(const MetricEntityPtr& metric_entit
       read_intents_us(METRIC_vector_index_read_intents_us.Instantiate(metric_entity)),
       merge_us(METRIC_vector_index_merge_us.Instantiate(metric_entity)),
       found_intents(METRIC_vector_index_found_intents.Instantiate(metric_entity)),
-      result_size(METRIC_vector_index_result_size.Instantiate(metric_entity)) {
+      result_size(METRIC_vector_index_result_size.Instantiate(metric_entity)),
+      backfill_inserted_entries(
+          METRIC_vector_index_backfill_inserted_entries.Instantiate(metric_entity)) {
 }
 
 } // namespace yb::docdb

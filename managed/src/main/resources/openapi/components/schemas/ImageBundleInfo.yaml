@@ -1,7 +1,19 @@
 title: ImageBundleInfo
-description: Per-region bundle info for image bundle details
+description: |
+  System-generated image bundle metadata.
 type: object
 properties:
-  yb_image:
-    description: YugabyteDB image identifier for this region.
+  uuid:
+    description: Image bundle unique identifier.
     type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: true
+  metadata:
+    description: Bundle classification and version metadata.
+    $ref: "./ImageBundleMetadata.yaml"
+    readOnly: true
+  active:
+    description: Whether the bundle is active for use.
+    type: boolean
+    readOnly: true

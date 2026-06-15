@@ -66,7 +66,6 @@ using std::string;
 
 using strings::Substitute;
 
-DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
@@ -154,15 +153,6 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
     }
   }
   leader_lease_info.initialized = initialized || info.initialized;
-}
-
-bool TabletReplica::IsStale() const {
-  MonoTime now(MonoTime::Now());
-  if (now.GetDeltaSince(time_updated).ToMilliseconds() >=
-      FLAGS_tserver_unresponsive_timeout_ms) {
-    return true;
-  }
-  return false;
 }
 
 bool TabletReplica::IsStarting() const {

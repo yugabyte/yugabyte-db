@@ -252,6 +252,11 @@
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY(''{}'') ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :iter_P2
 
+-- Only duplicates in IN
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 1) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+
 -- Non-const in RHS (like var ref)
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, r2, 2) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
@@ -259,7 +264,6 @@
 
 -- Large number of streams
 \set query ':P :Q SELECT r4, r5, n, r1, r2, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3) AND r2 IN (0, 1, 2, 3) AND r3 IN (0, 1, 2, 3) ORDER BY r4, r5, n LIMIT 5;'
-\set Pnext :iter_Q2
 \i :iter_P2
 
 -- Single IN hitting limit
@@ -352,6 +356,11 @@ SPLIT AT VALUES (
 
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
+-- Only duplicates in IN
+\set query ':P :Q SELECT r3, r4, r5, n, r2 FROM r5n WHERE r2 IN (1, 1) ORDER BY r3, r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
 
 -- Secondary index scan VS merge PK scan
 -- Expected secondary index scan; merge PK scan likely wins due to missing

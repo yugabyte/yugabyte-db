@@ -118,8 +118,6 @@ class YBOperation {
     return !read_only() || isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
   }
 
-  virtual void SetHashCode(uint16_t hash_code) = 0;
-
   const scoped_refptr<internal::RemoteTablet>& tablet() const {
     return tablet_;
   }
@@ -233,12 +231,9 @@ class YBRedisOp : public YBOperationBase<LWRedisResponsePB> {
 
   virtual size_t space_used_by_request() const = 0;
 
-  uint16_t hash_code() const { return hash_code_; }
+  virtual uint16_t hash_code() const = 0;
 
   virtual std::string_view GetKey() const = 0;
-
- protected:
-  uint16_t hash_code_ = 0;
 };
 
 class YBRedisWriteOp : public YBRedisOp {
@@ -260,8 +255,7 @@ class YBRedisWriteOp : public YBRedisOp {
   bool read_only() const override { return false; }
   bool succeeded() const override { return false; } // TODO(dtxn) implement
 
-  // Set the hash key in the WriteRequestPB.
-  void SetHashCode(uint16_t hash_code) override;
+  uint16_t hash_code() const override;
 
   std::string_view GetKey() const override;
 
@@ -292,8 +286,7 @@ class YBRedisReadOp : public YBRedisOp {
   bool read_only() const override { return true; }
   bool succeeded() const override { return false; } // TODO(dtxn) implement
 
-  // Set the hash key in the ReadRequestPB.
-  void SetHashCode(uint16_t hash_code) override;
+  uint16_t hash_code() const override;
 
   std::string_view GetKey() const override;
 
@@ -344,8 +337,6 @@ class YBqlWriteOp : public YBqlOp {
   std::string ToString() const override;
 
   bool read_only() const override { return false; };
-
-  void SetHashCode(uint16_t hash_code) override;
 
   uint16_t GetHashCode() const;
 
@@ -416,8 +407,6 @@ class YBqlReadOp : public YBqlOp {
   std::string ToString() const override;
 
   bool read_only() const override { return true; };
-
-  void SetHashCode(uint16_t hash_code) override;
 
   // Returns the partition key of the read request if it exists.
   // Also sets the hash_code and max_hash_code in the request.
@@ -508,12 +497,6 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
 
   bool read_only() const override { return false; };
 
-  bool skip_intents() const {
-    return request_->skip_intents_write();
-  }
-
-  void SetHashCode(uint16_t hash_code) override;
-
   void set_is_single_row_txn(bool is_single_row_txn) {
     is_single_row_txn_ = is_single_row_txn;
   }
@@ -568,12 +551,6 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
 
   bool read_only() const override { return true; };
 
-  bool skip_intents() const {
-    return request_->skip_intents_read();
-  }
-
-  void SetHashCode(uint16_t hash_code) override;
-
   YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
@@ -611,7 +588,6 @@ class YBPgsqlLockOp : public YBPgsqlOp {
   bool read_only() const override { return false; };
   std::string ToString() const override;
 
-  void SetHashCode(uint16_t hash_code) override;
   Status GetPartitionKey(std::string* partition_key) const override;
 
   LWPgsqlLockRequestPB* mutable_request() { return &request_; }
@@ -645,7 +621,7 @@ class YBNoOp {
 
 Status InitPartitionKey(
     const Schema& schema, const dockv::PartitionSchema& partition_schema,
-    const TablePartitionList& partitions, LWPgsqlReadRequestPB* request);
+    LWPgsqlReadRequestPB* request);
 
 Status InitPartitionKey(
     const Schema& schema, const dockv::PartitionSchema& partition_schema,
@@ -664,16 +640,5 @@ Status GetRangePartitionBounds(
     dockv::KeyEntryValues* upper_bound);
 
 bool IsTolerantToPartitionsChange(const YBOperation& op);
-
-Result<const PartitionKey&> TEST_FindPartitionKeyByUpperBound(
-    const TablePartitionList& partitions, const PgsqlReadRequestPB& request);
-
-template <typename Req>
-inline bool AreBoundsHashCode(const Req& request) {
-  return (request.has_lower_bound() &&
-          dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.lower_bound().key())) ||
-         (request.has_upper_bound() &&
-          dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.upper_bound().key()));
-}
 
 }  // namespace yb::client

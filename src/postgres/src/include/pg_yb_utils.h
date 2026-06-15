@@ -473,8 +473,15 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
 
 /*
  * Return whether to use wholerow junk attribute for YB relations.
+ *
+ * For a leaf in an inheritance/partition hierarchy, the answer also depends
+ * on transition-table triggers on the root.  Callers that already have the
+ * root open should pass it as root_relation; otherwise pass NULL (and open
+ * the root themselves if the no-root answer is insufficient).  This function
+ * never opens or closes a relation.
  */
-extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
+extern bool YbWholeRowAttrRequired(Relation relation, Relation root_relation,
+								   CmdType operation);
 
 extern Oid YbSystemDbOid();
 
@@ -573,6 +580,13 @@ extern bool yb_disable_wait_for_backends_catalog_version;
 extern bool yb_enable_base_scans_cost_model;
 
 /*
+ * When enabled, the planner warms the catalog cache with all of a relation's
+ * pg_statistic rows in a single batched RPC (instead of one point lookup per
+ * column) the first time the relation is planned in a backend.
+ */
+extern bool yb_prefetch_column_statistics;
+
+/*
  * Enables update of reltuples in pg_class for the base table and index after
  * creating the index.
  */
@@ -627,6 +641,15 @@ extern int	yb_catcache_list_from_preloaded_limit;
  * Configure size of the parallel range in requests for parallel keys.
  */
 extern int	yb_parallel_range_size;
+
+/*
+ * Disables parallel query for the SELECT planned by DDLs (CREATE TABLE AS,
+ * SELECT INTO, CREATE/REFRESH MATERIALIZED VIEW, COPY (query) TO, and
+ * EXPLAIN [ANALYZE] CREATE TABLE AS). Enabled by default because parallel
+ * query in these DDLs has not been QA tested in YugabyteDB; set to off as an
+ * escape hatch to restore upstream PostgreSQL behavior.
+ */
+extern bool yb_disable_parallel_query_in_ddl;
 
 /*
  * INSERT ON CONFLICT batching read batch size.
@@ -715,6 +738,12 @@ extern bool yb_is_non_atomic_commit_done;
  */
 extern bool yb_enable_retry_after_non_atomic_commit;
 
+extern char *yb_extra_commands_to_retry_string;
+extern bool *yb_extra_commands_to_retry;
+
+extern char *yb_extra_commands_to_retry_in_proc_string;
+extern bool *yb_extra_commands_to_retry_in_proc;
+
 /*
  * Relaxes some internal sanity checks for system catalogs to allow creating them.
  */
@@ -733,6 +762,10 @@ extern int yb_test_sleep_before_executor_start_ms;
  * Resets to 0 after triggering.
  */
 extern int yb_test_fail_next_ddl;
+
+/* Test fault injection: fail drop after heap_drop_with_catalog. */
+extern bool yb_test_fail_drop_after_heap_drop;
+
 /*
  * If set to true,the next DDL will update the catalog in force mode which
  * allows it to operate even during ysql major catalog upgrades.
@@ -741,6 +774,12 @@ extern bool yb_force_catalog_update_on_next_ddl;
 
 /* If set to true, all drop commands will fail. */
 extern bool yb_test_fail_all_drops;
+
+/*
+ * If set to true, a manual ANALYZE does not reset the auto-analyze mutation
+ * counters, reverting to the pre-reset behavior. Test only.
+ */
+extern bool yb_test_analyze_dont_reset_mutations;
 
 /*
  * If set to true, force invalidation of every base relation's index relcache
@@ -1635,6 +1674,7 @@ extern bool YbUseFastBackwardScan();
 extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 extern bool YbIsAuthBackend();
+extern bool YbIsAuthPassthroughControlBackend();
 
 extern bool YbIsYsqlConnMgrEnabled();
 

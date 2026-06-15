@@ -339,7 +339,7 @@ public class PlacementInfoUtil {
         !CollectionUtils.isEmpty(taskParams.getPrimaryCluster().getPartitions()));
   }
 
-  private static void updateUniverseDefinition(
+  static void updateUniverseDefinition(
       UniverseDefinitionTaskParams taskParams,
       @Nullable Universe universe,
       Long customerId,
@@ -614,6 +614,14 @@ public class PlacementInfoUtil {
     removeUnusedPlacementAZs(cluster.placementInfo);
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
 
+    // Support old UI for universes saved through new UI but not geo-partitioned.
+    // For geo-partitioned case the exception is already thrown.
+    if (cluster.getPartitions() != null && cluster.getPartitions().size() == 1) {
+      UniverseDefinitionTaskParams.PartitionInfo partitionInfo = cluster.getPartitions().get(0);
+      partitionInfo.setPlacement(cluster.placementInfo);
+      partitionInfo.setReplicationFactor(cluster.userIntent.replicationFactor);
+    }
+
     // STEP 5: Sync nodes with placement info
     configureNodesUsingPlacementInfo(
         cluster, taskParams.nodeDetailsSet, taskParams, universe, clusterOpType);
@@ -623,14 +631,6 @@ public class PlacementInfoUtil {
     checkAndSetPerAZRF(
         cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID, false);
     LOG.info("Final Placement info: {}.", cluster.placementInfo);
-
-    // Support old UI for universes saved through new UI but not geo-partitioned.
-    // For geo-partitioned case the exception is already thrown.
-    if (cluster.getPartitions() != null && cluster.getPartitions().size() == 1) {
-      UniverseDefinitionTaskParams.PartitionInfo partitionInfo = cluster.getPartitions().get(0);
-      partitionInfo.setPlacement(cluster.placementInfo);
-      partitionInfo.setReplicationFactor(cluster.userIntent.replicationFactor);
-    }
 
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }

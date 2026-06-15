@@ -97,6 +97,16 @@ func addDefaults(v *viper.Viper) {
 	v.SetDefault("perfAdvisor.tls.hsts", true)
 	v.SetDefault("perfAdvisor.tls.keystore_password", "")
 
+	// Node Exporter
+	v.SetDefault("nodeExporter.enabled", true)
+	v.SetDefault("nodeExporter.port", 9300)
+	v.SetDefault("nodeExporter.scheme", "https")
+	v.SetDefault("nodeExporter.enable_auth", false)
+	v.SetDefault("nodeExporter.auth_username", "")
+	v.SetDefault("nodeExporter.auth_password", "")
+
 	// Services (installerConfig.Services)
-	v.SetDefault("installer.services", []string{"postgres", "prometheus", "platform"})
+	// nodeExporter.enabled defaults to true, so include node-exporter here.
+	v.SetDefault("installer.services",
+		[]string{"postgres", "prometheus", "platform", "node-exporter"})
 }

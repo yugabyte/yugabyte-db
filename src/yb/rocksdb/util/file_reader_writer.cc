@@ -248,11 +248,12 @@ Status WritableFileWriter::Flush() {
     }
   }
 
-  s = writable_file_->Flush();
-
-  if (!s.ok()) {
-    return s;
-  }
+  // Note: we intentionally do not call writable_file_->Flush() here. Historically the rocksdb
+  // PosixWritableFile::Flush() was a no-op; the unified yb::PosixWritableFile::Flush() issues a
+  // sync_file_range() writeback over the whole file on every call, which regresses write-heavy
+  // workloads. RocksDB paces writeback itself through the bytes_per_sync_ RangeSync() below and
+  // achieves durability via Sync(), so an unconditional per-flush writeback is both redundant and
+  // harmful here.
 
   // sync OS cache to disk for every bytes_per_sync_
   // TODO: give log file and sst file different options (log

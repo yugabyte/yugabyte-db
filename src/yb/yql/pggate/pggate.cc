@@ -523,7 +523,6 @@ PgClient::ProxyInitInfo MakeProxyInitInfo(
                           tserver_shared_data.endpoint().port());
     result.resolve_cache_timeout = MonoDelta::kMax;
   }
-  LOG(INFO) << "Using TServer host_port: " << result.host_port;
   return result;
 }
 
@@ -1242,6 +1241,10 @@ Result<tserver::PgListClonesResponsePB> PgApiImpl::GetDatabaseClones() {
 
 Result<tserver::PgQueryAutoAnalyzeResponsePB> PgApiImpl::QueryAutoAnalyze(PgOid db_oid) {
     return pg_session_->pg_client().QueryAutoAnalyze(db_oid);
+}
+
+Status PgApiImpl::ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+  return pg_session_->pg_client().ResetAutoAnalyzeMutationCounters(table_id);
 }
 
 Result<YbcPgColumnInfo> PgApiImpl::GetColumnInfo(YbcPgTableDesc table_desc, int16_t attr_number) {
@@ -2740,6 +2743,11 @@ Status PgApiImpl::AcquireObjectLock(
 
 Status PgApiImpl::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
   return pg_session_->ReleaseSessionObjectLock(lock_id, release_all);
+}
+
+Status PgApiImpl::WaitForLockersMultiple(
+    const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
+  return pg_session_->WaitForLockersMultiple(lock_ids, lock_mode, num_locks);
 }
 
 //------------------------------------------------------------------------------------------------

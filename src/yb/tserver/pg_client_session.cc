@@ -135,8 +135,11 @@ DEFINE_test_flag(bool, force_initial_region_local, false,
 DEFINE_test_flag(bool, fail_create_table_rpc, false,
     "Fail all create table requests received at PgClientSession layer.");
 
-DEFINE_test_flag(bool, pause_session_lock_release, false,
+DEFINE_test_flag(bool, pause_session_lock_before_release, false,
     "Pause before releasing session object lock.");
+
+DEFINE_test_flag(bool, pause_session_lock_after_release, false,
+    "Pause after releasing session object lock.");
 
 #ifdef __linux__
 DECLARE_bool(enable_qos);
@@ -3017,7 +3020,7 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     // If we fail to release the lock for any reason, return InvalidArgument as status so as to
     // force the backend to FATAL, thus freeing all object locks associated with it.
-    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_release);
+    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_before_release);
     VLOG_WITH_FUNC(1) << req.ShortDebugString();
     const auto kind = PgClientSessionKind::kPgSession;
     auto* session_data = &GetSessionData(kind);
@@ -3061,8 +3064,60 @@ class PgClientSession::Impl {
     ReleaseWithRetriesGlobal(
         client_, ts_lock_manager(), txn_meta_res->transaction_id,
         opt_subtxn_id, release_req);
+    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_after_release);
     // Release control to the pg backend, and let the release continue in async mode.
     return Status::OK();
+  }
+
+  Status DoWaitForLockersMultiple(
+      const LWPgWaitForLockersMultipleRequestPB& req,
+      LWPgWaitForLockersMultipleResponsePB* resp,
+      std::shared_ptr<rpc::RpcContext> context) {
+    VLOG_WITH_FUNC(1) << req.ShortDebugString();
+
+    master::WaitForLockersMultipleGlobalRequestPB master_req;
+    master_req.set_session_host_uuid(instance_uuid());
+    master_req.set_lease_epoch(lease_epoch_);
+    auto now = clock().get()->Now();
+    master_req.set_propagated_hybrid_time(now.ToUint64());
+    for (const auto& entry : req.lock_entries()) {
+      auto* lock = master_req.add_object_locks();
+      lock->set_database_oid(entry.lock_oid().database_oid());
+      lock->set_relation_oid(entry.lock_oid().relation_oid());
+      lock->set_object_oid(entry.lock_oid().object_oid());
+      lock->set_object_sub_oid(entry.lock_oid().object_sub_oid());
+      lock->set_lock_type(static_cast<TableLockType>(entry.lock_mode()));
+    }
+    auto& background_session_data = GetSessionData(PgClientSessionKind::kPgSession);
+    if (background_session_data.transaction) {
+      auto txn_id = background_session_data.transaction->id();
+      master_req.set_background_transaction_id(txn_id.data(), txn_id.size());
+    }
+
+    auto deadline = context->GetClientDeadline();
+    client_.WaitForLockersMultipleGlobalAsync(
+        master_req,
+        [resp, context](const Status& status) {
+          if (!status.ok()) {
+            StatusToPB(status, resp->mutable_status());
+          }
+          context->RespondSuccess();
+        },
+        deadline);
+    return Status::OK();
+  }
+
+  void WaitForLockersMultiple(
+      const LWPgWaitForLockersMultipleRequestPB& req,
+      LWPgWaitForLockersMultipleResponsePB* resp,
+      rpc::RpcContext&& context) {
+    auto shared_ctx = std::make_shared<rpc::RpcContext>(std::move(context));
+    auto s = DoWaitForLockersMultiple(req, resp, shared_ctx);
+    if (!s.ok()) {
+      StatusToPB(s, resp->mutable_status());
+      shared_ctx->RespondSuccess();
+      return;
+    }
   }
 
   void StartShutdown(bool pg_service_shutting_down) {
@@ -3652,6 +3707,32 @@ class PgClientSession::Impl {
         ResetReadPoint(kind);
       } else {
         VLOG_WITH_PREFIX(3) << "Keep read time: " << session.read_point()->GetReadTime();
+
+        // TODO: The below check would have caught #29283.
+        //
+        // Weexpect a read time to be already set except for cases such as:
+        //
+        // 1. Serializable isolation
+        //
+        // 2. NON_TRANSACTIONAL writes. For example, the PgOpBufferingTest.FKCheckWithNonTxnWrites
+        // test results in an INSERT performing a NON_TRANSACTIONAL write followed by a
+        // transactional write with the same read_time_serial_no. This will fail the below check.
+        //
+        // 3. Any session other than kPlain
+        //
+        // 4. The rpcs before this rpc were AcquireObjectLock rpcs which don't pick a
+        //    read time.
+        //
+        // The check is disabled now because the above list might not be exhaustive.
+        //
+        // auto invariant = session.read_point()->GetReadTime().read != HybridTime::kInvalid ||
+        //     !is_plain_session ||
+        //     (txn && txn->isolation() == SERIALIZABLE_ISOLATION) ||
+        //     (options.isolation() == IsolationLevel::NON_TRANSACTIONAL);
+        // if (!invariant) {
+        //   LOG(ERROR) << "Read time is expected to be set";
+        //   return STATUS(IllegalState, "Read time is expected to be set");
+        // }
       }
     }
 
@@ -3661,6 +3742,8 @@ class PgClientSession::Impl {
     if (!options.ddl_mode() && !options.use_catalog_session() && options.defer_read_point()) {
       // For DMLs, only fast path writes cannot be deferred.
       RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
+      VLOG_WITH_PREFIX(3) << "Set current read time for deferred mode "
+          << session.read_point()->GetReadTime();
     }
 
     // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not

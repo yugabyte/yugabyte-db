@@ -1385,5 +1385,80 @@ TEST_F_EX(PggateTestSelect, TestGetYbSystemTableInfo, PggateTestSelectWithYbSyst
   }
 }
 
+class PggateTestBackwardScanSelect : public PggateTestSelectWithYsql {
+ protected:
+  Result<PgObjectId> CreateTable(
+      const std::string& db_name, const std::string& table_name, int num_tablets, int num_rows) {
+    auto conn = VERIFY_RESULT(PgConnect(db_name));
+    RETURN_NOT_OK(conn.Execute(Format(
+        "CREATE TABLE $0(a INT PRIMARY KEY) SPLIT INTO $1 TABLETS", table_name, num_tablets)));
+    RETURN_NOT_OK(conn.Execute(Format(
+        "INSERT INTO $0 SELECT generate_series(1, $1)", table_name, num_rows)));
+    auto db_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", db_name)));
+    auto table_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+        "SELECT oid FROM pg_class WHERE relname = '$0'", table_name)));
+    return PgObjectId{db_oid, table_oid};
+  }
+
+  int ReadTableBackward(const PgObjectId& pg_table_id) {
+    YbcPgStatement pg_stmt;
+    CHECK_YBC_STATUS(YBCPgNewSelect(
+        pg_table_id.database_oid, pg_table_id.object_oid, NULL /* prepare_params */,
+        kDefaultTableLocality, false /* skip_intents_read */, &pg_stmt));
+
+    // Specify the selected expressions.
+    YbcPgExpr colref;
+    const YbcPgTypeAttrs type_attrs = { 0 };
+    CHECK_YBC_STATUS(YBCPgNewColumnRef(
+        pg_stmt, 1, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        &type_attrs, &colref));
+    CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
+    CHECK_YBC_STATUS(YBCPgSetForwardScan(pg_stmt, false /* is_forward */));
+
+    BeginTransaction();
+    CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
+
+    // Fetching rows and check their contents.
+    uint64_t values;
+    bool isnulls;
+    YbcPgSysColumns syscols;
+    int select_row_count = 0;
+    for (;;) {
+      bool has_data = false;
+      CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, 1, &values, &isnulls, &syscols, &has_data));
+      if (!has_data) {
+        break;
+      }
+      ++select_row_count;
+    }
+    CommitTransaction();
+    return select_row_count;
+  }
+
+};
+
+TEST_F(PggateTestBackwardScanSelect, HashBackwardScanOneTablet) {
+  constexpr auto kDatabaseName = "yugabyte";
+  constexpr auto kTableName = "htab1";
+  constexpr auto kNumRows = 4000;
+  CHECK_OK(Init(
+      "HashBackwardScanOneTablet", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+  auto pg_table_id = ASSERT_RESULT(CreateTable(kDatabaseName, kTableName, 1, kNumRows));
+  CHECK_EQ(ReadTableBackward(pg_table_id), kNumRows);
+}
+
+TEST_F(PggateTestBackwardScanSelect, HashBackwardScanMultiTablet) {
+  constexpr auto kDatabaseName = "yugabyte";
+  constexpr auto kTableName = "htab3";
+  constexpr auto kNumRows = 4000;
+  CHECK_OK(Init(
+      "HashBackwardScanMultiTablet", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+  auto pg_table_id = ASSERT_RESULT(CreateTable(kDatabaseName, kTableName, 3, kNumRows));
+  CHECK_EQ(ReadTableBackward(pg_table_id), kNumRows);
+}
+
 } // namespace pggate
 } // namespace yb

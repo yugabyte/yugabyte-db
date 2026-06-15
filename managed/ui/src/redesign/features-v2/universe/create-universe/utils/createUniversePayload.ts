@@ -156,11 +156,15 @@ export const mapCreateUniversePayload = (
     throw new Error('Missing required form values to create universe payload');
   }
 
-  const effectiveRf = getEffectiveReplicationFactorForResilience(resilienceAndRegionsSettings);
+  const effectiveRf = getEffectiveReplicationFactorForResilience(
+    resilienceAndRegionsSettings,
+    nodesAvailabilitySettings
+  );
 
   const regionList: PlacementRegion[] = getPlacementRegions(
     resilienceAndRegionsSettings,
-    nodesAvailabilitySettings.availabilityZones
+    nodesAvailabilitySettings.availabilityZones,
+    nodesAvailabilitySettings
   );
 
   const gflags = mapGFlags(databaseSettings.gFlags);

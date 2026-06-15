@@ -54,27 +54,27 @@ class PgGlobalViewsTest : public LibPqTestBase {
  protected:
   Status SetupGlobalView() {
     RETURN_NOT_OK(conn_->Execute(R"(
-        CREATE VIEW partial_pgss_with_tserver_uuid AS
+        CREATE VIEW partial_pgss_with_server_uuid AS
             SELECT
-                yb_get_local_tserver_uuid() AS tserver_uuid,
+                yb_get_local_tserver_uuid() AS server_uuid,
                 queryid,
                 query,
                 calls
             FROM pg_stat_statements)"));
     RETURN_NOT_OK(conn_->Execute(R"(
         CREATE FOREIGN TABLE IF NOT EXISTS "gv$partial_pg_stat_statements" (
-            tserver_uuid UUID,
+            server_uuid UUID,
             queryid BIGINT,
             query TEXT,
             calls BIGINT
         )
         SERVER gv_server
         OPTIONS (schema_name 'public',
-                 table_name 'partial_pgss_with_tserver_uuid'))"));
+                 table_name 'partial_pgss_with_server_uuid'))"));
     RETURN_NOT_OK(conn_->Execute(R"(
-        CREATE VIEW partial_ash_with_tserver_uuid AS
+        CREATE VIEW partial_ash_with_server_uuid AS
             SELECT
-                yb_get_local_tserver_uuid() AS tserver_uuid,
+                yb_get_local_tserver_uuid() AS server_uuid,
                 sample_time,
                 root_request_id,
                 rpc_request_id,
@@ -95,7 +95,7 @@ class PgGlobalViewsTest : public LibPqTestBase {
             FROM pg_catalog.yb_active_session_history)"));
     RETURN_NOT_OK(conn_->Execute(R"(
         CREATE FOREIGN TABLE IF NOT EXISTS "gv$partial_ash" (
-            tserver_uuid UUID,
+            server_uuid UUID,
             sample_time TIMESTAMPTZ,
             root_request_id UUID,
             rpc_request_id BIGINT,
@@ -116,17 +116,17 @@ class PgGlobalViewsTest : public LibPqTestBase {
         )
         SERVER gv_server
         OPTIONS (schema_name 'public',
-                 table_name 'partial_ash_with_tserver_uuid'))"));
+                 table_name 'partial_ash_with_server_uuid'))"));
     RETURN_NOT_OK(conn_->Execute(R"(
         CREATE VIEW partial_pg_stat_all_tables AS
             SELECT
-                yb_get_local_tserver_uuid() AS tserver_uuid,
+                yb_get_local_tserver_uuid() AS server_uuid,
                 schemaname,
                 relname
             FROM pg_stat_all_tables)"));
     return conn_->Execute(R"(
         CREATE FOREIGN TABLE IF NOT EXISTS "gv$partial_pg_stat_all_tables" (
-            tserver_uuid UUID,
+            server_uuid UUID,
             schemaname NAME,
             relname NAME
         )
@@ -172,7 +172,7 @@ class PgGlobalViewsTest : public LibPqTestBase {
     }
 
     auto res = VERIFY_RESULT((conn.FetchRows<Uuid, std::string, int64_t>(R"(
-        SELECT tserver_uuid, query, calls FROM gv$partial_pg_stat_statements
+        SELECT server_uuid, query, calls FROM gv$partial_pg_stat_statements
         WHERE query LIKE 'INSERT INTO tbl %'
         ORDER BY calls ASC)")));
     SCHECK_EQ(expected_result, res, IllegalState,
@@ -231,7 +231,7 @@ TEST_F(PgGlobalViewsTest, TestLimitIsNotPushedDown) {
   TestThreadHolder log_waiter_threads;
   VerifyQueryPushdowns(&log_waiter_threads,
     "SELECT query, calls "
-    "FROM public.partial_pgss_with_tserver_uuid "
+    "FROM public.partial_pgss_with_server_uuid "
     "WHERE ((query ~~ 'INSERT INTO tbl %')) ORDER BY calls DESC NULLS FIRST");
 
   auto res = ASSERT_RESULT((conn_->FetchRow<std::string, int64_t>(R"(
@@ -245,7 +245,7 @@ TEST_F(PgGlobalViewsTest, TestDistinctIsNotPushedDown) {
   TestThreadHolder log_waiter_threads;
   VerifyQueryPushdowns(&log_waiter_threads,
     "SELECT query "
-    "FROM public.partial_pgss_with_tserver_uuid");
+    "FROM public.partial_pgss_with_server_uuid");
 
   auto res = ASSERT_RESULT((conn_->FetchRows<std::string>(
       "SELECT DISTINCT(query) FROM gv$partial_pg_stat_statements")));
@@ -260,7 +260,7 @@ TEST_F(PgGlobalViewsTest, TestGroupByIsNotPushedDown) {
   TestThreadHolder log_waiter_threads;
   VerifyQueryPushdowns(&log_waiter_threads,
     "SELECT query, calls "
-    "FROM public.partial_pgss_with_tserver_uuid "
+    "FROM public.partial_pgss_with_server_uuid "
     "WHERE ((query ~~ 'INSERT INTO tbl %'))");
 
   auto res = ASSERT_RESULT((conn_->FetchRow<std::string, int64_t>(R"(
@@ -283,9 +283,9 @@ TEST_F(PgGlobalViewsTest, TestJoinsAreNotPushedDown) {
 
   // there can only be one log waiter at a time, so we need to run the tests sequentially
   for (const auto& log_pattern : {
-      "SELECT queryid, query FROM public.partial_pgss_with_tserver_uuid",
+      "SELECT queryid, query FROM public.partial_pgss_with_server_uuid",
       "SELECT sample_time, wait_event_component, query_id, wait_event_type "
-      "FROM public.partial_ash_with_tserver_uuid" }) {
+      "FROM public.partial_ash_with_server_uuid" }) {
     TestThreadHolder log_waiter_threads;
     VerifyQueryPushdowns(&log_waiter_threads, log_pattern);
     auto res = ASSERT_RESULT((
@@ -400,7 +400,7 @@ TEST_F(PgGlobalViewsTest, TestPermissions) {
 TEST_F(PgGlobalViewsTest, TestTserverDownBetweenPrepareAndExecute) {
   ASSERT_OK(conn_->Execute(R"(
       PREPARE gv_stmt AS
-      SELECT tserver_uuid, query, calls FROM gv$partial_pg_stat_statements
+      SELECT server_uuid, query, calls FROM gv$partial_pg_stat_statements
       WHERE query LIKE 'INSERT INTO tbl %'
       ORDER BY calls ASC)"));
 
@@ -557,7 +557,7 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // the foreign-table name), which makes the match specific enough to
   // ignore unrelated background remote-exec traffic.
   const auto rpcs_per_tserver = [&](const std::string& sql) -> std::vector<int> {
-    constexpr auto kNeedle = "partial_pgss_with_tserver_uuid";
+    constexpr auto kNeedle = "partial_pgss_with_server_uuid";
 
     std::vector<std::unique_ptr<RemoteExecCounter>> counters;
     counters.reserve(kNumTservers);
@@ -584,8 +584,8 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   };
 
   const auto base_query =
-      "SELECT tserver_uuid FROM \"gv$$partial_pg_stat_statements\" "
-      "WHERE $0 query LIKE 'INSERT INTO tbl %' ORDER BY tserver_uuid";
+      "SELECT server_uuid FROM \"gv$$partial_pg_stat_statements\" "
+      "WHERE $0 query LIKE 'INSERT INTO tbl %' ORDER BY server_uuid";
 
   const auto tserver0_uuid = cluster_->tablet_server(0)->uuid();
   const auto tserver1_uuid = cluster_->tablet_server(1)->uuid();
@@ -606,7 +606,7 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // Equality filter on one specific UUID -> only that tserver visited and
   // queried over RPC.
   {
-    const auto sql = Format(base_query, Format("tserver_uuid IN ('$0') AND", tserver0_uuid));
+    const auto sql = Format(base_query, Format("server_uuid IN ('$0') AND", tserver0_uuid));
     ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
               std::set<std::string>{tserver0_uuid});
     ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 0, 0));
@@ -616,7 +616,7 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // tserver receives no RPC.
   {
     const auto sql = Format(base_query,
-        Format("tserver_uuid IN ('$0', '$1') AND", tserver0_uuid, tserver1_uuid));
+        Format("server_uuid IN ('$0', '$1') AND", tserver0_uuid, tserver1_uuid));
     ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
               (std::set<std::string>{tserver0_uuid, tserver1_uuid}));
     ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 1, 0));
@@ -627,7 +627,7 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // "One-Time Filter: false", so no Foreign Scan (and no remote RPC) survives.
   {
     const auto sql = Format(base_query,
-        "tserver_uuid IN ('00000000-0000-0000-0000-000000000001') AND");
+        "server_uuid IN ('00000000-0000-0000-0000-000000000001') AND");
     auto plan = ASSERT_RESULT(plan_text(sql));
     ASSERT_NE(plan.find("One-Time Filter: false"), std::string::npos)
         << "expected dummy Result in plan, got:\n" << plan;
@@ -641,7 +641,7 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // is an implicit-AND list, so a top-level OR appears as one BoolExpr(OR_EXPR)
   // entry that our IsA(OpExpr)/IsA(ScalarArrayOpExpr) checks deliberately skip.
   const auto two_tservers_query_with_or_clause = Format(base_query,
-      Format("(tserver_uuid IN ('$0') OR tserver_uuid = '$1') AND",
+      Format("(server_uuid IN ('$0') OR server_uuid = '$1') AND",
              tserver0_uuid, tserver1_uuid));
   ASSERT_EQ(ASSERT_RESULT(plan_visits(two_tservers_query_with_or_clause)), all_uuids);
 
@@ -649,18 +649,18 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // gets an RPC.
   {
     const auto sql = Format(base_query,
-        Format("tserver_uuid IN ('$0', '$1') AND tserver_uuid = '$0' AND",
+        Format("server_uuid IN ('$0', '$1') AND server_uuid = '$0' AND",
                tserver0_uuid, tserver1_uuid));
     ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
               std::set<std::string>{tserver0_uuid});
     ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 0, 0));
   }
 
-  // a OR (b AND c) with each of a/b/c on tserver_uuid: top-level is an OR
+  // a OR (b AND c) with each of a/b/c on server_uuid: top-level is an OR
   // BoolExpr, so we don't prune anything.
   ASSERT_EQ(ASSERT_RESULT(plan_visits(Format(base_query,
-      Format("(tserver_uuid = '$0' OR (tserver_uuid = '$1' AND "
-             "tserver_uuid IN ('$1', '$2'))) AND",
+      Format("(server_uuid = '$0' OR (server_uuid = '$1' AND "
+             "server_uuid IN ('$1', '$2'))) AND",
              tserver0_uuid, tserver1_uuid, tserver2_uuid)))),
       all_uuids);
 
@@ -668,8 +668,8 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // the GUC constraint_exclusion = 'partition'
   {
     const auto sql = Format(base_query,
-        Format("(tserver_uuid = '$0' OR tserver_uuid = '$1') AND "
-               "tserver_uuid = '$2' AND",
+        Format("(server_uuid = '$0' OR server_uuid = '$1') AND "
+               "server_uuid = '$2' AND",
                tserver0_uuid, tserver1_uuid, tserver2_uuid));
     auto plan = ASSERT_RESULT(plan_text(sql));
     ASSERT_NE(plan.find("One-Time Filter: false"), std::string::npos)
@@ -685,19 +685,19 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // trivially satisfied.
   {
     const auto sql = Format(base_query,
-        Format("(tserver_uuid = '$0' OR tserver_uuid = '$1') AND "
-               "tserver_uuid = '$0' AND",
+        Format("(server_uuid = '$0' OR server_uuid = '$1') AND "
+               "server_uuid = '$0' AND",
                tserver0_uuid, tserver1_uuid));
     ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
               std::set<std::string>{tserver0_uuid});
     ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 0, 0));
   }
 
-  // tserver_uuid = NULL: uuid_eq is strict, so the qual is folded to NULL
+  // server_uuid = NULL: uuid_eq is strict, so the qual is folded to NULL
   // before reaching baserestrictinfo; the parent rel becomes dummy, no
   // tserver receives an RPC, and FetchRows returns 0 rows.
   {
-    const auto sql = Format(base_query, "tserver_uuid = NULL AND");
+    const auto sql = Format(base_query, "server_uuid = NULL AND");
     auto plan = ASSERT_RESULT(plan_text(sql));
     ASSERT_NE(plan.find("One-Time Filter: false"), std::string::npos)
         << "expected dummy Result in plan, got:\n" << plan;
@@ -706,13 +706,13 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
     ASSERT_EQ(rows.size(), 0);
   }
 
-  // tserver_uuid IN (NULL, NULL, NULL): the parser rewrites IN-list to
+  // server_uuid IN (NULL, NULL, NULL): the parser rewrites IN-list to
   // OR-of-equalities, every disjunct is `uuid_eq(var, NULL)` which folds to
   // NULL, the whole OR folds to NULL, the rel becomes dummy. Same observable
   // behavior as `= NULL`, but exercises the all-NULL IN-list path that
   // could otherwise surface a NULL Const inside our SAOP branch.
   {
-    const auto sql = Format(base_query, "tserver_uuid IN (NULL, NULL, NULL) AND");
+    const auto sql = Format(base_query, "server_uuid IN (NULL, NULL, NULL) AND");
     auto plan = ASSERT_RESULT(plan_text(sql));
     ASSERT_NE(plan.find("One-Time Filter: false"), std::string::npos)
         << "expected dummy Result in plan, got:\n" << plan;
@@ -725,7 +725,7 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // UUIDs still drive pruning to exactly two tservers.
   {
     const auto sql = Format(base_query,
-        Format("tserver_uuid IN ('$0', NULL, '$1') AND",
+        Format("server_uuid IN ('$0', NULL, '$1') AND",
                tserver0_uuid, tserver1_uuid));
     ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
               (std::set<std::string>{tserver0_uuid, tserver1_uuid}));
@@ -736,11 +736,11 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   // independently, the two branches together visit all three tservers
   // exactly once, and rows from each tserver appear in only one branch.
   const auto union_query = Format(
-      "SELECT tserver_uuid FROM \"gv$$partial_pg_stat_statements\" "
-      "WHERE tserver_uuid IN ('$0') AND query LIKE 'INSERT INTO tbl %' "
+      "SELECT server_uuid FROM \"gv$$partial_pg_stat_statements\" "
+      "WHERE server_uuid IN ('$0') AND query LIKE 'INSERT INTO tbl %' "
       "UNION ALL "
-      "SELECT tserver_uuid FROM \"gv$$partial_pg_stat_statements\" "
-      "WHERE tserver_uuid IN ('$1', '$2') AND query LIKE 'INSERT INTO tbl %'",
+      "SELECT server_uuid FROM \"gv$$partial_pg_stat_statements\" "
+      "WHERE server_uuid IN ('$1', '$2') AND query LIKE 'INSERT INTO tbl %'",
       tserver0_uuid, tserver1_uuid, tserver2_uuid);
   ASSERT_EQ(ASSERT_RESULT(plan_visits(union_query)), all_uuids);
   ASSERT_THAT(rpcs_per_tserver(union_query), ::testing::ElementsAre(1, 1, 1));

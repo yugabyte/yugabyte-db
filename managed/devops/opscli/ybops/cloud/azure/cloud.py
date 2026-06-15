@@ -36,6 +36,10 @@ class AzureCloud(AbstractCloud):
     def __init__(self):
         super(AzureCloud, self).__init__("azu")
         self.admin = None
+        # Azure VMs boot via cloud-init (#cloud-config custom_data), so wait for cloud-init
+        # to finish, same as AWS.
+        self._wait_for_startup_script_command = \
+            "until test -e /var/lib/cloud/instance/boot-finished ; do sleep 1 ; done"
 
     def get_admin(self):
         if self.admin is None:
@@ -156,7 +160,8 @@ class AzureCloud(AbstractCloud):
                                  nicId, tags, disk_iops, disk_throughput, spot_price,
                                  use_spot_instance, vm_params, disk_params, use_plan,
                                  capacity_reservation=capacity_reservation,
-                                 cloud_instance_types=args.cloud_instance_types)
+                                 cloud_instance_types=args.cloud_instance_types,
+                                 boot_script=args.boot_script)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
         return output
 

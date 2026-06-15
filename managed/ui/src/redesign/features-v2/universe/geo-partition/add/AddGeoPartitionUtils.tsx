@@ -380,13 +380,13 @@ export const prepareAddGeoPartitionPayload = (
         default_partition: isDefaultNewPartition,
         replication_factor: isDefaultNewPartition
           ? primaryCluster.replication_factor!
-          : getEffectiveReplicationFactorForResilience(gp.resilience)
+          : getEffectiveReplicationFactorForResilience(gp.resilience, gp.nodesAndAvailability)
       };
 
       // New default partition mirrors primary cluster placement unless AZs were configured in the wizard.
       if (isDefaultNewPartition) {
         if (hasConfiguredAvailabilityZones(azs)) {
-          const regionList = getPlacementRegions(gp.resilience, azs);
+          const regionList = getPlacementRegions(gp.resilience, azs, gp.nodesAndAvailability);
           return {
             ...base,
             placement: {
@@ -409,7 +409,7 @@ export const prepareAddGeoPartitionPayload = (
 
       // Match create-universe: per-AZ replication_factor sums to partition RF, drop 0-node AZs,
       // and map leader_preference from preffered.
-      const regionList = getPlacementRegions(gp.resilience, azs);
+      const regionList = getPlacementRegions(gp.resilience, azs, gp.nodesAndAvailability);
 
       return {
         ...base,

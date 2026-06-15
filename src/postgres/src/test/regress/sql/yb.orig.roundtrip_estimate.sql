@@ -124,6 +124,7 @@ set enable_seqscan = off;
 set enable_bitmapscan = off;
 set yb_enable_bitmapscan = off;
 set enable_sort = off;
+set max_parallel_workers_per_gather = 0;
 
 select * from queries order by qid;
 

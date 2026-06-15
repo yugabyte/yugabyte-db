@@ -17,6 +17,8 @@
 #include <string>
 #include <utility>
 
+#include "nodes/lockoptions.h"
+
 #include "yb/gutil/port.h"
 
 #include "yb/util/flags/flag_tags.h"
@@ -26,6 +28,8 @@
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_ybctid_reader.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
+
+DECLARE_bool(enable_wait_queues);
 
 namespace yb::pggate {
 namespace {
@@ -149,7 +153,11 @@ class PgFKReferenceCache::Impl {
           }
     });
     const auto ybctids = VERIFY_RESULT(batch.Read(
-        database_id, table_locality_map_, {.rowmark = ROW_MARK_KEYSHARE}));
+        database_id, table_locality_map_,
+        {.rowmark = ROW_MARK_KEYSHARE,
+         .pg_wait_policy = LockWaitBlock,
+         .docdb_wait_policy = FLAGS_enable_wait_queues ? WAIT_BLOCK : WAIT_ERROR
+        }));
     // In case all FK has been read successfully it is reasonable to move requested intents into
     // references instead of cleanup intents and create new elements in references.
     if (ybctids.size() == requested_read_count) {

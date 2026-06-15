@@ -21,6 +21,12 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 31688>}}
+| Potential for missing or spurious rows with multikey lookups larger than 64 bytes
+| {{<product "ysql">}}
+| {{<release "2025.2.0.0">}} to {{<release "2025.2.3.0">}}
+| {{<nobreak "5 June 2026">}}
+|
 | {{<ta 31533>}}
 | An xCluster target universe's YB-Master may crash when certain types of schema changes are applied after database upgrade
 | {{<product "ybdb">}}

@@ -493,7 +493,7 @@ TEST_F(PgConcurrentDDLsTest, ConcurrentCreateDropDatabase) {
 #endif
 
 // https://github.com/yugabyte/yugabyte-db/issues/30908
-class PgDdlTransactionBlockCrashTest : public LibPqTestBase {
+class PgDdlTransactionWithoutConcurrentDDLSupportTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
@@ -507,7 +507,7 @@ class PgDdlTransactionBlockCrashTest : public LibPqTestBase {
   }
 };
 
-TEST_F(PgDdlTransactionBlockCrashTest, ParallelDdlTransactionBlockCrash) {
+TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest, ParallelDdlTransactionBlockCrash) {
   auto conn = ASSERT_RESULT(Connect());
 
   std::atomic<bool> bug_reproduced{false};
@@ -589,5 +589,27 @@ TEST_F(PgDdlTransactionBlockCrashTest, ParallelDdlTransactionBlockCrash) {
   if (bug_reproduced.load(std::memory_order_acquire)) {
     FAIL() << "Bug 30908 was reproduced successfully! Status message: " << reproduced_msg;
   }
+}
+
+// Test that serialization error is properly translated to 40001 to the client
+// instead of internal error YB003.
+// See https://github.com/yugabyte/yugabyte-db/issues/31736
+
+TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest, TestReportProperSerializationErrorInRepeatableRead) {
+  auto conn0 = ASSERT_RESULT(Connect());
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // Create initial schema
+  ASSERT_OK(conn0.Execute("CREATE TABLE tab1 (id SERIAL PRIMARY KEY)"));
+  ASSERT_OK(conn0.Execute("CREATE TABLE tab2 (id SERIAL PRIMARY KEY)"));
+
+  // Execute concurrent (interleaved) DDL
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn1.Execute("ALTER TABLE tab1 ADD COLUMN new_col INT"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE tab2 ADD COLUMN new_col INT"));
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  ASSERT_NOK_STR_CONTAINS(conn2.Execute("COMMIT"), "pgsql error 40001");
 }
 }  // namespace yb::pgwrapper

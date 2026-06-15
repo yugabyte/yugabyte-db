@@ -710,9 +710,9 @@ void VerifyLogIndicies(MiniCluster* cluster) {
     auto peers = cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
 
     for (const auto& peer : peers) {
-      int64_t index = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
+      auto retain = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
       auto consensus = ASSERT_RESULT(peer->GetConsensus());
-      ASSERT_EQ(consensus->GetLastCommittedOpId().index, index);
+      ASSERT_EQ(consensus->GetLastCommittedOpId().index, retain.earliest_needed_log_index);
     }
   }
 }

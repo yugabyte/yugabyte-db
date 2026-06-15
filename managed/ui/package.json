@@ -140,7 +140,6 @@
     "leaflet.markercluster": "1.4.1",
     "lodash": "4.17.21",
     "moment": "2.26.0",
-    "moment-precise-range-plugin": "1.3.0",
     "moment-timezone": "0.5.43",
     "plotly.js-dist": "2.35.3",
     "pluralize": "8.0.0",

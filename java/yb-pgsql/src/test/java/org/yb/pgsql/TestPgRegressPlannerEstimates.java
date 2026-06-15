@@ -24,10 +24,12 @@ import org.yb.util.RequiresReleaseBuild;
  */
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressPlannerEstimates extends BasePgRegressTest {
-    // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     protected Map<String, String> getTServerFlags() {
         Map<String, String> flagMap = super.getTServerFlags();
+        // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
         flagMap.put("ysql_enable_auto_analyze", "false");
+        // Encourage memstore flush for stabilizing the execution metrics.
+        flagMap.put("memstore_size_mb", "1");
         return flagMap;
     }
 

@@ -31,6 +31,9 @@ DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_bool(TEST_running_test);
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+DECLARE_string(placement_zone);
 
 #define CALL_SYNC_LEADER_MASTER_RPC(method, req) \
   VERIFY_RESULT(SyncLeaderMasterRpc<master::BOOST_PP_CAT(method, ResponsePB)>( \
@@ -74,9 +77,17 @@ Status XClusterRemoteClientHolder::Init(const std::vector<HostPort>& remote_mast
   }
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
   messenger_->SetMetadataSerializerFactory(std::make_unique<ash::MetadataSerializerFactory>());
+  // Set the local process placement as the client's cloud info so that the address-selection
+  // logic (UsePublicIp) can honor the use_private_ip flag if specified.
+  CloudInfoPB cloud_info;
+  cloud_info.set_placement_cloud(FLAGS_placement_cloud);
+  cloud_info.set_placement_region(FLAGS_placement_region);
+  cloud_info.set_placement_zone(FLAGS_placement_zone);
+
   yb_client_ = VERIFY_RESULT(YBClientBuilder()
                                  .set_client_name(kClientName)
                                  .add_master_server_addr(master_addrs)
+                                 .set_cloud_info_pb(cloud_info)
                                  .skip_master_flagfile()
                                  .default_admin_operation_timeout(
                                      MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))

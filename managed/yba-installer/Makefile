@@ -32,7 +32,7 @@ CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 # get the perf advisor version to bundle
-PERF_ADVISOR_VERSION ?= 1.0.0-b27
+PERF_ADVISOR_VERSION ?= 1.1.0-b2
 PA_BINARY_NAME ?= perf_advisor-$(PERF_ADVISOR_VERSION).tar.gz
 PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-advisor/$(PERF_ADVISOR_VERSION)/$(PA_BINARY_NAME)
 
@@ -41,6 +41,9 @@ PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
 PROMETHEUS_VERSION ?= 3.10.0
+
+# Node Exporter Version
+NODE_EXPORTER_VERSION ?= 1.10.2
 
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
 POSTGRES_VERSION ?= 14.22
@@ -92,7 +95,8 @@ ${BIN_DIR}/${BIN_NAME}:
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PostgresVersion=${POSTGRES_VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PrometheusVersion=${PROMETHEUS_VERSION}' \
-	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PerfAdvisorVersion=${PERF_ADVISOR_VERSION}'"
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PerfAdvisorVersion=${PERF_ADVISOR_VERSION}' \
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.NodeExporterVersion=${NODE_EXPORTER_VERSION}'"
 
 
 package: ${PACKAGE_NAME}
