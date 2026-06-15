@@ -757,27 +757,49 @@ YbExecDoUpdateIndexTuple(ResultRelInfo *resultRelInfo,
 }
 
 static bool
-YbUniqueIndexKeyHasNull(IndexInfo *indexInfo,
-						 TupleTableSlot *slot,
-						 EState *estate)
+YbIndexKeyColumnsModifiedByPkeyUpdate(Relation indexRelation,
+									 TupleTableSlot *slot,
+									 bool is_pk_updated)
 {
-	Datum		values[INDEX_MAX_KEYS];
-	bool		isnull[INDEX_MAX_KEYS];
-	MemoryContext oldContext;
-	bool		result;
+	Form_pg_index indexData = indexRelation->rd_index;
 
-	Assert(indexInfo->ii_Unique);
+	if (!is_pk_updated)
+		return false;
 
-	oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+	/*
+	 * In non-unique indexes, ybidxbasectid is part of the index row key and
+	 * changes whenever the base table primary key changes.
+	 */
+	if (!indexData->indisunique)
+		return true;
 
-	GetPerTupleExprContext(estate)->ecxt_scantuple = slot;
-	FormIndexDatum(indexInfo, slot, estate, values, isnull);
+	/*
+	 * In unique indexes with NULLS NOT DISTINCT, ybuniqueidxkeysuffix is
+	 * always NULL, so a base table primary key update does not change the
+	 * index row key.
+	 */
+	if (indexData->indnullsnotdistinct)
+		return false;
 
-	result = YbIsAnyIndexKeyColumnNull(indexInfo, isnull);
+	for (int i = 0; i < indexData->indnkeyatts; i++)
+	{
+		AttrNumber	attnum = indexData->indkey.values[i];
 
-	MemoryContextSwitchTo(oldContext);
+		/*
+		 * Expression key columns have attnum 0. Avoid evaluating the
+		 * expression here; conservatively assume that it can be NULL.
+		 * This consequently leads to a less optimized scenario where
+		 * we do a DELETE+INSERT unnecessarily, but this favors safety
+		 * over speed. It would be possible to use something like
+		 * FormIndexDatum to look up the actual values, but that's an
+		 * expensive operation that would need to be optimized itself
+		 * if we were to call it very frequently.
+		 */
+		if (attnum <= 0 || slot_attisnull(slot, attnum))
+			return true;
+	}
 
-	return result;
+	return false;
 }
 
 List *
@@ -977,17 +999,13 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		}
 
 		/*
-		 * In the following scenarios, the index tuple can be modified (updated)
-		 * in-place, without the need to delete and reinsert the tuple:
-		 * - The index is a covering index (number of key columns < number of
-		 *   columns in the index), only the non-key columns need to be updated,
-		 *   and the primary key is not updated.
-		 * - The index is a unique index and only the non-key columns of the
-		 *   index need to be updated. Primary key updates are also safe unless
-		 *   the hidden unique index key suffix depends on the base row ybctid.
+		 * In-place index tuple updates are possible only when the index tuple has
+		 * non-key columns to update, or when a unique index needs only its
+		 * ybbasectid value updated. Non-unique indexes without non-key columns
+		 * have no value columns to update in-place.
 		 */
-		if ((indexData->indnkeyatts == indexData->indnatts || is_pk_updated) &&
-			(!indexData->indisunique))
+		if (indexData->indnkeyatts == indexData->indnatts &&
+			!indexData->indisunique)
 		{
 			deleteIndexes = lappend_int(deleteIndexes, i);
 			insertIndexes = lappend_int(insertIndexes, i);
@@ -1045,15 +1063,14 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		}
 
 		/*
-		 * Unique indexes that use NULLS DISTINCT semantics store
-		 * ybuniqueidxkeysuffix as the base table ybctid whenever any key column
-		 * is NULL.  That suffix is part of the index row key, so a primary key
-		 * update changes the index row key and must be modeled as DELETE + INSERT
-		 * rather than an in-place UPDATE.
+		 * A base table primary key update can modify hidden index key columns
+		 * even when the user-visible index key columns are unchanged. Non-unique
+		 * indexes use ybidxbasectid as part of the index row key. Unique indexes
+		 * that use NULLS DISTINCT semantics store ybuniqueidxkeysuffix as the base
+		 * table ybctid whenever any key column is NULL.
 		 */
-		if (is_pk_updated && indexData->indisunique &&
-			!indexData->indnullsnotdistinct &&
-			YbUniqueIndexKeyHasNull(indexInfo, slot, estate))
+		if (YbIndexKeyColumnsModifiedByPkeyUpdate(indexRelation, slot,
+												 is_pk_updated))
 		{
 			deleteIndexes = lappend_int(deleteIndexes, i);
 			insertIndexes = lappend_int(insertIndexes, i);

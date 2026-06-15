@@ -1572,11 +1572,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 1 WHERE k1 = 2;
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 3
+ Storage Write Requests: 4
  Storage Flush Requests: 1
 (13 rows)
 
@@ -1590,11 +1590,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10 WHERE k1 = 3
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 3
+ Storage Write Requests: 4
  Storage Flush Requests: 1
 (13 rows)
 
@@ -1608,11 +1608,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 5, v3 = v3 + 5 
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 3
+ Storage Write Requests: 4
  Storage Flush Requests: 1
 (13 rows)
 
@@ -1772,11 +1772,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 2
+         Storage Index Write Requests: 3
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 4
+ Storage Write Requests: 5
  Storage Flush Requests: 1
 (13 rows)
 
@@ -1790,11 +1790,11 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 2
+         Storage Index Write Requests: 3
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 4
+ Storage Write Requests: 5
  Storage Flush Requests: 1
 (13 rows)
 
