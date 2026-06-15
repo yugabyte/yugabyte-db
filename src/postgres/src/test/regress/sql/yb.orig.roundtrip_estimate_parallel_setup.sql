@@ -45,6 +45,7 @@ create type index_plan_rows as (
     "Storage Index Filter" text,
     "Storage Filter" text,
     "Filter" text,
+    "Actual Loops" float8,
     "Plan Rows" float8,
     "Total Cost" float8,
     "Estimated Table Roundtrips" float8,
@@ -303,7 +304,10 @@ select
     act_index "Storage Index Read Requests",
     estimated_roundtrips "Estimated Roundtrips",
     actual_roundtrips "Actual Roundtrips",
-    case when error_roundtrips > 0.05 and abs(diff_roundtrips) > 1 then
+    -- Tolerance includes EXPLAIN's integer per-loop counter rounding, which can
+    -- accumulate up to one read request per loop across parallel executors.
+    case when error_roundtrips > 0.05
+            and abs(diff_roundtrips) > greatest(1.0, actual_loops) then
         'failed' else 'passed' end "Total Estimates",
     case
         when scan_kind = 'pk'
@@ -339,6 +343,7 @@ from (
             else 'idx'
         end scan_kind,
         "Index Cond",
+        coalesce("Actual Loops", 1) actual_loops,
         coalesce("Estimated Table Roundtrips", 0) est_table,
         coalesce("Estimated Index Roundtrips", 0) est_index,
         coalesce("Storage Table Read Requests", 0) act_table,
