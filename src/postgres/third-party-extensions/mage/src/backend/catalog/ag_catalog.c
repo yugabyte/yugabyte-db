@@ -35,6 +35,7 @@
 #include "utils/ag_cache.h"
 
 /* YB includes */
+#include "commands/extension.h"
 #include "commands/graph_commands.h"
 
 static object_access_hook_type prev_object_access_hook;
@@ -147,7 +148,17 @@ static bool is_age_drop(PlannedStmt *pstmt)
             char *str = val->sval;
 
             if (!pg_strcasecmp(str, "mage")) /* YB */
+            {
+                /*
+                 * YB: The AGE-specific drop path (drop_age_extension) enumerates
+                 * graphs from the mag_catalog.ag_graph table. When the mage
+                 * extension is not installed, that lookup errors out.
+                 */
+                if (!OidIsValid(get_extension_oid("mage", true /* missing_ok */ )))
+                    return false;
+
                 return true;
+            } /* YB */
         }
     }
 
