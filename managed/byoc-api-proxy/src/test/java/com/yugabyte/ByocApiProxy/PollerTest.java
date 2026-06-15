@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,6 +30,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -71,7 +73,8 @@ class PollerTest {
             });
     when(yba.uuid()).thenReturn(YBA_UUID);
     when(yba.baseUrl()).thenReturn("http://yba.test");
-    when(proxiedApp.pollBatchSize()).thenReturn(10);
+    lenient().when(proxiedApp.pollBatchSize()).thenReturn(10);
+    lenient().when(proxiedApp.readTimeout()).thenReturn(Duration.ofSeconds(30));
     when(defaultClient.getBasePath()).thenReturn("http://proxied.test/api");
 
     poller =
@@ -82,7 +85,7 @@ class PollerTest {
   @AfterEach
   void tearDown() throws Exception {
     poller.destroy();
-    executor.shutdown();
+    executor.shutdownNow();
     executor.awaitTermination(5, TimeUnit.SECONDS);
     while (Thread.interrupted()) {
       Thread.interrupted();
@@ -201,7 +204,7 @@ class PollerTest {
     verify(httpClient).send(reqCaptor.capture(), any());
     HttpRequest built = reqCaptor.getValue();
     assertEquals("POST", built.method());
-    assertEquals(URI.create(uri), built.uri());
+    assertEquals(URI.create("http://yba.test/post"), built.uri());
     assertTrue(built.headers().firstValue("Content-Type").orElse("").contains("application/json"));
   }
 
@@ -273,6 +276,18 @@ class PollerTest {
     poller.run();
 
     verify(requestApi).postQueuedHttpRequestResponse(any(), any());
+  }
+
+  @Test
+  void run_authenticateThrowsApiExceptionWithConnectExceptionCause_logsWarn() throws Exception {
+    ApiException conn =
+        new ApiException("conn", new ConnectException("refused"), 500, Map.of(), "");
+    doThrow(conn).when(authenticator).authenticate(defaultClient);
+
+    poller.run();
+
+    verify(requestApi, never()).listPendingQueuedHttpRequests(any(), any());
+    verify(requestApi, never()).postQueuedHttpRequestResponse(any(), any());
   }
 
   @Test
