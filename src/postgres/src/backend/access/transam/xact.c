@@ -6863,6 +6863,7 @@ YbClearParallelContexts()
 	TransactionState s = CurrentTransactionState;
 
 	Assert(IsInParallelMode());
+	ConditionVariableCancelSleep();
 	if (s->subTransactionId == InvalidSubTransactionId)
 		AtEOXact_Parallel(false);
 	else
