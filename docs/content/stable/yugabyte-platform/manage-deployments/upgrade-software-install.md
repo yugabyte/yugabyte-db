@@ -152,7 +152,7 @@ To finalize an upgrade, do the following:
 
 Canary upgrade is not supported on Kubernetes-based universes.
 
-While in Early Access, canary upgrade is not available by default. To make it available, set the **Enable Canary Upgrade** Global Runtime Configuration option (config key `yb.upgrade.enable_canary_upgrade`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+While in Early Access, canary upgrade is not available by default. To make it available, set the **Enable Canary Upgrade** Universe Runtime Configuration option (config key `yb.upgrade.enable_canary_upgrade`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
 You perform a canary upgrade on a live universe deployment as follows:
 
@@ -173,7 +173,7 @@ You perform a canary upgrade on a live universe deployment as follows:
 
         Pausing after the first AZ is upgraded is recommended so that you can evaluate and rollback early if needed.
 
-        Pause after all masters is also recommended. When set, YugabyteDB Anywhere stops after every master is upgraded, so you can validate leader health and metadata before TServers are restarted.
+        Pause after all Masters is also recommended. When set, YugabyteDB Anywhere stops after every Master is upgraded, so you can validate leader health and metadata before TServers are restarted.
 
 1. Configure the **Upgrade Pace**.
 
@@ -181,7 +181,7 @@ You perform a canary upgrade on a live universe deployment as follows:
 
 1. Click **Upgrade**.
 
-While the upgrade is in progress, you can monitor progress by clicking **Open Upgrade Monitor**.
+While the upgrade is in progress, a banner is displayed at the top of the window. To monitor progress, click **Open Upgrade Monitor** on the banner to display the **Upgrade Monitor**.
 
 When YugabyteDB Anywhere reaches a pause point, the universe status is _Paused_, and the upgrade task stops until you act.
 
@@ -200,7 +200,7 @@ To resume, in the **Upgrade Monitor**, click **Resume Upgrade**. Do not resume a
 
 If the upgrade task fails (universe status _Upgrade Failed_, not merely _Paused_), **Retry** the task to start a new upgrade run linked to the failed one. Zones already upgraded during the earlier attempt are preserved and skipped.
 
-If the failure happens in between the upgrade steps reported in the upgrade monitor side panel (that is, universe status reports the failure and there is a failure task banner), review the software upgrade task in the **Task** tab.
+If the failure happens in between the upgrade steps reported in the upgrade monitor side panel (that is, universe status reports the failure and there is a failure task banner), review the software upgrade task in the **Task** tab. To roll back the upgrade, go to universe **Actions>Roll Back Upgrade**.
 
 ## Upgrades with xCluster and xCluster DR
 
