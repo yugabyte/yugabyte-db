@@ -49,32 +49,13 @@ If the table is colocated, its index is also colocated; if the table is not colo
 
 ### Partitioned indexes
 
+#### Creating indexes concurrently on partitioned tables
+
 Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
 
 - Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
 - [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
-- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)). As a workaround, you can use the [ONLY](#only) keyword to create indexes on child partitions separately, as described in that section.
-- To rebuild indexes on partitioned tables online, see [Recreate a partitioned index](#recreate-a-partitioned-index).
-
-### UNIQUE
-
-Enforce that duplicate values in a table are not allowed.
-
-### CONCURRENTLY
-
-Enable the use of online index backfill (see [Semantics](#semantics) for details), with some restrictions:
-
-- When creating an index on a temporary table, online schema migration is disabled.
-- CREATE INDEX CONCURRENTLY is not supported for partitioned tables.
-- CREATE INDEX CONCURRENTLY is not supported inside a transaction block.
-
-### NONCONCURRENTLY
-
-Disable online index backfill (see [Semantics](#semantics) for details).
-
-### ONLY
-
-Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.
+- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)). As a workaround, you can use the [ONLY](#only) keyword to create indexes on child partitions separately.
 
 When recursion is disabled using ONLY, the index is created in an INVALID state on only the (parent) partitioned table. To make the index valid, corresponding indexes have to be created on each of the existing partitions and attached to the parent index using `ALTER INDEX parent_index ... ATTACH PARTITION child_index`. For example:
 
@@ -120,6 +101,72 @@ Indexes:
     "parent_index" lsm (c1 HASH, c2 ASC)
 Number of partitions: 2 (Use \d+ to list them.)
 ```
+
+#### Recreating unique index constraints concurrently on partitioned tables
+
+Suppose you have a partitioned table where the parent has a unique constraint.
+To recreate indexes, you should avoid directly creating an index on the partitioned table (parent table) because that cannot use `CONCURRENTLY`.
+Follow these steps to recreate a partition index online:
+
+```plpgsql
+-- Set up example
+CREATE TABLE parent (i int UNIQUE) PARTITION BY RANGE (i);
+CREATE TABLE child0 PARTITION OF parent FOR VALUES FROM (0) TO (100000);
+CREATE TABLE child1 PARTITION OF parent FOR VALUES FROM (100000) TO (200000);
+CREATE TABLE child2 PARTITION OF parent FOR VALUES FROM (200000) TO (300000);
+INSERT INTO parent VALUES (generate_series(0, 299999));
+
+-- 1. Build standalone unique index (slow, but non-blocking)
+CREATE UNIQUE INDEX CONCURRENTLY child0_i_unique ON child0 (i);
+-- 2. Add CHECK constraint matching partition bounds (fast: no scan)
+ALTER TABLE child0 ADD CONSTRAINT child0_partition_check
+  CHECK (i IS NOT NULL AND i >= 0 AND i < 100000) NOT VALID;
+-- 3. Validate the CHECK (slow, but non-blocking on parent)
+ALTER TABLE child0 VALIDATE CONSTRAINT child0_partition_check;
+-- 4. Lock the parent to prevent queries from missing the partition's data
+--    while it is detached.
+BEGIN;
+LOCK TABLE parent IN ACCESS EXCLUSIVE MODE;
+-- 5. Detach (fast)
+ALTER TABLE parent DETACH PARTITION child0;
+-- 6. Drop inherited constraint (fast: drops old backing index)
+ALTER TABLE child0 DROP CONSTRAINT child0_i_key;
+-- 7. Promote standalone index to a constraint (fast: no rebuild)
+ALTER TABLE child0 ADD CONSTRAINT child0_i_key UNIQUE USING INDEX child0_i_unique;
+-- 8. Reattach (fast: CHECK and UNIQUE already satisfy parent)
+ALTER TABLE parent ATTACH PARTITION child0 FOR VALUES FROM (0) TO (100000);
+COMMIT;
+-- 9. Drop temporary CHECK constraint
+ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
+```
+
+Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
+
+{{< note title="Note" >}}
+Step 4 to lock the parent is optional if there are no reads or writes against the parent table while the partition is detached, and it requires enabling object locking (supported from YugabyteDB {{<release "2025.2">}} or later).
+To enable the feature, set the YB-TServer flags `enable_object_locking_for_table_locks=true` and `ysql_yb_ddl_transaction_block_enabled=true`.
+Refer to [Enable table-level locks](../../../../../explore/transactions/explicit-locking/#enable-table-level-locks) for more details.
+{{< /note >}}
+
+### UNIQUE
+
+Enforce that duplicate values in a table are not allowed.
+
+### CONCURRENTLY
+
+Enable the use of online index backfill (see [Semantics](#semantics) for details), with some restrictions:
+
+- When creating an index on a temporary table, online schema migration is disabled.
+- CREATE INDEX CONCURRENTLY is not supported for partitioned tables.
+- CREATE INDEX CONCURRENTLY is not supported inside a transaction block.
+
+### NONCONCURRENTLY
+
+Disable online index backfill (see [Semantics](#semantics) for details).
+
+### ONLY
+
+Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.
 
 ### *access_method_name*
 
@@ -372,52 +419,6 @@ DROP INDEX uniqueerror_i_idx;
 ```output
 DROP INDEX
 ```
-
-### Recreate a partition index
-
-Suppose you have a partitioned table where the parent has a unique constraint.
-To recreate indexes, you should avoid directly creating an index on the partitioned table (parent table) because that cannot use `CONCURRENTLY`.
-Follow these steps to recreate a partition index online:
-
-```plpgsql
--- Set up example
-CREATE TABLE parent (i int UNIQUE) PARTITION BY RANGE (i);
-CREATE TABLE child0 PARTITION OF parent FOR VALUES FROM (0) TO (100000);
-CREATE TABLE child1 PARTITION OF parent FOR VALUES FROM (100000) TO (200000);
-CREATE TABLE child2 PARTITION OF parent FOR VALUES FROM (200000) TO (300000);
-INSERT INTO parent VALUES (generate_series(0, 299999));
-
--- 1. Build standalone unique index (slow, but non-blocking)
-CREATE UNIQUE INDEX CONCURRENTLY child0_i_unique ON child0 (i);
--- 2. Add CHECK constraint matching partition bounds (fast: no scan)
-ALTER TABLE child0 ADD CONSTRAINT child0_partition_check
-  CHECK (i IS NOT NULL AND i >= 0 AND i < 100000) NOT VALID;
--- 3. Validate the CHECK (slow, but non-blocking on parent)
-ALTER TABLE child0 VALIDATE CONSTRAINT child0_partition_check;
--- 4. Lock the parent to prevent queries from missing the partition's data
---    while it is detached.
-BEGIN;
-LOCK TABLE parent IN ACCESS EXCLUSIVE MODE;
--- 5. Detach (fast)
-ALTER TABLE parent DETACH PARTITION child0;
--- 6. Drop inherited constraint (fast: drops old backing index)
-ALTER TABLE child0 DROP CONSTRAINT child0_i_key;
--- 7. Promote standalone index to a constraint (fast: no rebuild)
-ALTER TABLE child0 ADD CONSTRAINT child0_i_key UNIQUE USING INDEX child0_i_unique;
--- 8. Reattach (fast: CHECK and UNIQUE already satisfy parent)
-ALTER TABLE parent ATTACH PARTITION child0 FOR VALUES FROM (0) TO (100000);
-COMMIT;
--- 9. Drop temporary CHECK constraint
-ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
-```
-
-Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
-
-{{< note title="Note" >}}
-Step 4 to lock the parent is optional if there are no reads or writes against the parent table while the partition is detached, and it requires enabling object locking (supported from YugabyteDB {{<release "2025.2">}} or later).
-To enable the feature, set the YB-TServer flags `enable_object_locking_for_table_locks=true` and `ysql_yb_ddl_transaction_block_enabled=true`.
-Refer to [Enable table-level locks](../../../../../explore/transactions/explicit-locking/#enable-table-level-locks) for more details.
-{{< /note >}}
 
 ### Common errors and solutions
 
