@@ -48,7 +48,7 @@ For more information on flags used to configure the Auto Analyze service, refer 
 
 ### Storage configuration parameters
 
-You can configure these settings per-table using ALTER TABLE [storage parameters](../../api/ysql/the-sql-language/statements/ddl_alter_table/#set-param-param) (also known as relopts). Per-table storage parameters take precedence over the values specified via flags.
+You can configure these settings per-table using ALTER TABLE [storage parameters](../../api/ysql/the-sql-language/statements/ddl_alter_table/#set-param-param) (also known as relopts) (v2025.2.4.0 and later). Per-table storage parameters take precedence over the values specified via flags.
 
 The following table shows the Auto Analyze flags and their corresponding parameter.
 
@@ -77,7 +77,6 @@ ALTER TABLE unused_table SET(
   yb_auto_analyze_enabled = false
 );
 ```
-
 
 ## Example
 
