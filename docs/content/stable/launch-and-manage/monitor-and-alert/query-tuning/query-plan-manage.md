@@ -9,8 +9,6 @@ menu:
     identifier: query-plan-manage
     parent: query-tuning
     weight: 600
-tags:
-  feature: early-access
 type: docs
 ---
 
@@ -33,7 +31,7 @@ QPM features are available in v2025.2.3 and later.
 
 ## Prerequisites
 
-QPM is available in v2025.2.3.0 and later. While in Early Access, QPM is disabled by default.
+QPM is available in v2025.2.3.0 and later.
 
 To enable QPM, you set the `yb_pg_stat_plans_track` configuration parameter to `top` or `all`. For more information on configuring QPM, see [Configure QPM](#configure-qpm).
 
