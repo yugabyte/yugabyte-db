@@ -324,7 +324,7 @@ TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedPerformance, PgSkipLockedOptimiza
   }
 }
 
-// The test checks absence of undesired locks in case of JOIN
+// The test checks correctness and absence of undesired locks in case of JOIN
 TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedJoinLockOrder, PgSkipLockedOptimizationTest) {
   auto conn = ASSERT_RESULT(Connect());
   auto aux_conn = ASSERT_RESULT(Connect());
@@ -374,6 +374,48 @@ TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedJoinLockOrder, PgSkipLockedOptimi
           rows, (decltype(rows){expected_rows}),
           IllegalState, Format("Unexpected rows in table $0", table_name));
     }
+    return conn.CommitTransaction();
+  };
+  ASSERT_OK(checker(/* batching = */ false));
+  ASSERT_OK(checker(/* batching = */ true));
+}
+
+// The test checks correctness and absence of undesired locks in case of nested LockRows nodes
+TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedNestedLockRowsNodes, PgSkipLockedOptimizationTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto aux_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (k INT, v INT, PRIMARY KEY(k ASC));" \
+      "CREATE TABLE t2 (k INT, v INT, PRIMARY KEY(k ASC));" \
+      "INSERT INTO t1 VALUES(1, 1), (2, 2), (3, 3), (4, 4), (5, 5);" \
+      "INSERT INTO t2 VALUES(1, 10), (2, 20), (3, 30), (4, 40), (5, 50);"));
+  auto checker = [&conn, &aux_conn](bool batching) -> Status {
+    RETURN_NOT_OK(
+        batching ? SetExplicitRowLockMaxReadAhead(conn, 3) : DisableExplicitRowLockReadAhead(conn));
+    RETURN_NOT_OK(aux_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    VERIFY_RESULT(aux_conn.FetchRow<int32_t>("SELECT k FROM t1 WHERE k = 2 FOR UPDATE"));
+    VERIFY_RESULT(aux_conn.FetchRow<int32_t>("SELECT k FROM t2 WHERE k = 4 FOR UPDATE"));
+
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    auto rows = VERIFY_RESULT((conn.FetchRows<int32_t, int32_t>(
+        "SELECT t1.k, sub.v FROM " \
+        "    t1 INNER JOIN " \
+        "    (SELECT * FROM t2 FOR UPDATE SKIP LOCKED) AS sub ON (t1.k = sub.k) " \
+        "FOR UPDATE SKIP LOCKED")));
+    SCHECK_EQ(rows, (decltype(rows){{1, 10}, {3, 30}, {5, 50}}), IllegalState, "Unexpected values");
+    RETURN_NOT_OK(aux_conn.CommitTransaction());
+
+    auto t1_non_locked_rows =
+        VERIFY_RESULT(aux_conn.FetchRows<int32_t>("SELECT k FROM t1 FOR UPDATE SKIP LOCKED"));
+    SCHECK_EQ(
+        t1_non_locked_rows, (decltype(t1_non_locked_rows){2, 4}),
+        IllegalState, "Unexpected row locks state in table t1");
+
+    auto t2_non_locked_rows =
+        VERIFY_RESULT(aux_conn.FetchRows<int32_t>("SELECT k FROM t2 FOR UPDATE SKIP LOCKED"));
+    SCHECK_EQ(
+        t2_non_locked_rows, (decltype(t1_non_locked_rows){4}),
+        IllegalState, "Unexpected row locks state in table t2");
     return conn.CommitTransaction();
   };
   ASSERT_OK(checker(/* batching = */ false));
