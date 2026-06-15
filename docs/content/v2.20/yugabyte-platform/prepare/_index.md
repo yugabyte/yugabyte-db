@@ -41,8 +41,8 @@ To prepare your infrastructure for YugabyteDB Anywhere, you need to do the follo
 
   You must prepare a server where you will install YugabyteDB Anywhere. This server must meet the following prerequisites:
 
-  - Minimum hardware requirements for architecture, CPU, and disk
-  - Minimum software requirements, including Linux OS and additional software and utilities
+  - [Minimum hardware requirements](./server-yba/#hardware-requirements) for architecture, CPU, and disk
+  - [Minimum software requirements](./server-yba/#software-requirements), including Linux OS and additional software and utilities
 
 - [Prepare servers for database nodes](./server-nodes/)
 
