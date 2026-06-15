@@ -1471,6 +1471,16 @@ TEST_F(DistTraceTest, TestSpiTracingBasic) {
   ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_basic()"));
 
   ASSERT_OK(collector_.VerifyTraceContainsOpName(tp.trace_id, "spi.query"));
+
+  // The spi.query span should carry the SQL executed via SPI in its
+  // "spi.query.text" attribute. plpgsql strips the "INTO v" target, so the
+  // recorded statement contains the "SELECT 1" expression it ran.
+  auto spi_span = collector_.FindSpanByNamePrefix(tp.trace_id, "spi.query");
+  ASSERT_TRUE(spi_span.has_value()) << "spi.query span not found";
+  auto statement_it = spi_span->str_attrs.find("spi.query.text");
+  ASSERT_NE(statement_it, spi_span->str_attrs.end())
+      << "spi.query.text attribute missing on spi.query span";
+  ASSERT_STR_CONTAINS(statement_it->second, "SELECT 1");
 }
 
 // Verifies that a function making N SPI calls produces at least N "spi.query" spans.
