@@ -1114,6 +1114,11 @@ typedef struct YbcReplicationInfo {
 
 typedef uint64_t YbcIsExplicitlyLockedRowSkippedCheckHandle;
 
+typedef struct YbcIsExplicitlyLockedRowSkippedCheckHandleOptional {
+  bool has_value;
+  YbcIsExplicitlyLockedRowSkippedCheckHandle value;
+} YbcIsExplicitlyLockedRowSkippedCheckHandleOptional;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

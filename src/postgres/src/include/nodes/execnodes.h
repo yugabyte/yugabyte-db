@@ -3046,7 +3046,7 @@ typedef struct YbLockRowsStateInfo {
 	Tuplestorestate *buffered_slots;
 	uint16_t buffered_slots_capacity;
 	uint16_t buffered_slot_index;
-	YbcIsExplicitlyLockedRowSkippedCheckHandle *check_handles;
+	YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *check_handles;
 	bool bounded;
 	uint64_t bound;
 	uint64_t rows_fetched;
