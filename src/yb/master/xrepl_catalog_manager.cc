@@ -5287,7 +5287,7 @@ Status CatalogManager::CleanupStaleCDCStreams(
     // we will use these tablet ids to fetch tablet info
     std::unordered_set<TabletId> tablet_ids;
     for (const auto& key : all_entry_keys) {
-      // ignore system tablets
+      // Ignore sys catalog tablet and slot entry.
       if (key.tablet_id == kCDCSDKSlotEntryTabletId || key.tablet_id == kSysCatalogTabletId) {
         continue;
       }
