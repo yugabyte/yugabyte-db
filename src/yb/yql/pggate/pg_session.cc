@@ -1540,13 +1540,6 @@ Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
     return Status::OK();
   }
   tserver::PgReleaseSessionObjectLockRequestPB req;
-  std::string lock_id_str;
-  YbcFlushDebugContext debug_context {};
-  debug_context.reason = YbcFlushReason::YB_RELEASE_SESSION_OBJECT_LOCK;
-  if (yb_debug_log_docdb_requests) {
-    lock_id_str = ToString(lock_id);
-    debug_context.strarg1 = lock_id_str.c_str();
-  }
   if (release_all) {
     req.set_release_all(true);
   } else {
