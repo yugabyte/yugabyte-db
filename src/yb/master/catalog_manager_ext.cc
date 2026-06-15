@@ -2063,7 +2063,8 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
                                         ExternalTableSnapshotData* table_data,
                                         const LeaderEpoch& epoch,
-                                        bool is_clone) {
+                                        bool is_clone,
+                                        bool tablet_partitions_changed) {
   DCHECK_EQ(table->id(), table_data->new_table_id);
   if (table->GetTableType() != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(InvalidArgument,
@@ -2180,9 +2181,10 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 
     // Change table's partition schema to the external snapshot's.
     auto& table_pb = table_lock.mutable_data()->pb;
-    table_pb.mutable_partition_schema()->CopyFrom(
-        table_data->table_entry_pb.partition_schema());
-    table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
+    table_pb.mutable_partition_schema()->CopyFrom(table_data->table_entry_pb.partition_schema());
+    if (tablet_partitions_changed) {
+      table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
+    }
 
     // Remove old tablets from TableInfo.
     VERIFY_RESULT(table->RemoveTablets(old_tablets));
@@ -2408,28 +2410,27 @@ Status CatalogManager::ImportTableEntry(
 
     if (table_data->num_tablets > 0) {
       if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
-        bool needs_repartition = false;
-        if (new_num_tablets != table_data->num_tablets || is_clone) {
-          needs_repartition = true;
-        } else {
+        bool tablet_partitions_changed = new_num_tablets != table_data->num_tablets;
+        if (!tablet_partitions_changed) {
           // Check if partition boundaries match.  Only check the starts; assume the ends are fine.
-          size_t i = 0;
-          vector<PartitionKey> partition_starts(table_data->num_tablets);
+          std::vector<PartitionKey> partition_starts;
+          partition_starts.reserve(table_data->num_tablets);
           for (const auto& [_, partition_pb] : table_data->old_tablets) {
-            partition_starts[i] = partition_pb.partition_key_start();
+            auto i = partition_starts.size();
+            partition_starts.push_back(partition_pb.partition_key_start());
             LOG_IF(DFATAL, (i == 0) ? partition_starts[i] != ""
                                     : partition_starts[i] <= partition_starts[i-1])
                 << "Wrong partition key start: " << b2a_hex(partition_starts[i]);
-            i++;
           }
           if (!table->HasPartitions(partition_starts)) {
             LOG_WITH_FUNC(INFO) << "Partition boundaries mismatch for table " << table->id();
-            needs_repartition = true;
+            tablet_partitions_changed = true;
           }
         }
 
-        if (needs_repartition) {
-          RETURN_NOT_OK(RepartitionTable(table, table_data, epoch, is_clone));
+        if (tablet_partitions_changed || is_clone) {
+          RETURN_NOT_OK(
+              RepartitionTable(table, table_data, epoch, is_clone, tablet_partitions_changed));
         }
       } else { // not PGSQL_TABLE_TYPE
         if (new_num_tablets != table_data->num_tablets) {
@@ -2798,6 +2799,34 @@ Status CatalogManager::UpdateColocatedUserTableInfo(
     tablet->AddTableId(table_data->new_table_id);
 
     new_tablet_lock.Commit();
+  }
+
+  // Update partition_list_version for the child table.
+  {
+    // Acquire write locks of both child and parent to block tablet splits from simultaneously
+    // updating partition_list_version.
+    std::vector<TableInfo::WriteLock> locks;
+    locks.reserve(2);
+    TableInfo::WriteLock* table_lock;
+    TableInfo::WriteLock* parent_lock;
+    if (table->id() < parent_table->id()) {
+      locks.push_back(table->LockForWrite());
+      locks.push_back(parent_table->LockForWrite());
+      table_lock = &locks[0];
+      parent_lock = &locks[1];
+    } else {
+      locks.push_back(parent_table->LockForWrite());
+      locks.push_back(table->LockForWrite());
+      parent_lock = &locks[0];
+      table_lock = &locks[1];
+    }
+    if (table_lock->data().pb.partition_list_version() !=
+        parent_lock->data().pb.partition_list_version()) {
+      table_lock->mutable_data()->pb.set_partition_list_version(
+          parent_lock->data().pb.partition_list_version());
+      RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+      table_lock->Commit();
+    }
   }
 
   // Send AsyncAddTableToTablet so each tserver registers this colocated secondary table on the new

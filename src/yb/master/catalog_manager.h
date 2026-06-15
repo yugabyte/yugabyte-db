@@ -2889,7 +2889,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfoPtr& table,
       ExternalTableSnapshotData* table_data,
       const LeaderEpoch& epoch,
-      bool is_clone);
+      bool is_clone,
+      bool tablet_partitions_changed);
   Status ImportTableEntry(
       const NamespaceMap& namespace_map,
       const UDTypeMap& type_map,
