@@ -27,13 +27,7 @@ Query plan management (QPM) serves two main objectives:
 
 Because plans can change over time (you turn on the cost-based optimizer, for example), there is a chance a new plan for a query degrades performance. QPM provides views that capture all unique plans for a query so that you can look back and see when a plan changed. The entry for the old plan includes hints that can generate the same plan. You can then insert those hints into the hint plan table and get the old better-performing plan back.
 
-QPM features are available in v2025.2.3 and later.
-
-## Prerequisites
-
-QPM is available in v2025.2.3.0 and later.
-
-To enable QPM, you set the `yb_pg_stat_plans_track` configuration parameter to `top` or `all`. For more information on configuring QPM, see [Configure QPM](#configure-qpm).
+QPM features are available in v2025.2.3 and later. Starting in v2026.1.0.0, QPM is enabled by default with the `yb_pg_stat_plans_track` configuration parameter set to  `all`. For more information on configuring QPM, see [Configure QPM](#configure-qpm).
 
 ## Using QPM
 
@@ -351,7 +345,7 @@ Use the following [YSQL configuration parameters](../../../../reference/configur
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
-| `yb_pg_stat_plans_track` | Turns tracking on or off. Valid values are:<ul><li>none: no plans are tracked, disables QPM.</li><li>top: track only top-level (non-nested) statements.</li><li>all: track all statements.</li></ul> | none |
+| `yb_pg_stat_plans_track` | Turns tracking on or off. Valid values are:<ul><li>none: no plans are tracked, disables QPM.</li><li>top: track only top-level (non-nested) statements.</li><li>all: track all statements.</li></ul> | all |
 | `yb_pg_stat_plans_max_cache_size` | Specifies the Maximum number of entries to store (1-50000). | 5000 |
 | `yb_pg_stat_plans_cache_replacement_algorithm` | Controls the eviction policy used by QPM once the number of entries reaches yb_pg_stat_plans_max_cache_size. Valid values are:<ul><li>`simple_clock_lru` - uses an efficient simulation of clock-based Least Recently Used (LRU) algorithm to find the entry to evict.</li><li>`true_lru` - evicts the entry with the oldest last_used value (less efficient but finds the actual oldest entry).</li></ul> Requires restart. | simple_clock_lru |
 | `yb_pg_stat_plans_track_catalog_queries` | Controls tracking of statements referencing catalog tables. | true |
