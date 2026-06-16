@@ -858,6 +858,16 @@ StartBackgroundWorker(void)
 	 */
 	BaseInit();
 
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		const char *background_worker_name =
+			worker->bgw_name[0] != '\0' ? worker->bgw_name : "[unknown]";
+
+		YBC_LOG_INFO("Started %s with pid: %d",
+					 background_worker_name,
+					 MyProcPid);
+	}
+
 	/*
 	 * Look up the entry point function, loading its library if necessary.
 	 */

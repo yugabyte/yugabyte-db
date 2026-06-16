@@ -523,7 +523,6 @@ PgClient::ProxyInitInfo MakeProxyInitInfo(
                           tserver_shared_data.endpoint().port());
     result.resolve_cache_timeout = MonoDelta::kMax;
   }
-  LOG(INFO) << "Using TServer host_port: " << result.host_port;
   return result;
 }
 
