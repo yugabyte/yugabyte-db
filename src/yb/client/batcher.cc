@@ -928,8 +928,10 @@ void Batcher::HandleAsyncWriteResponse(
   if (transaction->RecordAsyncWrite(tablet.tablet_id(), op_id)) {
     // Multiple write operations can get combined into the same async write RPC resulting in
     // duplicate OpIds.
+    // We need to be able to track this tablet across splits, so pass in the tablet's key_start.
     auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
-        shared_from_this(), tablet.tablet_id(), table, op_id);
+        shared_from_this(), tablet.tablet_id(), tablet.partition().partition_key_start(), table,
+        op_id);
     wait_for_async_write_rpc->SendRpc();
   }
 }

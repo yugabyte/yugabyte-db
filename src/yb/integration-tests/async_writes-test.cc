@@ -11,10 +11,16 @@
 // under the License.
 //
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
+
+#include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -343,6 +349,18 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
 
   const size_t old_leader_idx = ASSERT_RESULT(PrepareToBreakConnectivity(tablet_id));
 
+  // Reject non-empty UpdateConsensus on followers so the entry can't replicate via a
+  // racing heartbeat between queue_->AppendOperations and BreakConnectivityWithAll.
+  std::vector<tablet::TabletPeerPtr> follower_peers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    if (i == old_leader_idx) {
+      continue;
+    }
+    auto peer = ASSERT_RESULT(GetTabletPeerOnTserver(i, tablet_id));
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
+    follower_peers.push_back(peer);
+  }
+
   // Block the WriteOperation such that the WAL is not replicated.
   auto sync_point = SyncPoint::GetInstance();
   sync_point->LoadDependency({
@@ -355,6 +373,9 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
   // Client has received the async write ack, but it is not yet replicated to followers.
 
   ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), old_leader_idx));
+  for (auto& peer : follower_peers) {
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
+  }
   TEST_SYNC_POINT("LeaderStepDownAfterWriteAck::LeaderConnectivityBroken");
 
   // Wait for a new leader to be elected.
@@ -1236,6 +1257,192 @@ TEST_F(YSqlAsyncWriteLongLeaseTest, GracefulStepDownWithExtendedProtegeSyncWait)
   const auto rows =
       ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
   ASSERT_EQ(rows, "1, A; 2, B");
+}
+
+class YSqlAsyncWriteSplitTest : public YSqlAsyncWriteTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
+    // Disable load balancing and bump the heartbeat threshold so terms stay stable.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_create_table_leader_hint) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 100;
+
+    TEST_SETUP_SUPER(pgwrapper::PgMiniTestBase);
+    conn_ = std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(Connect()));
+  }
+
+  // Force a flush so the parent has an SST file.
+  Status PrepareTabletForSplit(const TabletId& tablet_id) {
+    RETURN_NOT_OK(cluster_->FlushTablets());
+    auto leader_peer = VERIFY_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+    return WaitForAnySstFiles(leader_peer, 60s * kTimeMultiplier);
+  }
+};
+
+// Pre-split OpIds can be verified on both the surviving parent and the children.
+TEST_F(YSqlAsyncWriteSplitTest, VerifyAsyncWriteOnSplitParentAndChildren) {
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+
+  auto parent_tablet_id = ASSERT_RESULT(GetTabletId());
+
+  for (int i = 0; i < 50; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, i));
+  }
+
+  auto parent_leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), parent_tablet_id));
+  auto parent_consensus = ASSERT_RESULT(parent_leader_peer->GetRaftConsensus());
+  const auto pre_split_op_id =
+      ASSERT_RESULT(parent_consensus->GetLastOpId(consensus::COMMITTED_OPID));
+  LOG(INFO) << "Pre-split committed op_id: " << pre_split_op_id;
+
+  ASSERT_OK(PrepareTabletForSplit(parent_tablet_id));
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+
+  const auto split_op_id = parent_leader_peer->tablet_metadata()->split_op_id();
+  ASSERT_FALSE(split_op_id.empty());
+  ASSERT_LE(pre_split_op_id.index, split_op_id.index);
+  // The one-term-ago check only catches pre-split OpIds whose term matches SPLIT_OP's.
+  ASSERT_EQ(pre_split_op_id.term, split_op_id.term);
+  LOG(INFO) << "Parent SPLIT_OP id: " << split_op_id;
+
+  // Parent in TABLET_DATA_SPLIT_COMPLETED state should still answer from its own log.
+  ASSERT_EQ(
+      parent_leader_peer->tablet_metadata()->tablet_data_state(),
+      tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED);
+  {
+    Synchronizer sync;
+    parent_leader_peer->RegisterAsyncWriteCompletion(pre_split_op_id, sync.AsStdStatusCallback());
+    ASSERT_OK(sync.Wait());
+  }
+
+  const auto child_tablet_ids = parent_leader_peer->tablet_metadata()->split_child_tablet_ids();
+  ASSERT_EQ(child_tablet_ids.size(), 2);
+
+  for (const auto& child_tablet_id : child_tablet_ids) {
+    tablet::TabletPeerPtr child_leader_peer;
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          auto result = GetLeaderPeerForTablet(cluster_.get(), child_tablet_id);
+          if (!result.ok()) return false;
+          child_leader_peer = *result;
+          auto consensus = result->get()->GetRaftConsensus();
+          return consensus.ok() && (*consensus)->GetLeaderState().ok();
+        },
+        30s, Format("child $0 leader to be ready", child_tablet_id)));
+    SCOPED_TRACE(Format("child $0", child_tablet_id));
+
+    // Pre-split committed OpId: accepted.
+    {
+      Synchronizer sync;
+      child_leader_peer->RegisterAsyncWriteCompletion(pre_split_op_id, sync.AsStdStatusCallback());
+      ASSERT_OK(sync.Wait());
+    }
+
+    // SPLIT_OP boundary: also accepted.
+    {
+      Synchronizer sync;
+      child_leader_peer->RegisterAsyncWriteCompletion(split_op_id, sync.AsStdStatusCallback());
+      ASSERT_OK(sync.Wait());
+    }
+
+    // Bogus post-SPLIT_OP OpId: must be rejected.
+    {
+      OpId fake_post_split{split_op_id.term + 5, split_op_id.index + 1000};
+      Synchronizer sync;
+      child_leader_peer->RegisterAsyncWriteCompletion(fake_post_split, sync.AsStdStatusCallback());
+      ASSERT_NOK(sync.Wait());
+    }
+  }
+}
+
+// End-to-end test with a split in the middle of a transaction.
+TEST_F(YSqlAsyncWriteSplitTest, EndToEndSplitDuringTransaction) {
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+
+  auto tablet_id = ASSERT_RESULT(GetTabletId());
+  for (int i = 1; i <= 50; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, i));
+  }
+  ASSERT_OK(PrepareTabletForSplit(tablet_id));
+
+  // Begin a transaction and trigger a split in the middle.
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  for (int i = 51; i <= 55; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, i));
+  }
+
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), tablet_id));
+
+  // Write some more rows.
+  for (int i = 56; i <= 60; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, i));
+  }
+  ASSERT_OK(conn_->CommitTransaction());
+
+  // Validate data.
+  std::string expected;
+  for (int i = 1; i <= 60; ++i) {
+    if (i > 1) expected += "; ";
+    expected += Format("$0, v$0", i);
+  }
+  ASSERT_OK(ValidateData(expected));
+}
+
+// Background writer runs transactional inserts while the main thread triggers a split.
+// Ensure no writes fail.
+TEST_F(YSqlAsyncWriteSplitTest, ConcurrentInsertsDuringSplit) {
+  constexpr int kRowsPerTxn = 5;
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+  auto tablet_id = ASSERT_RESULT(GetTabletId());
+
+  for (int i = 1; i <= 50; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, i));
+  }
+  ASSERT_OK(PrepareTabletForSplit(tablet_id));
+
+  std::atomic<int> next_key{51};
+  std::atomic<int> txns_committed{0};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &next_key, &txns_committed, &thread_holder] {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!thread_holder.stop_flag().load(std::memory_order_acquire)) {
+      const int batch_start = next_key.fetch_add(kRowsPerTxn, std::memory_order_relaxed);
+      ASSERT_OK(conn.Execute("BEGIN"));
+      for (int i = 0; i < kRowsPerTxn; ++i) {
+        ASSERT_OK(
+            conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, batch_start + i));
+      }
+      ASSERT_OK(conn.CommitTransaction());
+      txns_committed.fetch_add(1, std::memory_order_relaxed);
+    }
+  });
+
+  // Wait for some write to complete before triggering the split.
+  constexpr int kMinTxnsPerPhase = 10;
+  ASSERT_OK(LoggedWaitFor(
+      [&] { return txns_committed.load() >= kMinTxnsPerPhase; }, 30s * kTimeMultiplier,
+      "writer to make pre-split progress"));
+  const int committed_before_split = txns_committed.load();
+
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), tablet_id));
+
+  ASSERT_OK(LoggedWaitFor(
+      [&] { return txns_committed.load() >= committed_before_split + kMinTxnsPerPhase; },
+      30s * kTimeMultiplier, "writer to make post-split progress"));
+
+  thread_holder.Stop();
+  const int expected_rows = 50 + kRowsPerTxn * txns_committed.load();
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto count =
+            VERIFY_RESULT(conn_->FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName)));
+        return count == expected_rows;
+      },
+      30s * kTimeMultiplier, "all rows visible after split"));
 }
 
 }  // namespace yb
