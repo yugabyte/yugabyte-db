@@ -687,7 +687,11 @@ REVOKE EXECUTE ON FUNCTION pg_replication_origin_session_progress(boolean) FROM 
 
 REVOKE EXECUTE ON FUNCTION pg_replication_origin_session_reset() FROM public;
 
+REVOKE EXECUTE ON FUNCTION yb_replication_origin_session_reset_shared() FROM public;
+
 REVOKE EXECUTE ON FUNCTION pg_replication_origin_session_setup(text) FROM public;
+
+REVOKE EXECUTE ON FUNCTION yb_replication_origin_session_setup_shared(text) FROM public;
 
 REVOKE EXECUTE ON FUNCTION pg_replication_origin_xact_reset() FROM public;
 
