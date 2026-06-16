@@ -182,6 +182,40 @@ modify_service() {
   fi
 }
 
+# Returns 0 if the named database exists, non-zero otherwise. Mirrors the
+# binary-discovery logic of create_postgres_backup / create_ybdb_backup so the
+# probe always targets the same instance the dump would run against.
+#
+# Args: db_name db_username db_host db_port yba_installer ybdb pgdump_path ysql_dump_path
+db_exists() {
+  local db_name="$1"
+  local db_username="$2"
+  local db_host="$3"
+  local db_port="$4"
+  local yba_installer="$5"
+  local ybdb="$6"
+  local pgdump_path="$7"
+  local ysql_dump_path="$8"
+
+  local probe="psql"
+  if [[ "$ybdb" = true ]]; then
+    probe="ysqlsh"
+    if [[ "${ysql_dump_path}" != "" ]] && [[ -f "${ysql_dump_path}" ]]; then
+      # ysqlsh ships next to ysql_dump in yba-installer layouts.
+      probe="$(dirname "${ysql_dump_path}")/ysqlsh"
+    fi
+  elif [[ "${yba_installer}" = true ]] && [[ "${pgdump_path}" != "" ]] && \
+       [[ -f "${pgdump_path}" ]]; then
+    probe="$(dirname "${pgdump_path}")/psql"
+  fi
+
+  local probe_cmd="${probe} -h ${db_host} -p ${db_port} -U ${db_username} -tAc \
+\"SELECT 1 FROM pg_database WHERE datname='${db_name}'\""
+  local probe_out
+  probe_out=$(docker_aware_cmd "postgres" "${probe_cmd}" 2>/dev/null) || return 1
+  [[ "${probe_out}" = "1" ]]
+}
+
 # Creates a Postgres DB backup of the given database.
 # When ensure_db_exists is true, no special platform-specific behavior is applied;
 # the database name and target file are the only data points that vary across callers.
@@ -513,16 +547,26 @@ create_backup() {
                          "${PLATFORM_DB_NAME}"
   fi
 
-  # Backup PA (ts) database unless excluded
+  # Backup PA (ts) database unless excluded.
+  # PA is an optional component, so the ts database may legitimately not exist
+  # (e.g. the customer has never deployed Performance Advisor). In that case
+  # skip the dump instead of failing the whole backup.
   pa_db_backup_path="${data_dir}/${PA_DUMP_FNAME}"
+  pa_db_present=false
   if [[ "$exclude_pa_database" = false ]]; then
-    if [[ "$ybdb" = true ]]; then
-      create_ybdb_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-                         "${verbose}" "${yba_installer}" "${ysql_dump_path}" "${PA_DB_NAME}"
+    if db_exists "${PA_DB_NAME}" "${db_username}" "${db_host}" "${db_port}" \
+                 "${yba_installer}" "${ybdb}" "${pgdump_path}" "${ysql_dump_path}"; then
+      pa_db_present=true
+      if [[ "$ybdb" = true ]]; then
+        create_ybdb_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
+                           "${verbose}" "${yba_installer}" "${ysql_dump_path}" "${PA_DB_NAME}"
+      else
+        create_postgres_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
+                               "${verbose}" "${yba_installer}" "${pgdump_path}" \
+                               "${plain_sql}" "${PA_DB_NAME}"
+      fi
     else
-      create_postgres_backup "${pa_db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-                             "${verbose}" "${yba_installer}" "${pgdump_path}" \
-                             "${plain_sql}" "${PA_DB_NAME}"
+      echo "Performance Advisor database '${PA_DB_NAME}' not found - skipping PA DB backup."
     fi
   fi
 
@@ -544,7 +588,7 @@ create_backup() {
   # Use the same printf trick as the main FIND_OPTIONS block above to embed literal single
   # quotes around the glob, so that the pattern survives the `eval find ...` invocation
   # and is not subject to shell pathname expansion before being passed to find.
-  if [[ "$exclude_pa_database" = false ]]; then
+  if [[ "$exclude_pa_database" = false ]] && [[ "$pa_db_present" = true ]]; then
     FIND_OPTIONS+=( $(printf " -o -path '%s'" "**/${PA_DUMP_FNAME}") )
   fi
   # Include PA collected data files in backup unless excluded.
