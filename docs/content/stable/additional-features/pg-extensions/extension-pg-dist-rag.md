@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-{{<tags/feature/tp idea="2537">}}The [pg_dist_rag](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/yb-extensions/pg_dist_rag/README.md) PostgreSQL extension manages Retrieval-Augmented Generation (RAG) pipelines from SQL. It registers document sources (such as S3 buckets or URLs), coordinates distributed preprocessing and embedding generation, and stores vectors in [pgvector](extension-pgvector/) indexes backed by YugabyteDB.
+{{<tags/feature/tp idea="2537">}}The [pg_dist_rag](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/yb-extensions/pg_dist_rag/README.md) PostgreSQL extension manages Retrieval-Augmented Generation (RAG) pipelines from SQL. It registers document sources (such as S3 buckets or URLs), coordinates distributed preprocessing and embedding generation, and stores vectors in [pgvector](../extension-pgvector/) indexes backed by YugabyteDB.
 
 With pg_dist_rag, you can:
 
@@ -25,7 +25,7 @@ With pg_dist_rag, you can:
 ## Prerequisites
 
 - YugabyteDB {{<release "2025.2">}} or later.
-- The [pgvector](extension-pgvector/) extension (`vector` type support).
+- The [pgvector](../extension-pgvector/) extension (`vector` type support).
 - An OpenAI API key or another supported embedding provider, if you use hosted embedding generation.
 - Cloud credentials (for example, AWS S3) when reading documents from object storage.
 
@@ -188,7 +188,7 @@ WHERE index_name = 'my_knowledge_base';
 
 ## Query embeddings
 
-After a pipeline completes, embeddings are stored in the backing table created for the vector index (for example, `public.my_knowledge_base`). Query it using standard [pgvector](extension-pgvector/) operators:
+After a pipeline completes, embeddings are stored in the backing table created for the vector index (for example, `public.my_knowledge_base`). Query it using standard [pgvector](../extension-pgvector/) operators:
 
 ```sql
 SELECT id, chunk_text, metadata_filters,
@@ -296,7 +296,7 @@ For a complete application example that queries a pg_dist_rag index from a self-
 
 ## Learn more
 
-- [pgvector extension](extension-pgvector/)
+- [pgvector extension](../extension-pgvector/)
 - [Develop applications with AI and YugabyteDB](../../../develop/ai/)
 - [pg_dist_rag extension README](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/yb-extensions/pg_dist_rag/README.md)
 - [RAG agent source code](https://github.com/yugabyte/yugabyte-db/tree/master/python/ai/rag_agent)
