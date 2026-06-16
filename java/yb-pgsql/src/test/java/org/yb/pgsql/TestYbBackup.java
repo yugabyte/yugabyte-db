@@ -57,10 +57,12 @@ import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.SystemUtil;
 import org.yb.util.TableProperties;
+import org.yb.YBTestRunner;
+import org.yb.util.ProcessUtil;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
-import org.yb.util.YBTestRunnerNonTsanAsan;
-import org.yb.util.ProcessUtil;
 import org.yb.util.SideBySideDiff;
 import org.yb.util.StringUtil;
 import static org.yb.pgsql.TestYsqlDump.assertOutputFile;
@@ -78,7 +80,9 @@ import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(value=YBTestRunnerNonTsanAsan.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RunWith(value=YBTestRunner.class)
 public class TestYbBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
 
@@ -1514,13 +1518,12 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  // The test fails with Connection Manager as it is expected that a new
+  // session would latch onto a new physical connection. Instead, two logical
+  // connections use the same physical connection, leading to unexpected
+  // results as per the expectations of the test.
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testGeoPartitioningRestoringIntoExisting() throws Exception {
-    // The test fails with Connection Manager as it is expected that a new
-    // session would latch onto a new physical connection. Instead, two logical
-    // connections use the same physical connection, leading to unexpected
-    // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
-
     if (disableGeoPartitionedTests()) {
       return;
     }
@@ -1552,13 +1555,12 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  // The test fails with Connection Manager as it is expected that a new
+  // session would latch onto a new physical connection. Instead, two logical
+  // connections use the same physical connection, leading to unexpected
+  // results as per the expectations of the test.
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
-    // The test fails with Connection Manager as it is expected that a new
-    // session would latch onto a new physical connection. Instead, two logical
-    // connections use the same physical connection, leading to unexpected
-    // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
-
     if (disableGeoPartitionedTests()) {
       return;
     }
@@ -2730,6 +2732,183 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  public void testRowTypeTable() throws Exception {
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE row_type_tbl (x4 INT, x1 INT)");
+      stmt.execute("INSERT INTO row_type_tbl (x4, x1) VALUES(8, 2)");
+      assertQuery(stmt, "SELECT * FROM row_type_tbl", new Row(8,2));
+
+      stmt.execute("CREATE TABLE my_table (x row_type_tbl)");
+      stmt.execute("INSERT INTO my_table (x) VALUES(ROW(9, 1))");
+      assertQuery(stmt, "SELECT * FROM my_table", new Row("(9,1)"));
+
+      stmt.execute("ALTER TABLE row_type_tbl DROP COLUMN x4");
+      assertQuery(stmt, "SELECT * FROM row_type_tbl", new Row(2));
+      assertQuery(stmt, "SELECT * FROM my_table", new Row("(1)"));
+
+      String output = YBBackupUtil.runYbBackupCreate(
+          "--backup_location", backupDir, "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM row_type_tbl", new Row(2));
+      assertQuery(stmt, "SELECT * FROM my_table", new Row("(1)"));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testPartitionedTableWithDroppedColumnsAttnumMismatch() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      // The child partition has a different physical column ordering than its parent, so the
+      // dropped columns end up at different attribute numbers in the parent vs the child. After
+      // backup, ysql_dump emits the dropped columns as "........pg.dropped.N........" placeholders
+      // whose names (and positions) differ between parent and child. The restore-time schema
+      // validation in CatalogManager::ImportTableEntry must tolerate these differences.
+      stmt.execute("CREATE TABLE parent (a int, dummy int, dummy2 int, b int, c int) " +
+                   "PARTITION BY RANGE (a)");
+      // Note the columns are deliberately declared in a different order than the parent.
+      stmt.execute("CREATE TABLE child (b int, c int, a int, dummy int, dummy2 int)");
+      stmt.execute("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (0) TO (5)");
+
+      // Insert a row while the to-be-dropped columns still exist.
+      stmt.execute("INSERT INTO parent (a, dummy, dummy2, b, c) VALUES (0, 999, 888, 5, 50)");
+      assertQuery(stmt, "SELECT a, dummy, dummy2, b, c FROM parent ORDER BY a",
+                  new Row(0, 999, 888, 5, 50));
+
+      stmt.execute("ALTER TABLE parent DROP COLUMN dummy");
+      stmt.execute("ALTER TABLE parent DROP COLUMN dummy2");
+
+      stmt.execute("INSERT INTO parent (a, b, c) VALUES (1, 10, 100), (2, 20, 200)");
+
+      // Select explicit columns since "SELECT *" follows each table's own attribute ordering.
+      assertQuery(stmt, "SELECT a, b, c FROM parent ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200));
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200));
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      // Select explicit columns since "SELECT *" follows each table's own attribute ordering.
+      assertQuery(stmt, "SELECT a, b, c FROM parent ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200));
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200));
+
+      // The restored table should still be a working partition: new inserts get routed to child.
+      stmt.execute("INSERT INTO parent (a, b, c) VALUES (3, 30, 300)");
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200),
+                  new Row(3, 30, 300));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testPartitionedTableWithCompositeTypesAndDroppedColumns() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      // Same dropped-column attnum-mismatch setup as
+      // testPartitionedTableWithDroppedColumnsAttnumMismatch, but additionally exercises composite
+      // row types built on top of the partitioned tables. Each table has an associated composite
+      // type whose attribute layout (including the "........pg.dropped.N........" placeholders)
+      // differs between parent and child. Both the partition import and the composite type columns
+      // must survive backup/restore despite the mismatch.
+      stmt.execute("CREATE TABLE parent (a int, dummy int, dummy2 int, b int, c int) " +
+                   "PARTITION BY RANGE (a)");
+      // Note the columns are deliberately declared in a different order than the parent.
+      stmt.execute("CREATE TABLE child (b int, c int, dummy int, dummy2 int, a int)");
+      stmt.execute("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1) TO (9)");
+      stmt.execute("ALTER TABLE parent DROP COLUMN dummy");
+      stmt.execute("ALTER TABLE parent DROP COLUMN dummy2");
+
+      // Composite-type columns that reference the partitioned tables' row types.
+      stmt.execute("CREATE TABLE uses_parent (tag text, r parent)");
+      stmt.execute("CREATE TABLE uses_child (tag text, r child)");
+
+      stmt.execute("INSERT INTO parent (a, b, c) VALUES (4, 40, 400), (5, 50, 500)");
+      // After dropping the columns, the parent row type is (a, b, c) while the child row type,
+      // following its own attribute ordering, is (b, c, a).
+      stmt.execute("INSERT INTO uses_parent (tag, r) VALUES ('p1', ROW(1, 10, 100))");
+      stmt.execute("INSERT INTO uses_child (tag, r) VALUES ('c1', ROW(20, 200, 2))");
+
+      // Select explicit columns since "SELECT *" follows each table's own attribute ordering.
+      assertQuery(stmt, "SELECT a, b, c FROM parent ORDER BY a",
+                  new Row(4, 40, 400), new Row(5, 50, 500));
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(4, 40, 400), new Row(5, 50, 500));
+      assertQuery(stmt, "SELECT tag, r::text FROM uses_parent ORDER BY tag",
+                  new Row("p1", "(1,10,100)"));
+      assertQuery(stmt, "SELECT tag, r::text FROM uses_child ORDER BY tag",
+                  new Row("c1", "(20,200,2)"));
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      // Select explicit columns since "SELECT *" follows each table's own attribute ordering.
+      assertQuery(stmt, "SELECT a, b, c FROM parent ORDER BY a",
+                  new Row(4, 40, 400), new Row(5, 50, 500));
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(4, 40, 400), new Row(5, 50, 500));
+      assertQuery(stmt, "SELECT tag, r::text FROM uses_parent ORDER BY tag",
+                  new Row("p1", "(1,10,100)"));
+      assertQuery(stmt, "SELECT tag, r::text FROM uses_child ORDER BY tag",
+                  new Row("c1", "(20,200,2)"));
+
+      // The restored table should still be a working partition: new inserts get routed to child.
+      stmt.execute("INSERT INTO parent (a, b, c) VALUES (3, 30, 300)");
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(3, 30, 300), new Row(4, 40, 400), new Row(5, 50, 500));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
   public void testPgRegressStyle() throws Exception {
     testPgRegressStyleUtil(
       "yb.orig.backup_restore",
@@ -2765,6 +2944,19 @@ public class TestYbBackup extends BasePgSQLTest {
       "yb.orig.backup_roles.dump",
       "yb.orig.backup_roles_describe.sql",
       "yb.orig.backup_roles_describe.out"
+    );
+  }
+
+  @Test
+  public void testBackupDropColumn() throws Exception {
+    testPgRegressStyleUtil(
+      "yb.orig.backup_drop_column",
+      "yb.orig.backup_drop_column.sql",
+      "",
+      "db2",
+      "yb.orig.backup_drop_column.dump",
+      "yb.orig.backup_drop_column_describe.sql",
+      "yb.orig.backup_drop_column_describe.out"
     );
   }
 

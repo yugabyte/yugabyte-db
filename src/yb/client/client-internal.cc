@@ -304,6 +304,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RemoveTablesFromCDCSDKStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsObjectPartOfXRepl);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsNamespacePartOfCDCSDK);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
@@ -990,6 +991,7 @@ Status YBClient::Data::BackfillIndex(YBClient* client,
                                      const YBTableName& index_name,
                                      const TableId& index_id,
                                      CoarseTimePoint deadline,
+                                     std::optional<TransactionMetadata> requester_transaction,
                                      bool wait) {
   BackfillIndexRequestPB req;
   BackfillIndexResponsePB resp;
@@ -999,6 +1001,9 @@ Status YBClient::Data::BackfillIndex(YBClient* client,
   }
   if (!index_id.empty()) {
     req.mutable_index_identifier()->set_table_id(index_id);
+  }
+  if (requester_transaction.has_value()) {
+    requester_transaction->ToPB(req.mutable_requester_transaction());
   }
 
   RETURN_NOT_OK((SyncLeaderMasterRpc(

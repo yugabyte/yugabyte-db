@@ -47,8 +47,7 @@ YB_DEFINE_ENUM(FrontierModificationMode, (kForce)(kUpdate)(kUpdateIgnoreBackward
 
 // Specific how key value entries are encoded inside the block.
 // See Block and BlockBuilder for more details.
-YB_DEFINE_ENUM(
-    KeyValueEncodingFormat,
+YB_DEFINE_ENUM(KeyValueEncodingFormat,
     // <key_shared_prefix_size<key_non_shared_size><value_size><key_non_shared_bytes><value_bytes>
     ((kKeyDeltaEncodingSharedPrefix, 1))
     // Advanced key delta encoding optimized for docdb-specific encoded key structure.

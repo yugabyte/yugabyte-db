@@ -69,7 +69,7 @@ class LibPqTestBase : public PgWrapperTestBase {
   static void UpdateMiniClusterFailOnConflict(ExternalMiniClusterOptions* options);
   static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics_output);
   static std::vector<YsqlMetric> ParseJsonMetrics(const std::string& metrics_output);
-  std::vector<YsqlMetric> GetJsonMetrics();
+  std::vector<YsqlMetric> GetJsonMetrics(size_t ts_idx = 0);
   std::vector<YsqlMetric> GetPrometheusMetrics();
   static int64_t GetMetricValue(
       const std::vector<YsqlMetric>& metrics,

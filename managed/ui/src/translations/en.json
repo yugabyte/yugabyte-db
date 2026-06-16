@@ -53,6 +53,7 @@
       "enabled": "Enabled",
       "disabled": "Disabled",
       "recommended": "Recommended",
+      "reviewAndCreate": "Next: Review and Create",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -694,6 +695,22 @@
             "folderNameMustBeUnique": "The folder name must be unique."
           },
           "submitLabel": "Confirm"
+        }
+      },
+      "reprovisionNodesWithYnpModal": {
+        "title": "Reprovision Nodes with YNP",
+        "instructions": "Nodes will be provisioned in a rolling manner.",
+        "reprovisionNodesFor": "Reprovision nodes for:",
+        "allNodeInUniverse": "All nodes in this Universe",
+        "selectedNode": "Selected node",
+        "confirmButton": "Reprovision Nodes with YNP",
+        "error": {
+          "requestFailureLabel": "Reprovision nodes with YNP request failed",
+          "taskFailure": "Failed to reprovision nodes with YNP."
+        },
+        "success": {
+          "requestSuccess": "Reprovision nodes with YNP started.",
+          "taskSuccess": "Reprovisioned nodes with YNP."
         }
       }
     },
@@ -3951,7 +3968,9 @@
         "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
         "ssd": "Storage Type (SSD)",
         "useTimeSync": "Use {{provider}} Time Sync",
+        "useTimeSyncTooltip": "Ensures consistent time across all nodes for reliable distributed operations, replication, and accurate logging.",
         "useTimeSyncHelper": "Enable the {{provider}} Time Sync functionality for the DB servers.",
+        "useTimeSyncHelper2": "Syncs node clocks using {{provider}} Time Sync Service.",
         "volumeInfoPerNode": "Volume Info / Node",
         "volumeSizeUnit": "GB",
         "throughputUnit": "MB/s",
@@ -4019,16 +4038,17 @@
         "earField": {
           "label": "Enable Encryption At Rest",
           "kmsConfig": "Key Management Service Config",
-          "kmsConfigPlaceHolder": "Select Configuration"
+          "kmsConfigPlaceHolder": "Select",
+          "kmsValidationMsg": "'This KMS configuration is already used for EBS volume encryption.'"
         },
         "eitField": {
           "useSameCert": "Use the same certificate for Node-to-Node and Client-to-Node encryption.",
-          "enableNodeToNodeEncryption": "Enable Node-to-Node Encryption",
-          "enableClientToNodeEncryption": "Enable Client-to-Node Encryption",
+          "enableNodeToNodeEncryption": "Enable <strong>Node-to-Node</strong> Encryption",
+          "enableClientToNodeEncryption": "Enable <strong>Client-to-Node</strong> Encryption",
           "selectRootCert": "Select Root Certificate",
           "rootCertificatePlaceHolder": "Select",
           "genSelfSignedCert": "Generate Self Signed Certificate",
-          "enableBothEncryption": "Enable Node to Node and Client-to-Node Encryption",
+          "enableBothEncryption": "Enable <strong>Node to Node</strong> and <strong>Client-to-Node</strong> Encryption",
           "eitLabel": "Enable Encryption in Transit",
           "nodeToNodeLabel": "<strong>Node-to-Node</strong> Encryption",
           "clientToNodeLabel": "<strong>Client-to-Node</strong> Encryption",
@@ -4080,6 +4100,10 @@
         "portsOverrideHeader": "Deployment Port Override",
         "userTagsHeader": "User Tags",
         "additionalSettingsHeader": "Other Additional Settings",
+        "nodeAcessHeader": "Node Access",
+        "accessHeader": "Access",
+        "permissions": "Permissions",
+        "timeSynchronization": "Time Synchronization",
         "deployPortsFeild": {
           "defaultPortValue": "Default {{port}}",
           "masterHttpPort": "Master HTTP Port",
@@ -4113,7 +4137,10 @@
         },
         "accessKeyLabel": "Access Key",
         "accessKeyRequired": "Access Key is required",
+        "accessKeyHelper": "Used to securely connect to nodes for provisioning and management.",
         "arnField": "Instance Profile ARN",
+        "arnPlaceholder": "Ex: Instance Profile ARN arn:aws:iam::123456789012:instance-profi...",
+        "arnHelper": "Allows nodes to securely access AWS services (e.g., backups) without using access keys.",
         "ipv6Field": {
           "label": "Enable IPV6",
           "subText": "Use IPV6 networking for connections between the DB servers."
@@ -4272,6 +4299,13 @@
         "instanceType": "Instance Type",
         "volumeAndNode": "volume / node",
         "volumeAndNodeValue": "{{nodeCount}} X {{volumeSize}} GB",
+        "volumeSize": "Volume size",
+        "volumeSizeValue": "{{volumeSize}} GB",
+        "numVolumes": "Number of volumes",
+        "cpuCores": "CPU cores",
+        "memory": "Memory",
+        "memoryValue": "{{memory}} GiB",
+        "storageClass": "Storage class",
         "ebsType": "ebs type",
         "iops": "provisioned IOPS / Node",
         "throughput": "provisioned throughput / Node",

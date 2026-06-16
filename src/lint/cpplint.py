@@ -285,6 +285,7 @@ _ERROR_CATEGORIES = [
     'readability/casting',
     'readability/check',
     'readability/constructors',
+    'readability/define_macros',
     'readability/fn_size',
     'readability/inheritance',
     'readability/multiline_comment',
@@ -5971,7 +5972,7 @@ def CheckStdThread(filename, clean_lines, linenum, error):
     linenum: The number of the line to check.
     error: The function to call with any errors found.
   """
-  if "thread" not in filename and "test" not in filename:
+  if "thread" not in filename and "test" not in filename and "/tools/" not in filename:
     line = clean_lines.elided[linenum]
     match = _RE_PATTERN_STD_THREAD.search(line)
     if match:
@@ -6208,6 +6209,28 @@ def FlagCxx14Features(filename, clean_lines, linenum, error):
           ('<%s> is an unapproved C++14 header.') % include.group(1))
 
 
+def CheckDefineFormatting(filename, lines, error):
+  """Logs an error if our DEFINE_.. macros do not have the entity being defined on the same line."""
+
+  DEFINE_MACROS = [
+      'DEFINE_RUNTIME_',
+      'DEFINE_NON_RUNTIME_',
+      'DEFINE_UNKNOWN_',
+      'DEFINE_test_flag',
+      'DEFINE_validator',
+      'YB_DEFINE_ENUM',
+  ]
+
+  for line, line_str in enumerate(lines):
+    for macro in DEFINE_MACROS:
+      if line_str.startswith(macro) and '(' in line_str:
+        parts = line_str.split('(', 1)
+        if ',' not in parts[1]:
+          error(filename, line + 1, 'readability/define_macros', 5,
+                'The name should be on the same line as {0}'.format(parts[0]))
+        break
+
+
 def ProcessFileData(filename, file_extension, lines, error,
                     extra_check_functions=[]):
   """Performs lint checks and reports any errors to the given error function.
@@ -6258,6 +6281,9 @@ def ProcessFileData(filename, file_extension, lines, error,
   CheckForBadCharacters(filename, lines, error)
 
   CheckForNewlineAtEOF(filename, lines, error)
+
+  CheckDefineFormatting(filename, lines, error)
+
 
 def ProcessConfigOverrides(filename):
   """ Loads the configuration files and processes the config overrides.

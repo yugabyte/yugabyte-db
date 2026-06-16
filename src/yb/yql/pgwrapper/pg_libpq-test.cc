@@ -3028,14 +3028,14 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
       //    - trying the SELECT requires getting the table schema, but it will be a cache miss since
       //      the whole cache was invalidated, so we get the up-to-date table schema and succeed
       // 2. tserver doesn't get updated catalog version before SELECT (common)
-      //    - trying the SELECT causes catalog version mismatch
+      //    - trying the SELECT causes schema version mismatch
       if (res.ok()) {
         LOG(WARNING) << "SELECT was ok";
         num_successes++;
         continue;
       }
       auto msg = res.status().message().ToBuffer();
-      ASSERT_TRUE(msg.find("Catalog Version Mismatch") != std::string::npos) << res.status();
+      ASSERT_TRUE(msg.find("schema version mismatch") != std::string::npos) << res.status();
     } else {
       // Ensure that the request is successful (thanks to retry).
       if (!res.ok()) {
@@ -3474,7 +3474,16 @@ TEST_F(PgLibPqPgssQtextLeakTest, TestNoMemoryLeakOnCorruptedPgssQtext) {
   constexpr int kNumPopulateQueries = 500;
   constexpr int kPgMaxIdentifierLen = 63;  // NAMEDATALEN - 1
   const int kLeakIterations = RegularBuildVsSanitizers(2000, 500);
-  const int64_t kMaxRssGrowthKb = RegularBuildVsSanitizers(50, 200) * 1024;
+  // The sanitizer threshold is set well above the ASAN baseline overhead (issue #31709):
+  // 500 iterations of the error path accumulate ~200 MB of RSS from ASAN's shadow memory,
+  // redzones, allocator metadata, and per-error ereport/longjmp cleanup state -- not from
+  // the leak this test guards against. Before bumping to 400 MB, runs consistently landed
+  // at ~203 MB and tipped over the previous 200 MB threshold ~28% of the time. A real
+  // regression of the qtext-buffer leak would add file_size * iterations of growth (with
+  // ASAN's per-allocation overhead on top -- empirically ~4x), so a threshold of 400 MB
+  // still detects an unfixed leak comfortably while leaving room for ASAN measurement
+  // noise. The non-sanitizer threshold (50 MB) is unchanged.
+  const int64_t kMaxRssGrowthKb = RegularBuildVsSanitizers(50, 400) * 1024;
   constexpr size_t kCorruptOffset = 500;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -4393,7 +4402,7 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   }
 }
 
-class PgLibPqAmopNegCacheTest : public PgLibPqTest {
+class PgLibPqNegCacheTest : public PgLibPqTest {
  public:
   enum class NegCacheTestType {
     kPreload,
@@ -4407,31 +4416,37 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 
-  struct AmopMetrics {
+  struct NegCacheMetrics {
     int64_t total;
     int64_t negative;
   };
 
-  void TestAmopNegCacheMiss(NegCacheTestType test_type) {
+  auto runQueryAndGetMetrics(
+      PGConn& conn,
+      const std::string& query,
+      const std::string& catalog_table
+    ) -> Result<NegCacheMetrics> {
+    auto str = VERIFY_RESULT(
+        conn.FetchAllAsString(query));
+    LOG(INFO) << "output " << str;
+
+    NegCacheMetrics m;
+    m.total = VERIFY_RESULT(GetCatCacheTableMissMetric(catalog_table));
+    m.negative = VERIFY_RESULT(GetCatCacheNegMissMetric(catalog_table));
+    LOG(INFO) << catalog_table << " total misses " << m.total
+              << ", neg misses " << m.negative;
+    return m;
+  }
+
+  void TestProcoidNegCacheMiss(NegCacheTestType test_type) {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
 
     auto conn2 = ASSERT_RESULT(Connect());
-    auto runQueryAndGetMetrics = [&]() -> Result<AmopMetrics> {
-      auto str = VERIFY_RESULT(
-          conn2.FetchAllAsString("EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'"));
-      LOG(INFO) << "output " << str;
 
-      AmopMetrics m;
-      m.total = VERIFY_RESULT(GetCatCacheTableMissMetric("pg_amop"));
-      m.negative = VERIFY_RESULT(GetCatCacheNegMissMetric("pg_amop"));
-      LOG(INFO) << "pg_amop total misses " << m.total
-                << ", neg misses " << m.negative;
-      return m;
-    };
-
-    auto m1 = ASSERT_RESULT(runQueryAndGetMetrics());
-    auto m2 = ASSERT_RESULT(runQueryAndGetMetrics());
+    const std::string query = "SELECT pg_get_functiondef(9999999)";
+    auto m1 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_proc"));
+    auto m2 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_proc"));
 
     switch (test_type) {
       case NegCacheTestType::kNegCache:
@@ -4448,14 +4463,14 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
     ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
       YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
-    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='3.14'"),
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='45.14'"),
       YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
-    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids=3.14"),
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids=45.14"),
       YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
     LOG(INFO) << "Completed invalid tests";
 
-    ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='3'"));
-    auto m3 = ASSERT_RESULT(runQueryAndGetMetrics());
+    ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='45'"));
+    auto m3 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_proc"));
 
     switch (test_type) {
       case NegCacheTestType::kNegCache:
@@ -4473,15 +4488,46 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
         ASSERT_GT(m3.total, m2.total);
         ASSERT_GT(m3.negative, m2.negative);
 
-        auto m4 = ASSERT_RESULT(runQueryAndGetMetrics());
+        auto m4 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_proc"));
         ASSERT_EQ(m4.total, m3.total);
         ASSERT_EQ(m4.negative, m3.negative);
         break;
     }
   }
+
+  // With AMOPOPID and AMOPSTRATEGY NegCache whitelisted, cache misses should be the same
+  // regardless of server flags.
+  void TestAmopNegCacheMiss() {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
+
+    auto conn2 = ASSERT_RESULT(Connect());
+
+    const std::string query = "EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'";
+    auto m1 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_amop"));
+    auto m2 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_amop"));
+
+    ASSERT_EQ(m2.total, m1.total);
+    ASSERT_EQ(m2.negative, m1.negative);
+
+    LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='3.14'"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids=3.14"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    LOG(INFO) << "Completed invalid tests";
+
+    ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='3'"));
+    auto m3 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_amop"));
+
+    ASSERT_EQ(m3.total, m1.total);
+    ASSERT_EQ(m3.negative, m1.negative);
+  }
 };
 
-class PgLibPqAmopNoPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+class PgLibPqNoPreloadNegCacheTest : public PgLibPqNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
@@ -4491,31 +4537,35 @@ class PgLibPqAmopNoPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
   }
 };
 
-class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+class PgLibPqPrecoidPreloadNegCacheTest : public PgLibPqNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
         "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false,"
         "yb_enable_negative_catcache_entries=false");
     options->extra_tserver_flags.emplace_back(
-        "--ysql_catalog_preload_additional_table_list=pg_amop");
-    PgLibPqTest::UpdateMiniClusterOptions(options);
+        "--ysql_catalog_preload_additional_table_list=pg_proc");
   }
 };
 
 // Default behavior: negative caching is enabled.
-TEST_F_EX(PgLibPqTest, PgAmopNegCacheTest, PgLibPqAmopNegCacheTest) {
-  TestAmopNegCacheMiss(NegCacheTestType::kNegCache);
+TEST_F_EX(PgLibPqTest, PgProcoidNegCacheTest, PgLibPqNegCacheTest) {
+  TestProcoidNegCacheMiss(NegCacheTestType::kNegCache);
 }
 
 // Disable negative caching.
-TEST_F_EX(PgLibPqTest, PgAmopNoPreloadCacheTest, PgLibPqAmopNoPreloadNegCacheTest) {
-  TestAmopNegCacheMiss(NegCacheTestType::kNoPreload);
+TEST_F_EX(PgLibPqTest, PgProcoidNoPreloadCacheTest, PgLibPqNoPreloadNegCacheTest) {
+  TestProcoidNegCacheMiss(NegCacheTestType::kNoPreload);
 }
 
 // Disable negative caching and preload pg_amop.
-TEST_F_EX(PgLibPqTest, PgAmopPreloadCacheTest, PgLibPqAmopPreloadNegCacheTest) {
-  TestAmopNegCacheMiss(NegCacheTestType::kPreload);
+TEST_F_EX(PgLibPqTest, PgProcoidPreloadCacheTest, PgLibPqPrecoidPreloadNegCacheTest) {
+  TestProcoidNegCacheMiss(NegCacheTestType::kPreload);
+}
+
+// Whitelisted NegCache should be cached regardless of server flags.
+TEST_F_EX(PgLibPqTest, PgAmopNoPreloadCacheTest, PgLibPqNoPreloadNegCacheTest) {
+  TestAmopNegCacheMiss();
 }
 
 class PgLibPqOperatorCacheLazyListTest : public PgLibPqTest {
@@ -4857,23 +4907,36 @@ TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) 
   pg_ts = cluster_->tablet_server(2);
   auto conn2 = ASSERT_RESULT(Connect());
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([&conn1]() -> void {
-    // Retry on 40001 (serialization failure) which can occur due to
-    // running CREATE TABLE concurrently with the other thread.
-    Status s;
-    do {
-      s = conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)");
-    } while (!s.ok() && HasTransactionError(s));
-    ASSERT_OK(s);
-    ASSERT_OK(conn1.Execute("INSERT INTO t1(v) VALUES(1)"));
+  // The concurrent CREATE TABLEs bump the catalog version and can race with each other.
+  // When transactional DDL is disabled (--ysql_yb_ddl_transaction_block_enabled=false),
+  // a catalog-version-mismatch abort does not roll back the table that the first attempt
+  // already wrote to DocDB; instead the master's DDL atomicity infrastructure cleans it up
+  // asynchronously. That cleanup can land between a successful CREATE TABLE IF NOT EXISTS
+  // (which no-ops on the still-cached pg_class entry) and the INSERT, leaving the INSERT to
+  // fail with "relation does not exist". Wrap the whole create+insert in a retry loop so we
+  // recover from each of these transient outcomes.
+  auto create_and_insert = [](PGConn* conn, const std::string& table) {
+    while (true) {
+      auto create_status = conn->ExecuteFormat(
+          "CREATE TABLE IF NOT EXISTS $0(k SERIAL, v INT)", table);
+      ASSERT_TRUE(create_status.ok() ||
+                  HasTransactionError(create_status) || IsRetryable(create_status))
+          << create_status;
+      auto insert_status = conn->ExecuteFormat("INSERT INTO $0(v) VALUES(1)", table);
+      if (insert_status.ok()) return;
+      // The table may have been removed by the master's DDL atomicity cleanup after a
+      // catalog-mismatch abort of a concurrent CREATE TABLE; that surfaces as "relation
+      // does not exist" on the INSERT and is also retryable.
+      ASSERT_TRUE(HasTransactionError(insert_status) || IsRetryable(insert_status) ||
+                  insert_status.message().ToBuffer().find("does not exist") != std::string::npos)
+          << insert_status;
+    }
+  };
+  thread_holder.AddThreadFunctor([&conn1, &create_and_insert]() -> void {
+    create_and_insert(&conn1, "t1");
   });
-  thread_holder.AddThreadFunctor([&conn2]() -> void {
-    Status s;
-    do {
-      s = conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)");
-    } while (!s.ok() && HasTransactionError(s));
-    ASSERT_OK(s);
-    ASSERT_OK(conn2.Execute("INSERT INTO t2(v) VALUES(2)"));
+  thread_holder.AddThreadFunctor([&conn2, &create_and_insert]() -> void {
+    create_and_insert(&conn2, "t2");
   });
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
@@ -4908,8 +4971,12 @@ class PgBackendsSessionExpireTest : public LibPqTestBase {
         });
   }
 
-  const MonoDelta kHeartbeatTimeout = 1s;
-  const MonoDelta kHeartbeatInterval = 10s;
+  // Sanitizer builds can spend multiple seconds in backend startup/relcache
+  // initialization, so a 1s session lifetime can expire unrelated connection
+  // attempts. Using a conservative 10x multipler in sanitizer builds as a
+  // workaround.
+  const MonoDelta kHeartbeatTimeout = RegularBuildVsSanitizers(1s, 10s);
+  const MonoDelta kHeartbeatInterval = kHeartbeatTimeout * 10;
   static constexpr int kMaxTabletsPerTable = 10;
 };
 
@@ -4919,7 +4986,7 @@ TEST_F(PgBackendsSessionExpireTest, UnknownSessionFatal) {
   constexpr auto query = "SELECT * FROM pg_class LIMIT 1";
   PGConn conn = ASSERT_RESULT(Connect());
 
-  // The backend sends a heartbeat to the tablet server once every 10s by default.
+  // The backend sends a heartbeat to the tablet server every kHeartbeatInterval.
   // This is controlled by the 'pg_client_heartbeat_interval_ms' flag.
   // The flag 'pg_client_session_expiration_ms' controls how often the tserver checks for the
   // expiry of sessions. By reducing the session expiration time to 1s and sleeping for a little
@@ -5405,6 +5472,7 @@ TEST_F(PgLibPqTest, InconsistentIndexRead) {
   // Assert that the balance is always 10k.
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), initial_sum]() {
     auto reader_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(reader_conn.Execute("SET yb_parallel_range_rows = 0"));
     while (!stop.load(std::memory_order_acquire)) {
       auto sum_balance = ASSERT_RESULT(reader_conn.FetchRow<int64_t>(
           "/*+ IndexScan(bank) */ SELECT SUM(balance) FROM bank WHERE id >= 0"));
@@ -5426,12 +5494,27 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
   }
 };
 
+// Widens the read-restart uncertainty window and warms PG catalog caches at connect time so
+// the InconsistentUpdateReadNonPrefixKey test is not derailed by sanitizer-amplified per-backend
+// catalog warm-up: under SAN the first DML on a fresh connection pays 100s of ms loading
+// bank_accounts metadata, which would push the conflicting UPDATE past the default 500ms
+// max_clock_skew_usec and leave it outside s_sum's uncertainty window (no read restart fires).
+class PgLibPqInconsistentReadTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.emplace_back("--max_clock_skew_usec=10000000");
+    options->extra_master_flags.emplace_back("--max_clock_skew_usec=10000000");
+    options->extra_tserver_flags.emplace_back("--ysql_catalog_preload_additional_tables=true");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
 // Test case for GitHub issue #28628. The IN-list is on a non-prefix range column so the
 // variable bloom filter (which is keyed on the prefix range column) does not bypass scan
 // choices' intermediate seeks, allowing the rollback-of-max_seen_ht bug to surface. A
 // third range column `sub_id` is added so the planner cannot form full ybctids and must
 // exercise HybridScanChoices on the non-prefix `id` column.
-TEST_F(PgLibPqTest, InconsistentUpdateReadNonPrefixKey) {
+TEST_F_EX(PgLibPqTest, InconsistentUpdateReadNonPrefixKey, PgLibPqInconsistentReadTest) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute(
@@ -5641,6 +5724,44 @@ TEST_F(PgLibPqTest, TestGetTableXorHash) {
 
   ASSERT_EQ(colocated_tbl_row_count, 10);
   ASSERT_EQ(colocated_tbl_xor_hash, tbl1_xor_hash);
+}
+
+class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+
+    // Disable object locking and transactional DDL. If they are enabled, DDL conflicts
+    // are either avoided or DDL statement retries are not supported in READ COMMITTED,
+    // which would prevent us from exercising the DDL retry path.
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
+
+    // DDL statement retries are only supported in READ COMMITTED isolation.
+    // In debug builds, this flag defaults to false, causing READ COMMITTED to fall back
+    // to REPEATABLE READ, which would prevent the DDL retry.
+    options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+  }
+};
+
+// Test for #29871: SMgrRelation hashtable corrupted during DDL retry.
+TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Using SERIAL creates a sequence. Dropping a sequence schedules a physical file
+  // deletion via RelationDropStorage, which adds it to the pendingDeletes list.
+  ASSERT_OK(conn.Execute("CREATE TABLE drop_retry_test(a SERIAL PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX drop_retry_test_idx ON drop_retry_test(a)"));
+
+  // Inject a transaction conflict error at the end of the next DDL statement.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl = 5"));
+
+  // This should succeed because the DDL retry wrapper will catch the conflict and retry.
+  // The fix ensures that the pendingDeletes list is cleared before the retry,
+  // preventing the "SMgrRelation hashtable corrupted" double-close error.
+  ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS drop_retry_test CASCADE"));
 }
 
 } // namespace yb::pgwrapper

@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -73,6 +74,10 @@ public class CustomerConfig extends Model {
   public static final String SMTP_INFO = "smtp info";
   public static final String PASSWORD_POLICY = "password policy";
   public static final String CALLHOME_PREFERENCES = "callhome level";
+
+  // Maps array field name → the identity key within each element used to match originals on update.
+  public static final Map<String, String> ARRAY_IDENTITY_FIELDS =
+      CustomerConfigConsts.STORAGE_CONFIG_ARRAY_MERGE_FIELDS;
 
   public enum ConfigType {
     @EnumValue("STORAGE")
@@ -209,7 +214,7 @@ public class CustomerConfig extends Model {
   }
 
   public CustomerConfig unmaskAndSetData(ObjectNode data) {
-    this.setData(CommonUtils.unmaskJsonObject(this.getData(), data));
+    this.setData(CommonUtils.unmaskJsonObject(this.getData(), data, ARRAY_IDENTITY_FIELDS));
     return this;
   }
 

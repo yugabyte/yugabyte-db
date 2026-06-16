@@ -37,6 +37,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/dist_trace.h"
+#include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -78,7 +79,7 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
                        "that messages survive long enough for every TServer to receive them "
                        "via heartbeats.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 8192,
                        "If a DDL statement generates more than this number of invalidation "
                        "messages we do not associate the messages with the new catalog version "
                        "caused by this DDL statement. This effetively turns off incremental "
@@ -86,6 +87,14 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
 
 DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
                       "Maximum number of invalidation messages we keep for a given database.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write, true,
+                       "Enables fastpath writes for relations created in the current transaction "
+                       "(skip intents DB when safe).");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks, false,
+                               "Allows yb_enable_new_relation_fastpath_write to be applicable "
+                               "inside explicit transaction blocks too.");
 
 namespace yb::pggate {
 namespace {
@@ -326,8 +335,7 @@ bool IsTableAffectedByOperations(
 }
 
 std::optional<ReadTimeAction> MakeReadTimeActionForFlush(const PgTxnManager& txn_manager) {
-  // TODO(#29283): Change this to IsDdlModeWithSeparateTransaction()
-  if (txn_manager.IsDdlMode()) {
+  if (txn_manager.IsDdlModeWithSeparateTransaction()) {
     return std::nullopt;
   }
   return txn_manager.GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL
@@ -354,6 +362,19 @@ Status Flush(ExplicitRowLockBuffer& row_lock_buffer) {
         << " on error status: " << ToString(status);
   }
   return status;
+}
+
+YB_DEFINE_ENUM(BufferedOpsFlushReason, (kTableConflict)(kMixedSkipIntents));
+
+PgFlushDebugContext GetFlushDebugContext(const PgTableDesc& table, BufferedOpsFlushReason reason) {
+  switch(reason) {
+    case BufferedOpsFlushReason::kTableConflict:
+      return PgFlushDebugContext::ConflictingRead(
+          table.pg_table_id().object_oid, table.table_name().table_name());
+    case BufferedOpsFlushReason::kMixedSkipIntents:
+      return PgFlushDebugContext::SwitchSkipIntentsMode();
+  }
+  FATAL_INVALID_ENUM_VALUE(BufferedOpsFlushReason, reason);
 }
 
 } // namespace
@@ -513,9 +534,8 @@ class PgSession::RunHelper {
   }
 
   Status Add(const PgTableDesc& table, PgsqlOpPtr&& op) {
-    if (IsTableAffectedByOperations(
-        table.pg_table_id(), *op,
-        {ops_info_.ops.relations().data(), ops_info_.num_ops_taken_from_buffer})) {
+    const auto reason = ReasonForBufferedOpsFlush(table, *op);
+    if (reason) {
       auto [buffered_ops, ops] =
           Split(std::move(ops_info_.ops), ops_info_.num_ops_taken_from_buffer);
       DCHECK_EQ(ops_info_.num_ops_taken_from_buffer, buffered_ops.Size());
@@ -523,12 +543,31 @@ class PgSession::RunHelper {
       ops_info_.num_ops_taken_from_buffer = 0;
 
       RETURN_NOT_OK(VERIFY_RESULT(pg_session_.FlushOperations(
-        std::move(buffered_ops), IsTransactional(),
-        PgFlushDebugContext::ConflictingRead(
-            table.pg_table_id().object_oid, table.table_name().table_name()))).Get());
+        std::move(buffered_ops), IsTransactional(), GetFlushDebugContext(table, *reason))).Get());
     }
     ops_info_.ops.Add(std::move(op), table);
     return Status::OK();
+  }
+
+  std::optional<BufferedOpsFlushReason> ReasonForBufferedOpsFlush(
+      const PgTableDesc& table, const PgsqlOp& op) {
+    if (!ops_info_.num_ops_taken_from_buffer) {
+      return std::nullopt;
+    }
+    if (IsTableAffectedByOperations(
+        table.pg_table_id(), op,
+        {ops_info_.ops.relations().data(), ops_info_.num_ops_taken_from_buffer})) {
+      return BufferedOpsFlushReason::kTableConflict;
+    }
+
+    if (SkipIntents(*ops_info_.ops.operations().front()) != SkipIntents(op)) {
+      // All new operations in a single batch must have the same skip_intents state.
+      // If this fails, it means a previous op in the same batch was added successfully
+      // but this op mismatched, implying the batch contains mixed skip_intents.
+      DCHECK_EQ(ops_info_.ops.Size(), ops_info_.num_ops_taken_from_buffer);
+      return BufferedOpsFlushReason::kMixedSkipIntents;
+    }
+    return std::nullopt;
   }
 
   struct OperationsInfo {
@@ -581,12 +620,9 @@ PgSession::~PgSession() = default;
 
 Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {
-  auto resp = VERIFY_RESULT(pg_client_.GetDatabaseInfo(database_oid));
-  *colocated = resp.colocated();
-  if (resp.has_legacy_colocated_database())
-    *legacy_colocated_database = resp.legacy_colocated_database();
-  else
-    *legacy_colocated_database = true;
+  auto info = VERIFY_RESULT(pg_client_.IsDatabaseColocated(database_oid));
+  *colocated = info.colocated;
+  *legacy_colocated_database = info.legacy_colocated_database;
   return Status::OK();
 }
 
@@ -1182,6 +1218,9 @@ Result<PerformFuture> PgSession::DoRunAsync(
         return runner.Apply(table, op);
     };
   for (auto table_op = first_table_op; !table_op.IsEmpty(); table_op = generator()) {
+    RSTATUS_DCHECK_EQ(
+        SkipIntents(**first_table_op.operation), SkipIntents(**table_op.operation),
+        IllegalState, "All operations in a batch must have the same skip_intents state");
     RETURN_NOT_OK(processor(table_op));
   }
   auto result = runner.Flush(std::move(cache_options));
@@ -1271,7 +1310,7 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 
 Status PgSession::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
-  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
+  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
@@ -1293,19 +1332,12 @@ Status PgSession::AcquireObjectLock(
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
-  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
+  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
     return Status::OK();
   }
   tserver::PgReleaseSessionObjectLockRequestPB req;
-  auto& options = *req.mutable_options();
-  RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-      false /* read_only, doesn't matter */,
-      pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
-      IsLocalObjectLockOp(false)));
-  RETURN_NOT_OK(SetupPerformOptions(
-      VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::ReleaseLock(lock_id))), &options));
   if (release_all) {
-    options.clear_active_sub_transaction_id();
+    req.set_release_all(true);
   } else {
     auto& lock_oid = *req.mutable_lock_oid();
     lock_oid.set_database_oid(lock_id.db_oid);

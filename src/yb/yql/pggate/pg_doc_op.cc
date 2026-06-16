@@ -34,7 +34,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-#include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -974,9 +973,11 @@ Status PgDocReadOp::DoPopulateMergeStreamRequests(
   }
   DCHECK(!merge_streams.HasPermutation());
   MoveInactiveOpsOutside();
-  // We need a specialized result stream to merge results from multiple active operations.
-  // If there is only one, default result stream is good; no active ops means no execution.
-  if (active_op_count > 1) {
+  // We need a specialized result stream to handle responses from merge stream operations: in
+  // addition to merging, it consumes the merge sort key columns that the responses carry.  That is
+  // needed even if only one operation remains active: the default result stream cannot parse such
+  // responses.  No active ops means no execution.
+  if (active_op_count > 0) {
     DCHECK(!result_stream_);
     // It is not known here what columns are read, but need to reserve space in Datum/isnull arrays
     // for them. So reserve space for all regular attributes.
@@ -996,10 +997,15 @@ Result<bool> PgDocReadOp::BindExprsRegular(
     PgTable& table, LWPgsqlReadRequestPB& read_req, const QLValuePBs& values) {
   if (table->num_hash_key_columns() > 0) {
     std::span hash_values(values.begin(), table->num_hash_key_columns());
-    auto scan_range = PgReadRange(table);
     auto hash = VERIFY_RESULT(table->partition_schema().PgsqlHashColumnCompoundValue(hash_values));
-    scan_range.SetHashCodeBound(hash, true /* is_inclusive */, true /* is_lower */);
-    scan_range.SetHashCodeBound(hash, true /* is_inclusive */, false /* is_lower */);
+    PgReadRange scan_range(table);
+    if (yb_allow_dockey_bounds) {
+      scan_range.SetDocKeyBound(hash, values, true /* is_inclusive */, true /* is_lower */);
+      scan_range.SetDocKeyBound(hash, values, true /* is_inclusive */, false /* is_lower */);
+    } else {
+      scan_range.SetHashCodeBound(hash, true /* is_inclusive */, true /* is_lower */);
+      scan_range.SetHashCodeBound(hash, true /* is_inclusive */, false /* is_lower */);
+    }
     if (!scan_range.ApplyBounds(read_req)) {
       return false;
     }
@@ -1034,32 +1040,52 @@ Result<bool> PgDocReadOp::BindExprsToBatch(
     const ReadOpProvider& read_op_provider) {
   std::span hash_values(values.begin(), table_->num_hash_key_columns());
   auto partition_key = VERIFY_RESULT(table_->partition_schema().EncodePgsqlHash(hash_values));
+  auto hash_code = table_->partition_schema().DecodeMultiColumnHashValue(partition_key);
   auto partition = client::FindPartitionStartIndex(table_->GetPartitionList(), partition_key);
   DCHECK(partition < partition_batches.size());
   auto& partition_batch = partition_batches[partition];
-  if (!partition_batch.first) {
-    partition_batch.first = true;
-    auto& read_op = VERIFY_RESULT_REF(read_op_provider());
-    auto& read_req = read_op.read_request();
-    if (VERIFY_RESULT(SetLowerUpperBound(&read_req, partition))) {
-      read_op.set_active(true);
-      partition_batch.second = InitHashPermutationBatch(read_req);
+  if (!partition_batch.read_op) {
+    partition_batch.read_op = &VERIFY_RESULT_REF(read_op_provider());
+    auto& read_req = partition_batch.read_op->read_request();
+    PgReadRange partition_range(table_);
+    partition_range.SetPartitionBounds(partition);
+    if (partition_range.ApplyBounds(read_req)) {
+      partition_batch.rhs_values = InitHashPermutationBatch(read_req);
+      PgReadRange request_range(table_);
+      request_range.SetRequestBounds(read_req);
+      if (request_range != partition_range) {
+        partition_batch.request_range.emplace(std::move(request_range));
+      }
     }
   }
-  if (!partition_batch.second) {
+  if (!partition_batch.rhs_values) {
     return false;
   }
-  auto* rhs_values_list = partition_batch.second->mutable_value()->mutable_list_value();
+  if (partition_batch.request_range) {
+    // The hash permutation key generally is a range, keys with the same hash code and the hash
+    // values, but different range values. It is a single value range if there's no range columns.
+    // Skip the permutation if it is fully outside of the request range.
+    PgReadRange permutation_range(table_);
+    permutation_range.SetDocKeyBound(
+        hash_code, values, true /* is_inclusive */, true /* is_lower */);
+    permutation_range.SetDocKeyBound(
+        hash_code, values, true /* is_inclusive */, false /* is_lower */);
+    if (!partition_batch.request_range->Intersects(permutation_range)) {
+      return false;
+    }
+  }
+  auto* mutable_rhs_values = partition_batch.rhs_values->mutable_value()->mutable_list_value();
   // Add new tuple with the hash code and the provided key values
-  auto* tup_elements = rhs_values_list->add_elems()->mutable_tuple_value();
+  auto* tup_elements = mutable_rhs_values->add_elems()->mutable_tuple_value();
   auto* new_elem = tup_elements->add_elems();
-  new_elem->set_int32_value(table_->partition_schema().DecodeMultiColumnHashValue(partition_key));
+  new_elem->set_int32_value(hash_code);
   for (auto* elem : values) {
     if (elem) {
       new_elem = tup_elements->add_elems();
       *new_elem = *elem;
     }
   }
+  partition_batch.read_op->set_active(true);
 
   return true;
 }
@@ -1118,7 +1144,7 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
                                    implicit_cast<size_t>(FLAGS_ysql_request_limit));
   ClonePgsqlOps(max_op_count);
   if (IsHashBatchingEnabled()) {
-    PartitionBatches batches(table_->GetPartitionListSize(), {false, nullptr});
+    PartitionBatches batches(table_->GetPartitionListSize());
     const auto op_provider =
         [it = pgsql_ops_.begin(), end = pgsql_ops_.end()] () mutable -> Result<PgsqlReadOp&> {
           RSTATUS_DCHECK(it != end, IllegalState, "No more read ops available");

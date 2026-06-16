@@ -7,6 +7,7 @@ import { Provider } from 'react-redux';
 import { createStore } from 'redux';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { mainTheme } from '@app/redesign/theme/mainTheme';
+import { YBToastProvider } from '../../create-universe/helpers/ToastUtils';
 import { DeleteReadReplicaModal } from './DeleteReadReplicaModal';
 
 vi.mock('@yugabyte-ui-library/core', async (importOriginal) => {
@@ -94,13 +95,15 @@ function renderModal(props: {
     <ThemeProvider theme={mainTheme}>
       <Provider store={noopStore}>
         <QueryClientProvider client={queryClient}>
-          <DeleteReadReplicaModal
-            open={props.open ?? true}
-            onClose={vi.fn()}
-            universeUuid={props.universeUuid ?? 'uni-1'}
-            clusterUuid={props.clusterUuid ?? 'cluster-rr-1'}
-            universeDisplayName={props.universeDisplayName ?? 'my-universe'}
-          />
+          <YBToastProvider>
+            <DeleteReadReplicaModal
+              open={props.open ?? true}
+              onClose={vi.fn()}
+              universeUuid={props.universeUuid ?? 'uni-1'}
+              clusterUuid={props.clusterUuid ?? 'cluster-rr-1'}
+              universeDisplayName={props.universeDisplayName ?? 'my-universe'}
+            />
+          </YBToastProvider>
         </QueryClientProvider>
       </Provider>
     </ThemeProvider>

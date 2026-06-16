@@ -62,6 +62,7 @@ typedef struct
 	CommandId	output_cid;		/* cmin to insert in output tuples */
 	int			ti_options;		/* table_tuple_insert performance options */
 	BulkInsertState bistate;	/* bulk insert state */
+	MemoryContext yb_per_tuple_context; /* YB: per-tuple context to avoid unbounded memory growth */
 } DR_transientrel;
 
 static int	matview_maintenance_depth = 0;
@@ -438,8 +439,14 @@ refresh_matview_datafill(DestReceiver *dest, Query *query,
 	/* Check for user-requested abort. */
 	CHECK_FOR_INTERRUPTS();
 
-	/* Plan the query which will generate data for the refresh. */
-	plan = pg_plan_query(query, queryString, CURSOR_OPT_PARALLEL_OK, NULL);
+	/*
+	 * Plan the query which will generate data for the refresh.
+	 * YB: parallel query is disabled for DDLs by default.
+	 */
+	plan = pg_plan_query(query, queryString,
+						 (IsYugaByteEnabled() && yb_disable_parallel_query_in_ddl) ?
+						 0 : CURSOR_OPT_PARALLEL_OK,
+						 NULL);
 
 	/*
 	 * Use a snapshot with an updated command ID to ensure this query sees
@@ -513,6 +520,17 @@ transientrel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	 * This may be harmless, but this function hasn't planned for it.
 	 */
 	Assert(RelationGetTargetBlock(transientrel) == InvalidBlockNumber);
+
+	/*
+	 * YB: Create and switch to a temporary memory context that we can reset
+	 * once per row to recover Yugabyte palloc'd memory.
+	 */
+	if (IsYBRelation(transientrel))
+		myState->yb_per_tuple_context = AllocSetContextCreate(CurrentMemoryContext,
+															  "REFRESH MATVIEW (YB)",
+															  ALLOCSET_DEFAULT_SIZES);
+	else
+		myState->yb_per_tuple_context = NULL;
 }
 
 /*
@@ -533,9 +551,14 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 	 */
 	if (IsYBRelation(myState->transientrel))
 	{
+		MemoryContext oldcontext = MemoryContextSwitchTo(myState->yb_per_tuple_context);
+
 		YBCExecuteInsert(myState->transientrel,
 						 slot,
 						 ONCONFLICT_NONE);
+
+		MemoryContextSwitchTo(oldcontext);
+		MemoryContextReset(myState->yb_per_tuple_context);
 	}
 	else
 	{
@@ -562,6 +585,12 @@ transientrel_shutdown(DestReceiver *self)
 	FreeBulkInsertState(myState->bistate);
 
 	table_finish_bulk_insert(myState->transientrel, myState->ti_options);
+
+	if (myState->yb_per_tuple_context)
+	{
+		MemoryContextDelete(myState->yb_per_tuple_context);
+		myState->yb_per_tuple_context = NULL;
+	}
 
 	/* close transientrel, but keep lock until commit */
 	table_close(myState->transientrel, NoLock);

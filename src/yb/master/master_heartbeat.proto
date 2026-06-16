@@ -19,6 +19,7 @@ option java_package = "org.yb.master";
 import "yb/cdc/cdc_consumer.proto";
 import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/consensus_types.proto";
 import "yb/consensus/metadata.proto";
@@ -56,6 +57,9 @@ message ReportedTabletPB {
 
   // Is the tablet hidden.
   optional bool is_hidden = 9;
+
+  // Pending config operation id from consensus, if a config change is in progress. Unset otherwise.
+  optional OpIdPB pending_config_op_id = 10;
 
   // Mapping of table ids to their respective schema version numbers.
   map<string, uint32> table_to_version = 11;

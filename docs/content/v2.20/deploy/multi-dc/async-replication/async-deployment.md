@@ -28,7 +28,7 @@ If you already have existing data in your tables, follow the bootstrap process d
 
 After you created the required tables, you can set up unidirectional replication as follows:
 
-- Look up the source universe UUID and the table IDs for the two tables and the index table:
+- Look up the source universe UUID and the table IDs for the tables you want to replicate (including any associated index tables):
 
   - To find a universe's UUID, check `http://yb-master-ip:7000/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the universe configuration.
 
@@ -102,19 +102,24 @@ When completed, proceed to [Verify replication](#verify-replication).
 
 ## Verify replication
 
-You can verify replication by stopping the workload and then using the `COUNT(*)` function on the target to source match.
+You can verify replication by stopping the workload and comparing row counts (or sample records) between the source and target universes.
 
 ### Unidirectional replication
 
-For unidirectional replication, connect to the target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
+For unidirectional replication, connect to the target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records. For example, using YSQL:
+
+```sql
+SELECT COUNT(*) FROM <table_name>;
+```
+
+Run the same query on the source universe and confirm the counts match.
 
 ### Bidirectional replication
 
-For bidirectional replication, repeat the procedure described in [Unidirectional replication](#unidirectional-replication), but reverse the source and destination information, as follows:
+For bidirectional replication, verify each direction independently after loading data into both universes (as described in [Load data into the source universe](#load-data-into-the-source-universe)):
 
-1. Run `yb-admin setup_universe_replication` on the target universe, pointing to source.
-2. Use the workload generator to start loading data into the target universe.
-3. Verify replication from target to source.
+1. Compare row counts on the target against the source to confirm source-to-target replication.
+1. Compare row counts on the source against the target to confirm target-to-source replication.
 
 To avoid primary key conflict errors, keep the key ranges for the two universes separate. This is done automatically by the applications included in the `yb-sample-apps.jar`.
 
@@ -288,7 +293,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
   - Execute the following commands for the source universe:
 
       ```sh
-    kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c <source_universe_container> -- bash
+    kubectl exec -it -n <source_universe_namespace> <source_universe_master_leader> -c <source_universe_container> -- bash
       /home/yugabyte/bin/ysqlsh -h <source_universe_yqlserver>
       create table query
     ```
@@ -296,7 +301,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
     Consider the following example:
 
       ```sh
-    kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash
+    kubectl exec -it -n xcluster-source yb-master-2 -c yb-master -- bash
       /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-source
       create table employees(id int primary key, name text);
       ```
@@ -304,7 +309,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
   - Execute the following commands for the target universe:
 
       ```sh
-    kubectl exec -it -n <target_universe_namespace> -t <target_universe_master_leader> -c <target_universe_container> -- bash
+    kubectl exec -it -n <target_universe_namespace> <target_universe_master_leader> -c <target_universe_container> -- bash
       /home/yugabyte/bin/ysqlsh -h <target_universe_yqlserver>
       create table query
     ```
@@ -312,7 +317,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
     Consider the following example:
 
       ```sh
-    kubectl exec -it -n xcluster-target -t yb-master-2 -c yb-master -- bash
+    kubectl exec -it -n xcluster-target yb-master-2 -c yb-master -- bash
       /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-target
       create table employees(id int primary key, name text);
       ```
@@ -321,7 +326,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 - Set up replication from the source universe by executing the following command on the source universe:
 
   ```sh
-  kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c \
+  kubectl exec -it -n <source_universe_namespace> <source_universe_master_leader> -c \
     <source_universe_container> -- bash -c "/home/yugabyte/bin/yb-admin --master_addresses \
     <target_universe_master_addresses> setup_universe_replication \
     <source_universe_UUID>_<replication_stream_name> <source_universe_master_addresses> \
@@ -331,7 +336,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
   Consider the following example:
 
   ```sh
-  kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash -c \
+  kubectl exec -it -n xcluster-source yb-master-2 -c yb-master -- bash -c \
     "/home/yugabyte/bin/yb-admin --master_addresses yb-master-2.yb-masters.xcluster-target.svc.cluster.local, \
     yb-master-1.yb-masters.xcluster-target.svc.cluster.local,yb-master-0.yb-masters.xcluster-target.svc.cluster.local \
     setup_universe_replication ac39666d-c183-45d3-945a-475452deac9f_xCluster_1 \
@@ -342,7 +347,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 - Perform the following on the source universe and then observe replication on the target universe:
 
   ```sh
-  kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c <source_universe_container> -- bash
+  kubectl exec -it -n <source_universe_namespace> <source_universe_master_leader> -c <source_universe_container> -- bash
     /home/yugabyte/bin/ysqlsh -h <source_universe_yqlserver>
     insert query
     select query
@@ -351,7 +356,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
   Consider the following example:
 
   ```sh
-  kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash
+  kubectl exec -it -n xcluster-source yb-master-2 -c yb-master -- bash
     /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-source
     INSERT INTO employees VALUES(1, 'name');
     SELECT * FROM employees;
@@ -360,7 +365,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 - Perform the following on the target universe:
 
   ```sh
-  kubectl exec -it -n <target_universe_namespace> -t <target_universe_master_leader> -c <target_universe_container> -- bash
+  kubectl exec -it -n <target_universe_namespace> <target_universe_master_leader> -c <target_universe_container> -- bash
     /home/yugabyte/bin/ysqlsh -h <target_universe_yqlserver>
     select query
   ```
@@ -368,7 +373,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
   Consider the following example:
 
   ```sh
-  kubectl exec -it -n xcluster-target -t yb-master-2 -c yb-master -- bash
+  kubectl exec -it -n xcluster-target yb-master-2 -c yb-master -- bash
     /home/yugabyte/bin/ysqlsh -h yb-tserver-1.yb-tservers.xcluster-target
     SELECT * FROM employees;
   ```
@@ -406,7 +411,7 @@ Proceed as follows:
     table id: 000033e1000030008000000000004006, CDC bootstrap id: c967967523eb4e03bcc201bb464e0679
     ```
 
-1. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../../manage/backup-restore/snapshot-ysql/).
+1. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../../manage/backup-restore/snapshot-ysql/).
 1. Execute the following command to set up the replication stream using the bootstrap IDs generated in step 1. Ensure that the bootstrap IDs are in the same order as their corresponding table IDs.
 
     ```sh
@@ -429,7 +434,7 @@ Proceed as follows:
 You can modify the bootstrap as follows:
 
 - To wipe the test setup, use the `delete_universe_replication` command.
-- After running the `bootstrap_cdc_producer` command on the source universe, you can verify that it work as expected by running the `list_cdc_streams` command to view the associated entries: the bootstrap IDs generated by the `bootstrap_cdc_producer` command should match the `stream_id` values you see after executing the `list_cdc_streams` command.
+- After running the `bootstrap_cdc_producer` command on the source universe, you can verify that it works as expected by running the `list_cdc_streams` command to view the associated entries: the bootstrap IDs generated by the `bootstrap_cdc_producer` command should match the `stream_id` values you see after executing the `list_cdc_streams` command.
 
 You can also perform the following modifications:
 
@@ -440,7 +445,7 @@ You can also perform the following modifications:
 
 ## Handling DDL changes
 
-You can execute DDL operations after replication has been already been configured. Depending on the type of DDL operations, additional considerations are required.
+You can execute DDL operations after replication has already been configured. Depending on the type of DDL operations, additional considerations are required.
 
 ### Add new objects (Tables, Partitions, Indexes)
 
@@ -469,7 +474,7 @@ When new tables (or partitions) are created, to ensure that all changes from the
 
 1. Get table IDs of the new partition from the source as follows:
 
-    ```sql
+    ```sh
     yb-admin --master_addresses <source_master_ips> \
     --certs_dir_name <cert_dir> \
     list_tables include_table_id|grep 'order_changes_2023_01'
@@ -478,12 +483,12 @@ When new tables (or partitions) are created, to ensure that all changes from the
     You should see output similar to the following:
 
     ```output
-    yugabyte.order_changes_2021_01 000033e8000030008000000000004106
+    yugabyte.order_changes_2023_01 000033e8000030008000000000004106
     ```
 
 1. Add the new table (or partition) to replication.
 
-   ```sql
+   ```sh
    yb-admin --master_addresses <target_master_ips> \
    --certs_dir_name <cert_dir> \
    alter_universe_replication <replication_group_name> \
@@ -506,7 +511,7 @@ However, to add a new index to a table that already has data, the following addi
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
 1. Determine the table ID for `my_new_index`.
 
-   ```sql
+   ```sh
    yb-admin
    --master_addresses <source_master_ips> \
    --certs_dir_name <cert_dir> \
@@ -521,7 +526,7 @@ However, to add a new index to a table that already has data, the following addi
 
 1. Bootstrap the replication stream on the source using the `bootstrap_cdc_producer` API and provide the table ID of the new index as follows:
 
-   ```sql
+   ```sh
    yb-admin
    --master_addresses <source_master_ips> \
    --certs_dir_name <cert_dir> \
@@ -539,7 +544,7 @@ However, to add a new index to a table that already has data, the following addi
 1. Wait for index backfill to finish. For more details, refer to YugabyteDB tips on [monitor backfill progress](https://yugabytedb.tips/?p=2215).
 1. Add the index to replication with the bootstrap ID from Step 4.
 
-    ```sql
+    ```sh
     yb-admin
     --master_addresses <target_master_ips> \
     --certs_dir_name <cert_dir> \
@@ -547,7 +552,7 @@ However, to add a new index to a table that already has data, the following addi
     add_table  000033e8000030008000000000004028 c8cba563e39c43feb66689514488591c
     ```
 
-   You should see output similar to the following:
+    You should see output similar to the following:
 
     ```output
     Replication altered successfully
@@ -565,7 +570,7 @@ Objects (tables, indexes, partitions) need to be removed from replication before
 
 1. Get the table ID for the object to be removed from the source.
 
-    ```sql
+    ```sh
     yb-admin --master_addresses <source_master_ips> \
     --certs_dir_name <cert_dir> \
     list_tables include_table_id |grep '<partition_name>'
@@ -573,7 +578,7 @@ Objects (tables, indexes, partitions) need to be removed from replication before
 
 1. Remove the table from replication on the target.
 
-    ```sql
+    ```sh
     yb-admin --master_addresses <target_master_ips> \
     --certs_dir_name <cert_dir> \
     alter_universe_replication <replication_group_name> \
@@ -586,14 +591,16 @@ Alters involving adding/removing columns or modifying data types require replica
 
 1. Pause replication on both sides.
 
-    ```sql
-    yb-admin
-    --master_addresses <target_master_ips>
+    ```sh
+    yb-admin \
+    --master_addresses <target_master_ips> \
     --certs_dir_name <cert_dir> \
     set_universe_replication_enabled <replication_group_name> 0
     ```
 
-   You should see output similar to the following:
+    For unidirectional replication, run this on the target (consumer) universe. For bidirectional replication, run it on each universe using that universe's master addresses and the replication group that consumes from the other universe.
+
+    You should see output similar to the following:
 
     ```output
     Replication disabled successfully
@@ -602,12 +609,14 @@ Alters involving adding/removing columns or modifying data types require replica
 1. Perform the schema modification.
 1. Resume replication as follows:
 
-    ```sql
-    yb-admin
-    --master_addresses <target_master_ips>
+    ```sh
+    yb-admin \
+    --master_addresses <target_master_ips> \
     --certs_dir_name <cert_dir> \
-    set_universe_replication_enabled <replication_group_name> 0
+    set_universe_replication_enabled <replication_group_name> 1
     ```
+
+    Repeat on each universe for bidirectional replication.
 
     ```output
     Replication enabled successfully
@@ -633,7 +642,7 @@ For example, say you have a replicated table `test_table`.
       Example:
 
       ```sql
-      SELECT attmissingval FROM pg_attribute WHERE attrelid='test'::regclass AND attname='test_column';
+      SELECT attmissingval FROM pg_attribute WHERE attrelid='test_table'::regclass AND attname='test_column';
       ```
 
       ```output
@@ -646,5 +655,5 @@ For example, say you have a replicated table `test_table`.
     - Execute the `ADD COLUMN` command on the target with the computed default value.
 
       ```sql
-      ALTER TABLE test ADD COLUMN test_column TIMESTAMP DEFAULT "2024-01-09 12:29:11.88894"
+      ALTER TABLE test_table ADD COLUMN test_column TIMESTAMP DEFAULT '2024-01-09 12:29:11.88894'
       ```

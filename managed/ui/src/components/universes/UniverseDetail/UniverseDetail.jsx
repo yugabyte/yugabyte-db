@@ -76,6 +76,7 @@ import {
 } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 import { InstallNodeAgentModal } from '../../../redesign/features/universe/universe-actions/install-node-agent/InstallNodeAgentModal';
+import { ReprovisionNodesWithYnpModal } from '../../../redesign/features/universe/universe-actions/reprovision-nodes-with-ynp/ReprovisionNodesWithYnpModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import {
   PerfAdvisorModalIntention,
@@ -100,6 +101,7 @@ import PGIcon from '../../../redesign/assets/pg-compatibility.svg?img';
 import PGDisabled from '../../../redesign/assets/pg-disabled.svg?img';
 import ConnectionPoolIcon from '../../../redesign/assets/connection-pooling.svg?img';
 import ConnectionPoolDisabled from '../../../redesign/assets/connection-pool-disabled.svg?img';
+import PausedIcon from '../../../redesign/assets/approved/paused.svg';
 
 import './UniverseDetail.scss';
 
@@ -385,6 +387,7 @@ class UniverseDetail extends Component {
       showTLSConfigurationModal,
       showRollingRestartModal,
       showInstallNodeAgentModal,
+      showReprovisionNodesWithYnpModal,
       showUpgradeSystemdModal,
       showThirdpartyUpgradeModal,
       showRunSampleAppsModal,
@@ -418,7 +421,6 @@ class UniverseDetail extends Component {
       params: { tab },
       featureFlags,
       providers,
-      accessKeys,
       graph,
       location
     } = this.props;
@@ -458,13 +460,8 @@ class UniverseDetail extends Component {
     const isProviderNodeAgentEnabled = provider?.details?.enableNodeAgent;
     const isNodeAgentMissing = universe?.currentUniverse?.data?.universeDetails?.nodeAgentMissing;
 
-    let onPremSkipProvisioning = false;
-    if (provider && provider.code === 'onprem') {
-      const onPremKey = accessKeys.data.find(
-        (accessKey) => accessKey.idKey.providerUUID === provider.uuid
-      );
-      onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
-    }
+    const onPremWithoutSudoAccess =
+      provider?.code === 'onprem' && provider?.details?.skipProvisioning;
 
     const isNodeAgentClientEnabled =
       providerRuntimeConfigs?.data?.configEntries?.find(
@@ -649,6 +646,9 @@ class UniverseDetail extends Component {
     isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL);
     const isInstallNodeAgentDisabled =
       isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL_NODE_AGENT);
+    const isReprovisionNodesWithYnpDisabled =
+      isUniverseStatusPending ||
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.REPROVISION_NODES_WITH_YNP);
     const isReadReplicaAsymmetricBlocked =
       hasAsymmetricAsyncCluster && !(isKubernetesUniverse && enableAzOverridesK8s);
     const isReadReplicaDisabled =
@@ -972,10 +972,6 @@ class UniverseDetail extends Component {
     const isCACertRotationEnabled =
       !isKubernetesUniverse &&
       (featureFlags.test['enableCACertRotation'] || featureFlags.released['enableCACertRotation']);
-    const nodeNames =
-      currentUniverse.data.universeDetails.nodeDetailsSet
-        .filter((nodeDetails) => !!nodeDetails.nodeName)
-        .map((nodeDetails) => nodeDetails.nodeName) ?? [];
     const actionMenuButtons = isNotHidden(
       currentCustomer.data.features,
       'universes.details.pageActions'
@@ -1662,6 +1658,27 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       </RbacValidator>
                     )}
+                    {!isReadOnlyUniverse &&
+                      !universePaused &&
+                      !isKubernetesUniverse &&
+                      !onPremWithoutSudoAccess && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.UPGRADE_UNIVERSE_PROVISION_NODES
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={isReprovisionNodesWithYnpDisabled}
+                            onClick={showReprovisionNodesWithYnpModal}
+                          >
+                            <YBLabelWithIcon icon="fa fa-refresh">
+                              Reprovision Nodes with YNP
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
                     {!universePaused && (
                       <RbacValidator
                         isControl
@@ -1804,6 +1821,12 @@ class UniverseDetail extends Component {
               {currentUniverse.data.name}
             </a>
           </h2>
+          {universeStatus?.state === UniverseState.PAUSED && (
+            <div className="status-container paused">
+              <PausedIcon width={24} height={24} />
+              {universeStatus.state.text && <span>{universeStatus.state.text}</span>}
+            </div>
+          )}
         </div>
         <TaskDetailBanner universeUUID={currentUniverse.data.universeUUID} />
         <RollingUpgradeFormContainer
@@ -1999,6 +2022,7 @@ class UniverseDetail extends Component {
               this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
             }
           }}
+          isPerformanceTabEnabled={isPerformanceTabEnabled}
           paUuid={ybaToPaServiceDetails?.data?.[0]?.uuid}
           universeData={currentUniverse.data}
           perfAdvisorStatus={universePaRegistrationStatus}
@@ -2045,9 +2069,20 @@ class UniverseDetail extends Component {
             }
           }}
           universeUuid={currentUniverse.data.universeUUID}
-          nodeNames={nodeNames}
           isUniverseAction={true}
           isReinstall={!isNodeAgentMissing}
+        />
+
+        <ReprovisionNodesWithYnpModal
+          modalProps={{
+            open: showModal && visibleModal === 'reprovisionNodesWithYnpModal',
+            onClose: () => {
+              closeModal();
+              this.props.fetchCustomerTasks();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }
+          }}
+          universeUuid={currentUniverse.data.universeUUID}
         />
 
         <UniverseSupportBundleModal

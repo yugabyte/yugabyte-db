@@ -73,12 +73,15 @@ Once **all** conflicts are resolved (and only then):
 
 2. `git cherry-pick --continue --no-edit` to land the resolved commit. Use `--no-edit` so the original commit message is preserved verbatim — the script re-derives the subject/body from `$commitid` on rerun, so anything you type here gets discarded anyway. If the resolved diff is empty, run `git cherry-pick --skip` instead.
 
-3. **Track the resolution.** If you resolved any **non-trivial** conflict (i.e., anything not pure-whitespace), record `<path>:<line>` and a short summary of how you resolved it. May be multiple lines per file when the resolution touches several hunks. You will use this in Step 4. Also remember **which branch** the resolution was on. Example:
+3. **Track every resolution, trivial or not.** Any conflict you touched by hand needs a paper trail in Step 4 so a reviewer can see what was changed vs. the original commit. Record `<path>:<line>` and a short summary of the resolution. For trivial cases a one-liner is fine ("accepted cherry-pick's added block; branch had no code at that location"); for non-trivial cases, expand to one line per hunk you reasoned about. May be multiple lines per file. Also remember **which branch** the resolution was on. Example:
    ```
-   2024.2:
+   2024.2 (non-trivial):
      src/yb/master/catalog_manager.cc:1843 — kept master's call signature; release branch lost the `epoch` arg
      src/yb/master/catalog_manager.cc:2017 — re-applied the cherry-picked guard around the older AddTask path
      src/yb/master/catalog_manager.h:412 — moved the new method below the existing private block
+
+   2025.2 (trivial):
+     src/yb/master/master-path-handlers.cc:1015 — accepted cherry-pick's added block; branch had no code at that location
    ```
 
 4. **Run the linter** from the repo root and confirm it is clean before re-running:
@@ -99,9 +102,11 @@ If a *later* branch in the same run also hits conflicts, repeat this step for th
 
 Extract every `https://github.com/...` URL printed by `gh pr create` from the (possibly multi-run) script output. Each successfully backported branch produces one PR.
 
-### Step 4: Annotate the PR body for branches where non-trivial conflicts were resolved
+### Step 4: Annotate the PR body for every branch where a conflict was resolved by hand
 
-Only the branch(es) you actually resolved by hand need annotation — branches that picked up the resolved diff via chaining did not require manual conflict resolution.
+Any branch where you ran `git cherry-pick --continue` (vs. it auto-applying cleanly) needs an annotation, **regardless of whether the resolution was trivial or non-trivial**. Reviewers shouldn't have to diff the backport against the original commit to discover there was a manual step. "Trivial" describes how easy the resolution was, not whether it warrants disclosure.
+
+Branches that picked up a resolved diff via chaining don't need annotation — that's already implicit in the upstream branch they chained from.
 
 For each such PR:
 

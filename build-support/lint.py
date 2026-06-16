@@ -179,7 +179,7 @@ def _changed_files(base: str | None = None) -> list[str]:
                          f"pointing at {_CANONICAL_REPO_HINT}; pass --rev <base> explicitly")
     resolved = _git("rev-parse", "--symbolic-full-name", base)
     print(f"[lint] comparing against {base} ({resolved})", file=sys.stderr)
-    committed = set(_git("diff", "--name-only", "--diff-filter=d", base).splitlines())
+    committed = set(_git("diff", "--name-only", "--diff-filter=d", f"{base}...HEAD").splitlines())
     uncommitted = set(_git("diff", "--name-only", "--diff-filter=d", "HEAD").splitlines())
     untracked = set(_git("ls-files", "--others", "--exclude-standard").splitlines())
     return sorted(p for p in (committed | uncommitted | untracked) if p)

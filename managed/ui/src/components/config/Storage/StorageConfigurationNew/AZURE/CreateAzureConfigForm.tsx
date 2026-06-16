@@ -74,8 +74,16 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
   onHide,
   fetchConfigs
 }) => {
-  const [useAzureIam, setUseAzureIam] = React.useState(false);
   const isEditMode = !isEmpty(editInitialValues);
+  const [useAzureIam, setUseAzureIam] = React.useState(() => {
+    if (isEmpty(editInitialValues)) {
+      return false;
+    }
+    return (
+      editInitialValues.data['USE_AZURE_IAM'] === 'true' ||
+      editInitialValues.data['USE_AZURE_IAM'] === true
+    );
+  });
 
   const azureProviders = useSelector((state: any) =>
     state.cloud.providers.data
@@ -189,7 +197,6 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
   if (isEditMode) {
     initialValues.AZ_CONFIGURATION_NAME = editInitialValues['configName'];
     initialValues.USE_AZURE_IAM = editInitialValues.data['USE_AZURE_IAM'] === 'true' || editInitialValues.data['USE_AZURE_IAM'] === true;
-    setUseAzureIam(initialValues.USE_AZURE_IAM);
 
     initialValues.MULTI_REGION_AZ_ENABLED = editInitialValues.data['REGION_LOCATIONS']?.length > 0;
 
@@ -204,7 +211,7 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
 
           return {
             region: { value: r.REGION, label: r.REGION },
-            containet: containerAndFolder.container,
+            container: containerAndFolder.container,
             folder: containerAndFolder.folder,
             sas_token: r.AZURE_STORAGE_SAS_TOKEN
           };
@@ -218,7 +225,7 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
         {
           container: containerAndFolder.container,
           folder: containerAndFolder.folder,
-          region: { value: null, region: null },
+          region: { value: null, label: null },
           sas_token: editInitialValues.data['AZURE_STORAGE_SAS_TOKEN']
         }
       ];

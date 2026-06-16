@@ -114,9 +114,26 @@ type RolesAndResourceMappingProps = {
   customTitle?: string;
   hideCustomRoles?: boolean;
   hideConnectOnlyHelpText?: boolean;
+  /** When true, SuperAdmin system role may be selected (requires runtime flag on server). */
+  allowSuperAdminRoleSelection?: boolean;
 };
 
-export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = ({ customTitle, hideCustomRoles = false, hideConnectOnlyHelpText = false }) => {
+function isBuiltInRoleSelectionForbidden(
+  role: Role | null | undefined,
+  allowSuperAdminSelection: boolean
+) {
+  if (!role) return false;
+  if (allowSuperAdminSelection && role.name === 'SuperAdmin' && role.roleType === 'System') {
+    return false;
+  }
+  return find(ForbiddenRoles, { name: role.name, roleType: role.roleType }) !== undefined;
+}
+export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = ({
+  customTitle,
+  hideCustomRoles = false,
+  hideConnectOnlyHelpText = false,
+  allowSuperAdminRoleSelection = false
+}) => {
   const { isLoading: isRoleListLoading, data: roles } = useQuery('roles', getAllRoles, {
     select: (data) => data.data
   });
@@ -154,9 +171,7 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = ({ cust
 
   const [BuiltinRoleTab, CustomRoleTab] = fields.reduce(
     (prevValue, field, index) => {
-      const isForbidden =
-        find(ForbiddenRoles, { name: field.role?.name, roleType: field.role?.roleType }) !==
-        undefined;
+      const isForbidden = isBuiltInRoleSelectionForbidden(field.role, allowSuperAdminRoleSelection);
       const component = (
         <Box key={field.id} className={classes.roleMargin}>
           <div className={classes.mappingRow}>
@@ -180,10 +195,7 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = ({ cust
                     key={role.roleUUID}
                     value={role.roleUUID}
                     data-testid={`rbac-role-select-${role.name}`}
-                    disabled={
-                      find(ForbiddenRoles, { name: role?.name, roleType: role?.roleType }) !==
-                      undefined
-                    }
+                    disabled={isBuiltInRoleSelectionForbidden(role, allowSuperAdminRoleSelection)}
                   >
                     {role.name}
                   </MenuItem>

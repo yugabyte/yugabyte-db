@@ -209,6 +209,7 @@ class YBClient::Data {
                        const YBTableName& table_name,
                        const TableId& table_id,
                        CoarseTimePoint deadline,
+                       std::optional<TransactionMetadata> requester_transaction,
                        bool wait = true);
   Status IsBackfillIndexInProgress(YBClient* client,
                                    const TableId& table_id,

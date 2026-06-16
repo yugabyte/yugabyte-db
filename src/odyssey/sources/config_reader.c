@@ -162,6 +162,8 @@ typedef enum {
 	OD_YB_TCMALLOC_GC_INTERVAL,
 	OD_YB_MAX_PREPARED_STATEMENTS,
 	OD_YB_ENABLE_PARSE_QUEUE_TRACKING,
+	OD_YB_WAIT_FOR_RFQ_ON_SYNC,
+	OD_YB_BACKEND_DRAIN_TIMEOUT_MS,
 } od_lexeme_t;
 
 static od_keyword_t od_config_keywords[] = {
@@ -355,6 +357,10 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("yb_tcmalloc_gc_interval", OD_YB_TCMALLOC_GC_INTERVAL),
 	od_keyword("yb_enable_parse_queue_tracking",
 		   OD_YB_ENABLE_PARSE_QUEUE_TRACKING),
+	od_keyword("yb_wait_for_rfq_on_sync",
+		   OD_YB_WAIT_FOR_RFQ_ON_SYNC),
+	od_keyword("yb_backend_drain_timeout_ms",
+		   OD_YB_BACKEND_DRAIN_TIMEOUT_MS),
 
 	{ 0, 0, 0 },
 };
@@ -2626,6 +2632,26 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			}
 			config->yb_enable_parse_queue_tracking = val;
+			continue;
+		}
+		/* yb_wait_for_rfq_on_sync */
+		case OD_YB_WAIT_FOR_RFQ_ON_SYNC: {
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
+				goto error;
+			}
+			config->yb_wait_for_rfq_on_sync = val;
+			continue;
+		}
+		/* yb_backend_drain_timeout_ms */
+		case OD_YB_BACKEND_DRAIN_TIMEOUT_MS: {
+			int val;
+			if (!od_config_reader_number(reader, &val)) {
+				goto error;
+			}
+			if (val < 0)
+				goto error;
+			config->yb_backend_drain_timeout_ms = val;
 			continue;
 		}
 		default:

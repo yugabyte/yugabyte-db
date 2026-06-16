@@ -22,8 +22,8 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, InitYSQLMethod, CronCheckMethod, \
-    TransferXClusterCerts, VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
-    RebootInstancesMethod, RunHooks, WaitForConnection, ManageOtelCollector
+    TransferXClusterCerts, VerifySSHConnection, RebootInstancesMethod, RunHooks, \
+    WaitForConnection, ManageOtelCollector
 
 
 class AwsInstanceCommand(InstanceCommand):
@@ -51,8 +51,6 @@ class AwsInstanceCommand(InstanceCommand):
         self.add_method(AwsChangeInstanceTypeMethod(self))
         self.add_method(TransferXClusterCerts(self))
         self.add_method(VerifySSHConnection(self))
-        self.add_method(AddAuthorizedKey(self))
-        self.add_method(RemoveAuthorizedKey(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForConnection(self))

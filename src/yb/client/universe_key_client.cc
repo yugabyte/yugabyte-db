@@ -32,8 +32,7 @@
 
 using namespace std::chrono_literals;
 
-DEFINE_RUNTIME_int32(
-    universe_key_client_max_delay_ms, 2000,
+DEFINE_RUNTIME_int32(universe_key_client_max_delay_ms, 2000,
     "Maximum Time in microseconds that an instance of Backoff_waiter waits before retrying to "
     "get the Universe key registry.");
 

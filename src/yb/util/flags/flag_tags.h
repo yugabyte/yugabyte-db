@@ -157,8 +157,7 @@
 
 namespace yb {
 
-YB_DEFINE_ENUM(
-    FlagTag,
+YB_DEFINE_ENUM(FlagTag,
     (kStable)
     (kEvolving)
     (kExperimental)

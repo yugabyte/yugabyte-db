@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -93,7 +94,13 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       Set<NodeDetails> nodeCollection = Collections.singleton(currentNode);
       // Need to reinstall node agent.
       createRemoveNodeAgentTasks(universe, nodeCollection, true /*forceRemove*/);
-      if (!userIntent.getAllCloudTypes().contains(CloudType.local)) {
+      // YNP setup and provisioning require sudo access. For manually provisioned on-prem
+      // universes (skip_provisioning), these steps are performed out-of-band by running
+      // node-agent-provision.sh, so skip them here to avoid failing on the missing sudo
+      // SSH access.
+      boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
+      if (!userIntent.getAllCloudTypes().contains(CloudType.local)
+          && !isUniverseManuallyProvisioned) {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
         createYNPProvisioningTask(universe, nodeCollection, false /*isYBPrebuiltImage*/)

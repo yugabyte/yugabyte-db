@@ -55,6 +55,10 @@ DEFINE_test_flag(bool, yb_test_table_rewrite_keep_old_table, false,
     "concurrent DMLs. If the table is dropped too soon, we will just get a "
     "table does not exist error instead.");
 
+DEFINE_RUNTIME_int32(ddl_requester_liveness_check_interval_secs, 10,
+    "Interval in seconds between liveness checks for a background DDL operation's initiating "
+    "transaction. If the transaction is detected as aborted, the background operation is stopped.");
+
 using std::string;
 using std::vector;
 
@@ -674,7 +678,11 @@ void PollTransactionStatusBase::TransactionReceived(
   // Determine whether the transaction was a success by comparing with the PG schema.
   LOG_WITH_PREFIX(INFO) << "Txn reached terminal state, " << transaction_
                         << ", resp: " << resp.ShortDebugString();
-  FinishPollTransaction();
+
+  // GetTransactionStatus is only called from VerifyTransaction.
+  // VerifyTransaction adds only one transaction id to the request.
+  bool aborted = (resp.status_size() > 0 && resp.status(0) == TransactionStatus::ABORTED);
+  FinishPollTransaction(aborted);
 }
 
 NamespaceVerificationTask::NamespaceVerificationTask(
@@ -729,7 +737,7 @@ void NamespaceVerificationTask::TransactionPending() {
   }, "VerifyTransaction");
 }
 
-void NamespaceVerificationTask::FinishPollTransaction() {
+void NamespaceVerificationTask::FinishPollTransaction(bool /*aborted*/) {
   ScheduleNextStep(
     std::bind(&NamespaceVerificationTask::CheckNsExists, this),
     "CheckNsExists");
@@ -840,7 +848,7 @@ Status TableSchemaVerificationTask::ValidateRunnable() {
   return Status::OK();
 }
 
-void TableSchemaVerificationTask::FinishPollTransaction() {
+void TableSchemaVerificationTask::FinishPollTransaction(bool /*aborted*/) {
   ScheduleNextStep([this] {
     return ddl_atomicity_enabled_ ? CompareSchema() : CheckTableExists();
   }, "Compare Schema");
@@ -894,6 +902,104 @@ void TableSchemaVerificationTask::TaskCompleted(const Status& status) {
 void TableSchemaVerificationTask::PerformAbort() {
   MultiStepTableTaskBase::PerformAbort();
   Shutdown();
+}
+
+// --- DdlRequesterLivenessTask ---
+
+DdlRequesterLivenessTask::DdlRequesterLivenessTask(
+    CatalogManager& catalog_manager,
+    scoped_refptr<TableInfo> table,
+    const TransactionMetadata& transaction,
+    BackgroundDdlCallbacks callbacks,
+    std::shared_future<client::YBClient*> client_future,
+    rpc::Messenger& messenger,
+    const LeaderEpoch& epoch)
+    : MultiStepTableTaskBase(
+          catalog_manager, *catalog_manager.AsyncTaskPool(), messenger, std::move(table), epoch),
+      PollTransactionStatusBase(transaction, std::move(client_future), table_info_->ToString()),
+      callbacks_(std::move(callbacks)) {}
+
+std::shared_ptr<DdlRequesterLivenessTask> DdlRequesterLivenessTask::CreateAndStartTask(
+    CatalogManager& catalog_manager,
+    scoped_refptr<TableInfo> table,
+    const TransactionMetadata& transaction,
+    BackgroundDdlCallbacks callbacks,
+    std::shared_future<client::YBClient*> client_future,
+    rpc::Messenger& messenger,
+    const LeaderEpoch& epoch) {
+  auto task = std::make_shared<DdlRequesterLivenessTask>(
+      catalog_manager, std::move(table), transaction, std::move(callbacks),
+      std::move(client_future), messenger, epoch);
+  task->Start();
+  return task;
+}
+
+std::string DdlRequesterLivenessTask::description() const {
+  return Format("DdlRequesterLivenessTask for $0", table_info_->id());
+}
+
+Status DdlRequesterLivenessTask::FirstStep() {
+  ScheduleNextStepWithDelay(
+      [this] { return VerifyTransaction(); }, "VerifyTransaction",
+      MonoDelta::FromSeconds(FLAGS_ddl_requester_liveness_check_interval_secs));
+  return Status::OK();
+}
+
+void DdlRequesterLivenessTask::TransactionPending() {
+  if (callbacks_.done_()) {
+    // We're inside the GetTransactionStatus RPC callback. Calling Complete() directly here
+    // would deadlock: Complete() -> TaskCompleted() -> Shutdown() -> sync_.Wait() blocks
+    // because the callback's user_cb (which signals sync_) hasn't fired yet.
+    // Schedule asynchronously so user_cb fires first.
+    ScheduleNextStep(
+        [this] {
+          Complete();
+          return Status::OK();
+        },
+        "CompleteLivenessTask");
+    return;
+  }
+  ScheduleNextStepWithDelay(
+      [this] { return VerifyTransaction(); }, "VerifyTransaction",
+      MonoDelta::FromSeconds(FLAGS_ddl_requester_liveness_check_interval_secs));
+}
+
+void DdlRequesterLivenessTask::FinishPollTransaction(bool aborted) {
+  // We're inside the GetTransactionStatus RPC callback. Calling Complete() directly here
+  // would deadlock: Complete() -> TaskCompleted() -> Shutdown() -> sync_.Wait() blocks
+  // because the callback's user_cb (which signals sync_) hasn't fired yet.
+  // Schedule asynchronously so user_cb fires first.
+  ScheduleNextStep(
+      [this, aborted] {
+        Complete();
+        if (aborted && !callbacks_.done_()) {
+          LOG(INFO) << "DdlRequesterLivenessTask: requester transaction aborted for "
+                    << table_info_->id() << ", aborting background DDL operation";
+          auto s = callbacks_.abort_();
+          if (!s.ok()) {
+            LOG(ERROR) << "Failed to abort background DDL operation for table "
+                       << table_info_->id() << " after requester death: " << s;
+          }
+        }
+        return Status::OK();
+      },
+      "CompleteLivenessTask");
+}
+
+void DdlRequesterLivenessTask::TaskCompleted(const Status& status) {
+  Shutdown();
+}
+
+Status DdlRequesterLivenessTask::ValidateRunnable() {
+  if (callbacks_.done_()) {
+    return STATUS(Aborted, "Background DDL operation is done, stopping liveness monitor");
+  }
+  return Status::OK();
+}
+
+void DdlRequesterLivenessTask::PerformAbort() {
+  MultiStepTableTaskBase::PerformAbort();  // Cancels the reactor-scheduled poll timer.
+  Shutdown();  // Cancels any in-flight GetTransactionStatus RPC.
 }
 
 }  // namespace master

@@ -129,12 +129,16 @@ else
     # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
     # of tests to run. Useful when testing this script.
     current_git_commit=$(git rev-parse HEAD)
+    # Diff the change against its base branch via a merge-base ("three-dot") range:
+    # origin/$YB_BRANCH...<commit> captures every commit of the change and is stable even
+    # if origin/$YB_BRANCH advances.
     ( set -x
       "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
-          --build-root "${BUILD_ROOT}" \
-          --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-          --output-test-config "${BUILD_ROOT}/test_conf.json" \
-          affected
+        --build-root "${BUILD_ROOT}" \
+        --git-diff \
+          "origin/${YB_BRANCH}...${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
+        --output-test-config "${BUILD_ROOT}/test_conf.json" \
+        affected
     )
   else
     log "Skipping dependency graph -- expecting to run all tests."

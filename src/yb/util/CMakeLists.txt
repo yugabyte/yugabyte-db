@@ -273,6 +273,7 @@ set(UTIL_LIBS
   libev
   pb_util_proto
   protobuf
+  unwind
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY}

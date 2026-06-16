@@ -875,6 +875,11 @@ public class ModelFactory {
   // - For each mentioned regions we are trying to find it at first. If the region
   // isn't found, it is created. The same is about availability zones.
   public static Universe createFromConfig(Provider provider, String univName, String config) {
+    return createFromConfig(provider, univName, config, false);
+  }
+
+  public static Universe createFromConfig(
+      Provider provider, String univName, String config, boolean initPartitions) {
     Customer customer = Customer.get(provider.getCustomerUUID());
     Universe universe =
         createUniverse(univName, UUID.randomUUID(), customer.getId(), provider.getCloudCode());
@@ -962,6 +967,14 @@ public class ModelFactory {
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           primaryCluster.userIntent = userIntent;
           primaryCluster.placementInfo = placementInfo;
+          if (initPartitions) {
+            UniverseDefinitionTaskParams.PartitionInfo partitionInfo =
+                new UniverseDefinitionTaskParams.PartitionInfo();
+            partitionInfo.setReplicationFactor(userIntent.replicationFactor);
+            partitionInfo.setDefaultPartition(true);
+            partitionInfo.setPlacement(placementInfo);
+            primaryCluster.setPartitions(Collections.singletonList(partitionInfo));
+          }
         };
 
     return Universe.saveDetails(universe.getUniverseUUID(), updater);

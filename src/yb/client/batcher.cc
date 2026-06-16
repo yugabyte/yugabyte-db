@@ -61,6 +61,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/pgsql_utils.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
@@ -117,6 +118,23 @@ bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
   // Use async writes for transactional writes in YSQL, or if the test flag is enabled.
   return FLAGS_ysql_enable_write_pipelining && table_type == YBTableType::PGSQL_TABLE_TYPE &&
          !txn_id.IsNil();
+}
+
+bool OpSkipIntents(const YBOperation& op) {
+  switch (op.type()) {
+    case YBOperation::Type::PGSQL_READ:
+      return HasSkipIntents(down_cast<const YBPgsqlReadOp&>(op).request());
+    case YBOperation::Type::PGSQL_WRITE:
+      return HasSkipIntents(down_cast<const YBPgsqlWriteOp&>(op).request());
+    case YBOperation::Type::QL_READ:     [[fallthrough]];
+    case YBOperation::Type::QL_WRITE:    [[fallthrough]];
+    case YBOperation::Type::REDIS_READ:  [[fallthrough]];
+    case YBOperation::Type::REDIS_WRITE: [[fallthrough]];
+    case YBOperation::Type::PGSQL_LOCK:
+      return false;
+  }
+  LOG(FATAL) << "Internal error: unknown operation: " << op.type();
+  return false;
 }
 
 }  // namespace
@@ -271,9 +289,6 @@ void Batcher::FlushAsync(
             yb_op->type() != YBOperation::Type::PGSQL_LOCK && !yb_op->tablet()) {
           status = STATUS_FORMAT(IllegalState, "Hash partition key is empty for $0", yb_op);
         }
-      } else {
-        yb_op->SetHashCode(
-            dockv::PartitionSchema::DecodeMultiColumnHashValue(in_flight_op.partition_key));
       }
     }
 
@@ -314,6 +329,8 @@ void Batcher::Add(YBOperationPtr op) {
     return;
   }
 
+  LOG_IF(FATAL, PREDICT_FALSE(!ops_.empty() && SkipIntents() != OpSkipIntents(*op)))
+      << "PG should only send all skip intents ops, or all normal ops.";
   ops_.emplace_back(std::move(op));
 }
 
@@ -583,7 +600,8 @@ void Batcher::ExecuteOperations(Initial initial) {
   }
   state_ = BatcherState::kTransactionReady;
 
-  const bool force_consistent_read = force_consistent_read_ || this->transaction();
+  const bool force_consistent_read =
+      force_consistent_read_ || this->transaction();
 
   // Use big enough value for preallocated storage, to avoid unnecessary allocations.
   boost::container::small_vector<std::shared_ptr<AsyncRpc>,
@@ -606,8 +624,15 @@ void Batcher::ExecuteOperations(Initial initial) {
     // Allow local calls for last group only.
     const auto allow_local_calls =
         allow_local_calls_in_curr_thread_ && (&group == &ops_info_.groups.back());
-    rpcs.push_back(
-        CreateRpc(self, group.begin->tablet.get(), group, allow_local_calls, need_consistent_read));
+    auto rpc_result = CreateRpc(
+        self, group.begin->tablet.get(), group, allow_local_calls, need_consistent_read);
+    if (!rpc_result.ok()) {
+      VLOG_WITH_PREFIX(1) << "Aborting batcher: failed to create RPC for tablet "
+                          << group.begin->tablet->tablet_id() << ": " << rpc_result.status();
+      Abort(rpc_result.status());
+      return;
+    }
+    rpcs.push_back(std::move(*rpc_result));
   }
 
   outstanding_rpcs_.store(rpcs.size());
@@ -625,7 +650,7 @@ rpc::ProxyCache& Batcher::proxy_cache() const {
 }
 
 YBTransactionPtr Batcher::transaction() const {
-  return transaction_;
+  return SkipIntents() ? nullptr : transaction_;
 }
 
 const std::string& Batcher::proxy_uuid() const {
@@ -659,7 +684,7 @@ void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId
   other->retryable_requests_.erase(it);
 }
 
-std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
+Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     const BatcherPtr& self, RemoteTablet* tablet, const InFlightOpsGroup& group,
     const bool allow_local_calls_in_curr_thread, const bool need_consistent_read) {
   const auto& tablet_id = tablet->tablet_id();
@@ -681,6 +706,7 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
     .tablet = tablet,
     .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
     .need_consistent_read = need_consistent_read,
+    .skip_intents = SkipIntents(),
     .arena = arena_,
     .ops = InFlightOps(group.begin, group.end),
     .need_metadata = group.need_metadata
@@ -689,9 +715,9 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   const auto& first_op = group.begin->yb_op;
   auto transaction = this->transaction();
   if (transaction) {
-    auto term_opt = transaction->GetPendingAsyncWriteTerm(tablet_id);
-    if (term_opt) {
-      data.leader_term = *term_opt;
+    data.pending_async_write_op_id = VERIFY_RESULT(
+        transaction->GetAsyncWriteOpIdForReadCheck(tablet_id));
+    if (data.pending_async_write_op_id.valid()) {
       data.need_metadata = true;
     }
   }
@@ -789,7 +815,7 @@ void Batcher::ProcessReadResponse(const ReadRpc &rpc, const Status &s) {
   if (s.ok()) {
     const auto& resp = rpc.resp();
     if (resp.has_async_write_op_id()) {
-      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.ts_proxy());
+      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.table());
     }
   }
 }
@@ -800,7 +826,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
   if (s.ok()) {
     const auto& resp = rpc.resp();
     if (resp.has_async_write_op_id()) {
-      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.ts_proxy());
+      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.table());
     }
 
     if (resp.has_propagated_hybrid_time()) {
@@ -889,7 +915,7 @@ void Batcher::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& 
 
 void Batcher::HandleAsyncWriteResponse(
     const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
-    std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy) {
+    const std::shared_ptr<const YBTable>& table) {
   // We have a async write. Record the OpId, and send a async RPC to track its completion.
   // At time of final commit, we will wait for all these async writes to complete.
   auto transaction = this->transaction();
@@ -903,9 +929,13 @@ void Batcher::HandleAsyncWriteResponse(
     // Multiple write operations can get combined into the same async write RPC resulting in
     // duplicate OpIds.
     auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
-        shared_from_this(), tablet.tablet_id(), ts_proxy, op_id);
+        shared_from_this(), tablet.tablet_id(), table, op_id);
     wait_for_async_write_rpc->SendRpc();
   }
+}
+
+bool Batcher::SkipIntents() const {
+  return !ops_.empty() && OpSkipIntents(*ops_.front());
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

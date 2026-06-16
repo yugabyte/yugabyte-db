@@ -333,7 +333,6 @@ SELECT 1 FROM tenk1_vw_sec
   WHERE (SELECT sum(f1) FROM int4_tbl WHERE f1 < unique1) < 100;
 rollback;
 
--- GHI 21320
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/explain_filters.sql'
 \i :filename
@@ -493,3 +492,6 @@ WHERE
             DUMMY
     )
 $$);
+drop table c;
+drop table d;
+drop table dummy;

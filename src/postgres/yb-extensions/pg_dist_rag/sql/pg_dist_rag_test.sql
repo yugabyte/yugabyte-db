@@ -236,6 +236,96 @@ BEGIN
 END $$;
 
 -- ============================================
+-- Test 7a: Build index is idempotent w.r.t. PROCESSING/COMPLETED documents
+-- ============================================
+-- Regression: build_index used to re-queue every document on every call,
+-- which inflated the work queue and (when workers picked the duplicates
+-- up) caused N x duplicate embeddings in datapacks.knowledge_bases.
+-- The function now filters out documents whose status is PROCESSING or
+-- COMPLETED so re-running it on a built index is a no-op.
+DO $$
+DECLARE
+  v_source_id UUID;
+  v_index_id UUID;
+  v_doc_done UUID;
+  v_doc_inflight UUID;
+  v_doc_failed UUID;
+  v_doc_queued UUID;
+  v_first_count INT;
+  v_second_count INT;
+BEGIN
+  RAISE NOTICE '=== Test 7a: build_index skips PROCESSING/COMPLETED documents ===';
+  v_source_id := dist_rag.create_source(r_source_uri := 'https://idempotent.example.com/docs/');
+  v_index_id := dist_rag.init_vector_index(
+    r_index_name := 'idempotent_build_test',
+    r_sources := ARRAY[v_source_id]::UUID[],
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536)
+  );
+
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, status)
+  VALUES (v_source_id, 'completed.pdf', 'https://idempotent.example.com/completed.pdf',
+          'COMPLETED'::dist_rag.document_processing_status_enum)
+  RETURNING document_id INTO v_doc_done;
+
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, status)
+  VALUES (v_source_id, 'processing.pdf', 'https://idempotent.example.com/processing.pdf',
+          'PROCESSING'::dist_rag.document_processing_status_enum)
+  RETURNING document_id INTO v_doc_inflight;
+
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, status)
+  VALUES (v_source_id, 'failed.pdf', 'https://idempotent.example.com/failed.pdf',
+          'FAILED'::dist_rag.document_processing_status_enum)
+  RETURNING document_id INTO v_doc_failed;
+
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, status)
+  VALUES (v_source_id, 'queued.pdf', 'https://idempotent.example.com/queued.pdf',
+          'QUEUED'::dist_rag.document_processing_status_enum)
+  RETURNING document_id INTO v_doc_queued;
+
+  -- First build: only QUEUED + FAILED should be enqueued.
+  PERFORM dist_rag.build_index(v_index_id);
+  SELECT COUNT(*) INTO v_first_count
+  FROM dist_rag.work_queue
+  WHERE task_type = 'PREPROCESS'::dist_rag.task_type_enum
+    AND task_details->>'index_id' = v_index_id::TEXT;
+  ASSERT v_first_count = 2,
+    format('First build_index should enqueue 2 documents (QUEUED + FAILED), got %s', v_first_count);
+
+  ASSERT EXISTS (
+    SELECT 1 FROM dist_rag.work_queue
+    WHERE task_details->>'document_id' = v_doc_queued::TEXT
+  ), 'Queued document must be enqueued';
+  ASSERT EXISTS (
+    SELECT 1 FROM dist_rag.work_queue
+    WHERE task_details->>'document_id' = v_doc_failed::TEXT
+  ), 'Failed document must be enqueued (acts as retry path)';
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM dist_rag.work_queue
+    WHERE task_details->>'document_id' = v_doc_done::TEXT
+  ), 'Completed document must NOT be enqueued';
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM dist_rag.work_queue
+    WHERE task_details->>'document_id' = v_doc_inflight::TEXT
+  ), 'Processing document must NOT be enqueued';
+
+  -- Second build: still no enqueue for COMPLETED/PROCESSING. The QUEUED
+  -- and FAILED rows above are now duplicated -- that's a separate
+  -- concern (NOT EXISTS guard against work_queue could be added later);
+  -- the contract we're locking in here is that PROCESSING/COMPLETED
+  -- documents are never re-enqueued.
+  PERFORM dist_rag.build_index(v_index_id);
+  SELECT COUNT(*) INTO v_second_count
+  FROM dist_rag.work_queue
+  WHERE task_type = 'PREPROCESS'::dist_rag.task_type_enum
+    AND task_details->>'index_id' = v_index_id::TEXT
+    AND task_details->>'document_id' IN (v_doc_done::TEXT, v_doc_inflight::TEXT);
+  ASSERT v_second_count = 0,
+    format('Re-running build_index must not enqueue PROCESSING/COMPLETED docs, found %s', v_second_count);
+
+  RAISE NOTICE 'PASS: build_index skips PROCESSING/COMPLETED docs and re-runs idempotently for them';
+END $$;
+
+-- ============================================
 -- Test 7b: Build index by name
 -- ============================================
 DO $$
@@ -560,7 +650,7 @@ BEGIN
   LIMIT 1;
   ASSERT v_total_chunks >= 10, 'Should report at least 10 chunks processed';
   ASSERT v_completion_rate = 100.00, 'Completion rate should be 100% for 1 completed pipeline';
-  RAISE NOTICE 'PASS: pipeline_stats - chunks: %, completion rate: %%', v_total_chunks, v_completion_rate;
+  RAISE NOTICE 'PASS: pipeline_stats - chunks: %, completion rate: % %%', v_total_chunks, v_completion_rate;
 END $$;
 
 -- ============================================

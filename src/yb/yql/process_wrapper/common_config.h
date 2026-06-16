@@ -24,6 +24,7 @@
 
 namespace yb {
 
+class Cgroup;
 class FsManager;
 
 namespace server {
@@ -35,6 +36,8 @@ struct ProcessWrapperCommonConfig {
   std::string certs_for_client_dir;
   std::string cert_base_name;
   bool enable_tls = false;
+
+  Cgroup* cgroup = nullptr;
 
   Status SetSslConf(const server::ServerBaseOptions& options, FsManager& fs_manager);
 };

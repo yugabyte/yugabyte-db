@@ -258,6 +258,10 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
     return sys_catalog_->Upsert(leader_term, clone_state, source_namespace);
   }
 
+  Status UpsertTabletInfo(const LeaderEpoch& epoch, const TabletInfoPtr& tablet) override {
+    return sys_catalog_->Upsert(epoch, tablet);
+  }
+
   Status Load(
       const std::string& type,
       std::function<Status(const std::string&, const SysCloneStatePB&)> inserter) override {
@@ -713,6 +717,50 @@ Status CloneStateManager::ScheduleCloneOps(
         external_funcs_->GetTabletInfo(tablet_data.target_tablet_id));
     auto source_table = source_tablet->table();
     auto target_table = target_tablet->table();
+
+    // Seed the target tablet's committed_consensus_state peers on the master from the source
+    // tablet's config so that when the cloned replicas heartbeat back, ProcessTabletReportBatch
+    // sees them as part of the expected Raft config and does not tombstone them. The source
+    // tablet's peers are exactly the tservers that will materialize the clone target (see
+    // DoApplyCloneTablet in src/yb/tserver/ts_tablet_manager.cc).
+    //
+    // Only the peers list is copied. current_term and leader_uuid are left at the values
+    // SetupTabletInfo set (kMinimumTerm, empty) so that the cloned replicas' first heartbeat is
+    // not classified as stale by ProcessCommittedConsensusState's term comparison, and the
+    // normal post-clone reconciliation runs: the master hints an election, the tablet
+    // transitions to RUNNING, and the load balancer fills in any replicas missing from the
+    // target's placement policy.
+    {
+      auto source_tablet_lock = source_tablet->LockForRead();
+      auto target_tablet_lock = target_tablet->LockForWrite();
+      if (target_tablet_lock->pb.committed_consensus_state().config().peers_size() == 0) {
+        const auto& source_peers =
+            source_tablet_lock->pb.committed_consensus_state().config().peers();
+        // Source tablets reaching ScheduleCloneOps are expected to already have peers in
+        // committed_consensus_state - they're running tablets that have been heartbeating to this
+        // master, and ProcessCommittedConsensusState populates this on every heartbeat. An empty
+        // peers list here means either (a) the source tablet has never reported back to this master
+        // (e.g. extremely fresh leader after failover and we raced the first heartbeat), or (b) we
+        // have a real bug in the heartbeat -> catalog plumbing. Falling through without seeding
+        // lets the clone proceed and lets master-side reconciliation try to recover.
+        if (PREDICT_FALSE(source_peers.empty())) {
+          LOG(DFATAL) << "Source tablet " << tablet_data.source_tablet_id
+                      << " has empty peers in committed_consensus_state at clone scheduling time"
+                      << " (target=" << tablet_data.target_tablet_id << "). Expected:"
+                      << " ProcessCommittedConsensusState should have populated peers"
+                      << " from a prior heartbeat. Cloned target will not be seeded;"
+                      << " ProcessTabletReportBatch may tombstone the cloned replicas.";
+        } else {
+          auto* target_config =
+              target_tablet_lock.mutable_data()->pb.mutable_committed_consensus_state()
+                  ->mutable_config();
+          target_config->mutable_peers()->CopyFrom(source_peers);
+          RETURN_NOT_OK(external_funcs_->UpsertTabletInfo(
+              clone_state->Epoch(), target_tablet));
+          target_tablet_lock.Commit();
+        }
+      }
+    }
 
     // Don't need to worry about ordering here because these are both read locks.
     auto source_table_lock = source_table->LockForRead();

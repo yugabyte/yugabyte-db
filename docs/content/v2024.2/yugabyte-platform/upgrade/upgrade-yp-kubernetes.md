@@ -19,11 +19,6 @@ type: docs
   </li>
 
   <li>
-    <a href="../upgrade-yp-replicated/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
-  </li>
-
-  <li>
     <a href="../upgrade-yp-kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>

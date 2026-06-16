@@ -372,8 +372,8 @@ std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metri
 }
 
 // Helper function to get JSON metrics from the /metrics endpoint and parse them into YsqlMetrics.
-std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics() {
-  ExternalTabletServer* ts = cluster_->tablet_server(0);
+std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics(size_t ts_idx) {
+  ExternalTabletServer* ts = cluster_->tablet_server(ts_idx);
   auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
   EasyCurl c;
   faststring buf;

@@ -13,15 +13,17 @@ import {
   PlacementRegion
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
-  countMasterAndTServerNodesByPlacementRegion,
   countRegionsAzsAndNodes,
   countMasterNodesInAz,
   getDedicatedCountsForPlacementRegion,
   getDedicatedTserverMasterDisplayCounts,
   getResilientType,
-  useEditUniverseContext
+  useEditUniverseContext,
+  useIsUniverseReady
 } from '../EditUniverseUtils';
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
+import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 export type ClusterInstanceCardEditMenuItem = {
   id: string;
@@ -32,6 +34,7 @@ export type ClusterInstanceCardEditMenuItem = {
   showDividerBefore?: boolean;
   destructive?: boolean;
   startIcon?: ReactNode;
+  disabled?: Boolean;
 };
 
 interface ClusterInstanceCardProps {
@@ -78,6 +81,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
   const { universeData } = useEditUniverseContext();
+  const isUniverseReady = useIsUniverseReady();
   if (!universeData) return null;
   const regionStats = countRegionsAzsAndNodes(placement);
   const resilientType = getResilientType(placement, parition?.replication_factor ?? cluster?.replication_factor, t);
@@ -202,96 +206,108 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
         >
           {editMenuItems
             ? editMenuItems.map((item) => (
-                <Fragment key={item.id}>
-                  {item.showDividerBefore ? (
-                    <Divider sx={{ borderColor: '#E9EEF2', my: 0.5 }} />
-                  ) : null}
-                  <MenuItem
-                    data-test-id={item.dataTestId}
-                    onClick={item.onClick}
+              <Fragment key={item.id}>
+                {item.showDividerBefore ? (
+                  <Divider sx={{ borderColor: '#E9EEF2', my: 0.5 }} />
+                ) : null}
+                <MenuItem
+                  data-test-id={item.dataTestId}
+                  onClick={item.onClick}
+                  sx={{
+                    px: 2,
+                    py: 0.5,
+                    alignItems: 'flex-start',
+                    color: item.destructive ? '#DA1515' : '#0B1117'
+                  }}
+                  disabled={!isUniverseReady}
+                >
+                  <Box
                     sx={{
-                      px: 2,
-                      py: 0.5,
+                      display: 'flex',
                       alignItems: 'flex-start',
-                      color: item.destructive ? '#DA1515' : '#0B1117'
+                      gap: '4px',
+                      width: '100%'
                     }}
                   >
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '4px',
-                        width: '100%'
-                      }}
-                    >
-                      {item.startIcon ? (
-                        <Box
-                          sx={{
-                            width: 24,
-                            height: 24,
-                            flexShrink: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: item.destructive ? '#DA1515' : 'inherit',
-                            '& svg': { display: 'block' }
-                          }}
-                        >
-                          {item.startIcon}
-                        </Box>
-                      ) : null}
-                      <Typography
-                        component="span"
+                    {item.startIcon ? (
+                      <Box
                         sx={{
-                          fontSize: '13px',
-                          lineHeight: '16px',
-                          fontWeight: 400,
-                          py: 0.5,
-                          color: item.destructive ? '#DA1515' : '#0B1117'
+                          width: 24,
+                          height: 24,
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: item.destructive ? '#DA1515' : 'inherit',
+                          '& svg': { display: 'block' }
                         }}
                       >
-                        {item.label}
-                      </Typography>
-                    </Box>
-                  </MenuItem>
-                </Fragment>
-              ))
+                        {item.startIcon}
+                      </Box>
+                    ) : null}
+                    <Typography
+                      component="span"
+                      sx={{
+                        fontSize: '13px',
+                        lineHeight: '16px',
+                        fontWeight: 400,
+                        py: 0.5,
+                        color: item.destructive ? '#DA1515' : '#0B1117'
+                      }}
+                    >
+                      {item.label}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              </Fragment>
+            ))
             : [
+              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT} isControl >
                 <MenuItem
                   key="resilience"
                   data-test-id="edit-placement-add-region"
                   onClick={() => {
                     editResilienceAndRegionsClicked?.();
                   }}
+                  disabled={!isUniverseReady}
                 >
                   {<EditIcon />}
                   {t('editResilienceAndRegions')}
-                </MenuItem>,
+                </MenuItem>
+              </RbacValidator>
+              ,
+              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT} isControl >
+
                 <MenuItem
                   key="nodes-az"
                   data-test-id="edit-placement-auto-balance"
                   onClick={() => {
                     editPlacementClicked?.();
                   }}
+                  disabled={!isUniverseReady}
                 >
                   {<EditIcon />}
                   {t('editNodesAndAvailabilityZones')}
-                </MenuItem>,
-                ...(editMasterServerNodeAllocationClicked
-                  ? [
-                      <MenuItem
-                        key="master-alloc"
-                        data-test-id="edit-placement-clear-affinities"
-                        onClick={() => {
-                          editMasterServerNodeAllocationClicked();
-                        }}
-                      >
-                        {<EditIcon />}
-                        {t('editMasterServerNodeAllocation')}
-                      </MenuItem>
-                    ]
-                  : [])
-              ]}
+                </MenuItem>
+              </RbacValidator>,
+              ...(editMasterServerNodeAllocationClicked
+                ? [
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl >
+                    <MenuItem
+                      key="master-alloc"
+                      data-test-id="edit-placement-clear-affinities"
+                      onClick={() => {
+                        editMasterServerNodeAllocationClicked();
+                      }}
+                      disabled={!isUniverseReady}
+                    >
+                      {<EditIcon />}
+                      {t('editMasterServerNodeAllocation')}
+                    </MenuItem>
+                  </RbacValidator>
+                ]
+                : [])
+            ]}
         </YBDropdown>
       </Box>
       <StyledClusterInfo>
@@ -307,7 +323,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
               <Typography variant="subtitle1" color="textSecondary">
                 {t('replicationFactor')}
               </Typography>
-              <StyledValue>{ parition?.replication_factor ?? cluster?.replication_factor ?? '-'}</StyledValue>
+              <StyledValue>{parition?.replication_factor ?? cluster?.replication_factor ?? '-'}</StyledValue>
             </div>
           </>
         )}
@@ -318,11 +334,11 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
           <StyledValue>
             {dedicatedFromSpec
               ? t('totalNodesTServerMaster', {
-                  total_nodes: dedicatedDisplayTotals.tserver + dedicatedDisplayTotals.master,
-                  tservers: dedicatedDisplayTotals.tserver,
-                  masters: dedicatedDisplayTotals.master,
-                  keyPrefix: 'editUniverse.placement'
-                })
+                total_nodes: dedicatedDisplayTotals.tserver + dedicatedDisplayTotals.master,
+                tservers: dedicatedDisplayTotals.tserver,
+                masters: dedicatedDisplayTotals.master,
+                keyPrefix: 'editUniverse.placement'
+              })
               : regionStats.totalNodes}
           </StyledValue>
         </div>
@@ -342,7 +358,13 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
               </Box>
             )
           },
-          { accessorKey: 'name', header: t('availabilityZone') },
+          { 
+            accessorKey: 'name', 
+            header: t('availabilityZone'),
+            Cell: ({ cell}: any) => {
+              return cell?.row?.original?.az_list?.length ?? '-';
+            }
+          },
           {
             accessorKey: 'uuid',
             header: t('totalNodes'),

@@ -64,11 +64,6 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
         Json.toJson(formData));
   }
 
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(240, 270);
-  }
-
   @Before
   public void setUpDNS() {
     provider.getDetails().getCloudInfo().local.setHostedZoneId("test");
@@ -228,9 +223,10 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.numNodes = 5;
     taskParams.upsertPrimaryCluster(userIntent, Arrays.asList(partitionInfo, partitionInfo2), null);
-    assertTrue(taskParams.getPrimaryCluster().isGeoPartitioned());
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    assertTrue(taskParams.getPrimaryCluster().isGeoPartitioned());
+
     Universe universe = createUniverse(taskParams);
     verifyUniverseState(universe);
     initYSQL(universe, "table_in_geo1", partitionInfo.getTablespaceName());

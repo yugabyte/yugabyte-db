@@ -850,6 +850,17 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+    tserver::PgResetAutoAnalyzeMutationCountersRequestPB req;
+    tserver::PgResetAutoAnalyzeMutationCountersResponsePB resp;
+    req.set_database_oid(table_id.database_oid);
+    req.set_table_relfilenode_oid(table_id.object_oid);
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::ResetAutoAnalyzeMutationCounters, req, resp,
+        PggateRPC::kResetAutoAnalyzeMutationCounters));
+    return ResponseStatus(resp);
+  }
+
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
@@ -898,6 +909,20 @@ class PgClient::Impl : public BigDataFetcher {
     RETURN_NOT_OK(proxy_.GetDatabaseInfo(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.info();
+  }
+
+  Result<PgClient::DbColocationInfo> IsDatabaseColocated(uint32_t oid) {
+    tserver::PgIsDatabaseColocatedRequestPB req;
+    req.set_database_oid(oid);
+
+    tserver::PgIsDatabaseColocatedResponsePB resp;
+
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::IsDatabaseColocated, req, resp, PggateRPC::kIsDatabaseColocated));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return PgClient::DbColocationInfo{
+        .colocated = resp.colocated(),
+        .legacy_colocated_database = resp.legacy_colocated_database()};
   }
 
   Result<bool> PollVectorIndexReady(const PgObjectId& table_id) {
@@ -1463,6 +1488,18 @@ class PgClient::Impl : public BigDataFetcher {
       return StatusFromPB(resp.status());
     }
     return resp.is_object_part_of_xrepl();
+  }
+
+  Result<bool> IsNamespacePartOfCDCSDK(uint32_t database_oid) {
+    tserver::PgIsNamespacePartOfCDCSDKRequestPB req;
+    tserver::PgIsNamespacePartOfCDCSDKResponsePB resp;
+    req.set_database_oid(database_oid);
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::IsNamespacePartOfCDCSDK,
+        req, resp, PggateRPC::kIsNamespacePartOfCDCSDK));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp.is_namespace_part_of_cdcsdk();
   }
 
   Status EnumerateActiveTransactions(
@@ -2127,9 +2164,17 @@ Result<tserver::PgQueryAutoAnalyzeResponsePB> PgClient::QueryAutoAnalyze(PgOid d
     return impl_->QueryAutoAnalyze(db_oid);
 }
 
+Status PgClient::ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+  return impl_->ResetAutoAnalyzeMutationCounters(table_id);
+}
+
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
   return impl_->GetDatabaseInfo(oid);
+}
+
+Result<PgClient::DbColocationInfo> PgClient::IsDatabaseColocated(uint32_t oid) {
+  return impl_->IsDatabaseColocated(oid);
 }
 
 Result<bool> PgClient::PollVectorIndexReady(const PgObjectId& table_id) {
@@ -2289,6 +2334,10 @@ Result<bool> PgClient::CheckIfPitrActive() {
 
 Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return impl_->IsObjectPartOfXRepl(table_id);
+}
+
+Result<bool> PgClient::IsNamespacePartOfCDCSDK(uint32_t database_oid) {
+  return impl_->IsNamespacePartOfCDCSDK(database_oid);
 }
 
 Result<TableKeyRanges> PgClient::GetTableKeyRanges(

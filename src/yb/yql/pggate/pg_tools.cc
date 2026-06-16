@@ -22,17 +22,18 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_utils.h"
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/result.h"
 
 #include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_type.h"
 
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
-DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
 
 std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id) {
@@ -86,7 +87,7 @@ bool IsSleepRequired(ash::PggateRPC rpc) {
 
 inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
   return FLAGS_TEST_yb_ash_sleep_at_wait_state_ms > 0 && (
-      FLAGS_TEST_yb_ash_wait_code_to_sleep_at == std::to_underlying(wait_event) ||
+      ash::TEST_ShouldSleepAtWaitCode(wait_event) ||
       IsSleepRequired(pggate_rpc));
 }
 
@@ -177,6 +178,12 @@ const YbcPgTableLocalityInfo& TableLocalityMap::Get(PgOid table_id) const {
 
 void TableLocalityMap::Clear() {
   map_.clear();
+}
+
+bool SkipIntents(const PgsqlOp& op) {
+  return op.is_read()
+      ? HasSkipIntents(down_cast<const PgsqlReadOp&>(op).read_request())
+      : HasSkipIntents(down_cast<const PgsqlWriteOp&>(op).write_request());
 }
 
 } // namespace yb::pggate

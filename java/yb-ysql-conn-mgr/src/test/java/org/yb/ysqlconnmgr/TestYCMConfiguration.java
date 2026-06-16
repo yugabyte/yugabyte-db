@@ -22,11 +22,14 @@ import java.sql.*;
 import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import com.google.common.net.HostAndPort;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestYCMConfiguration extends BaseYsqlConnMgr {
 
   private static final String LONG_STR = new String(new char[50]).replace('\0', 'a');

@@ -80,6 +80,14 @@ struct RbsProgressInfo {
   int64_t sst_end_time_micros;
 };
 
+// When lazy superblock flush is enabled (currently colocated tables), tablet bootstrap may need
+// to replay this many trailing WAL segments to pick up committed-but-unflushed CHANGE_METADATA_OPs
+// (see the long comment in tablet_bootstrap.cc / PlaySegments). Callers that decide which WAL
+// segments to retain or to ship over the wire (e.g. remote bootstrap) must keep at least this
+// many segments available when lazy superblock flush is on, so that the destination's local
+// bootstrap can satisfy the same invariant.
+constexpr size_t kMinSegmentsToReplayWithLazySuperblockFlush = 2;
+
 // A listener for logging the tablet related statuses as well as
 // piping it into the web UI.
 class TabletStatusListener {

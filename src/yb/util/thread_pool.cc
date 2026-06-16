@@ -406,6 +406,10 @@ class YBThreadPool::Impl {
     return share_.options;
   }
 
+  bool IsClosing() const {
+    return closing_.load(std::memory_order_relaxed);
+  }
+
   bool Enqueue(ThreadPoolTask* task) EXCLUDES(mutex_) {
     ++adding_;
     if (closing_) {
@@ -645,6 +649,10 @@ bool YBThreadPool::Enqueue(ThreadPoolTask* task) {
 
 void YBThreadPool::Shutdown() {
   impl_->Shutdown();
+}
+
+bool YBThreadPool::IsClosing() const {
+  return impl_->IsClosing();
 }
 
 const ThreadPoolOptions& YBThreadPool::options() const {

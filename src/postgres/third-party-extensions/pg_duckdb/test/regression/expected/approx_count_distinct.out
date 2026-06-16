@@ -1,0 +1,46 @@
+CREATE TABLE t (a int, b text);
+INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd'), (5, 'e');
+INSERT INTO t VALUES (2, 'f'), (3, 'g'), (4, 'h');
+SELECT approx_count_distinct(a), approx_count_distinct(b) FROM t;
+ approx_count_distinct | approx_count_distinct 
+-----------------------+-----------------------
+                     5 |                     9
+(1 row)
+
+SELECT a, approx_count_distinct(b) FROM t GROUP BY a ORDER BY a;
+ a | approx_count_distinct 
+---+-----------------------
+ 1 |                     1
+ 2 |                     2
+ 3 |                     2
+ 4 |                     2
+ 5 |                     1
+(5 rows)
+
+SELECT a, approx_count_distinct(b) OVER (PARTITION BY a) FROM t ORDER BY a;
+ a | approx_count_distinct 
+---+-----------------------
+ 1 |                     1
+ 2 |                     2
+ 2 |                     2
+ 3 |                     2
+ 3 |                     2
+ 4 |                     2
+ 4 |                     2
+ 5 |                     1
+(8 rows)
+
+SELECT approx_count_distinct(1);
+ approx_count_distinct 
+-----------------------
+                     1
+(1 row)
+
+SET duckdb.force_execution = false;
+SELECT approx_count_distinct(1);
+ approx_count_distinct 
+-----------------------
+                     1
+(1 row)
+
+DROP TABLE t;

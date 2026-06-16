@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Service for collecting files from multiple nodes in a universe synchronously and returning the
@@ -30,6 +31,16 @@ public class NodeFileCollector {
 
   /** Maximum threads for parallel file collection to prevent OOM/thrashing */
   private static final int MAX_PARALLEL_THREADS = 50;
+
+  /**
+   * Subdirectory name (under the node's tmp directory) used to stage collected tar archives. The
+   * staging dir is owned by the universe's default Linux user (yugabyte) and created without the
+   * sticky bit, so the default-user-driven download and cleanup paths can read and delete tar files
+   * even when the tar was written by an impersonated linux_user. Putting the tar directly in the
+   * tmp dir would leak it forever in the impersonated case because the tmp dir's sticky bit blocks
+   * non-owner deletion.
+   */
+  private static final String COLLECTION_TAR_SUBDIR = "yba-file-collections";
 
   private final NodeUniverseManager nodeUniverseManager;
   private final PlatformExecutorFactory executorFactory;
@@ -246,6 +257,7 @@ public class NodeFileCollector {
     int skipped = 0;
     int failed = 0;
     long bytesCollected = 0;
+    ShellProcessContext context = buildShellContext(params);
 
     // Fail fast on unreachable nodes; otherwise per-file probes swallow the
     // connection error and the node is mis-reported as successful with file-level failures.
@@ -273,38 +285,57 @@ public class NodeFileCollector {
       // Add individual file paths - check existence and size before download
       if (params.getFilePaths() != null) {
         for (String filePath : params.getFilePaths()) {
-          if (nodeUniverseManager.checkNodeIfFileExists(node, universe, filePath)) {
-            // Get file size using stat command
-            long fileSize = getRemoteFileSize(node, universe, filePath);
-
-            // Check size limit before download
-            if (fileSize > params.getMaxFileSizeBytes()) {
-              fileResults.add(
-                  FileResult.builder()
-                      .remotePath(filePath)
-                      .fileSizeBytes(fileSize)
-                      .success(false)
-                      .skipped(true)
-                      .skipReason(
-                          String.format(
-                              "File size (%d bytes) exceeds max_file_size_bytes limit (%d bytes)",
-                              fileSize, params.getMaxFileSizeBytes()))
-                      .build());
-              skipped++;
-              continue;
-            }
-
-            filesToCollect.add(filePath);
-            fileSizeMap.put(filePath, fileSize);
-          } else {
+          if (!nodeUniverseManager.checkNodeIfFileExists(node, universe, filePath, context)) {
+            // checkNodeIfFileExists uses `test -e`, which returns false both when the file is
+            // missing AND when the caller lacks traversal (+x) permission on a parent directory.
+            // Surface both cases in the message instead of asserting "not found", which would be
+            // misleading in the permission-denied case.
             fileResults.add(
                 FileResult.builder()
                     .remotePath(filePath)
                     .success(false)
-                    .errorMessage("File not found")
+                    .errorMessage("File not found or cannot be accessed")
                     .build());
             failed++;
+            continue;
           }
+
+          // Verify the file is readable - tar will silently skip unreadable
+          // entries (stderr is suppressed) so an empty/partial tar would
+          // otherwise be reported as a successful collection.
+          if (!isRemotePathReadable(node, universe, filePath, false, context)) {
+            fileResults.add(
+                FileResult.builder()
+                    .remotePath(filePath)
+                    .success(false)
+                    .errorMessage("Permission denied: cannot read file " + filePath)
+                    .build());
+            failed++;
+            continue;
+          }
+
+          // Get file size using stat command
+          long fileSize = getRemoteFileSize(node, universe, filePath, context);
+
+          // Check size limit before download
+          if (fileSize > params.getMaxFileSizeBytes()) {
+            fileResults.add(
+                FileResult.builder()
+                    .remotePath(filePath)
+                    .fileSizeBytes(fileSize)
+                    .success(false)
+                    .skipped(true)
+                    .skipReason(
+                        String.format(
+                            "File size (%d bytes) exceeds max_file_size_bytes limit (%d bytes)",
+                            fileSize, params.getMaxFileSizeBytes()))
+                    .build());
+            skipped++;
+            continue;
+          }
+
+          filesToCollect.add(filePath);
+          fileSizeMap.put(filePath, fileSize);
         }
       }
 
@@ -314,10 +345,48 @@ public class NodeFileCollector {
         for (String dirPath : params.getDirectoryPaths()) {
           try {
             // Resolve symlinks to get the real path (like support bundle does)
-            String resolvedDirPath = resolveSymlink(node, universe, dirPath);
+            String resolvedDirPath = resolveSymlink(node, universe, dirPath, context);
+
+            // Verify the directory tree is readable+traversable up to maxDepth before listing.
+            // get_paths_and_sizes pipes find into awk, so find's stderr is discarded and a
+            // permission-denied path (at the root OR within any subdirectory we'd descend into)
+            // silently returns an empty listing - which would otherwise look like a successful
+            // collection of zero files. The check is delegated to node_utils.sh so it can use
+            // `stat` to tell "missing" apart from "permission denied", and walk the tree to the
+            // same depth that the listing will.
+            DirAccessStatus accessStatus =
+                checkDirectoryAccessible(
+                    node, universe, resolvedDirPath, params.getMaxDepth(), context);
+            if (accessStatus != DirAccessStatus.OK) {
+              String message;
+              switch (accessStatus) {
+                case MISSING:
+                  message = "Directory not found: " + dirPath;
+                  break;
+                case DENIED:
+                  message =
+                      "Permission denied: cannot read directory "
+                          + dirPath
+                          + " or a subdirectory within maxDepth="
+                          + params.getMaxDepth();
+                  break;
+                default:
+                  message = "Failed to verify access to directory " + dirPath;
+                  break;
+              }
+              fileResults.add(
+                  FileResult.builder()
+                      .remotePath(dirPath)
+                      .success(false)
+                      .errorMessage(message)
+                      .build());
+              failed++;
+              continue;
+            }
+
             Map<String, Long> filesInDir =
                 nodeUniverseManager.getNodeFilePathAndSizes(
-                    node, universe, resolvedDirPath, params.getMaxDepth(), "f");
+                    node, universe, resolvedDirPath, params.getMaxDepth(), "f", context);
             for (Map.Entry<String, Long> entry : filesInDir.entrySet()) {
               String filePath = entry.getKey();
               Long fileSize = entry.getValue();
@@ -357,7 +426,7 @@ public class NodeFileCollector {
         return NodeResult.builder()
             .nodeName(node.nodeName)
             .nodeAddress(node.cloudInfo.private_ip)
-            .success(true)
+            .success(failed == 0)
             .filesCollected(0)
             .filesSkipped(skipped)
             .filesFailed(failed)
@@ -408,7 +477,8 @@ public class NodeFileCollector {
         // Create tar on remote node using node_utils.sh create_tar_file
         String tarFileName =
             String.format("collected-files-%s-%s.tar.gz", node.nodeName, UUID.randomUUID());
-        remoteTarPath = createTarOnRemoteNode(node, universe, "/", relativeFiles, tarFileName);
+        remoteTarPath =
+            createTarOnRemoteNode(node, universe, "/", relativeFiles, tarFileName, context);
 
         if (remoteTarPath != null) {
           // Record successful file collections
@@ -442,7 +512,7 @@ public class NodeFileCollector {
       return NodeResult.builder()
           .nodeName(node.nodeName)
           .nodeAddress(node.cloudInfo.private_ip)
-          .success(true)
+          .success(failed == 0)
           .filesCollected(collected)
           .filesSkipped(skipped)
           .filesFailed(failed)
@@ -479,13 +549,13 @@ public class NodeFileCollector {
    * @param filePath The absolute path to the file
    * @return File size in bytes, or 0 if unable to determine
    */
-  private long getRemoteFileSize(NodeDetails node, Universe universe, String filePath) {
+  private long getRemoteFileSize(
+      NodeDetails node, Universe universe, String filePath, ShellProcessContext context) {
     try {
       // Use stat to get file size - format %s gives size in bytes
       // Using -L to follow symlinks
       List<String> cmd = List.of("stat", "-L", "-c", "%s", filePath);
-      ShellResponse response =
-          nodeUniverseManager.runCommand(node, universe, cmd, ShellProcessContext.DEFAULT);
+      ShellResponse response = nodeUniverseManager.runCommand(node, universe, cmd, context);
 
       if (response.getCode() == 0 && response.getMessage() != null) {
         String output = response.extractRunCommandOutput();
@@ -498,6 +568,117 @@ public class NodeFileCollector {
     return 0L;
   }
 
+  /** Result of {@link #checkDirectoryAccessible}, mirroring node_utils.sh's status strings. */
+  private enum DirAccessStatus {
+    OK,
+    MISSING,
+    DENIED,
+    CHECK_FAILED
+  }
+
+  /**
+   * Verifies a remote directory and every descendant up to maxDepth is readable+traversable by the
+   * running user. Delegates to node_utils.sh's check_dir_accessible so we use `stat` (not `test
+   * -e`) for missing-vs-denied disambiguation and walk the tree to the same depth that the
+   * subsequent listing will. Returns CHECK_FAILED on script errors or unexpected output so callers
+   * can surface a generic failure rather than a misleading OK.
+   */
+  private DirAccessStatus checkDirectoryAccessible(
+      NodeDetails node,
+      Universe universe,
+      String dirPath,
+      int maxDepth,
+      ShellProcessContext context) {
+    try {
+      List<String> params = List.of("check_dir_accessible", dirPath, String.valueOf(maxDepth));
+      ShellResponse response =
+          nodeUniverseManager.runScript(
+              node, universe, NodeUniverseManager.NODE_UTILS_SCRIPT, params, context);
+      if (!response.isSuccess()) {
+        log.warn(
+            "check_dir_accessible failed for {} on node {}: {}",
+            dirPath,
+            node.nodeName,
+            response.getMessage());
+        return DirAccessStatus.CHECK_FAILED;
+      }
+      // The shell function may emit multiple lines (e.g. find's diagnostics); only the first
+      // line carries the status code we contract on.
+      String[] lines = response.extractRunCommandOutput().trim().split("\\R", 2);
+      String status = lines.length == 0 ? "" : lines[0].trim();
+      switch (status) {
+        case "OK":
+          return DirAccessStatus.OK;
+        case "MISSING":
+          return DirAccessStatus.MISSING;
+        case "DENIED":
+          return DirAccessStatus.DENIED;
+        default:
+          log.warn(
+              "Unexpected check_dir_accessible output for {} on node {}: '{}'",
+              dirPath,
+              node.nodeName,
+              status);
+          return DirAccessStatus.CHECK_FAILED;
+      }
+    } catch (Exception e) {
+      log.warn(
+          "Failed to check directory access for {} on node {}: {}",
+          dirPath,
+          node.nodeName,
+          e.getMessage());
+      return DirAccessStatus.CHECK_FAILED;
+    }
+  }
+
+  /**
+   * Check whether a remote path is readable by the running user. For directories, both read and
+   * execute (traverse) permissions are required to list the contents.
+   *
+   * @param node The target node
+   * @param universe The universe
+   * @param path The absolute remote path
+   * @param isDirectory Whether the path is expected to be a directory
+   * @return true if the path is accessible for reading, false otherwise (including any error)
+   */
+  private boolean isRemotePathReadable(
+      NodeDetails node,
+      Universe universe,
+      String path,
+      boolean isDirectory,
+      ShellProcessContext context) {
+    try {
+      String quoted = shellSingleQuote(path);
+      String testExpr =
+          isDirectory
+              ? String.format("test -r %s && test -x %s", quoted, quoted)
+              : String.format("test -r %s", quoted);
+      List<String> cmd = List.of("bash", "-c", testExpr);
+      ShellResponse response = nodeUniverseManager.runCommand(node, universe, cmd, context);
+      return response.getCode() == 0;
+    } catch (Exception e) {
+      log.warn(
+          "Failed to check read access for {} on node {}: {}", path, node.nodeName, e.getMessage());
+      return false;
+    }
+  }
+
+  private static String shellSingleQuote(String s) {
+    return "'" + s.replace("'", "'\\''") + "'";
+  }
+
+  /**
+   * Build the ShellProcessContext used for every remote command in this collection. Honors the
+   * caller-supplied linux_user; falls back to the platform default (yugabyte) when blank, matching
+   * the behavior of NodeScriptRunner.
+   */
+  private ShellProcessContext buildShellContext(CollectionParams params) {
+    if (StringUtils.isBlank(params.getLinuxUser())) {
+      return ShellProcessContext.DEFAULT;
+    }
+    return ShellProcessContext.builder().sshUser(params.getLinuxUser()).build();
+  }
+
   /**
    * Resolve symlinks on a remote node path using readlink -f.
    *
@@ -506,11 +687,11 @@ public class NodeFileCollector {
    * @param path The path that might be a symlink
    * @return The resolved real path, or original path if resolution fails
    */
-  private String resolveSymlink(NodeDetails node, Universe universe, String path) {
+  private String resolveSymlink(
+      NodeDetails node, Universe universe, String path, ShellProcessContext context) {
     try {
       List<String> cmd = List.of("readlink", "-f", path);
-      ShellResponse response =
-          nodeUniverseManager.runCommand(node, universe, cmd, ShellProcessContext.DEFAULT);
+      ShellResponse response = nodeUniverseManager.runCommand(node, universe, cmd, context);
 
       if (response.getCode() == 0 && response.getMessage() != null) {
         String resolvedPath = response.extractRunCommandOutput();
@@ -540,10 +721,31 @@ public class NodeFileCollector {
       Universe universe,
       String baseDir,
       List<String> relativeFiles,
-      String tarFileName) {
+      String tarFileName,
+      ShellProcessContext context) {
     try {
-      // Get remote tmp directory
+      // Defensive: node.nodeName is interpolated into a single-quoted sed expression below
+      // (--transform='s,^,<nodeName>/,'). Today YBA only produces names like "yb-<universe>-nN",
+      // but reject anything outside the shell-safe set so a future schema change can't silently
+      // turn into command injection or a broken tar.
+      if (!Util.isShellSafeIdentifier(node.nodeName)) {
+        throw new IllegalStateException("Unexpected node name for tar transform: " + node.nodeName);
+      }
+
+      // Resolve the per-node tmp directory and use it as the parent of the tar staging dir and
+      // for the short-lived file list. Going through nodeUniverseManager.getRemoteTmpDir (rather
+      // than calling GFlagsUtil.getCustomTmpDirectory directly) is intentional: it is the
+      // established pattern in this file and wraps the gflag lookup with a "/tmp" fallback for
+      // null/empty values. This honors the TMP_DIRECTORY gflag so we don't hardcode /tmp, which
+      // may be unwritable for non-root users on hardened images.
       String remoteTmpDir = nodeUniverseManager.getRemoteTmpDir(node, universe);
+      String collectionTarDir = remoteTmpDir + "/" + COLLECTION_TAR_SUBDIR;
+
+      // Pre-create the shared tar staging directory as the default user so it is yugabyte-owned
+      // with no sticky bit. linux_user can write the tar inside, and yugabyte retains the right
+      // to delete the tar later via its ownership of the parent dir, regardless of who the tar
+      // file itself ends up owned by.
+      ensureCollectionTarDir(node, universe, collectionTarDir);
 
       // Create file list content
       String fileListContent = String.join("\n", relativeFiles);
@@ -553,31 +755,43 @@ public class NodeFileCollector {
       Files.writeString(localTempFile, fileListContent);
 
       try {
-        // Upload file list to remote node
+        // Upload file list to remote node (owned by linux_user; deleted below as the same user).
         String remoteFileListPath = remoteTmpDir + "/" + localTempFile.getFileName().toString();
         nodeUniverseManager.uploadFileToNode(
-            node, universe, localTempFile.toString(), remoteFileListPath, "644");
+            node, universe, localTempFile.toString(), remoteFileListPath, "644", context);
 
-        // Create tar on remote node
-        String remoteTarPath = remoteTmpDir + "/" + tarFileName;
+        // Create tar inside the shared, yugabyte-owned staging directory. Every entry is
+        // prefixed with the node name via --transform so that when the caller extracts each
+        // per-node tar, the contents land in their own per-node subdirectory rather than
+        // colliding on identical relative paths across nodes
+        String remoteTarPath = collectionTarDir + "/" + tarFileName;
         List<String> cmd =
             List.of(
                 "bash",
                 "-c",
                 String.format(
-                    "cd %s && tar --warning=no-file-changed -czhf %s -T %s 2>/dev/null; echo $?",
-                    baseDir, remoteTarPath, remoteFileListPath));
+                    "cd %s && tar --warning=no-file-changed --transform='s,^,%s/,' -czhf %s -T %s"
+                        + " 2>/dev/null; echo $?",
+                    baseDir, node.nodeName, remoteTarPath, remoteFileListPath));
 
-        ShellResponse response =
-            nodeUniverseManager.runCommand(node, universe, cmd, ShellProcessContext.DEFAULT);
+        ShellResponse response = nodeUniverseManager.runCommand(node, universe, cmd, context);
 
         // Clean up remote file list
         nodeUniverseManager.runCommand(
-            node, universe, List.of("rm", "-f", remoteFileListPath), ShellProcessContext.DEFAULT);
+            node, universe, List.of("rm", "-f", remoteFileListPath), context);
 
         if (response.getCode() == 0) {
-          // Verify tar file was created
-          if (nodeUniverseManager.checkNodeIfFileExists(node, universe, remoteTarPath)) {
+          // Verify tar file was created. Run the check as linux_user (via context) so it matches
+          // the user that wrote the tar -- the staging dir is yugabyte-owned and yugabyte could
+          // traverse it too, but using linux_user here keeps existence checks consistent with the
+          // surrounding tar/chmod operations.
+          if (nodeUniverseManager.checkNodeIfFileExists(node, universe, remoteTarPath, context)) {
+            // Force the tar to be world-readable so the download path (default user) can read
+            // it regardless of linux_user's umask. Must run as linux_user because only the file
+            // owner can chmod.
+            nodeUniverseManager.runCommand(
+                node, universe, List.of("chmod", "0644", remoteTarPath), context);
+
             log.info(
                 "Created tar file {} on node {} with {} files",
                 remoteTarPath,
@@ -601,5 +815,22 @@ public class NodeFileCollector {
       log.error("Error creating tar on node {}: {}", node.nodeName, e.getMessage(), e);
     }
     return null;
+  }
+
+  /**
+   * Idempotently create the shared tar staging directory as the default Linux user. The directory
+   * is set to mode 0777 (no sticky bit) so any impersonated user can write tars inside, while the
+   * default user retains delete authority by virtue of owning the directory.
+   */
+  private void ensureCollectionTarDir(
+      NodeDetails node, Universe universe, String collectionTarDir) {
+    nodeUniverseManager.runCommand(
+        node,
+        universe,
+        List.of(
+            "bash",
+            "-c",
+            String.format("mkdir -p '%s' && chmod 0777 '%s'", collectionTarDir, collectionTarDir)),
+        ShellProcessContext.DEFAULT);
   }
 }

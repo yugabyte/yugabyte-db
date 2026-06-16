@@ -46,6 +46,7 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_types.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/leader_lease.h"
 
@@ -218,6 +219,7 @@ class ReplicaState {
   Status ClearPendingConfigUnlocked();
 
   OpId GetPendingConfigOpIdUnlocked() { return cmeta_->pending_config_op_id(); }
+  OpId GetPendingConfigOpIdFromRbsUnlocked() { return cmeta_->pending_config_op_id_from_rbs(); }
 
   // Return the pending configuration, or crash if one is not set.
   const RaftConfigPB& GetPendingConfigUnlocked() const;
@@ -342,7 +344,11 @@ class ReplicaState {
   // API to dump pending transactions. Added to debug ENG-520.
   void DumpPendingOperationsUnlocked();
 
-  OpId NewIdUnlocked();
+  // Also checks whether a leader-side operation that was just assigned `op_id` (via NewIdUnlocked)
+  // is allowed by the registered operation filters (e.g. a WRITE_OP / UPDATE_TRANSACTION_OP must be
+  // rejected once a SPLIT_OP has become pending). If it is not allowed, cancels the id allocation
+  // and returns the rejection status; otherwise returns OK.
+  Result<OpId> NewIdUnlocked(OperationType op_type);
 
   // Used when, for some reason, an operation that failed before it could be considered
   // a part of the state machine. Basically restores the id gen to the state it was before
@@ -438,7 +444,7 @@ class ReplicaState {
   RetryableRequestsCounts TEST_CountRetryableRequests();
   bool TEST_HasBootstrapStateOnDisk() const;
 
-  void SetLeaderNoOpCommittedUnlocked(bool value);
+  void SetLeaderNoOpCommittedUnlocked(bool value, int64_t no_op_index = kInvalidOpIdIndex);
 
   void NotifyReplicationFinishedUnlocked(
       const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
@@ -458,6 +464,11 @@ class ReplicaState {
   OpId GetLastFlushedOpIdInRetryableRequests();
 
   Status SetLastFlushedOpIdInRetryableRequests(const OpId& op_id);
+
+  int64_t GetFirstIndexOfCurrentTermUnlocked() const {
+    DCHECK(IsLocked());
+    return first_index_of_current_term_;
+  }
 
  private:
   typedef std::deque<ConsensusRoundPtr> PendingOperations;
@@ -563,6 +574,10 @@ class ReplicaState {
   // This leader is ready to serve only if NoOp was successfully committed
   // after the new leader successful election.
   bool leader_no_op_committed_ = false;
+
+  // The index of the NO_OP entry at the start of this leader's term.
+  // Only valid when leader_no_op_committed_ is true.
+  int64_t first_index_of_current_term_ = kInvalidOpIdIndex;
 
   std::function<void(const OpIds&)> applied_ops_tracker_;
 

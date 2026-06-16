@@ -21,6 +21,8 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
 
+DECLARE_bool(ysql_yb_enable_listen_notify);
+
 DEFINE_RUNTIME_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
     "When a master leader failsover, the time until which the progress of load movement "
     "off the blacklisted tservers is reported as 0. This initial delay "
@@ -188,7 +190,18 @@ Status MasterClusterHandler::RemoveTabletServer(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   auto blacklist = VERIFY_RESULT(catalog_manager_->BlacklistSetFromPB());
   auto tables = catalog_manager_->GetTables(GetTablesMode::kAll, PrimaryTablesOnly::kTrue);
-  return ts_manager_->RemoveTabletServer(req->permanent_uuid(), blacklist, tables, epoch);
+  RETURN_NOT_OK(
+      ts_manager_->RemoveTabletServer(req->permanent_uuid(), blacklist, tables, epoch));
+
+  if (FLAGS_ysql_yb_enable_listen_notify) {
+    WARN_NOT_OK(
+        catalog_manager_->DeleteNotificationsReplicationSlot(req->permanent_uuid()),
+        Format(
+            "Failed to delete notifications replication slot for removed tserver $0",
+            req->permanent_uuid()));
+  }
+
+  return Status::OK();
 }
 
 Status MasterClusterHandler::GetLoadMoveCompletionPercent(

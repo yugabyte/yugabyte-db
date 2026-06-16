@@ -1683,6 +1683,21 @@ ExecSetTupleBound(int64 tuples_needed, PlanState *child_node)
 				bnl_state->bound = tuples_needed;
 		}
 	}
+	else if (IsA(child_node, LockRowsState))
+	{
+		YbLockRowsStateInfo *yb_lock_state_info = &((LockRowsState *) child_node)->yb_info;
+		if (tuples_needed < 0)
+		{
+			/* make sure flag gets reset if needed upon rescan */
+			yb_lock_state_info->bounded = false;
+		}
+		else
+		{
+			yb_lock_state_info->bounded = true;
+			yb_lock_state_info->bound = tuples_needed;
+		}
+
+	}
 
 	/*
 	 * In principle we could descend through any plan node type that is

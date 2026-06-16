@@ -20,6 +20,8 @@
 #include "yb/gutil/thread_annotations.h"
 
 namespace yb {
+
+class Cgroup;
 class Thread;
 
 // Monitors for termination signals. Termination can be called from either the Terminate method or
@@ -29,7 +31,7 @@ class TerminationMonitor {
  public:
   ~TerminationMonitor();
 
-  static std::unique_ptr<TerminationMonitor> Create();
+  static std::unique_ptr<TerminationMonitor> Create(Cgroup* cgroup = nullptr);
 
   // This is not async-signal-safe.
   void Terminate() EXCLUDES(mutex_);
@@ -40,7 +42,7 @@ class TerminationMonitor {
  private:
   TerminationMonitor() = default;
 
-  void InstallSigtermHandler() EXCLUDES(mutex_);
+  void InstallSigtermHandler(Cgroup* cgroup) EXCLUDES(mutex_);
   void SigtermAsyncHandler();
 
   std::mutex mutex_;

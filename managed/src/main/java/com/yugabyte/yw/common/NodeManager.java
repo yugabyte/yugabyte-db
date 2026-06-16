@@ -483,6 +483,10 @@ public class NodeManager extends DevopsBase {
         subCommand.add(computedUser);
       }
     } else if (type == NodeCommandType.Precheck) {
+      String ybUserHomeOverride =
+          confGetter
+              .getConfForScope(params.getProvider(), ProviderConfKeys.ybUserHomeOverride)
+              .trim();
       subCommand.add("--precheck_type");
       if (providerDetails.skipProvisioning) {
         subCommand.add("configure");
@@ -495,6 +499,11 @@ public class NodeManager extends DevopsBase {
       }
       subCommand.add("--yb_home_dir");
       subCommand.add(provider.getYbHome());
+      if (StringUtils.isNotEmpty(ybUserHomeOverride)) {
+        log.info("Using yb_user_home override value from provider config: {}", ybUserHomeOverride);
+        subCommand.add("--yb_user_home");
+        subCommand.add(ybUserHomeOverride);
+      }
       if (providerDetails.setUpChrony) {
         subCommand.add("--skip_ntp_check");
       }
@@ -1685,7 +1694,7 @@ public class NodeManager extends DevopsBase {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (!NodeAgentClient.isCloudTypeSupported(userIntent.providerType)) {
-      log.debug("Skipping node agent command args for {} provider", userIntent.providerType);
+      log.trace("Skipping node agent command args for {} provider", userIntent.providerType);
       return;
     }
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
@@ -1729,13 +1738,14 @@ public class NodeManager extends DevopsBase {
       }
       commandArgs.add(
           GFlagsUtil.getCustomTmpDirectory(
+              confGetter,
               universe,
               cluster,
               nodeTaskParam.azUuid,
               nodeTaskParam.isMaster,
               nodeTaskParam.isTserver));
     } else {
-      commandArgs.add(GFlagsUtil.getCustomTmpDirectory(node, universe));
+      commandArgs.add(GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe));
     }
   }
 
@@ -2455,52 +2465,6 @@ public class NodeManager extends DevopsBase {
           log.info("Verifying access to node {}", nodeTaskParam.nodeName);
           NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
           commandArgs.addAll(getNodeSSHCommand(taskParams));
-          String newPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
-          sensitiveData.put("--new_private_key_file", newPrivateKeyFilePath);
-          break;
-        }
-      case Add_Authorized_Key:
-        {
-          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
-            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
-          }
-          log.info("Adding a new key to authorized keys of node {}", nodeTaskParam.nodeName);
-          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
-          commandArgs.addAll(getNodeSSHCommand(taskParams));
-          // for uploaded private key case, public  key content is taken from private key file
-          if (taskParams.taskAccessKey.getKeyInfo().publicKey != null) {
-            String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
-            if (pubKeyContent.equals("")) {
-              throw new RuntimeException("Public key content is empty!");
-            }
-            sensitiveData.put("--public_key_content", pubKeyContent);
-          } else {
-            sensitiveData.put("--public_key_content", "");
-          }
-          String newPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
-          sensitiveData.put("--new_private_key_file", newPrivateKeyFilePath);
-          break;
-        }
-      case Remove_Authorized_Key:
-        {
-          if (!(nodeTaskParam instanceof NodeAccessTaskParams)) {
-            throw new RuntimeException("NodeTaskParams is not NodeAccessTaskParams");
-          }
-          log.info("Removing a key from authorized keys of node {}", nodeTaskParam.nodeName);
-          NodeAccessTaskParams taskParams = (NodeAccessTaskParams) nodeTaskParam;
-          commandArgs.addAll(getNodeSSHCommand(taskParams));
-          // for uploaded private key case, public  key content is taken from private key file
-          if (taskParams.taskAccessKey.getKeyInfo().publicKey != null) {
-            String pubKeyContent = taskParams.taskAccessKey.getPublicKeyContent();
-            if (pubKeyContent.equals("")) {
-              throw new RuntimeException("Public key content is empty!");
-            }
-            sensitiveData.put("--public_key_content", pubKeyContent);
-          } else {
-            sensitiveData.put("--public_key_content", "");
-          }
-          String oldPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
-          sensitiveData.put("--old_private_key_file", oldPrivateKeyFilePath);
           break;
         }
       case Reboot:
@@ -2877,7 +2841,7 @@ public class NodeManager extends DevopsBase {
     }
   }
 
-  public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
+  private List<String> getNodeSSHCommand(NodeAccessTaskParams params) {
     KeyInfo keyInfo = params.accessKey.getKeyInfo();
     Provider provider = Provider.getOrBadRequest(params.customerUUID, params.providerUUID);
     Integer sshPort = provider.getDetails().sshPort;

@@ -43,6 +43,8 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -159,6 +161,29 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
         remote_bootstrap_proxy_->FetchData(req, resp, controller), controller);
   }
 
+  Status DoRegisterLogAnchor(const string& owner_info, int64_t log_index,
+                             RegisterLogAnchorResponsePB* resp, RpcController* controller) {
+    controller->set_timeout(MonoDelta::FromSeconds(1.0));
+    RegisterLogAnchorRequestPB req;
+    req.set_owner_info(owner_info);
+    req.set_tablet_id(GetTabletId());
+    req.mutable_op_id()->set_term(-1);
+    req.mutable_op_id()->set_index(log_index);
+    return UnwindRemoteError(
+        remote_bootstrap_proxy_->RegisterLogAnchor(req, resp, controller), controller);
+  }
+
+  Status DoUpdateLogAnchor(const string& owner_info, int64_t log_index,
+                            UpdateLogAnchorResponsePB* resp, RpcController* controller) {
+    controller->set_timeout(MonoDelta::FromSeconds(1.0));
+    UpdateLogAnchorRequestPB req;
+    req.set_owner_info(owner_info);
+    req.mutable_op_id()->set_term(-1);
+    req.mutable_op_id()->set_index(log_index);
+    return UnwindRemoteError(
+        remote_bootstrap_proxy_->UpdateLogAnchor(req, resp, controller), controller);
+  }
+
   Status DoEndRemoteBootstrapSession(const string& session_id, bool is_success,
                                      const Status* error_msg,
                                      EndRemoteBootstrapSessionResponsePB* resp,
@@ -215,6 +240,88 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
 
   std::unique_ptr<RemoteBootstrapServiceProxy> remote_bootstrap_proxy_;
 };
+
+// When a destination retries an RBS against the same source after a failed/abandoned attempt,
+// BeginRemoteBootstrapSession on the source produces a new session id and must evict the prior
+// session for the same (requestor_uuid, tablet_id). Otherwise the prior RemoteBootstrapSession
+// keeps its source-side log anchor (RemoteBootstrapSession::log_anchor_) registered on the source
+// tablet's LogAnchorRegistry, dragging GetEarliestNeededLogIndex down and defeating the
+// GC-eligible boundary InitBootstrapSession now computes (D52827).
+TEST_F(RemoteBootstrapServiceTest, TestPruneStaleRemoteBootstrapSessions) {
+  string old_session_id;
+  ASSERT_OK(DoBeginValidRemoteBootstrapSession(&old_session_id));
+
+  // MonoTime::ToString uses millisecond precision (%.3fs), so two BeginRBS calls fired in the
+  // same millisecond would collide on session_id and skip the prune path. A short sleep is
+  // sufficient to guarantee distinct suffixes.
+  SleepFor(MonoDelta::FromMilliseconds(2));
+
+  string new_session_id;
+  ASSERT_OK(DoBeginValidRemoteBootstrapSession(&new_session_id));
+  ASSERT_NE(old_session_id, new_session_id)
+      << "BeginRBS produced identical session ids; test cannot distinguish old from new";
+
+  // The old session must have been pruned synchronously by the second BeginRBS. Confirm it via
+  // EndRemoteBootstrapSession surfacing NO_SESSION on the now-evicted id.
+  EndRemoteBootstrapSessionResponsePB end_old_resp;
+  RpcController end_old_ctl;
+  Status old_end_status = DoEndRemoteBootstrapSession(
+      old_session_id, /*is_success=*/false, /*error_msg=*/nullptr, &end_old_resp, &end_old_ctl);
+  ASSERT_REMOTE_ERROR(
+      old_end_status, end_old_ctl.error_response(), RemoteBootstrapErrorPB::NO_SESSION,
+      STATUS(NotFound, "").CodeAsString());
+
+  // The new session is the only survivor; EndRemoteBootstrapSession on it succeeds.
+  EndRemoteBootstrapSessionResponsePB end_new_resp;
+  RpcController end_new_ctl;
+  ASSERT_OK(DoEndRemoteBootstrapSession(
+      new_session_id, /*is_success=*/false, /*error_msg=*/nullptr, &end_new_resp, &end_new_ctl));
+}
+
+// Verifies the leader-side prune of log_anchors_map_ also fires from the BeginRBS path, not just
+// from RegisterLogAnchor. Without this, the corner case where a prior RBS attempt picked a
+// follower (S != L), registered a remote anchor on the leader, then failed, would leave that
+// anchor on the leader. The destination's retry, choosing the leader directly (S == L), never
+// sends a RegisterLogAnchor RPC, so the existing prune would never fire.
+TEST_F(RemoteBootstrapServiceTest, TestBeginRBSPrunesStaleRemoteLogAnchor) {
+  auto log_reader = ASSERT_RESULT(tablet_peer_->log()->GetLogReader());
+  int64_t min_index = log_reader->GetMinReplicateIndex();
+  if (min_index < 0) {
+    min_index = tablet_peer_->log()->GetMinReplicateIndex();
+  }
+  ASSERT_GE(min_index, 0);
+
+  const string& requestor = GetLocalUUID();
+  const string& tablet_id = GetTabletId();
+  // Manually register a remote log anchor under the (requestor, tablet) tuple, mimicking what
+  // an S != L source's RemoteBootstrapAnchorClient would have done on the leader before a prior
+  // RBS attempt aborted.
+  const string stale_owner =
+      strings::Substitute("$0-$1-$2", requestor, tablet_id, "1000.000s");
+  RegisterLogAnchorResponsePB reg_resp;
+  RpcController reg_ctl;
+  ASSERT_OK(DoRegisterLogAnchor(stale_owner, min_index, &reg_resp, &reg_ctl));
+
+  // Now retry RBS, this time with the leader as the source. CreateRemoteSession should prune
+  // the stale leader-side anchor even though no RegisterLogAnchor RPC arrives.
+  string new_session_id;
+  ASSERT_OK(DoBeginValidRemoteBootstrapSession(&new_session_id));
+
+  // Confirm the stale anchor is gone: UpdateLogAnchor on the old owner_info now surfaces
+  // NO_SESSION on the now-evicted entry.
+  UpdateLogAnchorResponsePB upd_resp;
+  RpcController upd_ctl;
+  Status stale_update_status = DoUpdateLogAnchor(stale_owner, min_index, &upd_resp, &upd_ctl);
+  ASSERT_REMOTE_ERROR(
+      stale_update_status, upd_ctl.error_response(), RemoteBootstrapErrorPB::NO_SESSION,
+      STATUS(IllegalState, "").CodeAsString());
+
+  // The new session is the only survivor.
+  EndRemoteBootstrapSessionResponsePB end_resp;
+  RpcController end_ctl;
+  ASSERT_OK(DoEndRemoteBootstrapSession(
+      new_session_id, /*is_success=*/false, /*error_msg=*/nullptr, &end_resp, &end_ctl));
+}
 
 // Test beginning and ending a remote bootstrap session.
 TEST_F(RemoteBootstrapServiceTest, TestSimpleBeginEndSession) {

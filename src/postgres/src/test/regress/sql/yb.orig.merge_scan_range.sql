@@ -252,6 +252,11 @@
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY(''{}'') ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :iter_P2
 
+-- Only duplicates in IN
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 1) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+
 -- Non-const in RHS (like var ref)
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, r2, 2) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
@@ -259,7 +264,6 @@
 
 -- Large number of streams
 \set query ':P :Q SELECT r4, r5, n, r1, r2, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3) AND r2 IN (0, 1, 2, 3) AND r3 IN (0, 1, 2, 3) ORDER BY r4, r5, n LIMIT 5;'
-\set Pnext :iter_Q2
 \i :iter_P2
 
 -- Single IN hitting limit
@@ -353,7 +357,15 @@ SPLIT AT VALUES (
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
+-- Only duplicates in IN
+\set query ':P :Q SELECT r3, r4, r5, n, r2 FROM r5n WHERE r2 IN (1, 1) ORDER BY r3, r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+
 -- Secondary index scan VS merge PK scan
+-- Expected secondary index scan; merge PK scan likely wins due to missing
+-- merge-scan-specific cost model overhead/savings, expected to be fixed by
+-- https://github.com/yugabyte/yugabyte-db/issues/29078.
 \set query ':P :Q SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND r2 = 4 ORDER BY r3, r4, n LIMIT 5;'
 \i :iter_P2
 
@@ -530,6 +542,7 @@ SPLIT AT VALUES (
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- Secondary index only scan VS merge PK scan
+-- Expected secondary index-only scan; merge PK scan is expected to be fixed by #29078.
 \set query ':P :Q SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) ORDER BY r2, r3, r4, n LIMIT 5;'
 \i :iter_P2
 
@@ -613,7 +626,7 @@ DROP INDEX r5n_r2_expr_expr1_idx;
 --
 -- Duplicate columns secondary index
 --
-CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2)
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2, r5)
 SPLIT AT VALUES (
     (1),
     (2),
@@ -633,7 +646,7 @@ SPLIT AT VALUES (
 \set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- Forward scan
-\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), n LIMIT 5;'
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) AND (r3 + r4) IN (4, 5) ORDER BY r5, n LIMIT 5;'
 \i :iter_P2
 
 -- Forward scan (v2)
@@ -642,7 +655,7 @@ SPLIT AT VALUES (
 \i :iter_Q2
 
 -- Backward scan
-\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5;'
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) AND (r3 + r4) IN (4, 5) ORDER BY r5 DESC, n LIMIT 5;'
 \i :iter_P2
 
 -- Backward scan (v2)
@@ -651,7 +664,7 @@ SPLIT AT VALUES (
 \i :iter_Q2
 
 -- Targets
-\set query ':P :Q SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5;'
+\set query ':P :Q SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r5 DESC, n LIMIT 5;'
 \i :iter_P2
 
 -- Targets (v2)
@@ -663,7 +676,7 @@ SPLIT AT VALUES (
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- (Drop this index)
-DROP INDEX r5n_r2_expr_r21_expr1_r22_idx;
+DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
 
 -- test yb_enable_advanced_index_cond_fold flag off
 SET yb_enable_advanced_index_cond_fold = off;

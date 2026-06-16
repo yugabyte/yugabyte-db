@@ -77,6 +77,11 @@ METRIC_DEFINE_counter(server, consistent_prefix_failed_reads,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix reads that failed to be served by the closest replica.");
 
+METRIC_DEFINE_counter(server, skip_intents_writes,
+    "Number of writes that have skipped intents db within a transaction.",
+    yb::MetricUnit::kRequests,
+    "Number of writes that have skipped intents db within a transaction.");
+
 DEFINE_RUNTIME_int32(ybclient_print_trace_every_n, 0,
     "Controls the rate at which traces from ybclient are printed. Setting this to 0 "
     "disables printing the collected traces.");
@@ -156,7 +161,8 @@ AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
       time_to_send(METRIC_handler_latency_yb_client_time_to_send.Instantiate(entity)),
       consistent_prefix_successful_reads(
           METRIC_consistent_prefix_successful_reads.Instantiate(entity)),
-      consistent_prefix_failed_reads(METRIC_consistent_prefix_failed_reads.Instantiate(entity)) {
+      consistent_prefix_failed_reads(METRIC_consistent_prefix_failed_reads.Instantiate(entity)),
+      skip_intents_writes(METRIC_skip_intents_writes.Instantiate(entity)) {
 }
 
 AsyncRpc::AsyncRpc(
@@ -174,7 +180,8 @@ AsyncRpc::AsyncRpc(
                       mutable_retrier(),
                       trace_.get()),
       start_(CoarseMonoClock::Now()),
-      async_rpc_metrics_(data.batcher->async_rpc_metrics()) {
+      async_rpc_metrics_(data.batcher->async_rpc_metrics()),
+      wait_state_(ash::WaitStateInfo::CurrentWaitState()) {
   mutable_retrier()->mutable_controller()->set_allow_local_calls_in_curr_thread(
       data.allow_local_calls_in_curr_thread);
 }
@@ -185,6 +192,10 @@ AsyncRpc::~AsyncRpc() {
 
 void AsyncRpc::SendRpc() {
   TRACE_TO(trace_, "SendRpc() called.");
+
+  // On retries, this runs on a reactor thread (via RpcRetrier::DoRetry) that carries no wait
+  // state. Re-adopt the wait state captured at construction
+  ADOPT_WAIT_STATE(wait_state_);
 
   retained_self_ = shared_from_this();
   // For now, if this is a retry, execute this rpc on the leader even if
@@ -407,9 +418,6 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   // TODO(#26139): this set_allocated_* call is not safe.
   req_.ref_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
-  if (data.leader_term != OpId::kUnknownTerm) {
-    req_.set_leader_term(data.leader_term);
-  }
   const ConsistentReadPoint* read_point = batcher_->read_point();
   bool has_read_time = false;
   if (read_point) {
@@ -435,11 +443,19 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   }
   const auto& metadata = batcher_->in_flight_ops().metadata;
   if (!metadata.transaction.transaction_id.IsNil()) {
+    DCHECK(!data.skip_intents);
     SetMetadata(metadata, data.need_metadata, &req_);
     bool serializable = metadata.transaction.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
     LOG_IF(DFATAL, has_read_time && serializable)
         << "Read time should NOT be specified for serializable isolation: "
         << read_point->GetReadTime().ToString();
+  } else if (data.skip_intents) {
+    if constexpr (std::is_same_v<Req, tserver::LWWriteRequestPB>) {
+      IncrementCounter(async_rpc_metrics_->skip_intents_writes);
+    }
+    if (req_.read_time().read_ht() > 0) {
+      req_.clear_read_time();
+    }
   }
 }
 
@@ -820,6 +836,9 @@ ReadRpc::ReadRpc(
   req_.set_consistency_level(yb_consistency_level);
   req_.dup_proxy_uuid(data.batcher->proxy_uuid());
   req_.set_use_async_write(data.use_async_write);
+  if (data.pending_async_write_op_id.valid()) {
+    data.pending_async_write_op_id.ToPB(req_.mutable_pending_async_write_op_id());
+  }
 
   switch (table()->table_type()) {
     case YBTableType::REDIS_TABLE_TYPE:
@@ -944,14 +963,23 @@ void ReadRpc::NotifyBatcher(const Status& status) {
 
 WaitForAsyncWriteRpc::WaitForAsyncWriteRpc(
     const BatcherPtr& batcher, const TabletId& tablet_id,
-    std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy, const OpId& op_id)
+    const std::shared_ptr<const YBTable>& table, const OpId& op_id)
     : Rpc(batcher->deadline(), batcher->messenger(), &batcher->proxy_cache()),
       tablet_id_(tablet_id),
       op_id_(op_id),
       batcher_(batcher),
-      ts_proxy_(std::move(ts_proxy)) {
+      tablet_invoker_(
+          /*local_tserver_only=*/false,
+          /*consistent_prefix=*/false,
+          batcher->client_,
+          this,
+          this,
+          /*tablet=*/nullptr,
+          table,
+          mutable_retrier(),
+          trace_.get()) {
   TRACE_TO(trace_, "WaitForAsyncWrite initiated");
-  VTRACE_TO(1, trace_, "Tablet $0, op_id $2", tablet_id_, op_id_.ToString());
+  VTRACE_TO(1, trace_, "Tablet $0, op_id $1", tablet_id_, op_id_.ToString());
 
   req_.set_tablet_id(tablet_id_);
   op_id_.ToPB(req_.mutable_op_id());
@@ -963,34 +991,34 @@ void WaitForAsyncWriteRpc::SendRpc() {
   TRACE_TO(trace_, "SendRpc() called.");
 
   retained_self_ = shared_from_this();
-  ts_proxy_->WaitForAsyncWriteAsync(
-      req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
+  tablet_invoker_.Execute(tablet_id_, /*leader_only=*/true);
 }
 
-void WaitForAsyncWriteRpc::SendRpcToTserver(int attempt_num) { CHECK(false) << "Not implemented"; }
+void WaitForAsyncWriteRpc::SendRpcToTserver(int attempt_num) {
+  auto proxy = tablet_invoker_.proxy();
+  proxy->WaitForAsyncWriteAsync(
+      req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
+}
 
 void WaitForAsyncWriteRpc::Finished(const Status& status) {
   VLOG_WITH_FUNC(4) << ToString() << "status: " << status
                     << ", error: " << AsString(response_error());
 
   Status new_status = status;
-  if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
-    return;
-  }
-
   if (new_status.ok() && resp_.has_error()) {
     new_status = StatusFromPB(resp_.error().status());
   }
-
-  batcher_->RecordAsyncWriteCompletion(tablet_id_, op_id_, new_status);
-  retained_self_.reset();
+  if (tablet_invoker_.Done(&new_status)) {
+    batcher_->RecordAsyncWriteCompletion(tablet_id_, op_id_, new_status);
+    retained_self_.reset();
+  }
 }
 
 std::string WaitForAsyncWriteRpc::ToString() const {
   const auto& metadata = batcher_->in_flight_ops().metadata;
   return Format(
-      "WaitForAsyncWrite(tablet: $0, op_id: $1, num_attempts: $2, txn: $3, subtxn: $4)", tablet_id_,
-      op_id_, num_attempts(), metadata.transaction.transaction_id,
+      "WaitForAsyncWrite(tablet: $0, op_id: $1, num_attempts: $2, txn: $3, subtxn: $4)",
+      tablet_id_, op_id_, num_attempts(), metadata.transaction.transaction_id,
       metadata.subtransaction_pb ? AsString(metadata.subtransaction_pb->subtransaction_id())
                                  : "[none]");
 }

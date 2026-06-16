@@ -60,6 +60,7 @@ import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.YBALifeCycle;
 import com.yugabyte.yw.common.YamlWrapper;
+import com.yugabyte.yw.common.YbaOidcCallbackUrlResolver;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -70,6 +71,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
+import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -220,6 +222,7 @@ public class MainModule extends AbstractModule {
 
     TLSConfig.modifyTLSDisabledAlgorithms(config);
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
+    bind(RuntimeConfigCacheInvalidator.class).asEagerSingleton();
     install(new CustomerConfKeys());
     install(new ProviderConfKeys());
     install(new GlobalConfKeys());
@@ -409,9 +412,12 @@ public class MainModule extends AbstractModule {
 
   @Provides
   protected org.pac4j.core.config.Config providePac4jConfig(
-      OidcClient oidcClient, SessionStore sessionStore) {
+      OidcClient oidcClient,
+      SessionStore sessionStore,
+      YbaOidcCallbackUrlResolver callbackUrlResolver) {
     final Clients clients = new Clients("/api/v1/callback", oidcClient);
     clients.setUrlResolver(new DefaultUrlResolver(true));
+    clients.setCallbackUrlResolver(callbackUrlResolver);
     final org.pac4j.core.config.Config config = new org.pac4j.core.config.Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
     config.setSessionStoreFactory(p -> sessionStore);

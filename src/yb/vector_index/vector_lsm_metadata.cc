@@ -13,12 +13,15 @@
 
 #include "yb/vector_index/vector_lsm_metadata.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
 #include "yb/gutil/endian.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/path_util.h"
+#include "yb/util/result.h"
 #include "yb/util/stol_utils.h"
 
 namespace yb::vector_index {

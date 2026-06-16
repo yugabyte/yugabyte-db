@@ -52,18 +52,23 @@ DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);
 
+DECLARE_bool(ysql_yb_enable_listen_notify);
+
 DEFINE_test_flag(string, master_universe_uuid, "",
                  "When set, use this mocked uuid to compare against the universe_uuid "
                  "from the tserver request.");
 
-DEFINE_RUNTIME_AUTO_bool(
-    master_enable_universe_uuid_heartbeat_check, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(master_enable_universe_uuid_heartbeat_check, kLocalPersisted, false, true,
     "When true, enables a sanity check between masters and tservers to prevent tservers from "
     "mistakenly heartbeating to masters in different universes. Master leader will check the "
     "universe_uuid passed by tservers against with its own copy of universe_uuid "
     "and reject the request if there is a mismatch. Master sends its universe_uuid with the "
     "response.");
 TAG_FLAG(master_enable_universe_uuid_heartbeat_check, advanced);
+
+DEFINE_RUNTIME_AUTO_bool(use_tablet_report_pending_config_op_id, kLocalVolatile, false, true,
+    "When true, allows master to rely on pending_config_op_id received within TServer->Master "
+    "heartbeats.");
 
 DEFINE_test_flag(bool, skip_processing_tablet_metadata, false,
                  "Whether to skip processing tablet metadata for TSHeartbeat.");
@@ -396,9 +401,10 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     // We could enhance to fail rpc, if there are too many error, on a case by case error basis.
     LOG(WARNING) << "Could not set master raft config : " << s.ToString();
   } else if (cpb.has_config()) {
-    if (cpb.config().opid_index() > req->config_index()) {
+    if (cpb.config().committed_op_index() > req->config_index()) {
       *resp->mutable_master_config() = std::move(cpb.config());
-      LOG(INFO) << "Set config at index " << resp->master_config().opid_index() << " for ts uuid "
+      LOG(INFO) << "Set config at index " << resp->master_config().committed_op_index()
+                << " for ts uuid "
                 << req->common().ts_instance().permanent_uuid();
     }
   } // Do nothing if config not ready.
@@ -754,11 +760,64 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
 
 int64_t GetCommittedConsensusStateOpIdIndex(const ReportedTabletPB& report) {
   if (!report.has_committed_consensus_state() ||
-      !report.committed_consensus_state().config().has_opid_index()) {
+      !report.committed_consensus_state().config().has_committed_op_index()) {
     return consensus::kInvalidOpIdIndex;
   }
 
-  return report.committed_consensus_state().config().opid_index();
+  return report.committed_consensus_state().config().committed_op_index();
+}
+
+Result<std::optional<OpId>> GetPendingConfigOpId(const ReportedTabletPB& report) {
+  if (!report.has_pending_config_op_id()) {
+    return std::nullopt;
+  }
+  const auto op_id = OpId::FromPB(report.pending_config_op_id());
+  SCHECK_FORMAT(
+      op_id.is_valid_not_empty(), InternalError, "Unexpected pending_config_op_id: $0",
+      report.pending_config_op_id());
+  return op_id;
+}
+
+// Returns true if a replica (not already tombstoned or deleted outright) should be deleted based
+// on the comparison of its committed/pending Raft config state against the master's last-known
+// committed state. Caller must additionally verify that the replica is not a member of the current
+// Raft config before acting on a true result.
+//
+// When FLAGS_use_tablet_report_pending_config_op_id is disabled, or the report's
+// pending_config_op_id is malformed, falls back to the legacy strict-less-than comparison for
+// backward compatibility.
+bool ShouldDeleteNonMember(
+    const ReportedTabletPB& report,
+    const ConsensusStatePB& prev_cstate,
+    int64_t prev_opid_index,
+    int64_t report_opid_index,
+    const TSDescriptorPtr& ts_desc) {
+  if (!FLAGS_master_tombstone_evicted_tablet_replicas ||
+    report.tablet_data_state() == TABLET_DATA_TOMBSTONED ||
+    report.tablet_data_state() == TABLET_DATA_DELETED) {
+    return false;
+  }
+
+  if (!FLAGS_use_tablet_report_pending_config_op_id) {
+    // For backward compatibility.
+    return report_opid_index < prev_opid_index;
+  }
+
+  const auto pending_config_op_id_result = GetPendingConfigOpId(report);
+  if (!pending_config_op_id_result.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 5)
+        << "Error getting pending_config_op_id from tablet " << report.tablet_id()
+        << " report from " << ts_desc->permanent_uuid() << ": "
+        << pending_config_op_id_result.status();
+    // Fallback to pre-pending_config_op_id logic.
+    return report_opid_index < prev_opid_index;
+  }
+
+  const auto pending_config_op_id = pending_config_op_id_result.get();
+  const auto reported_config_may_still_be_pending =
+      pending_config_op_id.has_value() &&
+      pending_config_op_id->term >= prev_cstate.current_term();
+  return report_opid_index <= prev_opid_index && !reported_config_may_still_be_pending;
 }
 
 Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
@@ -850,20 +909,12 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
       continue;
     }
 
-    // Tombstone a replica that is no longer part of the Raft config (and
-    // not already tombstoned or deleted outright).
-    //
-    // If the report includes a committed raft config, we only tombstone if the opid_index of the
-    // committed raft config is strictly less than the latest reported committed config. This
-    // prevents us from spuriously deleting replicas that have just been added to the committed
-    // config and are in the process of copying.
+    // Tombstone a replica that is no longer part of the Raft config and should be deleted as
+    // decided by ShouldDeleteNonMember.
     const ConsensusStatePB& prev_cstate = tablet_lock->pb.committed_consensus_state();
-    const int64_t prev_opid_index = prev_cstate.config().opid_index();
+    const int64_t prev_opid_index = prev_cstate.config().committed_op_index();
     const int64_t report_opid_index = GetCommittedConsensusStateOpIdIndex(report);
-    if (FLAGS_master_tombstone_evicted_tablet_replicas &&
-        report.tablet_data_state() != TABLET_DATA_TOMBSTONED &&
-        report.tablet_data_state() != TABLET_DATA_DELETED &&
-        report_opid_index < prev_opid_index &&
+    if (ShouldDeleteNonMember(report, prev_cstate, prev_opid_index, report_opid_index, ts_desc) &&
         !IsRaftConfigMember(ts_desc->permanent_uuid(), prev_cstate.config())) {
       const string delete_msg = (report_opid_index == consensus::kInvalidOpIdIndex) ?
           "Replica has no consensus available" :
@@ -1003,13 +1054,13 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
   // cache the most up-to-date config. Since it's possible for TOMBSTONED
   // replicas with no ConsensusMetadata on disk to be reported as having no
   // committed config opid_index, we skip over those replicas.
-  if (!cstate.config().has_opid_index()) {
+  if (!cstate.config().has_committed_op_index()) {
     LOG(WARNING) << "Missing opid_index in reported config: " << report.ShortDebugString();
     return false;
   }
   if (PREDICT_TRUE(FLAGS_master_ignore_stale_cstate) &&
         (cstate.current_term() < prev_cstate.current_term() ||
-        GetCommittedConsensusStateOpIdIndex(report) < prev_cstate.config().opid_index())) {
+        GetCommittedConsensusStateOpIdIndex(report) < prev_cstate.config().committed_op_index())) {
     LOG(WARNING) << "Stale heartbeat for Tablet " << tablet->ToString()
                 << " on TS " << ts_desc->permanent_uuid()
                 << " cstate=" << cstate.ShortDebugString()
@@ -1063,7 +1114,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
   //   the committed config's opid_index).
   // - The new cstate has a leader, and either the old cstate didn't, or
   //   there was a term change.
-  if (cstate.config().opid_index() > prev_cstate.config().opid_index() ||
+  if (cstate.config().committed_op_index() > prev_cstate.config().committed_op_index() ||
       (cstate.has_leader_uuid() &&
           (!prev_cstate.has_leader_uuid() ||
               cstate.current_term() > prev_cstate.current_term()))) {
@@ -1108,16 +1159,16 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
           // Otherwise, the TabletServer needs to remove this peer.
           rpcs->push_back(catalog_manager_->MakeDeleteReplicaTask(
               peer_uuid, tablet->table(), tablet->tablet_id(), TABLET_DATA_TOMBSTONED,
-              prev_cstate.config().opid_index(), epoch,
+              prev_cstate.config().committed_op_index(), epoch,
               Format("TS $0 not found in new config with opid_index $1",
-                    peer_uuid, cstate.config().opid_index())));
+                    peer_uuid, cstate.config().committed_op_index())));
         }
       }
     }
     // 6d(iii). Update the in-memory ReplicaLocations for this tablet using the new config.
     VLOG(2) << "Updating replicas for tablet " << tablet->tablet_id()
           << " using config reported by " << ts_desc->permanent_uuid()
-          << " to that committed in log index " << cstate.config().opid_index()
+          << " to that committed in log index " << cstate.config().committed_op_index()
           << " with leader state from term " << cstate.current_term();
     UpdateTabletReplicasAfterConfigChange(tablet, ts_desc->permanent_uuid(), cstate, report, epoch);
 
@@ -1135,7 +1186,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
     LOG(INFO) << "Tablet server " << ts_desc->permanent_uuid() << " sent "
               << (is_incremental ? "incremental" : "full tablet")
               << " report for " << tablet->tablet_id()
-              << ", prev state op id: " << prev_cstate.config().opid_index()
+              << ", prev state op id: " << prev_cstate.config().committed_op_index()
               << ", prev state term: " << prev_cstate.current_term()
               << ", prev state has_leader_uuid: " << prev_cstate.has_leader_uuid()
               << ". Consensus state: " << cstate.ShortDebugString();
@@ -1566,10 +1617,24 @@ MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
     }
   }
 
+  const auto& ts_uuid = req.common().ts_instance().permanent_uuid();
+  auto old_desc = server_->ts_manager()->LookupTSByUUID(ts_uuid);
+  int64_t old_seqno = old_desc.ok() ? (*old_desc)->latest_seqno() : -1;
+
   auto desc_result = server_->ts_manager()->RegisterFromHeartbeat(
       req, epoch, server_->MakeCloudInfoPB(), &server_->proxy_cache());
   if (desc_result.ok()) {
     LOG(INFO) << "Registering " << req.common().ts_instance().ShortDebugString();
+
+    if (FLAGS_ysql_yb_enable_listen_notify &&
+        old_seqno >= 0 &&
+        req.common().ts_instance().instance_seqno() > old_seqno) {
+      auto s = catalog_manager_->DeleteNotificationsReplicationSlot(
+          ts_uuid, req.common().ts_instance().start_time_us());
+      WARN_NOT_OK(s, Format(
+          "Failed to delete notifications replication slot for restarted tserver $0", ts_uuid));
+    }
+
     return desc_result;
   }
   auto& status = desc_result.status();

@@ -46,9 +46,11 @@ import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
-import org.yb.util.YBTestRunnerNonMac;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 
-@RunWith(value = YBTestRunnerNonMac.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestReadReplica extends BaseMiniClusterTest {
   protected static final Logger LOG = LoggerFactory.getLogger(TestReadReplica.class);
   private static final String PLACEMENT_CLOUD = "testCloud";

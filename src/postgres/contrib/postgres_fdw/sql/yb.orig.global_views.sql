@@ -17,7 +17,7 @@ CREATE SERVER file_server FOREIGN DATA WRAPPER file_fdw;
 -- Create file_fdw foreign table reading the tserver-local CSV.
 -- The relative path resolves against each tserver's data directory,
 -- so each tserver reads its own gv_test_data.csv with unique data.
-CREATE FOREIGN TABLE local_node_metrics (
+CREATE FOREIGN TABLE local_node_metrics_csv (
     node_id        int,
     metric_name    varchar(30),
     metric_value   real,
@@ -32,6 +32,12 @@ CREATE FOREIGN TABLE local_node_metrics (
 ) SERVER file_server
 OPTIONS (format 'csv', filename 'gv_test_data.csv');
 
+-- Wrap the file_fdw foreign table in a view that exposes the local tserver
+-- UUID, since federated foreign tables require a "server_uuid" UUID column.
+CREATE VIEW local_node_metrics AS
+    SELECT yb_get_local_tserver_uuid() AS server_uuid, *
+    FROM local_node_metrics_csv;
+
 -- Verify local data is readable (should show only this node's data)
 SELECT count(*) > 0 AS has_local_data FROM local_node_metrics;
 
@@ -41,6 +47,7 @@ CREATE SERVER IF NOT EXISTS gv_server FOREIGN DATA WRAPPER postgres_fdw
 
 -- Create global view foreign table
 CREATE FOREIGN TABLE "gv$node_metrics" (
+    server_uuid   uuid,
     node_id        int,
     metric_name    varchar(30),
     metric_value   real,
@@ -56,11 +63,16 @@ CREATE FOREIGN TABLE "gv$node_metrics" (
 OPTIONS (schema_name 'public', table_name 'local_node_metrics');
 
 --
--- Basic SELECT: verify data from all 3 nodes (11 rows total)
+-- Basic SELECT: verify data from all 3 nodes (11 rows total).
+-- server_uuid is excluded because its value varies per tserver and run.
 --
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT * FROM "gv$node_metrics" ORDER BY node_id, metric_name;
-SELECT * FROM "gv$node_metrics" ORDER BY node_id, metric_name;
+SELECT node_id, metric_name, metric_value, event_count, total_bytes,
+       ratio, is_healthy, tag, status, created_at, updated_at
+FROM "gv$node_metrics" ORDER BY node_id, metric_name;
+SELECT node_id, metric_name, metric_value, event_count, total_bytes,
+       ratio, is_healthy, tag, status, created_at, updated_at
+FROM "gv$node_metrics" ORDER BY node_id, metric_name;
 
 --
 -- WHERE clause tests: one per type
@@ -505,16 +517,16 @@ ORDER BY node_id, metric_name;
 --
 
 -- TODO(#30591): Remove the setup phase once the default views are created.
-CREATE VIEW yb_active_session_history_with_tserver_uuid AS
-    SELECT yb_get_local_tserver_uuid() AS tserver_uuid, *
+CREATE VIEW yb_active_session_history_with_server_uuid AS
+    SELECT yb_get_local_tserver_uuid() AS server_uuid, *
     FROM yb_active_session_history;
 
-CREATE VIEW pg_stat_statements_with_tserver_uuid AS
-    SELECT yb_get_local_tserver_uuid() AS tserver_uuid, *
+CREATE VIEW pg_stat_statements_with_server_uuid AS
+    SELECT yb_get_local_tserver_uuid() AS server_uuid, *
     FROM pg_stat_statements(true);
 
 CREATE FOREIGN TABLE IF NOT EXISTS "gv$yb_active_session_history" (
-    tserver_uuid UUID,
+    server_uuid UUID,
     sample_time TIMESTAMPTZ,
     root_request_id UUID,
     rpc_request_id BIGINT,
@@ -534,10 +546,10 @@ CREATE FOREIGN TABLE IF NOT EXISTS "gv$yb_active_session_history" (
     ysql_userid OID
 )
 SERVER gv_server
-OPTIONS (schema_name 'public', table_name 'yb_active_session_history_with_tserver_uuid');
+OPTIONS (schema_name 'public', table_name 'yb_active_session_history_with_server_uuid');
 
 CREATE FOREIGN TABLE IF NOT EXISTS "gv$pg_stat_statements" (
-    tserver_uuid UUID,
+    server_uuid UUID,
     userid OID,
     dbid OID,
     toplevel BOOL,
@@ -601,7 +613,7 @@ CREATE FOREIGN TABLE IF NOT EXISTS "gv$pg_stat_statements" (
     docdb_write_time FLOAT8
 )
 SERVER gv_server
-OPTIONS (schema_name 'public', table_name 'pg_stat_statements_with_tserver_uuid');
+OPTIONS (schema_name 'public', table_name 'pg_stat_statements_with_server_uuid');
 
 -- ASH with current_timestamp (stable, not pushed down)
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -809,10 +821,11 @@ FROM "gv$node_metrics";
 --
 DROP FOREIGN TABLE "gv$pg_stat_statements";
 DROP FOREIGN TABLE "gv$yb_active_session_history";
-DROP VIEW pg_stat_statements_with_tserver_uuid;
-DROP VIEW yb_active_session_history_with_tserver_uuid;
+DROP VIEW pg_stat_statements_with_server_uuid;
+DROP VIEW yb_active_session_history_with_server_uuid;
 DROP FOREIGN TABLE "gv$node_metrics";
-DROP FOREIGN TABLE local_node_metrics;
+DROP VIEW local_node_metrics;
+DROP FOREIGN TABLE local_node_metrics_csv;
 DROP SERVER gv_server CASCADE;
 DROP SERVER file_server CASCADE;
 DROP EXTENSION postgres_fdw;

@@ -83,7 +83,7 @@ templates:
   HA_STANDBY_SYNC:
     name: HA Standby Sync
     description: Backup sync to standby has failed
-    queryTemplate: count by (instance_address) (time() - last_over_time(yba_ha_last_backup_seconds[1m]) {{ query_condition }} {{ query_threshold }}) > 0
+    queryTemplate: count by (instance_address) (((time() - last_over_time(yba_ha_last_backup_seconds[1m])) / 60) {{ query_condition }} {{ query_threshold }}) > 0
     createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
@@ -95,7 +95,7 @@ templates:
     thresholdUnitName: min
     labels:
       affected_instance_addrs: >-
-        {{ range $index, $element := query "count by (instance_address) ((time() - last_over_time(yba_ha_last_backup_seconds[1m]) / 60) > {{ query_threshold }}) > 0"}}
+        {{ range $index, $element := query "count by (instance_address) (((time() - last_over_time(yba_ha_last_backup_seconds[1m])) / 60) > {{ query_threshold }}) > 0"}}
         {{ if $index }},{{ end }}{{ $element.Labels.instance_address }}{{ end }}
     annotations:
       summary: >-
@@ -2434,5 +2434,94 @@ templates:
       summary: >-
         Incorrect process limits detected for universe '{{ $labels.source_name }}'
         on {{ $value | printf "%.0f" }} instance(s).
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  NODE_MAINTENANCE_SERVICE_FAILED:
+    name: Node maintenance service failed
+    description: Last execution of a YB node maintenance systemd service (yb-zip_purge_yb_logs / yb-clean_cores) failed
+    queryTemplate: count by (universe_uuid) (yb_node_maintenance_service_status{universe_uuid="__universeUuid__"} == 0
+      and ignoring(saved_name) yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"} > 0)
+      {{ query_condition }} {{ query_threshold }}
+    defaultDurationSec: 600
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name, service)
+        (yb_node_maintenance_service_status{universe_uuid='{{ $labels.universe_uuid }}'} == 0
+        and ignoring(saved_name) yb_node_maintenance_service_last_run_seconds{universe_uuid='{{ $labels.universe_uuid }}'} > 0)
+        > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}({{ $element.Labels.service }}){{ end }}
+    annotations:
+      summary: >-
+        YB node maintenance services last execution failed for universe
+        '{{ $labels.source_name }}' on {{ $value | printf "%.0f" }} instance(s).
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  NODE_MAINTENANCE_SERVICE_NOT_RUN:
+    name: Node maintenance service not running
+    description: A YB node maintenance systemd service (yb-zip_purge_yb_logs / yb-clean_cores) has not been executed recently or never ran
+    queryTemplate: count by (universe_uuid) (
+      (yb_node_maintenance_service_status{universe_uuid="__universeUuid__"} != 2
+      and ignoring(saved_name) yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"} == 0)
+      or
+      (yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"} > 0
+      and ignoring(saved_name) (time() - yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"}) > 300)
+      ) {{ query_condition }} {{ query_threshold }}
+    defaultDurationSec: 600
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name, service) (
+        (yb_node_maintenance_service_status{universe_uuid='{{ $labels.universe_uuid }}'} != 2
+        and ignoring(saved_name) yb_node_maintenance_service_last_run_seconds{universe_uuid='{{ $labels.universe_uuid }}'} == 0)
+        or
+        (yb_node_maintenance_service_last_run_seconds{universe_uuid='{{ $labels.universe_uuid }}'} > 0
+        and ignoring(saved_name) (time() - yb_node_maintenance_service_last_run_seconds{universe_uuid='{{ $labels.universe_uuid }}'}) > 1800)
+        ) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}({{ $element.Labels.service }}){{ end }}
+    annotations:
+      summary: >-
+        YB node maintenance service has not run within the expected window for universe
+        '{{ $labels.source_name }}' on {{ $value | printf "%.0f" }} instance(s).
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING:
+    name: Node maintenance service definition missing
+    description: YB node maintenance systemd service (yb-zip_purge_yb_logs / yb-clean_cores) unit definition is missing on the node
+    queryTemplate: count by (universe_uuid) (yb_node_maintenance_service_status{universe_uuid="__universeUuid__"} == 2)
+      {{ query_condition }} {{ query_threshold }}
+    defaultDurationSec: 600
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name, service)
+        (yb_node_maintenance_service_status{universe_uuid='{{ $labels.universe_uuid }}'} == 2)
+        > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}({{ $element.Labels.service }}){{ end }}
+    annotations:
+      summary: >-
+        YB node maintenance service definition is missing for universe
+        '{{ $labels.source_name }}' on {{ $value | printf "%.0f" }} instance(s).
 
         Affected nodes: {{ $labels.affected_node_names }}

@@ -23,6 +23,7 @@ Use the CREATE TABLE statement to create a table in a database. It defines the t
   table_constraint,
   key_columns,
   hash_columns,
+  partition_key,
   range_columns,
   storage_parameters,
   storage_parameter,

@@ -57,7 +57,7 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 		int index;
 		// OD_RULE_POOL_INTERVAL should be renamed to OD_RULE_POOL_INTENAL.
 		// OD_RULE_POOL_INTERVAL identifies the pool as a control connection.
-		if (route->rule->pool->routing == OD_RULE_POOL_INTERVAL) {
+		if (yb_is_control_pool(route)) {
 			if (route->id.logical_rep) {
 				index = YB_CONTROL_CONN_REP_STATS_INDEX;
 			} else {
@@ -300,9 +300,9 @@ static inline void od_cron_expire(od_cron_t *cron)
 				 "closing idle server connection (%d secs)",
 				 server->idle_time);
 			od_route_t *route = server->route;
+			od_backend_close_connection(server);
 			yb_signal_all_routes(router, route, instance->config.yb_enable_multi_route_pool);
 			server->route = NULL;
-			od_backend_close_connection(server);
 			od_backend_close(server);
 		}
 	}
@@ -315,6 +315,13 @@ static void od_cron_err_stat(od_cron_t *cron)
 {
 	od_router_t *router = cron->global->router;
 
+	/*
+	 * The router lock protects the route pool list against concurrent
+	 * additions/removals (see od_router_route, od_router_gc, etc.). Acquire it
+	 * before iterating to avoid a data race with worker threads that may be
+	 * appending new routes via od_route_pool_new.
+	 */
+	od_router_lock(router);
 	od_list_t *it;
 	od_list_foreach(&router->route_pool.list, it)
 	{
@@ -330,13 +337,10 @@ static void od_cron_err_stat(od_cron_t *cron)
 		od_route_unlock(current_route);
 	}
 
-	od_router_lock(router)
-	{
-		od_err_logger_inc_interval(router->router_err_logger);
-	}
-	od_router_unlock(router)
+	od_err_logger_inc_interval(router->router_err_logger);
+	od_router_unlock(router);
 
-		od_route_pool_lock(router->route_pool)
+	od_route_pool_lock(router->route_pool)
 	{
 		od_err_logger_inc_interval(router->route_pool.err_logger);
 	}

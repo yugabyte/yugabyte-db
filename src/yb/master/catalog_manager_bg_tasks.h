@@ -57,7 +57,10 @@ class CatalogManagerBgTasks final {
  public:
   explicit CatalogManagerBgTasks(Master* master);
 
-  ~CatalogManagerBgTasks() {}
+  // Defined out-of-line so this header does not need the full definition of
+  // yb::EventStats (the inline destructor needs to destroy
+  // scoped_refptr<EventStats> members, which calls Release() on the pointee).
+  ~CatalogManagerBgTasks();
 
   Status Init();
   void Shutdown();

@@ -30,6 +30,7 @@ import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -832,6 +833,16 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                     incomingIntent.specificGFlags,
                     true /* isRerun */);
             break;
+          case CertsRotateKubernetesUpgrade:
+            if (checkAndHandleUniverseLock(
+                ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+              return;
+            }
+            log.info("Re-running Certificate rotation with new params");
+            kubernetesStatusUpdater.createYBUniverseEventStatus(
+                universe, k8ResourceDetails, TaskType.CertsRotateKubernetesUpgrade.name());
+            taskUUID = rotateCertsYbUniverse(universeDetails, cust, ybUniverse);
+            break;
           default:
             log.error("Unexpected task, this should not happen!");
             throw new RuntimeException("Unexpected task tried for re-run");
@@ -894,6 +905,17 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           taskUUID =
               toggleYbcYbUniverse(
                   universeDetails, cust, ybUniverse, ybUniverse.getSpec().getUseYbdbInbuiltYbc());
+          // Handle certificate rotation before any other edit/upgrade operation.
+        } else if (operatorUtils.shouldRotateCerts(universe, ybUniverse, cust.getUuid())) {
+          log.info("Rotating certificates");
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.CertsRotateKubernetesUpgrade.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID = rotateCertsYbUniverse(universeDetails, cust, ybUniverse);
           // Case with new edits
         } else if (!HelmUtils.equal(
             incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
@@ -1153,6 +1175,50 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
     log.info("Upgrading universe with new info now");
     return upgradeUniverseHandler.upgradeSoftware(requestParams, cust, oldUniverse);
+  }
+
+  private UUID rotateCertsYbUniverse(
+      UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    CertsRotateParams requestParams = new CertsRotateParams();
+    try {
+      requestParams =
+          mapper.readValue(mapper.writeValueAsString(taskParams), CertsRotateParams.class);
+    } catch (Exception e) {
+      log.error("Failed at creating certs rotate params", e);
+      throw new RuntimeException("Failed to create certs rotate params", e);
+    }
+
+    // Get the rootCA from the spec
+    String rootCAName = ybUniverse.getSpec().getRootCA();
+    if (rootCAName != null && !rootCAName.trim().isEmpty()) {
+      CertificateInfo rootCACert = CertificateInfo.get(cust.getUuid(), rootCAName);
+      if (rootCACert != null) {
+        requestParams.rootCA = rootCACert.getUuid();
+        // For Kubernetes, rootCA and clientRootCA must be the same
+        requestParams.setClientRootCA(rootCACert.getUuid());
+        requestParams.rootAndClientRootCASame = true;
+        log.info(
+            "Setting rootCA and clientRootCA to {} for certificate rotation", rootCACert.getUuid());
+      } else {
+        log.error("RootCA certificate '{}' not found for customer {}", rootCAName, cust.getUuid());
+        throw new RuntimeException("RootCA certificate '" + rootCAName + "' not found");
+      }
+    }
+
+    Universe oldUniverse =
+        Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
+    if (oldUniverse == null) {
+      throw new RuntimeException("Universe not found: " + getUniverseName(ybUniverse));
+    }
+
+    requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
+    log.info("Rotating certificates for universe {}", oldUniverse.getName());
+    return upgradeUniverseHandler.rotateCerts(requestParams, cust, oldUniverse);
   }
 
   private UUID updateYBUniverse(

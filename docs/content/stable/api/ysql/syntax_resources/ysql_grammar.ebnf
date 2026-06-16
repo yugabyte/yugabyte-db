@@ -274,7 +274,7 @@ alter_index = 'ALTER' 'INDEX' [ 'IF' 'EXISTS' ] index_name
 
 alter_index_action =
   ( 'RENAME' 'TO' new_name
-    | 'ALTER' [ 'COLUMN' ] column_number 'SET STATISTICS' integer
+    | 'ALTER' [ 'COLUMN' ] column_number 'SET STATISTICS' int_literal
     | 'SET' 'TABLESPACE' tablespace_name ) ;
 
 
@@ -768,11 +768,13 @@ drop_tablespace = 'DROP' 'TABLESPACE' [ 'IF' 'EXISTS' ] tablespace_name;
 
 
 
+partition_key = ( column_name | '(' expression ')' ) [ operator_class_name ] ;
+
 (* 'CREATE' 'TABLE' *)
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'TABLE'
                  [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')' \
-                 [ 'PARTITION' 'BY' { 'RANGE' | 'LIST' | 'HASH' } '(' { column_name | ( expression ) } [ operator_class_name ] [, ...] ')' ] \
+                 [ 'PARTITION' 'BY' ( 'RANGE' | 'LIST' | 'HASH' ) '(' partition_key { ',' partition_key } ')' ] \
                  [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | 'COLOCATION_ID' '=' int_literal | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
                  [ 'TABLESPACE' tablespace_name ] \
@@ -955,6 +957,13 @@ output_name = name ;
 
 (* 'DO' *)
 do = 'DO' "'" plpgsql_block_stmt "'";
+
+(* 'ALTER' 'AGGREGATE' *)
+alter_aggregate = 'ALTER' 'AGGREGATE' aggregate_name '(' aggregate_signature ')' alter_aggregate_action ;
+
+alter_aggregate_action =
+  'RENAME' 'TO' new_name |
+  'OWNER' 'TO' ( new_owner | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) ;
 
 (* 'DROP' 'AGGREGATE' *)
 drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] ( aggregate_name '(' aggregate_signature ')' )
@@ -1472,6 +1481,7 @@ arg_type = type_name ;
 
 text_literal = '<Text Literal>' ;
 int_literal = '<Integer Literal>' ;
+column_number = int_literal ;
 positive_int_literal = '<Positive Integer Literal>' ;
 non_neg_int_literal = '<Non-negative Integer Literal>' ;
 

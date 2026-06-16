@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.supportbundle;
 
 import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -28,6 +29,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
@@ -50,7 +52,7 @@ public class YbcLogsComponentTest extends FakeDBApplication {
   @Mock public SupportBundleUtil mockSupportBundleUtil = new SupportBundleUtil();
 
   private static final String testYbcLogsRegexPattern =
-      "((?:.*)(?:yb-)(?:controller)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
+      "((?:.*)(?:yb-)(?:controller)(?:.*))(\\d{8}-\\d{6})\\.(?:.*)";
   private Universe universe;
   private Customer customer;
   private String fakeSupportBundleBasePath = "/tmp/yugaware_tests/support_bundle-ybc_logs/";
@@ -97,12 +99,9 @@ public class YbcLogsComponentTest extends FakeDBApplication {
         .thenReturn(fakeSupportBundleBasePath);
     when(mockConfig.getString("yb.support_bundle.ybc_logs_regex_pattern"))
         .thenReturn(testYbcLogsRegexPattern);
-    when(mockSupportBundleUtil.extractFileTypeFromFileNameAndRegex(any(), any()))
+    when(mockSupportBundleUtil.filterFilePathsBetweenDates(
+            any(), org.mockito.ArgumentMatchers.<java.util.List<String>>any(), any(), any()))
         .thenCallRealMethod();
-    when(mockSupportBundleUtil.extractDateFromFileNameAndRegex(any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.filterFilePathsBetweenDates(any(), any(), any(), any()))
-        .thenCallRealMethod();
-    when(mockSupportBundleUtil.filterList(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
@@ -134,6 +133,67 @@ public class YbcLogsComponentTest extends FakeDBApplication {
   @After
   public void tearDown() throws IOException {
     FileUtils.deleteDirectory(new File(fakeSupportBundleBasePath));
+  }
+
+  @Test
+  public void testGetFilesListWithSizesTimeAwareRange() throws Exception {
+    SimpleDateFormat ybTs = new SimpleDateFormat("yyyyMMdd-HHmmss");
+    Date startDate = ybTs.parse("20220127-073000");
+    Date endDate = ybTs.parse("20220127-100000");
+    String fileTypePrefix = "/mnt/ybc-data/controller/logs/yb-controller.u-n1.yugabyte.log.INFO.";
+    Map<String, Long> allLogs =
+        new HashMap<>(
+            Map.of(
+                fileTypePrefix + "20220127-090000.1542.gz",
+                10L,
+                fileTypePrefix + "20220127-072322.1542.gz",
+                10L,
+                fileTypePrefix + "20220127-045422.1542.gz",
+                10L));
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(allLogs);
+
+    YbcLogsComponent ybcLogsComponent =
+        new YbcLogsComponent(
+            mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
+
+    Map<String, Long> filtered =
+        ybcLogsComponent.getFilesListWithSizes(customer, null, universe, startDate, endDate, node);
+
+    assertEquals(2, filtered.size());
+    assertTrue(filtered.containsKey(fileTypePrefix + "20220127-090000.1542.gz"));
+    assertTrue(filtered.containsKey(fileTypePrefix + "20220127-072322.1542.gz"));
+    assertTrue(!filtered.containsKey(fileTypePrefix + "20220127-045422.1542.gz"));
+  }
+
+  @Test
+  public void testGetFilesListWithSizesIncludesOnlyOnePreStartLog() throws Exception {
+    SimpleDateFormat ybTs = new SimpleDateFormat("yyyyMMdd-HHmmss");
+    Date startDate = ybTs.parse("20220128-000000");
+    Date endDate = ybTs.parse("20220130-000000");
+    String fileTypePrefix = "/mnt/ybc-data/controller/logs/yb-controller.u-n1.yugabyte.log.INFO.";
+    Map<String, Long> allLogs =
+        new HashMap<>(
+            Map.of(
+                fileTypePrefix + "20220127-072322.1542.gz",
+                10L,
+                fileTypePrefix + "20220126-120000.1542.gz",
+                10L,
+                fileTypePrefix + "20220125-120000.1542.gz",
+                10L));
+    when(mockNodeUniverseManager.getNodeFilePathAndSizes(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(allLogs);
+
+    YbcLogsComponent ybcLogsComponent =
+        new YbcLogsComponent(
+            mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
+
+    Map<String, Long> filtered =
+        ybcLogsComponent.getFilesListWithSizes(customer, null, universe, startDate, endDate, node);
+
+    assertEquals(1, filtered.size());
+    assertTrue(filtered.containsKey(fileTypePrefix + "20220127-072322.1542.gz"));
+    assertTrue(!filtered.containsKey(fileTypePrefix + "20220126-120000.1542.gz"));
   }
 
   @Test

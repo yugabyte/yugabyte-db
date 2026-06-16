@@ -107,8 +107,7 @@
 #include "yb/util/url-coding.h"
 #include "yb/common/version_info.h"
 
-DEFINE_RUNTIME_int32(
-    hide_dead_node_threshold_mins, 60 * 24,
+DEFINE_RUNTIME_int32(hide_dead_node_threshold_mins, 60 * 24,
     "After this many minutes of no heartbeat from a node, hide it from the UI "
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");
@@ -598,13 +597,15 @@ void MasterPathHandlers::TServerDisplay(
     status = status.CloneAndPrepend("Unable to get preferred zone list");
     LOG(WARNING) << status.ToString();
   }
+  const auto lease_infos =
+      master_->catalog_manager_impl()->object_lock_info_manager()->GetLeaseInfos();
 
   auto html_table = html_print_helper.CreateTablePrinter(
       Format("$0_tserver", current_uuid),
       {"Server", "Time since heartbeat", "Status & Uptime", "User Tablet-Peers / Leaders",
        "System Tablet-Peers / Leaders", "RAM Used", "Num SST Files", "Total SST Files Size",
        "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec", "Placement",
-       "Active Tablet-Peers"});
+       "Active Tablet-Peers", "Lease Expiry", "Lease Epoch"});
 
   int max_peers = 0;
   for (const auto& desc : descs) {
@@ -670,6 +671,21 @@ void MasterPathHandlers::TServerDisplay(
     html_row.AddColumn(tserver_info.placement);
 
     html_row.AddColumn(counts ? desc->num_live_replicas() : 0);
+
+    {
+      auto lease_it = lease_infos.find(desc->permanent_uuid());
+      const std::string kLeaseCellTemplate{"<font color=\"$0\">$1"};
+      if (lease_it != lease_infos.end() && lease_it->second.lease_info.live_lease()) {
+        html_row.AddColumn(
+            Format(kLeaseCellTemplate, "Green", lease_it->second.lease_expiry.ToString()));
+        html_row.AddColumn(Format(
+            kLeaseCellTemplate, "Green",
+            std::to_string(lease_it->second.lease_info.lease_epoch())));
+      } else {
+        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+      }
+    }
   }
   html_table.Print();
 }

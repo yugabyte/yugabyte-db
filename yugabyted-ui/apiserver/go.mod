@@ -1,6 +1,6 @@
 module apiserver
 
-go 1.26.2
+go 1.26.4
 
 require (
 	github.com/jackc/pgtype v1.14.3
@@ -35,10 +35,10 @@ require (
 	github.com/yugabyte/yb-voyager/yb-voyager v1.8.11
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/crypto v0.36.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 )

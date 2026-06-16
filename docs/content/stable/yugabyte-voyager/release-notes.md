@@ -17,6 +17,41 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.6.1 - June 9, 2026
+
+### Enhancement
+
+- Updated the bundled [YugabyteDB logical replication connector](../../additional-features/change-data-capture/using-logical-replication/) to version `dz.2.5.2.yb.2025.2.3`.
+
+### Bug fixes
+
+- Fixed an issue where [import data](../reference/data-migration/import-data/) could intermittently fail against multi-node YugabyteDB targets with a _syntax error at or near…_ error referencing a prepared-statement name.
+
+- Fixed an issue where migration assessment for PostgreSQL sources with read replicas could fail when [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) was not enabled on all replicas. Voyager now checks its availability on each replica independently, instead of assuming replicas match the primary.
+
+- Fixed an issue where the [assess-migration](../reference/assess-migration/) progress display showed an inconsistent step count.
+
+- Fixed an issue where interrupting live migration could cause incorrect sequence restoration on the target after cutover.
+
+- Fixed an issue where [import data](../reference/data-migration/import-data/) could hang silently when `--adaptive-parallelism-max` was set less than the default `parallel-jobs` value.
+
+## v2026.5.2 - May 26, 2026
+
+### Enhancements
+
+- Redesigned output for the [assess-migration](../reference/assess-migration/) command. The output is now organized into three clear phases:
+  1. A **Preflight Checks** block that summarizes guardrail validations.
+  1. An **Assessment Pipeline** that shows live progress for metadata gathering, usage analysis, sizing, and report generation via a spinner and step counter.
+  1. A final **Summary** block.
+
+- Added a new guardrail in the [export data from target](../reference/data-migration/export-data/) flow (live migration with fall-back/fall-forward from YugabyteDB) that verifies every exported YugabyteDB table has its replica identity set to CHANGE. Tables missing the required replica identity are now reported under "Tables missing replica identity CHANGE" so they can be corrected before streaming begins, instead of failing later during CDC.
+
+### Bug fixes
+
+- Fixed an issue where [import data](../reference/data-migration/import-data/) and [import data file](../reference/data-migration/import-data/#import-data-file) run with `--truncate-tables true` (and `--start-clean true`) would fail with "cannot truncate a table referenced in a foreign key constraint" when the target had a non-empty parent table and an empty child table linked by a foreign key. The TRUNCATE statement now includes all tables in the import scope, keeping foreign key-dependent siblings consistent in the same statement.
+
+- Fixed a transient failure during multi-table TRUNCATE on YugabyteDB targets that occasionally surfaced as "Restart read required (SQLSTATE 40001)" under distributed read-snapshot contention. Voyager now retries the TRUNCATE up to four times with linear backoff (2s, 4s, 6s, 8s) before surfacing the error.
+
 ## v2026.5.1 - May 15, 2026
 
 ### New feature
@@ -256,7 +291,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 
 - Fixed import schema to properly handle session variables during connection retries, ensuring DDL state consistency.
 - Fixed import data or import data file to allow users to run without the `--start-clean` flag, after creating missing tables following guardrail failures.
-- Fixed a scenario where compare-performance fails to generate a JSON report if there are some entries in `pg_stat_statements` having zero calls.
+- Fixed a scenario where compare-performance fails to generate a JSON report if there are some entries in [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) having zero calls.
 
 ## v2025.9.3 - September 30, 2025
 
@@ -641,7 +676,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
   - In the Schema analysis report (html/text), changed the following field names to improve readability: Invalid Count to Objects with Issues; Total Count to Total Objects; and Valid Count to Objects without Issues. The logic determining when an object is considered to have issues or not has also been improved.
   - Stop reporting [Unlogged tables](../known-issues/postgresql/#unlogged-table-is-not-supported) as an issue in assessment and schema analysis reports by default, as UNLOGGED no longer results in a syntax error in YugabyteDB {{<release "2024.2.0.0">}}.
   - Stop reporting [ALTER PARTITIONED TABLE ADD PRIMARY KEY](https://github.com/yugabyte/yb-voyager/issues/612) as an issue in assessment and schema analysis reports, as [the issue](../known-issues/postgresql/#adding-primary-key-to-a-partitioned-table-results-in-an-error) has been fixed in YugabyteDB {{<release "2024.1.0.0">}} and later.
-  - In the assessment report, only statements from `pg_stat_statements` that belong to the schemas provided by the user will be processed for detecting and reporting issues.
+  - In the assessment report, only statements from [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) that belong to the schemas provided by the user will be processed for detecting and reporting issues.
 - Data Migration
   - `import data file` and `import data to source replica` now accept a new flag `truncate-tables` (in addition to `import data`), which, when used with `start-clean true`, truncates all the tables in the target/source-replica database before importing data into the tables.
 - Miscellaneous
@@ -666,7 +701,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 - Added support to report DDL issues present in the PL/pgSQL blocks of objects listed in the "Unsupported PL/pgSQL Objects" section of the `assess-migration` and `analyze-schema` commands.
 - Allow yb-voyager upgrades during migration from the recent breaking release (v1.8.5) to later versions.
 - Modified the internal HTTP port to dynamically use an available free port instead of defaulting to 8080, avoiding conflicts with commonly used services.
-- Added a guardrail check to the `assess-migration` command to verify that the `pg_stat_statements` extension is properly loaded in the source database.
+- Added a guardrail check to the `assess-migration` command to verify that the [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) extension is properly loaded in the source database.
 
 ### Bug fixes
 
@@ -684,7 +719,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 
 - Using the arguments `--table-list` and `--exclude-table-list` in guardrails now checks for PostgreSQL export to determine which tables require permission checks.
 - Added a check for Java as a dependency in guardrails for PostgreSQL export during live migration.
-- Added check to verify if [pg_stat_statements](../../additional-features/pg-extensions/extension-pgstatstatements/) is in a schema not included in the specified `schema_list` and if the migration user has access to queries in the pg_stat_statements view. This is part of the guardrails for assess-migration for PostgreSQL.
+- Added check to verify if [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) is in a schema not included in the specified `schema_list` and if the migration user has access to queries in the pg_stat_statements view. This is part of the guardrails for assess-migration for PostgreSQL.
 - Introduced the `--version` flag in the voyager installer script, which can be used to specify the version to install.
 - Added argument [--truncate-tables](../reference/data-migration/import-data/#arguments) to import data to target for truncating tables, applicable only when --start-clean is true.
 - Added support in the assess-migration command to detect the `XMLTABLE()` function under unsupported query constructs.
@@ -694,7 +729,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 ### Bug fixes
 
 - Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/1920) where export-data errors out if background metadata queries (count*) are still running after pg_dump completes.
-- Fixed a bug where the assess-migration command fails when gathering metadata for unsupported query constructs if the pg_stat_statements extension was installed in a non-public schema.
+- Fixed a bug where the assess-migration command fails when gathering metadata for unsupported query constructs if the [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) extension was installed in a non-public schema.
 - Fixed nil pointer exceptions and index-out-of-range issues when running export data status and get data-migration-report commands before export data is properly started.
 - Fixed a bug in export data status command for accurate status reporting of partition tables during PostgreSQL data export.
 
@@ -717,7 +752,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 
 ### Known issues
 
-- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../additional-features/pg-extensions/extension-pgstatstatements/) extension is created in a non-public schema, due to the "Unsupported Query Constructs" feature.
+- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) extension is created in a non-public schema, due to the "Unsupported Query Constructs" feature.
 To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`, which disables the "Unsupported Query Constructs" feature and proceeds with the command execution.
 
 ## v1.8.4 - October 29, 2024

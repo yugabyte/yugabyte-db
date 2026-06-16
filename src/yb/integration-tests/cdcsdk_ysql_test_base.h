@@ -149,6 +149,8 @@ DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_int32(TEST_cdc_simulate_error_for_get_changes);
 DECLARE_bool(TEST_fail_cdc_setting_retention_barriers_on_apply);
 DECLARE_int32(update_min_cdc_indices_master_interval_secs);
+DECLARE_bool(enable_update_local_peer_min_index_master);
+DECLARE_int32(cdc_min_replicated_index_considered_stale_secs_master);
 DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
@@ -159,6 +161,8 @@ DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(cdc_enable_dynamic_schema_changes);
 DECLARE_bool(TEST_cdc_skip_master_bg_task);
+DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
+DECLARE_string(ysql_yb_default_replica_identity);
 
 namespace yb {
 
@@ -270,10 +274,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status TruncateTable(PostgresMiniCluster* cluster, const std::vector<string>& table_ids);
 
   // The range is exclusive of end i.e. [start, end)
-  static Status WriteRows(
+  Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
-      const vector<string>& optional_cols_name = {},
-      pgwrapper::PGConn* conn = nullptr);
+      const vector<string>& optional_cols_name = {}, pgwrapper::PGConn* conn = nullptr);
 
   static Status WriteRowsWithConn(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
@@ -314,8 +317,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status WriteEnumsRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, const string& enum_suffix = "",
-      string database_name = kNamespaceName, string table_name = kTableName,
-      string schema_name = "public");
+      string table_name = kTableName, string schema_name = "public");
 
   Result<YBTableName> CreateCompositeTable(
       PostgresMiniCluster* cluster, const uint32_t num_tablets,
@@ -648,6 +650,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           master::SysCDCStreamEntryPB::ACTIVE,
       bool include_catalog_tables = false,
       const std::string& timeout_msg = "Stream metadata doesn't match the expected state");
+
+  Status VerifyOriginIdOnAllRecords(
+      const GetChangesResponsePB& resp, uint32_t expected_origin_id);
 
   void VerifyTabletIdsInCdcStateForStream(
       const xrepl::StreamId& stream_id,

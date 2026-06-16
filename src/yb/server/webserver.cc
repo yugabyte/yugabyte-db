@@ -103,8 +103,7 @@ TAG_FLAG(webserver_compression_threshold_kb, advanced);
 DEFINE_UNKNOWN_bool(webserver_redirect_http_to_https, false,
             "Redirect HTTP requests to the embedded webserver to HTTPS if HTTPS is enabled.");
 
-DEFINE_RUNTIME_bool(
-    webserver_strict_transport_security, false,
+DEFINE_RUNTIME_bool(webserver_strict_transport_security, false,
     "Header is cached by the browser for the specified 'max-age' and forces it to redirect any "
     "http request to https to avoid man-in-the-middle attacks. The original http request is never "
     "sent.");

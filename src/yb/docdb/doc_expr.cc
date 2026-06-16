@@ -25,11 +25,26 @@
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
 #include "yb/util/enums.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/uuid.h"
+
+using namespace yb::size_literals;
+
+DEFINE_RUNTIME_uint64(aggregate_arena_reset_threshold_bytes, 16_KB,
+    "When the aggregate-private arena grows beyond this footprint (in bytes), it is replaced "
+    "with a fresh arena and the running aggregate values are migrated. Bounds the peak memory "
+    "consumed while scanning many rows for SUM/MIN/MAX/AVG/COUNT.");
+
+DEFINE_RUNTIME_uint64(aggregate_arena_reset_min_invocations, 5,
+    "Minimum number of PrepareAggregateResults invocations that must elapse between aggregate "
+    "arena recreations. Avoids paying the migration cost on short aggregate scans where the "
+    "footprint check might otherwise trip on a single oversized row.");
 
 using std::string;
 using std::vector;
@@ -46,6 +61,32 @@ using qlexpr::QLTableRow;
 DocExprExecutor::DocExprExecutor() = default;
 
 DocExprExecutor::~DocExprExecutor() = default;
+
+void DocExprExecutor::PrepareAggregateResults(size_t size) {
+  DCHECK(aggr_result_.empty() || aggr_result_.size() == size);
+  ++aggr_invocations_since_reset_;
+
+  if (aggr_result_arena_ &&
+      aggr_invocations_since_reset_ >= FLAGS_aggregate_arena_reset_min_invocations &&
+      aggr_result_arena_->memory_footprint() >= FLAGS_aggregate_arena_reset_threshold_bytes) {
+    auto new_arena = SharedThreadSafeArena();
+    std::vector<qlexpr::LWExprResult> new_results;
+    new_results.reserve(aggr_result_.size());
+    for (auto& old_result : aggr_result_) {
+      auto& new_result = new_results.emplace_back(new_arena.get());
+      old_result.MoveTo(&new_result.Writer().NewValue());
+    }
+    aggr_result_ = std::move(new_results);
+    aggr_result_arena_ = std::move(new_arena);
+    aggr_invocations_since_reset_ = 0;
+  } else if (!aggr_result_arena_) {
+    aggr_result_arena_ = SharedThreadSafeArena();
+    aggr_result_.reserve(size);
+    while (aggr_result_.size() < size) {
+      aggr_result_.emplace_back(aggr_result_arena_.get());
+    }
+  }
+}
 
 //--------------------------------------------------------------------------------------------------
 

@@ -210,10 +210,6 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
             createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
-          // Also idempotent can be run again here.
-          // Mark the final software version on the universe
-          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
 
           if (universe.getUniverseDetails().useNewHelmNamingStyle) {
             createPodDisruptionBudgetPolicyTask(false /* deletePDB */)
@@ -238,6 +234,10 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                   true /* isSoftwareRollbackAllowed */);
             }
           }
+          // Also idempotent can be run again here.
+          // Mark the final software version on the universe (last subtask).
+          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
         },
         () -> {
           if (requireAdditionalSuperUserForCatalogUpgrade) {

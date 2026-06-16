@@ -97,7 +97,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
         createDestroyServerTasks(
                 universe,
                 nodesToBeRemoved,
-                params().isForceDelete,
+                node -> params().isForceDelete,
                 true /* deleteNodeFromDB */,
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)

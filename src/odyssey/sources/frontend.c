@@ -861,6 +861,43 @@ void yb_drain_parse_queue_till_sync(od_server_t *server, od_client_t *client)
 	}
 }
 
+/*
+ * YB: Resume the client->server relay that was paused by OD_WAIT_SYNC when
+ * od_frontend_remote_client processed a Sync packet. Re-arms the client FD
+ * on epoll and, if bytes pipelined after the Sync are already buffered in
+ * readahead, signals on_read so od_relay_step drains them on the next
+ * iteration without waiting for a new kernel event.
+ */
+static int yb_resume_client_relay(od_client_t *client)
+{
+	od_relay_t *client_relay = &client->relay;
+	if (!client_relay->yb_paused)
+		return 0;
+	client_relay->yb_paused = false;
+	if (client_relay->src && client_relay->src->io)
+	{
+		int rc = od_io_read_start(client_relay->src);
+		if (rc == -1) {
+			od_instance_t *instance = client->global->instance;
+			od_error(&instance->logger, "main", client, client->server,
+				 "failed to start client read after Sync: %s",
+				 od_io_error(client_relay->src));
+			return rc;
+		}
+	}
+	/*
+	 * Only signal on_read when the readahead already holds bytes that the
+	 * paused pipeline did not get to process (e.g. queries pipelined after
+	 * the Sync). If readahead is empty, level-triggered epoll will deliver
+	 * the wakeup naturally once new bytes arrive from the client, avoiding
+	 * a spurious OD_ATTACH that would hold a backend connection idle.
+	 */
+	if (client_relay->src && client_relay->src->on_read &&
+	    od_relay_data_pending(client_relay))
+		machine_cond_signal(client_relay->src->on_read);
+	return 0;
+}
+
 static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 						      char *data, int size)
 {
@@ -1013,6 +1050,13 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		}
 	} else {
 		if (is_ready_for_query && od_server_synchronized(server)) {
+			int rc = yb_resume_client_relay(client);
+			if (rc != 0) {
+				od_error(&instance->logger, "wait sync", client, server,
+					"failed to resume client read after Sync: %s",
+					od_io_error(client->relay.src));
+				return OD_ECLIENT_READ;
+			}
 			switch (route->rule->pool->pool) {
 			case OD_RULE_POOL_STATEMENT:
 				return OD_DETACH;
@@ -1298,6 +1342,15 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			if (yb_od_parse_queue_enqueue_sync(&server->parse_queue) == -1)
 				return OD_EOOM;
 		}
+		/*
+		 * YB: When yb_wait_for_rfq_on_sync is enabled, pause the
+		 * client->server relay after the Sync until the backend's
+		 * matching ReadyForQuery is forwarded back to the client.
+		 * This preserves extended-query batch ordering across pool
+		 * boundaries.
+		 */
+		if (instance->config.yb_wait_for_rfq_on_sync)
+			retstatus = OD_WAIT_SYNC;
 		break;
 	case KIWI_FE_DESCRIBE:
 		if (instance->config.log_query || route->rule->log_query)
@@ -2460,6 +2513,20 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 
 			/* retry read operation after attach */
 			continue;
+		} else if (status == OD_WAIT_SYNC) {
+			/*
+			 * YB: Park the client read by removing its FD from epoll
+			 * so co-routine doesn't get woken up for any bytes the client
+			 * pipelines after the Sync.
+			 */
+			int rc = od_io_read_stop(client->relay.src);
+			if (rc != 0) {
+				od_error(&instance->logger, "wait sync", client, server,
+					"failed to stop client read: %s",
+					od_io_error(client->relay.src));
+				return OD_ECLIENT_READ;
+			}
+			status = OD_OK;
 		} else if (status != OD_OK) {
 			break;
 		}

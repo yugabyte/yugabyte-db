@@ -34,13 +34,13 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.MasterInfo;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -54,6 +54,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -135,17 +136,21 @@ public class UniverseInfoHandler {
 
   public UniverseInterruptionResult spotUniverseStatus(Universe universe) {
     UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    switch (userIntent.providerType) {
-      case aws:
-        result = awsUtil.spotInstanceUniverseStatus(universe);
-        break;
-      case gcp:
-        result = gcpUtil.spotInstanceUniverseStatus(universe);
-        break;
-      case azu:
-        result = azUtil.spotInstanceUniverseStatus(universe);
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+    for (NodeDetails node : universe.getNodes()) {
+      Provider provider = providerGetter.apply(node);
+      switch (provider.getCloudCode()) {
+        case aws:
+          awsUtil.addSpotInstanceUniverseStatus(result, node, universe, provider);
+          break;
+        case gcp:
+          gcpUtil.addSpotInstanceUniverseStatus(result, node, universe, provider);
+          break;
+        case azu:
+          azUtil.addSpotInstanceUniverseStatus(result, node, universe, provider);
+      }
     }
+
     return result;
   }
 

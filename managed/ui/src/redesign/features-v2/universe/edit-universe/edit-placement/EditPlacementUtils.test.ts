@@ -41,7 +41,7 @@ const resilience = {
 
 const nodesAndAvailability = {
   availabilityZones: {
-    [region.code]: [{ uuid: 'az-1', name: 'us-west-2a', nodeCount: 2, preffered: 0 }]
+    [region.code]: [{ uuid: 'az-1', name: 'us-west-2a', nodeCount: 2, preffered: 1 }]
   },
   useDedicatedNodes: false
 };

@@ -1,0 +1,3 @@
+-r requirements.txt
+ruff==0.11.13
+clang-format==20.1.5

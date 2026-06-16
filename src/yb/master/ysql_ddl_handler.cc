@@ -16,6 +16,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -23,6 +24,7 @@
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 
 DEFINE_RUNTIME_bool(retry_if_ddl_txn_verification_pending, true,
@@ -60,6 +62,7 @@ DEFINE_test_flag(int32, ysql_ddl_atomicity_alter_table_request_delay_ms, 0,
   "Inject delay before sending ALTER TABLE request as part of DDL atomicity rollback.");
 
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -371,8 +374,15 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
       "Received ReportYsqlDdlTxnStatus request without transaction id");
   // When req->is_committed() is known (i.e., not kNoChange), the first argument table is not
   // needed.
-  return YsqlDdlTxnCompleteCallback(nullptr /* table */, req_txn, req->is_committed(),
-                                    epoch, __FUNCTION__);
+  RETURN_NOT_OK(YsqlDdlTxnCompleteCallback(
+      nullptr /* table */, req_txn, req->is_committed(), epoch, __FUNCTION__));
+
+  if (FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+    // Best effort refresh of catalog version cache. Bg task
+    // will refresh it anyway.
+    (void)RefreshPgCatalogVersionCache();
+  }
+  return Status::OK();
 }
 
 struct YsqlTableDdlTxnState {
@@ -828,16 +838,25 @@ void CatalogManager::RemoveDdlRollbackToSubTxnStateUnlocked(
 
   LOG(INFO) << "Removing " << table_id << " from DDL rollback to sub-transaction state for "
             << txn_id;
+
+  auto& indexes_skipped_due_to_base_table_deletion =
+      iter->second.indexes_skipped_due_to_base_table_deletion;
+  if (indexes_skipped_due_to_base_table_deletion.erase(table_id) > 0) {
+    VLOG(1) << "Removed " << table_id << " from indexes_skipped_due_to_base_table_deletion for "
+            << txn_id;
+  }
+
   auto& tables = iter->second.tables;
   const auto num_tables = std::erase_if(
       tables, [&table_id](const TableInfoPtr& table) { return table->id() == table_id; });
   DCHECK_LE(num_tables, 1);
-  if (tables.empty()) {
+  if (tables.empty() && indexes_skipped_due_to_base_table_deletion.empty()) {
     LOG(INFO) << "Erasing DDL rollback to sub-transaction state " << txn_id;
     ysql_ddl_txn_undergoing_subtransaction_rollback_map_.erase(iter);
   } else {
     VLOG(1) << "DDL rollback to sub-transaction for " << txn_id << " has " << tables.size()
-            << " tables remaining";
+            << " tables and " << indexes_skipped_due_to_base_table_deletion.size()
+            << " indexes skipped due to base table deletion remaining";
   }
 }
 
@@ -1308,26 +1327,25 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
              : Status::OK();
 }
 
-bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
-    const TableInfo* table, TransactionId& txn_id) {
+template <class LockType>
+bool CatalogManager::IsTableDeletionDueToRollbackToSubTxnWithLock(
+    const TableInfo* table, const LockType& l, TransactionId& txn_id) {
   if (!FLAGS_ysql_yb_enable_ddl_savepoint_support) {
     return false;
   }
 
   // Get the transaction id (if exists) that is modifying the table.
-  {
-    auto l = table->LockForRead();
-    auto txn_id_res = l->GetCurrentDdlTransactionId();
-    if (!txn_id_res.ok() || txn_id_res->IsNil()) {
-      // Transaction ID will always be present in case of rollback to sub-transaction operation.
-      LOG(INFO) << "No transaction id found on table: " << table->ToString();
-      return false;
-    }
-    txn_id = *txn_id_res;
+  auto txn_id_res = l->GetCurrentDdlTransactionId();
+  if (!txn_id_res.ok() || txn_id_res->IsNil()) {
+    // Transaction ID will always be present in case of rollback to sub-transaction operation.
+    LOG(INFO) << "No transaction id found on table: " << l->pb.name()
+              << " [id=" << table->id() << "]";
+    return false;
   }
+  txn_id = *txn_id_res;
 
-  VLOG_WITH_FUNC(4) << "The transaction modifying the table: " << table->ToString()
-                    << " is " << txn_id;
+  VLOG_WITH_FUNC(4) << "The transaction modifying the table: " << l->pb.name()
+                    << " [id=" << table->id() << "] is " << txn_id;
 
   SubTransactionId rolled_back_sub_transaction_id;
   {
@@ -1346,7 +1364,7 @@ bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
     if (table->is_index() &&
         rollback_to_subtxn_state->indexes_skipped_due_to_base_table_deletion.contains(
             table->id())) {
-      VLOG_WITH_FUNC(4) << "Table: " << table->ToString()
+      VLOG_WITH_FUNC(4) << "Table: " << l->pb.name() << " [id=" << table->id() << "]"
                         << " is an index whose base table is also getting deleted due to rollback "
                            "to sub-transaction operation.";
       return true;
@@ -1360,37 +1378,33 @@ bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
       // This table is not undergoing rollback to sub-transaction operation.
       // Either it has already completed or it wasn't affected.
       VLOG_WITH_FUNC(4) << "No rollback to sub-transaction in progress for table: "
-                        << table->ToString();
+                        << l->pb.name() << " [id=" << table->id() << "]";
       return false;
     }
-
     rolled_back_sub_transaction_id = rollback_to_subtxn_state->sub_txn;
   }
 
-  auto l = table->LockForRead();
-  // Ensure this table is still being modified by the same transaction id.
-  auto txn_id_res = l->GetCurrentDdlTransactionId();
-  if (!txn_id_res.ok() || txn_id_res->IsNil() || txn_id != *txn_id_res) {
-    // Table is now:
-    // 1. Not under any DDL anymore i.e. completed
-    // 2. Undergoing DDL via a different transaction
-    // None of these cases should happen because this would indicate that the transaction finished
-    // and got cleaned up even before the table deletion finished.
-    // Crash in DEBUG so that we can find out cases where this is happening.
-    // Return false in RELEASE to avoid crash. There is no correctness issue with returning false as
-    // this function is used to avoid self-abort of transaction. When we return false, no txn are
-    // excluded i.e. all get aborted as part of tablet deletion.
-    LOG(DFATAL) << "DDL transaction id for table: " << table
-                << " changed while DeleteTable was in progress. old: " << txn_id
-                << ", new: " << txn_id_res;
-    return false;
-  }
+  VLOG_WITH_FUNC(4) << "Table: " << l->pb.name() << " [id=" << table->id() << "]"
+                    << " is being deleted due to rollback to sub-transaction: "
+                    << rolled_back_sub_transaction_id << " of transaction: " << txn_id;
 
   // The table must be created within or after the rolled back sub-transaction.
   const YsqlDdlTxnVerifierStatePB& first_ddl_state = l->ysql_ddl_txn_verifier_state_first();
   return first_ddl_state.contains_create_table_op() &&
          first_ddl_state.has_sub_transaction_id() &&
          first_ddl_state.sub_transaction_id() >= rolled_back_sub_transaction_id;
+}
+
+// Explicit instantiations for the locks used.
+template bool CatalogManager::IsTableDeletionDueToRollbackToSubTxnWithLock(
+    const TableInfo* table, const TableInfo::WriteLock& l, TransactionId& txn_id);
+template bool CatalogManager::IsTableDeletionDueToRollbackToSubTxnWithLock(
+    const TableInfo* table, const TableInfo::ReadLock& l, TransactionId& txn_id);
+
+bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
+    const TableInfo* table, TransactionId& txn_id) {
+  auto l = table->LockForRead();
+  return IsTableDeletionDueToRollbackToSubTxnWithLock(table, l, txn_id);
 }
 
 } // namespace yb::master

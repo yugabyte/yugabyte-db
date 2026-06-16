@@ -28,6 +28,7 @@ PgSelect::PgSelect(const PgSessionPtr& pg_session)
 
 Status PgSelect::Prepare(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_read,
     const std::optional<IndexQueryInfo>& index_info) {
   // Prepare target and bind descriptors.
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
@@ -36,7 +37,9 @@ Status PgSelect::Prepare(
   auto read_op = ArenaMakeShared<PgsqlReadOp>(
       arena_ptr(), &arena(), *target_, locality_info, pg_session_->metrics().metrics_capture());
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
-
+  if (skip_intents_read) {
+    read_req_->set_skip_intents_read(skip_intents_read);
+  }
   auto doc_op = std::make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
 
   if (!index_info) {
@@ -61,7 +64,7 @@ Status PgSelect::Prepare(
     }
 
     SetSecondaryIndex(VERIFY_RESULT(PgSelectIndex::Make(
-        pg_session_, index_info->id, locality_info, std::move(index_req))));
+        pg_session_, index_info->id, locality_info, skip_intents_read, std::move(index_req))));
   }
 
   // Prepare binds for the request.
@@ -73,9 +76,10 @@ Status PgSelect::Prepare(
 
 Result<std::unique_ptr<PgSelect>> PgSelect::Make(
     const PgSessionPtr& pg_session, const PgObjectId& table_id,
-    const YbcPgTableLocalityInfo& locality_info, const std::optional<IndexQueryInfo>& index_info) {
+    const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read,
+    const std::optional<IndexQueryInfo>& index_info) {
   std::unique_ptr<PgSelect> result{new PgSelect{pg_session}};
-  RETURN_NOT_OK(result->Prepare(table_id, locality_info, index_info));
+  RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_read, index_info));
   return result;
 }
 

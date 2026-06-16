@@ -448,12 +448,14 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
 
 uint64_t CatalogVersionChecker::GetLastBreakingVersion(DbOid db_oid) const {
   uint64_t last_breaking_catalog_version;
+  // The cached breaking version may be slightly stale in rare cases but that is ok
   if (db_oid) {
     tablet_server_.get_ysql_db_catalog_version(
-        *db_oid, nullptr /* current_version */, &last_breaking_catalog_version);
+        *db_oid, nullptr /* current_version */, &last_breaking_catalog_version,
+        true /* use_cache */);
   } else {
     tablet_server_.get_ysql_catalog_version(
-        nullptr /* current_version */, &last_breaking_catalog_version);
+        nullptr /* current_version */, &last_breaking_catalog_version, true /* use_cache */);
   }
   return last_breaking_catalog_version;
 }

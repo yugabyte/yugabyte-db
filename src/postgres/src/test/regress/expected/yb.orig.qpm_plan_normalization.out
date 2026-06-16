@@ -1,0 +1,355 @@
+-- Tests normalization (masking) of constants in QPM plan text.
+drop schema if exists qpm_plan_normalization cascade;
+NOTICE:  schema "qpm_plan_normalization" does not exist, skipping
+create schema qpm_plan_normalization;
+reset all;
+set search_path to qpm_plan_normalization;
+set yb_pg_stat_plans_track=top;
+set yb_pg_stat_plans_track_catalog_queries=false;
+set yb_pg_stat_plans_verbose_plans=true;
+CREATE TABLE simple_table1(c1 INT, c2 INT, c3 text);
+CREATE INDEX simple_index1 ON simple_table1(c2);
+INSERT INTO simple_table1 VALUES(1, 1, 'abc');
+/*+ SeqScan(st) */ /* QPM NORMALIZE QUERY 1 */ SELECT c1+5,
+						 99,
+						 'xyzw',
+						 c3 || 'xyz',
+						 U&'!0041!0042' UESCAPE '!',
+						 X'1F'::INT + c2,
+						 TIMESTAMP '2026-04-20 14:30:00',
+						 true,
+						 null,
+						 CASE WHEN c1+1<5 THEN TRUE ELSE FALSE END,
+						 SQRT(c2+1),
+						 COALESCE(NULL, NULL, '0'::INT/4, 10/c1),
+						 '\x48656c6c6f0a'::bytea,
+						 CAST('123' AS numeric),
+						 CAST(3.14159 AS numeric),
+						 CAST(true::int AS numeric),
+						 '99.95'::numeric,
+						 CAST('123.456' AS numeric(6,2)),
+						 CAST('1.23e4' AS numeric),
+						 CAST('9.876e2' AS numeric(10,2))
+FROM simple_table1 st WHERE c2<9+1;
+ ?column? | ?column? | ?column? | ?column? | ?column? | ?column? |        timestamp         | ?column? | ?column? | case |        sqrt        | coalesce |     bytea      | numeric | numeric | numeric | numeric | numeric | numeric | numeric 
+----------+----------+----------+----------+----------+----------+--------------------------+----------+----------+------+--------------------+----------+----------------+---------+---------+---------+---------+---------+---------+---------
+        6 |       99 | xyzw     | abcxyz   | AB       |       32 | Mon Apr 20 14:30:00 2026 | t        |          | t    | 1.4142135623730951 |        0 | \x48656c6c6f0a |     123 | 3.14159 |       1 |   99.95 |  123.46 |   12300 |  987.60
+(1 row)
+
+SELECT plan FROM yb_pg_stat_plans sp JOIN pg_stat_statements ss ON sp.queryid=ss.queryid
+WHERE query LIKE '%QPM NORMALIZE QUERY 1%';
+                                                                                                                                                                           plan                                                                                                                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [                                                                                                                                                                                                                                                                                                                                                        +
+   {                                                                                                                                                                                                                                                                                                                                                      +
+     "Plan": {                                                                                                                                                                                                                                                                                                                                            +
+       "Node Type": "Seq Scan",                                                                                                                                                                                                                                                                                                                           +
+       "Parallel Aware": false,                                                                                                                                                                                                                                                                                                                           +
+       "Async Capable": false,                                                                                                                                                                                                                                                                                                                            +
+       "Relation Name": "simple_table1",                                                                                                                                                                                                                                                                                                                  +
+       "Schema": "qpm_plan_normalization",                                                                                                                                                                                                                                                                                                                +
+       "Alias": "st",                                                                                                                                                                                                                                                                                                                                     +
+       "Output": ["(c1 + ?)", "?", "'?'::text", "(c3 || '?'::text)", "'?'::text", "(? + c2)", "'?'::timestamp without time zone", "?", "?::text", "CASE WHEN ((c1 + ?) < ?) THEN ? ELSE ? END", "sqrt(((c2 + ?))::double precision)", "?", "'?'::bytea", "'?'::numeric", "?", "'?'::numeric", "?", "?::numeric(6,2)", "'?'::numeric", "?::numeric(10,2)"],+
+       "Storage Filter": "(st.c2 < ?)"                                                                                                                                                                                                                                                                                                                    +
+     }                                                                                                                                                                                                                                                                                                                                                    +
+   }                                                                                                                                                                                                                                                                                                                                                      +
+ ]
+(1 row)
+
+/*+ HashJoin(st1 st2) Leading((st1 st2)) IndexScan(st1) SeqScan(st2) */
+/* QPM NORMALIZE QUERY 2 */
+SELECT SUM(st1.c1+5)
+    FROM simple_table1 st1 LEFT JOIN (SELECT 1 c1, c2%9 c2, null c3 FROM simple_table1) st2
+								ON st1.c1=st2.c1+1
+	WHERE st1.c2<7 AND (st2.c2<>8 OR st2.c2 IS NULL);
+ sum 
+-----
+   6
+(1 row)
+
+SELECT plan FROM yb_pg_stat_plans sp LEFT JOIN pg_stat_statements ss ON sp.queryid=ss.queryid
+WHERE query LIKE '%QPM NORMALIZE QUERY 2%';
+                                            plan                                            
+--------------------------------------------------------------------------------------------
+ [                                                                                         +
+   {                                                                                       +
+     "Plan": {                                                                             +
+       "Node Type": "Aggregate",                                                           +
+       "Strategy": "Plain",                                                                +
+       "Partial Mode": "Simple",                                                           +
+       "Parallel Aware": false,                                                            +
+       "Async Capable": false,                                                             +
+       "Output": ["sum((st1.c1 + ?))"],                                                    +
+       "Plans": [                                                                          +
+         {                                                                                 +
+           "Node Type": "Nested Loop",                                                     +
+           "Parent Relationship": "Outer",                                                 +
+           "Parallel Aware": false,                                                        +
+           "Async Capable": false,                                                         +
+           "Join Type": "Left",                                                            +
+           "Output": ["st1.c1"],                                                           +
+           "Inner Unique": false,                                                          +
+           "Join Filter": "(st1.c1 = ?)",                                                  +
+           "Filter": "(((simple_table1.c2 % ?) <> ?) OR ((simple_table1.c2 % ?) IS NULL))",+
+           "Plans": [                                                                      +
+             {                                                                             +
+               "Node Type": "Seq Scan",                                                    +
+               "Parent Relationship": "Outer",                                             +
+               "Parallel Aware": false,                                                    +
+               "Async Capable": false,                                                     +
+               "Relation Name": "simple_table1",                                           +
+               "Schema": "qpm_plan_normalization",                                         +
+               "Alias": "st1",                                                             +
+               "Output": ["st1.c1"],                                                       +
+               "Storage Filter": "(st1.c2 < ?)"                                            +
+             },                                                                            +
+             {                                                                             +
+               "Node Type": "Materialize",                                                 +
+               "Parent Relationship": "Inner",                                             +
+               "Parallel Aware": false,                                                    +
+               "Async Capable": false,                                                     +
+               "Output": ["simple_table1.c2"],                                             +
+               "Plans": [                                                                  +
+                 {                                                                         +
+                   "Node Type": "Seq Scan",                                                +
+                   "Parent Relationship": "Outer",                                         +
+                   "Parallel Aware": false,                                                +
+                   "Async Capable": false,                                                 +
+                   "Relation Name": "simple_table1",                                       +
+                   "Schema": "qpm_plan_normalization",                                     +
+                   "Alias": "simple_table1",                                               +
+                   "Output": ["simple_table1.c2"]                                          +
+                 }                                                                         +
+               ]                                                                           +
+             }                                                                             +
+           ]                                                                               +
+         }                                                                                 +
+       ]                                                                                   +
+     }                                                                                     +
+   }                                                                                       +
+ ]
+(1 row)
+
+SELECT /* QPM NORMALIZE QUERY 3 */
+E'This is a string with:\n\
+- a newline\n\
+- a tab\tbetween words\n\
+- a backslash \\\n\
+- a single quote \' inside\n\
+- unicode snowman: \u2603'
+FROM simple_table1;
+         ?column?          
+---------------------------
+ This is a string with:   +
+                          +
+ - a newline              +
+                          +
+ - a tab between words    +
+                          +
+ - a backslash \          +
+                          +
+ - a single quote ' inside+
+                          +
+ - unicode snowman: ☃
+(1 row)
+
+SELECT plan FROM yb_pg_stat_plans sp JOIN pg_stat_statements ss ON sp.queryid=ss.queryid
+WHERE query LIKE '%QPM NORMALIZE QUERY 3%';
+                   plan                    
+-------------------------------------------
+ [                                        +
+   {                                      +
+     "Plan": {                            +
+       "Node Type": "Seq Scan",           +
+       "Parallel Aware": false,           +
+       "Async Capable": false,            +
+       "Relation Name": "simple_table1",  +
+       "Schema": "qpm_plan_normalization",+
+       "Alias": "simple_table1",          +
+       "Output": ["'?'::text"]            +
+     }                                    +
+   }                                      +
+ ]
+(1 row)
+
+SELECT /* QPM NORMALIZE QUERY 4 */
+	   'It''s a test string with a ''quoted'' word',
+       '{"path": "C:\\Program Files\\App", "note": "Line1\nLine2"}'::jsonb,
+	   E'{"text": "Hello\\nWorld", "quote": "O\'Reilly"}'::jsonb,
+	   convert_to('Hello\nWorld', 'UTF8'),
+	   '',
+	   ''''
+FROM simple_table1;
+                ?column?                 |                           jsonb                            |                     jsonb                     |         convert_to         | ?column? | ?column? 
+-----------------------------------------+------------------------------------------------------------+-----------------------------------------------+----------------------------+----------+----------
+ It's a test string with a 'quoted' word | {"note": "Line1\nLine2", "path": "C:\\Program Files\\App"} | {"text": "Hello\nWorld", "quote": "O'Reilly"} | \x48656c6c6f5c6e576f726c64 |          | '
+(1 row)
+
+SELECT plan FROM yb_pg_stat_plans sp JOIN pg_stat_statements ss ON sp.queryid=ss.queryid
+WHERE query LIKE '%QPM NORMALIZE QUERY 4%';
+                                                          plan                                                           
+-------------------------------------------------------------------------------------------------------------------------
+ [                                                                                                                      +
+   {                                                                                                                    +
+     "Plan": {                                                                                                          +
+       "Node Type": "Seq Scan",                                                                                         +
+       "Parallel Aware": false,                                                                                         +
+       "Async Capable": false,                                                                                          +
+       "Relation Name": "simple_table1",                                                                                +
+       "Schema": "qpm_plan_normalization",                                                                              +
+       "Alias": "simple_table1",                                                                                        +
+       "Output": ["'?'::text", "'?'::jsonb", "'?'::jsonb", "convert_to('?'::text, '?'::name)", "'?'::text", "'?'::text"]+
+     }                                                                                                                  +
+   }                                                                                                                    +
+ ]
+(1 row)
+
+SELECT /* QPM NORMALIZE QUERY 5 */
+       c1 FROM simple_table1 ORDER BY c2 + 50000;
+ c1 
+----
+  1
+(1 row)
+
+SELECT plan FROM yb_pg_stat_plans sp JOIN pg_stat_statements ss ON sp.queryid=ss.queryid
+WHERE query LIKE '%QPM NORMALIZE QUERY 5%';
+                      plan                       
+-------------------------------------------------
+ [                                              +
+   {                                            +
+     "Plan": {                                  +
+       "Node Type": "Sort",                     +
+       "Parallel Aware": false,                 +
+       "Async Capable": false,                  +
+       "Output": ["c1", "((c2 + ?))"],          +
+       "Sort Key": ["((simple_table1.c2 + ?))"],+
+       "Plans": [                               +
+         {                                      +
+           "Node Type": "Seq Scan",             +
+           "Parent Relationship": "Outer",      +
+           "Parallel Aware": false,             +
+           "Async Capable": false,              +
+           "Relation Name": "simple_table1",    +
+           "Schema": "qpm_plan_normalization",  +
+           "Alias": "simple_table1",            +
+           "Output": ["c1", "(c2 + ?)"]         +
+         }                                      +
+       ]                                        +
+     }                                          +
+   }                                            +
+ ]
+(1 row)
+
+SELECT /* QPM NORMALIZE QUERY 6 */
+       c1 + 50000, count(*) FROM simple_table1 GROUP BY c1 + 50000 ORDER BY c1 + 50000;
+ ?column? | count 
+----------+-------
+    50001 |     1
+(1 row)
+
+SELECT plan FROM yb_pg_stat_plans sp JOIN pg_stat_statements ss ON sp.queryid=ss.queryid
+WHERE query LIKE '%QPM NORMALIZE QUERY 6%';
+                        plan                        
+----------------------------------------------------
+ [                                                 +
+   {                                               +
+     "Plan": {                                     +
+       "Node Type": "Sort",                        +
+       "Parallel Aware": false,                    +
+       "Async Capable": false,                     +
+       "Output": ["((c1 + ?))", "(count(*))"],     +
+       "Sort Key": ["((simple_table1.c1 + ?))"],   +
+       "Plans": [                                  +
+         {                                         +
+           "Node Type": "Aggregate",               +
+           "Strategy": "Hashed",                   +
+           "Partial Mode": "Simple",               +
+           "Parent Relationship": "Outer",         +
+           "Parallel Aware": false,                +
+           "Async Capable": false,                 +
+           "Output": ["((c1 + ?))", "count(*)"],   +
+           "Group Key": ["(simple_table1.c1 + ?)"],+
+           "Plans": [                              +
+             {                                     +
+               "Node Type": "Seq Scan",            +
+               "Parent Relationship": "Outer",     +
+               "Parallel Aware": false,            +
+               "Async Capable": false,             +
+               "Relation Name": "simple_table1",   +
+               "Schema": "qpm_plan_normalization", +
+               "Alias": "simple_table1",           +
+               "Output": ["(c1 + ?)"]              +
+             }                                     +
+           ]                                       +
+         }                                         +
+       ]                                           +
+     }                                             +
+   }                                               +
+ ]
+(1 row)
+
+SELECT /* QPM NORMALIZE QUERY 7 */
+       'x' || 'y', sum(1+2+CAST('9.876e2' AS numeric(10,2))) FROM simple_table1 GROUP BY 'x' || 'y';
+ ?column? |  sum   
+----------+--------
+ xy       | 990.60
+(1 row)
+
+SELECT plan FROM yb_pg_stat_plans sp JOIN pg_stat_statements ss ON sp.queryid=ss.queryid
+WHERE query LIKE '%QPM NORMALIZE QUERY 7%';
+                     plan                      
+-----------------------------------------------
+ [                                            +
+   {                                          +
+     "Plan": {                                +
+       "Node Type": "Aggregate",              +
+       "Strategy": "Sorted",                  +
+       "Partial Mode": "Simple",              +
+       "Parallel Aware": false,               +
+       "Async Capable": false,                +
+       "Output": ["('?'::text)", "sum(?)"],   +
+       "Group Key": ["'?'::text"],            +
+       "Plans": [                             +
+         {                                    +
+           "Node Type": "Seq Scan",           +
+           "Parent Relationship": "Outer",    +
+           "Parallel Aware": false,           +
+           "Async Capable": false,            +
+           "Relation Name": "simple_table1",  +
+           "Schema": "qpm_plan_normalization",+
+           "Alias": "simple_table1",          +
+           "Output": ["'?'::text"]            +
+         }                                    +
+       ]                                      +
+     }                                        +
+   }                                          +
+ ]
+(1 row)
+
+-- Negative tests.
+CREATE TABLE /* QPM NORMALIZE QUERY 8 */ test_copy AS SELECT * FROM simple_table1 WHERE c1 > 0;
+SELECT query, plan FROM yb_pg_stat_plans sp RIGHT JOIN pg_stat_statements ss ON sp.queryid=ss.queryid
+WHERE query LIKE '%QPM NORMALIZE QUERY 8%';
+                                             query                                              | plan 
+------------------------------------------------------------------------------------------------+------
+ CREATE TABLE /* QPM NORMALIZE QUERY 8 */ test_copy AS SELECT * FROM simple_table1 WHERE c1 > 0 | 
+(1 row)
+
+EXPLAIN /* QPM NORMALIZE QUERY 9 */ SELECT * FROM simple_table1 WHERE c1 > 0;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Seq Scan on simple_table1  (cost=0.00..102.50 rows=1000 width=40)
+   Storage Filter: (c1 > 0)
+(2 rows)
+
+SELECT query, plan FROM yb_pg_stat_plans sp RIGHT JOIN pg_stat_statements ss ON sp.queryid=ss.queryid
+WHERE query LIKE '%QPM NORMALIZE QUERY 9%';
+                                    query                                     | plan 
+------------------------------------------------------------------------------+------
+ EXPLAIN /* QPM NORMALIZE QUERY 9 */ SELECT * FROM simple_table1 WHERE c1 > 0 | 
+(1 row)
+
+drop schema qpm_plan_normalization cascade;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table simple_table1
+drop cascades to table test_copy

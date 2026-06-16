@@ -14,16 +14,17 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.base.Strings;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
@@ -1459,10 +1460,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     params.ybcGflags = userIntent.ybcFlags;
 
-    if (userIntent.providerType.equals(CloudType.onprem)) {
-      params.instanceType = node.cloudInfo.instance_type;
-    }
-
     return params;
   }
 
@@ -2111,25 +2108,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         nodeDetailsSet, false /* ignoreErrors */, 20 /* numRetries */);
   }
 
-  /**
-   * Create a task to ping yb-controller servers on each node. Master-only nodes (K8s master pods or
-   * dedicated-master VMs) are filtered out because YBC is only co-located with tservers.
-   */
+  /** Create a task to ping yb-controller servers on each node */
   public SubTaskGroup createWaitForYbcServerTask(
       Collection<NodeDetails> nodeDetailsSet, boolean ignoreErrors, int numRetries) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForYbcServer", ignoreErrors);
     WaitForYbcServer task = createTask(WaitForYbcServer.class);
     WaitForYbcServer.Params params = new WaitForYbcServer.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
-    Set<NodeDetails> ybcNodes =
+    params.nodeDetailsSet = nodeDetailsSet == null ? null : new HashSet<>(nodeDetailsSet);
+    params.nodeNameList =
         nodeDetailsSet == null
             ? null
-            : nodeDetailsSet.stream().filter(n -> n.isTserver).collect(Collectors.toSet());
-    params.nodeDetailsSet = ybcNodes; // ybcNodes == null ? null : new HashSet<>(ybcNodes);
-    params.nodeNameList =
-        ybcNodes == null
-            ? null
-            : ybcNodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+            : nodeDetailsSet.stream().map(node -> node.nodeName).collect(Collectors.toSet());
     params.numRetries = numRetries;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -2150,7 +2140,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createDestroyServerTasks(
       Universe universe,
       Collection<NodeDetails> nodes,
-      boolean isForceDelete,
+      Function<NodeDetails, Boolean> isForceDelete,
       boolean deleteNode,
       boolean deleteRootVolumes,
       boolean skipDestroyPrecheck) {
@@ -2177,7 +2167,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Add the universe uuid.
       params.setUniverseUUID(taskParams().getUniverseUUID());
       // Flag to be set where errors during Ansible Destroy Server will be ignored.
-      params.isForceDelete = isForceDelete;
+      params.isForceDelete = isForceDelete.apply(node);
       // Flag to track if node info should be deleted from universe db.
       params.deleteNode = deleteNode;
       // Flag to track if volumes should be deleted from universe.
@@ -2233,6 +2223,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
       Universe universe, Collection<NodeDetails> nodes, boolean includeOnPremManual) {
     Map<UUID, Boolean> clusterSkip = new HashMap<>();
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     return nodes.stream()
         .filter(n -> n.cloudInfo != null)
         .filter(
@@ -2240,9 +2231,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 clusterSkip.computeIfAbsent(
                     n.placementUuid,
                     k -> {
-                      Cluster cluster = universe.getCluster(n.placementUuid);
-                      Provider provider =
-                          Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+                      Provider provider = providerGetter.apply(n);
                       if (provider.getCloudCode() == CloudType.onprem) {
                         return !provider.getDetails().skipProvisioning || includeOnPremManual;
                       }
@@ -2335,18 +2324,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     filterNodesForInstallNodeAgent(universe, nodes, reinstall /* includeOnPremManual */)
         .forEach(
             n -> {
               InstallNodeAgent.Params params = new InstallNodeAgent.Params();
-              Provider provider =
-                  nodeUuidProviderMap.computeIfAbsent(
-                      n.placementUuid,
-                      k -> {
-                        Cluster cluster = universe.getCluster(n.placementUuid);
-                        return Provider.getOrBadRequest(
-                            UUID.fromString(cluster.userIntent.provider));
-                      });
+              Provider provider = providerGetter.apply(n);
               params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
               params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
@@ -2380,7 +2363,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (nodeDetails.cloudInfo != null && nodeDetails.cloudInfo.private_ip != null) {
       NodeAgentManager nodeAgentManager = getInstanceOf(NodeAgentManager.class);
       Cluster cluster = getUniverse().getCluster(nodeDetails.placementUuid);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getProviderForNode(nodeDetails, cluster);
       if (provider.getCloudCode() == CloudType.onprem) {
         if (provider.getDetails().skipProvisioning) {
           return;
@@ -2394,13 +2377,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createWaitForNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(WaitForNodeAgent.class.getSimpleName());
     NodeAgentClient nodeAgentClient = getInstanceOf(NodeAgentClient.class);
+    Universe universe = getUniverse();
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
         continue;
       }
-      Universe universe = getUniverse();
-      Cluster cluster = universe.getCluster(node.placementUuid);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = providerGetter.apply(node);
       if (nodeAgentClient.isClientEnabled(provider, universe)) {
         WaitForNodeAgent.Params params = new WaitForNodeAgent.Params();
         params.nodeName = node.nodeName;
@@ -3630,9 +3613,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task list to stop the yb-controller process on cluster's node and adds it to the
    * queue.
    *
-   * <p>This will also attempt to stop YBC on master-only nodes, just in case it is running.
-   * createStopServerTasks should handle the service not running/not existing.
-   *
    * @param nodes set of nodes on which yb-controller has to be stopped
    */
   public SubTaskGroup createStopYbControllerTasks(
@@ -3955,14 +3935,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     backupHelper.validateBackupRequest(
         backupRequestParams.keyspaceTableList, universe, backupRequestParams.backupType);
     BackupTableParams backupTableParams = getBackupTableParams(backupRequestParams, tablesToBackup);
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
 
     createPreflightValidateBackupTask(backupTableParams, ybcBackup)
         .setSubTaskGroupType(SubTaskGroupType.PreflightChecks)
         .setShouldRunPredicate(predicate);
 
     if (!ybcBackup) {
-      if (cloudType == CloudType.kubernetes) {
+      if (isK8s) {
         installThirdPartyPackagesTaskK8s(
                 universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
@@ -4097,7 +4077,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // No validation for xcluster/localProvider type tasks, since the backup
     // itself is used for populating restore task.
     if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)
-        && pCluster.userIntent.providerType != CloudType.local) {
+        && !pCluster.userIntent.getAllCloudTypes().contains(CloudType.local)) {
       getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo, forXCluster);
       backupHelper.maybeSetRestoreRevertToPreRolesBehaviour(restoreBackupParams, getUniverse());
       createPreflightValidateRestoreTask(restoreBackupParams)
@@ -4110,7 +4090,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .setShouldRunPredicate(predicate);
     }
 
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+    boolean isK8s =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getAllCloudTypes()
+            .contains(CloudType.kubernetes);
     boolean isYbc = restoreBackupParams.category.equals(BackupCategory.YB_CONTROLLER);
 
     // Remove hidden restore state if restore subtasks will be run.
@@ -4120,7 +4106,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .setShouldRunPredicate(predicate);
     }
     if (!isYbc) {
-      if (cloudType == CloudType.kubernetes) {
+      if (isK8s) {
         installThirdPartyPackagesTaskK8s(
                 universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
@@ -4806,24 +4792,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     List<NodeDetails> reinstallNodes = new ArrayList<>();
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      boolean isK8s = cluster.userIntent.providerType == CloudType.kubernetes;
       universe.getTserversInCluster(cluster.uuid).stream()
           .filter(NodeDetails::isQueryable)
           .filter(node -> !ybcManager.ybcPingCheck(node.cloudInfo.private_ip, cert, ybcPort))
           .forEach(
               node -> {
+                boolean isK8s = cluster.getProviderCloudType(node) == CloudType.kubernetes;
                 if (isK8s) {
+                  UUID providerUUID = cluster.getProviderUUIDForNode(node);
                   createKubernetesYbcCopyPackageSubTask(
                       configureYbcGroup,
                       node,
-                      UUID.fromString(cluster.userIntent.provider),
+                      providerUUID,
                       ybcSoftwareVersion,
                       ybcGflags,
                       null /* placement */);
                   createKubernetesYbcActionSubTask(
                       stopYbcActionGroup,
                       node,
-                      UUID.fromString(cluster.userIntent.provider),
+                      providerUUID,
                       cluster.clusterType == ClusterType.ASYNC,
                       "stop" /* command */,
                       null /* placement */);
@@ -4896,31 +4883,35 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Set<String> serversToExclude) {
     UserIntent userIntent = primaryCluster.userIntent;
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateDnsEntry");
-    Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-    if (!p.getCloudCode().isHostedZoneEnabled()) {
-      return subTaskGroup;
+    for (UUID providerUUID : userIntent.getAllProviderUUIDs()) {
+      Provider p = Provider.getOrBadRequest(providerUUID);
+      if (!p.getCloudCode().isHostedZoneEnabled()) {
+        continue;
+      }
+      // TODO: shared constant with javascript land?
+      String hostedZoneId = p.getHostedZoneId();
+      if (hostedZoneId == null || hostedZoneId.isEmpty()) {
+        continue;
+      }
+      ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.type = eventType;
+      params.providerUUID = providerUUID;
+      params.hostedZoneId = hostedZoneId;
+      params.domainNamePrefix =
+          String.format(
+              "%s.%s", userIntent.universeName, Customer.get(p.getCustomerUUID()).getCode());
+      params.isForceDelete = isForceDelete;
+      params.serversToExclude = serversToExclude;
+      // Create the task to update DNS entries.
+      ManipulateDnsRecordTask task = createTask(ManipulateDnsRecordTask.class);
+      task.initialize(params);
+      // Add it to the task list.
+      subTaskGroup.addSubTask(task);
     }
-    // TODO: shared constant with javascript land?
-    String hostedZoneId = p.getHostedZoneId();
-    if (hostedZoneId == null || hostedZoneId.isEmpty()) {
-      return subTaskGroup;
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
-    ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.type = eventType;
-    params.providerUUID = UUID.fromString(userIntent.provider);
-    params.hostedZoneId = hostedZoneId;
-    params.domainNamePrefix =
-        String.format(
-            "%s.%s", userIntent.universeName, Customer.get(p.getCustomerUUID()).getCode());
-    params.isForceDelete = isForceDelete;
-    params.serversToExclude = serversToExclude;
-    // Create the task to update DNS entries.
-    ManipulateDnsRecordTask task = createTask(ManipulateDnsRecordTask.class);
-    task.initialize(params);
-    // Add it to the task list.
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -5360,64 +5351,85 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     // Get load balancers for each cluster
     for (Cluster cluster : clusters) {
+      Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(cluster);
       if (cluster.userIntent.enableLB) {
-        // Map AZ -> nodes for each cluster
-        Map<AvailabilityZone, Set<NodeDetails>> azNodes = new HashMap<>();
-        Set<NodeDetails> nodes =
-            taskParams.getNodesInCluster(cluster.uuid).stream()
-                .filter(n -> n.isActive() && n.isTserver)
-                .collect(Collectors.toSet());
-        // Ignore nodes
-        Set<AvailabilityZone> ignoredAzs = new HashSet<>();
-        if (CollectionUtils.isNotEmpty(nodesToIgnore)) {
-          nodes =
-              nodes.stream().filter(n -> !nodesToIgnore.contains(n)).collect(Collectors.toSet());
-          for (NodeDetails n : nodesToIgnore) {
-            AvailabilityZone az = AvailabilityZone.getOrBadRequest(n.azUuid);
-            ignoredAzs.add(az);
-          }
-        }
-        // Add new nodes
-        if (CollectionUtils.isNotEmpty(nodesToAdd)) {
-          nodes.addAll(nodesToAdd);
-        }
-        for (NodeDetails node : nodes) {
-          AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
-          azNodes.computeIfAbsent(az, v -> new HashSet<>()).add(node);
-        }
-        PlacementInfo.PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(0);
-        UUID providerUUID = placementCloud.uuid;
-        List<PlacementInfo.PlacementAZ> azList =
-            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.placementInfo);
-        for (PlacementInfo.PlacementAZ placementAZ : azList) {
-          String lbName = placementAZ.lbName;
-          AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
-          // Skip map creation if all nodes in entire Regions/AZs have been ignored
-          if (!Strings.isNullOrEmpty(lbName) && azNodes.containsKey(az)) {
-            LoadBalancerPlacement lbPlacement =
-                new LoadBalancerPlacement(providerUUID, az.getRegion().getCode(), lbName);
-            LoadBalancerConfig lbConfig = new LoadBalancerConfig(lbName);
-            loadBalancerMap
-                .computeIfAbsent(lbPlacement, v -> lbConfig)
-                .addNodes(az, azNodes.get(az));
-          }
-        }
-        // Ensure removal of ignored nodes with PlacementAZs not in PlacementInfo
-        Map<ClusterAZ, String> existingLBs = taskParams.existingLBs;
-        if (MapUtils.isNotEmpty(existingLBs)) {
-          for (AvailabilityZone az : ignoredAzs) {
-            ClusterAZ clusterAZ = new ClusterAZ(cluster.uuid, az);
-            if (existingLBs.containsKey(clusterAZ)) {
-              String lbName = existingLBs.get(clusterAZ);
-              LoadBalancerPlacement lbPlacement =
-                  new LoadBalancerPlacement(providerUUID, az.getRegion().getCode(), lbName);
-              loadBalancerMap.computeIfAbsent(lbPlacement, v -> new LoadBalancerConfig(lbName));
-            }
-          }
+
+        Multimap<UUID, NodeDetails> nodesByProvider = ArrayListMultimap.create();
+        taskParams.getNodesInCluster(cluster.uuid).stream()
+            .filter(n -> n.isActive() && n.isTserver)
+            .forEach(n -> nodesByProvider.put(providerGetter.apply(n).getUuid(), n));
+
+        for (PlacementInfo.PlacementCloud placementCloud :
+            cluster.getOverallPlacement().cloudList) {
+          Collection<NodeDetails> nodes = nodesByProvider.get(placementCloud.uuid);
+          initLoadBalancerConfig(
+              cluster.uuid,
+              taskParams.existingLBs,
+              loadBalancerMap,
+              placementCloud,
+              nodes,
+              nodesToIgnore,
+              nodesToAdd);
         }
       }
     }
     return loadBalancerMap;
+  }
+
+  private void initLoadBalancerConfig(
+      UUID clusterUUID,
+      Map<ClusterAZ, String> existingLBs,
+      Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap,
+      PlacementInfo.PlacementCloud placementCloud,
+      Collection<NodeDetails> nodes,
+      Set<NodeDetails> nodesToIgnore,
+      Set<NodeDetails> nodesToAdd) {
+    // Map AZ -> nodes for each cluster
+    Map<AvailabilityZone, Set<NodeDetails>> azNodes = new HashMap<>();
+    // Ignore nodes
+    Set<AvailabilityZone> ignoredAzs = new HashSet<>();
+    if (CollectionUtils.isNotEmpty(nodesToIgnore)) {
+      nodes = nodes.stream().filter(n -> !nodesToIgnore.contains(n)).collect(Collectors.toSet());
+      for (NodeDetails n : nodesToIgnore) {
+        AvailabilityZone az = AvailabilityZone.getOrBadRequest(n.azUuid);
+        ignoredAzs.add(az);
+      }
+    }
+    // Add new nodes
+    if (CollectionUtils.isNotEmpty(nodesToAdd)) {
+      nodes.addAll(nodesToAdd);
+    }
+    for (NodeDetails node : nodes) {
+      AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+      azNodes.computeIfAbsent(az, v -> new HashSet<>()).add(node);
+    }
+    UUID providerUUID = placementCloud.uuid;
+    PlacementInfo copy = new PlacementInfo();
+    copy.cloudList = Collections.singletonList(placementCloud);
+    List<PlacementInfo.PlacementAZ> azList = PlacementInfoUtil.getAZsSortedByNumNodes(copy);
+    for (PlacementInfo.PlacementAZ placementAZ : azList) {
+      String lbName = placementAZ.lbName;
+      AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
+      // Skip map creation if all nodes in entire Regions/AZs have been ignored
+      if (!Strings.isNullOrEmpty(lbName) && azNodes.containsKey(az)) {
+        LoadBalancerPlacement lbPlacement =
+            new LoadBalancerPlacement(providerUUID, az.getRegion().getCode(), lbName);
+        LoadBalancerConfig lbConfig = new LoadBalancerConfig(lbName);
+        loadBalancerMap.computeIfAbsent(lbPlacement, v -> lbConfig).addNodes(az, azNodes.get(az));
+      }
+    }
+    // Ensure removal of ignored nodes with PlacementAZs not in PlacementInfo
+    if (MapUtils.isNotEmpty(existingLBs)) {
+      for (AvailabilityZone az : ignoredAzs) {
+        ClusterAZ clusterAZ = new ClusterAZ(clusterUUID, az);
+        if (existingLBs.containsKey(clusterAZ)) {
+          String lbName = existingLBs.get(clusterAZ);
+          LoadBalancerPlacement lbPlacement =
+              new LoadBalancerPlacement(providerUUID, az.getRegion().getCode(), lbName);
+          loadBalancerMap.computeIfAbsent(lbPlacement, v -> new LoadBalancerConfig(lbName));
+        }
+      }
+    }
   }
 
   public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
@@ -5490,7 +5502,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams.getNodeName());
     Cluster cluster = universe.getCluster(node.placementUuid);
-    if (cluster.userIntent.providerType != CloudType.onprem) {
+    if (cluster.getProviderCloudType(node) != CloudType.onprem) {
       expectedTags.put("universe_uuid", taskParams.getUniverseUUID().toString());
       if (taskParams.nodeUuid == null) {
         taskParams.nodeUuid = node.nodeUuid;
@@ -5658,6 +5670,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
+    return isServerAlive(node, server, masterAddrs, 5000);
+  }
+
+  protected boolean isServerAlive(
+      NodeDetails node, ServerType server, String masterAddrs, long timeoutMs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
@@ -5665,21 +5682,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,
               server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
-      return client.waitForServer(hp, 5000);
+      return client.waitForServer(hp, timeoutMs);
     } catch (Exception e) {
       throw Exceptions.propagate(e);
     }
   }
 
   public boolean isMasterAliveOnNode(NodeDetails node, String masterAddrs) {
+    return isMasterAliveOnNode(node, masterAddrs, 5000);
+  }
+
+  public boolean isMasterAliveOnNode(NodeDetails node, String masterAddrs, long timeoutMs) {
     if (!node.isMaster) {
       return false;
     }
-    return isServerAlive(node, ServerType.MASTER, masterAddrs);
+    return isServerAlive(node, ServerType.MASTER, masterAddrs, timeoutMs);
   }
 
   public boolean isTserverAliveOnNode(NodeDetails node, String masterAddrs) {
-    return isServerAlive(node, ServerType.TSERVER, masterAddrs);
+    return isTserverAliveOnNode(node, masterAddrs, 5000);
+  }
+
+  public boolean isTserverAliveOnNode(NodeDetails node, String masterAddrs, long timeoutMs) {
+    return isServerAlive(node, ServerType.TSERVER, masterAddrs, timeoutMs);
   }
 
   public UniverseUpdater nodeStateUpdater(final String nodeName, final NodeStatus nodeStatus) {
@@ -6504,12 +6529,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.getTargetUniverseUUID() != null
         && (config.getBoolean(TransferXClusterCerts.K8S_TLS_SUPPORT_CONFIG_KEY)
-            || Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID())
-                    .getUniverseDetails()
-                    .getPrimaryCluster()
-                    .userIntent
-                    .providerType
-                != CloudType.kubernetes)) {
+            || !Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID())
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getAllCloudTypes()
+                .contains(CloudType.kubernetes))) {
       Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
       File sourceRootCertDirPath = targetUniverse.getUniverseDetails().getSourceRootCertDirPath();
       // Delete the source universe root cert from the target universe if it is transferred.
@@ -6530,12 +6555,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (xClusterConfig.getType() == ConfigType.Db
         && xClusterConfig.getSourceUniverseUUID() != null
         && (config.getBoolean(TransferXClusterCerts.K8S_TLS_SUPPORT_CONFIG_KEY)
-            || Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID())
-                    .getUniverseDetails()
-                    .getPrimaryCluster()
-                    .userIntent
-                    .providerType
-                != CloudType.kubernetes)) {
+            || !Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID())
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .getAllCloudTypes()
+                .contains(CloudType.kubernetes))) {
       Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       File targetRootCertDirPath = sourceUniverse.getUniverseDetails().getSourceRootCertDirPath();
       // For the failover task, ignore running this subtask to improve its performance.
@@ -7056,12 +7081,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (ybcBackup
           && universe.isYbcEnabled()
           && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(stableYbcVersion)) {
-        if (universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(Common.CloudType.kubernetes)) {
+        if (Util.isKubernetesBasedUniverse(universe)) {
           createUpgradeYbcTaskOnK8s(universe.getUniverseUUID(), stableYbcVersion)
               .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
         } else {

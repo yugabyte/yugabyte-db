@@ -74,8 +74,7 @@ DEFINE_NON_RUNTIME_uint64(object_lock_cleanup_interval_ms, 5000,
                           "The interval between runs of the background cleanup task for "
                           "table-level locks held by unresponsive TServers.");
 
-DEFINE_test_flag(
-    bool, skip_launch_release_request, false,
+DEFINE_test_flag(bool, skip_launch_release_request, false,
     "If true, skip launching the release request after persisting it to in progress requests.");
 
 DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
@@ -223,8 +222,7 @@ class ObjectLockInfoManager::Impl {
       const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
       std::optional<LeaderEpoch> leader_epoch);
 
-  std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB> GetLeaseInfos() const
-      EXCLUDES(mutex_);
+  std::unordered_map<std::string, TServerLeaseInfo> GetLeaseInfos() const EXCLUDES(mutex_);
 
   void BootstrapLocksPostLoad();
 
@@ -665,7 +663,7 @@ std::shared_ptr<CountDownLatch> ObjectLockInfoManager::ReleaseLocksHeldByExpired
       tserver_uuid, max_lease_epoch_to_release, leader_epoch);
 }
 
-std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB>
+std::unordered_map<std::string, TServerLeaseInfo>
 ObjectLockInfoManager::GetLeaseInfos() const {
   return impl_->GetLeaseInfos();
 }
@@ -987,8 +985,8 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
   // send the catalog version of the db being operated on by the txn.
   DbOidToCatalogVersionMap versions;
   uint64_t fingerprint;
-  auto s = catalog_manager_.GetYsqlAllDBCatalogVersions(
-      FLAGS_enable_heartbeat_pg_catalog_versions_cache, &versions, &fingerprint);
+  auto s =
+      catalog_manager_.GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions, &fingerprint);
   if (!s.ok()) {
     // In this case, we fallback to delayed cache invalidation on tserver-master heartbeat path.
     LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;
@@ -1253,12 +1251,16 @@ std::shared_ptr<CountDownLatch> ObjectLockInfoManager::Impl::ReleaseLocksHeldByE
   return latch;
 }
 
-std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB>
+std::unordered_map<std::string, TServerLeaseInfo>
 ObjectLockInfoManager::Impl::GetLeaseInfos() const {
   LockGuard lock(mutex_);
-  std::unordered_map<std::string, SysObjectLockEntryPB::LeaseInfoPB> result;
+  std::unordered_map<std::string, TServerLeaseInfo> result;
+  const auto now = MonoTime::Now();
   for (const auto& [uuid, object_info] : object_lock_infos_map_) {
-    result[uuid] = object_info->LockForRead()->pb.lease_info();
+    result[uuid] = TServerLeaseInfo{
+        .lease_info = object_info->LockForRead()->pb.lease_info(),
+        .lease_expiry = std::max(object_info->ysql_lease_deadline() - now, MonoDelta::kZero),
+    };
   }
   return result;
 }

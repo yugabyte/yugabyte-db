@@ -33,12 +33,15 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.ConnectionEndpoint;
 
 import com.google.gson.JsonObject;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestBackendSyncReset extends BaseYsqlConnMgr {
   static final String USER = "yugabyte";
   static final String PASS = "yugabyte";

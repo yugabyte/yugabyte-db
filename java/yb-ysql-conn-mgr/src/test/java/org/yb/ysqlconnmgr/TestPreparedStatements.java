@@ -25,10 +25,13 @@ import java.util.Properties;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestPreparedStatements extends BaseYsqlConnMgr {
   // It is required to test prepared statements in case of many to one mapping of logical and
   // physical connections by Ysql Connection Manager.

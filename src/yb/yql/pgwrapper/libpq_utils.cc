@@ -20,6 +20,8 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/pgsql_error.h"
 
 #include "yb/gutil/casts.h"
@@ -655,6 +657,7 @@ void PGConn::Reset() {
 Status PGConn::Execute(
     const std::string& command, bool show_query_in_error, bool ignore_empty_query) {
   VLOG(1) << __func__ << " " << command;
+  SCOPED_WAIT_STATUS(WaitForInternalYSQLQueryCompletion);
   PGResultPtr res(PQexec(impl_.get(), command.c_str()));
   auto status = PQresultStatus(res.get());
   if (ExecStatusType::PGRES_COMMAND_OK != status &&
@@ -689,6 +692,7 @@ Result<PGResultPtr> PGConn::Fetch(
     const std::string& command, std::optional<PGResultFormat> data_format,
     const std::vector<const char*>& params) {
   VLOG(1) << __func__ << " " << command;
+  SCOPED_WAIT_STATUS(WaitForInternalYSQLQueryCompletion);
   if (simple_query_protocol_) {
     DCHECK(!data_format) << "data_format cannot be specified with simple query protocol";
     DCHECK(params.empty()) << "Parameters passed but connection uses simple query protocol";

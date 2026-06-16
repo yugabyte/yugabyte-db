@@ -1,0 +1,127 @@
+-- Syntax errors should be handled properly
+SELECT 'foo' || :'bar' as baz;
+ERROR:  syntax error at or near ":"
+LINE 1: SELECT 'foo' || :'bar' as baz;
+                        ^
+SET duckdb.force_execution TO false;
+-- MD is not enabled
+SELECT * FROM duckdb.is_motherduck_enabled();
+ is_motherduck_enabled 
+-----------------------
+ f
+(1 row)
+
+-- Must provide a TYPE clause
+CREATE SERVER invalid_server1 FOREIGN DATA WRAPPER duckdb;
+ERROR:  Missing required option: 'type'
+-- Must be a valid TYPE
+CREATE SERVER invalid_server2
+TYPE 'foo'
+FOREIGN DATA WRAPPER duckdb;
+ERROR:  Secret type 'foo' not found
+-- Should succeed with no option
+CREATE SERVER valid_md_server1
+TYPE 'motherduck'
+FOREIGN DATA WRAPPER duckdb;
+-- MD is still NOT enabled
+SELECT * FROM duckdb.is_motherduck_enabled();
+ is_motherduck_enabled 
+-----------------------
+ f
+(1 row)
+
+-- Should create a USER MAPPING
+CREATE USER user1 IN ROLE duckdb_group;
+-- Missing token
+CREATE USER MAPPING FOR user1
+SERVER valid_md_server1;
+ERROR:  Missing required option: 'token'
+-- Invalid option
+CREATE USER MAPPING FOR user1
+SERVER valid_md_server1
+OPTIONS (invalid_option 'foo');
+ERROR:  Unknown option: 'invalid_option'
+-- Good mapping
+CREATE USER MAPPING FOR user1
+SERVER valid_md_server1
+OPTIONS (token 'foo');
+-- Can't have two mappings for the same (user, server)
+CREATE USER MAPPING FOR user1
+SERVER valid_md_server1
+OPTIONS (token 'foo');
+ERROR:  user mapping for "user1" already exists for server "valid_md_server1"
+-- MD is still not enabled (no mapping for current user)
+SELECT * FROM duckdb.is_motherduck_enabled();
+ is_motherduck_enabled 
+-----------------------
+ f
+(1 row)
+
+-- Mapping for current user
+CREATE USER MAPPING FOR CURRENT_USER
+SERVER valid_md_server1
+OPTIONS (token 'foo');
+-- Now MD is enabled
+SELECT * FROM duckdb.is_motherduck_enabled();
+ is_motherduck_enabled 
+-----------------------
+ t
+(1 row)
+
+-- Drop server
+SET client_min_messages=WARNING; -- suppress NOTICE that include username
+DROP SERVER valid_md_server1 CASCADE;
+-- Now MD is not enabled anymore
+SELECT * FROM duckdb.is_motherduck_enabled();
+ is_motherduck_enabled 
+-----------------------
+ f
+(1 row)
+
+-- Not possible to run in a transaction
+BEGIN;
+SELECT 1;
+ ?column? 
+----------
+        1
+(1 row)
+
+CALL duckdb.enable_motherduck();
+ERROR:  (PGDuckDB/pgduckdb_enable_motherduck_cpp) Executor Error: (PGDuckDB/::PreventInTransactionBlock) duckdb.enable_motherduck() cannot run inside a transaction block
+ROLLBACK;
+-- Use helper to enable MD: will fail since there's no token in environment
+CALL duckdb.enable_motherduck();
+ERROR:  No token was provided and `motherduck_token` environment variable was not set
+-- Use helper to enable MD: will succeed
+CALL duckdb.enable_motherduck('foo');
+-- Not possible to run in a transaction, even when it's enabled.
+BEGIN;
+SELECT 1;
+ ?column? 
+----------
+        1
+(1 row)
+
+CALL duckdb.enable_motherduck();
+ERROR:  (PGDuckDB/pgduckdb_enable_motherduck_cpp) Executor Error: (PGDuckDB/::PreventInTransactionBlock) duckdb.enable_motherduck() cannot run inside a transaction block
+ROLLBACK;
+-- Now MD is enabled again
+SELECT * FROM duckdb.is_motherduck_enabled();
+ is_motherduck_enabled 
+-----------------------
+ t
+(1 row)
+
+-- Drop user mapping
+DROP USER MAPPING FOR CURRENT_USER SERVER motherduck;
+-- Now MD is not enabled anymore
+SELECT * FROM duckdb.is_motherduck_enabled();
+ is_motherduck_enabled 
+-----------------------
+ f
+(1 row)
+
+-- TODO: test ALTER SERVER & USER MAPPING
+DROP OWNED BY user1;
+DROP USER user1;
+DROP SERVER motherduck;

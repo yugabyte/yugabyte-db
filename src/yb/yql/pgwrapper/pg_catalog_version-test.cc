@@ -565,8 +565,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   void VerifyCatCacheRefreshMetricsHelper(
       int num_full_refreshes, int num_delta_refreshes,
-      std::pair<bool, bool> at_least = {false, false}) {
-    auto json_metrics = GetJsonMetrics();
+      std::pair<bool, bool> at_least = {false, false},
+      size_t ts_idx = 0) {
+    auto json_metrics = GetJsonMetrics(ts_idx);
 
     int count = 0;
     for (const auto& metric : json_metrics) {
@@ -595,8 +596,8 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_EQ(count, 2);
   }
 
-  int64_t GetInt64MetricsHelper(const string& metric_name) {
-    auto json_metrics = GetJsonMetrics();
+  int64_t GetInt64MetricsHelper(const string& metric_name, size_t ts_idx = 0) {
+    auto json_metrics = GetJsonMetrics(ts_idx);
 
     for (const auto& metric : json_metrics) {
       if (metric.name.find(metric_name) != std::string::npos) {
@@ -1935,6 +1936,62 @@ TEST_F(PgCatalogVersionTest, InvalMessageQueueOverflowTest) {
 
   // Since the message queue overflowed, we will see a full catalog cache refresh on conn2.
   VerifyCatCacheRefreshMetricsHelper(1 /* num_full_refreshes */, 0 /* num_delta_refreshes */);
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageExceedPgMaxNumMessagesTest) {
+  RestartClusterWithInvalMessageEnabled(
+      {"--ysql_yb_ddl_transaction_block_enabled=true"});
+  auto conn_same_node = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(0)));
+  auto conn_other_node = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(1)));
+  ASSERT_OK(conn_same_node.Execute("SET log_min_messages = DEBUG1"));
+  ASSERT_OK(conn_other_node.Execute("SET log_min_messages = DEBUG1"));
+
+  auto query = "SELECT 1"s;
+  auto result = ASSERT_RESULT(conn_other_node.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  // Execute a DDL block that generates > 4096 messages, but < 8192.
+  // Each CREATE TABLE generates ~24 messages. 200 * 24 = 4800 messages.
+  ASSERT_OK(conn_same_node.Execute(
+      "DO $$ "
+      "BEGIN "
+      "  FOR i IN 1..200 LOOP "
+      "    EXECUTE 'CREATE TABLE foo_' || i || '(id INT)'; "
+      "  END LOOP; "
+      "END $$;"));
+
+  WaitForCatalogVersionToPropagate();
+  result = ASSERT_RESULT(conn_other_node.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_same_node, kYugabyteDatabase));
+  auto msg_length_result = ASSERT_RESULT(conn_same_node.FetchRow<int32_t>(
+      Format("SELECT length(messages) FROM pg_yb_invalidation_messages "
+             "WHERE db_oid = $0 ORDER BY current_version DESC LIMIT 1", yugabyte_db_oid)));
+
+  // Verify we generated more than 4096 messages (4096 * 24 bytes = 98304 bytes)
+  // The size of SharedInvalidationMessage is hardcoded to 24 bytes in PostgreSQL.
+  // There is a static_assert in src/postgres/src/backend/utils/cache/inval.c:
+  // static_assert(sizeof(SharedInvalidationMessage) == 24, "size mismatch");
+  const int kSharedInvalidationMessageSize = 24;
+  ASSERT_GT(msg_length_result, 4096 * kSharedInvalidationMessageSize);
+  // Verify we stayed under 8192 messages (8192 * 24 bytes = 196608 bytes)
+  ASSERT_LT(msg_length_result, 8192 * kSharedInvalidationMessageSize);
+
+  // Since the number of messages is > 4096 but < 8192, we should see an incremental refresh
+  // on conn_other_node (ts_idx = 1), NOT a full refresh.
+  VerifyCatCacheRefreshMetricsHelper(
+      0 /* num_full_refreshes */, 1 /* num_delta_refreshes */, {false, false}, 1 /* ts_idx */);
+
+  // But on the same node (ts_idx = 0), we will see a full refresh because the local shared
+  // memory buffer overflowed (it has a hardcoded limit of 4096 messages).
+  auto conn_same_node_2 = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(0)));
+  ASSERT_OK(conn_same_node_2.Execute("SET log_min_messages = DEBUG1"));
+  result = ASSERT_RESULT(conn_same_node_2.FetchAllAsString(query));
+  ASSERT_EQ(result, "1");
+
+  VerifyCatCacheRefreshMetricsHelper(
+      1 /* num_full_refreshes */, 0 /* num_delta_refreshes */, {true, true}, 0 /* ts_idx */);
 }
 
 TEST_F(PgCatalogVersionTest, WaitForSharedCatalogVersionToCatchup) {
@@ -3720,6 +3777,109 @@ TEST_F(PgCatalogVersionTest, RelcacheInitFileRevalidationRace) {
   // Without the fix, some new connections will fail to revalidate (reason 4).
   ASSERT_EQ(revalidation_failed, 0);
   ASSERT_GT(revalidated, 0);
+}
+
+class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");
+    options->extra_master_flags.push_back("--TEST_log_catalog_version_cache_events=true");
+  }
+};
+
+// Verify that once the catalog version cache is warm, reads on the master's tserver
+// interface (which call GetYsqlDBCatalogVersion) are served from the in-memory cache
+// without hitting the sys catalog on disk.
+TEST_F(
+    PgCatalogVersionMasterCacheTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(CatalogVersionCacheUsedOnReadPath)) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
+  cluster_->Shutdown();
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    cluster_->master(i)->mutable_flags()->push_back(
+        "--enable_heartbeat_pg_catalog_versions_cache=true");
+    cluster_->master(i)->mutable_flags()->push_back("--TEST_log_catalog_version_cache_events=true");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  // Wait for the background task to populate the cache at least once.
+  auto cache_ready = cluster_->GetMasterLogWaiter("RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cache_ready.WaitFor(30s * kTimeMultiplier));
+
+  // Arm both watchers BEFORE running any catalog reads. LogWaiter is edge-triggered:
+  // events emitted before construction are invisible to the watcher.
+  auto miss_watcher = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache miss");
+  auto hit_watcher = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache hit");
+
+  // New connections always read pg_authid and related catalog tables during auth,
+  // unconditionally issuing Read RPCs to the sys catalog tablet on the master.
+  // A catalog-heavy query makes the cache benefit even more visible.
+  conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Fetch("SELECT * FROM pg_class LIMIT 1"));
+
+  // Confirm the cache was used.
+  ASSERT_OK(hit_watcher.WaitFor(10s * kTimeMultiplier));
+  ASSERT_FALSE(miss_watcher.IsEventOccurred())
+      << "Cache miss observed: GetYsqlDBCatalogVersion read from disk even though cache was warm";
+}
+
+// Verify that when the cache refresh is injected to fail (cache stays uninitialized),
+// reads fall back to the slow disk path. After the failure is cleared and the cache
+// is repopulated, reads return to using the cache.
+TEST_F(
+    PgCatalogVersionMasterCacheTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(CatalogVersionCacheFallbackOnRefreshFailure)) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn));
+
+  // Start with failure injection so the cache is never populated (stays nullopt).
+  cluster_->Shutdown();
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    cluster_->master(i)->mutable_flags()->push_back(
+        "--enable_heartbeat_pg_catalog_versions_cache=true");
+    cluster_->master(i)->mutable_flags()->push_back("--TEST_log_catalog_version_cache_events=true");
+    cluster_->master(i)->mutable_flags()->push_back(
+        "--TEST_simulate_catalog_version_refresh_failure=true");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  // Phase A: cache never initialized, slow path expected.
+
+  // Arm both watchers before any reads. LogWaiter is edge-triggered: events emitted
+  // before construction are invisible to the watcher.
+  auto hit_watcher_a = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache hit");
+  auto miss_watcher_a = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache miss");
+
+  conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Fetch("SELECT * FROM pg_class LIMIT 1"));
+
+  // Wait for a miss confirming the slow path was taken.
+  ASSERT_OK(miss_watcher_a.WaitFor(10s * kTimeMultiplier));
+  ASSERT_FALSE(hit_watcher_a.IsEventOccurred())
+      << "Unexpected cache hit: cache should not be warm with failure injection enabled";
+
+  // Phase B: disable failure injection, cache populates, fast path resumes.
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_catalog_version_refresh_failure", "false"));
+
+  // Wait for the background task to succeed and populate the cache.
+  auto cache_ready = cluster_->GetMasterLogWaiter("RefreshPgCatalogVersionCache: cache refreshed");
+  ASSERT_OK(cache_ready.WaitFor(30s * kTimeMultiplier));
+
+  // Arm both watchers before the next read. LogWaiter is edge-triggered: events emitted
+  // before construction (including those from ConnectToDB auth) are invisible to the watcher.
+  auto miss_watcher_b = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache miss");
+  auto hit_watcher_b = cluster_->GetMasterLogWaiter("GetYsqlDBCatalogVersion: cache hit");
+
+  conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Fetch("SELECT * FROM pg_class LIMIT 1"));
+
+  // Confirm cache is now used.
+  ASSERT_OK(hit_watcher_b.WaitFor(10s * kTimeMultiplier));
+  ASSERT_FALSE(miss_watcher_b.IsEventOccurred())
+      << "Cache miss after recovery: cache should be warm after failure injection was cleared";
 }
 
 } // namespace pgwrapper
