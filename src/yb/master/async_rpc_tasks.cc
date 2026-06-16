@@ -1030,13 +1030,15 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
 AsyncAddTableToTablet::AsyncAddTableToTablet(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
     const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
-    const std::shared_ptr<std::atomic<size_t>>& task_counter)
+    const std::shared_ptr<std::atomic<size_t>>& task_counter,
+    std::function<void(const Status&)> on_done)
     : RetryingTSRpcTaskWithTable(
           master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
           std::move(epoch), /* async_task_throttler */ nullptr),
       tablet_(tablet),
       tablet_id_(tablet->tablet_id()),
-      task_counter_(task_counter) {
+      task_counter_(task_counter),
+      callback_(std::move(on_done)) {
   req_.set_tablet_id(tablet->id());
   auto& add_table = *req_.mutable_add_table();
   add_table.set_table_id(table_->id());
@@ -1121,6 +1123,14 @@ bool AsyncAddTableToTablet::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1)
       << "Send AddTableToTablet request (attempt " << attempt << "):\n" << req_.DebugString();
   return true;
+}
+
+void AsyncAddTableToTablet::UnregisterAsyncTaskCallback() {
+  if (callback_) {
+    // GetStatus() returns Status::OK() for kComplete and the saved failure status for kFailed /
+    // kAborted (both set via SaveFinalStatusAndCallFinished in TransitionToTerminalState).
+    callback_(GetStatus());
+  }
 }
 
 // ============================================================================
