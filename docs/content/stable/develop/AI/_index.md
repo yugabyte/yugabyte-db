@@ -18,11 +18,12 @@ For integrated document preprocessing and embedding generation from SQL, use the
 
 Learn more about developing GenAI and RAG applications with YugabyteDB:
 
-- [pg_dist_rag extension](../../additional-features/pg-extensions/extension-pg-dist-rag/): Manage document sources, embedding pipelines, and vector indexes from SQL.
+- [Beyond RAG: Using YugabyteDB as the Foundation for Reliable AI Decisions](https://www.yugabyte.com/blog/using-yugabytedb-for-reliable-ai-decisions/)
 - [Introducing New YugabyteDB Functionality for Ultra-Resilient AI Apps](https://www.yugabyte.com/blog/new-yugabytedb-functionality-for-ultra-resilient-ai-apps/)
 - [Introducing the YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server/)
 - [How to Build a RAG Workflow for Agentic AI without Code](https://www.yugabyte.com/blog/build-a-rag-workflow-for-agentic-ai-without-codev/)
 - [From RAG to Riches: AI That Knows Your Support Stack](https://www.yugabyte.com/blog/rag-ai-that-knows-your-support-stack/)
+- [pg_dist_rag extension](../../additional-features/pg-extensions/extension-pg-dist-rag/): Manage document sources, embedding pipelines, and vector indexes from SQL.
 
 ## Get started
 

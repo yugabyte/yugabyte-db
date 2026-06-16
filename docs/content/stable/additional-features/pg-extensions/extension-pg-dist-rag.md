@@ -3,15 +3,17 @@ title: pg_dist_rag extension
 headerTitle: pg_dist_rag extension
 linkTitle: pg_dist_rag
 description: Build distributed RAG pipelines with integrated embedding generation in YugabyteDB
+tags:
+  feature: tech-preview
 menu:
   stable:
     identifier: extension-pg-dist-rag
     parent: pg-extensions
-    weight: 21
+    weight: 20
 type: docs
 ---
 
-The [pg_dist_rag](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/yb-extensions/pg_dist_rag/README.md) PostgreSQL extension manages Retrieval-Augmented Generation (RAG) pipelines from SQL. It registers document sources (such as S3 buckets or URLs), coordinates distributed preprocessing and embedding generation, and stores vectors in [pgvector](extension-pgvector/) indexes backed by YugabyteDB.
+{{<tags/feature/tp idea="2537">}}The [pg_dist_rag](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/yb-extensions/pg_dist_rag/README.md) PostgreSQL extension manages Retrieval-Augmented Generation (RAG) pipelines from SQL. It registers document sources (such as S3 buckets or URLs), coordinates distributed preprocessing and embedding generation, and stores vectors in [pgvector](extension-pgvector/) indexes backed by YugabyteDB.
 
 With pg_dist_rag, you can:
 
@@ -19,8 +21,6 @@ With pg_dist_rag, you can:
 - Chunk documents and generate embeddings using a configured AI provider.
 - Monitor pipeline progress and retry failed documents from SQL views.
 - Query generated embeddings with standard pgvector similarity search.
-
-{{<tags/feature/tp>}}
 
 ## Prerequisites
 
@@ -192,9 +192,9 @@ After a pipeline completes, embeddings are stored in the backing table created f
 
 ```sql
 SELECT id, chunk_text, metadata_filters,
-       embeddings <=> '[0.1, 0.2, ...]'::vector AS distance
+       embeddings <=> '[0.1, 0.2, 0.3]'::vector AS distance
 FROM public.my_knowledge_base
-ORDER BY embeddings <=> '[0.1, 0.2, ...]'::vector
+ORDER BY embeddings <=> '[0.1, 0.2, 0.3]'::vector
 LIMIT 10;
 ```
 
@@ -239,7 +239,7 @@ SELECT dist_rag.create_source(
 -- Initialize a vector index with both sources
 SELECT dist_rag.init_vector_index(
   r_index_name := 'engineering_kb',
-  r_sources := ARRAY['a1b2c3d4-...', 'e5f6g7h8-...']::UUID[],
+  r_sources := ARRAY['a1b2c3d4-abcd-abcd-abcd-abcdefabcdef', 'e5f6a7b8-abcd-abcd-abcd-abcdefabcdef']::UUID[],
   r_ai_provider := 'OPENAI',
   r_embedding_model_params := '{"dimensions": 1536, "model": "text-embedding-ada-002"}'::jsonb
 );
