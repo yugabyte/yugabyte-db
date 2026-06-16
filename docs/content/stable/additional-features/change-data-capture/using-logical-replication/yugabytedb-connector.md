@@ -47,6 +47,20 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 {{< /tip >}}
 
+## Connector compatibility
+
+The connector uses the following naming convention:
+
+```output
+dz.<Debezium Release>.yb.<YugabyteDB Version>.<Patch>
+```
+
+* *Debezium Release*: Debezium release the connector is based on
+* *YugabyteDB Version*: Version of YugabyteDB the connector is built for
+* *Patch*:patch release version, if applicable
+
+The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (that is, forward compatibility is not supported). For example, connector release `dz.2.5.2.yb.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
+
 ## How the connector works
 
 To optimally configure and run a Debezium connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
@@ -322,6 +336,14 @@ Although the `column.exclude.list` and `column.include.list` connector configura
 CDC is not supported for tables without primary keys.
 
 {{< /warning >}}
+
+#### Tables without a primary key
+
+For tables that do not have a primary key, configure the [message.key.columns](../yugabytedb-connector-properties/#messagekey.columns) connector property to define a custom message key. Without this, the connector cannot reliably identify rows across change events.
+
+#### Adding or dropping a primary key on a captured table
+
+If you plan to add or drop a primary key on a table that is already being captured by CDC, configure [message.key.columns](../yugabytedb-connector-properties/#messagekey.columns) *before* making the schema change. This ensures that message keys remain consistent across the primary key change and prevents downstream issues such as mismatched keys in Kafka topics or broken consumer offsets.
 
 ### Change event values
 

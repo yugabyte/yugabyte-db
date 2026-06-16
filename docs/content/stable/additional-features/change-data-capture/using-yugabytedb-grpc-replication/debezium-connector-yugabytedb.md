@@ -43,11 +43,11 @@ Starting with YugabyteDB v2024.1, the connector uses the following naming conven
 dz.<Debezium Release>.yb.grpc.<YugabyteDB Version>.<Patch>
 ```
 
-* Debezium Release - Debezium release the connector is based on
-* YugabyteDB Version - version of YugabyteDB the connector works with
-* Patch - patch release version, if applicable
+* *Debezium Release* - Debezium release the connector is based on
+* *YugabyteDB Version* - version of YugabyteDB the connector works with
+* *Patch* - patch release version, if applicable
 
-The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise. For the latest YugabyteDB preview version, use the latest available connector.
+The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (forward compatibility is not supported). For example, connector release `dz.1.9.5.yb.grpc.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
 
 In addition, the connector supports Kafka Connect v2.x and later.
 
