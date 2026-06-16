@@ -2,7 +2,10 @@ import { FC, useEffect, useMemo } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { browserHistory, withRouter, WithRouterProps } from 'react-router';
+import { Divider } from '@material-ui/core';
 import { mui, YBTab, YBTabs } from '@yugabyte-ui-library/core';
+
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { api } from '@app/redesign/helpers/api';
 import { useGetUniverse } from '@app/v2/api/universe/universe';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -13,7 +16,6 @@ import {
   InitialEditUniverseContextState
 } from './EditUniverseContext';
 import { SwitchEditUniverseTabs } from './SwitchEditUniverseTabs';
-import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import {
   getEditUniverseSettingsRoute,
   isValidEditUniverseTab,
@@ -28,6 +30,10 @@ interface EditUniverseProps {
 
 const TabItem = styled(YBTab)(({ theme }) => ({
   alignItems: 'flex-start'
+}));
+
+const StyledDivider = styled(Divider)(({ theme }) => ({
+  marginBottom: theme.spacing(1)
 }));
 
 const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
@@ -103,6 +109,8 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
           <TabItem value={EditUniverseTabs.SECURITY} label={t('security')} />
           <TabItem value={EditUniverseTabs.DATABASE} label={t('database')} />
           <TabItem value={EditUniverseTabs.ADVANCED} label={t('advanced')} />
+          <StyledDivider orientation="horizontal" />
+          <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
         </YBTabs>
       </Grid>
       <Grid item sx={{ flexGrow: 1, flex: 1 }}>

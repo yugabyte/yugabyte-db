@@ -4220,7 +4220,8 @@
         "hardware": "Hardware",
         "security": "Security",
         "database": "Database",
-        "advanced": "Advanced"
+        "advanced": "Advanced",
+        "logs": "Logs"
       },
       "general": {
         "title": "General",
@@ -4396,6 +4397,18 @@
         "sshKey": "SSH ACCESS KEY",
         "awsArn": "INSTANCE PROFILE ARN",
         "networkPorts": "Network Ports"
+      },
+      "logs": {
+        "troubleshootingLogs": "Troubleshooting Logs",
+        "complianceLogs": "Compliance Logs",
+        "databaseQueryLog": "Database Query Log",
+        "databaseQueryLogDescription": "Capture database query logs for query-level duration, statements etc.",
+        "databaseAuditLog": "Database Audit Log",
+        "databaseAuditLogDescription": "Capture session database audit logs to comply with government, financial, or ISO certification.",
+        "learnMore": "Learn more",
+        "enableQueryLogging": "Enable Query Logging",
+        "enableAuditLogging": "Enable Audit Logging",
+        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to Telemetry Export."
       },
       "masterServerNodeAllocationModal": {
         "title": "Master Server Node Allocation",
