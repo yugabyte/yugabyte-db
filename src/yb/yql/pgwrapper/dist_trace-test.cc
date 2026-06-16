@@ -122,6 +122,32 @@ struct Trace {
 // trace_id -> Trace
 using TraceMap = std::unordered_map<std::string, Trace>;
 
+class DistTraceCaCertPathTest : public YBTest {
+ protected:
+  void CreateFile(const std::string& path) {
+    std::unique_ptr<WritableFile> file;
+    ASSERT_OK(env_->NewWritableFile(path, &file));
+    ASSERT_OK(file->Close());
+  }
+};
+
+TEST_F(DistTraceCaCertPathTest, UsesFirstExistingPath) {
+  const auto missing_path = GetTestPath("missing-ca.pem");
+  const auto first_existing_path = GetTestPath("first-existing-ca.pem");
+  const auto second_existing_path = GetTestPath("second-existing-ca.pem");
+  CreateFile(first_existing_path);
+  CreateFile(second_existing_path);
+
+  ASSERT_EQ(
+      *dist_trace::FindFirstExistingFile(
+          {missing_path, first_existing_path, second_existing_path}),
+      first_existing_path);
+}
+
+TEST_F(DistTraceCaCertPathTest, ReturnsEmptyWhenNoPathExists) {
+  ASSERT_FALSE(dist_trace::FindFirstExistingFile({GetTestPath("missing-ca.pem")}));
+}
+
 std::string FindStringAttribute(
     const google::protobuf::RepeatedPtrField<otlp_common::KeyValue>& attributes,
     std::string_view key) {
