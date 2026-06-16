@@ -51,30 +51,28 @@ While this scenario has regulatory compliance requirements where data needs to b
 
 First, create tablespaces for each geographic region you wish to partition data into:
 
-1. Create tablespaces for each region.
+```sql
+CREATE TABLESPACE eu_central_1_tablespace WITH (
+    replica_placement='{"num_replicas": 3, "placement_blocks":
+    [{"cloud":"aws","region":"eu-central-1","zone":"eu-central-1a","min_num_replicas":1},
+    {"cloud":"aws","region":"eu-central-1","zone":"eu-central-1b","min_num_replicas":1},
+    {"cloud":"aws","region":"eu-central-1","zone":"eu-central-1c","min_num_replicas":1}]}'
+);
 
-    ```sql
-    CREATE TABLESPACE eu_central_1_tablespace WITH (
-      replica_placement='{"num_replicas": 3, "placement_blocks":
-      [{"cloud":"aws","region":"eu-central-1","zone":"eu-central-1a","min_num_replicas":1},
-      {"cloud":"aws","region":"eu-central-1","zone":"eu-central-1b","min_num_replicas":1},
-      {"cloud":"aws","region":"eu-central-1","zone":"eu-central-1c","min_num_replicas":1}]}'
-    );
+CREATE TABLESPACE us_west_2_tablespace WITH (
+    replica_placement='{"num_replicas": 3, "placement_blocks":
+    [{"cloud":"aws","region":"us-west-2","zone":"us-west-2a","min_num_replicas":1},
+    {"cloud":"aws","region":"us-west-2","zone":"us-west-2b","min_num_replicas":1},
+    {"cloud":"aws","region":"us-west-2","zone":"us-west-2c","min_num_replicas":1}]}'
+);
 
-    CREATE TABLESPACE us_west_2_tablespace WITH (
-      replica_placement='{"num_replicas": 3, "placement_blocks":
-      [{"cloud":"aws","region":"us-west-2","zone":"us-west-2a","min_num_replicas":1},
-      {"cloud":"aws","region":"us-west-2","zone":"us-west-2b","min_num_replicas":1},
-      {"cloud":"aws","region":"us-west-2","zone":"us-west-2c","min_num_replicas":1}]}'
-    );
-
-    CREATE TABLESPACE ap_south_1_tablespace WITH (
-      replica_placement='{"num_replicas": 3, "placement_blocks":
-      [{"cloud":"aws","region":"ap-south-1","zone":"ap-south-1a","min_num_replicas":1},
-      {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1b","min_num_replicas":1},
-      {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1c","min_num_replicas":1}]}'
-    );
-    ```
+CREATE TABLESPACE ap_south_1_tablespace WITH (
+    replica_placement='{"num_replicas": 3, "placement_blocks":
+    [{"cloud":"aws","region":"ap-south-1","zone":"ap-south-1a","min_num_replicas":1},
+    {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1b","min_num_replicas":1},
+    {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1c","min_num_replicas":1}]}'
+);
+```
 
 To view your tablespaces, you can enter the following command:
 
