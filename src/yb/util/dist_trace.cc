@@ -78,13 +78,13 @@ namespace {
 const nostd::string_view ysql_resource_name = "ysql";
 
 const std::vector<std::string>& GetPlatformCaBundlePaths() {
-  static const std::vector<std::string> v = {
+  static const auto* const v = new std::vector<std::string>{
       "/etc/ssl/certs/ca-certificates.crt",  // Debian/Ubuntu
       "/etc/pki/tls/certs/ca-bundle.crt",    // RHEL/CentOS/AlmaLinux
       "/etc/ssl/ca-bundle.pem",              // OpenSUSE/SLES
       "/etc/pki/tls/cacert.pem",
   };
-  return v;
+  return *v;
 }
 
 // Owns string attribute data and maintains a parallel vector of string_view/AttributeValue pairs
