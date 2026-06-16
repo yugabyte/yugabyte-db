@@ -401,4 +401,244 @@ TEST_F(YsqlMajorUpgradeCheckTest, YbPrefixRoles) {
   // Verify that validation now succeeds
   ASSERT_OK(ValidateUpgradeCompatibility());
 }
+
+TEST_F(YsqlMajorUpgradeCheckTest, StaleFunctionAclGrantors) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+
+  auto phase1_single_function = [this, &conn]() {
+    // Phase 1: single function with stale grantor after ALTER FUNCTION OWNER TO.
+    ASSERT_OK(conn.Execute("CREATE ROLE test_role1"));
+    ASSERT_OK(conn.Execute("CREATE ROLE test_role2"));
+    ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO test_role1"));
+
+    ASSERT_OK(conn.Execute("SET SESSION AUTHORIZATION test_role1"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION public.test_func1(text) RETURNS bool "
+        "AS 'SELECT true' LANGUAGE sql"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func1(text) TO PUBLIC"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func1(text) TO test_role2"));
+    ASSERT_OK(conn.Execute("RESET SESSION AUTHORIZATION"));
+    ASSERT_OK(conn.Execute("ALTER FUNCTION public.test_func1(text) OWNER TO test_role2"));
+
+    // Verify pg_upgrade suggests the full repair script for the function.
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
+        // test_func1(text)
+        "ALTER FUNCTION \"public\".\"test_func1\"(text) OWNER TO \"test_role1\";",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func1\"(text) FROM PUBLIC;",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func1\"(text) FROM \"test_role1\";",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func1\"(text) FROM \"test_role2\";",
+        "ALTER FUNCTION \"public\".\"test_func1\"(text) OWNER TO \"test_role2\";",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func1\"(text) TO PUBLIC;",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func1\"(text) TO \"test_role1\";",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func1\"(text) TO \"test_role2\";",
+    }));
+
+    // Mitigate the function and confirm check passes.
+    ASSERT_OK(conn.Execute("ALTER FUNCTION public.test_func1(text) OWNER TO test_role1"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION public.test_func1(text) FROM PUBLIC"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION public.test_func1(text) FROM test_role1"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION public.test_func1(text) FROM test_role2"));
+    ASSERT_OK(conn.Execute("ALTER FUNCTION public.test_func1(text) OWNER TO test_role2"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func1(text) TO PUBLIC"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func1(text) TO test_role1"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func1(text) TO test_role2"));
+    ASSERT_OK(ValidateUpgradeCompatibility());
+  };
+
+  auto phase2_overloaded_functions = [this, &conn]() {
+    // Phase 2: overloaded functions with stale grantor after ALTER FUNCTION OWNER TO.
+    ASSERT_OK(conn.Execute("CREATE ROLE test_role3"));
+    ASSERT_OK(conn.Execute("CREATE ROLE test_role4"));
+    ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO test_role3"));
+
+    ASSERT_OK(conn.Execute("SET SESSION AUTHORIZATION test_role3"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION public.test_func2(text) RETURNS bool "
+        "AS 'SELECT true' LANGUAGE sql"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION public.test_func2(int) RETURNS bool "
+        "AS 'SELECT true' LANGUAGE sql"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func2(text) TO PUBLIC"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func2(int) TO test_role4"));
+    ASSERT_OK(conn.Execute("RESET SESSION AUTHORIZATION"));
+    ASSERT_OK(conn.Execute("ALTER FUNCTION public.test_func2(text) OWNER TO test_role4"));
+    ASSERT_OK(conn.Execute("ALTER FUNCTION public.test_func2(int) OWNER TO test_role4"));
+
+    // Verify pg_upgrade suggests per-signature repair scripts for each overload.
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
+        // test_func2(integer)
+        "ALTER FUNCTION \"public\".\"test_func2\"(integer) OWNER TO \"test_role3\";",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func2\"(integer) FROM PUBLIC;",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func2\"(integer) FROM \"test_role3\";",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func2\"(integer) FROM \"test_role4\";",
+        "ALTER FUNCTION \"public\".\"test_func2\"(integer) OWNER TO \"test_role4\";",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func2\"(integer) TO PUBLIC;",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func2\"(integer) TO \"test_role3\";",
+
+        // test_func2(text)
+        "ALTER FUNCTION \"public\".\"test_func2\"(text) OWNER TO \"test_role3\";",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func2\"(text) FROM PUBLIC;",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func2\"(text) FROM \"test_role3\";",
+        "ALTER FUNCTION \"public\".\"test_func2\"(text) OWNER TO \"test_role4\";",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func2\"(text) TO PUBLIC;",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func2\"(text) TO \"test_role3\";",
+    }));
+
+    // Mitigate both overloads and confirm check passes.
+    ASSERT_OK(conn.Execute("ALTER FUNCTION public.test_func2(integer) OWNER TO test_role3"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION public.test_func2(integer) FROM PUBLIC"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION public.test_func2(integer) FROM test_role3"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION public.test_func2(integer) FROM test_role4"));
+    ASSERT_OK(conn.Execute("ALTER FUNCTION public.test_func2(integer) OWNER TO test_role4"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func2(integer) TO PUBLIC"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func2(integer) TO test_role3"));
+
+    ASSERT_OK(conn.Execute("ALTER FUNCTION public.test_func2(text) OWNER TO test_role3"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION public.test_func2(text) FROM PUBLIC"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION public.test_func2(text) FROM test_role3"));
+    ASSERT_OK(conn.Execute("ALTER FUNCTION public.test_func2(text) OWNER TO test_role4"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func2(text) TO PUBLIC"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION public.test_func2(text) TO test_role3"));
+    ASSERT_OK(ValidateUpgradeCompatibility());
+  };
+
+  auto phase3_custom_schema = [this, &conn]() {
+    // Phase 3: stale function in a custom schema.
+    ASSERT_OK(conn.Execute("CREATE SCHEMA test_schema"));
+    ASSERT_OK(conn.Execute("CREATE ROLE test_role5"));
+    ASSERT_OK(conn.Execute("CREATE ROLE test_role6"));
+    ASSERT_OK(conn.Execute("GRANT USAGE, CREATE ON SCHEMA test_schema TO test_role5"));
+
+    ASSERT_OK(conn.Execute("SET SESSION AUTHORIZATION test_role5"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION test_schema.test_func3(text) RETURNS bool "
+        "AS 'SELECT true' LANGUAGE sql"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION test_schema.test_func3(text) TO PUBLIC"));
+    ASSERT_OK(conn.Execute(
+        "GRANT EXECUTE ON FUNCTION test_schema.test_func3(text) TO test_role6"));
+    ASSERT_OK(conn.Execute("RESET SESSION AUTHORIZATION"));
+    ASSERT_OK(conn.Execute(
+        "ALTER FUNCTION test_schema.test_func3(text) OWNER TO test_role6"));
+
+    // Verify pg_upgrade suggests the full repair script with schema quoting.
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
+        // test_func3(text) in test_schema
+        "ALTER FUNCTION \"test_schema\".\"test_func3\"(text) OWNER TO \"test_role5\";",
+        "REVOKE ALL ON FUNCTION \"test_schema\".\"test_func3\"(text) FROM PUBLIC;",
+        "REVOKE ALL ON FUNCTION \"test_schema\".\"test_func3\"(text) FROM \"test_role5\";",
+        "REVOKE ALL ON FUNCTION \"test_schema\".\"test_func3\"(text) FROM \"test_role6\";",
+        "ALTER FUNCTION \"test_schema\".\"test_func3\"(text) OWNER TO \"test_role6\";",
+        "GRANT EXECUTE ON FUNCTION \"test_schema\".\"test_func3\"(text) TO PUBLIC;",
+        "GRANT EXECUTE ON FUNCTION \"test_schema\".\"test_func3\"(text) TO \"test_role5\";",
+        "GRANT EXECUTE ON FUNCTION \"test_schema\".\"test_func3\"(text) TO \"test_role6\";",
+    }));
+
+    // Mitigate the function and confirm check passes.
+    ASSERT_OK(conn.Execute("ALTER FUNCTION test_schema.test_func3(text) OWNER TO test_role5"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION test_schema.test_func3(text) FROM PUBLIC"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION test_schema.test_func3(text) FROM test_role5"));
+    ASSERT_OK(conn.Execute("REVOKE ALL ON FUNCTION test_schema.test_func3(text) FROM test_role6"));
+    ASSERT_OK(conn.Execute("ALTER FUNCTION test_schema.test_func3(text) OWNER TO test_role6"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION test_schema.test_func3(text) TO PUBLIC"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION test_schema.test_func3(text) TO test_role5"));
+    ASSERT_OK(conn.Execute("GRANT EXECUTE ON FUNCTION test_schema.test_func3(text) TO test_role6"));
+    ASSERT_OK(ValidateUpgradeCompatibility());
+
+    ASSERT_OK(conn.Execute("DROP FUNCTION test_schema.test_func3(text)"));
+    ASSERT_OK(conn.Execute("REVOKE USAGE, CREATE ON SCHEMA test_schema FROM test_role5"));
+    ASSERT_OK(conn.Execute("DROP SCHEMA test_schema"));
+  };
+
+  auto phase4_multiple_databases = [this, &conn]() {
+    // Phase 4: stale functions in two databases sharing the same roles.
+    constexpr const char* kTestDb1 = "test_db1";
+    constexpr const char* kTestDb2 = "test_db2";
+
+    ASSERT_OK(conn.Execute("CREATE DATABASE test_db1"));
+    ASSERT_OK(conn.Execute("CREATE DATABASE test_db2"));
+    ASSERT_OK(conn.Execute("CREATE ROLE test_role7"));
+    ASSERT_OK(conn.Execute("CREATE ROLE test_role8"));
+
+    auto setup_stale_function = [](pgwrapper::PGConn& conn_db) {
+      ASSERT_OK(conn_db.Execute("GRANT CREATE ON SCHEMA public TO test_role7"));
+      ASSERT_OK(conn_db.Execute("SET SESSION AUTHORIZATION test_role7"));
+      ASSERT_OK(conn_db.Execute(
+          "CREATE FUNCTION public.test_func4(text) RETURNS bool "
+          "AS 'SELECT true' LANGUAGE sql"));
+      ASSERT_OK(conn_db.Execute("GRANT EXECUTE ON FUNCTION public.test_func4(text) TO PUBLIC"));
+      ASSERT_OK(conn_db.Execute("GRANT EXECUTE ON FUNCTION public.test_func4(text) TO test_role8"));
+      ASSERT_OK(conn_db.Execute("RESET SESSION AUTHORIZATION"));
+      ASSERT_OK(conn_db.Execute("ALTER FUNCTION public.test_func4(text) OWNER TO test_role8"));
+    };
+
+    auto conn_db1 = ASSERT_RESULT(cluster_->ConnectToDB(kTestDb1));
+    setup_stale_function(conn_db1);
+
+    auto conn_db2 = ASSERT_RESULT(cluster_->ConnectToDB(kTestDb2));
+    setup_stale_function(conn_db2);
+
+    // Verify pg_upgrade suggests the full repair script in each database.
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
+        // test_db1
+        "In database: test_db1",
+        "ALTER FUNCTION \"public\".\"test_func4\"(text) OWNER TO \"test_role7\";",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func4\"(text) FROM PUBLIC;",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func4\"(text) FROM \"test_role7\";",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func4\"(text) FROM \"test_role8\";",
+        "ALTER FUNCTION \"public\".\"test_func4\"(text) OWNER TO \"test_role8\";",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func4\"(text) TO PUBLIC;",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func4\"(text) TO \"test_role7\";",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func4\"(text) TO \"test_role8\";",
+
+        // test_db2
+        "In database: test_db2",
+        "ALTER FUNCTION \"public\".\"test_func4\"(text) OWNER TO \"test_role7\";",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func4\"(text) FROM PUBLIC;",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func4\"(text) FROM \"test_role7\";",
+        "REVOKE ALL ON FUNCTION \"public\".\"test_func4\"(text) FROM \"test_role8\";",
+        "ALTER FUNCTION \"public\".\"test_func4\"(text) OWNER TO \"test_role8\";",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func4\"(text) TO PUBLIC;",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func4\"(text) TO \"test_role7\";",
+        "GRANT EXECUTE ON FUNCTION \"public\".\"test_func4\"(text) TO \"test_role8\";",
+    }));
+
+    auto mitigate_stale_function = [](pgwrapper::PGConn& conn_db) {
+      ASSERT_OK(conn_db.Execute("ALTER FUNCTION public.test_func4(text) OWNER TO test_role7"));
+      ASSERT_OK(conn_db.Execute("REVOKE ALL ON FUNCTION public.test_func4(text) FROM PUBLIC"));
+      ASSERT_OK(conn_db.Execute("REVOKE ALL ON FUNCTION public.test_func4(text) FROM test_role7"));
+      ASSERT_OK(conn_db.Execute("REVOKE ALL ON FUNCTION public.test_func4(text) FROM test_role8"));
+      ASSERT_OK(conn_db.Execute("ALTER FUNCTION public.test_func4(text) OWNER TO test_role8"));
+      ASSERT_OK(conn_db.Execute("GRANT EXECUTE ON FUNCTION public.test_func4(text) TO PUBLIC"));
+      ASSERT_OK(conn_db.Execute("GRANT EXECUTE ON FUNCTION public.test_func4(text) TO test_role7"));
+      ASSERT_OK(conn_db.Execute("GRANT EXECUTE ON FUNCTION public.test_func4(text) TO test_role8"));
+    };
+
+    mitigate_stale_function(conn_db1);
+    mitigate_stale_function(conn_db2);
+    ASSERT_OK(ValidateUpgradeCompatibility());
+
+    ASSERT_OK(conn_db1.Execute("DROP FUNCTION public.test_func4(text)"));
+    ASSERT_OK(conn_db2.Execute("DROP FUNCTION public.test_func4(text)"));
+  };
+
+  auto cleanup = [&conn]() {
+    ASSERT_OK(conn.Execute("DROP FUNCTION public.test_func1(text), "
+      "public.test_func2(text), public.test_func2(int)"));
+    ASSERT_OK(conn.Execute("DROP DATABASE test_db1"));
+    ASSERT_OK(conn.Execute("DROP DATABASE test_db2"));
+    ASSERT_OK(conn.Execute("REVOKE CREATE ON SCHEMA public FROM test_role1"));
+    ASSERT_OK(conn.Execute("REVOKE CREATE ON SCHEMA public FROM test_role3"));
+    ASSERT_OK(conn.Execute("DROP ROLE test_role1, test_role2, test_role3, test_role4"));
+    ASSERT_OK(conn.Execute("DROP ROLE test_role5, test_role6"));
+    ASSERT_OK(conn.Execute("DROP ROLE test_role7, test_role8"));
+  };
+
+  ASSERT_NO_FATALS(phase1_single_function());
+  ASSERT_NO_FATALS(phase2_overloaded_functions());
+  ASSERT_NO_FATALS(phase3_custom_schema());
+  ASSERT_NO_FATALS(phase4_multiple_databases());
+
+  // Cleanup functions, schema grants, roles, and the extra databases.
+  ASSERT_NO_FATALS(cleanup());
+}
 }  // namespace yb
