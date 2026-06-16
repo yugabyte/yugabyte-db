@@ -3789,6 +3789,13 @@ class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
     PgCatalogVersionTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");
     options->extra_master_flags.push_back("--TEST_log_catalog_version_cache_events=true");
+
+    // These tests observe the catalog-version cache being consulted on the read path via
+    // CatalogVersionChecker (GetYsqlDBCatalogVersion). With object locking enabled,
+    // CatalogVersionChecker short-circuits and never reads the catalog version, so the
+    // cache is not exercised. Disable object locking to avoid this.
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
   }
 };
 
