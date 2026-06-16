@@ -935,6 +935,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestCleanupOfExpiredTable(bool use_logical_replication);
 
+  void TestXClusterTablesNotAddedToStream(
+      bool use_logical_replication_stream, bool enable_xcluster_before_stream_creation);
+
   void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
 
   Status CreateTables(

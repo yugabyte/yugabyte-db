@@ -2542,6 +2542,10 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
     return false;
   }
 
+  if (IsInternalTableToBeExcludedFromCDCSDKStream(lock)) {
+    return false;
+  }
+
   if (allow_cdc_used_syscatalog_tables && !table_info->IsUserTable(lock)) {
     auto table_oid_result = lock->GetPgTableOid(table_info->id());
     if (table_oid_result.ok() && IsCatalogTableEligibleForCDC(*table_oid_result)) {
@@ -2560,6 +2564,13 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
   }
 
   return true;
+}
+
+bool CatalogManager::IsInternalTableToBeExcludedFromCDCSDKStream(
+    const TableInfo::ReadLock& lock) const {
+  // xCluster DDL replication tables (yb_xcluster_ddl_replication.ddl_queue and .replicated_ddls)
+  // drive xCluster DDL replication.
+  return lock->IsXClusterDDLReplicationTable();
 }
 
 /*
