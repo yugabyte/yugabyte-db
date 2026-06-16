@@ -2402,6 +2402,8 @@ int			yb_test_force_parallel = YB_FORCE_PARALLEL_OFF;
 bool		yb_enable_ddl_atomicity_infra = true;
 bool		yb_ddl_rollback_enabled = false;
 
+bool		yb_enable_replication_origin_shared = true;
+
 bool		yb_use_hash_splitting_by_default = true;
 
 bool		yb_xcluster_automatic_mode_target_ddl = false;
