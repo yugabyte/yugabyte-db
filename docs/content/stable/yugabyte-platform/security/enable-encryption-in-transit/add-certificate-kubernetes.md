@@ -103,7 +103,7 @@ To rotate server certificates:
 
     If the universe spans multiple namespaces, add the `-A` option to the command to mark certificates across namespaces for renewal. For example:
 
-        ```sh
+    ```sh
     cmctl renew -A -l yugabyte.io/universe-name=my_universe
     ```
 
