@@ -2662,6 +2662,8 @@ retry1:
 	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
 		MyBackendType =
 			YbInternalConnKindDescriptors[yb_internal_conn_kind].backend_type;
+	else if (YbIsAuthPassthroughControlBackend())
+		MyBackendType = YB_YSQL_CONN_MGR_CTRL;
 	else
 		MyBackendType = B_BACKEND;
 

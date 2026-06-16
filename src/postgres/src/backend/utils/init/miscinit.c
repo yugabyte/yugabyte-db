@@ -314,6 +314,9 @@ GetBackendTypeDesc(BackendType backendType)
 		case YB_YSQL_CONN_MGR_WAL_SENDER:
 			backendDesc = "yb-conn-mgr walsender";
 			break;
+		case YB_YSQL_CONN_MGR_CTRL:
+			backendDesc = "yb-conn-mgr control connection";
+			break;
 		case YB_AUTO_ANALYZE_BACKEND:
 			backendDesc = "yb auto analyze backend";
 			break;

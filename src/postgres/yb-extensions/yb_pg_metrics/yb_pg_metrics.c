@@ -709,7 +709,8 @@ pullRpczEntries(void)
 				beentry->st_backendType == YB_AUTO_ANALYZE_BACKEND ||
 				YbIsInternalConnBackendType(beentry->st_backendType))
 				proc = BackendPidGetProc(rpcz[i].proc_id);
-			else if (beentry->st_backendType != YB_YSQL_CONN_MGR)
+			else if (beentry->st_backendType != YB_YSQL_CONN_MGR &&
+					 beentry->st_backendType != YB_YSQL_CONN_MGR_CTRL)
 			{
 				/*
 				 * For an auxiliary process, retrieve process info from

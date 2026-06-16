@@ -381,6 +381,7 @@ pgstat_bestart(void)
 		(lbeentry.st_backendType == B_BACKEND ||
 		 lbeentry.st_backendType == YB_AUTO_ANALYZE_BACKEND ||
 		 lbeentry.st_backendType == YB_YSQL_CONN_MGR ||
+		 lbeentry.st_backendType == YB_YSQL_CONN_MGR_CTRL ||
 		 YbIsInternalConnBackendType(lbeentry.st_backendType)))
 		(*yb_new_conn)++;
 
@@ -406,6 +407,7 @@ pgstat_bestart(void)
 		|| lbeentry.st_backendType == YB_AUTO_ANALYZE_BACKEND
 		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR
 		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR_WAL_SENDER
+		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR_CTRL
 		|| YbIsInternalConnBackendType(lbeentry.st_backendType))
 		lbeentry.st_userid = GetSessionUserId();
 	else
