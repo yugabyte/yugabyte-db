@@ -45,6 +45,13 @@ const YbInternalConnKindDescriptor
 		.use_minimal_preload = true,
 		.preload_lists_in_minimal_mode = true,
 	},
+	[YB_INTERNAL_CONN_KIND_GLOBAL_VIEW] = {
+		.wire_name = "global_view",
+		.backend_type = YB_GLOBAL_VIEW_BACKEND,
+		.backend_desc = "yb global view backend",
+		.use_minimal_preload = false,
+		.preload_lists_in_minimal_mode = false,
+	},
 };
 
 YbInternalConnKind

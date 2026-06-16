@@ -63,9 +63,9 @@
  tsp1       | yugabyte_test | 
 (3 rows)
 
-                                         List of roles
-      Role name       |                         Attributes                         | Member of 
-----------------------+------------------------------------------------------------+-----------
+                                              List of roles
+      Role name       |                         Attributes                         |      Member of      
+----------------------+------------------------------------------------------------+---------------------
  postgres             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  regress_rls_alice    | Cannot login                                               | {}
  rls_user             | Cannot login                                               | {}
@@ -73,6 +73,7 @@
  yb_db_admin          | No inheritance, Cannot login                               | {}
  yb_extension         | Cannot login                                               | {}
  yb_fdw               | Cannot login                                               | {}
+ yb_global_views_user |                                                            | {pg_read_all_stats}
  yugabyte             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  yugabyte_test        | Superuser, Create role, Create DB, Bypass RLS              | {}
 

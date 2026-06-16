@@ -3254,7 +3254,8 @@ Status Tablet::BackfillIndexesForYsql(
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
   auto conn_result  = pgwrapper::CreateInternalPGConnBuilder(
-                          pgsql_proxy_bind_address, database_name, postgres_auth_key,
+                          pgsql_proxy_bind_address, database_name,
+                          pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key,
                           backfill_params.modified_deadline)
                           .Connect();
   // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.

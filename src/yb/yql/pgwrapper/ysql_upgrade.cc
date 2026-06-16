@@ -374,7 +374,8 @@ Result<std::unique_ptr<YsqlUpgradeHelper::DatabaseEntry>>
 YsqlUpgradeHelper::MakeDatabaseEntry(std::string database_name) {
   // Explicitly using an infinite connect_timeout here.
   auto builder = pgwrapper::CreateInternalPGConnBuilder(
-      ysql_proxy_addr_, database_name, ysql_auth_key_, /* deadline */ std::nullopt);
+      ysql_proxy_addr_, database_name, pgwrapper::PGConnSettings::kDefaultUser, ysql_auth_key_,
+      /* deadline */ std::nullopt);
 
   std::unique_ptr<DatabaseEntry> entry;
   if (use_single_connection_) {
