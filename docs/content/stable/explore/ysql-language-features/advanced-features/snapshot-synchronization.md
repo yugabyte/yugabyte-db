@@ -3,7 +3,7 @@ title: Synchronize snapshots
 linkTitle: Synchronize snapshots
 description: Synchronize snapshots in YSQL
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   stable:
     identifier: synchronize-snapshots
@@ -20,7 +20,7 @@ Note that any database changes made by any one of these transactions remain invi
 
 You export snapshots using the [pg_export_snapshot() function](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-SNAPSHOT-SYNCHRONIZATION), and import them using the SET TRANSACTION command.
 
-This feature is currently {{<tags/feature/tp idea="1161">}} and to use it you must first set the `ysql_enable_pg_export_snapshot` YB-TServer flag to true.
+This feature is currently {{<tags/feature/ea idea="1161">}} and to use it you must first set the `ysql_enable_pg_export_snapshot` YB-TServer flag to true.
 
 ## Export a snapshot
 
