@@ -1,8 +1,10 @@
 package com.yugabyte.yw.common.operator;
 
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -15,8 +17,10 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -33,9 +37,11 @@ import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -49,6 +55,7 @@ import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.AvailabilityZoneDetails.AZCloudInfo;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.OperatorResource;
@@ -77,12 +84,14 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -562,6 +571,93 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         "toggle params should have useYbdbInbuiltYbc true",
         paramsCaptor.getValue().isUseYbdbInbuiltYbc());
     assertEquals(oldUniverse.getUniverseUUID(), paramsCaptor.getValue().getUniverseUUID());
+  }
+
+  @Test
+  public void testEditUniverseTriggersTlsToggleWhenEncryptionToggledInCr() throws Exception {
+    String universeName = "test-toggle-tls-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    // Universe is created with both encryption flags disabled by ModelFactory.
+    assertFalse(
+        oldUniverse.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
+    assertFalse(
+        oldUniverse.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Enable client-to-node encryption in the CR to trigger a TLS toggle.
+    ybUniverse.getSpec().setEnableClientToNodeEncrypt(true);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+
+    ArgumentCaptor<TlsToggleParams> paramsCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .toggleTls(paramsCaptor.capture(), eq(defaultCustomer), eq(oldUniverse));
+    TlsToggleParams toggleParams = paramsCaptor.getValue();
+    assertTrue(
+        "toggle params should have client-to-node encryption enabled",
+        toggleParams.enableClientToNodeEncrypt);
+    assertFalse(toggleParams.enableNodeToNodeEncrypt);
+    // TLS toggle must always be non-rolling (PLAT-9434).
+    assertEquals(
+        com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE,
+        toggleParams.upgradeOption);
+    assertEquals(oldUniverse.getUniverseUUID(), toggleParams.getUniverseUUID());
+    // No regular edit/upgrade should be triggered.
+    Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testEditUniverseTriggersCertsRotateWhenRootCAChangedInCr() throws Exception {
+    String universeName = "test-rotate-certs-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    // Universe is created without a rootCA by ModelFactory.
+    assertNull(oldUniverse.getUniverseDetails().rootCA);
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Create a certificate and point the CR at it (by label) to trigger a rotation. Encryption
+    // flags are left unchanged so the TLS toggle branch is skipped and certs rotation is reached.
+    String certLabel = "test-root-ca-" + RandomStringUtils.randomAlphanumeric(8);
+    UUID rootCA = UUID.randomUUID();
+    createTempFile("yb_universe_reconciler_test_ca.crt", "test data");
+    CertificateInfo.create(
+        rootCA,
+        defaultCustomer.getUuid(),
+        certLabel,
+        new Date(),
+        new Date(),
+        "privateKey",
+        TestHelper.TMP_PATH + "/yb_universe_reconciler_test_ca.crt",
+        CertConfigType.SelfSigned);
+    ybUniverse.getSpec().setRootCA(certLabel);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+
+    ArgumentCaptor<CertsRotateParams> paramsCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .rotateCerts(paramsCaptor.capture(), eq(defaultCustomer), eq(oldUniverse));
+    CertsRotateParams rotateParams = paramsCaptor.getValue();
+    assertEquals(rootCA, rotateParams.rootCA);
+    // For Kubernetes, rootCA and clientRootCA must be the same.
+    assertEquals(rootCA, rotateParams.getClientRootCA());
+    assertTrue(rotateParams.rootAndClientRootCASame);
+    assertEquals(oldUniverse.getUniverseUUID(), rotateParams.getUniverseUUID());
+    // No regular edit/upgrade should be triggered.
+    Mockito.verifyNoInteractions(universeCRUDHandler);
   }
 
   @Test
