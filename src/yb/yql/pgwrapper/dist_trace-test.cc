@@ -139,9 +139,9 @@ TEST_F(DistTraceCaCertPathTest, UsesFirstExistingPath) {
   CreateFile(second_existing_path);
 
   ASSERT_EQ(
-      *dist_trace::FindFirstExistingFile(
-          {missing_path, first_existing_path, second_existing_path}),
-      first_existing_path);
+          dist_trace::FindFirstExistingFile(
+              {missing_path, first_existing_path, second_existing_path}),
+          first_existing_path);
 }
 
 TEST_F(DistTraceCaCertPathTest, ReturnsEmptyWhenNoPathExists) {
