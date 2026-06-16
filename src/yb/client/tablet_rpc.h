@@ -137,6 +137,9 @@ class TabletInvoker {
 
   void Execute(const std::string& tablet_id, bool leader_only = false);
 
+  // Clear per-tablet state so the next Execute can target a different tablet.
+  void Reset();
+
   // Returns true when whole operation is finished, false otherwise.
   bool Done(Status* status);
 

@@ -2796,8 +2796,8 @@ void TabletServiceImpl::WaitForAsyncWrite(
     context_ptr->RespondSuccess();
   };
 
-  // We dont need the leader check here because if the peer gracefully transitioned to a follower
-  // we still want to succeed previously committed async writes received by this peer.
+  // Don't need to do a leader check here: a follower or post-split parent can still verify writes
+  // from its log.
   auto tablet_result = LookupTabletPeer(server_->tablet_peer_lookup(), req->tablet_id());
   if (!tablet_result) {
     callback(tablet_result.status());

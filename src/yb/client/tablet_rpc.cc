@@ -179,6 +179,15 @@ void TabletInvoker::SelectTabletServer()  {
   VTRACE_TO(1, trace_, "Selected $0", (current_ts_ ? current_ts_->ToString() : "none"));
 }
 
+void TabletInvoker::Reset() {
+  TRACE_TO(trace_, "Reset()");
+  tablet_id_.clear();
+  tablet_.reset();
+  current_ts_ = nullptr;
+  followers_.clear();
+  assign_new_leader_ = false;
+}
+
 void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   if (tablet_id_.empty()) {
     if (!tablet_id.empty()) {
