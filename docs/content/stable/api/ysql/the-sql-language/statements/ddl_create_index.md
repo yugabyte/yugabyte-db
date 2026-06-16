@@ -134,7 +134,7 @@ BEGIN;
 LOCK TABLE parent IN ACCESS EXCLUSIVE MODE;
 -- 5. Detach (fast)
 ALTER TABLE parent DETACH PARTITION child0;
--- 6. Drop inherited constraint (fast: drops old backing index)
+-- 6. Drop the old unique constraint (fast: drops its backing index)
 ALTER TABLE child0 DROP CONSTRAINT child0_i_key;
 -- 7. Promote standalone index to a constraint (fast: no rebuild)
 ALTER TABLE child0 ADD CONSTRAINT child0_i_key UNIQUE USING INDEX child0_i_unique;
@@ -148,9 +148,16 @@ ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
 Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
 
 {{< note title="Note" >}}
-Step 4 to lock the parent is optional if there are no reads or writes against the parent table while the partition is detached, and it requires enabling object locking (supported from YugabyteDB {{<release "2025.2">}} or later).
-To enable the feature, set the YB-TServer flags `enable_object_locking_for_table_locks=true` and `ysql_yb_ddl_transaction_block_enabled=true`.
-Refer to [Enable table-level locks](../../../../../explore/transactions/explicit-locking/#enable-table-level-locks) for more details.
+Step 4, and with it the surrounding `BEGIN`/`COMMIT` block, is optional.
+It only serves to hold a lock on the parent so that concurrent reads and writes don't miss the partition's data while it is detached.
+If there are no reads or writes against the parent table during the detach, omit Step 4 and run Steps 5 to 8 as individual statements instead.
+
+When used, this approach relies on two features, both off by default:
+
+- Object locking, for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true` (Early Access, available in YugabyteDB {{<release "2025.2">}} and later).
+- Transactional DDL, to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`. Object locking depends on this flag as well.
+
+Refer to [Enable table-level locks](../../../../../explore/transactions/explicit-locking/#enable-table-level-locks) and [Transactional DDL](../../../../../explore/transactions/transactional-ddl/) for more details.
 {{< /note >}}
 
 ### UNIQUE
