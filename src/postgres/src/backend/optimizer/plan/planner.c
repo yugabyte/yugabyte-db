@@ -93,8 +93,7 @@ create_upper_paths_hook_type create_upper_paths_hook = NULL;
 /*
  * YB: GUC flag, whether to attempt single RPC lock+select in RR and RC levels.
  */
-bool		yb_lock_pk_single_rpc = true;
-
+bool		yb_lock_pk_single_rpc = false;
 
 /* Expression kind codes for preprocess_expression */
 #define EXPRKIND_QUAL				0

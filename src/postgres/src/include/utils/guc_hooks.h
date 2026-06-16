@@ -187,4 +187,52 @@ extern void assign_log_min_messages(const char *newval, void *extra);
 /* YB */
 extern const char *yb_show_maxconnections(void);
 
+extern void assign_tcmalloc_sample_period(int newval, void *extra);
+extern void assign_yb_dist_tracecontext(const char *newval, void *extra);
+extern void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval,
+														  void *extra);
+extern void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
+extern void assign_yb_silence_advisory_locks_not_supported_error(bool newval,
+																 void *extra);
+extern bool check_default_replica_identity(char **newval, void **extra,
+										   GucSource source);
+extern bool check_transaction_priority_lower_bound(double *newval,
+												   void **extra, GucSource source);
+extern bool check_transaction_priority_upper_bound(double *newval,
+												   void **extra, GucSource source);
+extern bool check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval,
+																 void **extra, GucSource source);
+extern bool check_yb_dist_tracecontext(char **newval, void **extra,
+									   GucSource source);
+extern bool check_yb_enable_advisory_locks(bool *newval, void **extra,
+										   GucSource source);
+extern bool check_yb_explicit_row_locking_batch_size(int *newval,
+													 void **extra, GucSource source);
+extern const char *show_tcmalloc_sample_period(void);
+extern bool yb_check_neg_catcache_ids(char **newval, void **extra,
+									  GucSource source);
+extern bool yb_check_no_txn(int *newval, void **extra, GucSource source);
+extern bool yb_check_toast_catcache_threshold(int *newval, void **extra,
+											  GucSource source);
+extern bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra,
+											   GucSource source);
+extern void yb_set_neg_catcache_ids(const char *newval, void *extra);
+extern void assign_yb_enable_cbo(int new_value, void *extra);
+extern void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
+extern void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
+extern void assign_ysql_upgrade_mode(bool newval, void *extra);
+extern bool check_backoff_multiplier(double *multiplier, void **extra,
+									 GucSource source);
+extern bool check_max_backoff(int *max_backoff_msecs, void **extra,
+							  GucSource source);
+extern bool check_min_backoff(int *min_backoff_msecs, void **extra,
+							  GucSource source);
+
+/*
+ * YB_TODO(#32343): defined in pggate (pg_txn_manager.cc) behind extern "C";
+ * should be PG-side assign_* wrappers reaching pggate via the normal interface.
+ */
+extern void YBCAssignTransactionPriorityLowerBound(double newval, void *extra);
+extern void YBCAssignTransactionPriorityUpperBound(double newval, void *extra);
+
 #endif							/* GUC_HOOKS_H */

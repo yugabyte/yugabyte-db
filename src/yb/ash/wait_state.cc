@@ -22,7 +22,12 @@
 
 DEPRECATE_FLAG(bool, ysql_yb_ash_enable_infra, "2024_12");
 
-DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_ash, true,
+/*
+ * YB_TODO_PG19MERGE: default flipped true->false because with ASH on the
+ * autovacuum launcher crash-loops the cluster on pg19 -- an ASH-metadata Assert
+ * no longer holds after upstream PG's process-type refactor. Restore once fixed.
+ */
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_ash, false,
     "Enable Active Session History for sampling and instrumenting YSQL and YCQL queries, "
     "and various background activities.");
 

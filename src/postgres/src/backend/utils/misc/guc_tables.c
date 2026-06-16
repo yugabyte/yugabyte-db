@@ -110,10 +110,21 @@
 #endif
 
 /* YB includes */
+#include "access/yb_scan.h"
+#include "commands/copy.h"
 #include "commands/explain.h"
 #include "commands/explain_state.h"
 #include "commands/variable.h"
+#include "executor/ybModifyTable.h"
+#include "optimizer/yb_merge_scan.h"
+#include "pg_yb_utils.h"
+#include "replication/walsender.h"
 #include "tcop/pquery.h"
+#include "yb_ash.h"
+#include "yb_qpm.h"
+#include "yb_query_diagnostics.h"
+#include "yb_tcmalloc_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 /* This value is normally passed in from the Makefile */
 #ifndef PG_KRB_SRVTAB
@@ -546,7 +557,7 @@ const struct config_enum_entry yb_sampling_algorithm_options[] = {
 	{NULL, 0, false}
 };
 
-pg_attribute_unused() static const struct config_enum_entry yb_cost_model_options[] = {
+static const struct config_enum_entry yb_cost_model_options[] = {
 	{"off", YB_COST_MODEL_OFF, false},
 	{"on", YB_COST_MODEL_ON, false},
 	{"legacy_mode", YB_COST_MODEL_LEGACY, false},
@@ -563,7 +574,7 @@ pg_attribute_unused() static const struct config_enum_entry yb_cost_model_option
 	{NULL, 0, false}
 };
 
-pg_attribute_unused() static const struct config_enum_entry yb_qpm_track_options[] =
+static const struct config_enum_entry yb_qpm_track_options[] =
 {
 	{"none", YB_QPM_TRACK_NONE, false},
 	{"top", YB_QPM_TRACK_TOP, false},
@@ -571,14 +582,14 @@ pg_attribute_unused() static const struct config_enum_entry yb_qpm_track_options
 	{NULL, 0, false}
 };
 
-pg_attribute_unused() static const struct config_enum_entry yb_cache_replacement_algorithm_options[] =
+static const struct config_enum_entry yb_cache_replacement_algorithm_options[] =
 {
 	{"simple_clock_lru", YB_QPM_SIMPLE_CLOCK_LRU, false},
 	{"true_lru", YB_QPM_TRUE_LRU, false},
 	{NULL, 0, false}
 };
 
-pg_attribute_unused() static const struct config_enum_entry yb_qpm_plan_format_options[] =
+static const struct config_enum_entry yb_qpm_plan_format_options[] =
 {
 	{"text", EXPLAIN_FORMAT_TEXT, false},
 	{"xml", EXPLAIN_FORMAT_XML, false},
@@ -743,18 +754,21 @@ char	   *role_string;
 /* should be static, but guc.c needs to get at this */
 bool		in_hot_standby_guc;
 
-/* YB globals */
 int			yb_log_min_backtraces = FATAL;
 bool		yb_enable_memory_tracking = true;
-pg_attribute_unused() static char *yb_effective_transaction_isolation_level_string;
-pg_attribute_unused() static char *yb_xcluster_consistency_level_string;
-pg_attribute_unused() static char *yb_read_time_string;
-pg_attribute_unused() static char *yb_neg_catcache_ids_string;
 bool		yb_conn_mgr_modifying_defaults = false;
 bool		yb_test_skip_binding_scan_keys;
-pg_attribute_unused() static bool yb_bypass_cond_recheck;
-pg_attribute_unused() static bool yb_pushdown_is_not_null;
-pg_attribute_unused() static bool yb_pushdown_strict_inequality;
+double		yb_transaction_priority_lower_bound = 0.0;
+double		yb_transaction_priority_upper_bound = 1.0;
+static double yb_transaction_priority = 0.0;
+static int	yb_tcmalloc_sample_period = 1024 * 1024;	/* 1MB */
+static char *yb_effective_transaction_isolation_level_string;
+static char *yb_xcluster_consistency_level_string;
+static char *yb_read_time_string;
+static char *yb_neg_catcache_ids_string;
+static bool yb_bypass_cond_recheck;
+static bool yb_pushdown_is_not_null;
+static bool yb_pushdown_strict_inequality;
 
 /*
  * set default log_min_messages to WARNING for all process types

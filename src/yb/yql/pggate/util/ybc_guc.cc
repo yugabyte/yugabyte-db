@@ -53,7 +53,7 @@ bool yb_enable_replication_slot_consumption = true;
 
 bool yb_allow_replication_slot_lsn_types = true;
 
-bool yb_allow_replication_slot_ordering_modes = true;
+bool yb_allow_replication_slot_ordering_modes = false;
 
 bool yb_enable_alter_table_rewrite = true;
 
@@ -87,7 +87,7 @@ int yb_walsender_poll_sleep_duration_empty_ms = 10;
 
 int yb_reorderbuffer_max_changes_in_memory = 4096;
 
-int yb_explicit_row_locking_batch_size = 1;
+int yb_explicit_row_locking_batch_size = 1024;
 
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
