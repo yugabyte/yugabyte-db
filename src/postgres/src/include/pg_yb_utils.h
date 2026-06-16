@@ -1708,4 +1708,18 @@ extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_co
 															char *traceparent_out);
 
 extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
+
+/*
+ * Returns true if 'relid' is a foreign table whose foreign server has
+ * server_type = 'federatedYugabyteDB'.
+ */
+extern bool yb_is_federated_yb_foreign_table(Oid relid);
+
+struct PlannerInfo;
+extern void YbAddFederatedPartitionTserverUuid(struct PlannerInfo *root,
+											  Index rti,
+											  const char *tserver_uuid);
+extern const char *YbGetFederatedPartitionTserverUuid(const struct PlannerInfo *root,
+													  Index rti);
+
 #endif							/* PG_YB_UTILS_H */

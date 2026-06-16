@@ -96,6 +96,7 @@
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybExpr.h"
 #include "fmgr.h"
+#include "foreign/foreign.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "libpq/hba.h"
@@ -2341,6 +2342,28 @@ bool		yb_enable_pg_stat_statements_rpc_stats = true;
 bool		yb_enable_pg_stat_statements_docdb_metrics = false;
 
 bool		yb_enable_global_views = false;
+
+bool
+yb_is_federated_yb_foreign_table(Oid relid)
+{
+	ForeignTable *table;
+	ForeignServer *server;
+	ListCell   *lc;
+
+	table = GetForeignTable(relid);
+	server = GetForeignServer(table->serverid);
+
+	foreach(lc, server->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "server_type") == 0)
+			return pg_strcasecmp(defGetString(def),
+								 "federatedYugabyteDB") == 0;
+	}
+
+	return false;
+}
 
 const char *
 YBDatumToString(Datum datum, Oid typid)
@@ -8964,4 +8987,44 @@ YbInvalidatePlannerRelcache(PlannerInfo *root)
 			RelationCacheInvalidateEntry(idx->indexoid);
 		}
 	}
+}
+
+/*
+ * YbAddFederatedPartitionTserverUuid
+ *		Record that the per-tserver child at 'rti' targets the tablet server
+ *		identified by 'tserver_uuid'.
+ *
+ * The 'tserver_uuid' string is borrowed; the caller should ensure that it is
+ * allocated in a memory context that lives at least as long as the planner state.
+ *
+ * The backing yb_tserver_uuids array on PlannerInfo is lazily allocated here,
+ * so non-federated queries do not pay for it.  expand_planner_arrays() takes
+ * care of growing it in lockstep with simple_rte_array.
+ */
+void
+YbAddFederatedPartitionTserverUuid(PlannerInfo *root, Index rti,
+								   const char *tserver_uuid)
+{
+	Assert(rti < root->simple_rel_array_size);
+
+	if (root->yb_tserver_uuids == NULL)
+		root->yb_tserver_uuids = (const char **)
+			palloc0(sizeof(const char *) * root->simple_rel_array_size);
+
+	root->yb_tserver_uuids[rti] = tserver_uuid;
+}
+
+/*
+ * YbGetFederatedPartitionTserverUuid
+ *		Look up the tablet server UUID previously recorded for 'rti', or
+ *		return NULL if 'rti' is not a per-tserver federated child.
+ */
+const char *
+YbGetFederatedPartitionTserverUuid(const PlannerInfo *root, Index rti)
+{
+	if (root->yb_tserver_uuids == NULL)
+		return NULL;
+
+	Assert(rti < root->simple_rel_array_size);
+	return root->yb_tserver_uuids[rti];
 }

@@ -195,6 +195,20 @@ expand_planner_arrays(PlannerInfo *root, int add_size)
 			palloc0(sizeof(AppendRelInfo *) * new_size);
 	}
 
+	/*
+	 * YB: The yb_tserver_uuids array is lazily allocated by
+	 * YbAddFederatedPartitionTserverUuid(); only grow it if it already exists,
+	 * so non-federated queries pay nothing for it.
+	 */
+	if (root->yb_tserver_uuids)
+	{
+		root->yb_tserver_uuids = (const char **)
+			repalloc(root->yb_tserver_uuids,
+					 sizeof(const char *) * new_size);
+		MemSet(root->yb_tserver_uuids + root->simple_rel_array_size,
+			   0, sizeof(const char *) * add_size);
+	}
+
 	root->simple_rel_array_size = new_size;
 }
 

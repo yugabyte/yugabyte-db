@@ -174,6 +174,18 @@ add_other_rels_to_query(PlannerInfo *root)
 		if (rel->reloptkind != RELOPT_BASEREL)
 			continue;
 
+		/*
+		 * YB: Federated YugabyteDB foreign tables (global views) are
+		 * expanded into per-tserver children, analogous to partitioned
+		 * tables. Mark them for append-rel expansion so the planner
+		 * automatically generates Append/MergeAppend paths.
+		 */
+		if (!rte->inh && yb_enable_global_views &&
+			rte->rtekind == RTE_RELATION &&
+			rte->relkind == RELKIND_FOREIGN_TABLE &&
+			yb_is_federated_yb_foreign_table(rte->relid))
+			rte->inh = true;
+
 		/* If it's marked as inheritable, look for children. */
 		if (rte->inh)
 			expand_inherited_rtentry(root, rel, rte, rti);
