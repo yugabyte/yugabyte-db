@@ -558,7 +558,7 @@ class PgDocReadOp : public PgDocOp {
 
   bool IsHashBatchingEnabled();
 
-  bool IsBatchFlushRequired() const;
+  bool IsBatchFlushRequired(size_t limit) const;
 
   // Create operators by partition arguments.
   // - Optimization for statement:
