@@ -3070,10 +3070,13 @@ yb_try_substitute_ec_members(PlannerInfo *root, Expr *expr, Index rti,
 
 /*
  * yb_create_derived_clause
- *   Create inferrable_expr = substituted_expr clause
- *   Returns NULL if can't create proper equality operator.
+ *	  Create inferrable_expr = substituted_expr clause.
+ *	  Returns NULL if can't create proper equality operator.
+ *
+ * Shared by the equivalence-class (yb_try_derive_equal_from_ec) and OR-arm
+ * (yb_try_derive_equal_from_clauses) derivation paths.
  */
-static OpExpr *
+OpExpr *
 yb_create_derived_clause(Expr *inferrable_expr, Expr *substituted_expr,
 						 Oid opfamily)
 {
@@ -3090,8 +3093,19 @@ yb_create_derived_clause(Expr *inferrable_expr, Expr *substituted_expr,
 									InvalidOid, collation);
 }
 
-static RestrictInfo *
-yb_get_clause_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids)
+/*
+ * yb_make_derived_restrictinfo
+ *	  Wrap a derived equality clause in a RestrictInfo, tagging it with the
+ *	  current qual security level and running the mergejoinable/batchable
+ *	  checks.  nullable_relids is the set of outer-join-nullable rels whose
+ *	  Vars appear in the clause; pass NULL for a single-rel clause (e.g. when
+ *	  the substituted side is a Const).
+ *
+ * Shared by the equivalence-class (yb_try_derive_equal_from_ec) and OR-arm
+ * (yb_try_derive_equal_from_clauses) derivation paths.
+ */
+RestrictInfo *
+yb_make_derived_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids)
 {
 	Relids		clause_relids = pull_varnos(root, (Node *) clause);
 	bool		outerjoin_delayed = !bms_is_empty(nullable_relids);
@@ -3113,9 +3127,9 @@ yb_get_clause_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_re
 }
 
 RestrictInfo *
-yb_try_create_derived_clause(PlannerInfo *root, Index rti, Index target_rti,
-							 Expr *inferrable_expr, Expr *generation_expr,
-							 Oid opfamily)
+yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti, Index target_rti,
+							Expr *inferrable_expr, Expr *generation_expr,
+							Oid opfamily)
 {
 	Expr	   *substituted = NULL;
 	Relids		nullable_relids = NULL;
@@ -3128,7 +3142,7 @@ yb_try_create_derived_clause(PlannerInfo *root, Index rti, Index target_rti,
 		clause = yb_create_derived_clause(inferrable_expr, substituted,
 										  opfamily);
 	if (clause)
-		return yb_get_clause_restrictinfo(root, clause, nullable_relids);
+		return yb_make_derived_restrictinfo(root, clause, nullable_relids);
 	bms_free(nullable_relids);
 	return NULL;
 }

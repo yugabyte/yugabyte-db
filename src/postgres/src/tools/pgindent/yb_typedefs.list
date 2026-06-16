@@ -200,6 +200,7 @@ YbSplitType
 YbStatLabel
 YbStatLabelData
 YbStatementType
+YbSubstConstsContext
 YbSubstituteContext
 YbSysCatalogModificationAspect
 YbSysScanBase

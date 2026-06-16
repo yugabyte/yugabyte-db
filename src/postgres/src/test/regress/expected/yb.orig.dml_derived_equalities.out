@@ -1,3 +1,25 @@
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/data/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF)'
 -- Enable CBO
 SET yb_enable_optimizer_statistics = true;
 SET yb_enable_base_scans_cost_model = true;
@@ -357,6 +379,446 @@ SELECT * FROM users u FULL JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 5
  50 | user50@test.com |        2 |      50
 (2 rows)
 
+-- OR clauses (bitmap scan paths)
+-- A bitmap scan builds a separate index path for each arm of an OR.  So the
+-- derived equality must be inferred independently inside each arm; then an arm
+-- that constrains user_id can still drive an index whose leading column is the
+-- generated/expression bucket computed from user_id.
+-- TODO(#31354 or #31355): Recheck Cond should be removed.
+SET yb_enable_bitmapscan = true;
+SET enable_bitmapscan = true;
+-- Three-way OR
+\set query '/*+ BitmapScan(orders_no_bucket) */ SELECT * FROM orders_no_bucket WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id'
+:explain1run1
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: user_id, order_id
+   ->  YB Bitmap Table Scan on orders_no_bucket
+         ->  Bitmap Index Scan on orders_no_bucket_user_id_idx
+               Storage Index Filter: ((user_id = 50) OR (user_id = 60) OR (user_id = 70))
+(5 rows)
+
+ order_id | user_id 
+----------+---------
+        1 |      50
+        2 |      50
+        3 |      60
+        4 |      70
+(4 rows)
+
+\set query '/*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id'
+:explain1run1
+                                                                                                 QUERY PLAN                                                                                                  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: user_id, order_id
+   ->  YB Bitmap Table Scan on orders_gen
+         Recheck Cond: (((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50)) OR ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60)) OR ((bucket_id = (yb_hash_code(70) % 5)) AND (user_id = 70)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on orders_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
+               ->  Bitmap Index Scan on orders_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
+               ->  Bitmap Index Scan on orders_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code(70) % 5)) AND (user_id = 70))
+(11 rows)
+
+ order_id | user_id | bucket_id 
+----------+---------+-----------
+        1 |      50 |         0
+        2 |      50 |         0
+        3 |      60 |         1
+        4 |      70 |         0
+(4 rows)
+
+\set query '/*+ BitmapScan(orders_expr) */ SELECT * FROM orders_expr WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id'
+:explain1run1
+                                                                                                                            QUERY PLAN                                                                                                                             
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: user_id, order_id
+   ->  YB Bitmap Table Scan on orders_expr
+         Recheck Cond: ((((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50)) OR (((yb_hash_code(user_id) % 3) = (yb_hash_code(60) % 3)) AND (user_id = 60)) OR (((yb_hash_code(user_id) % 3) = (yb_hash_code(70) % 3)) AND (user_id = 70)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on orders_expr_idx
+                     Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50))
+               ->  Bitmap Index Scan on orders_expr_idx
+                     Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(60) % 3)) AND (user_id = 60))
+               ->  Bitmap Index Scan on orders_expr_idx
+                     Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(70) % 3)) AND (user_id = 70))
+(11 rows)
+
+ order_id | user_id 
+----------+---------
+        1 |      50
+        2 |      50
+        3 |      60
+        4 |      70
+(4 rows)
+
+-- OR with AND
+\set query '/*+ BitmapScan(orders_no_bucket) */ SELECT * FROM orders_no_bucket WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id'
+:explain1run1
+                                              QUERY PLAN                                              
+------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: user_id, order_id
+   ->  YB Bitmap Table Scan on orders_no_bucket
+         Storage Filter: (((user_id = 50) AND (order_id = 1)) OR ((order_id = 3) AND (user_id = 60)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on orders_no_bucket_user_id_idx
+                     Index Cond: (user_id = 50)
+               ->  Bitmap Index Scan on orders_no_bucket_user_id_idx
+                     Index Cond: (user_id = 60)
+(9 rows)
+
+ order_id | user_id 
+----------+---------
+        1 |      50
+        3 |      60
+(2 rows)
+
+\set query '/*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id'
+:explain1run1
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: user_id, order_id
+   ->  YB Bitmap Table Scan on orders_gen
+         Recheck Cond: (((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50) AND (order_id = 1)) OR ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60) AND (order_id = 3)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on orders_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50) AND (order_id = 1))
+               ->  Bitmap Index Scan on orders_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60) AND (order_id = 3))
+(9 rows)
+
+ order_id | user_id | bucket_id 
+----------+---------+-----------
+        1 |      50 |         0
+        3 |      60 |         1
+(2 rows)
+
+\set query '/*+ BitmapScan(orders_expr) */ SELECT * FROM orders_expr WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id'
+:explain1run1
+                                                                                     QUERY PLAN                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: user_id, order_id
+   ->  YB Bitmap Table Scan on orders_expr
+         Storage Filter: (((user_id = 50) AND (order_id = 1)) OR ((order_id = 3) AND (user_id = 60)))
+         Recheck Cond: ((((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50)) OR (((yb_hash_code(user_id) % 3) = (yb_hash_code(60) % 3)) AND (user_id = 60)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on orders_expr_idx
+                     Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50))
+               ->  Bitmap Index Scan on orders_expr_idx
+                     Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(60) % 3)) AND (user_id = 60))
+(10 rows)
+
+ order_id | user_id 
+----------+---------
+        1 |      50
+        3 |      60
+(2 rows)
+
+-- Join with an OR on a column that is also the join key.  The derivation must
+-- still apply within each arm so the bitmap scan on orders_gen uses the bucket.
+\set hint '/*+ NestLoop(u o) BitmapScan(o) */'
+SELECT $$
+:hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id
+$$ AS query \gset
+:explain1run1
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: u.id, o.order_id
+   ->  Nested Loop
+         Join Filter: (u.id = o.user_id)
+         ->  Seq Scan on users u
+         ->  Materialize
+               ->  YB Bitmap Table Scan on orders_gen o
+                     Recheck Cond: (((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50)) OR ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60)))
+                     ->  BitmapOr
+                           ->  Bitmap Index Scan on orders_gen_pkey
+                                 Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
+                           ->  Bitmap Index Scan on orders_gen_pkey
+                                 Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
+(13 rows)
+
+ id |      email      | order_id | user_id | bucket_id 
+----+-----------------+----------+---------+-----------
+ 50 | user50@test.com |        1 |      50 |         0
+ 50 | user50@test.com |        2 |      50 |         0
+ 60 | user60@test.com |        3 |      60 |         1
+(3 rows)
+
+-- A NULL constant does not pin the column to a value, so no bucket is derived
+-- from a "user_id = NULL" arm (the arm is also a constant the planner drops).
+\set hint '/*+ BitmapScan(orders_gen) */'
+\set query ':hint SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = NULL ORDER BY user_id, order_id'
+:explain1run1
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Sort
+   Sort Key: order_id
+   ->  YB Bitmap Table Scan on orders_gen
+         Storage Recheck Cond: (user_id = 50)
+         Recheck Cond: (bucket_id = (yb_hash_code(50) % 5))
+         ->  Bitmap Index Scan on orders_gen_pkey
+               Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
+(7 rows)
+
+ order_id | user_id | bucket_id 
+----------+---------+-----------
+        1 |      50 |         0
+        2 |      50 |         0
+(2 rows)
+
+-- TODO(#31672): within an OR arm an equality is only followed one step.
+-- bucket_id is computed from z, so deriving it needs a constant value for z.
+-- In arm 1, (x = 5 AND z = y), the only path to a constant is the chain z = y,
+-- then y = x (a condition outside the OR), then x = 5 -- and that chain is not
+-- followed, so arm 1 does not derive and falls back to a filter.  Arm 2 gives
+-- z = 6 directly, so it derives.
+CREATE TABLE transitive (
+    id int,
+    x int,
+    y int,
+    z int,
+    bucket_id int GENERATED ALWAYS AS (yb_hash_code(z) % 5) STORED,
+    PRIMARY KEY (bucket_id ASC, x ASC)
+);
+INSERT INTO transitive(id, x, y, z) VALUES (1, 5, 5, 5), (2, 6, 6, 2);
+\set hint '/*+ BitmapScan(transitive transitive_pkey) */'
+\set query ':hint SELECT * FROM transitive WHERE y = x AND ((x = 5 AND z = y) OR (x = 6 AND z = 6)) ORDER BY id'
+:explain1run1
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Sort
+   Sort Key: id
+   ->  YB Bitmap Table Scan on transitive
+         Storage Filter: ((y = x) AND (((x = 5) AND (z = y)) OR ((x = 6) AND (z = 6))))
+         Recheck Cond: ((x = 5) OR ((bucket_id = (yb_hash_code(6) % 5)) AND (x = 6)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on transitive_pkey
+                     Index Cond: (x = 5)
+               ->  Bitmap Index Scan on transitive_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code(6) % 5)) AND (x = 6))
+(10 rows)
+
+ id | x | y | z | bucket_id 
+----+---+---+---+-----------
+  1 | 5 | 5 | 5 |         0
+(1 row)
+
+DROP TABLE transitive;
+-- Guards on when an OR-arm equality may be derived.
+--
+-- Deriving a bucket_id from an arm means substituting the constant from a
+-- "column = constant" condition into the bucket expression.  That is only
+-- valid when the condition truly pins the column to that one value: the
+-- constant must be type-compatible with the column, and the operator must be a
+-- real (btree) equality, not merely one the planner treats like equality for
+-- selectivity.  The next three cases check both requirements.
+--
+-- Each case runs against both forms the derivation handles: the bucket as a
+-- generated column in the primary key (_gen) and as an equivalent expression
+-- index (_expr).
+-- Type guard.  The bucket hashes c, an int.  "c = 5::bigint" uses the
+-- cross-type int4/int8 "=" -- a real equality, but bigint is not
+-- binary-coercible to int, so substituting the bigint constant into a hash of
+-- an int would feed a differently-typed value and compute the wrong bucket.
+-- So this arm must NOT derive the bucket; the same-type arm "c = 6" still does.
+-- Both rows (5 and 6) are returned.
+CREATE TABLE guard_type_gen (
+    c int,
+    bucket_id int GENERATED ALWAYS AS (yb_hash_code(c) % 5) STORED,
+    PRIMARY KEY (bucket_id ASC, c ASC)
+);
+CREATE TABLE guard_type_expr (c int);
+CREATE INDEX NONCONCURRENTLY ON guard_type_expr ((yb_hash_code(c) % 5) ASC, c ASC);
+INSERT INTO guard_type_gen(c) VALUES (5), (6), (7);
+INSERT INTO guard_type_expr(c) VALUES (5), (6), (7);
+\set query '/*+ BitmapScan(guard_type_gen) */ SELECT c FROM guard_type_gen WHERE c = 6 OR c = 5::bigint ORDER BY c'
+:explain1run1
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: c
+   ->  YB Bitmap Table Scan on guard_type_gen
+         Recheck Cond: (((bucket_id = (yb_hash_code(6) % 5)) AND (c = 6)) OR (c = '5'::bigint))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on guard_type_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code(6) % 5)) AND (c = 6))
+               ->  Bitmap Index Scan on guard_type_gen_pkey
+                     Index Cond: (c = '5'::bigint)
+(9 rows)
+
+ c 
+---
+ 5
+ 6
+(2 rows)
+
+\set query '/*+ BitmapScan(guard_type_expr) */ SELECT c FROM guard_type_expr WHERE c = 6 OR c = 5::bigint ORDER BY c'
+:explain1run1
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: c
+   ->  YB Bitmap Table Scan on guard_type_expr
+         Recheck Cond: ((((yb_hash_code(c) % 5) = (yb_hash_code(6) % 5)) AND (c = 6)) OR (c = '5'::bigint))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on guard_type_expr_expr_c_idx
+                     Index Cond: (((yb_hash_code(c) % 5) = (yb_hash_code(6) % 5)) AND (c = 6))
+               ->  Bitmap Index Scan on guard_type_expr_expr_c_idx
+                     Index Cond: (c = '5'::bigint)
+(9 rows)
+
+ c 
+---
+ 5
+ 6
+(2 rows)
+
+DROP TABLE guard_type_gen, guard_type_expr;
+-- Positive control.  Here c is varchar and one arm compares it to a text
+-- constant.  text is binary-coercible to varchar (same representation), so
+-- substituting the constant is safe and the derivation SHOULD still happen --
+-- confirming the type requirement above does not over-reject compatible types.
+CREATE TABLE guard_coerce_gen (
+    c varchar,
+    bucket_id int GENERATED ALWAYS AS (yb_hash_code(c) % 5) STORED,
+    PRIMARY KEY (bucket_id ASC, c ASC)
+);
+CREATE TABLE guard_coerce_expr (c varchar);
+CREATE INDEX NONCONCURRENTLY ON guard_coerce_expr ((yb_hash_code(c) % 5) ASC, c ASC);
+INSERT INTO guard_coerce_gen(c) VALUES ('a'), ('b'), ('c');
+INSERT INTO guard_coerce_expr(c) VALUES ('a'), ('b'), ('c');
+SELECT $$
+/*+ BitmapScan(guard_coerce_gen) */ SELECT c FROM guard_coerce_gen WHERE c = 'a'::text OR c = 'b' ORDER BY c
+$$ AS query \gset
+:explain1run1
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: c
+   ->  YB Bitmap Table Scan on guard_coerce_gen
+         Recheck Cond: (((bucket_id = (yb_hash_code('a'::text) % 5)) AND ((c)::text = 'a'::text)) OR ((bucket_id = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on guard_coerce_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code('a'::text) % 5)) AND ((c)::text = 'a'::text))
+               ->  Bitmap Index Scan on guard_coerce_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text))
+(9 rows)
+
+ c 
+---
+ a
+ b
+(2 rows)
+
+SELECT $$
+/*+ BitmapScan(guard_coerce_expr) */ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR c = 'b' ORDER BY c
+$$ AS query \gset
+:explain1run1
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: c
+   ->  YB Bitmap Table Scan on guard_coerce_expr
+         Recheck Cond: ((((yb_hash_code(c) % 5) = (yb_hash_code('a'::text) % 5)) AND ((c)::text = 'a'::text)) OR (((yb_hash_code(c) % 5) = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on guard_coerce_expr_expr_c_idx
+                     Index Cond: (((yb_hash_code(c) % 5) = (yb_hash_code('a'::text) % 5)) AND ((c)::text = 'a'::text))
+               ->  Bitmap Index Scan on guard_coerce_expr_expr_c_idx
+                     Index Cond: (((yb_hash_code(c) % 5) = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text))
+(9 rows)
+
+ c 
+---
+ a
+ b
+(2 rows)
+
+DROP TABLE guard_coerce_gen, guard_coerce_expr;
+-- Operator guard.  The operator must be a real equality, not just one the
+-- planner treats like equality for selectivity (an eqsel operator).  box's "="
+-- is exactly that trap: it compares AREA (and box has no btree equality
+-- opclass), so two different boxes of equal area count as equal.  Thus
+-- "y = '((0,0),(2,2))'" (area 4) matches every area-4 box, not one specific
+-- box.  The bucket hashes y, so deriving a single bucket from that constant
+-- would wrongly drop the other equal-area rows.  The planner must skip the
+-- derivation: the bucket stays out of the Index Cond and both equal-area rows
+-- come back (matched by the recheck, not the index).
+--
+-- Test construction notes:
+-- - each arm also constrains x (a plain indexed column) so the arm is a
+--   candidate for an index path at all; otherwise the derivation step is never
+--   reached;
+-- - the arms use distinct box constants, because a condition common to every
+--   arm is factored out of the OR before per-arm derivation runs (the same
+--   one-step limitation as the transitive case above, #31672), so a shared
+--   "y = <box>" would not be exercised here.
+CREATE TABLE guard_op_gen (
+    id int,
+    x int,
+    y box,
+    bucket_id int GENERATED ALWAYS AS (yb_hash_code(y::text) % 5) STORED,
+    PRIMARY KEY (bucket_id ASC, x ASC, id ASC)
+);
+CREATE TABLE guard_op_expr (id int, x int, y box);
+CREATE INDEX NONCONCURRENTLY ON guard_op_expr ((yb_hash_code(y::text) % 5) ASC, x ASC, id ASC);
+INSERT INTO guard_op_gen(id, x, y) VALUES (1, 1, '((0,0),(4,1))'), (2, 2, '((0,0),(1,4))');
+INSERT INTO guard_op_expr(id, x, y) VALUES (1, 1, '((0,0),(4,1))'), (2, 2, '((0,0),(1,4))');
+SELECT $$
+/*+ BitmapScan(guard_op_gen) */ SELECT id, x FROM guard_op_gen WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id
+$$ AS query \gset
+:explain1run1
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: id
+   ->  YB Bitmap Table Scan on guard_op_gen
+         Storage Filter: (((x = 1) AND (y = '(2,2),(0,0)'::box)) OR ((x = 2) AND (y = '(3,3),(1,1)'::box)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on guard_op_gen_pkey
+                     Index Cond: (x = 1)
+               ->  Bitmap Index Scan on guard_op_gen_pkey
+                     Index Cond: (x = 2)
+(9 rows)
+
+ id | x 
+----+---
+  1 | 1
+  2 | 2
+(2 rows)
+
+SELECT $$
+/*+ BitmapScan(guard_op_expr) */ SELECT id, x FROM guard_op_expr WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id
+$$ AS query \gset
+:explain1run1
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: id
+   ->  YB Bitmap Table Scan on guard_op_expr
+         Storage Filter: (((x = 1) AND (y = '(2,2),(0,0)'::box)) OR ((x = 2) AND (y = '(3,3),(1,1)'::box)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on guard_op_expr_expr_x_id_idx
+                     Index Cond: (x = 1)
+               ->  Bitmap Index Scan on guard_op_expr_expr_x_id_idx
+                     Index Cond: (x = 2)
+(9 rows)
+
+ id | x 
+----+---
+  1 | 1
+  2 | 2
+(2 rows)
+
+DROP TABLE guard_op_gen, guard_op_expr;
 -- Multi-way joins
 CREATE TABLE t1 (x int);
 CREATE TABLE t2 (x int, bucket_id int GENERATED ALWAYS AS (yb_hash_code(x) % 5) STORED,
