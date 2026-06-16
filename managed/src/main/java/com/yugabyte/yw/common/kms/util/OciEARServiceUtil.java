@@ -146,7 +146,33 @@ public class OciEARServiceUtil {
 
   public String getKeyOcid(UUID configUUID) {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
-    return authConfig.path(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText();
+    return resolveKeyOcid(configUUID, authConfig);
+  }
+
+  /**
+   * Resolves the OCI key OCID from the auth config, treating OCI_KEY_NAME as the single source of
+   * truth. If a cached OCI_KEY_OCID is already present it is returned as-is. Otherwise the OCID is
+   * looked up from OCI_KEY_NAME via {@link #getKeyOcidByName}, the key is created if it does not
+   * yet exist, and the resolved OCID is cached back into the supplied auth config.
+   */
+  public String resolveKeyOcid(UUID configUUID, ObjectNode authConfig) {
+    String keyOcid = getSafeText(authConfig, OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
+    if (StringUtils.isNotBlank(keyOcid)) {
+      return keyOcid;
+    }
+
+    String keyName = getSafeText(authConfig, OciKmsAuthConfigField.OCI_KEY_NAME.fieldName);
+    if (StringUtils.isBlank(keyName)) {
+      throw new RuntimeException("OCI_KEY_NAME is required to resolve the OCI KMS key.");
+    }
+
+    String foundOcid = getKeyOcidByName(configUUID, authConfig, keyName);
+    if (StringUtils.isBlank(foundOcid)) {
+      CreateKeyResponse resp = createKey(configUUID, authConfig, keyName);
+      foundOcid = resp.getKey().getId();
+    }
+    authConfig.put(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName, foundOcid);
+    return foundOcid;
   }
 
   public CreateKeyResponse createKey(UUID configUUID, ObjectNode authConfig, String displayName) {
@@ -184,7 +210,7 @@ public class OciEARServiceUtil {
       throw new RuntimeException("Failed to create KMS crypto client");
     }
 
-    String keyOcid = authConfig.path(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText();
+    String keyOcid = resolveKeyOcid(configUUID, authConfig);
 
     EncryptDataDetails encryptDetails =
         EncryptDataDetails.builder()
@@ -209,7 +235,7 @@ public class OciEARServiceUtil {
       throw new RuntimeException("Failed to create KMS crypto client");
     }
 
-    String keyOcid = authConfig.path(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText();
+    String keyOcid = resolveKeyOcid(configUUID, authConfig);
 
     DecryptDataDetails decryptDetails =
         DecryptDataDetails.builder()
@@ -381,9 +407,12 @@ public class OciEARServiceUtil {
     // getCredentials() via StringUtils.isAnyBlank, so we only need the three below here.
     String vaultOcid = getSafeText(formData, OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName);
     String regionStr = getSafeText(formData, OciKmsAuthConfigField.OCI_REGION.fieldName);
-
+    String compartmentId =
+        getSafeText(formData, OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName);
     if (StringUtils.isBlank(vaultOcid)) throw new RuntimeException("OCI_VAULT_OCID is required");
     if (StringUtils.isBlank(regionStr)) throw new RuntimeException("OCI_REGION is required");
+    if (StringUtils.isBlank(compartmentId))
+      throw new RuntimeException("OCI_COMPARTMENT_OCID is required");
 
     // Step 2: parse region locally no network call, catches completely invalid strings early.
     Region region;
@@ -439,20 +468,21 @@ public class OciEARServiceUtil {
           "Failed to access OCI vault '" + vaultOcid + "': " + e.getMessage(), e);
     }
 
-    // Step 5: validate key OCID if provided.
-    // checkKeyExists returns false on 404, throws on 403 or unexpected errors.
-    // validateKeySettings checks lifecycle state (must be Enabled) and algorithm (must be AES).
-    String keyOcid = getSafeText(formData, OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
-    if (StringUtils.isNotBlank(keyOcid)) {
-      if (!checkKeyExists(formData, keyOcid)) {
-        throw new RuntimeException("OCI_KEY_OCID '" + keyOcid + "' does not exist.");
-      }
-      if (!validateKeySettings(formData, keyOcid)) {
-        throw new RuntimeException(
-            "OCI key '"
-                + keyOcid
-                + "' has invalid settings: it must be in Enabled state and use AES algorithm.");
-      }
+    // Step 5: validate the key by name (the single source of truth).
+    // OCI_KEY_NAME is required. If a key with this display name already exists, validate its
+    // settings (lifecycle state must be Enabled and algorithm must be AES). A non-existent name is
+    // allowed here; the key will be created at config-create time. getKeyOcidByName throws if
+    // multiple keys share the same display name.
+    String keyName = getSafeText(formData, OciKmsAuthConfigField.OCI_KEY_NAME.fieldName);
+    if (StringUtils.isBlank(keyName)) {
+      throw new RuntimeException("OCI_KEY_NAME is required");
+    }
+    String keyOcid = getKeyOcidByName(null, formData, keyName);
+    if (StringUtils.isNotBlank(keyOcid) && !validateKeySettings(formData, keyOcid)) {
+      throw new RuntimeException(
+          "OCI key '"
+              + keyName
+              + "' has invalid settings: it must be in Enabled state and use AES algorithm.");
     }
   }
 

@@ -604,6 +604,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             nodes.stream()
                 .filter(n -> n.dedicatedTo == UniverseTaskBase.ServerType.MASTER)
                 .collect(Collectors.toSet()));
+      } else if ((userIntent.masterDeviceInfo != null || userIntent.masterInstanceType != null)
+          && !userIntent.dedicatedNodes) {
+        throw new IllegalStateException(
+            "masterDeviceInfo and masterInstanceType can only be set when dedicated nodes for "
+                + "master and tserver are selected.");
       } else {
         checkStorageType(userIntent.deviceInfo, nodes);
       }

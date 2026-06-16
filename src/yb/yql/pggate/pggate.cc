@@ -1489,13 +1489,13 @@ Status PgApiImpl::DmlBindColumnCondIn(
 Status PgApiImpl::DmlAddRowUpperBound(
     PgStatement* handle, int n_col_values, PgExpr** col_values, bool is_inclusive) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AddRowUpperBound(
-      handle, n_col_values, col_values, is_inclusive);
+      std::span(col_values, n_col_values), is_inclusive);
 }
 
 Status PgApiImpl::DmlAddRowLowerBound(
     PgStatement* handle, int n_col_values, PgExpr** col_values, bool is_inclusive) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AddRowLowerBound(
-      handle, n_col_values, col_values, is_inclusive);
+      std::span(col_values, n_col_values), is_inclusive);
 }
 
 Status PgApiImpl::DmlBindHashCode(
@@ -2364,18 +2364,24 @@ void PgApiImpl::NotifyDeferredTriggersProcessingStarted() {
 Status PgApiImpl::AddExplicitRowLockIntent(
     const PgObjectId& table_id, const Slice& ybctid, const YbcPgExplicitRowLockParams& params,
     const YbcPgTableLocalityInfo& locality_info,
-    std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle,
+    std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle>* handle,
     YbcPgExplicitRowLockErrorInfo& error_info) {
-  ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  RETURN_NOT_OK(explicit_row_lock_buffer().Add(
-      {.rowmark = params.rowmark,
-       .pg_wait_policy = params.pg_wait_policy,
-       .docdb_wait_policy = params.docdb_wait_policy,
-       .database_id = table_id.database_oid},
-      LightweightTableYbctid(table_id.object_oid, ybctid), locality_info, handle, adapter));
-  // TODO(#30984): Add FK reference into the cache in case of optimized SKIP LOCKED
+  ExplicitRowLockErrorInfoAdapter adapter{error_info};
+  ExplicitRowLockBuffer::AddLockData data{
+      .lock_info = {
+          .rowmark = params.rowmark,
+          .pg_wait_policy = params.pg_wait_policy,
+          .docdb_wait_policy = params.docdb_wait_policy,
+          .database_id = table_id.database_oid},
+      .lock_key{table_id.object_oid, ybctid},
+      .table_locality = locality_info,
+      .error_info = adapter};
   if (!handle) {
+    RETURN_NOT_OK(explicit_row_lock_buffer().Add(data));
     AddForeignKeyReference(table_id.object_oid, ybctid);
+  } else {
+    handle->emplace(VERIFY_RESULT(explicit_row_lock_buffer().AddSkippable(data, *handle)));
+    // TODO(#30984): Add FK reference into the cache in case of optimized SKIP LOCKED
   }
   return Status::OK();
 }
@@ -2813,11 +2819,6 @@ Result<SetupPerformOptionsAccessorTag> PgApiImpl::FlushBufferedEntities(
     const PgFlushDebugContext& dbg_ctx) {
   // TODO: Consider flushing FK reference intents also.
   return pg_session_->FlushBufferedEntities(dbg_ctx);
-}
-
-YbcIsExplicitlyLockedRowSkippedCheckHandle
-PgApiImpl::AcquireExplicitlyLockedRowSkippedCheckHandle() {
-  return explicit_row_lock_buffer().AcquireCheckHandle();
 }
 
 Result<bool> PgApiImpl::IsRowSkipped(

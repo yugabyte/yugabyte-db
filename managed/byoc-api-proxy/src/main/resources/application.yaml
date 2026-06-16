@@ -1,6 +1,24 @@
 spring:
   application:
     name: ByocApiProxy
+  lifecycle:
+    timeout-per-shutdown-phase: 2s
+  task:
+    scheduling:
+      thread-name-prefix: byoc-poller-
+      shutdown:
+        await-termination: false
+  # Optional: configure a named "yba" SSL bundle for outbound YBA HTTPS/mTLS.
+  # See https://docs.spring.io/spring-boot/reference/features/ssl.html
+  # ssl:
+  #   bundle:
+  #     pem:
+  #       yba:
+  #         keystore:
+  #           certificate: file:/opt/yugabyte/data/yba-installer/certs/ca_cert.pem
+  #           private-key: file:/opt/yugabyte/data/yba-installer/certs/ca_key.pem
+  #         truststore:
+  #           certificate: file:/opt/yugabyte/data/yba-installer/certs/ca_cert.pem
 
 yba:
   uuid: ${YBA_UUID}

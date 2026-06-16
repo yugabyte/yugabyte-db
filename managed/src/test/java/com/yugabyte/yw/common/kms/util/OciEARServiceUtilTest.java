@@ -15,6 +15,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -63,6 +64,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   private String vaultOcid = "ocid1.vault.oc1..fake";
   private String region = "us-phoenix-1";
   private String keyOcid = "ocid1.key.oc1..fake";
+  private String keyName = "fake-key-name";
   private Customer customer;
   private Universe universe;
 
@@ -87,6 +89,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
         OciEARServiceUtil.OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName, compartmentOcid);
     fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName, vaultOcid);
     fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_REGION.fieldName, region);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_KEY_NAME.fieldName, keyName);
     fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_KEY_OCID.fieldName, keyOcid);
 
     doReturn(fakeclient).when(mockOciEARServiceUtil).getKmsVaultClient(configUUID, fakeAuthConfig);
@@ -134,6 +137,27 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
 
     String result = mockOciEARServiceUtil.getKeyOcid(configUUID);
     assertEquals(keyOcid, result);
+  }
+
+  @Test
+  public void testResolveKeyOcid_cachedOcid_returnsWithoutLookup() {
+    // When an OCID is already cached, it is returned as-is.
+    String result = mockOciEARServiceUtil.resolveKeyOcid(configUUID, fakeAuthConfig);
+    assertEquals(keyOcid, result);
+  }
+
+  @Test
+  public void testResolveKeyOcid_fromName_resolvesAndCaches() {
+    ObjectNode form = fakeAuthConfig.deepCopy();
+    form.remove(OciEARServiceUtil.OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
+
+    doReturn(keyOcid).when(mockOciEARServiceUtil).getKeyOcidByName(any(), any(), eq(keyName));
+
+    String result = mockOciEARServiceUtil.resolveKeyOcid(configUUID, form);
+    assertEquals(keyOcid, result);
+    assertEquals(
+        keyOcid,
+        form.path(OciEARServiceUtil.OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText());
   }
 
   @Test(expected = RuntimeException.class)

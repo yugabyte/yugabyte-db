@@ -7645,6 +7645,9 @@
             "Premium_LRS",
             "PremiumV2_LRS",
             "UltraSSD_LRS",
+            "OCI_Balanced",
+            "OCI_HigherPerformance",
+            "OCI_LowerCost",
             "Local"
           ],
           "type" : "string"
@@ -31951,6 +31954,11 @@
             "ERROR"
           ],
           "type" : "string"
+        },
+        "logRetentionDays" : {
+          "description" : "Number of days to keep gzipped YCQL audit log archives on the node. 0 or unset disables the dedicated audit-log retention pipeline and keeps the default size-based tserver log purge behavior.",
+          "format" : "int32",
+          "type" : "integer"
         }
       },
       "required" : [
@@ -32025,6 +32033,11 @@
         "logRelation" : {
           "description" : "Log relation",
           "type" : "boolean"
+        },
+        "logRetentionDays" : {
+          "description" : "Number of days to keep extracted YSQL audit log archives on the node. 0 or unset disables the dedicated audit-log retention pipeline and keeps the default size-based postgres log purge behavior.",
+          "format" : "int32",
+          "type" : "integer"
         },
         "logRows" : {
           "description" : "Log rows",
@@ -48552,6 +48565,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -48578,6 +48594,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -48620,6 +48639,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -48646,6 +48668,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -48688,6 +48713,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -48714,6 +48742,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"

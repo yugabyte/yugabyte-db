@@ -34,10 +34,16 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 
 static bool
-YbIsRowSkipped(YbcIsExplicitlyLockedRowSkippedCheckHandle handle)
+YbIsRowSkipped(const YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle)
 {
 	bool result = false;
-	HandleExplicitRowLockStatus(YBCIsExplicitlyLockedRowSkipped(handle, &result));
+	/*
+	 * Handle doesn't have a value in case row lock was not buffered (buffering is disabled due
+	 * to some reason for example). In this case the slot definitely was not skipped, no additional
+	 * check is required.
+	 */
+	if (handle->has_value)
+		HandleExplicitRowLockStatus(YBCIsExplicitlyLockedRowSkipped(handle->value, &result));
 	return result;
 }
 
@@ -87,7 +93,7 @@ YbFetchTupleSlot(Tuplestorestate *store, TupleTableSlot *minimal_slot, TupleTabl
  */
 static TupleTableSlot *			/* return: a tuple or NULL */
 ExecLockRowsImpl(PlanState *pstate, bool yb_mode,
-				 const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle)
+				 YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle)
 {
 	LockRowsState *node = castNode(LockRowsState, pstate);
 	TupleTableSlot *slot;
@@ -396,7 +402,7 @@ ExecLockRows(PlanState *pstate)
 			if ((result = YbFetchTupleSlot(buffered,
 										   yb_info->minimal_tuple_slot,
 										   yb_info->result_slot)) &&
-				!YbIsRowSkipped(yb_info->check_handles[yb_info->buffered_slot_index++]))
+				!YbIsRowSkipped(yb_info->check_handles + (yb_info->buffered_slot_index++)))
 			{
 				++yb_info->rows_fetched;
 				return result;
@@ -420,8 +426,7 @@ ExecLockRows(PlanState *pstate)
 		}
 		for (int i = 0; i < max_read_ahead; ++i)
 		{
-			const YbcIsExplicitlyLockedRowSkippedCheckHandle handle =
-				YBCAcquireExplicitlyLockedRowSkippedCheckHandle();
+			YbcIsExplicitlyLockedRowSkippedCheckHandleOptional handle = {};
 			TupleTableSlot *slot = ExecLockRowsImpl(pstate, true, &handle);
 			if (!slot)
 			{
@@ -575,6 +580,7 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	{
 		yb_info->are_row_marks_for_yb_rels = true;
 		if (yb_has_skip_locked &&
+			yb_explicit_row_locking_batch_size > 1 &&
 			yb_explicit_row_lock_skip_locked_max_read_ahead > 1 &&
 			YbIsSkipLockedReadAheadOptimizationAllowed(estate))
 		{
@@ -592,7 +598,7 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 				yb_info->minimal_tuple_slot =
 					ExecInitExtraTupleSlot(estate, desc, &TTSOpsMinimalTuple);
 			yb_info->check_handles =
-				palloc(sizeof(YbcIsExplicitlyLockedRowSkippedCheckHandle) * yb_info->buffered_slots_capacity);
+				palloc(sizeof(YbcIsExplicitlyLockedRowSkippedCheckHandleOptional) * yb_info->buffered_slots_capacity);
 		}
 	}
 	return lrstate;

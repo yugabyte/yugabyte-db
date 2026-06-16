@@ -207,6 +207,15 @@ A report that contains the locations, size, and attributes of every single table
 
 Node agent logs generated in the YugabyteDB nodes (if node agent is enabled).
 
+For more detailed logs, you can change node agent logging by setting the **Node Agent Server Log Level Per Request** Global Runtime Configuration option (config key `yb.node_agent.server.request_log_level`) to one of the following (v2025.2.3.0 and later):
+
+- 0: DEBUG
+- -1 (default) or 1: INFO
+- 2: WARNING
+- 4: ERROR
+
+Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
 #### Core Files
 
 If you select the Core Files option (the default), the support bundle will include all core files generated within the specified date range.

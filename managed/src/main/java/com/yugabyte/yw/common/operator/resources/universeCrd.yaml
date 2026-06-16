@@ -101,8 +101,20 @@ spec:
                                 description: Number of nodes for the zone.
                               preferred:
                                 type: boolean
-                                description: Whether the zone is preferred. Defaults to true.
-                                default: true
+                                description: >
+                                  Deprecated: use leaderPreference instead. Whether the zone
+                                  is preferred for leader placement. Only honored when
+                                  leaderPreference is not set; when neither is set the zone
+                                  defaults to preferred (leaderPreference 1).
+                              leaderPreference:
+                                type: integer
+                                description: >
+                                  Leader affinity priority for the zone. Non-negative
+                                  contiguous integers; 0 means the zone is not prioritized,
+                                  and a lower positive value indicates higher leader priority.
+                                  Multiple zones may share the same value. When set, this
+                                  takes precedence over the deprecated preferred field.
+                                minimum: 0
               gFlags:
                 description: >
                   Configuration flags for the universe.

@@ -111,31 +111,33 @@ YugabyteDB Anywhere universe backups are stored using the following folder struc
 
 ```output
 <storage-address>
-  /sub-directories
-    /<universe-uuid>
-      /<backup-series-name>-<backup-series-uuid>
-        /<backup-type>
-          /<creation-time>
-            /<backup-name>_<uuid>
+  /yugabyte_backup    [NFS backups only]
+    /univ-<universe-name>-<universe-uuid>
+      /<database-name>
+        /<backup-series-name>-<backup-series-uuid>
+          /<backup-type>
+            /<creation-time>
+              /<backup-name>_<uuid>
 ```
 
-For example:
+For example, an S3 backup address would be similar to the following:
 
 ```output
-s3://user_bucket
-  /some/sub/folders
-    /univ-a85b5b01-6e0b-4a24-b088-478dafff94e4
+s3://user_bucket/some/sub/folders
+  /univ-myuniverse-a85b5b01-6e0b-4a24-b088-478dafff94e4
+    /database1_name
       /ybc_backup-92317948b8e444ba150616bf182a061
         /incremental
-          /20204-01-04T12: 11: 03
+          /2024-01-04T12:11:03
             /multi-table-postgres_40522fc46c69404893392b7d92039b9e
 ```
 
 | Component | Description |
 | :-------- | :---------- |
-| Storage address | The name of the bucket as specified in the [storage configuration](../configure-backup-storage/) that was used for the backup. |
-| Sub-directories | The path of the sub-folders (if any) in a bucket. |
-| Universe UUID | The UUID of the universe that was backed up. You can move this folder to different a location, but to successfully restore, do not modify this folder, or any of its contents. |
+| Storage address | The name of the bucket as specified in the [storage configuration](../configure-backup-storage/) that was used for the backup. This can include the path of the sub-folders (if any) in a bucket. For NFS, this will consist only of a path of subfolders. |
+| yugabyte_backup | NFS backups are stored under this directory (YugabyteDB Anywhere automatically adds this directory). The directory _is not present_ for S3, GCS, or Azure storage. For NFS storage, you can move this folder to a different location, but to successfully restore, do not modify this folder, or any of its contents. |
+| Universe name and UUID | The name of the universe and UUID that was backed up (prefixed with `univ-`). For cloud storage (not NFS), you can move this folder to a different location, but to successfully restore, do not modify this folder, or any of its contents. |
+| Database or Keyspace name | The name of the Database or Keyspace that was backed up. |
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
 | Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
 | Creation time | The time the backup was started. |
@@ -174,7 +176,7 @@ Sun, 29 Jun 2025 20:27:05 +0000   Sun, 29 Jun 2025 20:27:11 +0000
 Keyspace Details
 Keyspace 1 Details
 Keyspace   Backup size   Default Location
-yugabyte   63.95 MB      s3://yb-emea-poc-backups/univ-2341a0b9-7b60-4a21-b6f6-6b557e5df036/ybc_backup-b924cda07330487089848e31b61007c4/full/2025-06-29T20:27:05/multi-table-yugabyte_6e7945f5b3e84a7a97eb3d8033b92f9c
+yugabyte   63.95 MB      s3://yb-emea-poc-backups/univ-test-2341a0b9-7b60-4a21-b6f6-6b557e5df036/ybc_backup-b924cda07330487089848e31b61007c4/full/2025-06-29T20:27:05/multi-table-yugabyte_6e7945f5b3e84a7a97eb3d8033b92f9c
 
 Table UUID list
 []
@@ -195,22 +197,28 @@ When moving a backup (for example, for long term storage), be sure to include al
 
 For a successful restore at a later date, none of the sub-components and folder names can be modified (from the sub-directories on down) in the address - only the storage address.
 
-For example, if you have a backup as follows:
+For example, if you have an S3 backup with a storage address of `s3://test_bucket/test` and the following path:
 
 ```output
-s3://test_bucket/test/univ-xyz
+s3://test_bucket/test/univ-xyz/...
 ```
 
 You can move the backup to a location similar to the following:
 
 ```output
-s3://user_bucket/test/univ-xyz
+s3://user_bucket/new-test/univ-xyz/...
 ```
 
-However, you can't move it to a different sub-directory inside the bucket such as the following:
+Similarly, if you have an NFS backup with a storage address of `/mnt/backups/test/` and the following path:
 
 ```output
-s3://user_bucket/new-test/univ-xyz
+/mnt/backups/test/yugabyte_backup/univ-xyz/...
+```
+
+You can move the backup to a location similar to the following:
+
+```output
+/yb-backups/yugabyte_backup/univ-xyz/...
 ```
 
 To restore from a backup that has been moved, you need to use the [Advanced restore procedure](../restore-universe-data/#advanced-restore-procedure).

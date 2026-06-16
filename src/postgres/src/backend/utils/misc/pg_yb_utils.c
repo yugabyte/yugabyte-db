@@ -151,6 +151,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
+#include "yb_internal_conn.h"
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 
@@ -2400,6 +2401,8 @@ int			yb_test_force_parallel = YB_FORCE_PARALLEL_OFF;
  */
 bool		yb_enable_ddl_atomicity_infra = true;
 bool		yb_ddl_rollback_enabled = false;
+
+bool		yb_enable_replication_origin_shared = true;
 
 bool		yb_use_hash_splitting_by_default = true;
 
@@ -9095,13 +9098,21 @@ YbCatalogPreloadRequired()
 bool
 YbUseMinimalCatalogCachesPreload()
 {
+	YbInternalConnKind kind;
+
 	if (*YBCGetGFlags()->ysql_minimal_catalog_caches_preload)
 		return true;
 	if (YbNeedAdditionalCatalogTables())
 		return false;
-	if (yb_is_internal_connection)
-		return true;
-	return false;
+	/*
+	 * Per-kind preload behavior comes from the registry (yb_internal_conn.h).
+	 * Only kinds whose descriptor sets use_minimal_preload = true (e.g. the
+	 * relcache-init builder) run with minimal preload; the rest preload
+	 * normally even though they are tserver-owned internal connections.
+	 */
+	kind = YbLookupInternalConnKindByBackendType(MyBackendType);
+	return kind != YB_INTERNAL_CONN_KIND_NONE &&
+		YbInternalConnKindDescriptors[kind].use_minimal_preload;
 }
 
 /* Comparison function for sorting strings in a List */

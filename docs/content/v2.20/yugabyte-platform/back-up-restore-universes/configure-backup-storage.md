@@ -71,26 +71,6 @@ The following S3 IAM permissions are required:
 "s3:GetBucketLocation"
 ```
 
-## Network File System
-
-You can configure Network File System (NFS) as your backup target, as follows:
-
-1. Navigate to **Configs > Backup > Network File System**.
-
-1. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
-
-    ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
-
-1. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
-
-1. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
-
-1. Click **Save**.
-
-{{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
-To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` on the nodes of universes using the backup configuration. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../back-up-universe-data/) or [restore](../restore-universe-data/).
-{{< /warning >}}
-
 ## Google Cloud Storage
 
 You can configure Google Cloud Storage (GCS) as your backup target.
@@ -160,30 +140,11 @@ For instructions on setting up Workload Identity, see [Use Workload Identity](ht
 
 You can configure Azure as your backup target.
 
-### Configure storage on Azure
+### Prerequisites
 
-1. Create a storage account in Azure, as follows:
-
-    - Navigate to **Portal > Storage Account** and click **Add** (+).
-    - Complete the mandatory fields, such as **Resource group**, **Storage account name**, and **Location**, as per the following illustration:
-
-        ![Azure storage account creation](/images/yp/cloud-provider-configuration-backup-azure-account.png)
-
-1. Create a blob container, as follows:
-
-    - Open the storage account (for example, **storagetestazure**, as shown in the following illustration).
-    - Navigate to **Blob service > Containers > + Container** and then click **Create**.
-
-        ![Azure blob container creation](/images/yp/cloud-provider-configuration-backup-azure-blob-container.png)
-
-1. Generate an SAS Token, as follows:
-
-    - Navigate to **Storage account > Shared access signature**, as shown in the following illustration. (Note that you must generate the SAS Token on the Storage Account, not the Container. Generating the SAS Token on the container will prevent the configuration from being applied.)
-    - Under **Allowed resource types**, select **Container** and **Object**.
-    - Under **Allowed permissions**, select all options as shown.
-    - Click **Generate SAS and connection string** and copy the SAS token.
-
-        ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
+- Azure storage account.
+- [Blob container](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-portal#create-a-container).
+- [SAS Token](https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview?toc=/azure/storage/blobs/toc.json&bc=/azure/storage/blobs/breadcrumb/toc.json).
 
 ### Create an Azure storage configuration
 
@@ -197,13 +158,31 @@ In YugabyteDB Anywhere:
 
 1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
-1. Enter the **Container URL** of the container you created. You can obtain the container URL in Azure by navigating to **Container > Properties**, as shown in the following illustration:
-
-    ![Azure container properties](/images/yp/cloud-provider-configuration-backup-azure-container-properties.png)
+1. Enter the **Container URL** of the container you created. You can obtain the container URL in Azure by navigating to **Container > Properties**.
 
 1. Provide the **SAS Token** you generated. You can copy the SAS Token directly from **Shared access signature** page in Azure.
 
 1. Click **Save**.
+
+## Network File System
+
+You can configure Network File System (NFS) as your backup target, as follows:
+
+1. Navigate to **Configs > Backup > Network File System**.
+
+1. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
+
+    ![NFS Configuration](/images/yp/cloud-provider-configuration-backup-nfs.png)
+
+1. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
+
+1. Complete the **NFS Storage Path** field by entering `/backup` or another directory that provides read, write, and access permissions to the SSH user of the YugabyteDB Anywhere instance.
+
+1. Click **Save**.
+
+{{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
+To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` on the nodes of universes using the backup configuration. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../back-up-universe-data/) or [restore](../restore-universe-data/).
+{{< /warning >}}
 
 ## Local storage
 

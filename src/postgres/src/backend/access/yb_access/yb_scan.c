@@ -5167,7 +5167,7 @@ YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 TM_Result
 YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 			 LockWaitPolicy pg_wait_policy, EState *estate,
-			 const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle)
+			 YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle)
 {
 	const YbcPgExplicitRowLockParams lock_params = {
 		.rowmark = mode,

@@ -2237,7 +2237,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       }
                       if (provider.getCloudCode() != CloudType.aws
                           && provider.getCloudCode() != CloudType.azu
-                          && provider.getCloudCode() != CloudType.gcp) {
+                          && provider.getCloudCode() != CloudType.gcp
+                          && provider.getCloudCode() != CloudType.oci) {
                         return false;
                       }
                       return true;
