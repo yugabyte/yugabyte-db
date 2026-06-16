@@ -900,6 +900,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestRemovalOfColocatedTableFromCDCStream(bool start_removal_from_first_table);
 
+  void TestXClusterTablesNotAddedToStream(
+      bool use_logical_replication_stream, bool enable_xcluster_before_stream_creation);
+
   void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
 
   Status CreateTables(
