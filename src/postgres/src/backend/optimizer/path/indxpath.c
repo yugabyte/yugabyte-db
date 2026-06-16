@@ -42,6 +42,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "optimizer/yb_merge_scan.h"
+#include "parser/parse_coerce.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "rewrite/rewriteHandler.h"
@@ -218,7 +219,8 @@ static Cost yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
 static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
 static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
-								 Relids relids, IndexClauseSet *clauseset);
+								 Relids relids, List *or_clauses,
+								 IndexClauseSet *clauseset);
 static List *yb_truncate_embedded_index_pathkeys(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 IndexOptInfo *index,
@@ -1114,7 +1116,8 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * YB: Add derived join clauses for these specific outer relations
 	 */
 	if (IsYugaByteEnabled() && yb_enable_derived_equalities)
-		yb_derive_equal_cond(root, rel, index, relids, &clauseset);
+		yb_derive_equal_cond(root, rel, index, relids,
+							 NULL /* or_clauses */ , &clauseset);
 
 	/*
 	 * YB: We collect batched paths first to prioritize them in the path queue.
@@ -1219,7 +1222,8 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * index expressions.
 	 */
 	if (IsYugaByteEnabled() && yb_enable_derived_equalities)
-		yb_derive_equal_cond(root, rel, index, NULL /* relids */ , clauses);
+		yb_derive_equal_cond(root, rel, index, NULL /* relids */ ,
+							 NULL /* or_clauses */ , clauses);
 
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
@@ -1989,6 +1993,15 @@ build_paths_for_OR(PlannerInfo *root, RelOptInfo *rel,
 		 * create_indexscan_plan.
 		 */
 		match_clauses_to_index(root, other_clauses, index, &clauseset, NULL);
+
+		/*
+		 * YB: Add derived clauses for indexed generated columns and index
+		 * expressions.  Unlike the non-OR path, we derive from the OR-arm
+		 * clauses directly since they don't form equivalence classes.
+		 */
+		if (IsYugaByteEnabled() && yb_enable_derived_equalities)
+			yb_derive_equal_cond(root, rel, index, NULL /* relids */ ,
+								 clauses, &clauseset);
 
 		/*
 		 * Construct paths if possible.
@@ -5030,12 +5043,203 @@ yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index)
 }
 
 /*
+ * yb_op_is_btree_equality
+ *	  Return true if opno is an equality operator in some btree opfamily.
+ *
+ * This is a semantic equality test.  Testing the restriction estimator
+ * (get_oprrest == F_EQSEL) is not: many non-equality operators borrow eqsel
+ * (e.g. the geometric "same as" ~= operators), and treating such an operator
+ * as equality would derive a binding the clause does not imply.
+ */
+static bool
+yb_op_is_btree_equality(Oid opno)
+{
+	List	   *interpretations = get_op_btree_interpretation(opno);
+	ListCell   *lc;
+	bool		result = false;
+
+	foreach(lc, interpretations)
+	{
+		OpBtreeInterpretation *interp = (OpBtreeInterpretation *) lfirst(lc);
+
+		if (interp->strategy == BTEqualStrategyNumber)
+		{
+			result = true;
+			break;
+		}
+	}
+	list_free_deep(interpretations);
+	return result;
+}
+
+/*
+ * yb_find_eq_const_for_var_in_clauses
+ *	  Search a list of RestrictInfo clauses for an equality "var = const"
+ *	  matching the given Var.  Returns the Const node if found, NULL otherwise.
+ *
+ * Two limitations bound what this derives:
+ * - Binding source: only the passed-in clauses are searched.  For OR arms that
+ *   is the arm's own clauses; the caller's other_clauses (upper-level
+ *   restrictions, where process_duplicate_ors() parks equalities common to all
+ *   arms) and rel->baserestrictinfo are not consulted.
+ * - Direct Var = Const only: chains (z = y, y = x, x = 5) are not followed, and
+ *   a Var = Var equality is not used, though t1.x = t2.x could derive
+ *   f(t1.x) = f(t2.x) for an indexed expression or generated column f.
+ * Widening either would let more OR-arm cases derive.  See issue #31672.
+ */
+static Expr *
+yb_find_eq_const_for_var_in_clauses(Var *var, List *clauses)
+{
+	ListCell   *lc;
+
+	foreach(lc, clauses)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		OpExpr	   *opexpr;
+		Node	   *leftop;
+		Node	   *rightop;
+
+		if (!IsA(rinfo->clause, OpExpr))
+			continue;
+
+		opexpr = (OpExpr *) rinfo->clause;
+		if (list_length(opexpr->args) != 2)
+			continue;
+
+		if (!yb_op_is_btree_equality(opexpr->opno))
+			continue;
+
+		leftop = (Node *) linitial(opexpr->args);
+		rightop = (Node *) lsecond(opexpr->args);
+
+		if (leftop && IsA(leftop, RelabelType))
+			leftop = (Node *) ((RelabelType *) leftop)->arg;
+		if (rightop && IsA(rightop, RelabelType))
+			rightop = (Node *) ((RelabelType *) rightop)->arg;
+
+		/*
+		 * The matched Const is substituted in place of the Var, so two things
+		 * must hold.  Its type must be binary-compatible with the Var's (e.g.
+		 * text for a varchar column); otherwise a cross-type equality such as
+		 * name_col = 'x'::text would splice a text Const where a name Var sat,
+		 * deriving a wrong value and silently dropping rows.  And it must be
+		 * non-null: a Var = NULL binding does not pin the column to a value, so
+		 * substituting it would derive a bogus condition.
+		 */
+		if (IsA(leftop, Var) && IsA(rightop, Const) &&
+			((Var *) leftop)->varno == var->varno &&
+			((Var *) leftop)->varattno == var->varattno &&
+			!((Const *) rightop)->constisnull &&
+			IsBinaryCoercible(((Const *) rightop)->consttype, var->vartype))
+			return (Expr *) rightop;
+
+		if (IsA(rightop, Var) && IsA(leftop, Const) &&
+			((Var *) rightop)->varno == var->varno &&
+			((Var *) rightop)->varattno == var->varattno &&
+			!((Const *) leftop)->constisnull &&
+			IsBinaryCoercible(((Const *) leftop)->consttype, var->vartype))
+			return (Expr *) leftop;
+	}
+	return NULL;
+}
+
+/* Context for yb_substitute_consts_mutator */
+typedef struct
+{
+	Index		relid;
+	List	   *clauses;
+	bool		failed;
+} YbSubstConstsContext;
+
+static Node *
+yb_substitute_consts_mutator(Node *node, void *context)
+{
+	YbSubstConstsContext *ctx = (YbSubstConstsContext *) context;
+
+	if (node == NULL || ctx->failed)
+		return NULL;
+
+	if (IsA(node, Var))
+	{
+		Var		   *var = (Var *) node;
+
+		if (var->varno == ctx->relid && var->varattno > 0)
+		{
+			Expr	   *constval =
+				yb_find_eq_const_for_var_in_clauses(var, ctx->clauses);
+
+			if (constval)
+				return (Node *) copyObject(constval);
+
+			ctx->failed = true;
+			return NULL;
+		}
+	}
+
+	return expression_tree_mutator(node, yb_substitute_consts_mutator, context);
+}
+
+/*
+ * yb_try_derive_equal_from_clauses
+ *	  Try to derive an equality clause for an index column by substituting
+ *	  Var = Const bindings from the given clause list into the generation
+ *	  expression.  Returns a RestrictInfo if successful, NULL otherwise.
+ *
+ * This is used for OR-arm clauses which don't form equivalence classes.
+ */
+static RestrictInfo *
+yb_try_derive_equal_from_clauses(PlannerInfo *root, Index relid,
+								 Expr *inferrable_expr, Expr *generation_expr,
+								 Oid opfamily, List *clauses)
+{
+	YbSubstConstsContext context;
+	Expr	   *substituted;
+	OpExpr	   *derived_clause;
+
+	context.relid = relid;
+	context.clauses = clauses;
+	context.failed = false;
+
+	substituted = (Expr *)
+		yb_substitute_consts_mutator((Node *) generation_expr, &context);
+	if (context.failed || substituted == NULL)
+		return NULL;
+
+	/*
+	 * Build the clause and its RestrictInfo with the same helpers as the
+	 * equivalence-class path, so the derived qual carries the query's security
+	 * level and is run through check_mergejoinable/check_batchable.
+	 * make_simple_restrictinfo would instead hardcode security_level 0.
+	 */
+	derived_clause = yb_create_derived_clause(inferrable_expr, substituted,
+											  opfamily);
+	if (derived_clause == NULL)
+		return NULL;
+
+	/*
+	 * Only a Const is substituted for the Var, so the derived clause references
+	 * just this relation: it is single-rel with no nullable relids.
+	 */
+	return yb_make_derived_restrictinfo(root, derived_clause,
+										NULL);	/* nullable_relids */
+}
+
+/*
  * yb_derive_equal_cond
- *   Add derived clauses for indexed generated columns and index expressions
+ *	  Add derived clauses for indexed generated columns and index expressions.
+ *
+ * When or_clauses != NULL (build_paths_for_OR case), derives from Var = Const
+ * bindings in those clauses directly, since individual OR arms don't create
+ * equivalence classes.
+ *
+ * When or_clauses == NULL, derives from equivalence classes via
+ * yb_try_derive_equal_from_ec, handling both restriction (relids == NULL) and
+ * join (relids != NULL) cases.
  */
 static void
 yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 					 IndexOptInfo *index, Relids relids,
+					 List *or_clauses,
 					 IndexClauseSet *clauseset)
 {
 	Relids		outer_relids = NULL;
@@ -5048,7 +5252,7 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 		return;
 
 	/* for joins, compute outer relations */
-	if (relids != NULL)
+	if (or_clauses == NULL && relids != NULL)
 	{
 		outer_relids = bms_difference(relids, rel->relids);
 		if (bms_is_empty(outer_relids))
@@ -5099,28 +5303,48 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 											   attr->atttypmod, attr->attcollation, 0);
 		}
 
-		if (outer_relids == NULL)
+		if (or_clauses != NULL)
 		{
-			RestrictInfo *rinfo = yb_try_create_derived_clause(root, rel->relid, 0,
-															   inferrable_expr,
-															   generation_expr,
-															   index->opfamily[i]);
+			/* OR-arm: derive from clause-level Var = Const bindings */
+			RestrictInfo *rinfo =
+				yb_try_derive_equal_from_clauses(root,
+												 rel->relid,
+												 inferrable_expr,
+												 generation_expr,
+												 index->opfamily[i],
+												 or_clauses);
+
+			if (rinfo)
+				rinfos = list_make1(rinfo);
+		}
+		else if (outer_relids == NULL)
+		{
+			/* restriction: derive from equivalence classes */
+			RestrictInfo *rinfo =
+				yb_try_derive_equal_from_ec(root,
+											rel->relid,
+											0,	/* target_rti */
+											inferrable_expr,
+											generation_expr,
+											index->opfamily[i]);
 
 			if (rinfo)
 				rinfos = list_make1(rinfo);
 		}
 		else
 		{
+			/* join: derive from equivalence classes for each outer rel */
 			int			outer_relid = -1;
 
 			while ((outer_relid = bms_next_member(outer_relids, outer_relid)) >= 0)
 			{
-				RestrictInfo *rinfo = yb_try_create_derived_clause(root,
-																   rel->relid,
-																   (Index) outer_relid,
-																   inferrable_expr,
-																   generation_expr,
-																   index->opfamily[i]);
+				RestrictInfo *rinfo =
+					yb_try_derive_equal_from_ec(root,
+												rel->relid,
+												(Index) outer_relid,
+												inferrable_expr,
+												generation_expr,
+												index->opfamily[i]);
 
 				if (rinfo)
 					rinfos = lappend(rinfos, rinfo);
