@@ -961,8 +961,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       if (taskParams().isReadOnlyCluster) {
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
       } else {
-        overrides.put(
-            "replicas", ImmutableMap.of("tserver", numNodes, "master", replicationFactor));
+        // When full move is progress, the userIntent.replicationFactor will not reflect the
+        // correct replication factor for master, so we need to use replicationFactorZone for
+        // master replicas in that case.
+        int masterReplicas =
+            taskParams().fullMoveParams != null ? replicationFactorZone : replicationFactor;
+        overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", masterReplicas));
       }
     }
 
