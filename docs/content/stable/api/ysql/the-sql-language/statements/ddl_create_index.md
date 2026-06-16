@@ -49,15 +49,17 @@ If the table is colocated, its index is also colocated; if the table is not colo
 
 ### Partitioned indexes
 
-#### Creating indexes concurrently on partitioned tables
-
 Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
 
-- Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
-- [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
-- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)). As a workaround, you can use the [ONLY](#only) keyword to create indexes on child partitions separately.
+- The indexes need to be created [CONCURRENTLY](#concurrently): concurrent builds for indexes on partitioned tables aren't supported.
+- [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used and you want to create the index separately on each partition to customize the tablespace in which each index is created.
 
-When recursion is disabled using ONLY, the index is created in an INVALID state on only the (parent) partitioned table. To make the index valid, corresponding indexes have to be created on each of the existing partitions and attached to the parent index using `ALTER INDEX parent_index ... ATTACH PARTITION child_index`. For example:
+#### Creating indexes concurrently on partitioned tables
+
+Begin by creating the index on the (parent) partitioned table using the [ONLY](#only) keyword.
+The index is created in an INVALID state on only the (parent) partitioned table.
+To make the index valid, corresponding indexes have to be created on each of the existing partitions and attached to the parent index using `ALTER INDEX parent_index ... ATTACH PARTITION child_index`.
+For example:
 
 ```sql
 CREATE TABLE parent_partition(c1 int, c2 int) PARTITION BY RANGE (c1);
@@ -102,10 +104,13 @@ Indexes:
 Number of partitions: 2 (Use \d+ to list them.)
 ```
 
+Once all partitions successfully create their indexes, the partitioned index should automatically be promoted out of the INVALID state.
+
 #### Recreating unique index constraints concurrently on partitioned tables
 
 Suppose you have a partitioned table where the parent has a unique constraint.
-To recreate indexes, you should avoid directly creating an index on the partitioned table (parent table) because that cannot use `CONCURRENTLY`.
+To recreate indexes, you should avoid directly creating a replacement index on the (parent) partitioned table if it is concurrently taking writes because partitioned tables cannot use [CONCURRENTLY](#concurrently).
+Furthermore, if you only want to recreate a subset of the partitions' indexes, recreating the (parent) partitioned index is wasteful.
 Follow these steps to recreate a partition index online:
 
 ```plpgsql
