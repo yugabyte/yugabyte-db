@@ -3677,7 +3677,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)
             << correct_expiry_time.time_since_epoch().count();
 
   // we need to ensure the initial leader get's back leadership
-  ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
+  ASSERT_OK(StepDownLeader(first_leader_index, tablets[0].tablet_id()));
   LOG(INFO) << "Changed leadership back to the first leader TServer";
 
   // Call the test RPC to get last active time of the current leader (original), and it should
