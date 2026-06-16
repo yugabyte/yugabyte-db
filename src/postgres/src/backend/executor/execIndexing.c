@@ -792,8 +792,9 @@ YbIndexKeyColumnsModifiedByPkeyUpdate(Relation indexRelation,
 		 * we do a DELETE+INSERT unnecessarily, but this favors safety
 		 * over speed. It would be possible to use something like
 		 * FormIndexDatum to look up the actual values, but that's an
-		 * expensive operation that would need to be optimized itself
-		 * if we were to call it very frequently.
+		 * expensive operation since it needs to compute the actual expression
+		 * that would need to be optimized itself if we were to call it
+		 * very frequently.
 		 */
 		if (attnum <= 0 || slot_attisnull(slot, attnum))
 			return true;
@@ -1063,8 +1064,8 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		}
 
 		/*
-		 * A base table primary key update can modify hidden index key columns
-		 * even when the user-visible index key columns are unchanged. Non-unique
+		 * A base table primary key update can modify system-defined index key columns
+		 * even when the user-defined index key columns are unchanged. Non-unique
 		 * indexes use ybidxbasectid as part of the index row key. Unique indexes
 		 * that use NULLS DISTINCT semantics store ybuniqueidxkeysuffix as the base
 		 * table ybctid whenever any key column is NULL.
