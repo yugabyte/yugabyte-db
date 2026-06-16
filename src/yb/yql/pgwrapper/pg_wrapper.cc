@@ -490,6 +490,9 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_mage, false,
                            "NOTE: This is for internal use only.");
 TAG_FLAG(ysql_yb_enable_mage, hidden);
 
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_pg_duckdb, false,
+    "Enable the use of pg_duckdb YSQL extension.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
@@ -642,6 +645,21 @@ static bool ValidateDocumentDB(const char* flag_name, bool value) {
 
 DEFINE_validator(ysql_enable_documentdb, &ValidateDocumentDB);
 
+static bool ValidatePgDuckDB(const char* flag_name, bool value) {
+#ifndef YB_ENABLE_YSQL_PG_DUCKDB_EXT
+  if (value) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "pg_duckdb YSQL extension is not available in this build type "
+           "(not supported on sanitizer builds).";
+    return false;
+  }
+#endif
+
+  return true;
+}
+
+DEFINE_validator(ysql_yb_enable_pg_duckdb, &ValidatePgDuckDB);
+
 // Keep the value list in sync with `yb_cost_model_options` in `guc.c`.
 DEFINE_validator(ysql_yb_enable_cbo,
     FLAG_IN_SET_VALIDATOR("off", "on", "legacy_mode", "legacy_stats_mode",
@@ -742,6 +760,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
     metricsLibs.push_back("mage");
   }
 
+  if (FLAGS_ysql_yb_enable_pg_duckdb) {
+    metricsLibs.push_back("pg_duckdb");
+  }
+
   vector<string> lines;
   string line;
   while (std::getline(conf_file, line)) {
@@ -762,6 +784,18 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
       MergeSharedPreloadLibraries(value, &metricsLibs);
     } else {
       lines.push_back(value);
+    }
+  }
+
+  // YB: pg_duckdb is a preview feature; enforce its opt-in here. If ysql_yb_enable_pg_duckdb is
+  // off, strip pg_duckdb from shared_preload_libraries (even if injected via ysql_pg_conf_csv).
+  if (!FLAGS_ysql_yb_enable_pg_duckdb) {
+    auto new_end = std::remove(metricsLibs.begin(), metricsLibs.end(), "pg_duckdb");
+    if (new_end != metricsLibs.end()) {
+      LOG(WARNING) << "Ignoring pg_duckdb in shared_preload_libraries: pg_duckdb is a preview "
+                   << "feature and requires the ysql_yb_enable_pg_duckdb preview flag (listed in "
+                   << "--allowed_preview_flags_csv) to be enabled.";
+      metricsLibs.erase(new_end, metricsLibs.end());
     }
   }
 
