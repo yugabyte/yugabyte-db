@@ -376,6 +376,11 @@ public class Commissioner {
     if (taskInfo.getTaskParams().has("metricsExportConfig")) {
       details.set("metricsExportConfig", taskInfo.getTaskParams().get("metricsExportConfig"));
     }
+    // Add modifiedExportTypes (telemetry export configure task) so the UI can show which
+    // telemetry config types are being modified while the task is in progress.
+    if (taskInfo.getTaskParams().has("modifiedExportTypes")) {
+      details.set("modifiedExportTypes", taskInfo.getTaskParams().get("modifiedExportTypes"));
+    }
 
     responseJson.set("details", details);
 
