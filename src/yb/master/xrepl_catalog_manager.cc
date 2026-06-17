@@ -2238,6 +2238,10 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
     return false;
   }
 
+  if (IsInternalTableToBeExcludedFromCDCSDKStream(lock)) {
+    return false;
+  }
+
   if (!table_info->IsUserTable(lock)) {
     // Non-user tables like indexes, system tables etc should not be added as they are not
     // supported for streaming.
@@ -2245,6 +2249,13 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
   }
 
   return true;
+}
+
+bool CatalogManager::IsInternalTableToBeExcludedFromCDCSDKStream(
+    const TableInfo::ReadLock& lock) const {
+  // xCluster DDL replication tables (yb_xcluster_ddl_replication.ddl_queue and .replicated_ddls)
+  // drive xCluster DDL replication.
+  return lock->IsXClusterDDLReplicationTable();
 }
 
 /*

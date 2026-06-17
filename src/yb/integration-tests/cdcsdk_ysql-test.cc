@@ -12635,5 +12635,68 @@ TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIndex) {
   ASSERT_FALSE(index_tablet_peer->is_under_cdc_sdk_replication());
 }
 
+// Testing that XCluster DDL replication tables (yb_xcluster_ddl_replication.ddl_queue,
+// yb_xcluster_ddl_replication.replicated_ddls) don't get added to CDCSDK streams and their
+// cdc_state entries don't get created, since those tables are not eligible for CDC.
+void CDCSDKYsqlTest::TestXClusterTablesNotAddedToStream(
+    bool use_logical_replication_stream, bool enable_xcluster_before_stream_creation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  ASSERT_OK(
+      SetUpWithParams(/* replication_factor */ 1, /* num_masters */ 1, /* colocated */ false));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  if (enable_xcluster_before_stream_creation) {
+    ASSERT_OK(conn.Execute("CREATE EXTENSION yb_xcluster_ddl_replication"));
+  }
+
+  auto stream_id = use_logical_replication_stream
+                       ? ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot())
+                       : ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  if (!enable_xcluster_before_stream_creation) {
+    ASSERT_OK(conn.Execute("CREATE EXTENSION yb_xcluster_ddl_replication"));
+  }
+
+  const size_t expected_state_table_entries =
+      use_logical_replication_stream ? kNumberOfBaseCdcStateEntriesForLogicalStream : 0;
+  const size_t expected_qualified_count =
+      use_logical_replication_stream ? kNumberOfCatalogTablesBeingPolledByCDC : 0;
+
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, expected_state_table_entries, expected_qualified_count,
+      /* unqualified_table_ids_count */ 0,
+      /* timeout */ 30 * kTimeMultiplier,
+      "Timed out asserting that xCluster DDL replication tables were not added to stream"));
+}
+
+TEST_F(
+    CDCSDKYsqlTest, TestXClusterTablesNotAddedToLogicalReplicationStreamWithExtensionBeforeStream) {
+  TestXClusterTablesNotAddedToStream(
+      /* use_logical_replication_stream */ true,
+      /* enable_xcluster_before_stream_creation */ true);
+}
+
+TEST_F(CDCSDKYsqlTest, TestXClusterTablesNotAddedToGRPCStreamWithExtensionBeforeStream) {
+  TestXClusterTablesNotAddedToStream(
+      /* use_logical_replication_stream */ false,
+      /* enable_xcluster_before_stream_creation */ true);
+}
+
+TEST_F(
+    CDCSDKYsqlTest, TestXClusterTablesNotAddedToLogicalReplicationStreamWithExtensionAfterStream) {
+  TestXClusterTablesNotAddedToStream(
+      /* use_logical_replication_stream */ true,
+      /* enable_xcluster_before_stream_creation */ false);
+}
+
+TEST_F(CDCSDKYsqlTest, TestXClusterTablesNotAddedToGRPCStreamWithExtensionAfterStream) {
+  TestXClusterTablesNotAddedToStream(
+      /* use_logical_replication_stream */ false,
+      /* enable_xcluster_before_stream_creation */ false);
+}
+
 }  // namespace cdc
 }  // namespace yb
