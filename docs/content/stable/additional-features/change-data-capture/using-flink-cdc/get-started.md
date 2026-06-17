@@ -74,130 +74,139 @@ CREATE TABLE shipments (
 
 ## Configure Docker Compose
 
-Create a `docker-compose.yaml` file with the following content. Replace the environment variable placeholders with your actual values.
+1. Create a `docker-compose.yaml` file with the following content. Replace the environment variable placeholders with your actual values.
 
-```yaml
-services:
-  jobmanager:
-    image: <Docker Image>
-    container_name: flink-jobmanager
-    hostname: jobmanager
-    ports: ["8081:8081", "6123:6123"]
-    command: jobmanager
-    volumes:
-      - ./checkpoints:/opt/flink/checkpoints
-    environment:
-      YB_YSQL_HOST: ${YB_YSQL_HOST}
-      YB_YSQL_PORT: ${YB_YSQL_PORT}
-      SINK_JDBC_URL: ${SINK_JDBC_URL}
-      FLINK_PROPERTIES: |-
-        restart-strategy.type: fixed-delay
-        restart-strategy.fixed-delay.attempts: 800
-        restart-strategy.fixed-delay.delay: 15 s
-        state.checkpoints.dir: file:///opt/flink/checkpoints
-    extra_hosts:
-      - "yb-ysql:${YB_YSQL_HOST}"
+    ```yaml
+    services:
+      jobmanager:
+        image: <Docker Image>
+        container_name: flink-jobmanager
+        hostname: jobmanager
+        ports: ["8081:8081", "6123:6123"]
+        command: jobmanager
+        volumes:
+          - ./checkpoints:/opt/flink/checkpoints
+        environment:
+          YB_YSQL_HOST: ${YB_YSQL_HOST}
+          YB_YSQL_PORT: ${YB_YSQL_PORT}
+          SINK_JDBC_URL: ${SINK_JDBC_URL}
+          FLINK_PROPERTIES: |-
+            restart-strategy.type: fixed-delay
+            restart-strategy.fixed-delay.attempts: 800
+            restart-strategy.fixed-delay.delay: 15 s
+            state.checkpoints.dir: file:///opt/flink/checkpoints
+        extra_hosts:
+          - "yb-ysql:${YB_YSQL_HOST}"    
 
-  taskmanager:
-    image: <Docker Image>
-    container_name: flink-taskmanager
-    hostname: taskmanager
-    depends_on: [jobmanager]
-    command: taskmanager
-    volumes:
-      - ./checkpoints:/opt/flink/checkpoints
-    environment:
-      JOB_MANAGER_RPC_ADDRESS: jobmanager
-      TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "4"
-      YB_YSQL_HOST: ${YB_YSQL_HOST}
-      YB_YSQL_PORT: ${YB_YSQL_PORT}
-      SINK_JDBC_URL: ${SINK_JDBC_URL}
-      FLINK_PROPERTIES: |-
-        restart-strategy.type: fixed-delay
-        restart-strategy.fixed-delay.attempts: 100
-        restart-strategy.fixed-delay.delay: 15 s
-        state.checkpoints.dir: file:///opt/flink/checkpoints
-    extra_hosts:
-      - "yb-ysql:${YB_YSQL_HOST}"
-```
+      taskmanager:
+        image: <Docker Image>
+        container_name: flink-taskmanager
+        hostname: taskmanager
+        depends_on: [jobmanager]
+        command: taskmanager
+        volumes:
+          - ./checkpoints:/opt/flink/checkpoints
+        environment:
+          JOB_MANAGER_RPC_ADDRESS: jobmanager
+          TASK_MANAGER_NUMBER_OF_TASK_SLOTS: "4"
+          YB_YSQL_HOST: ${YB_YSQL_HOST}
+          YB_YSQL_PORT: ${YB_YSQL_PORT}
+          SINK_JDBC_URL: ${SINK_JDBC_URL}
+          FLINK_PROPERTIES: |-
+            restart-strategy.type: fixed-delay
+            restart-strategy.fixed-delay.attempts: 100
+            restart-strategy.fixed-delay.delay: 15 s
+            state.checkpoints.dir: file:///opt/flink/checkpoints
+        extra_hosts:
+          - "yb-ysql:${YB_YSQL_HOST}"
+    ```
 
-Create a `.env` file in the same directory with the following configuration variables:
+1. Create a `.env` file in the same directory with the following configuration variables:
 
-```sh
-YB_YSQL_HOST=<tserver-ip>
-YB_YSQL_PORT=5433
-SINK_JDBC_URL=jdbc:postgresql://host.docker.internal:5432/postgres?user=postgres&password=postgres
-```
+    ```sh
+    YB_YSQL_HOST=<tserver-ip>
+    YB_YSQL_PORT=5433
+    SINK_JDBC_URL=jdbc:postgresql://host.docker.internal:5432/postgres?user=postgres&password=postgres
+    ```
 
-Start the Flink cluster:
+1. Start the Flink cluster:
 
-```sh
-docker compose up -d
-```
+    ```sh
+    docker compose up -d
+    ```
 
 Verify that both containers are running and the Flink Web UI is accessible at `http://localhost:8081`.
 
 ## Start the streaming job
 
-Start the Flink SQL Client inside the jobmanager container:
+1. Start the Flink SQL Client inside the jobmanager container:
 
-```sh
-docker compose exec jobmanager ./bin/sql-client.sh
-```
+    ```sh
+    docker compose exec jobmanager ./bin/sql-client.sh
+    ```
 
-In the SQL Client, configure the runtime and checkpointing settings, then define the source and sink tables:
+1. In the SQL Client, configure the runtime and checkpointing settings:
 
-```sql
-SET 'execution.runtime-mode'                      = 'streaming';
-SET 'execution.checkpointing.interval'            = '60 s';
-SET 'execution.checkpointing.timeout'             = '10 min';
+    ```sql
+    SET 'execution.runtime-mode'                      = 'streaming';
+    SET 'execution.checkpointing.interval'            = '60 s';
+    SET 'execution.checkpointing.timeout'             = '10 min';
+    ```
 
--- Source table: YugabyteDB via postgres-cdc connector
-CREATE TABLE yb_shipments (
-  shipment_id INT,
-  order_id    INT,
-  origin      STRING,
-  destination STRING,
-  is_arrived  BOOLEAN,
-  PRIMARY KEY (shipment_id) NOT ENFORCED
-) WITH (
-  'connector'              = 'postgres-cdc',
-  'hostname'               = '<tserver-ip>',
-  'port'                   = '5433',
-  'username'               = 'yugabyte',
-  'password'               = 'yugabyte',
-  'database-name'          = 'yugabyte',
-  'schema-name'            = 'public',
-  'table-name'             = 'shipments',
-  'slot.name'              = 'flink',
-  'decoding.plugin.name'   = 'pgoutput',
-  'debezium.database.sslmode'    = 'require',
-  'debezium.database.sslrootcert' = '/opt/yb-ysql-ca/ca.crt'
-);
+1. Define the source YugabyteDB table via postgres-cdc connector:
 
--- Sink table: PostgreSQL via JDBC connector
-CREATE TABLE pg_shipments (
-  shipment_id INT,
-  order_id    INT,
-  origin      STRING,
-  destination STRING,
-  is_arrived  BOOLEAN,
-  PRIMARY KEY (shipment_id) NOT ENFORCED
-) WITH (
-  'connector'  = 'jdbc',
-  'url'        = 'jdbc:postgresql://<sink-host>:5432/postgres',
-  'table-name' = 'shipments',
-  'username'   = 'your_user',
-  'password'   = 'your_password'
-);
+    ```sql
+    CREATE TABLE yb_shipments (
+      shipment_id INT,
+      order_id    INT,
+      origin      STRING,
+      destination STRING,
+      is_arrived  BOOLEAN,
+      PRIMARY KEY (shipment_id) NOT ENFORCED
+    ) WITH (
+      'connector'              = 'postgres-cdc',
+      'hostname'               = '<tserver-ip>',
+      'port'                   = '5433',
+      'username'               = 'yugabyte',
+      'password'               = 'yugabyte',
+      'database-name'          = 'yugabyte',
+      'schema-name'            = 'public',
+      'table-name'             = 'shipments',
+      'slot.name'              = 'flink',
+      'decoding.plugin.name'   = 'pgoutput',
+      'debezium.database.sslmode'    = 'require',
+      'debezium.database.sslrootcert' = '/opt/yb-ysql-ca/ca.crt'
+    );
+    ```
 
--- Start the streaming job
-INSERT INTO pg_shipments SELECT * FROM yb_shipments;
-```
+1. Define the sink PostgreSQL table via JDBC connector:
 
-{{< note title="decoding.plugin.name" >}}
+    ```sql
+    CREATE TABLE pg_shipments (
+      shipment_id INT,
+      order_id    INT,
+      origin      STRING,
+      destination STRING,
+      is_arrived  BOOLEAN,
+      PRIMARY KEY (shipment_id) NOT ENFORCED
+    ) WITH (
+      'connector'  = 'jdbc',
+      'url'        = 'jdbc:postgresql://<sink-host>:5432/postgres',
+      'table-name' = 'shipments',
+      'username'   = 'your_user',
+      'password'   = 'your_password'
+    );
+    ```
+
+1. Start the streaming job:
+
+    ```sql
+    INSERT INTO pg_shipments SELECT * FROM yb_shipments;
+    ```
+
+    {{< note title="decoding.plugin.name" >}}
 Always set `decoding.plugin.name` to `pgoutput`. YugabyteDB does not support the `decoderbufs` plugin that Flink CDC uses by default.
-{{< /note >}}
+    {{< /note >}}
 
 ## Validate end-to-end propagation
 

@@ -39,35 +39,23 @@ The Flink CDC integration involves a three-stage streaming pipeline:
 
 ## Use Flink CDC
 
-Flink CDC with YugabyteDB is {{<tags/feature/tp idea="2658">}}. To enable the feature, do the following steps:
-
-1. Prepare YugabyteDB: Create a publication and logical replication slot, and tune CDC WAL retention so the slot can survive expected consumer downtime (see [Best practices](#best-practices)).
-1. Deploy connector JARs: Install the `postgres-cdc` and JDBC connector JARs on your Flink cluster (see [Get started](./get-started/) for an example layout).
-1. Submit the Flink job: Define source and sink tables in the Flink SQL Client and run a streaming `INSERT INTO … SELECT …` job (see [Initiate the streaming job](./get-started/#initiate-the-streaming-job)).
-
-To disable the feature, you have to cancel the Flink job. Optionally, drop the publication and replication slot when you no longer need change capture on the database. See [Disable the pipeline](using-flink-cdc/get-started/#disable-the-pipeline).
-
-### Required YugabyteDB SQL setup
-
-After you create source tables in YugabyteDB, run the following in `ysqlsh` to create the publication and logical replication slot used by the Flink `postgres-cdc` connector:
-
-```sql
-CREATE PUBLICATION dbz_publication FOR ALL TABLES;
-SELECT * FROM pg_create_logical_replication_slot('flink', 'pgoutput');
-```
-
-Use a unique slot name for each Flink pipeline. The [Get started](./get-started/) tutorial shows a full example, including sample source tables and connector configuration.
-
-### Steps
-
-At a high level, a YugabyteDB-to-downstream Flink CDC pipeline looks like this:
+Flink CDC with YugabyteDB is {{<tags/feature/tp idea="2658">}}. At a high level, a YugabyteDB-to-downstream Flink CDC pipeline looks like this:
 
 1. Start a YugabyteDB cluster and note the IP address of a YB-TServer node that Flink can reach.
-1. Create source tables, then create the publication and logical replication slot (see [Required YugabyteDB SQL setup](#required-yugabytedb-sql-setup)).
+1. Create source tables in YugabyteDB, and run the following in `ysqlsh` to create the publication and logical replication slot used by the Flink `postgres-cdc` connector:
+
+    ```sql
+    CREATE PUBLICATION dbz_publication FOR ALL TABLES;
+    SELECT * FROM pg_create_logical_replication_slot('flink', 'pgoutput');
+    ```
+
+    Use a unique slot name for each Flink pipeline, and tune CDC WAL retention so the slot can survive expected consumer downtime (see [Best practices](#best-practices)).
 1. Deploy a Flink cluster with the `postgres-cdc` and JDBC connector JARs (see [Get started](./get-started/)).
 1. Open the Flink SQL Client and define a `postgres-cdc` source table and a sink table.
-1. Submit the streaming job: `INSERT INTO <sink> SELECT * FROM <yb_source>;`.
+1. Submit the Flink job: Define source and sink tables in the Flink SQL Client and run a streaming `INSERT INTO … SELECT …` job (see [Initiate the streaming job](./get-started/#initiate-the-streaming-job)).
 1. Validate that INSERT, UPDATE, and DELETE operations propagate end-to-end, and monitor the job at the Flink Web UI (for example, `http://localhost:8081`).
+
+To disable the feature, you have to cancel the Flink job. Optionally, drop the publication and replication slot when you no longer need change capture on the database. See [Disable the pipeline](using-flink-cdc/get-started/#disable-the-pipeline).
 
 ## Get started
 
