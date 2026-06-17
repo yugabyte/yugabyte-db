@@ -937,7 +937,6 @@ class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
       GTEST_SKIP() << "Test requires YBC";
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_anonymizer) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_yb_controller) = true;
     YBBackupDuringDdl::SetUp();
     CreateDatabase(kBackupSourceDbName);
   }
