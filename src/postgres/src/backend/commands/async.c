@@ -163,6 +163,7 @@
 #include "replication/slot.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 
 /*
@@ -705,6 +706,7 @@ static void ybSignalAllListeners(void);
 
 /* YB: common helper functions */
 static void ybListenNotifyPreChecks(void);
+static void ybRejectListenInTimeTravelSession(void);
 static const char *ybNotifsReplicationSlotName(void);
 static Relation ybNotificationsRel(void);
 static Oid	ybNotificationsRelId(void);
@@ -1011,6 +1013,7 @@ void
 Async_Listen(const char *channel)
 {
 	ybListenNotifyPreChecks();
+	ybRejectListenInTimeTravelSession();
 
 	if (Trace_notify)
 		elog(DEBUG1, "Async_Listen(%s,%d)", channel, MyProcPid);
@@ -1330,6 +1333,8 @@ Exec_ListenPreCommit(void)
 	QueuePosition head;
 	QueuePosition max;
 	BackendId	prevListener;
+
+	Assert(yb_read_time == 0);
 
 	/*
 	 * Nothing to do if we are already listening to something, nor if we
@@ -3677,6 +3682,48 @@ ybSignalAllListeners(void)
 
 	pfree(pids);
 	pfree(ids);
+}
+
+/*
+ * SET LOCAL yb_read_time TO 0 within a transaction temporarily hides a
+ * non-zero session value, letting LISTEN succeed here.  After COMMIT the
+ * session value is restored, leaving the session in an inconsistent state
+ * (LISTEN active with non-zero yb_read_time). This edge case is not blocked.
+ */
+static void
+ybRejectListenInTimeTravelSession(void)
+{
+	if (yb_read_time != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+				 errmsg("LISTEN is not allowed in a time travel session "
+						"(yb_read_time is set to nonzero)")));
+}
+
+static bool
+YbHasPendingListenAction(void)
+{
+	ActionList *alist;
+
+	for (alist = pendingActions; alist != NULL; alist = alist->upper)
+	{
+		ListCell   *lc;
+
+		foreach(lc, alist->actions)
+		{
+			ListenAction *act = (ListenAction *) lfirst(lc);
+
+			if (act->action == LISTEN_LISTEN)
+				return true;
+		}
+	}
+	return false;
+}
+
+bool
+YbHasActiveOrPendingListen(void)
+{
+	return listenChannels != NIL || YbHasPendingListenAction();
 }
 
 static void
