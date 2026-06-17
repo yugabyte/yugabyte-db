@@ -37,11 +37,11 @@ To change storage class, volume count, or volume size on a running universe:
 1. Navigate to your universe and choose **Actions > Edit Universe**. For general edit-universe options, refer to [Modify universe](../edit-universe/).
 2. Edit the volume fields under **Instance Configuration** for TServer and Master as needed.
 
-   <!-- <Need to add screenshot> -->
+   ![Create instance tags](/images/ee/fm-instance-config.png)
 
 3. To edit per-AZ storage overrides, use **Edit storage overrides** in the UI.
 
-   <!-- <Need to add screenshot> -->
+   ![Create instance tags](/images/ee/edit-storage-overrides.png)
 
 4. Click **Save**, confirm the placement summary, and monitor the **Edit Kubernetes Universe** task on the universe [Tasks](../retry-failed-task/) page.
 
@@ -58,6 +58,12 @@ When you add a new AZ through **Actions > Edit Universe**, volume attributes for
 For each AZ, the effective volume attributes are the merge of that AZ's overrides and the base fields `deviceInfo` (TServer) and `masterDeviceInfo` (Master), with AZ overrides taking precedence.
 
 The UI may show `standard` for the storage class in base volume attributes when the field was not populated. The values in use come from AZ overrides merged with the base values.
+
+{{< note title="Modifying base volume settings when AZ overrides exist" >}}
+Because AZ overrides take complete precedence, changes to base volume fields through **Edit Universe > Instance Configuration** only affect AZs that _do not_ have their own overrides configured. If an AZ already has volume overrides defined, the base change has no effect on that zone.
+
+If all AZs in the universe have volume overrides configured, modifying base volume values has no effect, that is, no AZ uses the base settings. To change volume attributes in that case, use **Edit Universe > Edit Storage Overrides** to update the per-AZ overrides directly.
+{{< /note >}}
 
 ### Example
 
