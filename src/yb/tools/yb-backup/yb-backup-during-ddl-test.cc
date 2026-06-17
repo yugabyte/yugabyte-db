@@ -54,7 +54,6 @@ using yb::client::YBTableName;
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_mark_snapshot_as_failed);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_use_yb_controller);
 DECLARE_bool(enable_pg_anonymizer);
 DECLARE_bool(ysql_beta_features);
 
