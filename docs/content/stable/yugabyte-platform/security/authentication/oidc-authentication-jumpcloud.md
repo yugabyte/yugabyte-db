@@ -27,7 +27,7 @@ rightNav:
   </li>
 </ul>
 
-This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL and YCQL database access using JumpCloud as the Identity Provider (IdP).
+This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL and YCQL database access using JumpCloud as the example Identity Provider (IdP), the integration works with any OIDC-compliant provider.
 
 After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
 
@@ -174,7 +174,7 @@ When the flags are set, YugabyteDB configures the `ysql_hba.conf` and `yb_ident.
 
 The `ysql_hba_conf_csv` flag must be set to support using JWTs for authentication. The parameters to include in the configuration file record are as follows:
 
-- `jwt_map` - the user-name map used to translate claim values to database roles. Optional if you aren't using the default Subject claim values.
+- `map` - the user-name map used to translate claim values to database roles. Optional if you aren't using the default Subject claim values.
 - `jwt_issuers` - the first part of the discovery URL (`https://oauth.id.jumpcloud.com/`)
 - `jwt_audiences` - the audience or target app for the token, which in this case is the client ID of the application you registered.
 - `jwt_matching_claim_key` - the email attribute you set (for example, `preferred_username`). Optional if you aren't using the default Subject claim values.
@@ -187,7 +187,7 @@ The following illustration shows an example of setting the `ysql_hba_conf_csv` f
 The following shows an example `ysql_hba_conf_csv` flag configuration for OIDC:
 
 ```sh
-host all all 0.0.0.0/0 jwt_map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://oauth.id.jumpcloud.com/"" jwt_matching_claim_key=""preferred_username""
+host all all 0.0.0.0/0 jwt map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://login.microsoftonline.com/<tenant_id>/v2.0"" jwt_matching_claim_key=""preferred_username""
 ```
 
 For more information on host authentication in YugabyteDB using `ysql_hba_conf_csv`, refer to [Host-based authentication](../../../../secure/authentication/host-based-authentication/).
@@ -342,3 +342,8 @@ curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUI
 ## Manage users and roles
 
 {{< readfile "/stable/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
+
+**Learn more**
+
+- [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
+- [YFTT: OIDC Authentication in YSQL](https://www.youtube.com/watch?v=KJ0XV6OnAnU&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=1)

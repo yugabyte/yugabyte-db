@@ -27,7 +27,7 @@ rightNav:
   </li>
 </ul>
 
-This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL and YCQL database access using Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) as the Identity Provider (IdP).
+This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL and YCQL database access. While the steps use Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) as an example Identity Provider (IdP), the integration works with any OIDC-compliant provider.
 
 After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
 
@@ -220,12 +220,12 @@ The `ysql_hba_conf_csv` flag must be set to support using JWTs for authenticatio
 
 | Parameter | Description |
 | :-------- | :---------- |
-| `jwt_map` | The user-name map used to translate claim values to database roles. Optional if you aren't using the default Subject claim values. |
+| `map` | The user-name map used to translate claim values to database roles. Optional if you aren't using the default Subject claim values. |
 | `jwt_issuers` | The first part of the discovery URL (`login.microsoftonline.com/<tenant_id>/v2.0`). |
 | `jwt_audiences` | The audience or target app for the token, which in this case is the client ID of the application you registered. |
 | `jwt_matching_claim_key` | The email attribute you set (for example, `preferred_username`). Optional if you aren't using the default Subject claim values. |
 | `jwt_jwks_path` | The JSON Web Key Set (JWKS) is a set of keys containing the public keys used to verify any JWT. These can be uploaded as entries in a single file. When configuring the flag in YugabyteDB Anywhere, click **Add JSON web key set (JWKS)** to upload the JWKS. |
-|  `jwt_jwks_url` | The URL where YugabyteDB can retrieve the JWKS for verifying JWTs. This parameter is an alternative to `jwt_jwks_path`. You must set either `jwt_jwks_path` or `jwt_jwks_url` to enable JWT verification in YugabyteDB. |
+| `jwt_jwks_url` | The URL where YugabyteDB can retrieve the JWKS for verifying JWTs. This parameter is an alternative to `jwt_jwks_path`. You must set either `jwt_jwks_path` or `jwt_jwks_url` to enable JWT verification in YugabyteDB. |
 
 The following illustration shows an example of setting the `ysql_hba_conf_csv` flag in YugabyteDB Anywhere:
 
@@ -234,7 +234,7 @@ The following illustration shows an example of setting the `ysql_hba_conf_csv` f
 The following shows an example `ysql_hba_conf_csv` flag configuration for OIDC:
 
 ```sh
-host all all 0.0.0.0/0 jwt_map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://login.microsoftonline.com/<tenant_id>/v2.0"" jwt_matching_claim_key=""preferred_username""
+host all all 0.0.0.0/0 jwt map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://login.microsoftonline.com/<tenant_id>/v2.0"" jwt_matching_claim_key=""preferred_username""
 ```
 
 For more information on host authentication in YugabyteDB using `ysql_hba_conf_csv`, refer to [Host-based authentication](../../../../secure/authentication/host-based-authentication/).
