@@ -152,13 +152,12 @@ Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
 {{< note title="Note" >}}
 Step 4 and the surrounding `BEGIN`/`COMMIT` block rely on two features, both Early Access and available in YugabyteDB {{<release "2025.2">}} and later:
 
-- Object locking, for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true`.
-- Transactional DDL, to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
+- [Object locking](../../../../../explore/transactions/explicit-locking/#enable-table-level-locks), for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true`.
+- [Transactional DDL](../../../../../explore/transactions/transactional-ddl/), to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
   Object locking depends on this flag as well.
 
 It only serves to hold a lock on the parent so that concurrent reads and writes don't miss the partition's data while it is detached.
 If there are no reads or writes against the parent table during the detach, omit Step 4 and run Steps 5 to 8 as individual statements instead.
-Refer to [Enable table-level locks](../../../../../explore/transactions/explicit-locking/#enable-table-level-locks) and [Transactional DDL](../../../../../explore/transactions/transactional-ddl/) for more details.
 {{< /note >}}
 
 ### UNIQUE
