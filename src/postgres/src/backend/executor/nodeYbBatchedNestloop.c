@@ -36,16 +36,21 @@
 #include "access/relation.h"
 #include "executor/execdebug.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeYbBatchedNestloop.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "utils/tuplesort.h"
-
-/* YB includes */
-#include "executor/instrument.h"
 #include "utils/tuplestore.h"
 
-bool		yb_bnl_enable_hashing = true;
+/*
+ * YB_TODO_PG19MERGE: default-disabled until YbBuildTupleHashTableExt is reworked
+ * for the PG19 TupleHashTable refactor (execGrouping.c). The hashing path of the
+ * batched nested loop currently elog(ERROR)s; disabling hashing routes BNL through
+ * its non-hash path so initdb (pg_init_privs INSERT...SELECT) and other BNL queries
+ * work. Re-enable (back to true) once YbBuildTupleHashTableExt is implemented.
+ */
+bool		yb_bnl_enable_hashing = false;
 
 /* Methods to help keep track of outer tuple batches */
 static bool CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext);
@@ -603,8 +608,8 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	data = FindTupleHashEntry(ht,
 							  inner,
 							  eq,
-							  NULL /* hashexpr */,
-							  NULL /* keyColIdx */);
+							  NULL /* hashexpr */ ,
+							  NULL /* keyColIdx */ );
 	if (data == NULL)
 	{
 		/* Inner plan returned a tuple that doesn't match with anything. */
