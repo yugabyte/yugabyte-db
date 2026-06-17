@@ -96,6 +96,25 @@ public class CreateBackup extends UniverseTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
+    boolean ybcBackup =
+        !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
+            && universe.isYbcEnabled()
+            && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
+    // Validate the storage config against the universe here, in the pre-check, so that an unusable
+    // config fails the task before run() creates the Backup row. The BackupPreflightValidate
+    // subtask runs only after the row is persisted, so relying on it would leave behind an orphaned
+    // Backup row that the garbage collector cannot delete (it re-validates the same invalid config
+    // and skips deletion), leaking Backup entries over time. See PLAT-20585.
+    if (ybcBackup) {
+      backupHelper.validateStorageConfigForBackupOnUniverse(
+          params().storageConfigUUID, params().customerUUID, universe);
+    }
+  }
+
+  @Override
   public void run() {
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());

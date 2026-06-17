@@ -1301,6 +1301,12 @@ public class BackupHelper {
    * @param config
    * @param universe
    */
+  public void validateStorageConfigForBackupOnUniverse(
+      UUID storageConfigUUID, UUID customerUUID, Universe universe) {
+    CustomerConfig config = customerConfigService.getOrBadRequest(customerUUID, storageConfigUUID);
+    validateStorageConfigForBackupOnUniverse(config, universe);
+  }
+
   public void validateStorageConfigForBackupOnUniverse(CustomerConfig config, Universe universe) {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
