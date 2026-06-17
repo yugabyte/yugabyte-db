@@ -41,6 +41,7 @@ public final class PgWireProtocol {
   public static final char BE_READY_FOR_QUERY = 'Z';
   public static final char BE_PARSE_COMPLETE = '1';
   public static final char BE_BIND_COMPLETE = '2';
+  public static final char BE_CLOSE_COMPLETE = '3';
   public static final char BE_DATA_ROW = 'D';
   public static final char BE_COMMAND_COMPLETE = 'C';
   public static final char BE_ERROR_RESPONSE = 'E';
@@ -182,6 +183,24 @@ public final class PgWireProtocol {
     d.writeInt(0); // placeholder
     d.writeByte(0); // unnamed portal
     d.writeInt(0); // max rows (0 = unlimited)
+    d.flush();
+    byte[] msg = buf.toByteArray();
+    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
+    return msg;
+  }
+
+  /**
+   * Builds a Close ('C') message for a prepared statement (kind = 'S')
+   * with the given statement name. An empty name closes the unnamed prepared
+   * statement.
+   */
+  public static byte[] buildClosePreparedStatement(String stmtName) throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte('C');
+    d.writeInt(0); // placeholder
+    d.writeByte('S'); // close kind: prepared statement
+    writeString(d, stmtName);
     d.flush();
     byte[] msg = buf.toByteArray();
     ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
