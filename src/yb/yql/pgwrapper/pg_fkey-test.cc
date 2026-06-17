@@ -354,7 +354,9 @@ TEST_F(PgFKeyTest,
 }
 
 // Test checks FK correctness in case of FK check requires type casting.
-// In this case RPC optimization can't be used.
+// RPC optimization is not used in this case because the GUC
+// yb_enable_fkey_batched_docdb_lookup_when_types_mismatch is false by
+// default.
 TEST_F(PgFKeyTest, AddFKConstraintWithTypeCast) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTables(&conn,
