@@ -240,6 +240,15 @@ public final class PgWireProtocol {
     return msg;
   }
 
+  public static byte[] buildCopyDone() throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte('c');
+    d.writeInt(4);
+    d.flush();
+    return buf.toByteArray();
+  }
+
   public static byte[] buildQuery(String query) throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
