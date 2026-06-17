@@ -924,17 +924,28 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		break;
 	case YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME:
 		// YB: Custom packet not required to be forwarded to client.
-		od_backend_evict_server_hashmap(server, "close prepared statement", data, size);
+		if (instance->config.yb_enable_dealloc_reconciliation)
+			yb_backend_register_close_prep_stmt(server, "close prepared statement", data, size);
+		else
+			od_backend_evict_server_hashmap(server, "close prepared statement", data, size);
 		skip_forward_to_client = true;
 		break;
-	case YB_BE_NO_PARSE_PARSE_COMPLETE:
-		/*
-		 * YB: No-op, return ParseComplete instead of YBNoParseParseComplete to client.
-		 * Rewrite type byte in-place so the client sees a standard
-		 * ParseComplete; preserves packet position in the relay iov.
-		 */
-		*data = KIWI_BE_PARSE_COMPLETE;
+	case YB_BE_FORCE_PARSE_COMPLETE: {
+		if (instance->config.yb_enable_dealloc_reconciliation)
+			yb_backend_unregister_close_prep_stmt(server, "force parse complete", data, size);
+		machine_msg_t *pmsg = kiwi_be_write_parse_complete(NULL);
+		if (pmsg == NULL)
+			return relay->error_read;
+		rc = machine_iov_add(relay->iov, pmsg);
+		if (rc == -1) {
+			machine_msg_free(pmsg);
+			od_error(&instance->logger, "force parse complete",
+				 client, server, "out of memory");
+			return relay->error_read;
+		}
+		skip_forward_to_client = true;
 		break;
+	}
 	case YB_BE_PARSE_NO_PARSE_COMPLETE:
 		// YB: Custom parse complete packet not required to be forwarded to client.
 		skip_forward_to_client = true;
@@ -1018,6 +1029,8 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		 * parses were silently dropped after an error -- evict stale entries.
 		 */
 		yb_drain_parse_queue_till_sync(server, client);
+		if (instance->config.yb_enable_dealloc_reconciliation)
+			yb_backend_drain_close_prep_stmts(server, "sync ack");
 		skip_forward_to_client = true;
 		break;
 #ifndef YB_SUPPORT_FOUND
@@ -1817,15 +1830,29 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						    desc.operator_name) == -1)
 						return OD_EOOM;
 				}
-				else { // no-op parse, no need to enqueue desc.operator_name
+				else {
+					/*
+					 * Send a FORCE_PARSE packet instead of a regular Parse. The backend checks
+					 * whether the prepared statement already exists: if not, it allocates one
+					 * and always returns a YBForceParseComplete carrying the statement name.
+					 *
+					 * This is done because if a prepared statement is deallocated and re-prepared
+					 * without an intervening Sync, conn mgr's cached state may be stale, and a
+					 * FORCE_PARSE will be needed to recover.
+					 *
+					 * The parse queue enqueue is skipped here because we needn't remove this entry
+					 * from server hashmap in case of a pipeline error. The next ForceParse will
+					 * parse it transparently.
+					 */
+
 					od_debug(&instance->logger, "parse",
 						 client, server,
-						 "optimized parse, send no-op to server");
+						 "send ForceParse to server");
 					msg = kiwi_fe_write_parse_description(
 						NULL, buf, YB_OD_HASH_64_LEN,
 						desc.description,
 						desc.description_len,
-						YB_KIWI_FE_NO_PARSE_PARSE_COMPLETE);
+						YB_KIWI_FE_FORCE_PARSE);
 				}
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;

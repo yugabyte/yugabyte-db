@@ -189,11 +189,17 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
     "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
     "the backend, which may surface as errors such as 'prepared statement does not exist'.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
     "When enabled, the YSQL Connection Manager stops reading further client packets after "
     "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
     "backend is received, preventing cross-Sync-boundary pipelining. if set to false, there"
     " can be correctness issues with pipelining.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, enable_dealloc_reconciliation, true,
+    "When enabled, the YSQL Connection Manager tracks prepared statements that have been "
+    "deallocated on the backend in a per-server hashmap and defers evicting them from "
+    "server hashmap till Sync boundary. If set to false, there can be correctness issues "
+    "on sending deallocate and parse for same name of prep stmt within Sync boundary.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
@@ -253,6 +259,9 @@ DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
 DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
+
+DEFINE_validator(ysql_conn_mgr_enable_dealloc_reconciliation,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_wait_for_rfq_on_sync));
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {

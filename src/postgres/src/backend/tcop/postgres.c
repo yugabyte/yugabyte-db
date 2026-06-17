@@ -1725,9 +1725,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 				   const char *stmt_name,	/* name for prepared stmt */
 				   Oid *paramTypes, /* parameter types */
 				   int numParams,	/* number of parameters */
-				   CommandDest output_dest, /* where to send output */
-				   bool yb_parse_custom_parse_complete) /* do not send
-													 * ParseComplete */
+				   CommandDest yb_output_dest, /* where to send output */
+				   char yb_firstchar) /* 'p' or 'n' or 'P' */
 {
 	MemoryContext unnamed_stmt_context = NULL;
 	MemoryContext oldcontext;
@@ -1944,14 +1943,27 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	/*
 	 * Send ParseComplete.
 	 *
-	 * YB: Send a custom packet if a Parse was requested by Connection Manager
-	 * without the need for ParseComplete for packet protocol alignment.
+	 * YB: Send a custom packet as requested by Connection Manager.
 	 */
 
-	if (output_dest == DestRemote)
+	if (yb_output_dest == DestRemote)
 	{
-		if (YbIsClientYsqlConnMgr() && yb_parse_custom_parse_complete)
-			pq_putemptymessage('7');
+		if (YbIsClientYsqlConnMgr())
+		{
+			if (yb_firstchar == 'n')
+				pq_puttextmessage('6', stmt_name);
+			else if (yb_firstchar == 'p')
+				pq_putemptymessage('7');
+			else if (yb_firstchar == 'P')
+				pq_putemptymessage('1');
+			else
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("unexpected message type %c for Parse sent by Connection Manager",
+							yb_firstchar)));
+			}
+		}
 		else
 			pq_putemptymessage('1');
 	}
@@ -7078,22 +7090,8 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'n':			/* YB: no-op, return custom ParseComplete */
-				if (!YbIsClientYsqlConnMgr())
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("invalid frontend message type %d",
-									firstchar)));
-				if (whereToSendOutput == DestRemote)
-				{
-					/*
-					 * YB: Send a custom ParseComplete packet to indicate that the server
-					 * has received the no-op parse request.
-					 */
-					pq_putemptymessage('6');
-					pq_flush();
-				}
-				break;
+			case 'n':			/* YB: Force Parse, return YBForceParseComplete */
+				yb_switch_fallthrough();
 			case 'p':			/* YB: parse without ParseComplete */
 				if (!YbIsClientYsqlConnMgr())
 					ereport(FATAL,
@@ -7113,7 +7111,30 @@ PostgresMain(const char *dbname, const char *username)
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
+					/* YB: The stmt_name is read here for all of 'n'/'p'/'P'. */
 					stmt_name = pq_getmsgstring(&input_message);
+
+					if (firstchar == 'n')
+					{
+						/*
+						 * YB: If the prepared statement already exists on the backend,
+						 * parsing is a no-op: return YBForceParseComplete and skip re-parsing.
+						 * Otherwise fall through to (re-)create it and return
+						 * YBForceParseComplete.
+						 */
+						if (FetchPreparedStatement(stmt_name, false) != NULL)
+						{
+							if (whereToSendOutput == DestRemote)
+							{
+								pq_puttextmessage('6', stmt_name);
+								pq_flush();
+							}
+							break;
+						}
+						elog(DEBUG1, "prepared statement \"%s\" does not exist, creating it",
+							stmt_name);
+					}
+
 					query_string = pq_getmsgstring(&input_message);
 					numParams = pq_getmsgint(&input_message, 2);
 					if (numParams > 0)
@@ -7131,7 +7152,7 @@ PostgresMain(const char *dbname, const char *username)
 						exec_parse_message(query_string, stmt_name,
 										   paramTypes, numParams,
 										   whereToSendOutput,
-										   (firstchar == 'p')); /* YB: from
+										   firstchar); /* YB: from
 																 * yb_switch_fallthrough() */
 					}
 					PG_CATCH();
@@ -7286,7 +7307,7 @@ PostgresMain(const char *dbname, const char *username)
 												   NULL /* param_types */ ,
 												   0 /* num_params */ ,
 												   DestNone,
-												   false);	/* yb_parse_custom_parse_complete */
+												   'P');
 
 								/* 2. Redo the Bind step */
 								Portal		portal;
