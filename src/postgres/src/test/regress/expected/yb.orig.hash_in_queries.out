@@ -1114,8 +1114,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=18 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])) AND (h2 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])) AND (h3 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])) AND (h4 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])))
-   Storage Table Read Requests: 122
-   Storage Table Read Ops: 366
+   Storage Table Read Requests: 77
+   Storage Table Read Ops: 231
    Storage Table Rows Scanned: 18
 (5 rows)
 
