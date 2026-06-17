@@ -1425,7 +1425,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           boolean waitForYsql =
               universeNode != null
                   && universeNode.isYsqlServer
-                  && ysqlWaitUniverse.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+                  && ysqlWaitUniverse
+                      .getUniverseDetails()
+                      .getPrimaryCluster()
+                      .userIntent
+                      .enableYSQL;
           if (waitForYsql) {
             createWaitForServersTasks(nodeList, ServerType.YSQLSERVER, ysqlWaitUniverse)
                 .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
