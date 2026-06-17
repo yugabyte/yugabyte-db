@@ -128,9 +128,10 @@ ALTER TABLE child0 ADD CONSTRAINT child0_partition_check
   CHECK (i IS NOT NULL AND i >= 0 AND i < 100000) NOT VALID;
 -- 3. Validate the CHECK (slow, but non-blocking on parent)
 ALTER TABLE child0 VALIDATE CONSTRAINT child0_partition_check;
+
+BEGIN;
 -- 4. Lock the parent to prevent queries from missing the partition's data
 --    while it is detached.
-BEGIN;
 LOCK TABLE parent IN ACCESS EXCLUSIVE MODE;
 -- 5. Detach (fast)
 ALTER TABLE parent DETACH PARTITION child0;
@@ -141,6 +142,7 @@ ALTER TABLE child0 ADD CONSTRAINT child0_i_key UNIQUE USING INDEX child0_i_uniqu
 -- 8. Reattach (fast: CHECK and UNIQUE already satisfy parent)
 ALTER TABLE parent ATTACH PARTITION child0 FOR VALUES FROM (0) TO (100000);
 COMMIT;
+
 -- 9. Drop temporary CHECK constraint
 ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
 ```
@@ -148,15 +150,14 @@ ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
 Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
 
 {{< note title="Note" >}}
-Step 4, and with it the surrounding `BEGIN`/`COMMIT` block, is optional.
-It only serves to hold a lock on the parent so that concurrent reads and writes don't miss the partition's data while it is detached.
-If there are no reads or writes against the parent table during the detach, omit Step 4 and run Steps 5 to 8 as individual statements instead.
-
-When used, this approach relies on two features, both off by default:
+Step 4, and with it, the surrounding `BEGIN`/`COMMIT` block, relies on two features:
 
 - Object locking, for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true` (Early Access, available in YugabyteDB {{<release "2025.2">}} and later).
-- Transactional DDL, to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`. Object locking depends on this flag as well.
+- Transactional DDL, to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
+  Object locking depends on this flag as well.
 
+It only serves to hold a lock on the parent so that concurrent reads and writes don't miss the partition's data while it is detached.
+If there are no reads or writes against the parent table during the detach, omit Step 4 and run Steps 5 to 8 as individual statements instead.
 Refer to [Enable table-level locks](../../../../../explore/transactions/explicit-locking/#enable-table-level-locks) and [Transactional DDL](../../../../../explore/transactions/transactional-ddl/) for more details.
 {{< /note >}}
 
