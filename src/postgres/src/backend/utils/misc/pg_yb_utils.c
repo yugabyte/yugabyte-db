@@ -87,6 +87,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
 #include "catalog/yb_type.h"
+#include "commands/async.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/variable.h"
@@ -6963,6 +6964,12 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		GUC_check_errdetail("Provided timestamp is in the future.");
 		return false;
 	}
+
+	if (value_ull != 0 && YbHasActiveOrPendingListen())
+	{
+		GUC_check_errmsg("yb_read_time cannot be set while LISTEN is active");
+		return false;
+	}
 	return true;
 }
 
@@ -6974,6 +6981,7 @@ assign_yb_read_time(const char *newval, void *extra)
 
 	elog(DEBUG1, "Setting yb_read_time to %s", newval);
 	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
+
 	/*
 	 * Don't refresh the sys caches in case the read time value didn't change.
 	 */
