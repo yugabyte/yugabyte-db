@@ -29,42 +29,19 @@ rightNav:
 
 This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL and YCQL database access using JumpCloud as the example Identity Provider (IdP), the integration works with any OIDC-compliant provider.
 
-After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
+After OIDC is set up, you authenticate with Azure AD, which issues a JSON Web Token (JWT): a short-lived, signed token that proves the user's identity. You then supply this JWT as your database password when connecting to YugabyteDB.
 
 Note that the yugabyte privileged user will continue to exist as a local database user even after OIDC-based authentication is enabled for a universe.
 
-**Learn more**
 
-- [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
-- [YFTT: OIDC Authentication in YSQL](https://www.youtube.com/watch?v=KJ0XV6OnAnU&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=1)
 
-## OIDC callback URI
+## Configure your JumpCloud Identity provider
 
-YugabyteDB Anywhere supports callback (redirect) URIs in one of the following formats:
+The JumpCloud IdP configuration includes application configuration (registering YugabyteDB Anywhere in the JumpCloud tenant) and configuring JumpCloud to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
 
-- Query (default):
+Before configuring, note the [YugabyteDB Anywhere callback URI](../../../administer-yugabyte-platform/oidc-authentication/#oidc-callback-uri); you'll need to provide it as the redirect URI when registering your application in JumpCloud.
 
-    `https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient`
-
-- Path:
-
-    `https://<YBA_IP_Address>/api/v1/callback/OidcClient`
-
-    Note that Path is only available in v2025.2.4.0 and later.
-
-This is where the IdP redirects after authentication.
-
-Only one format is supported at a time. To change the URI format, set the **OIDC Callback Mode** Global Runtime Configuration option (config key `yb.security.oidc_callback_mode`). Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
-
-## Set up OIDC with JumpCloud on YugabyteDB Anywhere
-
-To enable OIDC authentication with JumpCloud, you need to do the following:
-
-- Create an app registration in JumpCloud - The JumpCloud IdP configuration includes application registration (registering YugabyteDB Anywhere in the JumpCloud tenant) and configuring JumpCloud to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
-- Configure OIDC in YugabyteDB Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the sign in screen.
-- Configure the universe to use OIDC - You enable OIDC for universes by setting authentication flags for YSQL or YCQL database access. For YSQL, the database uses PostgreSQL `yb_hba.conf` and `yb_ident.conf` files to translate authentication rules into database roles. For YCQL, you set YB-TServer flags such as `ycql_jwt_conf` and optional `ycql_ident_conf_csv` identity mapping rules.
-
-### Create an application in JumpCloud
+### Configure an application in JumpCloud
 
 To use JumpCloud for your IdP, do the following:
 
@@ -82,7 +59,7 @@ To use JumpCloud for your IdP, do the following:
 
     Under **SSO > Endpoint Configuration**, configure the following:
 
-    - **Redirect URIs**. Enter the [OIDC callback URI](#oidc-callback-uri). This is where the IdP redirects after authentication.
+    - **Redirect URIs**. Enter the [OIDC callback URI](../../../administer-yugabyte-platform/oidc-authentication/#oidc-callback-uri). This is where the IdP redirects after authentication.
     - **Client Authentication Type**. Select **Client Secret Post**.
     - **Login URL**. Enter `https://<your-YugabyteDB-Anywhere-IP-address>/login`.
 
@@ -104,11 +81,13 @@ To [configure](#configure-yugabytedb-anywhere) JumpCloud federated authenticatio
 
 For more information, refer to the [JumpCloud](https://jumpcloud.com/support/sso-with-oidc) documentation.
 
-### Configure YugabyteDB Anywhere
+## Configure OIDC in YugabyteDB Anywhere (Optional)
 
-To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin. You need your JumpCloud application client ID and client secret.
+You have two options to obtain your JWT from the IdP to connect to the database:
 
-To allow users to access their JWT from the YugabyteDB sign in page, you must enable the OIDC feature via a configuration flag before you configure OIDC.
+- *Via a tool of your choice*: You can fetch the JWT directly from JumpCloud using any OAuth2-capable tool such as the JumpCloud CLI, `curl`, or Postman, and supply it as the password when connecting to the database. No additional YBA configuration is required for this path.
+
+- *Via YugabyteDB Anywhere*: YBA can display your JWT on the sign-in page after you authenticate with JumpCloud. To enable OIDC authentication in YugabyteDB Anywhere, do the following. You need to be signed in as a Super Admin and have your JumpCloud application client ID and client secret available.
 
 #### Enable OIDC enhancements
 
@@ -138,7 +117,9 @@ To configure User authentication in YugabyteDB Anywhere, do the following:
 
 You are redirected to sign in to your IdP to test the connection. After the test connection is successful, OIDC authentication is enabled.
 
-### Configure a universe
+## Configure a universe
+
+You enable OIDC for universes by setting authentication flags for YSQL or YCQL database access. For YSQL, the database uses PostgreSQL `yb_hba.conf` and `yb_ident.conf` files to translate authentication rules into database roles. For YCQL, you set YB-TServer flags such as `ycql_jwt_conf` and optional `ycql_ident_conf_csv` identity mapping rules.
 
 To access a universe via OIDC, set the flags described in the following tabs for YSQL or YCQL.
 
@@ -343,7 +324,7 @@ curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUI
 
 {{< readfile "/stable/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
 
-**Learn more**
+## Learn more
 
 - [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
 - [YFTT: OIDC Authentication in YSQL](https://www.youtube.com/watch?v=KJ0XV6OnAnU&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=1)

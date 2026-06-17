@@ -29,34 +29,45 @@ rightNav:
 
 This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL and YCQL database access. While the steps use Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) as an example Identity Provider (IdP), the integration works with any OIDC-compliant provider.
 
-After OIDC is set up, users can sign in to the YugabyteDB universe database using their JSON Web Token (JWT) as their password.
+After OIDC is set up, you authenticate with Azure AD, which issues a JSON Web Token (JWT): a short-lived, signed token that proves the user's identity. You then supply this JWT as your database password when connecting to YugabyteDB.
 
 Note that the yugabyte privileged user will continue to exist as a local database user even after OIDC-based authentication is enabled for a universe.
 
-**Learn more**
+## Configure your Azure Identity provider
 
-- [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
-- [YFTT: OIDC Authentication in YSQL](https://www.youtube.com/watch?v=KJ0XV6OnAnU&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=1)
+The Azure AD IdP configuration includes application registration (registering YugabyteDB Anywhere in the Azure AD tenant) and configuring Azure AD to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
 
-## OIDC callback URI
+Before registering, note the [YugabyteDB Anywhere callback URI](../../../administer-yugabyte-platform/oidc-authentication/#oidc-callback-uri); you'll need to provide it as the redirect URI when registering your application in Azure.
 
-YugabyteDB Anywhere supports callback (redirect) URIs in one of the following formats:
+### Register an application in Azure
 
-- Query (default):
+You register your YugabyteDB Anywhere instance as an application in Azure. You will use the application's tenant ID, client ID, and client secret to configure OIDC in YugabyteDB Anywhere.
 
-    `https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient`
+To register an application, do the following:
 
-- Path:
+1. In the Azure console, navigate to **App registrations** and click **New registration**.
 
-    `https://<YBA_IP_Address>/api/v1/callback/OidcClient`
+1. Enter a name for the application.
 
-    Note that Path is only available in v2025.2.4.0 and later.
+1. Select the tenant for the application.
 
-This is where the IdP redirects after authentication.
+1. Set the [redirect URI](../../../administer-yugabyte-platform/oidc-authentication/#oidc-callback-uri). This is where the IdP redirects after authentication.
 
-Only one format is supported at a time. To change the URI format, set the **OIDC Callback Mode** Global Runtime Configuration option (config key `yb.security.oidc_callback_mode`). Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+1. Click **Register**.
 
-## Group claims and roles in Azure AD
+    After the application is registered, you can obtain the tenant ID and client ID.
+
+1. Click **Add a certificate or secret**.
+
+1. Select **Client secrets** and click **New client secret**.
+
+1. Enter a description and set the expiry for the secret, and then click **Add**.
+
+1. Copy the secret value and keep it in a secure location.
+
+For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) in the Azure documentation.
+
+#### Configure group claims and roles in Azure AD
 
 By default, the Subject claim is used as the value to determine the role to assign to users for database access. In addition to the standard claims for token expiration, subject, and issuer, you have the option to use a non-standard claim (other than Subject) to determine role assignment. That is, the values of this claim will map the user to the database roles. This claim is denoted as `jwt_matching_claim_key`.
 
@@ -126,63 +137,29 @@ The following shows an example of a decoded JWT with app roles claims:
 
 For more information on configuring group claims and app roles, refer to [Configuring group claims and app roles in tokens](https://learn.microsoft.com/en-us/security/zero-trust/develop/configure-tokens-group-claims-app-roles) in the Azure documentation.
 
-## Set up OIDC with Azure AD on YugabyteDB Anywhere
+## Configure OIDC in YugabyteDB Anywhere (Optional)
 
-To enable OIDC authentication with Azure AD, you need to do the following:
+You have two options to obtain your JWT from the IdP to connect to the database:
 
-- Create an app registration in Azure AD - The Azure AD IdP configuration includes application registration (registering YugabyteDB Anywhere in the Azure AD tenant) and configuring Azure AD to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
-- Configure OIDC in YugabyteDB Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the sign in screen.
-- Configure the universe to use OIDC - You enable OIDC for universes by setting authentication flags for YSQL or YCQL database access. For YSQL, the database uses PostgreSQL `yb_hba.conf` and `yb_ident.conf` files to translate authentication rules into database roles. For YCQL, you set YB-TServer flags such as `ycql_jwt_conf` and optional `ycql_ident_conf_csv` identity mapping rules.
+- *Via a tool of your choice*: You can fetch the JWT directly from Azure AD using any OAuth2-capable tool such as the Azure CLI, `curl`, or Postman, and supply it as the password when connecting to the database. No additional YBA configuration is required for this path.
 
-### Register an application in Azure
+- *Via YugabyteDB Anywhere*: YBA can display your JWT on the sign-in page after you authenticate with Azure AD. To enable OIDC authentication in YugabyteDB Anywhere, do the following. You need to be signed in as a Super Admin and have your Azure application client ID, client secret, and tenant ID available.
 
-You register your YugabyteDB Anywhere instance as an application in Azure. You will use the application's tenant ID, client ID, and client secret to configure OIDC in YugabyteDB Anywhere.
+    1. Navigate to **Admin > Access Management > User Authentication** and select **ODIC configuration**.
+    1. Under **OIDC configuration**,  configure the following:
 
-To register an application, do the following:
+        - **Client ID** and **Client Secret** - enter the client ID and secret of the Azure application you created.
+        - **Discovery URL** - enter `login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration`.
+        - **Scope** - enter `openid email profile`. If you are using the Refresh Token feature to allow the Azure server to return the refresh token (which can be used by YBA to refresh the login), enter `openid offline_access profile email` instead.
+        - **Email attribute** - enter the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
+        - **Refresh Token URL** - if you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
+        - **Display JWT token on login** - select this option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA.
 
-1. In the Azure console, navigate to **App registrations** and click **New registration**.
+    1. Click **Save**.
 
-1. Enter a name for the application.
+## Configure a universe to use OIDC
 
-1. Select the tenant for the application.
-
-1. Set the [redirect URI](#oidc-callback-uri). This is where the IdP redirects after authentication.
-
-1. Click **Register**.
-
-    After the application is registered, you can obtain the tenant ID and client ID.
-
-1. Click **Add a certificate or secret**.
-
-1. Select **Client secrets** and click **New client secret**.
-
-1. Enter a description and set the expiry for the secret, and then click **Add**.
-
-1. Copy the secret value and keep it in a secure location.
-
-For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) in the Azure documentation.
-
-### Configure YugabyteDB Anywhere
-
-To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin. You need your Azure application client ID, client secret, and tenant ID.
-
-#### Enable OIDC authentication
-
-To enable OIDC authentication in YugabyteDB Anywhere, do the following:
-
-1. Navigate to **Admin > Access Management > User Authentication** and select **ODIC configuration**.
-1. Under **OIDC configuration**,  configure the following:
-
-    - **Client ID** and **Client Secret** - enter the client ID and secret of the Azure application you created.
-    - **Discovery URL** - enter `login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration`.
-    - **Scope** - enter `openid email profile`. If you are using the Refresh Token feature to allow the Azure server to return the refresh token (which can be used by YBA to refresh the login), enter `openid offline_access profile email` instead.
-    - **Email attribute** - enter the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
-    - **Refresh Token URL** - if you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
-    - **Display JWT token on login** - select this option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA.
-
-1. Click **Save**.
-
-### Configure a universe
+You enable OIDC for universes by setting authentication flags for YSQL or YCQL database access. For YSQL, the database uses PostgreSQL `yb_hba.conf` and `yb_ident.conf` files to translate authentication rules into database roles. For YCQL, you set YB-TServer flags such as `ycql_jwt_conf` and optional `ycql_ident_conf_csv` identity mapping rules.
 
 To access a universe via OIDC, set the flags described in the following tabs for YSQL or YCQL.
 
@@ -377,3 +354,8 @@ With `jwt_matching_claim_key=roles`, YCQL reads identities from the `roles` clai
 ## Manage users and roles
 
 {{< readfile "/stable/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
+
+## Learn more
+
+- [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
+- [YFTT: OIDC Authentication in YSQL](https://www.youtube.com/watch?v=KJ0XV6OnAnU&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=1)

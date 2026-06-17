@@ -60,6 +60,22 @@ To use OIDC groups, ensure the following on your identity provider (IdP):
 - Configure the IdP so that groups are present in the ID token. As groups is not one of the [Standard Claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims), you will need to add the groups claim in the ID token by configuring your IdP provider settings. Refer to your IdP documentation.
 - For Azure AD/Microsoft Entra ID, Azure doesn't allow obtaining group names in ID tokens. You need to use the [Azure API](https://learn.microsoft.com/en-gb/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http) to get a list of the user's group memberships. Note that to fetch the group membership via Azure API, the IdP administrator will need to assign the GroupMember.Read.All API permission to the registered application on Azure.
 
+## OIDC callback URI
+
+When registering YugabyteDB Anywhere as a client application with your IdP, you must provide a callback (redirect) URI — the URL the IdP redirects users to after authentication. YugabyteDB Anywhere supports the following formats:
+
+- Query (default):
+
+    `https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient`
+
+- Path:
+
+    `https://<YBA_IP_Address>/api/v1/callback/OidcClient`
+
+    Note that Path is only available in v2025.2.4.0 and later.
+
+Only one format is supported at a time. To change the URI format, set the **OIDC Callback Mode** Global Runtime Configuration option (config key `yb.security.oidc_callback_mode`). Refer to [Manage runtime configuration settings](../manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
 ## Enable OIDC for YugabyteDB Anywhere
 
 YugabyteDB Anywhere accepts OIDC configuration either using a discovery URL that points to the [OpenID Provider Configuration Document](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig) for your provider, or by uploading the document directly. The configuration document contains key-value pairs with details about the OIDC provider's configuration, including uniform resource identifiers of the authorization, token, revocation, user information, and public-keys endpoints. YugabyteDB Anywhere uses the metadata to discover the URLs to use for authentication and the authentication service's public signing keys.
