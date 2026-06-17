@@ -3056,7 +3056,12 @@ match_clause_to_index(PlannerInfo *root,
 	 * yb_hash_code followed by key columns.  Handle such expressions here,
 	 * before the per-column loop.
 	 */
-	{
+	{/*
+		 * TODO it seems correct to associate the hash code clause with the
+		 * first index column, since the hash code is a function of one or more
+		 * first columns of the index. Later on we may consider to introduce a
+		 * field in the IndexClauseSet structure for that.
+		 */
 		IndexClause *yb_iclause = yb_match_clause_to_index(root, rinfo, index);
 
 		if (yb_iclause)
@@ -5269,9 +5274,8 @@ yb_truncate_embedded_index_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 
 /*
  * yb_hash_code_match_index
- *	  Check if the given expression is a yb_hash_code call matching the index.
- *	  That is, the index is a hash index and the expression is a yb_hash_code
- *	  call whose arguments match the hash columns of the index in order.
+ *	  Check if the given expression matches the hash key columns of the index
+ *	  as a yb_hash_code call.
  */
 bool
 yb_hash_code_match_index(Node *expr, IndexOptInfo *index)
@@ -5310,7 +5314,7 @@ yb_hash_code_match_index(Node *expr, IndexOptInfo *index)
 			index->indexkeys[indexcol] != ((Var *) arg)->varattno)
 			return false;
 
-		indexcol++;
+		++indexcol;
 	}
 	return true;
 }
@@ -5342,11 +5346,12 @@ yb_match_clause_to_index(PlannerInfo *root,
 
 		if (yb_hash_code_match_index(leftop, index))
 		{
-			IndexClause *iclause = makeNode(IndexClause);
+			IndexClause *iclause;
 
 			if (!is_pseudo_constant_for_index(root, rightop, index))
 				return NULL;
 
+			iclause = makeNode(IndexClause);
 			iclause->rinfo = rinfo;
 			iclause->indexquals = list_make1(rinfo);
 			iclause->lossy = false;
@@ -5526,8 +5531,8 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 												 matching_cols)))
 			break;
 
-		indexcol++;
-		matching_cols++;
+		++indexcol;
+		++matching_cols;
 	}
 
 	/*
