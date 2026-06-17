@@ -1483,10 +1483,8 @@ bool PgDocReadOp::IsHashBatchingEnabled() {
   return *is_hash_batched_;
 }
 
-bool PgDocReadOp::IsBatchFlushRequired() const {
-  return (exec_params_.work_mem > 0 &&
-          pgsql_op_arena_ &&
-          pgsql_op_arena_->UsedBytes() > (implicit_cast<size_t>(exec_params_.work_mem) * 1024));
+bool PgDocReadOp::IsBatchFlushRequired(size_t limit) const {
+  return limit > 0 && pgsql_op_arena_ && pgsql_op_arena_->UsedBytes() > limit;
 }
 
 // Collect hash expressions to prepare for generating permutations.
@@ -1533,14 +1531,20 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
     const auto batch_count = table_->GetPartitionList();
     std::vector<std::pair<bool, LWPgsqlExpressionPB*>> partition_batches(
         table_->GetPartitionListSize(), {false, nullptr});
+    size_t limit = 0;
+    if (exec_params_.work_mem > 0) {
+      limit = pgsql_op_arena_->UsedBytes() + (implicit_cast<size_t>(exec_params_.work_mem) * 1024);
+    }
+    VLOG(4) << "arena size limit: " << limit;
     while (hash_permutations_->HasPermutation()) {
       if (VERIFY_RESULT(BindExprsToBatch(partition_batches,
                                          hash_permutations_->NextPermutation()))) {
-        if (IsBatchFlushRequired()) {
+        if (IsBatchFlushRequired(limit)) {
           break;
         }
       }
     }
+    VLOG(4) << "arena size after bind: " << pgsql_op_arena_->UsedBytes();
   } else {
     for (size_t idx = 0; idx < pgsql_ops_.size() && hash_permutations_->HasPermutation(); ++idx) {
       auto& read_op = GetReadOp(idx);
