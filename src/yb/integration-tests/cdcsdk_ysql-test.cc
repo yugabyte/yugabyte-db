@@ -13336,7 +13336,6 @@ TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 15000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 10000;
 
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */, true /* colocated */));
@@ -13348,20 +13347,24 @@ TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table(value_1)"));
 
-  GetChangesResponsePB change_resp;
-  const CDCSDKCheckpointPB* explicit_checkpoint = &CDCSDKCheckpointPB::default_instance();
-  for (int i = 0; i < static_cast<int>(FLAGS_cdc_intent_retention_ms / 1000); i++) {
-    ASSERT_OK(WriteRows(i /* start */, i + 1 /* end */, &test_cluster_, 2 /* num_cols */));
-    SleepFor(MonoDelta::FromSeconds(2));
-    change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
-        stream_id, tablets, explicit_checkpoint, explicit_checkpoint));
-    ASSERT_FALSE(change_resp.has_error());
-    explicit_checkpoint = &change_resp.cdc_sdk_checkpoint();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 10;
+  SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs * 2));
+
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+      if (peer->tablet_id() != tablets[0].tablet_id()) {
+        continue;
+      }
+
+      ASSERT_NE(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+      ASSERT_NE(peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+      ASSERT_NE(peer->get_cdc_min_replicated_index(), std::numeric_limits<int64_t>::max());
+    }
   }
 }
 
