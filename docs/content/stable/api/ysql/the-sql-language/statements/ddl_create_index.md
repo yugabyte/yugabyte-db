@@ -153,7 +153,7 @@ Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
 Step 4, and with it, the surrounding `BEGIN`/`COMMIT` block, relies on two features:
 
 - Object locking, for the `LOCK` itself: set the YB-TServer flag `enable_object_locking_for_table_locks=true` (Early Access, available in YugabyteDB {{<release "2025.2">}} and later).
-- Transactional DDL, to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true`.
+- Transactional DDL, to run the `BEGIN`/`COMMIT` block: set the YB-TServer flag `ysql_yb_ddl_transaction_block_enabled=true` (Early Access, available in YugabyteDB {{<release "2025.2">}} and later).
   Object locking depends on this flag as well.
 
 It only serves to hold a lock on the parent so that concurrent reads and writes don't miss the partition's data while it is detached.
