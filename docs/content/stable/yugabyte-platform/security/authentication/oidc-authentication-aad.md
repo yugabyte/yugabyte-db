@@ -33,6 +33,13 @@ After OIDC is set up, you authenticate with Azure AD, which issues a JSON Web To
 
 Note that the yugabyte privileged user will continue to exist as a local database user even after OIDC-based authentication is enabled for a universe.
 
+To set up OIDC authentication, complete the following steps:
+
+1. [Configure your Azure Identity provider](#configure-your-azure-identity-provider): register YugabyteDB Anywhere as a client application in Azure AD and configure the token claims.
+1. [Configure OIDC in YugabyteDB Anywhere (Optional)](#configure-oidc-in-yugabytedb-anywhere-optional): if you want YBA to surface the JWT on the sign-in page, enable OIDC in YBA. Otherwise, you can fetch the JWT directly from Azure AD using a tool of your choice.
+1. [Configure a universe to use OIDC](#configure-a-universe-to-use-oidc): set the authentication flags on your YugabyteDB universe for YSQL or YCQL access.
+1. [Manage users and roles](#manage-users-and-roles): create database roles that map to the claims in the JWT.
+
 ## Configure your Azure Identity provider
 
 The Azure AD IdP configuration includes application registration (registering YugabyteDB Anywhere in the Azure AD tenant) and configuring Azure AD to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
