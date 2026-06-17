@@ -328,7 +328,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
   An exception are DDLs related to PUBLICATION and SUBSCRIPTION, which should only be used on the source universe.
 
-- `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
+- `ALTER TABLE` DDLs that involve table rewrites (including just of the associated indexes; see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
 - The `TRUNCATE` command is not supported.
 
@@ -350,7 +350,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - Table rewrites
 
-  `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
+  `ALTER TABLE` DDLs that involve table rewrites (including just of the associated indexes; see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
 - Composite, enum, and range (array) types
 
