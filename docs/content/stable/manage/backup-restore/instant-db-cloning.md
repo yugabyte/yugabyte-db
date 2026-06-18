@@ -314,5 +314,4 @@ If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splittin
 
 - Cloning as of a time close to the limit of the history retention period may fail. For example, if you have a history retention period of 10 minutes and you create a clone as of 9 minutes ago, the clone operation may fail. Use a slightly larger history retention period than you think you need.
 - Cloning to a point in time during which a DDL was running may fail. See issue {{<issue 28814>}}.
-- You cannot [time travel](../time-travel-query/) to a point in time prior to the 'as of' time of the clone.
 - Databases with many objects in multi-region deployments may take longer to clone. If the operation takes longer than 10 minutes, increase the `ysql_clone_pg_schema_rpc_timeout_ms` YB-TServer runtime flag.
