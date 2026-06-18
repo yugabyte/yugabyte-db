@@ -34,7 +34,7 @@ To view a breakdown of the total load on a database, click the database in the l
 
 By default, each database can access up to 100% of available CPU when there is no contention, and this is suitable for most use cases.
 
-To can change the ceiling for all databases:
+To change the ceiling for all databases:
 
 1. Click **Edit Policy**.
 1. Enter the maximum.
