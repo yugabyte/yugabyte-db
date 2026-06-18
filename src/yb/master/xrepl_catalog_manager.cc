@@ -53,6 +53,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
@@ -982,8 +983,20 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   std::vector<TableInfoPtr> tables;
   {
     SharedLock lock(mutex_);
-    // Sanity check this id corresponds to a namespace.
-    VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
+    auto ns = VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
+
+    // yb_system namespace is meant for YB's internal use (currently it is only used by
+    // LISTEN/NOTIFY). Only internal CDC streams meant to stream the notifications from the
+    // kPgYbNotificationsTableName to the tservers are allowed on it. The slot associated
+    // with such streams have kYbNotificationsSlotPrefix prefix in the name. Disallow other streams.
+    if (ns->name() == kYbSystemDbName &&
+        !(req.has_cdcsdk_ysql_replication_slot_name() &&
+          StringStartsWithOrEquals(
+              req.cdcsdk_ysql_replication_slot_name(), kYbNotificationsSlotPrefix))) {
+      return STATUS(
+          InvalidArgument, "CDC streams are not supported for yb_system database");
+    }
+
     tables = FindAllTablesForCDCSDK(namespace_id, allow_tables_without_primary_key);
   }
 

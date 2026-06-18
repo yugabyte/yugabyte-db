@@ -3718,7 +3718,7 @@ ybNotifsReplicationSlotName(void)
 
 	hex_encode(uuid, UUID_LEN, hex_uuid);
 	hex_uuid[2 * UUID_LEN] = '\0';
-	return psprintf("yb_notifications_%s", hex_uuid);
+	return psprintf("%s%s", YbNotificationsSlotPrefix, hex_uuid);
 }
 
 /*
