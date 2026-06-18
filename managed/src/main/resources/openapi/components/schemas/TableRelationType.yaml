@@ -1,0 +1,9 @@
+title: TableRelationType
+description: YugabyteDB table relation type.
+type: string
+enum:
+  - SYSTEM_TABLE_RELATION
+  - USER_TABLE_RELATION
+  - INDEX_TABLE_RELATION
+  - MATVIEW_TABLE_RELATION
+  - COLOCATED_PARENT_TABLE_RELATION

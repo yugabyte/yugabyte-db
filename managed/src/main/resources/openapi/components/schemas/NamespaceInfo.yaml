@@ -1,0 +1,16 @@
+title: NamespaceInfo
+description: Database (namespace) metadata for a YugabyteDB universe.
+type: object
+properties:
+  namespace_uuid:
+    description: Namespace UUID.
+    type: string
+    format: uuid
+    readOnly: true
+  name:
+    description: Namespace name.
+    type: string
+    readOnly: true
+  table_type:
+    $ref: "./TableType.yaml"
+    readOnly: true

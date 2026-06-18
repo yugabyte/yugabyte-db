@@ -1,0 +1,10 @@
+title: DrConfigBootstrapParams
+description: |
+  Bootstrap flow parameters for a DR config, including backup/restore settings.
+type: object
+required:
+  - backup_request_params
+properties:
+  backup_request_params:
+    description: Parameters used to run bootstrap backup and restore.
+    $ref: "./DrConfigBootstrapBackupParams.yaml"

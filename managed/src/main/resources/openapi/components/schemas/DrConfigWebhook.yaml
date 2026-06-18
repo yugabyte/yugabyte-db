@@ -1,0 +1,13 @@
+title: DrConfigWebhook
+description: Webhook registered on a DR config.
+type: object
+properties:
+  uuid:
+    description: Webhook UUID.
+    type: string
+    format: uuid
+    readOnly: true
+  url:
+    description: Webhook URL.
+    type: string
+    example: 'https://example.com/hooks/dr'
