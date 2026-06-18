@@ -1723,6 +1723,8 @@ extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
 extern bool yb_is_federated_yb_foreign_table(Oid relid);
 
 struct PlannerInfo;
+struct RelOptInfo;
+struct RangeTblEntry;
 extern void YbAddFederatedPartitionTserverUuid(struct PlannerInfo *root,
 											  Index rti,
 											  const char *tserver_uuid);

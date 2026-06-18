@@ -37,6 +37,7 @@
 
 /* YB includes */
 #include "executor/ybExpr.h"
+#include "optimizer/ybplan.h"
 #include "partitioning/partbounds.h"
 #include "pg_yb_utils.h"
 
@@ -1007,14 +1008,20 @@ apply_child_basequals(PlannerInfo *root, RelOptInfo *parentrel,
  * yb_expand_federated_rtentry
  *		Expand a federated YugabyteDB foreign table into per-tserver children.
  *
- * This is analogous to expand_partitioned_rtentry: for each live tserver we
- * create a child RTE (with the same foreign-table OID), an AppendRelInfo
+ * This is analogous to expand_partitioned_rtentry: for each requested tserver
+ * we create a child RTE (with the same foreign-table OID), an AppendRelInfo
  * with identity column mapping, and a child RelOptInfo. The mapping from
  * each child's RT index to its target tserver UUID is recorded in
  * PlannerInfo.yb_tserver_uuids; postgres_fdw's GetForeignRelSize callback
  * later reads it back and stores the UUID in PgFdwRelationInfo.
  * The planner then treats the parent as an append relation and generates
  * Append / MergeAppend paths automatically.
+ *
+ * If the parent rel's baserestrictinfo restricts the hardcoded
+ * "tserver_uuid" column to a known UUID set, we apply that filter here -
+ * mirroring expand_partitioned_rtentry's plan-time partition pruning - so
+ * that filtered-out tservers never get a child RTE/RelOptInfo and no rows
+ * from them make it into the plan.
  *
  * We also populate the partition metadata fields (part_scheme, boundinfo,
  * nparts, part_rels, live_parts) on the parent RelOptInfo so that
@@ -1032,6 +1039,10 @@ yb_expand_federated_rtentry(PlannerInfo *root, RelOptInfo *rel,
 	size_t		i;
 	PartitionScheme part_scheme;
 	PartitionBoundInfo boundinfo;
+	/* Indexes into 'servers' that survive plan-time pruning */
+	Bitmapset  *requested_servers;
+	int			num_requested;
+	int			idx;
 
 	/*
 	 * TODO(#30918): The tserver list is captured at plan time. Cached plans
@@ -1046,7 +1057,15 @@ yb_expand_federated_rtentry(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	HandleYBStatus(YBCGetTabletServerHosts(&servers, &nservers));
 
-	expand_planner_arrays(root, nservers);
+	/*
+	 * Plan-time pruning: if the parent rel's baserestrictinfo restricts the
+	 * tserver_uuid column to a known set, only the matching tservers survive.
+	 * When no restriction is recognized the bitmap has every index set, so
+	 * the iteration below visits every tserver.
+	 */
+	requested_servers = YbExtractFederatedTserverFilter(root, rel, parentrte,
+														servers, nservers);
+	num_requested = bms_num_members(requested_servers);
 
 	/*
 	 * Build a minimal PartitionScheme with zero partition-key columns. The
@@ -1059,7 +1078,9 @@ yb_expand_federated_rtentry(PlannerInfo *root, RelOptInfo *rel,
 
 	/*
 	 * Build a minimal PartitionBoundInfo. IS_PARTITIONED_REL requires it to
-	 * be non-NULL too.
+	 * be non-NULL too. We keep one slot per tserver (including pruned ones,
+	 * which will have NULL part_rels entries) - this mirrors how
+	 * expand_partitioned_rtentry leaves NULL slots for pruned partitions.
 	 */
 	boundinfo = (PartitionBoundInfo) palloc0(sizeof(PartitionBoundInfoData));
 	boundinfo->strategy = PARTITION_STRATEGY_HASH;
@@ -1078,7 +1099,14 @@ yb_expand_federated_rtentry(PlannerInfo *root, RelOptInfo *rel,
 	rel->nparts = (int) nservers;
 	rel->part_rels = (RelOptInfo **) palloc0(sizeof(RelOptInfo *) * nservers);
 
-	for (i = 0; i < nservers; i++)
+	/* Nothing more to do if pruning removed every tserver. */
+	if (num_requested == 0)
+		return;
+
+	expand_planner_arrays(root, num_requested);
+
+	idx = -1;
+	while ((idx = bms_next_member(requested_servers, idx)) >= 0)
 	{
 		RangeTblEntry *childrte;
 		Index		childRTindex;
@@ -1102,9 +1130,9 @@ yb_expand_federated_rtentry(PlannerInfo *root, RelOptInfo *rel,
 		 * PgFdwRelationInfo
 		 */
 		YbAddFederatedPartitionTserverUuid(root, childRTindex,
-										   servers[i].uuid);
-		rel->part_rels[i] = childrel;
-		rel->live_parts = bms_add_member(rel->live_parts, (int) i);
+										   servers[idx].uuid);
+		rel->part_rels[idx] = childrel;
+		rel->live_parts = bms_add_member(rel->live_parts, idx);
 		rel->all_partrels = bms_add_members(rel->all_partrels,
 											childrel->relids);
 	}
