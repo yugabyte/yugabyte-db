@@ -102,8 +102,6 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
     DDL operations should not be performed from the time of replication slot creation till the start of snapshot consumption of the last table.
 
-- There should be a primary key on the table you want to stream the changes from.
-
 - CDC is not supported on tables that are also the target of xCluster replication (see issue {{<issue 15534>}}). However, both CDC and xCluster can work simultaneously on the same source tables.
 
     When performing [switchover](../../../deploy/multi-dc/async-replication/async-transactional-switchover/) or [failover](../../../deploy/multi-dc/async-replication/async-transactional-failover/) on xCluster, if you are using CDC, remember to also reconfigure CDC to use the new primary universe.

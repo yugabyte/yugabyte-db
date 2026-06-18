@@ -331,12 +331,6 @@ Although the `column.exclude.list` and `column.include.list` connector configura
 
 {{< /note >}}
 
-{{< warning title="Warning" >}}
-
-CDC is not supported for tables without primary keys.
-
-{{< /warning >}}
-
 #### Tables without a primary key
 
 For tables that do not have a primary key, configure the [message.key.columns](../yugabytedb-connector-properties/#messagekey.columns) connector property to define a custom message key. Without this, the connector cannot reliably identify rows across change events.
