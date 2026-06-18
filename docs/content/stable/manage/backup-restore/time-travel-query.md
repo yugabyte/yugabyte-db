@@ -49,7 +49,7 @@ When setting `yb_read_time`, keep in mind the following:
 - `yb_read_time` is defined on a YSQL session level. This means that all the read queries in the current session will read the data as of `yb_read_time`. Other YSQL sessions are not affected.
 - To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 - Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
-- Currently, time travel queries can only read old data without schema changes. In other words, do not set the read time to a time earlier than the most recent DDL operation.
+- Currently, time travel queries can only read old data without schema changes. In other words, do not set the read time to a time earlier than the most recent DDL operation. This includes cluster-wide DDLs that affect global objects, such as a clone operation.
 
 ## Example
 
@@ -196,4 +196,4 @@ In cases where the deletion affected many tables in the database, you can use ti
 
 - Time travel queries are not supported for temporary tables.
 - You cannot time travel to a time prior to the creation time of a database clone.
-- Time travel queries currently do not support [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). {{<issue 20829>}}
+- Time travel queries currently do not support [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). {{<issue 20829>}} 
