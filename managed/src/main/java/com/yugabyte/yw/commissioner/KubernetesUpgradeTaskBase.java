@@ -356,6 +356,10 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
     boolean useExistingServerCert =
         upgradeContext != null && upgradeContext.isUseExistingServerCert();
+    // Transient post-change universe state (intent not yet persisted in DB). Used by the YSQL
+    // readiness probe in upgradePodsTask to pick the correct port during API toggles (PLAT-21282).
+    Universe targetUniverseState =
+        upgradeContext != null ? upgradeContext.getTargetUniverseState() : null;
     // If upgradeContext is non-null and has non-null useYBDBInbuiltYbc we use that.
     // It will be set for KubernetesToggleImmutableYbc task.
     // Otherwise pick from universe primary cluster userIntent.
@@ -384,7 +388,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ysqlMajorVersionUpgradeState,
           rootCAUUID,
           useExistingServerCert,
-          null /* skipAZs */);
+          null /* skipAZs */,
+          targetUniverseState);
     }
 
     if (upgradeTservers) {
@@ -413,7 +418,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ysqlMajorVersionUpgradeState,
           rootCAUUID,
           useExistingServerCert,
-          null /* skipAZs */);
+          null /* skipAZs */,
+          targetUniverseState);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -464,7 +470,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             ysqlMajorVersionUpgradeState,
             rootCAUUID,
             useExistingServerCert,
-            null /* skipAZs */);
+            null /* skipAZs */,
+            targetUniverseState);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -501,7 +508,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ysqlMajorVersionUpgradeState,
           rootCAUUID,
           useExistingServerCert,
-          null /* skipAZs */);
+          null /* skipAZs */,
+          targetUniverseState);
     }
   }
 
