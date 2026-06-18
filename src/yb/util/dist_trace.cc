@@ -21,6 +21,7 @@
 #include "opentelemetry/context/runtime_context.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_options.h"
+#include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_options.h"
 #include "opentelemetry/sdk/trace/tracer_provider.h"
@@ -62,6 +63,7 @@ namespace yb::dist_trace {
 namespace trace_sdk = opentelemetry::sdk::trace;
 namespace resource_sdk = opentelemetry::sdk::resource;
 namespace otlp_exporter = opentelemetry::exporter::otlp;
+namespace internal_log = opentelemetry::sdk::common::internal_log;
 namespace context = opentelemetry::context;
 
 namespace {
@@ -98,6 +100,33 @@ class RpcSpanAttrs {
 };
 
 thread_local RpcSpanAttrs pending_rpc_attrs;
+
+class YbOtelLogHandler : public internal_log::LogHandler {
+ public:
+  void Handle(
+      internal_log::LogLevel level, const char* file, int line, const char* msg,
+      const opentelemetry::sdk::common::AttributeMap& attributes) noexcept override {
+    (void)attributes;
+
+    switch (level) {
+      case internal_log::LogLevel::Error:
+        LOG(ERROR) << "[" << file << ":" << line << "]: " << msg;
+        break;
+      case internal_log::LogLevel::Warning:
+        LOG(WARNING) << "[" << file << ":" << line << "]: " << msg;
+        break;
+      case internal_log::LogLevel::Info:
+        LOG(INFO) << "[" << file << ":" << line << "]: " << msg;
+        break;
+      case internal_log::LogLevel::Debug:
+        VLOG(1) << "[" << file << ":" << line << "] Debug: " << msg;
+        break;
+      case internal_log::LogLevel::None:
+        LOG(INFO) << "[" << file << ":" << line << "] None: " << msg;
+        break;
+    }
+  }
+};
 
 resource_sdk::Resource CreateResource(int64_t process_pid, nostd::string_view node_uuid) {
   resource_sdk::ResourceAttributes attrs;
@@ -173,6 +202,15 @@ bool IsDistTraceEnabled() {
 void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
   DCHECK(IsDistTraceEnabled());
 
+  internal_log::GlobalLogHandler::SetLogHandler(
+      opentelemetry::nostd::shared_ptr<internal_log::LogHandler>(new YbOtelLogHandler()));
+
+  // OTel applies this threshold before calling the global handler. Keep it at the most
+  // permissive runtime level so every SDK-internal message that was compiled in reaches
+  // YbOtelLogHandler; the LOG(...) call in the handler then lets the YB process logging
+  // configuration make the final filtering/routing decision.
+  internal_log::GlobalLogHandler::SetLogLevel(internal_log::LogLevel::Debug);
+
   auto resource_attrs = CreateResource(process_pid, node_uuid);
   const auto status = InitDistTraceProvider(resource_attrs);
   if (!status.ok()) {
@@ -184,7 +222,6 @@ void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
       nostd::shared_ptr<context::propagation::TextMapPropagator>(
           new trace::propagation::HttpTraceContext()));
 
-  // TODO(#30723): Integrate Otel logs with Yugabyte logs.
   LOG(INFO) << "OTEL: Initialized tracing for service: " << ysql_resource_name
             << "\nBatchSpanProcessor config: max_queue_size=" << FLAGS_otel_batch_max_queue_size
             << ", schedule_delay_ms=" << FLAGS_otel_batch_schedule_delay_ms

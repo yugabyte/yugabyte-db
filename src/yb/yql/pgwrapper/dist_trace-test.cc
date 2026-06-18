@@ -24,6 +24,7 @@
 #include <google/protobuf/empty.pb.h>
 #include <gtest/gtest.h>
 
+#include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/trace/scope.h"
 #include "opentelemetry/trace/tracer.h"
 #include "opentelemetry/proto/collector/trace/v1/trace_service.pb.h"
@@ -39,6 +40,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -1657,6 +1659,37 @@ TEST_F(DistTraceRpcTest, TestRpcSpans) {
       },
       kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
       "RPC span to appear in trace"));
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_v) = 1;
+
+  static constexpr auto kError = "otel internal error";
+  static constexpr auto kWarning = "otel internal warning";
+  static constexpr auto kInfo = "otel internal info";
+  static constexpr auto kDebug = "otel internal debug";
+
+  StringWaiterLogSink error_waiter(kError);
+  StringWaiterLogSink warning_waiter(kWarning);
+  StringWaiterLogSink info_waiter(kInfo);
+  StringWaiterLogSink debug_waiter(kDebug);
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-log-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(warning_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(info_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(debug_waiter.WaitFor(5s * kTimeMultiplier));
 }
 
 TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {
