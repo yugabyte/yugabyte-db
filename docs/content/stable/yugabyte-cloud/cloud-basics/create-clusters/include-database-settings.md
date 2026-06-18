@@ -7,7 +7,7 @@ block_indexing = true
 
 ### Database
 
-![Add Cluster Wizard - Database Settings](/images/yb-cloud/cloud-addcluster-database.png)
+![Add Cluster Wizard - Database](/images/yb-cloud/cloud-addcluster-database.png)
 
 Set the following options:
 

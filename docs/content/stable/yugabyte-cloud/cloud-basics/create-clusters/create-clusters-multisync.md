@@ -54,7 +54,7 @@ To create a multi-region replicated cluster, on the **Clusters** page, click **A
 
 The **Create Cluster** wizard has the following pages:
 
-1. [General](#general-settings)
+1. [General](#general)
 1. [Cluster Settings](#cluster-settings)
 1. [Database](#database)
 1. [Network Access](#network-access)

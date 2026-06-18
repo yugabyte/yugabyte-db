@@ -5,9 +5,9 @@ block_indexing = true
 +++
 -->
 
-### General Settings
+### General
 
-![Add Cluster Wizard - General Settings](/images/yb-cloud/cloud-addcluster-general.png)
+![Add Cluster Wizard - General](/images/yb-cloud/cloud-addcluster-general.png)
 
 Set the following options:
 
