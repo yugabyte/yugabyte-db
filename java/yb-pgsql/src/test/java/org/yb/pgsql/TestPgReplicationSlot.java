@@ -5626,6 +5626,50 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  @Test
+  public void testCdcStreamOnYbSystemBlocked() throws Exception {
+    // Currently yb_system is only created if ysql_yb_enable_listen_notify is enabled on master.
+    Map<String, String> masterFlags = super.getMasterFlags();
+    masterFlags.put("ysql_yb_enable_listen_notify", "true");
+    restartClusterWithFlags(masterFlags, Collections.emptyMap());
+    BasePgListenNotifyTest.waitForNotificationsTableReady(connection, getConnectionBuilder());
+
+    try (Connection ybSystemConn = getConnectionBuilder().withDatabase("yb_system").connect();
+         Statement stmt = ybSystemConn.createStatement()) {
+      stmt.execute("CREATE TABLE test_cdc_table (id INT PRIMARY KEY, val TEXT)");
+      stmt.execute("CREATE PUBLICATION test_pub FOR ALL TABLES");
+      try {
+        stmt.execute(
+            "SELECT pg_create_logical_replication_slot('test_cdc_slot', 'pgoutput')");
+        fail("Expected replication slot creation on yb_system to fail");
+      } catch (PSQLException e) {
+        assertTrue("Expected error about yb_system CDC streams not supported, got: "
+            + e.getMessage(),
+            e.getMessage().contains("CDC streams are not supported for yb_system database"));
+      } finally {
+        stmt.execute("DROP PUBLICATION test_pub");
+        stmt.execute("DROP TABLE test_cdc_table");
+      }
+    }
+  }
+
+  @Test
+  public void testReservedSlotNamePrefix() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE PUBLICATION test_pub FOR ALL TABLES");
+      try {
+        stmt.execute(
+            "SELECT pg_create_logical_replication_slot('yb_notifications_test', 'pgoutput')");
+        fail("Expected replication slot creation with reserved prefix to fail");
+      } catch (PSQLException e) {
+        assertTrue("Expected error about reserved slot name, got: " + e.getMessage(),
+            e.getMessage().contains("is reserved"));
+      } finally {
+        stmt.execute("DROP PUBLICATION test_pub");
+      }
+    }
+  }
+
   // TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
   @Ignore
   @Test
