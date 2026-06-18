@@ -262,33 +262,10 @@ EXPLAIN (VERBOSE) /*+ IndexScan(multi_include) */ SELECT * FROM t_simple ORDER B
 SELECT * FROM t_simple;
 
 --
--- Primary key updates on unique indexes with NULL key columns must not use
--- in-place index updates because ybuniqueidxkeysuffix stores the base ybctid.
---
-SET yb_enable_inplace_index_update TO on;
-DROP TABLE IF EXISTS t_unique_null_pk_update;
-CREATE TABLE t_unique_null_pk_update (
-  h BIGINT,
-  r BIGINT,
-  k SMALLINT DEFAULT 0 NOT NULL,
-  v BYTEA,
-  active BOOLEAN,
-  PRIMARY KEY ((h) HASH, r ASC, k ASC)
-);
-CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_null_pk_update_uq
-ON t_unique_null_pk_update (h HASH, v ASC)
-WHERE active;
-INSERT INTO t_unique_null_pk_update (h, r, k, v, active)
-VALUES (1, 1, 0, NULL, true);
-UPDATE t_unique_null_pk_update SET k = 1
-WHERE h = 1 AND r = 1 AND k = 0;
-SELECT yb_index_check('t_unique_null_pk_update_uq'::regclass);
-DROP TABLE t_unique_null_pk_update;
-
-
---
 -- Additional coverage for hidden unique index key suffix changes.
 --
+SET yb_enable_inplace_index_update TO on;
+
 DROP TABLE IF EXISTS t_unique_key_update;
 CREATE TABLE t_unique_key_update (
   h INT,
@@ -300,21 +277,26 @@ CREATE TABLE t_unique_key_update (
   PRIMARY KEY ((h) HASH, r ASC, k ASC)
 );
 CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_key_update_uq
-ON t_unique_key_update (h HASH, a ASC, b ASC);
+ON t_unique_key_update (a ASC, b ASC);
 INSERT INTO t_unique_key_update (h, r, k, a, b) VALUES
   (1, 1, 0, NULL, 10),
   (1, 2, 0, 20, 20),
   (1, 3, 0, NULL, 30),
   (1, 4, 0, NULL, 40);
 -- Non-expression unique index: key changes from NULL to not-NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
 UPDATE t_unique_key_update SET a = 10 WHERE h = 1 AND r = 1;
 -- Non-expression unique index: key changes from not-NULL to NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
 UPDATE t_unique_key_update SET a = NULL WHERE h = 1 AND r = 2;
 -- Non-expression unique index: key is NULL; primary key update.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
 UPDATE t_unique_key_update SET k = 1 WHERE h = 1 AND r = 3 AND k = 0;
 -- Non-expression unique index: some keys are NULL; another key becomes NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
 UPDATE t_unique_key_update SET b = NULL WHERE h = 1 AND r = 4;
 SELECT yb_index_check('t_unique_key_update_uq'::regclass);
+SELECT * FROM t_unique_key_update ORDER BY h, r, k;
 DROP TABLE t_unique_key_update;
 
 DROP TABLE IF EXISTS t_unique_key_update_nnd;
@@ -328,25 +310,31 @@ CREATE TABLE t_unique_key_update_nnd (
   PRIMARY KEY ((h) HASH, r ASC, k ASC)
 );
 CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_key_update_nnd_uq
-ON t_unique_key_update_nnd (h HASH, a ASC, b ASC) NULLS NOT DISTINCT;
+ON t_unique_key_update_nnd (a ASC, b ASC) NULLS NOT DISTINCT;
 INSERT INTO t_unique_key_update_nnd (h, r, k, a, b) VALUES
   (2, 1, 0, NULL, 10),
   (2, 2, 0, 20, 20),
   (2, 3, 0, NULL, 30),
   (2, 4, 0, NULL, 40);
 -- Non-expression unique NULLS NOT DISTINCT index: key changes from NULL to not-NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
 UPDATE t_unique_key_update_nnd SET a = 10 WHERE h = 2 AND r = 1;
 -- Non-expression unique NULLS NOT DISTINCT index: key changes from not-NULL to NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
 UPDATE t_unique_key_update_nnd SET a = NULL WHERE h = 2 AND r = 2;
 -- Non-expression unique NULLS NOT DISTINCT index: key is NULL; primary key update.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
 UPDATE t_unique_key_update_nnd SET k = 1 WHERE h = 2 AND r = 3 AND k = 0;
 -- Non-expression unique NULLS NOT DISTINCT index: some keys are NULL; another key becomes NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
 UPDATE t_unique_key_update_nnd SET b = NULL WHERE h = 2 AND r = 4;
 SELECT yb_index_check('t_unique_key_update_nnd_uq'::regclass);
+SELECT * FROM t_unique_key_update_nnd ORDER BY h, r, k;
 DROP TABLE t_unique_key_update_nnd;
 
 DROP TABLE IF EXISTS t_unique_expr_update;
 CREATE TABLE t_unique_expr_update (
+  h INT,
   r INT,
   k INT,
   a INT,
@@ -354,28 +342,34 @@ CREATE TABLE t_unique_expr_update (
   c INT,
   d INT,
   active BOOLEAN DEFAULT true,
-  PRIMARY KEY (r ASC, k ASC)
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
 );
 CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_expr_update_uq
 ON t_unique_expr_update ((a + b), (c + d));
-INSERT INTO t_unique_expr_update (r, k, a, b, c, d) VALUES
-  (1, 0, NULL, 10, 1, 1),
-  (2, 0, 20, 20, 2, 2),
-  (3, 0, NULL, 30, 3, 3),
-  (4, 0, NULL, 40, 4, 4);
+INSERT INTO t_unique_expr_update (h, r, k, a, b, c, d) VALUES
+  (3, 1, 0, NULL, 10, 1, 1),
+  (3, 2, 0, 20, 20, 2, 2),
+  (3, 3, 0, NULL, 30, 3, 3),
+  (3, 4, 0, NULL, 40, 4, 4);
 -- Expression unique index: key changes from NULL to not-NULL.
-UPDATE t_unique_expr_update SET a = 10 WHERE r = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET a = 10 WHERE h = 3 AND r = 1;
 -- Expression unique index: key changes from not-NULL to NULL.
-UPDATE t_unique_expr_update SET a = NULL WHERE r = 2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET a = NULL WHERE h = 3 AND r = 2;
 -- Expression unique index: key is NULL; primary key update.
-UPDATE t_unique_expr_update SET k = 1 WHERE r = 3 AND k = 0;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET k = 1 WHERE h = 3 AND r = 3 AND k = 0;
 -- Expression unique index: some keys are NULL; another key becomes NULL.
-UPDATE t_unique_expr_update SET c = NULL WHERE r = 4;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET c = NULL WHERE h = 3 AND r = 4;
 SELECT yb_index_check('t_unique_expr_update_uq'::regclass);
+SELECT * FROM t_unique_expr_update ORDER BY h, r, k;
 DROP TABLE t_unique_expr_update;
 
 DROP TABLE IF EXISTS t_unique_expr_update_nnd;
 CREATE TABLE t_unique_expr_update_nnd (
+  h INT,
   r INT,
   k INT,
   a INT,
@@ -383,90 +377,34 @@ CREATE TABLE t_unique_expr_update_nnd (
   c INT,
   d INT,
   active BOOLEAN DEFAULT true,
-  PRIMARY KEY (r ASC, k ASC)
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
 );
 CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_expr_update_nnd_uq
 ON t_unique_expr_update_nnd ((a + b), (c + d)) NULLS NOT DISTINCT;
-INSERT INTO t_unique_expr_update_nnd (r, k, a, b, c, d) VALUES
-  (1, 0, NULL, 10, 1, 1),
-  (2, 0, 20, 20, 2, 2),
-  (3, 0, NULL, 30, 3, 3),
-  (4, 0, NULL, 40, 4, 4);
+INSERT INTO t_unique_expr_update_nnd (h, r, k, a, b, c, d) VALUES
+  (4, 1, 0, NULL, 10, 1, 1),
+  (4, 2, 0, 20, 20, 2, 2),
+  (4, 3, 0, NULL, 30, 3, 3),
+  (4, 4, 0, NULL, 40, 4, 4);
 -- Expression unique NULLS NOT DISTINCT index: key changes from NULL to not-NULL.
-UPDATE t_unique_expr_update_nnd SET a = 10 WHERE r = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update_nnd SET a = 10 WHERE h = 4 AND r = 1;
 -- Expression unique NULLS NOT DISTINCT index: key changes from not-NULL to NULL.
-UPDATE t_unique_expr_update_nnd SET a = NULL WHERE r = 2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update_nnd SET a = NULL WHERE h = 4 AND r = 2;
 -- Expression unique NULLS NOT DISTINCT index: key is NULL; primary key update.
-UPDATE t_unique_expr_update_nnd SET k = 1 WHERE r = 3 AND k = 0;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update_nnd SET k = 1 WHERE h = 4 AND r = 3 AND k = 0;
 -- Expression unique NULLS NOT DISTINCT index: some keys are NULL; another key becomes NULL.
-UPDATE t_unique_expr_update_nnd SET c = NULL WHERE r = 4;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update_nnd SET c = NULL WHERE h = 4 AND r = 4;
 SELECT yb_index_check('t_unique_expr_update_nnd_uq'::regclass);
+SELECT * FROM t_unique_expr_update_nnd ORDER BY h, r, k;
 DROP TABLE t_unique_expr_update_nnd;
-
-DROP TABLE IF EXISTS t_partial_unique_key_update;
-CREATE TABLE t_partial_unique_key_update (
-  h INT,
-  r INT,
-  k INT,
-  a INT,
-  b INT,
-  active BOOLEAN,
-  PRIMARY KEY ((h) HASH, r ASC, k ASC)
-);
-CREATE UNIQUE INDEX NONCONCURRENTLY t_partial_unique_key_update_uq
-ON t_partial_unique_key_update (h HASH, a ASC, b ASC) WHERE active;
-INSERT INTO t_partial_unique_key_update VALUES
-  (3, 1, 0, NULL, 10, true),
-  (3, 2, 0, 20, 20, false),
-  (3, 3, 0, NULL, 30, true),
-  (3, 4, 0, NULL, 40, false),
-  (3, 5, 0, NULL, 50, false);
--- Partial non-expression unique index: NULL to not-NULL and exits the index.
-UPDATE t_partial_unique_key_update SET a = 10, active = false WHERE h = 3 AND r = 1;
--- Partial non-expression unique index: not-NULL to NULL and enters the index.
-UPDATE t_partial_unique_key_update SET a = NULL, active = true WHERE h = 3 AND r = 2;
--- Partial non-expression unique index: key is NULL, primary key update, and exits the index.
-UPDATE t_partial_unique_key_update SET k = 1, active = false WHERE h = 3 AND r = 3 AND k = 0;
--- Partial non-expression unique index: some keys are NULL, another key becomes NULL, and enters the index.
-UPDATE t_partial_unique_key_update SET b = NULL, active = true WHERE h = 3 AND r = 4;
--- Partial non-expression unique index: key is NULL, primary key update, and enters the index.
-UPDATE t_partial_unique_key_update SET k = 1, active = true WHERE h = 3 AND r = 5 AND k = 0;
-SELECT yb_index_check('t_partial_unique_key_update_uq'::regclass);
-DROP TABLE t_partial_unique_key_update;
-
-DROP TABLE IF EXISTS t_partial_unique_key_update_nnd;
-CREATE TABLE t_partial_unique_key_update_nnd (
-  h INT,
-  r INT,
-  k INT,
-  a INT,
-  b INT,
-  active BOOLEAN,
-  PRIMARY KEY ((h) HASH, r ASC, k ASC)
-);
-CREATE UNIQUE INDEX NONCONCURRENTLY t_partial_unique_key_update_nnd_uq
-ON t_partial_unique_key_update_nnd (h HASH, a ASC, b ASC) NULLS NOT DISTINCT WHERE active;
-INSERT INTO t_partial_unique_key_update_nnd VALUES
-  (4, 1, 0, NULL, 10, true),
-  (4, 2, 0, 20, 20, false),
-  (4, 3, 0, NULL, 30, true),
-  (4, 4, 0, NULL, 40, false),
-  (4, 5, 0, NULL, 50, false);
--- Partial non-expression unique NULLS NOT DISTINCT index: NULL to not-NULL and exits the index.
-UPDATE t_partial_unique_key_update_nnd SET a = 10, active = false WHERE h = 4 AND r = 1;
--- Partial non-expression unique NULLS NOT DISTINCT index: not-NULL to NULL and enters the index.
-UPDATE t_partial_unique_key_update_nnd SET a = NULL, active = true WHERE h = 4 AND r = 2;
--- Partial non-expression unique NULLS NOT DISTINCT index: key is NULL, primary key update, and exits the index.
-UPDATE t_partial_unique_key_update_nnd SET k = 1, active = false WHERE h = 4 AND r = 3 AND k = 0;
--- Partial non-expression unique NULLS NOT DISTINCT index: some keys are NULL, another key becomes NULL, and enters the index.
-UPDATE t_partial_unique_key_update_nnd SET b = NULL, active = true WHERE h = 4 AND r = 4;
--- Partial non-expression unique NULLS NOT DISTINCT index: key is NULL, primary key update, and enters the index.
-UPDATE t_partial_unique_key_update_nnd SET k = 1, active = true WHERE h = 4 AND r = 5 AND k = 0;
-SELECT yb_index_check('t_partial_unique_key_update_nnd_uq'::regclass);
-DROP TABLE t_partial_unique_key_update_nnd;
 
 DROP TABLE IF EXISTS t_partial_unique_expr_update;
 CREATE TABLE t_partial_unique_expr_update (
+  h INT,
   r INT,
   k INT,
   a INT,
@@ -474,57 +412,31 @@ CREATE TABLE t_partial_unique_expr_update (
   c INT,
   d INT,
   active BOOLEAN,
-  PRIMARY KEY (r ASC, k ASC)
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
 );
 CREATE UNIQUE INDEX NONCONCURRENTLY t_partial_unique_expr_update_uq
 ON t_partial_unique_expr_update ((a + b), (c + d)) WHERE active;
 INSERT INTO t_partial_unique_expr_update VALUES
-  (1, 0, NULL, 10, 1, 1, true),
-  (2, 0, 20, 20, 2, 2, false),
-  (3, 0, NULL, 30, 3, 3, true),
-  (4, 0, NULL, 40, 4, 4, false),
-  (5, 0, NULL, 50, 5, 5, false);
+  (5, 1, 0, NULL, 10, 1, 1, true),
+  (5, 2, 0, 20, 20, 2, 2, false),
+  (5, 3, 0, NULL, 30, 3, 3, true),
+  (5, 4, 0, NULL, 40, 4, 4, false),
+  (5, 5, 0, NULL, 50, 5, 5, false);
 -- Partial expression unique index: NULL to not-NULL and exits the index.
-UPDATE t_partial_unique_expr_update SET a = 10, active = false WHERE r = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET a = 10, active = false WHERE h = 5 AND r = 1;
 -- Partial expression unique index: not-NULL to NULL and enters the index.
-UPDATE t_partial_unique_expr_update SET a = NULL, active = true WHERE r = 2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET a = NULL, active = true WHERE h = 5 AND r = 2;
 -- Partial expression unique index: key is NULL, primary key update, and exits the index.
-UPDATE t_partial_unique_expr_update SET k = 1, active = false WHERE r = 3 AND k = 0;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET k = 1, active = false WHERE h = 5 AND r = 3 AND k = 0;
 -- Partial expression unique index: some keys are NULL, another key becomes NULL, and enters the index.
-UPDATE t_partial_unique_expr_update SET c = NULL, active = true WHERE r = 4;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET c = NULL, active = true WHERE h = 5 AND r = 4;
 -- Partial expression unique index: key is NULL, primary key update, and enters the index.
-UPDATE t_partial_unique_expr_update SET k = 1, active = true WHERE r = 5 AND k = 0;
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET k = 1, active = true WHERE h = 5 AND r = 5 AND k = 0;
 SELECT yb_index_check('t_partial_unique_expr_update_uq'::regclass);
+SELECT * FROM t_partial_unique_expr_update ORDER BY h, r, k;
 DROP TABLE t_partial_unique_expr_update;
-
-DROP TABLE IF EXISTS t_partial_unique_expr_update_nnd;
-CREATE TABLE t_partial_unique_expr_update_nnd (
-  r INT,
-  k INT,
-  a INT,
-  b INT,
-  c INT,
-  d INT,
-  active BOOLEAN,
-  PRIMARY KEY (r ASC, k ASC)
-);
-CREATE UNIQUE INDEX NONCONCURRENTLY t_partial_unique_expr_update_nnd_uq
-ON t_partial_unique_expr_update_nnd ((a + b), (c + d)) NULLS NOT DISTINCT WHERE active;
-INSERT INTO t_partial_unique_expr_update_nnd VALUES
-  (1, 0, NULL, 10, 1, 1, true),
-  (2, 0, 20, 20, 2, 2, false),
-  (3, 0, NULL, 30, 3, 3, true),
-  (4, 0, NULL, 40, 4, 4, false),
-  (5, 0, NULL, 50, 5, 5, false);
--- Partial expression unique NULLS NOT DISTINCT index: NULL to not-NULL and exits the index.
-UPDATE t_partial_unique_expr_update_nnd SET a = 10, active = false WHERE r = 1;
--- Partial expression unique NULLS NOT DISTINCT index: not-NULL to NULL and enters the index.
-UPDATE t_partial_unique_expr_update_nnd SET a = NULL, active = true WHERE r = 2;
--- Partial expression unique NULLS NOT DISTINCT index: key is NULL, primary key update, and exits the index.
-UPDATE t_partial_unique_expr_update_nnd SET k = 1, active = false WHERE r = 3 AND k = 0;
--- Partial expression unique NULLS NOT DISTINCT index: some keys are NULL, another key becomes NULL, and enters the index.
-UPDATE t_partial_unique_expr_update_nnd SET c = NULL, active = true WHERE r = 4;
--- Partial expression unique NULLS NOT DISTINCT index: key is NULL, primary key update, and enters the index.
-UPDATE t_partial_unique_expr_update_nnd SET k = 1, active = true WHERE r = 5 AND k = 0;
-SELECT yb_index_check('t_partial_unique_expr_update_nnd_uq'::regclass);
-DROP TABLE t_partial_unique_expr_update_nnd;
