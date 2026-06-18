@@ -80,7 +80,7 @@ To use JumpCloud for your IdP, do the following:
 
     - Navigate to **User Groups**, select the user groups you want to access YugabyteDB Anywhere, and click **Save** when you are done.
 
-To [configure](#configure-yugabytedb-anywhere) JumpCloud federated authentication in YugabyteDB Anywhere, you need the following application properties:
+To [configure](#configure-oidc-in-yugabytedb-anywhere-optional) JumpCloud federated authentication in YugabyteDB Anywhere, you need the following application properties:
 
 - **Client ID** and **Client Secret** of the application you created. These are the credentials you saved when you activated your application. The **Client ID** is also displayed on the **SSO** tab.
 
@@ -215,13 +215,13 @@ To access a universe via OIDC for YCQL, set OIDC-related YB-TServer flags on the
 - _Without identity mapping_ between the IdP and the YCQL user.
 - _With identity mapping_ between the IdP and the YCQL user (requires `ycql_ident_conf_csv`, described in [ycql_ident_conf_csv](#ycql-ident-conf-csv)).
 
-### Prerequisites
+#### Prerequisites
 
 OIDC for YCQL requires YCQL authentication to be enabled on the universe. When you turn on YCQL authorization in YugabyteDB Anywhere, YBA sets the [`use_cassandra_authentication`](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag automatically; do not set this flag manually via **Edit Flags**.
 
 To enable YCQL authorization when creating or modifying a universe, refer to [Enable database endpoints and authorization](../../authorization-platform/#enable-database-endpoints-and-authorization) and [Modify endpoint configuration](../../authorization-platform/#modify-endpoint-configuration).
 
-### Set OIDC YB-TServer flags
+#### Set OIDC YB-TServer flags
 
 Add all OIDC-related flags to YB-TServer in a single **Actions > Edit Flags** session. For more information, refer to [Edit configuration flags](../../../manage-deployments/edit-config-flags/).
 
