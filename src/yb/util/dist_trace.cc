@@ -108,21 +108,23 @@ class YbOtelLogHandler : public internal_log::LogHandler {
       const opentelemetry::sdk::common::AttributeMap& attributes) noexcept override {
     (void)attributes;
 
+    const char* safe_file = file ? file : "unknown";
+    const char* safe_msg = msg ? msg : "";
+
     switch (level) {
       case internal_log::LogLevel::Error:
-        LOG(ERROR) << "[" << file << ":" << line << "]: " << msg;
+        LOG(ERROR) << "[" << safe_file << ":" << line << "]: " << safe_msg;
         break;
       case internal_log::LogLevel::Warning:
-        LOG(WARNING) << "[" << file << ":" << line << "]: " << msg;
+        LOG(WARNING) << "[" << safe_file << ":" << line << "]: " << safe_msg;
         break;
       case internal_log::LogLevel::Info:
-        LOG(INFO) << "[" << file << ":" << line << "]: " << msg;
+        LOG(INFO) << "[" << safe_file << ":" << line << "]: " << safe_msg;
         break;
       case internal_log::LogLevel::Debug:
-        VLOG(1) << "[" << file << ":" << line << "] Debug: " << msg;
+        VLOG(1) << "[" << safe_file << ":" << line << "] Debug: " << safe_msg;
         break;
       case internal_log::LogLevel::None:
-        LOG(INFO) << "[" << file << ":" << line << "] None: " << msg;
         break;
     }
   }
