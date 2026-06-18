@@ -1442,6 +1442,13 @@ create_bitmap_heap_path(PlannerInfo *root,
 	yb_propagate_fields(&pathnode->path.yb_path_info,
 						&bitmapqual->yb_path_info);
 
+	/*
+	 * YB Bitmap Scan does not support distinct pushdown. Propagating yb_uniqkeys
+	 * up from the bitmap qual would wrongly mark this path as already DISTINCT,
+	 * causing the planner to drop the Unique/Agg node and emit duplicate rows.
+	 */
+	pathnode->path.yb_path_info.yb_uniqkeys = NIL;
+
 	pathnode->bitmapqual = bitmapqual;
 
 	cost_bitmap_heap_scan(&pathnode->path, root, rel,
@@ -1486,6 +1493,13 @@ create_yb_bitmap_table_path(PlannerInfo *root,
 
 	yb_propagate_fields(&pathnode->path.yb_path_info,
 						&bitmapqual->yb_path_info);
+
+	/*
+	 * YB Bitmap Scan does not support distinct pushdown. Propagating yb_uniqkeys
+	 * up from the bitmap qual would wrongly mark this path as already DISTINCT,
+	 * causing the planner to drop the Unique/Agg node and emit duplicate rows.
+	 */
+	pathnode->path.yb_path_info.yb_uniqkeys = NIL;
 
 	pathnode->bitmapqual = bitmapqual;
 
