@@ -498,7 +498,7 @@ For example, try the following:
 
 1. To ensure there is no preloading, open and close a connection by starting and quitting ysqlsh.
 
-1. Start ysqlsh and run the following:
+1. Start [ysqlsh](../../api/ysqlsh/) and run the following:
 
     ```sql
     EXPLAIN (ANALYZE, DIST) SELECT
