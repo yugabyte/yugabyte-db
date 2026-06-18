@@ -253,3 +253,78 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
 
 RESET yb_enable_distinct_pushdown;
 DROP TABLE test_distinct;
+-- #32166 : SELECT DISTINCT returns wrong results over bitmap scan
+-- This bug led to wrong results being returned in the case when DISTINCT keys
+-- included all the hash keys of an index. In the test below, the column 'k' is
+-- the hash key for the index 'test_distinct_hash_k' and the query selects
+-- DISTINCT k. The result should be the 4 distinct values of k.
+CREATE TABLE test_distinct_hash (id INT PRIMARY KEY, k INT);
+INSERT INTO test_distinct_hash SELECT g, g % 4 FROM GENERATE_SERIES(1, 1000) g;
+CREATE INDEX test_distinct_hash_k ON test_distinct_hash (k HASH);
+SET yb_enable_distinct_pushdown = true;
+-- Default plan and different hints to enforce bitmap scan. Result should be 4
+-- distinct values of k in each case.
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Sort (actual rows=4 loops=1)
+   Sort Key: k
+   Sort Method: quicksort
+   ->  Distinct Index Only Scan using test_distinct_hash_k on test_distinct_hash (actual rows=4 loops=1)
+         Distinct Keys: k
+         Heap Fetches: 0
+(6 rows)
+
+/*+ Set(enable_seqscan off) Set(enable_indexscan off) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Sort (actual rows=4 loops=1)
+   Sort Key: k
+   Sort Method: quicksort
+   ->  HashAggregate (actual rows=4 loops=1)
+         Group Key: k
+         ->  YB Bitmap Table Scan on test_distinct_hash (actual rows=1000 loops=1)
+               ->  Bitmap Index Scan on test_distinct_hash_k (actual rows=1000 loops=1)
+(7 rows)
+
+/*+ BitmapScan(test_distinct_hash) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Sort (actual rows=4 loops=1)
+   Sort Key: k
+   Sort Method: quicksort
+   ->  HashAggregate (actual rows=4 loops=1)
+         Group Key: k
+         ->  YB Bitmap Table Scan on test_distinct_hash (actual rows=1000 loops=1)
+               ->  Bitmap Index Scan on test_distinct_hash_k (actual rows=1000 loops=1)
+(7 rows)
+
+SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
+ k 
+---
+ 0
+ 1
+ 2
+ 3
+(4 rows)
+
+/*+ Set(enable_seqscan off) Set(enable_indexscan off) */ SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
+ k 
+---
+ 0
+ 1
+ 2
+ 3
+(4 rows)
+
+/*+ BitmapScan(test_distinct_hash) */ SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
+ k 
+---
+ 0
+ 1
+ 2
+ 3
+(4 rows)
+
+RESET yb_enable_distinct_pushdown;
+DROP TABLE test_distinct_hash;
