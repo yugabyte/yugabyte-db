@@ -756,6 +756,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
 // Test that an upsert (INSERT ON CONFLICT DO UPDATE) that touches a primary key column
 // produces DELETE + INSERT in the CDC stream, not DELETE + DELETE.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndInsert)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_skip_redundant_update_ops) = false;
   // Packed rows default to off in debug/asan/fastdebug builds (kYsqlEnablePackedRowTargetVal =
   // !kIsDebug). The fix this test guards is on the IsPackedRow branch in
