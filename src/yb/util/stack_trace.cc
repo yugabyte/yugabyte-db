@@ -56,7 +56,7 @@ typedef sig_t sighandler_t;
 DEFINE_test_flag(bool, disable_thread_stack_collection_wait, false,
     "When set to true, ThreadStacks() will not wait for threads to respond");
 
-DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, true,
+DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, false,
     "Use (llvm-)libunwind for stack trace collection instead of glibc backtrace().");
 TAG_FLAG(use_libunwind_for_stack_trace_collection, advanced);
 TAG_FLAG(use_libunwind_for_stack_trace_collection, hidden);
