@@ -18,7 +18,7 @@ Note that any database changes made by any one of these transactions remain invi
 
 You export snapshots using the [pg_export_snapshot() function](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-SNAPSHOT-SYNCHRONIZATION), and import them using the SET TRANSACTION command.
 
-The synchronized snapshots feature is enabled by default from v2025.2.2.0. To use the feature on versions prior to v2025.2.2.0, you must first set the `ysql_enable_pg_export_snapshot` YB-TServer flag to true.
+Synchronized snapshots are enabled by default from v2025.2.2.0. To use the feature on versions prior to v2025.2.2.0, you must first set the `ysql_enable_pg_export_snapshot` YB-TServer flag to true.
 
 ## Export a snapshot
 
