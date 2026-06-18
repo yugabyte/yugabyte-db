@@ -8,6 +8,8 @@ menu:
     identifier: create-clusters-geopartition
     parent: create-clusters
     weight: 70
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -57,15 +59,16 @@ To create a partition-by-region cluster, on the **Clusters** page, click **Add C
 
 The **Create Cluster** wizard has the following pages:
 
-1. [General Settings](#general-and-database-settings)
-1. [Cluster Setup](#cluster-setup)
+1. [General](#general-settings)
+1. [Cluster Settings](#cluster-settings)
+1. [Database](#database)
 1. [Network Access](#network-access)
 1. [Security](#security)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
 
-### Cluster Setup
+### Cluster Settings
 
 Select **Multi-Region Deployment** and set the following options.
 
@@ -103,6 +106,8 @@ To add additional regions to the cluster, click **Add Region**.
 Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters/#partition-by-region-cluster).
 
 Monthly costs for the cluster are estimated automatically.
+
+{{% includeMarkdown "include-database-settings.md" %}}
 
 {{% includeMarkdown "network-access.md" %}}
 

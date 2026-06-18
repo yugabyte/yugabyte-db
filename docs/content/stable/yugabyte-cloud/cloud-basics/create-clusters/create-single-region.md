@@ -11,6 +11,8 @@ menu:
     identifier: create-single-region
     parent: create-clusters
     weight: 50
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -40,15 +42,16 @@ To create a single-region cluster, on the **Clusters** page, click **Add Cluster
 
 The **Create Cluster** wizard has the following pages:
 
-1. [General Settings](#general-and-database-settings)
-1. [Cluster Setup](#cluster-setup)
+1. [General](#general-settings)
+1. [Cluster Settings](#cluster-settings)
+1. [Database](#database)
 1. [Network Access](#network-access)
 1. [Security](#security)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
 
-### Cluster Setup
+### Cluster Settings
 
 Select **Single-Region Deployment** and set the following options.
 
@@ -89,6 +92,8 @@ Monthly costs for the cluster are estimated automatically.
 ![Add Cluster Wizard - Configure VPC](/images/yb-cloud/cloud-addcluster-paid3.3.png)
 
 To use a VPC for network isolation and security, choose **Select a VPC to use a dedicated network isolated from others**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+
+{{% includeMarkdown "include-database-settings.md" %}}
 
 {{% includeMarkdown "network-access.md" %}}
 

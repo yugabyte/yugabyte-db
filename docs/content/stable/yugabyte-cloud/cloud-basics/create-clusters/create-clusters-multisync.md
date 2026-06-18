@@ -8,6 +8,8 @@ menu:
     identifier: create-clusters-multisync
     parent: create-clusters
     weight: 60
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -52,15 +54,16 @@ To create a multi-region replicated cluster, on the **Clusters** page, click **A
 
 The **Create Cluster** wizard has the following pages:
 
-1. [General Settings](#general-and-database-settings)
-1. [Cluster Setup](#cluster-setup)
+1. [General](#general-settings)
+1. [Cluster Settings](#cluster-settings)
+1. [Database](#database)
 1. [Network Access](#network-access)
 1. [Security](#security)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
 
-### Cluster Setup
+### Cluster Settings
 
 Select **Multi-Region Deployment** and set the following options.
 
@@ -97,6 +100,8 @@ The node throughput will be scaled according to the IOPS value. For large datase
 Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters/#replicate-across-regions-clusters).
 
 Monthly costs for the cluster are estimated automatically.
+
+{{% includeMarkdown "include-database-settings.md" %}}
 
 {{% includeMarkdown "network-access.md" %}}
 
