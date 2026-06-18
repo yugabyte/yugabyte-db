@@ -31,6 +31,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
 #include "yb/vector_index/vector_lsm_metadata.h"
@@ -140,7 +141,9 @@ std::string GetChunkPath(
 
 size_t MaxConcurrentReads() {
   auto max_concurrent_reads = FLAGS_vector_index_concurrent_reads;
-  return max_concurrent_reads == 0 ? std::thread::hardware_concurrency() : max_concurrent_reads;
+  // Auto: use all CPUs, but cap under sanitizers (see SanitizerCappedConcurrency) so per-chunk
+  // search concurrency does not saturate an instrumented machine.
+  return max_concurrent_reads == 0 ? SanitizerCappedConcurrency() : max_concurrent_reads;
 }
 
 int32_t CompactionPriorityStartBound() {

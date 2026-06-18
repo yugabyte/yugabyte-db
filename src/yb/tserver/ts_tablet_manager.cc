@@ -134,6 +134,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -3853,7 +3854,9 @@ rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThrea
         ? FLAGS_vector_index_concurrent_writes : 0,
   };
   if (options.max_workers == 0) {
-    options.max_workers = std::thread::hardware_concurrency();
+    // Auto: use all CPUs, but cap under sanitizers (see SanitizerCappedConcurrency) so the vector
+    // index thread pools do not saturate an instrumented machine.
+    options.max_workers = SanitizerCappedConcurrency();
   }
   LOG(INFO) << "Use " << options.max_workers << " for vector index " << type << " thread pool";
   thread_pool_ptr.reset(result = new rpc::ThreadPool(std::move(options)));

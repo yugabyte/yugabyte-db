@@ -833,7 +833,19 @@ class page_allocator_t {
      */
     byte_t* allocate(std::size_t count_bytes) const noexcept {
         count_bytes = divide_round_up(count_bytes, page_size()) * page_size();
+        // Under sanitizers, route the node and vector tapes through the heap allocator instead of
+        // raw mmap so AddressSanitizer can see them (mmap'd memory is not instrumented). Keep the
+        // arena page-aligned so the slice alignment memory_mapping_allocator_gt relies on holds.
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 #if defined(USEARCH_DEFINED_WINDOWS)
+        return (byte_t*)_aligned_malloc(count_bytes, page_size());
+#elif defined(USEARCH_DEFINED_APPLE) || defined(USEARCH_DEFINED_ANDROID)
+        void* result = nullptr;
+        return posix_memalign(&result, page_size(), count_bytes) == 0 ? (byte_t*)result : nullptr;
+#else
+        return (byte_t*)aligned_alloc(page_size(), count_bytes);
+#endif
+#elif defined(USEARCH_DEFINED_WINDOWS)
         return (byte_t*)(::VirtualAlloc(NULL, count_bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 #else
         return (byte_t*)mmap(NULL, count_bytes, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -841,7 +853,14 @@ class page_allocator_t {
     }
 
     void deallocate(byte_t* page_pointer, std::size_t count_bytes) const noexcept {
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+        (void)count_bytes;
 #if defined(USEARCH_DEFINED_WINDOWS)
+        _aligned_free(page_pointer);
+#else
+        free(page_pointer);
+#endif
+#elif defined(USEARCH_DEFINED_WINDOWS)
         ::VirtualFree(page_pointer, 0, MEM_RELEASE);
 #else
         count_bytes = divide_round_up(count_bytes, page_size()) * page_size();
