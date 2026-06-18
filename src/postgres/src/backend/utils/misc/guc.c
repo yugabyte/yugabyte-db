@@ -4011,7 +4011,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_enable_pg_stat_statements_metrics", PGC_SUSET, STATS_MONITORING,
+		{"yb_enable_pg_stat_statements_docdb_metrics", PGC_SUSET, STATS_MONITORING,
 			gettext_noop("If true, enable metrics collection for pg_stat_statements."),
 			gettext_noop("This enables collection of the following metrics: "
 									"docdb_seeks, docdb_nexts, docdb_prevs, "
@@ -4019,7 +4019,7 @@ static struct config_bool ConfigureNamesBool[] =
 									"docdb_obsolete_rows_scanned"),
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_enable_pg_stat_statements_metrics,
+		&yb_enable_pg_stat_statements_docdb_metrics,
 		false,
 		NULL, NULL, NULL
 	},
