@@ -39,6 +39,12 @@ type: indexpage
     icon="fa-thin fa-monitor-waveform">}}
 
   {{<index/item
+    title="YSQL Distributed Tracing"
+    body="Export OpenTelemetry traces for YSQL query execution and view them in Jaeger or other backends."
+    href="ysql-distributed-tracing/"
+    icon="fa-thin fa-chart-gantt">}}
+
+  {{<index/item
     title="Query tuning"
     body="Optimize query performance with tuning techniques and tools."
     href="query-tuning/"
