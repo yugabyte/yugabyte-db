@@ -122,7 +122,7 @@ To configure User authentication in YugabyteDB Anywhere, do the following:
 
 You are redirected to sign in to your IdP to test the connection. After the test connection is successful, OIDC authentication is enabled.
 
-## Configure a universe
+## Configure a universe to use OIDC
 
 You enable OIDC for universes by setting authentication flags for YSQL or YCQL database access. For YSQL, the database uses PostgreSQL `yb_hba.conf` and `yb_ident.conf` files to translate authentication rules into database roles. For YCQL, you set YB-TServer flags such as `ycql_jwt_conf` and optional `ycql_ident_conf_csv` identity mapping rules.
 
