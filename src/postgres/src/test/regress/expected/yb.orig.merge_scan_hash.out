@@ -512,13 +512,12 @@
          ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
                Output: n, r1, r2, h1, h2, h3
                Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Rows Removed by Index Recheck: 17
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 15
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
-(21 rows)
+(20 rows)
 
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
@@ -537,13 +536,12 @@
          ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
                Output: n, r1, r2, h1, h2, h3
                Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Rows Removed by Index Recheck: 17
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 15
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
-(21 rows)
+(20 rows)
 
 -- Same thing with backwards scan.
 \set query 'SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC'
@@ -593,13 +591,12 @@
          ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
                Output: n, r1, r2, h1, h2, h3
                Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Rows Removed by Index Recheck: 17
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 15
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
-(21 rows)
+(20 rows)
 
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
@@ -618,11 +615,10 @@
          ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
                Output: n, r1, r2, h1, h2, h3
                Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Rows Removed by Index Recheck: 17
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 15
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
-(21 rows)
+(20 rows)
 

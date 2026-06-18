@@ -3456,13 +3456,12 @@
          ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 11
                Storage Table Read Requests: 0
                Storage Table Read Ops: 0
                Storage Table Rows Scanned: 106
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
-(21 rows)
+(20 rows)
 
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
@@ -3481,13 +3480,12 @@
          ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 11
                Storage Table Read Requests: 0
                Storage Table Read Ops: 0
                Storage Table Rows Scanned: 106
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
-(21 rows)
+(20 rows)
 
 -- Same thing with backwards scan.
 \set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3 DESC, r4 DESC, r5 DESC'
@@ -3537,13 +3535,12 @@
          ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 11
                Storage Table Read Requests: 0
                Storage Table Read Ops: 0
                Storage Table Rows Scanned: 106
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
-(21 rows)
+(20 rows)
 
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
@@ -3562,13 +3559,12 @@
          ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 11
                Storage Table Read Requests: 0
                Storage Table Read Ops: 0
                Storage Table Rows Scanned: 106
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
-(21 rows)
+(20 rows)
 
 --
 -- Secondary index

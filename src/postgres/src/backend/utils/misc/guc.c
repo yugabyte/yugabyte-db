@@ -3784,7 +3784,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_rpc_stats,
-		false,
+		true,
 		NULL, assign_yb_enable_pg_stat_statements_rpc_stats, NULL
 	},
 
@@ -3995,6 +3995,20 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_qpm_configuration.show_max_exec_params,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_pg_stat_statements_metrics", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("If true, enable metrics collection for pg_stat_statements."),
+			gettext_noop("This enables collection of the following metrics: "
+									"docdb_seeks, docdb_nexts, docdb_prevs, "
+									"docdb_read_time, docdb_write_time and "
+									"docdb_obsolete_rows_scanned"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_stat_statements_metrics,
 		false,
 		NULL, NULL, NULL
 	},

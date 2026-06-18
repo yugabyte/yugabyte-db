@@ -6877,6 +6877,8 @@ PostgresMain(const char *dbname, const char *username)
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
 
+			yb_refresh_stats_before_exec = true;
+
 			YBCDistTraceClearStack();
 		}
 
