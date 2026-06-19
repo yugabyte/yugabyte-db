@@ -1972,7 +1972,7 @@ docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net yb-netwo
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
-### Enable YSQL Connection Manager
+### Create a local cluster with YSQL Connection Manager
 
 To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
 
