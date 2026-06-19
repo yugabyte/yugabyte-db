@@ -1,3 +1,0 @@
-Depends: @, make, postgresql-contrib-PGVERSION
-Tests: installcheck
-Restrictions: allow-stderr
