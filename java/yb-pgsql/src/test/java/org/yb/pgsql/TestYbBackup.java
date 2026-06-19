@@ -1967,6 +1967,132 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testDropUDTypeAttribute() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TYPE test_type AS (a int, b int, c int, d int)");
+      stmt.execute("CREATE TABLE test_tbl (x int, y test_type)");
+      stmt.execute("INSERT INTO test_tbl VALUES (1, (11, 12, 13, 14)), " +
+                                               "(2, (21, 22, 23, 24))");
+      assertRowSet(stmt, "SELECT * FROM test_tbl", asSet(new Row(1, "(11,12,13,14)"),
+                                                         new Row(2, "(21,22,23,24)")));
+
+      stmt.execute("ALTER TYPE test_type DROP ATTRIBUTE b");
+      stmt.execute("INSERT INTO test_tbl VALUES(3, (31, 33, 34))");
+      assertRowSet(stmt, "SELECT * FROM test_tbl", asSet(new Row(1, "(11,13,14)"),
+                                                         new Row(2, "(21,23,24)"),
+                                                         new Row(3, "(31,33,34)")));
+
+      stmt.execute("ALTER TYPE test_type DROP ATTRIBUTE d");
+      stmt.execute("INSERT INTO test_tbl VALUES(4, (41, 43))");
+      assertRowSet(stmt, "SELECT * FROM test_tbl", asSet(new Row(1, "(11,13)"),
+                                                         new Row(2, "(21,23)"),
+                                                         new Row(3, "(31,33)"),
+                                                         new Row(4, "(41,43)")));
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertRowSet(stmt, "SELECT * FROM test_tbl", asSet(new Row(1, "(11,13)"),
+                                                         new Row(2, "(21,23)"),
+                                                         new Row(3, "(31,33)"),
+                                                         new Row(4, "(41,43)")));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testTypedTableBackupRestore() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TYPE test_type2 AS (a text, b text, c text, d text)");
+      stmt.execute("CREATE TABLE typed_tbl OF test_type2");
+      stmt.execute("INSERT INTO typed_tbl VALUES ('a1', 'b1', 'c1', 'd1'), " +
+                                                "('a2', 'b2', 'c2', 'd2')");
+      assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "b1", "c1", "d1"),
+                                                          new Row("a2", "b2", "c2", "d2")));
+
+      // Without CASCADE this is rejected by PostgreSQL's standard typed-table check (same as
+      // upstream PG, independent of the YB guard).
+      runInvalidQuery(stmt, "ALTER TYPE test_type2 DROP ATTRIBUTE b",
+          "cannot alter type \"test_type2\" because it is the type of a typed table");
+
+      // YB: with CASCADE the drop would cascade into the typed table, but ALTER TYPE ... DROP
+      // ATTRIBUTE is PG-catalog-only and is not propagated to DocDB, so the YB guard rejects it.
+      // See https://github.com/yugabyte/yugabyte-db/issues/30577.
+      runInvalidQuery(stmt, "ALTER TYPE test_type2 DROP ATTRIBUTE b CASCADE",
+          "drop attribute on the type of a typed table is not supported yet");
+
+      // YB: DROP ATTRIBUTE is no longer applied, so the column-dropping steps below are disabled.
+      // stmt.execute("ALTER TYPE test_type2 DROP ATTRIBUTE b CASCADE");
+      // stmt.execute("INSERT INTO typed_tbl VALUES ('a3', 'c3', 'd3')");
+      // assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "c1", "d1"),
+      //                                                     new Row("a2", "c2", "d2"),
+      //                                                     new Row("a3", "c3", "d3")));
+      //
+      // stmt.execute("ALTER TYPE test_type2 DROP ATTRIBUTE d CASCADE");
+      // stmt.execute("INSERT INTO typed_tbl VALUES ('a4', 'c4')");
+      // assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "c1"),
+      //                                                     new Row("a2", "c2"),
+      //                                                     new Row("a3", "c3"),
+      //                                                     new Row("a4", "c4")));
+
+      // DROP ATTRIBUTE before the typed table exists: no DocDB divergence, so this is allowed.
+      stmt.execute("CREATE TYPE test_type3 AS (a text, b text, c text, d text)");
+      stmt.execute("ALTER TYPE test_type3 DROP ATTRIBUTE b");
+      stmt.execute("CREATE TABLE typed_tbl_drop_before OF test_type3");
+      stmt.execute("INSERT INTO typed_tbl_drop_before VALUES ('a1', 'c1', 'd1'), " +
+                                                "('a2', 'c2', 'd2')");
+      assertRowSet(stmt, "SELECT * FROM typed_tbl_drop_before",
+          asSet(new Row("a1", "c1", "d1"), new Row("a2", "c2", "d2")));
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "b1", "c1", "d1"),
+                                                          new Row("a2", "b2", "c2", "d2")));
+      // YB: previously expected reduced columns after DROP ATTRIBUTE (now disabled).
+      // assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "c1"),
+      //                                                     new Row("a2", "c2"),
+      //                                                     new Row("a3", "c3"),
+      //                                                     new Row("a4", "c4")));
+
+      assertRowSet(stmt, "SELECT * FROM typed_tbl_drop_before",
+          asSet(new Row("a1", "c1", "d1"), new Row("a2", "c2", "d2")));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
   private void testMaterializedViewsHelper(boolean matviewOnMatview, String dbName)
       throws Exception {
     String backupDir = null;
