@@ -1,0 +1,472 @@
+--
+-- YSQL database dump
+--
+
+-- Dumped from database version 15.12-YB-2025.1.5.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2025.1.5.0-b0
+
+SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces true
+\endif
+
+-- Set variable use_roles (if not already set)
+\if :{?use_roles}
+\else
+\set use_roles true
+\endif
+
+-- YB: disable auto analyze to avoid conflicts with catalog changes
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+  END IF;
+END $$;
+
+--
+-- Name: comp_parent; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16398'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16397'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16396'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16396'::pg_catalog.oid);
+
+CREATE TABLE public.comp_parent (
+    a integer,
+    "........pg.dropped.2........" INTEGER /* dummy */,
+    "........pg.dropped.3........" INTEGER /* dummy */,
+    b integer,
+    c integer
+)
+PARTITION BY RANGE (a)
+SPLIT INTO 1 TABLETS;
+
+-- For binary upgrade, recreate dropped column.
+UPDATE pg_catalog.pg_attribute
+SET attlen = 4, attalign = 'i', attbyval = false
+WHERE attname = '........pg.dropped.2........'
+  AND attrelid = 'public.comp_parent'::pg_catalog.regclass;
+ALTER TABLE ONLY public.comp_parent DROP COLUMN "........pg.dropped.2........";
+
+-- For binary upgrade, recreate dropped column.
+UPDATE pg_catalog.pg_attribute
+SET attlen = 4, attalign = 'i', attbyval = false
+WHERE attname = '........pg.dropped.3........'
+  AND attrelid = 'public.comp_parent'::pg_catalog.regclass;
+ALTER TABLE ONLY public.comp_parent DROP COLUMN "........pg.dropped.3........";
+
+
+\if :use_roles
+    ALTER TABLE public.comp_parent OWNER TO yugabyte_test;
+\endif
+
+SET default_table_access_method = heap;
+
+--
+-- Name: comp_child; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16401'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16400'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16399'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16399'::pg_catalog.oid);
+
+CREATE TABLE public.comp_child (
+    b integer,
+    c integer,
+    "........pg.dropped.3........" INTEGER /* dummy */,
+    "........pg.dropped.4........" INTEGER /* dummy */,
+    a integer
+)
+SPLIT INTO 2 TABLETS;
+
+-- For binary upgrade, recreate dropped column.
+UPDATE pg_catalog.pg_attribute
+SET attlen = 4, attalign = 'i', attbyval = false
+WHERE attname = '........pg.dropped.3........'
+  AND attrelid = 'public.comp_child'::pg_catalog.regclass;
+ALTER TABLE ONLY public.comp_child DROP COLUMN "........pg.dropped.3........";
+
+-- For binary upgrade, recreate dropped column.
+UPDATE pg_catalog.pg_attribute
+SET attlen = 4, attalign = 'i', attbyval = false
+WHERE attname = '........pg.dropped.4........'
+  AND attrelid = 'public.comp_child'::pg_catalog.regclass;
+ALTER TABLE ONLY public.comp_child DROP COLUMN "........pg.dropped.4........";
+
+
+\if :use_roles
+    ALTER TABLE public.comp_child OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: comp_uses_child; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16407'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16406'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16405'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16405'::pg_catalog.oid);
+
+CREATE TABLE public.comp_uses_child (
+    tag text,
+    r public.comp_child
+)
+SPLIT INTO 2 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.comp_uses_child OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: comp_uses_parent; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16404'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16403'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16402'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16402'::pg_catalog.oid);
+
+CREATE TABLE public.comp_uses_parent (
+    tag text,
+    r public.comp_parent
+)
+SPLIT INTO 2 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.comp_uses_parent OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: part_drop_parent; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16392'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16391'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16390'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16390'::pg_catalog.oid);
+
+CREATE TABLE public.part_drop_parent (
+    a integer,
+    "........pg.dropped.2........" INTEGER /* dummy */,
+    "........pg.dropped.3........" INTEGER /* dummy */,
+    b integer,
+    c integer
+)
+PARTITION BY RANGE (a)
+SPLIT INTO 1 TABLETS;
+
+-- For binary upgrade, recreate dropped column.
+UPDATE pg_catalog.pg_attribute
+SET attlen = 4, attalign = 'i', attbyval = false
+WHERE attname = '........pg.dropped.2........'
+  AND attrelid = 'public.part_drop_parent'::pg_catalog.regclass;
+ALTER TABLE ONLY public.part_drop_parent DROP COLUMN "........pg.dropped.2........";
+
+-- For binary upgrade, recreate dropped column.
+UPDATE pg_catalog.pg_attribute
+SET attlen = 4, attalign = 'i', attbyval = false
+WHERE attname = '........pg.dropped.3........'
+  AND attrelid = 'public.part_drop_parent'::pg_catalog.regclass;
+ALTER TABLE ONLY public.part_drop_parent DROP COLUMN "........pg.dropped.3........";
+
+
+\if :use_roles
+    ALTER TABLE public.part_drop_parent OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: part_drop_child; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16395'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16394'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16393'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16393'::pg_catalog.oid);
+
+CREATE TABLE public.part_drop_child (
+    b integer,
+    c integer,
+    a integer,
+    "........pg.dropped.4........" INTEGER /* dummy */,
+    "........pg.dropped.5........" INTEGER /* dummy */
+)
+SPLIT INTO 2 TABLETS;
+
+-- For binary upgrade, recreate dropped column.
+UPDATE pg_catalog.pg_attribute
+SET attlen = 4, attalign = 'i', attbyval = false
+WHERE attname = '........pg.dropped.4........'
+  AND attrelid = 'public.part_drop_child'::pg_catalog.regclass;
+ALTER TABLE ONLY public.part_drop_child DROP COLUMN "........pg.dropped.4........";
+
+-- For binary upgrade, recreate dropped column.
+UPDATE pg_catalog.pg_attribute
+SET attlen = 4, attalign = 'i', attbyval = false
+WHERE attname = '........pg.dropped.5........'
+  AND attrelid = 'public.part_drop_child'::pg_catalog.regclass;
+ALTER TABLE ONLY public.part_drop_child DROP COLUMN "........pg.dropped.5........";
+
+
+\if :use_roles
+    ALTER TABLE public.part_drop_child OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: row_type_tbl; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16386'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16385'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16384'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16384'::pg_catalog.oid);
+
+CREATE TABLE public.row_type_tbl (
+    "........pg.dropped.1........" INTEGER /* dummy */,
+    x1 integer
+)
+SPLIT INTO 2 TABLETS;
+
+-- For binary upgrade, recreate dropped column.
+UPDATE pg_catalog.pg_attribute
+SET attlen = 4, attalign = 'i', attbyval = false
+WHERE attname = '........pg.dropped.1........'
+  AND attrelid = 'public.row_type_tbl'::pg_catalog.regclass;
+ALTER TABLE ONLY public.row_type_tbl DROP COLUMN "........pg.dropped.1........";
+
+
+\if :use_roles
+    ALTER TABLE public.row_type_tbl OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: row_type_user; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16389'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16388'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16387'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16387'::pg_catalog.oid);
+
+CREATE TABLE public.row_type_user (
+    x public.row_type_tbl
+)
+SPLIT INTO 2 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.row_type_user OWNER TO yugabyte_test;
+\endif
+
+--
+-- Name: comp_child; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE ONLY public.comp_parent ATTACH PARTITION public.comp_child FOR VALUES FROM (1) TO (9);
+
+
+--
+-- Name: part_drop_child; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE ONLY public.part_drop_parent ATTACH PARTITION public.part_drop_child FOR VALUES FROM (0) TO (5);
+
+
+--
+-- Data for Name: comp_child; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.comp_child (b, c, a) FROM stdin;
+40	400	4
+\.
+
+
+--
+-- Data for Name: comp_uses_child; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.comp_uses_child (tag, r) FROM stdin;
+c1	(20,200,2)
+\.
+
+
+--
+-- Data for Name: comp_uses_parent; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.comp_uses_parent (tag, r) FROM stdin;
+p1	(1,10,100)
+\.
+
+
+--
+-- Data for Name: part_drop_child; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.part_drop_child (b, c, a) FROM stdin;
+5	50	0
+\.
+
+
+--
+-- Data for Name: row_type_tbl; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.row_type_tbl (x1) FROM stdin;
+2
+\.
+
+
+--
+-- Data for Name: row_type_user; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.row_type_user (x) FROM stdin;
+(1)
+\.
+
+
+--
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
+--
+
+\if :use_roles
+REVOKE USAGE ON SCHEMA public FROM PUBLIC;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+\endif
+
+
+--
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+\if :use_roles
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
+
+
+--
+-- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+\if :use_roles
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
+
+
+--
+-- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+\if :use_roles
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
+
+
+-- YB: re-enable auto analyze after all catalog changes
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+  END IF;
+END $$;
+
+--
+-- YSQL database dump complete
+--
+

@@ -9490,7 +9490,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 bool
 shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno)
 {
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		return true;
 	if (tbinfo->attisdropped[colno])
 		return false;
@@ -16789,7 +16789,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					 */
 					if (OidIsValid(tbinfo->reloftype) &&
 						!print_default && !print_notnull &&
-						!dopt->binary_upgrade)
+						!dopt->binary_upgrade && !dopt->include_yb_metadata)
 						continue;
 
 					/* Format properly if not first attr */
@@ -17114,11 +17114,10 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				if (tbinfo->attisdropped[j])
 				{
 					/*
-					 * For YB backups, we don't need to recreate dropped cols because
-					 * docdb snapshot import can handle such gaps in the col order.
+					 * For YB backups, we also need to recreate and drop the dropped columns
+					 * (even if the docdb snapshot import can handle such gaps in the col order)
+					 * because the table can be used as a type - referenced by another table column.
 					 */
-					if (!dopt->include_yb_metadata)
-					{
 						appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
 						appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
 										"SET attlen = %d, "
@@ -17140,7 +17139,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 											qualrelname);
 						appendPQExpBuffer(q, "DROP COLUMN %s;\n",
 									  fmtId(tbinfo->attnames[j]));
-					}
 				}
 				else if (!tbinfo->attislocal[j] && (IsYugabyteEnabled && !tbinfo->ispartition))
 				{
