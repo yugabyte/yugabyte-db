@@ -57,5 +57,4 @@ YugabyteDB supports the following additional extensions, some of which you must 
 | [PGAudit](../../secure/audit-logging/audit-logging-ysql/) | Pre-bundled | The PostgreSQL Audit Extension (pgaudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. |
 | [pg_hint_plan](../../launch-and-manage/monitor-and-alert/query-tuning/pg-hint-plan/#root) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments.<br/>For more information, see the [pg_hint_plan](https://github.com/ossc-db/pg_hint_plan/tree/master/docs) documentation. |
 | pg_stat_monitor {{<tags/feature/tp>}} | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
-| [pgvector](extension-pgvector) | Pre-bundled | Allows you to store and query vectors, for use in vector similarity searching. |
 | [postgresql-hll](extension-postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. |
