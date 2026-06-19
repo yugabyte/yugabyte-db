@@ -29,7 +29,7 @@ jobs:
           "16",
           "17",
           "18",
-          "19devel"
+          "19beta"
         ]
         os: ["ubuntu-22.04"]
 
@@ -42,9 +42,15 @@ jobs:
         if [[ "${{ matrix.postgres_major_version }}" == *"devel" ]]; then
           pg_major=$( echo "${{ matrix.postgres_major_version }}" | grep -Eo "[0-9]+")
           devel="yes"
+          beta="no"
+        elif [[ "${{ matrix.postgres_major_version }}" == *"beta" ]]; then
+          pg_major=$( echo "${{ matrix.postgres_major_version }}" | grep -Eo "[0-9]+")
+          devel="no"
+          beta="yes"
         else
           pg_major="${{ matrix.postgres_major_version }}"
           devel="no"
+          beta="no"
         fi
 
         export PG_MAJOR_VERSION=${pg_major}
@@ -61,8 +67,11 @@ jobs:
 
         if [[ "${devel}" == "yes" ]]; then
           sudo add-apt-repository "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg-snapshot main ${PG_MAJOR_VERSION}"
+        elif [[ "${beta}" == "yes" ]]; then
+          sudo sh -c "echo \"deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main ${PG_MAJOR_VERSION}\" > /etc/apt/sources.list.d/pgdg.list"
+        else
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
         fi
-        sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 
         # pin the pgdg repository with higher priority than the OS (500)
         echo "Package: *" | sudo tee /etc/apt/preferences.d/pgdg.pref
