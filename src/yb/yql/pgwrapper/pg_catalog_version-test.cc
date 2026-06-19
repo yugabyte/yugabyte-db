@@ -2902,7 +2902,7 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
     });
   }
   CoarseTimePoint start = CoarseMonoClock::Now();
-  while (start + 60s > CoarseMonoClock::Now()) {
+  while (start + RegularBuildVsSanitizers(60s, 20s) > CoarseMonoClock::Now()) {
     ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN c2 INT"));
     ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN c2"));
   }

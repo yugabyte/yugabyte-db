@@ -943,8 +943,8 @@ TEST_F(PgReadRangeTest, SetQLValueBoundsHash) {
     // Full key
     std::vector<const LWQLValuePB*> values = {&value_10, &value_0, &value_10, &value_0};
     PgReadRange range(hash_table_);
-    range.SetDocKeyBound(100, values, true, true);
-    range.SetDocKeyBound(100, values, true, false);
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, true));
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, false));
     PgReadRange expected(hash_table_);
     auto k1 = MakeHashDocKey(100, 10, 0, 10, 0);
     expected.SetDocKeyBound(k1, true, true);
@@ -956,8 +956,8 @@ TEST_F(PgReadRangeTest, SetQLValueBoundsHash) {
     // Short key
     std::vector<const LWQLValuePB*> values = {&value_10, &value_0, &value_10};
     PgReadRange range(hash_table_);
-    range.SetDocKeyBound(100, values, true, true);
-    range.SetDocKeyBound(100, values, true, false);
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, true));
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, false));
     PgReadRange expected(hash_table_);
     dockv::DocKey k1(hash_table_->schema(), 100,
       dockv::KeyEntryValues{
@@ -978,8 +978,8 @@ TEST_F(PgReadRangeTest, SetQLValueBoundsHash) {
     // Null key
     std::vector<const LWQLValuePB*> values = {&value_10, &value_0, &value_10, &value_null};
     PgReadRange range(hash_table_);
-    range.SetDocKeyBound(100, values, true, true);
-    range.SetDocKeyBound(100, values, true, false);
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, true));
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, false));
     PgReadRange expected(hash_table_);
     dockv::DocKey k1(hash_table_->schema(), 100,
       dockv::KeyEntryValues{
@@ -1000,8 +1000,8 @@ TEST_F(PgReadRangeTest, SetQLValueBoundsHash) {
     // nullptr hashkey
     std::vector<const LWQLValuePB*> values = {&value_10, &value_0, nullptr, &value_0};
     PgReadRange range(hash_table_);
-    range.SetDocKeyBound(100, values, true, true);
-    range.SetDocKeyBound(100, values, true, false);
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, true));
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, false));
     PgReadRange expected(hash_table_);
     dockv::DocKey k1(hash_table_->schema(), 100,
       dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(10), dockv::KeyEntryValue::Int32(0)},
@@ -1018,8 +1018,8 @@ TEST_F(PgReadRangeTest, SetQLValueBoundsHash) {
     // missing hashkey
     std::vector<const LWQLValuePB*> values = {&value_10, nullptr, &value_10, &value_0};
     PgReadRange range(hash_table_);
-    range.SetDocKeyBound(100, values, true, true);
-    range.SetDocKeyBound(100, values, true, false);
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, true));
+    CHECK_OK(range.SetHashAndRangeValuesBound(100, values, true, false));
     PgReadRange expected(hash_table_);
     dockv::DocKey k1(hash_table_->schema(), 100,
       dockv::KeyEntryValues{
@@ -1027,6 +1027,94 @@ TEST_F(PgReadRangeTest, SetQLValueBoundsHash) {
     dockv::DocKey k2(hash_table_->schema(), 100,
       dockv::KeyEntryValues{
         dockv::KeyEntryValue::Int32(10), dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)});
+    expected.SetDocKeyBound(k1, false, true);
+    expected.SetDocKeyBound(k2, false, false);
+    EXPECT_EQ(range, expected);
+  }
+}
+
+TEST_F(PgReadRangeTest, SetQLValueBoundsRange) {
+  ThreadSafeArena arena;
+  LWQLValuePB value_100(&arena);
+  value_100.set_int32_value(100);
+  LWQLValuePB value_10(&arena);
+  value_10.set_int32_value(10);
+  LWQLValuePB value_0(&arena);
+  value_0.set_int32_value(0);
+  LWQLValuePB value_null(&arena);
+
+  {
+    // Full key
+    std::vector<const LWQLValuePB*> values = {&value_100, &value_10, &value_0};
+    PgReadRange range(range_table_);
+    CHECK_OK(range.SetRangeValuesBound(values, true, true));
+    CHECK_OK(range.SetRangeValuesBound(values, true, false));
+    PgReadRange expected(range_table_);
+    auto k1 = MakeRangeDocKey(100, 10, 0);
+    expected.SetDocKeyBound(k1, true, true);
+    expected.SetDocKeyBound(k1, true, false);
+    EXPECT_EQ(range, expected);
+  }
+
+  {
+    // Short key
+    std::vector<const LWQLValuePB*> values = {&value_100, &value_10};
+    PgReadRange range(range_table_);
+    CHECK_OK(range.SetRangeValuesBound(values, true, true));
+    CHECK_OK(range.SetRangeValuesBound(values, true, false));
+    PgReadRange expected(range_table_);
+    dockv::DocKey k1(
+        range_table_->schema(),
+        dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(100),
+                              dockv::KeyEntryValue::Int32(10),
+                              dockv::KeyEntryValue(dockv::KeyEntryType::kLowest)});
+    dockv::DocKey k2(
+        range_table_->schema(),
+        dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(100),
+                              dockv::KeyEntryValue::Int32(10),
+                              dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)});
+    expected.SetDocKeyBound(k1, false, true);
+    expected.SetDocKeyBound(k2, false, false);
+    EXPECT_EQ(range, expected);
+  }
+
+  {
+    // Null key
+    std::vector<const LWQLValuePB*> values = {&value_100, &value_10, &value_null};
+    PgReadRange range(range_table_);
+    CHECK_OK(range.SetRangeValuesBound(values, true, true));
+    CHECK_OK(range.SetRangeValuesBound(values, true, false));
+    PgReadRange expected(range_table_);
+    dockv::DocKey k1(
+        range_table_->schema(),
+        dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(100),
+                              dockv::KeyEntryValue::Int32(10),
+                              dockv::KeyEntryValue(dockv::KeyEntryType::kLowest)});
+    dockv::DocKey k2(
+        range_table_->schema(),
+        dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(100),
+                              dockv::KeyEntryValue::Int32(10),
+                              dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)});
+    expected.SetDocKeyBound(k1, false, true);
+    expected.SetDocKeyBound(k2, false, false);
+    EXPECT_EQ(range, expected);
+  }
+
+  {
+    // nullptr midkey
+    std::vector<const LWQLValuePB*> values = {&value_100, nullptr, &value_0};
+    PgReadRange range(range_table_);
+    CHECK_OK(range.SetRangeValuesBound(values, true, true));
+    CHECK_OK(range.SetRangeValuesBound(values, true, false));
+    PgReadRange expected(range_table_);
+    dockv::DocKey k1(
+        range_table_->schema(),
+        dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(100),
+                              dockv::KeyEntryValue(dockv::KeyEntryType::kLowest)});
+    dockv::DocKey k2(
+        range_table_->schema(),
+        dockv::KeyEntryValues{dockv::KeyEntryValue::Int32(100),
+                              dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)});
     expected.SetDocKeyBound(k1, false, true);
     expected.SetDocKeyBound(k2, false, false);
     EXPECT_EQ(range, expected);

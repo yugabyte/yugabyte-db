@@ -147,6 +147,7 @@ target_link_libraries(yb_docdb_test_common
 
 set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIBS})
 
+ADD_YB_TEST(bounded_rocksdb_iterator-test)
 ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_filter_policy-test)
 ADD_YB_TEST(docdb-perf-test)

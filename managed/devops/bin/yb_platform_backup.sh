@@ -454,6 +454,9 @@ create_backup() {
   include_uploaded_releases_flag="**/upload/release_artifacts/**"
 
   mkdir -p "${output_path}"
+  # Canonicalize only after attempting to create the dir; realpath fails on
+  # non-existent paths, and callers may pass an output dir that hasn't been created yet.
+  output_path=$(realpath "${output_path}")
 
   # Perform K8s backup.
   if [[ -n "${k8s_namespace}" ]] || [[ -n "${k8s_pod}" ]]; then
@@ -1131,7 +1134,7 @@ case $command in
     while (( "$#" )); do
       case "$1" in
         -o|--output)
-          output_path=$(realpath $2)
+          output_path="$2"
           shift 2
           ;;
         -m|--exclude_prometheus)

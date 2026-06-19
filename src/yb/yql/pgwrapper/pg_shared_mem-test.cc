@@ -35,6 +35,7 @@ DECLARE_bool(TEST_skip_remove_tserver_shared_memory_object);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_transactional_read_delay_ms);
+DECLARE_uint64(TEST_shared_exchange_big_response_delay_ms);
 DECLARE_uint64(big_shared_memory_segment_expiration_time_ms);
 DECLARE_uint64(big_shared_memory_segment_session_expiration_time_ms);
 
@@ -182,6 +183,45 @@ TEST_F(PgSharedMemTest, BigData) {
   ASSERT_OK(WaitFor(segment_in_pool_functor, 5s, "Connection released big shared memory segment"));
 
   ASSERT_OK(WaitFor(no_allocated_segments_functor, 5s, "Big shared memory segment released"));
+}
+
+// Reproduces the scenario from GH #31711. PG times out waiting for a shared exchange response,
+// while the tserver completes the request successfully just after that. The late response does
+// not fit into the exchange buffer, so the tserver stores it in a big shared memory segment and
+// marks the segment as in use. PG never loads this response, so the in use flag is never cleared.
+// The next request is sent over the exchange (failed previous request path), and when its big
+// response reuses the same segment, the tserver hits the "Big shared mem segment still in use"
+// DFATAL.
+TEST_F(PgSharedMemTest, AbandonedBigResponse) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto value = RandomHumanReadableString(boost::interprocess::mapped_region::get_page_size());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES (1, '$0')", value));
+
+  // Delay sending the big response, so PG gives up on the request, while the tserver completes
+  // it successfully and stores the big response into a big shared memory segment.
+  const auto response_delay_ms = FLAGS_ysql_client_read_write_timeout_ms * 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_shared_exchange_big_response_delay_ms) =
+      response_delay_ms;
+  ASSERT_NOK(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_shared_exchange_big_response_delay_ms) = 0;
+
+  // Wait for the abandoned response to occupy a big shared memory segment attached to the
+  // session with the in use flag set.
+  ASSERT_OK(WaitFor([this] {
+    auto usage = SumBigSharedMemUsage();
+    LOG(INFO) << "Big shared mem bytes, allocated: " << usage.first
+              << ", available: " << usage.second;
+    return usage.first > 0 && usage.second == 0;
+  }, response_delay_ms * 1ms + 10s, "Abandoned big response written"));
+
+  // Fetch twice, since the first fetch could fall back to TCP in case the abandoned response was
+  // not sent yet at the time of the check.
+  for (int i = 0; i != 2; ++i) {
+    auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(result, value);
+  }
 }
 
 TEST_F(PgSharedMemTest, Crash) {
