@@ -70,7 +70,7 @@ To enable built-in connection pooling for universes deployed using YugabyteDB An
 - Turn on the **Connection pooling** option when creating a universe. Refer to [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration).
 - Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling).
 
-Note that when managing universes using YugabyteDB Anywhere, do not set connection pooling flags, `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, and `pgsql_proxy_bind_address`.
+Note that when managing universes using YugabyteDB Anywhere, do not set the following flags manually: `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, or `pgsql_proxy_bind_address`. To customize other [Connection Manager settings](#configure), use [Edit configuration flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#connection-pooling-flags) (**Actions > Edit Flags**).
 
 **Connect**
 
