@@ -1721,10 +1721,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Add old deviceInfo/masterDeviceInfo spec if existing AZ
     if (!newlyAddedAZ) {
-      DeviceInfo savedTsDeviceInfo =
-          savedUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
+      DeviceInfo savedTsDeviceInfo = savedUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
       DeviceInfo savedMasterDeviceInfo =
-          savedUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+          savedUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
 
       if (savedTsDeviceInfo != null) {
         if (savedTsDeviceInfo.numVolumes != null) {
@@ -1752,10 +1751,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
 
-    DeviceInfo taskTsDeviceInfo =
-        taskUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
-    DeviceInfo taskMasterDeviceInfo =
-        taskUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+    DeviceInfo taskTsDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+    DeviceInfo taskMasterDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
     // For cases when resize is combined with full move and new size was persisted in userIntent
     // We need to pass the old size explicitly until all full move AZ nodes are moved.
     if (taskParams().oldMasterDiskSize != null) {
@@ -1813,10 +1810,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> moveOpMasterDiskSpecs =
           (HashMap) moveOpStorageOverrides.getOrDefault("master", new HashMap<>());
 
-      DeviceInfo taskTsDeviceInfo =
-          taskUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
+      DeviceInfo taskTsDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
       DeviceInfo taskMasterDeviceInfo =
-          taskUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+          taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
 
       // moveOp storage attributes should use new volume attributes
       if (taskMasterDeviceInfo.numVolumes != null) {

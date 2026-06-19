@@ -1110,7 +1110,7 @@ public class Universe extends Model {
     }
     UniverseDefinitionTaskParams.Cluster cluster =
         getUniverseDetails().getClusterByUuid(node.placementUuid);
-    return cluster.userIntent.providerType;
+    return cluster.getProviderCloudType(node);
   }
 
   /**

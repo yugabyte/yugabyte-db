@@ -286,6 +286,13 @@
         },
         "earlyoomEnabled" : {
           "type" : "boolean"
+        },
+        "perProviderConfig" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProviderState"
+          },
+          "description" : "Configuration per provider",
+          "type" : "object"
         }
       },
       "type" : "object"
@@ -14368,6 +14375,38 @@
       ],
       "type" : "object"
     },
+    "NodeSpecification" : {
+      "properties" : {
+        "cgroupSize" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
+        "instanceType" : {
+          "type" : "string"
+        },
+        "k8SNodeResourceSpec" : {
+          "$ref" : "#/definitions/K8SNodeResourceSpec"
+        },
+        "proxyConfig" : {
+          "$ref" : "#/definitions/ProxyConfig"
+        }
+      },
+      "type" : "object"
+    },
+    "NodesSpecification" : {
+      "properties" : {
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpecification"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpecification"
+        }
+      },
+      "type" : "object"
+    },
     "OCICloudInfo" : {
       "properties" : {
         "ociCompartmentId" : {
@@ -15053,6 +15092,17 @@
       "required" : [
         "value"
       ],
+      "type" : "object"
+    },
+    "PerProviderState" : {
+      "properties" : {
+        "config" : {
+          "$ref" : "#/definitions/EarlyoomConfig"
+        },
+        "earlyoomEnabled" : {
+          "type" : "boolean"
+        }
+      },
       "type" : "object"
     },
     "PerfAdvisorManualRunStatus" : {
@@ -16215,6 +16265,75 @@
           "type" : "integer"
         },
         "sshUser" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "ProviderSpecification" : {
+      "properties" : {
+        "accessKeyCode" : {
+          "type" : "string"
+        },
+        "awsInstanceProfile" : {
+          "type" : "string"
+        },
+        "azHelmOverrides" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
+        "baseNodesSpecification" : {
+          "$ref" : "#/definitions/NodesSpecification"
+        },
+        "enableLoadBalancer" : {
+          "type" : "boolean"
+        },
+        "exposingServiceState" : {
+          "enum" : [
+            "NONE",
+            "EXPOSED",
+            "UNEXPOSED"
+          ],
+          "type" : "string"
+        },
+        "helmOverrides" : {
+          "type" : "string"
+        },
+        "imageBundleUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "instanceTags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
+        "perAZOverrides" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/NodesSpecification"
+          },
+          "type" : "object"
+        },
+        "providerType" : {
+          "enum" : [
+            "unknown",
+            "aws",
+            "gcp",
+            "azu",
+            "oci",
+            "docker",
+            "onprem",
+            "kubernetes",
+            "local",
+            "other"
+          ],
+          "type" : "string"
+        },
+        "providerUUID" : {
+          "format" : "uuid",
           "type" : "string"
         }
       },
@@ -30159,6 +30278,12 @@
         },
         "provider" : {
           "type" : "string"
+        },
+        "providerSpecifications" : {
+          "items" : {
+            "$ref" : "#/definitions/ProviderSpecification"
+          },
+          "type" : "array"
         },
         "providerType" : {
           "enum" : [
