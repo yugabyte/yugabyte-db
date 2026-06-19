@@ -1048,27 +1048,27 @@ YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
 }
 
 /*
- * Look up the hardcoded "tserver_uuid" column on 'relid' and return its
+ * Look up the hardcoded "server_uuid" column on 'relid' and return its
  * AttrNumber. Returns InvalidAttrNumber if no such column exists or if it
  * exists but is not of UUID type.
  */
 static AttrNumber
 yb_get_federated_tserver_uuid_attno(Oid relid)
 {
-	AttrNumber	attno = get_attnum(relid, "tserver_uuid");
+	AttrNumber	attno = get_attnum(relid, "server_uuid");
 
 	if (attno == InvalidAttrNumber || get_atttype(relid, attno) != UUIDOID)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("federated foreign table \"%s\" must have a "
-						"\"tserver_uuid\" column of type UUID",
+						"\"server_uuid\" column of type UUID",
 						get_rel_name(relid))));
 
 	return attno;
 }
 
 /*
- * Outcome of attempting to extract a tserver_uuid filter from one
+ * Outcome of attempting to extract a server_uuid filter from one
  * RestrictInfo clause.
  */
 typedef enum YbTserverUuidClauseResult
@@ -1105,7 +1105,7 @@ yb_add_matching_server_index(Datum uuid_datum,
 /*
  * yb_extract_tserver_indexes_from_clause
  *		If 'clause' is a recognized equality / IN-list restriction on the
- *		tserver_uuid column of 'rel', set *out_indexes to a Bitmapset of
+ *		server_uuid column of 'rel', set *out_indexes to a Bitmapset of
  *		indexes into 'servers' that the clause admits and return
  *		YB_TS_UUID_CLAUSE_SUBSET. Otherwise leave *out_indexes alone and
  *		return YB_TS_UUID_CLAUSE_UNSUPPORTED.
@@ -1217,7 +1217,7 @@ yb_extract_tserver_indexes_from_clause(Expr *clause, Index relid,
 /*
  * YbExtractFederatedTserverFilter
  *		Inspect 'rel->baserestrictinfo' for filters on the hardcoded
- *		"tserver_uuid" column of the foreign table referenced by 'rte',
+ *		"server_uuid" column of the foreign table referenced by 'rte',
  *		and return a Bitmapset of indexes into 'servers' that the
  *		conjunction of those filters admits.
  *
@@ -1236,7 +1236,7 @@ yb_extract_tserver_indexes_from_clause(Expr *clause, Index relid,
  * If no recognized clause is found, every index 0 .. nservers-1 is set
  * so the caller requests all servers.
  *
- * Errors when the federated foreign table is missing a "tserver_uuid"
+ * Errors when the federated foreign table is missing a "server_uuid"
  * UUID column or when UUID equality is somehow unregistered.
  */
 Bitmapset *
