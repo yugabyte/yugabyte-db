@@ -63,7 +63,7 @@ $ pip install --pre psycopg-yugabytedb
 Or pin the version explicitly:
 
 ```sh
-$ pip install "psycopg-yugabytedb==3.3.4.1rc1"
+$ pip install "psycopg-yugabytedb==3.3.4.1"
 ```
 
 To use the upstream connection pool with the smart driver, install the `[pool]` extra:
