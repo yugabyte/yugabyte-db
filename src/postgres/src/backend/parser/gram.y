@@ -1057,7 +1057,7 @@ stmt:
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTableStmt
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
-			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
+			| AlterCompositeTypeStmt
 			| AlterPublicationStmt
 			| AlterRoleSetStmt
 			| AlterRoleStmt
@@ -3315,7 +3315,6 @@ hash_partbound:
 AlterCompositeTypeStmt:
 			ALTER TYPE_P any_name alter_type_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE", 1893);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 
 					/* can't use qualified_name, sigh */
@@ -3346,7 +3345,6 @@ alter_type_cmd:
 			/* ALTER TYPE <name> DROP ATTRIBUTE IF EXISTS <attname> [RESTRICT|CASCADE] */
 			| DROP ATTRIBUTE IF_P EXISTS ColId opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE DROP ATTRIBUTE", 1893);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_DropColumn;
@@ -3358,7 +3356,6 @@ alter_type_cmd:
 			/* ALTER TYPE <name> DROP ATTRIBUTE <attname> [RESTRICT|CASCADE] */
 			| DROP ATTRIBUTE ColId opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE DROP ATTRIBUTE", 1893);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_DropColumn;
@@ -10591,7 +10588,7 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TYPE_P any_name RENAME ATTRIBUTE name TO name opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TYPE", 1893);
+					parser_ybc_signal_unsupported(@1, "ALTER TYPE RENAME ATTRIBUTE", 1893);
 					RenameStmt *n = makeNode(RenameStmt);
 
 					n->renameType = OBJECT_ATTRIBUTE;
