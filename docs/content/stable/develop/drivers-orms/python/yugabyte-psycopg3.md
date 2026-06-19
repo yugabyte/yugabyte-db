@@ -282,8 +282,6 @@ If the connection fails, verify:
 
 - Currently, [PostgreSQL psycopg 3 driver](https://github.com/psycopg/psycopg) and [YugabyteDB psycopg 3 smart driver](https://github.com/yugabyte/psycopg) _cannot_ be used in the same environment. Both write to `site-packages/psycopg/`. If a previous environment has upstream psycopg (or psycopg-binary, psycopg-c) installed, uninstall it before installing the fork, or use a fresh virtual environment.
 
-- The driver is a pre-release (3.3.4.1rc1); install with `--pre` or pin the exact version.
-
 - Pure Python distribution only. The C-accelerated (psycopg-yugabytedb-c) and pre-built binary (psycopg-yugabytedb-binary) distributions are not published yet. The pure-Python distribution requires system libpq.
 
 - Strict topology filter in this release. If `topology_keys` matches no live nodes, connect raises `OperationalError` (no cluster-wide fallback in this release).
