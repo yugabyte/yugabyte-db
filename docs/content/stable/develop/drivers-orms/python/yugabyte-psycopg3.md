@@ -76,7 +76,7 @@ The fork is published as a pre-release on PyPI. Install with `--pre` or pin the 
 ```sh
 pip install --pre psycopg-yugabytedb
 # or
-pip install "psycopg-yugabytedb==3.3.4.1rc1"
+pip install "psycopg-yugabytedb==3.3.4.1"
 ```
 
 To use the upstream connection pool alongside the smart driver, install the `[pool]` extra. This pulls in an unmodified upstream `psycopg-pool`; the pool's connections still go through the smart-driver dispatcher.
@@ -113,7 +113,7 @@ Verify the install:
 
 ```sh
 python -c "import psycopg; print(psycopg.__version__)"
-# Expected: 3.3.4.1rc1
+# Expected: 3.3.4.1
 
 python -c "from psycopg.yb.registry import ClusterRegistry; print('smart driver ok')"
 # Expected: smart driver ok
