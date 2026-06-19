@@ -580,6 +580,13 @@ extern bool yb_disable_wait_for_backends_catalog_version;
 extern bool yb_enable_base_scans_cost_model;
 
 /*
+ * When enabled, the planner warms the catalog cache with all of a relation's
+ * pg_statistic rows in a single batched RPC (instead of one point lookup per
+ * column) the first time the relation is planned in a backend.
+ */
+extern bool yb_prefetch_column_statistics;
+
+/*
  * Enables update of reltuples in pg_class for the base table and index after
  * creating the index.
  */
@@ -875,6 +882,9 @@ extern int	yb_test_reset_retry_counts;
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
 */
 extern bool yb_enable_ddl_atomicity_infra;
+
+/* Enable shared replication origin write tagging. */
+extern bool yb_enable_replication_origin_shared;
 
 /*
  * Allow to return to the client SQL status codes defined by YugabyteDB (YBxxx).

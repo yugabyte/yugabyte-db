@@ -3320,6 +3320,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_prefetch_column_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Prefetch a relation's column statistics in one catalog "
+						 "read during planning."),
+			NULL
+		},
+		&yb_prefetch_column_statistics,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_update_reltuples_after_create_index", PGC_USERSET,
 			QUERY_TUNING_OTHER,
 			gettext_noop("Enables update of reltuples in pg_class for the base "
@@ -3366,6 +3377,17 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_ddl_atomicity_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_replication_origin_shared", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Enable shared replication origin write tagging."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replication_origin_shared,
 		true,
 		NULL, NULL, NULL
 	},

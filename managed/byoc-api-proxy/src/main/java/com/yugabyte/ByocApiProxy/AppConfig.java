@@ -5,6 +5,8 @@ import com.yugabyte.ByocApiProxy.auth.BaseAuthenticator;
 import com.yugabyte.ByocApiProxy.auth.ServiceAccountAuthenticator;
 import com.yugabyte.ByocApiProxy.config.ProxiedAppProperties;
 import com.yugabyte.aeon.client.ApiClient;
+import java.io.FileInputStream;
+import java.io.IOException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -35,6 +37,10 @@ public class AppConfig {
   }
 
   @Bean
+  @ConditionalOnProperty(
+      name = "proxied-app.certificate",
+      matchIfMissing = true,
+      havingValue = "non_existent")
   public ApiClient defaultClient(ProxiedAppProperties proxiedApp) {
     ApiClient defaultClient = com.yugabyte.aeon.client.Configuration.getDefaultApiClient();
     int timeout = (int) proxiedApp.readTimeout().toMillis();
@@ -42,5 +48,14 @@ public class AppConfig {
         .setBasePath(proxiedApp.baseUrl())
         .setConnectTimeout(timeout)
         .setReadTimeout(timeout);
+  }
+
+  @Bean
+  @ConditionalOnProperty(name = "proxied-app.certificate")
+  public ApiClient defaultClientWithCertificate(ProxiedAppProperties proxiedApp)
+      throws IOException {
+    try (FileInputStream fis = new FileInputStream(proxiedApp.certificate())) {
+      return defaultClient(proxiedApp).setSslCaCert(fis);
+    }
   }
 }

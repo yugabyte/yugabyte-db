@@ -373,5 +373,136 @@ TEST_F(LoadBalancerManyTabletsTest, LimitRbsToUnresponsiveNode) {
   WaitForLoadBalanceCompletion();
 }
 
+class LoadBalancerTServerCrashLoopTest : public LoadBalancerManyTabletsTest {
+ protected:
+  static constexpr int kRbsLimit = 3;
+  static constexpr int kUnresponsiveTimeoutMs = 5000;
+  static constexpr int kFollowerUnavailableSec = 10;
+
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    LoadBalancerTest::CustomizeExternalMiniCluster(opts);
+    opts->extra_master_flags.push_back(
+        Format("--tserver_unresponsive_timeout_ms=$0", kUnresponsiveTimeoutMs));
+    opts->extra_master_flags.push_back(
+        Format("--load_balancer_max_concurrent_tablet_remote_bootstraps=$0", kRbsLimit));
+    opts->extra_master_flags.push_back(
+        Format("--load_balancer_max_concurrent_tablet_remote_bootstraps_per_table=$0", kRbsLimit));
+    opts->extra_master_flags.push_back("--catalog_manager_bg_task_wait_ms=1000");
+    opts->extra_tserver_flags.push_back(
+        Format("--follower_unavailable_considered_failed_sec=$0", kFollowerUnavailableSec));
+  }
+
+  Result<int> CountTabletsWithTsReplica(const std::string& ts_uuid) {
+    master::GetTableLocationsRequestPB req;
+    master::GetTableLocationsResponsePB resp;
+    req.set_max_returned_locations(100);
+    req.mutable_table()->set_table_name(table_name().table_name());
+    req.mutable_table()->mutable_namespace_()->set_name(table_name().namespace_name());
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(kDefaultTimeout);
+    auto proxy = GetMasterLeaderProxy<master::MasterClientProxy>();
+    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return STATUS_FORMAT(IllegalState, "GetTableLocations failed: $0",
+                           resp.error().ShortDebugString());
+    }
+
+    int count = 0;
+    for (const auto& loc : resp.tablet_locations()) {
+      for (const auto& replica : loc.replicas()) {
+        if (replica.ts_info().permanent_uuid() == ts_uuid) {
+          count++;
+          break;
+        }
+      }
+    }
+    return count;
+  }
+};
+
+// Previously, if a tserver went down in the middle of a bootstrap and stayed down longer than
+// tserver_unresponsive_timeout_ms, the master would ignore the PRE_VOTER reported in the leader's
+// Raft config and not count it towards the starting tablets limit. This allowed the cluster
+// balancer to schedule new remote bootstraps beyond the configured concurrency limit, flooding
+// the crash-looped tserver with RBS requests. The test asserts that the cluster balancer honors
+// whatever is in the raft leader's consensus config, and doesn't schedule more moves if the tserver
+// is already at its incoming rbs'es limit.
+TEST_F(LoadBalancerTServerCrashLoopTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(IncomingTServerRbsLimitHonored)) {
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return client_->IsLoadBalancerIdle();
+  }, kDefaultTimeout * 2, "WaitForInitialBalance"));
+
+  auto* target_ts = external_mini_cluster()->tablet_server(2);
+  const auto target_ts_uuid = target_ts->instance_id().permanent_uuid();
+
+  // Stop target tserver and wait for leaders to evict it from all Raft configs.
+  target_ts->Shutdown();
+  LOG(INFO) << Format("Waiting $0s for follower eviction of $1",
+                      2 * kFollowerUnavailableSec, target_ts_uuid);
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(CountTabletsWithTsReplica(target_ts_uuid)) == 0;
+  }, kFollowerUnavailableSec * 2s, "WaitForEviction"));
+  LOG(INFO) << "Target tserver evicted from all tablet configs";
+
+  // Bring target tserver back with RBS paused.
+  ASSERT_OK(target_ts->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {{"TEST_pause_before_remote_bootstrap", "true"}}));
+
+  int initial_count = 0;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    initial_count = VERIFY_RESULT(CountTabletsWithTsReplica(target_ts_uuid));
+    LOG(INFO) << "Tablets with replica on target ts: " << initial_count;
+    return initial_count >= kRbsLimit;
+  }, kDefaultTimeout * 2, "WaitForRbsScheduled"));
+
+  LOG(INFO) << "Tablet count after initial RBS scheduling: " << initial_count;
+  ASSERT_EQ(initial_count, kRbsLimit);
+
+  // Crash the tserver while bootstraps are in progress. Wait for the master to mark it
+  // as UNRESPONSIVE (tserver_unresponsive_timeout_ms) but NOT long enough for
+  // follower_unavailable_considered_failed_sec so leaders still have ts2 as PRE_VOTER.
+  ASSERT_OK(external_mini_cluster()->SetFlagOnTServers(
+      "follower_unavailable_considered_failed_sec", "900"));
+  LOG(INFO) << "Shutting down target tserver (simulating crash during bootstrap)";
+  auto unresponsive_waiter = external_mini_cluster()->GetMasterLogWaiter(
+      Format("Marking tserver $0", target_ts_uuid));
+  target_ts->Shutdown();
+
+  ASSERT_OK(unresponsive_waiter.WaitFor(
+      MonoDelta::FromMilliseconds(kUnresponsiveTimeoutMs * 2)));
+  LOG(INFO) << "Master marked target tserver as UNRESPONSIVE";
+
+  // Bring the tserver back up. The leaders will re-initiate RBS for the existing PRE_VOTER
+  // replicas. The cluster balancer should still count these stale replicas towards the
+  // starting tablets limit and NOT schedule new AddReplica tasks for additional tablets.
+  LOG(INFO) << "Restarting target tserver (second time)";
+  ASSERT_OK(target_ts->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {{"TEST_pause_before_remote_bootstrap", "true"}}));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto count = VERIFY_RESULT(CountTabletsWithTsReplica(target_ts_uuid));
+    LOG(INFO) << "Tablets on target ts after crash-loop recovery: " << count;
+    return count >= kRbsLimit;
+  }, kDefaultTimeout * 2, "WaitForReRbs"));
+
+  // Wait for several additional LB cycles. If stale replicas were not counted (the old bug),
+  // the LB would schedule new tablets beyond kRbsLimit.
+  LOG(INFO) << "Waiting for additional LB cycles to verify no new RBS scheduled";
+  SleepFor(5s);
+
+  auto final_count = ASSERT_RESULT(CountTabletsWithTsReplica(target_ts_uuid));
+  LOG(INFO) << "Final tablet replica count on target ts: " << final_count;
+  ASSERT_EQ(final_count, kRbsLimit);
+
+  // Unpause RBS for clean shutdown.
+  ASSERT_OK(external_mini_cluster()->SetFlag(
+      target_ts, "TEST_pause_before_remote_bootstrap", "false"));
+}
+
 } // namespace integration_tests
 } // namespace yb

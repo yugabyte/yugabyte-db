@@ -15,7 +15,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.oracle.bmc.keymanagement.responses.CreateKeyResponse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.OciAlgorithm;
@@ -51,28 +50,16 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
   protected ObjectNode createAuthConfigWithService(UUID configUUID, ObjectNode config) {
     this.ociEARServiceUtil = getOciEarServiceUtil();
     try {
-      String keyOcid =
-          ociEARServiceUtil.getSafeText(config, OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
+      // Resolve the key name to a key OCID (creating the key if
+      // it does not yet exist) and cache the derived OCID into the auth config for runtime use.
       String keyName =
           ociEARServiceUtil.getSafeText(config, OciKmsAuthConfigField.OCI_KEY_NAME.fieldName);
-
-      if (StringUtils.isBlank(keyOcid)) {
-        if (StringUtils.isNotBlank(keyName)) {
-          String foundOcid = ociEARServiceUtil.getKeyOcidByName(configUUID, config, keyName);
-          if (StringUtils.isNotBlank(foundOcid)) {
-            config.put(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName, foundOcid);
-          } else {
-            // create with user-provided name
-            CreateKeyResponse resp = ociEARServiceUtil.createKey(configUUID, config, keyName);
-            config.put(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName, resp.getKey().getId());
-          }
-        } else {
-          // fallback: create with generated name
-          String displayName = String.format("Yugabyte-Master-Key-%s", configUUID);
-          CreateKeyResponse resp = ociEARServiceUtil.createKey(configUUID, config, displayName);
-          config.put(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName, resp.getKey().getId());
-        }
+      if (StringUtils.isBlank(keyName)) {
+        throw new RuntimeException("OCI_KEY_NAME is required");
       }
+      // Clear any existing OCID to ensure it is re-resolved from the key name
+      config.remove(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
+      ociEARServiceUtil.resolveKeyOcid(configUUID, config);
 
       return config;
     } catch (Exception e) {
@@ -158,8 +145,10 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
     this.ociEARServiceUtil = getOciEarServiceUtil();
     ociEARServiceUtil.validateKMSProviderConfigFormData(authConfig);
 
-    String keyOcid =
-        ociEARServiceUtil.getSafeText(authConfig, OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
+    // Re-resolve the key OCID from the key name (clearing any cached OCID) so that a key which was
+    // re-created under the same name is picked up on refresh.
+    authConfig.remove(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
+    String keyOcid = ociEARServiceUtil.resolveKeyOcid(configUUID, authConfig);
     if (StringUtils.isNotBlank(keyOcid)
         && !ociEARServiceUtil.validateKeySettings(authConfig, keyOcid)) {
       throw new PlatformServiceException(

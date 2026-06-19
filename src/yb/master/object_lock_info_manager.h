@@ -39,6 +39,8 @@ class AcquireObjectLockRequestPB;
 class AcquireObjectLockResponsePB;
 class ReleaseObjectLockRequestPB;
 class ReleaseObjectLockResponsePB;
+class WaitForLockersMultipleRequestPB;
+class WaitForLockersMultipleResponsePB;
 class DdlLockEntriesPB;
 }  // namespace yb::tserver
 
@@ -51,6 +53,8 @@ class AcquireObjectLocksGlobalRequestPB;
 class AcquireObjectLocksGlobalResponsePB;
 class ReleaseObjectLocksGlobalRequestPB;
 class ReleaseObjectLocksGlobalResponsePB;
+class WaitForLockersMultipleGlobalRequestPB;
+class WaitForLockersMultipleGlobalResponsePB;
 
 class ObjectLockInfo;
 
@@ -75,6 +79,12 @@ class ObjectLockInfoManager {
   void UnlockObject(
       const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB& resp,
       rpc::RpcContext rpc);
+
+  void WaitForLockersMultipleGlobal(
+      const WaitForLockersMultipleGlobalRequestPB& req,
+      WaitForLockersMultipleGlobalResponsePB& resp,
+      rpc::RpcContext rpc);
+
   void ReleaseLocksForTxn(const TransactionId& txn_id);
 
   Status RefreshYsqlLease(

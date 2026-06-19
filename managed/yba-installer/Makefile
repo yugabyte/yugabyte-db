@@ -40,7 +40,7 @@ PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-a
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
-PROMETHEUS_VERSION ?= 3.10.0
+PROMETHEUS_VERSION ?= 3.12.0
 
 # Node Exporter Version
 NODE_EXPORTER_VERSION ?= 1.10.2

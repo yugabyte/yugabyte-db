@@ -39,7 +39,19 @@ function baseResilience(
 }
 
 describe('getEffectiveReplicationFactorForResilience', () => {
-  it('expert mode uses resilienceFactor as literal RF', () => {
+  it('expert mode uses replicationFactor from nodes availability', () => {
+    expect(
+      getEffectiveReplicationFactorForResilience(
+        baseResilience({
+          resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
+          resilienceFactor: 3
+        }),
+        { replicationFactor: 5 }
+      )
+    ).toBe(5);
+  });
+
+  it('expert mode falls back to resilienceFactor when nodes RF is unset', () => {
     expect(
       getEffectiveReplicationFactorForResilience(
         baseResilience({
@@ -147,7 +159,7 @@ describe('getPlacementRegions per-AZ RF distribution', () => {
   it('distributes RF 7 across 2 AZs with nodes 3+4 (user bug report)', () => {
     const resilience = baseResilience({
       resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
-      resilienceFactor: 7
+      resilienceFactor: 3
     });
     const availabilityZones = {
       'us-west-2': [
@@ -155,7 +167,7 @@ describe('getPlacementRegions per-AZ RF distribution', () => {
         { uuid: 'az-uuid-2', name: 'az-b', nodeCount: 4, preffered: 0 }
       ]
     };
-    const regionList = getPlacementRegions(resilience, availabilityZones);
+    const regionList = getPlacementRegions(resilience, availabilityZones, { replicationFactor: 7 });
     const replicationFactors = expectValidPerAzReplication(regionList, availabilityZones, 7);
     expect(replicationFactors).toEqual([3, 4]);
   });
@@ -163,7 +175,7 @@ describe('getPlacementRegions per-AZ RF distribution', () => {
   it('distributes RF 7 across 2 AZs with nodes 4+3 (swapped capacities)', () => {
     const resilience = baseResilience({
       resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
-      resilienceFactor: 7
+      resilienceFactor: 3
     });
     const availabilityZones = {
       'us-west-2': [
@@ -171,7 +183,7 @@ describe('getPlacementRegions per-AZ RF distribution', () => {
         { uuid: 'az-uuid-2', name: 'az-b', nodeCount: 3, preffered: 0 }
       ]
     };
-    const regionList = getPlacementRegions(resilience, availabilityZones);
+    const regionList = getPlacementRegions(resilience, availabilityZones, { replicationFactor: 7 });
     const replicationFactors = expectValidPerAzReplication(regionList, availabilityZones, 7);
     expect(replicationFactors).toEqual([4, 3]);
   });
@@ -179,7 +191,7 @@ describe('getPlacementRegions per-AZ RF distribution', () => {
   it('distributes RF 7 across 3 AZs with nodes 3+2+2 (expert fixture)', () => {
     const resilience = baseResilience({
       resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
-      resilienceFactor: 7
+      resilienceFactor: 3
     });
     const availabilityZones = {
       'us-west-2': [
@@ -188,7 +200,7 @@ describe('getPlacementRegions per-AZ RF distribution', () => {
         { uuid: 'az-uuid-3', name: 'az-c', nodeCount: 2, preffered: 0 }
       ]
     };
-    const regionList = getPlacementRegions(resilience, availabilityZones);
+    const regionList = getPlacementRegions(resilience, availabilityZones, { replicationFactor: 7 });
     const replicationFactors = expectValidPerAzReplication(regionList, availabilityZones, 7);
     expect(replicationFactors).toEqual([3, 2, 2]);
   });
@@ -213,7 +225,7 @@ describe('getPlacementRegions per-AZ RF distribution', () => {
   it('distributes RF 3 across uneven nodes 1+2 without exceeding capacity', () => {
     const resilience = baseResilience({
       resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
-      resilienceFactor: 3
+      resilienceFactor: 1
     });
     const availabilityZones = {
       'us-west-2': [
@@ -221,7 +233,7 @@ describe('getPlacementRegions per-AZ RF distribution', () => {
         { uuid: 'az-uuid-2', name: 'az-b', nodeCount: 2, preffered: 0 }
       ]
     };
-    const regionList = getPlacementRegions(resilience, availabilityZones);
+    const regionList = getPlacementRegions(resilience, availabilityZones, { replicationFactor: 3 });
     const replicationFactors = expectValidPerAzReplication(regionList, availabilityZones, 3);
     expect(replicationFactors).toEqual([1, 2]);
   });

@@ -10,6 +10,7 @@ import { AvailabilityZone, Region } from '../../../../helpers/dtos';
 import {
   FAULT_TOLERANCE_TYPE,
   REGIONS_FIELD,
+  REPLICATION_FACTOR,
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from '../fields/FieldNames';
@@ -508,7 +509,8 @@ export function distributeReplicationFactorAcrossAzs(
 
 export const getPlacementRegions = (
   resilienceAndRegionsSettings: ResilienceAndRegionsProps,
-  availabilityZones?: NodeAvailabilityProps['availabilityZones']
+  availabilityZones?: NodeAvailabilityProps['availabilityZones'],
+  nodesAvailability?: Pick<NodeAvailabilityProps, typeof REPLICATION_FACTOR>
 ) => {
   const { resilienceType } = resilienceAndRegionsSettings;
 
@@ -549,8 +551,10 @@ export const getPlacementRegions = (
     ];
   }
 
-  const replicationFactorTotal =
-    getEffectiveReplicationFactorForResilience(resilienceAndRegionsSettings);
+  const replicationFactorTotal = getEffectiveReplicationFactorForResilience(
+    resilienceAndRegionsSettings,
+    nodesAvailability
+  );
 
   // Filter out AZs with 0 nodes first, then calculate replication factor distribution
   // This ensures we only distribute replicas across AZs that actually have nodes

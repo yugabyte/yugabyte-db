@@ -199,8 +199,6 @@ struct TabletReplica {
 
   void UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info);
 
-  bool IsStale() const;
-
   bool IsStarting() const;
 
   std::string ToString() const;

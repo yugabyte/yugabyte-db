@@ -50,9 +50,7 @@
 
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_pg_cron);
-DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_int64(xcluster_ddl_queue_advisory_lock_key);
@@ -1489,10 +1487,6 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
 
   // Pause DDL replication to test that we handle the index data correctly.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
-
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms) = 20000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 10000;
 
   // Create index on column a and insert some more rows.
   ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX ON $0(a DESC)", kNewTableName));

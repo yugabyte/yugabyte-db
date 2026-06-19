@@ -257,6 +257,7 @@ YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
 YbcIsExplicitlyLockedRowSkippedCheckHandle
+YbcIsExplicitlyLockedRowSkippedCheckHandleOptional
 YbcLsnType
 YbcMetricsInfo
 YbcObjectLockId

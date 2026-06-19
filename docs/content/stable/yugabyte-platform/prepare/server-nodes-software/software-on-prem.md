@@ -105,6 +105,7 @@ The following table describes options that are changed for a typical installatio
 | Option | Value |
 | :--- | :--- |
 | `yb_home_dir` | The directory on the node where YugabyteDB will be installed. |
+| `yb_user_home` | Home directory for the `yugabyte` user. If not set, defaults to `yb_home_dir`. v2025.2.4.0 and later. |
 | `chrony_servers` | The addresses of your Network Time Protocol servers. |
 | `yb_user_id` | Provide a UID to be used for the `yugabyte` user. The script creates the `yugabyte` user, and providing the same UID for each node ensures consistency across nodes. |
 | `is_airgap` | If you are performing an airgapped installation, set to true. |
@@ -121,7 +122,7 @@ Set the following options to have node agent create (or update) the [on-premises
 | `customer_uuid` | Your customer ID. To view your customer ID, in YugabyteDB Anywhere, click the **Profile** icon in the top right corner of the window, and choose **User Profile**. |
 | `api_key` | Your API token. To obtain this, in YugabyteDB Anywhere, click the Profile icon in the top right corner of the window, and choose **User Profile**. Then click **Generate Key**. The user creating the API token must have [Admin role](../../../administer-yugabyte-platform/anywhere-rbac/#built-in-roles) privileges or better. |
 | `node_name` | A name for the node. |
-| `node_external_fqdn` | The fully qualified domain name or IP address of the node, must be accessible from the YugabyteDB Anywhere server. |
+| `node_external_fqdn` | The fully qualified domain name (FQDN) or IP address of the node, must be accessible from the YugabyteDB Anywhere server. |
 
 Enter the following on-premises provider configuration details. If the provider does not exist, node agent creates it; otherwise, it adds the node instance to the existing provider.
 
@@ -160,6 +161,14 @@ After the node is provisioned, reboot the node.
 
 If the preflight check fails, rebooting the node may solve some issues (for example, incorrect ulimit settings).
 
+<!-- TODO for 2026.1
+#### Run root or non-root
+
+Use the `--noroot` flag to run only the modules specific to the `yugabyte` user. The script must be run as the user `yugabyte`.
+
+Use the `--root` flag to run only the modules that require root privileges. Modules which do not require root are skipped. The script must be run as the user `root`.
+-->
+
 #### Verify provisioning
 
 After running the script and rebooting the VM, you can verify that provisioning was successful and YugabyteDB Anywhere can communicate with the node by navigating to `https://<yugabytedbanywhere-host-ip>/nodeagent`, where `yugabytedbanywhere-host-ip` is the IP address hosting your YugabyteDB Anywhere instance.
@@ -172,6 +181,54 @@ For troubleshooting, you can run the script's preflight checks separately as fol
 
 ```sh
 sudo ./node-agent-provision.sh --preflight_check
+```
+
+Use the `--preflight_check_out_file` flag (v2025.2.4.0 and later) to specify the file path for the preflight_check output. Only the check JSON output is saved. You can read and parse the files for automation.
+
+#### Override configuration
+
+You can use the `--config_override` flag to override settings in the configuration file from the command line. You can pass as many overrides as needed. The data types are validated strictly. Use periods to indicate the nesting level for the override. (Available in v2025.2.4.0 and later.)
+
+Examples:
+
+Override the FQDN (string type) under ynp:
+
+```sh
+./node-agent-provision.sh --config_override ynp.node_external_fqdn=\"my-new-fqdn\"
+```
+
+Override chrony servers (list of strings) under ynp:
+
+```sh
+./node-agent-provision.sh --config_override ynp.chrony_servers=[\"s1\",\"s2\"]
+```
+
+Override FQDN and YBA URL at the same time:
+
+```sh
+./node-agent-provision.sh --config_override ynp.node_external_fqdn=\"my-new-fqdn\" --config_override yba.url=\"https://new-yba-url.com\"
+```
+
+Note this only overrides fields like yba.url that are used for fetching data from YugabyteDB Anywhere, not the data fetched from YugabyteDB Anywhere.
+
+#### Generate a configuration file
+
+Use the `--generate_config` flag to generate a new yaml config by pulling information from YugabyteDB Anywhere without actually executing any other command. Use this for brownfield use-cases where the nodes are already added to the node instances of the provider and they need to be _re-provisioned_. This option allows you to generate the configuration YAML file without having to manually create it. The YugabyteDB Anywhere URL, API token, and the node FQDN/IP added to node instances in the provider minimally are required in `node-agent-provision.yaml`. (Available in v2025.2.4.0 and later.)
+
+The generated file is named `node-agent-provision-generated.yaml`.
+
+Use the `--generate_and_run` flag to generate the new configuration file _and_ run the provisioning script.
+
+For example, to run provision with the generated configuration file:
+
+```sh
+./node-agent-provision.sh  --generate_and_run --provision
+```
+
+To do a dry run with the generated configuration file:
+
+```sh
+./node-agent-provision.sh  --generate_and_run --dry_run
 ```
 
 ## sudo whitelist

@@ -43,7 +43,6 @@
 
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_mark_update_packed_row);
-DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(ysql_yb_skip_redundant_update_ops);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
@@ -13195,6 +13194,46 @@ TEST_F(CDCSDKYsqlTest, TestOriginId) {
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 }
 
+TEST_F(CDCSDKYsqlTest, TestSharedOriginIdFromConcurrentSessions) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+  const auto kOrigin = "shared_origin";
+  auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+
+  ASSERT_OK(conn1.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin));
+  auto conn2 = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(conn1.FetchFormat("SELECT yb_replication_origin_session_setup_shared('$0');", kOrigin));
+  ASSERT_OK(conn2.FetchFormat("SELECT yb_replication_origin_session_setup_shared('$0');", kOrigin));
+  ASSERT_OK(conn1.Execute("CREATE TEMP TABLE shared_origin_temp(i int)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO shared_origin_temp VALUES (1)"));
+  ASSERT_OK(conn1.Execute("DROP TABLE shared_origin_temp"));
+  ASSERT_OK(conn1.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
+  ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 VALUES (2, 200)", kTableName));
+  ASSERT_OK(conn1.Fetch("SELECT yb_replication_origin_session_reset_shared()"));
+  ASSERT_OK(conn2.Fetch("SELECT yb_replication_origin_session_reset_shared()"));
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  LOG(INFO) << "CDC response: " << change_resp.ShortDebugString();
+  auto seen_inserts = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() != RowMessage::INSERT) {
+      continue;
+    }
+
+    ASSERT_TRUE(record.row_message().has_xrepl_origin_id());
+    ASSERT_EQ(record.row_message().xrepl_origin_id(), 1);
+    seen_inserts++;
+  }
+  ASSERT_EQ(seen_inserts, 2);
+}
+
 TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
   const auto kOrigin1 = "origin1";
@@ -13297,8 +13336,6 @@ TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 15000;
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms) = 20000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 10000;
 
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */, true /* colocated */));
@@ -13432,7 +13469,7 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesHandlesLogCloseDuringRead) {
 TEST_F(CDCSDKYsqlTest, TestPopulationOfDroppedTableListInStreamMetadata) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = false;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
@@ -14144,6 +14181,67 @@ TEST_F(CDCSDKYsqlTest, TestNoChangeInSysCatalogHistoryCutOffAfterMasterRestart) 
   auto cutoff_after_bg_task = cm_after_restart.AllowedHistoryCutoffProvider(metadata.get());
   ASSERT_EQ(cutoff_after_bg_task.primary_cutoff_ht, metadata->cdc_sdk_safe_time());
   ASSERT_EQ(metadata->cdc_sdk_safe_time(), cutoff_after_upgrade);
+}
+
+// Testing that XCluster DDL replication tables (yb_xcluster_ddl_replication.ddl_queue,
+// yb_xcluster_ddl_replication.replicated_ddls) don't get added to CDCSDK streams and their
+// cdc_state entries don't get created, since those tables are not eligible for CDC.
+void CDCSDKYsqlTest::TestXClusterTablesNotAddedToStream(
+    bool use_logical_replication_stream, bool enable_xcluster_before_stream_creation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(
+      SetUpWithParams(/* replication_factor */ 1, /* num_masters */ 1, /* colocated */ false));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+
+  if (enable_xcluster_before_stream_creation) {
+    ASSERT_OK(conn.Execute("CREATE EXTENSION yb_xcluster_ddl_replication"));
+  }
+
+  auto stream_id = use_logical_replication_stream
+                       ? ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot())
+                       : ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  if (!enable_xcluster_before_stream_creation) {
+    ASSERT_OK(conn.Execute("CREATE EXTENSION yb_xcluster_ddl_replication"));
+  }
+
+  const size_t expected_state_table_entries =
+      use_logical_replication_stream ? kNumberOfBaseCdcStateEntriesForLogicalStream : 0;
+  const size_t expected_qualified_count =
+      use_logical_replication_stream ? kNumberOfCatalogTablesBeingPolledByCDC : 0;
+
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, expected_state_table_entries, expected_qualified_count,
+      /* unqualified_table_ids_count */ 0,
+      /* timeout */ 30 * kTimeMultiplier,
+      "Timed out asserting that xCluster DDL replication tables were not added to stream"));
+}
+
+TEST_F(
+    CDCSDKYsqlTest, TestXClusterTablesNotAddedToLogicalReplicationStreamWithExtensionBeforeStream) {
+  TestXClusterTablesNotAddedToStream(
+      /* use_logical_replication_stream */ true,
+      /* enable_xcluster_before_stream_creation */ true);
+}
+
+TEST_F(CDCSDKYsqlTest, TestXClusterTablesNotAddedToGRPCStreamWithExtensionBeforeStream) {
+  TestXClusterTablesNotAddedToStream(
+      /* use_logical_replication_stream */ false,
+      /* enable_xcluster_before_stream_creation */ true);
+}
+
+TEST_F(
+    CDCSDKYsqlTest, TestXClusterTablesNotAddedToLogicalReplicationStreamWithExtensionAfterStream) {
+  TestXClusterTablesNotAddedToStream(
+      /* use_logical_replication_stream */ true,
+      /* enable_xcluster_before_stream_creation */ false);
+}
+
+TEST_F(CDCSDKYsqlTest, TestXClusterTablesNotAddedToGRPCStreamWithExtensionAfterStream) {
+  TestXClusterTablesNotAddedToStream(
+      /* use_logical_replication_stream */ false,
+      /* enable_xcluster_before_stream_creation */ false);
 }
 
 }  // namespace cdc

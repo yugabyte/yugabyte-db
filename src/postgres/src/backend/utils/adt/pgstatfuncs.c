@@ -40,6 +40,7 @@
 #include "pg_yb_utils.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb_internal_conn.h"
 
 #define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
 
@@ -783,7 +784,9 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 			if (proc == NULL && (beentry->st_backendType != B_BACKEND &&
 								 beentry->st_backendType != YB_AUTO_ANALYZE_BACKEND &&
-								 beentry->st_backendType != YB_YSQL_CONN_MGR))
+								 beentry->st_backendType != YB_YSQL_CONN_MGR &&
+								 beentry->st_backendType != YB_YSQL_CONN_MGR_CTRL &&
+								 !YbIsInternalConnBackendType(beentry->st_backendType)))
 			{
 				/*
 				 * For an auxiliary process, retrieve process info from
