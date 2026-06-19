@@ -458,7 +458,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 region.getCode()),
             Arrays.asList("host-n4", "host-n5")));
   }
@@ -493,7 +493,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "1",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n4", "host-n5")));
@@ -774,7 +774,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private UniverseDefinitionTaskParams getTaskParamsForDiskSizeValidation(Universe universe) {
     Cluster primayCluster = universe.getUniverseDetails().getPrimaryCluster();
-    if (primayCluster.userIntent.providerType == CloudType.onprem) {
+    if (primayCluster.userIntent.getAllCloudTypes().iterator().next() == CloudType.onprem) {
       NodeDetails firstNode = Iterables.get(universe.getNodesInCluster(primayCluster.uuid), 0);
       AvailabilityZone zone = AvailabilityZone.getOrBadRequest(firstNode.getAzUuid());
       // Create two more nods.

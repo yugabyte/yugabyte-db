@@ -271,6 +271,13 @@
         },
         "earlyoomEnabled" : {
           "type" : "boolean"
+        },
+        "perProviderConfig" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProviderState"
+          },
+          "description" : "Configuration per provider",
+          "type" : "object"
         }
       },
       "type" : "object"
@@ -3145,6 +3152,26 @@
       },
       "required" : [
         "availabilityZones"
+      ],
+      "type" : "object"
+    },
+    "AzNodesSpec" : {
+      "properties" : {
+        "azCode" : {
+          "type" : "string"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
+      "required" : [
+        "code"
       ],
       "type" : "object"
     },
@@ -14290,6 +14317,27 @@
       ],
       "type" : "object"
     },
+    "NodeSpec" : {
+      "properties" : {
+        "backupProxyConfig" : {
+          "$ref" : "#/definitions/ProxyConfig"
+        },
+        "cgroupSize" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
+        "instanceType" : {
+          "type" : "string"
+        },
+        "k8SNodeResourceSpec" : {
+          "$ref" : "#/definitions/K8SNodeResourceSpec"
+        }
+      },
+      "type" : "object"
+    },
     "OCICloudInfo" : {
       "properties" : {
         "ociCompartmentId" : {
@@ -14993,6 +15041,17 @@
       "required" : [
         "value"
       ],
+      "type" : "object"
+    },
+    "PerProviderState" : {
+      "properties" : {
+        "config" : {
+          "$ref" : "#/definitions/EarlyoomConfig"
+        },
+        "earlyoomEnabled" : {
+          "type" : "boolean"
+        }
+      },
       "type" : "object"
     },
     "PerfAdvisorManualRunStatus" : {
@@ -16117,6 +16176,74 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "ProviderSpecification" : {
+      "properties" : {
+        "accessKeyCode" : {
+          "type" : "string"
+        },
+        "awsInstanceProfile" : {
+          "type" : "string"
+        },
+        "azHelmOverrides" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
+        "enableLoadBalancer" : {
+          "type" : "boolean"
+        },
+        "exposingServiceState" : {
+          "enum" : [
+            "NONE",
+            "EXPOSED",
+            "UNEXPOSED"
+          ],
+          "type" : "string"
+        },
+        "helmOverrides" : {
+          "type" : "string"
+        },
+        "imageBundleUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "instanceTags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
+        "nodesSpecs" : {
+          "$ref" : "#/definitions/RootNodesSpec"
+        },
+        "providerType" : {
+          "enum" : [
+            "unknown",
+            "aws",
+            "gcp",
+            "azu",
+            "oci",
+            "docker",
+            "onprem",
+            "kubernetes",
+            "local",
+            "other"
+          ],
+          "type" : "string"
+        },
+        "providerUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "nodesSpecs",
+        "providerType",
+        "providerUUID"
+      ],
       "type" : "object"
     },
     "ProvisionUniverseNodesParams" : {
@@ -17743,6 +17870,32 @@
         "latitude",
         "longitude",
         "name"
+      ],
+      "type" : "object"
+    },
+    "RegionNodesSpec" : {
+      "properties" : {
+        "azNodesSpecs" : {
+          "items" : {
+            "$ref" : "#/definitions/AzNodesSpec"
+          },
+          "type" : "array"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "regionCode" : {
+          "type" : "string"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
+      "required" : [
+        "code"
       ],
       "type" : "object"
     },
@@ -20940,6 +21093,23 @@
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
+      "type" : "object"
+    },
+    "RootNodesSpec" : {
+      "properties" : {
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "regionNodesSpecs" : {
+          "items" : {
+            "$ref" : "#/definitions/RegionNodesSpec"
+          },
+          "type" : "array"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
       "type" : "object"
     },
     "RunQueryFormData" : {
@@ -30036,6 +30206,12 @@
         },
         "provider" : {
           "type" : "string"
+        },
+        "providerSpecifications" : {
+          "items" : {
+            "$ref" : "#/definitions/ProviderSpecification"
+          },
+          "type" : "array"
         },
         "providerType" : {
           "enum" : [

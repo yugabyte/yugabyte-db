@@ -139,7 +139,7 @@ public class YNPProvisioning extends NodeTaskBase {
       Universe universe, NodeDetails node, Provider provider) {
     UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
-    fillSetupParamsForNode(ansibleParams, userIntent, node);
+    fillSetupParamsForNode(ansibleParams, universe.getCluster(node.placementUuid), node);
     ansibleParams.sshUserOverride = node.sshUserOverride;
     ansibleParams.sshPortOverride = node.sshPortOverride;
     return ansibleParams;

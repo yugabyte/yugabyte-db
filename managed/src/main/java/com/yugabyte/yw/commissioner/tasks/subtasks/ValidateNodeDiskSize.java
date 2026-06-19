@@ -88,9 +88,9 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
   }
 
   private double fetchAvgDiskUsedSize(
-      CloudType cloudType, ServerType serverType, int numCurrentNodes) {
+      boolean isKubernetes, ServerType serverType, int numCurrentNodes) {
     String query;
-    if (cloudType == CloudType.kubernetes) {
+    if (isKubernetes) {
       query =
           String.format(
               DB_DISK_USAGE_QUERY_FORMAT_K8S,
@@ -129,7 +129,7 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
       throw new RuntimeException(errMsg);
     }
     double size = pair.getRight();
-    if (cloudType == CloudType.kubernetes) {
+    if (isKubernetes) {
       size /= numCurrentNodes;
     }
     return size;
@@ -177,7 +177,8 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
   }
 
   private void validateNodeDiskSize(Cluster cluster, ServerType serverType) {
-    CloudType cloudType = cluster.userIntent.providerType;
+    boolean isKubernetes = cluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes);
+
     Function<NodeDetails, Boolean> serverTypeFilter =
         (nD) ->
             serverType.equals(ServerType.EITHER)
@@ -193,7 +194,7 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
     int totalTargetNodes =
         (int) clusterNodes.stream().filter(n -> n.state != NodeState.ToBeRemoved).count();
 
-    double avgCurrentDiskUsage = fetchAvgDiskUsedSize(cloudType, serverType, totalCurrentNodes);
+    double avgCurrentDiskUsage = fetchAvgDiskUsedSize(isKubernetes, serverType, totalCurrentNodes);
     if (avgCurrentDiskUsage == 0.0) {
       log.info("Average disk usage is 0.00 GB. Skipping disk validation");
       return;
@@ -205,12 +206,16 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
     // Additional disk size needed to distribute the surplus.
     double additionalDiskSizeNeeded = totalTargetDiskSizeNeeded - totalTargetDiskUsage;
     double avgDiskFreeSize = 0.0;
-    if (cloudType == CloudType.onprem) {
+    if (cluster.userIntent.getAllCloudTypes().contains(CloudType.onprem)) {
       // Fetch the average free disk size per node. ToBeAdded nodes are automatically excluded as
       // they do not belong to the universe as this is run before freezing.
       Map<String, Set<String>> rootMounts =
           getOnpremNodeMountPoints(
-              cluster, n -> serverTypeFilter.apply(n) && n.state != NodeState.ToBeAdded);
+              cluster,
+              n ->
+                  serverTypeFilter.apply(n)
+                      && n.state != NodeState.ToBeAdded
+                      && cluster.getProviderCloudType(n) == CloudType.onprem);
       log.debug("Root mount points are {}", rootMounts);
       avgDiskFreeSize = fetchAvgDiskFreeSize(rootMounts);
     }
@@ -221,6 +226,7 @@ public class ValidateNodeDiskSize extends UniverseDefinitionTaskBase {
       if (node.state == NodeState.ToBeRemoved) {
         continue;
       }
+      CloudType cloudType = cluster.getProviderCloudType(node);
       if (node.state == NodeState.ToBeAdded) {
         // For cloud, get the size from the config as this can change.
         // For on-prem, average usage is added to the average free to arrive at the total estimate.

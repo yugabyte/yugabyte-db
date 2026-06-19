@@ -22,7 +22,6 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -435,8 +434,12 @@ public class CommonUtils {
     return result;
   }
 
-  /** Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten. */
   public static void deepMerge(JsonNode node1, JsonNode node2) {
+    deepMerge(node1, node2, false);
+  }
+
+  /** Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten. */
+  public static void deepMerge(JsonNode node1, JsonNode node2, boolean skipWritingNulls) {
     if (node1 == null || node1.size() == 0 || node2 == null || node2.size() == 0) {
       return;
     }
@@ -450,7 +453,9 @@ public class CommonUtils {
       JsonNode oldVal = node1.get(fieldName);
       JsonNode newVal = node2.get(fieldName);
       if (oldVal == null || oldVal.isNull() || !oldVal.isObject() || !newVal.isObject()) {
-        ((ObjectNode) node1).replace(fieldName, newVal);
+        if (!skipWritingNulls || !newVal.isNull()) {
+          ((ObjectNode) node1).replace(fieldName, newVal);
+        }
       } else {
         CommonUtils.deepMerge(oldVal, newVal);
       }
@@ -864,14 +869,6 @@ public class CommonUtils {
           "No live or toBeRemoved TServers found for Universe UUID: " + universe.getUniverseUUID());
     }
     return randomLiveOrRemovedTServer;
-  }
-
-  public static UniverseDefinitionTaskParams.ClusterType getClusterType(
-      Provider provider, Universe universe) {
-    String primaryUUIDStr = universe.getUniverseDetails().getPrimaryCluster().userIntent.provider;
-    return provider.getUuid().toString().equals(primaryUUIDStr)
-        ? UniverseDefinitionTaskParams.ClusterType.PRIMARY
-        : UniverseDefinitionTaskParams.ClusterType.ASYNC;
   }
 
   private static NodeDetails getARandomLiveOrToBeRemovedTServer(Collection<NodeDetails> nodes) {

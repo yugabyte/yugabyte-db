@@ -5,11 +5,11 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -67,13 +67,20 @@ public class UpdateProxyConfig extends UpgradeTaskBase {
             for (Cluster cluster : uDParams.clusters) {
               UserIntent curIntent = cluster.userIntent;
               UserIntent newIntent = taskParams().getClusterByUuid(cluster.uuid).userIntent;
+              if (curIntent.isMulticloudSupport()) {
+                Util.mergeProviderSpecifications(
+                    curIntent,
+                    newIntent,
+                    ctx -> {
+                      ctx.getCurrent().setBackupProxyConfig(ctx.getSource().getBackupProxyConfig());
+                    });
+                continue;
+              }
               // Update default proxy config
               curIntent.setProxyConfig(newIntent.getProxyConfig());
 
               // Update Proxy overrides
-              UserIntentOverrides newIntentOverrides = newIntent.getUserIntentOverrides();
-              Map<UUID, ProxyConfig> proxyConfigOverrides =
-                  newIntentOverrides != null ? newIntentOverrides.getAZProxyConfigMap() : null;
+              Map<UUID, ProxyConfig> proxyConfigOverrides = newIntent.getAZProxyConfigMap();
               curIntent.updateUserIntentOverrides(
                   intentOverrides -> {
                     if (proxyConfigOverrides != null) {

@@ -312,8 +312,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
     Universe universe = getUniverse();
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     for (NodeDetails node : imageSettingsMap.keySet()) {
+      Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
       if (runtimeInfo.replacementCompletedNodes.contains(node.getNodeUuid())) {
         continue;
       }
@@ -366,7 +367,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
-      if (userIntent.providerType != CloudType.local) {
+      if (cluster.getProviderCloudType(node) != CloudType.local) {
         createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
         boolean isYbPrebuiltImage =
             !shouldInstallDbSoftware(
@@ -377,7 +378,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createInstallNodeAgentTasks(universe, nodeList)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      if (userIntent.providerType == CloudType.local) {
+      if (cluster.getProviderCloudType(node) == CloudType.local) {
         createSetupServerTasks(
                 nodeList,
                 p -> {
@@ -393,11 +394,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       createHookProvisionTask(nodeList, TriggerType.PostNodeProvision);
       createLocaleCheckTask(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createCheckGlibcTask(
-              new ArrayList<>(universe.getNodes()),
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)
+              new ArrayList<>(universe.getNodes()), primaryCluster.userIntent.ybSoftwareVersion)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-      Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       createConfigureServerTasks(
               nodeList,
@@ -573,10 +572,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private String retreiveMachineImageForNode(NodeDetails node) {
     UUID clusterUuid = node.placementUuid;
     UniverseDefinitionTaskParams.Cluster cluster = getUniverse().getCluster(clusterUuid);
-    if (cluster.userIntent.imageBundleUUID != null) {
+    Provider provider = Util.getProviderForNode(node, cluster);
+    UUID imageBundleUUID = cluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid());
+    if (imageBundleUUID != null) {
       ImageBundle.NodeProperties imageBundleProperties =
           imageBundleUtil.getNodePropertiesOrFail(
-              cluster.userIntent.imageBundleUUID, node.getRegion(), node.cloudInfo.cloud);
+              imageBundleUUID, node.getRegion(), node.cloudInfo.cloud);
       return imageBundleProperties.getMachineImage();
     }
     return null;

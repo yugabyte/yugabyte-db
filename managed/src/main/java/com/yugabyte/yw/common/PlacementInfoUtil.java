@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.getNodesInCluster;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeAdded;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -225,9 +226,12 @@ public class PlacementInfoUtil {
   private static List<AvailabilityZone> getAvailabilityZonesByRegion(
       UUID regionUuid, UserIntent userIntent) {
     List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(regionUuid);
-
+    if (zones.isEmpty()) {
+      return zones;
+    }
+    Provider provider = zones.get(0).getProvider();
     // Filter out zones which doesn't have enough nodes.
-    if (userIntent.providerType.equals(CloudType.onprem)) {
+    if (provider.getCloudCode() == CloudType.onprem) {
       zones =
           zones.stream()
               .filter(
@@ -376,16 +380,18 @@ public class PlacementInfoUtil {
     LOG.info("Start update universe definition V2. ");
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
     // Removing nodes if it is full move (instance type change, etc)
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(cluster);
     taskParams.getNodesInCluster(cluster.uuid).stream()
         .forEach(
             node -> {
+              Provider provider = providerGetter.apply(node);
               boolean shouldReplaceNode =
-                  shouldReplaceNode(node, cluster, taskParams, universe, clusterOpType);
+                  shouldReplaceNode(node, cluster, provider, taskParams, universe, clusterOpType);
               if (node.state == NodeState.ToBeRemoved) {
                 if (!shouldReplaceNode) {
                   NodeDetails addedNode =
                       findNodeInAz(
-                          n -> n.state == NodeState.ToBeAdded && n.isInPlacement(cluster.uuid),
+                          n -> n.state == ToBeAdded && n.isInPlacement(cluster.uuid),
                           taskParams.nodeDetailsSet,
                           node.azUuid,
                           true);
@@ -397,7 +403,7 @@ public class PlacementInfoUtil {
                   }
                 }
               } else if (shouldReplaceNode) {
-                if (universe == null || node.state == NodeState.ToBeAdded) {
+                if (universe == null || node.state == ToBeAdded) {
                   // Just removing node.
                   taskParams.nodeDetailsSet.remove(node);
                 } else {
@@ -519,16 +525,23 @@ public class PlacementInfoUtil {
     }
     // STEP 3: Remove nodes.
     // Removing unnecessary nodes (full/part move or dedicated switch)
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(taskParams);
     taskParams.getNodesInCluster(cluster.uuid).stream()
         .forEach(
             node -> {
               boolean shouldReplaceNode =
-                  shouldReplaceNode(node, cluster, taskParams, universe, clusterOpType);
+                  shouldReplaceNode(
+                      node,
+                      cluster,
+                      providerGetter.apply(node),
+                      taskParams,
+                      universe,
+                      clusterOpType);
               if (node.state == NodeState.ToBeRemoved) {
                 if (!shouldReplaceNode) {
                   NodeDetails addedNode =
                       findNodeInAz(
-                          n -> n.state == NodeState.ToBeAdded && n.isInPlacement(cluster.uuid),
+                          n -> n.state == ToBeAdded && n.isInPlacement(cluster.uuid),
                           taskParams.nodeDetailsSet,
                           node.azUuid,
                           true);
@@ -540,7 +553,7 @@ public class PlacementInfoUtil {
                   }
                 }
               } else if (shouldReplaceNode) {
-                if (universe == null || node.state == NodeState.ToBeAdded) {
+                if (universe == null || node.state == ToBeAdded) {
                   // Just removing node.
                   taskParams.nodeDetailsSet.remove(node);
                 } else {
@@ -711,6 +724,7 @@ public class PlacementInfoUtil {
    *
    * @param node
    * @param cluster modified cluster
+   * @param provider Provider for current node
    * @param taskParams task params from request
    * @param universe current universe state
    * @param clusterOpType cluster operation being performed
@@ -719,6 +733,7 @@ public class PlacementInfoUtil {
   private static boolean shouldReplaceNode(
       NodeDetails node,
       Cluster cluster,
+      Provider provider,
       UniverseDefinitionTaskParams taskParams,
       Universe universe,
       ClusterOperationType clusterOpType) {
@@ -743,7 +758,7 @@ public class PlacementInfoUtil {
         LOG.debug("Device info has changed from {} to {}", currentDeviceInfo, newDeviceInfo);
         return true;
       }
-      if (UniverseCRUDHandler.isAwsArnChanged(cluster, currentCluster)) {
+      if (UniverseCRUDHandler.isAwsArnChanged(cluster, currentCluster, provider)) {
         LOG.debug(
             "awsArnString info has changed from {} to {}",
             currentCluster.userIntent.awsArnString,
@@ -765,11 +780,12 @@ public class PlacementInfoUtil {
         return true;
       }
       if (!Objects.equals(
-          currentCluster.userIntent.imageBundleUUID, cluster.userIntent.imageBundleUUID)) {
+          currentCluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid()),
+          cluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid()))) {
         LOG.debug(
             "imageBundleUUID has changed from {} to {}",
-            currentCluster.userIntent.imageBundleUUID,
-            cluster.userIntent.imageBundleUUID);
+            currentCluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid()),
+            cluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid()));
         return true;
       }
     }
@@ -939,7 +955,7 @@ public class PlacementInfoUtil {
               "Couldn't find "
                   + deltaNodes
                   + " node(s) of type "
-                  + userIntent.getBaseInstanceType());
+                  + userIntent.getBaseInstanceType()); // TODO
         }
       }
       changed = false;
@@ -1433,7 +1449,7 @@ public class PlacementInfoUtil {
     return nodeDetailsSet.stream()
         .filter(
             n ->
-                n.state == NodeState.ToBeAdded
+                n.state == ToBeAdded
                     && (serverType == ServerType.EITHER
                         || serverType == ServerType.MASTER && n.isMaster
                         || serverType == ServerType.TSERVER && n.isTserver))
@@ -1521,16 +1537,36 @@ public class PlacementInfoUtil {
             userIntent.replicationFactor);
         throw new UnsupportedOperationException("Replication factor cannot be decreased.");
       }
+
+      boolean deviceChanged = false;
+      boolean imageBundleChanged = false;
+      boolean instanceTypeChanged = false;
+      for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
+        DeviceInfo oldDevice = oldCluster.userIntent.getDeviceInfoForNode(nodeDetails);
+        DeviceInfo newDevice = newCluster.userIntent.getDeviceInfoForNode(nodeDetails);
+        deviceChanged = deviceChanged || !Objects.equals(oldDevice, newDevice);
+        Provider provider =
+            Provider.getOrBadRequest(newCluster.getProviderUUIDForNode(nodeDetails));
+        String oldInstanceType = oldCluster.userIntent.getInstanceTypeForNode(nodeDetails);
+        String newInstanceType = newCluster.userIntent.getInstanceTypeForNode(nodeDetails);
+        instanceTypeChanged =
+            instanceTypeChanged || !Objects.equals(oldInstanceType, newInstanceType);
+
+        UUID oldImageBunldeUUID =
+            oldCluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid());
+        UUID newImageBunldeUUID =
+            newCluster.userIntent.getImageBundleUUIDForProvider(provider.getUuid());
+        imageBundleChanged =
+            imageBundleChanged || !Objects.equals(oldImageBunldeUUID, newImageBunldeUUID);
+      }
+
       if (!newCluster.areTagsSame(oldCluster)
-          || !existingIntent.deviceInfo.equals(userIntent.deviceInfo)
-          || !Objects.equals(existingIntent.masterDeviceInfo, userIntent.masterDeviceInfo)
-          || !Objects.equals(existingIntent.instanceType, userIntent.instanceType)
-          || !Objects.equals(existingIntent.masterInstanceType, userIntent.masterInstanceType)
+          || deviceChanged
+          || instanceTypeChanged
           || UniverseCRUDHandler.isKubernetesNodeSpecUpdate(oldCluster, newCluster)
           || UniverseCRUDHandler.isAwsArnChanged(oldCluster, newCluster)
           || UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)
-          || !Objects.equals(
-              newCluster.userIntent.imageBundleUUID, oldCluster.userIntent.imageBundleUUID)
+          || imageBundleChanged
           || existingIntent.assignPublicIP != userIntent.assignPublicIP) {
         throw new UnsupportedOperationException(
             "Cannot change anything but placement if replication factor is altered.");
@@ -1545,18 +1581,15 @@ public class PlacementInfoUtil {
       throw new UnsupportedOperationException("Universe name cannot be modified.");
     }
 
-    if (!existingIntent.provider.equals(userIntent.provider)) {
-      LOG.error(
-          "Provider cannot be changed from {} to {}", existingIntent.provider, userIntent.provider);
-      throw new UnsupportedOperationException("Provider cannot be modified.");
-    }
-
-    if (existingIntent.providerType != userIntent.providerType) {
-      LOG.error(
-          "Provider type cannot be changed from {} to {}",
-          existingIntent.providerType,
-          userIntent.providerType);
-      throw new UnsupportedOperationException("providerType cannot be modified.");
+    for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
+      if (nodeDetails.state != ToBeAdded) {
+        UUID oldProviderUUID = oldCluster.getProviderUUIDForNode(nodeDetails);
+        UUID newProviderUUID = newCluster.getProviderUUIDForNode(nodeDetails);
+        if (!Objects.equals(newProviderUUID, oldProviderUUID)) {
+          LOG.error("Provider cannot be changed from {} to {}", newProviderUUID, oldProviderUUID);
+          throw new UnsupportedOperationException("Provider cannot be modified.");
+        }
+      }
     }
 
     verifyNumNodesAndRF(oldCluster.clusterType, userIntent.numNodes, userIntent.replicationFactor);
@@ -1792,7 +1825,7 @@ public class PlacementInfoUtil {
       NodeDetails currentNode = nodeIter.next();
       if (currentNode.isInPlacement(clusterUUID)
           && currentNode.azUuid.equals(targetAZUuid)
-          && currentNode.state == NodeState.ToBeAdded
+          && currentNode.state == ToBeAdded
           && !currentNode.isMaster) {
         nodeIter.remove();
 
@@ -1854,10 +1887,14 @@ public class PlacementInfoUtil {
     Set<NodeDetails> deltaNodesSet = new HashSet<>();
     int startIndex = getNextIndexToConfigure(nodesInCluster);
     int iter = 0;
+    Map<UUID, Provider> providerMap = new HashMap<>();
     for (PlacementIndexes index : indexes) {
       PlacementCloud placementCloud = placementInfo.cloudList.get(index.cloudIdx);
       PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
       PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
+      Provider provider =
+          providerMap.computeIfAbsent(
+              placementCloud.uuid, puuid -> Provider.getOrBadRequest(puuid));
 
       if (index.action == Action.ADD) {
         boolean added = false;
@@ -1869,7 +1906,8 @@ public class PlacementInfoUtil {
                   node ->
                       node.state == NodeState.ToBeRemoved
                           && node.isTserver
-                          && !shouldReplaceNode(node, cluster, taskParams, universe, clusterOpType),
+                          && !shouldReplaceNode(
+                              node, cluster, provider, taskParams, universe, clusterOpType),
                   nodesInCluster,
                   placementAZ.uuid,
                   true);
@@ -1897,7 +1935,7 @@ public class PlacementInfoUtil {
                   nodesInCluster,
                   placementAZ.uuid,
                   false);
-          if (nodeDetails == null || !nodeDetails.state.equals(NodeState.ToBeAdded)) {
+          if (nodeDetails == null || !nodeDetails.state.equals(ToBeAdded)) {
             decommissionNodeInAZ(nodesInCluster, placementAZ.uuid);
             removed = true;
           }
@@ -1915,7 +1953,7 @@ public class PlacementInfoUtil {
     for (Iterator<NodeDetails> it = nodes.iterator(); it.hasNext(); ) {
       NodeDetails node = it.next();
       if (node.isInPlacement(cluster.uuid) && !existingAZs.contains(node.azUuid)) {
-        if (universe == null || node.state == NodeState.ToBeAdded) {
+        if (universe == null || node.state == ToBeAdded) {
           // Just removing it - it doesn't still exist.
           it.remove();
         } else {
@@ -2048,14 +2086,17 @@ public class PlacementInfoUtil {
       if (CollectionUtils.isEmpty(cluster.placementInfo.cloudList)) {
         return Collections.emptySet();
       }
-      PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(0);
-      UUID defaultRegionUUID = placementCloud.defaultRegion;
       Set<UUID> result = new HashSet<>();
-      for (PlacementRegion placementRegion : placementCloud.regionList) {
-        if (defaultRegionUUID == null || placementRegion.uuid.equals(defaultRegionUUID)) {
-          placementRegion.azList.stream().map(az -> az.uuid).forEach(result::add);
+      for (PlacementCloud placementCloud : cluster.placementInfo.cloudList) {
+        UUID defaultRegionUUID = placementCloud.defaultRegion;
+
+        for (PlacementRegion placementRegion : placementCloud.regionList) {
+          if (defaultRegionUUID == null || placementRegion.uuid.equals(defaultRegionUUID)) {
+            placementRegion.azList.stream().map(az -> az.uuid).forEach(result::add);
+          }
         }
       }
+
       return result;
     }
   }
@@ -2081,7 +2122,7 @@ public class PlacementInfoUtil {
       Set<NodeDetails> ephemeralDedicatedMasters =
           clusterNodes.stream()
               .filter(node -> node.dedicatedTo == ServerType.MASTER)
-              .filter(node -> node.state == NodeState.ToBeAdded)
+              .filter(node -> node.state == ToBeAdded)
               .collect(Collectors.toSet());
 
       String masterLeader = universe == null ? "" : universe.getMasterLeaderHostText();
@@ -2110,7 +2151,7 @@ public class PlacementInfoUtil {
     } else if (isDedicatedModeChanged(cluster, clusterNodes)) { // from dedicated to co-located.
       for (NodeDetails node : clusterNodes) {
         if (node.dedicatedTo == ServerType.MASTER) {
-          if (node.state == NodeState.ToBeAdded) {
+          if (node.state == ToBeAdded) {
             taskParams.nodeDetailsSet.remove(node);
           } else {
             node.state = NodeState.ToBeRemoved;
@@ -2183,7 +2224,7 @@ public class PlacementInfoUtil {
     // Set the node id.
     nodeDetails.nodeIdx = nodeIdx;
     // We are ready to add this node.
-    nodeDetails.state = NodeDetails.NodeState.ToBeAdded;
+    nodeDetails.state = ToBeAdded;
     nodeDetails.disksAreMountedByUUID = true;
     LOG.trace(
         "Placed new node [{}] at cloud:{}, region:{}, az:{}. uuid {}.",
@@ -2208,7 +2249,7 @@ public class PlacementInfoUtil {
     result.isTserver = false;
     result.isMaster = true;
     result.masterState = NodeDetails.MasterState.ToStart;
-    result.state = NodeState.ToBeAdded;
+    result.state = ToBeAdded;
     result.nodeIdx = -1; // Erasing index.
     result.nodeName = null;
     result.nodeUuid = null;
@@ -2246,7 +2287,7 @@ public class PlacementInfoUtil {
       newNode.masterState = NodeDetails.MasterState.ToStart;
     }
 
-    newNode.state = NodeDetails.NodeState.ToBeAdded;
+    newNode.state = ToBeAdded;
 
     if (templateNode.cloudInfo == null) {
       throw new RuntimeException(
@@ -2344,6 +2385,7 @@ public class PlacementInfoUtil {
         .filter(n -> n.autoSyncMasterAddrs == false)
         .forEach(
             node -> {
+              CloudType cloudType = cluster.getProviderCloudType(node);
               RegionWithAz zone = new RegionWithAz(node.cloudInfo.region, node.cloudInfo.az);
               zoneToNodes.computeIfAbsent(zone, z -> new ArrayList<>()).add(node);
               if (node.isTserver) {
@@ -2353,7 +2395,7 @@ public class PlacementInfoUtil {
                 mastersByZone.merge(zone, 1, Integer::sum);
               }
               if (filterToPutMasters.test(node)) {
-                if (dedicatedNodes && userIntent.providerType == CloudType.onprem) {
+                if (dedicatedNodes && cloudType == CloudType.onprem) {
                   // First time meeting this zone.
                   if (!availableForMastersNodes.containsKey(zone)) {
                     // No need more than rf.
@@ -2590,7 +2632,7 @@ public class PlacementInfoUtil {
             nodes.stream()
                 .filter(
                     n ->
-                        (n.state == NodeState.Live || n.state == NodeState.ToBeAdded)
+                        (n.state == NodeState.Live || n.state == ToBeAdded)
                             && n.isMaster
                             && n.masterState != NodeDetails.MasterState.ToStop
                             && !selection.removedMasters.contains(n)
@@ -2704,7 +2746,7 @@ public class PlacementInfoUtil {
   public static int getStartIndex(Collection<NodeDetails> nodes) {
     int maxNodeIdx = 0;
     for (NodeDetails node : nodes) {
-      if (node.state != NodeDetails.NodeState.ToBeAdded && node.nodeIdx > maxNodeIdx) {
+      if (node.state != ToBeAdded && node.nodeIdx > maxNodeIdx) {
         maxNodeIdx = node.nodeIdx;
       }
     }
@@ -2757,7 +2799,7 @@ public class PlacementInfoUtil {
             .filter(n -> Objects.equals(n.placementUuid, cluster.uuid))
             .filter(n -> placementAZMap.containsKey(n.getAzUuid()))
             .filter(n -> n.state != NodeState.ToBeRemoved && !removedZones.contains(n.azUuid))
-            .filter(n -> n.state != NodeState.ToBeAdded)
+            .filter(n -> n.state != ToBeAdded)
             .peek(
                 n -> {
                   if (n.isMaster) {
