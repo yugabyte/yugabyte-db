@@ -80,10 +80,10 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
                        "via heartbeats.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 8192,
-                       "If a DDL statement generates more than this number of invalidation "
-                       "messages we do not associate the messages with the new catalog version "
-                       "caused by this DDL statement. This effetively turns off incremental "
-                       "catalog cache refresh for this new catalog version.");
+    "If a DDL statement generates more than this number of invalidation "
+    "messages we do not associate the messages with the new catalog version "
+    "caused by this DDL statement. This effetively turns off incremental "
+    "catalog cache refresh for this new catalog version.");
 
 DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
                       "Maximum number of invalidation messages we keep for a given database.");
@@ -1346,6 +1346,25 @@ Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
     lock_oid.set_object_sub_oid(lock_id.object_sub_oid);
   }
   return pg_client_.ReleaseSessionObjectLock(&req, CoarseTimePoint());
+}
+
+Status PgSession::WaitForLockersMultiple(
+    const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
+  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+    return Status::OK();
+  }
+  tserver::PgWaitForLockersMultipleRequestPB req;
+  const auto pb_lock_mode = static_cast<tserver::ObjectLockMode>(lock_mode);
+  for (int i = 0; i < num_locks; ++i) {
+    auto* entry = req.add_lock_entries();
+    auto& lock_oid = *entry->mutable_lock_oid();
+    lock_oid.set_database_oid(lock_ids[i].db_oid);
+    lock_oid.set_relation_oid(lock_ids[i].relation_oid);
+    lock_oid.set_object_oid(lock_ids[i].object_oid);
+    lock_oid.set_object_sub_oid(lock_ids[i].object_sub_oid);
+    entry->set_lock_mode(pb_lock_mode);
+  }
+  return pg_client_.WaitForLockersMultiple(&req, CoarseTimePoint());
 }
 
 }  // namespace yb::pggate

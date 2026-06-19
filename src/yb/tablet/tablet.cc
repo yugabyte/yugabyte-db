@@ -770,11 +770,17 @@ Tablet::Tablet(const TabletInitData& data)
         data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_),
         data.parent_mem_tracker);
     if (data.waiting_txn_registry) {
+      auto wq_token =
+          DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL);
+#ifdef __linux__
+      if (data.wait_queue_cgroup) {
+        wq_token->SetTaskCgroup(data.wait_queue_cgroup);
+      }
+#endif
       transaction_participant_->SetWaitQueue(std::make_unique<docdb::WaitQueue>(
-        transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
-        client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_),
-        DCHECK_NOTNULL(data.wait_queue_pool)->NewToken(ThreadPool::ExecutionMode::SERIAL),
-        data.messenger));
+          transaction_participant_.get(), metadata_->fs_manager()->uuid(),
+          data.waiting_txn_registry, client_future_, clock(),
+          DCHECK_NOTNULL(tablet_metrics_entity_), std::move(wq_token), data.messenger));
     }
   }
 
@@ -1872,7 +1878,7 @@ Status Tablet::ApplyOperation(
     frontiers.Largest().AddSchemaVersion(table_id, p.schema_version());
   }
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, frontiers, write_hybrid_time, batch_hybrid_time);
+      batch_idx, write_batch, frontiers, write_hybrid_time, batch_hybrid_time, apply_to_storages);
 }
 
 Status Tablet::WriteTransactionalBatch(
@@ -1938,7 +1944,7 @@ Status Tablet::WriteTransactionalBatch(
 Status Tablet::ApplyKeyValueRowOperations(
     int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& put_batch,
     docdb::ConsensusFrontiers& frontiers, HybridTime write_hybrid_time,
-    HybridTime batch_hybrid_time) {
+    HybridTime batch_hybrid_time, const docdb::StorageSet& apply_to_storages) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
       put_batch.lock_pairs().empty() && put_batch.apply_external_transactions().empty()) {
     return Status::OK();
@@ -1955,7 +1961,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers, vector_indexes_->List());
+        GetSchemaPackingProvider(), frontiers, vector_indexes_->List(), apply_to_storages);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);

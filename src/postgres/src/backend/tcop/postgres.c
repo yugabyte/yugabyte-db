@@ -4859,17 +4859,7 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 bool
 YBRefreshCacheUsingInvalMsgs()
 {
-	/*
-	 * We only want to accept invalidation messages at a "safe point". It is not a
-	 * "safe point" if prefetching is started because we want to ensure reading a
-	 * consistent set of catalog tables. If we allowed invalidation messages we may
-	 * see some catalog tuples removed which can cause PANIC error if such tuples
-	 * are considered as critical. Also we do not want the local catalog version to
-	 * change as a result of applying invalidation messages because that can become
-	 * inconsistent with the set of catalog tables just read.
-	 */
-	if (YBCIsSysTablePrefetchingStarted())
-		return false;
+	Assert(!YBCIsSysTablePrefetchingStarted());
 	return YBRefreshCacheWrapperImpl(YB_CATCACHE_VERSION_UNINITIALIZED,
 									 false /* is_retry */ ,
 									 false /* full_refresh_allowed */ );
@@ -4883,7 +4873,17 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	 * a "safe point".
 	 */
 	Assert(!YBCIsSysTablePrefetchingStarted());
-	(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
+
+	yb_refresh_cache_in_progress = true;
+	PG_TRY();
+	{
+		(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
+	}
+	PG_FINALLY();
+	{
+		yb_refresh_cache_in_progress = false;
+	}
+	PG_END_TRY();
 }
 
 static bool
@@ -6950,11 +6950,8 @@ PostgresMain(const char *dbname, const char *username)
 			ConfigReloadPending = false;
 
 			/*
-			 * YB: Check whether this is a Conn Mgr "Control Backend", in case a
-			 * config reload happens before the first Auth request packet is
-			 * handled by this backend. See the 'A' packet handler below for
-			 * more details.
-			 * Control backends need to update their SIGHUP LCVs in tandem with
+			 * YB: Check whether this is a Conn Mgr "Control Backend", as
+			 * control backends need to update their SIGHUP LCVs in tandem with
 			 * the postmaster process (for this, they need to be identified as
 			 * control backends before calling `ProcessConfigFile`).
 			 * We don't care about the actual GUC setting changed or its value
@@ -6962,12 +6959,10 @@ PostgresMain(const char *dbname, const char *username)
 			 * matching Logical Client Version
 			 * (Final LCV = catalog_table_LCV + SIGHUP_LCV).
 			 */
-			if (firstchar == 'A' && YbIsClientYsqlConnMgr())
-				yb_conn_mgr_is_auth_passthrough_backend = true;
 
 			ProcessConfigFile(PGC_SIGHUP);
 
-			if (yb_conn_mgr_is_auth_passthrough_backend &&
+			if (YbIsAuthPassthroughControlBackend() &&
 				yb_conn_mgr_sighup_had_backend_guc_change)
 			{
 				yb_conn_mgr_sighup_logical_client_version++;
@@ -7646,20 +7641,13 @@ PostgresMain(const char *dbname, const char *username)
 				 * certain fields in the startup (and subsequent) packets. The
 				 * packet types themselves should match the regular pg startup
 				 * wire protocol.
+				 * Only "Control Backends" are supposed to receive 'A'
+				 * authentication request packets (in the Auth Passthrough mode
+				 * of Conn Mgr). Conversely, 'A' packets are supposed to be
+				 * handled by control backends only.
 				 */
-				if (YbIsClientYsqlConnMgr())
+				if (YbIsClientYsqlConnMgr() && YbIsAuthPassthroughControlBackend())
 				{
-					/*
-					 * YB: Only "Control Backends" are supposed to receive 'A'
-					 * authentication request packets (in the Auth Passthrough mode
-					 * of Conn Mgr). Conversely, 'A' packets are supposed to be
-					 * handled by control backends only. So, the receipt of this
-					 * packet with Conn Mgr enabled can be taken as confirmation
-					 * that this is a control backend. This information is required
-					 * to correctly process SIGHUPs involving PGC_BACKEND GUC
-					 * updates.
-					 */
-					yb_conn_mgr_is_auth_passthrough_backend = true;
 					MyProcPort->yb_is_auth_passthrough_req = true;
 					MyProcPort->yb_has_auth_passthrough_finished = false;
 

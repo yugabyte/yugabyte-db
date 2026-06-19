@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 namespace yb {
 
 template <class T>
@@ -84,6 +86,13 @@ constexpr T ReleaseVsDebugVsAsanVsTsanVsApple(
 constexpr bool IsSanitizer() {
   return RegularBuildVsSanitizers(false, true);
 }
+
+// The worker count to use for an "auto" (e.g. a "0 means use all CPUs") concurrency setting.
+// Regular builds use every hardware thread, but sanitizer builds cap it at max(1, min(num_cpus / 2,
+// 4)): the CPU and memory overhead of instrumentation otherwise lets auto-sized thread pools
+// saturate the test machine, starving unrelated background work (cascading RPC timeouts) and
+// accumulating enough memory to be OOM-killed under sustained load.
+size_t SanitizerCappedConcurrency();
 
 const int kTimeMultiplier = RegularBuildVsSanitizers(1, 3);
 const float kTimeMultiplierWithFraction = RegularBuildVsSanitizers(1.0f, 3.0f);

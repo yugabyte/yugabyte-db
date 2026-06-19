@@ -473,8 +473,15 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
 
 /*
  * Return whether to use wholerow junk attribute for YB relations.
+ *
+ * For a leaf in an inheritance/partition hierarchy, the answer also depends
+ * on transition-table triggers on the root.  Callers that already have the
+ * root open should pass it as root_relation; otherwise pass NULL (and open
+ * the root themselves if the no-root answer is insufficient).  This function
+ * never opens or closes a relation.
  */
-extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
+extern bool YbWholeRowAttrRequired(Relation relation, Relation root_relation,
+								   CmdType operation);
 
 extern Oid YbSystemDbOid();
 
@@ -571,6 +578,13 @@ extern bool yb_disable_wait_for_backends_catalog_version;
  * Enables YB cost model for Sequential and Index scans
  */
 extern bool yb_enable_base_scans_cost_model;
+
+/*
+ * When enabled, the planner warms the catalog cache with all of a relation's
+ * pg_statistic rows in a single batched RPC (instead of one point lookup per
+ * column) the first time the relation is planned in a backend.
+ */
+extern bool yb_prefetch_column_statistics;
 
 /*
  * Enables update of reltuples in pg_class for the base table and index after
@@ -748,6 +762,10 @@ extern int yb_test_sleep_before_executor_start_ms;
  * Resets to 0 after triggering.
  */
 extern int yb_test_fail_next_ddl;
+
+/* Test fault injection: fail drop after heap_drop_with_catalog. */
+extern bool yb_test_fail_drop_after_heap_drop;
+
 /*
  * If set to true,the next DDL will update the catalog in force mode which
  * allows it to operate even during ysql major catalog upgrades.
@@ -1656,6 +1674,7 @@ extern bool YbUseFastBackwardScan();
 extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 extern bool YbIsAuthBackend();
+extern bool YbIsAuthPassthroughControlBackend();
 
 extern bool YbIsYsqlConnMgrEnabled();
 

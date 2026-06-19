@@ -15,6 +15,7 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
@@ -74,13 +75,20 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
-  // Using the existing connection will fail and cause the transaction to be aborted.
-  // Explain: After the YSQL upgrade, the existing connection still uses stale catalog cache,
-  // because the ongoing transaction prevents the catalog cache from refreshing.
-  // With the new code, yb_lock_status returns 24 columns, but the connection expects 21 columns.
+  // When object locking is enabled, AcceptInvalidationMessages performs a full
+  // cache invalidation on catalog version bumps even mid-transaction, so the
+  // existing connection picks up the new schema and the query succeeds.
+  // Without object locking the cache remains stale (21 vs 24 columns).
   auto result = conn.FetchAllAsString(Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery));
-  ASSERT_NOK_STR_CONTAINS(
-    result, "Returned row contains 24 attributes, but query expects 21");
+  if (FLAGS_enable_object_locking_for_table_locks) {
+    ASSERT_OK(result);
+    ASSERT_EQ(
+        *result,
+        "2, 2, 2, ShareLock; "
+        "0, 1, 1, ExclusiveLock");
+  } else {
+    ASSERT_NOK_STR_CONTAINS(result, "Returned row contains 24 attributes, but query expects 21");
+  }
 }
 
 

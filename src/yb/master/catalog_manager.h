@@ -448,6 +448,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ReleaseObjectLocksGlobal(
       const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
+  void WaitForLockersMultipleGlobal(
+      const WaitForLockersMultipleGlobalRequestPB* req,
+      WaitForLockersMultipleGlobalResponsePB* resp,
+      rpc::RpcContext rpc);
   ObjectLockInfoManager* object_lock_info_manager() { return object_lock_info_manager_.get(); }
 
   // Gets the progress of ongoing index backfills.
@@ -2207,6 +2211,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const scoped_refptr<master::TableInfo>& table,
       bool is_index_table,
       bool update_indexed_table,
+      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
       std::map<TableId, DeletingTableData>* data_map);
 
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted

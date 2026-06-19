@@ -64,6 +64,30 @@ var reconfigureCmd = &cobra.Command{
 			}
 		}
 
+		// Handle node-exporter service installation/uninstallation if enabled flag changed
+		nodeExporterWasEnabled := state.Services.NodeExporter
+		nodeExporterNowEnabled := viper.GetBool("nodeExporter.enabled")
+
+		if nodeExporterWasEnabled != nodeExporterNowEnabled {
+			nodeExporterService := serviceManager.ServiceByName("node-exporter")
+			if nodeExporterService == nil {
+				log.Warn("node-exporter service not found in service manager")
+			} else if nodeExporterNowEnabled {
+				log.Info("nodeExporter enabled changed from false to true. Installing node-exporter service.")
+				if err := nodeExporterService.Install(); err != nil {
+					log.Fatal("Failed to install node-exporter: " + err.Error())
+				}
+				if err := nodeExporterService.Initialize(); err != nil {
+					log.Fatal("Failed to initialize node-exporter: " + err.Error())
+				}
+			} else {
+				log.Info("nodeExporter enabled changed from true to false. Uninstalling node-exporter service.")
+				if err := nodeExporterService.Uninstall(false); err != nil {
+					log.Fatal("Failed to uninstall node-exporter: " + err.Error())
+				}
+			}
+		}
+
 		if err := handleCertReconfig(state); err != nil {
 			log.Fatal("failed to handle cert reconfig: " + err.Error())
 		}
@@ -107,6 +131,7 @@ var reconfigureCmd = &cobra.Command{
 
 		// Update state to reflect current service configuration
 		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
+		state.Services.NodeExporter = viper.GetBool("nodeExporter.enabled")
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("failed to write state: " + err.Error())
 		}

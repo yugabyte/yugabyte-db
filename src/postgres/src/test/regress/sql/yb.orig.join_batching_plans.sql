@@ -24,9 +24,9 @@ CREATE INDEX p5_hash ON p5((a,b) hash);
 CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
 ANALYZE p5;
 
-SET yb_enable_optimizer_statistics = on;
-SET yb_enable_base_scans_cost_model = on;
+SET yb_enable_cbo = on;
 SET yb_prefer_bnl = off;
+SET max_parallel_workers_per_gather = 0;
 
 -- We're testing nested loop join batching in this file
 SET yb_bnl_batch_size = 1024;
@@ -223,16 +223,40 @@ explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1
 
 explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 
+
+delete from q1;
+delete from q2;
+insert into q1 values
+  (10, 1), (20, 2), (30, 3), (40, 4), (50, 5), (60, 6),
+  (5, 10), (99, 99), (88, 88), (77, 77), (41, 99), (42, 99);
+insert into q2 values
+  (10, 1), (20, 2), (30, 3), (40, 4), (50, 5), (60, 6),
+  (5, 10), (70, 7), (80, 8), (90, 9), (91, 11), (92, 12);
+analyze q1;
+analyze q2;
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
+insert into q3 values
+  (1, 1, 'q3row01_AAAAAAAAAAAA'), (2, 2, 'q3row02_BBBBBBBBBBBB'), (3, 3, 'q3row03_CCCCCCCCCCCC'),
+  (4, 4, 'q3row04_DDDDDDDDDDDD'), (5, 5, 'q3row05_EEEEEEEEEEEE'), (6, 6, 'q3row06_FFFFFFFFFFFF'),
+  (7, 7, 'q3row07_GGGGGGGGGGGG'), (8, 8, 'q3row08_HHHHHHHHHHHH'), (9, 9, 'q3row09_IIIIIIIIIIII'),
+  (10, 10, 'q3row10_JJJJJJJJJJJJ'), (100, 10, 'q3row11_KKKKKKKKKKKK'), (12, 12, 'q3row12_LLLLLLLLLLLL');
+analyze q3;
 
-explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
+explain (costs off)
+select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+  on j1.a1 = p1.c1;
 
--- this should not be a batched NL join as it contains an unbatchable clause
--- (j1.a2 <= p1.c1) even though the batchable clause (j1.a1 = p1.c1) is also
--- present
+explain (costs off)
+select * from q1 p1 left join (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+  on j1.a1 = p1.c1 and j1.a1 + j1.a2 = p1.c1 + p1.c2;
 
-explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1 and j1.a2 <= p1.c1;
+explain (costs off)
+select * from
+    q1 p1 left join
+    (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+      on j1.a1 = p1.c1 and j1.a2 <= p1.c1
+      and j1.a1 + j1.a2 = p1.c1 + p1.c2;
 
 DROP TABLE q1;
 DROP TABLE q2;

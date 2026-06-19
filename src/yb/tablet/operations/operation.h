@@ -220,6 +220,9 @@ class Operation {
   Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
   Status AddedToFollower();
 
+  // Called once the leader's consensus queue has accepted this op.
+  virtual void SubmittedToLeaderQueue() {}
+
   void Aborted(bool was_pending);
   void Replicated(WasPending was_pending);
 

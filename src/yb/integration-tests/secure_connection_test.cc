@@ -221,7 +221,7 @@ TEST_F_EX(SecureConnectionTest, CipherList, SecureConnectionCipherListTest) {
 
 class SecureConnectionCipherSuitesTest : public SecureConnectionTest {
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ciphersuites) = "TLS_AES_128_CCM_8_SHA256";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ciphersuites) = "TLS_AES_128_CCM_SHA256";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ssl_protocols) = "tls13";
     SecureConnectionTest::SetUp();
   }

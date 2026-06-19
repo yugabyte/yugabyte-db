@@ -930,6 +930,8 @@ class PgApiImpl {
   Status AcquireObjectLock(
       const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
   Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
+  Status WaitForLockersMultiple(
+      const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks);
 
   auto TemporaryDisableReadTimeHistoryCutoff() {
     return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();

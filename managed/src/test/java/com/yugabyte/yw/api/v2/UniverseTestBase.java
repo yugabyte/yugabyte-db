@@ -183,6 +183,10 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   protected void setupProvider(CloudType cloudType) {
     Provider provider = newProvider(customer, cloudType);
+    if (cloudType == CloudType.kubernetes) {
+      provider.setConfigMap(Map.of("KUBECONFIG", "foo"));
+      provider.save();
+    }
     providerUuid = provider.getUuid();
     // add 3 regions with 3 zones in each region
     Region region1 = Region.create(provider, "us-west-1", "us-west-1", "yb-image-1");

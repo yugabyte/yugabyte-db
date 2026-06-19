@@ -6452,7 +6452,6 @@ TriggerOneEvent:
 TriggerReferencing:
 			REFERENCING TriggerTransitions
 				{
-					parser_ybc_signal_unsupported(@1, "REFERENCING clause (transition tables)", 1668);
 					$$ = $2;
 				}
 			| /*EMPTY*/								{ $$ = NIL; }

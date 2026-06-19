@@ -42,6 +42,9 @@ PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 # Prometheus Version
 PROMETHEUS_VERSION ?= 3.10.0
 
+# Node Exporter Version
+NODE_EXPORTER_VERSION ?= 1.10.2
+
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
 POSTGRES_VERSION ?= 14.22
 PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}.tar.gz
@@ -92,7 +95,8 @@ ${BIN_DIR}/${BIN_NAME}:
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PostgresVersion=${POSTGRES_VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PrometheusVersion=${PROMETHEUS_VERSION}' \
-	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PerfAdvisorVersion=${PERF_ADVISOR_VERSION}'"
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PerfAdvisorVersion=${PERF_ADVISOR_VERSION}' \
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.NodeExporterVersion=${NODE_EXPORTER_VERSION}'"
 
 
 package: ${PACKAGE_NAME}

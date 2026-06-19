@@ -36,7 +36,9 @@ import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniversePagedQuerySpec;
 import api.v2.models.UniversePagedResp;
 import api.v2.models.UniverseSpec;
+import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
+import api.v2.models.YBAValidationResponse;
 import api.v2.utils.ApiControllerUtils;
 import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -69,6 +71,7 @@ import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
+import com.yugabyte.yw.controllers.handlers.KubernetesOverridesHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.RunQueryFormData;
@@ -140,6 +143,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private FileCollectionDownloader fileCollectionDownloader;
   @Inject private LocalhostAccessChecker localhostChecker;
   @Inject private RoleBindingUtil roleBindingUtil;
+  @Inject private KubernetesOverridesHandler kubernetesOverridesHandler;
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -1338,6 +1342,22 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
     return fileCollectionDownloader.cleanupCollection(
         collectionUuid, universe, deleteFromDbNodes, deleteFromYba);
+  }
+
+  public YBAValidationResponse validateKubernetesOverrides(
+      Request request, UUID cUUID, UniverseValidateKubernetesOverrides spec)
+      throws JsonProcessingException {
+    Set<String> errors =
+        kubernetesOverridesHandler.validateKubernetesOverrides(
+            spec.getYbSoftwareVersion(),
+            spec.getNodePrefix(),
+            ClusterMapper.INSTANCE.toV1PlacementInfo(spec.getPlacementSpec()),
+            spec.getIsReadonlyCluster(),
+            spec.getOverrides(),
+            spec.getAzOverrides());
+    YBAValidationResponse response = new YBAValidationResponse();
+    errors.forEach(response::addErrorsItem);
+    return response;
   }
 
   /**

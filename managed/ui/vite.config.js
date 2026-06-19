@@ -27,28 +27,6 @@ const transformReduxForm = (code) => {
   return code;
 };
 
-/**
- * Transform moment-precise-range-plugin/moment-precise-range.js
- *
- * The file has this CommonJS pattern that fails in ES modules:
- *   if (typeof moment === "undefined" && typeof require === 'function') {
- *       var moment = require('moment');
- *   }
- *   (function(moment) { ... }(moment));
- *
- * We replace the require block with an ES import.
- */
-const transformMomentPreciseRange = (code) => {
-  // Only transform if it has the moment require pattern
-  if (code.includes("require('moment')") || code.includes('require("moment")')) {
-    // Remove the if block that tries to require moment
-    code = code.replace(/if\s*\([^)]*typeof\s+moment[^)]*typeof\s+require[^)]*\)\s*\{[^}]*\}/, '');
-    // Add ES import at the top
-    code = `import moment from 'moment';\n${code}`;
-  }
-  return code;
-};
-
 // =============================================================================
 // Vite Plugins (for production build)
 // =============================================================================
@@ -62,13 +40,6 @@ const createTransformPlugin = (name, filter, transform) => ({
     return null;
   }
 });
-
-const momentPreciseRangePlugin = () =>
-  createTransformPlugin(
-    'fix-moment-precise-range-plugin',
-    (id) => id.includes('moment-precise-range-plugin'),
-    transformMomentPreciseRange
-  );
 
 const reduxFormPlugin = () =>
   createTransformPlugin(
@@ -95,7 +66,6 @@ const createEsbuildTransformPlugin = (name, filter, transform) => ({
 
 export default defineConfig(({ mode }) => ({
   plugins: [
-    momentPreciseRangePlugin(),
     reduxFormPlugin(),
     svgr({
       exportAsDefault: true,
@@ -162,14 +132,9 @@ export default defineConfig(({ mode }) => ({
   },
   optimizeDeps: {
     exclude: ['node_modules/.cache'],
-    include: ['moment-precise-range-plugin', 'redux-form'],
+    include: ['redux-form'],
     esbuildOptions: {
       plugins: [
-        createEsbuildTransformPlugin(
-          'fix-moment-precise-range',
-          /node_modules\/moment-precise-range-plugin\/.*\.js$/,
-          transformMomentPreciseRange
-        ),
         createEsbuildTransformPlugin(
           'fix-redux-form',
           /node_modules\/redux-form\/.*\.js$/,

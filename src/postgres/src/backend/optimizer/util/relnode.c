@@ -1538,6 +1538,32 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 			pclauses = lappend(pclauses, rinfo);
 	}
 
+	/*
+	 * YB: When this parameterized path batches one or more outer relations,
+	 * drop any movable clause that references a batched relation but cannot be
+	 * batched.  Pushing it into this scan would reference the batched relation
+	 * with a scalar parameter while the same relation is referenced with a
+	 * batched array elsewhere in the scan (#20495); the dropped clauses are
+	 * re-applied as a join filter instead. (#31760)
+	 */
+	if (yb_enable_base_scans_cost_model && !bms_is_empty(batchedrelids))
+	{
+		List	   *kept_clauses = NIL;
+
+		foreach(lc, pclauses)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+			if (bms_overlap(rinfo->clause_relids, batchedrelids) &&
+				!yb_get_batched_restrictinfo(rinfo, batchedrelids,
+											 baserel->relids))
+				continue;
+
+			kept_clauses = lappend(kept_clauses, rinfo);
+		}
+		pclauses = kept_clauses;
+	}
+
 	List	   *sel_clauses = pclauses;
 
 	if (!bms_is_empty(batchedrelids) && yb_enable_base_scans_cost_model)
@@ -1775,41 +1801,100 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 		}
 	}
 
+	List	   *yb_relegated = NIL;
+
 	if (IsYugaByteEnabled() && !bms_is_empty(req_batchedids))
 	{
 		/*
-		 * YB: TODO: This can be omitted if we allow join filters to be batched
-		 * IN clauses. Consider a join for (X (Y Z)) with a filter Fxy between
-		 * X and Y. If this filter is applied at the lower join then batching
-		 * X becomes impossible if Fxy is not converted into an IN clause.
-		 * This same logic can be applied to any mergejoinable qpqual within
-		 * a batched join context.
+		 * YB: A moved-down clause that references a batched outer relation
+		 * outside this join cannot be enforced here while that relation stays
+		 * batched: the batched value is not available until the batched nested
+		 * loop join above un-batches it.  Consider a join (X (Y Z)) with a
+		 * filter between X and Y where X is batched.
+		 *
+		 * - When CBO is enabled, relegate it to that batched nested loop join:
+		 *   drop it here so it is applied above, provided every relation it
+		 *   references is in this join or a batched outer relation so the join
+		 *   can evaluate it.  Such a clause spans both join inputs (otherwise it
+		 *   would have been pushed into one of them), so its batched form, if
+		 *   any, could not be enforced as a single-relation index condition
+		 *   here anyway.
+		 * - Otherwise the external relations it touches must be unbatched (a
+		 *   batchable join filter would have to become an IN clause, which is
+		 *   not supported).
+		 *
+		 * Relegating or unbatching one clause can change another's
+		 * eligibility, so resolve to a fixed point.
 		 */
+		List	   *candidates = NIL;
+
 		foreach(lc, pclauses)
 		{
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 
-			/*
-			 * YB: If outer/inner path has a relevant pclause that requires
-			 * external relids that are not in
-			 * outer/inner_batchedrelids
-			 * then those external relids need to be unbatched.
-			 */
 			if (bms_is_subset(rinfo->clause_relids, joinrel->relids))
 				continue;
 
-			if (bms_overlap(rinfo->clause_relids, req_batchedids))
-			{
-				Relids		unbatched_ext_rels = bms_difference(rinfo->clause_relids,
-																joinrel->relids);
+			if (!bms_overlap(rinfo->clause_relids, req_batchedids))
+				continue;
 
+			if (yb_enable_base_scans_cost_model)
+				candidates = lappend(candidates, rinfo);
+			else
 				req_unbatchedids =
-					bms_union(req_unbatchedids, unbatched_ext_rels);
+					bms_union(req_unbatchedids,
+							  bms_difference(rinfo->clause_relids,
+											 joinrel->relids));
+		}
+
+		if (candidates != NIL)
+		{
+			bool		changed;
+
+			do
+			{
+				Relids		relegatable_rels =
+					bms_union(joinrel->relids,
+							  bms_difference(req_batchedids, req_unbatchedids));
+
+				changed = false;
+				foreach(lc, candidates)
+				{
+					RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+					if (rinfo == NULL)
+						continue;
+
+					if (bms_is_subset(rinfo->clause_relids, relegatable_rels))
+						continue;
+
+					/* Not relegatable: unbatch the external rels it touches. */
+					req_unbatchedids =
+						bms_union(req_unbatchedids,
+								  bms_difference(rinfo->clause_relids,
+												 joinrel->relids));
+					lfirst(lc) = NULL;
+					changed = true;
+				}
+				bms_free(relegatable_rels);
+			} while (changed);
+
+			foreach(lc, candidates)
+			{
+				if (lfirst(lc) != NULL)
+					yb_relegated = lappend(yb_relegated, lfirst(lc));
 			}
 		}
 	}
 
 	req_batchedids = bms_difference(req_batchedids, req_unbatchedids);
+
+	/*
+	 * YB: Drop relegated clauses from this join; the batched nested loop join
+	 * above is responsible for evaluating them.
+	 */
+	foreach(lc, yb_relegated)
+		pclauses = list_delete_ptr(pclauses, lfirst(lc));
 
 	/*
 	 * Now, attach the identified moved-down clauses to the caller's

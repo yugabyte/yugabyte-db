@@ -380,7 +380,8 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider& schema_packing_provider,
-      ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes);
+      ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes,
+      const StorageSet& apply_to_storages);
 
   bool Empty() const;
 
@@ -414,6 +415,7 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   Slice intents_db_iter_upperbound_;
   rocksdb::WriteBatch* intents_write_batch_;
   DocVectorIndexesPtr vector_indexes_;
+  StorageSet apply_to_storages_;
 };
 
 // Context class for dumping intents records for a transaction.

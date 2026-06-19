@@ -76,6 +76,7 @@ DEFINE_NON_RUNTIME_int32(num_iter, yb::RegularBuildVsSanitizers(10000, 1000),
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 
+DECLARE_string(vmodule);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(transaction_not_found);
 
@@ -4211,8 +4212,11 @@ TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
 }
 
 TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
+  FLAGS_vmodule = "libpq_utils*=1";
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("SET log_statement='ALL';"));
+  ASSERT_OK(conn2.Execute("SET log_statement='ALL';"));
   auto query = "SELECT total_bytes, used_bytes FROM "
                "pg_get_backend_memory_contexts() "
                "WHERE name = 'CacheMemoryContext'"s;
@@ -5762,6 +5766,44 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetry) 
   // The fix ensures that the pendingDeletes list is cleared before the retry,
   // preventing the "SMgrRelation hashtable corrupted" double-close error.
   ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS drop_retry_test CASCADE"));
+}
+
+// Test for #31248: NULL-pointer dereference during DDL retry.
+TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCrash) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Suppress NOTICE messages (e.g., from CREATE TABLE IF NOT EXISTS).
+  // If any messages are sent to the client before the DDL retry is triggered,
+  // the query layer will refuse to retry, throwing "query layer retry isn't
+  // possible because data was already transferred".
+  ASSERT_OK(conn.Execute("SET client_min_messages = WARNING"));
+
+  // The injected fault causes a transaction conflict, which triggers a DDL retry.
+  // The bug (NULL-pointer dereference) occurs during this retry because the
+  // aborted transaction clears the relcache, causing RelationIdGetRelation
+  // to return NULL on the second attempt.
+  // If the bug is present, this will crash with SIGSEGV.
+  // If the bug is fixed, the retry will gracefully fail with an error because
+  // the relation is already dropped in the relcache.
+  auto status = conn.Execute(
+      "DO $$ \n"
+      "BEGIN \n"
+      "  CREATE TABLE IF NOT EXISTS drop_retry_test_crash(a INT); \n"
+      "  SET yb_test_fail_drop_after_heap_drop = true; \n"
+      "  DROP TABLE IF EXISTS drop_retry_test_crash CASCADE; \n"
+      "END $$;");
+
+  ASSERT_NOK_STR_CONTAINS(status, "could not open relation with OID");
+
+  // Verify that the catalog is NOT corrupted.
+  // Note that this test runs with transactional DDL disabled! This means
+  // that in YB DDL operations (like CREATE TABLE) commit immediately and
+  // are not rolled back even if the surrounding PL/pgSQL DO block aborts.
+  // Because the DROP TABLE failed and aborted the DO block, the CREATE TABLE
+  // from the first attempt remains committed.
+  // The fact that this SELECT succeeds proves that the table exists in BOTH
+  // the PostgreSQL catalog and DocDB (no split-brain corruption).
+  ASSERT_OK(conn.FetchMatrix("SELECT * FROM drop_retry_test_crash", 0, 1));
 }
 
 } // namespace yb::pgwrapper

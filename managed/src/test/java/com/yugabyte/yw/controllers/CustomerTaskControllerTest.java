@@ -37,16 +37,12 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Model;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Optional;
@@ -56,8 +52,6 @@ import java.util.stream.IntStream;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
@@ -67,14 +61,6 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   private Customer customer;
   private Users user;
   private Universe universe;
-
-  @Mock private RuntimeConfig<Model> config;
-
-  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
-
-  @Mock RuntimeConfGetter mockConfGetter;
-
-  @InjectMocks private CustomerTaskController controller;
 
   @Before
   public void setUp() {
@@ -645,11 +631,12 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
   @Test
   public void testTaskHistoryLimit() {
-    when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.taskDbQueryLimit)))
-        .thenReturn(25);
-    when(mockConfGetter.getConfForScope(
-            any(Customer.class), eq(CustomerConfKeys.taskInfoDbQueryBatchSize)))
-        .thenReturn(10);
+    mutableConfigFactory
+        .forCustomer(customer)
+        .setValue(CustomerConfKeys.taskDbQueryLimit.getKey(), "25");
+    mutableConfigFactory
+        .forCustomer(customer)
+        .setValue(CustomerConfKeys.taskInfoDbQueryBatchSize.getKey(), "10");
     IntStream.range(0, 100)
         .forEach(
             i ->
@@ -661,7 +648,9 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
                     "Foo",
                     "Running",
                     50.0));
-    Result result = controller.list(customer.getUuid());
+    String authToken = user.createAuthToken();
+    Result result =
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
     assertThat(result.status(), is(OK));
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.isObject(), is(true));

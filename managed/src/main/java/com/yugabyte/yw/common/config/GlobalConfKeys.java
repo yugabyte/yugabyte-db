@@ -2284,4 +2284,31 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Time to live for GCP capacity reservation",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> paMemoryPerNodeAdvancedObservabilityMb =
+      new ConfKeyInfo<>(
+          "yb.pa.memory_per_node_advanced_observability_mb",
+          ScopeType.GLOBAL,
+          "Memory per node for advanced observability",
+          "Estimated memory usage per node when advanced observability is enabled (in MB). Used"
+              + " to precheck YBA node memory headroom before enabling advanced observability.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> paMemoryPerNodePaCollectorMb =
+      new ConfKeyInfo<>(
+          "yb.pa.memory_per_node_pa_collector_mb",
+          ScopeType.GLOBAL,
+          "Memory per node for PA collector",
+          "Estimated memory usage per node when PA collector is enabled without advanced"
+              + " observability (in MB). Used to precheck YBA node memory headroom before enabling"
+              + " PA collection.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> skipPaMemoryValidation =
+      new ConfKeyInfo<>(
+          "yb.pa.skip_memory_validation",
+          ScopeType.GLOBAL,
+          "Skip PA Collector memory validation",
+          "Skip memory availability validation when enabling Performance Advisor Collection",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

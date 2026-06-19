@@ -1,0 +1,33 @@
+title: TaskSubtaskGroupDetails
+description: User-facing subtask group shown in task details.
+type: object
+properties:
+  title:
+    description: Short title for this subtask group.
+    type: string
+    readOnly: true
+  description:
+    description: Longer description of what this subtask group represents.
+    type: string
+    readOnly: true
+  state:
+    description: Aggregated state for this subtask group.
+    type: string
+    enum:
+      - Created
+      - Initializing
+      - Running
+      - Unknown
+      - Success
+      - Failure
+      - Aborted
+      - Abort
+      - Paused
+    readOnly: true
+  extra_details:
+    description: 'Additional JSON blobs for this subtask group (progress, errors, etc.).'
+    type: array
+    items:
+      $ref: "./TaskSubtaskExtraDetail.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("extraDetails")'

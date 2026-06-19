@@ -15,16 +15,20 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.oracle.bmc.Region;
 import com.oracle.bmc.auth.AuthenticationDetailsProvider;
 import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
+import com.oracle.bmc.identity.IdentityClient;
+import com.oracle.bmc.identity.requests.ListRegionsRequest;
 import com.oracle.bmc.keymanagement.KmsCryptoClient;
 import com.oracle.bmc.keymanagement.KmsManagementClient;
 import com.oracle.bmc.keymanagement.KmsVaultClient;
 import com.oracle.bmc.keymanagement.model.*;
 import com.oracle.bmc.keymanagement.requests.*;
 import com.oracle.bmc.keymanagement.responses.*;
+import com.oracle.bmc.model.BmcException;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
@@ -151,12 +155,15 @@ public class OciEARServiceUtil {
       throw new RuntimeException("Failed to create KMS management client");
     }
 
-    String compartmentOcid =
+    String compartmentId =
         authConfig.path(OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName).asText();
+    if (StringUtils.isBlank(compartmentId)) {
+      throw new RuntimeException("OCI_COMPARTMENT_OCID is required to lookup key by name.");
+    }
 
     CreateKeyDetails keyDetails =
         CreateKeyDetails.builder()
-            .compartmentId(compartmentOcid)
+            .compartmentId(compartmentId)
             .displayName(displayName)
             .keyShape(
                 KeyShape.builder()
@@ -228,24 +235,39 @@ public class OciEARServiceUtil {
     }
   }
 
+  /**
+   * Returns true if the key exists (HTTP 200), false if it does not (HTTP 404 or blank OCID).
+   *
+   * <p>Throws a descriptive RuntimeException for HTTP 403 (insufficient permissions) or any other
+   * unexpected API error, so callers are not silently misled. Lifecycle state and algorithm
+   * validation are left to {@link #validateKeySettings}.
+   */
   public boolean checkKeyExists(ObjectNode authConfig, String keyOcid) {
     if (StringUtils.isBlank(keyOcid)) {
       return false;
     }
 
+    KmsManagementClient client = getKmsManagementClient(null, authConfig);
+
     try {
-      KmsManagementClient client = getKmsManagementClient(null, authConfig);
-      if (client == null) {
+      GetKeyResponse response = client.getKey(GetKeyRequest.builder().keyId(keyOcid).build());
+      return response.getKey() != null;
+    } catch (BmcException e) {
+      if (e.getStatusCode() == 404) {
         return false;
       }
-
-      GetKeyRequest request = GetKeyRequest.builder().keyId(keyOcid).build();
-
-      GetKeyResponse response = client.getKey(request);
-      return response.getKey() != null;
-    } catch (Exception e) {
-      LOG.warn("Error checking if OCI key exists: " + keyOcid, e);
-      return false;
+      if (e.getStatusCode() == 403) {
+        throw new RuntimeException(
+            "Insufficient permissions to access OCI key '" + keyOcid + "'.", e);
+      }
+      throw new RuntimeException(
+          "Error accessing OCI key '"
+              + keyOcid
+              + "': HTTP "
+              + e.getStatusCode()
+              + ": "
+              + e.getMessage(),
+          e);
     }
   }
 
@@ -354,37 +376,102 @@ public class OciEARServiceUtil {
   }
 
   public void validateKMSProviderConfigFormData(ObjectNode formData) {
-    String compartmentOcid =
-        getSafeText(formData, OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName);
+    // Step 1: fail fast on blank fields not already covered by getCredentials().
+    // Credential fields (TENANCY_OCID, USER_OCID, FINGERPRINT, PRIVATE_KEY) are checked inside
+    // getCredentials() via StringUtils.isAnyBlank, so we only need the three below here.
     String vaultOcid = getSafeText(formData, OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName);
-    String region = getSafeText(formData, OciKmsAuthConfigField.OCI_REGION.fieldName);
-    if (StringUtils.isBlank(compartmentOcid)) {
-      throw new RuntimeException("OCI_COMPARTMENT_OCID is required");
-    }
-    if (StringUtils.isBlank(vaultOcid)) {
-      throw new RuntimeException("OCI_VAULT_OCID is required");
-    }
-    if (StringUtils.isBlank(region)) {
-      throw new RuntimeException("OCI_REGION is required");
-    }
+    String regionStr = getSafeText(formData, OciKmsAuthConfigField.OCI_REGION.fieldName);
 
-    // Test authentication
-    AuthenticationDetailsProvider provider = getAuthenticationProvider(formData);
-    if (provider == null) {
+    if (StringUtils.isBlank(vaultOcid)) throw new RuntimeException("OCI_VAULT_OCID is required");
+    if (StringUtils.isBlank(regionStr)) throw new RuntimeException("OCI_REGION is required");
+
+    // Step 2: parse region locally no network call, catches completely invalid strings early.
+    Region region;
+    try {
+      region = Region.fromRegionId(regionStr);
+    } catch (IllegalArgumentException e) {
       throw new RuntimeException(
-          "Failed to authenticate with OCI. Please check config file and credentials.");
+          "Invalid OCI_REGION: '" + regionStr + "' is not a recognized OCI region identifier.", e);
     }
 
-    // If key OCID is provided, validate it exists and is accessible
+    // Step 3: validate credentials with a live Identity API call (listRegions is cheap and global).
+    // This is the only step that can confirm tenancy/user/fingerprint/private-key are all correct.
+    SimpleAuthenticationDetailsProvider authProvider = getCredentials(formData);
+    try {
+      validateCredentialsWithIdentityService(region, authProvider);
+    } catch (BmcException e) {
+      if (e.getStatusCode() == 401 || e.getStatusCode() == 403) {
+        throw new RuntimeException(
+            "Invalid OCI credentials. Please verify REGION, TENANCY_OCID, USER_OCID, FINGERPRINT,"
+                + " and PRIVATE_KEY.",
+            e);
+      }
+      throw new RuntimeException("OCI credential validation failed: " + e.getMessage(), e);
+    } catch (Exception e) {
+      if (containsIgnoreCase(e.getMessage(), "private key")
+          || containsIgnoreCase(e.getMessage(), "pkcs")
+          || containsIgnoreCase(e.getMessage(), "pem")) {
+        throw new RuntimeException(
+            "Invalid PRIVATE_KEY. Could not parse the OCI private key content.", e);
+      }
+      throw new RuntimeException("OCI credential validation failed: " + e.getMessage(), e);
+    }
+
+    // Step 4: validate vault credentials are confirmed valid at this point, so a failure here
+    // is unambiguously a vault/region mismatch rather than an auth issue.
+    KmsVaultClient kmsVaultClient = getKmsVaultClient(null, formData);
+    try {
+      getVaultFromId(kmsVaultClient, vaultOcid);
+    } catch (BmcException e) {
+      if (e.getStatusCode() == 404) {
+        throw new RuntimeException(
+            String.format(
+                "OCI vault is not accessible. Verify that OCI_VAULT_OCID '%s' exists in region"
+                    + " OCI_REGION '%s'.",
+                vaultOcid, regionStr),
+            e);
+      }
+      if (e.getStatusCode() == 403) {
+        throw new RuntimeException(
+            "Insufficient permissions to access OCI vault '" + vaultOcid + "'.", e);
+      }
+      throw new RuntimeException(
+          "Failed to access OCI vault '" + vaultOcid + "': " + e.getMessage(), e);
+    }
+
+    // Step 5: validate key OCID if provided.
+    // checkKeyExists returns false on 404, throws on 403 or unexpected errors.
+    // validateKeySettings checks lifecycle state (must be Enabled) and algorithm (must be AES).
     String keyOcid = getSafeText(formData, OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
     if (StringUtils.isNotBlank(keyOcid)) {
       if (!checkKeyExists(formData, keyOcid)) {
-        throw new RuntimeException(
-            "OCI key with OCID " + keyOcid + " does not exist or is not accessible");
+        throw new RuntimeException("OCI_KEY_OCID '" + keyOcid + "' does not exist.");
       }
       if (!validateKeySettings(formData, keyOcid)) {
-        throw new RuntimeException("OCI key with OCID " + keyOcid + " has invalid settings");
+        throw new RuntimeException(
+            "OCI key '"
+                + keyOcid
+                + "' has invalid settings: it must be in Enabled state and use AES algorithm.");
       }
     }
+  }
+
+  /**
+   * Makes a cheap {@code listRegions} call to confirm that the supplied auth provider can
+   * successfully authenticate against OCI. Extracted as a protected method so tests can stub it.
+   */
+  protected void validateCredentialsWithIdentityService(
+      Region region, SimpleAuthenticationDetailsProvider authProvider) {
+    try (IdentityClient identityClient =
+        IdentityClient.builder().region(region).build(authProvider)) {
+      identityClient.listRegions(ListRegionsRequest.builder().build());
+    }
+  }
+
+  private boolean containsIgnoreCase(String source, String target) {
+    if (source == null || target == null) {
+      return false;
+    }
+    return source.toLowerCase(Locale.ROOT).contains(target.toLowerCase(Locale.ROOT));
   }
 }

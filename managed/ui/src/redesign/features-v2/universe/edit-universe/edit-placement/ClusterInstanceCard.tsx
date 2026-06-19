@@ -315,7 +315,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
           <>
             <div>
               <Typography variant="subtitle1" color="textSecondary">
-                {t('faultTolerance')}
+                {t('resilienceLevel')}
               </Typography>
               <StyledValue>{resilientType}</StyledValue>
             </div>

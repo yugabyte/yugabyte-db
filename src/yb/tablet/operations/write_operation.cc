@@ -77,18 +77,20 @@ void WriteOperation::SetAsyncWrite(AsyncWriteCallback callback) {
   async_write_callback_ = std::move(callback);
 }
 
-void WriteOperation::AddedAsPending(const TabletPtr& tablet) {
-  if (async_write_callback_) {
-    Status complete_status;
-
-    complete_status = ApplyOperation(op_id().term, /*skip_opid_update=*/true);
-    if (complete_status.ok()) {
-      async_write_callback_(op_id());
-    } else {
-      async_write_callback_(std::move(complete_status));
-    }
-    async_write_callback_ = {};
+void WriteOperation::SubmittedToLeaderQueue() {
+  if (!async_write_callback_) {
+    return;
   }
+  // Run the callbacks here rather than in AddedAsPending since that can fail after the fact and get
+  // rolled back (see RollbackIdAndDeleteOpId). Since the OpId can get reused, that would make the
+  // async tracking potentially invalid.
+  Status complete_status = ApplyOperation(op_id().term, /*skip_opid_update=*/true);
+  if (complete_status.ok()) {
+    async_write_callback_(op_id());
+  } else {
+    async_write_callback_(std::move(complete_status));
+  }
+  async_write_callback_ = {};
 }
 
 Status WriteOperation::ApplyOperation(int64_t leader_term, bool skip_opid_update) {
@@ -105,7 +107,8 @@ Status WriteOperation::ApplyOperation(int64_t leader_term, bool skip_opid_update
   }
 
   RETURN_NOT_OK(VERIFY_RESULT(tablet_safe())
-                    ->ApplyRowOperations(this, /*apply_to_storages=*/{}, skip_opid_update));
+                    ->ApplyRowOperations(
+                        this, /*apply_to_storages=*/docdb::StorageSet::All(), skip_opid_update));
 
   // Now that all of the changes have been applied make the changes visible to readers.
   TRACE("FINISH: making edits visible");

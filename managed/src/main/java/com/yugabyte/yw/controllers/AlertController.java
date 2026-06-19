@@ -337,7 +337,12 @@ public class AlertController extends AuthenticatedController {
     List<AlertConfigurationTemplate> templates =
         Arrays.stream(AlertTemplate.values())
             .filter(
-                template -> filter.matches(alertTemplateService.getTemplateDescription(template)))
+                template -> {
+                  AlertTemplateDescription description =
+                      alertTemplateService.getTemplateDescription(template);
+                  return description.isApplicableToCurrentEnvironment()
+                      && filter.matches(description);
+                })
             .map(
                 template ->
                     alertConfigurationService.createConfigurationTemplate(customer, template))
