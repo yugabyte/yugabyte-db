@@ -99,7 +99,7 @@ To explicitly set a port for YSQL, you should specify ports for the flags `ysql_
 
 The following table describes YB-TServer flags related to YSQL Connection Manager:
 
-| flag | Description |
+| Flag | Description |
 | :--- | :---------- |
 | enable_ysql_conn_mgr | Enables YSQL Connection Manager for the cluster. YB-TServer starts a YSQL Connection Manager process as a child process.<br>Default: false |
 | enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint `<ip_address_of_cluster>:13000/connections`. <br>Default: true |
@@ -149,20 +149,20 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 
 ### Deprecated flags
 
-| Deprecated flag | Use instead |  
-| :-------------- | :---------- |  
-| `ysql_conn_mgr_username` | `ysql_conn_mgr_internal_conn_user`<br>v2025.2.4.0 and later |  
-| `ysql_conn_mgr_password` | Not used; internal connections authenticate with the TServer key in v2024.1.0.0 and later |  
-| `ysql_conn_mgr_max_phy_conn_percent` | `ysql_conn_mgr_reserve_internal_conns`<br>v2025.2.1.0 and later |  
-| `ysql_conn_mgr_deallocate_if_invalid_prep_stmt` (only available in v2025.2.3.0) | `ysql_conn_mgr_enable_prep_stmt_close`<br>v2025.2.4.0 and later |
+| Deprecated | Use instead |
+| :--------- | :---------- |
+| ysql_conn_mgr_username | ysql_conn_mgr_internal_conn_user<br>v2025.2.4.0 and later |
+| ysql_conn_mgr_password | Not used; internal connections authenticate with the TServer key in v2024.1.0.0 and later |
+| ysql_conn_mgr_max_phy_conn_percent | ysql_conn_mgr_reserve_internal_conns<br>v2025.2.1.0 and later |
+| ysql_conn_mgr_deallocate_if_invalid_prep_stmt (only available in v2025.2.3.0) | ysql_conn_mgr_enable_prep_stmt_close<br>v2025.2.4.0 and later |
 
 ## Authentication methods
 
 The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with YSQL Connection Manager when a connection matches an HBA ([Host-Based Authentication](../../../secure/authentication/host-based-authentication/)) record.
 
-| | Auth Method | Description |
-|:--| :---------------------| :------------ | :---- |
-| {{<icon/no>}} | Ident Authentication | Server contacts client's OS to verify username that initiated connection, trusting OS-level identity.|
+|      | Auth Method | Description |
+| :--- | :-----------| :---------- |
+| {{<icon/no>}} | Ident Authentication | Server contacts client's OS to verify username that initiated connection, trusting OS-level identity. |
 | {{<icon/no>}} | Peer Authentication | For local/Unix socket connections, server checks that the connecting UNIX user matches the requested database user, relying on OS user identity. |
 | {{<icon/yes>}} | Plain/Clear Text Password | Standard password-based authentication, though storing passwords in plain text is not recommended. |
 | {{<icon/yes>}} | JWT Authentication (OIDC) | Uses JSON Web Tokens (JWT) from an external Identity Provider (IDP) to securely transmit authentication and authorization information. |
@@ -208,7 +208,7 @@ local all yugabyte trust
 The following table describes how each client SSL mode behaves when connecting via YSQL Connection Manager with the default HBA configuration and encryption in transit disabled.
 
 | Client SSL mode | Description | Same as PostgreSQL? | Connection succeeds? |
-| :-- | :-- | :-- | :-- |
+| :--- | :--- | :--- | :--- |
 | disable | Client attempts a non-SSL connection | Yes. Unencrypted connection is established. | Yes |
 | allow | Tries unencrypted connection first, then secure (encrypted) | Yes. Unencrypted connection is established. | Yes (first non-SSL attempt succeeds) |
 | prefer (default in PostgreSQL) | Tries secure connection first, then unencrypted | Yes. Unencrypted connection is established. | Partially. First SSL attempt is rejected by Connection Manager, second non-SSL attempt follows Connection Manager authentication. |
@@ -235,7 +235,7 @@ local all yugabyte trust
 The following table describes how each client SSL mode behaves when connecting via YSQL Connection Manager with the default HBA configuration and encryption in transit enabled.
 
 | Client SSL mode | Description | Same as PostgreSQL? | Connection succeeds? |
-| :-- | :-- | :-- | :-- |
+| :--- | :--- | :--- | :--- |
 | disable | Client attempts a non-SSL connection. | Mostly. Error messages differ. If you add `host all all all trust` to the HBA file, connection fails with Connection Manager, but succeeds with PostgreSQL. | No. Non-SSL attempt is rejected by Connection Manager. |
 | allow | Tries unencrypted connection first, then secure | Mostly. Encrypted connection is established. But if you add `host all all all trust` to the HBA file, an encrypted connection is created with Connection Manager, and unencrypted with PostgreSQL. | Partially. First non-SSL attempt is rejected by Connection Manager; second SSL attempt follows Connection Manager authentication. |
 | prefer (default in PostgreSQL) | Tries secure connection first, then unencrypted. | Yes. Encrypted connection is established. | Yes. First SSL attempt establishes connection with Connection Manager. |
@@ -267,11 +267,13 @@ When using YSQL Connection Manager, sticky connections can form in the following
 
 ## ALTER ROLE SET and ALTER DATABASE SET commands
 
-`ALTER ROLE ... SET` and `ALTER DATABASE ... SET` statements change the default values of configuration parameters (GUCs) for a role or database. Because YSQL Connection Manager multiplexes many client sessions over a smaller pool of backend processes, a backend that was created before such an ALTER may not have the new settings. The `ysql_conn_mgr_alter_guc_adoption_strategy` flag controls how existing sessions behave after an ALTER:
+`ALTER ROLE ... SET` and `ALTER DATABASE ... SET` statements change the default values of configuration parameters (GUCs) for a role or database. Because YSQL Connection Manager multiplexes many client sessions over a smaller pool of backend processes, a backend that was created before such an ALTER may not have the new settings. The `ysql_conn_mgr_alter_guc_adoption_strategy` flag controls how existing sessions behave after an ALTER.
 
-- `fluctuating` — No special handling is done. Successive transactions in the same session may run on backends with or without the new settings, so the configuration parameter values observed by the session may fluctuate.
-- `gradual` (default) — Existing sessions gradually adopt the new settings. Subsequent transactions are routed to backends that have the latest ALTER settings.
-- `connection_static` — Existing sessions retain the configuration parameter settings they had at the time of connection and never observe later ALTER statements. This is closest to the behavior of vanilla PostgreSQL.
+| Setting | Description |
+| :------ | :---------- |
+| fluctuating | No special handling is done. Successive transactions in the same session may run on backends with or without the new settings, so the configuration parameter values observed by the session may fluctuate. |
+| gradual | Default. Existing sessions gradually adopt the new settings. Subsequent transactions are routed to backends that have the latest ALTER settings. |
+| connection_static | Existing sessions retain the configuration parameter settings they had at the time of connection and never observe later ALTER statements. This is closest to the behavior of vanilla PostgreSQL. |
 
 In both the `gradual` and `connection_static` modes, new sessions always observe the effects of ALTER statements that were issued before they were created.
 
