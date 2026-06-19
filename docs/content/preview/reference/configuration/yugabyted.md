@@ -1970,7 +1970,7 @@ Because `enable_ysql_conn_mgr` is a preview flag, to use it, add the flag to the
 For example, to create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following  command:
 
 ```sh
-./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true,allowed_preview_flags_csv={enable_ysql_conn_mgr}" 
+./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true" --ui false
 ```
 
 To learn more, see the [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/) documentation.
