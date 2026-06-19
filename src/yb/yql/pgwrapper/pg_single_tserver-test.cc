@@ -54,6 +54,7 @@ DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_uint64(sst_files_soft_limit);
 DECLARE_uint64(sst_files_hard_limit);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -62,6 +63,7 @@ DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(db_block_size_bytes);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
 DECLARE_int32(rpc_workers_limit);
@@ -75,6 +77,7 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 METRIC_DECLARE_entity(table);
 
 DEFINE_RUNTIME_int32(TEST_scan_reads, 3, "Number of reads in scan tests");
+DECLARE_bool(docdb_ht_filter_conflict_with_committed);
 
 using namespace std::literals;
 
@@ -256,6 +259,10 @@ class PgSingleTServerTest : public PgMiniTestBase {
     }
     LOG(INFO) << "Data block cache hit count: " << block_cache_hit_count
               << ", miss count: " << block_cache_miss_count;
+    SCHECK_GE(block_cache_hit_count, 0, IllegalState,
+              "Data block cache hit metric not found for colocated table");
+    SCHECK_GE(block_cache_miss_count, 0, IllegalState,
+              "Data block cache miss metric not found for colocated table");
     return std::make_pair(block_cache_hit_count, block_cache_miss_count);
   }
 
@@ -389,33 +396,84 @@ TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
       /* compact= */ false, /* aggregate= */ false);
 }
 
-TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_ON_MACOS(HybridTimeFilterDuringConflictResolution),
+// Verifies that the hybrid time SST file filter lets conflict resolution skip files whose records
+// all predate the transaction's read time. After the base data set is flushed into SST files, all
+// of its rows are updated. Each update runs conflict resolution against committed records, which
+// seeks the (existing) row in the regular DB. With the filter off that seek reads a data block of
+// the flushed file; with the filter on the whole file is skipped because its largest hybrid time
+// precedes the update's read time.
+//
+// The check is comparative and self-contained: the same update runs twice, once with the filter
+// enabled and once with it disabled, and the two block cache deltas are compared. Comparing deltas
+// measured under identical conditions removes the dependence on absolute counts that made earlier
+// revisions of this test fail when the runtime environment changed.
+//
+// The data block size is set to one row per block, so each conflict check reads exactly one
+// distinct data block; the difference between the two deltas is therefore the number of rows, with
+// no dependence on packed-row size or build type. Each update runs inside a transaction that is
+// rolled back, so it commits no data and leaves no new SST file behind, and both runs start from
+// exactly the same on-disk state. Background compactions are disabled (before the colocated tablet
+// is opened, since the flag is read only at open time), so no compaction can read data blocks and
+// pollute the deltas.
+TEST_F_EX(PgSingleTServerTest, HybridTimeFilterDuringConflictResolution,
           PgMiniSmallMemstoreAndCacheTest) {
   constexpr int kNumColumns = 10;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+  // Put one row in each data block so that every conflict check reads exactly one distinct block.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 1;
+  // Disable background compactions so they cannot read data blocks and pollute the block cache
+  // deltas measured below. The flag is read when the tablet's RocksDB is opened, so it must be set
+  // before the table (and its colocated tablet) is created.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+
+  // A small data set is enough for the comparative check; one row per block keeps it light.
+  const int num_rows = NumScanRows() / 100;
 
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
   auto insert_cmd = InsertNValuesCommand(kNumColumns);
   SetupColocatedTableAndRunBenchmark(
-      create_cmd, insert_cmd, /* select_cmd= */ "", NumScanRows(), kScanBlockSize,
+      create_cmd, insert_cmd, /* select_cmd= */ "", num_rows, kScanBlockSize,
       FLAGS_TEST_scan_reads, /* compact= */ false, /* aggregate= */ false);
-  auto [block_cache_hit_count, block_cache_miss_count] =
-      ASSERT_RESULT(GetBlockCacheHitMissCounts());
-  ASSERT_GE(block_cache_hit_count, 0);
-  ASSERT_GE(block_cache_miss_count, 0);
-  if (NumScanRows() == kReleaseNumScanRows) {
-    LOG(INFO) << "Checking that block cache hit/miss counts are within expected ranges";
-    ASSERT_GE(block_cache_miss_count, 9000);
-    ASSERT_LE(block_cache_miss_count, 11000);
-    // The hit count would be ~30000 with docdb_ht_filter_conflict_with_committed turned off.
-    ASSERT_GE(block_cache_hit_count, 14000);
-    ASSERT_LE(block_cache_hit_count, 18000);
-  } else {
-    LOG(INFO) << "The number of rows " << NumScanRows() << " is different from the release build "
-              << "number of rows " << kReleaseNumScanRows << ", not checking block cache stats.";
-  }
+
+  // Flush the base data so it all lives in SST files whose hybrid times precede any later
+  // transaction. The updates below roll back, so they add no committed data and hence no new file.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  // Updates every row inside a transaction that is rolled back and returns the resulting block
+  // cache data hit + miss delta on the colocated table. Rolling back keeps the on-disk state
+  // identical between calls, so the only difference between the two deltas is the conflict
+  // resolution behavior controlled by the filter.
+  auto measure_probe_batch = [&](bool enable_filter) -> Result<int64_t> {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_docdb_ht_filter_conflict_with_committed) = enable_filter;
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    auto [hit_before, miss_before] = VERIFY_RESULT(GetBlockCacheHitMissCounts());
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    auto update_status = conn.Execute("UPDATE t SET c0 = c0 + 1");
+    RETURN_NOT_OK(conn.Execute("ROLLBACK"));
+    RETURN_NOT_OK(update_status);
+
+    auto [hit_after, miss_after] = VERIFY_RESULT(GetBlockCacheHitMissCounts());
+    auto delta = (hit_after - hit_before) + (miss_after - miss_before);
+    LOG(INFO) << "Filter " << (enable_filter ? "on" : "off") << ": block cache data access delta "
+              << delta << " (hit " << hit_after - hit_before << ", miss "
+              << miss_after - miss_before << ")";
+    return delta;
+  };
+
+  auto delta_without_filter = ASSERT_RESULT(measure_probe_batch(/* enable_filter= */ false));
+  auto delta_with_filter = ASSERT_RESULT(measure_probe_batch(/* enable_filter= */ true));
+
+  // Both runs read the current value of every updated row. The run with the filter disabled
+  // additionally reads one data block per conflict check, and with one row per block that is one
+  // block per row. If the filter stops skipping files the two deltas become equal and this fails.
+  ASSERT_GE(delta_without_filter - delta_with_filter, num_rows);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanWithLowerLimit, PgMiniBigPrefetchTest) {
