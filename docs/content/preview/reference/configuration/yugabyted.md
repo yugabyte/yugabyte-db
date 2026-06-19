@@ -1973,7 +1973,7 @@ For example, to create a single-node cluster with YSQL Connection Manager using 
 ./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true" --ui false
 ```
 
-To learn more, see the [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/) documentation.
+To learn more, see the [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/ycm-setup/)documentation.
 
 ## Create and manage read replica clusters
 
