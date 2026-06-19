@@ -9387,6 +9387,22 @@ ATPrepDropColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("cannot drop column from typed table")));
 
+	/*
+	 * YB: ALTER TYPE ... DROP ATTRIBUTE is applied only to the PG catalog and is
+	 * not propagated to DocDB. Disallow it from cascading into a typed table
+	 * (the recursion that reaches the typed table here), whose DocDB schema would
+	 * otherwise silently diverge from the catalog. Skipped during binary
+	 * upgrade (IsBinaryUpgrade) and binary restore (yb_binary_restore), where
+	 * a type is always altered before its dependent tables are created.
+	 */
+	if (IsYugaByteEnabled() && !IsBinaryUpgrade && !yb_binary_restore &&
+		rel->rd_rel->reloftype && recursing)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("drop attribute on the type of a typed table is not supported yet"),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "30577. React with thumbs up to raise its priority")));
+
 	if (rel->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
 		ATTypedTableRecursion(wqueue, rel, cmd, lockmode, context);
 

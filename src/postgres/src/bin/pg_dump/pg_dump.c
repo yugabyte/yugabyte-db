@@ -12370,7 +12370,7 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 		attisdropped = (PQgetvalue(res, i, i_attisdropped)[0] == 't');
 		attcollation = atooid(PQgetvalue(res, i, i_attcollation));
 
-		if (attisdropped && !dopt->binary_upgrade)
+		if (attisdropped && !(dopt->binary_upgrade || dopt->include_yb_metadata))
 			continue;
 
 		/* Format properly if not first attr */
