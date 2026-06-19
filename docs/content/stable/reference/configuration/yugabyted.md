@@ -1972,6 +1972,21 @@ docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net yb-netwo
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
+### Create a local cluster with YSQL Connection Manager
+
+To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
+
+When `enable_ysql_conn_mgr` is set, each YB-TServer starts the YSQL Connection Manager process along with the PostgreSQL process. You should see one YSQL Connection Manager process per YB-TServer.
+
+
+For example, to create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following  command:
+
+```sh
+./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true" --ui false
+```
+
+To learn more, see the [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/ycm-setup/) documentation.
+
 ## Create and manage read replica clusters
 
 To create a read replica cluster, you first need an existing YugabyteDB universe; this example assumes a 3-node universe is deployed. Refer to [Create a local multi-node universe](#create-a-local-multi-node-universe).

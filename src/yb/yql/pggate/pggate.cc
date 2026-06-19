@@ -1489,13 +1489,13 @@ Status PgApiImpl::DmlBindColumnCondIn(
 Status PgApiImpl::DmlAddRowUpperBound(
     PgStatement* handle, int n_col_values, PgExpr** col_values, bool is_inclusive) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AddRowUpperBound(
-      handle, n_col_values, col_values, is_inclusive);
+      std::span(col_values, n_col_values), is_inclusive);
 }
 
 Status PgApiImpl::DmlAddRowLowerBound(
     PgStatement* handle, int n_col_values, PgExpr** col_values, bool is_inclusive) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AddRowLowerBound(
-      handle, n_col_values, col_values, is_inclusive);
+      std::span(col_values, n_col_values), is_inclusive);
 }
 
 Status PgApiImpl::DmlBindHashCode(

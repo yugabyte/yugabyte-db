@@ -249,6 +249,11 @@ class BigDataFetcher {
  public:
   virtual void FetchBigData(uint64_t data_id, FetchBigDataCallback* callback) = 0;
   virtual Result<Slice> FetchBigSharedMemory(uint64_t id, size_t size) = 0;
+  // Marks whether a response stored in a big shared memory segment has been announced via the
+  // exchange but not yet loaded and released. Used as a sanity check: the exchange must not be
+  // reused for the next request while such a response is pending, otherwise the tserver could
+  // reclaim the still-in-use segment.
+  virtual void SetBigSharedMemoryResponsePending(bool pending) = 0;
   virtual ~BigDataFetcher() = default;
 };
 
@@ -445,24 +450,26 @@ struct PgClientData : public FetchBigDataCallback {
   template <class Res>
   Res FetchBigSharedMemory(size_t encoded_id_and_size) {
     if constexpr (std::is_same_v<Res, bool>) {
+      // The response is ready, but its load is deferred to the blocking fetch below. Mark the
+      // segment as pending, so that reusing the exchange before the deferred load releases the
+      // segment is caught as a sanity check.
+      big_data_fetcher->SetBigSharedMemoryResponsePending(true);
       return true;
-    }
-    using Traits = ResponseReadyTraits<Res>;
-    auto id = encoded_id_and_size >> tserver::kBigSharedMemoryIdShift;
-    auto size = encoded_id_and_size & ((1ULL << tserver::kBigSharedMemoryIdShift) - 1);
-    auto slice_res = big_data_fetcher->FetchBigSharedMemory(id, size);
-    if (!slice_res) {
-      if constexpr (std::is_same_v<Res, bool>) {
-        return true;
-      } else {
+    } else {
+      using Traits = ResponseReadyTraits<Res>;
+      auto id = encoded_id_and_size >> tserver::kBigSharedMemoryIdShift;
+      auto size = encoded_id_and_size & ((1ULL << tserver::kBigSharedMemoryIdShift) - 1);
+      auto slice_res = big_data_fetcher->FetchBigSharedMemory(id, size);
+      big_data_fetcher->SetBigSharedMemoryResponsePending(false);
+      if (!slice_res) {
         return slice_res.status();
       }
+      auto slice = *slice_res;
+      auto& in_use = *pointer_cast<std::atomic<bool>*>(slice.mutable_data());
+      auto result = Traits::FromSlice(slice.WithoutPrefix(sizeof(std::atomic<bool>)));
+      in_use.store(false);
+      return result;
     }
-    auto slice = *slice_res;
-    auto& in_use = *pointer_cast<std::atomic<bool>*>(slice.mutable_data());
-    auto result = Traits::FromSlice(slice.WithoutPrefix(sizeof(std::atomic<bool>)));
-    in_use.store(false);
-    return result;
   }
 
   template <class Res>
@@ -1084,6 +1091,12 @@ class PgClient::Impl : public BigDataFetcher {
       constexpr size_t kHeaderSize = sizeof(uint8_t) + sizeof(uint64_t);
       const size_t kMetadataSize = metadata.SerializedSize();
       auto& exchange = session_shared_mem_->exchange();
+      // Sanity check: the exchange must not be reused while a big shared memory response from a
+      // previous request has been announced but not yet loaded and released. Otherwise the tserver
+      // would observe the in-use segment on this request and reclaim it as abandoned, while we
+      // still intend to load it (see PgClientSession::ReleaseAbandonedBigSharedMemSegment).
+      LOG_IF(DFATAL, big_shared_memory_response_pending_)
+          << "Reusing shared exchange while a big shared memory response is still pending";
       auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
       if (out) {
         data->StartSharedMemorySpan();
@@ -1231,6 +1244,10 @@ class PgClient::Impl : public BigDataFetcher {
     return Slice(
         static_cast<const char*>(big_mapped_region_.get_address()),
         size + sizeof(std::atomic<bool>));
+  }
+
+  void SetBigSharedMemoryResponsePending(bool pending) override {
+    big_shared_memory_response_pending_ = pending;
   }
 
   void PrepareOperations(tserver::LWPgPerformRequestPB* req, const PgsqlOps& operations) {
@@ -2093,6 +2110,7 @@ class PgClient::Impl : public BigDataFetcher {
   uint64_t big_shared_memory_id_;
   InterprocessSharedMemoryObject big_shared_memory_object_;
   InterprocessMappedRegion big_mapped_region_;
+  bool big_shared_memory_response_pending_ = false;
   ThreadSafeArena object_locks_arena_;
   std::atomic<uint64_t>& next_perform_op_serial_no_;
 

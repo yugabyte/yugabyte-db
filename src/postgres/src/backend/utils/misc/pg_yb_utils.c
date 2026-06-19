@@ -89,6 +89,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
 #include "catalog/yb_type.h"
+#include "commands/async.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/trigger.h"
@@ -7134,6 +7135,12 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		GUC_check_errdetail("Provided timestamp is in the future.");
 		return false;
 	}
+
+	if (value_ull != 0 && YbHasActiveOrPendingListen())
+	{
+		GUC_check_errmsg("yb_read_time cannot be set while LISTEN is active");
+		return false;
+	}
 	return true;
 }
 
@@ -7145,6 +7152,7 @@ assign_yb_read_time(const char *newval, void *extra)
 
 	elog(DEBUG1, "Setting yb_read_time to %s", newval);
 	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
+
 	/*
 	 * Don't refresh the sys caches in case the read time value didn't change.
 	 */
@@ -9799,6 +9807,19 @@ YbCanSkipIntentsWrite(Relation rel)
 	return YbCanSkipIntents(rel, true /* is_write */ );
 }
 
+void
+YbDisableSkipIntentsIfModifyingCTE(struct QueryDesc *queryDesc)
+{
+	if (skip_intents_txn_state.disabled)
+		return;
+
+	if (queryDesc && queryDesc->plannedstmt && queryDesc->plannedstmt->hasModifyingCTE)
+	{
+		elog(DEBUG1, "Disable skip intents due to modifying CTE");
+		skip_intents_txn_state.disabled = true;
+	}
+}
+
 static bool
 YbCanSkipIntentsRead(Relation rel)
 {
@@ -9833,8 +9854,8 @@ YbMaybeDisableSkipIntentsForCurrentTxn(Relation rel)
 	/*
 	 * 2. Top-level statement shape (Halloween / read-your-writes guard).
 	 * For same-txn-created relations we relax only when we are clearly in a
-	 * plain read-only SELECT (no MERGE/INSERT/…, no modifying CTE). If portal
-	 * context is missing, stay conservative.
+	 * plain read-only SELECT (no MERGE/INSERT/...). If portal context is
+	 * missing, stay conservative.
 	 */
 	else
 	{
@@ -9844,8 +9865,6 @@ YbMaybeDisableSkipIntentsForCurrentTxn(Relation rel)
 			stmt_may_write_reason = 3;
 		else if (qd->operation != CMD_SELECT)
 			stmt_may_write_reason = 4;
-		else if (qd->plannedstmt && qd->plannedstmt->hasModifyingCTE)
-			stmt_may_write_reason = 5;
 	}
 
 	/*

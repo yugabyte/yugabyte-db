@@ -303,6 +303,7 @@ extern PGDLLIMPORT bool VacuumCostActive;
 extern PGDLLIMPORT char *YbSystemDbName;
 extern PGDLLIMPORT char *PgYbNotificationsTableName;
 extern PGDLLIMPORT char *PgYbNotificationsPublicationName;
+extern PGDLLIMPORT char *YbNotificationsSlotPrefix;
 
 
 /* in tcop/postgres.c */

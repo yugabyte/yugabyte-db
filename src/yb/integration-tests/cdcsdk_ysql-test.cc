@@ -774,6 +774,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
 // Test that an upsert (INSERT ON CONFLICT DO UPDATE) that touches a primary key column
 // produces DELETE + INSERT in the CDC stream, not DELETE + DELETE.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndInsert)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_skip_redundant_update_ops) = false;
   // Packed rows default to off in debug/asan/fastdebug builds (kYsqlEnablePackedRowTargetVal =
   // !kIsDebug). The fix this test guards is on the IsPackedRow branch in
@@ -3677,7 +3678,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)
             << correct_expiry_time.time_since_epoch().count();
 
   // we need to ensure the initial leader get's back leadership
-  ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
+  ASSERT_OK(StepDownLeader(first_leader_index, tablets[0].tablet_id()));
   LOG(INFO) << "Changed leadership back to the first leader TServer";
 
   // Call the test RPC to get last active time of the current leader (original), and it should

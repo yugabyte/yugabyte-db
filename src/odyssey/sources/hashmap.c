@@ -330,3 +330,23 @@ od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, yb_od_hash_64_t keyhash,
 	return ptr;
 }
 
+void yb_od_hashmap_drain(od_hashmap_t *hm, yb_od_hashmap_visit_fn_t fn,
+			 void *arg)
+{
+	for (size_t i = 0; i < hm->size; i++) {
+		od_hashmap_bucket_t *bucket = hm->buckets[i];
+		pthread_mutex_lock(&bucket->mu);
+
+		od_list_t *iter, *n;
+		od_list_foreach_safe(&bucket->nodes->link, iter, n) {
+			od_hashmap_list_item_t *item = od_container_of(
+				iter, od_hashmap_list_item_t, link);
+			if (fn != NULL)
+				fn(&item->key, &item->value, arg);
+			od_hashmap_list_item_free(item);
+		}
+
+		pthread_mutex_unlock(&bucket->mu);
+	}
+}
+

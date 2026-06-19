@@ -1460,5 +1460,346 @@ TEST_F(PggateTestBackwardScanSelect, HashBackwardScanMultiTablet) {
   CHECK_EQ(ReadTableBackward(pg_table_id), kNumRows);
 }
 
+class PggateTestRowBounds : public PggateTest {
+ protected:
+  static constexpr const char *tab_name = "h2r2n";
+  static constexpr YbcPgOid tab_oid = 4;
+  static constexpr int kNumRowValues = 5;
+
+  void CreateTestTable(bool range_keys_are_desc) {
+    YbcPgStatement pg_stmt;
+    // Create table in the connected database.
+    CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tab_name,
+                                         kDefaultDatabaseOid, tab_oid,
+                                         false /* is_shared_table */,
+                                         false /* is_sys_catalog_table */,
+                                         true /* if_not_exist */,
+                                         PG_YBROWID_MODE_NONE,
+                                         true /* is_colocated_via_database */,
+                                         kInvalidOid /* tablegroup_id */,
+                                         kColocationIdNotSet /* colocation_id */,
+                                         kDefaultTablespaceOid,
+                                         false /* is_matview */,
+                                         kInvalidOid /* pg_table_oid */,
+                                         kInvalidOid /* old_relfilenode_oid */,
+                                         false /* is_truncate */,
+                                         &pg_stmt));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "h1", 1 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        true /* is_hash */, false /* is_range */, false /* is_desc */, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "h2", 2 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        true /* is_hash */, false /* is_range */, false /* is_desc */, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "r1", 3 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        false /* is_hash */, true /* is_range */, range_keys_are_desc, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "r2", 4 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        false /* is_hash */, true /* is_range */, range_keys_are_desc, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "n", 5 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        false /* is_hash */, false /* is_range */, false /* is_desc */,
+        false /* is_nulls_first */));
+    ExecCreateTableTransaction(pg_stmt);
+  }
+
+  void PopulateTestTable() {
+    YbcPgStatement pg_stmt;
+    CHECK_YBC_STATUS(YBCPgNewInsert(
+        kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
+        YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
+
+    // First row.
+    YbcPgExpr expr_h1;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_h1));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_h1));
+    YbcPgExpr expr_h2;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_h2));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 2, expr_h2));
+    YbcPgExpr expr_r1;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_r1));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 3, expr_r1));
+    YbcPgExpr expr_r2;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_r2));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 4, expr_r2));
+    YbcPgExpr expr_n;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, false /* is_null */, &expr_n));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 5, expr_n));
+    BeginTransaction();
+    CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
+
+    // Subsequent rows.
+    for (int i = 1; i < 10000; ++i) {
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_h1, i / 1000, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_h2, (i / 100) % 10, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_r1, (i / 10) % 10, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_r2, i % 10, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_n, i, false));
+      CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
+    }
+    CommitTransaction();
+  }
+
+  // datums for hash_code, h1, h2, r1, r2
+  using RowKey = boost::container::small_vector<std::optional<uint64_t>, kNumRowValues>;
+  // PgExprs for hash_code, h1, h2, r1, r2
+  using RowExprs = boost::container::small_vector<YbcPgExpr, kNumRowValues>;
+
+  struct Bound {
+    RowKey key;
+    bool is_inclusive;
+  };
+  struct Bounds {
+    std::optional<Bound> lower = std::nullopt;
+    std::optional<Bound> upper = std::nullopt;
+  };
+  static const Bound InclusiveBound(const RowKey& key) {
+    return { .key = key, .is_inclusive = true };
+  }
+  static const Bound ExclusiveBound(const RowKey& key) {
+    return { .key = key, .is_inclusive = false };
+  }
+  void CheckRowCount(const Bounds& bounds, uint64_t expected_count) {
+    auto pg_stmt = MakeSelect();
+    if (bounds.lower) {
+      auto bound_exprs = MakeRowExprs(pg_stmt, bounds.lower->key);
+      CHECK_YBC_STATUS(YBCPgDmlAddRowLowerBound(
+          pg_stmt, static_cast<int>(bound_exprs.size()), bound_exprs.data(),
+          bounds.lower->is_inclusive));
+    }
+    if (bounds.upper) {
+      auto bound_exprs = MakeRowExprs(pg_stmt, bounds.upper->key);
+      CHECK_YBC_STATUS(YBCPgDmlAddRowUpperBound(
+          pg_stmt, static_cast<int>(bound_exprs.size()), bound_exprs.data(),
+          bounds.upper->is_inclusive));
+    }
+    CHECK_EQ(RowCount(pg_stmt), expected_count) << "Unexpected row count";
+  }
+
+ private:
+  static YbcPgStatement MakeSelect() {
+    YbcPgStatement pg_stmt;
+    CHECK_YBC_STATUS(YBCPgNewSelect(
+        kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+        false /* skip_intents_read */, &pg_stmt));
+
+    // Specify the selected expressions.
+    YbcPgExpr colref;
+    const YbcPgTypeAttrs type_attrs = { 0 };
+    CHECK_YBC_STATUS(YBCPgNewColumnRef(
+        pg_stmt, 5, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        &type_attrs, &colref));
+    CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
+
+    return pg_stmt;
+  }
+
+  RowExprs MakeRowExprs(YbcPgStatement pg_stmt, const RowKey& bound) {
+    RowExprs bound_exprs;
+    for (const auto& opt_val : bound) {
+      YbcPgExpr expr = nullptr;
+      if (opt_val) {
+        CHECK_YBC_STATUS(YBCPgNewConstant(
+            pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+            nullptr /* collation_sortkey */, *opt_val /* datum */, false /* is_null */, &expr));
+      }
+      bound_exprs.push_back(expr);
+    }
+    return bound_exprs;
+  }
+
+  uint64_t RowCount(YbcPgStatement pg_stmt) {
+    BeginTransaction();
+    CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
+
+    // Fetching rows and check their contents.
+    uint64_t values[kNumRowValues];
+    bool isnulls[kNumRowValues];
+    YbcPgSysColumns syscols;
+    uint64_t row_count = 0;
+    for (;;) {
+      bool has_data = false;
+      CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, kNumRowValues, values, isnulls, &syscols, &has_data));
+      if (!has_data) {
+        break;
+      }
+      ++row_count;
+    }
+    CommitTransaction();
+    return row_count;
+  }
+};
+
+TEST_F(PggateTestRowBounds, TestHashBoundsRangeAsc) {
+  CHECK_OK(Init("TestHashBoundsRangeAsc"));
+
+  CreateTestTable(false /* range_keys_are_desc */);
+  PopulateTestTable();
+
+  {
+    // Point select
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey key{ 64798, 5, 5, 5, 5 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 1);
+  }
+
+  {
+    // Small range
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey lower_key{ 64798, 5, 5, 5, 0 };
+    const RowKey upper_key{ 64798, 5, 5, 5, 9 };
+    CheckRowCount({ .lower = ExclusiveBound(lower_key), .upper = ExclusiveBound(upper_key) }, 8);
+  }
+
+  {
+    // Bigger range
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey lower_key{ 64798, 5, 5, 0, 9 };
+    const RowKey upper_key{ 64798, 5, 5, 9, 0 };
+    CheckRowCount({ .lower = InclusiveBound(lower_key), .upper = InclusiveBound(upper_key) }, 82);
+  }
+
+  {
+    // Cross hash buckets range
+    // yb_hash_code(6::int4, 0::int4) = 24820
+    const RowKey lower_key{ 24820, 6, 0, 9, 9 };
+    // yb_hash_code(5::int4, 9::int4) = 54756
+    const RowKey upper_key { 54756, 5, 9, 0, 0 };
+    // There are 50 hash codes in the range (24820, 54756), each with 100 rows.
+    CheckRowCount({ .lower = ExclusiveBound(lower_key), .upper = ExclusiveBound(upper_key) }, 5000);
+  }
+
+  {
+    // As above, but include the values in the bound hash buckets.
+    const RowKey lower_key{ 24820, 6, 0, 0, 0 };
+    const RowKey upper_key { 54756, 5, 9, 9, 9 };
+    CheckRowCount({ .lower = InclusiveBound(lower_key), .upper = InclusiveBound(upper_key) }, 5200);
+  }
+
+  {
+    // Lowest hash bucket yb_hash_code(7::int4, 0::int4) = 416
+    const RowKey upper_key{ 416, 9, 9, 9, 9 };
+    CheckRowCount({ .upper = InclusiveBound(upper_key) }, 100);
+  }
+
+  {
+    // Highest hash bucket yb_hash_code(2::int4, 5::int4) = 64842
+    const RowKey lower_key{ 64842, 0, 0, 0, 0 };
+    CheckRowCount({ .lower = InclusiveBound(lower_key) }, 100);
+  }
+
+  // Incomplete keys
+  {
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey key = { 64798, 5, 5, 5 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 10);
+  }
+
+  {
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey key{ 64798, 5, 5, std::nullopt, 5 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 100);
+  }
+
+  {
+    // The hash bucket has only one pair of hash values
+    // yb_hash_code(5::int4, 5::int4) = 64798
+    const RowKey key{ 64798, 5 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 100);
+  }
+}
+
+TEST_F(PggateTestRowBounds, TestHashBoundsRangeDesc) {
+  CHECK_OK(Init("TestHashBoundsRangeDesc"));
+
+  CreateTestTable(true /* range_keys_are_desc */);
+  PopulateTestTable();
+
+  {
+    // Point select
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey key{ 2181, 4, 4, 4, 4 };
+    CheckRowCount({ .lower = InclusiveBound(key), .upper = InclusiveBound(key) }, 1);
+  }
+
+  {
+    // Hash key values not matching the hash code
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey lower_key{ 2181, 4, 3 };
+    const RowKey upper_key{ 2181, 4, 5 };
+    CheckRowCount({ .lower = ExclusiveBound(lower_key), .upper = ExclusiveBound(upper_key) }, 100);
+  }
+
+  {
+    // Small range
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey lower_key{ 2181, 4, 4, 5, 2 };
+    const RowKey upper_key{ 2181, 4, 4, 4, 7 };
+    CheckRowCount({ .lower = ExclusiveBound(lower_key), .upper = ExclusiveBound(upper_key) }, 4);
+  }
+
+  {
+    // Bigger range
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey lower_key{ 2181, 4, 4, 8, 8 };
+    const RowKey upper_key{ 2181, 4, 4, 1, 1 };
+    CheckRowCount({ .lower = InclusiveBound(lower_key), .upper = InclusiveBound(upper_key) }, 78);
+  }
+
+  {
+    // Cross hash buckets range
+    // yb_hash_code(7::int4, 6::int4) = 36130
+    const RowKey lower_key{ 36130, 7, 6, 2, 1 };
+    // yb_hash_code(6::int4, 7::int4) = 54731
+    const RowKey upper_key{ 54731, 6, 7, 8, 8 };
+    // There are 34 hash codes in the range (36130, 54731), each with 100 rows
+    // plus 22 rows in the [21, 00] range of the lower bucket
+    // plus 12 rows in [99, 88] range of the upper bucket.
+    CheckRowCount({ .lower = InclusiveBound(lower_key), .upper = InclusiveBound(upper_key) }, 3434);
+  }
+
+  {
+    // Lowest hash bucket yb_hash_code(7::int4, 0::int4) = 416
+    const RowKey upper_key{ 416, 7, 0, 9, 9 };
+    CheckRowCount({ .upper = ExclusiveBound(upper_key) }, 0);
+  }
+
+  {
+    // Highest hash bucket yb_hash_code(2::int4, 5::int4) = 64842
+    const RowKey lower_key{ 64842, 2, 5, 0, 0 };
+    CheckRowCount({ .lower = ExclusiveBound(lower_key) }, 0);
+  }
+
+  // Incomplete keys
+  {
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey key{ 2181, 4, 4, 4 };
+    CheckRowCount({ .lower = ExclusiveBound(key), .upper = ExclusiveBound(key) }, 10);
+  }
+
+  {
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey key{ 2181, 4, 4 };
+    CheckRowCount({ .lower = ExclusiveBound(key), .upper = ExclusiveBound(key) }, 100);
+  }
+
+  {
+    // The hash bucket has only one pair of hash values
+    // yb_hash_code(4::int4, 4::int4) = 2181
+    const RowKey key{ 2181, 4, std::nullopt, 4, 4 };
+    CheckRowCount({ .lower = ExclusiveBound(key), .upper = ExclusiveBound(key) }, 100);
+  }
+}
+
 } // namespace pggate
 } // namespace yb
