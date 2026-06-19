@@ -4,6 +4,8 @@ headerTitle: XML data type and functions
 linkTitle: XML
 summary: XML data type and functions
 description: Learn about YSQL support for the XML data type and XML functions.
+tags:
+  feature: early-access
 menu:
   stable_api:
     identifier: api-ysql-datatypes-xml

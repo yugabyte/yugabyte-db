@@ -3,6 +3,8 @@ title: ALTER ROUTINE statement [YSQL]
 headerTitle: ALTER ROUTINE
 linkTitle: ALTER ROUTINE
 description: Change properties of an existing routine (function or procedure).
+tags:
+  feature: early-access
 menu:
   stable_api:
     identifier: ddl_alter_routine

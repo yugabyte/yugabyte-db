@@ -3,6 +3,8 @@ title: ALTER AGGREGATE statement [YSQL]
 headerTitle: ALTER AGGREGATE
 linkTitle: ALTER AGGREGATE
 description: Use the ALTER AGGREGATE statement to change the definition of an aggregate function.
+tags:
+   feature: early-access
 menu:
   stable_api:
     identifier: ddl_alter_aggregate
