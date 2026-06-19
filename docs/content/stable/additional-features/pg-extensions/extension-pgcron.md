@@ -68,7 +68,7 @@ For more information on how to schedule jobs, refer to the [pg_cron documentatio
 
 The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQL. This table logs information about each cron job run, including its start and end time, status, and any exit messages or errors that occurred during the execution. The records in `cron.job_run_details` are not cleaned automatically, so in scenarios where you have jobs that run frequently, set up a periodic cleanup task for the table using `pg_cron` to ensure old data doesn't accumulate and affect database performance.
 
-If you are using Cron to automatically manage partitions, see [Maintain partitions using pg_cron](../extension-pgpartman/#maintain-partitions-using-pg-cron) for more information.
+If you are using pg_cron to automatically manage partitions, see [Maintain partitions using pg_cron](../extension-pgpartman/#maintain-partitions-using-pg-cron) for more information.
 
 ### View job details
 
