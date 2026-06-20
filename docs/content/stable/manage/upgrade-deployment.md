@@ -91,7 +91,13 @@ For some xCluster setups, before upgrading, you should run a verification script
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
   - Parallel append (yb_enable_parallel_append=true, yb_parallel_range_rows=10000)
 
-- If you are upgrading from v2025.1 series and your database includes a [vector index](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing), the upgrade will fail. Drop the indexes and then re-add them after the upgrade is finalized.
+### pgvector extension
+
+**Upgrading from v2024.2 to v2025.x:** If your database has the [pgvector extension](../../additional-features/pg-extensions/extension-pgvector/) installed, you must drop the extension and all tables with vector columns before upgrading. The vector type OID changed between releases, making existing vector data unreadable after upgrade without this step. After completing the upgrade, recreate the extension and tables. In addition, applications that wrote rows with vector columns in 2024.2 cannot create vector indexes on those rows after upgrade; the tables must be recreated to use the new row format required for indexing.
+
+**Upgrading from v2025.1 to v2025.2 or later:** Drop all [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) before upgrading and re-add them after the upgrade is finalized.
+
+**Upgrading from v2025.2 to v2026.1:** The upgrade is backward compatible and no index rebuild is required. However, if you have configured the [vector_index_use_yb_hnsw](../../reference/configuration/all-flags-yb-master/#vector-index-use-yb-hnsw) or [vector_index_use_hnswlib](../../reference/configuration/all-flags-yb-master/#vector-index-use-hnswlib) Master flags (now deprecated), update them to use the replacement Master flag [vector_index_backend](../../reference/configuration/all-flags-yb-master/#vector-index-backend) before upgrading.
 
 ## Upgrade YugabyteDB cluster
 

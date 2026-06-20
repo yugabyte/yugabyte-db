@@ -233,6 +233,11 @@ SET hnsw.ef_search = 100;
 
 ### Limitations
 
+- Dropping a vector index does not clean up all associated storage. The reverse mapping entries (internal UUID-to-row-key records) stored on disk are not deleted when a vector index is dropped, causing storage to accumulate over time if indexes are frequently dropped and recreated. {{<issue 21582>}}
+
+- Backup and restore with tablet splitting enabled may produce incorrect query results. Restoring a database that contains vector indexes on a cluster where tablet splitting is enabled can result in missing rows in the restored vector index. ANN queries against the restored index may silently return incomplete results. **Mitigation:** After restore, drop and rebuild all vector indexes. Alternatively, disable tablet splitting before performing the restore. {{<issue 20500>}}
+
+- Cross-version backup restore is not supported for databases containing vector indexes. A backup taken on a v2025.1 or v2025.2 universe cannot be restored to a universe running a different major version.
 - Concurrent index creation is not currently supported. For example, the following syntax falls back to non-concurrent implementation:
 
     ```sql
@@ -244,6 +249,10 @@ SET hnsw.ef_search = 100;
 - Partial indexes on vector columns are not supported yet. {{<issue 31441>}}
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 - [Time travel queries](../../../manage/backup-restore/time-travel-query/) are not currently supported. {{<issue 20829>}}
+
+## Upgrading
+
+If you are using pgvector, depending on the version you are upgrading to, you may need to drop your vector indexes and change configuration settings. For more information, refer to [Upgrade YugabyteDB](../../../manage/upgrade-deployment/#pgvector-extension).
 
 ## Learn more
 
