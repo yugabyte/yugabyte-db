@@ -1441,10 +1441,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 1 WHERE k1 = 2;
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 3
+ Storage Write Requests: 4
  Storage Flush Requests: 1
 (11 rows)
 
@@ -1457,10 +1457,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10 WHERE k1 = 3
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 3
+ Storage Write Requests: 4
  Storage Flush Requests: 1
 (11 rows)
 
@@ -1473,10 +1473,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k2 = k2 + 5, v3 = v3 + 5 
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 1
+         Storage Index Write Requests: 2
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 3
+ Storage Write Requests: 4
  Storage Flush Requests: 1
 (11 rows)
 
@@ -1623,10 +1623,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 2
+         Storage Index Write Requests: 3
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 4
+ Storage Write Requests: 5
  Storage Flush Requests: 1
 (11 rows)
 
@@ -1639,10 +1639,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
          Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Index Write Requests: 2
+         Storage Index Write Requests: 3
  Storage Read Requests: 1
  Storage Rows Scanned: 1
- Storage Write Requests: 4
+ Storage Write Requests: 5
  Storage Flush Requests: 1
 (11 rows)
 
@@ -1709,3 +1709,605 @@ SELECT * FROM t_simple;
   3 |  3 | 13 |  4 |  3 |  3
 (10 rows)
 
+--
+-- Additional coverage for hidden unique index key suffix changes.
+--
+SET yb_enable_inplace_index_update TO on;
+DROP TABLE IF EXISTS t_unique_key_update;
+NOTICE:  table "t_unique_key_update" does not exist, skipping
+CREATE TABLE t_unique_key_update (
+  h INT,
+  r INT,
+  k INT,
+  a INT,
+  b INT,
+  active BOOLEAN DEFAULT true,
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
+);
+CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_key_update_uq
+ON t_unique_key_update (a ASC, b ASC);
+INSERT INTO t_unique_key_update (h, r, k, a, b) VALUES
+  (1, 1, 0, NULL, 10),
+  (1, 2, 0, 20, 20),
+  (1, 3, 0, NULL, 30),
+  (1, 4, 0, NULL, 40);
+-- Non-expression unique index: key changes from NULL to not-NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update SET a = 10 WHERE h = 1 AND r = 1;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Update on t_unique_key_update (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_key_update_pkey on t_unique_key_update (actual rows=1 loops=1)
+         Index Cond: ((h = 1) AND (r = 1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Non-expression unique index: key changes from not-NULL to NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update SET a = NULL WHERE h = 1 AND r = 2;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Update on t_unique_key_update (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_key_update_pkey on t_unique_key_update (actual rows=1 loops=1)
+         Index Cond: ((h = 1) AND (r = 2))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Non-expression unique index: key is NULL; primary key update.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update SET k = 1 WHERE h = 1 AND r = 3 AND k = 0;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Update on t_unique_key_update (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_key_update_pkey on t_unique_key_update (actual rows=1 loops=1)
+         Index Cond: ((h = 1) AND (r = 3) AND (k = 0))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 4
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Non-expression unique index: some keys are NULL; another key becomes NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update SET b = NULL WHERE h = 1 AND r = 4;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Update on t_unique_key_update (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_key_update_pkey on t_unique_key_update (actual rows=1 loops=1)
+         Index Cond: ((h = 1) AND (r = 4))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+SELECT yb_index_check('t_unique_key_update_uq'::regclass);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+SELECT * FROM t_unique_key_update ORDER BY h, r, k;
+ h | r | k | a  | b  | active 
+---+---+---+----+----+--------
+ 1 | 1 | 0 | 10 | 10 | t
+ 1 | 2 | 0 |    | 20 | t
+ 1 | 3 | 1 |    | 30 | t
+ 1 | 4 | 0 |    |    | t
+(4 rows)
+
+DROP TABLE t_unique_key_update;
+DROP TABLE IF EXISTS t_unique_key_update_nnd;
+NOTICE:  table "t_unique_key_update_nnd" does not exist, skipping
+CREATE TABLE t_unique_key_update_nnd (
+  h INT,
+  r INT,
+  k INT,
+  a INT,
+  b INT,
+  active BOOLEAN DEFAULT true,
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
+);
+CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_key_update_nnd_uq
+ON t_unique_key_update_nnd (a ASC, b ASC) NULLS NOT DISTINCT;
+INSERT INTO t_unique_key_update_nnd (h, r, k, a, b) VALUES
+  (2, 1, 0, NULL, 10),
+  (2, 2, 0, 20, 20),
+  (2, 3, 0, NULL, 30),
+  (2, 4, 0, NULL, 40);
+-- Non-expression unique NULLS NOT DISTINCT index: key changes from NULL to not-NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update_nnd SET a = 10 WHERE h = 2 AND r = 1;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Update on t_unique_key_update_nnd (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_key_update_nnd_pkey on t_unique_key_update_nnd (actual rows=1 loops=1)
+         Index Cond: ((h = 2) AND (r = 1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Non-expression unique NULLS NOT DISTINCT index: key changes from not-NULL to NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update_nnd SET a = NULL WHERE h = 2 AND r = 2;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Update on t_unique_key_update_nnd (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_key_update_nnd_pkey on t_unique_key_update_nnd (actual rows=1 loops=1)
+         Index Cond: ((h = 2) AND (r = 2))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Non-expression unique NULLS NOT DISTINCT index: key is NULL; primary key update.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update_nnd SET k = 1 WHERE h = 2 AND r = 3 AND k = 0;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Update on t_unique_key_update_nnd (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_key_update_nnd_pkey on t_unique_key_update_nnd (actual rows=1 loops=1)
+         Index Cond: ((h = 2) AND (r = 3) AND (k = 0))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Non-expression unique NULLS NOT DISTINCT index: some keys are NULL; another key becomes NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update_nnd SET b = NULL WHERE h = 2 AND r = 4;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Update on t_unique_key_update_nnd (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_key_update_nnd_pkey on t_unique_key_update_nnd (actual rows=1 loops=1)
+         Index Cond: ((h = 2) AND (r = 4))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+SELECT yb_index_check('t_unique_key_update_nnd_uq'::regclass);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+SELECT * FROM t_unique_key_update_nnd ORDER BY h, r, k;
+ h | r | k | a  | b  | active 
+---+---+---+----+----+--------
+ 2 | 1 | 0 | 10 | 10 | t
+ 2 | 2 | 0 |    | 20 | t
+ 2 | 3 | 1 |    | 30 | t
+ 2 | 4 | 0 |    |    | t
+(4 rows)
+
+DROP TABLE t_unique_key_update_nnd;
+DROP TABLE IF EXISTS t_unique_expr_update;
+NOTICE:  table "t_unique_expr_update" does not exist, skipping
+CREATE TABLE t_unique_expr_update (
+  h INT,
+  r INT,
+  k INT,
+  a INT,
+  b INT,
+  c INT,
+  d INT,
+  active BOOLEAN DEFAULT true,
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
+);
+CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_expr_update_uq
+ON t_unique_expr_update ((a + b), (c + d));
+INSERT INTO t_unique_expr_update (h, r, k, a, b, c, d) VALUES
+  (3, 1, 0, NULL, 10, 1, 1),
+  (3, 2, 0, 20, 20, 2, 2),
+  (3, 3, 0, NULL, 30, 3, 3),
+  (3, 4, 0, NULL, 40, 4, 4);
+-- Expression unique index: key changes from NULL to not-NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET a = 10 WHERE h = 3 AND r = 1;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Update on t_unique_expr_update (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_expr_update_pkey on t_unique_expr_update (actual rows=1 loops=1)
+         Index Cond: ((h = 3) AND (r = 1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Expression unique index: key changes from not-NULL to NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET a = NULL WHERE h = 3 AND r = 2;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Update on t_unique_expr_update (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_expr_update_pkey on t_unique_expr_update (actual rows=1 loops=1)
+         Index Cond: ((h = 3) AND (r = 2))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Expression unique index: key is NULL; primary key update.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET k = 1 WHERE h = 3 AND r = 3 AND k = 0;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Update on t_unique_expr_update (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_expr_update_pkey on t_unique_expr_update (actual rows=1 loops=1)
+         Index Cond: ((h = 3) AND (r = 3) AND (k = 0))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 4
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Expression unique index: some keys are NULL; another key becomes NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET c = NULL WHERE h = 3 AND r = 4;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Update on t_unique_expr_update (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_expr_update_pkey on t_unique_expr_update (actual rows=1 loops=1)
+         Index Cond: ((h = 3) AND (r = 4))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+SELECT yb_index_check('t_unique_expr_update_uq'::regclass);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+SELECT * FROM t_unique_expr_update ORDER BY h, r, k;
+ h | r | k | a  | b  | c | d | active 
+---+---+---+----+----+---+---+--------
+ 3 | 1 | 0 | 10 | 10 | 1 | 1 | t
+ 3 | 2 | 0 |    | 20 | 2 | 2 | t
+ 3 | 3 | 1 |    | 30 | 3 | 3 | t
+ 3 | 4 | 0 |    | 40 |   | 4 | t
+(4 rows)
+
+DROP TABLE t_unique_expr_update;
+DROP TABLE IF EXISTS t_unique_expr_update_nnd;
+NOTICE:  table "t_unique_expr_update_nnd" does not exist, skipping
+CREATE TABLE t_unique_expr_update_nnd (
+  h INT,
+  r INT,
+  k INT,
+  a INT,
+  b INT,
+  c INT,
+  d INT,
+  active BOOLEAN DEFAULT true,
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
+);
+CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_expr_update_nnd_uq
+ON t_unique_expr_update_nnd ((a + b), (c + d)) NULLS NOT DISTINCT;
+INSERT INTO t_unique_expr_update_nnd (h, r, k, a, b, c, d) VALUES
+  (4, 1, 0, NULL, 10, 1, 1),
+  (4, 2, 0, 20, 20, 2, 2),
+  (4, 3, 0, NULL, 30, 3, 3),
+  (4, 4, 0, NULL, 40, 4, 4);
+-- Expression unique NULLS NOT DISTINCT index: key changes from NULL to not-NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update_nnd SET a = 10 WHERE h = 4 AND r = 1;
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Update on t_unique_expr_update_nnd (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_expr_update_nnd_pkey on t_unique_expr_update_nnd (actual rows=1 loops=1)
+         Index Cond: ((h = 4) AND (r = 1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Expression unique NULLS NOT DISTINCT index: key changes from not-NULL to NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update_nnd SET a = NULL WHERE h = 4 AND r = 2;
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Update on t_unique_expr_update_nnd (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_expr_update_nnd_pkey on t_unique_expr_update_nnd (actual rows=1 loops=1)
+         Index Cond: ((h = 4) AND (r = 2))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Expression unique NULLS NOT DISTINCT index: key is NULL; primary key update.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update_nnd SET k = 1 WHERE h = 4 AND r = 3 AND k = 0;
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Update on t_unique_expr_update_nnd (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_expr_update_nnd_pkey on t_unique_expr_update_nnd (actual rows=1 loops=1)
+         Index Cond: ((h = 4) AND (r = 3) AND (k = 0))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Expression unique NULLS NOT DISTINCT index: some keys are NULL; another key becomes NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update_nnd SET c = NULL WHERE h = 4 AND r = 4;
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Update on t_unique_expr_update_nnd (actual rows=0 loops=1)
+   ->  Index Scan using t_unique_expr_update_nnd_pkey on t_unique_expr_update_nnd (actual rows=1 loops=1)
+         Index Cond: ((h = 4) AND (r = 4))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+SELECT yb_index_check('t_unique_expr_update_nnd_uq'::regclass);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+SELECT * FROM t_unique_expr_update_nnd ORDER BY h, r, k;
+ h | r | k | a  | b  | c | d | active 
+---+---+---+----+----+---+---+--------
+ 4 | 1 | 0 | 10 | 10 | 1 | 1 | t
+ 4 | 2 | 0 |    | 20 | 2 | 2 | t
+ 4 | 3 | 1 |    | 30 | 3 | 3 | t
+ 4 | 4 | 0 |    | 40 |   | 4 | t
+(4 rows)
+
+DROP TABLE t_unique_expr_update_nnd;
+DROP TABLE IF EXISTS t_partial_unique_expr_update;
+NOTICE:  table "t_partial_unique_expr_update" does not exist, skipping
+CREATE TABLE t_partial_unique_expr_update (
+  h INT,
+  r INT,
+  k INT,
+  a INT,
+  b INT,
+  c INT,
+  d INT,
+  active BOOLEAN,
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
+);
+CREATE UNIQUE INDEX NONCONCURRENTLY t_partial_unique_expr_update_uq
+ON t_partial_unique_expr_update ((a + b), (c + d)) WHERE active;
+INSERT INTO t_partial_unique_expr_update VALUES
+  (5, 1, 0, NULL, 10, 1, 1, true),
+  (5, 2, 0, 20, 20, 2, 2, false),
+  (5, 3, 0, NULL, 30, 3, 3, true),
+  (5, 4, 0, NULL, 40, 4, 4, false),
+  (5, 5, 0, NULL, 50, 5, 5, false);
+-- Partial expression unique index: NULL to not-NULL and exits the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET a = 10, active = false WHERE h = 5 AND r = 1;
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Update on t_partial_unique_expr_update (actual rows=0 loops=1)
+   ->  Index Scan using t_partial_unique_expr_update_pkey on t_partial_unique_expr_update (actual rows=1 loops=1)
+         Index Cond: ((h = 5) AND (r = 1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Partial expression unique index: not-NULL to NULL and enters the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET a = NULL, active = true WHERE h = 5 AND r = 2;
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Update on t_partial_unique_expr_update (actual rows=0 loops=1)
+   ->  Index Scan using t_partial_unique_expr_update_pkey on t_partial_unique_expr_update (actual rows=1 loops=1)
+         Index Cond: ((h = 5) AND (r = 2))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Partial expression unique index: key is NULL, primary key update, and exits the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET k = 1, active = false WHERE h = 5 AND r = 3 AND k = 0;
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Update on t_partial_unique_expr_update (actual rows=0 loops=1)
+   ->  Index Scan using t_partial_unique_expr_update_pkey on t_partial_unique_expr_update (actual rows=1 loops=1)
+         Index Cond: ((h = 5) AND (r = 3) AND (k = 0))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Partial expression unique index: some keys are NULL, another key becomes NULL, and enters the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET c = NULL, active = true WHERE h = 5 AND r = 4;
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Update on t_partial_unique_expr_update (actual rows=0 loops=1)
+   ->  Index Scan using t_partial_unique_expr_update_pkey on t_partial_unique_expr_update (actual rows=1 loops=1)
+         Index Cond: ((h = 5) AND (r = 4))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Partial expression unique index: key is NULL, primary key update, and enters the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET k = 1, active = true WHERE h = 5 AND r = 5 AND k = 0;
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Update on t_partial_unique_expr_update (actual rows=0 loops=1)
+   ->  Index Scan using t_partial_unique_expr_update_pkey on t_partial_unique_expr_update (actual rows=1 loops=1)
+         Index Cond: ((h = 5) AND (r = 5) AND (k = 0))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+SELECT yb_index_check('t_partial_unique_expr_update_uq'::regclass);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+SELECT * FROM t_partial_unique_expr_update ORDER BY h, r, k;
+ h | r | k | a  | b  | c | d | active 
+---+---+---+----+----+---+---+--------
+ 5 | 1 | 0 | 10 | 10 | 1 | 1 | f
+ 5 | 2 | 0 |    | 20 | 2 | 2 | t
+ 5 | 3 | 1 |    | 30 | 3 | 3 | f
+ 5 | 4 | 0 |    | 40 |   | 4 | t
+ 5 | 5 | 1 |    | 50 | 5 | 5 | t
+(5 rows)
+
+DROP TABLE t_partial_unique_expr_update;
