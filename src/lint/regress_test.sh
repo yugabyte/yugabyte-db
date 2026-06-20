@@ -101,7 +101,7 @@ if [[ "$1" != src/postgres/third-party-extensions/pg_partman/* ]]; then
   # unaffiliated with the main regress dir.  For now, ignore these tests for
   # this lint rule.
   if [[ "$test_name" != yb.orig.ysql_dump* &&
-        "$test_name" != yb.orig.backup_restore* ]]; then
+        "$test_name" != yb.orig.backup_* ]]; then
     while read -r filepath; do
       if grep -qxF "test: $test_name" "$filepath"; then
         found=true

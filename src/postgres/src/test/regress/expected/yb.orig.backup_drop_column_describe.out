@@ -1,0 +1,81 @@
+ x1 
+----
+  2
+(1 row)
+
+  x  
+-----
+ (1)
+(1 row)
+
+            Table "public.row_type_tbl"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ x1     | integer |           |          | 
+
+ a | b | c  
+---+---+----
+ 0 | 5 | 50
+(1 row)
+
+ a | b | c  
+---+---+----
+ 0 | 5 | 50
+(1 row)
+
+INSERT 0 1
+ a | b  |  c  
+---+----+-----
+ 0 |  5 |  50
+ 3 | 30 | 300
+(2 rows)
+
+    Partitioned table "public.part_drop_parent"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+Partition key: RANGE (a)
+Number of partitions: 1 (Use \d+ to list them.)
+
+          Table "public.part_drop_child"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+ a      | integer |           |          | 
+Partition of: part_drop_parent FOR VALUES FROM (0) TO (5)
+
+ a | b  |  c  
+---+----+-----
+ 4 | 40 | 400
+(1 row)
+
+ tag |     r      
+-----+------------
+ p1  | (1,10,100)
+(1 row)
+
+ tag |     r      
+-----+------------
+ c1  | (20,200,2)
+(1 row)
+
+      Partitioned table "public.comp_parent"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+Partition key: RANGE (a)
+Number of partitions: 1 (Use \d+ to list them.)
+
+             Table "public.comp_child"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ b      | integer |           |          | 
+ c      | integer |           |          | 
+ a      | integer |           |          | 
+Partition of: comp_parent FOR VALUES FROM (1) TO (9)
+
