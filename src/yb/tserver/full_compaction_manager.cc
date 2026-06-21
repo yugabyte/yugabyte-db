@@ -83,6 +83,9 @@ DEFINE_RUNTIME_int32(auto_compact_memory_cleanup_interval_sec, 3600,
               "The frequency with which we should check whether cleanup is needed in the "
               "full compaction manager. -1 indicates we should disable clean up.");
 
+DEFINE_RUNTIME_uint32(full_compaction_schema_packing_count_threshold, 1000,
+              "Schema packing count threshold at which, full compaction will be done.");
+
 using namespace std::literals;
 
 namespace yb {
@@ -260,6 +263,7 @@ PeerNextCompactList FullCompactionManager::GetPeersEligibleForCompaction(
   for (const auto& peer : peers) {
     const auto tablet_id = peer->tablet_id();
     const auto tablet = peer->shared_tablet_maybe_null();
+    const auto tablet_metadata = peer->tablet_metadata();
     // If the tablet isn't eligible for compaction, remove it from our stored compaction
     // times and skip it.
     if (!tablet || !tablet->IsEligibleForFullCompaction()) {
@@ -274,6 +278,8 @@ PeerNextCompactList FullCompactionManager::GetPeersEligibleForCompaction(
     HybridTime next_compact_time;
     // Check if we should schedule a compaction based on stats collected.
     if (ShouldCompactBasedOnStats(tablet_id)) {
+      next_compact_time = now;
+    } else if (ShouldCompactBasedOnMetadata(tablet_id, tablet_metadata)) {
       next_compact_time = now;
     } else if (compaction_frequency_ != MonoDelta::kZero) {
       // If the next compaction time is pre-calculated, use that. Otherwise, calculate
@@ -376,6 +382,24 @@ MonoDelta FullCompactionManager::CalculateJitter(
   const auto small_hash =
       hash_value_for_jitter(tablet_id, last_compact_time) % kMaxSmallHash;
   return max_jitter_ / kMaxSmallHash * small_hash;
+}
+
+bool FullCompactionManager::ShouldCompactBasedOnMetadata(
+    const TabletId& tablet_id,
+    const tablet::RaftGroupMetadataPtr& tablet_metadata) {
+  if (!tablet_metadata) {
+    return false;
+  }
+
+  size_t schema_packing_count = tablet_metadata->GetTotalSchemaPackingCount();
+  if (schema_packing_count > ANNOTATE_UNPROTECTED_READ(FLAGS_full_compaction_schema_packing_count_threshold)) {
+      LOG(INFO) << Format("TabletId $0 is eligible for compaction because schema packing count $1 exceeded threshold $2",
+                          tablet_id, 
+                          schema_packing_count, 
+                          ANNOTATE_UNPROTECTED_READ(FLAGS_full_compaction_schema_packing_count_threshold));
+    return true;
+  }
+  return false;
 }
 
 KeyStatsSlidingWindow::KeyStatsSlidingWindow(int32_t check_interval_sec)
