@@ -1271,6 +1271,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = getLockingUniverseUpdater(updaterConfig);
     Universe universe = lockUniverseForUpdate(universeUuid, updater);
     try {
+      Universe universeBeforePrechecks = Universe.getOrBadRequest(universeUuid);
       initAndAddPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
       if (!SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
@@ -1279,10 +1280,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         checkAndCreateConsistencyCheckTableTask(universe.getUniverseDetails().getPrimaryCluster());
       }
       if (isFirstTry()) {
-        createFreezeUniverseTask(universeUuid, firstRunTxnCallback)
+        createFreezeUniverseTask(universeBeforePrechecks, firstRunTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
       } else if (!getUserTaskUUID().equals(universe.getUniverseDetails().updatingTaskUUID)) {
-        createFreezeUniverseTask(universeUuid, retryTxnCallback)
+        createFreezeUniverseTask(universeBeforePrechecks, retryTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
       } else {
         log.info(
@@ -1300,30 +1301,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Similar to {@link #createFreezeUniverseTask(Consumer)} without the callback.
-   *
-   * @param universeUuid the universe UUID.
-   * @return
-   */
-  private SubTaskGroup createFreezeUniverseTask(UUID universeUuid) {
-    return createFreezeUniverseTask(universeUuid, null);
-  }
-
-  /**
    * Creates a subtask to freeze the universe {@link #freezeUniverse(Consumer)}.
    *
-   * @param universeUuid the universe UUID.
+   * @param universe the universe to be used as the expected state before freezing.
    * @param callback the callback to be executed in transaction when the universe is frozen.
    * @return the subtask group.
    */
   private SubTaskGroup createFreezeUniverseTask(
-      UUID universeUuid, @Nullable Consumer<Universe> callback) {
+      Universe universe, @Nullable Consumer<Universe> callback) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(
             FreezeUniverse.class.getSimpleName(), SubTaskGroupType.ValidateConfigurations);
     FreezeUniverse task = createTask(FreezeUniverse.class);
     FreezeUniverse.Params params = new FreezeUniverse.Params();
-    params.setUniverseUUID(universeUuid);
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.setUniverse(universe);
     params.setCallback(callback);
     params.setExecutionContext(getOrCreateExecutionContext());
     task.initialize(params);
@@ -1365,10 +1357,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater =
         getUnlockingUniverseUpdater(
             executionContext.getUniverseUpdaterConfig(universeUUID).toBuilder()
-                .callback(
-                    u -> {
-                      u.getUniverseDetails().setErrorString(error);
-                    })
+                .callback(u -> u.getUniverseDetails().setErrorString(error))
                 .rollbackPerformed(rollbackPerformed)
                 .build());
     // Update the progress flag to false irrespective of the version increment failure.

@@ -2026,4 +2026,29 @@ public class Util {
       }
     }
   }
+
+  /**
+   * Find the diff between the given universe details and the database universe details.
+   *
+   * @param universe the universe.
+   * @return the diff between the current and the DB universe details. Null if they are same.
+   */
+  public static JsonNode findDiffJsonNode(Universe universe) {
+    // Get the database universe details.
+    UniverseDefinitionTaskParams dbTaskParams =
+        Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
+    dbTaskParams.sequenceNumber = universe.getUniverseDetails().sequenceNumber;
+    JsonNode deltaTree =
+        DeltaEvaluator.buildDeltaJsonTree(
+            universe.getUniverseDetails(),
+            dbTaskParams,
+            (p, n1, n2) -> {
+              if ("nodeDetailsSet".equals(p)) {
+                // This allows elements in nodeDetails collection to be compared deeply.
+                return n1.get("nodeIdx").asInt() - n2.get("nodeIdx").asInt();
+              }
+              return Integer.compare(n1.hashCode(), n2.hashCode());
+            });
+    return DeltaEvaluator.generateOnlyDelta(deltaTree);
+  }
 }
