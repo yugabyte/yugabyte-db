@@ -26,17 +26,6 @@ The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures r
 
 The connector is compatible with the following versions of YugabyteDB.
 
-| YugabyteDB | Connector |
-| :--- | :--- |
-| 2.14 | 1.9.5.y.3 |
-| 2.16 | 1.9.5.y.24 |
-| 2.18.2 | 1.9.5.y.33.2 |
-| 2.20 | 1.9.5.y.220.4 |
-| 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
-| 2024.2 | dz.1.9.5.yb.grpc.2024.2.3 |
-| 2025.1 | dz.1.9.5.yb.grpc.2025.1 |
-| 2025.2 | dz.1.9.5.yb.grpc.2025.2 |
-
 Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
 
 ```output
@@ -48,6 +37,8 @@ dz.<Debezium Release>.yb.grpc.<YugabyteDB Version>.<Patch>
 * *Patch* - patch release version, if applicable
 
 The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (forward compatibility is not supported). For example, connector release `dz.1.9.5.yb.grpc.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
+
+Also, if a connector release for a particular version is not available, then it is recommended to use the latest released connector.
 
 In addition, the connector supports Kafka Connect v2.x and later.
 
