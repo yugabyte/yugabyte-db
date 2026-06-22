@@ -10,7 +10,7 @@ import { toast } from 'react-toastify';
 
 interface PerfAdvisorUniverseListProps {
   paUuid: string;
-  isNewPerfAdvisorUIEnabled: boolean;
+  isEmbeddedPAEnabled: boolean;
 }
 
 interface PaUniverseInfo {
@@ -32,7 +32,7 @@ const DEFAULT_LIMIT = 10;
 const DEFAULT_SORT_COLUMN = 'universeName';
 const DEFAULT_SORT_DIRECTION = 'ASC';
 
-export const PerfAdvisorUniverseList = ({ paUuid, isNewPerfAdvisorUIEnabled }: PerfAdvisorUniverseListProps) => {
+export const PerfAdvisorUniverseList = ({ paUuid, isEmbeddedPAEnabled }: PerfAdvisorUniverseListProps) => {
   const [page, setPage] = useState(1);
   const [sizePerPage, setSizePerPage] = useState(DEFAULT_LIMIT);
   const [sortColumn] = useState(DEFAULT_SORT_COLUMN);
@@ -111,7 +111,7 @@ export const PerfAdvisorUniverseList = ({ paUuid, isNewPerfAdvisorUIEnabled }: P
     if (!row.universeName) {
       return displayName;
     }
-    const path = row.advancedObservability && isNewPerfAdvisorUIEnabled
+    const path = row.advancedObservability && isEmbeddedPAEnabled
       ? `/universes/${row.universeUuid}/perfAdvisor`
       : `/universes/${row.universeUuid}`;
     return <Link to={path}>{displayName}</Link>;

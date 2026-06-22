@@ -48,13 +48,13 @@ import '../config/ConfigProvider/DataCenterConfiguration.scss';
 interface ReactRouterProps {
   location: LocationShape;
   params: { tab?: string; section?: string; uuid?: string };
-  isPerfAdvisorEnabled: boolean;
+  isPACollectorEnabled: boolean;
 }
 
 export const DataCenterConfigRedesign = ({
   location,
   params,
-  isPerfAdvisorEnabled
+  isPACollectorEnabled
 }: ReactRouterProps) => {
   const { currentCustomer } = useSelector((state: any) => state.customer);
   const featureFlags = useSelector((state: any) => state.featureFlags);
@@ -102,7 +102,7 @@ export const DataCenterConfigRedesign = ({
       (config: any) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
     )?.value === 'true';
   const shouldShowTelemetryProviderTab = isExportLogEnabled || isMetricsExportEnabled;
-  const isNewPerfAdvisorUIEnabled =
+  const isEmbeddedPAEnabled =
     globalRuntimeConfigs?.data?.configEntries?.find(
       (c: any) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
     )?.value === 'true';
@@ -282,7 +282,7 @@ export const DataCenterConfigRedesign = ({
               <NewStorageConfiguration activeTab={params.section} />
             </Tab>
           )}
-          {isPerfAdvisorEnabled && (
+          {isPACollectorEnabled && (
             <Tab
               eventKey={ConfigTabKey.PERF_ADVISOR}
               title={t('tab.perfAdvisor.tabLabel')}
@@ -290,7 +290,7 @@ export const DataCenterConfigRedesign = ({
             >
               <PerfAdvisorOverview
                 activeTab={params.section}
-                isNewPerfAdvisorUIEnabled={isNewPerfAdvisorUIEnabled}
+                isEmbeddedPAEnabled={isEmbeddedPAEnabled}
               />
             </Tab>
           )}
