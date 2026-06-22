@@ -13,8 +13,6 @@ menu:
 type: docs
 aliases:
   - /stable/explore/ysql-language-features/pg-extensions/extension-pgvector
-  - /v2024.2/additional-features/pg-extensions/extension-pgvector/
-  - /v2.20/additional-features/pg-extensions/extension-pgvector/
 ---
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.

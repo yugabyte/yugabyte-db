@@ -17,6 +17,14 @@ PostgreSQL extensions provide a way to extend the functionality of a database by
 
 Supported extensions are typically enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
 
+For example, to enable the [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/):
+
+```sql
+CREATE EXTENSION vector;
+```
+
+You can then use the extension as you would in PostgreSQL.
+
 {{<lead link="../../../additional-features/pg-extensions/">}}
 For information on the extensions bundled with YugabyteDB, see [PostgreSQL Extensions](../../../additional-features/pg-extensions/)
 {{</lead>}}
