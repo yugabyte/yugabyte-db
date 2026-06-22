@@ -879,13 +879,13 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
 
  private:
   void Run(const Status& ready, PriorityThreadPoolSuspender* suspender) override {
-    if (!ready.ok()) {
-      LOG_WITH_PREFIX(INFO) << "Not ready: " << ready;
-      return Completed(ready);
-    }
-
     // Remember current serial_no to track possible changes in immutable chunks.
     const auto last_serial_no = lsm_.LastSerialNo();
+
+    if (!ready.ok()) {
+      LOG_WITH_PREFIX(INFO) << "Not ready: " << ready;
+      return Completed(ready, last_serial_no);
+    }
 
     // TODO(vector_index): leverage the suspender.
     auto status = DoRun();
@@ -894,14 +894,9 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     } else {
       LOG_WITH_PREFIX(DFATAL) << "Failed: " << status;
     }
-    Completed(status);
+    Completed(status, last_serial_no);
 
-    if (last_serial_no == lsm_.LastSerialNo()) {
-      VLOG_WITH_FUNC(2) << "VectorLSM not changed, no need to schedule next background compaction";
-    } else {
-      VLOG_WITH_FUNC(2) << "VectorLSM changed, scheduling next background compaction";
-      lsm_.ScheduleBackgroundCompaction();
-    }
+    TEST_SYNC_POINT("VectorLSM::CompactionTask::Run:AfterCompleted");
   }
 
   bool ShouldRemoveWithKey(void* key) override {
@@ -948,10 +943,14 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     return lsm_.DoCompact(context, std::move(compaction_scope_));
   }
 
-  void Completed(const Status& status) {
-    lsm_.Deregister(*this);
+  void Completed(const Status& status, uint64_t last_serial_no) {
     if (callback_) {
       callback_(status);
+    }
+    if (last_serial_no == lsm_.LastSerialNo()) {
+      lsm_.Deregister(*this);
+    } else {
+      lsm_.ScheduleBackgroundCompaction(this);
     }
   }
 
@@ -977,6 +976,10 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorLSM<Vector, DistanceResult>::~VectorLSM() {
   StartShutdown();
   CompleteShutdown();
+
+  // Clear an always-set field, so an in-flight compaction task that still dereferences this
+  // VectorLSM observes the destruction via the check in LastSerialNo().
+  options_.thread_pool = nullptr;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1501,6 +1504,9 @@ uint64_t VectorLSM<Vector, DistanceResult>::NextSerialNo() {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 uint64_t VectorLSM<Vector, DistanceResult>::LastSerialNo() const {
+  // thread_pool is always set on an opened VectorLSM and cleared in the destructor, so a null value
+  // here means a compaction task is dereferencing the VectorLSM after it was destroyed.
+  DCHECK_ONLY_NOTNULL(options_.thread_pool);
   SharedLock lock(mutex_);
   return last_serial_no_;
 }
@@ -1692,7 +1698,7 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
 
   // Scheduling a background compaction after the loop to maybe pick all flushed chunks,
   // rather than trying to schedule after each chunk got manifested.
-  ScheduleBackgroundCompaction();
+  ScheduleBackgroundCompaction(/* finished_task= */ nullptr);
 
   return Status::OK();
 }
@@ -2660,7 +2666,15 @@ VectorLSM<Vector, DistanceResult>::RegisterManualCompaction(StdStatusCallback ca
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
+void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction(
+    CompactionTask* finished_task) {
+  auto se = ScopeExit([this, &finished_task] {
+    if (finished_task) {
+      std::lock_guard lock(compaction_tasks_mutex_);
+      RemoveFinishedTaskUnlocked(*finished_task);
+    }
+  });
+
   if (!FLAGS_vector_index_enable_compactions) {
     VLOG_WITH_PREFIX(2) << "Background compactions disabled by gflag";
     return;
@@ -2700,6 +2714,10 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
   CompactionTaskPtr task;
   {
     std::lock_guard lock(compaction_tasks_mutex_);
+    if (finished_task) {
+      RemoveFinishedTaskUnlocked(*finished_task);
+      finished_task = nullptr;
+    }
     if (has_pending_manual_compaction_ ||
         ContainsTask(compaction_tasks_, CompactionType::kBackground)) {
       VLOG_WITH_PREFIX(2) << "Skipping background compaction due to another compaction is running";
@@ -2738,7 +2756,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::EnableAutoCompactions() {
   auto_compactions_enabled_ = true;
   LOG_WITH_PREFIX(INFO) << "Background compactions enabled";
-  ScheduleBackgroundCompaction();
+  ScheduleBackgroundCompaction(/* finished_task= */ nullptr);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2792,7 +2810,11 @@ void VectorLSM<Vector, DistanceResult>::Register(CompactionTask& task) {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::Deregister(CompactionTask& task) {
   std::lock_guard lock(compaction_tasks_mutex_);
+  RemoveFinishedTaskUnlocked(task);
+}
 
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::RemoveFinishedTaskUnlocked(CompactionTask& task) {
   // Sanity check.
   DCHECK(compaction_tasks_.contains(&task));
 
