@@ -39,6 +39,7 @@ DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
+DECLARE_bool(ysql_yb_skip_redundant_update_ops);
 
 namespace yb {
 
@@ -752,6 +753,56 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
     CheckRecord(record, expected_records[i], count, num_cols);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(expected_count, count);
+}
+
+// Test that an upsert (INSERT ON CONFLICT DO UPDATE) that touches a primary key column
+// produces DELETE + INSERT in the CDC stream, not DELETE + DELETE.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndInsert)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_skip_redundant_update_ops) = false;
+  // Packed rows default to off in debug/asan/fastdebug builds (kYsqlEnablePackedRowTargetVal =
+  // !kIsDebug). The fix this test guards is on the IsPackedRow branch in
+  // PopulateCDCSDKIntentRecord,
+  // so force packed rows on to exercise that path on every build flavor.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = EXPECT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+
+  // Insert a row and consume its CDC records so the next GetChanges only returns upsert records.
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
+
+  // Upsert with PK column in SET clause — triggers YBCExecuteUpdateReplace (DELETE + INSERT).
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test_table VALUES (1, 10) "
+      "ON CONFLICT (key) DO UPDATE SET key = EXCLUDED.key, value_1 = EXCLUDED.value_1"));
+
+  // Expect DELETE(key=1) + INSERT(key=1, value_1=10), no UPDATEs.
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {0, 1, 0, 1, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  // Expected records: BEGIN, DELETE(key=1), INSERT(key=1, value_1=10), COMMIT.
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 0}, {1, 10}, {0, 0}};
+
+  GetChangesResponsePB upsert_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &upsert_resp, stream_id, tablets, 2, /* is_explicit_checkpoint */ false,
+      &change_resp.cdc_sdk_checkpoint()));
+
+  uint32_t record_size = upsert_resp.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size, 4);  // BEGIN, DELETE, INSERT, COMMIT
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = upsert_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count);
+  }
   CheckCount(expected_count, count);
 }
 
