@@ -84,7 +84,8 @@ DEFINE_RUNTIME_int32(auto_compact_memory_cleanup_interval_sec, 3600,
               "full compaction manager. -1 indicates we should disable clean up.");
 
 DEFINE_RUNTIME_uint32(full_compaction_schema_packing_count_threshold, 1000,
-              "Schema packing count threshold at which, full compaction will be done.");
+              "Schema packing count threshold at which, full compaction will be done. "
+              "A value of 0 disables this check.");
 
 using namespace std::literals;
 
@@ -390,13 +391,18 @@ bool FullCompactionManager::ShouldCompactBasedOnMetadata(
   if (!tablet_metadata) {
     return false;
   }
-
+  
+  const auto threshold = ANNOTATE_UNPROTECTED_READ(FLAGS_full_compaction_schema_packing_count_threshold);
+  if (threshold == 0) {
+    return false;
+  }
+  
   size_t schema_packing_count = tablet_metadata->GetTotalSchemaPackingCount();
-  if (schema_packing_count > ANNOTATE_UNPROTECTED_READ(FLAGS_full_compaction_schema_packing_count_threshold)) {
+  if (schema_packing_count > threshold) {
       LOG(INFO) << Format("TabletId $0 is eligible for compaction because schema packing count $1 exceeded threshold $2",
                           tablet_id, 
-                          schema_packing_count, 
-                          ANNOTATE_UNPROTECTED_READ(FLAGS_full_compaction_schema_packing_count_threshold));
+                          schema_packing_count,
+                          threshold);
     return true;
   }
   return false;
