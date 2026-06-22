@@ -457,6 +457,11 @@ endif()
 if(APPLE)
   ADD_CXX_FLAGS("-DOS_MACOSX")
   ADD_CXX_FLAGS("-D_DARWIN_UNLIMITED_STREAMS")
+  # Give inline functions (and their function-local statics) hidden visibility so they are not
+  # exported from every shared library. This greatly reduces the number of weak-def symbols that
+  # dyld must coalesce across all dynamic libraries at process launch, which is the dominant macOS
+  # startup cost for the dynamic build.
+  ADD_CXX_FLAGS("-fvisibility-inlines-hidden")
 endif()
 
 # compiler flags for different build types (run 'cmake -DCMAKE_BUILD_TYPE=<type> .')
