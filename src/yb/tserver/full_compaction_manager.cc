@@ -396,10 +396,10 @@ bool FullCompactionManager::ShouldCompactBasedOnMetadata(
   if (threshold == 0) {
     return false;
   }
-  
+
   size_t schema_packing_count = tablet_metadata->GetTotalSchemaPackingCount();
   if (schema_packing_count > threshold) {
-      LOG(INFO) << Format("TabletId $0 is eligible for compaction because schema packing count $1 exceeded threshold $2",
+    LOG(INFO) << Format("TabletId $0 is eligible for compaction because schema packing count $1 exceeded threshold $2",
                           tablet_id, 
                           schema_packing_count,
                           threshold);
