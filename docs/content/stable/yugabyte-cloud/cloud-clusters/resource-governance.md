@@ -41,7 +41,7 @@ To change the ceiling for all databases:
 
     Any single database cannot exceed this limit, regardless of how much spare CPU is available.
 
-1. Click **Configure**
+1. Click **Configure**.
 
 ## Limitations
 
