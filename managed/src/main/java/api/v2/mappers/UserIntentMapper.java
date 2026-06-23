@@ -720,6 +720,12 @@ public interface UserIntentMapper {
     if (regionList != null) {
       userIntent.regionList = new ArrayList<UUID>(regionList);
     }
+    if (clusterProviderEditSpec.getImageBundleUuid() != null) {
+      userIntent.imageBundleUUID = clusterProviderEditSpec.getImageBundleUuid();
+    }
+    if (clusterProviderEditSpec.getAwsInstanceProfile() != null) {
+      userIntent.awsArnString = clusterProviderEditSpec.getAwsInstanceProfile();
+    }
     return userIntent;
   }
 
