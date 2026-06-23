@@ -29,7 +29,7 @@ rightNav:
 
 This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL and YCQL database access. While the steps use Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) as an example Identity Provider (IdP), the integration works with any OIDC-compliant provider.
 
-After OIDC is set up, you authenticate with Azure AD, which issues a JSON Web Token (JWT): a short-lived, signed token that proves the user's identity. You then supply this JWT as your database password when connecting to YugabyteDB.
+In normal operation, after OIDC is configured in YBA, database users authenticate with Azure AD, which issues a JSON Web Token (JWT). The JWT is a short-lived, signed token that proves the user's identity. Database users must then obtain the JWT (in one of two ways) and use it to log in to the database. One way is to obtain the JWT directly from YBA; this requires Azure AD to be configured to send the JWT to YBA, and YBA to be configured to display it to users on their login screen. Alternatively, users can use a custom tool to obtain the JWT directly from Azure AD. In either case, database users then supply this JWT as their database password when connecting directly to YugabyteDB.
 
 Note that the yugabyte privileged user will continue to exist as a local database user even after OIDC-based authentication is enabled for a universe.
 
