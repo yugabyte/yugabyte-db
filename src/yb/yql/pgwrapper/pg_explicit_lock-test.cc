@@ -11,6 +11,13 @@
 // under the License.
 //
 
+#include <chrono>
+#include <initializer_list>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+
 #include "yb/util/json_document.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
@@ -32,14 +39,20 @@ Status DisableExplicitRowLockReadAhead(PGConn& conn) {
   return SetExplicitRowLockMaxReadAhead(conn, 1);
 }
 
-Result<JsonDocument> ExplainForReadAhead(PGConn& conn, const std::string& query) {
-  return conn.FetchRow<JsonDocument>(Format(
-      "EXPLAIN (ANALYZE, DIST, DEBUG, FORMAT JSON) $0", query));
-}
+class TopPlanExplainer {
+ public:
+  explicit TopPlanExplainer(PGConn& conn) : conn_(conn) {}
 
-Result<JsonObject> ExplainTopPlanForReadAhead(PGConn& conn, const std::string& query) {
-  return VERIFY_RESULT(ExplainForReadAhead(conn, query)).Root()[0]["Plan"].GetObject();
-}
+  Result<JsonObject> Explain(const std::string& query) {
+    doc_.emplace(VERIFY_RESULT(conn_.FetchRow<JsonDocument>(
+        Format("EXPLAIN (ANALYZE, DIST, DEBUG, FORMAT JSON) $0", query))));
+    return doc_->Root()[0]["Plan"].GetObject();
+  }
+
+ private:
+  PGConn& conn_;
+  std::optional<JsonDocument> doc_;
+};
 
 Result<std::optional<uint32_t>> GetMaxReadAhead(
     const JsonValue& node, const std::string& expected_node_type) {
@@ -455,31 +468,28 @@ TEST_F_EX(PgExplicitLockTest, SkipLockedBatchingApplicability, PgExplicitLockTes
   ASSERT_OK(conn.Execute(
       "CREATE TABLE t1 (k INT PRIMARY KEY);" \
       "CREATE TABLE t2 (k INT PRIMARY KEY);" \
-
       "INSERT INTO t1 VALUES(1), (2), (3), (4), (5);" \
       "INSERT INTO t2 VALUES(1), (2), (3), (4), (5)"));
 
   ASSERT_OK(SetExplicitRowLockMaxReadAhead(conn, kMaxReadAhead));
-  auto top_plan = [&conn](const std::string& query) {
-    return ExplainTopPlanForReadAhead(conn, query);
-  };
+  TopPlanExplainer top_plan_explainer(conn);
   // Test queries with single LockRows
   const auto read_ahead_no_limit = ASSERT_RESULT(GetLockRowsMaxReadAhead(
-      ASSERT_RESULT(top_plan("SELECT * FROM (SELECT * FROM t1 FOR UPDATE SKIP LOCKED) AS sub"))
-          ["Plans"][0]));
+      ASSERT_RESULT(top_plan_explainer.Explain(
+          "SELECT * FROM (SELECT * FROM t1 FOR UPDATE SKIP LOCKED) AS sub"))["Plans"][0]));
   ASSERT_EQ(read_ahead_no_limit, std::optional(kMaxReadAhead));
   const auto read_ahead_outer_limit = ASSERT_RESULT(GetLockRowsMaxReadAhead(
-      ASSERT_RESULT(top_plan(
+      ASSERT_RESULT(top_plan_explainer.Explain(
           "SELECT * FROM (SELECT * FROM t1 FOR UPDATE SKIP LOCKED) AS sub LIMIT 3"))
           ["Plans"][0]["Plans"][0]));
   ASSERT_EQ(read_ahead_outer_limit, std::nullopt);
 
   // Test query with single LockRows
-  const auto join_lock = ASSERT_RESULT(top_plan(
+  const auto join_lock = ASSERT_RESULT(top_plan_explainer.Explain(
       Format(
           "SELECT * FROM " \
           "    t1 INNER JOIN " \
-          "    (SELECT * FROM t2 FOR UPDATE SKIP LOCKED) AS sub ON (t1.k = sub.k) "\
+          "    (SELECT * FROM t2 FOR UPDATE SKIP LOCKED) AS sub ON (t1.k = sub.k) " \
           "FOR UPDATE SKIP LOCKED LIMIT $0", kLimit)))["Plans"][0];
   const auto read_ahead_join = ASSERT_RESULT(GetLockRowsMaxReadAhead(join_lock));
   ASSERT_EQ(read_ahead_join, std::optional(kLimit));
