@@ -84,7 +84,7 @@ To switch to an account:
 
 This feature is in Early Access. The following limitations apply to the current release; they are being addressed in the GA version.
 
-- **You must contact Yugabyte Support to enable it.** Contact {{% support-cloud %}} to enable multi-account for your organization. Once enabled, a designated super admin can create and manage accounts in Aeon without further support.
+- **You must contact Yugabyte Support to enable it.** Contact {{% support-cloud %}} to enable multi-account for your organization. Once enabled, the users designated by Yugabyte Support (when enabling the feature) can create and manage accounts in Aeon without further support.
 - **No automation.** Account management is UI-only, there is no API, Terraform provider, or CLI support for creating or deleting accounts. Automation of account lifecycle management is planned for GA.
 - **Accounts cannot be deleted.** Once created, accounts cannot be removed. This restriction will be lifted in the GA release.
 - **No aggregated user management.** You cannot view all users across all accounts in one place, or remove a user from all accounts at once. User management must be done account by account.
