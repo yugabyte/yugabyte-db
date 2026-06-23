@@ -1,8 +1,10 @@
 {{ $docVersion := $.Scratch.Get "docVersion" }}
 {{- if eq $docVersion "v2.20" -}}
   {{ $isYbaDocs := false }}
-  {{- if and .File .File.Dir (in .File.Dir "yugabyte-platform") -}}
-    {{ $isYbaDocs = true }}
+  {{- with .File -}}
+    {{- if in .Dir "yugabyte-platform" -}}
+      {{ $isYbaDocs = true }}
+    {{- end -}}
   {{- end -}}
 
   <div class="admonition warning">
