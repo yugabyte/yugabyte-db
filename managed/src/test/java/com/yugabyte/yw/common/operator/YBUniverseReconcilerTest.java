@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -76,7 +77,6 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -573,11 +573,9 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
     assertEquals(1, OperatorResource.getAll().size());
 
-    // Stub findByName to return empty list (universe "already deleted" in YBA).
-    // The YBUniverse has no finalizers, so the delete thread spawn is skipped.
-    Mockito.when(universeCRUDHandler.findByName(eq(defaultCustomer), anyString()))
-        .thenReturn(Collections.emptyList());
-
+    // The createUniverse handler is mocked, so no Universe is persisted; resolveExistingUniverse
+    // therefore finds nothing ("already deleted" in YBA). The YBUniverse has no finalizers, so the
+    // delete thread spawn is skipped and the tracked resources are cleaned up.
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.DELETE);
 
     assertTrue(
@@ -1582,5 +1580,110 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertNotNull(az1Ov.getPerProcess().get(ServerType.MASTER));
     DeviceInfo az1MasterDi = az1Ov.getPerProcess().get(ServerType.MASTER).getDeviceInfo();
     assertEquals("az1-master-existing", az1MasterDi.storageClass);
+  }
+
+  // ---- PLAT-21329: existing-universe resolution (UUID -> dual-name, ambiguity) ----
+
+  @Test
+  public void testReconcileCreateResolvesByResourceIdAnnotation() throws Exception {
+    // When the yba-resource-id annotation is present it is authoritative: the operator resolves by
+    // UUID and never creates a duplicate, even if spec.universeName points elsewhere.
+    String universeName = "test-resolve-by-annotation";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseConfigureTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe existing = Universe.create(taskParams, defaultCustomer.getId());
+
+    ybUniverse.getSpec().setUniverseName("some-other-name");
+    Map<String, String> annotations = new HashMap<>();
+    annotations.put(ResourceAnnotationKeys.YBA_RESOURCE_ID, existing.getUniverseUUID().toString());
+    ybUniverse.getMetadata().setAnnotations(annotations);
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(universeCRUDHandler, Mockito.never())
+        .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
+  }
+
+  @Test
+  public void testReconcileCreateAdoptsExistingUniverseDespiteSpecUniverseName() throws Exception {
+    // Reproduces PLAT-21329: a universe was created under the metadata-derived (hashed) name and
+    // the CR also sets spec.universeName. With no annotation, the operator must resolve by the
+    // metadata name and ADOPT the existing universe rather than create a duplicate.
+    String universeName = "test-adopt-existing";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseConfigureTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe existing = Universe.create(taskParams, defaultCustomer.getId());
+    // The universe carries the hashed name...
+    assertEquals(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()), existing.getName());
+    // ...while the CR's spec.universeName has no matching universe.
+    ybUniverse.getSpec().setUniverseName(universeName);
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(universeCRUDHandler, Mockito.never())
+        .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
+  }
+
+  @Test
+  public void testReconcileCreateAdoptsExistingUniverseBySpecUniverseName() throws Exception {
+    // A universe stored under spec.universeName (the legacy literal-name scheme) is still resolved,
+    // even though new universes are now named with the hashed scheme.
+    String universeName = "test-adopt-by-spec";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    String specName = "legacy-literal-name";
+    ybUniverse.getSpec().setUniverseName(specName);
+    // Existing universe named exactly spec.universeName, NOT the hashed metadata name.
+    ModelFactory.createUniverse(specName, defaultCustomer.getId());
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(universeCRUDHandler, Mockito.never())
+        .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
+  }
+
+  @Test
+  public void testReconcileCreateFailsWhenMetadataAndSpecNamesMapToDifferentUniverses() {
+    // If the metadata-derived name and spec.universeName each map to a DIFFERENT universe, the
+    // operator cannot safely choose; it errors the CR status and creates nothing.
+    String universeName = "test-ambiguous";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    String metadataName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
+    String specName = "ambiguous-spec-name";
+    ybUniverse.getSpec().setUniverseName(specName);
+    ModelFactory.createUniverse(metadataName, defaultCustomer.getId());
+    ModelFactory.createUniverse(specName, defaultCustomer.getId());
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(universeCRUDHandler, Mockito.never())
+        .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
+    Mockito.verify(kubernetesStatusUpdator, Mockito.atLeastOnce())
+        .updateUniverseState(
+            any(KubernetesResourceDetails.class), eq(UniverseState.ERROR_UPDATING));
+  }
+
+  @Test
+  public void testReconcileCreateNamesNewUniverseWithHashedNameNotSpecName() throws Exception {
+    // spec.universeName must NOT name a brand-new universe; the deterministic hashed name is used.
+    String universeName = "test-new-universe-naming";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setUniverseName("user-chosen-name");
+    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
+    Mockito.when(
+            universeCRUDHandler.createUniverse(
+                Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(uResp);
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .createUniverse(Mockito.eq(defaultCustomer), captor.capture());
+    String createdName = captor.getValue().getPrimaryCluster().userIntent.universeName;
+    assertEquals(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()), createdName);
+    assertFalse("user-chosen-name".equals(createdName));
   }
 }

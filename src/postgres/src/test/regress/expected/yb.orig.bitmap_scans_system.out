@@ -20,17 +20,17 @@ $$ AS query \gset
 \set ECHO none
                                                               QUERY PLAN                                                              
 --------------------------------------------------------------------------------------------------------------------------------------
- Sort (actual rows=15 loops=1)
+ Sort (actual rows=16 loops=1)
    Sort Key: rolname
    Sort Method: quicksort
-   ->  YB Bitmap Table Scan on pg_authid (actual rows=15 loops=1)
+   ->  YB Bitmap Table Scan on pg_authid (actual rows=16 loops=1)
          Storage Filter: ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
          Recheck Cond: (((rolname >= 'pg'::text) AND (rolname < 'ph'::text)) OR ((rolname >= 'yb'::text) AND (rolname < 'yc'::text)))
-         ->  BitmapOr (actual rows=15 loops=1)
-               ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=15 loops=1)
+         ->  BitmapOr (actual rows=16 loops=1)
+               ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=16 loops=1)
                      Index Cond: ((rolname >= 'pg'::text) AND (rolname < 'ph'::text))
                      Storage Index Filter: ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
-               ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=15 loops=1)
+               ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=16 loops=1)
                      Index Cond: ((rolname >= 'yb'::text) AND (rolname < 'yc'::text))
                      Storage Index Filter: ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
 (13 rows)
@@ -52,7 +52,8 @@ $$ AS query \gset
  yb_db_admin
  yb_extension
  yb_fdw
-(15 rows)
+ yb_global_views_user
+(16 rows)
 
 SELECT $$
 :P :Q1
@@ -68,16 +69,16 @@ $$ AS query \gset
    Filter: (NOT (hashed SubPlan 1))
    Rows Removed by Filter: 2
    SubPlan 1
-     ->  YB Bitmap Table Scan on pg_authid (actual rows=16 loops=1)
+     ->  YB Bitmap Table Scan on pg_authid (actual rows=17 loops=1)
            Storage Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
            Recheck Cond: ((rolname = 'postgres'::name) OR ((rolname >= 'pg'::text) AND (rolname < 'ph'::text)) OR ((rolname >= 'yb'::text) AND (rolname < 'yc'::text)))
-           ->  BitmapOr (actual rows=16 loops=1)
+           ->  BitmapOr (actual rows=17 loops=1)
                  ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=1 loops=1)
                        Index Cond: (rolname = 'postgres'::name)
-                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=16 loops=1)
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=17 loops=1)
                        Index Cond: ((rolname >= 'pg'::text) AND (rolname < 'ph'::text))
                        Storage Index Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
-                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=16 loops=1)
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=17 loops=1)
                        Index Cond: ((rolname >= 'yb'::text) AND (rolname < 'yc'::text))
                        Storage Index Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
 (16 rows)
@@ -101,16 +102,16 @@ $$ AS query \gset
    Filter: (NOT (hashed SubPlan 1))
    Rows Removed by Filter: 2
    SubPlan 1
-     ->  YB Bitmap Table Scan on pg_authid (actual rows=16 loops=1)
+     ->  YB Bitmap Table Scan on pg_authid (actual rows=17 loops=1)
            Recheck Cond: ((rolname = 'postgres'::name) OR ((rolname >= 'pg'::text) AND (rolname < 'ph'::text)) OR ((rolname >= 'yb'::text) AND (rolname < 'yc'::text)))
            Rows Removed by Index Recheck: 2
            Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
-           ->  BitmapOr (actual rows=18 loops=1)
+           ->  BitmapOr (actual rows=19 loops=1)
                  ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=1 loops=1)
                        Index Cond: (rolname = 'postgres'::name)
-                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=18 loops=1)
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=19 loops=1)
                        Index Cond: ((rolname >= 'pg'::text) AND (rolname < 'ph'::text))
-                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=18 loops=1)
+                 ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=19 loops=1)
                        Index Cond: ((rolname >= 'yb'::text) AND (rolname < 'yc'::text))
 (15 rows)
 

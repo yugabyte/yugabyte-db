@@ -51,7 +51,7 @@ class PgRelcacheInitInternalConnTest : public PgMiniTestBase {
   Result<PGConn> ConnectAs(std::string_view yb_internal_conn_kind_wire_name) {
     auto* ts = cluster_->mini_tablet_server(0)->server();
     return CreateInternalPGConnBuilder(
-        ts->pgsql_proxy_bind_address(), /*database_name=*/"yugabyte",
+        ts->pgsql_proxy_bind_address(), /*database_name=*/"yugabyte", /*user=*/"postgres",
         ts->GetSharedMemoryPostgresAuthKey(), /*deadline=*/std::nullopt,
         /*yb_auto_analyze=*/false, yb_internal_conn_kind_wire_name).Connect();
   }

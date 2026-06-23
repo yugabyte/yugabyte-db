@@ -174,8 +174,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
  private:
   Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, bool simple_query_protocol = false,
-      const std::optional<CoarseTimePoint>& deadline = std::nullopt) override;
+      const std::string& database_name, std::string_view user = tserver::kDefaultInternalPgUser,
+      bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
+      std::string_view yb_internal_conn_kind = {}) override;
 
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

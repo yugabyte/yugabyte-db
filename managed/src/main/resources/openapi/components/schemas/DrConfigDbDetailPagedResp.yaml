@@ -1,0 +1,6 @@
+title: DrConfigDbDetailPagedResp
+description: Paged list response for DR config database replication details.
+type: object
+x-data-container: PaginationResp
+x-data-item: DrConfigDbDetail
+x-data-entities-description: Database replication details for this page.

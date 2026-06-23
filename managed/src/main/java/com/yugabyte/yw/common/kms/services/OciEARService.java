@@ -53,12 +53,12 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
       // Resolve the key name to a key OCID (creating the key if
       // it does not yet exist) and cache the derived OCID into the auth config for runtime use.
       String keyName =
-          ociEARServiceUtil.getSafeText(config, OciKmsAuthConfigField.OCI_KEY_NAME.fieldName);
+          ociEARServiceUtil.getSafeText(config, OciKmsAuthConfigField.ociKeyName.fieldName);
       if (StringUtils.isBlank(keyName)) {
         throw new RuntimeException("OCI_KEY_NAME is required");
       }
       // Clear any existing OCID to ensure it is re-resolved from the key name
-      config.remove(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
+      config.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
       ociEARServiceUtil.resolveKeyOcid(configUUID, config);
 
       return config;
@@ -147,7 +147,7 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
 
     // Re-resolve the key OCID from the key name (clearing any cached OCID) so that a key which was
     // re-created under the same name is picked up on refresh.
-    authConfig.remove(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
+    authConfig.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
     String keyOcid = ociEARServiceUtil.resolveKeyOcid(configUUID, authConfig);
     if (StringUtils.isNotBlank(keyOcid)
         && !ociEARServiceUtil.validateKeySettings(authConfig, keyOcid)) {

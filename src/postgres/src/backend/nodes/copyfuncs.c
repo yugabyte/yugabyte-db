@@ -147,6 +147,7 @@ CopyPlanFields(const Plan *from, Plan *newnode)
 	COPY_STRING_FIELD(ybInheritedHintAlias);
 	COPY_SCALAR_FIELD(ybIsHinted);
 	COPY_SCALAR_FIELD(ybHasHintedUid);
+	COPY_SCALAR_FIELD(ybReadAheadCapable);
 }
 
 /*
