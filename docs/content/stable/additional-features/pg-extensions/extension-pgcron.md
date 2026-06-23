@@ -91,8 +91,8 @@ SELECT  cron.schedule('delete-job-run-details', '0 12 * * *', $$DELETE FROM cron
 
 If you are using pg_cron with xCluster:
 
-- In v2025.1.0 or earlier, or if you are using semi-automatic or manual mode, you must install pg_cron on a separate database that is not part of the xCluster configuration.
-- In v2025.1.1 or later _in automatic mode_, you can install pg_cron on the same database.
+- In v2025.1.0 or earlier, or if you are using [semi-automatic or manual mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/), you must install pg_cron on a separate database that is not part of the xCluster configuration.
+- In v2025.1.1 or later in [automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/), you can install pg_cron on the same database.
 
 For more information on xCluster limitations, refer to [Limitations](../../../architecture/docdb-replication/async-replication/#limitations).
 
