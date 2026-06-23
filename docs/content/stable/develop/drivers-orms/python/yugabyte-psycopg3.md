@@ -82,7 +82,7 @@ pip install "psycopg-yugabytedb==3.3.4.1"
 To use the upstream connection pool alongside the smart driver, install the `[pool]` extra. This pulls in an unmodified upstream `psycopg-pool`; the pool's connections still go through the smart-driver dispatcher.
 
 ```sh
-pip install --pre "psycopg-yugabytedb[pool]"
+pip install "psycopg-yugabytedb[pool]"
 ```
 
 #### Prerequisites
