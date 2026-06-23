@@ -117,6 +117,12 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 PLATFORM_VERSION_FILE_PATH = os.path.join(SCRIPT_DIR, '../../yugaware/conf/version_metadata.json')
 YB_VERSION_RE = re.compile(r'^version (\d+\.\d+\.\d+\.\d+).*')
 MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS = (2, 27, 0, 0)
+# ysql_dump's --with-statistics was renamed to --statistics for pg19. Pick the option name by the
+# version of the database being backed up, since yb_backup.py runs the target node's ysql_dump.
+# YB_TODO_PG19MERGE: (2,31,0,0) is the release version currently on the pg19 branch. This will
+# change: the preview version for 2026.2 will be 2.31 and for 2027.1 will be 2.33, so this cutoff
+# will need revisiting once those release lines exist.
+MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS_RENAMED = (2, 31, 0, 0)
 YB_ADMIN_HELP_RE = re.compile(r'^ \d+\. (\w+).*')
 
 XXH64HASH_TOOL_PATH = os.path.join(YB_HOME_DIR, 'bin/xxhash')
@@ -3119,13 +3125,21 @@ class YBBackup:
             sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
             db_name = keyspace_name(self.args.keyspace[0])
             ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable', '--create',
-                              '--schema-only',
                               '--dbname=' + db_name, '--file=' + sql_dump_path]
             if self.database_version.is_at_least(MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS):
-                ysql_dump_args.append('--with-statistics')
+                if self.database_version.is_at_least(
+                        MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS_RENAMED):
+                    # In PG19 ysql_dump rejects --statistics with --schema-only; --no-data dumps
+                    # schema + statistics while still excluding table data.
+                    ysql_dump_args.append('--no-data')
+                    ysql_dump_args.append('--statistics')
+                else:
+                    ysql_dump_args.append('--schema-only')
+                    ysql_dump_args.append('--with-statistics')
             else:
+                ysql_dump_args.append('--schema-only')
                 logging.info(
-                    "[app] Skip --with-statistics for database version '%s' "
+                    "[app] Skip --statistics for database version '%s' "
                     "(requires >= %s.%s)",
                     self.database_version.string,
                     MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS[0],
