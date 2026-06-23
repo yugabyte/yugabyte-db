@@ -1,6 +1,7 @@
 {{ $title    := .Get "title" }}
 {{ $link     := .Get "link" }}
 {{ $maturity := .Get "maturity" | default "ga" }}
+{{ $idea     := .Get "idea" }}
 
 {{ $badgeClass := "general-availability" }}
 {{ $badgeText  := "GA" }}
@@ -12,7 +13,7 @@
   {{ $badgeText  = "TP" }}
 {{ end }}
 
-<div class="card highlight-card">
+<div class="card highlight-card"{{ if $idea }} data-idea="{{ $idea }}"{{ end }}>
   <div class="card-body">
     <div class="highlight-card-header">
       <a href="{{ $link }}" class="highlight-card-title">{{ $title }}</a>
