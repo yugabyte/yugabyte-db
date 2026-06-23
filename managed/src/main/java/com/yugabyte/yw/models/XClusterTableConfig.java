@@ -53,7 +53,7 @@ import lombok.extern.slf4j.Slf4j;
 public class XClusterTableConfig extends Model {
 
   public static final Finder<String, XClusterTableConfig> find =
-      new Finder<String, XClusterTableConfig>(XClusterTableConfig.class) {};
+      new Finder<>(XClusterTableConfig.class) {};
 
   @Id
   @ManyToOne
@@ -133,11 +133,11 @@ public class XClusterTableConfig extends Model {
   private Status status;
 
   @Transient
-  @ApiModelProperty(value = "tableInfo from source universe", required = false)
+  @ApiModelProperty(value = "tableInfo from source universe")
   private TableInfoResp sourceTableInfo;
 
   @Transient
-  @ApiModelProperty(value = "tableInfo from target universe", required = false)
+  @ApiModelProperty(value = "tableInfo from target universe")
   private TableInfoResp targetTableInfo;
 
   // Statuses are declared in reverse severity for showing tables in UI with specific order based on
@@ -214,13 +214,13 @@ public class XClusterTableConfig extends Model {
   private Set<ReplicationStatusError> replicationStatusErrors = new HashSet<>();
 
   public XClusterTableConfig(XClusterConfig config, String tableId) {
-    this.setConfig(config);
-    this.setTableId(tableId);
-    this.setReplicationSetupDone(false);
-    this.setReplicationSetupTime(null);
-    this.setNeedBootstrap(false);
-    this.setIndexTable(false);
-    this.setStatus(Status.Validated);
+    setConfig(config);
+    setTableId(tableId);
+    setReplicationSetupDone(false);
+    setReplicationSetupTime(null);
+    setNeedBootstrap(false);
+    setIndexTable(false);
+    setStatus(Status.Validated);
   }
 
   @JsonSetter("backupUuid")
@@ -258,12 +258,12 @@ public class XClusterTableConfig extends Model {
   }
 
   public void reset() {
-    this.setStatus(XClusterTableConfig.Status.Validated);
-    this.setReplicationSetupDone(false);
-    this.setReplicationSetupTime(null);
-    this.setStreamId(null);
-    this.setBootstrapCreateTime(null);
-    this.setRestoreTime(null);
+    setStatus(XClusterTableConfig.Status.Validated);
+    setReplicationSetupDone(false);
+    setReplicationSetupTime(null);
+    setStreamId(null);
+    setBootstrapCreateTime(null);
+    setRestoreTime(null);
     // We intentionally do not reset backup and restore objects in the xCluster config because
     // restart parent task sets these attributes and its subtasks use this method.
   }

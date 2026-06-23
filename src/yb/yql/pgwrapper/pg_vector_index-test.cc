@@ -46,7 +46,9 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/path_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/vector_index/distance.h"
@@ -972,6 +974,86 @@ TEST_P(PgVectorIndexTest, ConcurrentInsertAndSearch) {
   }
 
   threads.WaitAndStop(kRunTime);
+}
+
+// The test parks a compaction task in that window, drops the table to tear the tablet down (freeing
+// the VectorLSM), then resumes the task so it dereferences the freed object in CompactionTask::Run
+// on the priority thread pool -- matching the issue's stack. A raw heap use-after-free only faults
+// reliably under a sanitizer, so the access is made observable in any build by a check inside
+// VectorLSM::LastSerialNo() (which the resumed task calls): the destructor clears
+// options_.thread_pool, turning the use-after-free into a deterministic CHECK failure. Under ASAN
+// the same access additionally reports a heap-use-after-free.
+//
+// Covers https://github.com/yugabyte/yugabyte-db/issues/30554.
+TEST_P(PgVectorIndexTest, CompactionDuringShutdown) {
+  // Disable background compactions so the only task reaching the sync point is the manual
+  // compaction scheduled below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  constexpr size_t kNumRows = 64;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  CountDownLatch task_in_window{1};
+  CountDownLatch lsm_freed{1};
+  std::atomic<bool> fired{false};
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSM::CompactionTask::Run:AfterCompleted",
+      [&fired, &task_in_window, &lsm_freed](void*) {
+        if (fired.exchange(true)) {
+          return;  // Only orchestrate the first compaction task.
+        }
+        // The task has deregistered itself (so shutdown can complete and free the VectorLSM) but is
+        // about to dereference it again. Let the tablet be torn down, then resume into the
+        // use-after-free.
+        task_in_window.CountDown();
+        ASSERT_TRUE(lsm_freed.WaitFor(60s * kTimeMultiplier));
+      });
+  sync_point->EnableProcessing();
+
+  // Schedule an asynchronous compaction and keep only a weak reference to the index, so the tablet
+  // owns the only strong references and tearing the tablet down frees the VectorLSM.
+  std::weak_ptr<docdb::DocVectorIndex> weak_index;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto list = tablet->vector_indexes().List();
+    if (list && !list->empty()) {
+      weak_index = (*list)[0];
+      ASSERT_OK((*list)[0]->Compact());
+      break;
+    }
+  }
+  ASSERT_FALSE(weak_index.expired()) << "No tablet with a vector index found";
+
+  ASSERT_TRUE(task_in_window.WaitFor(60s * kTimeMultiplier))
+      << "Compaction task did not reach the post-completion window";
+
+  // Drop the table on another thread to tear down the tablet (and its VectorLSM) while the
+  // compaction task is parked mid-run. The drop runs off the main thread so we can drive the task
+  // even when tablet teardown blocks waiting for the task (which is what a correct fix does).
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto drop_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(drop_conn.Execute("DROP TABLE test"));
+  });
+
+  // Tearing the tablet down must free the VectorLSM out from under the parked compaction task --
+  // that is the bug. Require it: otherwise the use-after-free window was not hit and the resumed
+  // task below would run against a live object and pass silently.
+  ASSERT_OK(WaitFor([&weak_index] { return weak_index.expired(); }, 30s * kTimeMultiplier,
+                    "vector index destruction"));
+
+  // Resume the parked task; on the buggy code it now dereferences the freed VectorLSM.
+  lsm_freed.CountDown();
+
+  // Give the task a moment to surface the use-after-free before the test tears down the cluster.
+  SleepFor(2s * kTimeMultiplier);
+  threads.WaitAndStop(60s * kTimeMultiplier);
 }
 
 void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {

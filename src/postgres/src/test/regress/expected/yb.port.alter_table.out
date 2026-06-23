@@ -2805,17 +2805,282 @@ drop cascades to text search configuration alter2.cfg
 drop cascades to text search parser alter2.prs
 drop cascades to type alter2.ctype
 --
+-- composite types
+--
+CREATE TYPE test_type AS (a int);
+\d test_type
+         Composite type "public.test_type"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+
+ALTER TYPE nosuchtype ADD ATTRIBUTE b text; -- fails
+ERROR:  ALTER TYPE ADD ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE nosuchtype ADD ATTRIBUTE b text;
+                              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+ALTER TYPE test_type ADD ATTRIBUTE b text;
+ERROR:  ALTER TYPE ADD ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type ADD ATTRIBUTE b text;
+                             ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+\d test_type
+         Composite type "public.test_type"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+
+ALTER TYPE test_type ADD ATTRIBUTE b text; -- fails
+ERROR:  ALTER TYPE ADD ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type ADD ATTRIBUTE b text;
+                             ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+ALTER TYPE test_type ALTER ATTRIBUTE b SET DATA TYPE varchar;
+ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type ALTER ATTRIBUTE b SET DATA TYPE varchar...
+                             ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+\d test_type
+         Composite type "public.test_type"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+
+ALTER TYPE test_type ALTER ATTRIBUTE b SET DATA TYPE integer;
+ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type ALTER ATTRIBUTE b SET DATA TYPE integer...
+                             ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+--- YB: since we can't ALTER TYPE ADD ATTRIBUTE yet, work around by recreating the type.
+DROP TYPE test_type;
+CREATE TYPE test_type AS (a int, b int);
+\d test_type
+         Composite type "public.test_type"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+
+ALTER TYPE test_type DROP ATTRIBUTE b;
+\d test_type
+         Composite type "public.test_type"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+
+ALTER TYPE test_type DROP ATTRIBUTE c; -- fails
+ERROR:  column "c" of relation "test_type" does not exist
+ALTER TYPE test_type DROP ATTRIBUTE IF EXISTS c;
+NOTICE:  column "c" of relation "test_type" does not exist, skipping
+ALTER TYPE test_type DROP ATTRIBUTE a, ADD ATTRIBUTE d boolean;
+ERROR:  ALTER TYPE ADD ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type DROP ATTRIBUTE a, ADD ATTRIBUTE d boole...
+                                               ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+\d test_type
+         Composite type "public.test_type"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+
+ALTER TYPE test_type RENAME ATTRIBUTE a TO aa;
+ERROR:  ALTER TYPE RENAME ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type RENAME ATTRIBUTE a TO aa;
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+ALTER TYPE test_type RENAME ATTRIBUTE d TO dd;
+ERROR:  ALTER TYPE RENAME ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type RENAME ATTRIBUTE d TO dd;
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+\d test_type
+         Composite type "public.test_type"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+
+DROP TYPE test_type;
+CREATE TYPE test_type1 AS (a int, b text);
+CREATE TABLE test_tbl1 (x int, y test_type1);
+ALTER TYPE test_type1 ALTER ATTRIBUTE b TYPE varchar; -- fails
+ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type1 ALTER ATTRIBUTE b TYPE varchar;
+                              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+DROP TABLE test_tbl1;
+CREATE TABLE test_tbl1 (x int, y text);
+CREATE INDEX test_tbl1_idx ON test_tbl1((row(x,y)::test_type1));
+ERROR:  INDEX on column of type 'user_defined_type' not yet supported
+ALTER TYPE test_type1 ALTER ATTRIBUTE b TYPE varchar; -- fails
+ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type1 ALTER ATTRIBUTE b TYPE varchar;
+                              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+DROP TABLE test_tbl1;
+DROP TYPE test_type1;
+CREATE TYPE test_type2 AS (a int, b text);
+CREATE TABLE test_tbl2 OF test_type2;
+CREATE TABLE test_tbl2_subclass () INHERITS (test_tbl2);
+\d test_type2
+        Composite type "public.test_type2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+
+\d test_tbl2
+             Table "public.test_tbl2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+Number of child tables: 1 (Use \d+ to list them.)
+Typed table of type: test_type2
+
+ALTER TYPE test_type2 ADD ATTRIBUTE c text; -- fails
+ERROR:  ALTER TYPE ADD ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type2 ADD ATTRIBUTE c text;
+                              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+ALTER TYPE test_type2 ADD ATTRIBUTE c text CASCADE;
+ERROR:  ALTER TYPE ADD ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type2 ADD ATTRIBUTE c text CASCADE;
+                              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+\d test_type2
+        Composite type "public.test_type2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+
+\d test_tbl2
+             Table "public.test_tbl2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+Number of child tables: 1 (Use \d+ to list them.)
+Typed table of type: test_type2
+
+ALTER TYPE test_type2 ALTER ATTRIBUTE b TYPE varchar; -- fails
+ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type2 ALTER ATTRIBUTE b TYPE varchar;
+                              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+ALTER TYPE test_type2 ALTER ATTRIBUTE b TYPE varchar CASCADE;
+ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type2 ALTER ATTRIBUTE b TYPE varchar CASCADE...
+                              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+\d test_type2
+        Composite type "public.test_type2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+
+\d test_tbl2
+             Table "public.test_tbl2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+Number of child tables: 1 (Use \d+ to list them.)
+Typed table of type: test_type2
+
+ALTER TYPE test_type2 DROP ATTRIBUTE b; -- fails
+ERROR:  cannot alter type "test_type2" because it is the type of a typed table
+HINT:  Use ALTER ... CASCADE to alter the typed tables too.
+ALTER TYPE test_type2 DROP ATTRIBUTE b CASCADE;
+ERROR:  drop attribute on the type of a typed table is not supported yet
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/30577. React with thumbs up to raise its priority
+\d test_type2
+        Composite type "public.test_type2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+
+\d test_tbl2
+             Table "public.test_tbl2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+Number of child tables: 1 (Use \d+ to list them.)
+Typed table of type: test_type2
+
+ALTER TYPE test_type2 RENAME ATTRIBUTE a TO aa; -- fails
+ERROR:  ALTER TYPE RENAME ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type2 RENAME ATTRIBUTE a TO aa;
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+ALTER TYPE test_type2 RENAME ATTRIBUTE a TO aa CASCADE;
+ERROR:  ALTER TYPE RENAME ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type2 RENAME ATTRIBUTE a TO aa CASCADE;
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+\d test_type2
+        Composite type "public.test_type2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+
+\d test_tbl2
+             Table "public.test_tbl2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+Number of child tables: 1 (Use \d+ to list them.)
+Typed table of type: test_type2
+
+\d test_tbl2_subclass
+         Table "public.test_tbl2_subclass"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | text    |           |          | 
+Inherits: test_tbl2
+
+DROP TABLE test_tbl2_subclass, test_tbl2;
+DROP TYPE test_type2;
+CREATE TYPE test_typex AS (a int, b text);
+CREATE TABLE test_tblx (x int, y test_typex check ((y).a > 0));
+ALTER TYPE test_typex DROP ATTRIBUTE a; -- fails
+ERROR:  cannot drop column a of composite type test_typex because other objects depend on it
+DETAIL:  constraint test_tblx_y_check on table test_tblx depends on column a of composite type test_typex
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+ALTER TYPE test_typex DROP ATTRIBUTE a CASCADE;
+NOTICE:  drop cascades to constraint test_tblx_y_check on table test_tblx
+\d test_tblx
+               Table "public.test_tblx"
+ Column |    Type    | Collation | Nullable | Default 
+--------+------------+-----------+----------+---------
+ x      | integer    |           |          | 
+ y      | test_typex |           |          | 
+
+DROP TABLE test_tblx;
+DROP TYPE test_typex;
+-- This test isn't that interesting on its own, but the purpose is to leave
+-- behind a table to test pg_upgrade with. The table has a composite type
+-- column in it, and the composite type has a dropped attribute.
+CREATE TYPE test_type3 AS (a int);
+CREATE TABLE test_tbl3 (c) AS SELECT '(1)'::test_type3;
+ALTER TYPE test_type3 DROP ATTRIBUTE a, ADD ATTRIBUTE b int;
+ERROR:  ALTER TYPE ADD ATTRIBUTE not supported yet
+LINE 1: ALTER TYPE test_type3 DROP ATTRIBUTE a, ADD ATTRIBUTE b int;
+                                                ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
+CREATE TYPE test_type_empty AS ();
+DROP TYPE test_type_empty;
+--
 -- typed tables: OF / NOT OF
 --
 CREATE TYPE tt_t0 AS (z inet, x int, y numeric(8,2));
 ALTER TYPE tt_t0 DROP ATTRIBUTE z;
-ERROR:  ALTER TYPE DROP ATTRIBUTE not supported yet
-LINE 1: ALTER TYPE tt_t0 DROP ATTRIBUTE z;
-                         ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
--- YB: since we can't ALTER TYPE yet, work around by recreating the type.
-DROP TYPE tt_t0;
-CREATE TYPE tt_t0 AS (x int, y numeric(8,2));
 CREATE TABLE tt0 (x int NOT NULL, y numeric(8,2));	-- OK
 CREATE TABLE tt1 (x int, y bigint);					-- wrong base type
 CREATE TABLE tt2 (x int, y numeric(9,2));			-- wrong typmod

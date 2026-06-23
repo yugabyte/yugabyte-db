@@ -100,5 +100,10 @@
   rolcreaterole => 'f', rolcreatedb => 'f', rolcanlogin => 'f',
   rolreplication => 'f', rolbypassrls => 'f', rolconnlimit => '-1',
   rolpassword => '_null_', rolvaliduntil => '_null_' },
+{ oid => '8117', oid_symbol => 'DEFAULT_ROLE_YB_GLOBAL_VIEWS_USER',
+  rolname => 'yb_global_views_user', rolsuper => 'f', rolinherit => 't',
+  rolcreaterole => 'f', rolcreatedb => 'f', rolcanlogin => 't',
+  rolreplication => 'f', rolbypassrls => 'f', rolconnlimit => '-1',
+  rolpassword => '_null_', rolvaliduntil => '_null_' },
 
 ]

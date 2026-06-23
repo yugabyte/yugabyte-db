@@ -2516,6 +2516,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // backfill, and this.  Creating the connection has a startup cost.
   auto res = pgwrapper::CreateInternalPGConnBuilder(
                  server_->pgsql_proxy_bind_address(), "template1",
+                 pgwrapper::PGConnSettings::kDefaultUser,
                  server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
                  .Connect();
   if (!res.ok()) {
@@ -3571,7 +3572,9 @@ void TabletServiceImpl::PgRemoteExec(
 
   // TODO(#30396): Maintain a pool of connections instead of creating a new connection
   auto conn = server_->CreateInternalPGConn(
-      req->database_name(), /* simple_query_protocol */ false, context.GetClientDeadline());
+      req->database_name(), /* user */ "yb_global_views_user",
+      /* simple_query_protocol */ false, context.GetClientDeadline(),
+      pgwrapper::YbInternalConnKindWireName::kGlobalView);
   if (!conn.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), conn.status(), &context);
     return;
@@ -4018,7 +4021,8 @@ void TabletServiceImpl::AdminExecutePgsql(
   auto execute_pg_sql = [&req, &context, &server = server_]() -> Status {
     const auto& deadline = context.GetClientDeadline();
     auto pg_conn = VERIFY_RESULT(
-        server->CreateInternalPGConn(req->database_name(), false, deadline));
+        server->CreateInternalPGConn(req->database_name(), kDefaultInternalPgUser, false,
+                                     deadline));
     for (const auto& stmt : req->pgsql_statements()) {
       SCHECK_LT(
           CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");

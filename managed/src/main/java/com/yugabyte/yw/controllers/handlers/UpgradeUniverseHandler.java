@@ -54,6 +54,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -65,6 +66,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -1222,6 +1224,11 @@ public class UpgradeUniverseHandler {
     if (params.expectedUniverseVersion == null) {
       params.expectedUniverseVersion = universe.getVersion();
     }
+    // Record which telemetry config sections this task is actually changing, so the UI can show
+    // accurate per-type status on the telemetry cards. The request body carries the full desired
+    // state for all sections (null section == disabled), so we diff it against the currently
+    // stored config rather than infer from the request alone.
+    params.setModifiedExportTypes(computeModifiedExportTypes(params, universe));
     params.verifyParams(universe, true);
     return submitUpgradeTask(
         TaskType.ConfigureExportTelemetryConfig,
@@ -1229,5 +1236,44 @@ public class UpgradeUniverseHandler {
         params,
         customer,
         universe);
+  }
+
+  /**
+   * Diffs the requested telemetry config (in {@code params}) against the currently configured one
+   * and returns the sections that differ. The current config is read from the {@link
+   * ExportTelemetryConfig} table (the source of truth); when no row exists yet (first-time config
+   * or legacy universe) it falls back to the synced copies in the primary cluster userIntent.
+   */
+  private List<ExportType> computeModifiedExportTypes(
+      ExportTelemetryConfigParams params, Universe universe) {
+    TelemetryConfig current = getCurrentTelemetryConfig(universe);
+    List<ExportType> modified = new ArrayList<>();
+    if (!Objects.equals(
+        params.getAuditLogConfig(), current == null ? null : current.getAuditLogConfig())) {
+      modified.add(ExportType.AUDIT_LOGS);
+    }
+    if (!Objects.equals(
+        params.getQueryLogConfig(), current == null ? null : current.getQueryLogConfig())) {
+      modified.add(ExportType.QUERY_LOGS);
+    }
+    if (!Objects.equals(
+        params.getMetricsExportConfig(),
+        current == null ? null : current.getMetricsExportConfig())) {
+      modified.add(ExportType.METRICS);
+    }
+    return modified;
+  }
+
+  private TelemetryConfig getCurrentTelemetryConfig(Universe universe) {
+    return ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID())
+        .map(ExportTelemetryConfig::getTelemetryConfig)
+        .orElseGet(
+            () -> {
+              UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+              return TelemetryConfig.of(
+                  userIntent.auditLogConfig,
+                  userIntent.queryLogConfig,
+                  userIntent.metricsExportConfig);
+            });
   }
 }

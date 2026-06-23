@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
@@ -48,6 +49,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -58,10 +60,15 @@ import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -1956,5 +1963,109 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
 
     CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
     assertEquals(CertsRotateParams.CertRotationType.ServerCert, capturedParams.rootCARotationType);
+  }
+
+  private static AuditLogConfig newAuditConfig() {
+    UniverseLogsExporterConfig exporter = new UniverseLogsExporterConfig();
+    exporter.setExporterUuid(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+    AuditLogConfig config = new AuditLogConfig();
+    config.setUniverseLogsExporterConfig(List.of(exporter));
+    return config;
+  }
+
+  private static MetricsExportConfig newMetricsConfig(int scrapeIntervalSeconds) {
+    MetricsExportConfig config = new MetricsExportConfig();
+    config.setScrapeIntervalSeconds(scrapeIntervalSeconds);
+    return config;
+  }
+
+  private ExportTelemetryConfigParams captureExportTelemetryConfigParams() {
+    ArgumentCaptor<ITaskParams> captor = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.ConfigureExportTelemetryConfig), captor.capture());
+    return (ExportTelemetryConfigParams) captor.getValue();
+  }
+
+  private void stubExportTelemetryConfigTask() {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureExportTelemetryConfig);
+    when(mockCommissioner.submit(
+            eq(TaskType.ConfigureExportTelemetryConfig), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+  }
+
+  @Test
+  public void testModifiedExportTypesNewAuditConfigNoExistingRow() {
+    stubExportTelemetryConfigTask();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    Universe universe = Universe.getOrBadRequest(u.getUniverseUUID());
+
+    // No export_telemetry_config row and an empty userIntent => only the audit section differs.
+    ExportTelemetryConfigParams params =
+        handler.buildExportTelemetryConfigParamsFromUniverse(universe);
+    params.setTelemetryConfig(TelemetryConfig.of(newAuditConfig(), null, null));
+
+    handler.submitExportTelemetryConfigs(params, c, universe);
+
+    assertEquals(
+        List.of(ExportType.AUDIT_LOGS),
+        captureExportTelemetryConfigParams().getModifiedExportTypes());
+  }
+
+  @Test
+  public void testModifiedExportTypesOnlyMetricsChangedAgainstStoredConfig() {
+    stubExportTelemetryConfigTask();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID universeUuid = u.getUniverseUUID();
+
+    // Seed the source-of-truth table with audit + metrics already configured.
+    ExportTelemetryConfig row = new ExportTelemetryConfig();
+    row.setUniverseUuid(universeUuid);
+    row.setTelemetryConfig(TelemetryConfig.of(newAuditConfig(), null, newMetricsConfig(30)));
+    row.save();
+
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    TelemetryConfig stored =
+        ExportTelemetryConfig.getForUniverse(universeUuid).get().getTelemetryConfig();
+    // Keep audit identical to stored, change only the metrics scrape interval.
+    ExportTelemetryConfigParams params =
+        handler.buildExportTelemetryConfigParamsFromUniverse(universe);
+    params.setTelemetryConfig(
+        TelemetryConfig.of(stored.getAuditLogConfig(), null, newMetricsConfig(60)));
+
+    handler.submitExportTelemetryConfigs(params, c, universe);
+
+    assertEquals(
+        List.of(ExportType.METRICS), captureExportTelemetryConfigParams().getModifiedExportTypes());
+  }
+
+  @Test
+  public void testModifiedExportTypesEmptyWhenRequestMatchesStoredConfig() {
+    stubExportTelemetryConfigTask();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID universeUuid = u.getUniverseUUID();
+
+    ExportTelemetryConfig row = new ExportTelemetryConfig();
+    row.setUniverseUuid(universeUuid);
+    row.setTelemetryConfig(TelemetryConfig.of(newAuditConfig(), null, newMetricsConfig(30)));
+    row.save();
+
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    TelemetryConfig stored =
+        ExportTelemetryConfig.getForUniverse(universeUuid).get().getTelemetryConfig();
+    // Re-send exactly the stored config => nothing is modified.
+    ExportTelemetryConfigParams params =
+        handler.buildExportTelemetryConfigParamsFromUniverse(universe);
+    params.setTelemetryConfig(
+        TelemetryConfig.of(
+            stored.getAuditLogConfig(),
+            stored.getQueryLogConfig(),
+            stored.getMetricsExportConfig()));
+
+    handler.submitExportTelemetryConfigs(params, c, universe);
+
+    assertTrue(captureExportTelemetryConfigParams().getModifiedExportTypes().isEmpty());
   }
 }

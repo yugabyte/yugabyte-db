@@ -703,7 +703,8 @@ std::map<std::string, std::string> TabletServer::ValidateConfCsvViaPg(
   if (!paths_result.ok()) return fail_all(paths_result.status());
   auto paths = std::move(*paths_result);
 
-  auto conn_result = CreateInternalPGConn("yugabyte", /*simple_query_protocol=*/false, deadline);
+  auto conn_result = CreateInternalPGConn(
+      "yugabyte", kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
   if (!conn_result.ok()) return fail_all(conn_result.status());
   auto conn = std::move(*conn_result);
 
@@ -853,6 +854,7 @@ Status TabletServer::RegisterServices() {
     auto connect_to_pg = [this](const std::string& database_name,
                                 const CoarseTimePoint& deadline) {
       return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
+                                                    pgwrapper::PGConnSettings::kDefaultUser,
                                                     GetSharedMemoryPostgresAuthKey(),
                                                     deadline, true).Connect();
     };
@@ -1462,8 +1464,8 @@ void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   // (relcache.c:RelationCacheInitializePhase3).
   auto status = ResultToStatus(
       pgwrapper::CreateInternalPGConnBuilder(
-          pgsql_proxy_bind_address(), dbname, GetSharedMemoryPostgresAuthKey(), deadline,
-          /*yb_auto_analyze=*/false,
+          pgsql_proxy_bind_address(), dbname, kDefaultInternalPgUser,
+          GetSharedMemoryPostgresAuthKey(), deadline, /*yb_auto_analyze=*/false,
           pgwrapper::YbInternalConnKindWireName::kRelcacheInit)
           .Connect(/*simple_query_protocol=*/false));
   if (status.ok()) {
@@ -2065,7 +2067,8 @@ void TabletServer::DoGarbageCollectionOfInvalidationMessages(
 
 Status TabletServer::CheckYsqlLaggingCatalogVersions() {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto pg_conn = VERIFY_RESULT(CreateInternalPGConn("template1", false, deadline));
+  auto pg_conn = VERIFY_RESULT(
+      CreateInternalPGConn("template1", kDefaultInternalPgUser, false, deadline));
   const std::string query = "SELECT datid, local_catalog_version FROM "
                             "yb_pg_stat_get_backend_local_catalog_version(NULL) "
                             "ORDER BY datid ASC, local_catalog_version ASC";
@@ -2281,8 +2284,8 @@ Status TabletServer::CreateXClusterConsumer() {
   };
   auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
     return pgwrapper::CreateInternalPGConnBuilder(
-               pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(),
-               deadline)
+               pgsql_proxy_bind_address(), database_name, pgwrapper::PGConnSettings::kDefaultUser,
+               GetSharedMemoryPostgresAuthKey(), deadline)
         .Connect();
   };
   auto get_namespace_info =
@@ -2655,10 +2658,12 @@ void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
 }
 
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
-    const std::string& database_name, bool simple_query_protocol,
-    const std::optional<CoarseTimePoint>& deadline) {
+    const std::string& database_name, std::string_view user, bool simple_query_protocol,
+    const std::optional<CoarseTimePoint>& deadline,
+    std::string_view yb_internal_conn_kind) {
   return pgwrapper::CreateInternalPGConnBuilder(
-             pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
+             pgsql_proxy_bind_address(), database_name, user, GetSharedMemoryPostgresAuthKey(),
+             deadline, /* yb_auto_analyze */ false, yb_internal_conn_kind)
       .Connect(simple_query_protocol);
 }
 
