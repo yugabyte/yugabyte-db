@@ -888,7 +888,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     }
 
     // TODO(vector_index): leverage the suspender.
-    auto status = DoRun();
+    auto status = DoRun(suspender);
     if (status.ok() || status.IsShutdownInProgress()) {
       LOG_WITH_PREFIX(INFO) << "Done: " << status;
     } else {
@@ -927,7 +927,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     }
   }
 
-  Status DoRun() {
+  Status DoRun(PriorityThreadPoolSuspender* suspender) {
     EnsureCompactionScope();
 
     if (compaction_scope_.empty()) {
@@ -940,7 +940,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
       .type = compaction_type(),
     };
 
-    return lsm_.DoCompact(context, std::move(compaction_scope_));
+    return lsm_.DoCompact(context, std::move(compaction_scope_), suspender);
   }
 
   void Completed(const Status& status, uint64_t last_serial_no) {
@@ -2374,8 +2374,8 @@ class Merger {
   using Iterator = FilteringIterator<Vector, DistanceResult>;
   using MergeRegistry = VectorLSMMergeRegistry<Vector, DistanceResult>;
 
-  Merger(LSM& lsm, MergeRegistry& merge_registry)
-      : lsm_(lsm), merge_registry_(merge_registry) {
+  Merger(LSM& lsm, MergeRegistry& merge_registry, PriorityThreadPoolSuspender* suspender)
+      : lsm_(lsm), merge_registry_(merge_registry), suspender_(suspender) {
   }
 
   Status Merge(size_t source_size, Iterator& source_iterator, VectorIndexPtr target_index) {
@@ -2404,6 +2404,8 @@ class Merger {
 
       if (--num_iterations_to_check_shutdown == 0) {
         RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+        MaybeYield();
+        TEST_SYNC_POINT("VectorLSM::DoMerge:Checkpoint");
         num_iterations_to_check_shutdown = min_iterations_to_check_shutdown;
       }
     }
@@ -2420,6 +2422,11 @@ class Merger {
     std::atomic<size_t> num_completed_tasks = 0;
 
     while (source_iterator.Valid()) {
+      // The actual vector inserts run on a separate (insert) thread pool; this loop only schedules
+      // them and otherwise sleeps waiting for registry capacity, so yield the priority pool worker
+      // to higher priority tasks (e.g. flushes) instead of holding it for the whole merge.
+      MaybeYield();
+
       // On shutdown stop scheduling, but fall through to the wait loop below so all already
       // scheduled tasks are drained before this frame (and `num_completed_tasks`) goes away.
       if (lsm_.IsShuttingDown()) {
@@ -2455,6 +2462,7 @@ class Merger {
 
     // Wait for everything got merged.
     while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::relaxed)) {
+      MaybeYield();
       std::this_thread::sleep_for(200ms);
     }
 
@@ -2466,13 +2474,25 @@ class Merger {
     return Status::OK();
   }
 
+  // Yields the priority thread pool worker to higher priority tasks if any are waiting. Called at
+  // the existing per-step checkpoints of both merge paths so a long compaction does not hold its
+  // worker (and starve flushes) for the whole merge. No-op when there is no suspender (the task is
+  // not running on a priority pool worker).
+  void MaybeYield() {
+    if (suspender_) {
+      suspender_->PauseIfNecessary();
+    }
+  }
+
   LSM& lsm_;
   MergeRegistry& merge_registry_;
+  PriorityThreadPoolSuspender* suspender_;
 };
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<typename VectorLSM<Vector, DistanceResult>::ImmutableChunkPtr>
-VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& input_chunks) {
+VectorLSM<Vector, DistanceResult>::DoCompactChunks(
+    const ImmutableChunkPtrs& input_chunks, PriorityThreadPoolSuspender* suspender) {
   // Input chunks collection must be sorted by order_no and each chunk must be in manifest.
   DCHECK(!input_chunks.empty());
 
@@ -2509,7 +2529,7 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
 
     FilteringIterator<Vector, DistanceResult> iterator(indexes, *merge_filter);
 
-    Merger<Vector, DistanceResult> merger(*this, *this->merge_registry_);
+    Merger<Vector, DistanceResult> merger(*this, *this->merge_registry_, suspender);
     RETURN_NOT_OK(merger.Merge(input_size, iterator, merged_index));
 
     if (TEST_sleep_on_merged_chunk_populated) {
@@ -2546,12 +2566,13 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoCompact(
-    const CompactionContext& context, CompactionScope&& scope) {
+    const CompactionContext& context, CompactionScope&& scope,
+    PriorityThreadPoolSuspender* suspender) {
   RETURN_NOT_OK(RUNNING_STATUS());
   RSTATUS_DCHECK(!scope.empty(), InvalidArgument, "Compaction scope must be specified");
   VLOG_WITH_PREFIX(2) << "Picked chunks: " << AsString(scope);
 
-  auto merged_chunk = VERIFY_RESULT(DoCompactChunks(scope.chunks()));
+  auto merged_chunk = VERIFY_RESULT(DoCompactChunks(scope.chunks(), suspender));
 
   if (metrics_) {
     uint64_t read_bytes = 0;
