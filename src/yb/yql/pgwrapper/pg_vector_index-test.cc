@@ -76,8 +76,10 @@ DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
+DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(priority_thread_pool_size);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
@@ -1054,6 +1056,142 @@ TEST_P(PgVectorIndexTest, CompactionDuringShutdown) {
   // Give the task a moment to surface the use-after-free before the test tears down the cluster.
   SleepFor(2s * kTimeMultiplier);
   threads.WaitAndStop(60s * kTimeMultiplier);
+}
+
+// RocksDB flushes/compactions and vector index compactions all run on a single, process-global
+// priority thread pool (TSTabletManager::VectorIndexCompactionToken routes vector index compactions
+// to docdb::GetGlobalPriorityThreadPool, the same pool used for RocksDB flushes when
+// use_priority_thread_pool_for_flushes is on -- which it is for mini-cluster tests). A vector index
+// compaction that occupies a pool worker for its entire (potentially minute-long) duration without
+// yielding to higher priority work starves memtable flushes, including flush-on-shutdown, which
+// then hangs tablet teardown. Pin the pool to a single worker so one compaction occupies the whole
+// pool, making the starvation deterministic.
+class PgVectorIndexCompactionPoolTest : public PgVectorIndexTest {
+ protected:
+  // Keep rocksdb auto compactions from competing for the single pool worker.
+  int GetFileNumCompactionTrigger() override {
+    return 10000;
+  }
+
+  void SetUp() override {
+    // The global priority thread pool size is read once, when the pool is first created during
+    // cluster startup, so it must be set before the base SetUp brings the cluster up.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 1;
+    PgVectorIndexTest::SetUp();
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexCompactionPoolTest);
+
+// Shutting a tserver down must not hang when another tserver is running a vector index compaction.
+// Reproduces the teardown deadlock from https://github.com/yugabyte/yugabyte-db/issues/31321: the
+// shutting-down tserver flushes its memtables on shutdown, and that flush is a task on the shared,
+// single-worker priority pool -- the same pool a vector index compaction on a *different* tserver
+// is occupying. If the compaction never yields the worker, the flush-on-shutdown is starved and the
+// shutdown hangs. A correct fix makes the compaction honor the suspender so the higher priority
+// flush preempts it.
+TEST_P(PgVectorIndexCompactionPoolTest, ShutdownNotBlockedByCompaction) {
+  // Single-threaded merge so the compaction does its work directly on the pool worker it occupies
+  // (rather than offloading the inserts to the merge thread pool) -- that worker is the one the
+  // flush-on-shutdown also needs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
+  // We trigger the one compaction manually; no background compactions competing for the worker.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  // Run against the real index so a compaction actually merges HNSW graphs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  num_pre_split_tablets_ = 1;
+
+  constexpr int64_t kBatchSize = 50;
+  constexpr int64_t kBatches = 5;
+
+  auto conn = ASSERT_RESULT(MakeTable(/* dimensions= */ 64));
+  ASSERT_OK(CreateIndex(conn));
+
+  // Build several immutable chunks (one per flushed batch) so a manual full compaction has a real
+  // merge loop to run.
+  for (int64_t b = 0; b != kBatches; ++b) {
+    ASSERT_OK(InsertBatch(conn, 1 + b * kBatchSize, kBatchSize));
+    ASSERT_OK(cluster_->FlushTablets());
+  }
+  // Leave an unflushed memtable on the tablet leader so it actually has to flush on shutdown (the
+  // flush that gets starved). The leader -- where these writes land -- is the tserver we shut down.
+  ASSERT_OK(InsertBatch(conn, 1 + kBatches * kBatchSize, kBatchSize));
+
+  // Pick the vector tablet leader (it holds the unflushed writes above, so its shutdown must flush)
+  // and a follower (we run the pool-hogging compaction there so it keeps holding the worker while
+  // the leader shuts down).
+  std::string leader_uuid;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (tablet && tablet->vector_indexes().TEST_HasIndexes()) {
+      leader_uuid = peer->permanent_uuid();
+      break;
+    }
+  }
+  ASSERT_FALSE(leader_uuid.empty()) << "No vector tablet leader found";
+
+  docdb::DocVectorIndexPtr follower_index;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto list = tablet->vector_indexes().List();
+    if (list && !list->empty()) {
+      follower_index = (*list)[0];
+      break;
+    }
+  }
+  ASSERT_TRUE(follower_index != nullptr) << "No vector tablet follower found";
+
+  size_t shutdown_idx = cluster_->num_tablet_servers();
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    if (cluster_->mini_tablet_server(i)->server()->permanent_uuid() == leader_uuid) {
+      shutdown_idx = i;
+      break;
+    }
+  }
+  ASSERT_LT(shutdown_idx, cluster_->num_tablet_servers());
+
+  // Slow every merge step so the compaction stays in its merge loop -- occupying the single pool
+  // worker -- for the whole window below. SleepFor (not a hard block) so the loop keeps reaching
+  // the suspend point a correct fix relies on. Announce on the first step so we know it is held.
+  CountDownLatch compaction_running{1};
+  std::atomic<bool> slow_merge{true};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::DoMerge:Checkpoint", [&](void*) {
+    compaction_running.CountDown();
+    if (slow_merge.load(std::memory_order_acquire)) {
+      SleepFor(1s * kTimeMultiplier);
+    }
+  });
+  sync_point->EnableProcessing();
+
+  // Compact() schedules the compaction asynchronously on the priority pool.
+  ASSERT_OK(follower_index->Compact());
+  ASSERT_TRUE(compaction_running.WaitFor(60s * kTimeMultiplier))
+      << "Vector index compaction did not start merging";
+
+  // Shut the leader down on a background thread; it must not block on its flush-on-shutdown.
+  CountDownLatch shutdown_done{1};
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this, shutdown_idx, &shutdown_done] {
+    cluster_->mini_tablet_server(shutdown_idx)->Shutdown();
+    shutdown_done.CountDown();
+  });
+
+  auto shut_down = shutdown_done.WaitFor(30s * kTimeMultiplier);
+
+  // Release the merge so a hung shutdown can complete (and its thread join) for cleanup; the small
+  // chunks finish merging almost immediately once not slowed, freeing the pool worker for the
+  // starved flush.
+  slow_merge.store(false, std::memory_order_release);
+  sync_point->DisableProcessing();
+  threads.WaitAndStop(120s * kTimeMultiplier);
+
+  ASSERT_TRUE(shut_down)
+      << "tserver shutdown hung: a vector index compaction starved the flush-on-shutdown";
 }
 
 void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {
