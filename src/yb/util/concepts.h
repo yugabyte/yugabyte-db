@@ -13,10 +13,10 @@
 
 #pragma once
 
+#include <concepts>
 #include <type_traits>
 
 namespace yb {
-
 namespace concepts::internal {
 
 template <class, class>
@@ -55,5 +55,8 @@ concept ContainerType = requires (const T& t) {
 
 template <class Container, class T>
 concept ContainerOf = ContainerType<Container> && std::same_as<typename Container::value_type, T>;
+
+template <class T>
+concept MoveOnlyType = std::move_constructible<T> && !std::copy_constructible<T>;
 
 } // namespace yb

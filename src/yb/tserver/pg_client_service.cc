@@ -472,7 +472,7 @@ class LockablePgClientSession {
       // Session expired (e.g., backend killed). An in-flight Perform RPC
       // (e.g., slow BackfillIndex) may hold mutex_ for an unbounded time.
       // Defer the drain to the messenger thread pool so session_.StartShutdown()
-      // — which aborts the session's transactions — is not gated on that RPC.
+      // which aborts the session's transactions is not gated on that RPC.
       messenger_.ThreadPool().EnqueueFunctor([shared_this = shared_this_] {
         auto obj = shared_this.lock();
         if (!obj) {
@@ -716,6 +716,8 @@ class PgClientSessionLocker {
       : session_(std::move(session)), guard_(std::move(guard)) {}
 
   [[nodiscard]] PgClientSession* operator->() const { return session_.get(); }
+
+  [[nodiscard]] PgSessionGuard& guard() { return guard_; }
 
  private:
   std::shared_ptr<PgClientSession> session_;
@@ -3085,12 +3087,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       const YB_PG_CLIENT_METHOD_ARG(data, method, Request)& req, \
       YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, \
       rpc::RpcContext context) { \
-    const auto session = GetSession(req); \
+    auto session = GetSession(req); \
     if (!session.ok()) { \
       Respond(session.status(), resp, &context); \
       return; \
     } \
-    (*session)->method(req, resp, std::move(context)); \
+    (*session)->method(req, resp, std::move(context), session->guard()); \
   }
 
   BOOST_PP_SEQ_FOR_EACH(

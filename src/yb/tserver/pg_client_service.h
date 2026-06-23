@@ -57,7 +57,6 @@ class TserverXClusterContextIf;
     (DropTable) \
     (DropTablegroup) \
     (FetchData) \
-    (FinishTransaction) \
     (GetActiveTransactionList) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
@@ -124,6 +123,7 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (FinishTransaction) \
     (OpenTable) \
     (TriggerRelcacheInitConnection) \
     /**/

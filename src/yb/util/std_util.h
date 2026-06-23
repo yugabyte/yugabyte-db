@@ -15,10 +15,14 @@
 
 #include <algorithm>
 #include <future>
+#include <memory>
 #include <ranges>
+#include <tuple>
 #include <type_traits>
 
 #include "yb/gutil/stl_util.h"
+
+#include "yb/util/concepts.h"
 
 // Implementation of std functions we want to use, but cannot until we switch to newer C++.
 
@@ -143,6 +147,17 @@ template <class Container, class T>
 void AddIfMissing(Container& container, T&& value) {
   if (std::ranges::find(container, value) == container.end()) {
     EmplaceIntoContainer(container, std::forward<T>(value));
+  }
+}
+
+template <MoveOnlyType... Args>
+[[nodiscard]] auto MakeSharedFromMoveOnly(Args&&... args) {
+  if constexpr (sizeof...(Args) == 1) {
+    return std::make_shared<Args...>(std::forward<Args>(args)...);
+  } else {
+    static_assert(sizeof...(Args) > 1);
+    return std::make_shared<decltype(std::make_tuple(std::forward<Args>(args)...))>(
+        std::forward<Args>(args)...);
   }
 }
 

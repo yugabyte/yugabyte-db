@@ -31,6 +31,7 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
@@ -48,6 +49,7 @@ DECLARE_int32(replication_factor);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
+DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(db_filter_block_size_bytes);
@@ -158,6 +160,34 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(ShowEffectiveYBIsolationLevel)) 
 
   // TODO(read committed): test cases with "BEGIN" followed by "SET TRANSACTION ISOLATION LEVEL".
   // This can be done after #12494 is fixed.
+}
+
+class SmallRpcWorkersTest : public PgTxnTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
+    PgMiniTestBase::SetUp();
+  }
+};
+
+TEST_F_EX(PgTxnTest, ManyCommitsWithSmallRpcWorkers, SmallRpcWorkersTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, PRIMARY KEY(k ASC))"));
+  std::atomic<int> counter(0);
+  ThreadHolder thread_holder;
+  for ([[maybe_unused]] auto _  : std::views::iota(0, FLAGS_rpc_workers_limit * 2)) {
+    thread_holder.AddThread([this, &stop_flag = thread_holder.stop_flag(), &counter]() {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop_flag) {
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES($0)", ++counter));
+        std::this_thread::sleep_until(NextDiscreteTimePoint(500ms));
+        ASSERT_OK(conn.CommitTransaction());
+      }
+    });
+  }
+  thread_holder.WaitAndStop(5s);
+  ASSERT_GT(counter, FLAGS_rpc_workers_limit);
 }
 
 struct Configuration {
