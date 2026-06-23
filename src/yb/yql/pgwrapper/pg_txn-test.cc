@@ -608,6 +608,55 @@ TEST_F_EX(PgTxnTest, ReadAtMultipleTimestamps, PgReadCommittedTxnTest) {
   }
 }
 
+// Test that in READ COMMITTED isolation level, a transaction executing
+// a large number of statements (in the order of a few hundred thousand)
+// does not crash at transaction COMMIT time.
+// See issue https://github.com/yugabyte/yugabyte-db/issues/23742
+// Before the fix to 23742, a large number of statements
+// in a transaction running in READ COMMITTED isolation level
+// will lead to error "Thread stack size exceeded due to excessive recursion" and
+// result in a SIGSEGV crashing the backend process.
+
+TEST_F_EX(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(LargeNumberOfStatements), PgReadCommittedTxnTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr size_t kPayloadBytes = 1024;
+  ASSERT_OK(conn.Execute("CREATE TABLE tt_test (id INT PRIMARY KEY, val TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE tt_insert_log (id INT PRIMARY KEY, val TEXT)"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_write_large_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_insert_log SELECT id, val FROM new_table;
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+
+  // The AFTER INSERT trigger below allocates AfterTriggersTableData
+  // in CurTransactionContext in the function GetAfterTriggersTableData
+  // in trigger.c. This allocation in CurTransactionContext ensures
+  // that in AtSubCommit_Memory() in xact.c, the function does not
+  // MemoryContextDelete the CurTransactionContext trivially because
+  // it is empty. We need non empty CurTransactionContext for each
+  // internal savepoint created for each statement in a READ COMMITTED
+  // transaction in order to reproduce the backend crash due to
+  // stack overflow.
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_test_ins AFTER INSERT ON tt_test
+      REFERENCING NEW TABLE AS new_table
+      FOR EACH STATEMENT EXECUTE FUNCTION tt_write_large_insert()
+  )"));
+  const auto insert_query_template =
+      Format("INSERT INTO tt_test VALUES ($$0, repeat('x', $0))", kPayloadBytes);
+  // In order to reproduce the stack overflow we need num_stms to be
+  // about 385000. To avoid test timeouts, we use a smaller number of statements.
+  uint32_t num_stms = 10000;
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+  for (uint32_t idx = 0; idx < num_stms; ++idx) {
+    ASSERT_OK(conn.ExecuteFormat(insert_query_template, idx));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
 TEST_F(PgTxnTest, MultiInsertUpdate) {
   constexpr int kBig = 100000000;
 
