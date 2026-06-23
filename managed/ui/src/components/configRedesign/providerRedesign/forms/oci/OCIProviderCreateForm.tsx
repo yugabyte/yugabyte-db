@@ -601,7 +601,7 @@ const constructProviderPayload = async (
     sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
 
-  const imageBundles = constructImageBundlePayload(formValues);
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   const allAccessKeysPayload = constructAccessKeysCreatePayload(
     formValues.sshKeypairManagement,
