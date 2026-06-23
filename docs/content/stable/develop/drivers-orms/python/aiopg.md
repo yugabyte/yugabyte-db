@@ -31,27 +31,27 @@ type: docs
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link">
       <img src="/icons/yugabyte.svg">
-      Yugabyte Psycopg2
+      YB Psycopg 2
     </a>
   </li>
   <li >
     <a href="../yugabyte-psycopg3" class="nav-link">
       <img src="/icons/yugabyte.svg">
-      Yugabyte Psycopg3
+      YB Psycopg 3
     </a>
   </li>
 
   <li >
     <a href="../postgres-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg2
+      PG Psycopg 2
     </a>
   </li>
 
   <li >
     <a href="../postgres-psycopg3" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg3
+      PG Psycopg 3
     </a>
   </li>
 

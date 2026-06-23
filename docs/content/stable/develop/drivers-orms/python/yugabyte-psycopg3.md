@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Psycopg 3 Smart Driver for YSQL
+title: Yugabyte Psycopg 3 Smart Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
-description: Connect a Python application using YugabyteDB Psycopg 3 Smart Driver for YSQL
+description: Connect a Python application using Yugabyte Psycopg 3 Smart Driver for YSQL
 menu:
   stable_develop:
     identifier: yugabyte-psycopg3-driver
@@ -29,26 +29,26 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link">
-      <img src="/icons/yugabyte.svg" /i>
-      Yugabyte Psycopg2
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 2
     </a>
   </li>
   <li >
     <a href="../yugabyte-psycopg3" class="nav-link active">
-      <img src="/icons/yugabyte.svg" /i>
-      Yugabyte Psycopg 3
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 3
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg2
+      PG Psycopg 2
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg3" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg3
+      PG Psycopg 3
     </a>
   </li>
   <li >
@@ -61,11 +61,9 @@ type: docs
 
 The [Yugabyte Psycopg 3 smart driver](https://pypi.org/project/psycopg-yugabytedb/) is a Python driver for [YSQL](/stable/api/ysql/) built on the [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](/stable/develop/drivers-orms/smart-drivers/) features. The import name is `psycopg`, so no changes are needed on existing application code; opting in requires a single parameter on the connection string.
 
-This guide uses YSQL with the YugabyteDB Psycopg 3 smart driver.
-
 ## CRUD operations
 
-The following sections demonstrate how to perform common tasks required for Python application development using the YugabyteDB Psycopg 3 smart driver.
+The following sections demonstrate how to perform common tasks required for Python application development using the Yugabyte Psycopg 3 smart driver.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 

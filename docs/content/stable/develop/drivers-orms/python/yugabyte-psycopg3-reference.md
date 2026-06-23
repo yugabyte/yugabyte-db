@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Psycopg3 Smart Driver
+title: Yugabyte Psycopg 3 Smart Driver
 headerTitle: Python drivers
 linkTitle: Python drivers
-description: YugabyteDB Psycopg3 Smart Driver for YSQL
+description: Yugabyte Psycopg 3 Smart Driver for YSQL
 tags:
   other: ysql
 menu:
@@ -17,33 +17,33 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link">
-      <img src="/icons/yugabyte.svg" /i>
-      Yugabyte Psycopg2
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 2
     </a>
   </li>
   <li >
     <a href="../yugabyte-psycopg3-reference/" class="nav-link active">
-      <img src="/icons/yugabyte.svg" /i>
-      Yugabyte Psycopg 3
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 3
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg2-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg2
+      PG Psycopg 2
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg3-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg3
+      PG Psycopg 3
     </a>
   </li>
 </ul>
 
-Yugabyte Psycopg 3 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg 3 driver](https://github.com/psycopg/psycopg), with additional connection load balancing features.
+Yugabyte Psycopg 3 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg), with additional connection load balancing features.
 
-For more information on the YugabyteDB psycopg 3 smart driver, see the following:
+For more information on the Yugabyte Psycopg 3 smart driver, see the following:
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [CRUD operations](../yugabyte-psycopg3/)
@@ -52,7 +52,7 @@ For more information on the YugabyteDB psycopg 3 smart driver, see the following
 
 ## Download the driver dependency
 
-The YugabyteDB Psycopg 3 smart driver requires Python 3.10 or later and system [libpq](https://www.postgresql.org/docs/current/libpq.html) installed (the same runtime requirement as upstream psycopg 3's pure-Python distribution). For installation details, see the [upstream psycopg 3 documentation](https://www.psycopg.org/psycopg3/docs/basic/install.html).
+The Yugabyte Psycopg 3 smart driver requires Python 3.10 or later and system [libpq](https://www.postgresql.org/docs/current/libpq.html) installed (the same runtime requirement as upstream psycopg 3's pure-Python distribution). For installation details, see the [upstream psycopg 3 documentation](https://www.psycopg.org/psycopg3/docs/basic/install.html).
 
 The fork is published on [PyPI](https://pypi.org/project/psycopg-yugabytedb/). Install it like any other Python package using pip:
 
