@@ -284,7 +284,7 @@ If the connection fails, verify:
 
 ## Limitations
 
-- Currently, [PostgreSQL psycopg 3 driver](https://github.com/psycopg/psycopg) and [YugabyteDB psycopg 3 smart driver](https://github.com/yugabyte/psycopg) _cannot_ be used in the same environment. Both write to `site-packages/psycopg/`. If a previous environment has upstream psycopg (or psycopg-binary, psycopg-c) installed, uninstall it before installing the fork, or use a fresh virtual environment.
+- Currently, [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg) and [YugabyteDB Psycopg 3 smart driver](https://github.com/yugabyte/psycopg) _cannot_ be used in the same environment. Both write to `site-packages/psycopg/`. If a previous environment has upstream psycopg (or psycopg-binary, psycopg-c) installed, uninstall it before installing the fork, or use a fresh virtual environment.
 
 - Pure Python distribution only. The C-accelerated (psycopg-yugabytedb-c) and pre-built binary (psycopg-yugabytedb-binary) distributions are not published yet. The pure-Python distribution requires system libpq.
 
