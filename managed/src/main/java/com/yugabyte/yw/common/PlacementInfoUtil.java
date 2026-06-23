@@ -57,6 +57,7 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -540,8 +541,12 @@ public class PlacementInfoUtil {
     applyDedicatedModeChanges(universe, cluster, taskParams);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
-    checkAndSetPerAZRF(
-        cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID, false);
+    if (clusterOpType == ClusterOperationType.CREATE) {
+      setPerAZRF(cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID);
+    } else {
+      checkAndSetPerAZRF(
+          cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID, false);
+    }
     LOG.info("Final Placement info: {}.", cluster.placementInfo);
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
@@ -867,6 +872,7 @@ public class PlacementInfoUtil {
     Set<String> zeroZones = new HashSet<>();
     Set<String> incorrectlyPlacedReplicas = new HashSet<>();
     AtomicInteger totalReplicas = new AtomicInteger();
+    AtomicBoolean result = new AtomicBoolean(true);
     placementInfo
         .azInfoStream()
         .forEach(
@@ -874,11 +880,27 @@ public class PlacementInfoUtil {
               PlacementAZ az = azInfo.placementAZ;
               zoneCount.incrementAndGet();
               if (az.replicationFactor < 0) {
+                String message = "Cannot have negative number of replicas: " + az.replicationFactor;
+                LOG.error(message);
                 if (throwInIncorrect) {
-                  throw new IllegalArgumentException(
-                      "Cannot have negative number of replicas: " + az.replicationFactor);
+                  throw new IllegalArgumentException(message);
                 } else {
-                  az.replicationFactor = 0;
+                  result.set(false);
+                }
+              }
+              if (az.replicationFactor > az.numNodesInAZ) {
+                String message =
+                    "Cannot have number of replicas "
+                        + az.replicationFactor
+                        + " greater than the number of nodes "
+                        + az.numNodesInAZ
+                        + " in "
+                        + az.name;
+                LOG.error(message);
+                if (throwInIncorrect) {
+                  throw new IllegalArgumentException(message);
+                } else {
+                  result.set(false);
                 }
               }
               if (az.replicationFactor == 0) {
@@ -889,13 +911,16 @@ public class PlacementInfoUtil {
               }
               totalReplicas.addAndGet(az.replicationFactor);
             });
+    if (!result.get()) {
+      return false;
+    }
     // Allowing replicas only in default region (if exist)
     if (!incorrectlyPlacedReplicas.isEmpty()) {
       String message =
           "Incorrectly placed replicas in zones: "
               + incorrectlyPlacedReplicas
               + ", should be in default region only";
-      LOG.debug(message);
+      LOG.error(message);
       if (throwInIncorrect) {
         throw new IllegalStateException(message);
       }
@@ -907,7 +932,7 @@ public class PlacementInfoUtil {
     }
     if (!zeroZones.isEmpty() && zoneCount.get() <= rf) {
       String message = "Some zones " + zeroZones + " has zero replicas";
-      LOG.debug(message);
+      LOG.error(message);
       if (throwInIncorrect) {
         throw new IllegalStateException(message);
       }
@@ -916,7 +941,7 @@ public class PlacementInfoUtil {
     if (totalReplicas.get() != rf) {
       String message =
           "Illegal number of replicas: current " + totalReplicas.get() + " but should be " + rf;
-      LOG.debug(message);
+      LOG.error(message);
       if (throwInIncorrect) {
         throw new IllegalStateException(message);
       }
@@ -1705,7 +1730,6 @@ public class PlacementInfoUtil {
       LOG.error("{}. PlacementAZ={}, nodesAZ={}", msg, placementAZToNodeMap, nodesAZToNodeMap);
       throw new IllegalStateException(msg);
     }
-
     for (NodeDetails node : nodes) {
       String nodeType = node.cloudInfo.instance_type;
       String instanceType = cluster.userIntent.getInstanceTypeForNode(node);
@@ -2790,11 +2814,18 @@ public class PlacementInfoUtil {
    */
   public static UUID getDefaultRegion(UniverseDefinitionTaskParams taskParams) {
     for (Cluster cluster : taskParams.clusters) {
-      if (cluster.clusterType == ClusterType.PRIMARY
-          && cluster.placementInfo != null
-          && !CollectionUtils.isEmpty(cluster.placementInfo.cloudList)) {
-        return cluster.placementInfo.cloudList.get(0).defaultRegion;
+      if (cluster.clusterType == ClusterType.PRIMARY) {
+        return getDefaultRegion(cluster);
       }
+    }
+    return null;
+  }
+
+  public static UUID getDefaultRegion(Cluster cluster) {
+    if (cluster.clusterType == ClusterType.PRIMARY
+        && cluster.placementInfo != null
+        && !CollectionUtils.isEmpty(cluster.placementInfo.cloudList)) {
+      return cluster.placementInfo.cloudList.get(0).defaultRegion;
     }
     return null;
   }
