@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: trust-authentication
     parent: authentication
-    weight: 734
+    weight: 735
 type: docs
 ---
 
