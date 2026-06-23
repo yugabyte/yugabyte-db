@@ -1893,7 +1893,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
       req->tablet_id(), delete_type,
       tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
       cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code,
-      std::move(txn_id));
+      std::move(txn_id), resp);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;
