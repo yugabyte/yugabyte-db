@@ -14644,6 +14644,12 @@ void PopulateTabletMetadata(
     }
   }
 
+  // Returns a non-OK Result for YCQL/system tables, which have no PG OID -- leave pg_table_oid
+  // unset there.
+  if (auto pg_table_oid = table->GetPgTableOid(); pg_table_oid.ok()) {
+    tablet_metadata->set_pg_table_oid(*pg_table_oid);
+  }
+
   std::string leader_address;
   auto replica_locations = tablet->GetReplicaLocations();
   for (const auto& [ts_uuid, replica] : *replica_locations) {
