@@ -1675,6 +1675,7 @@ ReadCommonPlan(Plan *local_node)
 	READ_STRING_FIELD(ybInheritedHintAlias);
 	READ_BOOL_FIELD(ybIsHinted);
 	READ_BOOL_FIELD(ybHasHintedUid);
+	READ_BOOL_FIELD(ybReadAheadCapable);
 }
 
 /*

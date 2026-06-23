@@ -372,6 +372,7 @@ _outPlanInfo(StringInfo str, const Plan *node)
 	WRITE_STRING_FIELD(ybInheritedHintAlias);
 	WRITE_BOOL_FIELD(ybIsHinted);
 	WRITE_BOOL_FIELD(ybHasHintedUid);
+	WRITE_BOOL_FIELD(ybReadAheadCapable);
 }
 
 /*

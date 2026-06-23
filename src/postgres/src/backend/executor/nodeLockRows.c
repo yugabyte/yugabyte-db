@@ -418,6 +418,9 @@ ExecLockRows(PlanState *pstate)
 			if (remain < max_read_ahead)
 				max_read_ahead = remain;
 		}
+		Instrumentation *instr = pstate->instrument;
+		if (instr && instr->yb_instr.max_read_ahead < max_read_ahead)
+			instr->yb_instr.max_read_ahead = max_read_ahead;
 		for (int i = 0; i < max_read_ahead; ++i)
 		{
 			YbcIsExplicitlyLockedRowSkippedCheckHandleOptional handle = {};
@@ -438,21 +441,11 @@ ExecLockRows(PlanState *pstate)
 }
 
 static bool
-YbIsSkipLockedReadAheadOptimizationAllowedImpl(const EState *estate)
+YbIsSkipLockedReadAheadOptimizationAllowed(const LockRows *node, const EState *estate)
 {
-	/*
-	 * The usage of read ahead optimization depends on query complexity.
-	 * Till the moment feature goes to public it is possible to use optimization
-	 * for all the queries.
-	 */
-	return true;
-}
-
-static bool
-YbIsSkipLockedReadAheadOptimizationAllowed(const EState *estate)
-{
-	return YbIsSkipLockedReadAheadOptimizationAllowedImpl(estate) ||
-		   *YBCGetGFlags()->TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization;
+	return estate->yb_read_ahead_allowed &&
+		  (node->plan.ybReadAheadCapable ||
+		   *YBCGetGFlags()->TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization);
 }
 
 /* ----------------------------------------------------------------
@@ -576,7 +569,7 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 		if (yb_has_skip_locked &&
 			yb_explicit_row_locking_batch_size > 1 &&
 			yb_explicit_row_lock_skip_locked_max_read_ahead > 1 &&
-			YbIsSkipLockedReadAheadOptimizationAllowed(estate))
+			YbIsSkipLockedReadAheadOptimizationAllowed(node, estate))
 		{
 			TupleDesc desc = outerPlanState(lrstate)->ps_ResultTupleDesc;
 			yb_info->buffered_slots = tuplestore_begin_heap(false, false, work_mem);

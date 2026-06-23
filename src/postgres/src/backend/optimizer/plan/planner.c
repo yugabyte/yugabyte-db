@@ -278,6 +278,51 @@ static void ybCalculatePlanId(PlannedStmt *plannedStmt);
 static int ybCmpRangeTblEntry(const ListCell *lc1, const ListCell *lc2);
 static int *ybBuildRtIndexMap(List *rtable, List *sortedRtable);
 
+static void
+YbApplyReadAheadCapable(Plan *node, bool is_limited)
+{
+	switch(nodeTag(node))
+	{
+		case T_LockRows:
+			node->ybReadAheadCapable = true;
+			break;
+		default:
+			break;
+	}
+}
+
+static void
+YbSetupReadAheadCapable(Plan *node)
+{
+	YbApplyReadAheadCapable(node, /* is_limited = */ false);
+	switch(nodeTag(node))
+	{
+		case T_Limit:
+			/*
+			 * The Limit node blocks read ahead for all bottom nodes,
+			 * except direct sub node aware of limit.
+			 */
+			Assert(node->lefttree);
+			YbApplyReadAheadCapable(node->lefttree, /* is_limited = */ true);
+			return;
+		case T_SubqueryScan:
+			YbSetupReadAheadCapable(((SubqueryScan *) node)->subplan);
+			break;
+		default:
+			break;
+	}
+	if (node->lefttree)
+		YbSetupReadAheadCapable(node->lefttree);
+	if (node->righttree)
+		YbSetupReadAheadCapable(node->righttree);
+}
+
+static void
+YbSetupPlan(Plan *plan)
+{
+	YbSetupReadAheadCapable(plan);
+}
+
 /*****************************************************************************
  *
  *	   Query optimizer entry point
@@ -500,6 +545,9 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	best_path = get_cheapest_fractional_path(final_rel, tuple_fraction);
 
 	top_plan = create_plan(root, best_path);
+
+	if (IsYugaByteEnabled())
+		YbSetupPlan(top_plan);
 
 	/*
 	 * If creating a plan for a scrollable cursor, make sure it can run
