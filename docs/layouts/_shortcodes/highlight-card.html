@@ -6,10 +6,10 @@
 {{ $badgeText  := "GA" }}
 {{ if eq $maturity "ea" }}
   {{ $badgeClass = "early-access" }}
-  {{ $badgeText  = "Early Access" }}
+  {{ $badgeText  = "EA" }}
 {{ else if eq $maturity "tp" }}
   {{ $badgeClass = "tech-preview" }}
-  {{ $badgeText  = "Tech Preview" }}
+  {{ $badgeText  = "TP" }}
 {{ end }}
 
 <div class="card highlight-card">
