@@ -1279,7 +1279,7 @@ main(int argc, char **argv)
 		collectSecLabels(fout);
 
 	/* For binary upgrade mode, collect required pg_class information. */
-	if (dopt.binary_upgrade)
+	if (dopt.binary_upgrade || dopt.include_yb_metadata)
 		collectBinaryUpgradeClassOids(fout);
 
 	/* Collect sequence information. */
@@ -3812,7 +3812,7 @@ dumpDatabase(Archive *fout)
 	 * relfilenode, too.  pg_upgrade can't copy/link the files from older
 	 * versions because aclitem (needed by pg_largeobject_metadata.lomacl)
 	 * changed its storage format in v16.
-	 * 
+	 *
 	 * YB: We don't support pg_largeobject and thus don't need to upgrade this
 	 * table.
 	 */
@@ -3969,7 +3969,11 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 	res = ExecuteSqlQuery(AH, buf->data, PGRES_TUPLES_OK);
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+	{
+		/* YB: these meta commands must run outside restricted mode. */
+		ybAppendUnrestrict(outbuf, yb_dopt->restrict_key);
 		appendPQExpBufferStr(outbuf, "\\if :use_roles\n");
+	}
 
 	for (int i = 0; i < PQntuples(res); i++)
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 1),
@@ -3978,7 +3982,10 @@ dumpDatabaseConfig(Archive *AH, PQExpBuffer outbuf,
 							   yb_dopt->yb_dump_role_checks, outbuf);
 
 	if (yb_dopt->include_yb_metadata && PQntuples(res) > 0)
+	{
 		appendPQExpBufferStr(outbuf, "\\endif\n");
+		ybAppendRestrict(outbuf, yb_dopt->restrict_key);
+	}
 
 	PQclear(res);
 
@@ -4651,6 +4658,8 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 		PQExpBuffer yb_source_sql = query;
 
 		query = createPQExpBuffer();
+		/* YB: these meta commands must run outside restricted mode. */
+		ybAppendUnrestrict(query, dopt->restrict_key);
 		appendPQExpBufferStr(query, "\\if :use_roles\n");
 
 		if (dopt->yb_dump_role_checks)
@@ -4665,6 +4674,7 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 			appendPQExpBufferStr(query, yb_source_sql->data);
 
 		appendPQExpBufferStr(query, "\\endif\n");
+		ybAppendRestrict(query, dopt->restrict_key);
 		destroyPQExpBuffer(yb_source_sql);
 	}
 
@@ -17117,7 +17127,10 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		if (dopt->include_yb_metadata)
 		{
 			yb_use_roles_sql = createPQExpBuffer();
+			/* YB: these meta commands must run outside restricted mode. */
+			ybAppendUnrestrict(yb_use_roles_sql, dopt->restrict_key);
 			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+			ybAppendRestrict(yb_use_roles_sql, dopt->restrict_key);
 		}
 
 		aclDeps[nDeps++] = objDumpId;
@@ -17799,7 +17812,7 @@ dumpTablegroup(Archive *fout, const YbTablegroupInfo *tginfo)
 
 	if (tginfo->dobj.dump & DUMP_COMPONENT_ACL)
 		dumpACL(fout, tginfo->dobj.dumpId, InvalidDumpId, "TABLEGROUP",
-				tginfo->dobj.name, NULL, NULL, NULL /* tag */,
+				tginfo->dobj.name, NULL, NULL, NULL, /* tag */
 				tginfo->rolname, &tginfo->dacl);
 
 	destroyPQExpBuffer(q);

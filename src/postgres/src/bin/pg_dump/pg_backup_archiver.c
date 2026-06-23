@@ -3483,6 +3483,32 @@ _tocEntryIsACL(TocEntry *te)
 }
 
 /*
+ * YB: pg_dump emits \restrict/\unrestrict (CVE-2025-8714) to block psql
+ * meta-command injection from attacker-controlled dump content. YB's own
+ * control-flow meta-commands (\if/\else/\endif/\set/\gset/\echo) must run
+ * outside restricted mode, like the \connect handling in _printTocEntry.
+ * Bracket each such block with these helpers; only YB-generated, properly
+ * escaped content may appear between them.
+ */
+static void
+ybBeginUnrestrictedMeta(ArchiveHandle *AH)
+{
+	RestoreOptions *ropt = AH->public.ropt;
+
+	if (ropt && ropt->restrict_key)
+		ahprintf(AH, "\\unrestrict %s\n", ropt->restrict_key);
+}
+
+static void
+ybEndUnrestrictedMeta(ArchiveHandle *AH)
+{
+	RestoreOptions *ropt = AH->public.ropt;
+
+	if (ropt && ropt->restrict_key)
+		ahprintf(AH, "\\restrict %s\n", ropt->restrict_key);
+}
+
+/*
  * Issue SET commands for parameters that we want to have set the same way
  * at all times during execution of a restore script.
  */
@@ -3543,6 +3569,9 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 		if (AH->public.dopt->include_yb_metadata && first_run)
 		{
 			first_run = false;
+
+			/* YB: these meta commands must run outside restricted mode. */
+			ybBeginUnrestrictedMeta(AH);
 			ahprintf(AH,
 					 "\n-- Set variable use_tablespaces (if not already set)\n"
 					 "\\if :{?use_tablespaces}\n"
@@ -3570,6 +3599,8 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 						 "\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
 				YbBackwardCompatibleSetGuc(AH, "yb_disable_auto_analyze", "on", true);
 			}
+
+			ybEndUnrestrictedMeta(AH);
 		}
 	}
 
@@ -3840,11 +3871,15 @@ _selectTablespace(ArchiveHandle *AH, const char *tablespace)
 		PQclear(res);
 	}
 	else if (AH->public.dopt->include_yb_metadata)
+	{
+		ybBeginUnrestrictedMeta(AH);
 		ahprintf(AH,
 				 "\\if :use_tablespaces\n"
 				 "    %s;\n"
 				 "\\endif\n\n",
 				 qry->data);
+		ybEndUnrestrictedMeta(AH);
+	}
 	else
 		ahprintf(AH, "%s;\n\n", qry->data);
 
@@ -4323,79 +4358,79 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 		 */
 #if 0
 		if (strcmp(te->desc, "AGGREGATE") == 0 ||
-		    strcmp(te->desc, "BLOB") == 0 ||
-		    strcmp(te->desc, "COLLATION") == 0 ||
-		    strcmp(te->desc, "CONVERSION") == 0 ||
-		    strcmp(te->desc, "DATABASE") == 0 ||
-		    strcmp(te->desc, "DOMAIN") == 0 ||
-		    strcmp(te->desc, "FUNCTION") == 0 ||
-		    strcmp(te->desc, "OPERATOR") == 0 ||
-		    strcmp(te->desc, "OPERATOR CLASS") == 0 ||
-		    strcmp(te->desc, "OPERATOR FAMILY") == 0 ||
-		    strcmp(te->desc, "PROCEDURE") == 0 ||
-		    strcmp(te->desc, "PROCEDURAL LANGUAGE") == 0 ||
-		    strcmp(te->desc, "SCHEMA") == 0 ||
-		    strcmp(te->desc, "EVENT TRIGGER") == 0 ||
-		    strcmp(te->desc, "TABLE") == 0 ||
-		    strcmp(te->desc, "TABLEGROUP") == 0 ||  /* YB */
-		    strcmp(te->desc, "TYPE") == 0 ||
-		    strcmp(te->desc, "VIEW") == 0 ||
-		    strcmp(te->desc, "MATERIALIZED VIEW") == 0 ||
-		    strcmp(te->desc, "SEQUENCE") == 0 ||
-		    strcmp(te->desc, "FOREIGN TABLE") == 0 ||
-		    strcmp(te->desc, "TEXT SEARCH DICTIONARY") == 0 ||
-		    strcmp(te->desc, "TEXT SEARCH CONFIGURATION") == 0 ||
-		    strcmp(te->desc, "FOREIGN DATA WRAPPER") == 0 ||
-		    strcmp(te->desc, "SERVER") == 0 ||
-		    strcmp(te->desc, "STATISTICS") == 0 ||
-		    strcmp(te->desc, "PUBLICATION") == 0 ||
-		    strcmp(te->desc, "SUBSCRIPTION") == 0)
+			strcmp(te->desc, "BLOB") == 0 ||
+			strcmp(te->desc, "COLLATION") == 0 ||
+			strcmp(te->desc, "CONVERSION") == 0 ||
+			strcmp(te->desc, "DATABASE") == 0 ||
+			strcmp(te->desc, "DOMAIN") == 0 ||
+			strcmp(te->desc, "FUNCTION") == 0 ||
+			strcmp(te->desc, "OPERATOR") == 0 ||
+			strcmp(te->desc, "OPERATOR CLASS") == 0 ||
+			strcmp(te->desc, "OPERATOR FAMILY") == 0 ||
+			strcmp(te->desc, "PROCEDURE") == 0 ||
+			strcmp(te->desc, "PROCEDURAL LANGUAGE") == 0 ||
+			strcmp(te->desc, "SCHEMA") == 0 ||
+			strcmp(te->desc, "EVENT TRIGGER") == 0 ||
+			strcmp(te->desc, "TABLE") == 0 ||
+			strcmp(te->desc, "TABLEGROUP") == 0 ||  /* YB */
+			strcmp(te->desc, "TYPE") == 0 ||
+			strcmp(te->desc, "VIEW") == 0 ||
+			strcmp(te->desc, "MATERIALIZED VIEW") == 0 ||
+			strcmp(te->desc, "SEQUENCE") == 0 ||
+			strcmp(te->desc, "FOREIGN TABLE") == 0 ||
+			strcmp(te->desc, "TEXT SEARCH DICTIONARY") == 0 ||
+			strcmp(te->desc, "TEXT SEARCH CONFIGURATION") == 0 ||
+			strcmp(te->desc, "FOREIGN DATA WRAPPER") == 0 ||
+			strcmp(te->desc, "SERVER") == 0 ||
+			strcmp(te->desc, "STATISTICS") == 0 ||
+			strcmp(te->desc, "PUBLICATION") == 0 ||
+			strcmp(te->desc, "SUBSCRIPTION") == 0)
 		{
-		    appendPQExpBufferStr(temp, "ALTER ");
-		    _getObjectDescription(temp, te);
-		    appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(te->owner));
-		
-		    if (AH->public.dopt->include_yb_metadata)
-		    {
-		        ahprintf(AH, "\\if :use_roles\n");
-		        if (AH->public.dopt->yb_dump_role_checks)
-		        {
-		            PQExpBuffer role_buf = createPQExpBuffer();
-		
-		            appendStringLiteralAHX(role_buf, te->owner, AH);
-		            ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
-		                     ") AS role_exists \\gset\n"
-		                     "\\if :role_exists\n"
-		                     "    %s\n"
-		                     "\\else\n"
-		                     "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
-		                     "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
-		            destroyPQExpBuffer(role_buf);
-		        }
-		        else
-		            ahprintf(AH, "    %s\n", temp->data);
-		
-		        ahprintf(AH, "\\endif\n\n");
-		    }
-		    else
-		        ahprintf(AH, "%s\n\n", temp->data);
-		
-		    destroyPQExpBuffer(temp);
+			appendPQExpBufferStr(temp, "ALTER ");
+			_getObjectDescription(temp, te);
+			appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(te->owner));
+
+			if (AH->public.dopt->include_yb_metadata)
+			{
+				ahprintf(AH, "\\if :use_roles\n");
+				if (AH->public.dopt->yb_dump_role_checks)
+				{
+					PQExpBuffer role_buf = createPQExpBuffer();
+
+					appendStringLiteralAHX(role_buf, te->owner, AH);
+					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
+							 ") AS role_exists \\gset\n"
+							 "\\if :role_exists\n"
+							 "    %s\n"
+							 "\\else\n"
+							 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
+							 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
+					destroyPQExpBuffer(role_buf);
+				}
+				else
+					ahprintf(AH, "    %s\n", temp->data);
+
+				ahprintf(AH, "\\endif\n\n");
+			}
+			else
+				ahprintf(AH, "%s\n\n", temp->data);
+
+			destroyPQExpBuffer(temp);
 		}
 		else if (strcmp(te->desc, "CAST") == 0 ||
-		         strcmp(te->desc, "CHECK CONSTRAINT") == 0 ||
-		         strcmp(te->desc, "CONSTRAINT") == 0 ||
-		         strcmp(te->desc, "DATABASE PROPERTIES") == 0 ||
-		         strcmp(te->desc, "DEFAULT") == 0 ||
-		         strcmp(te->desc, "FK CONSTRAINT") == 0 ||
-		         strcmp(te->desc, "INDEX") == 0 ||
-		         strcmp(te->desc, "RULE") == 0 ||
-		         strcmp(te->desc, "TRIGGER") == 0 ||
-		         strcmp(te->desc, "ROW SECURITY") == 0 ||
-		         strcmp(te->desc, "POLICY") == 0 ||
-		         strcmp(te->desc, "USER MAPPING") == 0)
+				 strcmp(te->desc, "CHECK CONSTRAINT") == 0 ||
+				 strcmp(te->desc, "CONSTRAINT") == 0 ||
+				 strcmp(te->desc, "DATABASE PROPERTIES") == 0 ||
+				 strcmp(te->desc, "DEFAULT") == 0 ||
+				 strcmp(te->desc, "FK CONSTRAINT") == 0 ||
+				 strcmp(te->desc, "INDEX") == 0 ||
+				 strcmp(te->desc, "RULE") == 0 ||
+				 strcmp(te->desc, "TRIGGER") == 0 ||
+				 strcmp(te->desc, "ROW SECURITY") == 0 ||
+				 strcmp(te->desc, "POLICY") == 0 ||
+				 strcmp(te->desc, "USER MAPPING") == 0)
 		{
-		    /* these object types don't have separate owners */
+			/* these object types don't have separate owners */
 		}
 #endif
 	}

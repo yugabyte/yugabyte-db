@@ -1138,3 +1138,24 @@ valid_restrict_key(const char *restrict_key)
 		restrict_key[0] != '\0' &&
 		strspn(restrict_key, restrict_chars) == strlen(restrict_key);
 }
+
+/*
+ * YB: pg19 wraps plain-text dumps in psql restricted mode (\restrict,
+ * CVE-2025-8714), which rejects all backslash meta-commands. YB's own
+ * control-flow meta-commands (\if/\else/\endif/\set/\gset/\echo) must run
+ * outside restricted mode; bracket each such block with these. No-op when
+ * there is no restrict key. Shared by pg_dump and pg_dumpall.
+ */
+void
+ybAppendUnrestrict(PQExpBuffer buf, const char *restrict_key)
+{
+	if (restrict_key)
+		appendPQExpBuffer(buf, "\\unrestrict %s\n", restrict_key);
+}
+
+void
+ybAppendRestrict(PQExpBuffer buf, const char *restrict_key)
+{
+	if (restrict_key)
+		appendPQExpBuffer(buf, "\\restrict %s\n", restrict_key);
+}

@@ -74,6 +74,15 @@ extern void create_or_open_dir(const char *dirname);
 extern char *generate_restrict_key(void);
 extern bool valid_restrict_key(const char *restrict_key);
 
+/*
+ * YB: append psql \unrestrict / \restrict meta-commands (CVE-2025-8714) to
+ * bracket a YB-generated control-flow meta-command block (\if/\set/\gset/
+ * \echo) so it runs outside restricted mode. Shared by pg_dump and pg_dumpall.
+ * No-op when restrict_key is NULL.
+ */
+extern void ybAppendUnrestrict(PQExpBuffer buf, const char *restrict_key);
+extern void ybAppendRestrict(PQExpBuffer buf, const char *restrict_key);
+
 extern void YBWwrapInRoleChecks(PGconn *conn,
 								PQExpBuffer sql, const char *op_name,
 								const char *role_name1, const char *role_name2,

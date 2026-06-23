@@ -24,7 +24,7 @@ DEFINE_RUNTIME_bool(ysql_clone_disable_connections, true,
 
 DEFINE_RUNTIME_bool(ysql_clone_copy_pg_statistics, true,
                     "When true, clone operations include pg_statistic data by passing "
-                    "--with-statistics to ysql_dump.");
+                    "--statistics to ysql_dump.");
 
 namespace yb {
 
@@ -55,14 +55,19 @@ Result<std::string> YsqlBinaryRunner::Run(const std::optional<std::vector<std::s
 Result<std::string> YsqlDumpRunner::DumpSchemaAsOfTime(
     const std::string& db_name, const std::optional<HybridTime>& read_time) {
   std::vector<std::string> args = {
-      "--schema-only", "--serializable-deferrable", "--create", "--include-yb-metadata", db_name};
+      "--serializable-deferrable", "--create", "--include-yb-metadata", db_name};
   if (read_time.has_value()) {
     std::string read_time_flag =
         "--read-time=" + std::to_string(read_time->GetPhysicalValueMicros());
     args.push_back(read_time_flag);
   }
   if (FLAGS_ysql_clone_copy_pg_statistics) {
-    args.push_back("--with-statistics");
+    // --no-data (not --schema-only): ysql_dump rejects --statistics combined with --schema-only;
+    // --no-data dumps schema + statistics while still excluding table data.
+    args.push_back("--no-data");
+    args.push_back("--statistics");
+  } else {
+    args.push_back("--schema-only");
   }
   return Run(args);
 }

@@ -1164,12 +1164,21 @@ dumpRoles(PGconn *conn)
 		fprintf(OPF, "--\n-- Roles\n--\n\n");
 
 		if (include_yb_metadata)
-			fprintf(OPF,
-					"-- Set variable ignore_existing_roles (if not already set)\n"
-					"\\if :{?ignore_existing_roles}\n"
-					"\\else\n"
-					"\\set ignore_existing_roles false\n"
-					"\\endif\n\n");
+		{
+			/* YB: these meta commands must run outside restricted mode. */
+			PQExpBuffer pre = createPQExpBuffer();
+
+			ybAppendUnrestrict(pre, restrict_key);
+			appendPQExpBufferStr(pre,
+								 "-- Set variable ignore_existing_roles (if not already set)\n"
+								 "\\if :{?ignore_existing_roles}\n"
+								 "\\else\n"
+								 "\\set ignore_existing_roles false\n"
+								 "\\endif\n");
+			ybAppendRestrict(pre, restrict_key);
+			fprintf(OPF, "%s\n", pre->data);
+			destroyPQExpBuffer(pre);
+		}
 	}
 
 	for (i = 0; i < PQntuples(res); i++)
@@ -1257,6 +1266,8 @@ dumpRoles(PGconn *conn)
 			{
 				yb_need_endif = true;
 				yb_indent = "    ";
+				/* YB: these meta commands must run outside restricted mode. */
+				ybAppendUnrestrict(buf, restrict_key);
 				appendPQExpBuffer(buf,
 								  "\\set role_exists false\n"
 								  "\\if :ignore_existing_roles\n"
@@ -1341,7 +1352,11 @@ dumpRoles(PGconn *conn)
 							 seclabel_buf, yb_indent);
 
 		if (yb_need_endif)
+		{
 			appendPQExpBufferStr(buf, "\\endif\n");
+			/* YB: close the unrestricted region opened for this role. */
+			ybAppendRestrict(buf, restrict_key);
+		}
 
 		if (include_yb_metadata)
 			appendPQExpBufferStr(buf, "\n");
@@ -1695,11 +1710,11 @@ dumpRoleMembership(PGconn *conn)
 			appendPQExpBuffer(yb_sql, " GRANTED BY %s", fmtId(yb_grantor));
 		}
 		appendPQExpBufferStr(yb_sql, ";\n");
-		
+
 		if (yb_dump_role_checks)
 		{
 			PQExpBuffer yb_source_sql = yb_sql;
-		
+
 			yb_sql = createPQExpBuffer();
 			YBWwrapInRoleChecks(conn, yb_source_sql, "grant privilege",
 								member, /* role1 */
@@ -1709,7 +1724,7 @@ dumpRoleMembership(PGconn *conn)
 								yb_sql);
 			destroyPQExpBuffer(yb_source_sql);
 		}
-		
+
 		fprintf(OPF, "%s", yb_sql->data);
 		destroyPQExpBuffer(yb_sql);
 #endif
@@ -1885,12 +1900,21 @@ dumpTablespaces(PGconn *conn)
 		fprintf(OPF, "--\n-- Tablespaces\n--\n\n");
 
 		if (include_yb_metadata)
-			fprintf(OPF,
-					"-- Set variable ignore_existing_tablespaces (if not already set)\n"
-					"\\if :{?ignore_existing_tablespaces}\n"
-					"\\else\n"
-					"\\set ignore_existing_tablespaces false\n"
-					"\\endif\n\n");
+		{
+			/* YB: these meta commands must run outside restricted mode. */
+			PQExpBuffer pre = createPQExpBuffer();
+
+			ybAppendUnrestrict(pre, restrict_key);
+			appendPQExpBufferStr(pre,
+								 "-- Set variable ignore_existing_tablespaces (if not already set)\n"
+								 "\\if :{?ignore_existing_tablespaces}\n"
+								 "\\else\n"
+								 "\\set ignore_existing_tablespaces false\n"
+								 "\\endif\n");
+			ybAppendRestrict(pre, restrict_key);
+			fprintf(OPF, "%s\n", pre->data);
+			destroyPQExpBuffer(pre);
+		}
 	}
 
 	for (i = 0; i < PQntuples(res); i++)
@@ -1919,6 +1943,9 @@ dumpTablespaces(PGconn *conn)
 		}
 
 		if (include_yb_metadata)
+		{
+			/* YB: these meta commands must run outside restricted mode. */
+			ybAppendUnrestrict(buf, restrict_key);
 			appendPQExpBuffer(buf,
 							  "\\set tablespace_exists false\n"
 							  "\\if :ignore_existing_tablespaces\n"
@@ -1928,6 +1955,7 @@ dumpTablespaces(PGconn *conn)
 							  "\\if :tablespace_exists\n"
 							  "    \\echo 'Tablespace %s already exists.'\n"
 							  "\\else\n    ", fspcname, fspcname);
+		}
 
 		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
@@ -1956,7 +1984,11 @@ dumpTablespaces(PGconn *conn)
 			appendPQExpBufferStr(buf, ";\n");
 
 		if (include_yb_metadata)
+		{
 			appendPQExpBufferStr(buf, "\\endif\n");
+			/* YB: close the unrestricted region opened for this tablespace. */
+			ybAppendRestrict(buf, restrict_key);
+		}
 
 		/* tablespaces can't have initprivs */
 
