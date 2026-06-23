@@ -32,6 +32,14 @@
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_lsm_metrics.h"
 
+namespace yb {
+
+class PriorityThreadPoolToken;
+using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
+class PriorityThreadPoolSuspender;
+
+}
+
 namespace yb::vector_index {
 
 class VectorLSMFileMetaData;
@@ -248,9 +256,14 @@ class VectorLSM {
   CompactionScope PickChunksForCompaction() const EXCLUDES(mutex_);
 
   // Returns new chunk - a product of input chunks compaction; the new chunk is saved to a disk.
-  Result<ImmutableChunkPtr> DoCompactChunks(const ImmutableChunkPtrs& input_chunks);
+  // The suspender (may be null) lets the long-running merge yield its priority thread pool worker
+  // to higher priority tasks (e.g. flushes) instead of holding it for the whole compaction.
+  Result<ImmutableChunkPtr> DoCompactChunks(
+      const ImmutableChunkPtrs& input_chunks, PriorityThreadPoolSuspender* suspender);
 
-  Status DoCompact(const CompactionContext& context, CompactionScope&& scope) EXCLUDES(mutex_);
+  Status DoCompact(
+      const CompactionContext& context, CompactionScope&& scope,
+      PriorityThreadPoolSuspender* suspender) EXCLUDES(mutex_);
 
   void ScheduleBackgroundCompaction(CompactionTask* task) EXCLUDES(mutex_);
 

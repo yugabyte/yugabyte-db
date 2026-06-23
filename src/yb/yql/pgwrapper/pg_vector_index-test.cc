@@ -75,8 +75,10 @@ DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
+DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(priority_thread_pool_size);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
