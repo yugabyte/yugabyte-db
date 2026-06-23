@@ -136,8 +136,8 @@ The following table describes the connection parameters required to connect, inc
 | password | User password | yugabyte |
 | load_balance_hosts | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing). Set to `true` to use the smart driver. | false |
 | topology_keys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). Comma-separated placements as `cloud.region.zone` (use `*` for any zone in that cloud/region). Ignored if `load_balance_hosts` is `false`. | none |
-| yb_servers_refresh_interval | How often the driver re-queries `yb_servers()` to pick up topology changes. Clamped to [0, 600]. | 300 |
-| failed_host_reconnect_delay_secs | After a failed connect to a TServer, how long the driver quarantines that host before reconsidering it. Clamped to [0, 60]. | 5 |
+| yb_servers_refresh_interval | How often the driver re-queries `yb_servers()` to pick up topology changes. Valid range: 0 to 600 | 300 |
+| failed_host_reconnect_delay_secs | Time, in seconds, the driver waits before retrying a failed host. (that is, failed connection to a TServer). Valid range: 0 to 60 | 5 |
 
 The following is an example connection string:
 
