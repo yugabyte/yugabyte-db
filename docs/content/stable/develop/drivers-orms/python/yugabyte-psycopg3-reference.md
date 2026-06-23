@@ -54,10 +54,10 @@ For more information on the YugabyteDB psycopg 3 smart driver, see the following
 
 The YugabyteDB Psycopg 3 smart driver requires Python 3.10 or later and system [libpq](https://www.postgresql.org/docs/current/libpq.html) installed (the same runtime requirement as upstream psycopg 3's pure-Python distribution). For installation details, see the [upstream psycopg 3 documentation](https://www.psycopg.org/psycopg3/docs/basic/install.html).
 
-The fork is published as a pre-release on [PyPI](https://pypi.org/project/psycopg-yugabytedb/). Install it like any other Python package using pip:
+The fork is published on [PyPI](https://pypi.org/project/psycopg-yugabytedb/). Install it like any other Python package using pip:
 
 ```sh
-$ pip install --pre psycopg-yugabytedb
+$ pip install psycopg-yugabytedb
 ```
 
 Or pin the version explicitly:
@@ -69,7 +69,7 @@ $ pip install "psycopg-yugabytedb==3.3.4.1"
 To use the upstream connection pool with the smart driver, install the `[pool]` extra:
 
 ```sh
-$ pip install --pre "psycopg-yugabytedb[pool]"
+$ pip install "psycopg-yugabytedb[pool]"
 ```
 
 ## Fundamentals
@@ -101,7 +101,7 @@ To enable cluster-aware load balancing across all servers, you set the `load_bal
     import psycopg
 
     conn = psycopg.connect(
-    "host=h1,h2,h3 port=5433 user=yugabyte dbname=yugabyte "
+    "host=h1 port=5433 user=yugabyte dbname=yugabyte "
     "load_balance_hosts=true"
     )
     ```
@@ -109,7 +109,7 @@ To enable cluster-aware load balancing across all servers, you set the `load_bal
 - Keyword arguments
 
     ```python
-    conn = psycopg.connect(host="h1,h2,h3", port=5433, user="yugabyte", dbname="yugabyte", load_balance_hosts="true")
+    conn = psycopg.connect(host="h1", port=5433, user="yugabyte", dbname="yugabyte", load_balance_hosts="true")
     ```
 
 You can specify [multiple hosts](../yugabyte-psycopg3/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.

@@ -71,10 +71,10 @@ To start building your application, make sure you have met the [prerequisites](.
 
 ### Step 1: Add the YugabyteDB driver dependency
 
-The fork is published as a pre-release on PyPI. Install with `--pre` or pin the exact version:
+Install `psycopg-yugabytedb` from PyPI with pip, or pin the exact version:
 
 ```sh
-pip install --pre psycopg-yugabytedb
+pip install psycopg-yugabytedb
 # or
 pip install "psycopg-yugabytedb==3.3.4.1"
 ```
@@ -104,7 +104,7 @@ When you install `psycopg-yugabytedb` from PyPI, your code still uses `import ps
 
 ```sh
 python3 -m venv ~/yb-venv
-~/yb-venv/bin/pip install --pre psycopg-yugabytedb
+~/yb-venv/bin/pip install psycopg-yugabytedb
 ```
 
 {{< /note >}}
@@ -145,7 +145,7 @@ The following is an example connection string:
 import psycopg
 
 conn = psycopg.connect(
-"host=h1,h2,h3 port=5433 user=yugabyte dbname=yugabyte "
+"host=h1 port=5433 user=yugabyte dbname=yugabyte "
 "load_balance_hosts=true"
 )
 ```
@@ -153,7 +153,7 @@ conn = psycopg.connect(
 You can also pass the parameters as keyword arguments to `psycopg.connect`:
 
 ```python
-conn = psycopg.connect(host="h1,h2,h3", port=5433, user="yugabyte", dbname="yugabyte", load_balance_hosts="true")
+conn = psycopg.connect(host="h1", port=5433, user="yugabyte", dbname="yugabyte", load_balance_hosts="true")
 ```
 
 After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
