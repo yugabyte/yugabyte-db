@@ -3161,7 +3161,12 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
         .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet_metadata),
         .replicas = replicas_array,
         .replicas_count = static_cast<size_t>(tablet_metadata.replicas().size()),
-        .is_hash_partitioned = tablet_metadata.is_hash_partitioned()
+        .is_hash_partitioned = tablet_metadata.is_hash_partitioned(),
+        .tablet_state = tablet_metadata.has_tablet_state()
+            ? YBCPAllocStdString(tablet_metadata.tablet_state())
+            : nullptr,
+        .pg_table_oid = tablet_metadata.has_pg_table_oid() ? tablet_metadata.pg_table_oid()
+                                                           : kPgInvalidOid
       };
       ++dest;
     }

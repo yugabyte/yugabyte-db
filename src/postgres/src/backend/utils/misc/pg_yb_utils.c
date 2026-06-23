@@ -9141,6 +9141,7 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * The returned data structure is a row type with the following columns:
  * - tablet_id: text
  * - object_uuid: text
+ * - oid: oid (stable pg_class.oid for YSQL tables, NULL otherwise)
  * - namespace: text
  * - object_name: text
  * - type: text
@@ -9148,6 +9149,10 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * - end_hash_code: int32
  * - leader: text
  * - replicas: text[]
+ * - start_range: text
+ * - end_range: text
+ * - tablet_attrs: json
+ * - tablet_state: text
  *
  * The start_hash_code and end_hash_code are the hash codes of the start and end
  * keys of the tablet for hash sharded tables. Leader is provided as a separate
@@ -9161,7 +9166,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
-	static int	ncols = 9;
+	int ncols = YbGetNumberOfFunctionOutputColumns(F_YB_GET_TABLET_METADATA);
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -9210,24 +9215,36 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 
 		values[0] = CStringGetTextDatum(tablet_descriptor->tablet_id);
 		values[1] = CStringGetTextDatum(tablet_descriptor->table_id);
-		values[2] = CStringGetTextDatum(tablet_descriptor->namespace_name);
-		values[3] = CStringGetTextDatum(tablet_descriptor->table_name);
-		values[4] = CStringGetTextDatum(tablet_descriptor->table_type);
+
+		/*
+		 * The stable PG table oid is computed by the master, which handles
+		 * table rewrites (where relfilenode diverges from the oid). It is
+		 * InvalidOid for non-YSQL tables and colocation parents, which surface
+		 * as NULL.
+		 */
+		if (OidIsValid(tablet->pg_table_oid))
+			values[2] = ObjectIdGetDatum(tablet->pg_table_oid);
+		else
+			nulls[2] = true;
+
+		values[3] = CStringGetTextDatum(tablet_descriptor->namespace_name);
+		values[4] = CStringGetTextDatum(tablet_descriptor->table_name);
+		values[5] = CStringGetTextDatum(tablet_descriptor->table_type);
 
 		if (tablet->is_hash_partitioned)
 		{
-			values[5] =
+			values[6] =
 				UInt16GetDatum(YBCDecodeMultiColumnHashLeftBound(tablet_descriptor->partition_key_start,
 																 tablet_descriptor->partition_key_start_len));	/* start_hash is
 																												 * inclusive */
-			values[6] =
+			values[7] =
 				UInt16GetDatum(YBCDecodeMultiColumnHashRightBound(tablet_descriptor->partition_key_end,
 																  tablet_descriptor->partition_key_end_len) + 1);	/* end_hash is exclusive */
 		}
 		else
 		{
-			nulls[5] = true;
 			nulls[6] = true;
+			nulls[7] = true;
 		}
 
 		/* Convert replicas array to PostgreSQL text array */
@@ -9236,7 +9253,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			Assert(tablet->replicas != NULL);
 
 			/* The last replica is the leader. */
-			values[7] = CStringGetTextDatum(tablet->replicas[tablet->replicas_count - 1]);
+			values[8] = CStringGetTextDatum(tablet->replicas[tablet->replicas_count - 1]);
 
 			/* Convert char ** to List * */
 			List	   *replicas_list = NIL;
@@ -9249,13 +9266,23 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			 * with same replicas have same entries.
 			 */
 			list_sort(replicas_list, string_list_compare);
-			values[8] = PointerGetDatum(strlist_to_textarray(replicas_list));
+			values[9] = PointerGetDatum(strlist_to_textarray(replicas_list));
 		}
 		else
 		{
-			nulls[7] = true;
 			nulls[8] = true;
+			nulls[9] = true;
 		}
+
+		/* TODO (#28172): start_range, end_range, tablet_attrs are populated in a follow-up change. */
+		nulls[10] = true;
+		nulls[11] = true;
+		nulls[12] = true;
+
+		if (tablet->tablet_state)
+			values[13] = CStringGetTextDatum(tablet->tablet_state);
+		else
+			nulls[13] = true;
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

@@ -945,6 +945,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   virtual std::vector<TableInfoPtr> GetTables(
       GetTablesMode mode, PrimaryTablesOnly = PrimaryTablesOnly::kFalse) override;
 
+  // Return one TabletInfoPtr per physical tablet. Colocated tables that share a
+  // tablet are represented by a single entry.
+  TabletInfos GetTablets();
+
   // Return all the available NamespaceInfo. The flag 'includeOnlyRunningNamespaces' determines
   // whether to retrieve all Namespaces irrespective of their state or just 'RUNNING' namespaces.
   // To retrieve all live tables in the system, you should set this flag to true.

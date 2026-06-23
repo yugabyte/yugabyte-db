@@ -8970,6 +8970,18 @@ std::vector<TableInfoPtr> CatalogManager::GetTables(
   FATAL_INVALID_ENUM_VALUE(GetTablesMode, mode);
 }
 
+TabletInfos CatalogManager::GetTablets() {
+  TabletInfos result;
+  {
+    SharedLock lock(mutex_);
+    result.reserve(tablet_map_->size());
+    for (const auto& [_, tablet] : *tablet_map_) {
+      result.push_back(tablet);
+    }
+  }
+  return result;
+}
+
 void CatalogManager::GetAllNamespaces(
     std::vector<scoped_refptr<NamespaceInfo>>* namespaces, bool include_only_running_namespaces) {
   namespaces->clear();
@@ -14626,6 +14638,10 @@ void PopulateTabletMetadata(
     // Set table distribution info (hash vs range partitioning)
     tablet_metadata->set_is_hash_partitioned(dockv::PartitionSchema::IsHashPartitioning(
         table_lock->pb.partition_schema()));
+
+    if (auto pg_table_oid = table_lock->GetPgTableOid(table->id()); pg_table_oid.ok()) {
+      tablet_metadata->set_pg_table_oid(*pg_table_oid);
+    }
   }
 
   std::string leader_address;
@@ -14666,6 +14682,7 @@ void PopulateTabletMetadata(
   }
 
   auto tablet_lock = tablet->LockForRead();
+  tablet_metadata->set_tablet_state(SysTabletsEntryPB::State_Name(tablet_lock->pb.state()));
   if (tablet_lock->pb.has_partition()) {
     const auto& partition = tablet_lock->pb.partition();
     tablet_metadata->mutable_partition()->set_partition_key_start(
@@ -14710,21 +14727,18 @@ Status CatalogManager::GetTabletsMetadata(
     return Status::OK();
   }
 
-  // Existing behavior: return all tablets from all tables
-  auto tables = GetTables(GetTablesMode::kAll);
+  // Return one row per physical tablet.
+  auto tablets = GetTablets();
 
-  for (const auto& table : tables) {
-    auto tablets = table->GetTablets();
-
-    if (!tablets.ok()) {
+  for (const auto& tablet : tablets) {
+    auto table = tablet->table();
+    if (!table) {
+      VLOG(1) << "Skipping tablet " << tablet->id() << " with no associated table";
       continue;
     }
-
-    for (const auto& tablet : tablets.get()) {
-      PopulateTabletMetadata(
-          GetNamespaceName(table->namespace_id()), master_->ts_manager(),
-          table, tablet, resp->add_tablet_metadatas(), /* tablet_id_only= */ false);
-    }
+    PopulateTabletMetadata(
+        GetNamespaceName(table->namespace_id()), master_->ts_manager(),
+        table, tablet, resp->add_tablet_metadatas(), /* tablet_id_only= */ false);
   }
 
   return Status::OK();
