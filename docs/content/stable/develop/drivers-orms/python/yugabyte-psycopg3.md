@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Psycopg 3 Smart Driver for YSQL
+title: Yugabyte Psycopg 3 Smart Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
-description: Connect a Python application using YugabyteDB Psycopg 3 Smart Driver for YSQL
+description: Connect a Python application using Yugabyte Psycopg 3 Smart Driver for YSQL
 menu:
   stable_develop:
     identifier: yugabyte-psycopg3-driver
@@ -29,26 +29,26 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link">
-      <img src="/icons/yugabyte.svg" /i>
-      Yugabyte Psycopg2
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 2
     </a>
   </li>
   <li >
     <a href="../yugabyte-psycopg3" class="nav-link active">
-      <img src="/icons/yugabyte.svg" /i>
-      Yugabyte Psycopg 3
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 3
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg2
+      PG Psycopg 2
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg3" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg3
+      PG Psycopg 3
     </a>
   </li>
   <li >
@@ -61,11 +61,15 @@ type: docs
 
 The [Yugabyte Psycopg 3 smart driver](https://pypi.org/project/psycopg-yugabytedb/) is a Python driver for [YSQL](/stable/api/ysql/) built on the [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](/stable/develop/drivers-orms/smart-drivers/) features. The import name is `psycopg`, so no changes are needed on existing application code; opting in requires a single parameter on the connection string.
 
-This guide uses YSQL with the YugabyteDB Psycopg 3 smart driver.
+{{< note title="YugabyteDB Aeon" >}}
+
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
+
+{{< /note >}}
 
 ## CRUD operations
 
-The following sections demonstrate how to perform common tasks required for Python application development using the YugabyteDB Psycopg 3 smart driver.
+The following sections demonstrate how to perform common tasks required for Python application development using the Yugabyte Psycopg 3 smart driver.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
@@ -280,7 +284,7 @@ If the connection fails, verify:
 
 ## Limitations
 
-- Currently, [PostgreSQL psycopg 3 driver](https://github.com/psycopg/psycopg) and [YugabyteDB psycopg 3 smart driver](https://github.com/yugabyte/psycopg) _cannot_ be used in the same environment. Both write to `site-packages/psycopg/`. If a previous environment has upstream psycopg (or psycopg-binary, psycopg-c) installed, uninstall it before installing the fork, or use a fresh virtual environment.
+- Currently, [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg) and [YugabyteDB Psycopg 3 smart driver](https://github.com/yugabyte/psycopg) _cannot_ be used in the same environment. Both write to `site-packages/psycopg/`. If a previous environment has upstream psycopg (or psycopg-binary, psycopg-c) installed, uninstall it before installing the fork, or use a fresh virtual environment.
 
 - Pure Python distribution only. The C-accelerated (psycopg-yugabytedb-c) and pre-built binary (psycopg-yugabytedb-binary) distributions are not published yet. The pure-Python distribution requires system libpq.
 
