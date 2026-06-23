@@ -4222,7 +4222,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Provider provider = ModelFactory.newProvider(customer, aws);
 
     Universe existing =
-        createFromConfig(provider, "Existing", "r1-z1r1-3-2;r1-z2r1-3-2;r1-z3r1-3-1");
+        createFromConfig(provider, "Existing", "r1-z1r1-3-2;r1-z2r1-2-2;r1-z3r1-2-1");
 
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(existing.getUniverseUUID());
@@ -4259,12 +4259,19 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                 assertEquals(1, az.replicationFactor);
               }
             });
+    // RF for z2r1 is 3 which exceeds the number of nodes, so we will rearrange replicas.
     params
         .getPrimaryCluster()
         .placementInfo
         .azStream()
-        .limit(1)
-        .forEach(az -> az.replicationFactor = 0);
+        .forEach(
+            az -> {
+              if (az.name.equals("z2r1")) {
+                az.replicationFactor = 3;
+              } else {
+                az.replicationFactor = 1;
+              }
+            });
     // Now as RFs is incorrect, RF distribution will be rolled back to the original.
     PlacementInfoUtil.updateUniverseDefinition(
         params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
@@ -4537,7 +4544,16 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Verify that no nodes are absent
     assertEquals(oldNodes, currentNonNewNodes);
 
+    int totatReplicationFactor =
+        cluster.placementInfo.azStream().mapToInt(az -> az.replicationFactor).sum();
+
     Set<UUID> curAZs = cluster.placementInfo.getAllAZUUIDs();
+    if (curAZs.size() == 2 && cluster.userIntent.replicationFactor == 3) {
+      // Special case. Both variants are possible.
+      assertTrue(totatReplicationFactor == 2 || totatReplicationFactor == 3);
+    } else {
+      assertEquals(cluster.userIntent.replicationFactor, totatReplicationFactor);
+    }
 
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
         UniverseCRUDHandler.getUpdateOptions(params, EDIT);
