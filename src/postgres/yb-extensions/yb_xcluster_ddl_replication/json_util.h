@@ -23,10 +23,10 @@
 
 #include "utils/jsonb.h"
 
-extern void AddJsonKey(JsonbParseState *state, char *key_buf);
-extern void AddNumericJsonEntry(JsonbParseState *state, char *key_buf, int64 val);
-extern void AddStringJsonEntry(JsonbParseState *state, char *key_buf, const char *val);
-extern void AddNStringJsonEntry(JsonbParseState *state, char *key_buf, const char *val, Size len);
-extern void AddBoolJsonEntry(JsonbParseState *state, char *key_buf, bool val);
+extern void AddJsonKey(JsonbInState *state, char *key_buf);
+extern void AddNumericJsonEntry(JsonbInState *state, char *key_buf, int64 val);
+extern void AddStringJsonEntry(JsonbInState *state, char *key_buf, const char *val);
+extern void AddNStringJsonEntry(JsonbInState *state, char *key_buf, const char *val, Size len);
+extern void AddBoolJsonEntry(JsonbInState *state, char *key_buf, bool val);
 
 #endif

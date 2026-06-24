@@ -216,7 +216,6 @@ IsTemporaryHelper(char *thing_kind, Oid thing_oid, char *thing_table,
 	 * to find that relation's temporary-ness.
 	 */
 
-	SPI_push();
 	initStringInfo(&query);
 	appendStringInfo(&query,
 					 "SELECT (c.relpersistence = 't') "
@@ -242,7 +241,6 @@ IsTemporaryHelper(char *thing_kind, Oid thing_oid, char *thing_table,
 		elog(ERROR, "relpersistence check returned null for %s %u", thing_kind,
 			 thing_oid);
 
-	SPI_pop();
 	return DatumGetBool(is_temp_datum);
 }
 

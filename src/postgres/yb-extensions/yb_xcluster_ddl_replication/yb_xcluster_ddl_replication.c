@@ -24,10 +24,10 @@
 #include "executor/spi.h"
 #include "extension_util.h"
 #include "json_util.h"
+#include "nodes/queryjumble.h"
 #include "source_ddl_end_handler.h"
 #include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
-#include "utils/queryjumble.h"
 
 PG_MODULE_MAGIC;
 
@@ -305,11 +305,13 @@ InsertIntoReplicatedDDLs(int64 ddl_end_time, int64 query_id)
 
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.InsertIntoReplicatedDDLs context");
 
-	JsonbParseState *state = NULL;
+	JsonbInState istate = {0};
+	JsonbInState *state = &istate;
 
-	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	(void) pushJsonbValue(state, WJB_BEGIN_OBJECT, NULL);
 	(void) AddNStringJsonEntry(state, "query", query_string, query_len);
-	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	(void) pushJsonbValue(state, WJB_END_OBJECT, NULL);
+	JsonbValue *jsonb_val = state->result;
 	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
 	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, ddl_end_time, query_id, jsonb);
@@ -329,9 +331,10 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceDDLEnd context");
 
 	/* Begin constructing json, fill common fields first. */
-	JsonbParseState *state = NULL;
+	JsonbInState istate = {0};
+	JsonbInState *state = &istate;
 
-	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	(void) pushJsonbValue(state, WJB_BEGIN_OBJECT, NULL);
 	(void) AddNumericJsonEntry(state, "version", 1);
 	(void) AddNStringJsonEntry(state, "query", query_string, query_len);
 	(void) AddStringJsonEntry(state, "command_tag",
@@ -361,7 +364,8 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 	if (yb_should_replicate_ddl)
 	{
 		/* Construct the jsonb and insert completed row into ddl_queue table. */
-		JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+		(void) pushJsonbValue(state, WJB_END_OBJECT, NULL);
+		JsonbValue *jsonb_val = state->result;
 		Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
 		/*
