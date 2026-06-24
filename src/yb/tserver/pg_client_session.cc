@@ -136,8 +136,11 @@ DEFINE_test_flag(bool, force_initial_region_local, false,
 DEFINE_test_flag(bool, fail_create_table_rpc, false,
     "Fail all create table requests received at PgClientSession layer.");
 
-DEFINE_test_flag(bool, pause_session_lock_release, false,
+DEFINE_test_flag(bool, pause_session_lock_before_release, false,
     "Pause before releasing session object lock.");
+
+DEFINE_test_flag(bool, pause_session_lock_after_release, false,
+    "Pause after releasing session object lock.");
 
 #ifdef __linux__
 DECLARE_bool(enable_qos);
@@ -3018,7 +3021,7 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     // If we fail to release the lock for any reason, return InvalidArgument as status so as to
     // force the backend to FATAL, thus freeing all object locks associated with it.
-    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_release);
+    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_before_release);
     VLOG_WITH_FUNC(1) << req.ShortDebugString();
     const auto kind = PgClientSessionKind::kPgSession;
     auto* session_data = &GetSessionData(kind);
@@ -3062,6 +3065,7 @@ class PgClientSession::Impl {
     ReleaseWithRetriesGlobal(
         client_, ts_lock_manager(), txn_meta_res->transaction_id,
         opt_subtxn_id, release_req);
+    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_after_release);
     // Release control to the pg backend, and let the release continue in async mode.
     return Status::OK();
   }

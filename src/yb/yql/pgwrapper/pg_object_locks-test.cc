@@ -62,6 +62,9 @@ DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_bool(TEST_pause_session_lock_before_release);
+DECLARE_bool(TEST_pause_session_lock_after_release);
 
 using namespace std::literals;
 
@@ -1759,11 +1762,11 @@ TEST_F_EX(
   ASSERT_OK(conn1.Execute("CREATE TABLE test(k int primary key, v int, v1 int)"));
   ASSERT_OK(conn1.Execute("INSERT INTO test select i,i,i from generate_series(1, 100) as i"));
 
-  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_release", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_before_release", "true"));
   ASSERT_OK(cluster_->SetFlagOnMasters("vmodule", "object_lock_manager=1"));
   ASSERT_OK(conn1.Fetch("select pg_advisory_lock(1)"));
 
-  LogWaiter log_waiter1(ts1, "Pausing due to flag TEST_pause_session_lock_release");
+  LogWaiter log_waiter1(ts1, "Pausing due to flag TEST_pause_session_lock_before_release");
   auto status_future1 = std::async(std::launch::async, [&]() -> Status {
     return conn1.Execute("CREATE INDEX test_idx on test(v)");
   });
@@ -1775,7 +1778,7 @@ TEST_F_EX(
     return conn2.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode");
   });
   ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
-  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_release", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_before_release", "false"));
   ASSERT_OK(status_future1.get());
   ASSERT_OK(conn1.Fetch("select pg_advisory_lock(2)"));
 
@@ -1793,6 +1796,61 @@ TEST_F_EX(
   auto num_locks = ASSERT_RESULT(
       conn1.FetchRow<PGUint64>("select count(*) from pg_locks where locktype=\'advisory\'"));
   ASSERT_EQ(num_locks, 3);
+}
+
+// Assert that REFRESH MATERIALIZED VIEW when run in concurrent to CREATE INDEX CONCURRENTLY
+// on the same mv relation gets blocked and doesn't progress until the create index commits
+// the internal transaction in phase 3. Regression test to catch a bug where refresh mv
+// wrongly resumed after the SHARE session lock on the mv relation was released in create
+// index phase 3 but before its commit.
+TEST_F_EX(
+    PgObjectLocksTest, TxnLocksGoToTServerWhenSessionLockIsSoleOwner,
+    PgObjectLocksWithConcurrentDdl) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  auto pg_locks_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+
+  ASSERT_OK(conn1.Execute("create table test(k int primary key, v1 int, v2 int)"));
+  ASSERT_OK(conn1.Execute("insert into test select i,i,i from generate_series(1, 10) as i"));
+  ASSERT_OK(conn1.Execute("create materialized view test_mv as select k, v1 from test"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_before_release", "true"));
+
+  LogWaiter log_waiter(ts1, "Pausing due to flag TEST_pause_session_lock_before_release");
+  auto status_future1 = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("create unique index test_mv_idx on test_mv(v1)");
+  });
+  ASSERT_OK(log_waiter.WaitFor(20s * kTimeMultiplier));
+
+  auto status_future2 = std::async(std::launch::async, [&]() -> Status {
+    return conn2.Execute("refresh materialized view test_mv");
+  });
+
+  const auto waiting_locks_query = "select count(*) from pg_locks where not granted";
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto num_waiting_locks =
+        VERIFY_RESULT(pg_locks_conn.FetchRow<PGUint64>(waiting_locks_query));
+    return num_waiting_locks >= 1;
+  }, 10s * kTimeMultiplier, "REFRESH MV should have been blocked, but wasn't???"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_after_release", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_before_release", "false"));
+
+  const auto granted_locks_query =
+      "select count(*) from pg_locks where granted and mode = \'ShareUpdateExclusiveLock\'";
+  EXPECT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(pg_locks_conn.FetchRow<PGUint64>(granted_locks_query)) == 1;
+  }, 5s * kTimeMultiplier, "Timed out waiting for session locks to be released"));
+  EXPECT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(pg_locks_conn.FetchRow<PGUint64>(waiting_locks_query)) == 1;
+  }, 5s * kTimeMultiplier, "REFRESH MV should still stay blocked, but wasn't???"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_after_release", "false"));
+  ASSERT_OK(status_future1.get());
+  ASSERT_OK(status_future2.get());
 }
 
 }  // namespace yb::pgwrapper
