@@ -30,6 +30,8 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tasks_tracker.h"
 
@@ -774,6 +776,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
 // Test that an upsert (INSERT ON CONFLICT DO UPDATE) that touches a primary key column
 // produces DELETE + INSERT in the CDC stream, not DELETE + DELETE.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndInsert)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_skip_redundant_update_ops) = false;
   // Packed rows default to off in debug/asan/fastdebug builds (kYsqlEnablePackedRowTargetVal =
   // !kIsDebug). The fix this test guards is on the IsPackedRow branch in
@@ -13335,7 +13338,6 @@ TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 15000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 10000;
 
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */, true /* colocated */));
@@ -13347,20 +13349,24 @@ TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
   ASSERT_EQ(tablets.size(), 1);
 
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table(value_1)"));
 
-  GetChangesResponsePB change_resp;
-  const CDCSDKCheckpointPB* explicit_checkpoint = &CDCSDKCheckpointPB::default_instance();
-  for (int i = 0; i < static_cast<int>(FLAGS_cdc_intent_retention_ms / 1000); i++) {
-    ASSERT_OK(WriteRows(i /* start */, i + 1 /* end */, &test_cluster_, 2 /* num_cols */));
-    SleepFor(MonoDelta::FromSeconds(2));
-    change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
-        stream_id, tablets, explicit_checkpoint, explicit_checkpoint));
-    ASSERT_FALSE(change_resp.has_error());
-    explicit_checkpoint = &change_resp.cdc_sdk_checkpoint();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 10;
+  SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs * 2));
+
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+      if (peer->tablet_id() != tablets[0].tablet_id()) {
+        continue;
+      }
+
+      ASSERT_NE(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+      ASSERT_NE(peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+      ASSERT_NE(peer->get_cdc_min_replicated_index(), std::numeric_limits<int64_t>::max());
+    }
   }
 }
 
@@ -14242,6 +14248,264 @@ TEST_F(CDCSDKYsqlTest, TestXClusterTablesNotAddedToGRPCStreamWithExtensionAfterS
   TestXClusterTablesNotAddedToStream(
       /* use_logical_replication_stream */ false,
       /* enable_xcluster_before_stream_creation */ false);
+}
+
+TEST_F(CDCSDKYsqlTest, TestgRPCStreamBoundToSpecificTables) {
+  ASSERT_OK(SetUpWithParams(3, 1, /* colocated */ false));
+
+  auto table_0 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName,
+      /* num_tablets */ 1, /* add_primary_key */ true, /* colocated */ false,
+      /* table_oid */ 0, /* enum_value */ false, /* enum_suffix */ "_0"));
+  auto table_1 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName,
+      /* num_tablets */ 1, /* add_primary_key */ true, /* colocated */ false,
+      /* table_oid */ 0, /* enum_value */ false, /* enum_suffix */ "_1"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_0;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+  ASSERT_OK(
+      test_client()->GetTablets(table_0, 0, &tablets_0, /* partition_list_version */ nullptr));
+  ASSERT_OK(
+      test_client()->GetTablets(table_1, 0, &tablets_1, /* partition_list_version */ nullptr));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE,
+      test_namespace_name, {table_0.table_id()}));
+
+  std::unordered_set<std::string> expected_table_ids = {table_0.table_id()};
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_table_ids,
+      "Waiting for bound stream metadata to reflect only the bound table");
+
+  std::unordered_set<std::string> expected_tablets;
+  for (const auto& t : tablets_0) {
+    expected_tablets.insert(t.tablet_id());
+  }
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
+
+  // Verify dynamic table addition is disabled, since bound streams imply it.
+  auto get_cdc_stream_resp = ASSERT_RESULT(GetCDCStream(stream_id));
+  ASSERT_TRUE(get_cdc_stream_resp.stream().has_cdcsdk_disable_dynamic_table_addition());
+  ASSERT_TRUE(get_cdc_stream_resp.stream().cdcsdk_disable_dynamic_table_addition());
+
+  ASSERT_OK(WriteRowsHelper(
+      1 /* start */, 2 /* end */, &test_cluster_, true, 2,
+      (kTableName + std::string("_0")).c_str()));
+  ASSERT_OK(WriteRowsHelper(
+      1 /* start */, 2 /* end */, &test_cluster_, true, 2,
+      (kTableName + std::string("_1")).c_str()));
+
+  // GetChanges on the bound table's tablet should succeed.
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_0));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+
+  // GetChanges on the unbound table's tablet errors out.
+  auto unbound_result = GetChangesFromCDCWithoutRetry(stream_id, tablets_1, nullptr);
+  ASSERT_NOK(unbound_result);
+  ASSERT_STR_CONTAINS(unbound_result.status().ToString(), "is not part of stream ID");
+}
+
+TEST_F(CDCSDKYsqlTest, TestgRPCStreamBoundToSpecificColocatedTables) {
+  ASSERT_OK(SetUpWithParams(3, 1, /* colocated */ true));
+
+  auto bound_table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName,
+      /* num_tablets */ 1, /* add_primary_key */ true, /* colocated */ true,
+      /* table_oid */ 0, /* enum_value */ false, /* enum_suffix */ "_0"));
+  auto unbound_table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName,
+      /* num_tablets */ 1, /* add_primary_key */ true, /* colocated */ true,
+      /* table_oid */ 0, /* enum_value */ false, /* enum_suffix */ "_1"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      bound_table, 0, &tablets, /* partition_list_version */ nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE,
+      test_namespace_name, {bound_table.table_id()}));
+
+  // One row into each colocated table. The unbound row must never surface in GetChanges.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", bound_table.table_name()));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 2)", unbound_table.table_name()));
+
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, /* expected_count */ 1));
+
+  for (int i = 0; i < change_resp.cdc_sdk_proto_records_size(); ++i) {
+    const auto& row = change_resp.cdc_sdk_proto_records(i).row_message();
+    if (row.has_table()) {
+      ASSERT_NE(row.table(), unbound_table.table_name());
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableBoundStreamRejectsWithReplicationSlot) {
+  ASSERT_OK(SetUpWithParams(1, 1, /* colocated */ false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+
+  auto ns_id = ASSERT_RESULT(GetNamespaceId(test_namespace_name));
+
+  master::CreateCDCStreamRequestPB req;
+  master::CreateCDCStreamResponsePB resp;
+  req.set_namespace_id(ns_id);
+  auto* id_opt = req.add_options();
+  id_opt->set_key(cdc::kIdType);
+  id_opt->set_value(cdc::kNamespaceId);
+  auto* src_opt = req.add_options();
+  src_opt->set_key(cdc::kSourceType);
+  src_opt->set_value(CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  auto* rec_opt = req.add_options();
+  rec_opt->set_key(cdc::kRecordType);
+  rec_opt->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+  req.set_cdcsdk_ysql_replication_slot_name("slot_for_bound_stream_test");
+  req.mutable_cdcsdk_stream_create_options()
+      ->mutable_bound_table_ids()
+      ->add_table_ids(table.table_id());
+
+  auto& master = *ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &test_cluster_.client_->proxy_cache(), master.bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(30));
+  ASSERT_OK(master_proxy->CreateCDCStream(req, &resp, &rpc));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(),
+      "CDC streams bound to specific tables cannot be created with a replication slot");
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableBoundStreamDisablesDynamicAddition) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ASSERT_OK(SetUpWithParams(3, 1, /* colocated */ false));
+
+  auto bound_table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName,
+      /* num_tablets */ 1, /* add_primary_key */ true, /* colocated */ false,
+      /* table_oid */ 0, /* enum_value */ false, /* enum_suffix */ "_0"));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE,
+      test_namespace_name, {bound_table.table_id()}));
+
+  std::unordered_set<std::string> expected = {bound_table.table_id()};
+  VerifyTablesInStreamMetadata(stream_id, expected, "Initial bound metadata");
+
+  // Create a new table after stream creation; bound stream must not pick it up.
+  auto new_table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName,
+      /* num_tablets */ 1, /* add_primary_key */ true, /* colocated */ false,
+      /* table_oid */ 0, /* enum_value */ false, /* enum_suffix */ "_1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> new_table_tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      new_table, 0, &new_table_tablets, /* partition_list_version */ nullptr));
+
+  // Give the bg task a few cycles to run.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  VerifyTablesInStreamMetadata(
+      stream_id, expected,
+      "The dynamically created table must not be added to the stream metadata");
+
+  // Also verify cdc_state still only contains the bound table's tablets.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> bound_tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      bound_table, 0, &bound_tablets, /* partition_list_version */ nullptr));
+  std::unordered_set<std::string> expected_tablets;
+  for (const auto& t : bound_tablets) {
+    expected_tablets.insert(t.tablet_id());
+  }
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
+
+  // Retention barriers must NOT be set on new_table's tablet.
+  const auto new_table_tablet_id = new_table_tablets[0].tablet_id();
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+      if (peer->tablet_id() == new_table_tablet_id) {
+        ASSERT_EQ(peer->get_cdc_min_replicated_index(), OpId::Max().index);
+        ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        ASSERT_EQ(peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+      }
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestCreationOfgRPCStreamBoundToSpecificTablesViaYBAdmin) {
+  ASSERT_OK(SetUpWithParams(3, 1, /* colocated */ false));
+
+  auto table_0 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName,
+      /* num_tablets */ 1, /* add_primary_key */ true, /* colocated */ false,
+      /* table_oid */ 0, /* enum_value */ false, /* enum_suffix */ "_0"));
+  auto table_1 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName,
+      /* num_tablets */ 1, /* add_primary_key */ true, /* colocated */ false,
+      /* table_oid */ 0, /* enum_value */ false, /* enum_suffix */ "_1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName,
+      /* num_tablets */ 1, /* add_primary_key */ true, /* colocated */ false,
+      /* table_oid */ 0, /* enum_value */ false, /* enum_suffix */ "_2"));
+
+  ASSERT_OK(ExecuteYBAdminCommand(
+      "create_change_data_stream",
+      {Format("ysql.$0", test_namespace_name), "EXPLICIT", "CHANGE", "NOEXPORT_SNAPSHOT",
+       "DYNAMIC_TABLES_DISABLED", Format("$0,$1", table_0.table_id(), table_1.table_id())}));
+
+  // Find the newly created stream via master ListCDCStreams.
+  auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+  master::ListCDCStreamsRequestPB list_req;
+  master::ListCDCStreamsResponsePB list_resp;
+  list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
+  ASSERT_OK(cm.ListCDCStreams(&list_req, &list_resp));
+  ASSERT_EQ(list_resp.streams_size(), 1)
+      << "Expected exactly one stream, got " << list_resp.DebugString();
+  auto stream_id = ASSERT_RESULT(xrepl::StreamId::FromString(list_resp.streams(0).stream_id()));
+
+  std::unordered_set<std::string> expected_table_ids = {table_0.table_id(), table_1.table_id()};
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_table_ids,
+      "yb-admin bound stream metadata reflects only the bound table");
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableBoundStreamYbAdminRejectsUnknownTableId) {
+  ASSERT_OK(SetUpWithParams(1, 1, /* colocated */ false));
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+
+  ASSERT_NOK(ExecuteYBAdminCommand(
+      "create_change_data_stream",
+      {Format("ysql.$0", test_namespace_name), "EXPLICIT", "CHANGE", "NOEXPORT_SNAPSHOT",
+       "DYNAMIC_TABLES_DISABLED", "000000000000000000000000000dummy"}));
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableBoundStreamYbAdminRejectsDynamicTablesEnabled) {
+  ASSERT_OK(SetUpWithParams(1, 1, /* colocated */ false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+
+  ASSERT_NOK(ExecuteYBAdminCommand(
+      "create_change_data_stream",
+      {Format("ysql.$0", test_namespace_name), "EXPLICIT", "CHANGE", "NOEXPORT_SNAPSHOT",
+       "DYNAMIC_TABLES_ENABLED", table.table_id()}));
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableBoundStreamYbAdminRejectsTableFromDifferentNamespace) {
+  ASSERT_OK(SetUpWithParams(1, 1, /* colocated */ false));
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+
+  // Create a second YSQL namespace with one table.
+  const std::string other_ns = "other_db";
+  ASSERT_OK(CreateDatabase(&test_cluster_, other_ns, /* colocated */ false));
+  auto other_table = ASSERT_RESULT(CreateTable(&test_cluster_, other_ns, kTableName));
+
+  auto status = ExecuteYBAdminCommand(
+      "create_change_data_stream",
+      {Format("ysql.$0", test_namespace_name), "EXPLICIT", "CHANGE", "NOEXPORT_SNAPSHOT",
+       "DYNAMIC_TABLES_DISABLED", other_table.table_id()});
+  ASSERT_NOK(status);
 }
 
 }  // namespace cdc

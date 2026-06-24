@@ -1281,10 +1281,20 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		if (index->amhasgettuple)
 			add_path(rel, (Path *) ipath);
 
-		if (((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
-			 !IsA(ipath, UpperUniquePath)) &&
-			(ipath->path.pathkeys == NIL ||
-			 ipath->indexselectivity < 1.0))
+		/*
+		 * YB: Bitmap scan does not support distinct pushdown. Distinct pushdown
+		 * may be represented by an UpperUniquePath on top of a distinct index
+		 * scan path, or a bare distinct index scan path (IndexPath with
+		 * yb_distinct_prefixlen > 0). Refer to create_distinct_index_path for
+		 * more details.
+		 *
+		 * When either of the above conditions are true for a path, we do not add
+		 * the path to the bitindexpaths list.
+		 */
+		if ((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
+			!(IsA(ipath, UpperUniquePath) ||
+			  ipath->yb_index_path_info.yb_distinct_prefixlen > 0) &&
+			(ipath->path.pathkeys == NIL || ipath->indexselectivity < 1.0))
 			*bitindexpaths = lappend(*bitindexpaths, ipath);
 	}
 

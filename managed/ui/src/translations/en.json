@@ -2949,6 +2949,7 @@
             "aws": "Amazon Web Services",
             "gcp": "Google Cloud Platform",
             "azu": "Microsoft Azure",
+            "oci": "Oracle Cloud Infrastructure",
             "vmwareTanzu": "VMware Tanzu",
             "redHatOpenShift": "Red Hat OpenShift",
             "managedK8s": "Managed Kubernetes Service",

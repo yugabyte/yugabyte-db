@@ -52,7 +52,7 @@ public class DoCapacityReservationTest {
   public void testAzureGroupNameFormat() {
     String name =
         DoCapacityReservation.getCapacityReservationGroupName(
-            UNIVERSE_UUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, "eastus");
+            UNIVERSE_UUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(), "eastus");
     assertEquals(UNIVERSE_UUID + "_eastus_PRIMARY_RnG", name);
     assertTrue(name.endsWith(DoCapacityReservation.GROUP_SUFFIX));
   }
@@ -61,10 +61,10 @@ public class DoCapacityReservationTest {
   public void testAzureGroupNameClusterTypeDisambiguates() {
     String primary =
         DoCapacityReservation.getCapacityReservationGroupName(
-            UNIVERSE_UUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, "eastus");
+            UNIVERSE_UUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(), "eastus");
     String readReplica =
         DoCapacityReservation.getCapacityReservationGroupName(
-            UNIVERSE_UUID, UniverseDefinitionTaskParams.ClusterType.ASYNC, "eastus");
+            UNIVERSE_UUID, UniverseDefinitionTaskParams.ClusterType.ASYNC.name(), "eastus");
     assertNotEquals(primary, readReplica);
   }
 
@@ -78,13 +78,13 @@ public class DoCapacityReservationTest {
     String first =
         DoCapacityReservation.getZoneInstanceCapacityReservationName(
             UNIVERSE_UUID,
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
             "us-east-1a",
             "m5.large");
     String second =
         DoCapacityReservation.getZoneInstanceCapacityReservationName(
             UNIVERSE_UUID,
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
             "us-east-1a",
             "m5.large");
     assertEquals("m5.large-us-east-1a-" + UNIVERSE_UUID + "-PRIMARY", first);

@@ -327,6 +327,7 @@ GetBackendTypeDesc(BackendType backendType)
 			backendDesc = "yb matview refresh";
 			break;
 		case YB_RELCACHE_INIT_BACKEND:
+		case YB_GLOBAL_VIEW_BACKEND:
 			/*
 			 * Handled by the registry lookup at the top of this function.
 			 * The case is here only so this switch stays enum-exhaustive.

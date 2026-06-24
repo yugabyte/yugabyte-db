@@ -6515,16 +6515,7 @@ TEST_F_EX(
       2);
 }
 
-// Fixture for the clone-with-vector-indexes + master rolling restart repro.
-// `--enable_db_clone` is a kLocalPersisted AutoFlag with initial value false; explicitly enable
-// it on the masters so the clone path is exercised.
 class YbAdminCloneVectorIndexRestartTest : public YbAdminSnapshotScheduleTestWithYsql {
- public:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
-    opts->extra_master_flags.emplace_back("--enable_db_clone=true");
-  }
-
  protected:
   static constexpr std::string_view kSourceDb = "source_db";
   static constexpr std::string_view kCloneDb = "clone_db";

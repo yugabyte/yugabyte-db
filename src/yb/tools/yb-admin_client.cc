@@ -36,6 +36,7 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <iomanip>
 
 #include <boost/multi_index/composite_key.hpp>
@@ -3997,7 +3998,8 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
     const cdc::CDCRecordType record_type,
     const std::string& consistent_snapshot_option,
-    const bool& is_dynamic_tables_enabled) {
+    const bool& is_dynamic_tables_enabled,
+    const std::unordered_set<std::string>& bound_table_ids) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -4034,6 +4036,23 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   } else {
     stream_create_options->set_cdcsdk_dynamic_tables_option(
         CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED);
+  }
+
+  if (!bound_table_ids.empty()) {
+    if (ns.db_type != YQLDatabase::YQL_DATABASE_PGSQL) {
+      return STATUS(
+          InvalidArgument, "Bound table CDC streams are only supported for YSQL namespaces");
+    }
+
+    if (is_dynamic_tables_enabled) {
+      return STATUS(
+          InvalidArgument, "Bound table CDC streams cannot be created with dynamic tables enabled");
+    }
+
+    auto* bound = stream_create_options->mutable_bound_table_ids();
+    for (const auto& id : bound_table_ids) {
+      bound->add_table_ids(id);
+    }
   }
 
   RpcController rpc;

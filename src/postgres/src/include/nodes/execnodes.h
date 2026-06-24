@@ -772,6 +772,9 @@ typedef struct EState
 	 * FK relation. Used by YBCBuildYBTupleIdDescriptor().
 	 */
 	List	   *yb_es_pk_proutes;
+
+	/* YB: Indicates that execution state allows nodes to apply read ahead optimization (if any) */
+	bool yb_read_ahead_allowed;
 } EState;
 
 /*

@@ -3734,7 +3734,9 @@ automatic_split_manager_time:
 
 raft_leader:
   metric: "is_raft_leader"
-  function: "sum"
+  function: "sum by (saved_name, exported_instance)|sum"
+  filters:
+    export_type: "tserver_export"
   panel_group: "Tablet Server"
   layout:
     "title": "Raft Leader"
@@ -3747,6 +3749,9 @@ raft_leader:
 tserver_live_tablet_peers:
   metric: "ts_live_tablet_peers"
   function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
   panel_group: "Tablet Server"
   layout:
     "title": "Live Tablet Peers"

@@ -1,0 +1,63 @@
+title: DrConfigSpec
+description: |
+  User-provided disaster recovery configuration.
+  Defines replication topology, scope, and optional PITR and webhook settings.
+type: object
+required:
+  - name
+  - primary_universe_uuid
+  - dr_replica_universe_uuid
+  - table_type
+  - type
+properties:
+  name:
+    description: Disaster recovery config name.
+    type: string
+    example: dr-prod-to-dr-replica
+  primary_universe_uuid:
+    description: UUID of the primary (source) universe.
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+  dr_replica_universe_uuid:
+    description: UUID of the DR replica (target) universe.
+    type: string
+    format: uuid
+    example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  table_type:
+    description: Type of tables being replicated.
+    $ref: "./TableType.yaml"
+  type:
+    description: DR config type.
+    type: string
+    enum:
+      - BASIC
+      - TXN
+      - DB
+      - AUTO_DDL
+  bootstrap_params:
+    description: Bootstrap backup parameters for the DR config.
+    $ref: "./DrConfigBootstrapParams.yaml"
+  pitr_retention_period_sec:
+    description: PITR retention period in seconds for the DR config.
+    type: integer
+    format: int64
+  pitr_snapshot_interval_sec:
+    description: PITR snapshot interval in seconds for the DR config.
+    type: integer
+    format: int64
+  tables:
+    description: Table IDs included in replication for transaction-scoped (Txn) DR configs.
+    type: array
+    items:
+      type: string
+  dbs:
+    description: Database (namespace) IDs included in replication for DB-scoped DR configs.
+    type: array
+    items:
+      type: string
+  webhooks:
+    description: Webhooks configured for this DR config.
+    type: array
+    items:
+      $ref: "./DrConfigWebhook.yaml"

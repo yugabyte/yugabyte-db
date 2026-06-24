@@ -48,7 +48,7 @@ public class AvailableNodeTracker {
     occupied.clear();
     for (NodeDetails node : currentNodes) {
       UniverseDefinitionTaskParams.Cluster cluster = clusters.get(node.placementUuid);
-      if (cluster == null || cluster.userIntent.providerType != Common.CloudType.onprem) {
+      if (cluster == null || cluster.getProviderCloudType(node) != Common.CloudType.onprem) {
         continue;
       }
       if (isTemporaryOccupied(node)) {
@@ -126,7 +126,7 @@ public class AvailableNodeTracker {
   }
 
   public boolean isOnprem() {
-    return getUserIntent().providerType == Common.CloudType.onprem;
+    return getUserIntent().getAllCloudTypes().contains(Common.CloudType.onprem);
   }
 
   private UniverseDefinitionTaskParams.UserIntent getUserIntent() {

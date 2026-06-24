@@ -2,7 +2,10 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 
+import api.v2.handlers.HandlerPagingSupport;
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.DrConfigStates.State;
@@ -14,8 +17,10 @@ import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.TableType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PagedList;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -252,18 +257,36 @@ public class DrConfig extends Model {
   }
 
   public static DrConfig getValidConfigOrBadRequest(Customer customer, UUID drConfigUuid) {
-    DrConfig drConfig = getOrBadRequest(drConfigUuid);
+    return getValidConfigOrHttpError(customer, drConfigUuid, BAD_REQUEST);
+  }
+
+  public static DrConfig getValidConfigOrHttpError(
+      Customer customer, UUID drConfigUuid, int statusCode) {
+    DrConfig drConfig = getOrHttpError(drConfigUuid, statusCode);
+    String customerMismatchMessage =
+        statusCode == NOT_FOUND
+            ? "DR config %s not found for Customer %s"
+            : "XClusterConfig %s doesn't belong to Customer %s";
     drConfig.xClusterConfigs.forEach(
-        xClusterConfig -> XClusterConfig.checkXClusterConfigInCustomer(xClusterConfig, customer));
+        xClusterConfig ->
+            XClusterConfig.checkXClusterConfigInCustomer(
+                xClusterConfig, customer, statusCode, customerMismatchMessage));
     return drConfig;
   }
 
   public static DrConfig getOrBadRequest(UUID drConfigUuid) {
+    return getOrHttpError(drConfigUuid, BAD_REQUEST);
+  }
+
+  public static DrConfig getOrHttpError(UUID drConfigUuid, int statusCode) {
     return maybeGet(drConfigUuid)
         .orElseThrow(
             () ->
                 new PlatformServiceException(
-                    BAD_REQUEST, "Cannot find drConfig with uuid " + drConfigUuid));
+                    statusCode,
+                    statusCode == NOT_FOUND
+                        ? String.format("Could not find dr config %s", drConfigUuid)
+                        : "Cannot find drConfig with uuid " + drConfigUuid));
   }
 
   public static Optional<DrConfig> maybeGet(UUID drConfigUuid) {
@@ -323,6 +346,27 @@ public class DrConfig extends Model {
             getBySourceUniverseUuid(universeUuid).stream(),
             getByTargetUniverseUuid(universeUuid).stream())
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Paged list of DR configs for a universe (source or target), ordered by name. Only configs with
+   * an active (non-secondary) xCluster config are included.
+   */
+  public static PagedList<DrConfig> getPagedListForUniverse(
+      UUID universeUuid, NormalizedPaginationSpec normalized) {
+    ExpressionList<DrConfig> expr =
+        find.query()
+            .fetch("xClusterConfigs")
+            .where()
+            .raw(
+                "exists (select 1 from xcluster_config x where x.dr_config_uuid = t0.uuid "
+                    + "and x.secondary = false "
+                    + "and (x.source_universe_uuid = ? or x.target_universe_uuid = ?))",
+                universeUuid,
+                universeUuid);
+    String order = normalized.order();
+    String orderBy = String.format("coalesce(lower(name), '') %s, uuid %s", order, order);
+    return HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
   }
 
   public static List<DrConfig> getAll() {

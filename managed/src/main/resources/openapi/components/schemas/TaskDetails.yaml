@@ -29,3 +29,13 @@ properties:
     $ref: "./MetricsExportConfig.yaml"
     readOnly: true
     x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("metricsExportConfig")'
+  modified_export_types:
+    description: |
+      Telemetry config types (audit logs, query logs, metrics) being modified by this
+      telemetry export configure task. Computed by diffing the requested config against the
+      currently stored config at submit time.
+    type: array
+    items:
+      $ref: "./ExportType.yaml"
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("modifiedExportTypes")'

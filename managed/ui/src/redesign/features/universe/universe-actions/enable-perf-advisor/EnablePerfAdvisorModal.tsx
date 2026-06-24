@@ -23,13 +23,13 @@ interface EnablePerfAdvisorModalProps {
   paUuid: string;
   onClose: () => void;
   paModalIntention?: PerfAdvisorModalIntentionType;
-  isNewPerfAdvisorUiEnabled: boolean;
+  isEmbeddedPAEnabled: boolean;
 }
 export const EnablePerfAdvisorModal = ({
   universeData,
   perfAdvisorStatus,
   paUuid,
-  isNewPerfAdvisorUiEnabled,
+  isEmbeddedPAEnabled,
   open,
   onClose,
   paModalIntention = PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
@@ -175,7 +175,7 @@ export const EnablePerfAdvisorModal = ({
           }}
         />
       </span>
-      {!isUniverseRegisteredToPA && isNewPerfAdvisorUiEnabled && (
+      {!isUniverseRegisteredToPA && isEmbeddedPAEnabled && (
         <Box mt={2}>
           <YBCheckbox
             checked={advancedObservability}

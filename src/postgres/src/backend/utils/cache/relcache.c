@@ -2411,7 +2411,7 @@ YbGetPrefetchableTableInfo(YbPFetchTable table)
 		[YB_PFETCH_TABLE_PG_ATTRIBUTE] =
 		(YbPFetchTableInfo) {AttributeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {ATTNAME, ATTNUM}}},
 		[YB_PFETCH_TABLE_PG_AUTH_MEMBERS] =
-		(YbPFetchTableInfo) {AuthMemRelationId},
+		(YbPFetchTableInfo) {AuthMemRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {AUTHMEMMEMROLE, AUTHMEMROLEMEM}}},
 		[YB_PFETCH_TABLE_PG_AUTHID] =
 		(YbPFetchTableInfo) {AuthIdRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {AUTHOID, AUTHNAME}}},
 		[YB_PFETCH_TABLE_PG_CAST] =

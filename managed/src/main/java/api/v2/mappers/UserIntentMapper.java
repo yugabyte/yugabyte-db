@@ -161,11 +161,9 @@ public interface UserIntentMapper {
         toV2EnableExposingServiceEnum(userIntent.enableExposingService));
     clusterNetworkingSpec.setProxyConfig(toV2ProxyConfig(userIntent.getProxyConfig()));
     // per az
-    if (userIntent.getUserIntentOverrides() != null
-        && userIntent.getUserIntentOverrides().getAZProxyConfigMap() != null) {
+    if (userIntent.getAZProxyConfigMap() != null) {
       Map<String, AvailabilityZoneNetworking> azNetworking = new HashMap<>();
       userIntent
-          .getUserIntentOverrides()
           .getAZProxyConfigMap()
           .forEach(
               (azUuid, azProxyConfig) -> {

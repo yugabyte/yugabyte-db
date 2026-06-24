@@ -57,6 +57,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
@@ -1044,23 +1045,74 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
       req.has_cdcsdk_ysql_replication_slot_name() &&
       FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key;
 
+  const bool has_bound_table_ids =
+      req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_bound_table_ids();
+
   // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
   // the request. This can only be done after we have ensured that YSQL is the only client
   // requesting to create CDC streams.
   std::vector<TableInfoPtr> tables;
+  std::vector<TableId> table_ids;
   {
     SharedLock lock(mutex_);
-    // Sanity check this id corresponds to a namespace.
-    VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
-    tables = FindAllTablesForCDCSDK(
-        namespace_id, allow_tables_without_primary_key,
-        false /* allow_cdc_used_syscatalog_tables */);
+    auto ns = VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
+
+    // yb_system namespace is meant for YB's internal use (currently it is only used by
+    // LISTEN/NOTIFY). Only internal CDC streams meant to stream the notifications from the
+    // kPgYbNotificationsTableName to the tservers are allowed on it. The slot associated
+    // with such streams have kYbNotificationsSlotPrefix prefix in the name. Disallow other streams.
+    if (ns->name() == kYbSystemDbName &&
+        !(req.has_cdcsdk_ysql_replication_slot_name() &&
+          StringStartsWithOrEquals(
+              req.cdcsdk_ysql_replication_slot_name(), kYbNotificationsSlotPrefix))) {
+      return STATUS(
+          InvalidArgument, "CDC streams are not supported for yb_system database");
+    }
+
+    if (has_bound_table_ids) {
+      const auto& bound_ids = req.cdcsdk_stream_create_options().bound_table_ids().table_ids();
+      for (const auto& tid : bound_ids) {
+        auto table_info = tables_->FindTableOrNull(tid);
+        if (!table_info) {
+          return STATUS_FORMAT(
+              NotFound, "Bound table id $0 not found in namespace $1", tid, namespace_id);
+        }
+
+        auto ltm = table_info->LockForRead();
+        if (!ltm->visible_to_client()) {
+          return STATUS_FORMAT(NotFound, "Bound table id $0 is not visible to the client", tid);
+        }
+
+        if (ltm->namespace_id() != namespace_id) {
+          return STATUS_FORMAT(
+              InvalidArgument,
+              "Bound table id $0 does not belong to namespace $1", tid, namespace_id);
+        }
+
+        if (!IsTableEligibleForCDCSDKStream(
+                table_info.get(), ltm, true /* check_schema */, allow_tables_without_primary_key,
+                false /* allow_cdc_used_syscatalog_tables */)) {
+          return STATUS_FORMAT(InvalidArgument, "Bound table id $0 is not eligible for CDC", tid);
+        }
+        tables.push_back(std::move(table_info));
+      }
+
+      // Cannot create table bound streams with no eligible tables.
+      if (tables.empty()) {
+        return STATUS(
+            InvalidArgument,
+            "No eligible tables found in the list provided to create a CDC stream");
+      }
+    } else {
+      tables = FindAllTablesForCDCSDK(
+          namespace_id, allow_tables_without_primary_key,
+          false /* allow_cdc_used_syscatalog_tables */);
+    }
   }
 
-  std::vector<TableId> table_ids;
   table_ids.reserve(tables.size());
   for (const auto& table : tables) {
-    RETURN_NOT_OK(BackfillMetadataForXRepl(table, epoch));
     table_ids.push_back(table->id());
   }
 
@@ -1262,6 +1314,11 @@ Status CatalogManager::CreateNewCdcsdkStream(
         FLAGS_cdc_enable_dynamic_schema_changes);
   }
 
+  // CDC streams which are bound to fixed set of tables will have dynamic table addition disabled.
+  if (req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_bound_table_ids()) {
+    disable_dynamic_tables = true;
+  }
   metadata->set_cdcsdk_disable_dynamic_table_addition(disable_dynamic_tables);
 
   if (req.has_cdcsdk_ysql_replication_slot_plugin_name()) {
@@ -2435,6 +2492,14 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
     // Should never happen since the YSQL commands also check the flag.
     RETURN_INVALID_REQUEST_STATUS(
         "Creation of CDCSDK stream with a replication slot name is disallowed");
+  }
+
+  if (req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_bound_table_ids()) {
+    if (req.has_cdcsdk_ysql_replication_slot_name()) {
+      RETURN_INVALID_REQUEST_STATUS(
+          "CDC streams bound to specific tables cannot be created with a replication slot");
+    }
   }
 
   if (!FLAGS_ysql_yb_allow_replication_slot_lsn_types && req.has_cdcsdk_stream_create_options() &&

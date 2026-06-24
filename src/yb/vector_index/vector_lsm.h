@@ -34,6 +34,7 @@ namespace yb {
 
 class PriorityThreadPoolToken;
 using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
+class PriorityThreadPoolSuspender;
 
 }
 
@@ -263,11 +264,16 @@ class VectorLSM {
   CompactionScope PickChunksForCompaction() const EXCLUDES(mutex_);
 
   // Returns new chunk - a product of input chunks compaction; the new chunk is saved to a disk.
-  Result<ImmutableChunkPtr> DoCompactChunks(const ImmutableChunkPtrs& input_chunks);
+  // The suspender (may be null) lets the long-running merge yield its priority thread pool worker
+  // to higher priority tasks (e.g. flushes) instead of holding it for the whole compaction.
+  Result<ImmutableChunkPtr> DoCompactChunks(
+      const ImmutableChunkPtrs& input_chunks, PriorityThreadPoolSuspender* suspender);
 
-  Status DoCompact(const CompactionContext& context, CompactionScope&& scope) EXCLUDES(mutex_);
+  Status DoCompact(
+      const CompactionContext& context, CompactionScope&& scope,
+      PriorityThreadPoolSuspender* suspender) EXCLUDES(mutex_);
 
-  void ScheduleBackgroundCompaction() EXCLUDES(mutex_);
+  void ScheduleBackgroundCompaction(CompactionTask* task) EXCLUDES(mutex_);
 
   // Creates compaction task and tries to submit it to the thread pool. Triggers callback only if
   // compaction task has been successfully submitted.
@@ -276,6 +282,7 @@ class VectorLSM {
   Result<CompactionTaskPtr> RegisterManualCompaction(StdStatusCallback callback) EXCLUDES(mutex_);
 
   void Deregister(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
+  void RemoveFinishedTaskUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
   void Register(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
   void RegisterUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
 

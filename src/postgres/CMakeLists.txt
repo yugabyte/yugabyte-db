@@ -12,7 +12,9 @@
 
 # YB change: Enable catcache stats.
 set(POSTGRES_EXTRA_C_CXX_FLAGS "-DCATCACHE_STATS")
+set(POSTGRES_EXTRA_CXX_FLAGS "")
 set(POSTGRES_EXTRA_LD_FLAGS "")
+set(POSTGRES_EXTRA_PREPROCESSOR_FLAGS "")
 
 get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         PROPERTY INCLUDE_DIRECTORIES)
@@ -46,10 +48,40 @@ macro(add_pg_include_directory include_dir)
   endforeach()
   list(APPEND added_pg_include_directories "${include_dir}")
   if(NOT _tmp_duplicate_include_dir)
-    add_pg_c_cxx_flags("-I${include_dir}")
+    if("${include_dir}" STREQUAL "${YB_SRC_ROOT}/src" OR
+       "${include_dir}" STREQUAL "${YB_BUILD_ROOT}/src")
+      # The YB source and generated-header roots carry yb headers that are also
+      # installed.  They go in CPPFLAGS, which is shared by the C and C++
+      # compiles, rather than the C/C++ flags.  CFLAGS precedes CPPFLAGS in
+      # PostgreSQL's compile rules, so a source-tree include on CFLAGS would
+      # outrank the installed server headers that PGXS adds through CPPFLAGS;
+      # keeping these roots in CPPFLAGS lets the PGXS -I$(includedir_server)
+      # prepend win, so a PGXS extension build resolves yb headers to the single
+      # installed copy.
+      string(APPEND POSTGRES_EXTRA_PREPROCESSOR_FLAGS " -I${include_dir}")
+    elseif(LIBCXX_INCLUDE_DIR AND "${include_dir}" STREQUAL "${LIBCXX_INCLUDE_DIR}")
+      # The libc++ headers are the C++ standard library: full of #include_next
+      # and constructs that do not compile as C (under newer LLVM they fail to
+      # parse as C at all).  cmake adds them to every target's include list
+      # globally (YB_SETUP_CLANG), but only the C++ compiles use them, so keep
+      # them on the C++ flags alone instead of also feeding the C compiles.
+      string(APPEND POSTGRES_EXTRA_CXX_FLAGS " -I${include_dir}")
+    else()
+      # Everything else (thirdparty, inline-thirdparty) stays on the C/C++
+      # flags rather than CPPFLAGS, so it does not leak into pg_config
+      # --cppflags, which pgrx/bindgen and external extension builds consume.
+      add_pg_c_cxx_flags("-I${include_dir}")
+    endif()
   endif()
 endmacro()
 
+# yb_cmake_include_dirs is the entire global include set (read above from the
+# directory's INCLUDE_DIRECTORIES property); route each entry into the postgres
+# C/C++/CPP flag sets.  Handing postgres the whole global set and splitting it
+# by matching specific directories is a pragmatic approach, not the end state;
+# see #32203 for the broader cleanup options (curate the set postgres receives,
+# partition the thirdparty includes by language, or replace the per-directory
+# matching with a source-tagged registry).
 foreach(include_dir ${yb_cmake_include_dirs})
   add_pg_include_directory("${include_dir}")
 endforeach(include_dir)
@@ -101,7 +133,6 @@ if (APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm64")
   list(APPEND build_postgres_args arch -arm64)
 endif()
 
-set(POSTGRES_EXTRA_PREPROCESSOR_FLAGS "")
 if(APPLE AND NOT "${MACOS_SDK_INCLUDE_DIR}" STREQUAL "")
   string(APPEND POSTGRES_EXTRA_PREPROCESSOR_FLAGS
          " -isystem ${MACOS_SDK_INCLUDE_DIR}")
@@ -150,7 +181,8 @@ endif()
 set(POSTGRES_FINAL_C_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}")
 yb_deduplicate_arguments(POSTGRES_FINAL_C_FLAGS)
 
-set(POSTGRES_FINAL_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}")
+set(POSTGRES_FINAL_CXX_FLAGS
+    "${POSTGRES_EXTRA_C_CXX_FLAGS} ${POSTGRES_EXTRA_CXX_FLAGS} ${CMAKE_CXX_FLAGS}")
 yb_deduplicate_arguments(POSTGRES_FINAL_CXX_FLAGS)
 
 set(POSTGRES_FINAL_LD_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}")

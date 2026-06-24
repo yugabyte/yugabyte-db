@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <sys/utsname.h>
+
 #include "yb/tserver/db_server_base.h"
 
 #include "yb/client/client.h"
@@ -66,6 +68,16 @@ Status DbServerBase::Init() {
   return Status::OK();
 }
 
+namespace {
+static std::string GetUnameInfo() {
+  struct utsname buf;
+  if (uname(&buf) != -1) {
+    return Format("$0 $1 $2 $3", buf.sysname, buf.release, buf.version, buf.machine);
+  }
+  return Format("uname unavailable (errno=$0: $1)", errno, ErrnoToString(errno));
+}
+}  // namespace
+
 Status DbServerBase::Start() {
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
   async_client_init_->Start(clock_);
@@ -74,9 +86,11 @@ Status DbServerBase::Start() {
   RETURN_NOT_OK(GetHostname(&host_name));
 
   std::string node_info = Format(
-      "Node information: { hostname: '$0', rpc_ip: '$1', webserver_ip: '$2', uuid: '$3' }",
+      "Node information: { hostname: '$0', rpc_ip: '$1', webserver_ip: '$2', uuid: '$3', uname: "
+      "'$4' }",
       host_name, yb::ToString(first_rpc_address().address()),
-      yb::ToString(VERIFY_RESULT(first_http_address()).address()), fs_manager_->uuid());
+      yb::ToString(VERIFY_RESULT(first_http_address()).address()), fs_manager_->uuid(),
+      GetUnameInfo());
   LOG(INFO) << node_info;
 
   SetGLogHeader("\n" + node_info);

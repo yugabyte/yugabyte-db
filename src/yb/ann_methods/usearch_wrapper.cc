@@ -25,7 +25,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/two_group_mutex.h"
 
 #include "yb/ann_methods/index_memory_consumption.h"
 
@@ -167,9 +166,6 @@ class UsearchIndex :
   }
 
   Status DoInsert(VectorId vector_id, const Vector& v) {
-    // Take the write side: concurrent adds run in parallel (usearch coordinates them via per-node
-    // locks) but exclude searches, whose lock-free traversal must not read a half-published node.
-    TwoGroupMutex::WriteLock search_lock(search_insert_mutex_);
     // addPoint grows the node and vector tape arenas; the per-thread search contexts buffer
     // does not change, so only the data tracker is updated.
     auto se = UpdateDataConsumptionOnExit();
@@ -242,12 +238,6 @@ class UsearchIndex :
     std::vector<vector_index::VectorWithDistance<DistanceResult>> result_vec;
     if (index_.size() == 0) {
       return result_vec;
-    }
-    // Take the read side while the index is still mutable, so searches never traverse concurrently
-    // with an insert. Immutable indexes have no writers, so they are searched lock-free.
-    std::optional<TwoGroupMutex::ReadLock> search_lock;
-    if (!this->immutable()) {
-      search_lock.emplace(search_insert_mutex_);
     }
     SemaphoreLock lock(*search_semaphore_);
     auto usearch_results = index_.filtered_search_with_ef(
@@ -337,10 +327,6 @@ class UsearchIndex :
   IndexImpl index_;
   mutable std::optional<std::counting_semaphore<1>> search_semaphore_;
   IndexMemoryConsumption consumption_;
-  // Excludes the lock-free usearch search traversal from running concurrently with inserts. Inserts
-  // take the write side, searches the read side; both sides are shared, so neither blocks others of
-  // its own kind.
-  mutable TwoGroupMutex search_insert_mutex_;
 };
 
 }  // namespace

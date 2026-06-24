@@ -13,7 +13,6 @@
 
 #include "yb/integration-tests/external_daemon.h"
 
-#include <atomic>
 #include <chrono>
 #include <memory>
 #include <mutex>
@@ -62,7 +61,6 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-using std::atomic;
 using std::lock_guard;
 using std::mutex;
 using std::ostream;
@@ -98,12 +96,6 @@ static const int kHeapProfileSignal = SIGUSR1;
 // and is never deallocated.
 struct GlobalLogTailerState {
   std::mutex logging_mutex;
-  std::atomic<int> next_log_tailer_id{0};
-
-  // We need some references to these heap-allocated atomic booleans so that ASAN would not consider
-  // them memory leaks.
-  std::mutex id_to_stopped_flag_mutex;
-  std::map<int, std::atomic<bool>*> id_to_stopped_flag;
 
   // This is used to limit the total amount of logs produced by external daemons over the lifetime
   // of a test program. Guarded by logging_mutex.
@@ -112,57 +104,74 @@ struct GlobalLogTailerState {
 
 ExternalDaemon::LogTailerThread::LogTailerThread(
     const std::string& line_prefix, const int child_fd, ostream* const out)
-    : id_(global_state()->next_log_tailer_id.fetch_add(1)),
-      stopped_(CreateStoppedFlagForId(id_)),
+    : state_(std::make_shared<SharedState>()),
       thread_desc_(Format("log tailer thread for prefix $0", line_prefix)),
-      thread_([this, line_prefix, child_fd, out] {
-        VLOG(1) << "Starting " << thread_desc_;
+      // Instead of doing a nonblocking read, we detach this thread and allow it to block
+      // indefinitely trying to read from a child process's stream where nothing is happening. This
+      // means the thread may still be running after this LogTailerThread object is destroyed, so it
+      // must not access any member of this (possibly already destroyed) object. Everything it needs
+      // is captured by value: a human-readable description, the line prefix, the child fd, the
+      // output stream, and the shared state (kept alive via shared_ptr) holding the "stopped" flag
+      // and the optional listener.
+      thread_([state = state_, thread_desc = thread_desc_, line_prefix, child_fd, out] {
+        VLOG(1) << "Starting " << thread_desc;
         FILE* const fp = fdopen(child_fd, "rb");
-        char buf[65536];
-        const atomic<bool>* stopped;
 
-        {
-          lock_guard<mutex> l(state_lock_);
-          stopped = stopped_;
-        }
-
-        // Instead of doing a nonblocking read, we detach this thread and allow it to block
-        // indefinitely trying to read from a child process's stream where nothing is happening.
-        // This is probably OK as long as we are careful to avoid accessing any state that might
-        // have been already destructed (e.g. logging, cout/cerr, member fields of this class,
-        // etc.) in case we do get unblocked. Instead, we keep a local pointer to the atomic
-        // "stopped" flag, and that allows us to safely check if it is OK to print log messages.
-        // The "stopped" flag itself is never deallocated.
         bool is_eof = false;
         bool is_fgets_null = false;
         auto& logging_mutex = global_state()->logging_mutex;
         auto& total_bytes_logged = global_state()->total_bytes_logged;
+        // output doubles as the read buffer: the fixed prefix lives at the front and fgets reads
+        // each line directly into the region after it, so we emit "<prefix><line>" with a single
+        // write and no extra copy. It is sized once here (kReadLineSize bytes reserved for the
+        // line, including room for an appended newline) and never resized again, so line_buf stays
+        // valid across iterations.
+        constexpr size_t kReadLineSize = 65536;
+        std::string output = line_prefix + " ";
+        const size_t prefix_len = output.size();
+        output.resize(prefix_len + kReadLineSize);
+        char* const line_buf = output.data() + prefix_len;
         while (!(is_eof = feof(fp)) &&
-               !(is_fgets_null = (fgets(buf, sizeof(buf), fp) == nullptr)) && !stopped->load()) {
-          size_t l = strlen(buf);
-          const char* maybe_end_of_line = l > 0 && buf[l - 1] == '\n' ? "" : "\n";
-          // Synchronize tailing output from all external daemons for simplicity.
-          lock_guard<mutex> lock(logging_mutex);
-          if (stopped->load()) break;
-          // Make sure we always output an end-of-line character.
-          // Use only one call to << to minimize chance of interleaving of our output with Google
-          // logging.
-          std::string output = line_prefix + " " + buf + maybe_end_of_line;
-          *out << output;
-          if (!stopped->load()) {
-            auto listener = listener_.load(std::memory_order_acquire);
-            if (!stopped->load() && listener) {
-              listener->Handle(GStringPiece(buf, maybe_end_of_line ? l : l - 1));
-            }
+               // Read one less than the line buffer so there is always room to append a newline.
+               !(is_fgets_null = (fgets(line_buf, kReadLineSize - 1, fp) == nullptr))) {
+          size_t l = strlen(line_buf);
+          // Ensure the line ends with exactly one newline so output and the listener see a uniform
+          // form regardless of whether the source line was newline-terminated.
+          if (l == 0 || line_buf[l - 1] != '\n') {
+            line_buf[l++] = '\n';
+            line_buf[l] = '\0';
           }
-          total_bytes_logged += strlen(buf) + strlen(maybe_end_of_line);
-          // Abort the test if it produces too much log spew.
-          CHECK_LE(total_bytes_logged, FLAGS_external_mini_cluster_max_log_bytes);
+          const size_t output_bytes = l;
+          // state->mutex guards stopped/listener. Holding it across the listener read and the
+          // Handle call keeps the listener object alive for the duration of Handle, even if the
+          // listener is concurrently removed and destroyed (see RemoveListener).
+          lock_guard<mutex> state_lock(state->mutex);
+          if (state->stopped) {
+            break;
+          }
+          {
+            // Synchronize tailing output across all external daemons for simplicity, and guard the
+            // global byte counter. logging_mutex is always acquired after state->mutex. A single
+            // write minimizes interleaving of our output with Google logging.
+            lock_guard<mutex> log_lock(logging_mutex);
+            out->write(output.data(), prefix_len + l);
+            total_bytes_logged += output_bytes;
+            // Abort the test if it produces too much log spew.
+            CHECK_LE(total_bytes_logged, FLAGS_external_mini_cluster_max_log_bytes);
+          }
+          if (state->listener) {
+            state->listener->Handle(GStringPiece(line_buf, l));
+          }
         }
         fclose(fp);
-        if (!stopped->load()) {
+        bool stopped;
+        {
+          lock_guard<mutex> lock(state->mutex);
+          stopped = state->stopped;
+        }
+        if (!stopped) {
           // It might not be safe to log anything if we have already stopped.
-          VLOG(1) << "Exiting " << thread_desc_ << ": is_eof=" << is_eof
+          VLOG(1) << "Exiting " << thread_desc << ": is_eof=" << is_eof
                   << ", is_fgets_null=" << is_fgets_null << ", stopped=0";
         }
       }) {
@@ -170,7 +179,13 @@ ExternalDaemon::LogTailerThread::LogTailerThread(
 }
 
 void ExternalDaemon::LogTailerThread::SetListener(StringListener* listener) {
-  listener_ = listener;
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  state_->listener = listener;
+}
+
+ExternalDaemon::StringListener* ExternalDaemon::LogTailerThread::listener() {
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  return state_->listener;
 }
 
 GlobalLogTailerState* ExternalDaemon::LogTailerThread::global_state() {
@@ -178,26 +193,20 @@ GlobalLogTailerState* ExternalDaemon::LogTailerThread::global_state() {
 }
 
 void ExternalDaemon::LogTailerThread::RemoveListener(StringListener* listener) {
-  listener_.compare_exchange_strong(listener, nullptr);
+  // state_->mutex is held by the tailer thread for the entire listener read / Handle sequence. This
+  // guarantees that once this method returns, no in-flight Handle call references listener, so the
+  // listener object can be safely destroyed without a use-after-free.
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  if (state_->listener == listener) {
+    state_->listener = nullptr;
+  }
 }
 
 ExternalDaemon::LogTailerThread::~LogTailerThread() {
   VLOG(1) << "Stopping " << thread_desc_;
-  lock_guard<mutex> l(state_lock_);
-  stopped_->store(true);
-  listener_ = nullptr;
-}
-
-atomic<bool>* ExternalDaemon::LogTailerThread::CreateStoppedFlagForId(int id) {
-  lock_guard<mutex> lock(global_state()->id_to_stopped_flag_mutex);
-  // This is never deallocated, but we add this pointer to the id_to_stopped_flag map referenced
-  // from the global state singleton, and that apparently makes ASAN no longer consider this to be
-  // a memory leak. We don't need to check if the id already exists in the map, because this
-  // function is never invoked with a particular id more than once.
-  auto* const stopped = new atomic<bool>();
-  stopped->store(false);
-  global_state()->id_to_stopped_flag[id] = stopped;
-  return stopped;
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  state_->stopped = true;
+  state_->listener = nullptr;
 }
 
 ExternalDaemon::ExternalDaemon(

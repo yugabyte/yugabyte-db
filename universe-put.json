@@ -1,0 +1,74 @@
+{
+  "expected_universe_version": -1,
+  "clusters": [
+    {
+      "uuid": "25665c26-0afb-44b4-a37c-fa739268f968",
+      "num_nodes": 5,
+      "provider_spec": {
+        "region_list": [
+          "2ed19dab-546c-46d4-9deb-f90241cc548f",
+          "593c588d-c2bf-44e6-9c20-5bbb3b7e68b8",
+          "0e6c75d5-2cef-4ddd-ac44-f61f910d6bb1"
+        ]
+      },
+      "placement_spec": {
+        "cloud_list": [
+          {
+            "uuid": "99007470-8c90-4c91-bb9e-58e1afd0b8ee",
+            "code": "gcp",
+            "region_list": [
+              {
+                "uuid": "2ed19dab-546c-46d4-9deb-f90241cc548f",
+                "code": "us-central1",
+                "name": "Iowa",
+                "az_list": [
+                  {
+                    "uuid": "938ac3db-aa11-4c1f-bfb7-46609e21c8a5",
+                    "name": "us-central1-a",
+                    "replication_factor": 2,
+                    "subnet": "tailscale-vpc-us-central",
+                    "num_nodes_in_az": 1,
+                    "leader_affinity": true,
+                    "leader_preference": 0
+                  }
+                ]
+              },
+              {
+                "uuid": "0e6c75d5-2cef-4ddd-ac44-f61f910d6bb1",
+                "code": "us-east1",
+                "name": "South Carolina",
+                "az_list": [
+                  {
+                    "uuid": "61cc0c91-1855-4c5e-b2b2-e1d01535f5f2",
+                    "name": "us-east1-b",
+                    "replication_factor": 2,
+                    "subnet": "tailscale-vpc-us-east",
+                    "num_nodes_in_az": 1,
+                    "leader_affinity": false,
+                    "leader_preference": 0
+                  }
+                ]
+              },
+              {
+                "uuid": "593c588d-c2bf-44e6-9c20-5bbb3b7e68b8",
+                "code": "us-west1",
+                "name": "Oregon",
+                "az_list": [
+                  {
+                    "uuid": "7c2de825-0e2a-44d8-afcb-2efbb4cee893",
+                    "name": "us-west1-a",
+                    "replication_factor": 2,
+                    "subnet": "tailscale-vpc-us-west",
+                    "num_nodes_in_az": 2,
+                    "leader_affinity": false,
+                    "leader_preference": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

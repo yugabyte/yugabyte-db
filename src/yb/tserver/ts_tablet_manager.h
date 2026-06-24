@@ -69,6 +69,7 @@
 #include "yb/tablet/tablet_splitter.h"
 
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_admin.fwd.h"
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/ts_data_size_metrics.h"
@@ -240,12 +241,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // returned.
   // If `hide_only` is true, then just hide tablet instead of deleting it.
   // If `keep_data` is true, then on disk data is not deleted.
+  // If `resp` is non-null, it is populated with metadata about the deleted
+  // tablet (directories involved in the delete)
   Status DeleteTablet(
       const TabletId& tablet_id, tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
       bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code,
-      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt,
+      DeleteTabletResponsePB* resp = nullptr);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet peer is not found.
   //

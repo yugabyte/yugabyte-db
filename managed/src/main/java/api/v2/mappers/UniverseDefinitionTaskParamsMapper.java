@@ -65,6 +65,9 @@ public interface UniverseDefinitionTaskParamsMapper {
 
   @Mapping(target = "allProviderUUIDs", ignore = true)
   @Mapping(target = "allCloudTypes", ignore = true)
+  @Mapping(target = "allImageBundles", ignore = true)
+  @Mapping(target = "providerProxyConfigs", ignore = true)
+  @Mapping(target = "AZProxyConfigMap", ignore = true)
   public UniverseDefinitionTaskParams.UserIntent userIntentToUserIntent(
       UniverseDefinitionTaskParams.UserIntent userIntent, @Context Request request);
 

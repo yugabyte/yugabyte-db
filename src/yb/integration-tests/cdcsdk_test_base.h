@@ -227,7 +227,8 @@ class CDCSDKTestBase : public YBTest {
       const CDCRecordType& record_type,
       const std::string& namespace_name,
       CDCSDKDynamicTablesOption dynamic_tables_option =
-          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
+      const std::vector<TableId>& bound_table_ids = {});
 
   // Delegating overload: uses test_namespace_name when caller omits namespace_name.
   void InitCreateStreamRequest(
@@ -287,7 +288,8 @@ class CDCSDKTestBase : public YBTest {
       CDCSDKSnapshotOption snapshot_option,
       CDCCheckpointType checkpoint_type,
       CDCRecordType record_type,
-      std::string namespace_name);
+      std::string namespace_name,
+      const std::vector<TableId>& bound_table_ids = {});
 
   // Delegating overload: uses test_namespace_name when caller omits namespace_name.
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(
