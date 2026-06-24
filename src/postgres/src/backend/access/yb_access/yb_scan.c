@@ -1678,51 +1678,52 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	ScanKey    *subkeys = &ybScan->keys[skey_index + 1];
 
 	/*
-	 * We can only push down right now if the key columns form a contiguous
-	 * index-key sequence and the same comparison operation is done to all
-	 * subkeys.
+	 * We can only push down a contiguous index-key prefix using the same
+	 * comparison operation.
 	 *
-	 * YB: A leading yb_hash_code subkey (sk_attno = InvalidAttrNumber,
-	 * YB_SK_SEARCHHASHCODE flag) is allowed but not yet pushed down as a
-	 * DocDB bound.  Disable pushdown so the condition is rechecked at the
-	 * Postgres level.
+	 * A leading yb_hash_code subkey (sk_attno = InvalidAttrNumber,
+	 * YB_SK_SEARCHHASHCODE flag) is encoded as the first PgGate row-bound
+	 * value, followed by the matching hash/range key column prefix.
 	 */
-	bool		can_pushdown_bound = true;
 	bool		has_yb_hash_code_subkey = false;
 	bool		is_hash_index = (index->rd_indoption[0] & INDOPTION_HASH) != 0;
-	bool		have_last_attno = false;
-	AttrNumber	last_attno = InvalidAttrNumber;
 
 	int			strategy = header_key->sk_strategy;
 	int			subkey_count = length_of_key - 1;
+	int			pushdown_subkey_count = subkey_count;
+	int			first_key_subkey = 0;
 
-	for (int j = 0; j < subkey_count; j++)
+	if (is_hash_index)
+	{
+		if (subkey_count == 0 || !YbIsHashCodeSearch(subkeys[0]))
+			return true;
+
+		/*
+		 * Hash row bounds are encoded as DocKey bounds, which can be
+		 * disabled by the AutoFlag-backed GUC.
+		 */
+		if (!yb_allow_dockey_bounds)
+			return true;
+
+		has_yb_hash_code_subkey = true;
+		first_key_subkey = 1;
+	}
+
+	for (int j = first_key_subkey; j < subkey_count; ++j)
 	{
 		ScanKey		key = subkeys[j];
+		AttrNumber	expected_attno = j + 1 - first_key_subkey;
 
 		if (YbIsHashCodeSearch(key))
 		{
-			if (!is_hash_index || j != 0)
-			{
-				can_pushdown_bound = false;
-				break;
-			}
-			has_yb_hash_code_subkey = true;
-			have_last_attno = true;
-			last_attno = InvalidAttrNumber;
-			continue;
-		}
-
-		if (is_hash_index && j == 0)
-		{
-			can_pushdown_bound = false;
+			pushdown_subkey_count = j;
 			break;
 		}
 
 		/* Make sure that the specified keys are contiguous. */
-		if (have_last_attno && key->sk_attno != last_attno + 1)
+		if (key->sk_attno != expected_attno)
 		{
-			can_pushdown_bound = false;
+			pushdown_subkey_count = j;
 			break;
 		}
 
@@ -1732,50 +1733,32 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		 */
 		if (strategy != key->sk_strategy)
 		{
-			can_pushdown_bound = false;
+			pushdown_subkey_count = j;
 			break;
 		}
-		have_last_attno = true;
-		last_attno = key->sk_attno;
-
-		/* Make sure that there are no hash key columns. */
-		if (index->rd_indoption[key->sk_attno - 1]
-			& INDOPTION_HASH)
-		{
-			/*
-			 * Hash columns in a ROW comparison are allowed when led by
-			 * yb_hash_code, but we don't push them down yet.
-			 */
-			if (has_yb_hash_code_subkey)
-				continue;
-			can_pushdown_bound = false;
-			break;
-		}
-	}
-
-	/*
-	 * If a yb_hash_code subkey is present, disable pushdown for now.
-	 * The pggate EncodeRowKeyForBound API needs to be updated to accept
-	 * a pre-computed hash code before we can push these down as DocDB
-	 * row bounds.  The condition will be rechecked at the Postgres level.
-	 */
-	if (has_yb_hash_code_subkey)
-		can_pushdown_bound = false;
-
-	/* Make sure that there are no hash keys in order to push down. */
-	for (int i = 0; (i < index->rd_index->indnkeyatts) && can_pushdown_bound; i++)
-	{
-		if (index->rd_indoption[i] & INDOPTION_HASH)
-			can_pushdown_bound = false;
 	}
 
 	bool		needs_recheck = true;
 
-	if (can_pushdown_bound)
+	if (pushdown_subkey_count > first_key_subkey)
 	{
+		int			yb_hash_code_offset = first_key_subkey;
+		int			n_bound_values =
+			index->rd_index->indnkeyatts + yb_hash_code_offset;
 
 		YbcPgExpr  *col_values = palloc(sizeof(YbcPgExpr) *
-										index->rd_index->indnkeyatts);
+										n_bound_values);
+
+		if (has_yb_hash_code_subkey && !is_for_precheck)
+		{
+			ScanKey		hash_key = subkeys[0];
+
+			col_values[0] = YBCNewConstant(ybScan->handle,
+										   INT4OID,
+										   hash_key->sk_collation,
+										   hash_key->sk_argument,
+										   false);
+		}
 
 		/*
 		 * Prepare upper/lower bound tuples determined from this
@@ -1805,8 +1788,10 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		 * applies to the RHS of (row key) <= (row key values)
 		 * expressions.
 		 */
-		bool		is_direction_asc = !(index->rd_indoption[subkeys[0]->sk_attno - 1] &
-										 INDOPTION_DESC);
+		bool		is_direction_asc =
+			has_yb_hash_code_subkey ||
+			!(index->rd_indoption[subkeys[0]->sk_attno - 1] &
+			  INDOPTION_DESC);
 
 		bool		gt = (strategy == BTGreaterEqualStrategyNumber ||
 						  strategy == BTGreaterStrategyNumber);
@@ -1814,16 +1799,18 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		bool		is_inclusive = (strategy != BTGreaterStrategyNumber &&
 									strategy != BTLessStrategyNumber);
 
-		bool		is_point_scan = ((subkey_count == index->rd_index->indnatts) &&
+		bool		is_point_scan = ((pushdown_subkey_count ==
+									  index->rd_index->indnatts +
+									  yb_hash_code_offset) &&
 									 (strategy == BTEqualStrategyNumber));
 
 		/* Whether or not the RHS values make up a DocDB upper bound */
 		bool		is_upper_bound = gt ^ is_direction_asc;
-		size_t		subkey_index = 0;
+		size_t		subkey_index = yb_hash_code_offset;
 
 		for (int j = 0; j < index->rd_index->indnkeyatts; j++)
 		{
-			bool		is_column_specified = (subkey_index < subkey_count &&
+			bool		is_column_specified = (subkey_index < pushdown_subkey_count &&
 											   (subkeys[subkey_index]->sk_attno - 1) == j);
 
 			/*
@@ -1840,7 +1827,8 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 			if (!is_column_specified ||
 				(asc != is_direction_asc && !is_point_scan))
 			{
-				col_values[j] = NULL;
+				if (!is_for_precheck)
+					col_values[j + yb_hash_code_offset] = NULL;
 				needs_recheck = true;
 
 				/*
@@ -1856,25 +1844,33 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 				AttrNumber	attnum =
 					scan_plan->bind_key_attnums[skey_index + 1 + subkey_index];
 
-				col_values[j] = YBCNewConstant(ybScan->handle,
-											   ybc_get_atttypid(scan_plan->bind_desc,
-																attnum),
-											   current->sk_collation,
-											   current->sk_argument,
-											   false);
+				col_values[j + yb_hash_code_offset] =
+					YBCNewConstant(ybScan->handle,
+								   ybc_get_atttypid(scan_plan->bind_desc,
+													attnum),
+								   current->sk_collation,
+								   current->sk_argument,
+								   false);
 			}
 
 			if (is_column_specified)
 			{
-				int			att_idx = YBAttnumToBmsIndex(ybScan->table,
-														 subkeys[subkey_index]->sk_attno);
+				/*
+				 * PgGate rejects IS NOT NULL binds on partition columns, and
+				 * the full row comparison remains rechecked by Postgres.
+				 */
+				if (!has_yb_hash_code_subkey &&
+					subkey_index == first_key_subkey)
+				{
+					AttrNumber	attno = subkeys[subkey_index]->sk_attno;
+					int			att_idx = YBAttnumToBmsIndex(ybScan->table,
+															attno);
 
-				/* Set the first column in this RC to not null. */
-				if (subkey_index == 0 &&
-					fold[att_idx].type == YB_FOLD_NONE)
-					fold[att_idx].type = YB_FOLD_IS_NOT_NULL;
+					if (fold[att_idx].type == YB_FOLD_NONE)
+						fold[att_idx].type = YB_FOLD_IS_NOT_NULL;
+				}
 
-				subkey_index++;
+				++subkey_index;
 			}
 		}
 
@@ -1884,7 +1880,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		if (is_upper_bound || strategy == BTEqualStrategyNumber)
 		{
 			HandleYBStatus(YBCPgDmlAddRowUpperBound(ybScan->handle,
-													index->rd_index->indnkeyatts,
+													n_bound_values,
 													col_values,
 													is_inclusive));
 		}
@@ -1892,7 +1888,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		if (!is_upper_bound || strategy == BTEqualStrategyNumber)
 		{
 			HandleYBStatus(YBCPgDmlAddRowLowerBound(ybScan->handle,
-													index->rd_index->indnkeyatts,
+													n_bound_values,
 													col_values,
 													is_inclusive));
 		}

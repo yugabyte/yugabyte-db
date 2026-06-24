@@ -21,7 +21,7 @@ INSERT INTO hc_rc_t1
 -- Test 1: Full key ROW comparison with leading yb_hash_code.
 -- Should show ROW(yb_hash_code...) as Index Cond, not Filter.
 -------------------------------------------------------------------
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (yb_hash_code(h), h, r1, r2) > (yb_hash_code(1), 1, 10, 100)
     LIMIT 5;
@@ -30,7 +30,7 @@ SELECT * FROM hc_rc_t1
 -- Test 2: Without leading yb_hash_code.
 -- Should NOT be our Index Cond path (Seq Scan or Filter).
 -------------------------------------------------------------------
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (h, r1, r2) > (1, 10, 100)
     LIMIT 5;
@@ -39,7 +39,7 @@ SELECT * FROM hc_rc_t1
 -- Test 3: ROW comparison with upper bound on yb_hash_code.
 -- Both conditions should be Index Cond.
 -------------------------------------------------------------------
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (yb_hash_code(h), h, r1, r2) > (yb_hash_code(1), 1, 10, 100)
       AND yb_hash_code(h) < 50000
@@ -59,7 +59,7 @@ CREATE TABLE hc_rc_t2(
 INSERT INTO hc_rc_t2
     SELECT i % 3, i % 5, i, 'val' || i FROM generate_series(1, 30) i;
 
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t2
     WHERE (yb_hash_code(h1), h1, h2, r) > (yb_hash_code(1), 1, 2, 7)
     LIMIT 10;
@@ -68,7 +68,7 @@ SELECT * FROM hc_rc_t2
 -- Test 5: Less-than direction.
 -- Should be Index Cond.
 -------------------------------------------------------------------
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (yb_hash_code(h), h, r1, r2) < (yb_hash_code(3), 3, 30, 300)
     LIMIT 5;

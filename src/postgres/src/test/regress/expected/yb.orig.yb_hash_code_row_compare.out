@@ -19,14 +19,14 @@ INSERT INTO hc_rc_t1
 -- Test 1: Full key ROW comparison with leading yb_hash_code.
 -- Should show ROW(yb_hash_code...) as Index Cond, not Filter.
 -------------------------------------------------------------------
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (yb_hash_code(h), h, r1, r2) > (yb_hash_code(1), 1, 10, 100)
     LIMIT 5;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
- Limit
-   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1
+ Limit (actual rows=5 loops=1)
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5 loops=1)
          Index Cond: (ROW(yb_hash_code(h), h, r1, r2) > ROW(4624, 1, 10, 100))
 (3 rows)
 
@@ -34,30 +34,31 @@ SELECT * FROM hc_rc_t1
 -- Test 2: Without leading yb_hash_code.
 -- Should NOT be our Index Cond path (Seq Scan or Filter).
 -------------------------------------------------------------------
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (h, r1, r2) > (1, 10, 100)
     LIMIT 5;
                      QUERY PLAN                     
 ----------------------------------------------------
- Limit
-   ->  Seq Scan on hc_rc_t1
+ Limit (actual rows=5 loops=1)
+   ->  Seq Scan on hc_rc_t1 (actual rows=5 loops=1)
          Filter: (ROW(h, r1, r2) > ROW(1, 10, 100))
-(3 rows)
+         Rows Removed by Filter: 2
+(4 rows)
 
 -------------------------------------------------------------------
 -- Test 3: ROW comparison with upper bound on yb_hash_code.
 -- Both conditions should be Index Cond.
 -------------------------------------------------------------------
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (yb_hash_code(h), h, r1, r2) > (yb_hash_code(1), 1, 10, 100)
       AND yb_hash_code(h) < 50000
     LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Limit
-   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1
+ Limit (actual rows=5 loops=1)
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5 loops=1)
          Index Cond: ((ROW(yb_hash_code(h), h, r1, r2) > ROW(4624, 1, 10, 100)) AND (yb_hash_code(h) < 50000))
 (3 rows)
 
@@ -74,29 +75,30 @@ CREATE TABLE hc_rc_t2(
 );
 INSERT INTO hc_rc_t2
     SELECT i % 3, i % 5, i, 'val' || i FROM generate_series(1, 30) i;
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t2
     WHERE (yb_hash_code(h1), h1, h2, r) > (yb_hash_code(1), 1, 2, 7)
     LIMIT 10;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
- Limit
-   ->  Seq Scan on hc_rc_t2
+ Limit (actual rows=10 loops=1)
+   ->  Seq Scan on hc_rc_t2 (actual rows=10 loops=1)
          Filter: (ROW(yb_hash_code(h1), h1, h2, r) > ROW(4624, 1, 2, 7))
-(3 rows)
+         Rows Removed by Filter: 2
+(4 rows)
 
 -------------------------------------------------------------------
 -- Test 5: Less-than direction.
 -- Should be Index Cond.
 -------------------------------------------------------------------
-EXPLAIN (COSTS OFF)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT * FROM hc_rc_t1
     WHERE (yb_hash_code(h), h, r1, r2) < (yb_hash_code(3), 3, 30, 300)
     LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
- Limit
-   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1
+ Limit (actual rows=5 loops=1)
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1 (actual rows=5 loops=1)
          Index Cond: (ROW(yb_hash_code(h), h, r1, r2) < ROW(64672, 3, 30, 300))
 (3 rows)
 

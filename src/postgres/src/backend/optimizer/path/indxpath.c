@@ -5538,9 +5538,8 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 	/*
 	 * Must have matched yb_hash_code + all remaining ROW elements as a
 	 * prefix.  We require at least yb_hash_code + one real column, and
-	 * all elements from the original ROW must have matched (no lossy
-	 * truncation for now -- the executor doesn't support partial
-	 * yb_hash_code row bounds yet).
+	 * all elements from the original ROW must have matched.  Broader
+	 * lossy prefix matching is left for a follow-up.
 	 */
 	if (matching_cols < 2)
 		return NULL;
