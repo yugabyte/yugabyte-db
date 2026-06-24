@@ -2038,4 +2038,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable preflight check in YNP node agent provision",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableYnpVersionCheck =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_ynp_version_check",
+          ScopeType.GLOBAL,
+          "Enable YNP Version Check",
+          "Enable YNP version check when adding nodes to a universe."
+              + " When enabled, the node's YNP major version must match the expected version.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

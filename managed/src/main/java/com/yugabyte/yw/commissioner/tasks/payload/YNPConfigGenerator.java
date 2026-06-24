@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
@@ -268,6 +269,10 @@ public class YNPConfigGenerator {
     ynpNode.put("is_install_node_agent", false);
     ynpNode.put("yb_user_id", "1994");
     ynpNode.put("is_yb_prebuilt_image", params.isYbPrebuiltImage());
+    // Propagate the YNP version check flag so the YNP (Go) code respects it uniformly when
+    // comparing versions across all provisioning and precheck paths.
+    extraNode.put(
+        "enable_ynp_version_check", confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck));
     loggingNode.put("level", "INFO");
     loggingNode.put("directory", params.getNodeAgentHome().resolve("logs").toString());
     String ybUserHomeOverride =
