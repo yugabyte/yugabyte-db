@@ -63,6 +63,18 @@ class PgSharedMemTest : public PgMiniTestBase {
     return RegularBuildVsSanitizers(2, 20) * 1000;
   }
 
+  // Cumulative number of worker threads ever created across all tserver shared memory exchange
+  // thread pools. Scoped to the exchange pools, so it is not affected by unrelated background
+  // thread creation in the cluster.
+  size_t SumExchangeThreadPoolWorkersCreated() const {
+    size_t result = 0;
+    for (const auto& mini_server : cluster_->mini_tablet_servers()) {
+      result += mini_server->server()->TEST_GetPgClientService()
+          ->TEST_ExchangeThreadPoolWorkersCreated();
+    }
+    return result;
+  }
+
   std::pair<size_t, size_t> SumBigSharedMemUsage() const {
     std::pair<size_t, size_t> result(0, 0);
     for (const auto& mini_server : cluster_->mini_tablet_servers()) {
@@ -290,7 +302,7 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   }
 
   auto threads_before = CountManagedThreads();
-  auto threads_started_before = CountStartedThreads();
+  auto workers_created_before = SumExchangeThreadPoolWorkersCreated();
   constexpr size_t kNumIterations = 16;
 
   for (int i = 0; i != kNumIterations; ++i) {
@@ -301,13 +313,16 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   }
 
   auto threads_after = CountManagedThreads();
-  auto threads_started_after = CountStartedThreads();
+  auto workers_created_after = SumExchangeThreadPoolWorkersCreated();
 
   LOG(INFO) << "Running threads: " << threads_before << ", " << threads_after
-            << ", started threads: " << threads_started_before << ", " << threads_started_after;
+            << ", exchange pool workers created: " << workers_created_before << ", "
+            << workers_created_after;
 
-  // Expect that we reuse at least some threads;
-  ASSERT_LT(threads_started_after, threads_started_before + kNumIterations);
+  // Connections are created and destroyed sequentially, so a single reused exchange thread per
+  // tserver is enough to serve all of them. Expect far fewer new workers than connections, which
+  // confirms the exchange thread pool reuses threads instead of spawning one per connection.
+  ASSERT_LT(workers_created_after, workers_created_before + kNumIterations);
 
   ASSERT_OK(WaitFor([threads_before] {
     return CountManagedThreads() <= threads_before;

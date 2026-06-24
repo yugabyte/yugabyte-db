@@ -161,6 +161,10 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
   size_t TEST_SessionsCount();
 
+  // Cumulative number of worker threads ever created by the shared memory exchange thread pool.
+  // Used to verify that the pool reuses threads across postgres connections.
+  size_t TEST_ExchangeThreadPoolWorkersCreated();
+
   void Shutdown() override;
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \

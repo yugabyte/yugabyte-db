@@ -3109,6 +3109,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return sessions_.size();
   }
 
+  size_t TEST_ExchangeThreadPoolWorkersCreated() {
+    return exchange_thread_pool_ ? exchange_thread_pool_->TEST_NumWorkersCreated() : 0;
+  }
+
  private:
   client::YBClient& client() { return *client_future_.get(); }
 
@@ -3384,6 +3388,10 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
+
+size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
+  return impl_->TEST_ExchangeThreadPoolWorkersCreated();
+}
 
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 
