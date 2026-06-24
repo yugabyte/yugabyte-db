@@ -574,7 +574,20 @@ class LinkHelper:
             self.new_args.extend([
                 '-L%s' % os.path.join(self.build_root, 'postgres', 'lib'),
                 '-l:libpgport.a',
-                '-l:libpq.a'
+                '-l:libpq.a',
+                # libpq's frontend objects reference the plain encoding-function names, but the
+                # libpgcommon variants already on the link (libpgcommon_srv.a, libpgcommon.a)
+                # define only the *_private names (PG commit
+                # b6c7cfac88c47a9194d76f3d074129da3c46545a renames them via
+                # USE_PRIVATE_ENCODING_FUNCS; see pg_wchar.h). The plain and _private functions
+                # are identical bodies, so alias the plain names to the _private ones rather than
+                # linking libpgcommon_shlib.a, which would pull in a second copy of the encoding
+                # tables (encnames_shlib.o vs encnames_srv.o) and force
+                # -Wl,--allow-multiple-definition across the whole link.
+                '-Wl,--defsym=pg_encoding_to_char=pg_encoding_to_char_private',
+                '-Wl,--defsym=pg_char_to_encoding=pg_char_to_encoding_private',
+                '-L%s' % os.path.join(self.build_root, 'postgres_build', 'src', 'port'),
+                '-l:libpgport_srv.a',
             ])
 
         self.new_args.extend([
