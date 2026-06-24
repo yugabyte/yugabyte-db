@@ -1,4 +1,4 @@
----
+<!---
 title: Resource governance
 linkTitle: Resource governance
 description: Set limits on use of shared resources by databases in the same cluster.
@@ -9,9 +9,10 @@ menu:
   stable_yugabyte-cloud:
     identifier: resource-governance
     parent: cloud-clusters
-    weight: 110
+    weight: 155
 type: docs
----
+private: true
+--->
 
 Resource governance intelligently shares CPU between databases during contention, while allowing databases to use available capacity when the cluster is underused. This is particularly useful for multi-tenant applications, providing predictable performance isolation for multiple databases in a single cluster, and preventing "noisy-neighbor" issues by ensuring any one database cannot degrade the performance of others.
 
