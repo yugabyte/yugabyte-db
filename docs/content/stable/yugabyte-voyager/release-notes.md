@@ -29,7 +29,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 - Fixed an issue that allowed equivalent commands, such as `export data` and `export data from source` to run concurrently for the same migration.
 - Fixed an issue where failures before logging initialization could print duplicate errors or send errors to stdout.
-- Fixed an issue where assess-migration and analyze-schema incorrectly reported PL/pgSQL %TYPE declarations as unsupported.
+- Fixed an issue where `assess-migration` and `analyze-schema` incorrectly reported PL/pgSQL %TYPE declarations as unsupported.
 - Fixed an issue where import schema could fail for PL/pgSQL functions using unqualified %TYPE references.
 
 ## v2026.6.1 - June 9, 2026
