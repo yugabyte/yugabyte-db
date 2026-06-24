@@ -33,6 +33,7 @@ const TabItem = styled(YBTab)(({ theme }) => ({
 }));
 
 const StyledDivider = styled(Divider)(({ theme }) => ({
+  width: '200px',
   marginBottom: theme.spacing(1)
 }));
 
@@ -100,6 +101,8 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
       <Grid item sx={{ width: '230px' }}>
         <YBTabs
           orientation="vertical"
+          variant="secondary"
+          tabWidth={200}
           value={selectedTab}
           onChange={handleTabChange}
         >

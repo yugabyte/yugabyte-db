@@ -31,8 +31,10 @@ import {
   CloudType,
   Placement,
   StorageType,
-  VolumeType
+  VolumeType,
+  StorageTypeSelectableCloudTypes
 } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { isStorageTypeSelectableCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
@@ -264,7 +266,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   if (![VolumeType.EBS, VolumeType.SSD, VolumeType.NVME].includes(volumeType)) return null;
 
   const storageTypeSelectVisible =
-    (!!provider?.code && [CloudType.gcp, CloudType.azu].includes(provider.code)) ||
+    isStorageTypeSelectableCloudType(provider?.code) ||
     (volumeType === VolumeType.EBS && provider?.code === CloudType.aws);
 
   const showEphemeralStorageWarning =
@@ -281,7 +283,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     const fixedNumVolumes =
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
       provider?.code &&
-      ![CloudType.kubernetes, CloudType.gcp, CloudType.azu].includes(provider?.code);
+      ![CloudType.kubernetes, ...StorageTypeSelectableCloudTypes].includes(provider.code);
 
     // Ephemeral instances volume information cannot be resized, refer to PLAT-16118
     const isEphemeralStorage =
@@ -357,7 +359,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderStorageType = () => {
     if (
-      (provider?.code && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
+      isStorageTypeSelectableCloudType(provider?.code) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
     ) {
       const isPremiumV2Storage = fieldValue?.storageType === StorageType.PremiumV2_LRS;

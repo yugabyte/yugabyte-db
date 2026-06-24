@@ -16,6 +16,7 @@ import { SecuritySettingsProps } from '../../create-universe/steps/security-sett
 import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { EditNetworkAcessModal } from '../edit-security/EditNetworkAcessModal';
 
 import Checked from '@app/redesign/assets/check-new.svg';
@@ -100,7 +101,7 @@ export const SecurityTab = () => {
             </StyledHeader>
             <StyledContent>
               <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
-                {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(providerCode) && (
+                {isCloudVendorCloudType(providerCode) && (
                   <div>
                     <span className="header">{t('publicIP')}</span>
                     <span className="value sameline nogap">

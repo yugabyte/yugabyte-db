@@ -32,6 +32,7 @@ import { CloudType } from '@app/redesign/features/universe/universe-form/utils/d
 import { useEditKubernetesOverrides } from '@app/v2/api/universe/universe';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { createErrorMessage } from '@app/utils/ObjectUtils';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 //icons
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
@@ -406,7 +407,7 @@ export const AdvancedTab = () => {
             </StyledPanel>
           )}
           {providerCode === CloudType.kubernetes && <EditK8sHelmOverrides />}
-          {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(providerCode) && (
+          {isCloudVendorCloudType(providerCode) && (
             <StyledPanel sx={{ marginTop: '24px' }}>
               <StyledHeader
                 sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}

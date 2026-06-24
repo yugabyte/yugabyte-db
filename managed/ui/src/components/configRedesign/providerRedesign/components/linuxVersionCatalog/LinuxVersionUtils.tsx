@@ -19,12 +19,12 @@ import { useTranslation } from 'react-i18next';
 import { FormHelperText, Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { useQuery } from 'react-query';
 import {
-  CloudType,
   ImageBundle,
   ImageBundleType,
   Provider,
   RunTimeConfigEntry
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '../../utils';
 import { ArchitectureType } from '../../constants';
 import { ClusterType, UniverseDetails } from '../../../../../redesign/helpers/dtos';
 import { runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
@@ -248,7 +248,7 @@ export function IsOsPatchingEnabled() {
  * @returns Whether the image bundle is supported by the provider.
  */
 export const isImgBundleSupportedByProvider = (provider: Provider) =>
-  [CloudType.aws, CloudType.azu, CloudType.gcp, CloudType.oci].includes(provider?.code);
+  isCloudVendorCloudType(provider?.code);
 
 /**
  * Displays a message for configuring SSH details.

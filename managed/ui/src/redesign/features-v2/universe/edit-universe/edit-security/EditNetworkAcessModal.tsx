@@ -9,6 +9,7 @@ import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 
 const { YBModal } = yba;
 const { styled, Box, boxClasses } = mui;
@@ -112,7 +113,7 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
     >
       <FormProvider {...methods}>
         <ModalContent>
-          {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(providerCode) && (
+          {isCloudVendorCloudType(providerCode) && (
             <AssignPublicIPField disabled={false} providerCode={providerCode} />
           )}
           {providerCode === CloudType.kubernetes && (

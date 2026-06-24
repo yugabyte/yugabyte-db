@@ -27,6 +27,7 @@ import {
 } from '../../CreateUniverseContext';
 import { constructPlacements } from '../../utils/createUniversePayload';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { OtherAdvancedProps } from './dtos';
 import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ValidationSchema';
 
@@ -111,7 +112,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
             </Box>
           </YBAccordion>
         )}
-        {provider && [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
+        {provider && isCloudVendorCloudType(provider?.code) && (
           <YBAccordion titleContent={t('userTagsHeader')} sx={{ width: '100%' }}>
             <UserTagsField disabled={false} />
           </YBAccordion>

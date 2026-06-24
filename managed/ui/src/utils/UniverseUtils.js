@@ -316,6 +316,7 @@ export const isPausableUniverse = (universe) => {
   return (
     isUniverseType(universe, 'gcp') ||
     isUniverseType(universe, 'azu') ||
+    isUniverseType(universe, 'oci') ||
     isUniverseType(universe, 'kubernetes')
   );
 };

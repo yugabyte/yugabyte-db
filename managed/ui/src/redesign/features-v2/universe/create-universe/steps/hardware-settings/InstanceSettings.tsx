@@ -22,17 +22,18 @@ import {
   EBSVolumeField,
   EBSKmsConfigField
 } from '@app/redesign/features-v2/universe/create-universe/fields';
+import { isImgBundleSupportedByProvider } from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { useGetZones } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { CloudType, Placement } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { isSpotInstanceCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   CreateUniverseSteps,
   StepsRef
 } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
-import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { ResilienceType } from '@app/redesign/features-v2/universe/create-universe/steps/resilence-regions/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { InstanceSettingsValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/ValidationSchema';
@@ -50,9 +51,6 @@ import {
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
 const { Box, Typography, CircularProgress } = mui;
-
-const isImgBundleSupportedByProvider = (provider: ProviderType) =>
-  [CloudType.aws, CloudType.azu, CloudType.gcp].includes(provider?.code);
 
 export const InstanceBox = ({ children }: { children: React.ReactNode }) => (
   <Box sx={{ width: 480, display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</Box>
@@ -256,9 +254,7 @@ export const InstanceSettings = forwardRef<
                       <LinuxVersionField disabled={false} provider={provider} />
                     </>
                   )}
-                {provider &&
-                  [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider.code) &&
-                  canUseSpotInstance && (
+                {provider && isSpotInstanceCloudType(provider.code) && canUseSpotInstance && (
                     <SpotInstanceField disabled={false} cloudType={provider.code} />
                   )}
                 {!isK8s &&
