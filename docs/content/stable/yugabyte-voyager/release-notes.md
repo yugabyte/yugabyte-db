@@ -17,6 +17,21 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.6.2 - June 24, 2026
+
+### Enhancements
+
+- Added a warning to [export data from target](../reference/data-migration/export-data/) when the target YugabyteDB server version is newer than the bundled [YugabyteDB logical replication connector](../../additional-features/change-data-capture/using-logical-replication/).
+- Improved [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/) reports to show Tech Preview and Early Access maturity details, including required feature flags for supported YugabyteDB features.
+- Improved fatal error output so interactive console errors stand out, while keeping logs and redirected stderr as plain text.
+
+### Bug fixes
+
+- Fixed an issue that allowed equivalent commands, such as `export data` and `export data from source` to run concurrently for the same migration.
+- Fixed an issue where failures before logging initialization could print duplicate errors or send errors to stdout.
+- Fixed an issue where `assess-migration` and `analyze-schema` incorrectly reported PL/pgSQL %TYPE declarations as unsupported.
+- Fixed an issue where import schema could fail for PL/pgSQL functions using unqualified %TYPE references.
+
 ## v2026.6.1 - June 9, 2026
 
 ### Enhancement
