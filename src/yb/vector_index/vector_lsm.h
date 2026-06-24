@@ -252,7 +252,7 @@ class VectorLSM {
 
   Status DoCompact(const CompactionContext& context, CompactionScope&& scope) EXCLUDES(mutex_);
 
-  void ScheduleBackgroundCompaction() EXCLUDES(mutex_);
+  void ScheduleBackgroundCompaction(CompactionTask* task) EXCLUDES(mutex_);
 
   // Creates compaction task and tries to submit it to the thread pool. Triggers callback only if
   // compaction task has been successfully submitted.
@@ -261,6 +261,7 @@ class VectorLSM {
   Result<CompactionTaskPtr> RegisterManualCompaction(StdStatusCallback callback) EXCLUDES(mutex_);
 
   void Deregister(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
+  void RemoveFinishedTaskUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
   void Register(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
   void RegisterUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
 
