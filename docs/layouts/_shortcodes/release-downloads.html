@@ -1,0 +1,97 @@
+{{/*
+Renders a tabbed download section for a YugabyteDB release.
+
+Parameters:
+  version  - full 4-part version, e.g. "2026.1.0.0"
+  build    - build tag without the "b" prefix, e.g. "115"
+  type     - "ybdb" (default) or "yba"
+
+Usage:
+  {{< release-downloads version="2026.1.0.0" build="115" >}}
+  {{< release-downloads version="2026.1.0.0" build="115" type="yba" >}}
+*/}}
+
+{{- $version := .Get "version" -}}
+{{- $build   := .Get "build" -}}
+{{- $type    := default "ybdb" (.Get "type") -}}
+{{- $bver    := printf "%s-b%s" $version $build -}}
+{{- $base    := printf "https://software.yugabyte.com/releases/%s" $version -}}
+
+{{- if eq $type "ybdb" -}}
+{{- $id := replace $version "." "" -}}
+
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li>
+    <a href="#macosx86-{{$id}}" class="nav-link active" id="macosx86-{{$id}}-tab" data-bs-toggle="tab" role="tab" aria-controls="macosx86-{{$id}}" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS x86
+    </a>
+  </li>
+  <li>
+    <a href="#macosarm-{{$id}}" class="nav-link" id="macosarm-{{$id}}-tab" data-bs-toggle="tab" role="tab" aria-controls="macosarm-{{$id}}" aria-selected="false">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS ARM
+    </a>
+  </li>
+  <li>
+    <a href="#linuxx86-{{$id}}" class="nav-link" id="linuxx86-{{$id}}-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86-{{$id}}" aria-selected="false">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux x86
+    </a>
+  </li>
+  <li>
+    <a href="#linuxarm-{{$id}}" class="nav-link" id="linuxarm-{{$id}}-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxarm-{{$id}}" aria-selected="false">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux ARM
+    </a>
+  </li>
+  <li>
+    <a href="#docker-{{$id}}" class="nav-link" id="docker-{{$id}}-tab" data-bs-toggle="tab" role="tab" aria-controls="docker-{{$id}}" aria-selected="false">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="macosx86-{{$id}}" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macosx86-{{$id}}-tab">
+    <pre><code class="language-sh" data-lang="sh">wget {{$base}}/yugabyte-{{$bver}}-darwin-x86_64.tar.gz
+echo "$(curl -L {{$base}}/yugabyte-{{$bver}}-darwin-x86_64-tar.gz.sha) *yugabyte-{{$bver}}-darwin-x86_64.tar.gz" | shasum --check</code></pre>
+  </div>
+  <div id="macosarm-{{$id}}" class="tab-pane fade" role="tabpanel" aria-labelledby="macosarm-{{$id}}-tab">
+    <pre><code class="language-sh" data-lang="sh">wget {{$base}}/yugabyte-{{$bver}}-darwin-arm64.tar.gz
+echo "$(curl -L {{$base}}/yugabyte-{{$bver}}-darwin-arm64-tar.gz.sha) *yugabyte-{{$bver}}-darwin-arm64.tar.gz" | shasum --check</code></pre>
+  </div>
+  <div id="linuxx86-{{$id}}" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxx86-{{$id}}-tab">
+    <pre><code class="language-sh" data-lang="sh">wget {{$base}}/yugabyte-{{$bver}}-linux-x86_64.tar.gz
+echo "$(curl -L {{$base}}/yugabyte-{{$bver}}-linux-x86_64-tar.gz.sha) *yugabyte-{{$bver}}-linux-x86_64.tar.gz" | shasum --check</code></pre>
+  </div>
+  <div id="linuxarm-{{$id}}" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxarm-{{$id}}-tab">
+    <pre><code class="language-sh" data-lang="sh">wget {{$base}}/yugabyte-{{$bver}}-el8-aarch64.tar.gz
+echo "$(curl -L {{$base}}/yugabyte-{{$bver}}-el8-aarch64-tar.gz.sha) *yugabyte-{{$bver}}-el8-aarch64.tar.gz" | shasum --check</code></pre>
+  </div>
+  <div id="docker-{{$id}}" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-{{$id}}-tab">
+    <pre><code class="language-sh" data-lang="sh">docker pull yugabytedb/yugabyte:{{$bver}}</code></pre>
+  </div>
+</div>
+
+{{- else if eq $type "yba" -}}
+{{- $id := replace $version "." "" -}}
+
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li>
+    <a href="#linuxx86-{{$id}}" class="nav-link active" id="linuxx86-{{$id}}-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86-{{$id}}" aria-selected="true">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux x86
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="linuxx86-{{$id}}" class="tab-pane fade show active" role="tabpanel" aria-labelledby="linuxx86-{{$id}}-tab">
+    <pre><code class="language-sh" data-lang="sh">wget {{$base}}/yba_installer_full-{{$bver}}-linux-x86_64.tar.gz
+echo "$(curl -L {{$base}}/yba_installer_full-{{$bver}}-linux-x86_64-tar.gz.sha) *yba_installer_full-{{$bver}}-linux-x86_64.tar.gz" | shasum --check</code></pre>
+  </div>
+</div>
+
+{{- end -}}
