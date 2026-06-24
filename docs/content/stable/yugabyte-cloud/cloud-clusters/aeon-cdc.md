@@ -10,7 +10,7 @@ menu:
   stable_yugabyte-cloud:
     identifier: aeon-cdc
     parent: cloud-clusters
-    weight: 400
+    weight: 410
 type: docs
 ---
 

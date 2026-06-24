@@ -20,7 +20,7 @@ type: docs
   {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" current="" >}}
 {{< /page-finder/head >}}
 
-To prevent data loss, YugabyteDB Aeon supports point-in-time recovery (PITR) and database cloning. When enabled for a database or keyspace, YugabyteDB takes a snapshot of the data once a day. Each snapshot maintains a continuous change history. You can then create a database clone at the current time or at a specific time in the past.
+To prevent data loss, YugabyteDB Aeon supports point-in-time recovery (PITR) and database branching. When enabled for a database or keyspace, YugabyteDB takes a snapshot of the data once a day. Each snapshot maintains a continuous change history. You can then create a database clone - effectively branch the database - at the current time or at a specific time in the past.
 
 The clone is a zero-copy, independent writable clone of your database that you can use for the following:
 
