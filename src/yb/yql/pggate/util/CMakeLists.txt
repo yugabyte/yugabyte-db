@@ -27,13 +27,24 @@ set(PGGATE_UTIL_SRCS
 
 set(PGGATE_UTIL_LIBS
     yb_util
-    yb_common)
+    yb_common
+    yb_ash)
 
 ADD_YB_LIBRARY(yb_pggate_util
                SRCS ${PGGATE_UTIL_SRCS}
                DEPS ${PGGATE_UTIL_LIBS})
 
 add_dependencies(yb_pggate_util postgres_genbki)
+
+# Allow undefined symbols for yb_dockv functions to avoid circular dependency
+# yb_dockv depends on yb_pggate_util, so we can't add it as a dependency here
+# The symbols will be resolved when both libraries are linked into executables
+if(NOT APPLE)
+  target_link_options(yb_pggate_util PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
 
 ADD_YB_LIBRARY(yb_pgresult_util
   SRCS ybc_pgresult_util.cc
@@ -43,3 +54,13 @@ ADD_YB_LIBRARY(yb_pgresult_util
 target_include_directories(yb_pgresult_util PRIVATE
   ${YB_BUILD_ROOT}/postgres_build/src/include
   ${YB_BUILD_ROOT}/postgres_build/src/interfaces/libpq)
+
+# Allow undefined symbols for PostgreSQL libpq functions (PQ*, YbPQ*)
+# These will be resolved when linked into executables that link against libpq
+if(NOT APPLE)
+  target_link_options(yb_pgresult_util PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
+

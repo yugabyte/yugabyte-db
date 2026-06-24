@@ -1292,8 +1292,10 @@ enum { kPlatformUsesOPDSections = 0 };
 #define FUNC_PTR_TO_CHAR_PTR(func)  (reinterpret_cast<char *>(func))
 #endif
 
-#if defined(__clang__)
+// PowerPC doesn't support musttail for external calls due to ABI limitations
+#if defined(__clang__) && !defined(__powerpc64__)
 #define MUST_TAIL [[clang::musttail]]
 #else
 #define MUST_TAIL
 #endif
+

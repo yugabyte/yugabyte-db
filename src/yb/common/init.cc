@@ -96,7 +96,9 @@ Status BadCPUStatus(const base::CPU& cpu, const char* instruction_set) {
 
 Status CheckCPUFlags() {
   base::CPU cpu;
-#ifndef __aarch64__
+#if !defined(__aarch64__) && !defined(__powerpc64__)
+  // SSE4.2 and SSSE3 are x86-specific instruction sets
+  // Skip these checks on ARM64 and PowerPC64 architectures
   if (!cpu.has_sse42()) {
     return BadCPUStatus(cpu, "SSE4.2");
   }
@@ -164,3 +166,4 @@ Status InitYB(const std::string &server_type, const char* argv0) {
 }
 
 } // namespace yb
+

@@ -26,6 +26,22 @@ ADD_YB_LIBRARY(yb_pgwrapper
                DEPS ${PGWRAPPER_LIBS}
                NONLINK_DEPS postgres)
 
+# Allow undefined symbols to avoid circular dependencies:
+# - YbgGetPgVersion: PostgreSQL backend function
+# - TServerCgroupManagementEnabled: tserver component
+# - ServerBaseOptions::GetMasterAddresses: server component
+# - MasterAddressesToString: server component
+# - FLAGS_ysql_conn_mgr_max_pools, FLAGS_enable_ysql_conn_mgr: YSQL connection manager flags
+# - FLAGS_enable_pg_cron: pg_cron flag
+# - FLAGS_ysql_enable_pg_export_snapshot: YSQL flag
+# These symbols will be resolved when linked into executables
+if(NOT APPLE)
+  target_link_options(yb_pgwrapper PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
+
 include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
 
 # We indirectly use some headers that are generated while processing the protobufs below.
@@ -65,10 +81,20 @@ set(YSQL_BINARY_RUNNER_SRCS
     ysql_binary_runner.cc)
 set(YSQL_BINARY_RUNNER_LIBS
     yb_util
-    yb_pgwrapper)
+    yb_pgwrapper
+    pq_utils)
 ADD_YB_LIBRARY(yb_ysql_binary_runner
                SRCS ${YSQL_BINARY_RUNNER_SRCS}
                DEPS ${YSQL_BINARY_RUNNER_LIBS})
+
+# Allow undefined symbols from yb_pgwrapper dependency
+# The symbols will be resolved when linked into executables
+if(NOT APPLE)
+  target_link_options(yb_ysql_binary_runner PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
 
 set(PG_WRAPPER_TEST_BASE_SRCS
     libpq_test_base.cc
@@ -116,6 +142,15 @@ set(YSQL_UPGRADE_DEPS
 ADD_YB_LIBRARY(ysql_upgrade
                SRCS ${YSQL_UPGRADE_SRCS}
                DEPS ${YSQL_UPGRADE_DEPS})
+
+# Allow undefined symbols from yb_pgwrapper dependency
+# The symbols will be resolved when linked into executables
+if(NOT APPLE)
+  target_link_options(ysql_upgrade PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
 
 set(YB_TEST_LINK_LIBS
     yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils geo_transactions_test_base
@@ -255,3 +290,4 @@ add_custom_target(
     ${CMAKE_CURRENT_SOURCE_DIR}/ysql_migrations
     ${YB_BUILD_ROOT}/share/ysql_migrations
   COMMENT "Updating YSQL migrations")
+

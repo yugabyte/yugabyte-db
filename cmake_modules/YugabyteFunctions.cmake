@@ -535,6 +535,8 @@ macro(YB_SETUP_CLANG)
     endif()
 
     ADD_CXX_FLAGS("-nostdinc++")
+    # After disabling standard C++ includes, explicitly add libc++ include path
+    ADD_CXX_FLAGS("-isystem ${LIBCXX_INCLUDE_DIR}")
     if(USING_LINUXBREW)
       ADD_CXX_FLAGS("-nostdinc")
     endif()
@@ -1068,3 +1070,4 @@ macro(add_cxx_no_sanitize_flag flag)
   endif()
   string(APPEND CXX_NO_SANITIZE_FLAG "${flag}")
 endmacro()
+

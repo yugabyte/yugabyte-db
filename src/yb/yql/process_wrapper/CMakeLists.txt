@@ -15,7 +15,9 @@ set(PROCESS_WRAPPER_SRCS
     process_wrapper.cc
     common_config.cc)
 set(PROCESS_WRAPPER_LIBS
-    yb_util)
+    yb_util
+    yb_fs
+    yrpc)
 ADD_YB_LIBRARY(yb_process_wrapper
                SRCS ${PROCESS_WRAPPER_SRCS}
                DEPS ${PROCESS_WRAPPER_LIBS})
@@ -33,3 +35,4 @@ set(YB_TEST_LINK_LIBS
   ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(process_wrapper-test)
+

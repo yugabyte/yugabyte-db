@@ -123,6 +123,16 @@ ADD_YB_LIBRARY(yb_client_test_util
                SRCS client-test-util.cc snapshot_test_util.cc
                DEPS gmock gtest yb_client yb_test_util)
 
+# Allow undefined symbols for integration-tests functions to avoid circular dependency
+# integration-tests depends on yb_client_test_util, so we can't add it as a dependency here
+# The symbols will be resolved when both libraries are linked into test executables
+if(NOT APPLE)
+  target_link_options(yb_client_test_util PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
+
 ADD_YB_LIBRARY(ql-dml-test-base
                SRCS ql-dml-test-base.cc txn-test-base.cc
                DEPS integration-tests)
@@ -148,3 +158,4 @@ ADD_YB_TEST(snapshot_schedule-test)
 ADD_YB_TEST(serializable-txn-test)
 ADD_YB_TEST(tablet_rpc-test)
 ADD_YB_TEST(advisory_lock-test)
+

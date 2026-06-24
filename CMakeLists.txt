@@ -70,6 +70,16 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
   ADD_CXX_FLAGS("-ffp-contract=off")
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
   ADD_CXX_FLAGS("-msse4.2")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ppc64|ppc64le)$")
+  # PowerPC specific flags
+  ADD_CXX_FLAGS("-fsigned-char")
+  ADD_CXX_FLAGS("-mcpu=power9")
+  ADD_CXX_FLAGS("-mtune=power9")
+  # Enable AltiVec and VSX for better performance
+  ADD_CXX_FLAGS("-maltivec")
+  ADD_CXX_FLAGS("-mvsx")
+  # Define ARCH_POWERPC64 for atomic operations
+  add_definitions(-DARCH_POWERPC64)
 else()
   message(FATAL_ERROR "Unsupported CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
@@ -298,8 +308,8 @@ else()
   message("CMake will not export the compilation database")
 endif()
 
-# DocumentDB extension is not available in aarch64 and arm64(#26954) builds.
-if(NOT APPLE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$" )
+# DocumentDB extension is not available in aarch64, arm64, and ppc64le builds.
+if(NOT APPLE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64|ppc64|ppc64le)$" )
   set(YB_ENABLE_YSQL_DOCUMENTDB_EXT TRUE)
   ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_DOCUMENTDB_EXT")
 endif()
@@ -331,6 +341,9 @@ if (NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   # To enable 16-byte atomics support we should specify appropriate architecture.
   ADD_CXX_FLAGS("-march=ivybridge")
   ADD_CXX_FLAGS("-mcx16")
+elseif(NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(ppc64|ppc64le)$")
+  # PowerPC has native 16-byte atomics support with proper alignment
+  # No special flags needed beyond what's already set (power9 baseline)
 endif()
 
 # Include compiler type and version in the compiler command line so that binaries built by different
@@ -984,3 +997,4 @@ math(EXPR YB_NUM_EXCLUDED_EXECUTABLES "${YB_NUM_EXECUTABLES} - ${YB_NUM_INCLUDED
 message("Total non-test executables: ${YB_NUM_EXECUTABLES}, "
         "included: ${YB_NUM_INCLUDED_EXECUTABLES}, "
         "excluded: ${YB_NUM_EXCLUDED_EXECUTABLES}")
+

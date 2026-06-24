@@ -253,6 +253,16 @@ set(UTIL_SRCS
   thread_holder.cc
   )
 
+# PowerPC64: Disable -Wshorten-64-to-32 warning for files that include linux_syscall_support.h
+# On ppc64le, 'long' is 64-bit but syscalls return 32-bit int, causing precision loss warnings
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ppc64|ppc64le)$")
+  set_source_files_properties(
+    debug-util.cc
+    stack_trace.cc
+    PROPERTIES COMPILE_FLAGS "-Wno-shorten-64-to-32"
+  )
+endif()
+
 set(OPENTELEMETRY_LIBRARIES
   opentelemetry_trace
   opentelemetry_exporter_otlp_http
@@ -518,3 +528,4 @@ YB_TEST_TARGET_LINK_LIBRARIES(pb_util-test proto_container_test_proto)
 
 ADD_YB_TEST(uint_set-test)
 YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)
+

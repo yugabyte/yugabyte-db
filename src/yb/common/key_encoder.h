@@ -34,7 +34,7 @@
 
 #include <arpa/inet.h>
 
-#ifndef __aarch64__
+#if !defined(__aarch64__) && !defined(__powerpc64__) && !defined(__ppc64__)
 #include <nmmintrin.h>
 #endif
 
@@ -82,8 +82,10 @@ struct KeyEncoderTraits<Type,
     switch (sizeof(x)) {
       case 1: return x;
       case 2: return BigEndian::FromHost16(x);
-      case 4: return BigEndian::FromHost32(*reinterpret_cast<uint32*>(&x));
-      case 8: return BigEndian::FromHost64(*reinterpret_cast<uint64*>(&x));
+      case 4: return static_cast<unsigned_cpp_type>(
+                  BigEndian::FromHost32(*reinterpret_cast<uint32*>(&x)));
+      case 8: return static_cast<unsigned_cpp_type>(
+                  BigEndian::FromHost64(*reinterpret_cast<uint64*>(&x)));
       default: LOG(FATAL) << "bad type: " << x;
     }
     return 0;
@@ -309,7 +311,7 @@ struct KeyEncoderTraits<DataType::BINARY, Buffer> {
   // REQUIRES: len == 16 or 8
   template<int LEN>
   static bool SSEEncodeChunk(const uint8_t** srcp, uint8_t** dstp) {
-#ifdef __aarch64__
+#if defined(__aarch64__) || defined(__powerpc64__) || defined(__ppc64__)
     return false;
 #else
     COMPILE_ASSERT(LEN == 16 || LEN == 8, invalid_length);
@@ -457,3 +459,4 @@ extern const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo);
 extern bool IsTypeAllowableInKey(const TypeInfo* typeinfo);
 
 } // namespace yb
+

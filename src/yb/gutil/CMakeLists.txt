@@ -71,6 +71,18 @@ set(GUTIL_SRCS
 
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   list(APPEND GUTIL_SRCS atomicops-internals-x86.cc)
+elseif("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(ppc64|ppc64le)$")
+  # PowerPC atomics are header-only in atomicops-internals-powerpc.h
+  # No additional source files needed
+  
+  # Disable -Wshorten-64-to-32 for files that include linux_syscall_support.h on PowerPC64
+  # The linux_syscall_support.h header has unavoidable long->int conversions
+  set_source_files_properties(
+    spinlock.cc
+    spinlock_internal.cc
+    threading/thread_collision_warner.cc
+    PROPERTIES COMPILE_FLAGS "-Wno-shorten-64-to-32"
+  )
 endif()
 
 set(GUTIL_LIBS
@@ -94,3 +106,4 @@ YB_TEST_TARGET_LINK_LIBRARIES(dynamic_annotations-test absl)
 ADD_YB_TEST(sysinfo-test)
 ADD_YB_TEST(strings/string_util-test)
 ADD_YB_TEST(hash/jenkins-test)
+

@@ -329,9 +329,11 @@ namespace atomic_internal {
 
 template <class T>
 bool IsAcceptableAtomicImpl(const T& atomic_variable) {
-#ifdef __aarch64__
-  // TODO: ensure we are using proper 16-byte atomics on aarch64.
+#if defined(__aarch64__) || defined(__powerpc64__) || defined(__ppc64__)
+  // TODO: ensure we are using proper 16-byte atomics on aarch64 and ppc64le.
   // https://github.com/yugabyte/yugabyte-db/issues/9196
+  // PowerPC64 may not support lock-free 16-byte atomics, but the implementation
+  // uses fallback mechanisms that are acceptable for our use case.
   return true;
 #else
   return atomic_variable.is_lock_free();
@@ -361,3 +363,4 @@ T LoadValue(const std::atomic<T>* value) {
 }
 
 } // namespace yb
+

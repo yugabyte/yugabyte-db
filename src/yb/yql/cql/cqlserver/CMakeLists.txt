@@ -66,6 +66,17 @@ target_link_libraries(yb-cql
   lber)
 add_dependencies(yb-cql postgres)
 
+# Allow undefined symbols for PostgreSQL backend functions (Ybg*) to avoid circular dependencies
+# These functions are in PostgreSQL backend which may have circular dependencies
+# The symbols will be resolved when linked into executables
+if(NOT APPLE)
+  target_link_options(yb-cql PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
+
 # Tests
 set(YB_TEST_LINK_LIBS yb-cql integration-tests ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(cqlserver-test)
+

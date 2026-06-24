@@ -200,11 +200,47 @@ class Operation {
   // not.
   void set_op_id(const OpId& op_id) EXCLUDES(mutex_) {
     std::lock_guard l(mutex_);
+#if defined(__powerpc64__)
+    // PowerPC: Use seqlock pattern to ensure consistent writes
+    // Increment sequence number (odd = write in progress)
+    uint64_t seq = op_id_seq_.fetch_add(1, std::memory_order_release);
+    // Write the two components
+    op_id_term_.store(op_id.term, std::memory_order_relaxed);
+    op_id_index_.store(op_id.index, std::memory_order_relaxed);
+    // Memory fence to ensure writes complete before sequence update
+    std::atomic_thread_fence(std::memory_order_release);
+    // Increment sequence again (even = write complete)
+    op_id_seq_.store(seq + 2, std::memory_order_release);
+#else
+    // x86: Use native 16-byte atomic store - unchanged from original
     op_id_.store(op_id, std::memory_order_release);
+#endif
   }
 
   const OpId op_id() const EXCLUDES(mutex_) {
+#if defined(__powerpc64__)
+    // PowerPC: Use seqlock pattern to ensure consistent reads
+    OpId result;
+    uint64_t seq1, seq2;
+    do {
+      // Read sequence number before reading data
+      seq1 = op_id_seq_.load(std::memory_order_acquire);
+      // Read the two components
+      result.term = op_id_term_.load(std::memory_order_relaxed);
+      result.index = op_id_index_.load(std::memory_order_relaxed);
+      // Memory fence to ensure reads complete before sequence check
+      std::atomic_thread_fence(std::memory_order_acquire);
+      // Read sequence number after reading data
+      seq2 = op_id_seq_.load(std::memory_order_relaxed);
+      // Retry if:
+      // - Sequence numbers don't match (write happened during read)
+      // - Sequence is odd (write in progress)
+    } while (seq1 != seq2 || (seq1 & 1));
+    return result;
+#else
+    // x86: Use native 16-byte atomic load - unchanged from original
     return op_id_.load(std::memory_order_acquire);
+#endif
   }
 
   void CompleteWithStatus(const Status& status) const EXCLUDES(mutex_);
@@ -231,6 +267,24 @@ class Operation {
   bool tablet_is_set() { return tablet_is_set_.load(std::memory_order_acquire); }
 
  private:
+  // Internal version of set_op_id that doesn't acquire mutex (caller must hold it)
+  void set_op_id_unlocked(const OpId& op_id) REQUIRES(mutex_) {
+#if defined(__powerpc64__)
+    // PowerPC: Use seqlock pattern to ensure consistent writes
+    // Increment sequence number (odd = write in progress)
+    uint64_t seq = op_id_seq_.fetch_add(1, std::memory_order_release);
+    // Write the two components
+    op_id_term_.store(op_id.term, std::memory_order_relaxed);
+    op_id_index_.store(op_id.index, std::memory_order_relaxed);
+    // Memory fence to ensure writes complete before sequence update
+    std::atomic_thread_fence(std::memory_order_release);
+    // Increment sequence again (even = write complete)
+    op_id_seq_.store(seq + 2, std::memory_order_release);
+#else
+    // x86: Use native 16-byte atomic store - unchanged from original
+    op_id_.store(op_id, std::memory_order_release);
+#endif
+  }
 
   // Actual implementation of Replicated.
   // complete_status could be used to change completion status, i.e. callback will be invoked
@@ -272,7 +326,15 @@ class Operation {
   std::atomic<HybridTime> hybrid_time_{HybridTime::kInvalid};
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
+#if defined(__powerpc64__)
+  // PowerPC doesn't support 16-byte atomics. Use seqlock pattern for consistency.
+  mutable std::atomic<uint64_t> op_id_seq_{0};
+  std::atomic<int64_t> op_id_term_{OpId::kUnknownTerm};
+  std::atomic<int64_t> op_id_index_{0};
+#else
+  // x86 supports native 16-byte atomics - keep original implementation
   std::atomic<OpId> op_id_;
+#endif
 
   scoped_refptr<consensus::ConsensusRound> consensus_round_ GUARDED_BY(mutex_);
   // This atomic is used to access the consensus round without locking once it has been set.
@@ -397,3 +459,4 @@ OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
 
 }  // namespace tablet
 }  // namespace yb
+

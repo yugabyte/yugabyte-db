@@ -183,7 +183,7 @@ endif()
 
 ADD_YB_LIBRARY(rocksdb
                SRCS ${ROCKSDB_SRCS}
-               DEPS gflags gutil snappy z lz4 yb_common yb_storage yb_util)
+               DEPS gflags gutil snappy z lz4 yb_common yb_storage yb_util yb_ash)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc
@@ -323,3 +323,4 @@ endif()
 
 set(YB_FUZZ_TARGET_LINK_LIBS rocksdb_test_util rocksdb ${YB_MIN_TEST_LIBS} rocksdb_tools)
 ADD_YB_FUZZ_TARGET(util/fuzz-targets/coding_fuzz_target)
+
