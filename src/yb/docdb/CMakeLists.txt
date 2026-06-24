@@ -38,6 +38,8 @@ set(DOCDB_SHARED_DEPS
         yb_util
         yb_common
         docdb_proto
+        yb_dockv
+        yb_util_shmem
         )
 
 ADD_YB_LIBRARY(yb_docdb_shared

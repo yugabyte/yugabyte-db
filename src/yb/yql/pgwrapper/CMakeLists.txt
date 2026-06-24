@@ -65,7 +65,8 @@ set(YSQL_BINARY_RUNNER_SRCS
     ysql_binary_runner.cc)
 set(YSQL_BINARY_RUNNER_LIBS
     yb_util
-    yb_pgwrapper)
+    yb_pgwrapper
+    pq_utils)
 ADD_YB_LIBRARY(yb_ysql_binary_runner
                SRCS ${YSQL_BINARY_RUNNER_SRCS}
                DEPS ${YSQL_BINARY_RUNNER_LIBS})
