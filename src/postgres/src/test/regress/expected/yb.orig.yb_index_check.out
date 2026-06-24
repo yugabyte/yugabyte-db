@@ -324,6 +324,62 @@ SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
  
 (1 row)
 
+-- Index and base table in a schema not on search_path, with single-snapshot
+-- mode. The base table must be resolved by its schema-qualified name in the
+-- internally-executed row-count query.
+DROP SCHEMA IF EXISTS idx_check_schema CASCADE;
+NOTICE:  schema "idx_check_schema" does not exist, skipping
+CREATE SCHEMA idx_check_schema;
+CREATE TABLE idx_check_schema.idx_check_tbl (
+  a int PRIMARY KEY,
+  b int,
+  c int
+);
+CREATE INDEX idx_check_b_idx
+  ON idx_check_schema.idx_check_tbl (b) INCLUDE (c);
+INSERT INTO idx_check_schema.idx_check_tbl
+  SELECT i, i, i FROM generate_series(1, 5) i;
+SET search_path = public;
+SELECT yb_index_check('idx_check_schema.idx_check_b_idx'::regclass::oid, true);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+-- A same-named table earlier on search_path must not be counted instead.
+CREATE TABLE idx_check_tbl (a int PRIMARY KEY, b int, c int);
+CREATE INDEX idx_check_b_idx ON idx_check_tbl (b) INCLUDE (c);
+INSERT INTO idx_check_tbl SELECT i, i, i FROM generate_series(1, 100) i;
+SELECT yb_index_check('idx_check_schema.idx_check_b_idx'::regclass::oid, true);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+-- Index of a relation in multisnapshot mode
+SELECT yb_index_check('idx_check_schema.idx_check_b_idx'::regclass::oid, false);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+-- Index on same-named table on search_path
+SELECT yb_index_check('idx_check_b_idx'::regclass::oid, true);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+SELECT yb_index_check('idx_check_b_idx'::regclass::oid, false);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+DROP TABLE idx_check_tbl;
+RESET search_path;
+DROP TABLE idx_check_schema.idx_check_tbl;
+DROP SCHEMA idx_check_schema;
 -- Index of a colocated relation
 CREATE DATABASE colocateddb COLOCATION = TRUE;
 \c colocateddb
