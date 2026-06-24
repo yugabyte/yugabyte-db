@@ -55,8 +55,15 @@ DEFINE_NON_RUNTIME_uint32(otel_batch_max_export_batch_size, 512,
     "Maximum number of spans exported in a single batch. Must be greater than 0 and no "
     "larger than otel_batch_max_queue_size.");
 
+DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
+    "Minimum OpenTelemetry SDK internal log level forwarded to YugabyteDB logging. Allowed "
+    "values are debug, info, warning, error, and none.");
+
 DEFINE_validator(otel_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
+
+DEFINE_validator(otel_internal_log_level,
+    FLAG_IN_SET_VALIDATOR("debug", "info", "warning", "error", "none"));
 
 namespace yb::dist_trace {
 
@@ -101,6 +108,27 @@ class RpcSpanAttrs {
 
 thread_local RpcSpanAttrs pending_rpc_attrs;
 
+internal_log::LogLevel GetOtelInternalLogLevel() {
+  const auto& flag_value = FLAGS_otel_internal_log_level;
+  if (flag_value == "debug") {
+    return internal_log::LogLevel::Debug;
+  }
+  if (flag_value == "info") {
+    return internal_log::LogLevel::Info;
+  }
+  if (flag_value == "warning") {
+    return internal_log::LogLevel::Warning;
+  }
+  if (flag_value == "error") {
+    return internal_log::LogLevel::Error;
+  }
+  if (flag_value == "none") {
+    return internal_log::LogLevel::None;
+  }
+  LOG(DFATAL) << "Unknown otel_internal_log_level: " << flag_value;
+  return internal_log::LogLevel::Info;
+}
+
 class YbOtelLogHandler : public internal_log::LogHandler {
  public:
   void Handle(
@@ -122,7 +150,7 @@ class YbOtelLogHandler : public internal_log::LogHandler {
         LOG(INFO) << "[" << safe_file << ":" << line << "]: " << safe_msg;
         break;
       case internal_log::LogLevel::Debug:
-        VLOG(1) << "[" << safe_file << ":" << line << "] Debug: " << safe_msg;
+        LOG(INFO) << "[" << safe_file << ":" << line << "] Debug: " << safe_msg;
         break;
       case internal_log::LogLevel::None:
         break;
@@ -207,11 +235,9 @@ void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
   internal_log::GlobalLogHandler::SetLogHandler(
       opentelemetry::nostd::shared_ptr<internal_log::LogHandler>(new YbOtelLogHandler()));
 
-  // OTel applies this threshold before calling the global handler. Keep it at the most
-  // permissive runtime level so every SDK-internal message that was compiled in reaches
-  // YbOtelLogHandler; the LOG(...) call in the handler then lets the YB process logging
-  // configuration make the final filtering/routing decision.
-  internal_log::GlobalLogHandler::SetLogLevel(internal_log::LogLevel::Debug);
+  // OTel macros filter first using GlobalLogHandler::GetLogLevel(). Accepted messages
+  // are mapped to LOG(...), where YB logging applies its own routing.
+  internal_log::GlobalLogHandler::SetLogLevel(GetOtelInternalLogLevel());
 
   auto resource_attrs = CreateResource(process_pid, node_uuid);
   const auto status = InitDistTraceProvider(resource_attrs);
