@@ -159,7 +159,7 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.5.6",
+  "org.postgresql" % "postgresql" % "42.7.11",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
@@ -170,7 +170,7 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
   "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
-  "org.apache.mina" % "mina-core" % "2.2.4",
+  "org.apache.mina" % "mina-core" % "2.2.7",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
@@ -199,7 +199,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-core-http-netty" % "1.16.2",
   "com.azure" % "azure-core" % "1.57.0",
   "com.azure" % "azure-identity" % "1.18.1",
-  "com.azure" % "azure-security-keyvault-keys" % "4.10.3",
+  "com.azure" % "azure-security-keyvault-keys" % "4.10.6",
   "com.azure" % "azure-storage-blob" % "12.31.3",
   "com.azure" % "azure-storage-blob-batch" % "12.27.3",
   "com.azure.resourcemanager" % "azure-resourcemanager" % "2.55.0",
@@ -213,8 +213,8 @@ libraryDependencies ++= Seq(
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
   // pac4j and nimbusds libraries need to be upgraded together.
   "org.pac4j" %% "play-pac4j" % "11.0.0-PLAY2.8",
-  "org.pac4j" % "pac4j-oauth" % "5.7.7" exclude("commons-io" , "commons-io"),
-  "org.pac4j" % "pac4j-oidc" % "5.7.7"  exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oauth" % "5.7.10" exclude("commons-io" , "commons-io"),
+  "org.pac4j" % "pac4j-oidc" % "5.7.10"  exclude("commons-io" , "commons-io"),
   "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
   "com.nimbusds" % "oauth2-oidc-sdk" % "10.1",
   "commons-validator" % "commons-validator" % "1.10.0",
@@ -226,7 +226,7 @@ libraryDependencies ++= Seq(
   "com.google.apis" % "google-api-services-compute" % "v1-rev20241008-2.0.0",
   "com.google.apis" % "google-api-services-iam" % "v1-rev20240918-2.0.0",
   "com.google.cloud" % "google-cloud-compute" % "1.88.0",
-  "com.google.cloud" % "google-cloud-storage" % "2.60.0",
+  "com.google.cloud" % "google-cloud-storage" % "2.69.0",
   "com.google.cloud" % "google-cloud-kms" % "2.81.0",
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.80.0",
   "com.google.cloud" % "google-cloud-logging" % "3.23.7",
@@ -1013,15 +1013,23 @@ libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.135.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.128.Final"
-
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.135.Final"
+// netty-all does not force these core modules, so they stay at the next-highest
+// requested version (4.1.130) and must be pinned explicitly to reach 4.1.135.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.135.Final"
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
