@@ -51,7 +51,9 @@ The Sandbox cluster provides a fully functioning single node YugabyteDB cluster 
 
 To create your Sandbox cluster:
 
+<!--
 ![Create a Sandbox cluster](/images/yb-cloud/cloud-add-free-cluster.gif)
+-->
 
 1. Click **Create Cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
 
@@ -59,9 +61,11 @@ To create your Sandbox cluster:
 
 1. Enter a name for the cluster, choose the cloud provider (AWS or GCP), and choose the region in which to deploy the cluster, then click **Next**.
 
+1. Click **Next**.
+
 1. Click **Add Current IP Address**. The IP address of your machine is added to the IP allow list. This allows you to connect to your sandbox cluster from applications and your desktop after it is created.
 
-1. Click **Next**.
+1. Select **Enhanced Postgres Compatibility** to enable [Enhanced PostgreSQL Compatibility Mode](/stable/reference/configuration/postgresql-compatibility/), then click **Next**.
 
 1. Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
 
