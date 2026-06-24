@@ -19,16 +19,23 @@
     font-size: 15px;
   }
 
-  p {
+  p,
+  ul,
+  ol {
     font-size: 14px;
     line-height: 1.6;
     margin-bottom: 6px;
+  }
 
-    &:last-child {
-      margin-bottom: 0;
-      font-size: 13px;
-      color: #555;
-    }
+  li {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+    font-size: 13px;
+    color: #555;
   }
 }
 
