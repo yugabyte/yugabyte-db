@@ -15797,6 +15797,10 @@
           },
           "type" : "array"
         },
+        "masterPauseCompleted" : {
+          "description" : "WARNING: This is a preview API that could change. True once the canary pauseAfterMasters checkpoint has been reached and resumed, so it is not re-emitted on a subsequent abort+retry of the upgrade.",
+          "type" : "boolean"
+        },
         "softwareVersion" : {
           "type" : "string"
         },

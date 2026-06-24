@@ -270,7 +270,11 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
   }
 
-  @Rule public Timeout globalTimeout = Timeout.seconds(1200);
+  @Rule public Timeout globalTimeout = Timeout.seconds(getTestTimeoutSeconds());
+
+  protected int getTestTimeoutSeconds() {
+    return 1200;
+  }
 
   private static void setUpBaseDir() {
     if (System.getenv(BASE_DIR_ENV_KEY) != null) {
