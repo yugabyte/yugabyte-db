@@ -59,8 +59,9 @@ DESCRIPTION:
 
 FIELDS:
  deviceInfo  <Object>
-  Device information for the universe to refer to storage information for
-  volume, storage classes etc.
+  Device information for the tservers in universe to refer to storage
+  information for volume, storage classes etc. DEPRECATED: Use tserverVolume
+  instead. deviceInfo and tserverVolume are mutually exclusive.
 
  enableClientToNodeEncrypt   <boolean>
   Enable client to node encryption in the universe. Enable this to use tls
@@ -71,7 +72,10 @@ FIELDS:
 
  enableLoadBalancer  <boolean>
   Enable LoadBalancer access to the universe. Creates a service with
-  Type:LoadBalancer in the universe for tserver and masters.
+  Type:LoadBalancer in the universe for tserver and masters. WARNING:
+  Enabling LoadBalancer may expose universe servers via public IPs. Use with
+  caution. To use an internal LoadBalancer, ensure you set appropriate
+  Kubernetes overrides to avoid exposing nodes publicly.
 
  enableNodeToNodeEncrypt    <boolean>
   Enable node to node encryption in the universe. This encrypts the data in
@@ -96,22 +100,86 @@ FIELDS:
  kubernetesOverrides  <Object>
   Kubernetes overrides for the universe. Please refer to yugabyteDB
   documentation for more details.
-  https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides
+  https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides
+
+ masterDeviceInfo   <Object>
+  Device information for the masters in universe to refer to storage
+  information for volume, storage classes etc. DEPRECATED: Use masterVolume
+  instead. masterDeviceInfo and masterVolume are mutually exclusive.
+
+ masterResourceSpec <Object>
+  Resource specification for the master pods in the universe.
+
+ masterVolume   <Object>
+  Volume configuration for masters in the universe. This replaces
+  masterDeviceInfo. masterDeviceInfo and masterVolume are mutually exclusive.
+
+ masterWaitSeconds  <integer>
+  Time in seconds to wait after restarting a Master node before proceeding
+  to the next node during a rolling upgrade.
 
  numNodes   <integer>
   Number of tservers in the universe to create.
 
+ paused  <boolean>
+  If the universe is paused. A paused universe will have its statefulsets
+  scaled to 0 pods. When unpaused, the statefulsets will be scaled back to
+  their previous values. While Paused, all other actions on the universe will
+  be ignored until the universe is resumed.
+
+ placementInfo  <Object>
+  Placement information for the universe.
+
  providerName <string>
   Preexisting Provider name to use in the universe.
+
+ readReplica <Object>
+  Read replica configuration for the universe.
 
  replicationFactor   <integer>
   Number of times to replicate data in a universe.
 
+ rollMaxBatchSize   <Object>
+  Maximum number of nodes to roll (restart) at a time during a rolling
+  upgrade. Only honored when upgradeOption is "Rolling". When unset, nodes
+  are rolled one at a time.
+
+ rootCA  <string>
+  Specify the name of the rootCA certificate to be used for cert-manager or
+  cert-manager certificates. If empty, YBA will create its own certificate.
+
+ tserverResourceSpec  <Object>
+  Resource specification for the tserver pods in the universe.
+
+ tserverVolume  <Object>
+  Volume configuration for tservers in the universe. This replaces
+  deviceInfo. deviceInfo and tserverVolume are mutually exclusive.
+
+ tserverWaitSeconds   <integer>
+  Time in seconds to wait after restarting a TServer node before proceeding
+  to the next node during a rolling upgrade.
+
  universeName <string>
   Name of the universe object to create
 
+ upgradeOption  <string>
+  Strategy to use when performing upgrade operations (software upgrade,
+  GFlags upgrade, Kubernetes overrides upgrade, certificate rotation and YBC
+  toggle). "Rolling" upgrades nodes one at a time, "Non-Rolling" upgrades
+  all nodes simultaneously with a restart, and "Non-Restart" applies the
+  change without restarting nodes. Defaults to "Rolling".
+
+ useYbdbInbuiltYbc  <boolean>
+  Use YBDB inbuilt YBC (immutable YBC) for the universe. When true, YBC runs
+  from the same container image as the database instead of being installed at
+  runtime.
+
  ybSoftwareVersion   <string>
   Version of DB software to use in the universe.
+
+ ybcThrottleParameters  <Object>
+  YBC throttle parameters for the universe. These throttle parameters can be
+  used to control speed and resource usage of taking and restoring backups.
 
  ycqlPassword <Object>
   Used to refer to secrets if enableYCQLAuth is set.
@@ -120,8 +188,8 @@ FIELDS:
   Used to refer to secrets if enableYSQLAuth is set.
 
  zoneFilter  <[]string>
-  Only deploy yugabytedb nodes in these zones mentioned in the list. Defaults
-  to all zones if unspecified.
+  Filter the zones to be added by the auto-provider. Only used when
+  providerName is not specified.
 ```
 
 ```sh
@@ -375,15 +443,13 @@ spec:
     volumeSize: 400
     numVolumes: 1
     storageClass: "yb-standard"
-  kubernetesOverrides:
-    resource:
-      master:
-        requests:
-          cpu: 2
-          memory: 8Gi
-        limits:
-          cpu: 3
-          memory: 8Gi
+  kubernetesOverrides: {}
+  tserverResourceSpec:
+    cpu: 4
+    memory: 16 
+  masterResourceSpec:
+    cpu: 2
+    memory: 4
 ```
 
 To check the status of the universe, do the following:
@@ -647,7 +713,7 @@ Set up scheduled backups as follows:
         Frequency of full backups in milliseconds.
 
       storageConfig<string>-required-
-        Storage configuration for the backup, refers to a storageconfig CR name. Should be in the same namespace as the     backupschedule.
+        Storage configuration for the backup, refers to a storageconfig CR name. Should be in the same namespace as the backupschedule.
 
       tableByTableBackup<boolean>
         Boolean indicating if backup is to be taken table by table.
