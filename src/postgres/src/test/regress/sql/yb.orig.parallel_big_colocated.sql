@@ -22,6 +22,7 @@ ANALYZE pcustomer;
 
 set yb_parallel_range_rows to 10000;
 set yb_enable_base_scans_cost_model to true;
+set yb_enable_parallel_scan_colocated to true;
 
 EXPLAIN (costs off)
 SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name = 'Customer #42';

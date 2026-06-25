@@ -272,6 +272,7 @@ SET parallel_setup_cost TO 0;
 
 -- YB: enable parallelism for the smallest partition
 SET yb_parallel_range_rows TO 1999;
+SET yb_enable_parallel_scan_colocated TO on;
 
 -- Full aggregation at level 1 as GROUP BY clause matches with PARTITION KEY
 -- for level 1 only. For subpartitions, GROUP BY clause does not match with

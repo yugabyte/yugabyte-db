@@ -3859,7 +3859,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_enable_parallel_scan_colocated,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
