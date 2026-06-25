@@ -10,7 +10,8 @@ menu:
     identifier: yb-kubernetes-operator
     weight: 100
 type: docs
-hideH4: true
+rightNav:
+  hideH4: true
 ---
 
 The YugabyteDB Kubernetes Operator streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
