@@ -390,8 +390,7 @@ uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requir
 }
 
 Status PgTxnManager::CalculateIsolation(
-    bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
-    IsLocalObjectLockOp is_local_object_lock_op) {
+    bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement) {
   if (yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
     VLOG_TXN_STATE(2);
     priority_ = NewPriority(txn_priority_requirement);
@@ -403,7 +402,7 @@ Status PgTxnManager::CalculateIsolation(
     return RecreateTransaction(SavePriority::kFalse);
   }
 
-  if (!read_only_op && !is_local_object_lock_op) {
+  if (!read_only_op) {
     has_writes_ = true;
   }
 
@@ -444,10 +443,6 @@ Status PgTxnManager::CalculateIsolation(
   // The feature doesn't take affect for non-read only serializable isolation txns
   // and fast-path transactions because they don't face read restart errors in the first place.
   //
-  // (1) Serializable isolation txns don't face read restart errors because
-  //    they use the latest timestamp for reading.
-  // (2) Fast-path txns don't face read restart errors because
-  //    they pick a read time after conflict resolution.
   // We already skip (2) because CalculateIsolation is not called for fast-path
   //    (i.e., NON_TRANSACTIONAL).
   need_defer_read_point_ =
@@ -472,7 +467,6 @@ Status PgTxnManager::CalculateIsolation(
   auto skip_picking_isolation_level = read_only_op &&
       (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
        docdb_isolation == IsolationLevel::READ_COMMITTED);
-  skip_picking_isolation_level |= is_local_object_lock_op;
   if (!skip_picking_isolation_level || (yb_ddl_transaction_block_enabled && IsDdlMode())) {
     if (IsDdlMode()) {
       DCHECK(yb_ddl_transaction_block_enabled)
@@ -737,21 +731,13 @@ std::string PgTxnManager::TxnStateDebugStr() const {
 
 Status PgTxnManager::SetupPerformOptions(
     SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB* options,
-    std::optional<ReadTimeAction> read_time_action) {
+    std::optional<ReadTimeAction> read_time_action,
+    IsLocalObjectLockOp is_local_object_lock_op) {
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
-  const auto read_time_serial_no = serial_no_.read_time();
-  options->set_read_time_serial_no(read_time_serial_no);
+  options->set_read_time_serial_no(serial_no_.read_time());
   options->set_read_time_serial_no_history_min(serial_no_.min_read_time());
-  if (snapshot_read_time_is_used_) {
-    if (auto i = explicit_snapshot_read_time_.find(read_time_serial_no);
-        i != explicit_snapshot_read_time_.end()) {
-      ReadHybridTime::FromUint64(i->second).ToPB(options->mutable_read_time());
-    }
-
-    RETURN_NOT_OK(CheckSnapshotTimeConflict());
-  }
   options->set_isolation(isolation_level_);
   options->set_ddl_mode(IsDdlMode());
   options->set_ddl_use_regular_transaction_block(IsDdlModeWithRegularTransactionBlock());
@@ -771,6 +757,32 @@ Status PgTxnManager::SetupPerformOptions(
   if (need_restart_) {
     options->set_restart_transaction(true);
     need_restart_ = false;
+  }
+
+  // Object lock RPCs perform no reads or writes; setting any read-time field would cause
+  // the tserver to pick a read time during lock acquisition and leak it into the next
+  // fast-path Perform. read_time_serial_no (above) is the exception — pg_client_session
+  // requires it for session-side ordering on kPlain sessions.
+  if (!is_local_object_lock_op) {
+    RETURN_NOT_OK(SetupReadTimeOptions(options, read_time_action));
+  }
+
+  options->set_force_global_transaction(yb_force_global_transaction);
+  options->set_force_tablespace_locality(yb_force_tablespace_locality);
+  options->set_force_tablespace_locality_oid(yb_force_tablespace_locality_oid);
+  return Status::OK();
+}
+
+Status PgTxnManager::SetupReadTimeOptions(
+    tserver::PgPerformOptionsPB* options,
+    std::optional<ReadTimeAction> read_time_action) {
+  if (snapshot_read_time_is_used_) {
+    const auto read_time_serial_no = serial_no_.read_time();
+    if (auto i = explicit_snapshot_read_time_.find(read_time_serial_no);
+        i != explicit_snapshot_read_time_.end()) {
+      ReadHybridTime::FromUint64(i->second).ToPB(options->mutable_read_time());
+    }
+    RETURN_NOT_OK(CheckSnapshotTimeConflict());
   }
 
   // Do not clamp or defer read point when the read time is being reset
@@ -830,10 +842,6 @@ Status PgTxnManager::SetupPerformOptions(
   if (read_time_action && *read_time_action == ReadTimeAction::RESET) {
     options->mutable_read_time()->Clear();
   }
-
-  options->set_force_global_transaction(yb_force_global_transaction);
-  options->set_force_tablespace_locality(yb_force_tablespace_locality);
-  options->set_force_tablespace_locality_oid(yb_force_tablespace_locality_oid);
   return Status::OK();
 }
 
@@ -1045,12 +1053,20 @@ Status PgTxnManager::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
     bool is_session_lock,
     std::optional<PgTablespaceOid> tablespace_oid) {
-  RETURN_NOT_OK(CalculateIsolation(
-      false /* read_only, doesn't matter */,
-      GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
-      IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
+  const auto is_local_object_lock_op =
+      IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK);
+  // Global object locks go through yb-master via a distributed YBTransaction. Creating that
+  // distributed txn requires the isolation level, so CalculateIsolation must run. Local-fastpath
+  // object lock acquisition picks no read time, does no DML, and does not change isolation level
+  // — the subsequent statement runs its own setup.
+  if (!is_local_object_lock_op) {
+    RETURN_NOT_OK(CalculateIsolation(
+        false /* read_only, doesn't matter */,
+        GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
+  }
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
+  RETURN_NOT_OK(SetupPerformOptions(
+      tag, &options, /*read_time_action=*/{}, is_local_object_lock_op));
   RETURN_NOT_OK(client_->AcquireObjectLock(
       &options, lock_id, mode, is_session_lock, tablespace_oid));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());

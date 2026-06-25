@@ -75,8 +75,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status BeginTransaction(int64_t start_time);
 
   Status CalculateIsolation(
-      bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
-      IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
+      bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
@@ -118,7 +117,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
   Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
-      tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {});
+      tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {},
+      IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -209,6 +209,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void StartNewSession();
   Status UpdateReadTimeForFollowerReadsIfRequired();
   Status RecreateTransaction(SavePriority save_priority);
+
+  Status SetupReadTimeOptions(
+      tserver::PgPerformOptionsPB* options,
+      std::optional<ReadTimeAction> read_time_action);
 
   static uint64_t NewPriority(YbcTxnPriorityRequirement txn_priority_requirement);
 
