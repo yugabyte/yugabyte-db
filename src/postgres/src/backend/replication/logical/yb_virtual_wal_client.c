@@ -190,6 +190,9 @@ YBCDestroyVirtualWal()
 
 	last_filtered_commit_lsn = InvalidXLogRecPtr;
 	needs_publication_table_list_refresh = false;
+
+	/* YB: Reset yb_read_time set by InitVirtualWal. */
+	YBCResetYbReadTimeAndInvalidateRelcache();
 }
 
 static List *
