@@ -33,9 +33,11 @@
 #pragma once
 
 #include <iosfwd>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/util/flags.h"
@@ -92,6 +94,9 @@ struct FsManagerOpts {
   // The paths where data blocks will be stored. Cannot be empty.
   std::vector<std::string> data_paths;
 
+  // Storage tier stored by data path.
+  std::unordered_map<std::string, std::string> tier_by_path;
+
   // Whether or not read-write operations should be allowed. Defaults to false.
   bool read_only;
 
@@ -122,6 +127,19 @@ class FsManager {
   static const char *kWalsRecoveryDirSuffix;
   static const char *kRocksDBDirName;
   static const char *kDataDirName;
+
+  // Storage-tier labels are a fixed, predefined set (see ValidStorageTiers()).
+  // Data roots in --fs_data_dirs that carry no explicit ":tier" suffix fall back
+  // to this default tier, so existing/unlabeled deployments keep working.
+  static const char *kDefaultStorageTier;  // = "ssd"
+
+  // The set of valid storage-tier labels, in a stable order. Any label outside
+  // this set is rejected at FsManager::Init(). kDefaultStorageTier is always a
+  // member.
+  static const std::vector<std::string>& ValidStorageTiers();
+
+  // Whether `tier` is one of ValidStorageTiers().
+  static bool IsValidStorageTier(const std::string& tier);
 
   // Only for unit tests.
   FsManager(Env* env, const std::string& root_path, const std::string& server_type);
@@ -167,6 +185,19 @@ class FsManager {
   std::set<std::string> GetFsRootDirs() const;
 
   std::vector<std::string> GetDataRootDirs() const;
+
+  // Returns the storage-tier label for a given canonicalized fs root (as
+  // returned by GetFsRootDirs()).  Returns kDefaultStorageTier when the root
+  // is not found in the tier map (e.g. WAL-only roots).
+  const std::string& GetTierForDataRoot(const std::string& canonicalized_fs_root) const;
+
+  // Returns all data-root directories (i.e. the paths that GetDataRootDirs()
+  // would return) that are tagged with the given tier label.
+  std::vector<std::string> GetDataRootDirsForTier(const std::string& tier) const;
+
+  // Returns the full tier -> data-root-dirs mapping (values are the same paths
+  // as GetDataRootDirs()).  Populated after Init().
+  const std::map<std::string, std::vector<std::string>>& GetDataRootsByTier() const;
 
   std::vector<std::string> GetWalRootDirs() const;
 
@@ -314,6 +345,9 @@ class FsManager {
   // as-is; they are first canonicalized during Init().
   const std::vector<std::string> wal_fs_roots_;
   const std::vector<std::string> data_fs_roots_;
+  // Storage-tier label keyed by (raw) data path. Paths absent from the map fall
+  // back to kDefaultStorageTier. Consumed while building the tier maps in Init().
+  const std::unordered_map<std::string, std::string> tier_by_data_path_;
   const std::string server_type_;
 
   MetricRegistry* metric_registry_;
@@ -329,6 +363,10 @@ class FsManager {
   std::string canonicalized_default_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
+
+  // Tier maps built during Init().
+  std::unordered_map<std::string, std::string> tier_by_canonicalized_fs_root_;
+  std::map<std::string, std::vector<std::string>> data_roots_by_tier_;
 
   std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
   mutable std::mutex data_mutex_;

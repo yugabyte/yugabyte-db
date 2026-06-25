@@ -174,7 +174,8 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   VLOG_WITH_PREFIX(4) << "Uptime seconds: "<< uptime_seconds;
 
   if (FLAGS_tserver_heartbeat_metrics_add_drive_data) {
-    for (const std::string& path : server().fs_manager()->GetFsRootDirs()) {
+    auto* fs_mgr = server().fs_manager();
+    for (const std::string& path : fs_mgr->GetFsRootDirs()) {
       auto stat = server().GetEnv()->GetFilesystemStatsBytes(path.c_str());
       if (!stat.ok()) {
         continue;
@@ -183,6 +184,9 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
       path_metric->set_path_id(path);
       path_metric->set_used_space(stat->used_space);
       path_metric->set_total_space(stat->total_space);
+      // Advertise the storage tier for data roots.
+      const auto& tier = fs_mgr->GetTierForDataRoot(path);
+      path_metric->set_storage_tier(tier);
     }
   }
 }

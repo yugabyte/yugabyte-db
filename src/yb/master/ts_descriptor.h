@@ -310,6 +310,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   struct TSPathMetrics {
     uint64_t used_space = 0;
     uint64_t total_space = 0;
+    std::string storage_tier;
   };
 
   std::unordered_map<std::string, TSPathMetrics> path_metrics() {

@@ -1094,6 +1094,10 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
           jw.Uint64(path_metric.second.used_space);
           jw.String("total_space_size");
           jw.Uint64(path_metric.second.total_space);
+          if (!path_metric.second.storage_tier.empty()) {
+            jw.String("storage_tier");
+            jw.String(path_metric.second.storage_tier);
+          }
           jw.EndObject();
         }
         jw.EndArray();
