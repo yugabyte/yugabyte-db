@@ -976,13 +976,12 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		{
 			ybScan->target_key_attnums[i] = InvalidAttrNumber;
 			scan_plan->bind_key_attnums[i] = InvalidAttrNumber;
-			continue;
 		}
-
-		if (key->sk_attno == InvalidAttrNumber)
+		else if (key->sk_attno == InvalidAttrNumber)
+		{
 			elog(ERROR, "unexpected scan key without attribute number");
-
-		if (!index)
+		}
+		else if (!index)
 		{
 			/* Sequential scan */
 			ybScan->target_key_attnums[i] = key->sk_attno;
