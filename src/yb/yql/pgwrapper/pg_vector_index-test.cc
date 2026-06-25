@@ -2300,6 +2300,37 @@ TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
       output);
 }
 
+TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
+  constexpr size_t kNumRows = 50;
+  constexpr size_t kQueryLimit = 75;
+
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_skip_filter_check) = true;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 1, kNumRows));
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts());
+
+  // Tombstone reverse mappings for the first batch.
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id <= $0", kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(InsertRows(conn, kNumRows + 1, 2 * kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts());
+
+  const auto kQuery = Format(
+      "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kQueryLimit);
+
+  ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_clear_result_entries_once) = true;
+
+  // Only rows 51..100 have live reverse mappings.
+  auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(kQuery));
+  ASSERT_EQ(rows.size(), kNumRows);
+
+  ASSERT_FALSE(ANNOTATE_UNPROTECTED_READ(docdb::TEST_vector_index_clear_result_entries_once));
+}
+
 // Covers https://github.com/yugabyte/yugabyte-db/issues/31322.
 TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
   constexpr size_t kNumRows = 50;
@@ -2335,7 +2366,7 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
   ASSERT_EQ(rows.size(), kNumRows);
 
   // Make sure the test hit the test path that clears result entries.
-  ASSERT_FALSE(docdb::TEST_vector_index_clear_result_entries_once);
+  ASSERT_FALSE(ANNOTATE_UNPROTECTED_READ(docdb::TEST_vector_index_clear_result_entries_once));
 }
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {
