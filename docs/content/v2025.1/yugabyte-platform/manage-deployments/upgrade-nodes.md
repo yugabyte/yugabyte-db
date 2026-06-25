@@ -88,6 +88,8 @@ For each node in the universe, use the following general procedure:
     --data-raw '{"nodeAction":"REPROVISION"}'
     ```
 
+    Note that if you are using your own automation to install node agent and other customizations, you can skip this step.
+
 1. Start the processes for the node.
 
     In YugabyteDB Anywhere, navigate to the universe **Nodes** tab and, for the node, click **Actions** and choose **Start Processes**.
