@@ -35,7 +35,7 @@ const StyledSubText = styled(Typography)(({ theme }) => ({
 }));
 
 export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
-  const { setValue, control } = useFormContext<OtherAdvancedProps>();
+  const { setValue, control } = useFormContext<Partial<OtherAdvancedProps>>();
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings.userTags'
@@ -52,50 +52,61 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
         {t('subText')}
         <StyledLink>{t('learnMore')}</StyledLink>
       </StyledSubText>
-      {fields.map((field, index) => {
-        return (
-          <Box
-            sx={{ display: 'flex', flexDirection: 'row', gap: '8px', mb: 2, alignItems: 'end' }}
-            key={field.id}
-          >
-            <YBInputField
-              name={`${USER_TAGS_FIELD}.${index}.name` as FieldArrayPath<InstanceTag>}
-              sx={{ width: '440px' }}
-              label={index === 0 ? t('tagName') : null}
-              control={control}
-              placeholder={t('tagNamePlaceholder')}
-              dataTestId={`user-tags-field-name-${index}`}
-            />
-            <YBInputField
-              name={`${USER_TAGS_FIELD}.${index}.value` as FieldArrayPath<InstanceTag>}
-              sx={{ width: '440px' }}
-              label={index === 0 ? t('tagValue') : null}
-              control={control}
-              placeholder={t('tagValuePlaceholder')}
-              dataTestId={`user-tags-field-value-${index}`}
-            />
-            <IconButton
-              color="default"
-              data-testid={`UniverseNameField-RemoveButton${index}`}
-              onClick={() => remove(index)}
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '24px',
+          borderRadius: '8px',
+          border: '1px solid #D7DEE4',
+          background: '#FBFCFD'
+        }}
+      >
+        {fields.map((field, index) => {
+          return (
+            <Box
+              sx={{ display: 'flex', flexDirection: 'row', gap: '8px', mb: 2, alignItems: 'end' }}
+              key={field.id}
             >
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        );
-      })}
-      <Box sx={{ mt: 1, display: 'flex' }}>
-        <YBButton
-          variant="secondary"
-          data-testid={`UniverseNameField-AddTagsButton`}
-          onClick={() => append({ name: '', value: '' })}
-          size="medium"
-          disabled={disabled}
-          startIcon={<CircleAddIcon />}
-          dataTestId="user-tags-field-add-button"
-        >
-          {t('addTag')}
-        </YBButton>
+              <YBInputField
+                name={`${USER_TAGS_FIELD}.${index}.name` as FieldArrayPath<InstanceTag>}
+                sx={{ width: '440px' }}
+                label={index === 0 ? t('tagName') : null}
+                control={control}
+                placeholder={t('tagNamePlaceholder')}
+                dataTestId={`user-tags-field-name-${index}`}
+              />
+              <YBInputField
+                name={`${USER_TAGS_FIELD}.${index}.value` as FieldArrayPath<InstanceTag>}
+                sx={{ width: '440px' }}
+                label={index === 0 ? t('tagValue') : null}
+                control={control}
+                placeholder={t('tagValuePlaceholder')}
+                dataTestId={`user-tags-field-value-${index}`}
+              />
+              <IconButton
+                color="default"
+                data-testid={`UniverseNameField-RemoveButton${index}`}
+                onClick={() => remove(index)}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          );
+        })}
+        <Box sx={{ mt: 1, display: 'flex' }}>
+          <YBButton
+            variant="secondary"
+            data-testid={`UniverseNameField-AddTagsButton`}
+            onClick={() => append({ name: '', value: '' })}
+            size="medium"
+            disabled={disabled}
+            startIcon={<CircleAddIcon />}
+            dataTestId="user-tags-field-add-button"
+          >
+            {t('addTag')}
+          </YBButton>
+        </Box>
       </Box>
     </Box>
   );

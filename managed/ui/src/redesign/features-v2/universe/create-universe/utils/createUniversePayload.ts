@@ -1,4 +1,5 @@
 import { omit } from 'lodash';
+import { TFunction } from 'i18next';
 import { createUniverseFormProps } from '../CreateUniverseContext';
 import { ResilienceType } from '../steps/resilence-regions/dtos';
 import { OtherAdvancedProps } from '../steps/advanced-settings/dtos';
@@ -268,7 +269,8 @@ export const mapCreateUniversePayload = (
             provider: generalSettings.providerConfiguration!.uuid!,
             region_list: regionList.map((r) => r.uuid!),
             image_bundle_uuid: instanceSettings.imageBundleUUID!,
-            access_key_code: otherAdvancedSettings.accessKeyCode
+            access_key_code: otherAdvancedSettings.accessKeyCode,
+            aws_instance_profile: otherAdvancedSettings.awsArnString
           }
         }
       ]
@@ -276,4 +278,98 @@ export const mapCreateUniversePayload = (
   };
 
   return payload;
+};
+
+export const getAccessiblePorts = (
+  enableYSQL: boolean | undefined,
+  enableYCQL: boolean | undefined,
+  providerCode: string,
+  enableCP: boolean | undefined,
+  t: TFunction
+) => {
+  const MASTER_PORTS = [
+    { id: 'masterHttpPort', visible: true, disabled: false },
+    { id: 'masterRpcPort', visible: true, disabled: false }
+  ];
+
+  const TSERVER_PORTS = [
+    { id: 'tserverHttpPort', visible: true, disabled: false },
+    { id: 'tserverRpcPort', visible: true, disabled: false }
+  ];
+
+  const YCQL_PORTS = [
+    {
+      id: 'yqlServerHttpPort',
+      visible: enableYCQL,
+      disabled: false
+    },
+    {
+      id: 'yqlServerRpcPort',
+      visible: enableYCQL, //ycqlEnabled,
+      disabled: false
+    }
+  ].filter((ports) => ports.visible);
+
+  const YSQL_PORTS = [
+    { id: 'ysqlServerHttpPort', visible: enableYSQL, disabled: false }, //visible: ysqlEnabled,
+    {
+      id: 'ysqlServerRpcPort',
+      visible: enableYSQL,
+      disabled: providerCode === CloudType.kubernetes
+    },
+    {
+      id: 'internalYsqlServerRpcPort',
+      visible: enableYSQL && enableCP,
+      disabled: providerCode === CloudType.kubernetes
+    }
+  ].filter((ports) => ports.visible);
+
+  const REDIS_PORTS = [
+    { id: 'redisServerHttpPort', visible: false, disabled: false },
+    { id: 'redisServerRpcPort', visible: false, disabled: false }
+  ];
+
+  const OTHER_PORTS = [
+    { id: 'nodeExporterPort', visible: providerCode !== CloudType.onprem, disabled: false }, //visible: provider?.code !== CloudType.onprem,
+    {
+      id: 'ybControllerRpcPort',
+      visible: true,
+      disabled: false
+    }
+  ];
+
+  const PORT_GROUPS = [
+    {
+      name: t('masterGroup'),
+      PORTS_LIST: MASTER_PORTS,
+      visible: MASTER_PORTS.length > 0
+    },
+    {
+      name: t('tServerGroup'),
+      PORTS_LIST: TSERVER_PORTS,
+      visible: TSERVER_PORTS.length > 0
+    },
+    {
+      name: t('ysqlGroup'),
+      PORTS_LIST: YSQL_PORTS,
+      visible: YSQL_PORTS.length > 0
+    },
+    {
+      name: t('ycqlGroup'),
+      PORTS_LIST: YCQL_PORTS,
+      visible: YCQL_PORTS.length > 0
+    },
+    {
+      name: t('redisGroup'),
+      PORTS_LIST: REDIS_PORTS,
+      visible: REDIS_PORTS.length > 0
+    },
+    {
+      name: t('othersGroup'),
+      PORTS_LIST: OTHER_PORTS,
+      visible: OTHER_PORTS.length > 0
+    }
+  ].filter((pg) => pg.visible);
+
+  return PORT_GROUPS;
 };

@@ -78,12 +78,14 @@ export const SecurityTab = () => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <StyledPanel>
-          <StyledHeader>{t('publicIPAssignment')}</StyledHeader>
-          <ContentArea>
-            <AssignPublicIPField providerCode={providerCode!} disabled={false} />
-          </ContentArea>
-        </StyledPanel>
+        {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(providerCode) && (
+          <StyledPanel>
+            <StyledHeader>{t('publicIPAssignment')}</StyledHeader>
+            <ContentArea>
+              <AssignPublicIPField providerCode={providerCode!} disabled={false} />
+            </ContentArea>
+          </StyledPanel>
+        )}
         <StyledPanel>
           <StyledHeader
             sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -131,7 +133,9 @@ export const SecurityTab = () => {
                 variant="ghost"
                 startIcon={<EditIcon />}
                 onClick={() => setEarModalOpen(true)}
-                disabled={earModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady}
+                disabled={
+                  earModalOpen || isLegacyUniverseLoading || !universeUUID || !isUniverseReady
+                }
               >
                 {t('edit', { keyPrefix: 'common' })}
               </YBButton>
