@@ -774,7 +774,7 @@ PgApiImpl::PgApiImpl(
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
       enable_table_locking_(ShouldEnableTableLocks() && !is_parallel_worker_),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
+      pg_txn_manager_(new PgTxnManager(&pg_client_, pg_callbacks_, enable_table_locking_)),
       pg_session_(PgSession::Make(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
           wait_event_watcher_, buffering_settings_)),
@@ -2192,7 +2192,8 @@ Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {
 }
 
 Status PgApiImpl::SetTransactionReadOnly(bool read_only) {
-  return pg_txn_manager_->SetReadOnly(read_only);
+  pg_txn_manager_->SetReadOnly(read_only);
+  return Status::OK();
 }
 
 Status PgApiImpl::SetEnableTracing(bool tracing) {
@@ -2200,7 +2201,8 @@ Status PgApiImpl::SetEnableTracing(bool tracing) {
 }
 
 Status PgApiImpl::UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms) {
-  return pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
+  pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
+  return Status::OK();
 }
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {

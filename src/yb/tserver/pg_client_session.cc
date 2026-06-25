@@ -185,6 +185,13 @@ namespace {
 YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence)(kPgSession));
 YB_DEFINE_ENUM(GlobalObjectLocksReleaseMode, (kAsync)(kSync));
 
+void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms) {
+  read_point.SetReadTime(
+      ReadHybridTime::SingleTime(
+          read_point.Now().AddMilliseconds(-static_cast<int64_t>(staleness_ms))),
+      {});
+}
+
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
 constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 const std::string kTxnLogPrefixTagSource("Session ");
@@ -1507,7 +1514,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   ops.reserve(req->ops().size());
   client::YBTablePtr table;
   CancelableScopeExit abort_se{[session] { session->Abort(); }};
-  const auto read_from_followers = req->options().read_from_followers();
+  const auto read_from_followers = req->options().has_follower_read_staleness_ms();
   bool has_write_ops = false;
 
   // TODO(vector_index): it is unexpected to have a mix of vector index read ops and
@@ -3539,7 +3546,7 @@ class PgClientSession::Impl {
     const auto read_time_serial_no = options.read_time_serial_no();
     auto kind = PgClientSessionKind::kPlain;
     if (options.use_catalog_session()) {
-      SCHECK(!options.read_from_followers(),
+      SCHECK(!options.has_follower_read_staleness_ms(),
           InvalidArgument, "Reading catalog from followers is not allowed");
       kind = PgClientSessionKind::kCatalog;
       EnsureSession(kind, deadline, arena);
@@ -3626,8 +3633,12 @@ class PgClientSession::Impl {
       const auto has_time_manipulation =
           options.read_time_manipulation() != ReadTimeManipulation::NONE;
       RSTATUS_DCHECK(
-          !(has_time_manipulation && options.has_read_time()),
-          IllegalState, "read_time_manipulation and read_time fields can't be satisfied together");
+          !has_time_manipulation ||
+              !(options.has_read_time() || options.has_follower_read_staleness_ms()),
+          IllegalState,
+          "Unexpected combination of read time fields: has_read_time_manipulation=true, "
+          "has_read_time=$0, has_follower_read_staleness_ms=$1",
+          options.has_read_time(), options.has_follower_read_staleness_ms());
 
       if (has_time_manipulation) {
         VLOG_WITH_PREFIX(3) << "Processing read time manipulation"
@@ -3641,6 +3652,15 @@ class PgClientSession::Impl {
         ProcessReadTimeManipulation(
             options.read_time_manipulation(), read_time_serial_no,
             ClampUncertaintyWindow(options.clamp_uncertainty_window()));
+      } else if (options.has_follower_read_staleness_ms()) {
+        auto& read_point = *session.read_point();
+        if (read_time_serial_no_ != read_time_serial_no) {
+          SetFollowerReadTime(read_point, options.follower_read_staleness_ms().value());
+        } else {
+          RSTATUS_DCHECK(
+              read_point.GetReadTime(), IllegalState,
+              "Follower read with an unchanged read_time_serial_no must already have a read time");
+        }
       } else if (options.has_read_time() && options.read_time().has_read_ht()) {
         const auto read_time = ReadHybridTime::FromPB(options.read_time());
         session.SetReadPoint(read_time);

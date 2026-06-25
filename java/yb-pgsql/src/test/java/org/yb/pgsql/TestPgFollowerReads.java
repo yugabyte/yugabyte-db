@@ -19,24 +19,40 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.util.BuildTypeUtil;
+import org.yb.util.json.Checker;
+import org.yb.util.json.Checkers;
+import org.yb.util.json.JsonUtil;
 import org.yb.YBTestRunner;
 
+import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
+import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
+
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.yb.AssertionWrappers.*;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_AGGREGATE;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_GATHER;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgFollowerReads extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgFollowerReads.class);
   private static int kMaxClockSkewMs = 100;
   private static int kRaftHeartbeatIntervalMs = 500;
+  private static final int NUM_ACCOUNTS = 100000;
+  private static final int INITIAL_BALANCE = 1000;
+  private static final long EXPECTED_TOTAL = (long) NUM_ACCOUNTS * INITIAL_BALANCE;
 
   /**
    * @return flags shared between tablet server and initdb
@@ -52,6 +68,176 @@ public class TestPgFollowerReads extends BasePgSQLTest {
 
   private Long getCountForTable(String metricName, String tableName) throws Exception {
     return getTserverMetricCountForTable(metricName, tableName);
+  }
+
+  // Validates the fix for #31166: before it, each parallel-scan worker picked
+  // its own follower read time, so a single SUM(balance) could read different
+  // tablets at different snapshots. A transfer that commits between two
+  // workers' read times is then seen by only one -- e.g. the debit is
+  // counted but its matching credit is missed -- so the total is off by
+  // that amount.
+  @Test
+  public void testBankInvariantWithParallelFollowerReads() throws Exception {
+    runBankInvariantTest("accounts_parallel", true /* useParallel */);
+  }
+
+  // Non-parallel counterpart.
+  @Test
+  public void testBankInvariantWithFollowerReads() throws Exception {
+    runBankInvariantTest("accounts", false /* useParallel */);
+  }
+
+  private void runBankInvariantTest(String table, boolean useParallel) throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE " + table +
+                   " (id INT PRIMARY KEY, balance BIGINT NOT NULL) SPLIT INTO 12 TABLETS");
+      stmt.execute("INSERT INTO " + table +
+                   " SELECT g, " + INITIAL_BALANCE + " FROM generate_series(1, " +
+                   NUM_ACCOUNTS + ") g");
+      stmt.execute("ANALYZE " + table);
+    }
+
+    Thread.sleep(5000);
+
+    runBankInvariant(table, useParallel);
+  }
+
+  private static void setFollowerReadConfig(Statement stmt) throws Exception {
+    stmt.execute("SET yb_read_from_followers = true");
+    stmt.execute("SET yb_follower_read_staleness_ms = 4000");
+    stmt.execute("SET default_transaction_read_only = true");
+  }
+
+  private static void setParallelQueryConfig(Statement stmt) throws Exception {
+    stmt.execute("SET yb_enable_base_scans_cost_model = true");
+    stmt.execute("SET yb_enable_parallel_scan_hash_sharded = on");
+    stmt.execute("SET yb_parallel_range_rows TO 1");
+    stmt.execute("SET parallel_setup_cost TO 0");
+    stmt.execute("SET parallel_tuple_cost TO 0");
+  }
+
+  private static void setNonParallelQueryConfig(Statement stmt) throws Exception {
+    stmt.execute("SET yb_enable_parallel_scan_colocated = off");
+    stmt.execute("SET yb_enable_parallel_scan_hash_sharded = off");
+    stmt.execute("SET yb_enable_parallel_scan_range_sharded = off");
+    stmt.execute("SET yb_enable_parallel_scan_system = off");
+  }
+
+  private static void setQueryExecutionConfig(Statement stmt, boolean useParallel)
+      throws Exception {
+    setFollowerReadConfig(stmt);
+    if (useParallel) {
+      setParallelQueryConfig(stmt);
+    } else {
+      setNonParallelQueryConfig(stmt);
+    }
+  }
+
+  private static final String BANK_SUM_STMT = "bank_sum";
+
+  private TopLevelCheckerBuilder makeTopLevelBuilder() {
+    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false /* nullify */);
+  }
+
+  private static PlanCheckerBuilder makePlanBuilder() {
+    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false /* nullify */);
+  }
+
+  private void checkPlan(Statement stmt, boolean useParallel) throws Exception {
+    PlanCheckerBuilder child = makePlanBuilder();
+    if (useParallel) {
+      child.nodeType(NODE_GATHER).workersPlanned(Checkers.greaterOrEqual(1));
+    } else {
+      child.nodeType(NODE_SEQ_SCAN);
+    }
+    Checker checker = makeTopLevelBuilder()
+        .plan(makePlanBuilder()
+            .nodeType(NODE_AGGREGATE)
+            .plans(child.build())
+            .build())
+        .build();
+    ExplainAnalyzeUtils.testExplainNoTiming(stmt, "EXECUTE " + BANK_SUM_STMT, checker);
+  }
+
+  private void runBankInvariant(String table, boolean useParallel) throws Exception {
+    final String[] ISOLATIONS = {"read committed", "repeatable read", "serializable"};
+    AtomicBoolean stop = new AtomicBoolean(false);
+    AtomicInteger transfers = new AtomicInteger(0);
+    AtomicInteger reads = new AtomicInteger(0);
+    AtomicInteger inconsistencies = new AtomicInteger(0);
+
+    Thread writerThread = new Thread(() -> {
+      Random rnd = new Random();
+      try (Connection wConn = getConnectionBuilder().connect();
+           Statement wStmt = wConn.createStatement()) {
+        while (!stop.get()) {
+          int from = rnd.nextInt(NUM_ACCOUNTS) + 1;
+          int to = rnd.nextInt(NUM_ACCOUNTS - 1) + 1;
+          if (to >= from) to++;
+          int amount = rnd.nextInt(10) + 1;
+          try {
+            wStmt.execute("BEGIN");
+            wStmt.execute("UPDATE " + table + " SET balance = balance - " + amount +
+                          " WHERE id = " + from);
+            wStmt.execute("UPDATE " + table + " SET balance = balance + " + amount +
+                          " WHERE id = " + to);
+            wStmt.execute("COMMIT");
+            transfers.incrementAndGet();
+          } catch (Exception e) {
+            try { wStmt.execute("ROLLBACK"); } catch (Exception ignored) {}
+          }
+        }
+      } catch (Exception e) {
+        LOG.error("Writer thread failed", e);
+      }
+    });
+
+    try (Connection rConn = getConnectionBuilder().connect();
+         Statement rStmt = rConn.createStatement()) {
+      setQueryExecutionConfig(rStmt, useParallel);
+      rStmt.execute("PREPARE " + BANK_SUM_STMT + " AS SELECT SUM(balance) FROM " + table);
+      checkPlan(rStmt, useParallel);
+
+      Thread readerThread = new Thread(() -> {
+        Random rnd = new Random();
+        try {
+          while (!stop.get()) {
+            String isolation = ISOLATIONS[rnd.nextInt(ISOLATIONS.length)];
+            try {
+              rStmt.execute("SET default_transaction_isolation = '" + isolation + "'");
+              ResultSet rs = rStmt.executeQuery("EXECUTE " + BANK_SUM_STMT);
+              rs.next();
+              long total = rs.getLong(1);
+              reads.incrementAndGet();
+              if (total != EXPECTED_TOTAL) {
+                inconsistencies.incrementAndGet();
+                LOG.error("INCONSISTENCY [" + isolation + "]: expected total=" + EXPECTED_TOTAL +
+                          " but got " + total + " (diff=" + (total - EXPECTED_TOTAL) +
+                          ") after " + transfers.get() + " transfers");
+              }
+            } catch (Exception e) {
+              // Transient errors are OK
+            }
+          }
+        } catch (Exception e) {
+          LOG.error("Reader thread failed", e);
+        }
+      });
+
+      writerThread.start();
+      readerThread.start();
+
+      Thread.sleep(20000);
+      stop.set(true);
+      writerThread.join(10000);
+      readerThread.join(10000);
+    }
+
+    LOG.info("[useParallel=" + useParallel + "] Transfers: " + transfers.get() +
+             ", reads: " + reads.get() + ", inconsistencies: " + inconsistencies.get());
+
+    assertEquals("Bank invariant violated! Follower reads produced inconsistent results.",
+                 0, inconsistencies.get());
   }
 
   @Test
