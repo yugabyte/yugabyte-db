@@ -2173,6 +2173,89 @@ class TestKVFormatter : public tablet::KVFormatter {
   mutable std::unordered_map<std::string, std::unordered_set<std::string>> ybctid_vectors_;
 };
 
+// A manual (e.g. post-split) compaction can be requested just before a tablet is torn down. The
+// requesting thread passes the RUNNING_STATUS() check in ScheduleManualCompaction() while the LSM
+// is still running, then -- inside RegisterManualCompaction() -- it may block waiting for ongoing
+// background compactions. Shutdown aborts those background tasks, which wakes the manual thread.
+// VectorLSM shutdown only waits for compaction_tasks_ to become empty and does not account for the
+// in-flight manual registration, so CompleteShutdown() can finish before the manual thread inserts
+// its task. The manual thread then registers and submits a CompactionTask on a now shutting-down /
+// destroyed VectorLSM; the task lingers in the shared priority thread pool and later runs against
+// the freed object, matching the crash in CompactionTask::Run -> Completed -> Deregister.
+//
+// The interleaving is forced deterministically with sync point dependencies:
+//   1) shutdown begins only after the manual compaction has passed the running check;
+//   2) the manual compaction inserts its task only after shutdown has reached the compaction wait;
+//   3) a task wrongly submitted during shutdown runs only after the VectorLSM has been destroyed.
+// A correct fix observes the shutdown and refuses to register (Compact() returns a shutdown error);
+// the buggy code registers a task that runs against the freed VectorLSM, which the guard in
+// VectorLSM::LastSerialNo() turns into a deterministic failure (and a heap-use-after-free under
+// ASAN). Uses a single tablet server so each sync point maps to a single VectorLSM instance.
+//
+// Covers https://github.com/yugabyte/yugabyte-db/issues/30554.
+TEST_P(PgVectorIndexSingleServerTest, ManualCompactionDuringShutdown) {
+  // Background compactions off: the only task we orchestrate is the manual compaction below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  constexpr size_t kNumRows = 64;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      // Shutdown may begin only after the manual compaction passed the running check, so it does
+      // not bail out early in ScheduleManualCompaction().
+      {"VectorLSM::RegisterManualCompaction:Start", "VectorLSM::StartShutdown:Begin"},
+      // The manual compaction inserts its task only after shutdown has started and reached the
+      // compaction wait -- the lost-update window.
+      {"VectorLSM::CompleteShutdown:Waiting", "VectorLSM::RegisterManualCompaction:BeforeRegister"},
+      // A task wrongly submitted during shutdown runs only after the VectorLSM has been destroyed,
+      // making the use-after-free deterministic.
+      {"VectorLSM::~VectorLSM:Destroyed", "VectorLSM::CompactionTask::Run:Start"},
+  });
+  sync_point->EnableProcessing();
+
+  // Hand the only external strong reference to the compaction thread; keep a weak ref to observe
+  // destruction.
+  std::shared_ptr<docdb::DocVectorIndex> index;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto list = tablet->vector_indexes().List();
+    if (list && !list->empty()) {
+      index = (*list)[0];
+      break;
+    }
+  }
+  ASSERT_TRUE(index) << "No tablet with a vector index found";
+  std::weak_ptr<docdb::DocVectorIndex> weak_index = index;
+
+  TestThreadHolder threads;
+  Status compact_status;
+  threads.AddThreadFunctor([&compact_status, index] {
+    compact_status = index->Compact();
+  });
+  index.reset();  // Main keeps only the weak ref.
+
+  // Tear the table down so the VectorLSM shuts down. StartShutdown waits (via the dependency above)
+  // until the manual compaction is running, so launch order does not matter.
+  threads.AddThreadFunctor([this] {
+    auto drop_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(drop_conn.Execute("DROP TABLE test"));
+  });
+
+  threads.WaitAndStop(120s * kTimeMultiplier);
+
+  // A correct fix refuses to register a manual compaction once the LSM is shutting down. On the
+  // buggy code a task is registered (status OK) and runs against the freed VectorLSM, tripping the
+  // LastSerialNo() guard before we even get here.
+  ASSERT_NOK(compact_status) << "Manual compaction was registered on a shutting-down VectorLSM";
+  ASSERT_OK(WaitFor([&weak_index] { return weak_index.expired(); }, 60s * kTimeMultiplier,
+                    "vector index destruction"));
+}
+
 TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   // Set number of files for background compaction explicitly.
   constexpr auto kRetentionIntervalSec = 4;
