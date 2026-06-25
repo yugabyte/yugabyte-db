@@ -4388,43 +4388,114 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   }
 }
 
-class PgLibPqAmopNegCacheTest : public PgLibPqTest {
+class PgLibPqNegCacheTest : public PgLibPqTest {
+ public:
+  enum class NegCacheTestType {
+    kPreload,
+    kNoPreload,
+    kNegCache
+  };
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
-        "--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
+        "--ysql_pg_conf_csv=yb_enable_negative_catcache_entries=true,"
+        "yb_debug_log_catcache_events=true");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 
-
-  void TestAmopNegCacheMiss(bool preloaded) {
-  struct AmopMetrics {
+  struct NegCacheMetrics {
     int64_t total;
     int64_t negative;
   };
 
+  auto runQueryAndGetMetrics(
+      PGConn& conn,
+      const std::string& query,
+      const std::string& catalog_table
+    ) -> Result<NegCacheMetrics> {
+    auto str = VERIFY_RESULT(
+        conn.FetchAllAsString(query));
+    LOG(INFO) << "output " << str;
+
+    NegCacheMetrics m;
+    m.total = VERIFY_RESULT(GetCatCacheTableMissMetric(catalog_table));
+    m.negative = VERIFY_RESULT(GetCatCacheNegMissMetric(catalog_table));
+    LOG(INFO) << catalog_table << " total misses " << m.total
+              << ", neg misses " << m.negative;
+    return m;
+  }
+
+  void TestProcoidNegCacheMiss(NegCacheTestType test_type) {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
 
     auto conn2 = ASSERT_RESULT(Connect());
-    auto runQueryAndGetMetrics = [&]() -> Result<AmopMetrics> {
-      auto str = VERIFY_RESULT(
-          conn2.FetchAllAsString("EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'"));
-      LOG(INFO) << "output " << str;
 
-      AmopMetrics m;
-      m.total = VERIFY_RESULT(GetCatCacheTableMissMetric("pg_amop"));
-      m.negative = VERIFY_RESULT(GetCatCacheNegMissMetric("pg_amop"));
-      LOG(INFO) << "pg_amop total misses " << m.total
-                << ", neg misses " << m.negative;
-      return m;
-    };
+    const std::string query = "SELECT pg_get_functiondef(9999999)";
+    auto m1 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_proc"));
+    auto m2 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_proc"));
 
-    auto m1 = ASSERT_RESULT(runQueryAndGetMetrics());
-    auto m2 = ASSERT_RESULT(runQueryAndGetMetrics());
+    switch (test_type) {
+      case NegCacheTestType::kNegCache:
+        ASSERT_EQ(m2.total, m1.total);
+        ASSERT_EQ(m2.negative, m1.negative);
+      break;
+      case NegCacheTestType::kPreload: FALLTHROUGH_INTENDED;
+      case NegCacheTestType::kNoPreload:
+        ASSERT_GT(m2.total, m1.total);
+        ASSERT_GT(m2.negative, m1.negative);
+        break;
+    }
 
-    ASSERT_GT(m2.total, m1.total);
-    ASSERT_GT(m2.negative, m1.negative);
+    LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='45.14'"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids=45.14"),
+      YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+    LOG(INFO) << "Completed invalid tests";
+
+    ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='45'"));
+    auto m3 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_proc"));
+
+    switch (test_type) {
+      case NegCacheTestType::kNegCache:
+        ASSERT_EQ(m3.total, m1.total);
+        ASSERT_EQ(m3.negative, m1.negative);
+      break;
+      case NegCacheTestType::kPreload:
+        // When preloaded and neg caching now allowed, the table scan is
+        // skipped (fully loaded), so neither total nor neg misses
+        // increase.
+        ASSERT_EQ(m3.total, m2.total);
+        ASSERT_EQ(m3.negative, m2.negative);
+        break;
+      case NegCacheTestType::kNoPreload:
+        ASSERT_GT(m3.total, m2.total);
+        ASSERT_GT(m3.negative, m2.negative);
+
+        auto m4 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_proc"));
+        ASSERT_EQ(m4.total, m3.total);
+        ASSERT_EQ(m4.negative, m3.negative);
+        break;
+    }
+  }
+
+  // With AMOPOPID and AMOPSTRATEGY NegCache whitelisted, cache misses should be the same
+  // regardless of server flags.
+  void TestAmopNegCacheMiss() {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
+
+    auto conn2 = ASSERT_RESULT(Connect());
+
+    const std::string query = "EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'";
+    auto m1 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_amop"));
+    auto m2 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_amop"));
+
+    ASSERT_EQ(m2.total, m1.total);
+    ASSERT_EQ(m2.negative, m1.negative);
 
     LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
     ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
@@ -4436,27 +4507,14 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     LOG(INFO) << "Completed invalid tests";
 
     ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='3'"));
-    auto m3 = ASSERT_RESULT(runQueryAndGetMetrics());
+    auto m3 = ASSERT_RESULT(runQueryAndGetMetrics(conn2, query, "pg_amop"));
 
-    if (preloaded) {
-      // When preloaded, allowing neg caching already returns a neg cache hit
-      // so we should see no further misses on pg_amop at this point.
-      ASSERT_EQ(m3.total, m2.total);
-      ASSERT_EQ(m3.negative, m2.negative);
-    } else {
-      // When not preloaded, we need one additional query to create the neg
-      // cache entry, after which we should see no further misses.
-      ASSERT_GT(m3.total, m2.total);
-      ASSERT_GT(m3.negative, m2.negative);
-
-      auto m4 = ASSERT_RESULT(runQueryAndGetMetrics());
-      ASSERT_EQ(m4.total, m3.total);
-      ASSERT_EQ(m4.negative, m3.negative);
-    }
+    ASSERT_EQ(m3.total, m1.total);
+    ASSERT_EQ(m3.negative, m1.negative);
   }
 };
 
-class PgLibPqAmopNoPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+class PgLibPqNoPreloadNegCacheTest : public PgLibPqNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
@@ -4467,7 +4525,7 @@ class PgLibPqAmopNoPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
   }
 };
 
-class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+class PgLibPqPrecoidPreloadNegCacheTest : public PgLibPqNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
@@ -4475,17 +4533,28 @@ class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
         "yb_enable_negative_catcache_entries=false,"
         "yb_debug_log_catcache_events=true");
     options->extra_tserver_flags.emplace_back(
-        "--ysql_catalog_preload_additional_table_list=pg_amop");
-    PgLibPqTest::UpdateMiniClusterOptions(options);
+        "--ysql_catalog_preload_additional_table_list=pg_proc");
   }
 };
 
-TEST_F_EX(PgLibPqTest, PgAmopNegCacheTest, PgLibPqAmopNoPreloadNegCacheTest) {
-  TestAmopNegCacheMiss(false);
+// Default behavior: negative caching is enabled.
+TEST_F_EX(PgLibPqTest, PgProcoidNegCacheTest, PgLibPqNegCacheTest) {
+  TestProcoidNegCacheMiss(NegCacheTestType::kNegCache);
 }
 
-TEST_F_EX(PgLibPqTest, PgAmopPreloadNegCacheTest, PgLibPqAmopPreloadNegCacheTest) {
-  TestAmopNegCacheMiss(true);
+// Disable negative caching.
+TEST_F_EX(PgLibPqTest, PgProcoidNoPreloadCacheTest, PgLibPqNoPreloadNegCacheTest) {
+  TestProcoidNegCacheMiss(NegCacheTestType::kNoPreload);
+}
+
+// Disable negative caching and preload pg_amop.
+TEST_F_EX(PgLibPqTest, PgProcoidPreloadCacheTest, PgLibPqPrecoidPreloadNegCacheTest) {
+  TestProcoidNegCacheMiss(NegCacheTestType::kPreload);
+}
+
+// Whitelisted NegCache should be cached regardless of server flags.
+TEST_F_EX(PgLibPqTest, PgAmopNoPreloadCacheTest, PgLibPqNoPreloadNegCacheTest) {
+  TestAmopNegCacheMiss();
 }
 
 class PgLibPqOperatorCacheLazyListTest : public PgLibPqTest {

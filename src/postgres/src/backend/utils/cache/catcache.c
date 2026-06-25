@@ -1899,27 +1899,55 @@ YbSetAdditionalNegCacheIds(List *neg_cache_ids)
 }
 
 /*
-* Function returns true in some special cases where we allow negative caches:
-* 1. pg_cast (CASTSOURCETARGET) to avoid master lookups during parsing.
-*    TODO: reconsider this now that we support CREATE CAST.
-* 2. pg_statistic (STATRELATTINH), pg_statistic_ext
-*    (STATEXTNAMENSP and STATEXTOID) and pg_statistic_ext_data
-*    (STATEXTDATASTXOID) to avoid redundant lookups for the entries that may
-*    not exist during query planning.
-* 3. pg_class (RELNAMENSP), pg_type (TYPENAMENSP)
-*    but only for system tables since users cannot create system tables in YSQL.
-*    This is violated in YSQL upgrade, but doing so will force cache refresh.
-* 4. Caches within temporary namespaces as data in this namespaces can be
-*    changed by current session only.
-* 5. pg_attribute as `ALTER TABLE` is used to add new columns and it increments
-*    catalog version.
-* 6. pg_type (TYPEOID and TYPENAMENSP) to avoid redundant master lookups while
-*    parsing functions that are checked to be possible type coercions.
-* 7. pg_namespace (NAMESPACEOID and NAMESPACENAME) to avoid lookups while
-*    recomputeNamespacePath. The CREATE SCHEMA stmt increments catalog version.
-*
-*  implicit_prefetch_entries: flag enable heap scan for certain catalogs with
-*    negative caching enabled.
+* Decide whether a negative cache miss may be cached for `cache_id`.
+ *
+ * Safety contract: every entry below must be a catalog where *every* DDL
+ * that adds, modifies, or removes a row reliably increments the YB catalog
+ * version. Otherwise a stale negative entry from one session could survive
+ * after another session creates the row. In practice this means either
+ *   (a) `yb_always_increment_catalog_version_on_ddl` is on (the default), or
+ *   (b) the specific DDLs for the catalog are known to bump unconditionally
+ *       (see `YbGetDdlMode` in pg_yb_utils.c).
+ * Adding a new catalog here without verifying this is a correctness bug.
+ *
+ * Always allowed (returns true):
+ *   - pg_amop (AMOPOPID, AMOPSTRATEGY) and pg_amproc (AMPROCNUM):
+ *       mutated only by CREATE/ALTER/DROP OPERATOR CLASS / FAMILY, all of
+ *       which bump catalog version (see T_CreateOpClass/FamilyStmt and
+ *       T_AlterOpFamilyStmt in YbGetDdlMode).
+ *   - pg_operator (OPERNAMENSP, OPEROID):
+ *       CREATE/ALTER/DROP OPERATOR and ALTER OPERATOR SET SCHEMA all bump.
+ *   - pg_range (RANGETYPE):
+ *       CREATE TYPE AS RANGE / ALTER TYPE / DROP TYPE / SET SCHEMA all bump.
+ *   - pg_cast (CASTSOURCETARGET):
+ *       Avoids master lookups during parsing. TODO: revisit now that we
+ *       support CREATE CAST.
+ *   - pg_statistic (STATRELATTINH), pg_statistic_ext (STATEXTNAMENSP,
+ *     STATEXTOID), pg_statistic_ext_data (STATEXTDATASTXOID):
+ *       Avoids redundant lookups for entries that may not exist during
+ *       query planning.
+ *
+ * Allowed only when implicit_prefetch_entries is false:
+ *   - pg_attribute (ATTNUM): ALTER TABLE bumps catalog version.
+ *   - pg_type (TYPEOID, TYPENAMENSP): avoids master lookups during type
+ *     coercion checks; CREATE/ALTER/DROP TYPE bumps catalog version.
+ *   - pg_namespace (NAMESPACEOID, NAMESPACENAME): avoids lookups in
+ *     recomputeNamespacePath; CREATE/DROP SCHEMA bumps catalog version.
+ *
+ * Allowed conditionally:
+ *   - pg_class (RELNAMENSP): only for system namespaces, since users
+ *     cannot create system tables in YSQL. Violated during YSQL upgrade,
+ *     but that path forces cache refresh.
+ *   - Any cache_id within a temporary namespace (data is session-local).
+ *   - Any cache_id added at runtime via yb_neg_catcache_ids.
+ *
+ * implicit_prefetch_entries distinguishes the two call sites:
+ *   - true:  caller wants to synthesize a negative entry from preloaded
+ *            state without scanning the heap.
+ *   - false: caller has already scanned the heap (found nothing) and wants
+ *            to persist that miss as a negative cache entry.
+ * Caches that return !implicit_prefetch_entries trust a real scan but
+ * refuse to short-circuit from preload alone.
 */
 static bool
 YbAllowNegativeCacheEntries(int cache_id,
@@ -1938,7 +1966,17 @@ YbAllowNegativeCacheEntries(int cache_id,
 
 	switch (cache_id)
 	{
+		case AMOPOPID:
+			yb_switch_fallthrough();
+		case AMOPSTRATEGY:
+			yb_switch_fallthrough();
 		case CASTSOURCETARGET:
+			yb_switch_fallthrough();
+		case OPERNAMENSP:
+			yb_switch_fallthrough();
+		case OPEROID:
+			yb_switch_fallthrough();
+		case RANGETYPE:
 			yb_switch_fallthrough();
 		case STATRELATTINH:
 			yb_switch_fallthrough();
