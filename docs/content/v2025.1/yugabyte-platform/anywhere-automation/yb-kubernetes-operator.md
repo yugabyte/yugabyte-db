@@ -120,7 +120,7 @@ FIELDS:
   Preexisting Provider name to use in the universe.
 
  readReplica <Object>
-
+  Read replica configuration for the universe.
  replicationFactor   <integer>
   Number of times to replicate data in a universe.
 
