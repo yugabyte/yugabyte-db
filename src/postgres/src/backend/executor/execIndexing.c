@@ -742,14 +742,6 @@ YbIndexKeyColumnsModifiedByPkeyUpdate(Relation indexRelation,
 	if (!indexData->indisunique)
 		return true;
 
-	/*
-	 * In unique indexes with NULLS NOT DISTINCT, ybuniqueidxkeysuffix is
-	 * always NULL, so a base table primary key update does not change the
-	 * index row key.
-	 */
-	if (indexData->indnullsnotdistinct)
-		return false;
-
 	for (int i = 0; i < indexData->indnkeyatts; i++)
 	{
 		AttrNumber	attnum = indexData->indkey.values[i];
