@@ -354,7 +354,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
         could_have_missing_entries && entries.size() >= options.max_num_results;
     result.entries.reserve(entries.size());
     for (auto& entry : entries) {
-      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->Fetch(entry.vector_id));
+      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->FetchYbctid(entry.vector_id));
       VLOG_WITH_FUNC(4)
           << "vector_id: " << entry.vector_id << ", ybctid: " << ybctid.ToDebugHexString();
       if (ybctid.empty()) {
@@ -364,7 +364,6 @@ class DocVectorIndexImpl : public DocVectorIndex {
         return STATUS_FORMAT(NotFound, "Vector not found: $0", entry.vector_id);
       }
 
-      // TODO(vector_index): does it handle kTombstone in db_entry.value?
       result.entries.push_back(DocVectorIndexSearchResultEntry {
         .encoded_distance = EncodeDistance(entry.distance),
         .key = KeyBuffer(ybctid),
