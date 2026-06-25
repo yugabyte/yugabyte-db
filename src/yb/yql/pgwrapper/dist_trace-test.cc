@@ -1750,6 +1750,37 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelGFlagControlsSdkFiltering) {
   ASSERT_EQ(debug_waiter.GetEventCount(), 0);
 }
 
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "none";
+
+  static constexpr auto kError = "otel none threshold internal error";
+  static constexpr auto kWarning = "otel none threshold internal warning";
+  static constexpr auto kInfo = "otel none threshold internal info";
+  static constexpr auto kDebug = "otel none threshold internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-none-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_EQ(error_waiter.GetEventCount(), 0);
+  ASSERT_EQ(warning_waiter.GetEventCount(), 0);
+  ASSERT_EQ(info_waiter.GetEventCount(), 0);
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
 TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {
   google::FlagSaver flag_saver;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
