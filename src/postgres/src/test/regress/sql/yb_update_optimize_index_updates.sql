@@ -261,3 +261,115 @@ EXPLAIN (VERBOSE) /*+ IndexOnlyScan(t_simple multi_include) */ SELECT v1, v2, v3
 EXPLAIN (VERBOSE) /*+ IndexScan(multi_include) */ SELECT * FROM t_simple ORDER BY (v1, v2);
 /*+ IndexScan(multi_include) */ SELECT * FROM t_simple ORDER BY (v1, v2);
 SELECT * FROM t_simple;
+
+--
+-- Additional coverage for hidden unique index key suffix changes.
+--
+SET yb_enable_inplace_index_update TO on;
+
+DROP TABLE IF EXISTS t_unique_key_update;
+CREATE TABLE t_unique_key_update (
+  h INT,
+  r INT,
+  k INT,
+  a INT,
+  b INT,
+  active BOOLEAN DEFAULT true,
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
+);
+CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_key_update_uq
+ON t_unique_key_update (a ASC, b ASC);
+INSERT INTO t_unique_key_update (h, r, k, a, b) VALUES
+  (1, 1, 0, NULL, 10),
+  (1, 2, 0, 20, 20),
+  (1, 3, 0, NULL, 30),
+  (1, 4, 0, NULL, 40);
+-- Non-expression unique index: key changes from NULL to not-NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update SET a = 10 WHERE h = 1 AND r = 1;
+-- Non-expression unique index: key changes from not-NULL to NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update SET a = NULL WHERE h = 1 AND r = 2;
+-- Non-expression unique index: key is NULL; primary key update.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update SET k = 1 WHERE h = 1 AND r = 3 AND k = 0;
+-- Non-expression unique index: some keys are NULL; another key becomes NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_key_update SET b = NULL WHERE h = 1 AND r = 4;
+SELECT yb_index_check('t_unique_key_update_uq'::regclass);
+SELECT * FROM t_unique_key_update ORDER BY h, r, k;
+DROP TABLE t_unique_key_update;
+
+DROP TABLE IF EXISTS t_unique_expr_update;
+CREATE TABLE t_unique_expr_update (
+  h INT,
+  r INT,
+  k INT,
+  a INT,
+  b INT,
+  c INT,
+  d INT,
+  active BOOLEAN DEFAULT true,
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
+);
+CREATE UNIQUE INDEX NONCONCURRENTLY t_unique_expr_update_uq
+ON t_unique_expr_update ((a + b), (c + d));
+INSERT INTO t_unique_expr_update (h, r, k, a, b, c, d) VALUES
+  (3, 1, 0, NULL, 10, 1, 1),
+  (3, 2, 0, 20, 20, 2, 2),
+  (3, 3, 0, NULL, 30, 3, 3),
+  (3, 4, 0, NULL, 40, 4, 4);
+-- Expression unique index: key changes from NULL to not-NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET a = 10 WHERE h = 3 AND r = 1;
+-- Expression unique index: key changes from not-NULL to NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET a = NULL WHERE h = 3 AND r = 2;
+-- Expression unique index: key is NULL; primary key update.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET k = 1 WHERE h = 3 AND r = 3 AND k = 0;
+-- Expression unique index: some keys are NULL; another key becomes NULL.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_unique_expr_update SET c = NULL WHERE h = 3 AND r = 4;
+SELECT yb_index_check('t_unique_expr_update_uq'::regclass);
+SELECT * FROM t_unique_expr_update ORDER BY h, r, k;
+DROP TABLE t_unique_expr_update;
+
+DROP TABLE IF EXISTS t_partial_unique_expr_update;
+CREATE TABLE t_partial_unique_expr_update (
+  h INT,
+  r INT,
+  k INT,
+  a INT,
+  b INT,
+  c INT,
+  d INT,
+  active BOOLEAN,
+  PRIMARY KEY ((h) HASH, r ASC, k ASC)
+);
+CREATE UNIQUE INDEX NONCONCURRENTLY t_partial_unique_expr_update_uq
+ON t_partial_unique_expr_update ((a + b), (c + d)) WHERE active;
+INSERT INTO t_partial_unique_expr_update VALUES
+  (5, 1, 0, NULL, 10, 1, 1, true),
+  (5, 2, 0, 20, 20, 2, 2, false),
+  (5, 3, 0, NULL, 30, 3, 3, true),
+  (5, 4, 0, NULL, 40, 4, 4, false),
+  (5, 5, 0, NULL, 50, 5, 5, false);
+-- Partial expression unique index: NULL to not-NULL and exits the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET a = 10, active = false WHERE h = 5 AND r = 1;
+-- Partial expression unique index: not-NULL to NULL and enters the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET a = NULL, active = true WHERE h = 5 AND r = 2;
+-- Partial expression unique index: key is NULL, primary key update, and exits the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET k = 1, active = false WHERE h = 5 AND r = 3 AND k = 0;
+-- Partial expression unique index: some keys are NULL, another key becomes NULL, and enters the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET c = NULL, active = true WHERE h = 5 AND r = 4;
+-- Partial expression unique index: key is NULL, primary key update, and enters the index.
+EXPLAIN (ANALYZE, DIST, COSTS OFF)
+UPDATE t_partial_unique_expr_update SET k = 1, active = true WHERE h = 5 AND r = 5 AND k = 0;
+SELECT yb_index_check('t_partial_unique_expr_update_uq'::regclass);
+SELECT * FROM t_partial_unique_expr_update ORDER BY h, r, k;
+DROP TABLE t_partial_unique_expr_update;
