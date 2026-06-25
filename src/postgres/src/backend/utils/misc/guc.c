@@ -2787,6 +2787,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_replication_slot_exclusive_lock", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Acquire a cluster-wide exclusive advisory lock while a "
+						 "replication slot is in use so that only one consumer can "
+						 "use it at a time across the universe."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replication_slot_exclusive_lock,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_cdcsdk_stream_tables_without_primary_key", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable streaming of tables without primary key in CDC logical "
 						 "replication streams."),

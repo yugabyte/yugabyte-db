@@ -217,6 +217,9 @@ YBCDestroyVirtualWal()
 	cached_records_last_sent_row_idx = 0;
 
 	needs_publication_table_list_refresh = false;
+
+	/* YB: Reset yb_read_time set by InitVirtualWal. */
+	YBCResetYbReadTimeAndInvalidateRelcache();
 }
 
 static List *

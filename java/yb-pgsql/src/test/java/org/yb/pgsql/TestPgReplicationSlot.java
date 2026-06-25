@@ -14,6 +14,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -86,6 +87,15 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     flagMap.put("ysql_cdc_active_replication_slot_window_ms", "0");
+    return flagMap;
+  }
+
+  // TServer flags with the (preview) replication slot exclusive advisory lock enabled. The flag
+  // must be allowlisted in the same map; otherwise the tserver refuses to start.
+  private Map<String, String> getTServerFlagsWithExclusiveLock() {
+    Map<String, String> flagMap = getTServerFlags();
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_slot_exclusive_lock");
+    flagMap.put("ysql_yb_enable_replication_slot_exclusive_lock", "true");
     return flagMap;
   }
 
@@ -5935,5 +5945,140 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       assertTrue(res.next());
       return res.getLong("yb_restart_commit_ht");
     }
+  }
+
+  @Test
+  public void testExclusiveReplicationSlotAcquireAcrossTservers() throws Exception {
+    restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
+
+    String slotName = "excl_slot_test";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_excl");
+      stmt.execute("CREATE TABLE t_excl(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_excl VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    try {
+      String expectedErrorMessage = "could not acquire replication slot";
+      boolean exceptionThrown = false;
+      Connection replConn2 = getConnectionBuilder().withTServer(2).replicationConnect();
+      PGReplicationConnection replApi2 =
+          replConn2.unwrap(PGConnection.class).getReplicationAPI();
+      try {
+        replApi2.replicationStream()
+            .logical()
+            .withSlotName(slotName)
+            .withStartPosition(LogSequenceNumber.valueOf(0L))
+            .start();
+      } catch (PSQLException e) {
+        exceptionThrown = true;
+        if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+          LOG.info("Expected exception", e);
+        } else {
+          fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+              e.getMessage(), expectedErrorMessage));
+        }
+      }
+      assertTrue("Expected slot acquire to fail for second consumer", exceptionThrown);
+      replConn2.close();
+    } finally {
+      stream0.close();
+      replConn0.close();
+    }
+  }
+
+  @Test
+  public void testSlotLockReleasedOnTserverCrash() throws Exception {
+    restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
+
+    String slotName = "crash_tserver_slot";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_crash");
+      stmt.execute("CREATE TABLE t_crash(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_crash VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    int numTservers = miniCluster.getNumTServers();
+
+    // Resolve tserver index 0's RPC HostAndPort deterministically.
+    // getTabletServers() returns a ConcurrentHashMap whose iteration order
+    // is unspecified, so we match by host against the ordered PG contact
+    // points list. Both share the same hostname per tserver (different
+    // ports: PG vs RPC).
+    String tserver0Host = miniCluster.getPostgresContactPoints().get(0).getHostString();
+    HostAndPort tserver0 = miniCluster.getTabletServers().keySet().stream()
+        .filter(hp -> hp.getHost().equals(tserver0Host))
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException(
+            "Could not find tserver for host " + tserver0Host));
+    LOG.info("Killing tserver at {} (index 0, holds the slot lock)", tserver0);
+    miniCluster.killTabletServerOnHostPort(tserver0);
+
+    miniCluster.startTServer(getTServerFlagsWithExclusiveLock());
+    assertTrue(miniCluster.waitForTabletServers(numTservers));
+    waitForTServerHeartbeat();
+
+    // The advisory lock is tied to a session-level transaction on the killed
+    // tserver. The transaction coordinator needs time to detect the dead
+    // heartbeat and abort the transaction before the lock is released.
+    final int maxAttempts = 30;
+    final int sleepBetweenAttemptsMs = 2000;
+    PGReplicationStream stream1 = null;
+    Connection replConn1 = null;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+        PGReplicationConnection replApi1 =
+            replConn1.unwrap(PGConnection.class).getReplicationAPI();
+        stream1 = replApi1.replicationStream()
+            .logical()
+            .withSlotName(slotName)
+            .withStartPosition(LogSequenceNumber.valueOf(0L))
+            .start();
+        LOG.info("Successfully acquired slot after tserver crash on attempt {}", attempt);
+        break;
+      } catch (PSQLException e) {
+        if (replConn1 != null) {
+          replConn1.close();
+          replConn1 = null;
+        }
+        if (attempt == maxAttempts) {
+          throw e;
+        }
+        LOG.info("Attempt {} failed, retrying in {}ms: {}", attempt, sleepBetweenAttemptsMs,
+                 e.getMessage());
+        Thread.sleep(sleepBetweenAttemptsMs);
+      }
+    }
+    assertNotNull("Expected to acquire slot after tserver crash", stream1);
+
+    stream1.close();
+    replConn1.close();
   }
 }

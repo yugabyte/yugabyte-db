@@ -63,6 +63,8 @@ bool yb_enable_replica_identity = true;
 
 bool yb_enable_consistent_replication_from_hash_range = false;
 
+bool yb_enable_replication_slot_exclusive_lock = false;
+
 bool yb_cdcsdk_stream_tables_without_primary_key = true;
 
 bool yb_cdcsdk_allow_dml_without_pk = false;
