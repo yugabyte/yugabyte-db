@@ -1684,17 +1684,18 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	 * YB_SK_SEARCHHASHCODE flag) is encoded as the first PgGate row-bound
 	 * value, followed by the matching hash/range key column prefix.
 	 */
-	bool		has_yb_hash_code_subkey = false;
 	bool		is_hash_index = (index->rd_indoption[0] & INDOPTION_HASH) != 0;
 
 	int			strategy = header_key->sk_strategy;
 	int			subkey_count = length_of_key - 1;
-	int			pushdown_subkey_count = subkey_count;
 	int			first_key_subkey = 0;
+	int			direction_mismatch_subkey = -1;
 
 	if (is_hash_index)
 	{
-		if (subkey_count == 0 || !YbIsHashCodeSearch(subkeys[0]))
+		Assert(subkey_count > 0);
+
+		if (!YbIsHashCodeSearch(subkeys[0]))
 			return true;
 
 		/*
@@ -1704,193 +1705,156 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		if (!yb_allow_dockey_bounds)
 			return true;
 
-		has_yb_hash_code_subkey = true;
 		first_key_subkey = 1;
 	}
 
-	for (int j = first_key_subkey; j < subkey_count; ++j)
+	bool		is_direction_asc =
+		is_hash_index ||
+		!(index->rd_indoption[subkeys[first_key_subkey]->sk_attno - 1] &
+		  INDOPTION_DESC);
+
+	int			max_pushdown_subkey_count =
+		Min(subkey_count, index->rd_index->indnkeyatts + first_key_subkey);
+
+	Assert(max_pushdown_subkey_count >= first_key_subkey);
+
+	int			pushdown_subkey_count = first_key_subkey;
+
+	for (; pushdown_subkey_count != max_pushdown_subkey_count;
+		 ++pushdown_subkey_count)
 	{
-		ScanKey		key = subkeys[j];
-		AttrNumber	expected_attno = j + 1 - first_key_subkey;
-
-		if (YbIsHashCodeSearch(key))
-		{
-			pushdown_subkey_count = j;
-			break;
-		}
-
-		/* Make sure that the specified keys are contiguous. */
-		if (key->sk_attno != expected_attno)
-		{
-			pushdown_subkey_count = j;
-			break;
-		}
+		ScanKey		key = subkeys[pushdown_subkey_count];
 
 		/*
 		 * Make sure that the same comparator is applied to
 		 * all subkeys.
 		 */
 		if (strategy != key->sk_strategy)
-		{
-			pushdown_subkey_count = j;
 			break;
+
+		/* Make sure that the specified keys are contiguous. */
+		if (key->sk_attno != pushdown_subkey_count + 1 - first_key_subkey)
+			break;
+
+		if (YbIsHashCodeSearch(key))
+			break;
+
+		if (direction_mismatch_subkey < 0)
+		{
+			bool		asc =
+				(index->rd_indoption[key->sk_attno - 1] & INDOPTION_DESC) == 0;
+
+			if (asc != is_direction_asc)
+				direction_mismatch_subkey = pushdown_subkey_count;
 		}
 	}
 
 	bool		needs_recheck = true;
+	bool		is_point_scan = ((pushdown_subkey_count ==
+								  index->rd_index->indnkeyatts +
+								  first_key_subkey) &&
+								 (strategy == BTEqualStrategyNumber));
 
-	if (pushdown_subkey_count > first_key_subkey)
+	if (!is_point_scan && direction_mismatch_subkey >= 0)
+		pushdown_subkey_count = direction_mismatch_subkey;
+
+	if (pushdown_subkey_count <= first_key_subkey)
+		return needs_recheck;
+
+	YbcPgExpr  *col_values = palloc(sizeof(YbcPgExpr) *
+									pushdown_subkey_count);
+
+	if (is_hash_index && !is_for_precheck)
 	{
-		int			yb_hash_code_offset = first_key_subkey;
-		int			n_bound_values =
-			index->rd_index->indnkeyatts + yb_hash_code_offset;
+		ScanKey		hash_key = subkeys[0];
 
-		YbcPgExpr  *col_values = palloc(sizeof(YbcPgExpr) *
-										n_bound_values);
+		col_values[0] = YBCNewConstant(ybScan->handle,
+									   INT4OID,
+									   hash_key->sk_collation,
+									   hash_key->sk_argument,
+									   false);
+	}
 
-		if (has_yb_hash_code_subkey && !is_for_precheck)
+	/*
+	 * Prepare upper/lower bound tuples determined from this
+	 * clause for bind. Care must be taken in the case
+	 * that key columns in the index are ordered
+	 * differently from each other. For example, consider
+	 * if the underlying index has key
+	 * (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
+	 * a clause like (r1, r2, r3) <= (40, 35, 12).
+	 * We cannot simply bind (40, 35, 12) as an upper bound
+	 * as that will miss tuples such as (40, 32, 0).
+	 * Instead we must push down (40, Inf, 12) in this case
+	 * for correctness. (Note that +Inf in this context
+	 * is higher in STORAGE order than all other values not
+	 * necessarily logical order, similar to the role of
+	 * docdb::ValueType::kHighest.
+	 */
+
+	bool		gt = (strategy == BTGreaterEqualStrategyNumber ||
+					  strategy == BTGreaterStrategyNumber);
+
+	bool		is_inclusive = (strategy != BTGreaterStrategyNumber &&
+								strategy != BTLessStrategyNumber);
+
+	/* Whether or not the RHS values make up a DocDB upper bound */
+	bool		is_upper_bound = gt ^ is_direction_asc;
+
+	for (int subkey_index = first_key_subkey;
+		 subkey_index < pushdown_subkey_count;
+		 ++subkey_index)
+	{
+		ScanKey		current = subkeys[subkey_index];
+		int			j = current->sk_attno - 1;
+
+		if (!is_for_precheck)
 		{
-			ScanKey		hash_key = subkeys[0];
+			AttrNumber	attnum =
+				scan_plan->bind_key_attnums[skey_index + 1 + subkey_index];
 
-			col_values[0] = YBCNewConstant(ybScan->handle,
-										   INT4OID,
-										   hash_key->sk_collation,
-										   hash_key->sk_argument,
-										   false);
+			col_values[j + first_key_subkey] =
+				YBCNewConstant(ybScan->handle,
+							   ybc_get_atttypid(scan_plan->bind_desc,
+												attnum),
+							   current->sk_collation,
+							   current->sk_argument,
+							   false);
 		}
 
 		/*
-		 * Prepare upper/lower bound tuples determined from this
-		 * clause for bind. Care must be taken in the case
-		 * that key columns in the index are ordered
-		 * differently from each other. For example, consider
-		 * if the underlying index has key
-		 * (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
-		 * a clause like (r1, r2, r3) <= (40, 35, 12).
-		 * We cannot simply bind (40, 35, 12) as an upper bound
-		 * as that will miss tuples such as (40, 32, 0).
-		 * Instead we must push down (40, Inf, 12) in this case
-		 * for correctness. (Note that +Inf in this context
-		 * is higher in STORAGE order than all other values not
-		 * necessarily logical order, similar to the role of
-		 * docdb::ValueType::kHighest.
+		 * PgGate rejects IS NOT NULL binds on partition columns, and
+		 * the full row comparison remains rechecked by Postgres.
 		 */
-
-		/*
-		 * Is the first column in ascending order in the index?
-		 * This is important because whether or not the RHS of a
-		 * (row key) >= (row key values) expression is
-		 * considered an upper bound is dependent on the answer
-		 * to this question. The RHS of such an expression will
-		 * be the scan upper bound if the first column is in
-		 * descending order and lower if else. Similar logic
-		 * applies to the RHS of (row key) <= (row key values)
-		 * expressions.
-		 */
-		bool		is_direction_asc =
-			has_yb_hash_code_subkey ||
-			!(index->rd_indoption[subkeys[0]->sk_attno - 1] &
-			  INDOPTION_DESC);
-
-		bool		gt = (strategy == BTGreaterEqualStrategyNumber ||
-						  strategy == BTGreaterStrategyNumber);
-
-		bool		is_inclusive = (strategy != BTGreaterStrategyNumber &&
-									strategy != BTLessStrategyNumber);
-
-		bool		is_point_scan = ((pushdown_subkey_count ==
-									  index->rd_index->indnatts +
-									  yb_hash_code_offset) &&
-									 (strategy == BTEqualStrategyNumber));
-
-		/* Whether or not the RHS values make up a DocDB upper bound */
-		bool		is_upper_bound = gt ^ is_direction_asc;
-		size_t		subkey_index = yb_hash_code_offset;
-
-		for (int j = 0; j < index->rd_index->indnkeyatts; j++)
+		if (!is_hash_index &&
+			subkey_index == first_key_subkey)
 		{
-			bool		is_column_specified = (subkey_index < pushdown_subkey_count &&
-											   (subkeys[subkey_index]->sk_attno - 1) == j);
+			AttrNumber	attno = current->sk_attno;
+			int			att_idx = YBAttnumToBmsIndex(ybScan->table,
+													attno);
 
-			/*
-			 * Is the current column stored in ascending order in the
-			 * underlying index?
-			 */
-			bool		asc = (index->rd_indoption[j] & INDOPTION_DESC) == 0;
-
-			/*
-			 * If this column has different directionality than the
-			 * first column then we have to adjust the bounds on this
-			 * column.
-			 */
-			if (!is_column_specified ||
-				(asc != is_direction_asc && !is_point_scan))
-			{
-				if (!is_for_precheck)
-					col_values[j + yb_hash_code_offset] = NULL;
-				needs_recheck = true;
-
-				/*
-				 * If this is just for precheck, we can return that recheck
-				 * is needed.
-				 */
-				if (is_for_precheck)
-					return true;
-			}
-			else if (!is_for_precheck)
-			{
-				ScanKey		current = subkeys[subkey_index];
-				AttrNumber	attnum =
-					scan_plan->bind_key_attnums[skey_index + 1 + subkey_index];
-
-				col_values[j + yb_hash_code_offset] =
-					YBCNewConstant(ybScan->handle,
-								   ybc_get_atttypid(scan_plan->bind_desc,
-													attnum),
-								   current->sk_collation,
-								   current->sk_argument,
-								   false);
-			}
-
-			if (is_column_specified)
-			{
-				/*
-				 * PgGate rejects IS NOT NULL binds on partition columns, and
-				 * the full row comparison remains rechecked by Postgres.
-				 */
-				if (!has_yb_hash_code_subkey &&
-					subkey_index == first_key_subkey)
-				{
-					AttrNumber	attno = subkeys[subkey_index]->sk_attno;
-					int			att_idx = YBAttnumToBmsIndex(ybScan->table,
-															attno);
-
-					if (fold[att_idx].type == YB_FOLD_NONE)
-						fold[att_idx].type = YB_FOLD_IS_NOT_NULL;
-				}
-
-				++subkey_index;
-			}
+			if (fold[att_idx].type == YB_FOLD_NONE)
+				fold[att_idx].type = YB_FOLD_IS_NOT_NULL;
 		}
+	}
 
-		if (is_for_precheck)
-			return needs_recheck;
+	if (is_for_precheck)
+		return needs_recheck;
 
-		if (is_upper_bound || strategy == BTEqualStrategyNumber)
-		{
-			HandleYBStatus(YBCPgDmlAddRowUpperBound(ybScan->handle,
-													n_bound_values,
-													col_values,
-													is_inclusive));
-		}
+	if (is_upper_bound || strategy == BTEqualStrategyNumber)
+	{
+		HandleYBStatus(YBCPgDmlAddRowUpperBound(ybScan->handle,
+												pushdown_subkey_count,
+												col_values,
+												is_inclusive));
+	}
 
-		if (!is_upper_bound || strategy == BTEqualStrategyNumber)
-		{
-			HandleYBStatus(YBCPgDmlAddRowLowerBound(ybScan->handle,
-													n_bound_values,
-													col_values,
-													is_inclusive));
-		}
+	if (!is_upper_bound || strategy == BTEqualStrategyNumber)
+	{
+		HandleYBStatus(YBCPgDmlAddRowLowerBound(ybScan->handle,
+												pushdown_subkey_count,
+												col_values,
+												is_inclusive));
 	}
 
 	return needs_recheck;
