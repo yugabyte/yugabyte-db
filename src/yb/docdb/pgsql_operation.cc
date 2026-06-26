@@ -92,46 +92,47 @@ DECLARE_bool(ysql_disable_index_backfill);
 DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
 DEFINE_UNKNOWN_uint64(ysql_scan_deadline_margin_ms, 1000,
-              "Scan deadline is calculated by adding client timeout to the time when the request "
-              "was received. It defines the moment in time when client has definitely timed out "
-              "and if the request is yet in processing after the deadline, it can be canceled. "
-              "Therefore to prevent client timeout, the request handler should return partial "
-              "result and paging information some time before the deadline. That's what the "
-              "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
-              "delays.");
+    "Scan deadline is calculated by adding client timeout to the time when the request "
+    "was received. It defines the moment in time when client has definitely timed out "
+    "and if the request is yet in processing after the deadline, it can be canceled. "
+    "Therefore to prevent client timeout, the request handler should return partial "
+    "result and paging information some time before the deadline. That's what the "
+    "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
+    "delays.");
 
 DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
-            "Whether to enforce consistency of data returned for second page and beyond for YSQL "
-            "queries on transactional tables. If true, read restart errors could be returned to "
-            "prevent inconsistency. If false, no read restart errors are returned but the data may "
-            "be stale. The latter is preferable for long scans. The data returned for the first "
-            "page of results is never stale regardless of this flag.");
+    "Whether to enforce consistency of data returned for second page and beyond for YSQL "
+    "queries on transactional tables. If true, read restart errors could be returned to "
+    "prevent inconsistency. If false, no read restart errors are returned but the data may "
+    "be stale. The latter is preferable for long scans. The data returned for the first "
+    "page of results is never stale regardless of this flag.");
 
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
-                 "If set > 0, slows down the response to pgsql aggregate read by this amount.");
+    "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 // Disable packed row by default in debug builds.
 constexpr bool kYsqlEnablePackedRowTargetVal = !yb::kIsDebug;
 DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal,
-                         !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
-                         "Whether packed row is enabled for YSQL.");
+    !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
+    "Whether packed row is enabled for YSQL.");
 
 DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, true,
-                    "Whether to enable packed row for colocated tables.");
+    "Whether to enable packed row for colocated tables.");
 
 DEFINE_UNKNOWN_uint64(
     ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
-                    "Whether to enable packed row for full row update.");
+    "Whether to enable packed row for full row update.");
 
 DEFINE_RUNTIME_bool(ysql_mark_update_packed_row, false,
-                    "Whether to mark packed rows created from UPDATE operations with a flag. "
-                    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
-                    "Default is false.");
+    "Whether to mark packed rows created from UPDATE operations with a flag. "
+    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
+    "Default is false.");
+
 DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
-                            "Whether to use packed row V2 when row packing is enabled.");
+    "Whether to use packed row V2 when row packing is enabled.");
 
 DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
@@ -139,7 +140,7 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "data integrity for operations with implicit dependencies between columns.");
 
 DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
-                    "Whether to skip filter check during vector index search.");
+    "Whether to skip filter check during vector index search.");
 
 DEFINE_RUNTIME_bool(vector_index_no_deletions_skip_filter_check, true,
     "Whether to skip filter check during vector index search if table does not have "
@@ -938,7 +939,7 @@ class VectorIndexKeyProvider {
     // deduplication (a couple of lines above), reverse-mapping misses, etc.
     if (TEST_vector_index_clear_result_entries_once && num_top_vectors_to_remove_ > 0) {
       result_entries_.clear();
-      TEST_vector_index_clear_result_entries_once = false;
+      ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_clear_result_entries_once) = false;
     }
 
     VLOG_WITH_FUNC(1) << vector_index_.ToString()

@@ -463,6 +463,8 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     .deleted_cols = std::move(deleted_before_history_cutoff),
     .packed_row_version = docdb::PackedRowVersion(
         self->table_type, self->doc_read_context->schema().is_colocated()),
+    .table_owns_vector_reverse_mapping =
+        self->doc_read_context->schema().table_properties().owns_vector_reverse_mapping(),
   };
 }
 
