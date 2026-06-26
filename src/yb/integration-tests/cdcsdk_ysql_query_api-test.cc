@@ -32,7 +32,7 @@ class CDCSDKYsqlQueryApiTest : public CDCSDKYsqlTest {
 TEST_F(CDCSDKYsqlQueryApiTest, TestQueryApiGucGuard) {
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
   ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR ALL TABLES"));
   ASSERT_OK(conn.Fetch(
@@ -64,7 +64,7 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestQueryApiGucGuard) {
 TEST_F(CDCSDKYsqlQueryApiTest, TestTextPeekAndGet) {
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
   ASSERT_OK(conn.Fetch(
       "SELECT * FROM pg_create_logical_replication_slot('text_slot', 'test_decoding')"));
@@ -96,7 +96,7 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestTextPeekAndGet) {
 TEST_F(CDCSDKYsqlQueryApiTest, TestBinaryPeekAndGet) {
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
   ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR ALL TABLES"));
@@ -130,7 +130,7 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestBinaryPeekAndGet) {
 TEST_F(CDCSDKYsqlQueryApiTest, TestNoRecordsReturnsEmpty) {
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
   ASSERT_OK(conn.Fetch(
       "SELECT * FROM pg_create_logical_replication_slot('empty_slot', 'test_decoding')"));
@@ -145,7 +145,7 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestNoRecordsReturnsEmpty) {
 TEST_F(CDCSDKYsqlQueryApiTest, TestUptoNchangesLimit) {
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
   ASSERT_OK(conn.Fetch(
       "SELECT * FROM pg_create_logical_replication_slot('limit_slot', 'test_decoding')"));
@@ -176,7 +176,7 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestUptoNchangesLimit) {
 TEST_F(CDCSDKYsqlQueryApiTest, TestMultiStatementTransaction) {
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   // Use an extra non-PK column (name) that is NOT touched by the UPDATE. With
   // packed rows enabled, an UPDATE that modifies all non-PK columns is emitted
   // as an INSERT by CDC. Leaving one column untouched forces the UPDATE path.
