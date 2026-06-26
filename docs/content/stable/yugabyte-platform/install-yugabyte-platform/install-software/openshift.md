@@ -30,55 +30,51 @@ Unless otherwise specified, you can use a user account for executing the steps d
 
 Additionally, you need to perform the following steps before attempting to install YugabyteDB Anywhere using Helm:
 
-- Verify that the OpenShift cluster is configured with Helm 3.8 or later by executing the following command:
+1. Verify that the OpenShift cluster is configured with Helm 3.8 or later by executing the following command:
 
-  ```shell
-  helm version
-  ```
+    ```shell
+    helm version
+    ```
 
-  The output should be similar to the following:
+    The output should be similar to the following:
 
-  ```output
-  version.BuildInfo{Version:"v3.8.0", GitCommit:"d14138609b01886f544b2025f5000351c9eb092e", GitTreeState:"clean", GoVersion:"go1.17.5"}
-  ```
+    ```output
+    version.BuildInfo{Version:"v3.8.0", GitCommit:"d14138609b01886f544b2025f5000351c9eb092e", GitTreeState:"clean", GoVersion:"go1.17.5"}
+    ```
 
-- Create a new project (namespace) called yb-platform by executing the following command:
+1. Create a new project (namespace) called yb-platform by executing the following command:
 
-  ```shell
-  oc new-project yb-platform
-  ```
+    ```shell
+    oc new-project yb-platform
+    ```
 
-  Expect the following output:
+    Expect the following output:
 
-  ```output
-  Now using project "yb-platform" on server "web-console-address"
-  ```
+    ```output
+    Now using project "yb-platform" on server "web-console-address"
+    ```
 
-- Apply the YugabyteDB Anywhere secret that you obtained from Yugabyte Support by executing the following command:
+1. Apply the YugabyteDB Anywhere secret that you obtained from Yugabyte Support by executing the following command:
 
-  ```shell
-  oc create -f yugabyte-k8s-secret.yml -n yb-platform
-  ```
+    ```shell
+    oc create -f yugabyte-k8s-secret.yml -n yb-platform
+    ```
 
-  Expect the following output:
+    Expect the following output:
 
-  ```output
-  secret/yugabyte-k8s-pull-secret created
-  ```
+    ```output
+    secret/yugabyte-k8s-pull-secret created
+    ```
 
 ## Helm chart requirements
 
-{{< warning title="Important" >}}
+When installing YugabyteDB Anywhere on OpenShift using the `yugaware-openshift` Helm chart, keep `useYugabyteDB` set to `false`. _This is the chart default and must not be changed_.
 
-When installing YugabyteDB Anywhere on OpenShift using the `yugaware-openshift` Helm chart, keep `useYugabyteDB` set to `false`. This is the chart default and must not be changed.
+The Red Hat certified chart uses a Red Hat certified PostgreSQL image for YugabyteDB Anywhere's metadata database. Setting `useYugabyteDB: true` switches YugabyteDB Anywhere to an embedded YugabyteDB sidecar instead. That configuration is not supported on OpenShift and is outside the Red Hat certified deployment.
 
-The Red Hat certified chart uses a Red Hat certified PostgreSQL image for YBA's metadata database. Setting `useYugabyteDB: true` switches YBA to an embedded YugabyteDB sidecar instead. That configuration is not supported on OpenShift and is outside the Red Hat certified deployment.
-
-This setting controls how YBA stores its own platform metadata. It does not affect your ability to create and manage YugabyteDB universes after YBA is installed.
+This setting controls how YugabyteDB Anywhere stores its own platform metadata. It does not affect your ability to create and manage YugabyteDB universes after YugabyteDB Anywhere is installed.
 
 If you customize Helm values in the OpenShift console or via a values file, ensure `useYugabyteDB` remains `false`.
-
-{{< /warning >}}
 
 ## Certified Helm chart-based installation
 
@@ -98,56 +94,56 @@ Installing the YugabyteDB Anywhere [Red Hat certified Helm chart](https://catalo
 
 You can install the YugabyteDB Anywhere Red Hat certified Helm chart using OpenShift console as follows:
 
-- Log in to the OCP cluster's web console using admin credentials (for example, kube:admin).
-- If the console shows **Administrator** in the top left corner, then switch it to the **Developer** mode.
-- Navigate to the **+Add** section, and select the "yb-platform" project which you created in the [Prerequisites](#prerequisites).
-- Select **Helm Chart** from the **Developer Catalog** section as shown in the following illustration:
+1. Log in to the OCP cluster's web console using admin credentials (for example, kube:admin).
+1. If the console shows **Administrator** in the top left corner, then switch it to the **Developer** mode.
+1. Navigate to the **+Add** section, and select the "yb-platform" project which you created in the [Prerequisites](#prerequisites).
+1. Select **Helm Chart** from the **Developer Catalog** section as shown in the following illustration:
 
-  ![Add Certified Helm Chart on OpenShift console](/images/ee/openshift/openshift-add-certified-helm-chart.png)
+    ![Add Certified Helm Chart on OpenShift console](/images/ee/openshift/openshift-add-certified-helm-chart.png)
 
-- Search for "yugaware-openshift", and open it to display details about the chart, as shown in the following illustration:
+1. Search for "yugaware-openshift", and open it to display details about the chart, as shown in the following illustration:
 
-  ![Search result of yugaware-openshift on OpenShift console](/images/ee/openshift/openshift-search-chart-ui.png)
+    ![Search result of yugaware-openshift on OpenShift console](/images/ee/openshift/openshift-search-chart-ui.png)
 
-- Click **Install Helm Chart**.
-- On a terminal, verify the StorageClass setting for your cluster by executing the following command as admin user:
+1. Click **Install Helm Chart**.
+1. On a terminal, verify the StorageClass setting for your cluster by executing the following command as admin user:
 
-  ```shell
-  oc get storageClass
-  ```
+    ```shell
+    oc get storageClass
+    ```
 
-  If your cluster doesn't have a default StorageClass (an entry with `(default)` in its name) or you want to use a different StorageClass than the default one, set the value of `yugaware.storageClass` to `<storage-class-name>` when installing the YugabyteDB Anywhere Helm chart in the next step.
+    If your cluster doesn't have a default StorageClass (an entry with `(default)` in its name) or you want to use a different StorageClass than the default one, set the value of `yugaware.storageClass` to `<storage-class-name>` when installing the YugabyteDB Anywhere Helm chart in the next step.
 
-- To customize the installation, modify the values in the YAML view in the console, and click **Install**. The following image shows a custom StorageClass configuration:
+1. To customize the installation, modify the values in the YAML view in the console, and click **Install**. The following image shows a custom StorageClass configuration:
 
-  ![Customizing the Helm values using the OpenShift console](/images/ee/openshift/openshift-helm-install-values-ui.png)
+    ![Customizing the Helm values using the OpenShift console](/images/ee/openshift/openshift-helm-install-values-ui.png)
 
-  See [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values. Before customizing other values, review [Helm chart requirements](#helm-chart-requirements).
+    See [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values. Before customizing other values, review [Helm chart requirements](#helm-chart-requirements).
 
-  Note that if you are performing the preceding steps as an admin user, then you can set `rbac.create` to `true`. Alternatively, you can ask the cluster administrator to perform the next step.
+    Note that if you are performing the preceding steps as an admin user, then you can set `rbac.create` to `true`. Alternatively, you can ask the cluster administrator to perform the next step.
 
-- Optionally, execute the following command as an admin user to create ClusterRoleBinding:
+1. Optionally, execute the following command as an admin user to create ClusterRoleBinding:
 
-  ```shell
-  oc apply -f - <<EOF
-  kind: ClusterRoleBinding
-  apiVersion: rbac.authorization.k8s.io/v1
-  metadata:
-    name: yugaware-openshift-cluster-monitoring-view
-    labels:
-      app: yugaware
-  subjects:
-  - kind: ServiceAccount
-    name: yugaware-openshift
-    namespace: yb-platform
-  roleRef:
-    kind: ClusterRole
-    name: cluster-monitoring-view
-    apiGroup: rbac.authorization.k8s.io
-  EOF
-  ```
+    ```shell
+    oc apply -f - <<EOF
+    kind: ClusterRoleBinding
+    apiVersion: rbac.authorization.k8s.io/v1
+    metadata:
+      name: yugaware-openshift-cluster-monitoring-view
+      labels:
+        app: yugaware
+    subjects:
+    - kind: ServiceAccount
+      name: yugaware-openshift
+      namespace: yb-platform
+    roleRef:
+      kind: ClusterRole
+      name: cluster-monitoring-view
+      apiGroup: rbac.authorization.k8s.io
+    EOF
+    ```
 
-If you don't create the `ClusterRoleBinding`, some container-level metrics like CPU and memory will be unavailable.
+    If you don't create the `ClusterRoleBinding`, some container-level metrics like CPU and memory will be unavailable.
 
 After installation is complete, the status is shown as follows:
 
@@ -167,73 +163,73 @@ Installing YugabyteDB Anywhere on an OpenShift cluster using Helm involves the f
 
 To create a YugabyteDB Anywhere instance, perform the following:
 
-- Execute the following command to add the [YugabyteDB charts](https://charts.yugabyte.com/) repository:
+1. Execute the following command to add the [YugabyteDB charts](https://charts.yugabyte.com/) repository:
 
-  ```shell
-  helm repo add yugabytedb https://charts.yugabyte.com
-  ```
+    ```shell
+    helm repo add yugabytedb https://charts.yugabyte.com
+    ```
 
-  Expect the following output:
+    Expect the following output:
 
-  ```output
-  "yugabytedb" has been added to your repositories
-  ```
+    ```output
+    "yugabytedb" has been added to your repositories
+    ```
 
-  To search for the available chart version, execute the following command:
+    To search for the available chart version, execute the following command:
 
-  ```shell
-  helm search repo yugabytedb/yugaware-openshift --version {{<yb-version version="stable" format="short">}}
-  ```
+    ```shell
+    helm search repo yugabytedb/yugaware-openshift --version {{<yb-version version="stable" format="short">}}
+    ```
 
-  Expect the following output:
+    Expect the following output:
 
     ```output
     NAME                          CHART VERSION  APP VERSION  DESCRIPTION
     yugabytedb/yugaware-openshift {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
 
-- Verify the StorageClass setting for your cluster by executing the following command as admin user:
+1. Verify the StorageClass setting for your cluster by executing the following command as admin user:
 
-  ```shell
-  oc get storageClass
-  ```
+    ```shell
+    oc get storageClass
+    ```
 
-  If your cluster doesn't have a default StorageClass (an entry with `(default)` in its name) or you want to use a different StorageClass than the default one, add `--set yugaware.storageClass=<storage-class-name>` when installing the YugabyteDB Anywhere Helm chart in the next step.
+    If your cluster doesn't have a default StorageClass (an entry with `(default)` in its name) or you want to use a different StorageClass than the default one, add `--set yugaware.storageClass=<storage-class-name>` when installing the YugabyteDB Anywhere Helm chart in the next step.
 
-- Execute the following command to install the YugabyteDB Anywhere Helm chart:
+1. Execute the following command to install the YugabyteDB Anywhere Helm chart:
 
-  ```shell
-  helm install yw-test yugabytedb/yugaware-openshift -n yb-platform \
-    --version {{<yb-version version="stable" format="short">}} \
-    --wait
-  ```
+    ```shell
+    helm install yw-test yugabytedb/yugaware-openshift -n yb-platform \
+      --version {{<yb-version version="stable" format="short">}} \
+      --wait
+    ```
 
-  Expect to see a message notifying you whether or not the deployment is successful.
+    Expect to see a message notifying you whether or not the deployment is successful.
 
-  Note that if you are executing the preceding command as an admin user, then you can set `rbac.create=true`. Alternatively, you can ask the cluster administrator to perform the next step.
+    Note that if you are executing the preceding command as an admin user, then you can set `rbac.create=true`. Alternatively, you can ask the cluster administrator to perform the next step.
 
-- Optionally, execute the following command as an admin user to create ClusterRoleBinding:
+1. Optionally, execute the following command as an admin user to create ClusterRoleBinding:
 
-  ```shell
-  oc apply -f - <<EOF
-  kind: ClusterRoleBinding
-  apiVersion: rbac.authorization.k8s.io/v1
-  metadata:
-    name: yw-test-cluster-monitoring-view
-    labels:
-      app: yugaware
-  subjects:
-  - kind: ServiceAccount
-    name: yw-test
-    namespace: yb-platform
-  roleRef:
-    kind: ClusterRole
-    name: cluster-monitoring-view
-    apiGroup: rbac.authorization.k8s.io
-  EOF
-  ```
+    ```shell
+    oc apply -f - <<EOF
+    kind: ClusterRoleBinding
+    apiVersion: rbac.authorization.k8s.io/v1
+    metadata:
+      name: yw-test-cluster-monitoring-view
+      labels:
+        app: yugaware
+    subjects:
+    - kind: ServiceAccount
+      name: yw-test
+      namespace: yb-platform
+    roleRef:
+      kind: ClusterRole
+      name: cluster-monitoring-view
+      apiGroup: rbac.authorization.k8s.io
+    EOF
+    ```
 
-If you don't create the `ClusterRoleBinding`, some container-level metrics like CPU and memory will be unavailable.
+    If you don't create the `ClusterRoleBinding`, some container-level metrics like CPU and memory will be unavailable.
 
 You can customize the installation by specifying more values; see [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values. Before customizing other values, review [Helm chart requirements](#helm-chart-requirements).
 
@@ -255,11 +251,11 @@ You can use the OpenShift web console or the command line to search for the avai
 
 You start by logging in to the OCP web console as an admin user, and then performing the following:
 
-- Navigate to **Compute > Machine Sets** and open each Machine Set.
+1. Navigate to **Compute > Machine Sets** and open each Machine Set.
 
-- On the **Machine Set Details** page, open the **Machines** tab to access the region and availability zone label, as shown in the following illustration where the region is US East and the availability zone label is us-east4-a:
+1. On the **Machine Set Details** page, open the **Machines** tab to access the region and availability zone label, as shown in the following illustration where the region is US East and the availability zone label is us-east4-a:
 
-  ![Create Machines](/images/ee/openshift-yp-create-machine.png)
+    ![Create Machines](/images/ee/openshift-yp-create-machine.png)
 
 ### Use the command line
 
@@ -285,26 +281,24 @@ ocp-dev4-l5ffp-worker-c, region: us-east4, zone: us-east4-c
 
 After the execution, the region is displayed as US East and the zones as us-east4-a, us-east4-b, and so on.
 
-## Access and configure YugabyteDB Anywhere
+## Locate your YugabyteDB Anywhere instance
 
-After you have created and deployed YugabyteDB Anywhere, you can access its web UI and create an account.
+After you have created and deployed YugabyteDB Anywhere, access its web UI and [create an account](../../create-admin-user/).
 
-### Find the location to access the web UI
+To find the location (IP address or hostname) of your YugabyteDB Anywhere instance, you can use the OpenShift web console or the command line.
 
-To find the location (IP address or hostname), you can use the OpenShift web console or the command line.
-
-#### Use the OpenShift web console
+### Use the OpenShift web console
 
 You can obtain the location using the OpenShift web console as follows:
 
-- Use the OCP web console to navigate to **Networking > Services** and select **ybplatform-sample-yugaware-ui** from the list. Ensure that the **yb-platform** project is selected.
-- In the **Service Routing** section of the **Details** tab, locate **External Load Balancer** and copy the value, as shown in the following illustration:
+1. Use the OCP web console to navigate to **Networking > Services** and select **ybplatform-sample-yugaware-ui** from the list. Ensure that the **yb-platform** project is selected.
+1. In the **Service Routing** section of the **Details** tab, locate **External Load Balancer** and copy the value, as shown in the following illustration:
 
-  ![Service Details](/images/ee/openshift-service-details.png)
+    ![Service Details](/images/ee/openshift-service-details.png)
 
-- Open the copied location in a new instance of your web browser.
+1. Open the copied location in a new instance of your web browser.
 
-#### Use the command line
+### Use the command line
 
 Alternatively, you can find the location using the oc CLI.
 
