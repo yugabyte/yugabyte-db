@@ -475,7 +475,6 @@ export const getEnabledConfigActions = (
   replication: XClusterConfig,
   sourceUniverse: Universe | undefined,
   targetUniverse: Universe | undefined,
-  isXClusterConfigAllBidirectional: boolean,
   drConfigState?: DrConfigState
 ): XClusterConfigAction[] => {
   if (drConfigState === DrConfigState.FAILED) {
@@ -520,15 +519,7 @@ export const getEnabledConfigActions = (
     }
   };
 
-  const restrictedActions = new Set<XClusterConfigAction>();
-  if (isXClusterConfigAllBidirectional) {
-    restrictedActions.add(XClusterConfigAction.RESTART);
-  }
-
-  const enabledActions = getEnabledConfigActionsBasedOnStatus(replication.status);
-
-  // Filter out the actions which have been restricted due to select circumstances.
-  return enabledActions.filter((action) => !restrictedActions.has(action));
+  return getEnabledConfigActionsBasedOnStatus(replication.status);
 };
 
 /**
@@ -874,20 +865,6 @@ export const getInConfigTableUuid = (tableDetails: XClusterTableDetails[]) =>
     }
     return inConfigTableUuids;
   }, []);
-
-/**
- * Accepts the backend need bootstrap response.
- * Returns true if every table in the xCluster config is part of a database under bidirectional replication.
- */
-export const getIsXClusterConfigAllBidirectional = (
-  xClusterConfigNeedBootstrapPerTableResponse: XClusterConfigNeedBootstrapPerTableResponse
-): boolean => {
-  return Object.entries(
-    xClusterConfigNeedBootstrapPerTableResponse
-  ).every(([_, needBootstrapDetails]) =>
-    needBootstrapDetails.reasons.includes(XClusterNeedBootstrapReason.BIDIRECTIONAL_REPLICATION)
-  );
-};
 
 export const getSchemaChangeMode = (xClusterConfig: XClusterConfig) => {
   switch (xClusterConfig.type) {
