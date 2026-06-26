@@ -369,6 +369,9 @@ DEFINE_RUNTIME_bool(ysql_enable_auto_analyze, false,
 
 DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
 
+DEFINE_NON_RUNTIME_bool(is_yb_managed, false,
+  "If true instance is running in a YugabyteDB managed environment (YBM)");
+
 namespace yb {
 
 void InitCommonFlags() {
