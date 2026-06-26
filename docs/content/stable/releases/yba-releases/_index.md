@@ -4,6 +4,8 @@ headerTitle: YugabyteDB Anywhere releases
 linkTitle: YugabyteDB Anywhere releases
 description: An overview of YugabyteDB Anywhere releases, including preview and current stable releases.
 type: indexpage
+aliases:
+  - /stable/releases/yba-release-notes/stable-release/
 showRightNav: true
 cascade:
   unversioned: true
@@ -39,7 +41,7 @@ For example, as of November 2024, the just-released YugabyteDB Anywhere v2024.2.
 
 - [v2024.2.x](../ybdb-releases/v2024.2/) (LTS)
 - [v2024.1.x](../ybdb-releases/v2024.1/) (STS)
-- [v2.20.x](../ybdb-releases/v2.20/) (LTS)
+- [v2.20.x](../ybdb-releases/end-of-life/v2.20/) (LTS)
 
 For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](../ybdb-releases).
 
