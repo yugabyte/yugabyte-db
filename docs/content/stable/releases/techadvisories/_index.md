@@ -25,7 +25,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | Logical replication might cause increase in disk storage footprint
 | {{<product "cdc">}}
 | {{<release "2024.1.x">}},<br>{{<release "2024.2.0.0">}} to {{<release "2024.2.9.0">}}, {{<release "2025.1.0.0">}} to {{<release "2025.1.4.0">}}, {{<release "2025.2.0.0">}} to {{<release "2025.2.3.0">}}
-| {{<nobreak "10 June 2026">}}
+| {{<nobreak "26 June 2026">}}
 |
 | {{<ta 31688>}}
 | Potential for missing or spurious rows with multikey lookups larger than 64 bytes
