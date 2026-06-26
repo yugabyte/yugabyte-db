@@ -50,7 +50,7 @@ elif [[ ! -d "${destination}" ]]; then
   exit 1
 fi
 
-exec python3 "${byoc_api_proxy_home}/yb_release.py" \
+exec python3 "${byoc_api_proxy_home}/release.py" \
   --source_dir "${byoc_api_proxy_home}" \
   --destination "${destination}" \
   $([[ "${local}" == "true" ]] && echo --local)
