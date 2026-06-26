@@ -504,16 +504,7 @@ This command is inherited from psql, but large objects are not supported in Yuga
 
 ##### \lo_import *filename* [ *comment* ]
 
-Stores the file into a large object. Optionally, it associates the given comment with the object. Example:
-
-```sql
-foo=> \lo_import '/home/peter/pictures/photo.xcf' 'a picture of me'
-lo_import 152801
-```
-
-The response indicates that the large object received object ID `152801`, which can be used to access the newly-created large object in the future. For the sake of readability, it is recommended to always associate a human-readable comment with every object. Both OIDs and comments can be viewed with the [\lo_list](#lo-list) command.
-
-Note that this command is subtly different from the server-side `lo_import` because it acts as the local user on the local filesystem, rather than the server's user and filesystem.
+Stores the file into a large object. Optionally, it associates the given comment with the object. 
 
 {{< note title="Note" >}}
 
