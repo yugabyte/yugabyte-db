@@ -195,6 +195,18 @@ ROLLBACK;
 -- Reset.
 DROP INDEX expr_idx;
 
+--- Covering indexes
+CREATE UNIQUE INDEX NONCONCURRENTLY covering_single_key_idx ON ab_tab (a) INCLUDE (b, b, b, b, b, b, b);
+CREATE UNIQUE INDEX NONCONCURRENTLY covering_multi_key_idx ON ab_tab (b, b) INCLUDE (b, b, b, b, b, b, b);
+BEGIN;
+INSERT INTO ab_tab VALUES (0, 0) ON CONFLICT DO NOTHING;
+INSERT INTO ab_tab VALUES (1, 1) ON CONFLICT (a) DO NOTHING;
+INSERT INTO ab_tab VALUES (11, 11) ON CONFLICT (b) DO NOTHING;
+SELECT * FROM ab_tab ORDER BY a, b;
+ROLLBACK;
+DROP INDEX covering_single_key_idx;
+DROP INDEX covering_multi_key_idx;
+
 --- Partial indexes
 CREATE UNIQUE INDEX NONCONCURRENTLY b1_idx ON ab_tab (b) WHERE a % 10 = 1;
 CREATE UNIQUE INDEX NONCONCURRENTLY b2_idx ON ab_tab (b) WHERE a % 10 = 2;
