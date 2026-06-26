@@ -66,6 +66,20 @@ Additionally, you need to perform the following steps before attempting to insta
   secret/yugabyte-k8s-pull-secret created
   ```
 
+## Helm chart requirements
+
+{{< warning title="Important" >}}
+
+When installing YugabyteDB Anywhere on OpenShift using the `yugaware-openshift` Helm chart, keep `useYugabyteDB` set to `false`. This is the chart default and must not be changed.
+
+The Red Hat certified chart uses a Red Hat certified PostgreSQL image for YBA's metadata database. Setting `useYugabyteDB: true` switches YBA to an embedded YugabyteDB sidecar instead. That configuration is not supported on OpenShift and is outside the Red Hat certified deployment.
+
+This setting controls how YBA stores its own platform metadata. It does not affect your ability to create and manage YugabyteDB universes after YBA is installed.
+
+If you customize Helm values in the OpenShift console or via a values file, ensure `useYugabyteDB` remains `false`.
+
+{{< /warning >}}
+
 ## Certified Helm chart-based installation
 
 {{< note title="Note" >}}
@@ -108,7 +122,7 @@ You can install the YugabyteDB Anywhere Red Hat certified Helm chart using OpenS
 
   ![Customizing the Helm values using the OpenShift console](/images/ee/openshift/openshift-helm-install-values-ui.png)
 
-  See [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values.
+  See [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values. Before customizing other values, review [Helm chart requirements](#helm-chart-requirements).
 
   Note that if you are performing the preceding steps as an admin user, then you can set `rbac.create` to `true`. Alternatively, you can ask the cluster administrator to perform the next step.
 
@@ -221,7 +235,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
 
 If you don't create the `ClusterRoleBinding`, some container-level metrics like CPU and memory will be unavailable.
 
-You can customize the installation by specifying more values, see [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values.
+You can customize the installation by specifying more values; see [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values. Before customizing other values, review [Helm chart requirements](#helm-chart-requirements).
 
 ### Delete the Helm installation of YugabyteDB Anywhere
 
