@@ -335,7 +335,7 @@ class ListTableGrid extends Component {
         <TableHeaderColumn
           dataField={'tableName'}
           dataFormat={formatTableName}
-          width="15%"
+          width="28%"
           columnClassName={'table-name-label yb-table-cell'}
           className={'yb-table-cell'}
           dataSort
@@ -344,7 +344,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField="pgSchemaName"
-          width="15%"
+          width="18%"
           dataFormat={(cell, row) => formatSchemaName(row.tableType, cell)}
         >
           Schema Name
@@ -352,7 +352,7 @@ class ListTableGrid extends Component {
         <TableHeaderColumn
           dataField={'tableType'}
           dataFormat={getTableIcon}
-          width="15%"
+          width="10%"
           columnClassName={'table-type-image-header yb-table-cell'}
           className={'yb-table-cell'}
           dataSort
@@ -361,7 +361,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'keySpace'}
-          width="15%"
+          width="16%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatKeySpace}
           dataSort
@@ -370,7 +370,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'status'}
-          width="15%"
+          width="8%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatTableStatus}
         >
@@ -378,7 +378,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'sizeBytes'}
-          width="15%"
+          width="10%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatBytes}
           dataSort
@@ -387,7 +387,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'walSizeBytes'}
-          width="15%"
+          width="10%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatBytes}
           dataSort
