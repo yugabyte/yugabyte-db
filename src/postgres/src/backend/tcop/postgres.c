@@ -5959,37 +5959,15 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 		 */
 		YBCRecreateTransaction();
 
+		/*
+		 * YBCRestartWriteTransaction() above already rolled back any open
+		 * PG-side subtransactions, including the per-statement RC internal
+		 * subtxn. With the YB-side transaction recreated, re-register a fresh
+		 * RC internal subtxn so the subsequent retry attempt has the savepoint
+		 * the statement-undo path (yb_restart_current_stmt) expects.
+		 */
 		if (IsTransactionBlock() && IsYBReadCommitted())
-		{
-			/*
-			 * Each statement in a read committed transaction block (i.e., after BEGIN) registers an
-			 * internal sub-transaction to be able to undo and retry the statement for kConflict and
-			 * kReadRestart errors (see yb_restart_current_stmt()). This registration is done in
-			 * YBStartTransactionCommandInternal(). However, since we are retrying by surgically resetting
-			 * just the YB-side transaction state without resetting and retriggering the Pg-side
-			 * transaction state machine changes, we should explicitly make the sub-transaction changes
-			 * on Pg side i.e., by registsring a new internal sub transaction.
-			 */
-
-			/*
-			 * TODO(read committed): remove the below check once the feature
-			 * is GA
-			 */
-			Assert(!strcmp(GetCurrentTransactionName(),
-						   YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME));
-			RollbackAndReleaseCurrentSubTransaction();
-
-			/*
-			 * This creates a new PG side sub-txn and increments the sub-txn id.
-			 *
-			 * NOTE: this will result in a situation where the new YB side distributed transaction will
-			 * start with a sub transaction id that isn't 2 (which is the intial id for the internal
-			 * savepoint registered before the first statement in any RC transaction block). The id could
-			 * be much higher depending on how many statement level retries have already been done so far
-			 * using the same YB transaction (i.e., via yb_restart_current_stmt()).
-			 */
 			YbBeginInternalSubTransactionForReadCommittedStatement();
-		}
 
 		yb_maybe_sleep_on_txn_conflict(attempt);
 	}
