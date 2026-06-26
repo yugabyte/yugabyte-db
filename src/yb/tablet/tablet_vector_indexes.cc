@@ -170,6 +170,10 @@ class IndexedTableReader {
 // A way to block backfilling vector index after the first vector index chunk is flushed.
 bool TEST_block_after_backfilling_first_vector_index_chunks = false;
 
+// When set, overrides whether vector index backfill writes reverse mappings. When unset, follows
+// the indexed table's owns_vector_reverse_mapping table property.
+std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill = std::nullopt;
+
 TabletVectorIndexes::TabletVectorIndexes(
     Tablet* tablet,
     const VectorIndexThreadPoolProvider& thread_pool_provider,
@@ -467,7 +471,10 @@ Status TabletVectorIndexes::Backfill(
   RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
   ReverseMappingBackfillerPtr reverse_mapping_backfiller;
-  if (!vector_index->options().skip_reverse_mapping_backfill()) {
+  const bool skip_reverse_mapping_backfill =
+      TEST_vector_index_skip_reverse_mapping_backfill.value_or(
+          indexed_table.schema().table_properties().owns_vector_reverse_mapping());
+  if (!skip_reverse_mapping_backfill) {
     reverse_mapping_backfiller = std::make_unique<ReverseMappingBackfiller>(op_id);
   }
 

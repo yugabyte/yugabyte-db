@@ -93,16 +93,11 @@ extern size_t TEST_vector_index_max_checked_entries;
 
 } // namespace yb::docdb
 
-namespace yb::internal {
-
-extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
-
-} // namespace yb::internal
-
 namespace yb::tablet {
 
 extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
+extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
 
 } // namespace yb::tablet
 
@@ -2564,7 +2559,7 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
 };
 
 TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_skip_reverse_mapping_backfill) = true;
 
   constexpr size_t kNumRows = 5;
   ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
@@ -2576,7 +2571,7 @@ TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
 }
 
 TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_skip_reverse_mapping_backfill) = false;
 
   constexpr size_t kNumRows = 5;
   ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
@@ -2641,9 +2636,9 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
   // The search will drop these results with vector_index_skip_filter_check enabled, so the first
   // page will resolve fewer than kQueryLimit rows while could_have_more_data stays true, forcing
   // a second fetch with num_top_vectors_to_remove_ > 0.
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_skip_reverse_mapping_backfill) = true;
   ASSERT_OK(CreateIndex(conn));
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_skip_reverse_mapping_backfill) = false;
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   // Insert the second half of the rows with the reverse mapping entries.
