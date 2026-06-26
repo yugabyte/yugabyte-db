@@ -88,10 +88,6 @@ const PerfAdvisorTabsComponent = ({
     {
       key: ConfigTabKey.METRICS,
       title: t('clusterDetail.troubleshoot.perfAdvisorMetricsTab')
-    },
-    {
-      key: ConfigTabKey.ANOMALIES,
-      title: t('clusterDetail.troubleshoot.perfAdvisorAnomaliesTab')
     }
   ];
 
@@ -124,7 +120,6 @@ const PerfAdvisorTabsComponent = ({
               timezone={timezone}
               apiUrl={apiUrl}
               registrationStatus={registrationStatus}
-              showStandaloneAnomalies={tab.key === ConfigTabKey.ANOMALIES}
             />
           </Tab>
         ))}
