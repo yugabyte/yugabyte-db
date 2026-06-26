@@ -11,11 +11,12 @@ Usage:
   {{< release-downloads version="2026.1.0.0" build="115" type="yba" >}}
 */}}
 
-{{- $version := .Get "version" -}}
-{{- $build   := .Get "build" -}}
-{{- $type    := default "ybdb" (.Get "type") -}}
-{{- $bver    := printf "%s-b%s" $version $build -}}
-{{- $base    := printf "https://software.yugabyte.com/releases/%s" $version -}}
+{{- $version  := .Get "version" -}}
+{{- $build    := .Get "build" -}}
+{{- $type     := default "ybdb" (.Get "type") -}}
+{{- $bver     := printf "%s-b%s" $version $build -}}
+{{- $base     := printf "https://software.yugabyte.com/releases/%s" $version -}}
+{{- $ybaBase  := printf "https://downloads.yugabyte.com/releases/%s" $version -}}
 
 {{- $tabs := slice -}}
 {{- if eq $type "ybdb" -}}
@@ -28,7 +29,7 @@ Usage:
 -}}
 {{- else if eq $type "yba" -}}
 {{- $tabs = slice
-  (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> Linux x86` "body" (printf "wget %s/yba_installer_full-%s-linux-x86_64.tar.gz\necho \"$(curl -L %s/yba_installer_full-%s-linux-x86_64-tar.gz.sha) *yba_installer_full-%s-linux-x86_64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
+  (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> Linux x86` "body" (printf "wget %s/yba_installer_full-%s-linux-x86_64.tar.gz\necho \"$(curl -L %s/yba_installer_full-%s-linux-x86_64.tar.gz.sha) *yba_installer_full-%s-linux-x86_64.tar.gz\" | shasum --check" $ybaBase $bver $ybaBase $bver $bver))
 -}}
 {{- end -}}
 
