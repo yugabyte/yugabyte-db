@@ -3067,7 +3067,7 @@ match_clause_to_index(PlannerInfo *root,
 	 * before the per-column loop.
 	 */
 	{
-        /*
+		/*
 		 * TODO it seems correct to associate the hash code clause with the
 		 * first index column, since the hash code is a function of one or more
 		 * first columns of the index. Later on we may consider to introduce a
