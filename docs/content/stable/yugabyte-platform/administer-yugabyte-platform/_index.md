@@ -31,6 +31,12 @@ For information on configuring alerts, health checks, and diagnostics reporting 
     icon="fa-thin fa-lock">}}
 
   {{<index/item
+    title="SuperAdmin LDAP/SSO user support"
+    body="Assign SuperAdmin privileges to LDAP and OIDC users through controlled RBAC flows."
+    href="superadmin-ldap-sso-users/"
+    icon="fa-thin fa-user-shield">}}
+
+  {{<index/item
     title="Back up and restore YugabyteDB Anywhere"
     body="Back up and restore the YugabyteDB Anywhere server."
     href="back-up-restore-yba/"
