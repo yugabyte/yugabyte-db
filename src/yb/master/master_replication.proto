@@ -245,6 +245,9 @@ message PgAttributePB {
   required int32 attlen = 5;
   required int32 attnum = 6;
   required int32 attndims = 7;
+  // pg_attribute.attcacheoff was removed upstream PG commit
+  // 02a8d0c45253eb54e57b1974c8627e5be3e1d852. Kept required for cross-version CDC/xCluster wire
+  // compat; producers always set -1.
   required int32 attcacheoff = 8;
   required int32 atttypmod = 9;
   required bool attbyval = 10;

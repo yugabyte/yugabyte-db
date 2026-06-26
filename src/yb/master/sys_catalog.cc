@@ -2087,7 +2087,6 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
   const auto attlen_col_id = VERIFY_RESULT(schema.ColumnIdByName("attlen")).rep();
   const auto attnum_col_id = VERIFY_RESULT(schema.ColumnIdByName("attnum")).rep();
   const auto attndims_col_id = VERIFY_RESULT(schema.ColumnIdByName("attndims")).rep();
-  const auto attcacheoff_col_id = VERIFY_RESULT(schema.ColumnIdByName("attcacheoff")).rep();
   const auto atttypmod_col_id = VERIFY_RESULT(schema.ColumnIdByName("atttypmod")).rep();
   const auto attbyval_col_id = VERIFY_RESULT(schema.ColumnIdByName("attbyval")).rep();
   const auto attstorage_col_id = VERIFY_RESULT(schema.ColumnIdByName("attstorage")).rep();
@@ -2126,7 +2125,6 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     const auto& attlen_col = row.GetValue(attlen_col_id);
     const auto& attnum_col = row.GetValue(attnum_col_id);
     const auto& attndims_col = row.GetValue(attndims_col_id);
-    const auto& attcacheoff_col = row.GetValue(attcacheoff_col_id);
     const auto& atttypmod_col = row.GetValue(atttypmod_col_id);
     const auto& attbyval_col = row.GetValue(attbyval_col_id);
     const auto& attstorage_col = row.GetValue(attstorage_col_id);
@@ -2149,7 +2147,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     uint32_t attrelid = attrelid_col->get().uint32_value();
 
     if (!attname_col || !atttypid_col || !attstattarget_col || !attlen_col || !attnum_col ||
-        !attndims_col || !attcacheoff_col || !atttypmod_col || !attbyval_col || !attstorage_col ||
+        !attndims_col || !atttypmod_col || !attbyval_col || !attstorage_col ||
         !attalign_col || !attnotnull_col || !atthasdef_col || !atthasmissing_col ||
         !attidentity_col || !attisdropped_col || !attislocal_col || !attinhcount_col ||
         !attcollation_col) {
@@ -2185,7 +2183,9 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     attribute.set_attstattarget(attstattarget_col->get().int32_value());
     attribute.set_attlen(attlen_col->get().int16_value());
     attribute.set_attndims(attndims_col->get().int32_value());
-    attribute.set_attcacheoff(attcacheoff_col->get().int32_value());
+    // attcacheoff removed upstream PG; the proto field is kept required for cross-version
+    // CDC/xCluster wire compat, so always emit -1. See PgAttributePB in master_replication.proto.
+    attribute.set_attcacheoff(-1);
     attribute.set_atttypmod(atttypmod_col->get().int32_value());
     attribute.set_attbyval(attbyval_col->get().bool_value());
     attribute.set_attstorage(attstorage_col->get().int8_value());
