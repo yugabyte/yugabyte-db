@@ -113,7 +113,7 @@ SELECT reltuples FROM pg_class WHERE relname = 'test';
 
 ## Observability
 
-To inspect what the Auto Analyze service is tracking for each table, use the `yb_stat_auto_analyze()` function. This is intended for debugging and observability, with one row per table that the service is currently tracking.
+To inspect what the Auto Analyze service is tracking for each table, use the `yb_stat_auto_analyze()` function. This is intended for debugging and observability, with one row per table that the service is currently tracking. (The function is available in v2025.2.3.0 and later.)
 
 ```sql
 SELECT * FROM yb_stat_auto_analyze();
@@ -136,7 +136,7 @@ The `last_analyze_info` column contains an `analyze_history` array holding the m
 
 ### Example
 
-Continuing from the [Example](#example) above (table `test` in the `public` schema), repeatedly inserting rows causes the service to run ANALYZE more than once. Each ANALYZE adds an entry to `analyze_history`:
+Continuing the previous [Example](#example) (table `test` in the `public` schema), repeatedly inserting rows causes the service to run ANALYZE more than once. Each ANALYZE adds an entry to `analyze_history`:
 
 ```sql
 SELECT * FROM yb_stat_auto_analyze() WHERE relname = 'test';
