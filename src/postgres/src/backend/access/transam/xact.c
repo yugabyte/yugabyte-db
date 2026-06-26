@@ -2350,6 +2350,18 @@ void
 YBCRestartWriteTransaction()
 {
 	/*
+	 * Roll back every open savepoint / subtransaction so the trans_stack is
+	 * clean before we recreate the top-level write state. Without this, the
+	 * per-statement RC internal subtxn (and any user-defined SAVEPOINTs on
+	 * top of it) survive the surgical write-state reset, leaving the
+	 * after-trigger trans_stack pointing at slots whose state field was
+	 * never re-initialized -- which then SIGSEGVs at pfree() during the
+	 * eventual ROLLBACK in AfterTriggerEndSubXact (#31550).
+	 */
+	while (CurrentTransactionState->parent != NULL)
+		RollbackAndReleaseCurrentSubTransaction();
+
+	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
 	 * that we restart the writes only when we haven't sent any data back to the
 	 * user, removing all snapshots is safe.
