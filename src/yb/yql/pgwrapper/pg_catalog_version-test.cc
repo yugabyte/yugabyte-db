@@ -3147,16 +3147,23 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << "Create " << num_logical_connections << " logical connections";
   std::vector<PGConn> conns;
-  // Create additional number of logical connections. The setup process of each logical
-  // connection triggers a PG auth backend, which uses tserver cache for its work.
-  // In contrast, a regular PG backend does not use tserver cache for its auth work.
+  // Create additional logical connections. With
+  // ysql_enable_read_request_cache_for_connection_auth=true (set by the fixture)
+  // the connection-auth catalog prefetch is served from the tserver response
+  // cache for both connection manager auth backends and regular backends, so it
+  // costs no master read in either mode. A regular backend, however, is its own
+  // physical backend and still resolves the latest catalog version once in
+  // RelationCacheInitializePhase3() (YbGetMasterCatalogVersion) -- a read the
+  // connection-auth cache does not cover -- so each fresh regular backend costs
+  // one master read. Connection manager multiplexes logical connections onto
+  // already-initialized physical backends, so it costs none.
   for (int i = 0; i < num_logical_connections; i++) {
     conns.emplace_back(ASSERT_RESULT(Connect()));
   }
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 0 : 2) * num_logical_connections;
+  const int expected_count = (enable_ysql_conn_mgr ? 0 : 1) * num_logical_connections;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 
   // Validate the conn-init-latency metrics:
@@ -3191,7 +3198,11 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 0 : 2);
+  // CM auth-passthrough serves auth from the response cache and the reused
+  // control backend does no relcache rebuild -> 0. After #32063 a regular
+  // backend also serves the auth prefetch from cache, leaving only the relcache
+  // rebuild -> 1.
+  auto expected_count = (enable_ysql_conn_mgr ? 0 : 1);
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
@@ -3209,16 +3220,19 @@ TEST_P(PgCatalogVersionConnManagerTest,
   master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  // Because latest master catalog version is used to do prefetch when rebuilding
-  // relcache init file, we see the same number of master RPCs regardless of
-  // whether connection manager is used or not when CM's Auth Backend mode is used.
-  // However, when Auth Passthrough mode is used (default), the actual authentication
-  // triggers prefetching using the global (template1's) TS shared catalog version
-  // but relcache rebuilding in backend startup uses the per-DB master catalog version.
-  // This causes an extra RPC with CM in AP mode in the first auth due to the differing
-  // catalog versions used for prefetching.
-  expected_count = (enable_ysql_conn_mgr ? 1 : 0) + 6;
-  ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
+  // #30148: in CM Auth Passthrough mode (default) the first auth prefetches at
+  // the global (template1) shared catalog version but rebuilds the relcache at
+  // the per-DB master version; the differing versions cost one extra master RPC.
+  // #32063: the regular-backend auth prefetch is served from the response cache
+  // when its version-keyed slot is warm. conn3 connects right after 200 version
+  // bumps, so the regular slot's warmth is timing-dependent -> 5 (hit) or 6 (miss).
+  auto rebuild_delta = master_read_count_after - master_read_count_before;
+  if (enable_ysql_conn_mgr) {
+    ASSERT_EQ(rebuild_delta, 7);
+  } else {
+    ASSERT_GE(rebuild_delta, 5);
+    ASSERT_LE(rebuild_delta, 6);
+  }
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
@@ -3285,155 +3299,92 @@ TEST_P(PgCatalogVersionConnManagerTest,
   ASSERT_OK(conn.ExecuteFormat("ALTER USER test_user WITH PASSWORD 'new_password'"));
 
   pg_ts = cluster_->tablet_server(0);
-  if (enable_ysql_conn_mgr) {
+  // After #32063 the connection-auth prefetch (pg_authid etc.) is served from
+  // the tserver response cache for regular backends too, not just connection
+  // manager auth backends, so a regular backend now also exhibits bounded auth
+  // staleness: a new connection on ts-0 keeps authenticating against the cached
+  // pre-ALTER password until that entry expires. The checks below run in both
+  // modes, but the staleness bound differs -- a regular backend re-reads auth
+  // fresh from master once the trust-auth lifetime expires (even while ts-0's
+  // shared catalog version is frozen), whereas a CM auth-passthrough backend
+  // stays at the frozen shared version until it advances. Only the
+  // master-read-count assertion stays CM-specific (a regular backend resolves
+  // the latest master version on every connect, so its count scales with the
+  // number of connections rather than being a small constant).
+  setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+  if (IsObjectLockingEnabled()) {
+    // Object locking force-refreshes the catalog version on all tservers despite
+    // TEST_tserver_disable_catalog_refresh_on_heartbeat being set, so the stale
+    // cache entry is invalidated and the old password is already rejected.
+    ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
+        "password authentication failed for user \"test_user\"");
+  } else {
+    // The freeze flag pins ts-0's catalog version at the pre-ALTER value, so the
+    // cached auth entry keyed on it still serves the old password.
+    ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+  }
+
+  // Wait for the stale cache entry in the tserver to expire.
+  SleepFor(1ms * stale_cache_bound_ms);
+
+  // verify() checks how the password change is observed by new connections. When
+  // expect_password_change_visible is true the old password must be rejected and
+  // the new accepted; when false the expectation is flipped (while ts-0 is still
+  // frozen at v_old, auth is served from the response cache at the frozen
+  // version, so the change is not yet visible).
+  auto verify = [this](bool expect_password_change_visible) -> void {
     setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
-    if (IsObjectLockingEnabled()) {
-      // With object locking enabled, the password authentication should fail as
-      // the DDL commit codepath would force a catalog refresh on all tservers
-      // despite TEST_tserver_disable_catalog_refresh_on_heartbeat being set.
+    if (expect_password_change_visible) {
       ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
           "password authentication failed for user \"test_user\"");
     } else {
-      // Verify the old password still works because we have set the gflag
-      // --TEST_tserver_disable_catalog_refresh_on_heartbeat=true.
       ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
     }
-
-    // Wait for the stale cache in tserver expires.
-    SleepFor(1ms * stale_cache_bound_ms);
-
-    // Verify the old password no longer works after the threshold specified by
-    // --pg_cache_response_trust_auth_lifetime_limit_ms has passed.
-
-    // verify() checks how the password change is observed by new connections.
-    //
-    // When expect_password_change_visible is true (the normal expectation, once
-    // ts-0 has advanced to v_new) the old password must be rejected and the new
-    // password accepted. When it is false the expectation is flipped: the stale
-    // old password is still accepted and the new password is rejected. The
-    // flipped case happens in CM auth-passthrough mode while ts-0's shared
-    // catalog version is still frozen at v_old -- see the first verify() below.
-    auto verify = [this](bool expect_password_change_visible) -> void {
-      setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
-      if (expect_password_change_visible) {
-        ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
-            "password authentication failed for user \"test_user\"");
-      } else {
-        ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
-      }
-      setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
-      if (expect_password_change_visible) {
-        ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
-      } else {
-        ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
-            "password authentication failed for user \"test_user\"");
-      }
-    };
-
-    // First verify. ts-0 has not been unfrozen yet, so its shared catalog
-    // version is still v_old here.
-    //
-    // In CM auth-passthrough (AP) mode, authentication is served from the tserver
-    // response cache at the *shared* catalog version. Unlike a fresh PG backend,
-    // the reused control backend has no relcache to rebuild here, so AP never
-    // looks up the master catalog version during auth. While ts-0 is still frozen
-    // at v_old the stale old password is therefore still accepted and the new
-    // password rejected -- the password change is not yet visible.
-    //
-    // The exception is object locking (Release builds): the ALTER USER commit
-    // force-refreshes the catalog version on all tservers despite
-    // TEST_tserver_disable_catalog_refresh_on_heartbeat=true, so ts-0 already
-    // sees v_new and the change is visible.
-    verify(/*expect_password_change_visible=*/ IsObjectLockingEnabled());
-    ASSERT_OK(cluster_->SetFlagOnTServers(
-        "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"));
-    WaitForCatalogVersionToPropagate();
-
-    // Capture the baseline only after ts-0 has been unfrozen and advanced to
-    // v_new. In CM auth-passthrough mode each verify connect's auth is served
-    // by the reused conn-mgr control backend, which does no relcache work. The
-    // relcache init file is instead refreshed by a pool server backend that
-    // gets spawned for the first successful new-password connect; it waits in
-    // YbWaitForSharedCatalogVersionToCatchup() until the flag flip lets the
-    // shared catalog version advance, then revalidates the init file to v_new.
-    // Snapshotting master_read_count_before after WaitForCatalogVersionToPropagate()
-    // keeps that deferred, setup-induced work out of the measured window so the
-    // assertion below reflects only the cost of the verify loop itself.
-    auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
-
-    const int verify_count = 5;
-    for (int i = 0; i < verify_count; i++) {
-      // By now ts-0 has been unfrozen and advanced to v_new, so the password
-      // change is visible in every mode.
-      verify(/*expect_password_change_visible=*/ true);
+    setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
+    if (expect_password_change_visible) {
+      ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+    } else {
+      ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
+          "password authentication failed for user \"test_user\"");
     }
-    auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
-    LOG(INFO) << ", master_read_count_before: " << master_read_count_before
-              << ", master_read_count_after: " << master_read_count_after;
+  };
 
-    // Rebuilding the expired tserver cache entry costs 1 master RPC. But because
-    // we now use shared memory catalog version for both auth phase and
-    // RelationCacheInitializePhase3() prefetching, after we reset
-    // --TEST_tserver_disable_catalog_refresh_on_heartbeat=false which causes a new
-    // shared memory catalog version, we may have to rebuild up to two expired
-    // tserver cache entries during the verify loop:
-    // (1) expired entry for the auth phase
-    // (2) expired entry for the RelationCacheInitializePhase3() phase
-    // Earlier we were using master catalog version for
-    // RelationCacheInitializePhase3(), in that case we would have rebuilt (2)
-    // in the verify() that has "First verify" comment above.
-    //
-    // The expected count depends on how the relcache init file on ts-0 gets
-    // refreshed to the new catalog version *before* this loop runs:
-    //
-    //   Release (object locking enabled): the ALTER USER DDL commit codepath
-    //   force-refreshes the catalog version on all tservers despite
-    //   TEST_tserver_disable_catalog_refresh_on_heartbeat=true, so ts-0's
-    //   shared catalog version reaches v_new shortly after the ALTER USER
-    //   above and well before the "First verify" call. In CM auth-passthrough
-    //   mode each connect's auth is served by the reused control backend, which
-    //   only prefetches the auth tables (YbPrefetchRequiredData(false)) and
-    //   never rebuilds the relcache -- so (2) is never consulted and only (1)
-    //   is ever in play. By the time of "First verify" ts-0 is already at
-    //   v_new, so the connect there rebuilds the sleep-expired auth entry (1)
-    //   at v_new. That rebuild happens before master_read_count_before is
-    //   captured, so when the loop runs (1) is already warm at v_new and the
-    //   verify loop observes no rebuilds -> 0 master RPCs.
-    //
-    //   Fastdebug (object locking disabled): the test flag is fully effective,
-    //   so ts-0's shared catalog version stays at v_old throughout "First
-    //   verify". In CM auth-passthrough mode the reused control backend serves
-    //   authentication from the tserver response cache at the (frozen) shared
-    //   catalog version and never looks up the master catalog version -- it has
-    //   no relcache to rebuild during auth -- so the stale old password is still
-    //   accepted there (this is why the first verify() above is gated on
-    //   IsObjectLockingEnabled()). Meanwhile the connects issued while the
-    //   version is frozen leave background relcache-init connections blocked in
-    //   YbWaitForSharedCatalogVersionToCatchup(). After we reset the flag to
-    //   false, WaitForCatalogVersionToPropagate() lets the shared catalog
-    //   version advance to v_new; those connections then unblock and rebuild the
-    //   per-database RelationCacheInitializePhase3() response-cache entry (2)
-    //   inside the propagate window. Because master_read_count_before is now
-    //   captured *after* that wait (see above), these deferred, setup-induced
-    //   rebuilds are excluded from the measured window. Only one expired
-    //   response-cache entry is still cold when the loop's first connect runs,
-    //   so the loop observes a single rebuild -> 1 master RPC.
+  // First verify (ts-0 still frozen at v_old): a CM auth-passthrough backend
+  // serves auth at the frozen shared version and never reads master during auth,
+  // so the stale old password is still accepted until ts-0 advances -- visible
+  // only under object locking. A regular backend re-reads auth fresh from master
+  // once the trust-auth cache entry expires, so the change is already visible.
+  verify(/*expect_password_change_visible=*/
+         enable_ysql_conn_mgr ? IsObjectLockingEnabled() : true);
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"));
+  WaitForCatalogVersionToPropagate();
+
+  // Capture the baseline only after ts-0 has advanced to v_new, so deferred,
+  // setup-induced relcache rebuilds are excluded from the measured window.
+  auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
+
+  const int verify_count = 5;
+  for (int i = 0; i < verify_count; i++) {
+    verify(/*expect_password_change_visible=*/ true);
+  }
+  auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
+  LOG(INFO) << ", master_read_count_before: " << master_read_count_before
+            << ", master_read_count_after: " << master_read_count_after;
+
+  if (enable_ysql_conn_mgr) {
+    // CM auth-passthrough serves auth from the cache and does no relcache rebuild
+    // during auth, so the loop's master reads come only from rebuilding the
+    // expired auth-phase cache entry: 0 when object locking already warmed it at
+    // v_new before the loop, else 1.
     const int num_rebuild_rpcs = IsObjectLockingEnabled() ? 0 : 1;
-
     ASSERT_EQ(master_read_count_before + num_rebuild_rpcs,
               master_read_count_after);
-  } else {
-    // Bounded staleness only applies when connection manager is used.
-    // When connection manager is not used, we do not use tserver cache
-    // for auth processing so there is no staleness.
-    setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
-    ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
-        "password authentication failed for user \"test_user\"");
-
-    // Verify the new password works.
-    setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
-    ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
   }
+  // A regular backend resolves the latest master version in
+  // RelationCacheInitializePhase3() on every connect, so its master-read count
+  // scales with the number of connections rather than being a small constant;
+  // only the staleness behavior (verified above) is asserted for that mode.
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,

@@ -1149,9 +1149,13 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
 		{
 			/*
-			 * If YB connection manager is enabled, for scalability reason we use
-			 * shared catalog version instead of YbGetMasterCatalogVersion() to
-			 * avoid one master RPC.
+			 * Serve the connection-auth prefetch from the tserver response
+			 * cache. For scalability we key the cache on the shared memory
+			 * catalog version (an approximation of the latest master catalog
+			 * version) instead of calling YbGetMasterCatalogVersion(), avoiding
+			 * one master RPC per connection. Treats connection manager auth
+			 * backends and regular backends uniformly when
+			 * ysql_enable_read_request_cache_for_connection_auth is set.
 			 */
 			YbcPgLastKnownCatalogVersionInfo catalog_version =
 				(YbcPgLastKnownCatalogVersionInfo)
