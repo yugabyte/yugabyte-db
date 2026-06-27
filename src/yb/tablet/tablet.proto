@@ -82,6 +82,8 @@ message TabletStatusPB {
   // Stable PG relation OID. Resolved on the master via TableInfo::GetPgTableOid(), which
   // uses the stored pg_table_id for rewritten tables. Unset for non-YSQL (YCQL/system) tables.
   optional uint32 pg_table_oid = 27;
+  // Size on disk in bytes occupied by all vector indexes of this tablet.
+  optional int64 vector_index_disk_size = 28;
 }
 
 // Used to present the maintenance manager's internal state.

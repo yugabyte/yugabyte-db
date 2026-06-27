@@ -114,6 +114,7 @@ namespace yb::pgwrapper {
 
 YB_STRONGLY_TYPED_BOOL(AddFilter);
 YB_STRONGLY_TYPED_BOOL(Backfill);
+YB_STRONGLY_TYPED_BOOL(WaitForIntents);
 
 using FloatVector = std::vector<float>;
 const std::string kVectorIndexName = "vi";
@@ -382,7 +383,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     return !ret ? Status::OK() : STATUS(RuntimeError, Format("sst_dump failed with $0", ret));
   }
 
-  Status WaitNoBackgroundInserts();
+  Status WaitNoBackgroundInserts(WaitForIntents wait_for_intents, MonoDelta timeout);
 
   std::vector<FloatVector> vectors_;
   std::uniform_real_distribution<> distribution_;
@@ -394,7 +395,13 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   size_t num_pre_split_tablets_ = 0;
 };
 
-Status PgVectorIndexTestBase::WaitNoBackgroundInserts() {
+Status PgVectorIndexTestBase::WaitNoBackgroundInserts(
+    WaitForIntents wait_for_intents, MonoDelta timeout) {
+  // A vector index insert is issued while applying a write, so once all intents are applied the
+  // corresponding background inserts are already registered and visible to the check below.
+  if (wait_for_intents) {
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get(), timeout));
+  }
   auto cond = [this]() -> Result<bool> {
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : peers) {
@@ -1480,7 +1487,7 @@ TEST_P(PgVectorIndexTest, EfSearch) {
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
-  ASSERT_OK(WaitNoBackgroundInserts());
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   for (int i = 0; i != kIterations; ++i) {
     for (int ef : {kSmallEf, kBigEf}) {
@@ -1845,7 +1852,7 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
     ASSERT_TRUE(env->DirExists(meta->intents_rocksdb_dir()));
     ASSERT_TRUE(env->DirExists(meta->snapshots_dir()));
     auto indexes = tablet->vector_indexes().List();
-    ASSERT_ONLY_NOTNULL(indexes.get());
+    ASSERT_TRUE(indexes);
     ASSERT_FALSE(indexes->empty());
     for (const auto& vi : *indexes) {
       const auto vi_dir = meta->vector_index_dir(vi->options());
@@ -2014,6 +2021,35 @@ class PgVectorIndexSingleServerTest
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSingleServerTest);
+
+TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
+  constexpr size_t kNumRows = RegularBuildVsSanitizers(2000, 64);
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  // Vectors are added to the index asynchronously with respect to the SQL writes, and only flushed
+  // chunks contribute to the on-disk size. Wait until every vector has been applied and indexed,
+  // then flush so the index chunks are persisted and counted.
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets(
+      tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes));
+
+  size_t peers_with_vector_index = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet || !tablet->vector_indexes().List()) {
+      continue;
+    }
+    ++peers_with_vector_index;
+
+    // The vector index size is reported via the on-disk size info (which feeds the UI) and must be
+    // included in the active on-disk size.
+    auto info = peer->GetOnDiskSizeInfo();
+    ASSERT_GT(info.vector_index_disk_size, 0);
+    ASSERT_GE(info.active_on_disk_size, info.vector_index_disk_size);
+  }
+  ASSERT_GT(peers_with_vector_index, 0);
+}
 
 // Expected Key -> Value format:
 // 1) MetaKey(VectorId(uuid), [HT{ ... }]) -> DocKey(...)
@@ -2495,7 +2531,7 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
   // Flushes the single tablet and returns the vector index reverse mapping entries currently
   // persisted in the Regular DB.
   Result<std::string> DumpSingleTabletReverseMapping() {
-    RETURN_NOT_OK(WaitNoBackgroundInserts());
+    RETURN_NOT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
     RETURN_NOT_OK(cluster_->FlushTablets());
 
     auto table_peers = VERIFY_RESULT(
@@ -2557,14 +2593,14 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
   auto conn = ASSERT_RESULT(MakeTable());
   ASSERT_OK(InsertRows(conn, /* start_row = */ 1, kNumRows));
   ASSERT_OK(CreateIndex(conn));
-  ASSERT_OK(WaitNoBackgroundInserts());
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   // Tombstone reverse mappings for the first batch.
   ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id <= $0", kNumRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
   ASSERT_OK(InsertRows(conn, kNumRows + 1, 2 * kNumRows));
-  ASSERT_OK(WaitNoBackgroundInserts());
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   const auto kQuery = Format(
       "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kQueryLimit);
@@ -2595,11 +2631,11 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
   ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
   ASSERT_OK(CreateIndex(conn));
   ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
-  ASSERT_OK(WaitNoBackgroundInserts());
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   // Insert the second half of the rows with the reverse mapping entries.
   ASSERT_OK(InsertRows(conn, kNumRows + 1, 2 * kNumRows));
-  ASSERT_OK(WaitNoBackgroundInserts());
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   const std::string kQuery = Format(
       "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), kQueryLimit);
