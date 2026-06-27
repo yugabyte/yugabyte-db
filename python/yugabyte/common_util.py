@@ -75,6 +75,17 @@ def get_thirdparty_dir() -> str:
     return _YB_THIRDPARTY_DIR
 
 
+def build_machine_dirs_to_strip(thirdparty_dir: str, build_root: str) -> List[str]:
+    """The directory prefixes whose -I switches must be stripped from the compiler flags an
+    installed package exports (see sanitize_pg_compiler_config).  This is the single definition of
+    that set, shared by every place that sanitizes those flags (today, the pg_config bake in
+    build_postgres.py and the Makefile.global rewrite in library_packager.py), so they cannot drift.
+    Each caller must supply thirdparty_dir and build_root because it obtains them from its own
+    context (cmake cache or environment, build args or packaging context).
+    """
+    return [thirdparty_dir, YB_SRC_ROOT, build_root]
+
+
 def set_thirdparty_dir(thirdparty_dir: str) -> None:
     global _YB_THIRDPARTY_DIR
     _YB_THIRDPARTY_DIR = thirdparty_dir
