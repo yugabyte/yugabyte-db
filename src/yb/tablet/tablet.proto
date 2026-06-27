@@ -76,6 +76,12 @@ message TabletStatusPB {
   // Leader is the last replica in the list.
   repeated string replicas = 24;
   optional bool is_hash_partitioned = 25;
+  // Master-side tablet lifecycle state (e.g. "RUNNING", "DELETED").
+  // Set by CatalogManager::PopulateTabletMetadata using SysTabletsEntryPB::State_Name().
+  optional string tablet_state = 26;
+  // Stable PG relation OID. Resolved on the master via TableInfo::GetPgTableOid(), which
+  // uses the stored pg_table_id for rewritten tables. Unset for non-YSQL (YCQL/system) tables.
+  optional uint32 pg_table_oid = 27;
 }
 
 // Used to present the maintenance manager's internal state.

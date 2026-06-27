@@ -20,6 +20,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
@@ -113,6 +116,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tracing_level);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_yb_ash_sample_size);
@@ -3299,15 +3303,114 @@ TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
 
 TEST_F(PgMiniTest, TabletMetadataOidMatchesPgClass) {
   auto pg_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(pg_conn.Execute(
-      "CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT)"));
-  auto pg_class_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+  // Create the table without a primary key, then ADD PRIMARY KEY to force a
+  // table rewrite. The rewrite preserves the table's PG OID but assigns it a new
+  // relfilenode (a new DocDB table whose UUID encodes that relfilenode), so
+  // oid != relfilenode afterwards.
+  ASSERT_OK(pg_conn.Execute("CREATE TABLE test_table (id INT, name TEXT)"));
+  ASSERT_OK(pg_conn.Execute("ALTER TABLE test_table ADD PRIMARY KEY (id)"));
+
+  const auto pg_class_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
       "SELECT oid FROM pg_class WHERE relname = 'test_table'"));
-  auto tablet_metadata_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
-      "SELECT oid FROM yb_tablet_metadata WHERE relname = 'test_table' LIMIT 1;"));
-  ASSERT_EQ(pg_class_oid, tablet_metadata_oid)
-      << "OID mismatch: pg_class returned " << pg_class_oid
-      << " but yb_tablet_metadata returned " << tablet_metadata_oid;
+  const auto pg_class_relfilenode = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+      "SELECT relfilenode FROM pg_class WHERE relname = 'test_table'"));
+
+  // Guard the test's premise: the rewrite must actually have moved the storage,
+  // otherwise relfilenode == oid and this test would not distinguish them.
+  ASSERT_NE(pg_class_oid, pg_class_relfilenode)
+      << "ALTER TABLE ADD PRIMARY KEY did not rewrite test_table; oid and "
+      << "relfilenode are both " << pg_class_oid;
+
+  // Look the table up in the view by (db_name, relname) and confirm it reports
+  // pg_class's stable oid -- which survives the rewrite -- and not the now
+  // diverged relfilenode.
+  ASSERT_OK(WaitFor([&pg_conn, pg_class_oid]() -> Result<bool> {
+    return pg_conn.FetchRow<bool>(Format(
+        "SELECT EXISTS (SELECT 1 FROM yb_tablet_metadata "
+        "WHERE db_name = current_database() AND relname = 'test_table' "
+        "AND oid = $0)", pg_class_oid));
+  }, 30s, "yb_tablet_metadata exposes test_table's stable oid"));
+}
+
+TEST_F(PgMiniTest, TabletMetadataStateColumn) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+
+  // ======== RUNNING ========
+  // Create a table and verify all its tablets report RUNNING.
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE state_test (id INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  auto running_count = ASSERT_RESULT(pg_conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM yb_get_tablet_metadata() "
+      "WHERE object_name = 'state_test' AND tablet_state = 'RUNNING'"));
+  ASSERT_EQ(running_count, 1);
+  LOG(INFO) << "RUNNING state verified";
+
+  // ======== DELETED via DROP TABLE ========
+  // Create a second table, record its tablet ID, then drop it.
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE delete_test (id INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  auto delete_table_id = ASSERT_RESULT(GetTableIDFromTableName("delete_test"));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), delete_table_id);
+  ASSERT_EQ(peers.size(), 1);
+  auto deleted_tablet_id = peers[0]->tablet_id();
+
+  ASSERT_OK(pg_conn.Execute("DROP TABLE delete_test"));
+
+  // DROP returns once the tablets are deleted, but the master keeps the tablet in
+  // tablet_map_ in DELETED state until the background CleanUpDeletedTables task erases
+  // it on its next cycle. Poll within that window to observe the DELETED state.
+  ASSERT_OK(LoggedWaitFor(
+      [&pg_conn, &deleted_tablet_id]() -> Result<bool> {
+        auto count = VERIFY_RESULT(pg_conn.FetchRow<int64_t>(Format(
+            "SELECT count(*) FROM yb_get_tablet_metadata() "
+            "WHERE tablet_id = '$0' AND tablet_state = 'DELETED'", deleted_tablet_id)));
+        return count > 0;
+      },
+      30s * kTimeMultiplier, "Wait for DELETED tablet state after DROP TABLE"));
+  LOG(INFO) << "DELETED state verified for tablet " << deleted_tablet_id;
+
+  // ======== REPLACED via creation timeout ========
+  // Set a very low creation timeout, shut down 2 of 3 tservers so new tablets can't
+  // get a quorum, and create a CQL table (non-blocking). The master will mark the
+  // timed-out tablets as REPLACED.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_creation_timeout_ms) = 1000;
+
+  cluster_->mini_tablet_server(1)->Shutdown();
+  cluster_->mini_tablet_server(2)->Shutdown();
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists("test_ks", YQLDatabase::YQL_DATABASE_CQL));
+
+  client::YBSchemaBuilder builder;
+  builder.AddColumn("id")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  client::YBSchema schema;
+  ASSERT_OK(builder.Build(&schema));
+
+  auto table_name = client::YBTableName(YQL_DATABASE_CQL, "test_ks", "replaced_test");
+  ASSERT_OK(client_->NewTableCreator()
+      ->table_name(table_name)
+      .schema(&schema)
+      .num_tablets(1)
+      .wait(false)
+      .Create());
+
+  // Wait for creation timeout to trigger REPLACED.
+  ASSERT_OK(LoggedWaitFor(
+      [&pg_conn]() -> Result<bool> {
+        auto count = VERIFY_RESULT(pg_conn.FetchRow<int64_t>(
+            "SELECT count(*) FROM yb_get_tablet_metadata() "
+            "WHERE object_name = 'replaced_test' AND tablet_state = 'REPLACED'"));
+        return count > 0;
+      },
+      30s * kTimeMultiplier, "Wait for REPLACED tablet state"));
+  LOG(INFO) << "REPLACED state verified";
+
+  // Restart stopped tservers and shut down cluster to prevent consistency check
+  // from failing on the partially-created CQL table.
+  ASSERT_OK(cluster_->mini_tablet_server(1)->RestartStoppedServer());
+  ASSERT_OK(cluster_->mini_tablet_server(2)->RestartStoppedServer());
+  cluster_->Shutdown();
 }
 
 // Despite the call to the stored procedure failing and the client issuing a commit, assert that

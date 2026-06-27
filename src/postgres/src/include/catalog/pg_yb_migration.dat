@@ -12,6 +12,6 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V90.9__30133__ysql_conn_mgr_coarse_grained_logical_client_version.sql
-{ major => '90', minor => '9', name => '<baseline>', time_applied => '_null_' }
+# here: V90.10__30642__update_yb_tablet_metadata.sql
+{ major => '90', minor => '10', name => '<baseline>', time_applied => '_null_' }
 ]
