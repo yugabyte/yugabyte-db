@@ -43,6 +43,9 @@ class VectorIndexList {
   Status WaitForCompaction();
   Status WaitForFlush();
 
+  // Returns the total size in bytes occupied on disk by all vector indexes in this list.
+  uint64_t OnDiskSize() const;
+
   std::string ToString() const;
 
   explicit operator bool() const {
@@ -51,6 +54,16 @@ class VectorIndexList {
 
   const docdb::DocVectorIndexes& operator*() const {
     return *list_;
+  }
+
+  const docdb::DocVectorIndexes* operator->() const {
+    return list_.get();
+  }
+
+  // Returns the underlying collection of vector indexes, for passing into APIs that operate on it
+  // directly (e.g. the docdb write/apply path).
+  const docdb::DocVectorIndexesPtr& impl() const {
+    return list_;
   }
 
  private:
@@ -80,13 +93,13 @@ class TabletVectorIndexes :
   // Removes specified index, also destroying its data on disk.
   Status Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
 
-  // Returns a collection of vector indexes for the given vector index table ids. Returns nullptr
-  // if at least one vector indexes is not found by the give table id. The order of vector indexes
-  // in the returned collection is not guaranteed to be preserved.
-  docdb::DocVectorIndexesPtr Collect(
+  // Returns a collection of vector indexes for the given vector index table ids. Returns an empty
+  // list if at least one vector indexes is not found by the give table id. The order of vector
+  // indexes in the returned collection is not guaranteed to be preserved.
+  VectorIndexList Collect(
       const std::vector<TableId>& table_ids) EXCLUDES(vector_indexes_mutex_);
 
-  docdb::DocVectorIndexesPtr List() const EXCLUDES(vector_indexes_mutex_);
+  VectorIndexList List() const EXCLUDES(vector_indexes_mutex_);
 
   void LaunchBackfillsIfNecessary();
   void StartShutdown();
