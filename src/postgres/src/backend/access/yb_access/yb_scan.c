@@ -1689,7 +1689,6 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	int			strategy = header_key->sk_strategy;
 	int			subkey_count = length_of_key - 1;
 	int			first_key_subkey = 0;
-	int			direction_mismatch_subkey = -1;
 
 	if (is_hash_index)
 	{
@@ -1710,7 +1709,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 	bool		is_direction_asc =
 		is_hash_index ||
-		!(index->rd_indoption[subkeys[first_key_subkey]->sk_attno - 1] &
+		!(index->rd_indoption[subkeys[0]->sk_attno - 1] &
 		  INDOPTION_DESC);
 
 	int			max_pushdown_subkey_count =
@@ -1739,32 +1738,25 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		if (YbIsHashCodeSearch(key))
 			break;
 
-		if (direction_mismatch_subkey < 0)
-		{
-			bool		asc =
-				(index->rd_indoption[key->sk_attno - 1] & INDOPTION_DESC) == 0;
+		bool		asc =
+			(index->rd_indoption[key->sk_attno - 1] & INDOPTION_DESC) == 0;
 
-			if (asc != is_direction_asc)
-				direction_mismatch_subkey = pushdown_subkey_count;
-		}
+		if (strategy != BTEqualStrategyNumber && asc != is_direction_asc)
+			break;
 	}
 
 	bool		needs_recheck = true;
-	bool		is_point_scan = ((pushdown_subkey_count ==
-								  index->rd_index->indnkeyatts +
-								  first_key_subkey) &&
-								 (strategy == BTEqualStrategyNumber));
-
-	if (!is_point_scan && direction_mismatch_subkey >= 0)
-		pushdown_subkey_count = direction_mismatch_subkey;
 
 	if (pushdown_subkey_count <= first_key_subkey)
+		return needs_recheck;
+
+	if (is_for_precheck)
 		return needs_recheck;
 
 	YbcPgExpr  *col_values = palloc(sizeof(YbcPgExpr) *
 									pushdown_subkey_count);
 
-	if (is_hash_index && !is_for_precheck)
+	if (is_hash_index)
 	{
 		ScanKey		hash_key = subkeys[0];
 
@@ -1806,28 +1798,23 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		 ++subkey_index)
 	{
 		ScanKey		current = subkeys[subkey_index];
-		int			j = current->sk_attno - 1;
 
-		if (!is_for_precheck)
-		{
-			AttrNumber	attnum =
-				scan_plan->bind_key_attnums[skey_index + 1 + subkey_index];
+		AttrNumber	attnum =
+			scan_plan->bind_key_attnums[skey_index + 1 + subkey_index];
 
-			col_values[j + first_key_subkey] =
-				YBCNewConstant(ybScan->handle,
-							   ybc_get_atttypid(scan_plan->bind_desc,
-												attnum),
-							   current->sk_collation,
-							   current->sk_argument,
-							   false);
-		}
+		col_values[subkey_index] =
+			YBCNewConstant(ybScan->handle,
+						   ybc_get_atttypid(scan_plan->bind_desc,
+											attnum),
+						   current->sk_collation,
+						   current->sk_argument,
+						   false);
 
 		/*
 		 * PgGate rejects IS NOT NULL binds on partition columns, and
 		 * the full row comparison remains rechecked by Postgres.
 		 */
-		if (!is_hash_index &&
-			subkey_index == first_key_subkey)
+		if (subkey_index == 0)
 		{
 			AttrNumber	attno = current->sk_attno;
 			int			att_idx = YBAttnumToBmsIndex(ybScan->table,
@@ -1837,9 +1824,6 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 				fold[att_idx].type = YB_FOLD_IS_NOT_NULL;
 		}
 	}
-
-	if (is_for_precheck)
-		return needs_recheck;
 
 	if (is_upper_bound || strategy == BTEqualStrategyNumber)
 	{
