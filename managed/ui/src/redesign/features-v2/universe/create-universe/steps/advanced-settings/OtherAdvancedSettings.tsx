@@ -115,8 +115,8 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
             <DeploymentPortsField
               disabled={false}
               providerCode={generalSettings?.providerConfiguration?.code as string}
-              ysql={databaseSettings?.ysql}
-              ycql={databaseSettings?.ycql}
+              ysql={Boolean(databaseSettings?.ysql?.enable)}
+              ycql={Boolean(databaseSettings?.ycql?.enable)}
               enableConnectionPooling={databaseSettings?.enableConnectionPooling}
             />
           </YBAccordion>

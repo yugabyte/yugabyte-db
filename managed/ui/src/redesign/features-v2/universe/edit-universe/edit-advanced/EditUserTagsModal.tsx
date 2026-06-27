@@ -42,7 +42,7 @@ export const EditUserTagsModal = ({ open, onClose }: EditUserTagModalProps) => {
   const userTags = transformInstanceTags(primaryCluster?.instance_tags || {});
   const defaultValues = {
     instanceTags:
-      userTags.length >= 0
+      userTags.length > 0
         ? userTags
         : [
             { name: '', value: '' },

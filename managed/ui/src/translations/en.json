@@ -65,7 +65,9 @@
         "seconds": "s",
         "megabyte": "MB",
         "megabytesPerSecond": "MBps"
-      }
+      },
+      "assigned": "Assigned",
+      "notAssigned": "Not Assigned"
     },
     "iconAltText": {
       "infoIcon": "Information icon",
@@ -4356,7 +4358,10 @@
         "encryptionAtRest": "Encryption At Rest",
         "nodeToNode": "Node to Node Encryption",
         "clientToNode": "Client to Node Encryption",
-        "encryption": "Encryption"
+        "encryption": "Encryption",
+        "networkAccess": "Network Access",
+        "publicIP": "PUBLIC IP",
+        "ipv6": "IPV6"
       },
       "database": {
         "ysql": "YSQL",
