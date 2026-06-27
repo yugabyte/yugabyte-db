@@ -51,6 +51,7 @@ static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
 static void yb_check_invalid_indexes();
 static void yb_check_installed_extensions();
 static void yb_check_yb_role_prefix();
+static void yb_check_removed_renamed_functions_acl();
 static void yb_check_stale_acl_grantors();
 
 #define YB_SUPERUSER  "yb_superuser"
@@ -235,6 +236,7 @@ check_and_dump_old_cluster(bool live_check)
 	yb_check_invalid_indexes();
 	yb_check_installed_extensions();
 	yb_check_yb_role_prefix();
+	yb_check_removed_renamed_functions_acl();
 	yb_check_stale_acl_grantors();
 
 	if (yb_has_check_fatal)
@@ -2166,4 +2168,174 @@ yb_check_stale_acl_grantors()
 	{
 		check_ok();
 	}
+}
+
+/*
+ * yb_check_removed_renamed_functions_acl()
+ *
+ * Check for modified ACLs on pg_catalog functions removed or renamed in PG15.
+ * Does not detect same-name functions whose signature changed in PG15.
+ */
+static void
+yb_check_removed_renamed_functions_acl()
+{
+	int			dbnum;
+	bool		found = false;
+	char		output_path[MAXPGPATH];
+	FILE	   *script = NULL;
+
+	/*
+	 * pg_catalog functions removed or renamed in PG15.
+	 *
+	 * Does not cover same-name functions whose signature changed in PG15
+	 * (e.g. pg_terminate_backend, array_append, lag/lead, get_bit/set_bit).
+	 * Those have surviving overloads and cannot be matched by proname alone.
+	 *
+	 * Also does not cover functions whose argument type was removed (e.g.
+	 * date(abstime), timestamp(abstime)) where the proname still exists in
+	 * PG15 with different overloads.
+	 */
+	static const char functions_removed_or_renamed_in_pg15[] =
+		/* PG12: abstime/reltime/tinterval type family — cast/arithmetic */
+		"'{timenow,abstime,reltime,tinterval,"
+		"mktinterval,tintervalstart,tintervalend,tintervalrel,"
+		"intinterval,timepl,timemi,"
+		/* PG12: abstime comparison/operator functions */
+		"abstimeeq,abstimege,abstimegt,abstimele,abstimelt,abstimene,"
+		"btabstimecmp,"
+		/* PG12: abstime I/O procs */
+		"abstimein,abstimeout,abstimerecv,abstimesend,"
+		/* PG12: reltime comparison/operator functions */
+		"reltimeeq,reltimege,reltimegt,reltimele,reltimelt,reltimene,"
+		"btreltimecmp,"
+		/* PG12: reltime I/O procs */
+		"reltimein,reltimeout,reltimerecv,reltimesend,"
+		/* PG12: tinterval comparison/operator/length functions */
+		"tintervalct,tintervaleq,tintervalge,tintervalgt,"
+		"tintervalle,tintervallt,tintervalne,tintervalov,"
+		"tintervalleneq,tintervallenge,tintervallengt,"
+		"tintervallenle,tintervallenlt,tintervallenne,"
+		"bttintervalcmp,"
+		/* PG12: tinterval I/O procs */
+		"tintervalin,tintervalout,tintervalrecv,tintervalsend,"
+		/* PG14: transform procs removed with pg_transform */
+		"interval_transform,numeric_transform,time_transform,"
+		"timestamp_transform,timestamp_izone_transform,"
+		"timestamp_zone_transform,varbit_transform,varchar_transform,"
+		/* PG14: factorial operator backing function */
+		"numeric_fac,"
+		/* PG15: backup control functions renamed or removed */
+		"pg_start_backup,pg_stop_backup,"
+		"pg_backup_start_time,pg_is_in_backup,"
+		/* smgr internal type operator functions removed */
+		"smgrin,smgreq,smgrne,smgrout,"
+		/* opaque internal type functions removed */
+		"opaque_in,opaque_out,shell_out,"
+		/* geometric functions removed */
+		"close_lb,close_sl,dist_lb,path_center,point,"
+		/* other removed catalog functions */
+		"currtid,pg_create_logical_replication_slot,"
+		"pg_stat_statements_reset,"
+		/* old _old aliases removed */
+		"pg_read_file_old,pg_rotate_logfile_old}'";
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "pg_catalog_removed_renamed_function_acls.txt");
+
+	prep_status("Checking for modified ACLs on pg_catalog functions "
+				"removed or renamed in PG15");
+
+	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult   *res;
+		int			ntups;
+		int			rowno;
+		int			i_proname;
+		int			i_args;
+		int			i_acl;
+		DbInfo	   *active_db = &old_cluster.dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(&old_cluster, active_db->db_name);
+
+		res = executeQueryOrDie(conn,
+								"SELECT p.proname, "
+								"       pg_get_function_identity_arguments(p.oid) AS args, "
+								"       array_to_string(p.proacl, ', ') AS acl "
+								"FROM pg_proc p "
+								"JOIN pg_namespace n ON n.oid = p.pronamespace "
+								"WHERE n.nspname = 'pg_catalog' "
+								"  AND p.proname = ANY(%s::text[]) "
+								"  AND p.proacl IS DISTINCT FROM ("
+								"      SELECT initprivs FROM pg_init_privs pip "
+								"      WHERE pip.objoid = p.oid "
+								"        AND pip.classoid = 'pg_proc'::regclass "
+								"        AND pip.objsubid = 0) "
+								"ORDER BY p.proname",
+								functions_removed_or_renamed_in_pg15);
+
+		ntups = PQntuples(res);
+		if (ntups > 0)
+		{
+			found = true;
+			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+				pg_fatal("could not open file \"%s\": %s\n", output_path,
+						 strerror(errno));
+
+			i_proname = PQfnumber(res, "proname");
+			i_args = PQfnumber(res, "args");
+			i_acl = PQfnumber(res, "acl");
+
+			yb_fprintf_and_log(script, "In database: %s\n", active_db->db_name);
+
+			for (rowno = 0; rowno < ntups; rowno++)
+				yb_fprintf_and_log(script,
+								   "    Function: pg_catalog.%s(%s)  ACL: %s\n",
+								   PQgetvalue(res, rowno, i_proname),
+								   PQgetvalue(res, rowno, i_args),
+								   PQgetvalue(res, rowno, i_acl));
+
+			yb_fprintf_and_log(script, "    \\c %s\n", active_db->db_name);
+			yb_fprintf_and_log(script,
+							   "    SET yb_non_ddl_txn_for_sys_tables_allowed TO on;\n");
+			yb_fprintf_and_log(script,
+							   "    UPDATE pg_proc SET proacl = (\n"
+							   "        SELECT initprivs FROM pg_init_privs pip\n"
+							   "        WHERE pip.objoid = pg_proc.oid\n"
+							   "          AND pip.classoid = 'pg_proc'::regclass\n"
+							   "          AND pip.objsubid = 0)\n"
+							   "    WHERE pronamespace = 'pg_catalog'::regnamespace\n"
+							   "      AND proname = ANY(%s)\n"
+							   "      AND proacl IS DISTINCT FROM (\n"
+							   "          SELECT initprivs FROM pg_init_privs pip\n"
+							   "          WHERE pip.objoid = pg_proc.oid\n"
+							   "            AND pip.classoid = 'pg_proc'::regclass\n"
+							   "            AND pip.objsubid = 0);\n",
+							   functions_removed_or_renamed_in_pg15);
+			yb_fprintf_and_log(script,
+							   "    RESET yb_non_ddl_txn_for_sys_tables_allowed;\n");
+			yb_fprintf_and_log(script, "\n");
+		}
+
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	if (script)
+		fclose(script);
+
+	if (found)
+	{
+		yb_fatal("Your installation contains modified ACL entries on pg_catalog\n"
+				 "functions that are removed or renamed in PostgreSQL 15. This can\n"
+				 "happen when privileges on those functions are changed (for example,\n"
+				 "REVOKE ALL ON ALL FUNCTIONS IN SCHEMA pg_catalog FROM <role>).\n"
+				 "These ACL entries cause major version upgrade to fail.\n"
+				 "To fix, connect to each database listed below and run the commands\n"
+				 "printed for each affected database.\n"
+				 "A list of affected functions and fix commands is printed above and in\n"
+				 "the file:\n"
+				 "    %s\n\n", output_path);
+	}
+	else
+		check_ok();
 }
