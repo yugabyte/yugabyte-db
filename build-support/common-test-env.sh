@@ -1660,6 +1660,7 @@ run_java_test() {
   fi
   set_mvn_parameters
 
+  ensure_test_tmp_dir_is_set
   set_sanitizer_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
 
