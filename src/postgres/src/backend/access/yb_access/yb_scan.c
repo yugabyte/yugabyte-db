@@ -256,16 +256,15 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 {
 	Assert(nvalues > 0);
 	YBCPgExpr ybc_rhs_exprs[nvalues];
-
 	YBCPgExpr ybc_elems_exprs[n_attnum_values];	/* VLA - scratch space */
-	Datum datum_values[n_attnum_values];
-	bool is_null[n_attnum_values];
-
 	Oid tupType =
 		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
 	Oid tupTypmod =
 		HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(values[0]));
 	YBCPgTypeAttrs type_attrs = { tupTypmod };
+	TupleDesc tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+	Datum datum_values[tupdesc->natts];
+	bool is_null[tupdesc->natts];
 
 	/* Form the lhs tuple. */
 	for (int i = 0; i < n_attnum_values; i++)
@@ -281,8 +280,6 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 	YBCPgExpr lhs =
 		YBCNewTupleExpr(ybScan->handle, &type_attrs, n_attnum_values,
 						ybc_elems_exprs);
-
-	TupleDesc tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
 
 	HeapTupleData tuple;
 	ItemPointerSetInvalid(&(tuple.t_self));
@@ -1337,9 +1334,8 @@ static bool YbIsTupleInRange(Datum value, TupleDesc bind_desc,
 	Oid tupTypmod =
 		HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(value));
 	TupleDesc val_tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-
-	Datum datum_values[key_length];
-	bool datum_nulls[key_length];
+	Datum datum_values[val_tupdesc->natts];
+	bool datum_nulls[val_tupdesc->natts];
 
 	HeapTupleData tuple;
 	ItemPointerSetInvalid(&(tuple.t_self));
