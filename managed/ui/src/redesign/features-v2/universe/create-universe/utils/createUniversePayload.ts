@@ -182,7 +182,6 @@ export const mapCreateUniversePayload = (
         kms_config_uuid: securitySettings.kmsConfig
       },
       encryption_in_transit_spec: getCreateEITPayload(securitySettings, providerType!),
-      use_time_sync: otherAdvancedSettings.useTimeSync,
       ycql: {
         ...omit(databaseSettings.ycql, 'confirm_pwd')
       },

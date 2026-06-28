@@ -16,7 +16,6 @@ import { StyledInputWrapper } from '../../components/DefaultComponents';
 import {
   DeploymentPortsField,
   UserTagsField,
-  TimeSyncField,
   InstanceARNField,
   AccessKeyField
 } from '../../fields';
@@ -52,8 +51,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
             name: '',
             value: ''
           }
-        ],
-        useTimeSync: true
+        ]
       }),
       ...otherAdvancedSettings
     },
@@ -122,11 +120,6 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           </YBAccordion>
         ) : (
           <></>
-        )}
-        {provider && [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
-          <YBAccordion titleContent={t('timeSynchronization')} sx={{ width: '100%' }}>
-            <TimeSyncField disabled={false} provider={provider} />
-          </YBAccordion>
         )}
       </Box>
       {/* <StyledPanel>
