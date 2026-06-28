@@ -103,6 +103,14 @@ CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
 CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 DROP TABLE items;
 
+-- Partial vector indexes are not supported (#31441).  The predicate is not
+-- pushed into the vector AM, so allowing them would silently produce wrong
+-- query results.  The CREATE INDEX should be rejected for both vector AMs.
+CREATE TABLE items (id serial PRIMARY KEY, embedding vector(3));
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops) WHERE id > 10;
+CREATE INDEX ON items USING ybdummyann (embedding) WHERE id > 10;
+DROP TABLE items;
+
 CREATE TABLE items(id serial PRIMARY KEY, embedding vector(3));
 CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
 SELECT indexdef FROM pg_indexes WHERE indexname = 'items_idx';
