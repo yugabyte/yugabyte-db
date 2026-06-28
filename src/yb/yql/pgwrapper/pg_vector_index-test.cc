@@ -69,8 +69,10 @@ DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
@@ -106,6 +108,7 @@ extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 
 namespace yb::vector_index {
 
+extern MonoDelta TEST_sleep_after_saving_chunk;
 extern MonoDelta TEST_sleep_during_flush;
 
 } // namespace yb::vector_index
@@ -1859,7 +1862,17 @@ class PgVectorIndexSingleServerTest
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSingleServerTest);
 
 TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
+  // Make the heartbeat compute (and read OnDiskSize) on every heartbeat, and
+  // heartbeat often.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
+
   constexpr size_t kNumRows = RegularBuildVsSanitizers(2000, 64);
+
+  // Hold the writer right after it stores chunk->file, before it takes
+  // VectorLSM::mutex_, so a heartbeat OnDiskSize read overlaps the
+  // unsynchronized store and ThreadSanitizer reliably observes the race.
+  ANNOTATE_UNPROTECTED_WRITE(vector_index::TEST_sleep_after_saving_chunk) = 200ms * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
 
