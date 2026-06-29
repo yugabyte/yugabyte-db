@@ -55,7 +55,7 @@ Flink CDC with YugabyteDB is {{<tags/feature/tp idea="2658">}}. At a high level,
 1. Submit the Flink job: Define source and sink tables in the Flink SQL Client and run a streaming `INSERT INTO … SELECT …` job (see [Initiate the streaming job](./get-started/#initiate-the-streaming-job)).
 1. Validate that INSERT, UPDATE, and DELETE operations propagate end-to-end, and monitor the job at the Flink Web UI (for example, `http://localhost:8081`).
 
-To disable the feature, you have to cancel the Flink job. Optionally, drop the publication and replication slot when you no longer need change capture on the database. See [Disable the pipeline](using-flink-cdc/get-started/#disable-the-pipeline).
+To disable the feature, you have to cancel the Flink job. Optionally, drop the publication and replication slot when you no longer need change capture on the database. See [Disable the pipeline](./get-started/#disable-the-pipeline).
 
 ## Get started
 

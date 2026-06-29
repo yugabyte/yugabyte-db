@@ -32,7 +32,7 @@ Each HA cluster includes a single active YBA instance and at least one standby Y
 
 When you [promote a standby instance](../high-availability-promote/) to active, YBA restores your selected backup, and then attempts to demote the previous active instance to standby mode. If the previous active instance is unavailable, it has to be manually decommissioned.
 
-If you use the [YugabyteDB Kubernetes Operator](../anywhere-automation/yb-kubernetes-operator/) and deploy YBA across separate Kubernetes clusters, {{<tags/feature/ea idea="2460">}}[Operator HA](../operator-high-availability/) synchronizes operator custom resources and secrets to the standby cluster during promotion.
+If you use the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) and deploy YBA across separate Kubernetes clusters, {{<tags/feature/ea idea="2460">}}[Operator HA](../operator-high-availability/) synchronizes operator custom resources and secrets to the standby cluster during promotion.
 
 ## Prerequisites
 

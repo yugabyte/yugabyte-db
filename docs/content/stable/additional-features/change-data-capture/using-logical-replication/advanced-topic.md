@@ -175,12 +175,14 @@ By default (v2026.1 and later), you can perform DDL on _non-colocated_ tables in
 
 For more details, see [Table rewrite and DROP TABLE handling](../../../../architecture/docdb-replication/cdc-logical-replication/#table-rewrite-and-drop-table-handling).
 
-This feature is controlled by the following flags. Set them on both YB-Master and YB-TServer.
+This feature is controlled by the following flag. Set the flag on both YB-Master and YB-TServer.
 
 | Flag | Details |
 | :--- | :--- |
-| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | When set to `true` (the default), CDC does not block DDLs that cause table rewrites. Records from the re-written tablets are streamed after CDC finishes streaming data from the older tablets. When set to `false`, any DDL that causes a table rewrite (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)) is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1); to perform such a DDL, you have to drop replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. |
-| cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
+| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | When set to `true` (the default), CDC does not block DDLs that cause table rewrites. Records from the re-written tablets are streamed after CDC finishes streaming data from the older tablets. When set to `false`, any DDL that causes a table rewrite (for example, [ALTER TYPE](../../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)) is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1); to perform such a DDL, you have to drop replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. |
+
+<!-- This is an auto-flag, so commenting it out
+cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. -->
 
 ### Unsupported scenarios
 
