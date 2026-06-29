@@ -4036,6 +4036,123 @@ TEST_F_EX(
       << "Expected " << kTopK << " rows from vector index query, got: " << post_result.size();
 }
 
+namespace {
+
+enum class VectorIndexColocationScenario {
+  kNonColocatedTable,
+  kColocatedTable,
+  kNonColocatedTableInColocatedDb,
+};
+
+Result<Oid> FetchIndexColocationId(pgwrapper::PGConn& conn, std::string_view index_name) {
+  return conn.FetchRow<pgwrapper::PGOid>(Format(
+      "SELECT props.colocation_id FROM pg_class c, yb_table_properties(c.oid) props "
+      "WHERE c.relname = '$0' AND c.relkind = 'i'",
+      index_name));
+}
+
+std::string VectorIndexColocationScenarioName(VectorIndexColocationScenario scenario) {
+  switch (scenario) {
+    case VectorIndexColocationScenario::kNonColocatedTable:
+      return "NonColocatedTable";
+    case VectorIndexColocationScenario::kColocatedTable:
+      return "ColocatedTable";
+    case VectorIndexColocationScenario::kNonColocatedTableInColocatedDb:
+      return "NonColocatedTableInColocatedDb";
+  }
+  return "Unknown";
+}
+
+}  // namespace
+
+class YBBackupTestVectorIndexColocationId
+    : public YBBackupTest,
+      public ::testing::WithParamInterface<VectorIndexColocationScenario> {
+ protected:
+  std::string GetSourceDBName() {
+    if (GetParam() == VectorIndexColocationScenario::kNonColocatedTable) {
+      return "yugabyte";
+    } else {
+      return "test_db";
+    }
+  }
+
+  Status InitializeSourceDB() {
+    auto scenario = GetParam();
+    if (scenario == VectorIndexColocationScenario::kColocatedTable ||
+        scenario == VectorIndexColocationScenario::kNonColocatedTableInColocatedDb) {
+      auto base_conn = VERIFY_RESULT(cluster_->ConnectToDB());
+      return base_conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION=TRUE", GetSourceDBName());
+    }
+    return Status::OK();
+  }
+
+  Status CreateTable(pgwrapper::PGConn& conn, std::string_view table_name) {
+    auto scenario = GetParam();
+    switch (scenario) {
+      case VectorIndexColocationScenario::kNonColocatedTable:
+      case VectorIndexColocationScenario::kColocatedTable:
+        RETURN_NOT_OK(
+            conn.ExecuteFormat("CREATE TABLE $0 (id int PRIMARY KEY, vec vector(3))", table_name));
+        break;
+      case VectorIndexColocationScenario::kNonColocatedTableInColocatedDb:
+        RETURN_NOT_OK(conn.ExecuteFormat(
+            "CREATE TABLE $0 (id int PRIMARY KEY, vec vector(3)) WITH (colocation = false)",
+            table_name));
+        break;
+    }
+    return Status::OK();
+  }
+};
+
+TEST_P(
+    YBBackupTestVectorIndexColocationId,
+    YB_DISABLE_TEST_IN_SANITIZERS(BackupRestorePreservesVectorIndexColocationId)) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "yb_backup.py does not support vector indexes for this scenario.";
+  }
+
+  constexpr std::string_view kTableName{"test_tbl"};
+  constexpr std::string_view kIndexName{"vec_idx"};
+  const auto kSourceDb = GetSourceDBName();
+  const auto kRestoreDb = kSourceDb + "_restored";
+
+  ASSERT_OK(InitializeSourceDB());
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kSourceDb));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS vector"));
+  ASSERT_OK(CreateTable(conn, kTableName));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX $0 ON $1 USING ybhnsw (vec vector_l2_ops)", kIndexName, kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, '[1.0, 0.5, 0.25]')", kTableName));
+
+  const auto original_colocation_id = ASSERT_RESULT(FetchIndexColocationId(conn, kIndexName));
+  ASSERT_NE(original_colocation_id, static_cast<Oid>(0))
+      << "Vector index should have a non-zero colocation id";
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kSourceDb), "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kRestoreDb), "restore"}));
+
+  auto restored_conn = ASSERT_RESULT(cluster_->ConnectToDB(kRestoreDb));
+  const auto restored_colocation_id =
+      ASSERT_RESULT(FetchIndexColocationId(restored_conn, kIndexName));
+  ASSERT_EQ(original_colocation_id, restored_colocation_id);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    VectorIndexColocationScenarios, YBBackupTestVectorIndexColocationId,
+    ::testing::Values(
+        VectorIndexColocationScenario::kNonColocatedTable,
+        VectorIndexColocationScenario::kColocatedTable,
+        VectorIndexColocationScenario::kNonColocatedTableInColocatedDb),
+    [](const testing::TestParamInfo<VectorIndexColocationScenario>& info) {
+      return VectorIndexColocationScenarioName(info.param);
+    });
+
 TEST_F(
     YBBackupTest,
     YB_DISABLE_TEST_IN_SANITIZERS(ColocatedDatabaseNonColocatedTableWithVectorIndex)) {
@@ -4043,8 +4160,8 @@ TEST_F(
     GTEST_SKIP()
         << "yb_backup.py does not support vector indexes when mixed with colocated databases.";
   }
-  const std::string db_name{"test_colo_db"};
-  const std::string table_name{"test_tbl"};
+  constexpr std::string_view db_name{"test_colo_db"};
+  constexpr std::string_view table_name{"test_tbl"};
   {
     auto base_conn = ASSERT_RESULT(cluster_->ConnectToDB());
     ASSERT_OK(base_conn.ExecuteFormat("CREATE DATABASE $0 with COLOCATION=TRUE", db_name));
