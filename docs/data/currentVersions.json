@@ -11,8 +11,8 @@
       "isStable": true,
       "isSTS": true,
       "initialRelease": "2026-06-29",
-      "endOfMaintenance": "2028-06-29",
-      "endOfLife": "2029-12-29"
+      "endOfMaintenance": "2027-06-29",
+      "endOfLife": "2028-12-29"
     },
     {
       "series": "v2025.2",
