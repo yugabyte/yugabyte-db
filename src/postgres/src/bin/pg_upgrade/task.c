@@ -181,9 +181,17 @@ start_conn(const ClusterInfo *cluster, UpgradeTaskSlot *slot)
 	appendPQExpBufferStr(&conn_opts, "dbname=");
 	appendConnStrVal(&conn_opts, dbinfo->db_name);
 	appendPQExpBufferStr(&conn_opts, " user=");
-	appendConnStrVal(&conn_opts, os_info.user);
+	if (is_yugabyte_enabled())
+		appendConnStrVal(&conn_opts, cluster->yb_user);
+	else
+		appendConnStrVal(&conn_opts, os_info.user);
 	appendPQExpBuffer(&conn_opts, " port=%d", cluster->port);
-	if (cluster->sockdir)
+	if (is_yugabyte_enabled() && cluster->yb_hostaddr)
+	{
+		appendPQExpBufferStr(&conn_opts, " host=");
+		appendConnStrVal(&conn_opts, cluster->yb_hostaddr);
+	}
+	else if (cluster->sockdir)
 	{
 		appendPQExpBufferStr(&conn_opts, " host=");
 		appendConnStrVal(&conn_opts, cluster->sockdir);
