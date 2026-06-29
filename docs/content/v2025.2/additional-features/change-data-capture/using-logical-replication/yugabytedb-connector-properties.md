@@ -386,7 +386,7 @@ Default: `all_tables`
 
 ##### replica.identity.autoset.values
 
-The setting determines the value for [replica identity](#replica-identity) at table level.
+The setting determines the value for [replica identity](../key-concepts/#replica-identity) at table level.
 
 This option will overwrite the existing value in database. A comma-separated list of regular expressions that match fully-qualified tables and replica identity value to be used in the table.
 
