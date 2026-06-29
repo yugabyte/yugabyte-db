@@ -3248,7 +3248,7 @@ TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
   // Find which tablet this hash falls into using yb_tablet_metadata
   auto tablet_from_metadata = ASSERT_RESULT(pg_conn.FetchRow<std::string>(
       yb::Format("SELECT tablet_id FROM yb_tablet_metadata "
-             "WHERE relname = 'hash_test_table' "
+             "WHERE db_name = current_database() AND relname = 'hash_test_table' "
              "AND $0 >= start_hash_code AND $0 < end_hash_code", hash_code)));
   LOG(INFO) << "Tablet ID from yb_tablet_metadata: " << tablet_from_metadata;
 
@@ -3330,6 +3330,76 @@ TEST_F(PgMiniTest, TabletMetadataOidMatchesPgClass) {
         "WHERE db_name = current_database() AND relname = 'test_table' "
         "AND oid = $0)", pg_class_oid));
   }, 30s, "yb_tablet_metadata exposes test_table's stable oid"));
+}
+
+TEST_F(PgMiniTest, TabletMetadataMaskingSurvivesRewrite) {
+  // A role holding SELECT on a table sees that table's yb_tablet_metadata rows
+  // unmasked. A table rewrite assigns a new relfilenode but preserves the
+  // pg_class OID.
+  const std::string kTable = "rewrite_range_grant";
+  const std::string kRole = "tmeta_unpriv";
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Range-sharded so start_range/end_range carry real bounds.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT NOT NULL, v INT, PRIMARY KEY (k ASC)) "
+      "SPLIT AT VALUES ((5), (10))", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE ROLE $0", kRole));
+  ASSERT_OK(conn.ExecuteFormat("GRANT SELECT ON $0 TO $1", kTable, kRole));
+
+  const auto oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kTable)));
+  const auto relfilenode_before = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE relname = '$0'", kTable)));
+  // A freshly created table's relfilenode equals its OID.
+  ASSERT_EQ(oid, relfilenode_before);
+
+  // Trigger a table rewrite via a volatile column default: new relfilenode, same OID.
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN w float DEFAULT random()", kTable));
+
+  const auto oid_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kTable)));
+  const auto relfilenode_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE relname = '$0'", kTable)));
+  ASSERT_EQ(oid_after, oid) << "rewrite must not change the pg_class OID";
+  ASSERT_NE(relfilenode_after, relfilenode_before)
+      << "ALTER TABLE ... ADD COLUMN DEFAULT random() did not rewrite the table";
+
+  // After the rewrite the granted role must still see the table unmasked,
+  // because the ACL check uses the stable OID, not the changed relfilenode.
+  ASSERT_OK(conn.ExecuteFormat("SET ROLE $0", kRole));
+
+  // Wait for all three tablets of the rewritten range table to surface.
+  ASSERT_OK(WaitFor([&conn, oid]() -> Result<bool> {
+    return VERIFY_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT count(*) FROM yb_tablet_metadata "
+        "WHERE oid = $0 AND db_name = current_database()",
+        oid))) == 3;
+  }, 30s, "all 3 tablets of the rewritten range table are visible"));
+
+  // relname is the real name on every row, not the masked placeholder.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format(
+      "SELECT DISTINCT relname FROM yb_tablet_metadata "
+      "WHERE oid = $0 AND db_name = current_database()",
+      oid))), kTable);
+
+  // No relname/start_range/end_range cell is masked.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM yb_tablet_metadata "
+      "WHERE oid = $0 AND db_name = current_database() "
+      "AND '<insufficient privilege>' IN (relname, start_range, end_range)",
+      oid))), 0) << "a cell was masked for a role that holds SELECT";
+
+  // The middle [5,10) tablet exposes real (non-NULL) range bounds.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM yb_tablet_metadata "
+      "WHERE oid = $0 AND db_name = current_database() "
+      "AND start_range IS NOT NULL AND end_range IS NOT NULL",
+      oid))), 1) << "expected the [5,10) tablet to expose real range bounds";
+
+  ASSERT_OK(conn.Execute("RESET ROLE"));
 }
 
 TEST_F(PgMiniTest, TabletMetadataStateColumn) {
