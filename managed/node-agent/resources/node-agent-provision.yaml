@@ -11,7 +11,6 @@ ynp:
   yb_home_dir: /home/yugabyte
 
   # Home directory for the 'yugabyte' user.
-  # This is where the YugabyteDB software and data will reside.
   # This defaults to the value of yb_home_dir if not set.
   yb_user_home: /home/yugabyte
 
@@ -85,8 +84,8 @@ yba:
 
   # Provider configuration details.
   provider:
-    # Name of the cloud or infrastructure provider.
-    # Examples: 'aws', 'gcp', 'azure', 'onprem'.
+    # Name of the provider.
+    # Examples: 'onprem-provider-1'.
     name: provider_name
 
     # Region-specific settings.
