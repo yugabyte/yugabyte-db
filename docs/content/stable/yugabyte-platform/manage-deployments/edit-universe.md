@@ -22,6 +22,8 @@ YugabyteDB Anywhere supports both horizontal and vertical scaling of your univer
 
 -> For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
 
+-> For information on changing storage class and volume count on Kubernetes universes, refer to [Full move for Kubernetes universes](../kubernetes-full-move/).
+
 -> For information on managing Kubernetes universes using the YugabyteDB Kubernetes Operator, refer to [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).
 
 ## Edit a universe
@@ -42,7 +44,7 @@ To change the configuration of a universe, do the following:
         - **Total Nodes** and **Availability Zones** - As you add nodes, they are automatically distributed among the availability zones; you can also add, configure, and remove availability zones.
     - **Instance Configuration**
         - **Instance Type** and **Volume Info Size** - Change instance type and storage volume size as configured in the provider. In some cases, these operations are available as a [smart resize](#smart-resize).
-        - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS.
+        - **Storage Type** and **Volume Info Count** - For cloud providers, you can also change the storage volume count and type. On AWS, you can additionally change throughput and IOPS. For Kubernetes universes on YugabyteDB v2026.1.0.0 or later, you can change storage class and volume count using [full move](../kubernetes-full-move/).
     - **Advanced Configuration**
         - **Override Deployment Ports** - You can change the Master and TServer HTTP and RPC ports, and the Prometheus Node Exporter port.
 

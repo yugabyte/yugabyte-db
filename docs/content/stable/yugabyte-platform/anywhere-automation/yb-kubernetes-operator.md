@@ -465,6 +465,8 @@ operator-universe-demo   Ready   {{< yb-version version="stable" format="build">
 
 To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
 
+To change storage class or volume count on a running universe, use the `tserverVolume` and `masterVolume` fields (including optional `perAZ` overrides). Refer to [Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/#operator-universes).
+
 ### Create a universe with placement information
 
 Starting from YugabyteDB Anywhere v2025.2, you can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
@@ -975,7 +977,7 @@ spec:
 
 {{<tags/feature/ea idea="12874">}} Available in YugabyteDB Anywhere v2025.2.2 and later.
 
-Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator.
+Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator. After import, change storage class or volume count using the Operator CRD fields described in [Full move for Kubernetes universes](../../manage-deployments/kubernetes-full-move/#operator-universes).
 
 Currently, universes with any of the following configurations are not supported for import:
 
