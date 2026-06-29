@@ -1415,12 +1415,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	MyDatabaseId = dboid;
 
 	/*
-	 * Validate the internal relcache init connection.
-	 */
-	if (MyProcPort && MyProcPort->yb_is_tserver_auth_method)
-		yb_is_internal_connection = true;
-
-	/*
 	 * Now we can mark our PGPROC entry with the database ID.
 	 *
 	 * We assume this is an atomic store so no lock is needed; though actually

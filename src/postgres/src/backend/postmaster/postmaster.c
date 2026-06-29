@@ -2142,7 +2142,6 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char	   *yb_auth_backend_remote_host = NULL;
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
-	bool		yb_auto_analyze_backend = false;
 	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
 	bool		yb_is_auth_via_conn_mgr = false;
 
@@ -2453,17 +2452,6 @@ retry1:
 				yb_logical_conn_type_provided = true;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_auto_analyze") == 0)
-			{
-				if (!parse_bool(valptr, &yb_auto_analyze_backend))
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_auto_analyze",
-									valptr),
-							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
-			}
-			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_internal_conn_kind") == 0)
 			{
 				yb_internal_conn_kind = YbLookupInternalConnKindByName(valptr);
@@ -2612,8 +2600,6 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
-	else if (yb_auto_analyze_backend)
-		MyBackendType = YB_AUTO_ANALYZE_BACKEND;
 	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
 		MyBackendType =
 			YbInternalConnKindDescriptors[yb_internal_conn_kind].backend_type;
