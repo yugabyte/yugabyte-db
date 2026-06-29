@@ -21,7 +21,6 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -30,6 +29,7 @@ import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -90,7 +90,6 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -998,35 +997,10 @@ public class Util {
     return checkAnyProviderMatches(params, Provider::isManualOnprem);
   }
 
-  public static void traverseAzNodeSpecs(
-      UserIntent userIntent,
-      UniverseTaskBase.ServerType filter,
-      BiConsumer<UUID, UniverseDefinitionTaskParams.NodeSpecification> consumer) {
-    for (UniverseDefinitionTaskParams.ProviderSpecification providerSpecification :
-        userIntent.providerSpecifications) {
-      if (providerSpecification.getPerAZOverrides() != null) {
-        providerSpecification
-            .getPerAZOverrides()
-            .forEach(
-                (azUUID, nodesSpec) -> {
-                  if (nodesSpec.getTserverSpecification() != null
-                      && (filter == null || filter == UniverseTaskBase.ServerType.TSERVER)) {
-                    consumer.accept(azUUID, nodesSpec.getTserverSpecification());
-                  }
-                  if (nodesSpec.getMasterSpecification() != null
-                      && (filter == null || filter == UniverseTaskBase.ServerType.MASTER)) {
-                    consumer.accept(azUUID, nodesSpec.getMasterSpecification());
-                  }
-                });
-      }
-    }
-  }
-
   public static void mergeProviderSpecifications(
       UserIntent userIntent,
       UserIntent newUserIntent,
-      Consumer<UniverseDefinitionTaskParams.ProviderSpecification.NodesSpecificationMergeContext>
-          merger) {
+      Consumer<HierarchicalNodesSpec.NodesSpecsMergeItem> merger) {
     for (UUID providerUUID : userIntent.getAllProviderUUIDs()) {
       UniverseDefinitionTaskParams.ProviderSpecification newProviderSpecification =
           newUserIntent.getProviderSpecification(providerUUID);
@@ -1898,6 +1872,18 @@ public class Util {
         } catch (InterruptedException ignored) {
           Thread.currentThread().interrupt();
         }
+      }
+    }
+  }
+
+  public static void validateSpecificationsIfPresent(
+      List<UniverseDefinitionTaskParams.ProviderSpecification> specs, boolean isPartialUpdate) {
+    if (specs != null) {
+      for (UniverseDefinitionTaskParams.ProviderSpecification spec : specs) {
+        if (spec == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Found null specification");
+        }
+        spec.validate(isPartialUpdate);
       }
     }
   }

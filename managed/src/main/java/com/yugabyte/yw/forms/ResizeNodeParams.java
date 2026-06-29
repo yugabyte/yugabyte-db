@@ -104,6 +104,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     for (Cluster cluster : clusters) {
       Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
       UserIntent newUserIntent = cluster.userIntent;
+      Util.validateSpecificationsIfPresent(newUserIntent.providerSpecifications, true);
       UserIntent currentUserIntent =
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
       if (!hasResizeChanges(currentUserIntent, newUserIntent, nodesInCluster)) {

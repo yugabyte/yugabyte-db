@@ -10,11 +10,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -94,19 +96,26 @@ public class PersistResizeNode extends UniverseTaskBase {
                 nodeDetails.disksAreMountedByUUID = true;
               }
               if (userIntent.isMulticloudSupport()) {
+                Set<String> skipTserverAzCodes = new HashSet<>();
+                Set<String> skipMasterAzCodes = new HashSet<>();
+                initCodes(skipTserverAzCodes, skipMasterAzCodes);
                 Util.mergeProviderSpecifications(
                     userIntent,
                     newUserIntent,
                     ctx -> {
-                      if (shouldMerge(ctx.getServerType(), ctx.getAzUUID())) {
+                      Set<String> skipCodes =
+                          ctx.getServerType() == ServerType.TSERVER
+                              ? skipTserverAzCodes
+                              : skipMasterAzCodes;
+                      if (!skipCodes.contains(ctx.getTraversePath().getAzCode())) {
                         ctx.getCurrent()
                             .setDeviceInfo(
                                 mergeDeviceInfos(
                                     ctx.getCurrent().getDeviceInfo(),
-                                    ctx.getTarget().getDeviceInfo()));
+                                    ctx.getSource().getDeviceInfo()));
                         if (!taskParams().onlyPersistDeviceInfo) {
-                          ctx.getCurrent().setInstanceType(ctx.getTarget().getInstanceType());
-                          ctx.getCurrent().setCgroupSize(ctx.getTarget().getCgroupSize());
+                          ctx.getCurrent().setInstanceType(ctx.getSource().getInstanceType());
+                          ctx.getCurrent().setCgroupSize(ctx.getSource().getCgroupSize());
                         }
                       }
                     });
@@ -162,10 +171,17 @@ public class PersistResizeNode extends UniverseTaskBase {
     }
   }
 
-  private boolean shouldMerge(ServerType serverType, UUID azUUID) {
-    Set<UUID> skipAZs =
-        serverType == ServerType.TSERVER ? taskParams().skipTserverAZs : taskParams().skipMasterAZs;
-    return skipAZs == null || !skipAZs.contains(azUUID);
+  private void initCodes(Set<String> skipTserverAzCodes, Set<String> skipMasterAzCodes) {
+    if (taskParams().skipTserverAZs != null) {
+      taskParams().skipTserverAZs.stream()
+          .map(uuid -> AvailabilityZone.getOrBadRequest(uuid).getCode())
+          .forEach(skipTserverAzCodes::add);
+    }
+    if (taskParams().skipMasterAZs != null) {
+      taskParams().skipMasterAZs.stream()
+          .map(uuid -> AvailabilityZone.getOrBadRequest(uuid).getCode())
+          .forEach(skipMasterAzCodes::add);
+    }
   }
 
   private DeviceInfo mergeDeviceInfos(DeviceInfo current, DeviceInfo newDevice) {
