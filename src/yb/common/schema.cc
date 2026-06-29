@@ -188,7 +188,7 @@ SortingType ColumnSchema::sorting_type() const {
 // ------------------------------------------------------------------------------------------------
 
 void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
-  if (HasDefaultTimeToLive()) {
+  if (HasEffectiveDefaultTimeToLive()) {
     pb->set_default_time_to_live(default_time_to_live_);
   }
   pb->set_contain_counters(contain_counters_);
@@ -283,17 +283,13 @@ void TableProperties::Reset() {
   ysql_replica_identity_ = std::nullopt;
 }
 
-bool TableProperties::IsValidTTL(int64_t ttl_msec) {
-  return ttl_msec >= 0;
-}
-
 bool TableProperties::IsEffectiveTTL(int64_t ttl_msec) {
-  return IsValidTTL(ttl_msec) && (ttl_msec > 0);
+  return ttl_msec > 0;
 }
 
 string TableProperties::ToString() const {
   std::string result("{ ");
-  if (HasDefaultTimeToLive()) {
+  if (HasEffectiveDefaultTimeToLive()) {
     result += Format("default_time_to_live: $0 ", default_time_to_live_);
   }
   result += Format("contain_counters: $0 is_transactional: $1 ",
