@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
@@ -10,6 +12,7 @@ import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
@@ -18,6 +21,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import java.util.Arrays;
 import java.util.Map;
 import javax.inject.Inject;
@@ -42,11 +46,57 @@ public class ManageOtelCollector extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
     public boolean installOtelCollector;
-    public AuditLogConfig auditLogConfig;
-    public QueryLogConfig queryLogConfig;
-    public MetricsExportConfig metricsExportConfig;
+    // Single carrier for all telemetry export sections (audit/query/metrics/master). A new log
+    // export type rides inside this object, so this Params (and the otel plumbing) needs no change.
+    public TelemetryConfig telemetryConfig;
     public Map<String, String> gflags;
     public boolean useSudo = false;
+
+    @JsonIgnore
+    public AuditLogConfig getAuditLogConfig() {
+      return telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
+    }
+
+    @JsonIgnore
+    public QueryLogConfig getQueryLogConfig() {
+      return telemetryConfig != null ? telemetryConfig.getQueryLogConfig() : null;
+    }
+
+    @JsonIgnore
+    public MetricsExportConfig getMetricsExportConfig() {
+      return telemetryConfig != null ? telemetryConfig.getMetricsExportConfig() : null;
+    }
+
+    @JsonIgnore
+    public MasterLogConfig getMasterLogConfig() {
+      return telemetryConfig != null ? telemetryConfig.getMasterLogConfig() : null;
+    }
+
+    // Backward-compat: task_info rows created before the telemetryConfig migration stored these as
+    // separate top-level fields. Fold them into telemetryConfig on deserialize (write-only) so a
+    // pre-upgrade task retried after upgrade still carries its telemetry config. (master logs
+    // post-date the migration, so old rows never have it.)
+    private TelemetryConfig ensureTelemetryConfig() {
+      if (telemetryConfig == null) {
+        telemetryConfig = new TelemetryConfig();
+      }
+      return telemetryConfig;
+    }
+
+    @JsonProperty("auditLogConfig")
+    public void setLegacyAuditLogConfig(AuditLogConfig auditLogConfig) {
+      ensureTelemetryConfig().setAuditLogConfig(auditLogConfig);
+    }
+
+    @JsonProperty("queryLogConfig")
+    public void setLegacyQueryLogConfig(QueryLogConfig queryLogConfig) {
+      ensureTelemetryConfig().setQueryLogConfig(queryLogConfig);
+    }
+
+    @JsonProperty("metricsExportConfig")
+    public void setLegacyMetricsExportConfig(MetricsExportConfig metricsExportConfig) {
+      ensureTelemetryConfig().setMetricsExportConfig(metricsExportConfig);
+    }
   }
 
   @Override
@@ -60,7 +110,7 @@ public class ManageOtelCollector extends NodeTaskBase {
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     Cluster nodeCluster = universe.getCluster(node.placementUuid);
     taskParams().useSudo =
-        isTServerServiceSystemLevel(universe, node) && taskParams().installOtelCollector;
+        isYbServerServiceSystemLevel(universe, node) && taskParams().installOtelCollector;
 
     log.info(
         "Managing OpenTelemetry collector on instance {} with useSudo set to {}",
@@ -86,11 +136,15 @@ public class ManageOtelCollector extends NodeTaskBase {
     }
   }
 
-  private boolean isTServerServiceSystemLevel(Universe universe, NodeDetails node) {
+  private boolean isYbServerServiceSystemLevel(Universe universe, NodeDetails node) {
     Provider provider = Util.getProviderForNode(node, universe);
     String ybHomeDir = provider.getYbHome();
-    log.debug("Using ybHomeDir {} to check for the tserver service unit file", ybHomeDir);
-    String serviceFilePath = String.format("%s/.config/systemd/user/yb-tserver.service", ybHomeDir);
+    // Probe the systemd unit for the YB process this node actually runs: yb-tserver when the node
+    // has a tserver (co-located or dedicated tserver), otherwise yb-master (a dedicated master
+    // node has no yb-tserver.service, so checking for it would always look "system-level").
+    String serviceName = node.isTserver ? "yb-tserver.service" : "yb-master.service";
+    log.debug("Using ybHomeDir {} to check for the {} unit file", ybHomeDir, serviceName);
+    String serviceFilePath = String.format("%s/.config/systemd/user/%s", ybHomeDir, serviceName);
     // Build a command that always exits 0 upon successful execution and prints either
     // present or absent.
     String checkCmd =

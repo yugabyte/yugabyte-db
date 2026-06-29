@@ -9,6 +9,8 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -121,14 +123,15 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
     // Update audit logging gflags in TServer configuration file.
     createUpdateConfigurationFileTask(userIntent, nodes, processTypes);
 
-    // Install, configure and start/stop/restart otel collector, if needed.
+    // Install, configure and start/stop/restart otel collector, if needed. Start from the current
+    // telemetry config (table is source of truth) and override only the audit section.
+    TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    telemetryConfig.setAuditLogConfig(taskParams().auditLogConfig);
     createManageOtelCollectorTasks(
         userIntent,
         nodes,
         taskParams().installOtelCollector,
-        taskParams().auditLogConfig,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig,
+        telemetryConfig,
         nodeDetails ->
             GFlagsUtil.getGFlagsForNode(
                 nodeDetails,
@@ -169,7 +172,8 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
             processType,
             UpgradeTaskParams.UpgradeTaskType.GFlags,
             UpgradeTaskParams.UpgradeTaskSubType.None);
-    params.auditLogConfig = taskParams().auditLogConfig;
+    params.telemetryConfig =
+        TelemetryConfig.builder().auditLogConfig(taskParams().auditLogConfig).build();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());

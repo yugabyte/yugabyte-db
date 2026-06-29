@@ -83,6 +83,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -1471,14 +1472,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     // Add audit log config from the primary cluster
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    params.auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
-    params.metricsExportConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
-
-    // Add query log config from primary cluster
-    params.queryLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
+    params.telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;

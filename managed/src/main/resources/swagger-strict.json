@@ -29062,17 +29062,17 @@
           "type" : "integer"
         },
         "sendBatchMaxSize" : {
-          "description" : "Maximum batch size for query logs exporter",
+          "description" : "Maximum batch size for logs exporter",
           "format" : "int32",
           "type" : "integer"
         },
         "sendBatchSize" : {
-          "description" : "Batch size for query logs exporter",
+          "description" : "Batch size for logs exporter",
           "format" : "int32",
           "type" : "integer"
         },
         "sendBatchTimeoutSeconds" : {
-          "description" : "Maximum batch timeout for query logs exporter in seconds",
+          "description" : "Maximum batch timeout for logs exporter in seconds",
           "format" : "int32",
           "type" : "integer"
         }

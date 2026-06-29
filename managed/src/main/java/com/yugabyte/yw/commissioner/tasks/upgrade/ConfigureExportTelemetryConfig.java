@@ -126,9 +126,7 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
         userIntent,
         nodes,
         true, // unified export-telemetry-config flow always installs OTEL collector when needed
-        taskParams().getAuditLogConfig(),
-        taskParams().getQueryLogConfig(),
-        taskParams().getMetricsExportConfig(),
+        taskParams().getTelemetryConfig(),
         nodeDetails ->
             GFlagsUtil.getGFlagsForNode(
                 nodeDetails,
@@ -169,9 +167,7 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
             processType,
             UpgradeTaskParams.UpgradeTaskType.GFlags,
             UpgradeTaskParams.UpgradeTaskSubType.None);
-    params.auditLogConfig = taskParams().getAuditLogConfig();
-    params.queryLogConfig = taskParams().getQueryLogConfig();
-    params.metricsExportConfig = taskParams().getMetricsExportConfig();
+    params.telemetryConfig = taskParams().getTelemetryConfig();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());

@@ -884,8 +884,8 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.auditLogConfig);
-    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.queryLogConfig);
+    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getAuditLogConfig());
+    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getQueryLogConfig());
     return GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
   }
 
@@ -1015,7 +1015,7 @@ public class GFlagsUtil {
 
   private static Map<String, String> getYcqlAuditFlags(AnsibleConfigureServers.Params taskParams) {
     Map<String, String> result = new HashMap<>();
-    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
+    AuditLogConfig auditLogConfig = taskParams.getAuditLogConfig();
     if (auditLogConfig != null) {
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
