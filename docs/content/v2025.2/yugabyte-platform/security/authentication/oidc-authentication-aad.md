@@ -360,7 +360,7 @@ With `jwt_matching_claim_key=roles`, YCQL reads identities from the `roles` clai
 
 ## Manage users and roles
 
-{{< readfile "/stable/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
+{{< readfile "oidc-manage-users-include.md" >}}
 
 ## Learn more
 

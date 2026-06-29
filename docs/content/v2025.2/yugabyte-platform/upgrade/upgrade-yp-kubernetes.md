@@ -45,10 +45,10 @@ To upgrade to a specific version while preserving overrides you might have appli
 
 ```sh
 helm upgrade yw-test yugabytedb/yugaware \
-  --version {{<yb-version version="stable" format="short">}} \
+  --version {{<yb-version version="v2025.2" format="short">}} \
   -n yb-platform \
   --reset-then-reuse-values \
-  --set image.tag={{<yb-version version="stable" format="build">}} \
+  --set image.tag={{<yb-version version="v2025.2" format="build">}} \
   --atomic \
   --timeout 30m \
   --wait
