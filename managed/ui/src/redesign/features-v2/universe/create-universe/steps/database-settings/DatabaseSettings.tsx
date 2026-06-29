@@ -38,7 +38,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
     { databaseSettings, generalSettings },
     { moveToNextPage, moveToPreviousPage, saveDatabaseSettings }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+  ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2'

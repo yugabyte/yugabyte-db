@@ -300,7 +300,7 @@ export const mapPortsKeys: any = () => {
 export const mapAPIPortValues = (communicationPorts: Partial<CommunicationPortsSpec>) => {
   let portsObj: any = {};
   Object.entries(communicationPorts).forEach(([key, val]) => {
-    portsObj[`${mapPortsKeys[key]}`] = val;
+    portsObj[`${mapPortsKeys()[key]}`] = val;
   });
   return portsObj;
 };
