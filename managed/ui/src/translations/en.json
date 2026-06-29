@@ -4407,8 +4407,65 @@
         "databaseAuditLogDescription": "Capture session database audit logs to comply with government, financial, or ISO certification.",
         "learnMore": "Learn more",
         "enableQueryLogging": "Enable Query Logging",
+        "editQueryLogging": "Edit",
         "enableAuditLogging": "Enable Audit Logging",
-        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to Telemetry Export."
+        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to Telemetry Export.",
+        "queryLogSettings": {
+          "title": "Configure Database Query Logging",
+          "selectParameters": "Select Parameters",
+          "cancel": "Cancel",
+          "enableQueryLogging": "Enable Database Query Logging",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling database query logging",
+          "updateInProgress": "Updating database query logging configuration",
+          "learnMoreAboutParameters": "Learn more about query log parameters",
+          "groups": {
+            "general": "General",
+            "errorStatement": "Error Statement",
+            "queryDuration": "Query Duration and Slow Queries",
+            "debugging": "Debugging",
+            "connectionDisconnection": "Connection and Disconnection"
+          },
+          "logStatement": {
+            "prefix": "Log",
+            "suffix": "statements"
+          },
+          "logMinError": {
+            "prefix": "Log statements that cause an error of severity",
+            "suffix": "or higher"
+          },
+          "logErrorVerbosity": {
+            "prefix": "Log errors with verbosity"
+          },
+          "logDuration": "Log the duration of all completed statements",
+          "logMinDuration": {
+            "prefix": "Log all statements with a duration of",
+            "suffix": "ms or longer"
+          },
+          "debugPrintPlan": "Log the execution plan for each executed query",
+          "logConnections": "Log each attempted connection to the server",
+          "logDisconnections": "Log session terminations",
+          "tooltips": {
+            "logStatement": "Choose SQL statement types (DDL, DML, all) to log. Statements that fail before the execute phase, or that have syntax errors, are not included. To log error statements, use the log_min_error_statement setting.\n\nParameter name: log_statement",
+            "logMinError": "Control which SQL statements that cause an error condition are logged.\n\nParameter name: log_min_error_statement",
+            "logErrorVerbosity": "Control the amount of detail for each log.\n\nParameter name: log_error_verbosity",
+            "logDuration": "Log the duration of all completed statements. Statement text is not included. Use this option with log_min_duration_statement to log all durations along with the statement text for statements exceeding a specified duration. Use this option for performance analysis.\n\nParameter name: log_duration",
+            "logMinDuration": "Log the duration and statement text of all statements that ran for the specified duration (in ms) or longer. Use this setting to identify slow queries.\n\nText of statements logged for log_statement is not repeated in the duration log message.\n\nSet the value to 0 to log all statements, with their duration.\n\nParameter name: log_min_duration_statement",
+            "debugPrintPlan": "Log the debug-level execution plan used by the parser.\n\nParameter name: debug_print_plan",
+            "logConnections": "Log all connection attempts, along with successfully completed client authentication and authorization.\n\nParameter name: log_connections",
+            "logDisconnections": "Log session termination and duration of the session.\n\nParameter name: log_disconnections"
+          },
+          "errors": {
+            "minDurationRequired": "Enter a duration in milliseconds",
+            "minDurationInteger": "Duration must be a whole number of milliseconds",
+            "minDurationRange": "Duration must be between 0 and 2,147,483,647 ms"
+          },
+          "confirmation": {
+            "title": "Confirm Configuration Change",
+            "message": "Enabling database query logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        }
       },
       "masterServerNodeAllocationModal": {
         "title": "Master Server Node Allocation",

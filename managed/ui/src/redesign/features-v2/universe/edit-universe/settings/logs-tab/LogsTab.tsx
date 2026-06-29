@@ -14,6 +14,7 @@ import {
 import { AuditLogSettings } from '@app/redesign/features/universe/universe-tabs/db-audit-logs/components/AuditLogSettings';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { LogConfigCard } from './LogConfigCard';
+import { QueryLogSettingsPanel } from './query-log/QueryLogSettingsPanel';
 
 import QueryLogIcon from '@app/redesign/assets/approved/query-log.svg';
 import AuditLogIcon from '@app/redesign/assets/approved/audit-log.svg';
@@ -59,6 +60,7 @@ export const LogsTab = () => {
   const { universeData } = useEditUniverseContext();
   const isUniverseReady = useIsUniverseReady();
   const [isAuditLogSettingsModalOpen, setAuditLogSettingsModalOpen] = useState(false);
+  const [isQueryLogSettingsModalOpen, setQueryLogSettingsModalOpen] = useState(false);
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const universeUuid = universeData?.info?.universe_uuid ?? '';
@@ -76,9 +78,10 @@ export const LogsTab = () => {
             title={t('databaseQueryLog')}
             description={t('databaseQueryLogDescription')}
             learnMoreUrl={QUERY_LOG_DOCS_URL}
-            actionLabel={t('enableQueryLogging')}
-            actionDisabled={!isUniverseReady || isQueryLogEnabled}
+            actionLabel={isQueryLogEnabled ? t('editQueryLogging') : t('enableQueryLogging')}
+            actionDisabled={!isUniverseReady}
             actionTestId="LogsTab-EnableQueryLoggingButton"
+            onActionClick={() => setQueryLogSettingsModalOpen(true)}
           />
         </StyledContent>
       </StyledPanel>
@@ -110,6 +113,15 @@ export const LogsTab = () => {
           auditLogInfo={undefined}
           universeUUID={universeUuid}
           universeName={universeName}
+        />
+      )}
+      {isQueryLogSettingsModalOpen && universeUuid && (
+        <QueryLogSettingsPanel
+          open={isQueryLogSettingsModalOpen}
+          operation={isQueryLogEnabled ? 'edit' : 'create'}
+          universeUuid={universeUuid}
+          universeName={universeName}
+          onClose={() => setQueryLogSettingsModalOpen(false)}
         />
       )}
     </div>
