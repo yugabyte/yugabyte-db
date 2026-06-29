@@ -70,3 +70,9 @@ properties:
   log_statement_once:
     description: Log statement once
     type: boolean
+  log_retention_days:
+    description: |
+      Number of days to keep extracted YSQL audit log archives on the node. 0 or unset disables the dedicated audit-log retention pipeline and keeps the default size-based postgres log purge behavior.
+    type: integer
+    format: int32
+    minimum: 0

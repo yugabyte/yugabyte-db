@@ -1366,7 +1366,7 @@ Default: `4194304` (4MB)
 
 Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
 
-Default: `1 MB`
+Default: `1048576` (1MB)
 
 ##### --ysql_cdc_active_replication_slot_window_ms
 

@@ -12,7 +12,11 @@
 
 // C wrappers around "pggate" for PostgreSQL to call.
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_YBC_PGGATE_H
+#define YB_YQL_PGGATE_YBC_PGGATE_H
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -858,11 +862,10 @@ void YBCNotifyDeferredTriggersProcessingStarted();
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
     const YbcPgExplicitRowLockParams *params, YbcPgTableLocalityInfo locality_info,
-    const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle);
+    YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle);
 YbcPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
 YbcPgExplicitRowLockStatus YBCIsExplicitlyLockedRowSkipped(
     YbcIsExplicitlyLockedRowSkippedCheckHandle handle, bool* result);
-YbcIsExplicitlyLockedRowSkippedCheckHandle YBCAcquireExplicitlyLockedRowSkippedCheckHandle();
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
 YbcStatus YBCPgAddInsertOnConflictKey(const YbcPgYBTupleIdDescriptor* tupleid, void* state,
@@ -1075,6 +1078,9 @@ YbcStatus YBCAcquireObjectLock(
     YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock);
 YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all);
 
+YbcStatus YBCWaitForLockersMultiple(
+    YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks);
+
 // Indicates if the YB universe is in the process of a YSQL major version upgrade (e.g., pg11 to
 // pg15). This will return true before any process has been upgraded to the new version, and will
 // return false after the upgrade has been finalized.
@@ -1105,6 +1111,8 @@ YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
+YbcStatus YBCResetAutoAnalyzeMutationCounters(
+    YbcPgOid database_oid, YbcPgOid table_relfilenode_oid);
 
 // ---------------------------------------------------------------------------
 // PgGlobalViewRead: scan interface for federated YugabyteDB global views.
@@ -1121,3 +1129,5 @@ void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
 #ifdef __cplusplus
 }  // extern "C"
 #endif
+
+#endif  // YB_YQL_PGGATE_YBC_PGGATE_H

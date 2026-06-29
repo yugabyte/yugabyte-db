@@ -232,8 +232,26 @@ message DeleteTabletRequestPB {
   optional bytes transaction_id = 9; // 16 byte uuid
 }
 
+// Describes a single on-disk directory that DeleteTablet attempted to reclaim.
+message DeletedDirectoryPB {
+  // Absolute path of the directory on this tablet server.
+  optional string path = 1;
+
+  // Whether the directory is still present after the delete completed.
+  optional bool still_present_after = 2;
+}
+
 message DeleteTabletResponsePB {
   optional TabletServerErrorPB error = 1;
+
+  // Directories involved in the delete, each with whether it is still present afterwards.
+  repeated DeletedDirectoryPB directories = 2;
+
+  // The tablet's data state before and after this delete ran.
+  optional tablet.TabletDataState prev_data_state = 5;
+  optional tablet.TabletDataState final_data_state = 6;
+
+  optional string table_name = 8;
 }
 
 // TODO: rename this to FlushOrCompactTabletsRequestPB

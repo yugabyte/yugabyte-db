@@ -33,6 +33,7 @@
 #include "yb/tools/yb-admin_cli.h"
 
 #include <memory>
+#include <unordered_set>
 #include <utility>
 
 #include <boost/algorithm/string.hpp>
@@ -49,6 +50,7 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_backup.pb.h"
@@ -1919,7 +1921,8 @@ Status write_universe_key_to_file_action(
 
 const auto create_change_data_stream_args =
     "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>] "
-    "[<dynamic_tables_option>] (default DYNAMIC_TABLES_ENABLED)";
+    "[<dynamic_tables_option>] (default DYNAMIC_TABLES_ENABLED) "
+    "[<bound_table_ids>]";
 Status create_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -1930,6 +1933,7 @@ Status create_change_data_stream_action(
   cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
   std::string consistent_snapshot_option = "EXPORT_SNAPSHOT";
   std::string dynamic_tables_option = "DYNAMIC_TABLES_ENABLED";
+  std::unordered_set<std::string> bound_table_ids;
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
   std::string uppercase_consistent_snapshot_option;
@@ -1971,13 +1975,28 @@ Status create_change_data_stream_action(
     dynamic_tables_option = uppercase_dynamic_tables_option;
   }
 
+  if (args.size() > 5) {
+    std::vector<std::string> raw_ids;
+    boost::split(raw_ids, args[5], boost::is_any_of(","));
+    for (auto& id : raw_ids) {
+      boost::trim(id);
+      if (id.empty()) {
+        continue;
+      }
+      bound_table_ids.insert(std::move(id));
+    }
+    if (bound_table_ids.empty()) {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+  }
+
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
       client->CreateCDCSDKDBStream(
           database, checkpoint_type, record_type_pb, consistent_snapshot_option,
-          dynamic_tables_option == "DYNAMIC_TABLES_ENABLED"),
+          dynamic_tables_option == "DYNAMIC_TABLES_ENABLED", bound_table_ids),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }
@@ -2900,19 +2919,51 @@ Status unsafe_release_object_locks_global_action(
   return client->ReleaseObjectLocksGlobal(txn_id, subtxn_id);
 }
 
-const auto get_table_hash_args = "<table_id> [read_ht]";
+// Decodes a hex-encoded partition-key argument, rejecting malformed input rather than silently
+// truncating it: strings::a2b_hex drops a trailing odd nibble and turns non-hex bytes into garbage,
+// which would quietly hash the wrong range instead of reporting a bad argument.
+Result<std::string> DecodeHexPartitionKey(const std::string& arg) {
+  SCHECK(
+      arg.size() % 2 == 0, InvalidArgument,
+      Format("hex key '$0' must have an even number of digits", arg));
+  for (const char c : arg) {
+    SCHECK(
+        ascii_isxdigit(static_cast<unsigned char>(c)), InvalidArgument,
+        Format("hex key '$0' contains a non-hex character", arg));
+  }
+  return strings::a2b_hex(arg);
+}
+
+const auto get_table_hash_args = "<table_id> [read_ht] [start_key_hex] [end_key_hex]";
 Status get_table_hash_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1 || args.size() > 2) {
+  if (args.size() < 1 || args.size() > 4) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
   const auto table_id = args[0];
   uint64_t read_ht = 0;
-  if (args.size() == 2) {
+  if (args.size() >= 2 && !args[1].empty()) {
     read_ht = VERIFY_RESULT(CheckedStoll(args[1]));
   }
-  return client->GetTableXorHash(table_id, read_ht);
+  // Optional partition-key sub-range, hex-encoded (same encoding as the partition_key_start /
+  // partition_key_end shown by list_tablets). start_key is inclusive, end_key is exclusive; an
+  // empty argument means unbounded on that side. A key range scopes a single table, so table_id
+  // must be a concrete table (not a colocation parent id) when a range is given.
+  std::string start_key, end_key;
+  if (args.size() >= 3 && !args[2].empty()) {
+    start_key = VERIFY_RESULT(DecodeHexPartitionKey(args[2]));
+  }
+  if (args.size() >= 4 && !args[3].empty()) {
+    end_key = VERIFY_RESULT(DecodeHexPartitionKey(args[3]));
+  }
+  // start_key is inclusive and end_key exclusive, so a bounded range must have start_key < end_key
+  // (raw partition-key byte order, matching the server's comparison). An empty bound is unbounded
+  // on that side and imposes no ordering constraint.
+  SCHECK(
+      start_key.empty() || end_key.empty() || start_key < end_key, InvalidArgument,
+      "start_key must be strictly less than end_key (start_key is inclusive, end_key exclusive)");
+  return client->GetTableXorHash(table_id, read_ht, start_key, end_key);
 }
 
 const auto xcluster_failover_args = "<replication_group_id>";

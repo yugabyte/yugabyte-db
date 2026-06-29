@@ -163,7 +163,7 @@
       "x" : 0,
       "y" : 1
     },
-    "id" : 215,
+    "id" : 225,
     "interval" : null,
     "links" : [ ],
     "mappingType" : 2,
@@ -310,7 +310,7 @@
       "value" : "null"
     } ],
     "valueName" : "current",
-    "id" : 216
+    "id" : 226
   }, {
     "collapsed" : false,
     "datasource" : "$datasource",
@@ -323,7 +323,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Container",
-    "id" : 217
+    "id" : 227
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -796,7 +796,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master",
-    "id" : 218
+    "id" : 228
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -2582,7 +2582,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master Advanced",
-    "id" : 219
+    "id" : 229
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -4306,7 +4306,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Misc",
-    "id" : 220
+    "id" : 230
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -6772,7 +6772,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : ""
+      "format" : "bytes"
     }, {
       "format" : "short",
       "label" : null,
@@ -6785,18 +6785,110 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "HA Backup Lag",
-    "id" : 205,
+    "title" : "YBA Container Disk Capacity",
+    "id" : 206,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "HA Backup Lag (Seconds)",
-      "expr" : "timestamp(yba_ha_last_backup_seconds{node_prefix=~\"$dbcluster\"}) - yba_ha_last_backup_seconds",
+      "legendFormat" : "__ybaPvcName__",
+      "expr" : "sum(kubelet_volume_stats_capacity_bytes{namespace=\"\", node_prefix=~\"$dbcluster\", persistentvolumeclaim=\"\"}) by (persistentvolumeclaim)",
       "refId" : "A"
     } ],
     "gridPos" : {
       "w" : 12,
       "h" : 9,
       "x" : 0,
+      "y" : 337
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "bytes"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YBA Container Disk Used",
+    "id" : 208,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "__ybaPvcName__",
+      "expr" : "sum(kubelet_volume_stats_used_bytes{namespace=\"\", node_prefix=~\"$dbcluster\", persistentvolumeclaim=\"\"}) by (persistentvolumeclaim)",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
       "y" : 337
     }
   }, {
@@ -6877,8 +6969,100 @@
       "align" : false,
       "alignLevel" : null
     },
+    "title" : "HA Backup Lag",
+    "id" : 210,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "HA Backup Lag (Seconds)",
+      "expr" : "timestamp(yba_ha_last_backup_seconds{node_prefix=~\"$dbcluster\"}) - yba_ha_last_backup_seconds",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 346
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
     "title" : "HA Last Backup Size",
-    "id" : 206,
+    "id" : 211,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "HA Last Backup Size (MB)",
@@ -6889,7 +7073,191 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 337
+      "y" : 346
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "bytes"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YBA Node Disk Free",
+    "id" : 213,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : null,
+      "expr" : "sum(node_filesystem_free_bytes{job=\"yba-node-exporter\", node_prefix=~\"$dbcluster\", fstype!=\"rootfs\", mountpoint!~\"/boot.*\"}) by (mountpoint)",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 355
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "bytes"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YBA Node Disk Size",
+    "id" : 214,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : null,
+      "expr" : "sum(node_filesystem_size_bytes{job=\"yba-node-exporter\", node_prefix=~\"$dbcluster\", fstype!=\"rootfs\", mountpoint!~\"/boot.*\"}) by (mountpoint)",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 355
     }
   }, {
     "collapsed" : false,
@@ -6898,12 +7266,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 338
+      "y" : 356
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "Node Metrics",
-    "id" : 221
+    "id" : 231
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -7004,7 +7372,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 338
+      "y" : 356
     }
   }, {
     "aliasColors" : { },
@@ -7096,7 +7464,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 347
+      "y" : 365
     }
   }, {
     "aliasColors" : { },
@@ -7188,7 +7556,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 347
+      "y" : 365
     }
   }, {
     "aliasColors" : { },
@@ -7285,7 +7653,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 356
+      "y" : 374
     }
   }, {
     "aliasColors" : { },
@@ -7377,7 +7745,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 356
+      "y" : 374
     }
   }, {
     "aliasColors" : { },
@@ -7469,7 +7837,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 365
+      "y" : 383
     }
   }, {
     "aliasColors" : { },
@@ -7561,7 +7929,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 365
+      "y" : 383
     }
   }, {
     "aliasColors" : { },
@@ -7653,7 +8021,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 374
+      "y" : 392
     }
   }, {
     "aliasColors" : { },
@@ -7755,7 +8123,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 374
+      "y" : 392
     }
   }, {
     "aliasColors" : { },
@@ -7852,7 +8220,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 383
+      "y" : 401
     }
   }, {
     "aliasColors" : { },
@@ -7944,7 +8312,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 383
+      "y" : 401
     }
   }, {
     "aliasColors" : { },
@@ -8036,7 +8404,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 392
+      "y" : 410
     }
   }, {
     "aliasColors" : { },
@@ -8143,7 +8511,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 392
+      "y" : 410
     }
   }, {
     "aliasColors" : { },
@@ -8240,7 +8608,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 401
+      "y" : 419
     }
   }, {
     "aliasColors" : { },
@@ -8337,7 +8705,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 401
+      "y" : 419
     }
   }, {
     "aliasColors" : { },
@@ -8434,7 +8802,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 410
+      "y" : 428
     }
   }, {
     "aliasColors" : { },
@@ -8531,7 +8899,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 410
+      "y" : 428
     }
   }, {
     "aliasColors" : { },
@@ -8623,7 +8991,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 419
+      "y" : 437
     }
   }, {
     "aliasColors" : { },
@@ -8725,7 +9093,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 419
+      "y" : 437
     }
   }, {
     "collapsed" : false,
@@ -8734,12 +9102,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 420
+      "y" : 438
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "Otel Collector",
-    "id" : 222
+    "id" : 232
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -8830,7 +9198,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 420
+      "y" : 438
     }
   }, {
     "aliasColors" : { },
@@ -8922,7 +9290,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 429
+      "y" : 447
     }
   }, {
     "aliasColors" : { },
@@ -9014,7 +9382,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 429
+      "y" : 447
     }
   }, {
     "aliasColors" : { },
@@ -9106,7 +9474,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 438
+      "y" : 456
     }
   }, {
     "aliasColors" : { },
@@ -9198,7 +9566,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 438
+      "y" : 456
     }
   }, {
     "collapsed" : false,
@@ -9207,12 +9575,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 439
+      "y" : 457
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "Per-process Metrics",
-    "id" : 223
+    "id" : 233
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -9338,7 +9706,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 439
+      "y" : 457
     }
   }, {
     "aliasColors" : { },
@@ -9465,7 +9833,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 448
+      "y" : 466
     }
   }, {
     "aliasColors" : { },
@@ -9592,7 +9960,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 448
+      "y" : 466
     }
   }, {
     "aliasColors" : { },
@@ -9719,7 +10087,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 457
+      "y" : 475
     }
   }, {
     "aliasColors" : { },
@@ -9846,7 +10214,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 457
+      "y" : 475
     }
   }, {
     "aliasColors" : { },
@@ -9973,7 +10341,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 466
+      "y" : 484
     }
   }, {
     "aliasColors" : { },
@@ -10100,7 +10468,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 466
+      "y" : 484
     }
   }, {
     "aliasColors" : { },
@@ -10227,7 +10595,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 475
+      "y" : 493
     }
   }, {
     "collapsed" : false,
@@ -10236,12 +10604,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 476
+      "y" : 494
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "RocksDB",
-    "id" : 224
+    "id" : 234
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -10332,7 +10700,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 476
+      "y" : 494
     }
   }, {
     "aliasColors" : { },
@@ -10424,7 +10792,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 485
+      "y" : 503
     }
   }, {
     "aliasColors" : { },
@@ -10516,7 +10884,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 485
+      "y" : 503
     }
   }, {
     "aliasColors" : { },
@@ -10618,7 +10986,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 494
+      "y" : 512
     }
   }, {
     "aliasColors" : { },
@@ -10715,7 +11083,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 494
+      "y" : 512
     }
   }, {
     "aliasColors" : { },
@@ -10812,7 +11180,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 503
+      "y" : 521
     }
   }, {
     "aliasColors" : { },
@@ -10909,7 +11277,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 503
+      "y" : 521
     }
   }, {
     "aliasColors" : { },
@@ -11006,7 +11374,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 512
+      "y" : 530
     }
   }, {
     "aliasColors" : { },
@@ -11098,7 +11466,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 512
+      "y" : 530
     }
   }, {
     "aliasColors" : { },
@@ -11190,7 +11558,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 521
+      "y" : 539
     }
   }, {
     "aliasColors" : { },
@@ -11282,7 +11650,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 521
+      "y" : 539
     }
   }, {
     "aliasColors" : { },
@@ -11374,7 +11742,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 530
+      "y" : 548
     }
   }, {
     "aliasColors" : { },
@@ -11466,7 +11834,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 530
+      "y" : 548
     }
   }, {
     "aliasColors" : { },
@@ -11558,7 +11926,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 539
+      "y" : 557
     }
   }, {
     "aliasColors" : { },
@@ -11650,7 +12018,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 539
+      "y" : 557
     }
   }, {
     "aliasColors" : { },
@@ -11742,7 +12110,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 548
+      "y" : 566
     }
   }, {
     "aliasColors" : { },
@@ -11859,7 +12227,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 548
+      "y" : 566
     }
   }, {
     "aliasColors" : { },
@@ -11966,7 +12334,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 557
+      "y" : 575
     }
   }, {
     "aliasColors" : { },
@@ -12068,7 +12436,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 557
+      "y" : 575
     }
   }, {
     "aliasColors" : { },
@@ -12160,7 +12528,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 566
+      "y" : 584
     }
   }, {
     "aliasColors" : { },
@@ -12252,7 +12620,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 566
+      "y" : 584
     }
   }, {
     "aliasColors" : { },
@@ -12344,7 +12712,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 575
+      "y" : 593
     }
   }, {
     "aliasColors" : { },
@@ -12436,7 +12804,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 575
+      "y" : 593
     }
   }, {
     "aliasColors" : { },
@@ -12528,7 +12896,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 584
+      "y" : 602
     }
   }, {
     "aliasColors" : { },
@@ -12620,7 +12988,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 584
+      "y" : 602
     }
   }, {
     "aliasColors" : { },
@@ -12712,7 +13080,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 593
+      "y" : 611
     }
   }, {
     "aliasColors" : { },
@@ -12804,7 +13172,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 593
+      "y" : 611
     }
   }, {
     "aliasColors" : { },
@@ -12896,7 +13264,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 602
+      "y" : 620
     }
   }, {
     "aliasColors" : { },
@@ -13003,7 +13371,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 602
+      "y" : 620
     }
   }, {
     "collapsed" : false,
@@ -13012,12 +13380,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 603
+      "y" : 621
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "Tablet Server",
-    "id" : 225
+    "id" : 235
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -13108,7 +13476,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 603
+      "y" : 621
     }
   }, {
     "aliasColors" : { },
@@ -13200,7 +13568,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 612
+      "y" : 630
     }
   }, {
     "aliasColors" : { },
@@ -13292,7 +13660,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 612
+      "y" : 630
     }
   }, {
     "aliasColors" : { },
@@ -13384,7 +13752,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 621
+      "y" : 639
     }
   }, {
     "aliasColors" : { },
@@ -13481,7 +13849,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 621
+      "y" : 639
     }
   }, {
     "aliasColors" : { },
@@ -13566,14 +13934,14 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Raft Leader",
-      "expr" : "sum(is_raft_leader{node_prefix=~\"$dbcluster\"})",
+      "expr" : "sum(sum by (saved_name, exported_instance)(is_raft_leader{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}))",
       "refId" : "A"
     } ],
     "gridPos" : {
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 630
+      "y" : 648
     }
   }, {
     "aliasColors" : { },
@@ -13670,7 +14038,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 630
+      "y" : 648
     }
   }, {
     "aliasColors" : { },
@@ -13762,7 +14130,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 639
+      "y" : 657
     }
   }, {
     "aliasColors" : { },
@@ -13864,7 +14232,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 639
+      "y" : 657
     }
   }, {
     "aliasColors" : { },
@@ -13971,7 +14339,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 648
+      "y" : 666
     }
   }, {
     "aliasColors" : { },
@@ -14078,7 +14446,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 648
+      "y" : 666
     }
   }, {
     "aliasColors" : { },
@@ -14170,7 +14538,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 657
+      "y" : 675
     }
   }, {
     "aliasColors" : { },
@@ -14262,7 +14630,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 657
+      "y" : 675
     }
   }, {
     "aliasColors" : { },
@@ -14369,7 +14737,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 666
+      "y" : 684
     }
   }, {
     "aliasColors" : { },
@@ -14461,7 +14829,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 666
+      "y" : 684
     }
   }, {
     "aliasColors" : { },
@@ -14563,7 +14931,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 675
+      "y" : 693
     }
   }, {
     "aliasColors" : { },
@@ -14665,7 +15033,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 675
+      "y" : 693
     }
   }, {
     "aliasColors" : { },
@@ -14762,7 +15130,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 684
+      "y" : 702
     }
   }, {
     "aliasColors" : { },
@@ -14859,7 +15227,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 684
+      "y" : 702
     }
   }, {
     "aliasColors" : { },
@@ -14961,7 +15329,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 693
+      "y" : 711
     }
   }, {
     "aliasColors" : { },
@@ -15063,7 +15431,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 693
+      "y" : 711
     }
   }, {
     "aliasColors" : { },
@@ -15148,14 +15516,14 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Live Tablet Peers",
-      "expr" : "sum(avg_over_time(ts_live_tablet_peers{node_prefix=~\"$dbcluster\"}))",
+      "expr" : "sum(avg_over_time(ts_live_tablet_peers{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))",
       "refId" : "A"
     } ],
     "gridPos" : {
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 702
+      "y" : 720
     }
   }, {
     "aliasColors" : { },
@@ -15247,7 +15615,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 702
+      "y" : 720
     }
   }, {
     "aliasColors" : { },
@@ -15339,7 +15707,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 711
+      "y" : 729
     }
   }, {
     "aliasColors" : { },
@@ -15441,7 +15809,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 711
+      "y" : 729
     }
   }, {
     "aliasColors" : { },
@@ -15543,7 +15911,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 720
+      "y" : 738
     }
   }, {
     "aliasColors" : { },
@@ -15640,7 +16008,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 720
+      "y" : 738
     }
   }, {
     "aliasColors" : { },
@@ -15732,7 +16100,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 729
+      "y" : 747
     }
   }, {
     "aliasColors" : { },
@@ -15834,7 +16202,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 729
+      "y" : 747
     }
   }, {
     "aliasColors" : { },
@@ -15936,7 +16304,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 738
+      "y" : 756
     }
   }, {
     "aliasColors" : { },
@@ -16033,7 +16401,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 738
+      "y" : 756
     }
   }, {
     "aliasColors" : { },
@@ -16130,7 +16498,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 747
+      "y" : 765
     }
   }, {
     "aliasColors" : { },
@@ -16222,7 +16590,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 747
+      "y" : 765
     }
   }, {
     "aliasColors" : { },
@@ -16314,7 +16682,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 756
+      "y" : 774
     }
   }, {
     "aliasColors" : { },
@@ -16406,7 +16774,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 756
+      "y" : 774
     }
   }, {
     "aliasColors" : { },
@@ -16508,7 +16876,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 765
+      "y" : 783
     }
   }, {
     "aliasColors" : { },
@@ -16600,7 +16968,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 765
+      "y" : 783
     }
   }, {
     "aliasColors" : { },
@@ -16697,7 +17065,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 774
+      "y" : 792
     }
   }, {
     "aliasColors" : { },
@@ -16789,7 +17157,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 774
+      "y" : 792
     }
   }, {
     "aliasColors" : { },
@@ -16881,7 +17249,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 783
+      "y" : 801
     }
   }, {
     "aliasColors" : { },
@@ -16973,7 +17341,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 783
+      "y" : 801
     }
   }, {
     "aliasColors" : { },
@@ -17065,7 +17433,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 792
+      "y" : 810
     }
   }, {
     "aliasColors" : { },
@@ -17157,7 +17525,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 792
+      "y" : 810
     }
   }, {
     "aliasColors" : { },
@@ -17249,7 +17617,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 801
+      "y" : 819
     }
   }, {
     "collapsed" : false,
@@ -17258,12 +17626,635 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 802
+      "y" : 820
+    },
+    "panels" : [ ],
+    "type" : "row",
+    "title" : "YBA Container Metrics",
+    "id" : 236
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "cores"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YBA Container CPU Usage",
+    "id" : 205,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "postgres",
+      "expr" : "avg(rate(container_cpu_usage_seconds_total{namespace=\"\", container_name=\"postgres\", node_prefix=~\"$dbcluster\", saved_name=\"container_cpu_usage_seconds_total\", pod_name=\"\"}[300s])) by (container_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "yugaware",
+      "expr" : "avg(rate(container_cpu_usage_seconds_total{namespace=\"\", container_name=\"yugaware\", node_prefix=~\"$dbcluster\", saved_name=\"container_cpu_usage_seconds_total\", pod_name=\"\"}[300s])) by (container_name)",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "prometheus",
+      "expr" : "avg(rate(container_cpu_usage_seconds_total{namespace=\"\", container_name=\"prometheus\", node_prefix=~\"$dbcluster\", saved_name=\"container_cpu_usage_seconds_total\", pod_name=\"\"}[300s])) by (container_name)",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 820
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "%"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YBA Container Disk Usage Percent",
+    "id" : 207,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : null,
+      "expr" : "((sum(kubelet_volume_stats_used_bytes{namespace=\"\", node_prefix=~\"$dbcluster\", persistentvolumeclaim=\"\"}) by (persistentvolumeclaim)) / (sum(kubelet_volume_stats_capacity_bytes{namespace=\"\", node_prefix=~\"$dbcluster\", persistentvolumeclaim=\"\"}) by (persistentvolumeclaim))) * 100",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 829
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "MB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YBA Container Memory Usage",
+    "id" : 209,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "prometheus",
+      "expr" : "avg(avg_over_time(container_memory_working_set_bytes{namespace=\"\", container_name=\"prometheus\", node_prefix=~\"$dbcluster\", saved_name=\"container_memory_working_set_bytes\", pod_name=\"\"}[300s])) by (container_name) / 1048576",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "postgres",
+      "expr" : "avg(avg_over_time(container_memory_working_set_bytes{namespace=\"\", container_name=\"postgres\", node_prefix=~\"$dbcluster\", saved_name=\"container_memory_working_set_bytes\", pod_name=\"\"}[300s])) by (container_name) / 1048576",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "yugaware",
+      "expr" : "avg(avg_over_time(container_memory_working_set_bytes{namespace=\"\", container_name=\"yugaware\", node_prefix=~\"$dbcluster\", saved_name=\"container_memory_working_set_bytes\", pod_name=\"\"}[300s])) by (container_name) / 1048576",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 829
+    }
+  }, {
+    "collapsed" : false,
+    "datasource" : "$datasource",
+    "gridPos" : {
+      "w" : 24,
+      "h" : 1,
+      "x" : 0,
+      "y" : 830
+    },
+    "panels" : [ ],
+    "type" : "row",
+    "title" : "YBA Node Metrics",
+    "id" : 237
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "%"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YBA Node CPU Usage",
+    "id" : 212,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "avg(avg_over_time(node_cpu_usage_avg{job=\"yba-node-exporter\", mode=\"total\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "System",
+      "expr" : "avg(avg_over_time(node_cpu_usage_avg{job=\"yba-node-exporter\", mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "User",
+      "expr" : "avg(avg_over_time(node_cpu_usage_avg{job=\"yba-node-exporter\", mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 830
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "%"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YBA Node Disk Usage Percent",
+    "id" : 215,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : null,
+      "expr" : "((sum(node_filesystem_free_bytes{job=\"yba-node-exporter\", node_prefix=~\"$dbcluster\", fstype!=\"rootfs\", mountpoint!~\"/boot.*\"}) by (mountpoint)) / (sum(node_filesystem_size_bytes{job=\"yba-node-exporter\", node_prefix=~\"$dbcluster\", fstype!=\"rootfs\", mountpoint!~\"/boot.*\"}) by (mountpoint))) * 100",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 839
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "GB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "YBA Node Memory Usage",
+    "id" : 216,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "avg(avg_over_time({job=\"yba-node-exporter\", node_prefix=~\"$dbcluster\", saved_name=\"node_memory_MemTotal_bytes\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Free",
+      "expr" : "avg(avg_over_time({job=\"yba-node-exporter\", node_prefix=~\"$dbcluster\", saved_name=\"node_memory_MemFree_bytes\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Cached",
+      "expr" : "avg(avg_over_time({job=\"yba-node-exporter\", node_prefix=~\"$dbcluster\", saved_name=\"node_memory_Cached_bytes\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "C"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Buffered",
+      "expr" : "avg(avg_over_time({job=\"yba-node-exporter\", node_prefix=~\"$dbcluster\", saved_name=\"node_memory_Buffers_bytes\"}[300s])) by (saved_name) / 1073741824",
+      "refId" : "D"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 839
+    }
+  }, {
+    "collapsed" : false,
+    "datasource" : "$datasource",
+    "gridPos" : {
+      "w" : 24,
+      "h" : 1,
+      "x" : 0,
+      "y" : 840
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YCQL Ops & Latency",
-    "id" : 226
+    "id" : 238
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -17364,7 +18355,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 802
+      "y" : 840
     }
   }, {
     "aliasColors" : { },
@@ -17481,7 +18472,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 811
+      "y" : 849
     }
   }, {
     "aliasColors" : { },
@@ -17598,7 +18589,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 811
+      "y" : 849
     }
   }, {
     "aliasColors" : { },
@@ -17715,7 +18706,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 820
+      "y" : 858
     }
   }, {
     "aliasColors" : { },
@@ -17832,7 +18823,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 820
+      "y" : 858
     }
   }, {
     "aliasColors" : { },
@@ -17939,7 +18930,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 829
+      "y" : 867
     }
   }, {
     "aliasColors" : { },
@@ -18031,7 +19022,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 829
+      "y" : 867
     }
   }, {
     "aliasColors" : { },
@@ -18123,7 +19114,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 838
+      "y" : 876
     }
   }, {
     "aliasColors" : { },
@@ -18215,7 +19206,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 838
+      "y" : 876
     }
   }, {
     "aliasColors" : { },
@@ -18307,7 +19298,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 847
+      "y" : 885
     }
   }, {
     "aliasColors" : { },
@@ -18399,7 +19390,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 847
+      "y" : 885
     }
   }, {
     "collapsed" : false,
@@ -18408,12 +19399,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 848
+      "y" : 886
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YEDIS Ops & Latency",
-    "id" : 227
+    "id" : 239
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -18504,7 +19495,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 848
+      "y" : 886
     }
   }, {
     "aliasColors" : { },
@@ -18651,7 +19642,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 857
+      "y" : 895
     }
   }, {
     "aliasColors" : { },
@@ -18783,7 +19774,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 857
+      "y" : 895
     }
   }, {
     "aliasColors" : { },
@@ -18900,7 +19891,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 866
+      "y" : 904
     }
   }, {
     "aliasColors" : { },
@@ -19012,7 +20003,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 866
+      "y" : 904
     }
   }, {
     "aliasColors" : { },
@@ -19159,7 +20150,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 875
+      "y" : 913
     }
   }, {
     "aliasColors" : { },
@@ -19266,7 +20257,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 875
+      "y" : 913
     }
   }, {
     "aliasColors" : { },
@@ -19368,7 +20359,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 884
+      "y" : 922
     }
   }, {
     "aliasColors" : { },
@@ -19460,7 +20451,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 884
+      "y" : 922
     }
   }, {
     "aliasColors" : { },
@@ -19607,7 +20598,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 893
+      "y" : 931
     }
   }, {
     "aliasColors" : { },
@@ -19739,7 +20730,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 893
+      "y" : 931
     }
   }, {
     "aliasColors" : { },
@@ -19856,7 +20847,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 902
+      "y" : 940
     }
   }, {
     "aliasColors" : { },
@@ -19968,7 +20959,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 902
+      "y" : 940
     }
   }, {
     "aliasColors" : { },
@@ -20115,7 +21106,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 911
+      "y" : 949
     }
   }, {
     "aliasColors" : { },
@@ -20222,7 +21213,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 911
+      "y" : 949
     }
   }, {
     "aliasColors" : { },
@@ -20314,7 +21305,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 920
+      "y" : 958
     }
   }, {
     "aliasColors" : { },
@@ -20406,7 +21397,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 920
+      "y" : 958
     }
   }, {
     "aliasColors" : { },
@@ -20498,7 +21489,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 929
+      "y" : 967
     }
   }, {
     "aliasColors" : { },
@@ -20590,7 +21581,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 929
+      "y" : 967
     }
   }, {
     "aliasColors" : { },
@@ -20682,7 +21673,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 938
+      "y" : 976
     }
   }, {
     "aliasColors" : { },
@@ -20774,7 +21765,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 938
+      "y" : 976
     }
   }, {
     "collapsed" : false,
@@ -20783,12 +21774,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 939
+      "y" : 977
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL",
-    "id" : 228
+    "id" : 240
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -20868,7 +21859,7 @@
       "alignLevel" : null
     },
     "title" : "Catalog Cache Misses",
-    "id" : 207,
+    "id" : 217,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Catalog Cache Miss Count",
@@ -20879,7 +21870,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 939
+      "y" : 977
     }
   }, {
     "collapsed" : false,
@@ -20888,12 +21879,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 940
+      "y" : 978
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL Ops & Latency",
-    "id" : 229
+    "id" : 241
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -20973,7 +21964,7 @@
       "alignLevel" : null
     },
     "title" : "Connection Pooling - Client Connections",
-    "id" : 208,
+    "id" : 218,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Queued",
@@ -20999,7 +21990,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 940
+      "y" : 978
     }
   }, {
     "aliasColors" : { },
@@ -21080,7 +22071,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Connections",
-    "id" : 209,
+    "id" : 219,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Total",
@@ -21096,7 +22087,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 949
+      "y" : 987
     }
   }, {
     "aliasColors" : { },
@@ -21177,7 +22168,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Connections / Sec",
-    "id" : 210,
+    "id" : 220,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rejected",
@@ -21193,7 +22184,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 949
+      "y" : 987
     }
   }, {
     "aliasColors" : { },
@@ -21274,7 +22265,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 211,
+    "id" : 221,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Begin",
@@ -21305,7 +22296,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 958
+      "y" : 996
     }
   }, {
     "aliasColors" : { },
@@ -21386,7 +22377,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 212,
+    "id" : 222,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -21412,7 +22403,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 958
+      "y" : 996
     }
   }, {
     "aliasColors" : { },
@@ -21493,7 +22484,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Advanced Op Latency (Avg)",
-    "id" : 213,
+    "id" : 223,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rollback",
@@ -21524,7 +22515,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 967
+      "y" : 1005
     }
   }, {
     "aliasColors" : { },
@@ -21605,7 +22596,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Op Latency (Avg)",
-    "id" : 214,
+    "id" : 224,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Delete",
@@ -21631,7 +22622,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 967
+      "y" : 1005
     }
   } ]
 }

@@ -36,7 +36,7 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/types.h"
 
 namespace rocksdb {

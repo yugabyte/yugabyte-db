@@ -19,7 +19,6 @@ export interface OtherAdvancedProps {
   nodeExporterPort: number;
   ybControllerrRpcPort: number;
   instanceTags: InstanceTag[];
-  useTimeSync: boolean;
   awsArnString: string;
   useSystemd: boolean;
   accessKeyCode: string;

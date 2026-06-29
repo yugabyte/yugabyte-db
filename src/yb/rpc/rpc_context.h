@@ -43,7 +43,6 @@
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"

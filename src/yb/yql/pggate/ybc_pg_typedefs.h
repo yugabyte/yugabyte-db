@@ -13,7 +13,11 @@
 // This module contains C definitions for all YugaByte structures that are used to exhange data
 // and metadata between Postgres and YBClient libraries.
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
+#define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -888,6 +892,8 @@ typedef struct {
   const char** replicas;
   size_t replicas_count;
   bool is_hash_partitioned;
+  const char* tablet_state;
+  YbcPgOid pg_table_oid;
 } YbcPgGlobalTabletsDescriptor;
 
 typedef struct {
@@ -1110,8 +1116,15 @@ typedef struct YbcReplicationInfo {
 
 typedef uint64_t YbcIsExplicitlyLockedRowSkippedCheckHandle;
 
+typedef struct YbcIsExplicitlyLockedRowSkippedCheckHandleOptional {
+  bool has_value;
+  YbcIsExplicitlyLockedRowSkippedCheckHandle value;
+} YbcIsExplicitlyLockedRowSkippedCheckHandleOptional;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
 #undef YB_DEFINE_HANDLE_TYPE
+
+#endif  // YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H

@@ -96,6 +96,8 @@ using tserver::AcquireObjectLockRequestPB;
 using tserver::AcquireObjectLockResponsePB;
 using tserver::ReleaseObjectLockRequestPB;
 using tserver::ReleaseObjectLockResponsePB;
+using tserver::WaitForLockersMultipleRequestPB;
+using tserver::WaitForLockersMultipleResponsePB;
 using tserver::TabletServerErrorPB;
 
 namespace {
@@ -123,7 +125,8 @@ constexpr auto kTserverRpcsBufferForTimeoutDetection = 5s;
 template <typename T>
   requires std::disjunction_v<
                std::is_same<T, AcquireObjectLockRequestPB>,
-               std::is_same<T, ReleaseObjectLockRequestPB>>
+               std::is_same<T, ReleaseObjectLockRequestPB>,
+               std::is_same<T, WaitForLockersMultipleRequestPB>>
 constexpr bool kIsReleaseRequest = false;
 
 template <>
@@ -203,6 +206,9 @@ class ObjectLockInfoManager::Impl {
       const ReleaseObjectLocksGlobalRequestPB& master_request,
       tserver::ReleaseObjectLockRequestPB&& tserver_request, CoarseTimePoint deadline);
   void UnlockObject(const TransactionId& txn_id);
+  void WaitForLockersMultipleGlobal(
+      WaitForLockersMultipleRequestPB&& req, CoarseTimePoint deadline,
+      StdStatusCallback&& callback);
   Status MaybePopulateHostInfo(ReleaseObjectLockRequestPB& req) EXCLUDES(mutex_);
   Status PopulateHostInfo(const TransactionId& txn_id, ReleaseObjectLockRequestPB& req)
       EXCLUDES(mutex_);
@@ -511,6 +517,21 @@ ReleaseObjectLockRequestPB TserverRequestFor(
   return req;
 }
 
+WaitForLockersMultipleRequestPB TserverRequestFor(
+    const WaitForLockersMultipleGlobalRequestPB& master_request) {
+  WaitForLockersMultipleRequestPB req;
+  req.set_session_host_uuid(master_request.session_host_uuid());
+  req.set_lease_epoch(master_request.lease_epoch());
+  req.mutable_object_locks()->CopyFrom(master_request.object_locks());
+  if (master_request.has_propagated_hybrid_time()) {
+    req.set_propagated_hybrid_time(master_request.propagated_hybrid_time());
+  }
+  if (master_request.has_background_transaction_id()) {
+    req.set_background_transaction_id(master_request.background_transaction_id());
+  }
+  return req;
+}
+
 template <class Resp>
 void FillErrorIfRequired(const Status& status, Resp& resp) {
   if (!status.ok()) {
@@ -591,6 +612,17 @@ ReleaseObjectLockRequestPB ReleaseRequestToPersist(const ReleaseObjectLockReques
   return req_to_persist;
 }
 
+template <typename Req>
+constexpr const char* ObjectLockOpName() {
+  if constexpr (std::is_same_v<Req, ReleaseObjectLockRequestPB>) {
+    return "release";
+  }
+  if constexpr (std::is_same_v<Req, WaitForLockersMultipleRequestPB>) {
+    return "wait_for_lockers";
+  }
+  return "acquire";
+}
+
 }  // namespace
 
 ObjectLockInfoManager::ObjectLockInfoManager(Master& master, CatalogManager& catalog_manager)
@@ -634,6 +666,20 @@ void ObjectLockInfoManager::UnlockObject(
   resp.set_propagated_hybrid_time(impl_->clock()->Now().ToUint64());
   FillErrorIfRequired(s, resp);
   rpc.RespondSuccess();
+}
+
+void ObjectLockInfoManager::WaitForLockersMultipleGlobal(
+    const WaitForLockersMultipleGlobalRequestPB& req,
+    WaitForLockersMultipleGlobalResponsePB& resp,
+    rpc::RpcContext rpc) {
+  auto rpc_ptr = std::make_shared<rpc::RpcContext>(std::move(rpc));
+  impl_->WaitForLockersMultipleGlobal(
+      TserverRequestFor(req), rpc_ptr->GetClientDeadline(),
+      [&resp, clock = impl_->clock(), rpc_ptr](const Status& s) mutable {
+        resp.set_propagated_hybrid_time(clock->Now().ToUint64());
+        FillErrorIfRequired(s, resp);
+        rpc_ptr->RespondSuccess();
+      });
 }
 
 void ObjectLockInfoManager::ReleaseLocksForTxn(const TransactionId& txn_id) {
@@ -1156,6 +1202,37 @@ void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
   WARN_NOT_OK(UnlockObject(std::move(req)), "Failed to enqueue request for unlock object");
 }
 
+void ObjectLockInfoManager::Impl::WaitForLockersMultipleGlobal(
+    WaitForLockersMultipleRequestPB&& req, CoarseTimePoint deadline,
+    StdStatusCallback&& callback) {
+  VLOG(1) << __PRETTY_FUNCTION__ << req.ShortDebugString();
+
+  auto requestor_latest_lease_epoch = GetLeaseEpoch(req.session_host_uuid());
+  if (!requestor_latest_lease_epoch || req.lease_epoch() != *requestor_latest_lease_epoch) {
+    callback(STATUS_FORMAT(
+        InvalidArgument,
+        "Requestor has a lease epoch of $0 but the latest valid lease epoch for this tserver is $1",
+        req.lease_epoch(), requestor_latest_lease_epoch));
+    return;
+  }
+
+  LeaderEpoch epoch;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
+    auto leader_status = CheckLeaderLockStatus(l, std::nullopt);
+    if (!leader_status.ok()) {
+      callback(leader_status);
+      return;
+    }
+    epoch = l.epoch();
+  }
+
+  auto wait_task = std::make_shared<UpdateAllTServers<WaitForLockersMultipleRequestPB>>(
+      master_, catalog_manager_, *this, std::move(req), std::move(callback),
+      std::move(deadline), std::nullopt, std::move(epoch), TransactionId::Nil());
+  WARN_NOT_OK(wait_task->Launch(), "Failed to launch WaitForLockersMultiple");
+}
+
 Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
     const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
     const LeaderEpoch& epoch) {
@@ -1510,12 +1587,26 @@ UpdateAllTServers<ReleaseObjectLockRequestPB>::TServerTaskFor(
       std::move(callback));
 }
 
+template <>
+std::shared_ptr<RetrySpecificTSRpcTask>
+UpdateAllTServers<WaitForLockersMultipleRequestPB>::TServerTaskFor(
+    const TabletServerId& ts_uuid, StdStatusCallback&& callback) {
+  return std::make_shared<
+      master::UpdateTServer<WaitForLockersMultipleRequestPB, WaitForLockersMultipleResponsePB>>(
+      master_, catalog_manager_.AsyncTaskPool(), ts_uuid, this->shared_from_this(),
+      std::move(callback));
+}
+
 template <class Req>
 std::string UpdateAllTServers<Req>::LogPrefix() const {
-  return Format(
-      "$0 txn: $1 subtxn_id: $2 ",
-      (kIsReleaseRequest<Req> ? "ReleaseObjectLock" : "AcquireObjectLock"), txn_id_.ToString(),
-      (req_.has_subtxn_id() ? yb::ToString(req_.subtxn_id()) : "<none>"));
+  if constexpr (std::is_same_v<Req, WaitForLockersMultipleRequestPB>) {
+    return "WaitForLockersMultiple ";
+  } else {
+    return Format(
+        "$0 txn: $1 subtxn_id: $2 ",
+        (kIsReleaseRequest<Req> ? "ReleaseObjectLock" : "AcquireObjectLock"), txn_id_.ToString(),
+        (req_.has_subtxn_id() ? yb::ToString(req_.subtxn_id()) : "<none>"));
+  }
 }
 
 template <class Req>
@@ -1556,8 +1647,8 @@ void UpdateAllTServers<Req>::LaunchRpcsFrom(size_t start_idx) {
 
 template <class Req>
 void UpdateAllTServers<Req>::DoCallbackAndRespond(const Status& s) {
-  TRACE("$0: $1 $2", __func__, (kIsReleaseRequest<Req> ? "Release" : "Acquire"), s.ToString());
-  VLOG_WITH_FUNC(2) << (kIsReleaseRequest<Req> ? "Release" : "Acquire") << " " << s.ToString();
+  TRACE("$0: $1 $2", __func__, ObjectLockOpName<Req>(), s.ToString());
+  VLOG_WITH_FUNC(2) << ObjectLockOpName<Req>() << " " << s.ToString();
   WARN_NOT_OK(
       s, yb::Format(
              "$0Failed.$1", LogPrefix(),
@@ -1577,7 +1668,7 @@ void UpdateAllTServers<Req>::CheckForDone() {
       LOG(WARNING) << Format(
                           "Error from tserver $0 for forwarded $1 object lock request",
                           ts_descriptors_[i]->permanent_uuid(),
-                          kIsReleaseRequest<Req> ? "release" : "acquire")
+                          ObjectLockOpName<Req>())
                    << status;
       DoCallbackAndRespond(status);
       return;
@@ -1637,7 +1728,21 @@ void UpdateAllTServers<Req>::DoneAll() {
 }
 
 template <>
+Status UpdateAllTServers<WaitForLockersMultipleRequestPB>::AfterRpcs() {
+  TRACE_FUNC();
+  VLOG_WITH_FUNC(2);
+  SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
+  RETURN_NOT_OK(CheckLeaderLockStatus(l, epoch_));
+  return Status::OK();
+}
+
+template <>
 bool UpdateAllTServers<AcquireObjectLockRequestPB>::RelaunchIfNecessary() {
+  return false;
+}
+
+template <>
+bool UpdateAllTServers<WaitForLockersMultipleRequestPB>::RelaunchIfNecessary() {
   return false;
 }
 
@@ -1690,6 +1795,15 @@ bool UpdateTServer<ReleaseObjectLockRequestPB, ReleaseObjectLockResponsePB>::Sen
   return true;
 }
 
+template <>
+bool UpdateTServer<WaitForLockersMultipleRequestPB, WaitForLockersMultipleResponsePB>::SendRequest(
+    int attempt) {
+  VLOG_WITH_PREFIX(3) << __func__ << " attempt " << attempt;
+  ADOPT_WAIT_STATE(shared_all_tservers_->wait_state());
+  ts_proxy_->WaitForLockersMultipleAsync(request(), &resp_, &rpc_, BindRpcCallback());
+  return true;
+}
+
 template <class Req, class Resp>
 void UpdateTServer<Req, Resp>::HandleResponse(int attempt) {
   VLOG_WITH_PREFIX(3) << __func__ << " response is " << yb::ToString(resp_)
@@ -1703,7 +1817,7 @@ void UpdateTServer<Req, Resp>::HandleResponse(int attempt) {
     LOG_WITH_PREFIX(WARNING) << Format(
         "TServer no longer has a live lease. Ignoring this tserver for object lock $0 request, "
         "status: $1",
-        kIsReleaseRequest<Req> ? "release" : "acquire", status);
+        ObjectLockOpName<Req>(), status);
     TransitionToCompleteState();
     return;
   }

@@ -21,6 +21,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
@@ -117,6 +120,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tracing_level);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_yb_ash_sample_size);
@@ -3240,7 +3244,7 @@ TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
   // Find which tablet this hash falls into using yb_tablet_metadata
   auto tablet_from_metadata = ASSERT_RESULT(pg_conn.FetchRow<std::string>(
       yb::Format("SELECT tablet_id FROM yb_tablet_metadata "
-             "WHERE relname = 'hash_test_table' "
+             "WHERE db_name = current_database() AND relname = 'hash_test_table' "
              "AND $0 >= start_hash_code AND $0 < end_hash_code", hash_code)));
   LOG(INFO) << "Tablet ID from yb_tablet_metadata: " << tablet_from_metadata;
 
@@ -3295,15 +3299,184 @@ TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
 
 TEST_F(PgMiniTest, TabletMetadataOidMatchesPgClass) {
   auto pg_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(pg_conn.Execute(
-      "CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT)"));
-  auto pg_class_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+  // Create the table without a primary key, then ADD PRIMARY KEY to force a
+  // table rewrite. The rewrite preserves the table's PG OID but assigns it a new
+  // relfilenode (a new DocDB table whose UUID encodes that relfilenode), so
+  // oid != relfilenode afterwards.
+  ASSERT_OK(pg_conn.Execute("CREATE TABLE test_table (id INT, name TEXT)"));
+  ASSERT_OK(pg_conn.Execute("ALTER TABLE test_table ADD PRIMARY KEY (id)"));
+
+  const auto pg_class_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
       "SELECT oid FROM pg_class WHERE relname = 'test_table'"));
-  auto tablet_metadata_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
-      "SELECT oid FROM yb_tablet_metadata WHERE relname = 'test_table' LIMIT 1;"));
-  ASSERT_EQ(pg_class_oid, tablet_metadata_oid)
-      << "OID mismatch: pg_class returned " << pg_class_oid
-      << " but yb_tablet_metadata returned " << tablet_metadata_oid;
+  const auto pg_class_relfilenode = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+      "SELECT relfilenode FROM pg_class WHERE relname = 'test_table'"));
+
+  // Guard the test's premise: the rewrite must actually have moved the storage,
+  // otherwise relfilenode == oid and this test would not distinguish them.
+  ASSERT_NE(pg_class_oid, pg_class_relfilenode)
+      << "ALTER TABLE ADD PRIMARY KEY did not rewrite test_table; oid and "
+      << "relfilenode are both " << pg_class_oid;
+
+  // Look the table up in the view by (db_name, relname) and confirm it reports
+  // pg_class's stable oid -- which survives the rewrite -- and not the now
+  // diverged relfilenode.
+  ASSERT_OK(WaitFor([&pg_conn, pg_class_oid]() -> Result<bool> {
+    return pg_conn.FetchRow<bool>(Format(
+        "SELECT EXISTS (SELECT 1 FROM yb_tablet_metadata "
+        "WHERE db_name = current_database() AND relname = 'test_table' "
+        "AND oid = $0)", pg_class_oid));
+  }, 30s, "yb_tablet_metadata exposes test_table's stable oid"));
+}
+
+TEST_F(PgMiniTest, TabletMetadataMaskingSurvivesRewrite) {
+  // A role holding SELECT on a table sees that table's yb_tablet_metadata rows
+  // unmasked. A table rewrite assigns a new relfilenode but preserves the
+  // pg_class OID.
+  const std::string kTable = "rewrite_range_grant";
+  const std::string kRole = "tmeta_unpriv";
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Range-sharded so start_range/end_range carry real bounds.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT NOT NULL, v INT, PRIMARY KEY (k ASC)) "
+      "SPLIT AT VALUES ((5), (10))", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE ROLE $0", kRole));
+  ASSERT_OK(conn.ExecuteFormat("GRANT SELECT ON $0 TO $1", kTable, kRole));
+
+  const auto oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kTable)));
+  const auto relfilenode_before = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE relname = '$0'", kTable)));
+  // A freshly created table's relfilenode equals its OID.
+  ASSERT_EQ(oid, relfilenode_before);
+
+  // Trigger a table rewrite via a volatile column default: new relfilenode, same OID.
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN w float DEFAULT random()", kTable));
+
+  const auto oid_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kTable)));
+  const auto relfilenode_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE relname = '$0'", kTable)));
+  ASSERT_EQ(oid_after, oid) << "rewrite must not change the pg_class OID";
+  ASSERT_NE(relfilenode_after, relfilenode_before)
+      << "ALTER TABLE ... ADD COLUMN DEFAULT random() did not rewrite the table";
+
+  // After the rewrite the granted role must still see the table unmasked,
+  // because the ACL check uses the stable OID, not the changed relfilenode.
+  ASSERT_OK(conn.ExecuteFormat("SET ROLE $0", kRole));
+
+  // Wait for all three tablets of the rewritten range table to surface.
+  ASSERT_OK(WaitFor([&conn, oid]() -> Result<bool> {
+    return VERIFY_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT count(*) FROM yb_tablet_metadata "
+        "WHERE oid = $0 AND db_name = current_database()",
+        oid))) == 3;
+  }, 30s, "all 3 tablets of the rewritten range table are visible"));
+
+  // relname is the real name on every row, not the masked placeholder.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format(
+      "SELECT DISTINCT relname FROM yb_tablet_metadata "
+      "WHERE oid = $0 AND db_name = current_database()",
+      oid))), kTable);
+
+  // No relname/start_range/end_range cell is masked.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM yb_tablet_metadata "
+      "WHERE oid = $0 AND db_name = current_database() "
+      "AND '<insufficient privilege>' IN (relname, start_range, end_range)",
+      oid))), 0) << "a cell was masked for a role that holds SELECT";
+
+  // The middle [5,10) tablet exposes real (non-NULL) range bounds.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM yb_tablet_metadata "
+      "WHERE oid = $0 AND db_name = current_database() "
+      "AND start_range IS NOT NULL AND end_range IS NOT NULL",
+      oid))), 1) << "expected the [5,10) tablet to expose real range bounds";
+
+  ASSERT_OK(conn.Execute("RESET ROLE"));
+}
+
+TEST_F(PgMiniTest, TabletMetadataStateColumn) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+
+  // ======== RUNNING ========
+  // Create a table and verify all its tablets report RUNNING.
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE state_test (id INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  auto running_count = ASSERT_RESULT(pg_conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM yb_get_tablet_metadata() "
+      "WHERE object_name = 'state_test' AND tablet_state = 'RUNNING'"));
+  ASSERT_EQ(running_count, 1);
+  LOG(INFO) << "RUNNING state verified";
+
+  // ======== DELETED via DROP TABLE ========
+  // Create a second table, record its tablet ID, then drop it.
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE delete_test (id INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  auto delete_table_id = ASSERT_RESULT(GetTableIDFromTableName("delete_test"));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), delete_table_id);
+  ASSERT_EQ(peers.size(), 1);
+  auto deleted_tablet_id = peers[0]->tablet_id();
+
+  ASSERT_OK(pg_conn.Execute("DROP TABLE delete_test"));
+
+  // DROP returns once the tablets are deleted, but the master keeps the tablet in
+  // tablet_map_ in DELETED state until the background CleanUpDeletedTables task erases
+  // it on its next cycle. Poll within that window to observe the DELETED state.
+  ASSERT_OK(LoggedWaitFor(
+      [&pg_conn, &deleted_tablet_id]() -> Result<bool> {
+        auto count = VERIFY_RESULT(pg_conn.FetchRow<int64_t>(Format(
+            "SELECT count(*) FROM yb_get_tablet_metadata() "
+            "WHERE tablet_id = '$0' AND tablet_state = 'DELETED'", deleted_tablet_id)));
+        return count > 0;
+      },
+      30s * kTimeMultiplier, "Wait for DELETED tablet state after DROP TABLE"));
+  LOG(INFO) << "DELETED state verified for tablet " << deleted_tablet_id;
+
+  // ======== REPLACED via creation timeout ========
+  // Set a very low creation timeout, shut down 2 of 3 tservers so new tablets can't
+  // get a quorum, and create a CQL table (non-blocking). The master will mark the
+  // timed-out tablets as REPLACED.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_creation_timeout_ms) = 1000;
+
+  cluster_->mini_tablet_server(1)->Shutdown();
+  cluster_->mini_tablet_server(2)->Shutdown();
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists("test_ks", YQLDatabase::YQL_DATABASE_CQL));
+
+  client::YBSchemaBuilder builder;
+  builder.AddColumn("id")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  client::YBSchema schema;
+  ASSERT_OK(builder.Build(&schema));
+
+  auto table_name = client::YBTableName(YQL_DATABASE_CQL, "test_ks", "replaced_test");
+  ASSERT_OK(client_->NewTableCreator()
+      ->table_name(table_name)
+      .schema(&schema)
+      .num_tablets(1)
+      .wait(false)
+      .Create());
+
+  // Wait for creation timeout to trigger REPLACED.
+  ASSERT_OK(LoggedWaitFor(
+      [&pg_conn]() -> Result<bool> {
+        auto count = VERIFY_RESULT(pg_conn.FetchRow<int64_t>(
+            "SELECT count(*) FROM yb_get_tablet_metadata() "
+            "WHERE object_name = 'replaced_test' AND tablet_state = 'REPLACED'"));
+        return count > 0;
+      },
+      30s * kTimeMultiplier, "Wait for REPLACED tablet state"));
+  LOG(INFO) << "REPLACED state verified";
+
+  // Restart stopped tservers and shut down cluster to prevent consistency check
+  // from failing on the partially-created CQL table.
+  ASSERT_OK(cluster_->mini_tablet_server(1)->RestartStoppedServer());
+  ASSERT_OK(cluster_->mini_tablet_server(2)->RestartStoppedServer());
+  cluster_->Shutdown();
 }
 
 TEST_F(PgMiniTest, TestYbGetLocalTserverUuid) {

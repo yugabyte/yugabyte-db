@@ -1,0 +1,13 @@
+title: ExportType
+description: |
+  Enum for the kinds of telemetry data that a telemetry export configure task can modify.
+  Allowed values are:
+    - AUDIT_LOGS: Database audit logs export
+    - QUERY_LOGS: Database query logs export
+    - METRICS: Metrics export
+type: string
+enum:
+  - AUDIT_LOGS
+  - QUERY_LOGS
+  - METRICS
+example: AUDIT_LOGS

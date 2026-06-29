@@ -19,9 +19,9 @@ INSERT INTO p5 SELECT i / 10, i % 10, to_char(i, 'FM0000') FROM generate_series(
 CREATE INDEX p5_hash ON p5((a,b) hash);
 CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
 ANALYZE p5;
-SET yb_enable_optimizer_statistics = on;
-SET yb_enable_base_scans_cost_model = on;
+SET yb_enable_cbo = on;
 SET yb_prefer_bnl = off;
+SET max_parallel_workers_per_gather = 0;
 -- We're testing nested loop join batching in this file
 SET yb_bnl_batch_size = 1024;
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
@@ -386,20 +386,19 @@ INSERT INTO t12 VALUES (3,7,0),(6,9,0),(9,7,0),(4,9,0);
 ANALYZE t11;
 ANALYZE t12;
 EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
-                                                                                              QUERY PLAN                                                                                              
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                          QUERY PLAN                                                                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t10.r1, t10.r2, t10.r3, t10.r4
    ->  YB Batched Nested Loop Join
-         Join Filter: ((t11.c1 = t10.r1) AND (t12.c2 = t10.r2) AND (t11.c3 = t10.r3) AND (t12.c4 = t10.r4))
-         ->  Hash Join
-               Hash Cond: (t11.x = t12.y)
+         Join Filter: ((t11.x = t12.y) AND (t10.r2 = t12.c2) AND (t10.r4 = t12.c4))
+         ->  Seq Scan on t12
+         ->  YB Batched Nested Loop Join
+               Join Filter: ((t11.c1 = t10.r1) AND (t11.c3 = t10.r3))
                ->  Seq Scan on t11
-               ->  Hash
-                     ->  Seq Scan on t12
-         ->  Index Only Scan using i_t on t10
-               Index Cond: (ROW(r1, r2, r3, r4) = ANY (ARRAY[ROW(t11.c1, t12.c2, t11.c3, t12.c4), ROW($1, $1025, $2049, $3073), ROW($2, $1026, $2050, $3074), ..., ROW($1023, $2047, $3071, $4095)]))
-(11 rows)
+               ->  Index Only Scan using i_t on t10
+                     Index Cond: ((ROW(r1, r3) = ANY (ARRAY[ROW(t11.c1, t11.c3), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)])) AND (ROW(r2, r4) = ANY (ARRAY[ROW(t12.c2, t12.c4), ROW($2049, $3073), ROW($2050, $3074), ..., ROW($3071, $4095)])))
+(10 rows)
 
 DROP TABLE t10;
 DROP TABLE t11;
@@ -415,20 +414,19 @@ ANALYZE s1;
 ANALYZE s2;
 ANALYZE s3;
 explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
-                                                            QUERY PLAN                                                            
-----------------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: s3.r1, s3.r2
    ->  YB Batched Nested Loop Join
-         Join Filter: ((s1.r1 = s3.r1) AND (s2.r2 = s3.r2))
-         ->  Hash Join
-               Hash Cond: (s1.r3 = s2.r3)
+         Join Filter: ((s3.r2 = s2.r2) AND (s1.r3 = s2.r3))
+         ->  Seq Scan on s2
+         ->  YB Batched Nested Loop Join
+               Join Filter: (s1.r1 = s3.r1)
                ->  Seq Scan on s1
-               ->  Hash
-                     ->  Seq Scan on s2
-         ->  Index Only Scan using s3_r1_r2_idx on s3
-               Index Cond: (ROW(r1, r2) = ANY (ARRAY[ROW(s1.r1, s2.r2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
-(11 rows)
+               ->  Index Only Scan using s3_r1_r2_idx on s3
+                     Index Cond: ((r1 = ANY (ARRAY[s1.r1, $1, $2, ..., $1023])) AND (r2 = ANY (ARRAY[s2.r2, $1025, $1026, ..., $2047])))
+(10 rows)
 
 DROP TABLE s3;
 DROP TABLE s2;
@@ -567,9 +565,27 @@ explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order b
                      Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2, ..., $1023]))
 (8 rows)
 
+delete from q1;
+delete from q2;
+insert into q1 values
+  (10, 1), (20, 2), (30, 3), (40, 4), (50, 5), (60, 6),
+  (5, 10), (99, 99), (88, 88), (77, 77), (41, 99), (42, 99);
+insert into q2 values
+  (10, 1), (20, 2), (30, 3), (40, 4), (50, 5), (60, 6),
+  (5, 10), (70, 7), (80, 8), (90, 9), (91, 11), (92, 12);
+analyze q1;
+analyze q2;
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
-explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
+insert into q3 values
+  (1, 1, 'q3row01_AAAAAAAAAAAA'), (2, 2, 'q3row02_BBBBBBBBBBBB'), (3, 3, 'q3row03_CCCCCCCCCCCC'),
+  (4, 4, 'q3row04_DDDDDDDDDDDD'), (5, 5, 'q3row05_EEEEEEEEEEEE'), (6, 6, 'q3row06_FFFFFFFFFFFF'),
+  (7, 7, 'q3row07_GGGGGGGGGGGG'), (8, 8, 'q3row08_HHHHHHHHHHHH'), (9, 9, 'q3row09_IIIIIIIIIIII'),
+  (10, 10, 'q3row10_JJJJJJJJJJJJ'), (100, 10, 'q3row11_KKKKKKKKKKKK'), (12, 12, 'q3row12_LLLLLLLLLLLL');
+analyze q3;
+explain (costs off)
+select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+  on j1.a1 = p1.c1;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
@@ -579,25 +595,41 @@ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a
          ->  Index Scan using q2_pkey on q2 p2
                Index Cond: (c1 = ANY (ARRAY[p1.c1, $1, $2, ..., $1023]))
          ->  Materialize
-               ->  Index Only Scan using q3_range on q3 p3
+               ->  Seq Scan on q3 p3
 (8 rows)
 
--- this should not be a batched NL join as it contains an unbatchable clause
--- (j1.a2 <= p1.c1) even though the batchable clause (j1.a1 = p1.c1) is also
--- present
-explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1 and j1.a2 <= p1.c1;
-                        QUERY PLAN                         
------------------------------------------------------------
- Hash Right Join
-   Hash Cond: (p2.c1 = p1.c1)
-   Join Filter: (p3.a <= p1.c1)
+explain (costs off)
+select * from q1 p1 left join (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+  on j1.a1 = p1.c1 and j1.a1 + j1.a2 = p1.c1 + p1.c2;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: ((p2.c1 = p1.c1) AND ((p2.c1 + p3.a) = (p1.c1 + p1.c2)))
+   ->  Index Scan using q1_pkey on q1 p1
    ->  Nested Loop
-         ->  Seq Scan on q2 p2
+         ->  Index Scan using q2_pkey on q2 p2
+               Index Cond: (c1 = ANY (ARRAY[p1.c1, $1, $2, ..., $1023]))
          ->  Materialize
-               ->  Index Only Scan using q3_range on q3 p3
-   ->  Hash
-         ->  Index Scan using q1_pkey on q1 p1
-(9 rows)
+               ->  Seq Scan on q3 p3
+(8 rows)
+
+explain (costs off)
+select * from
+    q1 p1 left join
+    (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+      on j1.a1 = p1.c1 and j1.a2 <= p1.c1
+      and j1.a1 + j1.a2 = p1.c1 + p1.c2;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: ((p3.a <= p1.c1) AND (p2.c1 = p1.c1) AND ((p2.c1 + p3.a) = (p1.c1 + p1.c2)))
+   ->  Index Scan using q1_pkey on q1 p1
+   ->  Nested Loop
+         ->  Index Scan using q2_pkey on q2 p2
+               Index Cond: (c1 = ANY (ARRAY[p1.c1, $1, $2, ..., $1023]))
+         ->  Materialize
+               ->  Seq Scan on q3 p3
+(8 rows)
 
 DROP TABLE q1;
 DROP TABLE q2;

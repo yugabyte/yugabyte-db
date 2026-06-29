@@ -54,7 +54,7 @@ const InstallationOption = {
   UNIVERSE: 'universe',
   NODE: 'node'
 } as const;
-type InstallationOption = typeof InstallationOption[keyof typeof InstallationOption];
+type InstallationOption = (typeof InstallationOption)[keyof typeof InstallationOption];
 
 const MODAL_NAME = 'InstallNodeAgentModal';
 const TRANSLATION_KEY_PREFIX = 'nodeAgent.installNodeAgentModal';
@@ -195,6 +195,7 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        buttonProps={{ primary: { disabled: true } }}
         size="md"
         {...modalProps}
       >
@@ -210,6 +211,7 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        buttonProps={{ primary: { disabled: true } }}
         size="md"
         {...modalProps}
       >

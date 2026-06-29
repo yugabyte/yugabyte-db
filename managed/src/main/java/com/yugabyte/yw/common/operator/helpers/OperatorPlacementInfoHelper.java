@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.operator.helpers;
 
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -23,7 +24,14 @@ public class OperatorPlacementInfoHelper {
 
     Integer getNumNodes();
 
+    /** Deprecated: use {@link #getLeaderPreference()} instead. */
     Boolean getPreferred();
+
+    /**
+     * Explicit leader affinity priority for the zone, or null if not set. When null, the deprecated
+     * {@link #getPreferred()} flag is used as a fallback.
+     */
+    Integer getLeaderPreference();
   }
 
   public interface RegionInfo {
@@ -106,6 +114,11 @@ public class OperatorPlacementInfoHelper {
         public Boolean getPreferred() {
           return zone.getPreferred();
         }
+
+        @Override
+        public Integer getLeaderPreference() {
+          return zone.getLeaderPreference() != null ? zone.getLeaderPreference().intValue() : null;
+        }
       }
     }
   }
@@ -181,6 +194,11 @@ public class OperatorPlacementInfoHelper {
         @Override
         public Boolean getPreferred() {
           return false; /* Read replicas don't have preferred zones */
+        }
+
+        @Override
+        public Integer getLeaderPreference() {
+          return null; /* Read replicas don't have leader preferences */
         }
       }
     }
@@ -269,8 +287,8 @@ public class OperatorPlacementInfoHelper {
         PlacementInfo.PlacementAZ placementAZ = new PlacementInfo.PlacementAZ();
         placementAZ.name = crZone.getCode();
         placementAZ.numNodesInAZ = crZone.getNumNodes();
-        placementAZ.isAffinitized = crZone.getPreferred() != null ? crZone.getPreferred() : true;
-        placementAZ.leaderPreference = placementAZ.isAffinitized ? 1 : 0;
+        placementAZ.leaderPreference = resolveLeaderPreference(crZone);
+        placementAZ.isAffinitized = placementAZ.leaderPreference > 0;
         // Handle STSIndex
         if (existingPlacementInfo != null) {
           PlacementInfo.PlacementAZ existingAZ =
@@ -315,7 +333,31 @@ public class OperatorPlacementInfoHelper {
       throw new IllegalArgumentException(errorMsg);
     }
     placementInfo.cloudList.add(placementCloud);
+
+    // Validate that leader preferences form a non-negative, contiguous sequence (no gaps).
+    try {
+      PlacementInfoUtil.validatePriority(placementInfo);
+    } catch (RuntimeException e) {
+      String errorMsg = "Invalid leaderPreference values in CR placement info: " + e.getMessage();
+      log.error(errorMsg);
+      throw new IllegalArgumentException(errorMsg);
+    }
+
     return placementInfo;
+  }
+
+  /**
+   * Resolves the effective leader preference for a zone. The explicit integer leaderPreference
+   * takes precedence; when it is not set, the deprecated boolean preferred flag is used as a
+   * fallback (true -> 1, false -> 0), defaulting to preferred when neither is set.
+   */
+  private static int resolveLeaderPreference(ZoneInfo zone) {
+    Integer leaderPreference = zone.getLeaderPreference();
+    if (leaderPreference != null) {
+      return leaderPreference;
+    }
+    boolean preferred = zone.getPreferred() != null ? zone.getPreferred() : true;
+    return preferred ? 1 : 0;
   }
 
   /*
@@ -454,11 +496,14 @@ public class OperatorPlacementInfoHelper {
       return false;
     }
 
-    // Compare preferred/affinitized status
-    boolean oldPreferred = oldZone.isAffinitized;
-    boolean newPreferred = newZone.getPreferred() != null ? newZone.getPreferred() : true;
+    // Compare leader preference (explicit int, or derived from the deprecated preferred flag).
+    int oldLeaderPreference = oldZone.leaderPreference;
+    int newLeaderPreference = resolveLeaderPreference(newZone);
 
-    log.debug("oldPreferred: {}, newPreferred: {}", oldPreferred, newPreferred);
-    return oldPreferred == newPreferred;
+    log.debug(
+        "oldLeaderPreference: {}, newLeaderPreference: {}",
+        oldLeaderPreference,
+        newLeaderPreference);
+    return oldLeaderPreference == newLeaderPreference;
   }
 }

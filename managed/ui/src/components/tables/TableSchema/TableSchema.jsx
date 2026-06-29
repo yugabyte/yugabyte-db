@@ -1,10 +1,11 @@
 // Copyright (c) YugabyteDB, Inc.
 
 import { Component } from 'react';
-import moment from 'moment';
-import 'moment-precise-range-plugin';
 import { Row, Col } from 'react-bootstrap';
+
+import { formatDuration } from '../../../utils/Formatters';
 import { isValidObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
+
 import './TableSchema.scss';
 
 export default class TableSchema extends Component {
@@ -30,7 +31,7 @@ export default class TableSchema extends Component {
     }
     let ttlMessage = <span />;
     if (ttlInSeconds > 0) {
-      ttlMessage = moment.preciseDiff(moment(), moment().add(ttlInSeconds, 'seconds'));
+      ttlMessage = formatDuration(ttlInSeconds * 1000, /** useFullLabel */ true);
     }
     return (
       <div>

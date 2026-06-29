@@ -248,7 +248,7 @@ export function IsOsPatchingEnabled() {
  * @returns Whether the image bundle is supported by the provider.
  */
 export const isImgBundleSupportedByProvider = (provider: Provider) =>
-  [CloudType.aws, CloudType.azu, CloudType.gcp].includes(provider?.code);
+  [CloudType.aws, CloudType.azu, CloudType.gcp, CloudType.oci].includes(provider?.code);
 
 /**
  * Displays a message for configuring SSH details.

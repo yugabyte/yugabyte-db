@@ -67,6 +67,7 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/protobuf_util.h"
@@ -550,6 +551,50 @@ Status TsAdminClient::DeleteTablet(const std::string& tablet_id,
     return STATUS(IOError, "Failed to delete tablet: ",
                            resp.error().ShortDebugString());
   }
+
+  std::stringstream out;
+  JsonWriter jw(&out, JsonWriter::PRETTY);
+  jw.StartObject();
+
+  jw.String("message");
+  jw.String("DeleteTablet RPC completed successfully.");
+
+  jw.String("tablet_id");
+  jw.String(tablet_id);
+
+  if (resp.has_table_name()) {
+    jw.String("table_name");
+    jw.String(resp.table_name());
+  }
+
+  jw.String("details");
+  jw.StartObject();
+
+  if (resp.has_prev_data_state()) {
+    jw.String("previous_data_state");
+    jw.String(tablet::TabletDataState_Name(resp.prev_data_state()));
+  }
+  if (resp.has_final_data_state()) {
+    jw.String("final_data_state");
+    jw.String(tablet::TabletDataState_Name(resp.final_data_state()));
+  }
+
+  jw.String("affected_directories");
+  jw.StartArray();
+  for (const auto& dir : resp.directories()) {
+    jw.StartObject();
+    jw.String("path");
+    jw.String(dir.path());
+    jw.String("still_present_after");
+    jw.Bool(dir.still_present_after());
+    jw.EndObject();
+  }
+  jw.EndArray();
+
+  jw.EndObject();  // details
+  jw.EndObject();
+
+  std::cout << out.str() << std::endl;
   return Status::OK();
 }
 

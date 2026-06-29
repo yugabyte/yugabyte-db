@@ -31,8 +31,9 @@
 using namespace std::chrono_literals;
 using namespace std::literals;
 
-DECLARE_int32(TEST_partitioning_version);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_int32(TEST_partitioning_version);
+DECLARE_int32(TEST_table_owned_vector_reverse_mapping);
 
 namespace {
 
@@ -2399,6 +2400,76 @@ TEST_F_EX(
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+class YBBackupTableOwnedVectorReverseMappingTest : public YBBackupTest {
+ protected:
+  Result<bool> GetTableOwnsVectorReverseMapping(
+      const std::string& table_name, const std::string& log_prefix, const std::string& ns = {}) {
+    const auto yb_table_name = VERIFY_RESULT(GetTableName(table_name, log_prefix, ns));
+    const auto table_info = VERIFY_RESULT(client_->GetYBTableInfo(yb_table_name));
+    return table_info.schema.table_properties().owns_vector_reverse_mapping();
+  }
+
+  Status ForceSetTableOwnedVectorReverseMapping(int32_t value) {
+    for (auto ms : cluster_->master_daemons()) {
+      ms->Shutdown();
+      ms->mutable_flags()->push_back(Format("--TEST_table_owned_vector_reverse_mapping=$0", value));
+      RETURN_NOT_OK(ms->Restart());
+    }
+    return cluster_->WaitForTabletServerCount(GetNumTabletServers(), kDefaultTimeout);
+  }
+
+  const std::string default_db_ = "yugabyte";
+};
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTableOwnedVectorReverseMapping),
+    YBBackupTableOwnedVectorReverseMappingTest) {
+  // Verify owns_vector_reverse_mapping is restored from backup metadata even when the master's
+  // create-time TEST flag differs at restore time. The vector column is not needed to check the
+  // reverse mapping ownership behavior.
+  constexpr auto kTableOwned = "tbl_table_owned";
+  constexpr auto kTableLegacy = "tbl_legacy";
+  constexpr auto kTableNew = "tbl_new";
+
+  // 1) Create one table-owned and one legacy base table.
+  ASSERT_OK(ForceSetTableOwnedVectorReverseMapping(1));
+  SetDbName(default_db_);
+  ASSERT_NO_FATALS(CreateTable(Format(
+    "CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableOwned)));
+
+  ASSERT_OK(ForceSetTableOwnedVectorReverseMapping(0));
+  ASSERT_NO_FATALS(CreateTable(Format(
+     "CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableLegacy)));
+
+  ASSERT_TRUE(ASSERT_RESULT(GetTableOwnsVectorReverseMapping(kTableOwned, "pre-backup")));
+  ASSERT_FALSE(ASSERT_RESULT(GetTableOwnsVectorReverseMapping(kTableLegacy, "pre-backup")));
+
+  // 2) Backup.
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // 3) Flip the create-time flag and restore. RecreateTable would stamp the current flag value,
+  // but ImportTableEntry must overwrite it from snapshot metadata.
+  ASSERT_OK(ForceSetTableOwnedVectorReverseMapping(1));
+  DropPsqlDatabase(default_db_);
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
+
+  // 4) Restored tables keep the values from the backup.
+  ASSERT_TRUE(ASSERT_RESULT(GetTableOwnsVectorReverseMapping(kTableOwned, "post-restore")));
+  ASSERT_FALSE(ASSERT_RESULT(GetTableOwnsVectorReverseMapping(kTableLegacy, "post-restore")));
+
+  // 5) A newly created table uses the current cluster flag (enabled).
+  SetDbName(default_db_);
+  ASSERT_NO_FATALS(CreateTable(Format(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableNew)));
+  ASSERT_TRUE(ASSERT_RESULT(
+      GetTableOwnsVectorReverseMapping(kTableNew, "post-restore", default_db_)));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 class YBBackupTestOneTablet : public YBBackupTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -2522,7 +2593,7 @@ TEST_F_EX(
   // Wait for compaction to complete.
   ASSERT_OK(WaitForTabletPostSplitCompacted(leader_idx, tablets[0].tablet_id()));
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
-      default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
+      db_name, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
       tablets[0].tablet_id()));
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);

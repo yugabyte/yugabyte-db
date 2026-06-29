@@ -49,7 +49,7 @@ public class EncryptionAtRestHandlerTest extends FakeDBApplication {
 
     assertThat(resp.getTotalCount(), is(1));
     assertThat(resp.getEntities().size(), is(1));
-    assertThat(resp.getEntities().get(0).getMetadata().getName(), is("ear-page-test"));
+    assertThat(resp.getEntities().get(0).getSpec().getName(), is("ear-page-test"));
   }
 
   @Test

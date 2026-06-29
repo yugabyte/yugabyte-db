@@ -1299,6 +1299,35 @@ Default: `true`
 
 Tables created after the creation of a replication slot are referred as Dynamic tables. This flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
 
+##### --ysql_yb_enable_implicit_dynamic_tables_logical_replication
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Available in v2026.1 and later.
+
+When set to `true`, modifications to a publication are reflected implicitly in logical replication streams, providing PostgreSQL-like semantics for dynamic tables.
+
+When set to `false`, CDC uses a periodic publication refresh mechanism. (This is the bahavior in versions earlier than v2026.1.)
+
+For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
+
+##### --enable_table_rewrite_for_cdcsdk_table
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+When set to `true`, CDC does not block DDLs that cause table rewrites on tables with active logical replication streams. CDC streams records from the re-written tablets after finishing data from the older tablets.
+
+When set to `false`, any DDL that causes a table rewrite is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1).
+
+For more information, refer to [Streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite).
+
 ##### --cdcsdk_publication_list_refresh_interval_secs
 
 {{% tags/wrap %}}
@@ -1307,7 +1336,7 @@ Tables created after the creation of a replication slot are referred as Dynamic 
 Default: `900`
 {{% /tags/wrap %}}
 
-Interval in seconds at which the table list in the publication will be refreshed.
+Interval in seconds at which the table list in the publication will be refreshed. Applies in versions earlier than v2026.1, or on v2026.1 and later when [ysql_yb_enable_implicit_dynamic_tables_logical_replication](#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`.
 
 ##### --cdc_stream_records_threshold_size_bytes
 
@@ -1325,8 +1354,7 @@ Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architec
 
 {{% tags/wrap %}}
 
-
-Default: `1 MB`
+Default: `4194304` (4MB)
 {{% /tags/wrap %}}
 
 Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication/)(VWAL) for a particular tablet.
@@ -1356,6 +1384,7 @@ When true, the CDC service returns a null before-image if it is not able to find
 {{% tags/wrap %}}
 
 Default: `false`
+{{<tags/feature/ea idea="2470">}}
 {{% /tags/wrap %}}
 
 Available in v2024.2.9.1 and later, v2025.2.4.0 and later.

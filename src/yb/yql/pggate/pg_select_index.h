@@ -21,7 +21,7 @@
 
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_session.h"

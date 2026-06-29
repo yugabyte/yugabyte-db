@@ -21,7 +21,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"

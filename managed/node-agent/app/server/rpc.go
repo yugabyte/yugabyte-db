@@ -18,6 +18,7 @@ import (
 	"node-agent/util"
 	"os"
 	"path/filepath"
+	"time"
 
 	"node-agent/cmux"
 
@@ -26,7 +27,14 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/encoding/gzip"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
+)
+
+var (
+	// Enforcement policy for keepalive.
+	// Clients should set keepalive time to a value greater than this minimum.
+	MinKeepaliveTime = 30 * time.Second
 )
 
 // RPCServer is the struct for gRPC server.
@@ -96,6 +104,10 @@ func NewRPCServer(
 	mux := cmux.New(listener)
 	mListener := mux.Match(cmux.HTTP1())
 	gListener := mux.Match(cmux.Any())
+	serverOpts = append(serverOpts, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+		MinTime:             MinKeepaliveTime,
+		PermitWithoutStream: false,
+	}))
 	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(unaryInterceptors...))
 	serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(streamInterceptors...))
 	gServer := grpc.NewServer(serverOpts...)

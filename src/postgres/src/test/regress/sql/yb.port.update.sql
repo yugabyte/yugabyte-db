@@ -166,18 +166,16 @@ $$
   begin
     raise notice 'trigger = %, old table = %, new table = %',
                  TG_NAME,
-                 (select string_agg(old_table::text, ', ' ORDER BY a) FROM old_table),
-                 (select string_agg(new_table::text, ', ' ORDER BY a) FROM new_table);
+                 (select string_agg(old_table::text, ', ' ORDER BY old_table::text) FROM old_table), -- YB
+                 (select string_agg(new_table::text, ', ' ORDER BY new_table::text) FROM new_table);
     return null;
   end;
 $$;
 
--- Enable the following tests after REFERENCING clause (transition tables) is supported.
 CREATE TRIGGER trans_updatetrig
   AFTER UPDATE ON range_parted REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
   FOR EACH STATEMENT EXECUTE PROCEDURE trans_updatetrigfunc();
 
-/*
 UPDATE range_parted set c = (case when c = 96 then 110 else c + 1 end ) WHERE a = 'b' and b > 10 and c >= 96;
 :show_data;
 :init_range_parted;
@@ -233,7 +231,6 @@ DROP TRIGGER trig_c1_100 ON part_c_1_100;
 DROP TRIGGER trig_d1_15 ON part_d_1_15;
 DROP TRIGGER trig_d15_20 ON part_d_15_20;
 DROP FUNCTION func_parted_mod_b();
-*/
 -- RLS policies with update-row-movement
 -----------------------------------------
 

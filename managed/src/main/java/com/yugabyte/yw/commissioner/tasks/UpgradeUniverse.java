@@ -136,6 +136,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         // Make sure the instance type exists.
         String newInstanceTypeCode =
             taskParams().getPrimaryCluster().userIntent.getBaseInstanceType();
+        // Deprecated class.
         String provider = primIntent.provider;
 
         List<InstanceType> instanceTypes =

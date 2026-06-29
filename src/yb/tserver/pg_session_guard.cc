@@ -44,16 +44,12 @@ PgSessionGuard::PgSessionGuard(PgSessionGuardStatePtr state) {
 
   if (PREDICT_TRUE(state)) {
     std::unique_lock lock(state->mutex_);
-    if (PREDICT_TRUE(!state->is_cross_thread_locked_)) {
-      std::swap(state_, state);
-      std::swap(lock_, lock);
-      AcquireSession();
-      return;
-    }
+    std::swap(state_, state);
+    std::swap(lock_, lock);
+    AcquireSession();
+    return;
   }
-  LOG_WITH_FUNC(DFATAL)
-      << "Bad arguments: "
-      << "state is " << (state ? "not null" : "NULL");
+  LOG_WITH_FUNC(DFATAL) << "Bad arguments: state is null";
 }
 
 PgSessionGuard::~PgSessionGuard() {

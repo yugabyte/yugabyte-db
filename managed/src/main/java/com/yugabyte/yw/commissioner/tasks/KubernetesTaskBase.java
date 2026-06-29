@@ -1175,7 +1175,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         ysqlMajorVersionUpgradeState,
         rootCAUUID,
         false /* useExistingServerCert */,
-        skipAZs);
+        skipAZs,
+        null /* targetUniverseState */);
   }
 
   public void upgradePodsTask(
@@ -1196,7 +1197,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID,
       boolean useExistingServerCert,
-      Set<UUID> skipAZs) {
+      Set<UUID> skipAZs,
+      @Nullable Universe targetUniverseState) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -1411,13 +1413,25 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         // resolve it), has isYsqlServer true, and YSQL is enabled. Partition nodeList is built from
         // getKubernetesNodeName() so node names may not match universe nodes in some test setups.
         if (serverType.equals(ServerType.TSERVER) && !nodeList.isEmpty()) {
-          NodeDetails universeNode = getUniverse().getNode(nodeList.iterator().next().nodeName);
+          // During API toggles (e.g. disabling connection pooling) the just-restarted node already
+          // reflects the target user intent, while the persisted universe still holds the
+          // pre-toggle intent until the end of the task. The YSQL readiness probe selects its port
+          // from enableConnectionPooling (internalYsqlServerRpcPort 6433 when on, ysqlServerRpcPort
+          // 5433 when off) and socket-vs-ip from enableYSQLAuth, so it must use the target universe
+          // state when one is supplied (PLAT-21282).
+          Universe ysqlWaitUniverse =
+              targetUniverseState != null ? targetUniverseState : getUniverse();
+          NodeDetails universeNode = ysqlWaitUniverse.getNode(nodeList.iterator().next().nodeName);
           boolean waitForYsql =
               universeNode != null
                   && universeNode.isYsqlServer
-                  && getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+                  && ysqlWaitUniverse
+                      .getUniverseDetails()
+                      .getPrimaryCluster()
+                      .userIntent
+                      .enableYSQL;
           if (waitForYsql) {
-            createWaitForServersTasks(nodeList, ServerType.YSQLSERVER, getUniverse())
+            createWaitForServersTasks(nodeList, ServerType.YSQLSERVER, ysqlWaitUniverse)
                 .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
           }
         }
@@ -3206,10 +3220,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean masterVolumeChanged = false, tserverVolumeChanged = false;
       for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
         DeviceInfo taskDeviceInfo =
-            newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), false /* isDedicatedMaster */);
+            newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
         DeviceInfo existingDeviceInfo =
-            currCluster.userIntent.getDeviceInfoForAz(
-                entry.getKey(), false /* isDedicatedMaster */);
+            currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
         if (taskDeviceInfo != null
             && existingDeviceInfo != null
             && !(Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
@@ -3218,9 +3231,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           tserverVolumeChanged = true;
         }
         DeviceInfo taskMasterDeviceInfo =
-            newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+            newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
         DeviceInfo existingMasterDeviceInfo =
-            currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+            currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
         if (taskMasterDeviceInfo != null
             && existingMasterDeviceInfo != null
             && !(Objects.equals(
@@ -3281,9 +3294,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         UUID azUUID = entry.getKey();
         Map<String, String> azConfig = entry.getValue();
 
-        for (boolean isDedicatedMaster : new boolean[] {false, true}) {
-          DeviceInfo deviceInfo =
-              newCluster.userIntent.getDeviceInfoForAz(azUUID, isDedicatedMaster);
+        for (ServerType serverType : new ServerType[] {ServerType.TSERVER, ServerType.MASTER}) {
+          DeviceInfo deviceInfo = newCluster.userIntent.getDeviceInfoForAz(azUUID, serverType);
           if (deviceInfo == null || StringUtils.isBlank(deviceInfo.storageClass)) {
             continue;
           }
@@ -3291,7 +3303,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           try {
             kubernetesManagerFactory.getManager().getStorageClass(azConfig, storageClassName);
           } catch (RuntimeException e) {
-            String serverLabel = isDedicatedMaster ? "master" : "tserver";
+            String serverLabel = serverType.name().toLowerCase();
             throw new RuntimeException(
                 String.format(
                     "Storage class '%s' for %s in AZ %s does not exist: %s",

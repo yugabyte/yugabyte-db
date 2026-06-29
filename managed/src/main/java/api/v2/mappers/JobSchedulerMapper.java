@@ -20,9 +20,6 @@ import com.yugabyte.yw.models.paging.JobInstancePagedQuery;
 import com.yugabyte.yw.models.paging.JobInstancePagedResponse;
 import com.yugabyte.yw.models.paging.JobSchedulePagedQuery;
 import com.yugabyte.yw.models.paging.JobSchedulePagedResponse;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.util.Date;
 import java.util.Map;
 import org.mapstruct.EnumMapping;
 import org.mapstruct.Mapper;
@@ -31,7 +28,7 @@ import org.mapstruct.MappingConstants;
 import org.mapstruct.factory.Mappers;
 import play.libs.Json;
 
-@Mapper(config = CentralConfig.class)
+@Mapper(config = CentralConfig.class, uses = DateTimeMapper.class)
 public interface JobSchedulerMapper {
   final JobSchedulerMapper INSTANCE = Mappers.getMapper(JobSchedulerMapper.class);
 
@@ -79,10 +76,6 @@ public interface JobSchedulerMapper {
         Json.mapper()
             .convertValue(Json.toJson(config), new TypeReference<Map<String, Object>>() {}));
     return jobConfigSpec;
-  }
-
-  default OffsetDateTime toOffsetDateTime(Date date) {
-    return date == null ? null : date.toInstant().atOffset(ZoneOffset.UTC);
   }
 
   default JobSchedule toJobSchedule(com.yugabyte.yw.models.JobSchedule jobSchedule) {

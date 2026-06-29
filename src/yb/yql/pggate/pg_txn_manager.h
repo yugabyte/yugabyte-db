@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <memory>
 #include <optional>
@@ -63,8 +64,8 @@ struct TxnReadPoint {
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(
-      PgClient* pg_client, scoped_refptr<ClockBase> clock, YbcPgCallbacks pg_callbacks,
-      bool enable_table_locking);
+      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+      std::atomic<uint64_t>& next_read_time_serial_no);
 
   ~PgTxnManager();
 
@@ -89,9 +90,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status AbortPlainTransaction();
   Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel() const;
-  Status SetReadOnly(bool read_only);
+  void SetReadOnly(bool read_only);
   Status SetEnableTracing(bool tracing);
-  Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness);
+  void UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness);
   Status SetDeferrable(bool deferrable);
   Status EnterSeparateDdlTxnMode();
   Status ExitSeparateDdlTxnModeWithAbort();
@@ -177,8 +178,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  private:
   class SerialNo {
    public:
-    SerialNo();
-    SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
+    explicit SerialNo(std::atomic<uint64_t>& next_read_time_serial_no);
+    void Set(uint64_t txn_serial_no, uint64_t read_time_serial_no);
     void IncTxn(bool preserve_read_time_history, YbcReadPointHandle catalog_read_time_serial_no);
     void IncReadTime();
     void IncMaxReadTime();
@@ -192,6 +193,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
     }
 
    private:
+    uint64_t NextReadTimeSerialNo();
+
+    std::atomic<uint64_t>& next_read_time_serial_no_;
     uint64_t txn_;
     uint64_t read_time_;
     // Txn may have multiple valid read time values (i.e. multiple read times inside
@@ -207,8 +211,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void ResetTxnAndSession();
   void StartNewSession();
-  Status UpdateReadTimeForFollowerReadsIfRequired();
   Status RecreateTransaction(SavePriority save_priority);
+
+  bool UsesFollowerReads() const;
 
   static uint64_t NewPriority(YbcTxnPriorityRequirement txn_priority_requirement);
 
@@ -229,7 +234,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // ----------------------------------------------------------------------------------------------
 
   PgClient* client_;
-  scoped_refptr<ClockBase> clock_;
 
   bool txn_in_progress_ = false;
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
@@ -245,11 +249,13 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;
   bool read_only_ = false;
   bool enable_tracing_ = false;
-  bool enable_follower_reads_ = false;
-  uint64_t follower_read_staleness_ms_ = 0;
-  HybridTime read_time_for_follower_reads_;
+  std::optional<uint64_t> follower_read_staleness_ms_;
   bool deferrable_ = false;
 
+  // DDL state is set either when entering a separate DDL transaction or when executing a DDL
+  // statement within a regular transaction block with transactional DDL enabled i.e.,
+  // ysql_yb_ddl_transaction_block_enabled=true. When executing as part of a regular transaction, it
+  // stays set until the lifetime of the transaction.
   std::optional<DdlState> ddl_state_;
 
   // On a transaction conflict error we want to recreate the transaction with the same priority as

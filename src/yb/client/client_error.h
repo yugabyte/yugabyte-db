@@ -18,7 +18,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/tostring.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
 
 using namespace std::literals;

@@ -93,7 +93,7 @@ static void check_hashjoinable(RestrictInfo *restrictinfo);
 static void check_memoizable(RestrictInfo *restrictinfo);
 
 /* YB declarations */
-static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
+static void yb_check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 static ListCell *yb_find_wholerow_of_record_type(List *expr);
 
 
@@ -1925,7 +1925,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	check_mergejoinable(restrictinfo);
 	if (IsYugaByteEnabled())
 	{
-		check_batchable(root, restrictinfo);
+		yb_check_batchable(root, restrictinfo);
 	}
 
 	/*
@@ -2514,7 +2514,7 @@ build_implied_join_equality(PlannerInfo *root,
 
 	if (IsYugaByteEnabled())
 	{
-		check_batchable(root, restrictinfo);
+		yb_check_batchable(root, restrictinfo);
 	}
 	return restrictinfo;
 }
@@ -2764,7 +2764,7 @@ check_hashjoinable(RestrictInfo *restrictinfo)
 }
 
 /*
- * check_batchable
+ * yb_check_batchable
  *	  If the restrictinfo's clause can potentially be a batched join clause
  *	  then yb_batched_rinfo is filled in with candidate batched versions of
  *	  this clause.
@@ -2775,7 +2775,7 @@ check_hashjoinable(RestrictInfo *restrictinfo)
  *	  var_1 op YbBatchedExpr(var_2) and var_2 op YbBatchedExpr(var_1).
  */
 static void
-check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
+yb_check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 {
 	Expr	   *clause = restrictinfo->clause;
 	Node	   *leftarg;
@@ -2826,13 +2826,32 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 		inner = args[i];
 		outer = args[1 - i];
 		Node	   *inner_var = inner;
+		int			inner_varno = 0;
 
 		if (IsA(inner_var, RelabelType))
 			inner_var = (Node *) ((RelabelType *) inner_var)->arg;
-		if (!IsA(inner_var, Var))
+
+		if (IsA(inner_var, Var))
+		{
+			inner_varno = ((Var *) inner_var)->varno;
+		}
+		else if (yb_enable_base_scans_cost_model)
+		{
+			/* Expression key column disabled in the legacy mode */
+			Relids		inner_relids = pull_varnos(root, inner);
+			bool		single_rel = bms_membership(inner_relids) == BMS_SINGLETON;
+
+			if (single_rel)
+				inner_varno = bms_singleton_member(inner_relids);
+			bms_free(inner_relids);
+
+			if (!single_rel)
+				continue;
+		}
+		else
 			continue;
 
-		RangeTblEntry *rte = root->simple_rte_array[((Var *) inner_var)->varno];
+		RangeTblEntry *rte = root->simple_rte_array[inner_varno];
 
 		/* Skip batching if inner relation is not a YB relation */
 		if (rte->rtekind == RTE_RELATION && !IsYBRelationById(rte->relid))
@@ -3082,10 +3101,13 @@ yb_try_substitute_ec_members(PlannerInfo *root, Expr *expr, Index rti,
 
 /*
  * yb_create_derived_clause
- *   Create inferrable_expr = substituted_expr clause
- *   Returns NULL if can't create proper equality operator.
+ *	  Create inferrable_expr = substituted_expr clause.
+ *	  Returns NULL if can't create proper equality operator.
+ *
+ * Shared by the equivalence-class (yb_try_derive_equal_from_ec) and OR-arm
+ * (yb_try_derive_equal_from_clauses) derivation paths.
  */
-static OpExpr *
+OpExpr *
 yb_create_derived_clause(Expr *inferrable_expr, Expr *substituted_expr,
 						 Oid opfamily)
 {
@@ -3102,8 +3124,19 @@ yb_create_derived_clause(Expr *inferrable_expr, Expr *substituted_expr,
 									InvalidOid, collation);
 }
 
-static RestrictInfo *
-yb_get_clause_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids)
+/*
+ * yb_make_derived_restrictinfo
+ *	  Wrap a derived equality clause in a RestrictInfo, tagging it with the
+ *	  current qual security level and running the mergejoinable/batchable
+ *	  checks.  nullable_relids is the set of outer-join-nullable rels whose
+ *	  Vars appear in the clause; pass NULL for a single-rel clause (e.g. when
+ *	  the substituted side is a Const).
+ *
+ * Shared by the equivalence-class (yb_try_derive_equal_from_ec) and OR-arm
+ * (yb_try_derive_equal_from_clauses) derivation paths.
+ */
+RestrictInfo *
+yb_make_derived_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids)
 {
 	Relids		clause_relids = pull_varnos(root, (Node *) clause);
 	bool		outerjoin_delayed = !bms_is_empty(nullable_relids);
@@ -3120,14 +3153,14 @@ yb_get_clause_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_re
 											nullable_relids);
 
 	check_mergejoinable(rinfo);
-	check_batchable(root, rinfo);
+	yb_check_batchable(root, rinfo);
 	return rinfo;
 }
 
 RestrictInfo *
-yb_try_create_derived_clause(PlannerInfo *root, Index rti, Index target_rti,
-							 Expr *inferrable_expr, Expr *generation_expr,
-							 Oid opfamily)
+yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti, Index target_rti,
+							Expr *inferrable_expr, Expr *generation_expr,
+							Oid opfamily)
 {
 	Expr	   *substituted = NULL;
 	Relids		nullable_relids = NULL;
@@ -3140,7 +3173,7 @@ yb_try_create_derived_clause(PlannerInfo *root, Index rti, Index target_rti,
 		clause = yb_create_derived_clause(inferrable_expr, substituted,
 										  opfamily);
 	if (clause)
-		return yb_get_clause_restrictinfo(root, clause, nullable_relids);
+		return yb_make_derived_restrictinfo(root, clause, nullable_relids);
 	bms_free(nullable_relids);
 	return NULL;
 }

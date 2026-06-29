@@ -109,6 +109,7 @@ public class TableManagerYbTest extends FakeDBApplication {
     userIntent.accessKeyCode = keyCode;
     userIntent.ybSoftwareVersion = softwareVersion;
     userIntent.provider = testProvider.getUuid().toString();
+    userIntent.providerType = testProvider.getCloudCode();
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
     userIntent.regionList = getMockRegionUUIDs(3);
@@ -409,13 +410,15 @@ public class TableManagerYbTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupKubernetes() {
-    setupUniverse(ModelFactory.kubernetesProvider(testCustomer));
+    testProvider = ModelFactory.kubernetesProvider(testCustomer);
+    setupUniverse(testProvider);
     testCreateBackupKubernetesHelper();
   }
 
   @Test
   public void testCreateBackupKubernetesWithTLS() {
-    setupUniverse(ModelFactory.kubernetesProvider(testCustomer), "0.0.1", true);
+    testProvider = ModelFactory.kubernetesProvider(testCustomer);
+    setupUniverse(testProvider, "0.0.1", true);
     testCreateBackupKubernetesHelper();
   }
 

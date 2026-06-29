@@ -21,6 +21,7 @@
 #include <chrono>
 #include <mutex>
 #include <optional>
+#include <ostream>
 #include <set>
 #include <span>
 #include <string>
@@ -62,6 +63,7 @@
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/pg_response_cache.h"
 #include "yb/tserver/pg_sequence_cache.h"
+#include "yb/tserver/pg_session_guard.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/service_util.h"
@@ -71,6 +73,7 @@
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/cgroups.h"
@@ -135,8 +138,14 @@ DEFINE_test_flag(bool, force_initial_region_local, false,
 DEFINE_test_flag(bool, fail_create_table_rpc, false,
     "Fail all create table requests received at PgClientSession layer.");
 
-DEFINE_test_flag(bool, pause_session_lock_release, false,
+DEFINE_test_flag(bool, pause_session_lock_before_release, false,
     "Pause before releasing session object lock.");
+
+DEFINE_test_flag(bool, pause_session_lock_after_release, false,
+    "Pause after releasing session object lock.");
+
+DEFINE_test_flag(uint64, shared_exchange_big_response_delay_ms, 0,
+    "Delay before sending response that does not fit into the shared exchange buffer.");
 
 #ifdef __linux__
 DECLARE_bool(enable_qos);
@@ -180,6 +189,13 @@ namespace {
 
 YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence)(kPgSession));
 YB_DEFINE_ENUM(GlobalObjectLocksReleaseMode, (kAsync)(kSync));
+
+void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms) {
+  read_point.SetReadTime(
+      ReadHybridTime::SingleTime(
+          read_point.Now().AddMilliseconds(-static_cast<int64_t>(staleness_ms))),
+      {});
+}
 
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
 constexpr const size_t kPgSequenceIsCalledColIdx = 3;
@@ -1152,6 +1168,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     std::pair<uint64_t, std::byte*> shared_memory_segment(0, nullptr);
     RefCntBuffer buffer;
     if (!start) {
+      AtomicFlagSleepMs(&FLAGS_TEST_shared_exchange_big_response_delay_ms);
       shared_memory_segment = locked_session->ObtainBigSharedMemorySegment(full_size);
       if (shared_memory_segment.second) {
         start = shared_memory_segment.second;
@@ -1215,8 +1232,18 @@ HybridTime GetInTxnLimit(const PB& options, ClockBase* clock) {
   return in_txn_limit ? in_txn_limit : clock->Now();
 }
 
-Status Commit(client::YBTransaction* txn, PgResponseCache::Disabler disabler) {
-  return txn->CommitFuture().get();
+PgClientSessionKind GetSessionKindBasedOnDDLOptions(
+    bool ddl_mode, bool ddl_use_regular_transaction_block) {
+  return ddl_mode && !ddl_use_regular_transaction_block ? PgClientSessionKind::kDdl
+                                                        : PgClientSessionKind::kPlain;
+}
+
+bool IsDDLUseRegularTxnBlock(const PgFinishTransactionRequestPB& req) {
+  return req.has_ddl_mode() && req.ddl_mode().use_regular_transaction_block();
+}
+
+PgClientSessionKind GetSessionKindBasedOnDDLOptions(const PgFinishTransactionRequestPB& req) {
+  return GetSessionKindBasedOnDDLOptions(req.has_ddl_mode(), IsDDLUseRegularTxnBlock(req));
 }
 
 UsedReadTimeApplier BuildUsedReadTimeApplier(
@@ -1503,7 +1530,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   ops.reserve(req->ops().size());
   client::YBTablePtr table;
   CancelableScopeExit abort_se{[session] { session->Abort(); }};
-  const auto read_from_followers = req->options().read_from_followers();
+  const auto read_from_followers = req->options().has_follower_read_staleness_ms();
   bool has_write_ops = false;
 
   // TODO(vector_index): it is unexpected to have a mix of vector index read ops and
@@ -1738,6 +1765,26 @@ struct GetOpTablespaceOid {
     return op.has_write() ? op.write().tablespace_oid() : op.read().tablespace_oid();
   }
 };
+
+struct FinishTxnLogPrefix {
+  FinishTxnLogPrefix(
+      const PgFinishTransactionRequestPB& req_, client::YBTransaction* txn_ = nullptr)
+      : req(req_), txn(txn_) {}
+
+  const PgFinishTransactionRequestPB& req;
+  client::YBTransaction* txn;
+};
+
+std::ostream& operator<<(std::ostream& str, const FinishTxnLogPrefix& value) {
+  const auto& req = value.req;
+  return str
+      << "[ddl: " << req.has_ddl_mode()
+      << ", session kind: " << ToString(GetSessionKindBasedOnDDLOptions(req))
+      << ", ddl_use_regular_transaction_block: " << IsDDLUseRegularTxnBlock(req)
+      << ", has_docdb_schema_changes: "
+      << (req.has_ddl_mode() && req.ddl_mode().has_docdb_schema_changes())
+      << ", txn: " << (value.txn ? ToString(value.txn->id()) : "-none-") << "] ";
+}
 
 } // namespace
 
@@ -2120,12 +2167,6 @@ class PgClientSession::Impl {
     return status;
   }
 
-  PgClientSessionKind GetSessionKindBasedOnDDLOptions(
-      bool ddl_mode, bool ddl_use_regular_transaction_block) const {
-    return (ddl_mode && !ddl_use_regular_transaction_block) ? PgClientSessionKind::kDdl
-                                                            : PgClientSessionKind::kPlain;
-  }
-
   Status RollbackToSubTransaction(
       const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
       rpc::RpcContext* context) {
@@ -2231,49 +2272,14 @@ class PgClientSession::Impl {
         transaction, kind, deadline, is_ddl_mode, GlobalObjectLocksReleaseMode::kAsync, subtxn_id);
   }
 
-  Status FinishTransaction(
+  void FinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
-      rpc::RpcContext* context) {
-    saved_priority_.reset();
-    const bool is_ddl_mode = req.has_ddl_mode();
-    const bool is_commit = req.commit();
-    const bool ddl_use_regular_transaction_block =
-        is_ddl_mode && req.ddl_mode().use_regular_transaction_block();
-    const auto kind =
-        GetSessionKindBasedOnDDLOptions(is_ddl_mode, ddl_use_regular_transaction_block);
-    const auto deadline = context->GetClientDeadline();
-    auto& txn = GetSessionData(kind).transaction;
-    if (!txn) {
-      VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "ddl: " << is_ddl_mode << ", " << (is_commit ? "commit" : "abort")
-          << ", session_kind: " << ToString(kind)
-          << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
-          << ", no running distributed transaction";
-      if (is_commit || is_ddl_mode || !IsObjectLockingEnabled()) {
-        return ReleaseObjectLocksIfNecessary(
-            txn, kind, deadline, is_ddl_mode, GlobalObjectLocksReleaseMode::kSync);
-      }
-      // When object locking is enabled, prevent re-use of plain docdb txn is case of abort.
-      if (!transaction_provider_.HasNextTxnForPlain()) {
-        return Status::OK();
-      }
-      txn = transaction_provider_.Take<PgClientSessionKind::kPlain>(
-          TransactionFullLocality::RegionLocal(), deadline);
-      VLOG_WITH_PREFIX_AND_FUNC(1) << "Consuming re-usable kPlain txn " << txn->id();
+      rpc::RpcContext&& context, PgSessionGuard& guard) {
+    const auto opt_status = DoFinishTransaction(req, resp, std::move(context), guard);
+    if (opt_status) {
+      StatusToPB(*opt_status, resp->mutable_status());
+      context.RespondSuccess();
     }
-
-    // If this transaction executed a DDL statement, then cleanup the ddl_txn_metadata_ post
-    // finishing. This is applicable to both separate DDL transactions or regular transactions with
-    // txn ddl enabled.
-    bool requires_ddl_txn_metadata_cleanup = ddl_txn_metadata_.transaction_id == txn->id();
-    client::YBTransactionPtr txn_value;
-    txn.swap(txn_value);
-    Session(kind)->SetTransaction(nullptr);
-    auto s = DoFinishTransaction(req, deadline, txn_value, kind);
-    if (requires_ddl_txn_metadata_cleanup) {
-      ddl_txn_metadata_ = TransactionMetadata();
-    }
-    return s;
   }
 
   Status CleanupObjectLocks() {
@@ -2657,7 +2663,7 @@ class PgClientSession::Impl {
 
   void GetTableKeyRanges(
       PgGetTableKeyRangesRequestMsg const& req,
-      PgGetTableKeyRangesResponseMsg* resp, rpc::RpcContext&& context) {
+      PgGetTableKeyRangesResponseMsg* resp, rpc::RpcContext&& context, PgSessionGuard&) {
     const auto table = table_cache().Get(PgObjectId::GetYbTableIdFromPB(req.table_id()));
     resp->set_current_ht(clock()->Now().ToUint64());
     if (!table.ok()) {
@@ -2763,6 +2769,7 @@ class PgClientSession::Impl {
   void ProcessSharedRequest(
       size_t size, SharedExchange* exchange,
       const RequestProcessingPreconditionWaiter& precondition_waiter) {
+    ReleaseAbandonedBigSharedMemSegment();
     auto input = to_uchar_ptr(exchange->Obtain(size));
     const auto req_type_id = *input;
     input += sizeof(req_type_id);
@@ -2784,6 +2791,23 @@ class PgClientSession::Impl {
         << ", max allowed: " << tserver::PgSharedExchangeReqType_MAX
         << ". Would lead to pg backend timing out/entering a stuck state.";
     FATAL_INVALID_PB_ENUM_VALUE(tserver::PgSharedExchangeReqType, req_type);
+  }
+
+  // Postgres releases the big shared memory segment before reusing the exchange for the next
+  // request. It could only skip the release after a request failure, like a timeout, when the
+  // response is abandoned without being loaded. So when a new request is received via the
+  // exchange while the segment is still marked as in use, the response stored in the segment was
+  // abandoned and it is safe to clear the flag, making the segment reusable. The same is not true
+  // for requests received via TCP, since they could be issued while the exchange response is
+  // delivered but not yet loaded.
+  void ReleaseAbandonedBigSharedMemSegment() {
+    {
+      std::lock_guard lock(big_shared_mem_mutex_);
+      if (!big_shared_mem_handle_ || !InUseAtomic(big_shared_mem_handle_).exchange(false)) {
+        return;
+      }
+    }
+    LOG_WITH_PREFIX(INFO) << "Big shared memory response was abandoned by postgres";
   }
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size) {
@@ -3002,7 +3026,7 @@ class PgClientSession::Impl {
 
   void AcquireObjectLock(
       const PgAcquireObjectLockRequestMsg& req, PgAcquireObjectLockResponseMsg* resp,
-      yb::rpc::RpcContext&& context) {
+      yb::rpc::RpcContext&& context, PgSessionGuard&) {
     auto query =
         RpcQuery<ObjectLockQueryTraits>::MakeShared(id_, pid_, req, *resp, std::move(context));
     const auto s = DoAcquireObjectLock(
@@ -3017,7 +3041,7 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     // If we fail to release the lock for any reason, return InvalidArgument as status so as to
     // force the backend to FATAL, thus freeing all object locks associated with it.
-    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_release);
+    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_before_release);
     VLOG_WITH_FUNC(1) << req.ShortDebugString();
     const auto kind = PgClientSessionKind::kPgSession;
     auto* session_data = &GetSessionData(kind);
@@ -3061,8 +3085,59 @@ class PgClientSession::Impl {
     ReleaseWithRetriesGlobal(
         client_, ts_lock_manager(), txn_meta_res->transaction_id,
         opt_subtxn_id, release_req);
+    TEST_PAUSE_IF_FLAG(TEST_pause_session_lock_after_release);
     // Release control to the pg backend, and let the release continue in async mode.
     return Status::OK();
+  }
+
+  Status DoWaitForLockersMultiple(
+      const LWPgWaitForLockersMultipleRequestPB& req,
+      LWPgWaitForLockersMultipleResponsePB* resp,
+      std::shared_ptr<rpc::RpcContext> context) {
+    VLOG_WITH_FUNC(1) << req.ShortDebugString();
+
+    master::WaitForLockersMultipleGlobalRequestPB master_req;
+    master_req.set_session_host_uuid(instance_uuid());
+    master_req.set_lease_epoch(lease_epoch_);
+    auto now = clock().get()->Now();
+    master_req.set_propagated_hybrid_time(now.ToUint64());
+    for (const auto& entry : req.lock_entries()) {
+      auto* lock = master_req.add_object_locks();
+      lock->set_database_oid(entry.lock_oid().database_oid());
+      lock->set_relation_oid(entry.lock_oid().relation_oid());
+      lock->set_object_oid(entry.lock_oid().object_oid());
+      lock->set_object_sub_oid(entry.lock_oid().object_sub_oid());
+      lock->set_lock_type(static_cast<TableLockType>(entry.lock_mode()));
+    }
+    auto& background_session_data = GetSessionData(PgClientSessionKind::kPgSession);
+    if (background_session_data.transaction) {
+      auto txn_id = background_session_data.transaction->id();
+      master_req.set_background_transaction_id(txn_id.data(), txn_id.size());
+    }
+
+    auto deadline = context->GetClientDeadline();
+    client_.WaitForLockersMultipleGlobalAsync(
+        master_req,
+        [resp, context](const Status& status) {
+          if (!status.ok()) {
+            StatusToPB(status, resp->mutable_status());
+          }
+          context->RespondSuccess();
+        },
+        deadline);
+    return Status::OK();
+  }
+
+  void WaitForLockersMultiple(
+      const LWPgWaitForLockersMultipleRequestPB& req, LWPgWaitForLockersMultipleResponsePB* resp,
+      rpc::RpcContext&& context, PgSessionGuard&) {
+    auto shared_ctx = std::make_shared<rpc::RpcContext>(std::move(context));
+    auto s = DoWaitForLockersMultiple(req, resp, shared_ctx);
+    if (!s.ok()) {
+      StatusToPB(s, resp->mutable_status());
+      shared_ctx->RespondSuccess();
+      return;
+    }
   }
 
   void StartShutdown(bool pg_service_shutting_down) {
@@ -3535,7 +3610,7 @@ class PgClientSession::Impl {
     const auto read_time_serial_no = options.read_time_serial_no();
     auto kind = PgClientSessionKind::kPlain;
     if (options.use_catalog_session()) {
-      SCHECK(!options.read_from_followers(),
+      SCHECK(!options.has_follower_read_staleness_ms(),
           InvalidArgument, "Reading catalog from followers is not allowed");
       kind = PgClientSessionKind::kCatalog;
       EnsureSession(kind, deadline, arena);
@@ -3622,8 +3697,12 @@ class PgClientSession::Impl {
       const auto has_time_manipulation =
           options.read_time_manipulation() != ReadTimeManipulation::NONE;
       RSTATUS_DCHECK(
-          !(has_time_manipulation && options.has_read_time()),
-          IllegalState, "read_time_manipulation and read_time fields can't be satisfied together");
+          !has_time_manipulation ||
+              !(options.has_read_time() || options.has_follower_read_staleness_ms()),
+          IllegalState,
+          "Unexpected combination of read time fields: has_read_time_manipulation=true, "
+          "has_read_time=$0, has_follower_read_staleness_ms=$1",
+          options.has_read_time(), options.has_follower_read_staleness_ms());
 
       if (has_time_manipulation) {
         VLOG_WITH_PREFIX(3) << "Processing read time manipulation"
@@ -3637,6 +3716,15 @@ class PgClientSession::Impl {
         ProcessReadTimeManipulation(
             options.read_time_manipulation(), read_time_serial_no,
             ClampUncertaintyWindow(options.clamp_uncertainty_window()));
+      } else if (options.has_follower_read_staleness_ms()) {
+        auto& read_point = *session.read_point();
+        if (read_time_serial_no_ != read_time_serial_no) {
+          SetFollowerReadTime(read_point, options.follower_read_staleness_ms().value());
+        } else {
+          RSTATUS_DCHECK(
+              read_point.GetReadTime(), IllegalState,
+              "Follower read with an unchanged read_time_serial_no must already have a read time");
+        }
       } else if (options.has_read_time() && options.read_time().has_read_ht()) {
         const auto read_time = ReadHybridTime::FromPB(options.read_time());
         session.SetReadPoint(read_time);
@@ -3652,6 +3740,32 @@ class PgClientSession::Impl {
         ResetReadPoint(kind);
       } else {
         VLOG_WITH_PREFIX(3) << "Keep read time: " << session.read_point()->GetReadTime();
+
+        // TODO: The below check would have caught #29283.
+        //
+        // Weexpect a read time to be already set except for cases such as:
+        //
+        // 1. Serializable isolation
+        //
+        // 2. NON_TRANSACTIONAL writes. For example, the PgOpBufferingTest.FKCheckWithNonTxnWrites
+        // test results in an INSERT performing a NON_TRANSACTIONAL write followed by a
+        // transactional write with the same read_time_serial_no. This will fail the below check.
+        //
+        // 3. Any session other than kPlain
+        //
+        // 4. The rpcs before this rpc were AcquireObjectLock rpcs which don't pick a
+        //    read time.
+        //
+        // The check is disabled now because the above list might not be exhaustive.
+        //
+        // auto invariant = session.read_point()->GetReadTime().read != HybridTime::kInvalid ||
+        //     !is_plain_session ||
+        //     (txn && txn->isolation() == SERIALIZABLE_ISOLATION) ||
+        //     (options.isolation() == IsolationLevel::NON_TRANSACTIONAL);
+        // if (!invariant) {
+        //   LOG(ERROR) << "Read time is expected to be set";
+        //   return STATUS(IllegalState, "Read time is expected to be set");
+        // }
       }
     }
 
@@ -3661,6 +3775,8 @@ class PgClientSession::Impl {
     if (!options.ddl_mode() && !options.use_catalog_session() && options.defer_read_point()) {
       // For DMLs, only fast path writes cannot be deferred.
       RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
+      VLOG_WITH_PREFIX(3) << "Set current read time for deferred mode "
+          << session.read_point()->GetReadTime();
     }
 
     // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not
@@ -4058,17 +4174,49 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
-  Status DoFinishTransaction(
-      const PgFinishTransactionRequestPB& req, CoarseTimePoint deadline,
-      const client::YBTransactionPtr& txn, PgClientSessionKind used_session_kind) {
-    const auto is_ddl = req.has_ddl_mode();
-    auto ddl_use_regular_transaction_block = false;
+  std::optional<Status> DoFinishTransaction(
+      const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
+      rpc::RpcContext&& context, PgSessionGuard& guard) {
+    saved_priority_.reset();
+    const auto is_ddl_mode = req.has_ddl_mode();
+    const auto is_commit = req.commit();
+    const auto ddl_use_regular_transaction_block =
+        is_ddl_mode && req.ddl_mode().use_regular_transaction_block();
+    const auto kind =
+        GetSessionKindBasedOnDDLOptions(is_ddl_mode, ddl_use_regular_transaction_block);
+    const auto deadline = context.GetClientDeadline();
+    auto& txn = GetSessionData(kind).transaction;
+    if (!txn) {
+      VLOG_WITH_PREFIX_AND_FUNC(2)
+          << FinishTxnLogPrefix(req) << (is_commit ? "commit" : "abort");
+      if (is_commit || is_ddl_mode || !IsObjectLockingEnabled()) {
+        return ReleaseObjectLocksIfNecessary(
+            txn, kind, deadline, is_ddl_mode, GlobalObjectLocksReleaseMode::kSync);
+      }
+      // When object locking is enabled, prevent re-use of plain docdb txn is case of abort.
+      if (!transaction_provider_.HasNextTxnForPlain()) {
+        return Status::OK();
+      }
+      txn = transaction_provider_.Take<PgClientSessionKind::kPlain>(
+          TransactionFullLocality::RegionLocal(), deadline);
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Consuming re-usable kPlain txn " << txn->id();
+    }
+
+    // If this transaction executed a DDL statement, then cleanup the ddl_txn_metadata_ post
+    // finishing. This is applicable to both separate DDL transactions or regular transactions with
+    // txn ddl enabled.
+    client::YBTransactionPtr txn_value;
+    txn.swap(txn_value);
+    Session(kind)->SetTransaction(nullptr);
+
+    auto metadata_cleanupper = ddl_txn_metadata_.transaction_id == txn_value->id()
+        ? MakeOptionalScopeExit([this] { ddl_txn_metadata_ = {}; }) : std::nullopt;
+
     auto has_docdb_schema_changes = false;
     std::optional<uint32_t> silently_altered_db;
     const TransactionMetadata* metadata = nullptr;
-    if (is_ddl) {
+    if (is_ddl_mode) {
       const auto& ddl_mode = req.ddl_mode();
-      ddl_use_regular_transaction_block = ddl_mode.use_regular_transaction_block();
       has_docdb_schema_changes = ddl_mode.has_docdb_schema_changes();
       if (ddl_mode.has_silently_altered_db()) {
         silently_altered_db = ddl_mode.silently_altered_db().value();
@@ -4082,60 +4230,76 @@ class PgClientSession::Impl {
     // In all such cases, no state would exist with the master's ddl verifier, it is ok to
     // just abort the YBTransaction and move on.
     RSTATUS_DCHECK(
-        !has_docdb_schema_changes || !metadata->transaction_id.IsNil() || !req.commit(),
+        !has_docdb_schema_changes || !metadata->transaction_id.IsNil() || !is_commit,
         IllegalState, "Valid ddl metadata is required for ddl commit");
 
-    if (req.commit()) {
-      auto commit_status = Commit(
-          txn.get(),
-          silently_altered_db ? response_cache().Disable(*silently_altered_db)
-                              : PgResponseCache::Disabler());
-
-      VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "ddl: " << is_ddl
-          << ", session_kind: " << ToString(used_session_kind)
-          << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
-          << ", has_docdb_schema_changes: " << has_docdb_schema_changes
-          << ", txn: " << txn->id() << ", commit: " << commit_status;
-      // If commit_status is not ok, we cannot be sure whether the commit was successful or not. It
-      // is possible that the commit succeeded at the transaction coordinator but we failed to get
-      // the response back. Thus we will not report any status to the YB-Master in this case. But
-      // we still need to call WaitForDdlVerificationToFinish so that YB-Master can start its
-      // background task to figure out whether the transaction succeeded or failed.
-      if (!commit_status.ok()) {
-        auto status = DdlAtomicityFinishTransaction(
-            txn, used_session_kind, is_ddl, has_docdb_schema_changes, metadata, std::nullopt,
-            deadline);
+    if (is_commit) {
+      auto commit_callback = [
+          self = SharedField(SharedSessionFromThis(), this), txn_value,
+          disabler = silently_altered_db
+              ? response_cache().Disable(*silently_altered_db) : PgResponseCache::Disabler(),
+          holder = MakeSharedFromMoveOnly(
+              MakeTypedPBRpcContextHolder(req, resp, std::move(context)),
+              guard.ConvertToCrossThreadGuard(),
+              std::move(metadata_cleanupper))](Status commit_status) {
+        auto& [context, guard, metadata_cleanupper] = *holder;
+        auto status = self->HandleCommit(
+            context.req(), txn_value, context->GetClientDeadline(), std::move(commit_status));
         if (!status.ok()) {
-          // As of 2024-09-24, it is known that if we come here it is possible that YB-Master will
-          // not be able to start a background task to figure out whether the DDL transaction
-          // status (committed or aborted) and do the necessary cleanup of leftover any DocDB index
-          // table. Therefore we can have orphaned DocDB tables/indexes that are not garbage
-          // collected. One way to fix this we need to add a periodic scan job in YB-Master to look
-          // for any table/index that are involved in a DDL transaction and start a background task
-          // to complete the DDL transaction at the DocDB side.
-          LOG(DFATAL) << "DdlAtomicityFinishTransaction failed: " << status;
+          StatusToPB(status, context.resp().mutable_status());
         }
-        return MergeStatus(std::move(commit_status), std::move(status));
-      }
-      if (pg_node_level_mutation_counter()) {
-        // Gather # of mutated rows for each table (count only the committed sub-transactions).
-        auto table_mutations = txn->GetTableMutationCounts();
-        VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
-                            << AsString(table_mutations) << " for txn: " << txn->id();
-        pg_node_level_mutation_counter()->IncreaseBatch(table_mutations);
-      }
+        context->RespondSuccess();
+      };
+      VLOG_WITH_PREFIX_AND_FUNC(2) << FinishTxnLogPrefix(req, &*txn_value) << "committing";
+      txn_value->Commit(commit_callback);
+      return std::nullopt;
     } else {
-      VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "ddl: " << is_ddl
-          << ", session_kind: " << ToString(used_session_kind)
-          << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
-          << ", has_docdb_schema_changes: " << has_docdb_schema_changes
-          << ", txn: " << txn->id() << ", abort";
-      txn->Abort();
+      VLOG_WITH_PREFIX_AND_FUNC(2) << FinishTxnLogPrefix(req, &*txn_value) << "abort";
+      txn_value->Abort();
     }
     return DdlAtomicityFinishTransaction(
-        txn, used_session_kind, is_ddl, has_docdb_schema_changes, metadata, req.commit(), deadline);
+        txn_value, kind, is_ddl_mode, has_docdb_schema_changes, metadata, is_commit, deadline);
+  }
+
+  Status HandleCommit(
+      const PgFinishTransactionRequestPB& req, const client::YBTransactionPtr& txn,
+      CoarseTimePoint deadline, Status commit_status) {
+    const auto is_ddl_mode = req.has_ddl_mode();
+    const auto* metadata = is_ddl_mode ? &ddl_txn_metadata_ : nullptr;
+    const auto kind = GetSessionKindBasedOnDDLOptions(
+        is_ddl_mode, req.ddl_mode().use_regular_transaction_block());
+    const auto has_docdb_schema_changes = is_ddl_mode && req.ddl_mode().has_docdb_schema_changes();
+    VLOG_WITH_PREFIX_AND_FUNC(2)
+        << FinishTxnLogPrefix(req, &*txn) << "commit status: " << commit_status;
+    // If commit_status is not ok, we cannot be sure whether the commit was successful or not. It
+    // is possible that the commit succeeded at the transaction coordinator but we failed to get
+    // the response back. Thus we will not report any status to the YB-Master in this case. But
+    // we still need to call WaitForDdlVerificationToFinish so that YB-Master can start its
+    // background task to figure out whether the transaction succeeded or failed.
+    if (!commit_status.ok()) {
+      auto status = DdlAtomicityFinishTransaction(
+          txn, kind, is_ddl_mode, has_docdb_schema_changes, metadata, std::nullopt, deadline);
+      if (!status.ok()) {
+        // As of 2024-09-24, it is known that if we come here it is possible that YB-Master will
+        // not be able to start a background task to figure out whether the DDL transaction
+        // status (committed or aborted) and do the necessary cleanup of leftover any DocDB index
+        // table. Therefore we can have orphaned DocDB tables/indexes that are not garbage
+        // collected. One way to fix this we need to add a periodic scan job in YB-Master to look
+        // for any table/index that are involved in a DDL transaction and start a background task
+        // to complete the DDL transaction at the DocDB side.
+        LOG(DFATAL) << "DdlAtomicityFinishTransaction failed: " << status;
+      }
+      return MergeStatus(std::move(commit_status), std::move(status));
+    }
+    if (pg_node_level_mutation_counter()) {
+      // Gather # of mutated rows for each table (count only the committed sub-transactions).
+      auto table_mutations = txn->GetTableMutationCounts();
+      VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
+                          << AsString(table_mutations) << " for txn: " << txn->id();
+      pg_node_level_mutation_counter()->IncreaseBatch(table_mutations);
+    }
+    return DdlAtomicityFinishTransaction(
+        txn, kind, is_ddl_mode, has_docdb_schema_changes, metadata, true, deadline);
   }
 
   Status ReleaseObjectLocksIfNecessary(
@@ -4433,30 +4597,33 @@ Status PgClientSession::SetTxnSnapshotReadTime(
   return impl_->SetTxnSnapshotReadTime(options, deadline);
 }
 
-#define PG_CLIENT_SESSION_METHOD_DEFINE_IMPL(ret, ctx_type, prefix, method) \
+#define PG_CLIENT_SESSION_METHOD_DEFINE_IMPL(ret, params, args, prefix, method) \
   ret PgClientSession::method( \
       const YB_PG_CLIENT_METHOD_ARG(prefix, method, Request)& req, \
       YB_PG_CLIENT_METHOD_ARG(prefix, method, Response)* resp, \
-      ctx_type context) { \
-        return impl_->method(req, resp, std::move(context)); \
+      BOOST_PP_REMOVE_PARENS params) { \
+        return impl_->method(req, resp, BOOST_PP_REMOVE_PARENS args); \
       }
 
 #define PG_CLIENT_SESSION_METHOD_DEFINE(r, data_tuple, method) \
   PG_CLIENT_SESSION_METHOD_DEFINE_IMPL( \
-      BOOST_PP_TUPLE_ELEM(3, 0, data_tuple), BOOST_PP_TUPLE_ELEM(3, 1, data_tuple), \
-      BOOST_PP_TUPLE_ELEM(3, 2, data_tuple), method)
+      BOOST_PP_TUPLE_ELEM(4, 0, data_tuple), (BOOST_PP_TUPLE_ELEM(4, 1, data_tuple)), \
+      (BOOST_PP_TUPLE_ELEM(4, 2, data_tuple)), BOOST_PP_TUPLE_ELEM(4, 3, data_tuple), method)
 
 BOOST_PP_SEQ_FOR_EACH(
-    PG_CLIENT_SESSION_METHOD_DEFINE, (Status, rpc::RpcContext*, BOOST_PP_NIL),
+    PG_CLIENT_SESSION_METHOD_DEFINE, (Status, (rpc::RpcContext* context), (context), BOOST_PP_NIL),
     PG_CLIENT_SESSION_METHODS);
 BOOST_PP_SEQ_FOR_EACH(
-    PG_CLIENT_SESSION_METHOD_DEFINE, (Status, rpc::RpcContext*, (LW)),
+    PG_CLIENT_SESSION_METHOD_DEFINE, (Status, (rpc::RpcContext* context), (context), (LW)),
     PG_CLIENT_SESSION_LW_METHODS);
 BOOST_PP_SEQ_FOR_EACH(
-    PG_CLIENT_SESSION_METHOD_DEFINE, (void, rpc::RpcContext&&, BOOST_PP_NIL),
+    PG_CLIENT_SESSION_METHOD_DEFINE,
+    (void, (rpc::RpcContext&& context, PgSessionGuard& guard), (std::move(context), guard),
+     BOOST_PP_NIL),
     PG_CLIENT_SESSION_ASYNC_METHODS);
 BOOST_PP_SEQ_FOR_EACH(
-    PG_CLIENT_SESSION_METHOD_DEFINE, (void, rpc::RpcContext&&, (LW)),
+    PG_CLIENT_SESSION_METHOD_DEFINE,
+    (void, (rpc::RpcContext&& context, PgSessionGuard& guard), (std::move(context), guard), (LW)),
     PG_CLIENT_SESSION_ASYNC_LW_METHODS);
 
 void PreparePgTablesQuery(

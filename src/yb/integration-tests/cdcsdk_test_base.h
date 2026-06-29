@@ -78,6 +78,9 @@ namespace cdc {
 constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
 constexpr int kNumberOfCatalogTablesBeingPolledByCDC = 3;
+// Number of cdc_state entries a logical replication stream creates by default when the database has
+// no user tables: one for the sys_catalog tablet-stream entry and one slot entry for the stream.
+constexpr int kNumberOfBaseCdcStateEntriesForLogicalStream = 2;
 static const std::string kUniverseId = "test_universe";
 static const std::string kEnumTypeName = "coupon_discount_type";
 static const std::string kReplicationSlotName = "test_replication_slot";
@@ -224,7 +227,8 @@ class CDCSDKTestBase : public YBTest {
       const CDCRecordType& record_type,
       const std::string& namespace_name,
       CDCSDKDynamicTablesOption dynamic_tables_option =
-          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
+      const std::vector<TableId>& bound_table_ids = {});
 
   // Delegating overload: uses test_namespace_name when caller omits namespace_name.
   void InitCreateStreamRequest(
@@ -284,7 +288,8 @@ class CDCSDKTestBase : public YBTest {
       CDCSDKSnapshotOption snapshot_option,
       CDCCheckpointType checkpoint_type,
       CDCRecordType record_type,
-      std::string namespace_name);
+      std::string namespace_name,
+      const std::vector<TableId>& bound_table_ids = {});
 
   // Delegating overload: uses test_namespace_name when caller omits namespace_name.
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(

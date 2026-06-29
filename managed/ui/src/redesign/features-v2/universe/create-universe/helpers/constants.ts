@@ -13,14 +13,14 @@ export const DEFAULT_COMMUNICATION_PORTS: CommunicationPorts = {
   ysqlServerRpcPort: 5433,
   internalYsqlServerRpcPort: 6433,
   nodeExporterPort: 9300,
-  ybControllerrRpcPort: 18018
+  ybControllerRpcPort: 18018
 };
 
 export const ArchitectureType = {
   X86_64: 'x86_64',
   ARM64: 'aarch64'
 } as const;
-export type ArchitectureType = typeof ArchitectureType[keyof typeof ArchitectureType];
+export type ArchitectureType = (typeof ArchitectureType)[keyof typeof ArchitectureType];
 
 export const AZ_NOT_PREFERRED = 0;
 export const AZ_PREFFERED_HIGHEST_RANK = 1;

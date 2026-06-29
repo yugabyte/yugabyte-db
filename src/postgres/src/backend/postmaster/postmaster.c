@@ -156,6 +156,7 @@
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
+#include "yb_internal_conn.h"
 #include "yb_query_diagnostics.h"
 #include "yb_terminated_queries.h"
 
@@ -2149,7 +2150,9 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
 	bool		yb_auto_analyze_backend = false;
+	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
 	bool		yb_is_auth_via_conn_mgr = false;
+	bool		yb_is_control_conn = false;
 
 	pq_startmsgread();
 
@@ -2440,6 +2443,25 @@ retry1:
 				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_is_control_conn") == 0)
+			{
+				if (!parse_bool(valptr, &yb_is_control_conn))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_is_control_conn",
+									valptr),
+							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
+
+				/* Client needs to be connected on the unix domain socket */
+				if (port->raddr.addr.ss_family != AF_UNIX)
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("yb_is_control_conn can only be set "
+									"if the connection is made over unix domain "
+									"socket")));
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
 				yb_auth_backend_remote_host = pstrdup(valptr);
 			else if (YBIsEnabledInPostgresEnvVar()
@@ -2467,6 +2489,18 @@ retry1:
 									"yb_auto_analyze",
 									valptr),
 							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_internal_conn_kind") == 0)
+			{
+				yb_internal_conn_kind = YbLookupInternalConnKindByName(valptr);
+				if (yb_internal_conn_kind == YB_INTERNAL_CONN_KIND_NONE)
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_internal_conn_kind", valptr),
+							 errhint("Value must be one of the registered "
+									 "YbInternalConnKind wire names.")));
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
@@ -2526,6 +2560,24 @@ retry1:
 
 	yb_is_auth_via_conn_mgr = yb_is_auth_backend ||
 		port->yb_is_auth_passthrough_req;
+
+	/*
+	 * YB: Connection Manager's auth-passthrough control backends are long-lived
+	 * pooled backends that authenticate external clients via the 'A' packet
+	 * flow. Both CM auth backends and CM auth-passthrough control backends use
+	 * the CM control pool (yb_is_control_conn=1), but auth backends are
+	 * one-shot and identified separately via yb_authonly=1. They are excluded
+	 * here so this flag only marks the reusable AP control backends.
+	 *
+	 * The `if` condition is required as incoming AP requests also parse the
+	 * startup packet via ProcessStartupPacket, thus this would unset this var
+	 * on control backends because those startup packets are forwarded "as-is"
+	 * without adding the yb_is_control_conn flag. So, the flag is made set-only
+	 * and is never unset on a control backend.
+	 */
+	if (!yb_conn_mgr_is_auth_passthrough_backend)
+		yb_conn_mgr_is_auth_passthrough_backend = yb_is_control_conn &&
+			!yb_is_auth_backend;
 
 	if (YBIsEnabledInPostgresEnvVar())
 	{
@@ -2607,6 +2659,11 @@ retry1:
 		MyBackendType = B_WAL_SENDER;
 	else if (yb_auto_analyze_backend)
 		MyBackendType = YB_AUTO_ANALYZE_BACKEND;
+	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
+		MyBackendType =
+			YbInternalConnKindDescriptors[yb_internal_conn_kind].backend_type;
+	else if (YbIsAuthPassthroughControlBackend())
+		MyBackendType = YB_YSQL_CONN_MGR_CTRL;
 	else
 		MyBackendType = B_BACKEND;
 

@@ -1786,14 +1786,110 @@ alter type alter1.ctype set schema alter2;
 drop schema alter2 cascade;
 
 --
+-- composite types
+--
+
+CREATE TYPE test_type AS (a int);
+\d test_type
+
+ALTER TYPE nosuchtype ADD ATTRIBUTE b text; -- fails
+
+ALTER TYPE test_type ADD ATTRIBUTE b text;
+\d test_type
+
+ALTER TYPE test_type ADD ATTRIBUTE b text; -- fails
+
+ALTER TYPE test_type ALTER ATTRIBUTE b SET DATA TYPE varchar;
+\d test_type
+
+ALTER TYPE test_type ALTER ATTRIBUTE b SET DATA TYPE integer;
+--- YB: since we can't ALTER TYPE ADD ATTRIBUTE yet, work around by recreating the type.
+DROP TYPE test_type;
+CREATE TYPE test_type AS (a int, b int);
+\d test_type
+
+ALTER TYPE test_type DROP ATTRIBUTE b;
+\d test_type
+
+ALTER TYPE test_type DROP ATTRIBUTE c; -- fails
+
+ALTER TYPE test_type DROP ATTRIBUTE IF EXISTS c;
+
+ALTER TYPE test_type DROP ATTRIBUTE a, ADD ATTRIBUTE d boolean;
+\d test_type
+
+ALTER TYPE test_type RENAME ATTRIBUTE a TO aa;
+ALTER TYPE test_type RENAME ATTRIBUTE d TO dd;
+\d test_type
+
+DROP TYPE test_type;
+
+CREATE TYPE test_type1 AS (a int, b text);
+CREATE TABLE test_tbl1 (x int, y test_type1);
+ALTER TYPE test_type1 ALTER ATTRIBUTE b TYPE varchar; -- fails
+
+DROP TABLE test_tbl1;
+CREATE TABLE test_tbl1 (x int, y text);
+CREATE INDEX test_tbl1_idx ON test_tbl1((row(x,y)::test_type1));
+ALTER TYPE test_type1 ALTER ATTRIBUTE b TYPE varchar; -- fails
+
+DROP TABLE test_tbl1;
+DROP TYPE test_type1;
+
+CREATE TYPE test_type2 AS (a int, b text);
+CREATE TABLE test_tbl2 OF test_type2;
+CREATE TABLE test_tbl2_subclass () INHERITS (test_tbl2);
+\d test_type2
+\d test_tbl2
+
+ALTER TYPE test_type2 ADD ATTRIBUTE c text; -- fails
+ALTER TYPE test_type2 ADD ATTRIBUTE c text CASCADE;
+\d test_type2
+\d test_tbl2
+
+ALTER TYPE test_type2 ALTER ATTRIBUTE b TYPE varchar; -- fails
+ALTER TYPE test_type2 ALTER ATTRIBUTE b TYPE varchar CASCADE;
+\d test_type2
+\d test_tbl2
+
+ALTER TYPE test_type2 DROP ATTRIBUTE b; -- fails
+ALTER TYPE test_type2 DROP ATTRIBUTE b CASCADE;
+\d test_type2
+\d test_tbl2
+
+ALTER TYPE test_type2 RENAME ATTRIBUTE a TO aa; -- fails
+ALTER TYPE test_type2 RENAME ATTRIBUTE a TO aa CASCADE;
+\d test_type2
+\d test_tbl2
+\d test_tbl2_subclass
+
+DROP TABLE test_tbl2_subclass, test_tbl2;
+DROP TYPE test_type2;
+
+CREATE TYPE test_typex AS (a int, b text);
+CREATE TABLE test_tblx (x int, y test_typex check ((y).a > 0));
+ALTER TYPE test_typex DROP ATTRIBUTE a; -- fails
+ALTER TYPE test_typex DROP ATTRIBUTE a CASCADE;
+\d test_tblx
+DROP TABLE test_tblx;
+DROP TYPE test_typex;
+
+-- This test isn't that interesting on its own, but the purpose is to leave
+-- behind a table to test pg_upgrade with. The table has a composite type
+-- column in it, and the composite type has a dropped attribute.
+CREATE TYPE test_type3 AS (a int);
+CREATE TABLE test_tbl3 (c) AS SELECT '(1)'::test_type3;
+ALTER TYPE test_type3 DROP ATTRIBUTE a, ADD ATTRIBUTE b int;
+
+CREATE TYPE test_type_empty AS ();
+DROP TYPE test_type_empty;
+
+--
 -- typed tables: OF / NOT OF
 --
 
 CREATE TYPE tt_t0 AS (z inet, x int, y numeric(8,2));
 ALTER TYPE tt_t0 DROP ATTRIBUTE z;
--- YB: since we can't ALTER TYPE yet, work around by recreating the type.
-DROP TYPE tt_t0;
-CREATE TYPE tt_t0 AS (x int, y numeric(8,2));
 CREATE TABLE tt0 (x int NOT NULL, y numeric(8,2));	-- OK
 CREATE TABLE tt1 (x int, y bigint);					-- wrong base type
 CREATE TABLE tt2 (x int, y numeric(9,2));			-- wrong typmod

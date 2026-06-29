@@ -1,0 +1,279 @@
+-- Create database objects used by the BNL cost parity tests.
+--
+-- These tests compare the planner's cost estimates for a 2-table join run
+-- with four join methods -- YB Batched Nested Loop (BNL), Hash Join (HJ),
+-- Merge Join (MJ) and (un-batched) Nested Loop (NL) -- and rank them by cost.
+-- They are written to expose known BNL cost-model defects (see the header of
+-- yb.orig.bnl_cost_parity.sql) where the cheapest/most-expensive plan by cost
+-- disagrees with the fastest/slowest plan by run time.
+set client_min_messages to 'warning';
+
+drop database if exists bnl_cost_parity_test with (force);
+-- Colocated database so we can exercise both non-colocated (ce.r) and
+-- colocated (ce.rC, ce.s) tables.
+create database bnl_cost_parity_test with colocation = true;
+-- Turn the non-deterministic-field guard OFF so EXPLAIN (DEBUG, DIST) emits the
+-- storage read-request and rocksdb seek/next counters we compare against the
+-- cost ranking.  These counters are deterministic; the wall-clock timings are
+-- not and are never printed (see join_costs / the test for details).
+alter database bnl_cost_parity_test set yb_explain_hide_non_deterministic_fields = off;
+alter database bnl_cost_parity_test set yb_enable_cbo = on;
+-- Keep plan shapes stable: no parallelism, and let the cost hints pick the
+-- join method rather than the executor's parallel machinery.
+alter database bnl_cost_parity_test set max_parallel_workers_per_gather = 0;
+
+\c bnl_cost_parity_test
+set client_min_messages to 'warning';
+
+------------------------------------------------------------------------------
+-- Schema "ce": same cardinality_estimate-style tables created by
+-- yb.orig.roundtrip_estimate_setup.sql.  ce.r is the non-unique join feeder
+-- and ce.rC its colocated twin.  Both are used as the BNL "inner" relation.
+------------------------------------------------------------------------------
+drop schema if exists ce cascade;
+create schema ce;
+
+create table ce.r (
+    pk int,
+    a int,
+    b int,
+    c char(10),
+    d int,
+    e int,
+    bl bool,
+    v char(666),
+    primary key (pk asc)
+) with (colocation = off);
+
+create index nonconcurrently on ce.r (a asc);
+create unique index nonconcurrently on ce.r (b asc);
+create index nonconcurrently on ce.r (c asc);
+create index nonconcurrently on ce.r (bl asc);
+
+-- Column a is the non-unique (10 duplicates) join key for the #30565/#30738
+-- leading-mismatch tests.  Its values are placed at the TOP of the outer's
+-- range -- a in [3886, 5120] rather than [1, 1235] -- so those tests can drive
+-- the outer with a forward ascending index scan ("s.y >= k order by s.y") and
+-- still meet the absent join values first (the low outer rows below 3886).
+-- That keeps the leading mismatch without any backward index scan.  All other
+-- columns mirror the cardinality_estimate / roundtrip_estimate tables.
+insert into ce.r
+    select
+        i, ((i - 1) / 10) + 3886, i,
+        concat(chr((((i-1)/26/26) % 26) + ascii('a')),
+               chr((((i-1)/26) % 26) + ascii('a')),
+               chr(((i-1) % 26) + ascii('a'))),
+        i, ((hashint4(i) % 1234) + 1234) % 1234 + 1,
+        i % 2 = 1,
+        sha512(('x'||i)::bytea)::bpchar||lpad(sha512((i||'y')::bytea)::bpchar, 536, '#')
+    from generate_series(1, 12345) i;
+
+alter table ce.r alter column a set statistics 10000;
+alter table ce.r alter column b set statistics 10000;
+alter table ce.r alter column e set statistics 10000;
+
+create table ce.rC (like ce.r including constraints including indexes including statistics)
+    with (colocation = on);
+insert into ce.rC select * from ce.r;
+
+create statistics ce_r_b_e_mod100 on ((b % 100)), ((e % 100)) from ce.r;
+alter statistics ce_r_b_e_mod100 set statistics 10000;
+
+create statistics ce_rc_b_e_mod100 on ((b % 100)), ((e % 100)) from ce.rC;
+alter statistics ce_rc_b_e_mod100 set statistics 10000;
+
+analyze ce.r;
+analyze ce.rC;
+
+------------------------------------------------------------------------------
+-- Outer relation ce.s: 5120 rows == 5 x 1024 (default BNL batch) == 10 x 512.
+--   id, x, y : the same unique values 1..5120 in the same order.
+--   z        : the same unique values, randomly shuffled (seeded, repeatable).
+--   xx,yy,zz : non-unique groupings (10/100/512 duplicate factors) used for
+--              single-table predicates and as non-unique outer join keys.
+--   v        : unique 3-letter code sequence, matching ce.r.c so s.v = r.c.
+-- A unique index covers x; non-unique indexes cover y, z, xx, yy and zz so the
+-- outer can be driven by an ordered index scan on either a unique-valued or a
+-- duplicate-valued column.
+------------------------------------------------------------------------------
+drop table if exists ce.s cascade;
+create table ce.s (
+    id int,
+    x int,
+    y int,
+    z int,
+    xx int,
+    yy int,
+    zz int,
+    v text,
+    primary key (id asc)
+) with (colocation = on);
+
+create unique index nonconcurrently on ce.s (x asc);
+create index nonconcurrently on ce.s (y asc);
+create index nonconcurrently on ce.s (z asc);
+create index nonconcurrently on ce.s (xx asc);
+create index nonconcurrently on ce.s (yy asc);
+create index nonconcurrently on ce.s (zz asc);
+
+-- shuffle z repeatably
+set seed = 0.42;
+
+insert into ce.s
+select
+    id,
+    id,                                            -- x
+    id,                                            -- y
+    z,                                             -- z (shuffled 1..5120)
+    ((id - 1) / 10) + 1,                           -- xx (10 dups)
+    ((id - 1) / 100) + 1,                          -- yy (100 dups)
+    ((id - 1) / 512) + 1,                          -- zz (512 dups == batch no)
+    concat(chr((((id-1)/26/26) % 26) + ascii('a')),
+           chr((((id-1)/26) % 26) + ascii('a')),
+           chr(((id-1) % 26) + ascii('a')))        -- v (matches ce.r.c)
+from (
+    select id, row_number() over (order by random()) z
+    from generate_series(1, 5120) id
+) t;
+
+analyze ce.s;
+
+------------------------------------------------------------------------------
+-- Driver framework.
+--
+-- queries  : base join queries WITHOUT the leading/join-method hint.  The hint
+--            comment is prepended per join method by explain_join_json().
+-- methods  : the four join methods, each pinned with a Leading((s r)) hint so
+--            s is always the outer and r (ce.r or ce.rC, aliased r) the inner,
+--            plus the method hint (or Set hint) that disables the others.
+------------------------------------------------------------------------------
+drop table if exists queries cascade;
+create table queries (qid int primary key, descr text, query text);
+
+drop table if exists methods cascade;
+create table methods (mid int primary key, label text, hint text, expect text);
+insert into methods values
+    (1, 'BNL', 'Leading((s r)) YbBatchedNL(s r)',                    'Batched Nested Loop'),
+    (2, 'HJ',  'Leading((s r)) HashJoin(s r)',                       'Hash Join'),
+    (3, 'MJ',  'Leading((s r)) MergeJoin(s r)',                      'Merge Join'),
+    (4, 'NL',  'Leading((s r)) NestLoop(s r) Set(yb_bnl_batch_size 1)', 'Nested Loop');
+
+-- Run a single base query with the supplied hint comment under
+-- EXPLAIN (FORMAT JSON, ANALYZE, DEBUG, DIST, SUMMARY ON) and return the plan
+-- tree.  DEBUG+DIST add the per-node storage read-request counters and the
+-- query-level "Read Metrics" (rocksdb seeks/nexts); SUMMARY ON adds the
+-- query-level "Storage Read Requests"/"Storage Rows Scanned" aggregates.
+-- The hint MUST precede EXPLAIN so pg_hint_plan reads it.
+drop function if exists explain_join_json cascade;
+create function explain_join_json(hint text, query_sql text)
+returns jsonb
+language plpgsql as
+$$
+declare
+    j jsonb;
+begin
+    execute '/*+ ' || hint || ' */ '
+        || 'explain (format json, analyze, debug, dist, summary on) '
+        || query_sql
+    into j;
+    return j;
+end;
+$$;
+
+-- Map a join node type to its method family label.
+drop function if exists join_family cascade;
+create function join_family(node_type text) returns text
+language sql immutable as
+$$
+    select case
+        when node_type like '%Batched Nested Loop%' then 'BNL'
+        when node_type like 'Hash%'                  then 'HJ'
+        when node_type like 'Merge%'                 then 'MJ'
+        when node_type like '%Nested Loop%'          then 'NL'
+        else 'other'
+    end;
+$$;
+
+-- Alias of the first scanned relation under a sub-plan (outer/inner side).
+drop function if exists side_alias cascade;
+create function side_alias(node jsonb) returns text
+language sql immutable as
+$$
+    select jsonb_path_query_first(
+        node, 'strict $.**{0 to last} ? (exists(@."Alias"))'
+    )->>'Alias';
+$$;
+
+-- Mask a cost as one '#' per integer digit (fraction dropped).  The collapsed
+-- test output prints masked costs so it shows each plan's relative magnitude
+-- (digit count) and the cost ranking without pinning the exact cost numbers,
+-- which are expected to move once the BNL cost-model bugs are fixed.
+drop function if exists cost_mask cascade;
+create function cost_mask(c float8) returns text
+language sql immutable as
+$$
+    select repeat('#', length(trunc(abs(c))::bigint::text));
+$$;
+
+-- join_costs: for every (query, method) pair, run the hinted EXPLAIN ANALYZE,
+-- then surface
+--   * the root-node cost (what the planner compares, and what a LIMIT adjusts),
+--   * the realized join node type and outer/inner aliases (plan validation),
+--   * the deterministic run-time work the plan actually did:
+--       read_reqs    -- query-level "Storage Read Requests" (DocDB RPCs; the
+--                       dominant latency factor and our execution-time proxy)
+--       rows_scanned -- query-level "Storage Rows Scanned"
+--       seeks, nexts -- query-level rocksdb seek / (next+prev) counters
+--       table_reads,
+--       index_reads  -- read requests split by side, summed over scan nodes as
+--                       (per-loop value * Actual Loops); these reconcile to
+--                       read_reqs.
+-- Wall-clock timings (Actual Total Time / Execution Time) are intentionally not
+-- surfaced: they are non-deterministic and must not enter the golden output.
+drop view if exists join_costs cascade;
+create view join_costs as
+select
+    q.qid,
+    q.descr,
+    m.mid,
+    m.label,
+    join_node->>'Node Type'                              join_node_type,
+    side_alias(join_node->'Plans'->0)                    outer_alias,
+    side_alias(join_node->'Plans'->1)                    inner_alias,
+    (root->>'Startup Cost')::float8                      startup_cost,
+    (root->>'Total Cost')::float8                        total_cost,
+    (root->>'Plan Rows')::float8                         plan_rows,
+    (root->>'Actual Rows')::float8                       actual_rows,
+    coalesce((summary->>'Storage Read Requests')::float8, 0)        read_reqs,
+    coalesce((summary->>'Storage Rows Scanned')::float8, 0)         rows_scanned,
+    coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_seek')::float8, 0)
+                                                         seeks,
+    coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_next')::float8, 0)
+        + coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_prev')::float8, 0)
+                                                         nexts,
+    reads.table_reads,
+    reads.index_reads,
+    join_family(join_node->>'Node Type') = m.label       method_ok,
+    side_alias(join_node->'Plans'->0) = 's'
+        and side_alias(join_node->'Plans'->1) = 'r'      leading_ok
+from
+    queries q,
+    methods m,
+    lateral explain_join_json(m.hint, q.query) plan,
+    lateral (select plan->0)         s0(summary),
+    lateral (select plan->0->'Plan') r0(root),
+    lateral (
+        select jsonb_path_query_first(
+            plan, 'strict $.**{0 to last} ? (@."Node Type" like_regex "(Join|Nested Loop)")')
+    ) jn(join_node),
+    lateral (
+        -- Sum read requests over every scan node (those carry "Relation Name"),
+        -- scaling each per-loop counter by its Actual Loops to get plan totals.
+        select
+            coalesce(sum((n->>'Storage Table Read Requests')::float8
+                * coalesce((n->>'Actual Loops')::float8, 1)), 0)::float8 table_reads,
+            coalesce(sum((n->>'Storage Index Read Requests')::float8
+                * coalesce((n->>'Actual Loops')::float8, 1)), 0)::float8 index_reads
+        from jsonb_path_query(plan,
+            'strict $.**{0 to last} ? (exists(@."Relation Name"))') n
+    ) reads;

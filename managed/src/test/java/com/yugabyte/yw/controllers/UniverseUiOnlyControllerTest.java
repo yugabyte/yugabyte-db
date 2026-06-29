@@ -2422,6 +2422,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           UniverseDefinitionTaskParams.UserIntent userIntent =
               new UniverseDefinitionTaskParams.UserIntent();
           userIntent.instanceType = instanceType;
+          userIntent.provider =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.provider;
           userIntent.providerType = storageType.getCloudType();
           DeviceInfo di = new DeviceInfo();
           di.volumeSize = diskSize;

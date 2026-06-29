@@ -8,4 +8,4 @@ import org.springframework.validation.annotation.Validated;
 
 @ConfigurationProperties(prefix = "yba")
 @Validated
-public record YbaProperties(@NotNull UUID uuid, @NotBlank String baseUrl) {}
+public record YbaProperties(@NotNull UUID uuid, @NotBlank String baseUrl, String certificate) {}

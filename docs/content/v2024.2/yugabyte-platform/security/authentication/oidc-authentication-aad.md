@@ -38,6 +38,24 @@ Note that the yugabyte privileged user will continue to exist as a local databas
 - [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
 - [YFTT: OIDC Authentication in YSQL](https://www.youtube.com/watch?v=KJ0XV6OnAnU&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=1)
 
+## OIDC callback URI
+
+YugabyteDB Anywhere supports callback (redirect) URIs in one of the following formats:
+
+- Query (default):
+
+    `https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient`
+
+- Path:
+
+    `https://<YBA_IP_Address>/api/v1/callback/OidcClient`
+
+    Note that Path is only available in v2024.2.9.1 and later.
+
+This is where the IdP redirects after authentication.
+
+Only one format is supported at a time. To change the URI format, set the **OIDC Callback Mode** Global Runtime Configuration option (config key `yb.security.oidc_callback_mode`). Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
 ## Group claims and roles in Azure AD
 
 By default, the Subject claim is used as the value to determine the role to assign to users for database access. In addition to the standard claims for token expiration, subject, and issuer, you have the option to use a non-standard claim (other than Subject) to determine role assignment. That is, the values of this claim will map the user to the database roles. This claim is denoted as `jwt_matching_claim_key`.
@@ -128,11 +146,7 @@ To register an application, do the following:
 
 1. Select the tenant for the application.
 
-1. Set the redirect URI. This is where the IdP redirects after authentication. The URI is in the following form:
-
-    ```sh
-    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient
-    ```
+1. Set the [redirect URI](#oidc-callback-uri). This is where the IdP redirects after authentication.
 
 1. Click **Register**.
 

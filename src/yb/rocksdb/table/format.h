@@ -26,7 +26,7 @@
 #include <stdint.h>
 #include <string>
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
 

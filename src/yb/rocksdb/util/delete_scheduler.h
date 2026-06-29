@@ -27,7 +27,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/rocksdb/port/port.h"
 
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace yb {
 class Thread;

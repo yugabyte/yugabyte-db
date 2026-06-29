@@ -51,6 +51,8 @@ bool yb_enable_pg_export_snapshot = true;
 
 bool yb_enable_replication_slot_consumption = true;
 
+bool yb_enable_replication_slot_query_api = false;
+
 bool yb_allow_replication_slot_lsn_types = true;
 
 bool yb_allow_replication_slot_ordering_modes = true;
@@ -61,7 +63,9 @@ bool yb_enable_replica_identity = true;
 
 bool yb_enable_consistent_replication_from_hash_range = false;
 
-bool yb_cdcsdk_stream_tables_without_primary_key = false;
+bool yb_enable_replication_slot_exclusive_lock = false;
+
+bool yb_cdcsdk_stream_tables_without_primary_key = true;
 
 bool yb_cdcsdk_allow_dml_without_pk = false;
 

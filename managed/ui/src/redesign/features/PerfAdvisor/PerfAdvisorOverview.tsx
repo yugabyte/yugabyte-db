@@ -12,7 +12,7 @@ import { QUERY_KEY, PerfAdvisorAPI } from './api';
 
 interface PerfAdvisorOverviewProps {
   activeTab: string | undefined;
-  isNewPerfAdvisorUIEnabled: boolean;
+  isEmbeddedPAEnabled: boolean;
 }
 
 export const ROUTE_PREFIX = 'troubleshoot';
@@ -23,7 +23,7 @@ export const ConfigTabKey = {
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
 
-export const PerfAdvisorOverview = ({ activeTab, isNewPerfAdvisorUIEnabled }: PerfAdvisorOverviewProps) => {
+export const PerfAdvisorOverview = ({ activeTab, isEmbeddedPAEnabled }: PerfAdvisorOverviewProps) => {
   const { t } = useTranslation();
 
   const [paData, setPaData] = useState<any>([]);
@@ -97,7 +97,7 @@ export const PerfAdvisorOverview = ({ activeTab, isNewPerfAdvisorUIEnabled }: Pe
           >
             <PerfAdvisorUniverseList
               paUuid={paData[0].uuid}
-              isNewPerfAdvisorUIEnabled={isNewPerfAdvisorUIEnabled}
+              isEmbeddedPAEnabled={isEmbeddedPAEnabled}
             />
           </Tab>
         )}

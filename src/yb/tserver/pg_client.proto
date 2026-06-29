@@ -153,6 +153,9 @@ service PgClientService {
 
   rpc QueryAutoAnalyze(PgQueryAutoAnalyzeRequestPB) returns (PgQueryAutoAnalyzeResponsePB);
 
+  rpc ResetAutoAnalyzeMutationCounters(PgResetAutoAnalyzeMutationCountersRequestPB)
+      returns (PgResetAutoAnalyzeMutationCountersResponsePB);
+
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
     option (yb.rpc.exclude_metadata) = true; // TODO: remove after #27903
@@ -178,6 +181,11 @@ service PgClientService {
   }
   rpc ReleaseSessionObjectLock(PgReleaseSessionObjectLockRequestPB)
       returns (PgReleaseSessionObjectLockResponsePB);
+
+  rpc WaitForLockersMultiple(PgWaitForLockersMultipleRequestPB)
+      returns (PgWaitForLockersMultipleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
 
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
@@ -852,7 +860,6 @@ message PgPerformOptionsPB {
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
   CachingInfoPB caching_info = 17;
-  bool read_from_followers = 18;
   bool trace_requested = 19;
   bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
   int64 pg_txn_start_us = 22;
@@ -875,6 +882,8 @@ message PgPerformOptionsPB {
   uint32 xrepl_origin_id = 31;
 
   bool is_using_table_locks = 32;
+
+  OptionalUint32PB follower_read_staleness_ms = 33;
 }
 
 message PgPerformRequestPB {
@@ -1364,6 +1373,15 @@ message PgAutoAnalyzeDataPB {
   bytes last_analyze_info = 3;
 }
 
+message PgResetAutoAnalyzeMutationCountersRequestPB {
+  uint32 database_oid = 1;
+  uint32 table_relfilenode_oid = 2;
+}
+
+message PgResetAutoAnalyzeMutationCountersResponsePB {
+  AppStatusPB status = 1;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Advisory lock - Acquire / Release locks.
 //--------------------------------------------------------------------------------------------------
@@ -1459,6 +1477,20 @@ message PgReleaseSessionObjectLockRequestPB {
 }
 
 message PgReleaseSessionObjectLockResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgWaitForLockersMultipleRequestPB {
+  message ObjectLockEntry {
+    ObjectLockOid lock_oid = 1;
+    ObjectLockMode lock_mode = 2;
+  }
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  repeated ObjectLockEntry lock_entries = 3;
+}
+
+message PgWaitForLockersMultipleResponsePB {
   AppStatusPB status = 1;
 }
 

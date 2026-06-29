@@ -84,6 +84,15 @@ class ObjectLockManager {
   void UnlockObjectsForSession(
       const TransactionId& txn, DetermineKeysToLockResult<ObjectLockManager>&& key_to_unlock);
 
+  // Snapshot conflicting transactions for the given lock keys and register callbacks on each to
+  // be notified when they release all locks. The callback fires once all conflicting transactions
+  // have completed their unlock.
+  void WaitForConflictingLockers(
+      const DetermineKeysToLockResult<ObjectLockManager>& keys_to_check,
+      StdStatusCallback callback,
+      CoarseTimePoint deadline,
+      const TransactionId& background_txn_id);
+
   void Poll();
 
   void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);

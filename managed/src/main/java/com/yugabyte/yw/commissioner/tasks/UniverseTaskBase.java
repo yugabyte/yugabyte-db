@@ -1624,6 +1624,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             Util.SYSTEM_PLATFORM_DB,
             Util.CONSISTENCY_CHECK_TABLE_NAME)
         .setSubTaskGroupType(subTaskGroupType);
+
+    createDropTableTask(
+            universe,
+            CommonTypes.TableType.PGSQL_TABLE_TYPE,
+            Util.SYSTEM_PLATFORM_DB,
+            Util.SLOW_QUERIES_AGGREGATATION_TABLE)
+        .setSubTaskGroupType(subTaskGroupType);
   }
 
   public void checkAndCreateChangeAdminPasswordTask(Cluster primaryCluster) {
@@ -2237,7 +2244,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       }
                       if (provider.getCloudCode() != CloudType.aws
                           && provider.getCloudCode() != CloudType.azu
-                          && provider.getCloudCode() != CloudType.gcp) {
+                          && provider.getCloudCode() != CloudType.gcp
+                          && provider.getCloudCode() != CloudType.oci) {
                         return false;
                       }
                       return true;

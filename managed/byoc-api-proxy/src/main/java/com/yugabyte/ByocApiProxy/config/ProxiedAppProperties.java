@@ -16,6 +16,7 @@ public record ProxiedAppProperties(
     @NotBlank String baseUrl,
     @NotNull Duration readTimeout,
     @DefaultValue("10") @Min(1) @Max(10_000) int pollBatchSize,
+    String certificate,
     @NotNull @Valid Auth auth) {
 
   public record Auth(

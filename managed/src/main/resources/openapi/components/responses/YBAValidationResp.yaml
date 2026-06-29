@@ -1,0 +1,6 @@
+description: Validation results
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/YBAValidationResponse.yaml"
+x-yba-api-visibility: internal

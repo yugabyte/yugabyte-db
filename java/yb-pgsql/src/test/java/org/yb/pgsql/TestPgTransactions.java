@@ -218,15 +218,11 @@ public class TestPgTransactions extends BasePgSQLTest {
 
   @Test
   public void testSnapshotReadDelayWrite() throws Exception {
-    Assume.assumeFalse("YB003 (internal error code) is exposed to the client with concurrent DDL",
-                       concurrentDDLEnabled);
     runReadDelayWriteTest(IsolationLevel.REPEATABLE_READ);
   }
 
   @Test
   public void testSerializableReadDelayWrite() throws Exception {
-    Assume.assumeFalse("YB003 (internal error code) is exposed to the client with concurrent DDL",
-                       concurrentDDLEnabled);
     runReadDelayWriteTest(IsolationLevel.SERIALIZABLE);
   }
 

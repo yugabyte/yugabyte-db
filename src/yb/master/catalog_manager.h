@@ -448,6 +448,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ReleaseObjectLocksGlobal(
       const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc);
+  void WaitForLockersMultipleGlobal(
+      const WaitForLockersMultipleGlobalRequestPB* req,
+      WaitForLockersMultipleGlobalResponsePB* resp,
+      rpc::RpcContext rpc);
   ObjectLockInfoManager* object_lock_info_manager() { return object_lock_info_manager_.get(); }
 
   // Gets the progress of ongoing index backfills.
@@ -940,6 +944,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Return TableInfos according to specified mode.
   virtual std::vector<TableInfoPtr> GetTables(
       GetTablesMode mode, PrimaryTablesOnly = PrimaryTablesOnly::kFalse) override;
+
+  // Return one TabletInfoPtr per physical tablet. Colocated tables that share a
+  // tablet are represented by a single entry.
+  TabletInfos GetTablets();
 
   // Return all the available NamespaceInfo. The flag 'includeOnlyRunningNamespaces' determines
   // whether to retrieve all Namespaces irrespective of their state or just 'RUNNING' namespaces.
@@ -1636,6 +1644,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const bool allow_tables_without_primary_key,
       const bool allow_cdc_used_syscatalog_tables) const;
 
+  // Returns true if the table is created internally by a YugabyteDB feature/extension (e.g.
+  // xCluster DDL replication) and must be excluded from CDCSDK streams. Such tables look like
+  // ordinary user PG tables but exist solely to drive those features, so they should never be
+  // streamed. This is the single place to register such tables: when a new feature/extension
+  // introduces a table that CDCSDK must exclude, add a check for it here.
+  bool IsInternalTableToBeExcludedFromCDCSDKStream(const TableInfo::ReadLock& lock) const;
+
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
   void FindAllTablesMissingInCDCSDKStream(
@@ -2207,6 +2222,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const scoped_refptr<master::TableInfo>& table,
       bool is_index_table,
       bool update_indexed_table,
+      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
       std::map<TableId, DeletingTableData>* data_map);
 
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
@@ -2886,7 +2902,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfoPtr& table,
       ExternalTableSnapshotData* table_data,
       const LeaderEpoch& epoch,
-      bool is_clone);
+      bool is_clone,
+      bool tablet_partitions_changed);
   Status ImportTableEntry(
       const NamespaceMap& namespace_map,
       const UDTypeMap& type_map,

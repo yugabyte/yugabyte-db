@@ -217,6 +217,10 @@ Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_o
   return Status::OK();
 }
 
+void OperationDriver::SubmittedToLeaderQueue() {
+  operation_->SubmittedToLeaderQueue();
+}
+
 void OperationDriver::PrepareAndStartTask() {
   TRACE_EVENT_FLOW_END0("operation", "PrepareAndStartTask", this);
   Status prepare_status = PrepareAndStart(IsLeaderSide::kFalse);

@@ -180,6 +180,10 @@ export const Zone: FC<ZoneProps> = ({
     isSubmitted &&
     (errors as any)?.lesserNodes?.message === 'errMsg.expertAzBlank' &&
     !zone?.name;
+  const showOnPremNodeCountError =
+    isSubmitted &&
+    (errors as any)?.availabilityZones?.[region.code]?.[index]?.nodeCount?.message ===
+      'errMsg.onPremFreeNodesExceeded';
 
   return (
     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '0px 8px' }}>
@@ -204,7 +208,11 @@ export const Zone: FC<ZoneProps> = ({
             onChange={(e) => {
               const selectedZone = region.zones.find((z) => z.name === e.target.value);
               if (selectedZone) {
-                field.onChange({ ...field.value, ...selectedZone });
+                field.onChange({
+                  ...selectedZone,
+                  nodeCount: zone.nodeCount ?? field.value?.nodeCount,
+                  preffered: zone.preffered ?? field.value?.preffered
+                });
               }
             }}
             menuProps={menuProps}
@@ -249,11 +257,11 @@ export const Zone: FC<ZoneProps> = ({
               <YBInput
                 type="number"
                 label="Nodes"
-                error={showNodesCountError}
+                error={showNodesCountError || showOnPremNodeCountError}
                 value={field.value}
                 onChange={(e) => {
                   const nextValue = parseInt(e.target.value, 10);
-                  if (parseInt(e.target.value) < 1) {
+                  if (isNaN(nextValue) || nextValue < 1) {
                     return;
                   }
                   if (resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED) {

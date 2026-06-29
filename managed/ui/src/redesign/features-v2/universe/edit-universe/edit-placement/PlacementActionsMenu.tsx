@@ -47,11 +47,11 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
       }}
       origin={
         <YBButton
-          variant="secondary"
+          variant="ghost"
           dataTestId="edit-placement-actions-button"
           endIcon={<KeyboardArrowDown />}
         >
-          {triggerLabelKey ? t(triggerLabelKey, { keyPrefix: 'common' }) : t('actions')}
+          {triggerLabelKey ? t(triggerLabelKey, { keyPrefix: 'common' }) : t('advancedPlacementOptions')}
         </YBButton>
       }
     >

@@ -1,0 +1,14 @@
+title: TaskVersionNumbers
+description: YB software version information for upgrade-related tasks.
+type: object
+properties:
+  yb_prev_software_version:
+    description: YB software version before the upgrade started.
+    type: string
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("ybPrevSoftwareVersion")'
+  yb_software_version:
+    description: Target YB software version for the upgrade.
+    type: string
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("ybSoftwareVersion")'

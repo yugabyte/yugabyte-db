@@ -14,8 +14,9 @@
 
 #pragma once
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/env.h"
+#include "yb/util/slice.h"
 
 #include "yb/tablet/tablet.h"
 
@@ -26,9 +27,16 @@ namespace yb::tablet {
 // tablet; this is the way to hash one table of a colocated tablet rather than the whole tablet.
 // An empty target_table_id hashes every (non-parent, non-vector-index) table in the tablet, which
 // for a colocated tablet means all colocated tables sharing it.
+//
+// If start_partition_key / end_partition_key are non-empty, the scan is further restricted to that
+// partition-key sub-range within each scanned table's own key space (raw PartitionPB encoding;
+// start inclusive, end exclusive, empty = the table's natural start/end). For a colocated table the
+// table's cotable_id/colocation_id prefix is prepended automatically, so the range addresses that
+// table's slice of the shared tablet.
 Status DumpTabletData(
     Tablet& tablet, std::shared_future<client::YBClient*> client_future, WritableFile* file,
     uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash, uint64_t& row_count,
-    const TableId& target_table_id = "");
+    const TableId& target_table_id = "", Slice start_partition_key = Slice(),
+    Slice end_partition_key = Slice());
 
 }  // namespace yb::tablet

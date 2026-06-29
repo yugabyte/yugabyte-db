@@ -24,7 +24,7 @@
 #include <unordered_map>
 
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/murmurhash.h"

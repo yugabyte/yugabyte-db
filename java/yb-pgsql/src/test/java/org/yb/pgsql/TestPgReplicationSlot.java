@@ -14,6 +14,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -86,6 +87,15 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     flagMap.put("ysql_cdc_active_replication_slot_window_ms", "0");
+    return flagMap;
+  }
+
+  // TServer flags with the (preview) replication slot exclusive advisory lock enabled. The flag
+  // must be allowlisted in the same map; otherwise the tserver refuses to start.
+  private Map<String, String> getTServerFlagsWithExclusiveLock() {
+    Map<String, String> flagMap = getTServerFlags();
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_slot_exclusive_lock");
+    flagMap.put("ysql_yb_enable_replication_slot_exclusive_lock", "true");
     return flagMap;
   }
 
@@ -793,9 +803,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testReplicationConnectionConsumptionWithCreateIndex() throws Exception {
-    Map<String, String> tserverFlags = super.getTServerFlags();
-    tserverFlags.put("ysql_yb_wait_for_backends_catalog_version_timeout", "10000");
-    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+    Map<String, String> masterFlags = super.getMasterFlags();
+    masterFlags.put("master_ysql_operation_lease_ttl_ms", "10000");
+    restartClusterWithFlags(masterFlags, Collections.emptyMap());
 
     final String slotName = "test_slot";
     final String pluginName = YB_OUTPUT_PLUGIN_NAME;
@@ -996,10 +1006,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void setFlagsForDynamicTablesTest(Map<String, String> tserverFlags,
       Map<String, String> masterFlags, Boolean usePubRefresh, Boolean streamTablesWithoutPrimaryKey)
       throws Exception {
-    tserverFlags.put(
-        "allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
-            + "enable_table_rewrite_for_cdcsdk_table");
+    tserverFlags.put("allowed_preview_flags_csv", "enable_table_rewrite_for_cdcsdk_table");
     tserverFlags.put(
         "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
         "" + !usePubRefresh);
@@ -1009,10 +1016,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     tserverFlags.put(
         "enable_table_rewrite_for_cdcsdk_table", "true");
 
-    masterFlags.put(
-        "allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
-            + "enable_table_rewrite_for_cdcsdk_table");
+    masterFlags.put("allowed_preview_flags_csv", "enable_table_rewrite_for_cdcsdk_table");
     masterFlags.put(
         "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
         "" + !usePubRefresh);
@@ -1226,14 +1230,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
       miniCluster.getClient().setFlag(
-          tServer, "allowed_preview_flags_csv", "ysql_yb_cdcsdk_stream_tables_without_primary_key");
-      miniCluster.getClient().setFlag(
           tServer, "ysql_yb_cdcsdk_stream_tables_without_primary_key", "true");
     }
 
     for (HostAndPort master : miniCluster.getMasters().keySet()) {
-      miniCluster.getClient().setFlag(
-          master, "allowed_preview_flags_csv", "ysql_yb_cdcsdk_stream_tables_without_primary_key");
       miniCluster.getClient().setFlag(
           master, "ysql_yb_cdcsdk_stream_tables_without_primary_key", "true");
     }
@@ -5062,6 +5062,133 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testPgoutputWithSharedOriginId() throws Exception {
+    final String slotName = "test_replication_with_shared_origin_id";
+    final String originId1 = "shared_origin1";
+    final String originId2 = "shared_origin2";
+
+    Connection replConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        replConn.unwrap(PGConnection.class).getReplicationAPI();
+    Connection conn2 = getConnectionBuilder().withTServer(1).connect();
+
+    try (Statement stmt1 = connection.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute("DROP TABLE IF EXISTS shared_origin_tbl1");
+      stmt1.execute("DROP TABLE IF EXISTS shared_origin_tbl2");
+      stmt1.execute("CREATE TABLE shared_origin_tbl1 (a INT PRIMARY KEY, b TEXT)");
+      stmt1.execute("ALTER TABLE shared_origin_tbl1 REPLICA IDENTITY DEFAULT");
+      stmt1.execute("CREATE TABLE shared_origin_tbl2 (a INT PRIMARY KEY, b TEXT)");
+      stmt1.execute("ALTER TABLE shared_origin_tbl2 REPLICA IDENTITY DEFAULT");
+      stmt1.execute("CREATE PUBLICATION shared_origin_pub FOR ALL TABLES");
+
+      stmt1.execute("SELECT pg_replication_origin_create('" + originId1 + "')");
+      stmt1.execute("SELECT pg_replication_origin_create('" + originId2 + "')");
+      stmt1.execute("CREATE ROLE shared_origin_non_su LOGIN PASSWORD 'pwd'");
+      createSlot(replConnection, slotName, PG_OUTPUT_PLUGIN_NAME);
+
+      try (Connection nonSuConn = getConnectionBuilder()
+               .withUser("shared_origin_non_su").withPassword("pwd").connect();
+           Statement nonSuStmt = nonSuConn.createStatement()) {
+        runInvalidQuery(
+            nonSuStmt,
+            "SELECT yb_replication_origin_session_setup_shared('" + originId1 + "')",
+            "permission denied for function yb_replication_origin_session_setup_shared");
+        runInvalidQuery(
+            nonSuStmt,
+            "SELECT yb_replication_origin_session_reset_shared()",
+            "permission denied for function yb_replication_origin_session_reset_shared");
+      }
+
+      stmt1.execute("SELECT yb_replication_origin_session_setup_shared('" + originId1 + "')");
+      stmt2.execute("SELECT yb_replication_origin_session_setup_shared('" + originId2 + "')");
+
+      runInvalidQuery(
+          stmt1,
+          "SELECT pg_replication_origin_session_setup('" + originId2 + "')",
+          "replication origin session already setup");
+      runInvalidQuery(
+          stmt1,
+          "SELECT yb_replication_origin_session_setup_shared('" + originId2 + "')",
+          "replication origin session already setup");
+
+      stmt1.execute("CREATE TEMP TABLE shared_origin_temp(i int)");
+      stmt1.execute("INSERT INTO shared_origin_temp VALUES (1)");
+      stmt1.execute("DROP TABLE shared_origin_temp");
+      stmt1.execute("INSERT INTO shared_origin_tbl1 values (1, 'from_origin1')");
+      stmt2.execute("INSERT INTO shared_origin_tbl2 values (2, 'from_origin2')");
+
+      stmt1.execute("SELECT yb_replication_origin_session_reset_shared()");
+      stmt2.execute("SELECT yb_replication_origin_session_reset_shared()");
+      stmt1.execute("INSERT INTO shared_origin_tbl1 values (3, 'local_after_reset')");
+
+      stmt1.execute("SELECT pg_replication_origin_session_setup('" + originId1 + "')");
+      runInvalidQuery(
+          stmt1,
+          "SELECT yb_replication_origin_session_setup_shared('" + originId2 + "')",
+          "cannot use shared replication origin session while an exclusive one is active");
+      runInvalidQuery(
+          stmt1,
+          "SELECT yb_replication_origin_session_reset_shared()",
+          "cannot reset shared replication origin session while an exclusive one is active");
+      stmt1.execute("SELECT pg_replication_origin_session_reset()");
+
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "shared_origin_pub")
+                                     .start();
+
+    List<PgOutputMessage> result = receiveMessage(stream, 13);
+    int originMessages = 0;
+    int origin1Messages = 0;
+    int origin2Messages = 0;
+    for (PgOutputMessage message : result) {
+      if (message.messageType() == PgOutputMessageType.ORIGIN) {
+        originMessages++;
+      }
+      if (message.equals(PgOutputOriginMessage.Create(originId1))) {
+        origin1Messages++;
+      }
+      if (message.equals(PgOutputOriginMessage.Create(originId2))) {
+        origin2Messages++;
+      }
+    }
+    assertEquals(2, originMessages);
+    assertEquals(1, origin1Messages);
+    assertEquals(1, origin2Messages);
+
+    stream.close();
+    conn2.close();
+    replConn.close();
+  }
+
+  @Test
+  public void testSharedOriginIdDisabled() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    appendToYsqlPgConf(tserverFlags, "yb_enable_replication_origin_shared=false");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SELECT pg_replication_origin_create('disabled_shared_origin')");
+      runInvalidQuery(
+          stmt,
+          "SELECT yb_replication_origin_session_setup_shared('disabled_shared_origin')",
+          "yb_replication_origin_session_setup_shared requires "
+              + "yb_enable_replication_origin_shared to be enabled");
+      runInvalidQuery(
+          stmt,
+          "SELECT yb_replication_origin_session_reset_shared()",
+          "yb_replication_origin_session_reset_shared requires "
+              + "yb_enable_replication_origin_shared to be enabled");
+    }
+  }
+
+  @Test
   public void testYboutputWithOriginIdCreatedAfterSlot() throws Exception {
     final String slotName = "test_replication_with_origin_id_post_slot";
     final String originId1 = "origin1_post";
@@ -5636,6 +5763,50 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  @Test
+  public void testCdcStreamOnYbSystemBlocked() throws Exception {
+    // Currently yb_system is only created if ysql_yb_enable_listen_notify is enabled on master.
+    Map<String, String> masterFlags = super.getMasterFlags();
+    masterFlags.put("ysql_yb_enable_listen_notify", "true");
+    restartClusterWithFlags(masterFlags, Collections.emptyMap());
+    BasePgListenNotifyTest.waitForNotificationsTableReady(connection, getConnectionBuilder());
+
+    try (Connection ybSystemConn = getConnectionBuilder().withDatabase("yb_system").connect();
+         Statement stmt = ybSystemConn.createStatement()) {
+      stmt.execute("CREATE TABLE test_cdc_table (id INT PRIMARY KEY, val TEXT)");
+      stmt.execute("CREATE PUBLICATION test_pub FOR ALL TABLES");
+      try {
+        stmt.execute(
+            "SELECT pg_create_logical_replication_slot('test_cdc_slot', 'pgoutput')");
+        fail("Expected replication slot creation on yb_system to fail");
+      } catch (PSQLException e) {
+        assertTrue("Expected error about yb_system CDC streams not supported, got: "
+            + e.getMessage(),
+            e.getMessage().contains("CDC streams are not supported for yb_system database"));
+      } finally {
+        stmt.execute("DROP PUBLICATION test_pub");
+        stmt.execute("DROP TABLE test_cdc_table");
+      }
+    }
+  }
+
+  @Test
+  public void testReservedSlotNamePrefix() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE PUBLICATION test_pub FOR ALL TABLES");
+      try {
+        stmt.execute(
+            "SELECT pg_create_logical_replication_slot('yb_notifications_test', 'pgoutput')");
+        fail("Expected replication slot creation with reserved prefix to fail");
+      } catch (PSQLException e) {
+        assertTrue("Expected error about reserved slot name, got: " + e.getMessage(),
+            e.getMessage().contains("is reserved"));
+      } finally {
+        stmt.execute("DROP PUBLICATION test_pub");
+      }
+    }
+  }
+
   // TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
   @Ignore
   @Test
@@ -5774,5 +5945,140 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       assertTrue(res.next());
       return res.getLong("yb_restart_commit_ht");
     }
+  }
+
+  @Test
+  public void testExclusiveReplicationSlotAcquireAcrossTservers() throws Exception {
+    restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
+
+    String slotName = "excl_slot_test";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_excl");
+      stmt.execute("CREATE TABLE t_excl(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_excl VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    try {
+      String expectedErrorMessage = "could not acquire replication slot";
+      boolean exceptionThrown = false;
+      Connection replConn2 = getConnectionBuilder().withTServer(2).replicationConnect();
+      PGReplicationConnection replApi2 =
+          replConn2.unwrap(PGConnection.class).getReplicationAPI();
+      try {
+        replApi2.replicationStream()
+            .logical()
+            .withSlotName(slotName)
+            .withStartPosition(LogSequenceNumber.valueOf(0L))
+            .start();
+      } catch (PSQLException e) {
+        exceptionThrown = true;
+        if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+          LOG.info("Expected exception", e);
+        } else {
+          fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+              e.getMessage(), expectedErrorMessage));
+        }
+      }
+      assertTrue("Expected slot acquire to fail for second consumer", exceptionThrown);
+      replConn2.close();
+    } finally {
+      stream0.close();
+      replConn0.close();
+    }
+  }
+
+  @Test
+  public void testSlotLockReleasedOnTserverCrash() throws Exception {
+    restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
+
+    String slotName = "crash_tserver_slot";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_crash");
+      stmt.execute("CREATE TABLE t_crash(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_crash VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    int numTservers = miniCluster.getNumTServers();
+
+    // Resolve tserver index 0's RPC HostAndPort deterministically.
+    // getTabletServers() returns a ConcurrentHashMap whose iteration order
+    // is unspecified, so we match by host against the ordered PG contact
+    // points list. Both share the same hostname per tserver (different
+    // ports: PG vs RPC).
+    String tserver0Host = miniCluster.getPostgresContactPoints().get(0).getHostString();
+    HostAndPort tserver0 = miniCluster.getTabletServers().keySet().stream()
+        .filter(hp -> hp.getHost().equals(tserver0Host))
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException(
+            "Could not find tserver for host " + tserver0Host));
+    LOG.info("Killing tserver at {} (index 0, holds the slot lock)", tserver0);
+    miniCluster.killTabletServerOnHostPort(tserver0);
+
+    miniCluster.startTServer(getTServerFlagsWithExclusiveLock());
+    assertTrue(miniCluster.waitForTabletServers(numTservers));
+    waitForTServerHeartbeat();
+
+    // The advisory lock is tied to a session-level transaction on the killed
+    // tserver. The transaction coordinator needs time to detect the dead
+    // heartbeat and abort the transaction before the lock is released.
+    final int maxAttempts = 30;
+    final int sleepBetweenAttemptsMs = 2000;
+    PGReplicationStream stream1 = null;
+    Connection replConn1 = null;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+        PGReplicationConnection replApi1 =
+            replConn1.unwrap(PGConnection.class).getReplicationAPI();
+        stream1 = replApi1.replicationStream()
+            .logical()
+            .withSlotName(slotName)
+            .withStartPosition(LogSequenceNumber.valueOf(0L))
+            .start();
+        LOG.info("Successfully acquired slot after tserver crash on attempt {}", attempt);
+        break;
+      } catch (PSQLException e) {
+        if (replConn1 != null) {
+          replConn1.close();
+          replConn1 = null;
+        }
+        if (attempt == maxAttempts) {
+          throw e;
+        }
+        LOG.info("Attempt {} failed, retrying in {}ms: {}", attempt, sleepBetweenAttemptsMs,
+                 e.getMessage());
+        Thread.sleep(sleepBetweenAttemptsMs);
+      }
+    }
+    assertNotNull("Expected to acquire slot after tserver crash", stream1);
+
+    stream1.close();
+    replConn1.close();
   }
 }

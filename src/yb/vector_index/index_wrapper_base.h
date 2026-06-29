@@ -14,12 +14,14 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 #include <shared_mutex>
 #include <utility>
 
 #include "yb/rocksdb/util/heap.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/two_group_mutex.h"
 
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
@@ -42,6 +44,10 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
       std::unique_lock lock(TEST_search_exact_mutex_);
       return impl().DoInsert(vector_id, v);
     }
+    // Take the write side: concurrent inserts run together (the backend coordinates them via its
+    // own per-node locks) but exclude searches, whose lock-free traversal must not observe a
+    // half-applied insert.
+    TwoGroupMutex::WriteLock lock(search_insert_mutex_);
     return impl().DoInsert(vector_id, v);
   }
 
@@ -66,6 +72,12 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
       std::shared_lock lock(TEST_search_exact_mutex_);
       return SearchExact(query_vector, options);
+    }
+    // Take the read side while the index is still mutable, so searches never overlap an insert.
+    // Immutable (flushed/loaded) indexes have no writers and are searched lock-free.
+    std::optional<TwoGroupMutex::ReadLock> lock;
+    if (!immutable()) {
+      lock.emplace(search_insert_mutex_);
     }
     return impl().DoSearch(query_vector, options);
   }
@@ -93,6 +105,13 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return obj;
   }
 
+ protected:
+  // True once the index has been saved/loaded and can no longer be modified. Subclasses use this
+  // to skip search-vs-insert coordination on immutable indexes (no concurrent writers possible).
+  bool immutable() const {
+    return immutable_.load(std::memory_order_acquire);
+  }
+
  private:
   Impl& impl() {
     return *static_cast<Impl*>(this);
@@ -105,6 +124,13 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
   std::atomic<bool> immutable_{false};
   std::shared_ptr<void> attached_;
   mutable std::shared_mutex TEST_search_exact_mutex_;
+
+  // Coordinates lock-free searches against concurrent inserts on a mutable index: many inserts run
+  // together and many searches run together, but a search phase and an insert phase never overlap,
+  // so a search never observes a partially-applied insert. Backends whose concurrent inserts and
+  // concurrent searches are each internally safe rely on this for cross-group exclusion. Taken only
+  // while the index is mutable; immutable indexes have no writers and stay lock-free.
+  mutable TwoGroupMutex search_insert_mutex_;
 };
 
 template <typename Vector, typename IteratorImpl>

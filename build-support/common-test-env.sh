@@ -2059,6 +2059,110 @@ should_run_java_test_methods_separately() {
   [[ ${YB_RUN_JAVA_TEST_METHODS_SEPARATELY:-0} == "1" ]]
 }
 
+# Finds the Maven module for the given Java test. The test may be given either
+# fully-qualified (org.yb.client.TestBytes) or as a bare class name (TestBytes), optionally with a
+# "#method" (and parameter index) suffix.
+#
+# On success returns 0 and sets these variables in the caller's scope:
+#   resolved_java_test_module      - the module's leaf directory name under java/ (e.g. yb-client)
+#   resolved_java_test_module_dir  - the module directory relative to $YB_SRC_ROOT (java/yb-client)
+#   resolved_java_test_name        - the fully-qualified test name, "#method" suffix preserved
+# Calls fatal if the test cannot be resolved or is ambiguous.
+resolve_java_test() {
+  expect_num_args 1 "$@"
+  local java_test_name=$1
+  local java_test_method_name=""
+  if [[ $java_test_name == *\#* ]]; then
+    java_test_method_name=${java_test_name##*#}
+  fi
+  local java_test_class=${java_test_name%#*}
+  local rel_java_src_path=${java_test_class//./\/}
+
+  local module_name="" rel_module_dir="" rel_source_path=""
+  local java_project_dir module_dir language current_module_name
+
+  # Strategy 1: assume a fully-qualified class name and look for the matching source file directly.
+  for java_project_dir in "${yb_java_project_dirs[@]}"; do
+    for module_dir in "$java_project_dir"/*; do
+      [[ $module_dir == */target ]] && continue
+      [[ -d $module_dir ]] || continue
+      for language in java scala; do
+        if [[ -f $module_dir/src/test/$language/$rel_java_src_path.$language ]]; then
+          current_module_name=${module_dir##*/}
+          if [[ -n $module_name ]]; then
+            fatal "Could not determine module for Java/Scala test '$java_test_name': found in" \
+                  "both '$rel_module_dir' and '${module_dir#"$YB_SRC_ROOT/"}'."
+          fi
+          module_name=$current_module_name
+          rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
+        fi
+      done
+    done
+  done
+
+  # Strategy 2: no match for a fully-qualified name, so assume only a bare class name was given and
+  # search for the source file by name.
+  if [[ -z $module_name ]]; then
+    for java_project_dir in "${yb_java_project_dirs[@]}"; do
+      for module_dir in "$java_project_dir"/*; do
+        [[ $module_dir == */target ]] && continue
+        [[ -d $module_dir ]] || continue
+        local module_test_src_root="$module_dir/src/test"
+        [[ -d $module_test_src_root ]] || continue
+        local candidate_files=()
+        local line
+        while IFS='' read -r line; do
+          candidate_files+=( "$line" )
+        done < <(
+          cd "$module_test_src_root" &&
+          find . '(' -name "$java_test_class.java" -or -name "$java_test_class.scala" ')'
+        )
+        if [[ ${#candidate_files[@]} -gt 0 ]]; then
+          current_module_name=${module_dir##*/}
+          if [[ -n $module_name ]]; then
+            fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
+                  "'$module_name' and '$current_module_name' are valid candidates."
+          fi
+          if [[ ${#candidate_files[@]} -gt 1 ]]; then
+            fatal "Ambiguous source files for Java/Scala test '$java_test_name':" \
+                  "${candidate_files[*]}"
+          fi
+          module_name=$current_module_name
+          rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
+          rel_source_path=${candidate_files[0]}
+        fi
+      done
+    done
+  fi
+
+  if [[ -z $module_name ]]; then
+    fatal "Could not find module name for Java/Scala test '$java_test_name'"
+  fi
+
+  # If we resolved via the bare class name, reconstruct the fully-qualified test name from the
+  # source path so callers always get a canonical name.
+  if [[ -n $rel_source_path ]]; then
+    local java_class_with_package=${rel_source_path%.java}
+    java_class_with_package=${java_class_with_package%.scala}
+    java_class_with_package=${java_class_with_package#./java/}
+    java_class_with_package=${java_class_with_package#./scala/}
+    java_class_with_package=${java_class_with_package//\//.}
+    if [[ $java_class_with_package != *.$java_test_class ]]; then
+      fatal "Internal error: could not find Java package name for test class $java_test_name." \
+            "Found source file: $rel_source_path, and extracted Java class with package from it:" \
+            "'$java_class_with_package'. Expected it to end with '.$java_test_class'."
+    fi
+    java_test_name=$java_class_with_package
+    if [[ -n $java_test_method_name ]]; then
+      java_test_name+="#$java_test_method_name"
+    fi
+  fi
+
+  resolved_java_test_module=$module_name
+  resolved_java_test_module_dir=$rel_module_dir
+  resolved_java_test_name=$java_test_name
+}
+
 # Finds the directory (Maven module) the given Java test belongs to and runs it.
 #
 # Argument: the test to run in the following form:
@@ -2069,118 +2173,24 @@ resolve_and_run_java_test() {
   # shellcheck disable=SC2119
   set_common_test_paths
   log "Running Java test $java_test_name"
-  local module_dir
-  local language
-  local java_test_method_name=""
-  if [[ $java_test_name == *\#* ]]; then
-    java_test_method_name=${java_test_name##*#}
-  fi
-  local java_test_class=${java_test_name%#*}
-  local rel_java_src_path=${java_test_class//./\/}
+
+  local resolved_java_test_module resolved_java_test_module_dir resolved_java_test_name
+  resolve_java_test "$java_test_name"
+
   if ! is_jenkins; then
-    log "Java test class: $java_test_class"
-    if [[ -n $java_test_method_name ]]; then
-      log "Java test method name and optionally a parameter set index: $java_test_method_name"
-    fi
-  fi
-
-  local module_name=""
-  local rel_module_dir=""
-  local java_project_dir
-
-  for java_project_dir in "${yb_java_project_dirs[@]}"; do
-    for module_dir in "$java_project_dir"/*; do
-      if [[ "$module_dir" == */target ]]; then
-        continue
-      fi
-      if [[ -d $module_dir ]]; then
-        for language in java scala; do
-          candidate_source_path=$module_dir/src/test/$language/$rel_java_src_path.$language
-          if [[ -f $candidate_source_path ]]; then
-            local current_module_name=${module_dir##*/}
-            if [[ -n $module_name ]]; then
-              fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
-                    "'$module_name' and '$current_module_name' are valid candidates."
-            fi
-            module_name=$current_module_name
-            rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
-          fi
-        done
-      fi
-    done
-  done
-
-  if [[ -z $module_name ]]; then
-    # Could not find the test source assuming we are given the complete package. Let's assume we
-    # only have the class name.
-    module_name=""
-    local rel_source_path=""
-    local java_project_dir
-    for java_project_dir in "${yb_java_project_dirs[@]}"; do
-      for module_dir in "$java_project_dir"/*; do
-        if [[ "$module_dir" == */target ]]; then
-          continue
-        fi
-        if [[ -d $module_dir ]]; then
-          local module_test_src_root="$module_dir/src/test"
-          if [[ -d $module_test_src_root ]]; then
-            local candidate_files=()
-            local line
-            while IFS='' read -r line; do
-              candidate_files+=( "$line" )
-            done < <(
-              cd "$module_test_src_root" &&
-              find . '(' -name "$java_test_class.java" -or -name "$java_test_class.scala" ')'
-            )
-            if [[ ${#candidate_files[@]} -gt 0 ]]; then
-              local current_module_name=${module_dir##*/}
-              if [[ -n $module_name ]]; then
-                fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
-                      "'$module_name' and '$current_module_name' are valid candidates."
-              fi
-              module_name=$current_module_name
-              rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
-
-              if [[ ${#candidate_files[@]} -gt 1 ]]; then
-                fatal "Ambiguous source files for Java/Scala test '$java_test_name': " \
-                      "${candidate_files[*]}"
-              fi
-
-              rel_source_path=${candidate_files[0]}
-            fi
-          fi
-        fi
-      done
-    done
-
-    if [[ -z $module_name ]]; then
-      fatal "Could not find module name for Java/Scala test '$java_test_name'"
-    fi
-
-    local java_class_with_package=${rel_source_path%.java}
-    java_class_with_package=${java_class_with_package%.scala}
-    java_class_with_package=${java_class_with_package#./java/}
-    java_class_with_package=${java_class_with_package#./scala/}
-    java_class_with_package=${java_class_with_package//\//.}
-    if [[ $java_class_with_package != *.$java_test_class ]]; then
-      fatal "Internal error: could not find Java package name for test class $java_test_name. " \
-            "Found source file: $rel_source_path, and extracted Java class with package from it:" \
-            "'$java_class_with_package'. Expected that Java class name with package" \
-            "('$java_class_with_package') would end dot and Java test class name" \
-            "('.$java_test_class') but that is not the case."
-    fi
-    java_test_name=$java_class_with_package
-    if [[ -n $java_test_method_name ]]; then
-      java_test_name+="#$java_test_method_name"
+    log "Java test class: ${resolved_java_test_name%#*}"
+    if [[ $resolved_java_test_name == *\#* ]]; then
+      log "Java test method name and optionally a parameter set index:" \
+          "${resolved_java_test_name##*#}"
     fi
   fi
 
   if [[ ${num_test_repetitions:-1} -eq 1 ]]; then
     # This will return an error code appropriate to the test result.
-    run_java_test "$rel_module_dir" "$java_test_name"
+    run_java_test "$resolved_java_test_module_dir" "$resolved_java_test_name"
   else
     # TODO: support enterprise case by passing rel_module_dir here.
-    run_repeat_unit_test "$module_name" "$java_test_name" --java
+    run_repeat_unit_test "$resolved_java_test_module" "$resolved_java_test_name" --java
   fi
 }
 

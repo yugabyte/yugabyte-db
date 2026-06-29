@@ -4,9 +4,10 @@ import {
   ResilienceFormMode,
   ResilienceType
 } from '../steps/resilence-regions/dtos';
+import { NodeAvailabilityProps } from '../steps/nodes-availability/dtos';
 import { Region } from '../../../../helpers/dtos';
 import { Provider } from '@app/components/configRedesign/providerRedesign/types';
-import { FAULT_TOLERANCE_TYPE, RESILIENCE_FACTOR } from '../fields/FieldNames';
+import { FAULT_TOLERANCE_TYPE, REPLICATION_FACTOR, RESILIENCE_FACTOR } from '../fields/FieldNames';
 
 export function getFaultToleranceNeeded(replicationFactor: number) {
   return replicationFactor * 2 + 1;
@@ -23,15 +24,16 @@ export function getGuidedNodesStepReplicationFactor(
   return getFaultToleranceNeeded(resilienceFactor);
 }
 
-/** API / placement replication factor from resilience form (expert = literal RF; guided = FT → RF). */
+/** API / placement replication factor (guided = resilience step FT → RF; expert = nodes step RF). */
 export function getEffectiveReplicationFactorForResilience(
-  settings: ResilienceAndRegionsProps
+  settings: ResilienceAndRegionsProps,
+  nodesAvailability?: Pick<NodeAvailabilityProps, typeof REPLICATION_FACTOR>
 ): number {
   if (settings.resilienceType === ResilienceType.SINGLE_NODE) {
     return 1;
   }
   if (settings.resilienceFormMode === ResilienceFormMode.EXPERT_MODE) {
-    return settings.resilienceFactor;
+    return nodesAvailability?.[REPLICATION_FACTOR] ?? settings.resilienceFactor;
   }
   return getGuidedNodesStepReplicationFactor(
     settings.faultToleranceType,

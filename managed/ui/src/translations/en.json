@@ -65,7 +65,9 @@
         "seconds": "s",
         "megabyte": "MB",
         "megabytesPerSecond": "MBps"
-      }
+      },
+      "assigned": "Assigned",
+      "notAssigned": "Not Assigned"
     },
     "iconAltText": {
       "infoIcon": "Information icon",
@@ -695,6 +697,22 @@
             "folderNameMustBeUnique": "The folder name must be unique."
           },
           "submitLabel": "Confirm"
+        }
+      },
+      "reprovisionNodesWithYnpModal": {
+        "title": "Reprovision Nodes with YNP",
+        "instructions": "Nodes will be provisioned in a rolling manner.",
+        "reprovisionNodesFor": "Reprovision nodes for:",
+        "allNodeInUniverse": "All nodes in this Universe",
+        "selectedNode": "Selected node",
+        "confirmButton": "Reprovision Nodes with YNP",
+        "error": {
+          "requestFailureLabel": "Reprovision nodes with YNP request failed",
+          "taskFailure": "Failed to reprovision nodes with YNP."
+        },
+        "success": {
+          "requestSuccess": "Reprovision nodes with YNP started.",
+          "taskSuccess": "Reprovisioned nodes with YNP."
         }
       }
     },
@@ -2933,6 +2951,7 @@
             "aws": "Amazon Web Services",
             "gcp": "Google Cloud Platform",
             "azu": "Microsoft Azure",
+            "oci": "Oracle Cloud Infrastructure",
             "vmwareTanzu": "VMware Tanzu",
             "redHatOpenShift": "Red Hat OpenShift",
             "managedK8s": "Managed Kubernetes Service",
@@ -3171,6 +3190,7 @@
         "learnMoreYSQlLog": "Learn more about YSQL audit logging.",
         "ysqlStatementTitle": "1. Select YSQL statements and relations to log",
         "ysqlLogSettingsTitle": "2. Configure YSQL audit log settings",
+        "logRetentionDaysLabel": "Audit log retention (days)",
         "exportLogTitle": "3. Select a destination for the logs",
         "logExportConfig": "Log Export Configuration",
         "createExportConfig": "Create Export Configuration",
@@ -3188,6 +3208,7 @@
         "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
         "logStatement": "Include the statement text and parameters.",
         "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry.",
+        "logRetentionDays": "Number of days to keep extracted YSQL audit log archives on each DB node. Audit lines are extracted from postgres logs and archived separately so they can be retained longer than regular postgres logs. Leave blank or set to 0 to disable the dedicated audit log retention and fall back to the default size-based postgres log purge.",
         "logRow": "Include the rows retrieved or affected by a statement.",
         "exportLog": "Forward audit log to your preferred 3rd party log management tool such as Datadog, Splunk, AWS CloudWatch, or GCP Cloud Logging. The audit logs are always available for download using the API regardless of whether export is enabled or otherwise."
       },
@@ -3918,7 +3939,9 @@
           "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
           "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps.",
           "expertResilienceUninferable": "<b>Invalid configuration!</b> RF {{rf}} requires either {{rf}} AZs or a minimum of {{rf}} total nodes. The current placement falls below this requirement.",
-          "expertAzBlank": "<b>Invalid configuration!</b> Availability zone cannot be left blank."
+          "expertAzBlank": "<b>Invalid configuration!</b> Availability zone cannot be left blank.",
+          "onPremFreeNodesExceeded": "<b>Invalid configuration:</b> Availability zone <b>{{az_name}}</b> requires <b>{{requested_count}}</b> nodes but only <b>{{free_count}}</b> free nodes are available.",
+          "onPremNodesLoading": "<b>Please wait:</b> Loading available on-prem nodes before validating placement."
         }
       },
       "instanceSettings": {
@@ -4102,7 +4125,7 @@
           "redisServerHttpPort": "Redis HTTP Port",
           "redisServerRpcPort": "Redis HTTP Port",
           "nodeExporterPort": "Node Exporter Port",
-          "ybControllerrRpcPort": "YB Controller RPC Port",
+          "ybControllerRpcPort": "YB Controller RPC Port",
           "masterGroup": "Master Server",
           "tServerGroup": "T-Server",
           "ysqlGroup": "YSQL",
@@ -4231,6 +4254,7 @@
         "actions": "Actions",
         "editResilienceAndRegions": "Edit Regions",
         "editNodesAndAvailabilityZones": "Edit AZ and Node Placement",
+        "advancedPlacementOptions": "Advanced Placement Options",
         "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
         "clusterPlacement": "Cluster Placement",
         "primaryCluster": "Primary Cluster",
@@ -4240,6 +4264,7 @@
         "addGeoPartition": "Add Geo Partition",
         "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
         "faultTolerance": "Fault Tolerance",
+        "resilienceLevel": "Resilience Level",
         "replicationFactor": "Replication Factor",
         "totalNodes": "Total Nodes",
         "totalNodesTServerMaster": "{{total_nodes}} ({{tservers}} T-Servers | {{masters}} Masters)",
@@ -4255,6 +4280,7 @@
           "current": "Current",
           "new": "New",
           "faultTolerance": "Fault Tolerance:",
+          "replicationFactor": "Replication Factor:",
           "totalNodes": "Total Nodes:",
           "node": "node",
           "rank": "Rank {{rank}}",
@@ -4332,7 +4358,10 @@
         "encryptionAtRest": "Encryption At Rest",
         "nodeToNode": "Node to Node Encryption",
         "clientToNode": "Client to Node Encryption",
-        "encryption": "Encryption"
+        "encryption": "Encryption",
+        "networkAccess": "Network Access",
+        "publicIP": "PUBLIC IP",
+        "ipv6": "IPV6"
       },
       "database": {
         "ysql": "YSQL",
@@ -4357,7 +4386,16 @@
         "secureWebProxy": "Secure Web Proxy (HTTPS)",
         "webProxy": "Web Proxy (HTTP)",
         "bypassProxyList": "Bypass Proxy List",
-        "editProxyConfiguration": "Edit Proxy Configuration"
+        "editProxyConfiguration": "Edit Proxy Configuration",
+        "userTagsTitle": "User Tags",
+        "addTags": "Add User Tags",
+        "userTagName": "Name",
+        "userTagValue": "Value",
+        "userTagTooltip": "Assign tags to manage, track costs, and audit resources. <a>Learn more </a>",
+        "nodeAccess": "Node Access",
+        "sshKey": "SSH ACCESS KEY",
+        "awsArn": "INSTANCE PROFILE ARN",
+        "networkPorts": "Network Ports"
       },
       "masterServerNodeAllocationModal": {
         "title": "Master Server Node Allocation",

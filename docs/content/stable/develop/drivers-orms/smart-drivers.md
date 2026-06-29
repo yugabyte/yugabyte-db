@@ -25,7 +25,8 @@ Yugabyte has developed the following smart drivers for YSQL, available as open s
 | [YugabyteDB JDBC Driver for Java](https://github.com/yugabyte/pgjdbc) | PostgreSQL JDBC Driver | [Documentation](../java/yugabyte-jdbc/) |
 | [YugabyteDB R2DBC Driver for Java](https://github.com/yugabyte/r2dbc-postgresql) | [PostgreSQL R2DBC driver](https://github.com/pgjdbc/r2dbc-postgresql) | [Documentation](../java/yb-r2dbc/) |
 | [YugabyteDB PGX Driver for Go](https://github.com/yugabyte/pgx) | jackc/pgx | [Documentation](../go/yb-pgx/) |
-| [YugabyteDB Psycopg2 Driver for Python](https://github.com/yugabyte/psycopg2) | PostgreSQL psycopg2 | [Documentation](../python/yugabyte-psycopg2/) |
+| [YugabyteDB Psycopg 2  Driver for Python](https://github.com/yugabyte/psycopg2) | PostgreSQL psycopg2 | [Documentation](../python/yugabyte-psycopg2/) |
+| [YugabyteDB Psycopg 3 Driver for Python](https://github.com/yugabyte/psycopg) | PostgreSQL psycopg3 | [Documentation](../python/yugabyte-psycopg3/) |
 | [YugabyteDB node-postgres Driver for Node.js](https://github.com/yugabyte/node-postgres) | node-postgres | [Documentation](../nodejs/yugabyte-node-driver/) |
 | [YugabyteDB Npgsql Driver for C#](https://github.com/yugabyte/npgsql) | PostgreSQL Npgsql Driver | [Documentation](../csharp/ysql/) |
 | [YugabyteDB Rust-postgres Driver](https://github.com/yugabyte/rust-postgres) | Rust-Postgres Driver | [Documentation](../rust/yb-rust-postgres) |

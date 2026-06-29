@@ -74,7 +74,8 @@ struct DdlMode {
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
     (AcquireAdvisoryLock)(ReleaseAdvisoryLock) \
-    (ReleaseSessionObjectLock)
+    (ReleaseSessionObjectLock) \
+    (WaitForLockersMultiple)
 
 struct PerformResult {
   Status status;
@@ -207,6 +208,8 @@ class PgClient {
   Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
 
   Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
+
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 

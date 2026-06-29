@@ -1389,10 +1389,8 @@ ON foreign_schema.foreign_table_1
 REFERENCING NEW TABLE AS new_table
 FOR EACH STATEMENT
 EXECUTE PROCEDURE dummy_trigger();
-ERROR:  REFERENCING clause (transition tables) not supported yet
-LINE 3: REFERENCING NEW TABLE AS new_table
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
+ERROR:  "foreign_table_1" is a foreign table
+DETAIL:  Triggers on foreign tables cannot have transition tables.
 CREATE TRIGGER trigtest_before_row BEFORE INSERT OR UPDATE OR DELETE
 ON foreign_schema.foreign_table_1
 FOR EACH ROW

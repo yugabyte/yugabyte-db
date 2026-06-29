@@ -184,6 +184,13 @@ public class YNPProvisioningTest extends FakeDBApplication {
     lenient()
         .when(confGetter.getGlobalConf(eq(GlobalConfKeys.accessLogExcludeRegex)))
         .thenReturn(Collections.emptyList());
+    lenient()
+        .when(confGetter.getGlobalConf(eq(GlobalConfKeys.pitrListSnapshotSchedulesCacheTtlMs)))
+        .thenReturn(60_000);
+    lenient()
+        .when(
+            confGetter.getGlobalConf(eq(GlobalConfKeys.pitrListSnapshotSchedulesCacheMaxUniverses)))
+        .thenReturn(100);
 
     // Mock getGlobalConf() without parameters - needed by QueryHelper
     // Create a real Config with the required value to avoid ClassCastException

@@ -222,7 +222,7 @@ public class NodeManager extends DevopsBase {
   }
 
   private boolean imdsv2required(Architecture arch, UserIntent userIntent, Provider provider) {
-    if (!userIntent.providerType.equals(CloudType.aws)) {
+    if (provider.getCloudCode() != CloudType.aws) {
       return false;
     }
     UUID imageBundleUUID = Util.retreiveImageBundleUUID(arch, userIntent, provider);
@@ -257,14 +257,14 @@ public class NodeManager extends DevopsBase {
     return universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
   }
 
-  private List<String> getCloudArgs(NodeCommandType type, NodeTaskParams nodeTaskParam) {
+  private List<String> getCloudArgs(
+      NodeCommandType type, NodeTaskParams nodeTaskParam, Provider provider) {
     List<String> command = new ArrayList<>();
     command.add("--zone");
     command.add(nodeTaskParam.getAZ().getCode());
-    UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
 
     // Right now for docker we grab the network from application conf.
-    if (userIntent.providerType.equals(Common.CloudType.docker)) {
+    if (provider.getCloudCode().equals(Common.CloudType.docker)) {
       String networkName = appConfig.getString("yb.docker.network");
       if (networkName == null) {
         throw new RuntimeException("yb.docker.network is not set in application.conf");
@@ -273,7 +273,7 @@ public class NodeManager extends DevopsBase {
       command.add(networkName);
     }
 
-    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+    if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
       ObjectNode detailsJson = Json.newObject();
       // NodeInstance may not yet be assigned to a universe in these prechecks.
       boolean maybeNodeInstanceUnassigned =
@@ -328,23 +328,24 @@ public class NodeManager extends DevopsBase {
     return args;
   }
 
-  private List<String> getAccessKeySpecificCommand(NodeTaskParams params, NodeCommandType type) {
+  private List<String> getAccessKeySpecificCommand(
+      NodeTaskParams params, Provider provider, NodeCommandType type) {
     List<String> subCommand = new ArrayList<>();
     if (params.getUniverseUUID() == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
     UserIntent userIntent = getUserIntentFromParams(params);
     final String defaultAccessKeyCode = appConfig.getString("yb.security.default.access.key");
-
+    String accessKeyCode = userIntent.getAccessKeyCodeForProvider(provider.getUuid());
     // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
     if ((userIntent != null
-            && StringUtils.isNotBlank(userIntent.accessKeyCode)
-            && !userIntent.accessKeyCode.equalsIgnoreCase(defaultAccessKeyCode))
-        || StringUtils.isBlank(userIntent.accessKeyCode)) {
+            && StringUtils.isNotBlank(accessKeyCode)
+            && !accessKeyCode.equalsIgnoreCase(defaultAccessKeyCode))
+        || StringUtils.isBlank(accessKeyCode)) {
       AccessKey.KeyInfo keyInfo = null;
-      if (!StringUtils.isBlank(userIntent.accessKeyCode)) {
+      if (!StringUtils.isBlank(accessKeyCode)) {
         AccessKey accessKey =
-            AccessKey.getOrBadRequest(params.getProvider().getUuid(), userIntent.accessKeyCode);
+            AccessKey.getOrBadRequest(params.getProvider().getUuid(), accessKeyCode);
         keyInfo = accessKey.getKeyInfo();
       }
       String sshUser = null;
@@ -374,13 +375,7 @@ public class NodeManager extends DevopsBase {
       log.info("node.sshPortOverride {}, sshPort used {}", params.sshPortOverride, sshPort);
       subCommand.addAll(
           getAccessKeySpecificCommand(
-              params,
-              type,
-              keyInfo,
-              userIntent.providerType,
-              userIntent.accessKeyCode,
-              sshUser,
-              sshPort));
+              params, type, keyInfo, provider.getCloudCode(), accessKeyCode, sshUser, sshPort));
     }
 
     return subCommand;
@@ -551,7 +546,8 @@ public class NodeManager extends DevopsBase {
           && !((AnsibleSetupServer.Params) params).useTimeSync
           && (providerType.equals(Common.CloudType.aws)
               || providerType.equals(Common.CloudType.gcp)
-              || providerType.equals(Common.CloudType.azu))) {
+              || providerType.equals(Common.CloudType.azu)
+              || providerType.equals(Common.CloudType.oci))) {
         subCommand.add("--use_chrony");
         List<String> publicServerList =
             Arrays.asList("0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org", "3.pool.ntp.org");
@@ -993,9 +989,10 @@ public class NodeManager extends DevopsBase {
       ybcFlags.put(
           GFlagsUtil.CERT_NODE_FILENAME, taskParam.gflags.get(GFlagsUtil.CERT_NODE_FILENAME));
     }
+    Provider provider = taskParam.getProvider();
 
     if (!taskParam.itestS3PackagePath.isEmpty()
-        && userIntent.providerType.equals(Common.CloudType.aws)) {
+        && provider.getCloudCode() == Common.CloudType.aws) {
       subcommand.add("--itest_s3_package_path");
       subcommand.add(taskParam.itestS3PackagePath);
     }
@@ -1018,7 +1015,7 @@ public class NodeManager extends DevopsBase {
     if (taskParam.type != UpgradeTaskParams.UpgradeTaskType.Software) {
       maybeAddVMImageCommandArgs(
           universe,
-          userIntent.providerType,
+          provider.getCloudCode(),
           taskParam.vmUpgradeTaskType,
           !(taskParam.ignoreUseCustomImageConfig
               || universe.getUniverseDetails().overridePrebuiltAmiDBVersion),
@@ -1190,7 +1187,7 @@ public class NodeManager extends DevopsBase {
                     FileUtils.getOrCreateTmpDirectory(
                         confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
                 Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
-                String providerUUID = userIntent.provider;
+                String providerUUID = provider.getUuid().toString();
                 String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
                 String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
                 // Append the path to copy the gFlag file from local to remote host
@@ -1236,11 +1233,7 @@ public class NodeManager extends DevopsBase {
             subcommand.add(processType.toLowerCase());
           }
 
-          String ybHomeDir =
-              Provider.getOrBadRequest(
-                      UUID.fromString(
-                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
-                  .getYbHome();
+          String ybHomeDir = provider.getYbHome();
           String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
@@ -1352,11 +1345,7 @@ public class NodeManager extends DevopsBase {
                   GFlagsUtil.ALLOW_INSECURE_CONNECTIONS,
                   GFlagsUtil.CERTS_DIR,
                   GFlagsUtil.CERTS_FOR_CLIENT_DIR);
-          String ybHomeDir =
-              Provider.getOrBadRequest(
-                      UUID.fromString(
-                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
-                  .getYbHome();
+          String ybHomeDir = provider.getYbHome();
 
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
@@ -1651,12 +1640,15 @@ public class NodeManager extends DevopsBase {
       Universe universe,
       UserIntent userIntent,
       NodeTaskParams nodeTaskParam,
+      Provider provider,
       List<String> commandArgs) {
-    if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
+    if (Provider.InstanceTagsEnabledProviders.contains(provider.getCloudCode())) {
       addInstanceTags(
           universe,
-          nodeTaskParam.tags != null ? nodeTaskParam.tags : userIntent.instanceTags,
-          userIntent.providerType,
+          nodeTaskParam.tags != null
+              ? nodeTaskParam.tags
+              : userIntent.getInstanceTagsForProvider(provider.getUuid()),
+          provider,
           nodeTaskParam,
           commandArgs);
     }
@@ -1665,13 +1657,13 @@ public class NodeManager extends DevopsBase {
   private void addInstanceTags(
       Universe universe,
       Map<String, String> instanceTags,
-      Common.CloudType providerType,
+      Provider provider,
       NodeTaskParams nodeTaskParam,
       List<String> commandArgs) {
     // Create an ordered shallow copy of the tags.
     Map<String, String> useTags = new TreeMap<>(instanceTags);
-    filterInstanceTags(useTags, providerType);
-    addAdditionalInstanceTags(universe, nodeTaskParam, useTags);
+    filterInstanceTags(useTags, provider.getCloudCode());
+    addAdditionalInstanceTags(universe, nodeTaskParam, provider, useTags);
     if (!useTags.isEmpty()) {
       commandArgs.add("--instance_tags");
       commandArgs.add(Json.stringify(Json.toJson(useTags)));
@@ -1692,12 +1684,13 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs,
       Map<String, String> redactedVals) {
     String nodeIp = null;
+    Provider provider = nodeTaskParam.getProvider();
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
-    if (!NodeAgentClient.isCloudTypeSupported(userIntent.providerType)) {
+    if (!NodeAgentClient.isCloudTypeSupported(provider.getCloudCode())) {
       log.trace("Skipping node agent command args for {} provider", userIntent.providerType);
       return;
     }
-    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+    if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
       Optional<NodeInstance> nodeInstanceOp =
           nodeTaskParam.nodeUuid == null
               ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName(), nodeTaskParam.nodeUuid)
@@ -1761,7 +1754,7 @@ public class NodeManager extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
     Provider provider = nodeTaskParam.getProvider();
     Customer customer = Customer.getOrBadRequest(provider.getCustomerUUID());
-    populateNodeUuidFromUniverse(universe, nodeTaskParam);
+    populateNodeUuidFromUniverse(universe, provider, nodeTaskParam);
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
@@ -1771,7 +1764,7 @@ public class NodeManager extends DevopsBase {
       Region region = nodeTaskParam.getRegion();
       toOverwriteNodeProperties =
           imageBundleUtil.getNodePropertiesOrFail(
-              imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+              imageBundleUUID, region.getCode(), provider.getCloudCode().toString());
       if (nodeTaskParam.sshPortOverride == null) {
         nodeTaskParam.sshPortOverride = toOverwriteNodeProperties.getSshPort();
       }
@@ -1793,8 +1786,8 @@ public class NodeManager extends DevopsBase {
         ReplaceRootVolume.Params rrvParams = (ReplaceRootVolume.Params) nodeTaskParam;
         commandArgs.add("--replacement_disk");
         commandArgs.add(rrvParams.replacementDisk);
-        commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, type));
-        if (Common.CloudType.aws.equals(userIntent.providerType)) {
+        commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, provider, type));
+        if (Common.CloudType.aws == provider.getCloudCode()) {
           if (StringUtils.isNotBlank(rrvParams.rootDeviceName)) {
             commandArgs.add("--root_device_name");
             commandArgs.add(rrvParams.rootDeviceName);
@@ -1814,7 +1807,7 @@ public class NodeManager extends DevopsBase {
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) nodeTaskParam;
         commandArgs.add("--num_disks");
         commandArgs.add(String.valueOf(crvParams.numVolumes));
-        if (Common.CloudType.aws.equals(userIntent.providerType)) {
+        if (Common.CloudType.aws == provider.getCloudCode()) {
           commandArgs.add("--snapshot_creation_delay");
           commandArgs.add(
               String.valueOf(confGetter.getGlobalConf(GlobalConfKeys.snapshotCreationDelay)));
@@ -1831,7 +1824,7 @@ public class NodeManager extends DevopsBase {
           }
           Config config = this.runtimeConfigFactory.forProvider(provider);
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
-          Common.CloudType cloudType = userIntent.providerType;
+          Common.CloudType cloudType = provider.getCloudCode();
           if (!cloudType.equals(Common.CloudType.onprem)) {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
             if (taskParam.capacityReservation != null) {
@@ -1870,7 +1863,7 @@ public class NodeManager extends DevopsBase {
             }
 
             // Instance template feature is currently only implemented for GCP.
-            if (Common.CloudType.gcp.equals(userIntent.providerType)) {
+            if (Common.CloudType.gcp == provider.getCloudCode()) {
               GCPRegionCloudInfo g = CloudInfoInterface.get(taskParam.getRegion());
               String instanceTemplate = g.getInstanceTemplate();
               if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
@@ -1880,7 +1873,7 @@ public class NodeManager extends DevopsBase {
             }
 
             // Azure specific create parameters
-            if (Common.CloudType.azu.equals(userIntent.providerType)) {
+            if (Common.CloudType.azu.equals(provider.getCloudCode())) {
               AzureRegionCloudInfo a = CloudInfoInterface.get(taskParam.getRegion());
               String vnetName = a.getVnet();
               if (StringUtils.isNotBlank(vnetName)) {
@@ -1968,7 +1961,7 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--assign_static_public_ip");
             }
           }
-          addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
+          addInstanceTags(universe, userIntent, nodeTaskParam, provider, commandArgs);
           if (cloudType.equals(Common.CloudType.aws)) {
             if (taskParam.ipArnString != null) {
               commandArgs.add("--iam_profile_arn");
@@ -1976,7 +1969,7 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam, true /* includeIopsAndThroughput */));
             DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
@@ -1996,7 +1989,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
           }
           AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params) nodeTaskParam;
-          Common.CloudType cloudType = userIntent.providerType;
+          Common.CloudType cloudType = provider.getCloudCode();
 
           if (cloudType.equals(Common.CloudType.aws)) {
             // aws uses instance_type to determine device names for mounting
@@ -2086,7 +2079,7 @@ public class NodeManager extends DevopsBase {
               provider,
               userIntent);
 
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
             DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
@@ -2155,7 +2148,7 @@ public class NodeManager extends DevopsBase {
               provider,
               userIntent);
           commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
@@ -2174,11 +2167,11 @@ public class NodeManager extends DevopsBase {
         }
       case List:
         {
-          if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+          if (provider.getCloudCode() == Common.CloudType.onprem) {
             if (nodeTaskParam.deviceInfo != null) {
               commandArgs.addAll(getDeviceArgs(nodeTaskParam));
             }
-            commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+            commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           }
           commandArgs.add("--as_json");
           break;
@@ -2204,7 +2197,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (userIntent.assignStaticPublicIP) {
             commandArgs.add("--delete_static_public_ip");
           }
@@ -2229,7 +2222,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Resume:
@@ -2256,7 +2249,7 @@ public class NodeManager extends DevopsBase {
           if (!bootScript.isEmpty()) {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Control:
@@ -2279,7 +2272,7 @@ public class NodeManager extends DevopsBase {
             if (node != null
                 && cluster != null
                 && cluster.userIntent.getDeviceInfoForNode(node) != null
-                && cluster.userIntent.providerType != Common.CloudType.onprem) {
+                && provider.getCloudCode() != Common.CloudType.onprem) {
               commandArgs.add("--num_volumes");
               commandArgs.add(
                   String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
@@ -2293,7 +2286,7 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--skip_stop_for_paused_vm");
             }
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Tags:
@@ -2302,24 +2295,26 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-          if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
+          if (Provider.InstanceTagsEnabledProviders.contains(provider.getCloudCode())) {
             Map<String, String> tags =
-                taskParam.tags != null ? taskParam.tags : userIntent.instanceTags;
+                taskParam.tags != null
+                    ? taskParam.tags
+                    : userIntent.getInstanceTagsForProvider(provider.getUuid());
             if (MapUtils.isEmpty(tags) && taskParam.deleteTags.isEmpty()) {
               throw new RuntimeException("Invalid params: no tags to add or remove");
             }
-            addInstanceTags(universe, tags, userIntent.providerType, nodeTaskParam, commandArgs);
+            addInstanceTags(universe, tags, provider, nodeTaskParam, commandArgs);
             if (!taskParam.deleteTags.isEmpty()) {
               commandArgs.add("--remove_tags");
               commandArgs.add(taskParam.deleteTags);
             }
-            if (userIntent.providerType.equals(Common.CloudType.azu)) {
+            if (provider.getCloudCode() == Common.CloudType.azu) {
               commandArgs.addAll(getDeviceArgs(taskParam));
-              commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+              commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
             }
           } else {
             throw new IllegalArgumentException(
-                "Tags are unsupported for " + userIntent.providerType);
+                "Tags are unsupported for " + provider.getCloudCode());
           }
           break;
         }
@@ -2339,7 +2334,7 @@ public class NodeManager extends DevopsBase {
               commandArgs.add(ybImage);
             }
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam, true /* includeIopsAndThroughput */));
@@ -2371,7 +2366,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(nodeTaskParam.deviceInfo.storageType.toString().toLowerCase());
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Change_Instance_Type:
@@ -2397,7 +2392,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case Transfer_XCluster_Certs:
@@ -2418,7 +2413,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--xcluster_dest_certs_dir");
             commandArgs.add(taskParam.destinationCertsDir.toString());
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           break;
         }
       case CronCheck:
@@ -2426,12 +2421,12 @@ public class NodeManager extends DevopsBase {
           if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
             throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           break;
         }
       case Precheck:
         {
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
@@ -2454,7 +2449,7 @@ public class NodeManager extends DevopsBase {
                   });
             }
           }
-          addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
+          addInstanceTags(universe, userIntent, nodeTaskParam, provider, commandArgs);
           break;
         }
       case Verify_Node_SSH_Access:
@@ -2476,7 +2471,7 @@ public class NodeManager extends DevopsBase {
           if (!bootScript.isEmpty()) {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
 
           if (taskParam.useSSH) {
             commandArgs.add("--use_ssh");
@@ -2504,7 +2499,7 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--runtime_args");
             commandArgs.add(Json.stringify(Json.toJson(runtimeArgs)));
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           break;
         }
       case Wait_For_Connection:
@@ -2513,7 +2508,7 @@ public class NodeManager extends DevopsBase {
           if (!bootScript.isEmpty()) {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           break;
         }
       case Manage_Otel_Collector:
@@ -2536,7 +2531,7 @@ public class NodeManager extends DevopsBase {
           if (params.useSudo) {
             commandArgs.add("--use_sudo");
           }
-          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, provider, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
@@ -2553,7 +2548,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not CheckCertificateConfig.Params");
           }
           CheckCertificateConfig.Params taskParam = (CheckCertificateConfig.Params) nodeTaskParam;
-          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, provider, type));
           if (taskParam.SkipHostNameCheck
               || getCertValidationFromGflag(
                       userIntent, Collections.emptyMap(), Collections.emptySet())
@@ -2574,7 +2569,7 @@ public class NodeManager extends DevopsBase {
     }
     addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
     addCustomTmpDirectoryCommandArgs(universe, nodeTaskParam, commandArgs);
-    if (userIntent.providerType == CloudType.local) {
+    if (provider.getCloudCode() == CloudType.local) {
       if (sensitiveData.containsKey("--gflags")) {
         commandArgs.add("--gflags");
         commandArgs.add(sensitiveData.get("--gflags"));
@@ -2595,7 +2590,7 @@ public class NodeManager extends DevopsBase {
               .command(type.toString().toLowerCase())
               .commandArgs(commandArgs)
               .timeoutSecs(customDevopsTimeoutSecs)
-              .cloudArgs(getCloudArgs(type, nodeTaskParam))
+              .cloudArgs(getCloudArgs(type, nodeTaskParam, provider))
               .envVars(envVars)
               .redactedVals(redactedVals)
               .sensitiveData(sensitiveData)
@@ -2745,7 +2740,8 @@ public class NodeManager extends DevopsBase {
   }
 
   // Set the nodeUuid in nodeTaskParam if it is not set.
-  private void populateNodeUuidFromUniverse(Universe universe, NodeTaskParams nodeTaskParam) {
+  private void populateNodeUuidFromUniverse(
+      Universe universe, Provider provider, NodeTaskParams nodeTaskParam) {
     if (nodeTaskParam.nodeUuid == null) {
       NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
       if (nodeDetails != null) {
@@ -2753,8 +2749,7 @@ public class NodeManager extends DevopsBase {
       }
     }
     if (nodeTaskParam.nodeUuid == null) {
-      UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
-      if (!Common.CloudType.onprem.equals(userIntent.providerType)) {
+      if (!Common.CloudType.onprem.equals(provider.getCloudCode())) {
         // This is for backward compatibility where node UUID is not set in the Universe.
         nodeTaskParam.nodeUuid =
             Util.generateNodeUUID(universe.getUniverseUUID(), nodeTaskParam.nodeName);
@@ -2763,13 +2758,16 @@ public class NodeManager extends DevopsBase {
   }
 
   private void addAdditionalInstanceTags(
-      Universe universe, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+      Universe universe,
+      NodeTaskParams nodeTaskParam,
+      Provider provider,
+      Map<String, String> tags) {
     Customer customer = Customer.get(universe.getCustomerId());
     tags.put("customer-uuid", customer.getUuid().toString());
     tags.put("universe-uuid", universe.getUniverseUUID().toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
-    if (userIntent.providerType.equals(Common.CloudType.gcp)) {
+    if (provider.getCloudCode().equals(Common.CloudType.gcp)) {
       // GCP does not allow special characters other than - and _
       // Special characters being replaced here
       // https://cloud.google.com/compute/docs/labeling-resources#requirements

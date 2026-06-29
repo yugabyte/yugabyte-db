@@ -19,7 +19,6 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.RecoverableException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -86,13 +85,8 @@ public class AnsibleCreateServer extends NodeTaskBase {
           .processErrors();
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
     } else {
-      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
-      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       taskParams().capacityReservation =
-          CapacityReservationUtil.getReservationIfPresent(
-              getTaskCache(), provider, taskParams().nodeName);
+          CapacityReservationUtil.getReservationIfPresent(getTaskCache(), p, taskParams().nodeName);
       // Execute the ansible command to create the node.
       // It waits for SSH connection to work.
       ShellResponse response =

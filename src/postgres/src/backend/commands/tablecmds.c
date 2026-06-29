@@ -5486,7 +5486,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 											   AT_NUM_PASSES,
 											   main_relid,
 											   &yb_rollback_handle,
-											   false /* isPartitionOfAlteredTable */ );
+											   false /* isPartitionOfAlteredTable */ ,
+											   lockmode);
 
 	if (yb_rollback_handle)
 		*yb_rollback_handles = lappend(*yb_rollback_handles, yb_rollback_handle);
@@ -5513,7 +5514,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 														 AT_NUM_PASSES,
 														 childrelid,
 														 &yb_child_rollback_handle,
-														 true /* isPartitionOfAlteredTable */ );
+														 true /* isPartitionOfAlteredTable */ ,
+														 lockmode);
 		ListCell   *listcell = NULL;
 
 		foreach(listcell, child_handles)
@@ -9382,6 +9384,22 @@ ATPrepDropColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("cannot drop column from typed table")));
+
+	/*
+	 * YB: ALTER TYPE ... DROP ATTRIBUTE is applied only to the PG catalog and is
+	 * not propagated to DocDB. Disallow it from cascading into a typed table
+	 * (the recursion that reaches the typed table here), whose DocDB schema would
+	 * otherwise silently diverge from the catalog. Skipped during binary
+	 * upgrade (IsBinaryUpgrade) and binary restore (yb_binary_restore), where
+	 * a type is always altered before its dependent tables are created.
+	 */
+	if (IsYugaByteEnabled() && !IsBinaryUpgrade && !yb_binary_restore &&
+		rel->rd_rel->reloftype && recursing)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("drop attribute on the type of a typed table is not supported yet"),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "30577. React with thumbs up to raise its priority")));
 
 	if (rel->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
 		ATTypedTableRecursion(wqueue, rel, cmd, lockmode, context);
@@ -16334,71 +16352,8 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 	}
 
 	if (IsYBRelation(rel))
-	{
-		Datum	   *options;
-		int			num_options;
-
-		yb_get_tablespace_options(&options, &num_options, newTableSpace);
-		/*
-		 * Validation should only happen on tablespaces that have a defined
-		 * replica placement
-		 */
-		const char *placement_prefix = "replica_placement=";
-		const char *read_prefix = "read_replica_placement=";
-		const int	placement_prefix_len = strlen(placement_prefix);
-		const int	read_prefix_len = strlen(read_prefix);
-
-		char	   *live_option = NULL;
-		char	   *read_option = NULL;
-
-		for (int i = 0; i < num_options; i++)
-		{
-			char	   *option = text_to_cstring(DatumGetTextP(options[i]));
-
-			if (strncmp(option, placement_prefix, placement_prefix_len) == 0)
-			{
-				if (live_option != NULL)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("duplicate replica_placement option found")));
-				live_option = option;
-				continue;
-			}
-			else if (strncmp(option, read_prefix, read_prefix_len) == 0)
-			{
-				if (read_option != NULL)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("duplicate read_replica_placement option found."
-									"Only one read_replica_placement option is supported via "
-									"tablespaces.")));
-				read_option = option;
-				continue;
-			}
-			else
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("expected replica_placement or read_replica_placement "
-								"option. Got %s", option)));
-			}
-
-			pfree(option);
-		}
-
-		const char *live_value = live_option ?
-			live_option + placement_prefix_len : NULL;
-		const char *read_value = read_option ?
-			read_option + read_prefix_len : NULL;
-
-		YBCValidatePlacements(live_value, read_value,
-								true /* check_satisfiable */ );
-
-		if (live_option)
-			pfree(live_option);
-		if (read_option)
-			pfree(read_option);
-	}
+		yb_validate_tablespace_placement_by_oid(newTableSpace,
+											true /* check_satisfiable */ );
 
 	/* Update can be done, so change reltablespace */
 	SetRelationTableSpace(rel, newTableSpace, InvalidOid);

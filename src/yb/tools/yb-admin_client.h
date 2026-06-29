@@ -48,6 +48,7 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
+#include "yb/util/slice.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
@@ -431,7 +432,8 @@ class ClusterAdminClient {
       const TypedNamespaceName& ns, const std::string& CheckPointType,
       const cdc::CDCRecordType RecordType,
       const std::string& ConsistentSnapshotOption,
-      const bool& is_dynamic_tables_enabled);
+      const bool& is_dynamic_tables_enabled,
+      const std::unordered_set<std::string>& bound_table_ids = {});
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
@@ -539,7 +541,9 @@ class ClusterAdminClient {
   // List the uuids of all masters/tservers known to the master leader.
   Result<std::unordered_set<std::string>> ListAllKnownMasterUuids();
   Result<std::unordered_set<std::string>> ListAllKnownTabletServersUuids();
-  Status GetTableXorHash(const TableId& table_id, uint64_t read_ht);
+  Status GetTableXorHash(
+      const TableId& table_id, uint64_t read_ht, Slice start_key = Slice(),
+      Slice end_key = Slice());
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

@@ -464,6 +464,263 @@ SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) BETWEEN 4 AND 512 
  8546 | 8546
 (5 rows)
 
+-- test ordering
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x), x LIMIT 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=10 loops=1)
+(2 rows)
+
+ yb_hash_code |  x   |  y   
+--------------+------+------
+            3 |  854 |  854
+            9 | 9643 | 9643
+           11 | 1862 | 1862
+           13 | 8965 | 8965
+           17 | 7947 | 7947
+           19 | 2550 | 2550
+           25 | 8957 | 8957
+           29 | 5861 | 5861
+           33 | 3528 | 3528
+           35 | 4452 | 4452
+(10 rows)
+
+-- incomplete key
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) LIMIT 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=10 loops=1)
+(2 rows)
+
+ yb_hash_code |  x   |  y   
+--------------+------+------
+            3 |  854 |  854
+            9 | 9643 | 9643
+           11 | 1862 | 1862
+           13 | 8965 | 8965
+           17 | 7947 | 7947
+           19 | 2550 | 2550
+           25 | 8957 | 8957
+           29 | 5861 | 5861
+           33 | 3528 | 3528
+           35 | 4452 | 4452
+(10 rows)
+
+-- reverse order
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) DESC, x DESC LIMIT 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Index Scan Backward using test_table_one_primary_pkey on test_table_one_primary (actual rows=10 loops=1)
+(2 rows)
+
+ yb_hash_code |  x   |  y   
+--------------+------+------
+        65534 | 3623 | 3623
+        65533 | 1322 | 1322
+        65517 | 1150 | 1150
+        65507 | 6285 | 6285
+        65506 | 5999 | 5999
+        65498 | 4806 | 4806
+        65480 | 3444 | 3444
+        65473 | 3585 | 3585
+        65465 | 9586 | 9586
+        65462 |  481 |  481
+(10 rows)
+
+-- yb_hash_code mismatch
+\set query ':P SELECT yb_hash_code(y), * FROM test_table_one_primary ORDER BY yb_hash_code(y), x LIMIT 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Sort (actual rows=10 loops=1)
+         Sort Key: (yb_hash_code(y)), x
+         Sort Method: top-N heapsort
+         ->  Seq Scan on test_table_one_primary (actual rows=10000 loops=1)
+(5 rows)
+
+ yb_hash_code |  x   |  y   
+--------------+------+------
+            3 |  854 |  854
+            9 | 9643 | 9643
+           11 | 1862 | 1862
+           13 | 8965 | 8965
+           17 | 7947 | 7947
+           19 | 2550 | 2550
+           25 | 8957 | 8957
+           29 | 5861 | 5861
+           33 | 3528 | 3528
+           35 | 4452 | 4452
+(10 rows)
+
+\set query ':P SELECT yb_hash_code(x, -y), * FROM test_table_one_primary ORDER BY yb_hash_code(x, -y), x LIMIT 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Sort (actual rows=10 loops=1)
+         Sort Key: (yb_hash_code(x, (- y))), x
+         Sort Method: top-N heapsort
+         ->  Seq Scan on test_table_one_primary (actual rows=10000 loops=1)
+(5 rows)
+
+ yb_hash_code |  x   |  y   
+--------------+------+------
+            4 | 7924 | 7924
+            8 | 2877 | 2877
+            9 | 1305 | 1305
+            9 | 7048 | 7048
+           10 | 1557 | 1557
+           18 | 4241 | 4241
+           20 | 2554 | 2554
+           20 | 9608 | 9608
+           22 | 3375 | 3375
+           36 | 7876 | 7876
+(10 rows)
+
+-- direction mismatch
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) DESC, x ASC LIMIT 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Incremental Sort (actual rows=10 loops=1)
+         Sort Key: (yb_hash_code(x)) DESC, x
+         Presorted Key: (yb_hash_code(x))
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan Backward using test_table_one_primary_pkey on test_table_one_primary (actual rows=11 loops=1)
+(6 rows)
+
+ yb_hash_code |  x   |  y   
+--------------+------+------
+        65534 | 3623 | 3623
+        65533 | 1322 | 1322
+        65517 | 1150 | 1150
+        65507 | 6285 | 6285
+        65506 | 5999 | 5999
+        65498 | 4806 | 4806
+        65480 | 3444 | 3444
+        65473 | 3585 | 3585
+        65465 | 9586 | 9586
+        65462 |  481 |  481
+(10 rows)
+
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) ASC, x DESC LIMIT 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=10 loops=1)
+   ->  Incremental Sort (actual rows=10 loops=1)
+         Sort Key: (yb_hash_code(x)), x DESC
+         Presorted Key: (yb_hash_code(x))
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=11 loops=1)
+(6 rows)
+
+ yb_hash_code |  x   |  y   
+--------------+------+------
+            3 |  854 |  854
+            9 | 9643 | 9643
+           11 | 1862 | 1862
+           13 | 8965 | 8965
+           17 | 7947 | 7947
+           19 | 2550 | 2550
+           25 | 8957 | 8957
+           29 | 5861 | 5861
+           33 | 3528 | 3528
+           35 | 4452 | 4452
+(10 rows)
+
+-- redundant key
+\set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 11 ORDER BY x;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(x) = 11)
+(2 rows)
+
+  x   |  y   
+------+------
+ 1862 | 1862
+(1 row)
+
+\set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 11 ORDER BY x DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Index Scan Backward using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(x) = 11)
+(2 rows)
+
+  x   |  y   
+------+------
+ 1862 | 1862
+(1 row)
+
+-- non-redundant key
+\set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(y) = 11 ORDER BY x;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Sort (actual rows=1 loops=1)
+   Sort Key: x
+   Sort Method: quicksort
+   ->  Seq Scan on test_table_one_primary (actual rows=1 loops=1)
+         Filter: (yb_hash_code(y) = 11)
+         Rows Removed by Filter: 9999
+(6 rows)
+
+  x   |  y   
+------+------
+ 1862 | 1862
+(1 row)
+
+\set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x + 1) = 11 ORDER BY x;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Sort (actual rows=1 loops=1)
+   Sort Key: x
+   Sort Method: quicksort
+   ->  Seq Scan on test_table_one_primary (actual rows=1 loops=1)
+         Filter: (yb_hash_code((x + 1)) = 11)
+         Rows Removed by Filter: 9999
+(6 rows)
+
+  x   |  y   
+------+------
+ 1861 | 1861
+(1 row)
+
 DROP TABLE test_table_one_primary;
 -- testing pushdown where the hash column is of type text
 CREATE TABLE text_table (hr text, ti text, tj text, i int, j int, primary key (hr));
@@ -597,6 +854,117 @@ CREATE INDEX textidx ON text_table (tj);
  1363
 (10 rows)
 
+-- test ordering
+\set query ':P SELECT yb_hash_code(tj), * FROM text_table ORDER BY yb_hash_code(tj), tj LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  Index Scan using textidx on text_table (actual rows=5 loops=1)
+(2 rows)
+
+ yb_hash_code |  hr  |  ti  |  tj  |  i   |  j   
+--------------+------+------+------+------+------
+            5 | 4999 | 4999 | 4999 | 4999 | 4999
+           17 | 8300 | 8300 | 8300 | 8300 | 8300
+           18 | 6918 | 6918 | 6918 | 6918 | 6918
+           18 | 912  | 912  | 912  |  912 |  912
+           30 | 8646 | 8646 | 8646 | 8646 | 8646
+(5 rows)
+
+\set query ':P SELECT yb_hash_code(tj), tj FROM text_table ORDER BY yb_hash_code(tj), tj LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  Index Only Scan using textidx on text_table (actual rows=5 loops=1)
+         Heap Fetches: 0
+(3 rows)
+
+ yb_hash_code |  tj  
+--------------+------
+            5 | 4999
+           17 | 8300
+           18 | 6918
+           18 | 912
+           30 | 8646
+(5 rows)
+
+-- reverse order
+\set query ':P SELECT yb_hash_code(tj), * FROM text_table ORDER BY yb_hash_code(tj) DESC, tj DESC LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  Index Scan Backward using textidx on text_table (actual rows=5 loops=1)
+(2 rows)
+
+ yb_hash_code |  hr  |  ti  |  tj  |  i   |  j   
+--------------+------+------+------+------+------
+        65504 | 6276 | 6276 | 6276 | 6276 | 6276
+        65503 | 7609 | 7609 | 7609 | 7609 | 7609
+        65495 | 1447 | 1447 | 1447 | 1447 | 1447
+        65491 | 9110 | 9110 | 9110 | 9110 | 9110
+        65454 | 7622 | 7622 | 7622 | 7622 | 7622
+(5 rows)
+
+\set query ':P SELECT yb_hash_code(tj), tj FROM text_table ORDER BY yb_hash_code(tj) DESC, tj DESC LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  Index Only Scan Backward using textidx on text_table (actual rows=5 loops=1)
+         Heap Fetches: 0
+(3 rows)
+
+ yb_hash_code |  tj  
+--------------+------
+        65504 | 6276
+        65503 | 7609
+        65495 | 1447
+        65491 | 9110
+        65454 | 7622
+(5 rows)
+
+-- redundant key
+\set query ':P SELECT * FROM text_table WHERE yb_hash_code(tj) = 63 ORDER BY tj;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Index Scan using textidx on text_table (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(tj) = 63)
+(2 rows)
+
+  hr  |  ti  |  tj  |  i   |  j   
+------+------+------+------+------
+ 1363 | 1363 | 1363 | 1363 | 1363
+(1 row)
+
+\set query ':P SELECT * FROM text_table WHERE yb_hash_code(tj) = 63 ORDER BY tj DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Index Scan Backward using textidx on text_table (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(tj) = 63)
+(2 rows)
+
+  hr  |  ti  |  tj  |  i   |  j   
+------+------+------+------+------
+ 1363 | 1363 | 1363 | 1363 | 1363
+(1 row)
+
 DROP TABLE text_table;
 -- testing on a table with multiple hash key columns on
 -- multiple types
@@ -689,10 +1057,112 @@ INSERT INTO test_table_multi_col_key SELECT i::BIGINT, i::FLOAT, i::TEXT, '2018-
  1261 | 1261 | 1261 | Tue Dec 18 04:59:54 2018 PST | 1261 | 1261 | 06-02-2016 | t
 (3 rows)
 
+\set query ':P SELECT yb_hash_code(h1,h2,h3), * from test_table_multi_col_key ORDER BY yb_hash_code(h1,h2,h3), h1, h2, h3 LIMIT 3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=3 loops=1)
+(2 rows)
+
+ yb_hash_code |  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+--------------+------+------+------+------------------------------+------+------+------------+----
+            0 | 5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
+            7 | 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+            7 | 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+(3 rows)
+
+\set query ':P SELECT yb_hash_code(h1,h2,h3), * from test_table_multi_col_key ORDER BY yb_hash_code(h1,h2,h3), h1, h2 LIMIT 3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=3 loops=1)
+(2 rows)
+
+ yb_hash_code |  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+--------------+------+------+------+------------------------------+------+------+------------+----
+            0 | 5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
+            7 | 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+            7 | 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+(3 rows)
+
+\set query ':P SELECT yb_hash_code(h1,h2,h3), * from test_table_multi_col_key ORDER BY yb_hash_code(h1,h2,h3), h1 LIMIT 3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=3 loops=1)
+(2 rows)
+
+ yb_hash_code |  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+--------------+------+------+------+------------------------------+------+------+------------+----
+            0 | 5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
+            7 | 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+            7 | 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+(3 rows)
+
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1, h2, h3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=2 loops=1)
+   Index Cond: (yb_hash_code(h1, h2, h3) = 7)
+(2 rows)
+
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+------+------+------+------------------------------+------+------+------------+----
+ 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+ 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+(2 rows)
+
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1 DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Index Scan Backward using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=2 loops=1)
+   Index Cond: (yb_hash_code(h1, h2, h3) = 7)
+(2 rows)
+
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+------+------+------+------------------------------+------+------+------------+----
+ 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+ 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+(2 rows)
+
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1, h3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Sort (actual rows=2 loops=1)
+   Sort Key: h1, h3
+   Sort Method: quicksort
+   ->  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=2 loops=1)
+         Index Cond: (yb_hash_code(h1, h2, h3) = 7)
+(5 rows)
+
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+------+------+------+------------------------------+------+------+------------+----
+ 5214 | 5214 | 5214 | Tue Dec 18 04:59:54 2018 PST | 5214 | 5214 | 06-02-2016 | f
+ 8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
+(2 rows)
+
 -- create an index with the same set of primary keys as
 -- the primary index
 CREATE INDEX multi_key_index_1 ON test_table_multi_col_key((h1,h2,h3) HASH, r1 ASC, r2 ASC);
--- create other indexes on other columsn that are not
+-- create other indexes on other columns that are not
 -- hashed in the primary index
 CREATE INDEX multi_key_index_2 ON test_table_multi_col_key((r1, r2, v1) HASH, v3, v2);
 CREATE INDEX multi_key_index_3 ON test_table_multi_col_key((r1, r2, v2, v3) HASH, v1);
@@ -930,6 +1400,92 @@ CREATE INDEX multi_key_index_3 ON test_table_multi_col_key((r1, r2, v2, v3) HASH
  6158 | 6158 | 6158 | Tue Dec 18 04:59:54 2018 PST | 6158 | 6158 | 06-02-2016 | f
  9834 | 9834 | 9834 | Tue Dec 18 04:59:54 2018 PST | 9834 | 9834 | 06-02-2016 | f
 (10 rows)
+
+\set query ':P SELECT yb_hash_code(r1,r2,v1), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v1), r1, r2, v1 LIMIT 3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Index Scan using multi_key_index_2 on test_table_multi_col_key (actual rows=3 loops=1)
+(2 rows)
+
+ yb_hash_code |  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+--------------+------+------+------+------------------------------+------+------+------------+----
+            0 | 1540 | 1540 | 1540 | Tue Dec 18 04:59:54 2018 PST | 1540 | 1540 | 06-02-2016 | f
+            6 | 5205 | 5205 | 5205 | Tue Dec 18 04:59:54 2018 PST | 5205 | 5205 | 06-02-2016 | t
+            6 | 5763 | 5763 | 5763 | Tue Dec 18 04:59:54 2018 PST | 5763 | 5763 | 06-02-2016 | t
+(3 rows)
+
+\set query ':P SELECT yb_hash_code(r1,r2,v2,v3), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v2,v3), r1, r2, v2 LIMIT 3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Index Scan using multi_key_index_3 on test_table_multi_col_key (actual rows=3 loops=1)
+(2 rows)
+
+ yb_hash_code |  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+--------------+------+------+------+------------------------------+------+------+------------+----
+            4 | 6018 | 6018 | 6018 | Tue Dec 18 04:59:54 2018 PST | 6018 | 6018 | 06-02-2016 | f
+            5 | 9030 | 9030 | 9030 | Tue Dec 18 04:59:54 2018 PST | 9030 | 9030 | 06-02-2016 | f
+            9 | 5872 | 5872 | 5872 | Tue Dec 18 04:59:54 2018 PST | 5872 | 5872 | 06-02-2016 | f
+(3 rows)
+
+\set query ':P SELECT yb_hash_code(r1,r2,v1), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v1), r1, r2, v2 LIMIT 3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Incremental Sort (actual rows=3 loops=1)
+         Sort Key: (yb_hash_code(r1, r2, v1)), r1, r2, v2
+         Presorted Key: (yb_hash_code(r1, r2, v1)), r1, r2
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using multi_key_index_2 on test_table_multi_col_key (actual rows=4 loops=1)
+(6 rows)
+
+ yb_hash_code |  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+--------------+------+------+------+------------------------------+------+------+------------+----
+            0 | 1540 | 1540 | 1540 | Tue Dec 18 04:59:54 2018 PST | 1540 | 1540 | 06-02-2016 | f
+            6 | 5205 | 5205 | 5205 | Tue Dec 18 04:59:54 2018 PST | 5205 | 5205 | 06-02-2016 | t
+            6 | 5763 | 5763 | 5763 | Tue Dec 18 04:59:54 2018 PST | 5763 | 5763 | 06-02-2016 | t
+(3 rows)
+
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) = 6 ORDER BY r1, r2, v1;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using multi_key_index_2 on test_table_multi_col_key (actual rows=2 loops=1)
+   Index Cond: (yb_hash_code(r1, r2, v1) = 6)
+(2 rows)
+
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+------+------+------+------------------------------+------+------+------------+----
+ 5205 | 5205 | 5205 | Tue Dec 18 04:59:54 2018 PST | 5205 | 5205 | 06-02-2016 | t
+ 5763 | 5763 | 5763 | Tue Dec 18 04:59:54 2018 PST | 5763 | 5763 | 06-02-2016 | t
+(2 rows)
+
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) = 9 ORDER BY r1 DESC, r2 DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Index Scan Backward using multi_key_index_3 on test_table_multi_col_key (actual rows=1 loops=1)
+   Index Cond: (yb_hash_code(r1, r2, v2, v3) = 9)
+(2 rows)
+
+  h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
+------+------+------+------------------------------+------+------+------------+----
+ 5872 | 5872 | 5872 | Tue Dec 18 04:59:54 2018 PST | 5872 | 5872 | 06-02-2016 | f
+(1 row)
 
 -- cost model tests to make sure that pushdown occurs on the
 -- most selective yb_hash_code filter
@@ -1408,13 +1964,14 @@ INSERT INTO tt VALUES(-2147483648, 3);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                          QUERY PLAN                          
---------------------------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  Sort
    Sort Key: i, j
    ->  Index Only Scan using tt_i_j_idx on tt
-         Index Cond: (ROW(j, yb_hash_code(i)) > ROW(1, 4624))
-(4 rows)
+         Index Cond: (j >= 1)
+         Filter: (ROW(j, yb_hash_code(i)) > ROW(1, 4624))
+(5 rows)
 
                         QUERY PLAN                        
 ----------------------------------------------------------
@@ -1457,13 +2014,14 @@ INSERT INTO tt VALUES(-2147483648, 3);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                          QUERY PLAN                           
----------------------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Sort
    Sort Key: i, j
    ->  Index Only Scan using tt_i_j_idx on tt
-         Index Cond: (ROW(j, yb_hash_code(i)) < ROW(1, 49348))
-(4 rows)
+         Index Cond: (j <= 1)
+         Filter: (ROW(j, yb_hash_code(i)) < ROW(1, 49348))
+(5 rows)
 
                         QUERY PLAN                         
 -----------------------------------------------------------
@@ -1502,13 +2060,11 @@ INSERT INTO tt VALUES(-2147483648, 3);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                         QUERY PLAN                         
-------------------------------------------------------------
- Sort
-   Sort Key: i
-   ->  Index Only Scan using tt_i_j_idx on tt
-         Index Cond: ((yb_hash_code(i) = 4624) AND (j = 1))
-(4 rows)
+                      QUERY PLAN                      
+------------------------------------------------------
+ Index Only Scan using tt_i_j_idx on tt
+   Index Cond: ((yb_hash_code(i) = 4624) AND (j = 1))
+(2 rows)
 
                 QUERY PLAN                
 ------------------------------------------

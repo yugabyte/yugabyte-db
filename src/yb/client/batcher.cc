@@ -61,6 +61,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/pgsql_utils.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
@@ -74,6 +75,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
@@ -82,6 +84,10 @@
 // When this flag is set to false and we have separate errors for operation, then batcher would
 // report IO Error status. Otherwise we will try to combine errors from separate operation to
 // status of batch. Useful in tests, when we don't need complex error analysis.
+DEFINE_test_flag(int32, slowdown_batcher_callback_ms, 0,
+    "Slow down Batcher::Run() by this many milliseconds. Used to observe the "
+    "server_clientcb thread in its per-DB cgroup during integration tests.");
+
 DEFINE_test_flag(bool, combine_batcher_errors, false,
                  "Whether combine errors into batcher status.");
 DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_probability, 0.0,
@@ -117,6 +123,23 @@ bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
   // Use async writes for transactional writes in YSQL, or if the test flag is enabled.
   return FLAGS_ysql_enable_write_pipelining && table_type == YBTableType::PGSQL_TABLE_TYPE &&
          !txn_id.IsNil();
+}
+
+bool OpSkipIntents(const YBOperation& op) {
+  switch (op.type()) {
+    case YBOperation::Type::PGSQL_READ:
+      return HasSkipIntents(down_cast<const YBPgsqlReadOp&>(op).request());
+    case YBOperation::Type::PGSQL_WRITE:
+      return HasSkipIntents(down_cast<const YBPgsqlWriteOp&>(op).request());
+    case YBOperation::Type::QL_READ:     [[fallthrough]];
+    case YBOperation::Type::QL_WRITE:    [[fallthrough]];
+    case YBOperation::Type::REDIS_READ:  [[fallthrough]];
+    case YBOperation::Type::REDIS_WRITE: [[fallthrough]];
+    case YBOperation::Type::PGSQL_LOCK:
+      return false;
+  }
+  LOG(FATAL) << "Internal error: unknown operation: " << op.type();
+  return false;
 }
 
 }  // namespace
@@ -217,6 +240,9 @@ void Batcher::FlushFinished() {
 }
 
 void Batcher::Run() {
+  if (FLAGS_TEST_slowdown_batcher_callback_ms > 0) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_batcher_callback_ms));
+  }
   flush_callback_(combined_error_);
   flush_callback_ = StatusFunctor();
 }
@@ -224,8 +250,19 @@ void Batcher::Run() {
 void Batcher::RunCallback() {
   VLOG_WITH_PREFIX_AND_FUNC(4) << combined_error_;
 
-  if (!client_->callback_threadpool() ||
-      !client_->callback_threadpool()->Submit(shared_from_this()).ok()) {
+  auto* pool = client_->callback_threadpool();
+  if (!pool) {
+    Run();
+    return;
+  }
+  auto* token = client_->GetOrCreateCallbackToken(pool_tag_);
+  Status submit_status;
+  if (token) {
+    submit_status = token->Submit(shared_from_this());
+  } else {
+    submit_status = pool->Submit(shared_from_this());
+  }
+  if (!submit_status.ok()) {
     Run();
   }
 }
@@ -271,9 +308,6 @@ void Batcher::FlushAsync(
             yb_op->type() != YBOperation::Type::PGSQL_LOCK && !yb_op->tablet()) {
           status = STATUS_FORMAT(IllegalState, "Hash partition key is empty for $0", yb_op);
         }
-      } else {
-        yb_op->SetHashCode(
-            dockv::PartitionSchema::DecodeMultiColumnHashValue(in_flight_op.partition_key));
       }
     }
 
@@ -314,17 +348,8 @@ void Batcher::Add(YBOperationPtr op) {
     return;
   }
 
-  const bool skip_intents =
-      (op->type() == YBOperation::Type::PGSQL_WRITE &&
-       down_cast<YBPgsqlWriteOp*>(op.get())->skip_intents()) ||
-      (op->type() == YBOperation::Type::PGSQL_READ &&
-       down_cast<YBPgsqlReadOp*>(op.get())->skip_intents());
-  if (ops_.empty()) {
-    skip_intents_ = skip_intents;
-  } else {
-    CHECK_EQ(skip_intents_, skip_intents)
-        << "PG should only send all skip intents ops, or all normal ops.";
-  }
+  LOG_IF(FATAL, PREDICT_FALSE(!ops_.empty() && SkipIntents() != OpSkipIntents(*op)))
+      << "PG should only send all skip intents ops, or all normal ops.";
   ops_.emplace_back(std::move(op));
 }
 
@@ -644,10 +669,7 @@ rpc::ProxyCache& Batcher::proxy_cache() const {
 }
 
 YBTransactionPtr Batcher::transaction() const {
-  if (skip_intents_) {
-    return nullptr;
-  }
-  return transaction_;
+  return SkipIntents() ? nullptr : transaction_;
 }
 
 const std::string& Batcher::proxy_uuid() const {
@@ -703,7 +725,7 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     .tablet = tablet,
     .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
     .need_consistent_read = need_consistent_read,
-    .skip_intents = skip_intents_,
+    .skip_intents = SkipIntents(),
     .arena = arena_,
     .ops = InFlightOps(group.begin, group.end),
     .need_metadata = group.need_metadata
@@ -925,10 +947,16 @@ void Batcher::HandleAsyncWriteResponse(
   if (transaction->RecordAsyncWrite(tablet.tablet_id(), op_id)) {
     // Multiple write operations can get combined into the same async write RPC resulting in
     // duplicate OpIds.
+    // We need to be able to track this tablet across splits, so pass in the tablet's key_start.
     auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
-        shared_from_this(), tablet.tablet_id(), table, op_id);
+        shared_from_this(), tablet.tablet_id(), tablet.partition().partition_key_start(), table,
+        op_id);
     wait_for_async_write_rpc->SendRpc();
   }
+}
+
+bool Batcher::SkipIntents() const {
+  return !ops_.empty() && OpSkipIntents(*ops_.front());
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

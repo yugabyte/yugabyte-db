@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -31,6 +32,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -212,16 +214,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       UserIntent newUserIntent,
       Universe universe,
       RuntimeConfGetter runtimeConfGetter) {
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(currentUserIntent.provider));
-    boolean allowUnsupportedInstances =
-        runtimeConfGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances);
     if (currentUserIntent == null || newUserIntent == null) {
       return "Should have both intents, but got: " + currentUserIntent + ", " + newUserIntent;
-    }
-    // Check valid provider.
-    if (!SUPPORTED_CLOUD_TYPES.contains(currentUserIntent.providerType)) {
-      return "Smart resizing is only supported for AWS / GCP / K8S/ Azu, It is: "
-          + currentUserIntent.providerType.toString();
     }
     if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {
       return "Smart resize is not possible if is dedicated mode changed";
@@ -229,7 +223,9 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     Collection<NodeDetails> nodes = universe.getUniverseDetails().getNodesInCluster(clusterUUID);
     boolean hasChanges = false;
     Map<String, InstanceType> instanceTypeMap = new HashMap<>();
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     for (NodeDetails node : nodes) {
+      Provider provider = providerGetter.apply(node);
       Integer newCgroupSize = newUserIntent.getCGroupSize(node);
       Integer oldCgroupSize = currentUserIntent.getCGroupSize(node);
       hasChanges = hasChanges || !Objects.equals(oldCgroupSize, newCgroupSize);
@@ -238,15 +234,18 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       boolean instanceTypeChanged = false;
       if (!Objects.equals(newInstanceTypeCode, currentInstanceTypeCode)) {
         if (!instanceTypeMap.containsKey(newInstanceTypeCode)) {
+          boolean allowUnsupportedInstances =
+              runtimeConfGetter.getConfForScope(
+                  provider, ProviderConfKeys.allowUnsupportedInstances);
           InstanceType newInstanceType =
-              getInstanceType(currentUserIntent, newInstanceTypeCode, allowUnsupportedInstances);
+              getInstanceType(provider, newInstanceTypeCode, allowUnsupportedInstances);
           instanceTypeMap.put(newInstanceTypeCode, newInstanceType);
           if (newInstanceType == null) {
             return String.format(
                 "Provider %s of type %s does not contain the intended instance type '%s'",
-                currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode);
+                provider.getUuid(), provider.getCloudCode(), newInstanceTypeCode);
           }
-          if (currentUserIntent.providerType == Common.CloudType.azu) {
+          if (provider.getCloudCode() == Common.CloudType.azu) {
             InstanceType currentInstanceType =
                 InstanceType.getOrBadRequest(provider.getUuid(), currentInstanceTypeCode);
             if (newInstanceType.isAzureDiskless() != currentInstanceType.isAzureDiskless())
@@ -255,6 +254,9 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
                   currentInstanceTypeCode, newInstanceTypeCode);
           }
         }
+        if (provider.getCloudCode() == Common.CloudType.onprem) {
+          return "Instance resizing is not supported for onprem providers";
+        }
         instanceTypeChanged = true;
         hasChanges = true;
       }
@@ -262,18 +264,20 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       DeviceInfo newDeviceInfo = newUserIntent.getDeviceInfoForNode(node);
       AtomicReference<String> error = new AtomicReference<>();
       boolean nodeDiskChanged =
-          checkDiskChanged(
-              currentUserIntent.providerType, curDeviceInfo, newDeviceInfo, error::set);
+          checkDiskChanged(provider.getCloudCode(), curDeviceInfo, newDeviceInfo, error::set);
       if (error.get() != null) {
         return error.get();
       }
       if (nodeDiskChanged) {
+        if (provider.getCloudCode() == Common.CloudType.onprem) {
+          return "Disk resizing is not supported for onprem providers";
+        }
         if (curDeviceInfo.storageType == PublicCloudConstants.StorageType.UltraSSD_LRS
             || curDeviceInfo.storageType == PublicCloudConstants.StorageType.PremiumV2_LRS) {
           return String.format(
               "%s doesn't support resizing without downtime", curDeviceInfo.storageType);
         }
-        if (currentUserIntent.providerType == Common.CloudType.azu
+        if (provider.getCloudCode() == Common.CloudType.azu
             && curDeviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
             && newDeviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
           return "Cannot expand from "
@@ -285,27 +289,25 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         hasChanges = true;
       }
       boolean isHyperdisks =
-          currentUserIntent.providerType == Common.CloudType.gcp
+          provider.getCloudCode() == Common.CloudType.gcp
               && (curDeviceInfo.storageType == PublicCloudConstants.StorageType.Hyperdisk_Balanced
                   || curDeviceInfo.storageType
                       == PublicCloudConstants.StorageType.Hyperdisk_Extreme);
-      if ((currentUserIntent.providerType == Common.CloudType.aws || isHyperdisks)
-          && nodeDiskChanged) {
+      if ((provider.getCloudCode() == Common.CloudType.aws || isHyperdisks) && nodeDiskChanged) {
         int cooldownInHours =
-            currentUserIntent.providerType == Common.CloudType.aws
+            provider.getCloudCode() == Common.CloudType.aws
                 ? runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours)
                 : runtimeConfGetter.getGlobalConf(GlobalConfKeys.gcpHyperdiskResizeCooldownHours);
         if (node.lastVolumeUpdateTime != null
             && DateUtils.addHours(node.lastVolumeUpdateTime, cooldownInHours).after(new Date())) {
           return String.format(
               "Resize cooldown in %s (%d hours) is still active",
-              currentUserIntent.providerType, cooldownInHours);
+              provider.getCloudCode(), cooldownInHours);
         }
       }
 
       if ((instanceTypeChanged || nodeDiskChanged)
-          && hasEphemeralStorage(
-              currentUserIntent.providerType, currentInstanceTypeCode, curDeviceInfo)) {
+          && hasEphemeralStorage(provider.getCloudCode(), currentInstanceTypeCode, curDeviceInfo)) {
         return "ResizeNode operation is not supported for instances with ephemeral drives";
       }
     }
@@ -410,11 +412,10 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
   }
 
   private static InstanceType getInstanceType(
-      UserIntent userIntent, String instanceTypeCode, boolean allowUnsupportedInstances) {
-    String provider = userIntent.provider;
+      Provider provider, String instanceTypeCode, boolean allowUnsupportedInstances) {
     List<InstanceType> instanceTypes =
         InstanceType.findByProvider(
-            Provider.getOrBadRequest(UUID.fromString(provider)),
+            provider,
             StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class),
             allowUnsupportedInstances);
     return instanceTypes.stream()

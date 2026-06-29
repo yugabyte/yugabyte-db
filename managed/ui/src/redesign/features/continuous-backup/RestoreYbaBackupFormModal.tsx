@@ -163,6 +163,26 @@ export const RestoreYbaBackupFormModal = ({ modalProps }: RestoreYbaBackupFormMo
     }
   });
 
+  const handleRestoreTaskCompletion = (taskUuid: string) => (error: boolean) => {
+    if (error) {
+      toast.error(
+        <span className={toastStyles.toastMessage}>
+          <i className="fa fa-exclamation-circle" />
+          <Typography variant="body2" component="span">
+            {t('toast.restoreBackupTaskFailed')}
+          </Typography>
+          <a href={`/tasks/${taskUuid}`} rel="noopener noreferrer" target="_blank">
+            {t('viewDetails', { keyPrefix: 'task' })}
+          </a>
+        </span>
+      );
+    } else {
+      toast.success(
+        <Typography variant="body2">{t('toast.restoreBackupTaskSuccess')}</Typography>
+      );
+    }
+  };
+
   const onSubmit: SubmitHandler<RestoreYbaBackupFormValues> = async (formValues) => {
     if (!formValues.backupType) {
       // This shouldn't be reached.
@@ -179,31 +199,11 @@ export const RestoreYbaBackupFormModal = ({ modalProps }: RestoreYbaBackupFormMo
             },
             {
               onSuccess: (response) => {
-                const handleTaskCompletion = (error: boolean) => {
-                  if (error) {
-                    toast.error(
-                      <span className={toastStyles.toastMessage}>
-                        <i className="fa fa-exclamation-circle" />
-                        <Typography variant="body2" component="span">
-                          {t('toast.restoreBackupTaskFailed')}
-                        </Typography>
-                        <a
-                          href={`/tasks/${response.task_uuid}`}
-                          rel="noopener noreferrer"
-                          target="_blank"
-                        >
-                          {t('viewDetails', { keyPrefix: 'task' })}
-                        </a>
-                      </span>
-                    );
-                  } else {
-                    toast.success(
-                      <Typography variant="body2">{t('toast.restoreBackupTaskSuccess')}</Typography>
-                    );
-                  }
-                };
                 modalProps.onClose();
-                fetchTaskUntilItCompletes(response.task_uuid ?? '', handleTaskCompletion);
+                fetchTaskUntilItCompletes(
+                  response.task_uuid ?? '',
+                  handleRestoreTaskCompletion(response.task_uuid ?? '')
+                );
               },
               onError: (error: Error | AxiosError) =>
                 handleServerError(error, {
@@ -222,6 +222,10 @@ export const RestoreYbaBackupFormModal = ({ modalProps }: RestoreYbaBackupFormMo
             {
               onSuccess: (response) => {
                 modalProps.onClose();
+                fetchTaskUntilItCompletes(
+                  response.task_uuid ?? '',
+                  handleRestoreTaskCompletion(response.task_uuid ?? '')
+                );
               },
               onError: (error: Error | AxiosError) =>
                 handleServerError(error, {
