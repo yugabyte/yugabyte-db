@@ -750,6 +750,7 @@ const constructDefaultFormValues = (
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
     name: region.name,
+    vnet: region.details?.cloudInfo?.oci?.vnet ?? '',
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
@@ -837,6 +838,17 @@ const constructProviderPayload = async (
         return {
           ...existingRegion,
           code: regionFormValues.code,
+          details: {
+            ...existingRegion?.details,
+            cloudInfo: {
+              [ProviderCode.OCI]: {
+                ...existingRegion?.details.cloudInfo.oci,
+                ...(regionFormValues.vnet && {
+                  vnet: regionFormValues.vnet
+                })
+              }
+            }
+          },
           zones: [
             ...regionFormValues.zones.map<OCIAvailabilityZoneMutation>((azFormValues) => {
               const existingZone = findExistingZone<OCIRegion, OCIAvailabilityZone>(

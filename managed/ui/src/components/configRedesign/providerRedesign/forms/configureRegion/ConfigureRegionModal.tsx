@@ -127,7 +127,12 @@ export const ConfigureRegionModal = ({
   const classes = useStyles();
   const fieldLabel = {
     region: 'Region',
-    vnet: providerCode === ProviderCode.AZU ? 'Virtual Network Name' : 'VPC ID',
+    vnet:
+      providerCode === ProviderCode.AZU
+        ? 'Virtual Network Name'
+        : providerCode === ProviderCode.OCI
+          ? 'VCN ID'
+          : 'VPC ID',
     securityGroupId:
       providerCode === ProviderCode.AZU
         ? 'Security Group Name (Optional)'
@@ -153,9 +158,8 @@ export const ConfigureRegionModal = ({
       vpcSetupType === VPCSetupType.EXISTING,
     sharedSubnet: providerCode === ProviderCode.GCP,
     vnet:
-      providerCode !== ProviderCode.GCP &&
-      providerCode !== ProviderCode.OCI &&
-      vpcSetupType === VPCSetupType.EXISTING,
+      providerCode === ProviderCode.OCI ||
+      (providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING),
     ybImage:
       !osPatchingEnabled &&
       providerCode !== ProviderCode.OCI &&
