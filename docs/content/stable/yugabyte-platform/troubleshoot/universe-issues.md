@@ -283,6 +283,89 @@ You can also create "Custom Queries" by providing PromQL expressions; their resu
 
 </details>
 
+## Collect node data
+
+YugabyteDB Anywhere exposes REST APIs that run a short script on universe nodes to collect specified files or directories into archives you can download. This replaces manually SSHing into each node to run the same diagnostic command or gather the same paths.
+
+This feature is only available only via the YugabyteDB Anywhere [REST API](../../anywhere-automation/anywhere-api/) or [CLI](../../anywhere-automation/anywhere-cli/).
+
+### Best practices
+
+- For routine diagnostics that do not require arbitrary commands, consider using [support bundles](#use-support-bundles) first.
+
+- These APIs can read arbitrary files and run arbitrary commands on database nodes. They are intended for YugabyteDB Support and site reliability engineers during active troubleshooting. Before using them on a production universe, contact {{% support-platform %}} to confirm the approach and the safest way to invoke the APIs.
+
+- Keep the feature [enabled](#prerequisites) only for the duration of an active troubleshooting session, and set it back to false when you are done.
+
+- Scripts should be short-lived, idempotent, and self-terminating. They run as the configured Linux user on each node; treat them as high-impact commands that can run concurrently on every targeted node. After execution has started on a node, it **cannot** be cancelled remotely from YBA. When you only need logs or configuration files, prefer the file-collection APIs over ad-hoc shell scripts (run-script) so size and depth limits apply and the operation stays auditable.
+
+- Use this feature only for _ad-hoc troubleshooting_. Do not embed it in automation, cron jobs, backup pipelines, or other recurring workflows.
+
+### Prerequisites
+
+The All Nodes Script APIs are disabled by default. All `run-script` and `file-collection` API calls return HTTP 400 until the feature is enabled.
+
+To enable All Nodes Script APIs, set the **Enable All Nodes Script APIs** Universe Runtime Configuration option (config key `yb.node_script.enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+In addition, you need the following:
+
+- An [API token](../../anywhere-automation/#authentication) for a user whose role includes the **TROUBLESHOOT** permission on the target universe, and the **DEBUG** permission to download file collections. For information on mapping roles and permissions to API access, see [Manage access to YugabyteDB Anywhere](../../administer-yugabyte-platform/anywhere-rbac/).
+- Shell access to the YugabyteDB Anywhere host for any operation that changes state on database nodes (run-script, creating or deleting a file collection, or downloading a collection with cleanup (see [Limitations](#limitations))).
+
+### Using the APIs
+
+The `run-script`, `file-collection create` and `delete` operations, and the "cleanup after download" variant of the `download` operation are restricted to localhost access only; you can only invoke them from the YugabyteDB Anywhere host itself, and not from a remote client.
+
+Per-request limits (timeouts, maximum parallel nodes, maximum file and total collection sizes, maximum directory depth, Linux user, and similar options) are defined in the YugabyteDB Anywhere OpenAPI specification for the `runScript` and `createFileCollection` operations. For details, see the [YugabyteDB Anywhere REST API](../../anywhere-automation/anywhere-api/) documentation.
+
+Avoid long-running or non-idempotent scripts; remote cancellation is not available after a script starts on a node.
+
+Invocations are recorded in the YBA audit log (target type **Universe**; actions include **RunScript**, **CreateFileCollection**, **DownloadFileCollection**, and **DeleteFileCollection**).
+
+The implementation uses the existing Node Agent channel to database nodes; you do not need separate SSH credentials for these APIs when Node Agent is already in use.
+
+#### Run a script on YugabyteDB nodes
+
+Use the `run-script` API when you need the same shell commands executed on many universe nodes in one round trip, instead of SSHing to each host.
+
+Endpoint to run a script:
+
+```sh
+POST /api/v2/customers/{cUUID}/universes/{uniUUID}/run-script
+```
+
+You can provide the script body or point to a script file that already exists on the YBA host. You can target all nodes, Masters only, TServers only, a specific cluster, or an explicit list of node names, and you can also cap parallel execution across nodes.
+
+The response is synchronous and includes the stdout, exit code, and per-node success or failure summary.
+
+#### Collect files, download, and clean up
+
+- Endpoint to create a collection:
+
+    ```sh
+    POST /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections
+    ```
+
+    Accepts a list of file paths and/or directory paths to gather, along with size and depth limits. Files are packaged into a tar archive on each node. The response includes a `collection_uuid` that identifies the collection.
+
+- Endpoint to download a collection:
+
+    ```sh
+    GET /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}/download
+    ```
+
+    Streams the per-node archives as a combined download.
+
+- Endpoint to delete a collection:
+
+    ```sh
+    DELETE /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}
+    ```
+
+    Removes staged archives from the database nodes and can optionally remove related data from YBA local storage.
+
+Contact {{% support-platform %}} for invocation examples suited to your environment and issue.
+
 ## Debug crashing YugabyteDB pods in Kubernetes
 
 If the YugabyteDB pods of your universe are crashing, you can debug them with the help of following instructions.
