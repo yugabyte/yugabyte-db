@@ -2943,6 +2943,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
   auto resp_rows = static_cast<YbcPgRowMessage *>(YBCPAlloc(sizeof(YbcPgRowMessage) * row_count));
   bool needs_publication_table_list_refresh = resp.needs_publication_table_list_refresh();
   uint64_t publication_refresh_time = resp.publication_refresh_time();
+  bool explicit_alter_publication_detected = resp.explicit_alter_publication_detected();
 
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
@@ -3077,7 +3078,8 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       .row_count = row_count,
       .rows = resp_rows,
       .needs_publication_table_list_refresh = needs_publication_table_list_refresh,
-      .publication_refresh_time = publication_refresh_time
+      .publication_refresh_time = publication_refresh_time,
+      .explicit_alter_publication_detected = explicit_alter_publication_detected,
   };
 
   if (row_count > 0) {

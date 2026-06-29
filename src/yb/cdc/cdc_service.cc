@@ -4875,6 +4875,7 @@ Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
   table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+  table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
   return table_ids;
 }
 

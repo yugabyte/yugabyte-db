@@ -39,10 +39,8 @@ CREATE VIEW testpub_view AS SELECT 1;
 CREATE TABLE testpub_parted (a int) PARTITION BY LIST (a);
 
 SET client_min_messages = 'ERROR';
--- YB Note: publishing subset of records is unsupported (#19250).
 CREATE PUBLICATION testpub_foralltables FOR ALL TABLES WITH (publish = 'insert');
 RESET client_min_messages;
--- YB Note: publishing subset of records is unsupported (#19250).
 ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update');
 
 CREATE TABLE testpub_tbl2 (id serial primary key, data text);
@@ -1132,6 +1130,11 @@ DROP PUBLICATION IF EXISTS testpub_forparted1;
 DROP PUBLICATION IF EXISTS testpub_rf_no;
 DROP PUBLICATION IF EXISTS testpub_col_list;
 DROP PUBLICATION IF EXISTS testpub_forunloggedtbl;
+-- YB Note: subset-publish publications are creatable now; the multi-object DROP PUBLICATION
+-- statements above are unsupported in YB (#880) and error out, so drop these individually.
+DROP PUBLICATION IF EXISTS testpub_rf_yes;
+DROP PUBLICATION IF EXISTS testpub_fortable_insert;
+DROP PUBLICATION IF EXISTS testpub_table_ins;
 DROP TABLE IF EXISTS testpub_tbl1;
 DROP TABLE IF EXISTS testpub_tbl5;
 DROP TABLE IF EXISTS testpub_tbl6;

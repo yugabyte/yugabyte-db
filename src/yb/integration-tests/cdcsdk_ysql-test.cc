@@ -12447,19 +12447,22 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
   int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-  // We will receive 3 DDLs, one each for pg_class, pg_publication_rel and pg_replication_origin.
+  // We will receive 4 DDLs, one each for pg_class, pg_publication_rel, pg_publication and
+  // pg_replication_origin.
   // Each CREATE TABLE will give 2 inserts and an update to pg_class in debug builds. In release
   // build we get 3 inserts.
-  // Creation of pub_1 will result into one insert to pg_publication_rel.
-  // ALTER PUB ADD TABLE will give one insert and ALTER PUB DROP TABLE will give one delete.
-  // Creation of an all tables publication does not give any change record to us.
+  // Creation of pub_1 will result into one insert to pg_publication_rel and one insert to
+  // pg_publication. Creation of pub_2 (FOR ALL TABLES) will result into one insert to
+  // pg_publication (no pg_publication_rel entry for all-tables publications).
+  // ALTER PUB ADD TABLE will give one insert and ALTER PUB DROP TABLE will give one delete to
+  // pg_publication_rel.
   // ALTER TABLE will give one update to pg_class in debug builds and one insert in release builds.
   // Creation of 2 replication origins gives 2 inserts to pg_replication_origin and dropping one
   // gives 1 delete.
   // We will not receive any record corresponding to the addition of column in other catalog tables
   // such as pg_attribute.
-  const int expected_count_without_packed_row[] = {3, 10, 4, 2, 0, 0, 11, 11};
-  const int expected_count_with_packed_row[] = {3, 14, 0, 2, 0, 0, 11, 11};
+  const int expected_count_without_packed_row[] = {4, 12, 4, 2, 0, 0, 11, 11};
+  const int expected_count_with_packed_row[] = {4, 16, 0, 2, 0, 0, 11, 11};
 
   for (auto record : change_resp.cdc_sdk_proto_records()) {
     UpdateRecordCount(record, record_count);

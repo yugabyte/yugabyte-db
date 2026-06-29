@@ -733,6 +733,7 @@ typedef struct {
   YbcPgRowMessage* rows;
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
+  bool explicit_alter_publication_detected;
 } YbcPgChangeRecordBatch;
 
 typedef struct {
