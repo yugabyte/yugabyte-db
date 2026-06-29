@@ -432,7 +432,8 @@ class ClusterAdminClient {
       const TypedNamespaceName& ns, const std::string& CheckPointType,
       const cdc::CDCRecordType RecordType,
       const std::string& ConsistentSnapshotOption,
-      const bool& is_dynamic_tables_enabled);
+      const bool& is_dynamic_tables_enabled,
+      const std::unordered_set<std::string>& bound_table_ids = {});
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
